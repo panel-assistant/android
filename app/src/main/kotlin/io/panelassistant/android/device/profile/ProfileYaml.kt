@@ -207,7 +207,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             ) + LEGACY_PROXIMITY_CLASSIFIER_KEYS,
         ).orEmpty()
         val identity = map(root["identity"], "identity", setOf("manufacturer", "model", "model_label_strategy")).orEmpty()
-        val input = map(root["input"], "input", setOf("evdev_buttons", "has_physical_buttons")).orEmpty()
+        val input = map(root["input"], "input", setOf("evdev_buttons", "has_physical_buttons", "proximity_keys")).orEmpty()
         val cpu = map(root["cpu"], "cpu", setOf("governors")).orEmpty()
         val display = map(root["display"], "display", setOf("physical_ppi", "geometry")).orEmpty()
         val provisioning = map(
@@ -341,7 +341,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 model = string(identity, "model", "identity"),
                 modelLabelStrategy = string(identity, "model_label_strategy", "identity") ?: "display-name",
             ),
-            input = ProfileInput(evdevButtons(input["evdev_buttons"]), boolean(input, "has_physical_buttons", "input")),
+            input = ProfileInput(evdevButtons(input["evdev_buttons"]), boolean(input, "has_physical_buttons", "input"), proximityKeys(input["proximity_keys"])),
             cpu = ProfileCpu(governors(cpu["governors"])),
             display = ProfileDisplay(
                 physicalPpi = integer(display, "physical_ppi", "display"),
@@ -400,14 +400,26 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
 
     private fun evdevButtons(value: Any?): List<ProfileEvdevButton> = list(value, "input.evdev_buttons").mapIndexed { index, item ->
         val path = "input.evdev_buttons[$index]"
-        val map = map(item, path, setOf("node", "code", "grab", "event_type", "sw", "release"), required = true).orEmpty()
+        val map = map(item, path, setOf("node", "device_name", "code", "grab", "event_type", "sw", "release"), required = true).orEmpty()
         ProfileEvdevButton(
-            node = string(map, "node", path, required = true).orEmpty(),
+            node = string(map, "node", path).orEmpty(),
             code = integer(map, "code", path, required = true) ?: 0,
             grab = boolean(map, "grab", path, required = true) ?: false,
             eventType = string(map, "event_type", path, required = true).orEmpty(),
             sw = boolean(map, "sw", path) ?: false,
             release = boolean(map, "release", path) ?: false,
+            deviceName = string(map, "device_name", path),
+        )
+    }
+
+    private fun proximityKeys(value: Any?): ProfileProximityKeys? {
+        if (value == null) return null
+        val path = "input.proximity_keys"
+        val fields = map(value, path, setOf("device_name", "near_code", "far_code"), required = true).orEmpty()
+        return ProfileProximityKeys(
+            string(fields, "device_name", path, required = true).orEmpty(),
+            integer(fields, "near_code", path, required = true) ?: 0,
+            integer(fields, "far_code", path, required = true) ?: 0,
         )
     }
 
@@ -833,9 +845,10 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
     ).withoutNullValues(),
     "input" to linkedMapOf(
         "evdev_buttons" to input.evdevButtons.map {
-            linkedMapOf("node" to it.node, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw, "release" to it.release)
+            linkedMapOf("node" to it.node.takeIf(String::isNotEmpty), "device_name" to it.deviceName, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw, "release" to it.release).withoutNullValues()
         },
         "has_physical_buttons" to input.hasPhysicalButtons,
+        "proximity_keys" to input.proximityKeys?.let { linkedMapOf("device_name" to it.deviceName, "near_code" to it.nearCode, "far_code" to it.farCode) },
     ).withoutNullValues(),
     "cpu" to linkedMapOf("governors" to cpu.governors).withoutNullValues(),
     "display" to linkedMapOf(

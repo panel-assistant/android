@@ -72,6 +72,7 @@ class DataDeviceProfile internal constructor(
     override val proximityTech = document.sensors.proximityTechnology
     override val proximityCalibration = document.sensors.proximityCalibration
     override val proximityGpio = document.sensors.proximityGpio
+    override val proximityKeys = document.input.proximityKeys
     override val lightTech = document.sensors.lightTechnology
     override val hasCht8305 = document.sensors.cht8305
     override val hasVi530x = document.sensors.vi530x
@@ -79,7 +80,7 @@ class DataDeviceProfile internal constructor(
     override val manufacturer = document.identity.manufacturer
     override val model = document.identity.model
     override val evdevButtons = document.input.evdevButtons.map {
-        EvdevButton(it.node, it.code, it.grab, it.eventType, it.sw, it.release)
+        EvdevButton(it.node, it.code, it.grab, it.eventType, it.sw, it.release, it.deviceName)
     }
     override val cpuGovernors = document.cpu.governors
     override fun displayGeometry(physicalWidthPx: Int, physicalHeightPx: Int) =

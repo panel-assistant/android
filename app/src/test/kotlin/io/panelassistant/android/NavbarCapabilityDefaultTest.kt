@@ -193,7 +193,7 @@ class NavbarCapabilityDefaultTest {
         // starts with the bar behind the bottom-edge swipe (maintainer, 2026-10-13).
         val shellyIds = profiles.map(DeviceProfile::id).filter { it.startsWith("shelly-wall-display") }
         assertEquals(
-            listOf("shelly-wall-display", "shelly-wall-display-v2", "shelly-wall-display-x2i"),
+            listOf("shelly-wall-display", "shelly-wall-display-v2", "shelly-wall-display-x2i", "shelly-wall-display-xl"),
             shellyIds,
         )
         for (id in shellyIds) {

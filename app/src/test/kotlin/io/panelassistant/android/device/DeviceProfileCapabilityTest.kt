@@ -34,16 +34,16 @@ class DeviceProfileCapabilityTest {
                 LedMechanism.SYSFS_DAEMON,
                 LedMechanism.RK3576_IOCTL_DAEMON,
             ) || it.screenOff == ScreenOff.DAEMON_BLPOWER || it.hasButtonBacklight ||
-                it.proximityGpio != null || it.evdevButtons.isNotEmpty()
+                it.proximityGpio != null || it.evdevButtons.any { button -> button.deviceName == null }
             if (daemonHardware) assertTrue("daemon-backed feature omitted from usesDaemon on ${it.id}", it.usesDaemon)
         }
-        all.filter { it.evdevButtons.isNotEmpty() }.forEach {
+        all.filter { it.evdevButtons.any { button -> button.deviceName == null } }.forEach {
             assertTrue("evdev buttons require helper on ${it.id}", it.usesDaemon)
         }
         assertEquals(
             "helper-backed evdev hardware changed",
             setOf("s9e", "tpa10", "wf1589t"),
-            all.filter { it.evdevButtons.isNotEmpty() }.mapTo(mutableSetOf()) { it.id },
+            all.filter { it.evdevButtons.any { button -> button.deviceName == null } }.mapTo(mutableSetOf()) { it.id },
         )
     }
 
@@ -148,7 +148,12 @@ class DeviceProfileCapabilityTest {
                 assertTrue("blank tame rationale for ${it.pkg} on ${profile.id}", it.note.isNotBlank())
             }
             profile.evdevButtons.forEach {
-                assertTrue("invalid evdev node ${it.node} on ${profile.id}", it.node.matches(Regex("^/dev/input/event\\d+$")))
+                if (it.deviceName == null) {
+                    assertTrue("invalid evdev node ${it.node} on ${profile.id}", it.node.matches(Regex("^/dev/input/event\\d+$")))
+                } else {
+                    assertTrue("blank Android input device name on ${profile.id}", it.deviceName.isNotBlank())
+                    assertTrue("named Android input also selects a node on ${profile.id}", it.node.isEmpty())
+                }
                 assertTrue("invalid evdev code on ${profile.id}", it.code > 0)
                 assertTrue("invalid event type ${it.eventType} on ${profile.id}", eventType.matches(it.eventType))
             }

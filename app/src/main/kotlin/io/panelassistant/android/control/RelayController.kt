@@ -9,14 +9,15 @@ import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.HelperRelayClass
 import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.MonotonicDeadline
+import java.io.File
 
 /**
- * On-board relay + button-LED control for panels that expose them — currently the **Smatek S9E**,
- * which has two mains relays (sysfs class `/sys/class/strelay` on firmware 1.1.0+, `/sys/class/st_relay`
+ * On-board relay + button-LED control for profile-declared sysfs paths. The **Smatek S9E**
+ * has two mains relays (sysfs class `/sys/class/strelay` on firmware 1.1.0+, `/sys/class/st_relay`
  * on the initial 1.0.2 — both probed) and four button LEDs at `/sys/class/gpio/gpio147`–`gpio150`, all
  * driven by `echo 1`/`echo 0`. The sysfs locations come from the active [DeviceProfile]
  * ([DeviceProfile.relayBase] + [DeviceProfile.relayBaseFallbacks] / [DeviceProfile.buttonLedGpioBase]); a
- * profile with none (every panel except the S9E) makes this controller inert with no helper reads. Relay
+ * profile with none makes this controller inert with no helper reads. Relay
  * class nodes are runtime-confirmed. Button LEDs are surfaced from the reviewed profile declaration,
  * then their GPIO is exported and verified only on an explicit [ledSet] write. A preparation proven
  * `ready` is cached for the process lifetime so rapid commands pay one privileged round trip, not two;
@@ -25,7 +26,9 @@ import io.panelassistant.android.util.MonotonicDeadline
  * lane). Reads never consult or populate that cache; only the read-only startup [warmUp] may seed it with
  * pins the kernel already holds as writable outputs.
  *
- * Passive observations use fixed helper reads. Explicit writes and lazy GPIO preparation go through [Su].
+ * Relay classes readable and writable by the app use ordinary file I/O, without a helper or root.
+ * Discovery is read-only and requires contiguous binary relay nodes. Otherwise passive observations
+ * use fixed helper reads and explicit writes go through [Su]. Lazy GPIO preparation always uses [Su].
  *
  * ⚠️ UNTESTED on hardware — derived from the vendor paths reported in
  * seaky/nspanel_pro_tools_apk#98 + two stock firmware images; no S9E was available to validate. These
@@ -36,6 +39,7 @@ class RelayController(
     private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
     private val nowNs: () -> Long = System::nanoTime,
+    private val relayFile: (String) -> File = ::File,
 ) {
 
     // Candidate relay-class bases, primary first. The S9E renamed st_relay -> strelay across firmware,
@@ -44,6 +48,7 @@ class RelayController(
     private val ledBase: Int? = profile.buttonLedGpioBase
 
     @Volatile private var resolvedBase: String? = null
+    private var directRelays = false
     @Volatile private var resolvedRelayCount: Int? = if (candidateBases.isEmpty()) 0 else null
     @Volatile private var resolvedLedCount: Int = if (ledBase == null) 0 else BUTTON_LED_COUNT
 
@@ -63,8 +68,15 @@ class RelayController(
         try {
             var probeFailed = false
             for (candidate in candidateBases) {
+                // Keep direct I/O inside the same reviewed class allowlist as helper observations.
+                val relayClass = HelperRelayClass.fromSysfsBase(candidate)
+                if (relayClass == null) {
+                    probeFailed = true
+                    continue
+                }
+                val directCount = directRelayCount(candidate)
                 val count = try {
-                    HelperRelayClass.fromSysfsBase(candidate)?.let(daemon::relayCount)
+                    directCount ?: daemon.relayCount(relayClass)
                 } catch (_: Exception) {
                     null
                 }
@@ -76,6 +88,7 @@ class RelayController(
                     synchronized(this) {
                         if (resolvedRelayCount == null) {
                             resolvedBase = candidate
+                            directRelays = directCount != null
                             resolvedRelayCount = count
                         }
                     }
@@ -91,6 +104,23 @@ class RelayController(
             cost.close()
         }
     }
+
+    /** Access checks run as the app UID. Never write a node merely to discover capabilities. */
+    private fun directRelayCount(base: String): Int? = try {
+        val names = relayFile(base).list()?.filter { it.matches(Regex("relay[1-9][0-9]*")) }
+        if (names.isNullOrEmpty() || names.size > 16 ||
+            names.toSet() != (1..names.size).map { "relay$it" }.toSet()) null
+        else names.size.takeIf {
+            names.all { name ->
+                val node = relayFile("$base/$name")
+                node.canRead() && node.canWrite() && readDirect(node) != null
+            }
+        }
+    } catch (_: Exception) { null }
+
+    private fun readDirect(node: File): Boolean? = try {
+        when (node.readText().trim()) { "0" -> false; "1" -> true; else -> null }
+    } catch (_: Exception) { null }
 
     /** Number of confirmed relays (0 also when discovery is currently unavailable). */
     fun count(): Int {
@@ -111,7 +141,10 @@ class RelayController(
         val started = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_HARDWARE_WRITE)
         var outcome = FeatureCostOutcome.FAILURE
         try {
-            val ok = root.writeSysfs("$base/relay$n", if (on) "1" else "0")
+            val value = if (on) "1" else "0"
+            val ok = if (directRelays) {
+                try { relayFile("$base/relay$n").writeText(value); true } catch (_: Exception) { false }
+            } else root.writeSysfs("$base/relay$n", value)
             if (ok) outcome = FeatureCostOutcome.SUCCESS
             return ok
         } finally {
@@ -134,7 +167,8 @@ class RelayController(
         val cost = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.RELAY_STATE_READ)
         var outcome = FeatureCostOutcome.SUCCESS
         return try {
-            daemon.relayRead(relayClass, n).also { if (it == null) outcome = FeatureCostOutcome.FAILURE }
+            (if (directRelays) readDirect(relayFile("${relayClass.sysfsBase}/relay$n"))
+            else daemon.relayRead(relayClass, n)).also { if (it == null) outcome = FeatureCostOutcome.FAILURE }
         } catch (failure: Exception) {
             outcome = FeatureCostOutcome.FAILURE
             throw failure

@@ -396,15 +396,25 @@ internal object ProfileValidator {
             if (it !in 0.05f..1f) reject("hardware.touch_click_gain", "Touch-click gain must be between 0.05 and 1.0.", "touch-click-gain-range")
         }
         if (document.input.evdevButtons.size > 32) reject("input.evdev_buttons", "At most 32 evdev mappings are allowed.", "evdev-mapping-count-limit")
-        val evdevCodes = mutableSetOf<Pair<Boolean, Int>>()
+        val evdevCodes = mutableSetOf<Triple<String?, Boolean, Int>>()
         document.input.evdevButtons.forEachIndexed { index, button ->
             val path = "input.evdev_buttons[$index]"
-            if (!Regex("^/dev/input/event[0-9]{1,3}$").matches(button.node)) {
+            if (button.deviceName == null && !Regex("^/dev/input/event[0-9]{1,3}$").matches(button.node)) {
                 reject("$path.node", "Only /dev/input/eventN device nodes are supported.", "evdev-device-node-invalid")
+            }
+            button.deviceName?.let {
+                if (it.isBlank() || it.length > 128 || it.any(Char::isISOControl)) reject("$path.device_name", "Use a nonempty input device name of at most 128 characters.", "evdev-device-name-invalid")
+                if (button.node.isNotEmpty() || button.grab || button.sw) reject(path, "Named Android key mappings cannot also select a node, grab, or switch.", "evdev-device-name-invalid")
             }
             if (button.code !in 1..767) reject("$path.code", "Linux input code must be between 1 and 767.", "linux-input-code-range")
             if (button.eventType.length > 64 || !eventTypePattern.matches(button.eventType)) reject("$path.event_type", "Use KEYCODE_ plus uppercase letters, digits, or underscores, at most 64 characters.", "keycode-format-invalid")
-            if (!evdevCodes.add(button.sw to button.code)) reject(path, "Duplicate (sw, code) mapping.", "duplicate-evdev-mapping")
+            if (!evdevCodes.add(Triple(button.deviceName, button.sw, button.code))) reject(path, "Duplicate device/type/code mapping.", "duplicate-evdev-mapping")
+        }
+        document.input.proximityKeys?.let { keys ->
+            val path = "input.proximity_keys"
+            if (keys.deviceName.isBlank() || keys.deviceName.length > 128 || keys.deviceName.any(Char::isISOControl)) reject(path, "Use a nonempty input device name of at most 128 characters.", "evdev-device-name-invalid")
+            if (keys.nearCode !in 1..767 || keys.farCode !in 1..767 || keys.nearCode == keys.farCode) reject(path, "Use two distinct Linux input codes between 1 and 767.", "linux-input-code-range")
+            if (document.input.evdevButtons.any { it.code in setOf(keys.nearCode, keys.farCode) }) reject(path, "Proximity key codes cannot also be buttons.", "duplicate-evdev-mapping")
         }
         document.cpu.governors?.forEach { (tier, governor) ->
             if (tier !in setOf("Performance", "Efficiency", "Auto")) reject("cpu.governors.$tier", "Unknown HA CPU tier.", "unknown-ha-cpu-tier")
@@ -450,7 +460,7 @@ internal object ProfileValidator {
     fun risks(document: ProfileDocument, overridesBundled: Boolean): Set<ProfileRisk> = buildSet {
         if (document.platform.appCanSu || document.hardware.screenOff != "brightness-zero" || document.requires.drivers.any { ProfileMetadata.drivers.find { d -> d.id == it }?.privileged == true }) add(ProfileRisk.ROOT_PATHS)
         if (document.hardware.relayBase != null || document.hardware.relayBaseFallbacks.isNotEmpty() || document.hardware.buttonLedGpioBase != null || document.sensors.proximityGpio != null) add(ProfileRisk.RELAY_OR_GPIO_WRITES)
-        if (document.input.evdevButtons.isNotEmpty()) add(ProfileRisk.EVDEV_READ)
+        if (document.input.evdevButtons.any { it.deviceName == null }) add(ProfileRisk.EVDEV_READ)
         if (document.input.evdevButtons.any { it.grab }) add(ProfileRisk.EVDEV_GRAB)
         if (document.provisioning.packages.any { it.importance == ProfileProvisioningImportance.RECOMMENDED }) {
             add(ProfileRisk.PACKAGE_DISABLE_RECOMMENDATIONS)
@@ -474,7 +484,8 @@ internal object ProfileValidator {
         if (document.sensors.proximityGpio != null) add("sensor.gpio-proximity")
         if (document.sensors.cht8305) add("sensor.cht8305-daemon")
         if (document.sensors.vi530x) add("sensor.vi530x-daemon")
-        if (document.input.evdevButtons.isNotEmpty()) add("input.evdev")
+        if (document.input.evdevButtons.any { it.deviceName == null }) add("input.evdev")
+        if (document.input.evdevButtons.any { it.deviceName != null } || document.input.proximityKeys != null) add("input.android-keys")
         if (document.provisioning.software.webView != null) add("update.webview")
     }
 

@@ -645,6 +645,7 @@ class PaneldService : Service() {
         // Resolve one immutable profile revision before constructing any hardware owner. Activations are
         // restart-bound, so every controller below observes this exact object for the service lifetime.
         profile = resolvedProfile.profile
+        io.panelassistant.android.input.AccessibilityKeyRouter.configure(profile)
         activeProfileIdentity = resolvedProfile.summary.ref.let { "${it.id}@${it.revision}" }
         profileActivationGeneration = resolvedProfile.activationGeneration
         resolvedProfile.issues.forEach { issue ->
