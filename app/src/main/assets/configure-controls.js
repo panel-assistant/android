@@ -518,10 +518,17 @@
         var typedPath = customInput.value.trim();
         var root = cfg.dashboardRootOf(typedPath);
         var unknown = root && cfg.homeDashboardQueried && cfg.homeDashboardItems.length && !dashboardPaths[root];
-        customNote.textContent = unknown
+        var noteText = unknown
           ? cfg.i18nText("configure.dashboard.path_not_visible", "{path} is not a dashboard this panel’s Home Assistant account can see — the panel will fall back to its default until that dashboard exists.", { path: root })
           : cfg.i18nText("configure.dashboard.path_help", "A path on this Home Assistant, starting with a dashboard from the list above.");
-        customNote.classList.toggle("warn", !!unknown);
+        if (unknown) {
+          window.HaNotice.fill(customNote, "warning", "", noteText);
+          customNote.classList.add("notice-inline", "hd-area-note", "hd-custom-note");
+        } else {
+          customNote.className = "hd-area-note hd-custom-note";
+          customNote.removeAttribute("data-severity");
+          customNote.textContent = noteText;
+        }
       }
       // Validity is decided here rather than by the browser's pattern engine, and is cleared entirely
       // whenever Custom is not the live control. A hidden control that stays invalid blocks Save with

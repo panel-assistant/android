@@ -498,7 +498,7 @@ for (const [detail, message] of [
   ['insufficient_history', 'This Area’s activity sensors have too little usable history or are unavailable.'],
   ['unknown_source_reason', 'No credible device-backed activity source is available in this Area.'],
 ]) {
-  browserTest(`Auto-sleep explains ${detail} in the existing red history line`, async (t) => {
+  browserTest(`Auto-sleep explains ${detail} in the inline history warning`, async (t) => {
     let historyCalls = 0;
     const harness = await startHarness((path) => {
       if (path === '/api/v1/config/schema') return json([
@@ -521,9 +521,11 @@ for (const [detail, message] of [
     t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
     await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
     const line = page.locator('#auto-sleep-history-message');
-    await page.waitForFunction(() => document.querySelector('#auto-sleep-history-message')?.classList.contains('error'));
-    assert.equal(await line.textContent(), message);
-    assert.equal(await line.evaluate((node) => getComputedStyle(node).color), 'rgb(211, 75, 66)');
+    await line.locator('.notice-pill').waitFor();
+    assert.equal(await line.locator('.notice-pill').textContent(), 'Warning');
+    assert.equal(await line.locator('.notice-detail').textContent(), message);
+    assert.equal(await line.getAttribute('role'), 'status');
+    assert.equal(await line.getAttribute('aria-live'), 'polite');
     assert.equal(await page.locator('#auto-sleep-status').count(), 1);
     assert.equal(await page.locator('#auto-sleep-chart').count(), 1);
     assert.equal(await page.locator('.auto-sleep-lane.source').count(), 0);

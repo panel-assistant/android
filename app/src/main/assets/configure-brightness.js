@@ -587,6 +587,11 @@
     var projectionSensitivity = autoBrightnessProjectionSensitivity();
     if (projectionSensitivity != null) detail += cfg.i18nText("configure.brightness.sensitivity", " · Sensitivity {percent}%", { percent: projectionSensitivity });
     detail += " · " + autoBrightnessFreshness();
+    var message = cfg.el("div", { class: "autobright-message" });
+    if (cfg.autoBrightMessage.indexOf("failed") >= 0) {
+      message.appendChild(window.HaNotice.row("warning", "", cfg.autoBrightMessage));
+      message.firstChild.classList.add("notice-inline");
+    } else message.textContent = cfg.autoBrightMessage;
     var panel = cfg.el("div", { class: "autobright-panel", id: "auto-brightness-learning" }, [
       cfg.el("div", { class: "autobright-head" }, [
         cfg.el("div", {}, [cfg.el("strong", { text: cfg.i18nText("configure.brightness.daily_learning", "Daily ambient learning") }), cfg.el("small", { text: autoBrightnessSummary() })]),
@@ -599,7 +604,7 @@
         cfg.el("span", { class: "proposed", text: cfg.i18nText("configure.brightness.proposed_level", "Proposed level") }),
         cfg.el("small", { text: detail })
       ]),
-      cfg.el("div", { class: "autobright-message" + (cfg.autoBrightMessage.indexOf("failed") >= 0 ? " error" : ""), text: cfg.autoBrightMessage })
+      message
     ]);
     setTimeout(drawAutoBrightnessChart, 0);
     return panel;
