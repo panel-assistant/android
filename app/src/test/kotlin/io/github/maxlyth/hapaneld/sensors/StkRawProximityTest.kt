@@ -176,6 +176,9 @@ class StkRawProximityTest {
         assertTrue(reader.isPresent())
         assertEquals(ProximityAcquisition.STK_RAW, proximityAcquisition(false, null, true, reader.isPresent()))
         assertEquals(61, reader.read())
+        // The binding, not the cache file, decides: unbind the same tree and the HAL is selected.
+        assertTrue(File(devices, "2-0046-1/driver").delete())
+        assertEquals(ProximityAcquisition.ANDROID_HAL, proximityAcquisition(false, null, true, reader.isPresent()))
     }
 
     @Test fun stk3x3xPanelWithStaleRaw16CacheSelectsHal() = withRoot { root ->
