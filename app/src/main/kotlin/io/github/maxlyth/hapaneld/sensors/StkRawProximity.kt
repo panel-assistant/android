@@ -8,18 +8,23 @@ internal class StkRawProximityReader(
     private val valueFile: File = File("/sys/class/st_psensor/psensor_value"),
     private val devices: File = File("/sys/bus/i2c/devices"),
 ) {
-    // Pin a present interface even when access or contract validation fails. Never reinterpret an
-    // in-flight scalar calibration as the Android binary source after an access failure.
-    fun isPresent(): Boolean = try { valueFile.exists() || valueFile.parentFile?.exists() == true } catch (_: SecurityException) { true }
+    // Probed once at startup; the caller pins the result, so a later read failure never reinterprets a
+    // scalar calibration as the Android binary source. The cache file alone proves nothing: an
+    // stk3x3x panel can expose it stale beside an unbound stk3a5x node. A probe that cannot see the
+    // bound driver (SecurityException, unreadable name, unlistable bus) selects the HAL, because read()
+    // runs the same probe and could never produce a reading.
+    fun isPresent(): Boolean = try { boundDriver() && valueFile.isFile } catch (_: Exception) { false }
 
     fun read(): Int {
-        check(devices.listFiles()?.any { device ->
-            File(device, "name").let { name ->
-                name.isFile && name.inputStream().use { readBounded(it, 32) }.trim() == "ps_stk3a5x"
-            } && File(device, "driver").isDirectory
-        } == true) { "Raw proximity driver contract unavailable" }
+        check(boundDriver()) { "Raw proximity driver contract unavailable" }
         return valueFile.inputStream().use(::parse)
     }
+
+    private fun boundDriver(): Boolean = devices.listFiles()?.any { device ->
+        File(device, "name").let { name ->
+            name.isFile && name.inputStream().use { readBounded(it, 32) }.trim() == "ps_stk3a5x"
+        } && File(device, "driver").isDirectory
+    } == true
 
     companion object {
         const val SOURCE_IDENTITY = "sysfs-stk3a5x-raw16-v1"

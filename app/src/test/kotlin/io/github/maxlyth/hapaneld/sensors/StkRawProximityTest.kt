@@ -149,17 +149,59 @@ class StkRawProximityTest {
         } finally { root.deleteRecursively() }
     }
 
-    @Test fun absentInterfacePreservesHalAndPresentBrokenInterfacePinsRaw() {
+    // Mirrors the NSPanel 86 and NSPanel 120 sysfs layouts: both chips enumerate, only one driver binds.
+    private fun sysfs(root: File, bound: String, staleValue: Boolean = true): Pair<File, File> {
+        val value = File(root, "st_psensor/psensor_value")
+        if (staleValue) {
+            value.parentFile!!.mkdirs()
+            value.writeText("61\n")
+        }
+        val devices = File(root, "devices")
+        for ((node, chip) in listOf("2-0046-1" to "ps_stk3a5x", "2-0047-1" to "ps_stk3x3x")) {
+            File(devices, node).mkdirs()
+            File(devices, "$node/name").writeText("$chip\n")
+            if (chip == bound) File(devices, "$node/driver").mkdir()
+        }
+        return value to devices
+    }
+
+    private fun withRoot(block: (File) -> Unit) {
         val root = java.nio.file.Files.createTempDirectory("raw-proximity").toFile()
-        try {
-            val value = File(root, "st_psensor/psensor_value")
-            val reader = StkRawProximityReader(value, File(root, "devices"))
-            assertFalse(reader.isPresent())
-            assertEquals(ProximityAcquisition.ANDROID_HAL, proximityAcquisition(false, null, true, reader.isPresent()))
-            assertTrue(value.parentFile!!.mkdir())
-            assertTrue(reader.isPresent())
-            assertTrue(runCatching { reader.read() }.isFailure)
-            assertEquals(ProximityAcquisition.STK_RAW, proximityAcquisition(false, null, true, reader.isPresent()))
-        } finally { root.deleteRecursively() }
+        try { block(root) } finally { root.deleteRecursively() }
+    }
+
+    @Test fun boundStk3a5xSelectsRaw16() = withRoot { root ->
+        val (value, devices) = sysfs(root, bound = "ps_stk3a5x")
+        val reader = StkRawProximityReader(value, devices)
+        assertTrue(reader.isPresent())
+        assertEquals(ProximityAcquisition.STK_RAW, proximityAcquisition(false, null, true, reader.isPresent()))
+        assertEquals(61, reader.read())
+    }
+
+    @Test fun stk3x3xPanelWithStaleRaw16CacheSelectsHal() = withRoot { root ->
+        val (value, devices) = sysfs(root, bound = "ps_stk3x3x")
+        val reader = StkRawProximityReader(value, devices)
+        assertTrue(value.isFile)
+        assertFalse(reader.isPresent())
+        assertEquals(ProximityAcquisition.ANDROID_HAL, proximityAcquisition(false, null, true, reader.isPresent()))
+        // The cache directory alone, with no value file and no devices, is not an interface either.
+        val empty = File(root, "empty/st_psensor/psensor_value").also { it.parentFile!!.mkdirs() }
+        assertFalse(StkRawProximityReader(empty, File(root, "empty/devices")).isPresent())
+    }
+
+    @Test fun boundStk3a5xWithoutValueFileSelectsHal() = withRoot { root ->
+        val (value, devices) = sysfs(root, bound = "ps_stk3a5x", staleValue = false)
+        assertFalse(StkRawProximityReader(value, devices).isPresent())
+    }
+
+    @Test fun probeSecurityExceptionSelectsHalBecauseRaw16CouldNeverRead() = withRoot { root ->
+        val (value, _) = sysfs(root, bound = "ps_stk3a5x")
+        val denied = object : File(root, "devices") {
+            override fun listFiles(): Array<File>? = throw SecurityException("denied")
+        }
+        val reader = StkRawProximityReader(value, denied)
+        assertFalse(reader.isPresent())
+        assertEquals(ProximityAcquisition.ANDROID_HAL, proximityAcquisition(false, null, true, reader.isPresent()))
+        assertTrue(runCatching { reader.read() }.exceptionOrNull() is SecurityException)
     }
 }
