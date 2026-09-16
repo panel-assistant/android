@@ -161,22 +161,22 @@ assert_canonical() {
   expect_eq 'OK GUARDCAPS 1 PREPARE DEFINE STREAM ACTION HEALTH REFUSAL STATUS EVIDENCE CANCEL RETIRE JOURNAL AUTONOMOUS SUPERVISED TERMINAL_RETIRE' "$caps" "$kind exposes the exact live Guard capability contract"
   expect_eq 'OK GUARDSTATUS 0 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0' "$status" "$kind exposes the exact empty Guard status"
   emitted_cuts="$(MOCK_STATE_DIR="$state" "$HELPER_STATE" emitted-rollback-cuts "$kind" 2>>"$state/output")"; emitted_status=$?
-  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" | grep -Eqx "EMITTED_ROLLBACK_CUTS_OK kind=$kind operations=[1-9][0-9]*"; then
+  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" 2>/dev/null | grep -Eqx "EMITTED_ROLLBACK_CUTS_OK kind=$kind operations=[1-9][0-9]*"; then
     pass "$kind emitted transaction survives every authoritative rollback fault cut"
   else
     fail "$kind emitted transaction rollback cuts failed (see $state/output)"
   fi
-  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" | grep -Eqx "EMITTED_EXTERNAL_CANCEL_OK kind=$kind operations=[1-9][0-9]*"; then
+  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" 2>/dev/null | grep -Eqx "EMITTED_EXTERNAL_CANCEL_OK kind=$kind operations=[1-9][0-9]*"; then
     pass "$kind exact emitted transaction crash-resumably retires external canonical changes and holds custody or ambiguity"
   else
     fail "$kind emitted external-canonical cancellation matrix failed (see $state/output)"
   fi
-  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" | grep -Eqx "EMITTED_V1_ROLLBACK_CUTS_OK kind=$kind operations=[1-9][0-9]*"; then
+  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" 2>/dev/null | grep -Eqx "EMITTED_V1_ROLLBACK_CUTS_OK kind=$kind operations=[1-9][0-9]*"; then
     pass "$kind exact emitted v1 rollback survives intent and every authoritative restore cut"
   else
     fail "$kind emitted v1 rollback cut matrix failed (see $state/output)"
   fi
-  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" | grep -Fqx "EMITTED_V1_NOFOLLOW_HOLD_OK kind=$kind"; then
+  if [ "$emitted_status" -eq 0 ] && printf '%s\n' "$emitted_cuts" 2>/dev/null | grep -Fqx "EMITTED_V1_NOFOLLOW_HOLD_OK kind=$kind"; then
     pass "$kind v1 rollback rejects a broken-symlink absence with zero mutation"
   else
     fail "$kind emitted v1 NOFOLLOW absence mutant failed (see $state/output)"

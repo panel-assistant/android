@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      android_runner:
+        description: Where the Android build runs
+        type: choice
+        options: [repository setting, auto, self-hosted, hosted]
+        default: repository setting
 
 permissions:
   contents: read
@@ -20,41 +26,92 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Android ${{ matrix.name }}
-    # Hosted. The project runner is a ten-core container on a shared host: running this
-    # workflow's jobs there at once oversubscribed it, and the timing-bounded provisioning
-    # contracts then failed. HiveMqTransportBrokerTest also expects the hosted image's lack of
-    # an IPv6 default route, which that container has.
+  # The Android build runs on the project's self-hosted runner when one is online: a single ten-core
+  # job with a persistent Gradle home and a preinstalled toolchain finishes the whole Android surface
+  # sooner than four hosted splits. Everything else stays hosted. Pull requests, including Dependabot
+  # and forks, always use hosted runners so outside code never runs on the project machine.
+  #
+  # The two Android jobs below are fixed rather than built from this job's output, so the workflow also
+  # runs on Actions-compatible runners that expand job matrices before any job has run and cannot read
+  # a matrix or runner list computed at run time. Both jobs share one step list.
+  #
+  # CI_ANDROID_RUNNER (repository variable) or the dispatch input selects `hosted`, `self-hosted` or
+  # `auto` (the default). `auto` asks the API for an online project runner using RUNNER_ADMIN_TOKEN, a
+  # fine-grained token with Administration access to this repository, and falls back to hosted runners
+  # when the token is missing, the check fails or no runner is online. A failed check is annotated as a
+  # warning so an expired token does not silently slow CI. Pull requests never receive the token.
+  android-runner:
+    name: Choose Android runner
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      choice: ${{ steps.pick.outputs.choice }}
+    steps:
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          MODE: ${{ github.event.inputs.android_runner != '' && github.event.inputs.android_runner != 'repository setting' && github.event.inputs.android_runner || vars.CI_ANDROID_RUNNER || 'auto' }}
+          RUNNER_STATUS_TOKEN: ${{ github.event_name != 'pull_request' && secrets.RUNNER_ADMIN_TOKEN || '' }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          choice=hosted
+          if [ "$EVENT" = pull_request ]; then
+            reason="pull requests always build on hosted runners"
+          else
+            case "$MODE" in
+              hosted) reason="CI_ANDROID_RUNNER is hosted" ;;
+              self-hosted) choice=self-hosted; reason="CI_ANDROID_RUNNER is self-hosted" ;;
+              auto)
+                if [ -z "$RUNNER_STATUS_TOKEN" ]; then
+                  reason="no RUNNER_ADMIN_TOKEN secret, so runner availability cannot be checked"
+                  echo "::warning::$reason"
+                else
+                  status="$(curl -sS --max-time 15 -o runners.json -w '%{http_code}' \
+                      -H "Authorization: Bearer $RUNNER_STATUS_TOKEN" -H 'Accept: application/vnd.github+json' \
+                      "https://api.github.com/repos/$REPOSITORY/actions/runners?per_page=100" || true)"
+                  status="${status:-000}"
+                  if [ "$status" = 200 ] && online="$(jq '[.runners[] | select(.status == "online" and ([.labels[].name] | index("ms01-i9")))] | length' runners.json)"; then
+                    if [ "$online" -gt 0 ]; then
+                      choice=self-hosted; reason="$online project runner(s) online"
+                    else
+                      reason="no project runner is online"
+                    fi
+                  else
+                    reason="the runner availability check failed with HTTP $status"
+                    echo "::warning::$reason; check RUNNER_ADMIN_TOKEN"
+                  fi
+                  rm -f runners.json
+                fi
+                ;;
+              *) echo "::error::CI_ANDROID_RUNNER must be hosted, self-hosted or auto, not '$MODE'"; exit 1 ;;
+            esac
+          fi
+          echo "Android runner: $choice ($reason)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "choice=$choice" >> "$GITHUB_OUTPUT"
+
+  build-self-hosted:
+    name: Android ${{ matrix.name }}
+    needs: android-runner
+    if: needs.android-runner.outputs.choice == 'self-hosted'
+    runs-on: [self-hosted, Linux, X64, ms01-i9]
     timeout-minutes: 30
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - name: debug unit tests
-            tasks: ":app:testDebugUnitTest"
-            apks: "no"
-          - name: release unit tests
-            # DatabaseCompatibilityApkContractTest asserts against the merged
-            # DEBUG manifest, so the release suite needs it built even though the
-            # rest of the split is release-only.
-            tasks: ":app:processDebugManifest :app:testReleaseUnitTest"
-            apks: "no"
-          - name: lint
-            tasks: ":app:lintDebug"
-            apks: "no"
-          # The debug and release APKs share almost no tasks, so building them on separate runners
-          # halves the longest Android split.
-          - name: assemble debug
-            tasks: ":app:assembleDebug :app:assembleDebugAndroidTest"
-            apks: "debug"
-          - name: assemble release
-            # The lint split analyses the same sources in full, and release.yml still runs the release
-            # lint pass before publishing, so CI skips it here.
-            tasks: ":app:assembleRelease -x :app:lintVitalRelease"
-            apks: "release"
-    steps:
+          - name: build and tests
+            tasks: >-
+              :app:testDebugUnitTest :app:processDebugManifest :app:testReleaseUnitTest
+              :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+            apks: both
+    steps: &android-steps
+      # The Gradle step runs as root and hands the tree back in an EXIT trap, but a cancelled run (a newer
+      # push supersedes it) is killed before the trap runs. On a reused workspace the root-owned build
+      # outputs then stop checkout from cleaning it, so repair ownership before checking out.
+      - name: Reclaim the workspace from a cancelled run
+        if: runner.environment != 'github-hosted'
+        run: sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" 2>/dev/null || true
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -101,7 +158,7 @@ jobs:
       - name: Set up Node.js for the embedded profile editor
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20.18.1'
+          node-version: '22.23.2'
           cache: npm
           cache-dependency-path: tools/profile-editor/package-lock.json
 
@@ -119,12 +176,31 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
+        if: runner.environment == 'github-hosted'
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
 
       - name: Install Android build toolchain
-        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+        if: runner.environment == 'github-hosted'
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      # The project runner carries the pinned SDK packages (installed by its provisioning script
+      # in the runner setup) and keeps its Gradle home between jobs, so it needs no download or cache.
+      - name: Use the project runner's Android toolchain
+        if: runner.environment == 'self-hosted'
+        run: |
+          sdk=/opt/android-sdk
+          for package in platforms/android-37.0 build-tools/36.0.0 ndk/27.0.12077973 cmake/3.22.1; do
+            test -d "$sdk/$package" || { echo "::error::project runner is missing $package"; exit 1; }
+          done
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
 
       - name: Set up Gradle
+        if: runner.environment == 'github-hosted'
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: enhanced
@@ -153,7 +229,7 @@ jobs:
       # The wake-word library is committed prebuilt. Every build proves the committed libraries still
       # correspond to the sources they record; the wakeword-prebuilt workflow rebuilds them from source.
       - name: Verify the prebuilt wake-word libraries
-        if: matrix.apks == 'release'
+        if: matrix.apks == 'release' || matrix.apks == 'both'
         run: tools/wakeword/build-prebuilt.sh verify
 
       - name: Run ${{ matrix.name }}
@@ -187,16 +263,22 @@ jobs:
         run: |
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
           case "$APK_VARIANT" in
-            debug) apk=app/build/outputs/apk/debug/app-debug.apk ;;
-            release) apk=app/build/outputs/apk/release/app-release-unsigned.apk ;;
+            debug | release) variants="$APK_VARIANT" ;;
+            both) variants="debug release" ;;
             *) echo "unknown APK variant: $APK_VARIANT" >&2; exit 1 ;;
           esac
-          badging="$("$build_tools/aapt" dump badging "$apk")"
-          grep -Fq "compileSdkVersion='37'" <<<"$badging"
-          grep -Fq "sdkVersion:'26'" <<<"$badging"
-          grep -Fq "targetSdkVersion:'35'" <<<"$badging"
-          [ "$APK_VARIANT" = release ] || exit 0
-          release_apk="$apk"
+          for variant in $variants; do
+            case "$variant" in
+              debug) apk=app/build/outputs/apk/debug/app-debug.apk ;;
+              release) apk=app/build/outputs/apk/release/app-release-unsigned.apk ;;
+            esac
+            badging="$("$build_tools/aapt" dump badging "$apk")"
+            grep -Fq "compileSdkVersion='37'" <<<"$badging"
+            grep -Fq "sdkVersion:'26'" <<<"$badging"
+            grep -Fq "targetSdkVersion:'35'" <<<"$badging"
+          done
+          [ "$APK_VARIANT" != debug ] || exit 0
+          release_apk=app/build/outputs/apk/release/app-release-unsigned.apk
           release_files="$(unzip -Z1 "$release_apk")"
           grep -Fxq 'lib/arm64-v8a/libhapaneld_led.so' <<<"$release_files"
           grep -Fxq 'lib/armeabi-v7a/libhapaneld_led.so' <<<"$release_files"
@@ -226,31 +308,115 @@ jobs:
           done
 
       - name: Verify V4 release signature sidecar contract
-        if: matrix.apks == 'release'
+        if: matrix.apks == 'release' || matrix.apks == 'both'
         run: scripts/tests/release_idsig_test.sh
 
       - name: Upload debug APK
-        if: matrix.apks == 'debug'
+        if: matrix.apks == 'debug' || matrix.apks == 'both'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ha-paneld-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
+  build:
+    name: Android ${{ matrix.name }}
+    needs: android-runner
+    if: needs.android-runner.outputs.choice == 'hosted'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # DatabaseCompatibilityApkContractTest asserts against the merged DEBUG manifest, so the release
+        # suite needs it built. The debug and release APKs share almost no tasks, so they build on
+        # separate hosted runners. Full lint runs out of band in lint.yml; the release build's fatal
+        # lint pass stays in CI.
+        include:
+          - {name: debug unit tests, tasks: ":app:testDebugUnitTest", apks: "no"}
+          - {name: release unit tests, tasks: ":app:processDebugManifest :app:testReleaseUnitTest", apks: "no"}
+          - {name: assemble debug, tasks: ":app:assembleDebug :app:assembleDebugAndroidTest", apks: debug}
+          - {name: assemble release, tasks: ":app:assembleRelease", apks: release}
+    steps: *android-steps
+
   android-build:
     name: Android build
-    needs: build
+    needs: [android-runner, build-self-hosted, build]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every Android split
+      - name: Require the chosen Android jobs
         env:
-          ANDROID_RESULT: ${{ needs.build.result }}
-        run: test "$ANDROID_RESULT" = success
+          CHOICE: ${{ needs.android-runner.outputs.choice }}
+          SELF_HOSTED_RESULT: ${{ needs.build-self-hosted.result }}
+          HOSTED_RESULT: ${{ needs.build.result }}
+        run: |
+          case "$CHOICE" in
+            self-hosted) test "$SELF_HOSTED_RESULT" = success ;;
+            hosted) test "$HOSTED_RESULT" = success ;;
+            *) echo "::error::no Android runner was chosen"; exit 1 ;;
+          esac
+
+  # The root helper (helper/src/) is C, never touched by the Gradle build. This job is the only place
+  # it's compiler-checked and unit-tested — host-native (gcc), so it's fast and needs no NDK. The parser
+  # sanitizer smoke (helper/fuzz/run.sh) is deliberately NOT run here: it is deterministic rather than
+  # coverage-guided and is run locally when the parser, dispatch, or validators change.
+  helper:
+    name: Helper ${{ matrix.group }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Almost all of the suite's time is the two installer transaction scripts waiting on the installer's
+    # real retry intervals, not CPU. Each runs in its own job so the suite finishes in the time of the
+    # longest script rather than the sum of all of them.
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [units, transaction, transport]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compile check (-Werror)
+        if: matrix.group == 'units'
+        run: make -C helper
+
+      # The helper takes its transaction lock under a root-owned parent and checks the
+      # directory is owned by the calling user, which holds on a panel because the
+      # daemon is root. Hosted runners are unprivileged, so the suite runs as root.
+      - name: Unit tests
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          # Running as root leaves root-owned artefacts behind. On a throwaway image that
+          # is harmless; on a reused workspace the next checkout cannot clean them. Always
+          # hand the tree back, whichever result the suite produced.
+          trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true' EXIT
+          sudo make -C helper "test-$GROUP" && exit 0
+          [ "$GROUP" = units ] || exit 1
+          # The group stops at its first failing script, so one run only ever reveals one
+          # problem. Re-run its shell contracts individually to report all of them at once.
+          echo "::group::remaining helper shell contracts"
+          for contract in root_command_quote_test standalone_installer_identity_test \
+              install_daemon_security_test; do
+            if sudo bash "helper/test/$contract.sh" > "/tmp/$contract.out" 2>&1; then
+              echo "ok       $contract"
+            else
+              echo "FAILED   $contract"
+              grep -E '^\s*(FAIL|✗)' "/tmp/$contract.out" | head -20 || true
+              tail -25 "/tmp/$contract.out"
+            fi
+          done
+          echo "::endgroup::"
+          exit 1
+
+      - name: App↔daemon contract cross-check
+        if: matrix.group == 'units'
+        run: helper/test/contract-check.sh
 
   host-contracts:
-    name: Host shell contracts
+    name: Host shell contracts ${{ matrix.group }}
     runs-on: ubuntu-24.04
     # The host-side shell contracts used to finish in fourteen minutes only because they
     # refused early: unprivileged, every transaction stopped at a lock-busy status before
@@ -259,12 +425,19 @@ jobs:
     # takes considerably longer on a shared builder than on a workstation. The provisioning
     # suite is split below; this ceiling now covers only the remaining host contracts.
     timeout-minutes: 60
+    # root_helper_authority_test alone takes about two and a half minutes of this job on a hosted runner,
+    # so it runs beside the other contracts instead of ahead of them.
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [authority, other]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Test firmware index tooling
+        if: matrix.group == 'other'
         run: python3 -m unittest discover -s tools/firmware-index -p 'test_*.py' -v
 
       # These contracts drive the standalone installer, which takes ownership of what it
@@ -276,11 +449,15 @@ jobs:
       - name: Test host-side shell contracts
         env:
           PROVISION_TEST_SCOPE: core
+          GROUP: ${{ matrix.group }}
         run: |
           trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true' EXIT
+          if [ "$GROUP" = authority ]; then
+            sudo -E env "PROVISION_TEST_SCOPE=$PROVISION_TEST_SCOPE" scripts/tests/root_helper_authority_test.sh
+            exit
+          fi
           sudo -E env "PROVISION_TEST_SCOPE=$PROVISION_TEST_SCOPE" bash -c '
             set -e
-            scripts/tests/root_helper_authority_test.sh
             scripts/tests/install_legacy_database_gate_test.sh
             scripts/tests/hardware_collector_test.sh
             scripts/tests/consumer_docs_test.sh
@@ -291,6 +468,7 @@ jobs:
           '
 
       - name: Test dashboard performance collector
+        if: matrix.group == 'other'
         run: |
           python3 -m unittest discover -s scripts/tests -p '*_test.py' -v
           python3 scripts/i18n_catalogue.py validate \
@@ -303,43 +481,56 @@ jobs:
   # them in process barely parallelised on a two-core image, so each shard
   # gets a runner and the wall time is the longest shard, not their sum.
   provisioning:
-    name: Provisioning ${{ matrix.shard }}
+    # Fourteen single-shard jobs plus the other CI and CodeQL jobs exceeded GitHub's twenty concurrent
+    # jobs, so shards queued for up to two minutes behind each other. Grouping keeps every group within
+    # the longest shard's time on a four-core runner while leaving the workflows under that ceiling.
+    name: Provisioning ${{ matrix.group }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard:
-          - database-host
-          - database-runtime
-          - install-export
-          - install-runtime
-          - helper-transaction
-          - release-integrity
-          - renderer-seeding
-          - install-finish
-          - backup
-          - publication
-          - database-authority
-          - fleet-installer
-          - host-reclamation
-          - git-bash
+        include:
+          # The six longest shards run alone; the rest pair a medium shard with a short one. Three
+          # CPU-heavy shards on one four-core runner slowed each by about 60% and broke
+          # release-integrity's timing-bounded Shizuku cases. Ten groups keep CI and CodeQL under
+          # GitHub's twenty concurrent jobs when the Android build runs as one job.
+          - group: install-runtime
+            shards: install-runtime
+          - group: database-authority
+            shards: database-authority
+          - group: fleet-installer
+            shards: fleet-installer
+          - group: database-host
+            shards: database-host
+          - group: install-export
+            shards: install-export
+          - group: helper-transaction
+            shards: helper-transaction
+          - group: release-integrity
+            shards: release-integrity publication
+          - group: install-finish
+            shards: install-finish git-bash
+          - group: backup
+            shards: backup database-runtime
+          - group: renderer-seeding
+            shards: renderer-seeding host-reclamation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Run provisioning shard
+      - name: Run provisioning shards
         run: |
           results="$RUNNER_TEMP/provisioning-results"
           trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" "$results" || true' EXIT
-          sudo -E bash scripts/tests/provision_gate_parallel.sh --jobs 1 --output "$results" "${{ matrix.shard }}"
+          sudo -E bash scripts/tests/provision_gate_parallel.sh --jobs 3 --output "$results" ${{ matrix.shards }}
 
       - name: Retain provisioning shard evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: provisioning-${{ matrix.shard }}
+          name: provisioning-${{ matrix.group }}
           path: ${{ runner.temp }}/provisioning-results
           if-no-files-found: error
 
@@ -384,15 +575,28 @@ jobs:
           persist-credentials: false
 
       - name: Set up JDK 17
+        if: runner.environment == 'github-hosted'
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
+        if: runner.environment == 'github-hosted'
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
+
+      # The Android Gradle plugin downloads a missing NDK while configuring the project, without retrying
+      # a truncated download. Install the pinned packages first so a transient failure is retried.
+      - name: Install Android build toolchain
+        if: runner.environment == 'github-hosted'
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
 
       - name: Set up Gradle
+        if: runner.environment == 'github-hosted'
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: enhanced
@@ -427,50 +631,25 @@ jobs:
               }
           }
           GRADLE
+          # Only the Gradle distribution download is retried: services.gradle.org has returned 504s. The
+          # dependency verification below runs once, so a verification failure is never retried away.
+          for attempt in 1 2 3; do
+            GRADLE_USER_HOME="$fresh_gradle_home" ./gradlew --no-daemon --version >/dev/null && break
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 20
+          done
           GRADLE_USER_HOME="$fresh_gradle_home" ./gradlew --no-daemon --init-script "$init_script" :app:verifyReleaseDependencyArtifacts --stacktrace --console=plain
 
-  # The root helper (helper/src/) is C, never touched by the Gradle build. This job is the only place
-  # it's compiler-checked and unit-tested — host-native (gcc), so it's fast and needs no NDK. The parser
-  # sanitizer smoke (helper/fuzz/run.sh) is deliberately NOT run here: it is deterministic rather than
-  # coverage-guided and is run locally when the parser, dispatch, or validators change.
-  helper:
+  helper-aggregate:
+    # Keep the stable check name consumed by release.yml. It turns green only when every helper
+    # group passes.
     name: Privileged helper
+    needs: helper
+    if: always()
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Compile check (-Werror)
-        run: make -C helper
-
-      # The helper takes its transaction lock under a root-owned parent and checks the
-      # directory is owned by the calling user, which holds on a panel because the
-      # daemon is root. Hosted runners are unprivileged, so the suite runs as root.
-      - name: Unit tests
-        run: |
-          # Running as root leaves root-owned artefacts behind. On a throwaway image that
-          # is harmless; on a reused workspace the next checkout cannot clean them. Always
-          # hand the tree back, whichever result the suite produced.
-          trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true' EXIT
-          sudo make -C helper test && exit 0
-          # The suite stops at its first failing script, so one run only ever reveals one
-          # problem. Re-run the shell contracts individually to report all of them at once.
-          echo "::group::remaining helper shell contracts"
-          for contract in root_command_quote_test standalone_installer_transaction_test \
-              standalone_installer_identity_test install_daemon_security_test \
-              direct_root_transport_test; do
-            if sudo bash "helper/test/$contract.sh" > "/tmp/$contract.out" 2>&1; then
-              echo "ok       $contract"
-            else
-              echo "FAILED   $contract"
-              grep -E '^\s*(FAIL|✗)' "/tmp/$contract.out" | head -20 || true
-              tail -25 "/tmp/$contract.out"
-            fi
-          done
-          echo "::endgroup::"
-          exit 1
-
-      - name: App↔daemon contract cross-check
-        run: helper/test/contract-check.sh
+      - name: Require every helper group
+        env:
+          HELPER_RESULT: ${{ needs.helper.result }}
+        run: test "$HELPER_RESULT" = success

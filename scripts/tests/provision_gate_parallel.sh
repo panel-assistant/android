@@ -219,6 +219,7 @@ if [ "$AGGREGATE_ONLY" -eq 0 ]; then
   set +m
 fi
 
+shard_walls=()
 aggregate_cases=0
 aggregate_failures=0
 completed_shards=0
@@ -277,6 +278,7 @@ for shard in "${requested[@]}"; do
   fi
   printf 'SHARD %s %s cases=%d failures=%d status=%d wall=%ss\n' \
     "$shard" "$shard_verdict" "$cases" "$failures" "$status" "$wall"
+  [ "$metadata_valid" -ne 1 ] || shard_walls+=("$wall $shard")
 done
 
 if [ "$complete_set" -eq 1 ] && [ "$aggregate_cases" -ne "$EXPECTED_TOTAL" ]; then
@@ -291,5 +293,36 @@ if [ "$verdict" = PASS ]; then
     "$completed_shards" "${#requested[@]}" "$passed_tests" "$aggregate_cases" "$aggregate_failures"
 fi
 if [ -n "${PROVISION_GATE_REPORT_OUTPUT:-}" ]; then printf 'RESULTS %s\n' "$OUTPUT_DIR"; fi
+
+# Shard time budget. Tests are added to whichever shard fits, so a shard can grow until it is the slowest
+# job in CI without anyone noticing. This never changes the verdict: a shard more than
+# PROVISION_SHARD_BUDGET_RATIO times the median shard wall, and at least PROVISION_SHARD_BUDGET_MIN_SECONDS,
+# is named with a warning so it is split long before it slows a release. Being relative to the median,
+# the check means the same on a workstation, the project runner and a hosted runner.
+report_shard_budget() {
+  local ratio="${PROVISION_SHARD_BUDGET_RATIO:-2}" floor="${PROVISION_SHARD_BUDGET_MIN_SECONDS:-60}"
+  local sorted median count wall shard over=0
+  case "$ratio$floor" in *[!0-9]*|'') echo "shard budget: ratio and minimum must be whole numbers" >&2; return 0 ;; esac
+  count="${#shard_walls[@]}"
+  [ "$count" -ge 3 ] || return 0
+  sorted="$(printf '%s\n' "${shard_walls[@]}" | sort -n)"
+  median="$(printf '%s\n' "$sorted" | awk -v n="$count" 'NR == int((n + 1) / 2) { print $1 }')"
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && {
+    printf '### Provisioning shard times\n\n| Shard | Wall | Share of median |\n|---|---:|---:|\n'
+    printf '%s\n' "$sorted" | sort -rn | while read -r wall shard; do
+      printf '| %s | %ss | %s |\n' "$shard" "$wall" "$(awk -v w="$wall" -v m="$median" 'BEGIN { printf (m > 0 ? "%.1f×" : "n/a"), (m > 0 ? w / m : 0) }')"
+    done
+    printf '\n'
+  } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
+  while read -r wall shard; do
+    [ "$wall" -ge "$floor" ] && [ "$wall" -gt $((median * ratio)) ] || continue
+    over=1
+    printf 'BUDGET WARN shard=%s wall=%ss median=%ss ratio=%s\n' "$shard" "$wall" "$median" "$ratio"
+    [ "${GITHUB_ACTIONS:-}" != true ] || printf '::warning title=Provisioning shard over budget::%s took %ss, more than %s times the median shard (%ss). Split it where a case rebuilds its fixtures.\n' \
+      "$shard" "$wall" "$ratio" "$median"
+  done <<<"$sorted"
+  [ "$over" -eq 1 ] || printf 'BUDGET OK median=%ss ratio=%s\n' "$median" "$ratio"
+}
+report_shard_budget
 
 [ "$verdict" = PASS ]

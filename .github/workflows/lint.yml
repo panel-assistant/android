@@ -1,0 +1,58 @@
+name: Lint
+run-name: Lint · ${{ github.event_name == 'schedule' && 'nightly' || github.ref_name }}
+
+# Full Android lint takes about seven minutes on a hosted runner, the longest part of CI, so it runs out of
+# band: nightly, on demand, and on every release tag, where it runs beside the Release workflow without
+# blocking it. CI keeps the release build's fatal lint pass. Review the latest run before tagging.
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Android lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
+
+      - name: Install Android build toolchain
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: enhanced
+
+      - name: Run full lint
+        run: ./gradlew :app:lintDebug --configuration-cache --stacktrace
+
+      - name: Keep the lint report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.*
+          if-no-files-found: warn

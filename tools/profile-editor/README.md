@@ -4,7 +4,7 @@ This directory builds the vendored CodeMirror runtime used by the panel Profile 
 
 ## Rebuild and verify
 
-Use Node.js 20.18.1 and npm 10.8.2. The direct dependencies are exact pins and `package-lock.json` records registry URLs plus sha512 integrity for the complete dependency graph. The supported clean install deliberately disables package lifecycle scripts; esbuild loads its integrity-locked platform package directly, and the verification step executes esbuild so an unsupported or incomplete installation fails closed.
+Use Node.js 22.23.2 and npm 10.9.8. The direct dependencies are exact pins and `package-lock.json` records registry URLs plus sha512 integrity for the complete dependency graph. The supported clean install deliberately disables package lifecycle scripts; esbuild loads its integrity-locked platform package directly, and the verification step executes esbuild so an unsupported or incomplete installation fails closed.
 
 ```bash
 cd tools/profile-editor

@@ -148,7 +148,7 @@ class ProfileUiSourceTest {
         assertTrue(build.isFile)
         assertTrue(bundle.length() > 100_000)
         assertTrue(license.readText().contains("Permission is hereby granted"))
-        assertTrue(notice.readText().contains("@codemirror/view 6.43.9"))
+        assertTrue(notice.readText().contains("@codemirror/view 6.43.11"))
         assertTrue(bundle.readText().startsWith("/*! @license CodeMirror 6"))
         assertFalse(packageJson.readText().contains("\"latest\""))
         // Gradle never builds the bundle: the three editor files this test reads are declared inputs of

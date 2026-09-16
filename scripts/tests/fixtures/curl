@@ -470,16 +470,16 @@ JSON
     printf '{"ok":true}\n'
     ;;
   */api/v1/config)
-    if printf '%s\n' "$*" | grep -q -- '-X POST'; then
+    if printf '%s\n' "$*" 2>/dev/null | grep -q -- '-X POST'; then
       # The app's `home_dashboard` validator is the single authority for the path grammar; the
       # fixture models its refusal so the provisioner's handling of a 400 is exercised without
       # keeping a second copy of that grammar here.
-      if printf '%s\n' "$*" | grep -q -- 'home_dashboard=not-a-path'; then
+      if printf '%s\n' "$*" 2>/dev/null | grep -q -- 'home_dashboard=not-a-path'; then
         printf 'home_dashboard: expected a dashboard path on this Home Assistant, e.g. /lovelace or /dashboard-name/tab-name\n' >&2
         exit 22
       fi
       [ "${MOCK_SEED_CONFIG:-ok}" = "ok" ] ||
-        { if printf '%s\n' "$*" | grep -Eq -- 'home_dashboard=|dashboard_entity_learning='; then exit 22; fi; }
+        { if printf '%s\n' "$*" 2>/dev/null | grep -Eq -- 'home_dashboard=|dashboard_entity_learning='; then exit 22; fi; }
       [ "${MOCK_CONFIG:-ok}" = "timeout" ] && exit 28
       [ "${MOCK_CONFIG:-ok}" = "ok" ] || exit 22
       printf '{"ok":true}\n'

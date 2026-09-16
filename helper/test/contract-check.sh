@@ -27,7 +27,7 @@ app_evdev=$(grep -rhoE '(out|writer)\.write\("[A-Z][A-Z0-9_]*' "$APP/io/github/m
 app=$(printf '%s\n%s\n%s\n' "$app_helper" "$app_client" "$app_evdev" | grep -E '.' | sort -u)
 
 missing=""
-for v in $app; do printf '%s\n' "$daemon" | grep -qx "$v" || missing="$missing $v"; done
+for v in $app; do printf '%s\n' "$daemon" 2>/dev/null | grep -qx "$v" || missing="$missing $v"; done
 
 if [ -n "$missing" ]; then
     echo "FAIL: app sends verb(s) the daemon does NOT handle:$missing" >&2

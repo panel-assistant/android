@@ -3,12 +3,13 @@
 name: UI layout (CLS) · report-only
 run-name: UI layout · ${{ github.head_ref || github.ref_name }}
 
+# It takes about ten minutes and is report-only, so it runs on pull requests, nightly and on demand rather
+# than on every push to main, where it held up the release path without gating anything.
 on:
-  push:
-    branches: [main]
-    paths: ['app/src/main/assets/**', 'tools/test/**', '.github/workflows/ui-layout.yml']
   pull_request:
     paths: ['app/src/main/assets/**', 'tools/test/**', '.github/workflows/ui-layout.yml']
+  schedule:
+    - cron: '47 2 * * *'
   workflow_dispatch:
 
 # A push supersedes the run before it, so group by ref and let the newer run
@@ -30,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '22.23.2'
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
       - name: Test CLS sampling policy

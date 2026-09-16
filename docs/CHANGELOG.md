@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.9.8-rc1 - 2026-09-15
+
+This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.
+
+### Added
+
+- **The web interface works inside the Panel Assistant sidebar.** Panel Assistant 0.3.0 shows each connected panel's own web interface in the Home Assistant sidebar. Embedded, it hides the header and panel switcher, follows the Home Assistant user's language and theme, and loads its styles and scripts through the sidebar. Panels on v0.9.7 or earlier show an unstyled page there, so update them to use the Panel Assistant 0.3.0 sidebar.
+
+- **The panel side of Panel Assistant's native transport.** When the `native_entities` option is enabled in Panel Assistant, a panel can report state and accept commands over its own authenticated Home Assistant connection instead of MQTT. Commands follow the same order and approval rules as MQTT commands, and sensitive commands still need approval on the panel's screen. While Panel Assistant holds a panel's entities, the panel withdraws its MQTT discovery entities, and it announces them again when the integration releases them or its entry is removed. `GET /api/v1/panel-assistant/transport` reports the current state, and `POST /api/v1/panel-assistant/transport/release` hands a panel back to MQTT when no integration can; in Hardened mode a remote release needs approval on the panel. Without the option, MQTT stays in charge as before.
+
+- **Groundwork for approving sidebar changes on Hardened panels.** A panel can now accept a routine change from the Panel Assistant sidebar without waiting for approval on its screen when the request is signed with a key Panel Assistant holds for that session. Operations such as exporting secrets still need approval on the panel's own screen, and unsigned requests still wait for approval as before. Panel Assistant 0.3.0 does not sign its requests yet, so with 0.3.0 nothing changes.
+
+### Changed
+
+- **Documentation now lives at [panel-assistant.io](https://panel-assistant.io).** The pages under `docs/` point there, the README and the web interface link to the site, and the translated copies of the documentation have been removed.
+
 ## v0.9.7 - 2026-09-13
 
 0.9.7 makes panels get back to their dashboards faster, recover from Home Assistant outages by themselves and explain what they are waiting for when they cannot. It adds Home Assistant update entities, local discovery, proximity calibration wizard, a nine-language interface and camera streaming, and makes installs and rooted upgrades far easier to diagnose.

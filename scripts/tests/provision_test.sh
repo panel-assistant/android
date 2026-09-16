@@ -22,6 +22,35 @@ provision_scope_is() {
   return 1
 }
 
+# A killed process can stay visible to `kill -0` until its reaper collects it, as a zombie or for a moment
+# while an init process (a container's --init, or systemd) reaps asynchronously. Wait briefly for every
+# PID, or "-PGID" for a whole group, to be gone, and count a zombie as gone.
+processes_gone() {
+  local deadline=$((SECONDS + 5)) id state alive
+  while :; do
+    alive=0
+    for id in "$@"; do
+      kill -0 -- "$id" 2>/dev/null || continue
+      if [ "${id#-}" = "$id" ]; then
+        state=$(sed -E 's/^.*\) ([A-Za-z]).*$/\1/' "/proc/$id/stat" 2>/dev/null || true)
+        [ "$state" = Z ] && continue
+      fi
+      alive=1
+    done
+    [ "$alive" = 0 ] && return 0
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      # Name what survived, so a rare failure on a shared builder says which process and in what state.
+      for id in "$@"; do
+        kill -0 -- "$id" 2>/dev/null || continue
+        printf '# still running after 5s: %s %s\n' "$id" \
+          "$(ps -o pid=,pgid=,stat=,etimes=,args= -p "${id#-}" 2>/dev/null | head -1 || true)"
+      done
+      return 1
+    fi
+    sleep 0.1
+  done
+}
+
 case "$PROVISION_TEST_SCOPE" in shard-*) PROVISION_TEST_INTERNAL_SHARD=1 ;; *) PROVISION_TEST_INTERNAL_SHARD=0 ;; esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -1248,24 +1277,24 @@ else
   pass "production observer no-awk fixture excludes awk from the device PATH"
 fi
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=readable:15:ok' && \
-   printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=readable:15:ok' && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok'; then
   pass "production observer reads the actual primary and selects the newest in-bound recovery"
 else
   LAST_OUTPUT="$TMP/observer-output"; printf '%s\n' "$observer_output" > "$LAST_OUTPUT"
   fail_test "production observer reads the actual primary and selects the newest in-bound recovery"
 fi
 observer_primary_sha="$(/usr/bin/sha256sum "$DB_OBSERVER_DB" | awk '{print $1}')"
-if printf '%s\n' "$observer_output" | grep -Fqx "HOSTDB_PRIMARY_FINGERPRINT=|:$observer_primary_sha" && \
-   printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_INVENTORY=readable' && \
-   printf '%s\n' "$observer_output" | grep -Eq 'HOSTDB_INVENTORY_FINGERPRINT=.*ha-paneld\.db\.v13\.premigrate:file:[0-9a-f]{64}.*ha-paneld\.db\.v14\.premigrate:file:[0-9a-f]{64}'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -Fqx "HOSTDB_PRIMARY_FINGERPRINT=|:$observer_primary_sha" && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_INVENTORY=readable' && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -Eq 'HOSTDB_INVENTORY_FINGERPRINT=.*ha-paneld\.db\.v13\.premigrate:file:[0-9a-f]{64}.*ha-paneld\.db\.v14\.premigrate:file:[0-9a-f]{64}'; then
   pass "production observer binds exact primary bytes and the complete readable recovery inventory"
 else fail_test "production observer binds exact primary bytes and the complete readable recovery inventory"; fi
 
 DB_OBSERVER_LIVE_RUN="$TMP/database-compat-observer-live-run.sh"
 sed 's/^primary_mode=stable$/primary_mode=live/' "$DB_OBSERVER_RUN" > "$DB_OBSERVER_LIVE_RUN"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_LIVE_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=readable:15:ok' && \
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=readable:15:ok' && \
    grep -Fq "file:$DB_OBSERVER_DB?mode=ro .backup $DB_OBSERVER_DIR/.observer.fixture/observed.db" "$DB_OBSERVER_SQLITE_LOG"; then
   pass "production initial observer uses one coherent read-only online SQLite backup for a live canonical database"
 else fail_test "production initial observer uses one coherent read-only online SQLite backup for a live canonical database"; fi
@@ -1277,7 +1306,7 @@ if ! PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_LIVE_RUN" >/dev/null 2>&1 && 
 else fail_test "production observer refuses but never removes a stage it did not create"; fi
 rm -rf "$DB_OBSERVER_DIR/.observer.fixture"
 observer_cleanup_source="$(sed -n '/^cleanup_root_database_observer()/,/^}/p' "$PROVISION")"
-if printf '%s\n' "$observer_cleanup_source" | grep -Fq '[ ! -f $remote_stage/$remote_owner ] || rm -rf $remote_stage'; then
+if printf '%s\n' "$observer_cleanup_source" 2>/dev/null | grep -Fq '[ ! -f $remote_stage/$remote_owner ] || rm -rf $remote_stage'; then
   pass "host cleanup removes a remote observer stage only through its nonce-owned marker"
 else fail_test "host cleanup removes a remote observer stage only through its nonce-owned marker"; fi
 
@@ -1297,7 +1326,7 @@ printf '15\nok\nunexpected-extra-line\n'
 EOF
 chmod 700 "$DB_OBSERVER_BIN/sed" "$DB_OBSERVER_BIN/sqlite3"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=unreadable'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=unreadable'; then
   pass "production observer fails closed when the extra-output parser fails"
 else
   LAST_OUTPUT="$TMP/observer-output"; printf '%s\n' "$observer_output" > "$LAST_OUTPUT"
@@ -1314,8 +1343,8 @@ chmod 700 "$DB_OBSERVER_BIN/sqlite3"
 
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v15.premigrate" 'PRAGMA user_version=15; CREATE TABLE poison(value TEXT);'
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok' && \
-   printf '%s\n' "$observer_output" | grep -Eq 'HOSTDB_INVENTORY_FINGERPRINT=.*ha-paneld\.db\.v15\.premigrate:file:[0-9a-f]{64}'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok' && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -Eq 'HOSTDB_INVENTORY_FINGERPRINT=.*ha-paneld\.db\.v15\.premigrate:file:[0-9a-f]{64}'; then
   pass "production observer inventories an out-of-bound newer recovery without selecting it"
 else fail_test "production observer inventories an out-of-bound newer recovery without selecting it"; fi
 rm -f "$DB_OBSERVER_DB.v15.premigrate"
@@ -1325,7 +1354,7 @@ if [ "$(grep -c 'PRAGMA query_only=ON; PRAGMA user_version; PRAGMA quick_check;'
 else fail_test "production observer applies query_only to every private SQLite candidate without the unsupported CLI flag"; fi
 chmod 400 "$DB_OBSERVER_DB" "$DB_OBSERVER_DB.v13.premigrate" "$DB_OBSERVER_DB.v14.premigrate"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=readable:15:ok'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=readable:15:ok'; then
   pass "production observer reads a non-writable canonical database without mutation"
 else fail_test "production observer reads a non-writable canonical database without mutation"; fi
 chmod 600 "$DB_OBSERVER_DB" "$DB_OBSERVER_DB.v13.premigrate" "$DB_OBSERVER_DB.v14.premigrate"
@@ -1336,8 +1365,8 @@ exec "$HAPANELD_HOST_SQLITE3" "\$@"
 EOF
 chmod 700 "$DB_OBSERVER_BIN/sqlite3"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=readable:15:ok' && \
-   printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=readable:15:ok' && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok'; then
   pass "production observer does not require the unsupported -readonly CLI option"
 else fail_test "production observer does not require the unsupported -readonly CLI option"; fi
 cat > "$DB_OBSERVER_BIN/sqlite3" <<EOF
@@ -1347,14 +1376,14 @@ EOF
 chmod 700 "$DB_OBSERVER_BIN/sqlite3"
 printf 'not sqlite\n' > "$DB_OBSERVER_DB.v14.premigrate"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -Eq '^HOSTDB_RECOVERY=v14:(unreadable|readable:.*:bad)$'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -Eq '^HOSTDB_RECOVERY=v14:(unreadable|readable:.*:bad)$'; then
   pass "production observer does not fall back past a poisoned newest selectable recovery"
 else fail_test "production observer does not fall back past a poisoned newest selectable recovery"; fi
 rm -f "$DB_OBSERVER_DB.v14.premigrate"
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v14.premigrate" 'PRAGMA user_version=14; CREATE TABLE canary(value TEXT);'
 : > "$DB_OBSERVER_DB.v14.premigrate-journal"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=v14:sidecar'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=v14:sidecar'; then
   pass "production observer refuses a premigration recovery with a companion journal"
 else fail_test "production observer refuses a premigration recovery with a companion journal"; fi
 rm -f "$DB_OBSERVER_DB.v14.premigrate-journal"
@@ -1370,7 +1399,7 @@ wal_source_inventory_before="$(find "$DB_OBSERVER_DIR" -maxdepth 1 -name 'ha-pan
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
 wal_source_hash_after="$(/usr/bin/sha256sum "$DB_OBSERVER_DB.v14.premigrate" | awk '{print $1}')"
 wal_source_inventory_after="$(find "$DB_OBSERVER_DIR" -maxdepth 1 -name 'ha-paneld.db.v14.premigrate*' -printf '%f\n' | sort)"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok' && \
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=v14:readable:14:ok' && \
    [ "$wal_source_hash_before" = "$wal_source_hash_after" ] && \
    [ "$wal_source_inventory_before" = "$wal_source_inventory_after" ] && \
    [ "$wal_source_inventory_after" = 'ha-paneld.db.v14.premigrate' ]; then
@@ -1381,7 +1410,7 @@ rm -f "$DB_OBSERVER_DB.v14.premigrate"
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v13.premigrate" 'PRAGMA user_version=13; CREATE TABLE IF NOT EXISTS canary(value TEXT);'
 : > "$DB_OBSERVER_DB.v14.premigrate-journal"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=v14:incomplete'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=v14:incomplete'; then
   pass "production observer lets an orphan newest recovery artifact block fallback"
 else fail_test "production observer lets an orphan newest recovery artifact block fallback"; fi
 rm -f "$DB_OBSERVER_DB.v14.premigrate-journal"
@@ -1389,23 +1418,23 @@ rm -f "$DB_OBSERVER_DB.v14.premigrate-journal"
 rm -f "$DB_OBSERVER_DB"
 ln -s "$DB_OBSERVER_DIR/missing" "$DB_OBSERVER_DB"
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=not_regular'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=not_regular'; then
   pass "production observer refuses to follow a symlinked canonical database"
 else fail_test "production observer refuses to follow a symlinked canonical database"; fi
 rm -f "$DB_OBSERVER_DB" "$DB_OBSERVER_DB.v13.premigrate" "$DB_OBSERVER_DB.v14.premigrate"
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v14.superseded" 'PRAGMA user_version=14;'
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=missing' && \
-   printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RECOVERY=none' && \
-   printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RETAINED=1'; then
+if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=missing' && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RECOVERY=none' && \
+   printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RETAINED=1'; then
   pass "production observer treats superseded state as retained but never as automatic recovery"
 else fail_test "production observer treats superseded state as retained but never as automatic recovery"; fi
 rm -f "$DB_OBSERVER_DB.v14.superseded"
 for observer_retained_suffix in -journal .restore.tmp .vbad.premigrate.tmp; do
   : > "$DB_OBSERVER_DB$observer_retained_suffix"
   observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
-  if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=missing' && \
-     printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_RETAINED=1'; then
+  if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=missing' && \
+     printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_RETAINED=1'; then
     pass "production observer retains orphan artifact $observer_retained_suffix against fresh classification"
   else fail_test "production observer retains orphan artifact $observer_retained_suffix against fresh classification"; fi
   rm -f "$DB_OBSERVER_DB$observer_retained_suffix"
@@ -2120,7 +2149,7 @@ while [ -n "$blocked_launcher_pid" ] && kill -0 "$blocked_launcher_pid" 2>/dev/n
   [ "$launcher_reap_attempt" -lt 300 ] || break
   sleep 0.1
 done
-if [ -n "$blocked_launcher_pid" ] && ! kill -0 "$blocked_launcher_pid" 2>/dev/null; then
+if [ -n "$blocked_launcher_pid" ] && processes_gone "$blocked_launcher_pid"; then
   pass "launcher deadline reaps the blocked host ADB process"
 else
   fail_test "launcher deadline reaps the blocked host ADB process"
@@ -2858,7 +2887,7 @@ APK_INSTALL_TIMEOUT_SECONDS=1 \
 assert_failure "stuck main APK install returns nonzero at its host deadline"
 assert_contains 'install did not finish within the 1s safety deadline' "main APK timeout names the bounded failed step"
 apk_install_pid="$(cat "$APK_INSTALL_PID_FILE" 2>/dev/null || true)"
-if [ -n "$apk_install_pid" ] && ! kill -0 "$apk_install_pid" 2>/dev/null; then
+if [ -n "$apk_install_pid" ] && processes_gone "$apk_install_pid"; then
   pass "main APK timeout reaps the blocked adb install"
 else
   fail_test "main APK timeout reaps the blocked adb install"
@@ -2877,7 +2906,7 @@ APK_INSTALL_TIMEOUT_SECONDS=1 \
 assert_failure "stuck APK install on the hybrid path returns nonzero at its host deadline"
 assert_contains 'install did not finish within the 1s safety deadline' "hybrid APK timeout retains the bounded failure reason"
 hybrid_apk_install_pid="$(cat "$HYBRID_APK_INSTALL_PID_FILE" 2>/dev/null || true)"
-if [ -n "$hybrid_apk_install_pid" ] && ! kill -0 "$hybrid_apk_install_pid" 2>/dev/null; then
+if [ -n "$hybrid_apk_install_pid" ] && processes_gone "$hybrid_apk_install_pid"; then
   pass "hybrid APK timeout reaps the blocked adb install"
 else
   fail_test "hybrid APK timeout reaps the blocked adb install"
@@ -3008,7 +3037,7 @@ else
   fail_test "TERM exits a provisioner blocked in adb install with signal status (got $blocked_status)"
 fi
 blocked_install_pid="$(cat "$blocked_install_pid_file" 2>/dev/null || true)"
-if [ -n "$blocked_install_pid" ] && ! kill -0 "$blocked_install_pid" 2>/dev/null; then
+if [ -n "$blocked_install_pid" ] && processes_gone "$blocked_install_pid"; then
   pass "TERM reaps the blocked adb install subprocess"
 else
   fail_test "TERM reaps the blocked adb install subprocess"
@@ -3016,7 +3045,7 @@ fi
 blocked_guard_pid="$(cat "$blocked_guard_pid_file" 2>/dev/null || true)"
 blocked_guard_sleep_pid="$(cat "$blocked_guard_sleep_pid_file" 2>/dev/null || true)"
 if [ -n "$blocked_guard_pid" ] && [ -n "$blocked_guard_sleep_pid" ] && \
-   ! kill -0 "$blocked_guard_pid" 2>/dev/null && ! kill -0 "$blocked_guard_sleep_pid" 2>/dev/null; then
+   processes_gone "$blocked_guard_pid" "$blocked_guard_sleep_pid"; then
   pass "TERM reaps the lease guard and its current sleep child"
 else
   fail_test "TERM reaps the lease guard and its current sleep child"
@@ -3773,7 +3802,7 @@ else
 fi
 assert_contains 'Shizuku installation timed out after 4s' "Shizuku package timeout names the bounded failed step"
 shizuku_install_pid="$(cat "$SHIZUKU_INSTALL_PID_FILE" 2>/dev/null || true)"
-if [ -n "$shizuku_install_pid" ] && ! kill -0 "$shizuku_install_pid" 2>/dev/null; then
+if [ -n "$shizuku_install_pid" ] && processes_gone "$shizuku_install_pid"; then
   pass "Shizuku package timeout reaps the blocked adb install"
 else
   fail_test "Shizuku package timeout reaps the blocked adb install"
@@ -3827,7 +3856,8 @@ assert_failure "stuck Shizuku service start returns nonzero at its host deadline
 assert_contains 'service start timed out after 1s' "Shizuku timeout reports the bounded failed step"
 assert_log_contains '^adb .* install -r -g .*ha-paneld\.apk$' "Shizuku timeout still installs the core agent"
 assert_log_contains '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "Shizuku timeout still launches the core agent"
-if [ -s "$SHIZUKU_HANG_PID_FILE" ] && ! kill -0 "$(cat "$SHIZUKU_HANG_PID_FILE")" 2>/dev/null; then
+[ -s "$SHIZUKU_HANG_PID_FILE" ] || printf '# the Shizuku start fixture never recorded its PID before the deadline\n'
+if [ -s "$SHIZUKU_HANG_PID_FILE" ] && processes_gone "$(cat "$SHIZUKU_HANG_PID_FILE")"; then
   pass "Shizuku timeout leaves no service-start worker behind"
 else
   fail_test "Shizuku timeout leaves no service-start worker behind"
@@ -3849,7 +3879,7 @@ else
   fallback_child_pid=""
 fi
 if [ -n "$fallback_parent_pid" ] && [ -n "$fallback_child_pid" ] && \
-   ! kill -0 "$fallback_parent_pid" 2>/dev/null && ! kill -0 "$fallback_child_pid" 2>/dev/null; then
+   processes_gone "$fallback_parent_pid" "$fallback_child_pid"; then
   pass "portable fallback leaves no service-start worker or child behind"
 else
   fail_test "portable fallback leaves no service-start worker or child behind"
@@ -4257,7 +4287,7 @@ assert_not_contains 'shell df -P -k /data' "$MOCK_CALL_LOG" "ordinary provisioni
 # stat or du probe may silently recreate a guessed capacity gate. /system helper-capacity probes
 # live outside this backup range and remain intentionally allowed.
 backup_source="$(sed -n '/^snapshot_prepared_database()/,/^reset_panel_config()/p' "$PROVISION" | sed '/^[[:space:]]*#/d')"
-if printf '%s\n' "$backup_source" | grep -Eq '(^|[;&|[:space:]])(df|du|stat)([[:space:]]|$).*(/data|databases|ha-paneld\.db)'; then
+if printf '%s\n' "$backup_source" 2>/dev/null | grep -Eq '(^|[;&|[:space:]])(df|du|stat)([[:space:]]|$).*(/data|databases|ha-paneld\.db)'; then
   fail_test "the complete backup path has no data-volume df, stat or du capacity gate"
 else pass "the complete backup path has no data-volume df, stat or du capacity gate"; fi
 
@@ -4400,7 +4430,7 @@ if find "$TMP/auto-backups" -maxdepth 1 -type f -name '*.break-glass.db*' | grep
   fail_test "an interrupted unaccepted direct pair is removed"
 else pass "an interrupted unaccepted direct pair is removed"; fi
 direct_copy_blocked_pid="$(cat "$direct_copy_pid_file" 2>/dev/null || true)"
-if [ -n "$direct_copy_blocked_pid" ] && ! kill -0 -- "-$direct_copy_blocked_pid" 2>/dev/null; then
+if [ -n "$direct_copy_blocked_pid" ] && processes_gone "-$direct_copy_blocked_pid"; then
   pass "direct-copy interruption reaps the entire nested adb process group"
 else fail_test "direct-copy interruption reaps the entire nested adb process group"; fi
 if [ "$direct_interrupt_elapsed" -lt 4 ]; then
@@ -4458,7 +4488,7 @@ else
   fail_test "post-handoff interruption preserves the accepted direct pair"
 fi
 direct_install_blocked_pid="$(cat "$direct_install_pid_file" 2>/dev/null || true)"
-if [ -n "$direct_install_blocked_pid" ] && ! kill -0 "$direct_install_blocked_pid" 2>/dev/null; then
+if [ -n "$direct_install_blocked_pid" ] && processes_gone "$direct_install_blocked_pid"; then
   pass "post-handoff interruption reaps the blocked package install"
 else fail_test "post-handoff interruption reaps the blocked package install"; fi
 if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
@@ -4497,7 +4527,8 @@ if [ "$(grep -c 'sh /data/local/tmp/\.hapaneld-db-txn\..*-script' "$MOCK_CALL_LO
 else fail_test "a timed-out PREPARE executes exactly one legacy transaction and one SQLite .backup"; fi
 assert_not_contains 'RELEASE_UPGRADE' "$MOCK_CALL_LOG" "successful replacement retires timed-out PREPARE custody without RELEASE"
 prepare_timeout_pid="$(cat "$prepare_timeout_pid_file" 2>/dev/null || true)"
-if [ -n "$prepare_timeout_pid" ] && ! kill -0 "$prepare_timeout_pid" 2>/dev/null; then
+[ -n "$prepare_timeout_pid" ] || printf '# the PREPARE fixture never recorded its PID before the deadline\n'
+if [ -n "$prepare_timeout_pid" ] && processes_gone "$prepare_timeout_pid"; then
   pass "a timed-out PREPARE reaps its adb fixture process"
 else fail_test "a timed-out PREPARE reaps its adb fixture process"; fi
 
@@ -4711,7 +4742,7 @@ else
   LAST_OUTPUT="$publication_int_output"
   fail_test "the published receipt survives an interrupt during the panel staging cleanup"
 fi
-if [ -n "$publication_blocked_pid" ] && ! kill -0 "$publication_blocked_pid" 2>/dev/null; then
+if [ -n "$publication_blocked_pid" ] && processes_gone "$publication_blocked_pid"; then
   pass "the interrupt reaps the blocked cleanup fixture"
 else
   LAST_OUTPUT="$publication_int_output"
@@ -4967,7 +4998,7 @@ resolver_unit_case() {
   bash "$TMP/resolver-unit-case.sh"
 }
 resolver_unit_out="$(resolver_unit_case 5)"
-if printf '%s\n' "$resolver_unit_out" | grep -qx 'VERDICT=unrooted ELAPSED=45' && \
+if printf '%s\n' "$resolver_unit_out" 2>/dev/null | grep -qx 'VERDICT=unrooted ELAPSED=45' && \
    [ "$(printf '%s\n' "$resolver_unit_out" | grep -c '^ALIVE_DEADLINE=')" -eq 2 ] && \
    printf '%s\n' "$resolver_unit_out" | tail -2 | head -1 | grep -qx 'ALIVE_DEADLINE=5'; then
   pass "the liveness allowance is capped to the remaining budget, not a fresh 15s"
@@ -4975,7 +5006,7 @@ else
   fail_test "the liveness allowance is capped to the remaining budget, not a fresh 15s ($resolver_unit_out)"
 fi
 resolver_unit_out="$(resolver_unit_case 40)"
-if printf '%s\n' "$resolver_unit_out" | grep -qx 'VERDICT=unknown-timeout ELAPSED=80' && \
+if printf '%s\n' "$resolver_unit_out" 2>/dev/null | grep -qx 'VERDICT=unknown-timeout ELAPSED=80' && \
    [ "$(printf '%s\n' "$resolver_unit_out" | grep -c '^ALIVE_DEADLINE=')" -eq 1 ]; then
   pass "an exhausted aggregate budget concludes unknown without a post-deadline liveness probe, overrunning by at most one wait quantum"
 else
@@ -4986,7 +5017,7 @@ fi
 # and each adb step is given the remaining budget rather than a fixed value. These pin the
 # arithmetic that the elapsed-time assertions alone cannot see. Case 1 exercises all three.
 resolver_unit_out="$(resolver_unit_case 5)"
-if printf '%s\n' "$resolver_unit_out" | grep -qx 'ALIVE_DEADLINE=15'; then
+if printf '%s\n' "$resolver_unit_out" 2>/dev/null | grep -qx 'ALIVE_DEADLINE=15'; then
   pass "the first liveness allowance takes the 15s ceiling while budget remains"
 else
   fail_test "the first liveness allowance takes the 15s ceiling while budget remains ($resolver_unit_out)"
@@ -5010,7 +5041,7 @@ fi
 # A wait must never START past the deadline: when the adb step itself consumes the whole budget,
 # the follow-up wait is skipped and elapsed time equals the budget exactly.
 resolver_unit_out="$(resolver_unit_case 25 50)"
-if printf '%s\n' "$resolver_unit_out" | grep -qx 'VERDICT=unknown-timeout ELAPSED=50' && \
+if printf '%s\n' "$resolver_unit_out" 2>/dev/null | grep -qx 'VERDICT=unknown-timeout ELAPSED=50' && \
    [ "$(printf '%s\n' "$resolver_unit_out" | grep -c '^ALIVE_DEADLINE=')" -eq 1 ]; then
   pass "no wait starts past the deadline: an adb step consuming the budget ends the resolution at the budget"
 else
@@ -5344,8 +5375,8 @@ fleet_observer_cleanup_paths="$(grep -E '^adb -s panel-(a|b)\.test:5555 shell .*
 fleet_observer_count="$(printf '%s\n' "$fleet_observer_remote_paths" | grep -c . || true)"
 if [ "$fleet_observer_count" -ge 2 ] &&
    [ "$(printf '%s\n' "$fleet_observer_remote_paths" | sort -u | grep -c .)" = "$fleet_observer_count" ] &&
-   printf '%s\n' "$fleet_observer_pushes" | grep -q '^adb -s panel-a\.test:5555 ' &&
-   printf '%s\n' "$fleet_observer_pushes" | grep -q '^adb -s panel-b\.test:5555 '; then
+   printf '%s\n' "$fleet_observer_pushes" 2>/dev/null | grep -q '^adb -s panel-a\.test:5555 ' &&
+   printf '%s\n' "$fleet_observer_pushes" 2>/dev/null | grep -q '^adb -s panel-b\.test:5555 '; then
   pass "concurrent fleet workers use distinct nonce-owned remote observer scripts"
 else fail_test "concurrent fleet workers use distinct nonce-owned remote observer scripts"; fi
 if [ "$(printf '%s\n' "$fleet_observer_host_paths" | grep -c . || true)" = "$fleet_observer_count" ] &&
@@ -5917,13 +5948,13 @@ else
   fail_test "TERM exits the fleet wrapper with signal status (got $fleet_signal_status)"
 fi
 fleet_blocked_pid="$(cat "$FLEET_BLOCKED_PID_FILE" 2>/dev/null || true)"
-if [ -n "$fleet_blocked_pid" ] && ! kill -0 "$fleet_blocked_pid" 2>/dev/null; then
+if [ -n "$fleet_blocked_pid" ] && processes_gone "$fleet_blocked_pid"; then
   pass "TERM reaps blocked fleet provisioning descendants"
 else
   fail_test "TERM reaps blocked fleet provisioning descendants"
 fi
 /bin/sleep 0.2
-if [ -n "$fleet_blocked_pid" ] && ! kill -0 "$fleet_blocked_pid" 2>/dev/null; then
+if [ -n "$fleet_blocked_pid" ] && processes_gone "$fleet_blocked_pid"; then
   pass "fleet interruption leaves no orphan panel mutation"
 else
   fail_test "fleet interruption leaves no orphan panel mutation"
@@ -5959,7 +5990,7 @@ else
   fail_test "TERM preserves fleet signal status while foreground adb is blocked (got $fleet_signal_status)"
 fi
 fleet_blocked_pid="$(cat "$FLEET_SHIZUKU_INSPECT_PID_FILE" 2>/dev/null || true)"
-if [ -n "$fleet_blocked_pid" ] && ! kill -0 "$fleet_blocked_pid" 2>/dev/null; then
+if [ -n "$fleet_blocked_pid" ] && processes_gone "$fleet_blocked_pid"; then
   pass "fleet process-group shutdown reaps untracked foreground adb"
 else
   fail_test "fleet process-group shutdown reaps untracked foreground adb"
@@ -5996,7 +6027,7 @@ else
   fail_test "TERM preserves fleet signal status for a nested deadline command (got $fleet_signal_status)"
 fi
 fleet_blocked_pid="$(cat "$FLEET_SHIZUKU_INSTALL_PID_FILE" 2>/dev/null || true)"
-if [ -n "$fleet_blocked_pid" ] && ! kill -0 "$fleet_blocked_pid" 2>/dev/null; then
+if [ -n "$fleet_blocked_pid" ] && processes_gone "$fleet_blocked_pid"; then
   pass "fleet cancellation reaps the deadline wrapper's nested adb process group"
 else
   fail_test "fleet cancellation reaps the deadline wrapper's nested adb process group"
@@ -6720,7 +6751,7 @@ fi
 # load-bearing rather than decorative.
 preflight_out="$(run_preflight "dd() { : > \"\${2#of=}\"; }
 write_probe '$PREFLIGHT_DIR/target' && echo PROBE_PASSED || echo PROBE_REFUSED")"
-if printf '%s' "$preflight_out" | grep -Fqx PROBE_REFUSED; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx PROBE_REFUSED; then
   pass "a write that creates the file but stores no bytes does not pass the probe"
 else
   fail_test "a write that creates the file but stores no bytes does not pass the probe"
@@ -6730,14 +6761,14 @@ fi
 # the byte count rather than on the stub merely existing.
 preflight_out="$(run_preflight "dd() { /bin/dd if=/dev/zero \"\$2\" bs=4096 count=1 2>/dev/null; }
 write_probe '$PREFLIGHT_DIR/target' && echo PROBE_PASSED || echo PROBE_REFUSED")"
-if printf '%s' "$preflight_out" | grep -Fqx PROBE_PASSED; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx PROBE_PASSED; then
   pass "a write that stores the whole block passes the probe"
 else
   fail_test "a write that stores the whole block passes the probe"
 fi
 
 preflight_out="$(run_preflight "preflight_target install_system '$PREFLIGHT_DIR/absent' 1024")"
-if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system target_directory_missing'; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system target_directory_missing'; then
   pass "a destination directory that does not exist refuses with its own reason"
 else
   fail_test "a destination directory that does not exist refuses with its own reason"
@@ -6746,8 +6777,8 @@ fi
 # Headroom is checked against what the transaction will actually write, so a requirement larger than
 # the filesystem refuses on capacity rather than reaching the copy and failing there.
 preflight_out="$(run_preflight "preflight_target install_system '$PREFLIGHT_DIR/target' 999999999999999")"
-if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system target_insufficient_space' &&
-   printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system target dir=.* availkb=[0-9]+ '; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system target_insufficient_space' &&
+   printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system target dir=.* availkb=[0-9]+ '; then
   pass "a destination without headroom refuses on capacity and reports what it measured"
 else
   fail_test "a destination without headroom refuses on capacity and reports what it measured"
@@ -6772,8 +6803,8 @@ elif [ "$(id -u)" = 0 ]; then
 fi
 if [ -n "$READONLY_TARGET" ]; then
   preflight_out="$(run_preflight "preflight_target install_system $READONLY_TARGET 64")"
-  if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system target_read_only' &&
-     printf '%s' "$preflight_out" | grep -Eq "^INSTALL_DIAG install_system target dir=$READONLY_TARGET .* state=ro "; then
+  if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system target_read_only' &&
+     printf '%s' "$preflight_out" 2>/dev/null | grep -Eq "^INSTALL_DIAG install_system target dir=$READONLY_TARGET .* state=ro "; then
     pass "a read-only destination refuses as read-only rather than as a failed write"
   else
     fail_test "a read-only destination refuses as read-only rather than as a failed write"
@@ -6781,9 +6812,9 @@ if [ -n "$READONLY_TARGET" ]; then
 
   # And the same directory through the copy path: cp's own errno must survive to the caller.
   preflight_out="$(run_preflight "copy_staged install_system cp_hapaneld-helper_new '$PREFLIGHT_DIR/staged' $READONLY_TARGET/hapaneld-helper.new $PREFLIGHT_SHA")"
-  if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_STEP_FAILED install_system cp_hapaneld-helper_new' &&
-     printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system cp_hapaneld-helper_new errno=.+' &&
-     printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system cp_hapaneld-helper_new source=.* state=verified '; then
+  if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_STEP_FAILED install_system cp_hapaneld-helper_new' &&
+     printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system cp_hapaneld-helper_new errno=.+' &&
+     printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system cp_hapaneld-helper_new source=.* state=verified '; then
     pass "a refused copy reports the errno, the staged file's authenticity and the destination"
   else
     fail_test "a refused copy reports the errno, the staged file's authenticity and the destination"
@@ -6806,7 +6837,7 @@ preflight_out="$(run_preflight "df() {
 }
 busybox() { return 127; }
 preflight_target install_system '$PREFLIGHT_DIR/target' 1024")"
-if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system target_insufficient_inodes'; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system target_insufficient_inodes'; then
   pass "a destination out of inodes refuses on inodes rather than on capacity"
 else
   fail_test "a destination out of inodes refuses on inodes rather than on capacity"
@@ -6843,7 +6874,7 @@ if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null 2>&1; then
   chmod 755 "$TMP" "$PREFLIGHT_DIR" "$PREFLIGHT_SHARED"
   preflight_out="$(setpriv --reuid=65534 --regid=65534 --clear-groups \
     /bin/sh -c "PATH=/usr/bin:/bin; . '$PREFLIGHT_SHARED'; preflight_target install_system '$PREFLIGHT_DIR/closed' 1024" 2>&1 || true)"
-  if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system target_not_writable'; then
+  if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system target_not_writable'; then
     pass "a destination that refuses a real write refuses as unwritable"
   else
     fail_test "a destination that refuses a real write refuses as unwritable"
@@ -6854,16 +6885,16 @@ else
 fi
 
 preflight_out="$(run_preflight "preflight_source install_system '$PREFLIGHT_DIR/absent' $PREFLIGHT_SHA")"
-if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system staged_source_unavailable' &&
-   printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system staged source=.* state=missing '; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system staged_source_unavailable' &&
+   printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system staged source=.* state=missing '; then
   pass "staging that is no longer on the panel refuses as missing staging, not as a partition fault"
 else
   fail_test "staging that is no longer on the panel refuses as missing staging, not as a partition fault"
 fi
 
 preflight_out="$(run_preflight "preflight_source install_system '$PREFLIGHT_DIR/staged' $PREFLIGHT_WRONG_SHA")"
-if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_UNCHANGED install_system staged_source_unauthenticated' &&
-   printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system staged source=.* state=mismatched '; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_system staged_source_unauthenticated' &&
+   printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system staged source=.* state=mismatched '; then
   pass "staging that does not match the signed checksum refuses before anything is replaced"
 else
   fail_test "staging that does not match the signed checksum refuses before anything is replaced"
@@ -6890,8 +6921,8 @@ rm -f "$PREFLIGHT_DIR/target/copied"
 # Missing staging reaching the copy, rather than the preflight: the errno names it, and the source
 # line says the file is gone rather than blaming the destination.
 preflight_out="$(run_preflight "copy_staged install_system cp_hapaneld-helper_new '$PREFLIGHT_DIR/absent' '$PREFLIGHT_DIR/target/copied' $PREFLIGHT_SHA")"
-if printf '%s' "$preflight_out" | grep -Fqx 'INSTALL_STEP_FAILED install_system cp_hapaneld-helper_new' &&
-   printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system cp_hapaneld-helper_new source=.* state=missing '; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_STEP_FAILED install_system cp_hapaneld-helper_new' &&
+   printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system cp_hapaneld-helper_new source=.* state=missing '; then
   pass "a copy whose staged file has gone reports the source, not the destination"
 else
   fail_test "a copy whose staged file has gone reports the source, not the destination"
@@ -6901,7 +6932,7 @@ fi
 # names in clear, because its whole purpose is to be pasted into a public issue.
 preflight_out="$(run_preflight "emit_target_diag install_system target '$PREFLIGHT_DIR/target'")"
 if [ "$(printf '%s\n' "$preflight_out" | grep -c .)" = 1 ] &&
-   printf '%s' "$preflight_out" | grep -Eq '^INSTALL_DIAG install_system target dir=[^ ]+ mount=[^ ]+ state=[^ ]+ availkb=[^ ]+ inodesfree=[^ ]+ mode=[^ ]+ owner=[^ ]+ selinux=[^ ]+ context=[^ ]+$'; then
+   printf '%s' "$preflight_out" 2>/dev/null | grep -Eq '^INSTALL_DIAG install_system target dir=[^ ]+ mount=[^ ]+ state=[^ ]+ availkb=[^ ]+ inodesfree=[^ ]+ mode=[^ ]+ owner=[^ ]+ selinux=[^ ]+ context=[^ ]+$'; then
   pass "a target diagnostic is one line of fixed keys with no free-form text"
 else
   fail_test "a target diagnostic is one line of fixed keys with no free-form text"
@@ -6912,7 +6943,7 @@ fi
 preflight_out="$(run_preflight "getenforce() { return 127; }
 ls() { return 127; }
 emit_target_diag install_system target '$PREFLIGHT_DIR/target'")"
-if printf '%s' "$preflight_out" | grep -Eq 'selinux=unknown context=unknown$'; then
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Eq 'selinux=unknown context=unknown$'; then
   pass "unreadable diagnostic fields degrade to unknown instead of failing the report"
 else
   fail_test "unreadable diagnostic fields degrade to unknown instead of failing the report"
@@ -6977,12 +7008,12 @@ fi
 # shell is 64-bit, so no runtime assertion here can fail for the right reason; the shape of the
 # comparison is asserted instead, and the hardware acceptance tool is what proves it live.
 preflight_target_code="$(sed -n '/^preflight_target() {$/,/^}$/p' "$PROVISION" | grep -vE '^[[:space:]]*#')"
-if printf '%s\n' "$preflight_target_code" | grep -qE 'availkb[[:space:]]*\*[[:space:]]*1024'; then
+if printf '%s\n' "$preflight_target_code" 2>/dev/null | grep -qE 'availkb[[:space:]]*\*[[:space:]]*1024'; then
   fail_test "the capacity comparison never multiplies the panel's free-space figure"
 else
   pass "the capacity comparison never multiplies the panel's free-space figure"
 fi
-if printf '%s\n' "$preflight_target_code" | grep -qF '(preflight_need + 1023) / 1024'; then
+if printf '%s\n' "$preflight_target_code" 2>/dev/null | grep -qF '(preflight_need + 1023) / 1024'; then
   pass "the capacity comparison divides the need into kilobytes instead"
 else
   fail_test "the capacity comparison divides the need into kilobytes instead"
@@ -7006,15 +7037,15 @@ else
 fi
 
 host_diag_out="$(TARGET=panel.test:5555 bash -c ". '$HOST_DIAG_FN'; root_helper_unchanged_advice 'INSTALL_UNCHANGED install_system target_read_only'")"
-if printf '%s' "$host_diag_out" | grep -Fq 'mounted read-only' &&
-   ! printf '%s' "$host_diag_out" | grep -Fq 'wedged helper'; then
+if printf '%s' "$host_diag_out" 2>/dev/null | grep -Fq 'mounted read-only' &&
+   ! printf '%s' "$host_diag_out" 2>/dev/null | grep -Fq 'wedged helper'; then
   pass "a read-only refusal is advised about the mount, never about a wedged helper"
 else
   fail_test "a read-only refusal is advised about the mount, never about a wedged helper"
 fi
 
 host_diag_out="$(TARGET=panel.test:5555 bash -c ". '$HOST_DIAG_FN'; root_helper_unchanged_advice 'INSTALL_UNCHANGED install_system helper_retirement'")"
-if printf '%s' "$host_diag_out" | grep -Fq 'wedged helper'; then
+if printf '%s' "$host_diag_out" 2>/dev/null | grep -Fq 'wedged helper'; then
   pass "the retirement refusal keeps its own advice after the split"
 else
   fail_test "the retirement refusal keeps its own advice after the split"
@@ -7497,7 +7528,7 @@ assert_log_contains 'rm -f .*hapaneld-helper-[0-9a-f]{32}' "exit-path reclamatio
 CLEANUP_PROBE_ID="eeee5555eeee5555eeee5555eeee5555"
 CLEANUP_PROBE_SHA="$(printf '%064d' 2)"
 CLEANUP_SRC="$(sed -n '/^cleanup_root_helper_staging()/,/^}/p' "$PROVISION")"
-if printf '%s\n' "$CLEANUP_SRC" | grep -q 'cleanup_root_helper_staging()'; then
+if printf '%s\n' "$CLEANUP_SRC" 2>/dev/null | grep -q 'cleanup_root_helper_staging()'; then
   pass "the shipped cleanup function was extracted (an empty probe must not pass by doing nothing)"
 else
   fail_test "the shipped cleanup function was extracted (an empty probe must not pass by doing nothing)"
@@ -7524,7 +7555,7 @@ case "$CLEANUP_PROBE_COMMAND" in
   *"hapaneld-helper-$CLEANUP_PROBE_ID"*) pass "pre-promotion cleanup still names the staged bundle (guards the check below against vacuity)" ;;
   *) fail_test "pre-promotion cleanup still names the staged bundle (guards the check below against vacuity)" ;;
 esac
-if printf '%s\n' "$CLEANUP_PROBE_COMMAND" | grep -Eq '(^| )\.new( |$)'; then
+if printf '%s\n' "$CLEANUP_PROBE_COMMAND" 2>/dev/null | grep -Eq '(^| )\.new( |$)'; then
   fail_test "an exit before promotion never passes a relative .new to the privileged rm"
 else
   pass "an exit before promotion never passes a relative .new to the privileged rm"
@@ -7549,8 +7580,8 @@ SWEEP_SRC="$(awk '/^  cat > "\$transaction_file" <<'\''EOF'\''$/{f=1;next} f&&/^
   | sed -n '/^sweep_disposable_staging()/,/^}/p' \
   | sed -e "s/@TRANSACTION_ID@/$SWEEP_OWN_ID/g" \
         -e 's|/data/|${SWEEP_ROOT}/data/|g' -e 's|/system/|${SWEEP_ROOT}/system/|g')"
-if printf '%s\n' "$SWEEP_SRC" | grep -q 'sweep_disposable_staging()' &&
-   printf '%s\n' "$SWEEP_SRC" | grep -Fq "$SWEEP_OWN_ID"; then
+if printf '%s\n' "$SWEEP_SRC" 2>/dev/null | grep -q 'sweep_disposable_staging()' &&
+   printf '%s\n' "$SWEEP_SRC" 2>/dev/null | grep -Fq "$SWEEP_OWN_ID"; then
   pass "the shipped sweep function was extracted and substituted (an empty harness must not pass by doing nothing)"
 else
   fail_test "the shipped sweep function was extracted and substituted (an empty harness must not pass by doing nothing)"

@@ -47,7 +47,7 @@ seed() {
   kind="$1" path="$2" build="$3" guard="${4:-EMPTY}" supervisors="${5:-1}"
   case "$kind" in system|systemless|hybrid|none) ;; *) die "invalid kind: $kind" ;; esac
   case "$path" in /*) ;; *) die "live path is not absolute: $path" ;; esac
-  printf '%s\n' "$build" | grep -Eq '^[0-9a-f]{64}$' || die 'BUILD_ID must be 64 lowercase hex characters'
+  printf '%s\n' "$build" 2>/dev/null | grep -Eq '^[0-9a-f]{64}$' || die 'BUILD_ID must be 64 lowercase hex characters'
   case "$supervisors" in ''|*[!0-9]*) die 'SUPERVISORS must be numeric' ;; esac
   clear_model
   put live.path "$path"
@@ -146,7 +146,7 @@ install() {
   kind="$1"
   [ -f "$CAPTURED/helper" ] && [ -f "$CAPTURED/txn" ] || { printf 'INSTALL_INVALID\n'; event 'INSTALL_INVALID missing-assets'; return 1; }
   build="$(captured_build)"
-  printf '%s\n' "$build" | grep -Eq '^[0-9a-f]{64}$' || { printf 'INSTALL_INVALID\n'; event 'INSTALL_INVALID build'; return 1; }
+  printf '%s\n' "$build" 2>/dev/null | grep -Eq '^[0-9a-f]{64}$' || { printf 'INSTALL_INVALID\n'; event 'INSTALL_INVALID build'; return 1; }
   validate_boot_asset "$kind" || { printf 'INSTALL_INVALID\n'; event "INSTALL_INVALID boot=$kind"; return 1; }
   validate_transaction_asset || { printf 'INSTALL_INVALID\n'; event 'INSTALL_INVALID transaction-contract'; return 1; }
   snapshot
@@ -154,9 +154,9 @@ install() {
   put transaction.kind "$kind"
   put transaction.target_build "$build"
   if [ "$#" -eq 5 ]; then
-    printf '%s\n' "$2" | grep -Eq '^[0-9a-f]{32}$' || die 'transaction id must be 32 lowercase hex characters'
+    printf '%s\n' "$2" 2>/dev/null | grep -Eq '^[0-9a-f]{32}$' || die 'transaction id must be 32 lowercase hex characters'
     for identity in "$3" "$4" "$5"; do
-      printf '%s\n' "$identity" | grep -Eq '^[0-9a-f]{64}$' || die 'transaction identity must be 64 lowercase hex characters'
+      printf '%s\n' "$identity" 2>/dev/null | grep -Eq '^[0-9a-f]{64}$' || die 'transaction identity must be 64 lowercase hex characters'
     done
     [ "$4" = "$build" ] || die 'transaction BUILDID disagrees with captured helper'
     [ "$5" = "$(sha256sum "$CAPTURED/helper" | awk '{print $1}')" ] || die 'transaction helper hash disagrees with captured helper'

@@ -145,13 +145,9 @@ class PublishedDataContractTest(unittest.TestCase):
 
     @classmethod
     def _documents(cls):
-        return {
-            "generated discussion body": cls._body(),
-            "docs/hardware/nspanel-pro.md": (DOCS / "nspanel-pro.md").read_text(encoding="utf-8"),
-            "docs/hardware/nspanel-pro-firmware.md": (
-                DOCS / "nspanel-pro-firmware.md"
-            ).read_text(encoding="utf-8"),
-        }
+        # The NSPanel Pro guides moved to panel-assistant.io and the pages under docs/hardware are
+        # now redirect stubs, so the generated discussion body is the one surface published here.
+        return {"generated discussion body": cls._body()}
 
     @staticmethod
     def _body():

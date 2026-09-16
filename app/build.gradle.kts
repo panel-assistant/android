@@ -289,7 +289,9 @@ val compileCdpRelayArm64 = tasks.register<Exec>("compileCdpRelayArm64") {
     val policy = rootProject.file("helper/cdprelay_policy.h")
     val output = file("src/main/assets/cdprelay-arm64")
     inputs.files(src, policy)
-    inputs.dir(ndkDirectory)
+    // The NDK version pins the compiler; fingerprinting its ~8,700 files on every fresh runner cost more
+    // than the compile. The output is a pure function of the declared inputs, so it can come from the cache.
+    outputs.cacheIf { true }
     inputs.property("ndkVersion", android.ndkVersion)
     outputs.file(output)
     commandLine(ndkToolchainBin.resolve("aarch64-linux-android26-clang"), "-O2", "-s", "-o", output, src)
@@ -300,7 +302,9 @@ val compileCdpRelayArm32 = tasks.register<Exec>("compileCdpRelayArm32") {
     val policy = rootProject.file("helper/cdprelay_policy.h")
     val output = file("src/main/assets/cdprelay-arm")
     inputs.files(src, policy)
-    inputs.dir(ndkDirectory)
+    // The NDK version pins the compiler; fingerprinting its ~8,700 files on every fresh runner cost more
+    // than the compile. The output is a pure function of the declared inputs, so it can come from the cache.
+    outputs.cacheIf { true }
     inputs.property("ndkVersion", android.ndkVersion)
     outputs.file(output)
     commandLine(ndkToolchainBin.resolve("armv7a-linux-androideabi26-clang"), "-O2", "-s", "-o", output, src)
@@ -321,7 +325,9 @@ val compileBundledRootHelperArm64 = tasks.register<Exec>("compileBundledRootHelp
     val sourcePaths = bundledRootHelperSources.files.sortedBy(File::getName)
     inputs.files(helperIdentityFiles)
     inputs.file(rootProject.file("helper/source-id.sh"))
-    inputs.dir(ndkDirectory)
+    // The NDK version pins the compiler; fingerprinting its ~8,700 files on every fresh runner cost more
+    // than the compile. The output is a pure function of the declared inputs, so it can come from the cache.
+    outputs.cacheIf { true }
     inputs.property("helperBuildId", helperBuildId)
     inputs.property("ndkVersion", android.ndkVersion)
     outputs.file(bundledRootHelperArm64)
@@ -336,7 +342,9 @@ val compileBundledRootHelperArm32 = tasks.register<Exec>("compileBundledRootHelp
     val sourcePaths = bundledRootHelperSources.files.sortedBy(File::getName)
     inputs.files(helperIdentityFiles)
     inputs.file(rootProject.file("helper/source-id.sh"))
-    inputs.dir(ndkDirectory)
+    // The NDK version pins the compiler; fingerprinting its ~8,700 files on every fresh runner cost more
+    // than the compile. The output is a pure function of the declared inputs, so it can come from the cache.
+    outputs.cacheIf { true }
     inputs.property("helperBuildId", helperBuildId)
     inputs.property("ndkVersion", android.ndkVersion)
     outputs.file(bundledRootHelperArm32)

@@ -98,6 +98,29 @@ status=$?
 description="retained results can be aggregated without a shard runner"; assert_true test "$status" -eq 0
 description="retained full-gate results preserve the canonical totals marker"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=14/14;tests=14/14;failures=0' "$AGGREGATE_ONLY_LOG"
 
+# The shard time budget only warns: it names a shard that has grown well past the median, as a GitHub
+# annotation and a step-summary table under Actions, and never changes the verdict or exit status.
+BUDGET="$TMP/budget-results"
+cp -a "$OUT" "$BUDGET"
+for result in "$BUDGET"/*/result; do printf '0 20\n' > "$result"; done
+printf '0 130\n' > "$BUDGET/install-runtime/result"
+BUDGET_LOG="$TMP/budget.log"
+BUDGET_SUMMARY="$TMP/budget-summary.md"
+GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$BUDGET_SUMMARY" \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=14 \
+  bash "$WRAPPER" --aggregate "$BUDGET" > "$BUDGET_LOG" 2>&1
+status=$?
+description="an over-budget shard does not fail the gate"; assert_true test "$status" -eq 0
+description="the over-budget shard is named against the median"; assert_true grep -qx 'BUDGET WARN shard=install-runtime wall=130s median=20s ratio=2' "$BUDGET_LOG"
+description="only the over-budget shard is warned"; assert_true test "$(grep -c '^BUDGET WARN ' "$BUDGET_LOG")" -eq 1
+description="the budget warning is a GitHub annotation under Actions"; assert_true grep -q '^::warning title=Provisioning shard over budget::install-runtime took 130s' "$BUDGET_LOG"
+description="the step summary lists shards slowest first"; assert_true test "$(grep -m1 '^| [a-z]' "$BUDGET_SUMMARY" | cut -d'|' -f2 | tr -d ' ')" = install-runtime
+printf '0 55\n' > "$BUDGET/install-runtime/result"
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=14 \
+  bash "$WRAPPER" --aggregate "$BUDGET" > "$BUDGET_LOG" 2>&1
+description="a short shard stays under the budget floor"; assert_true grep -qx 'BUDGET OK median=20s ratio=2' "$BUDGET_LOG"
+description="no annotation is written outside Actions"; assert_true test "$(grep -c '^::warning' "$BUDGET_LOG" || true)" -eq 0
+
 MISSING_AGGREGATE="$TMP/missing-aggregate"
 cp -a "$OUT" "$MISSING_AGGREGATE"
 rm -rf "$MISSING_AGGREGATE/database-host"
@@ -237,13 +260,19 @@ done
 
 provisioning_job="$(awk '/^  provisioning:$/ { in_job=1 } /^  provisioning-aggregate:$/ { exit } in_job' "$CI_WORKFLOW")"
 aggregate_job="$(awk '/^  provisioning-aggregate:$/ { in_job=1 } /^  dependency-integrity:$/ { exit } in_job' "$CI_WORKFLOW")"
-build_job="$(awk '/^  build:$/ { in_job=1 } /^  android-build:$/ { exit } in_job' "$CI_WORKFLOW")"
+# The self-hosted Android job holds the step list; the hosted job reuses it through a YAML anchor.
+build_job="$(awk '/^  build-self-hosted:$/ { in_job=1 } /^  build:$/ { exit } in_job' "$CI_WORKFLOW")"
+hosted_build_job="$(awk '/^  build:$/ { in_job=1 } /^  android-build:$/ { exit } in_job' "$CI_WORKFLOW")"
 android_build_job="$(awk '/^  android-build:$/ { in_job=1 } /^  host-contracts:$/ { exit } in_job' "$CI_WORKFLOW")"
 host_job="$(awk '/^  host-contracts:$/ { in_job=1 } /^  provisioning:$/ { exit } in_job' "$CI_WORKFLOW")"
-if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 1 --output "$results" "${{ matrix.shard }}"' <<<"$provisioning_job" &&
+shard_list="$(awk '/^            shards: / { sub(/^            shards: /, ""); print }' <<<"$provisioning_job" | tr ' ' '\n' | sort)"
+expected_shards="$(printf '%s\n' database-host database-runtime install-export install-runtime helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority fleet-installer host-reclamation git-bash | sort)"
+if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 3 --output "$results" ${{ matrix.shards }}' <<<"$provisioning_job" &&
+   [ "$shard_list" = "$expected_shards" ] &&
    grep -Fq 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' <<<"$provisioning_job" &&
-   grep -Fq 'name: provisioning-${{ matrix.shard }}' <<<"$provisioning_job" &&
+   grep -Fq 'name: provisioning-${{ matrix.group }}' <<<"$provisioning_job" &&
    grep -Fqx '    needs: [provisioning, host-contracts]' <<<"$aggregate_job" &&
+   ! grep -Fq 'docs-localization' <<<"$aggregate_job" &&
    grep -Fqx '    name: Host contracts' <<<"$aggregate_job" &&
    grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c' <<<"$aggregate_job" &&
    grep -Fq 'pattern: provisioning-*' <<<"$aggregate_job" &&
@@ -253,7 +282,9 @@ if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 1 --output "$r
    grep -Fq 'PROVISIONING_RESULT: ${{ needs.provisioning.result }}' <<<"$aggregate_job" &&
    grep -Fq 'test "$HOST_RESULT" = success' <<<"$aggregate_job" &&
    grep -Fq 'test "$PROVISIONING_RESULT" = success' <<<"$aggregate_job" &&
-   grep -Fqx '    name: Host shell contracts' <<<"$host_job"; then
+   grep -Fqx '    name: Host shell contracts ${{ matrix.group }}' <<<"$host_job" &&
+   grep -Fqx '        group: [authority, other]' <<<"$host_job" &&
+   grep -Fq 'scripts/tests/root_helper_authority_test.sh' <<<"$host_job"; then
   pass "CI retains every runner-level shard and preserves the Host contracts release gate"
 else
   fail "CI retains every runner-level shard and preserves the Host contracts release gate"
@@ -263,15 +294,21 @@ if awk '
      in_step && /if: matrix\.apks == '\''debug'\''/ { guarded=1 }
      in_step && /uses: actions\/upload-artifact@/ { uploaded=1; exit }
      END { exit !(guarded && uploaded) }
-   ' <<<"$build_job"; then
+   ' <<<"$build_job" &&
+   grep -Fqx '    steps: &android-steps' <<<"$build_job" &&
+   grep -Fqx '    steps: *android-steps' <<<"$hosted_build_job"; then
   pass "CI uploads the debug APK only from the assemble split"
 else
   fail "CI uploads the debug APK only from the assemble split"
 fi
 if grep -Fqx '    name: Android build' <<<"$android_build_job" &&
-   grep -Fqx '    needs: build' <<<"$android_build_job" &&
-   grep -Fq 'ANDROID_RESULT: ${{ needs.build.result }}' <<<"$android_build_job" &&
-   grep -Fq 'run: test "$ANDROID_RESULT" = success' <<<"$android_build_job"; then
+   grep -Fqx '    needs: [android-runner, build-self-hosted, build]' <<<"$android_build_job" &&
+   grep -Fq 'SELF_HOSTED_RESULT: ${{ needs.build-self-hosted.result }}' <<<"$android_build_job" &&
+   grep -Fq 'HOSTED_RESULT: ${{ needs.build.result }}' <<<"$android_build_job" &&
+   grep -Fq 'self-hosted) test "$SELF_HOSTED_RESULT" = success ;;' <<<"$android_build_job" &&
+   grep -Fq 'hosted) test "$HOSTED_RESULT" = success ;;' <<<"$android_build_job" &&
+   grep -Fq "if: needs.android-runner.outputs.choice == 'hosted'" <<<"$hosted_build_job" &&
+   grep -Fq "if: needs.android-runner.outputs.choice == 'self-hosted'" <<<"$build_job"; then
   pass "CI preserves the Android build release gate across all matrix splits"
 else
   fail "CI preserves the Android build release gate across all matrix splits"

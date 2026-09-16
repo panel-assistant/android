@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # The project runner label used by the self-hosted Android job in ci.yml.
+  labels:
+    - ms01-i9

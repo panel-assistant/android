@@ -55,13 +55,13 @@ emit() {
   if [ "${MOCK_SHELL_CRLF:-0}" = 1 ]; then printf '%s\r\n' "$1"; else printf '%s\n' "$1"; fi
 }
 if [ -n "${MOCK_JOURNAL_INJECT:-}" ] &&
-   printf '%s' "$command_text" | grep -Fq inspect_manual_journal; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq inspect_manual_journal; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   [ "$MOCK_JOURNAL_INJECT" = __silence__ ] || emit "$MOCK_JOURNAL_INJECT"
   exit 0
 fi
 if [ -n "${MOCK_LAYOUT_INJECT:-}" ] &&
-   printf '%s' "$command_text" | grep -Fq 'touch /system/.rw_probe'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'touch /system/.rw_probe'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   emit "$MOCK_LAYOUT_INJECT"
   exit 0

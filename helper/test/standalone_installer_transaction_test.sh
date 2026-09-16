@@ -32,8 +32,8 @@ command_text="$*"
 shared_lock_signal_reply() {
   [ "${MOCK_SHARED_LOCK_SIGNAL:-}" = 1 ] || return 125
   [ "${3:-}" = shell ] || return 125
-  printf '%s' "$command_text" | grep -Fq 'inspect_manual_journal_v1' || return 125
-  printf '%s' "$command_text" | grep -Fq '.hapaneld-helper-transaction.lock' || return 125
+  printf '%s' "$command_text" 2>/dev/null | grep -Fq 'inspect_manual_journal_v1' || return 125
+  printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-helper-transaction.lock' || return 125
 
   signal_root="${MOCK_STATE_DIR:?}/shared-lock-signal"
   remote_command=${!#}
@@ -44,7 +44,7 @@ shared_lock_signal_reply() {
   inspect_manual_journal_v1() {'
   remote_command=${remote_command/'inspect_manual_journal_v1() {'/$injection}
   remote_command=$(printf '%s\n' "$remote_command" | sed 's/^\([[:space:]]*\)|\*/\1""|*/')
-  printf '%s' "$remote_command" | grep -Fq "$signal_root/handler-ready" || return 1
+  printf '%s' "$remote_command" 2>/dev/null | grep -Fq "$signal_root/handler-ready" || return 1
   mkdir -p "$signal_root/dev"
   rm -f "$signal_root/handler-ready" "$signal_root/release-handler" \
     "$signal_root/post-signal-mutation" "$signal_root/remote-output"
@@ -69,8 +69,8 @@ v3_lease_phase_race_reply() {
   race_root="${MOCK_STATE_DIR:?}/v3-lease-race"
   remote_command=${!#}
 
-  if printf '%s' "$command_text" | grep -Fq 'echo LEASE_OK' &&
-     printf '%s' "$command_text" | grep -Fq '.hapaneld-helper-manual-upgrade'; then
+  if printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo LEASE_OK' &&
+     printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-helper-manual-upgrade'; then
     remote_command=${remote_command//\/dev\/.hapaneld-helper-transaction.lock/$race_root/dev/.hapaneld-helper-transaction.lock}
     remote_command=${remote_command//\/data/$race_root/data}
     remote_command=$(printf '%s\n' "$remote_command" | sed 's/^\([[:space:]]*\)|\*/\1""|*/')
@@ -87,8 +87,8 @@ v3_lease_phase_race_reply() {
     return "$renewal_status"
   fi
 
-  if printf '%s' "$command_text" | grep -Fq 'echo INSTALL_OK' &&
-     printf '%s' "$command_text" | grep -Fq 'SWAP_PHASE=PREPARED'; then
+  if printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo INSTALL_OK' &&
+     printf '%s' "$command_text" 2>/dev/null | grep -Fq 'SWAP_PHASE=PREPARED'; then
     transaction_id="$(printf '%s\n' "$remote_command" |
       sed -nE 's#.*candidate=/data/local/\.hapaneld-helper\.manual-([0-9a-f]{32}).*#\1#p' | head -1)"
     [ "${#transaction_id}" -eq 32 ] || return 1
@@ -130,8 +130,8 @@ RACEEOF
     return 0
   fi
 
-  if printf '%s' "$command_text" | grep -Fq 'echo COMMIT_OK' &&
-     printf '%s' "$command_text" | grep -Fq '.hapaneld-helper-manual-upgrade'; then
+  if printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo COMMIT_OK' &&
+     printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-helper-manual-upgrade'; then
     marker="$race_root/data/local/.hapaneld-helper-manual-upgrade"
     [ -f "$race_root/renewal-blocked-by-phase-lock" ] &&
       [ -f "$race_root/target-phase-renewed" ] && grep -qx SWAP_PHASE=TARGET "$marker" || return 1
@@ -154,9 +154,9 @@ v3_real_filesystem_reply() {
     printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
     return 0
   fi
-  if { printf '%s' "$command_text" | grep -Fq inspect_manual_journal_v1 ||
-       printf '%s' "$command_text" | grep -Fq 'restore LIVE_CANONICAL /data/local/hapaneld-helper 700' ||
-       printf '%s' "$command_text" | grep -Fq 'echo ROLLBACK_FINALIZED'; } &&
+  if { printf '%s' "$command_text" 2>/dev/null | grep -Fq inspect_manual_journal_v1 ||
+       printf '%s' "$command_text" 2>/dev/null | grep -Fq 'restore LIVE_CANONICAL /data/local/hapaneld-helper 700' ||
+       printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo ROLLBACK_FINALIZED'; } &&
      [ "${3:-}" = shell ]; then
     remote_command=${!#}
     remote_command=${remote_command//\/dev\/.hapaneld-helper-transaction.lock/$real_root/dev/.hapaneld-helper-transaction.lock}
@@ -185,9 +185,9 @@ v1_real_filesystem_reply() {
     printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
     return 0
   fi
-  if { printf '%s' "$command_text" | grep -Fq inspect_manual_journal_v1 ||
-       printf '%s' "$command_text" | grep -Fq 'publish_recorded OLD_BIN' ||
-       printf '%s' "$command_text" | grep -Fq 'echo ROLLBACK_FINALIZED'; } &&
+  if { printf '%s' "$command_text" 2>/dev/null | grep -Fq inspect_manual_journal_v1 ||
+       printf '%s' "$command_text" 2>/dev/null | grep -Fq 'publish_recorded OLD_BIN' ||
+       printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo ROLLBACK_FINALIZED'; } &&
      [ "${3:-}" = shell ]; then
     remote_command=${!#}
     remote_command=${remote_command//\/dev\/.hapaneld-helper-transaction.lock/$v1_root/dev/.hapaneld-helper-transaction.lock}
@@ -201,7 +201,7 @@ v1_real_filesystem_reply() {
     printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
     PATH="${MOCK_V1_COMMAND_DIR:?}:/usr/bin:/bin" bash -c "$remote_command"
     remote_status=$?
-    if [ "$remote_status" -eq 0 ] && printf '%s' "$command_text" | grep -Fq 'echo ROLLBACK_FINALIZED'; then
+    if [ "$remote_status" -eq 0 ] && printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo ROLLBACK_FINALIZED'; then
       rm -f "${MOCK_STATE_DIR:?}/manual-helper-transaction"
     fi
     return "$remote_status"
@@ -221,81 +221,81 @@ v1_real_filesystem_reply "$@"
 v1_status=$?
 [ "$v1_status" -eq 125 ] || exit "$v1_status"
 if [ "${MOCK_MANUAL_TRANSACTION_STATE:-}" = stale_v3 ] &&
-   printf '%s' "$command_text" | grep -Fq inspect_manual_journal_v3; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq inspect_manual_journal_v3; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   printf 'STALE_V3_TRANSACTION system %s %s %s %s\n' \
     "${MOCK_MANUAL_TRANSACTION_ID:?}" "${MOCK_MANUAL_TARGET_BUILD_ID:?}" \
     "${MOCK_MANUAL_TARGET_HELPER_SHA256:?}" "${MOCK_MANUAL_TARGET_SERVICE_SHA256:?}"
   exit 0
 fi
-if printf '%s' "$command_text" | grep -Fq ' --request GUARDCAPS'; then
+if printf '%s' "$command_text" 2>/dev/null | grep -Fq ' --request GUARDCAPS'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   printf 'OK GUARDCAPS 1 PREPARE DEFINE STREAM ACTION HEALTH REFUSAL STATUS EVIDENCE CANCEL RETIRE JOURNAL AUTONOMOUS SUPERVISED TERMINAL_RETIRE\n'
   exit 0
 fi
-if printf '%s' "$command_text" | grep -Fq ' --request GUARDSTATUS'; then
+if printf '%s' "$command_text" 2>/dev/null | grep -Fq ' --request GUARDSTATUS'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   printf 'OK GUARDSTATUS 0 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0\n'
   exit 0
 fi
 if [ "${MOCK_REPLACEMENT_SAFE:-ok}" = armed ] &&
-   printf '%s' "$command_text" | grep -Fq -- '--replacement-safe' &&
-   printf '%s' "$command_text" | grep -Fq 'echo INSTALL_OK'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq -- '--replacement-safe' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo INSTALL_OK'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
   printf 'GUARD_ARMED_ROLLBACK\n'
   exit 1
 fi
 if [ "${MOCK_REPLACEMENT_SAFE:-ok}" = r1_custody ] &&
-   printf '%s' "$command_text" | grep -Fq -- '--replacement-safe' &&
-   printf '%s' "$command_text" | grep -Fq 'echo INSTALL_OK'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq -- '--replacement-safe' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo INSTALL_OK'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
   printf 'REPLACEMENT_AUTHORITY_ACTIVE\n'
   exit 1
 fi
 if [ "${MOCK_APP_REPLACEMENT_INTERVAL:-}" = initial ] &&
-   printf '%s' "$command_text" | grep -Fq inspect_manual_journal &&
-   printf '%s' "$command_text" | grep -Fq 'echo APP_REPLACEMENT_HOLD'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq inspect_manual_journal &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo APP_REPLACEMENT_HOLD'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/app-hold-initial"
   printf 'APP_REPLACEMENT_HOLD\n'
   exit 0
 fi
 if [ "${MOCK_APP_REPLACEMENT_INTERVAL:-}" = pre_stage ] &&
-   printf '%s' "$command_text" | grep -Fq 'candidate=' &&
-   printf '%s' "$command_text" | grep -Fq 'echo APP_REPLACEMENT_HOLD; exit 75'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'candidate=' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo APP_REPLACEMENT_HOLD; exit 75'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/app-hold-pre-stage"
   printf 'APP_REPLACEMENT_HOLD\n'
   exit 1
 fi
 if [ "${MOCK_APP_REPLACEMENT_INTERVAL:-}" = inflight ] &&
-   printf '%s' "$command_text" | grep -Fq 'recorded_live LIVE_CANONICAL' &&
-   printf '%s' "$command_text" | grep -Fq -- '--replacement-safe'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'recorded_live LIVE_CANONICAL' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq -- '--replacement-safe'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
   printf 'REPLACEMENT_AUTHORITY_ACTIVE\n'
   exit 1
 fi
 if [ "${MOCK_APP_REPLACEMENT_INTERVAL:-}" = slow_crash ] &&
-   printf '%s' "$command_text" | grep -Fq 'echo INSTALL_OK' &&
-   printf '%s' "$command_text" | grep -Fq 'while pidof hapaneld-helper'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo INSTALL_OK' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'while pidof hapaneld-helper'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
   printf 'R1_RETIREMENT_TIMEOUT\n'
   exit 1
 fi
 if [ "${MOCK_POST_RETIRE_LIVE_STATE:-}" = changed ] &&
-   printf '%s' "$command_text" | grep -Fq 'echo LIVE_IDENTITY_CHANGED' &&
-   printf '%s' "$command_text" | grep -Fq 'recorded_live LIVE_CANONICAL'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo LIVE_IDENTITY_CHANGED' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'recorded_live LIVE_CANONICAL'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
   printf 'LIVE_IDENTITY_CHANGED\n'
   exit 1
 fi
 if [ "${MOCK_MANUAL_TRANSACTION_STATE:-}" = stale ] &&
-   printf '%s' "$command_text" | grep -Fq inspect_manual_journal; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq inspect_manual_journal; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   printf 'STALE_SYSTEM_TRANSACTION %s %s %s %s\n' \
     "${MOCK_MANUAL_TRANSACTION_ID:?}" "${MOCK_MANUAL_TARGET_BUILD_ID:?}" \
@@ -303,35 +303,35 @@ if [ "${MOCK_MANUAL_TRANSACTION_STATE:-}" = stale ] &&
   exit 0
 fi
 if [ "${MOCK_MANUAL_LIVE_STATE:-}" = UNKNOWN ] &&
-   printf '%s' "$command_text" | grep -Fq 'echo ROLLBACK_UNKNOWN' &&
-   printf '%s' "$command_text" | grep -Fq '.hapaneld-helper-manual-upgrade'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo ROLLBACK_UNKNOWN' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-helper-manual-upgrade'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   printf 'ROLLBACK_UNKNOWN\n'
   exit 0
 fi
 if [ "${MOCK_MANUAL_COMMIT_LIVE_STATE:-}" = UNKNOWN ] &&
-   printf '%s' "$command_text" | grep -Fq 'echo COMMIT_OK' &&
-   printf '%s' "$command_text" | grep -Fq '.hapaneld-helper-manual-upgrade'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo COMMIT_OK' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-helper-manual-upgrade'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   exit 1
 fi
 if [ "${MOCK_ROLLBACK_RETIREMENT:-ok}" = fail ] &&
-   printf '%s' "$command_text" | grep -Fq ROLLBACK_RESTARTED; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq ROLLBACK_RESTARTED; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   exit 1
 fi
 if [ "${MOCK_APP_REPLACEMENT_INTERVAL:-}" = slow_crash ] &&
-   printf '%s' "$command_text" | grep -Fq 'phase_state_known' &&
-   printf '%s' "$command_text" | grep -Fq 'restore LIVE_CANONICAL'; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'phase_state_known' &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'restore LIVE_CANONICAL'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
   printf 'ROLLBACK_UNKNOWN\n'
   exit 0
 fi
 if [ -n "${MOCK_ROLLBACK_PUBLICATION_VERSION:-}" ] &&
-   printf '%s' "$command_text" | grep -Fq 'ROLLBACK_RESTARTED' &&
-   { printf '%s' "$command_text" | grep -Fq 'publish_recorded OLD_BIN' ||
-     printf '%s' "$command_text" | grep -Fq 'restore LIVE_CANONICAL'; }; then
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq 'ROLLBACK_RESTARTED' &&
+   { printf '%s' "$command_text" 2>/dev/null | grep -Fq 'publish_recorded OLD_BIN' ||
+     printf '%s' "$command_text" 2>/dev/null | grep -Fq 'restore LIVE_CANONICAL'; }; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   cut_state="${MOCK_STATE_DIR:?}/publication-cut-${MOCK_ROLLBACK_PUBLICATION_VERSION}"
   : > "${MOCK_STATE_DIR:?}/manual-helper-transaction"
@@ -343,8 +343,8 @@ if [ -n "${MOCK_ROLLBACK_PUBLICATION_VERSION:-}" ] &&
   printf 'ROLLBACK_RESTARTED\n'
   exit 0
 fi
-if printf '%s' "$command_text" | grep -Fq ROLLBACK_RESTARTED &&
-   printf '%s' "$command_text" | grep -Fq '/data/local/.hapaneld-helper-manual-upgrade'; then
+if printf '%s' "$command_text" 2>/dev/null | grep -Fq ROLLBACK_RESTARTED &&
+   printf '%s' "$command_text" 2>/dev/null | grep -Fq '/data/local/.hapaneld-helper-manual-upgrade'; then
   printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
   printf 'ROLLBACK_RESTARTED\n'
   exit 0

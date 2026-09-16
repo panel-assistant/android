@@ -224,10 +224,10 @@ jobs:
           fi
           echo "SOURCE_COMMIT=$source_commit" >> "$GITHUB_ENV"
 
-      - name: Set up Node.js 20.18.1
+      - name: Set up Node.js 22.23.2
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20.18.1
+          node-version: 22.23.2
 
       - name: Verify profile-editor dependency graph and bundle
         working-directory: tools/profile-editor
@@ -246,9 +246,13 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
 
       - name: Install Android build toolchain
-        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
 
       - name: Build root helper release assets
         run: |
@@ -481,6 +485,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
 
       - name: Install pinned Android Build-Tools
         run: sdkmanager "build-tools;36.0.0"
