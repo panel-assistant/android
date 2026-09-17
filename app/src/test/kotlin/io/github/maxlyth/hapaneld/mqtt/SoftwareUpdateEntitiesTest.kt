@@ -171,25 +171,48 @@ class SoftwareUpdateEntitiesTest {
         assertEquals(SoftwareInstallAdmission.Admitted("2026.6.5"), SoftwareUpdateEntities.admit(inputs))
     }
 
-    @Test fun companionAbsentIsAnInstallableStateNotAnUnknownOne() {
+    @Test fun companionAbsentWithholdsTheEntityEntirely() {
         val inputs = companion(installed = null)
-        val json = state(inputs)
-        assertEquals(SoftwareUpdateEntities.NOT_INSTALLED, field(json, "installed_version"))
-        assertEquals("2026.6.5", field(json, "latest_version"))
-        assertEquals("HA Companion", field(json, "title"))
-        assertEquals("Stable channel. Not installed; installing adds the minimal app.", field(json, "release_summary"))
-        assertTrue(SoftwareUpdateEntities.installable(inputs))
-        assertEquals(SoftwareInstallAdmission.Admitted("2026.6.5"), SoftwareUpdateEntities.admit(inputs))
+        assertTrue(SoftwareUpdateEntities.companionAbsent(inputs))
+        assertTrue(SoftwareUpdateEntities.withheld(inputs))
+        assertEquals(
+            SoftwareDiscoveryShape(announced = false, installable = false, hasLatest = false),
+            SoftwareUpdateEntities.shape(inputs),
+        )
+        assertFalse(SoftwareUpdateEntities.installable(inputs))
+        // A forwarded install cannot add a first Companion from Home Assistant; the Install page does that.
+        assertEquals(SoftwareInstallAdmission.Refused("not-installed"), SoftwareUpdateEntities.admit(inputs))
+        // Absence withdraws an announced entity like a Panel Assistant lease does: one retained tombstone.
+        val previous = SoftwareUpdateEntities.shape(companion())
+        val step = SoftwareUpdateEntities.transition(previous, SoftwareUpdateEntities.shape(inputs), announcing = false)
+        assertEquals(SoftwareDiscoveryStep.WITHDRAW, step)
+        assertEquals(
+            listOf(SoftwarePublication(SoftwareUpdateEntities.configTopic("test", SoftwareComponent.COMPANION), "", retain = true)),
+            SoftwareUpdateEntities.discoveryPlan("test", inputs, step, availability, device),
+        )
     }
 
-    @Test fun companionAbsentWithoutAnInstallRouteStaysVisibleButReadOnly() {
+    @Test fun companionAbsentWithoutAnInstallRouteIsWithheldToo() {
         val inputs = companion(installed = null, canInstall = false)
-        val json = state(inputs)
-        assertEquals(SoftwareUpdateEntities.NOT_INSTALLED, field(json, "installed_version"))
-        assertEquals("2026.6.5", field(json, "latest_version"))
-        assertTrue((field(json, "release_summary") as String).endsWith("This panel has no install route; update it manually."))
-        assertFalse(SoftwareUpdateEntities.installable(inputs))
+        assertTrue(SoftwareUpdateEntities.withheld(inputs))
+        assertFalse(SoftwareUpdateEntities.shape(inputs).announced)
         assertEquals(SoftwareInstallAdmission.Refused("no-install-route"), SoftwareUpdateEntities.admit(inputs))
+    }
+
+    @Test fun anInstalledCompanionIsAnnouncedAgainAfterAbsence() {
+        val absent = SoftwareUpdateEntities.shape(companion(installed = null))
+        val installed = companion(installed = "2026.5.1-minimal")
+        assertFalse(SoftwareUpdateEntities.withheld(installed))
+        assertEquals(
+            SoftwareDiscoveryStep.ANNOUNCE,
+            SoftwareUpdateEntities.transition(absent, SoftwareUpdateEntities.shape(installed), announcing = false),
+        )
+        assertEquals("2026.5.1", field(state(installed), "installed_version"))
+    }
+
+    @Test fun paneldIsNeverTreatedAsAnAbsentCompanion() {
+        assertFalse(SoftwareUpdateEntities.companionAbsent(paneld()))
+        assertFalse(SoftwareUpdateEntities.withheld(paneld()))
     }
 
     @Test fun aPlayManagedCompanionIsReadOnlyWithNoLatestVersion() {
@@ -444,8 +467,8 @@ class SoftwareUpdateEntitiesTest {
     }
 
     @Test fun gainingOrLosingTheInstallCommandIsAnOrdinaryReannouncement() {
-        val installable = SoftwareUpdateEntities.shape(companion(installed = null))
-        val readOnly = SoftwareUpdateEntities.shape(companion(installed = null, canInstall = false))
+        val installable = SoftwareUpdateEntities.shape(companion())
+        val readOnly = SoftwareUpdateEntities.shape(companion(canInstall = false))
         assertEquals(SoftwareDiscoveryStep.ANNOUNCE, SoftwareUpdateEntities.transition(installable, readOnly, announcing = false))
         assertEquals(SoftwareDiscoveryStep.ANNOUNCE, SoftwareUpdateEntities.transition(readOnly, installable, announcing = false))
         assertEquals(SoftwareDiscoveryStep.NONE, SoftwareUpdateEntities.transition(installable, installable, announcing = false))

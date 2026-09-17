@@ -1665,15 +1665,16 @@ internal class MqttBridge(
         channel("storage_health", stateStorageHealth) {
             known(storageHealth().severity.name.lowercase(Locale.ROOT))
         }
-        // Retained update-entity state. A withheld ha-paneld entity clears its retained payload rather
-        // than leaving a stale version behind the discovery tombstone.
+        // Retained update-entity state. A withheld entity (ha-paneld's under a Panel Assistant lease, or
+        // the Companion's while no Companion is installed) clears its retained payload rather than
+        // leaving a stale version behind the discovery tombstone.
         if (softwareUpdateSources != null) for (component in SoftwareComponent.entries) {
             channel(
                 SoftwareUpdateEntities.stateChannelKey(component),
                 SoftwareUpdateEntities.stateTopic(panel, component),
             ) {
                 softwareUpdateInputs(component)?.let { inputs ->
-                    if (inputs.suppressed) io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Unavailable
+                    if (SoftwareUpdateEntities.withheld(inputs)) io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Unavailable
                     else known(SoftwareUpdateEntities.stateJson(inputs))
                 } ?: unknown
             }

@@ -64,7 +64,7 @@ class SoftwareUpdateReplayFixtureTest {
         val publications = SoftwareUpdateEntities.discoveryPlan(panel, inputs, step, availability, device) +
             SoftwarePublication(
                 SoftwareUpdateEntities.stateTopic(panel, inputs.component),
-                if (inputs.suppressed) "" else SoftwareUpdateEntities.stateJson(inputs),
+                if (SoftwareUpdateEntities.withheld(inputs)) "" else SoftwareUpdateEntities.stateJson(inputs),
                 retain = true,
             )
         return current to JSONArray(publications.map {
@@ -98,6 +98,7 @@ class SoftwareUpdateReplayFixtureTest {
             scenario("paneld_installing", paneld(installing = true) to true),
             scenario("companion_up_to_date", companion(installed = "2026.6.5-minimal") to true),
             scenario("companion_outdated", companion() to true),
+            // No Companion app: nothing is announced, whether or not the panel could install one.
             scenario("companion_absent", companion(installed = null) to true),
             scenario("companion_absent_no_route", companion(installed = null, canInstall = false) to true),
             scenario("companion_play_managed", companion(installed = "2026.6.5-full", full = true) to true),
@@ -110,14 +111,15 @@ class SoftwareUpdateReplayFixtureTest {
                 companion() to true,
                 companion(installed = "2026.6.5-full", full = true) to false,
             ),
+            // The entity appears when a Companion is installed and goes again when it is removed.
             scenario(
-                "companion_installable_to_read_only",
+                "companion_installed_after_absent",
                 companion(installed = null) to true,
-                companion(installed = null, canInstall = false) to false,
+                companion(installed = "2026.5.1-minimal") to false,
             ),
             scenario(
-                "companion_read_only_to_installable",
-                companion(installed = null, canInstall = false) to true,
+                "companion_removed",
+                companion(installed = "2026.5.1-minimal") to true,
                 companion(installed = null) to false,
             ),
             scenario("paneld_withdrawn_for_panel_assistant", paneld() to true, paneld(suppressed = true) to false),

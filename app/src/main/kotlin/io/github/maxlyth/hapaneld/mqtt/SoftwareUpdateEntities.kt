@@ -214,12 +214,23 @@ internal object SoftwareUpdateEntities {
     fun latestVersion(inputs: SoftwareUpdateInputs): String? =
         if (inputs.externallyManaged) null else inputs.target?.version
 
+    /**
+     * A Companion entity exists only while a Companion app is installed. A panel without one is not
+     * missing an update, so Home Assistant is shown nothing rather than a permanent "not installed"
+     * offer under every panel (maintainer, 2026-09-17); the Install page still adds the app.
+     */
+    fun companionAbsent(inputs: SoftwareUpdateInputs): Boolean =
+        inputs.component == SoftwareComponent.COMPANION && inputs.installedVersion == null
+
+    /** The entity is not announced at all: withheld for Panel Assistant, or no Companion to report on. */
+    fun withheld(inputs: SoftwareUpdateInputs): Boolean = inputs.suppressed || companionAbsent(inputs)
+
     /** An install command is advertised only when this panel can actually carry one out. */
     fun installable(inputs: SoftwareUpdateInputs): Boolean =
-        !inputs.suppressed && !inputs.externallyManaged && inputs.canInstall && inputs.target != null
+        !withheld(inputs) && !inputs.externallyManaged && inputs.canInstall && inputs.target != null
 
     fun shape(inputs: SoftwareUpdateInputs): SoftwareDiscoveryShape =
-        if (inputs.suppressed) SoftwareDiscoveryShape(announced = false, installable = false, hasLatest = false)
+        if (withheld(inputs)) SoftwareDiscoveryShape(announced = false, installable = false, hasLatest = false)
         else SoftwareDiscoveryShape(
             announced = true,
             installable = installable(inputs),
@@ -323,8 +334,7 @@ internal object SoftwareUpdateEntities {
                 "Installed ${normalized(inputs.component, installed!!)} is above this panel's ${inputs.cap} safety cap; installing moves it to ${target.version}."
             else -> {
                 if (target.capped) parts += "This panel's safety cap is ${inputs.cap}; the newest release is ${target.newestVersion}."
-                if (inputs.installedVersion == null) parts += "Not installed; installing adds the minimal app."
-                else if (installed != null && UpdateChecker.compareVersions(
+                if (installed != null && UpdateChecker.compareVersions(
                         normalized(inputs.component, target.version),
                         normalized(inputs.component, installed),
                     )?.let { it < 0 } == true
@@ -367,10 +377,9 @@ internal object SoftwareUpdateEntities {
         if (inputs.component == SoftwareComponent.COMPANION &&
             !CompanionInstaller.withinCap(target.version, inputs.cap)
         ) return refused("exceeds-cap")
-        val installed = inputs.installedVersion
-            ?: return if (inputs.component == SoftwareComponent.COMPANION) {
-                SoftwareInstallAdmission.Admitted(target.tag)
-            } else refused("not-installed")
+        // Neither component installs from nothing here: the Companion entity is withheld while the app
+        // is absent, and a first Companion install stays on the Install page.
+        val installed = inputs.installedVersion ?: return refused("not-installed")
         val comparison = UpdateChecker.compareVersions(
             normalized(inputs.component, target.version),
             normalized(inputs.component, installed),

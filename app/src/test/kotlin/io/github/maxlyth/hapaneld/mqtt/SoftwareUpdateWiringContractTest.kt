@@ -35,6 +35,13 @@ class SoftwareUpdateWiringContractTest {
         assertTrue(handler.contains("install = { tag -> onSoftwareInstall(component, tag) }"))
     }
 
+    @Test fun aWithheldEntityClearsItsRetainedStateForEitherReason() {
+        // The state channel must follow the same withheld rule as discovery, or an absent Companion
+        // would keep a retained "not installed" payload behind its tombstone.
+        val channel = between(bridge, "SoftwareUpdateEntities.stateChannelKey(component),", "channel(\"storage_health_attributes\"")
+        assertTrue(channel.contains("if (SoftwareUpdateEntities.withheld(inputs)) io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Unavailable"))
+    }
+
     @Test fun anAdmittedInstallRunsTheExactVersionPath() {
         assertTrue(service.contains("""onSoftwareInstall = { component, tag -> installComponent(component.wire, "update", tag) }"""))
         assertTrue(service.contains("softwareUpdateSources = ::softwareUpdateSources"))
