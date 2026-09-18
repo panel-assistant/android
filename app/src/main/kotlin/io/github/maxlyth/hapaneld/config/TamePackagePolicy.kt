@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.config
 
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.util.AndroidInput
 
 /** Canonical, Android-free policy for the durable vendor-package selection. */
@@ -12,8 +13,9 @@ internal object TamePackagePolicy {
         "com.android.systemui",
         "com.android.settings",
         "com.android.phone",
-        "io.github.maxlyth.hapaneld",
-    )
+        // Both installed identities of this app. During the application-id migration either one may
+        // be the panel's app, and the other must never be offered for taming.
+    ) + AppIdentity.ALL
 
     fun isCritical(pkg: String): Boolean = pkg in critical
 

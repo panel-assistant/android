@@ -57,6 +57,6 @@ internal class AndroidSuccessorHandoffPorts(
 
     override fun deliverReleaseToken(): Boolean {
         val token = ReleaseToken.of(context).ensure() ?: return false
-        return MigrationTokenReceiver.deliver(context, token)
+        return MigrationTokenReceiver.deliver(context, token, config.httpPort)
     }
 }

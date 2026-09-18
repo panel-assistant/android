@@ -459,7 +459,10 @@ class SystemController(
          *  A later supported-renderer or built-in selection may reclaim HOME from these; anything else as
          *  home is a deliberate third-party launcher and is left alone. The package identities live in
          *  [RendererResolver], sourced from [io.github.maxlyth.hapaneld.util.CompanionInstaller]. */
-        internal val KNOWN_RENDERER_HOMES = RendererResolver.LEGACY_COMPANION_PACKAGE_SET
+        internal val KNOWN_RENDERER_HOMES = RendererResolver.LEGACY_COMPANION_PACKAGE_SET +
+            // The legacy identity of this app: a successor must be able to take HOME from a bridge that
+            // retired without managing to hand it over.
+            AppIdentity.LEGACY
 
         // Vendor kiosk apps that register CATEGORY_HOME but aren't real launchers — the navbar Launcher
         // button must never land on them (they obstruct the dashboard). eWeLink's control panel on

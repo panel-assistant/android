@@ -665,6 +665,9 @@ internal fun haLifecycleHealthToken(watching: Boolean, snap: HaLifecycle.Snapsho
 internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
     panelAssistantDiscoveryId(androidId)?.let { " did=$it" }.orEmpty()
 
+/** Which installed identity answered: during the application-id migration a panel can hold both. */
+internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"
+
 internal fun autoSleepHistoryHours(hours: String?): Int {
     val parsed = hours?.toIntOrNull() ?: if (hours == null) 6 else null
     require(parsed != null && parsed in 1..48) { "hours must be between 1 and 48" }
@@ -2004,6 +2007,7 @@ class PaneldServer internal constructor(
                         ),
                     ),
                 )
+                identityMigrationRoutes(identityMigration)
                 panelAssistantTransportRoutes(
                     PanelAssistantTransportRouteDependencies(
                         facts = panelAssistantTransportFacts,
@@ -2324,7 +2328,7 @@ class PaneldServer internal constructor(
                     call.respondText(html, ContentType.Text.Html)
                 }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -2361,7 +2365,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                     }
                     configReadRoutes(
                         currentConfigJson = ::configJson,
