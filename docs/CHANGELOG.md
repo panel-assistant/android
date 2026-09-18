@@ -6,6 +6,10 @@
 
 - **A panel without the Home Assistant Companion app no longer offers a Companion update.** The MQTT "Companion app" update entity exists only while a Companion app is installed on the panel. Panels without one used to list a permanent "not installed" update under Settings, Updates in Home Assistant; a first Companion install stays on the panel's Install page.
 
+### Fixed
+
+- **A panel whose ambient light sensor never starts no longer reports illuminance.** Some panels declare a light part that the hardware never answers for; Home Assistant used to show an illuminance sensor for them that only ever recorded empty values. The entity now appears once the sensor has actually delivered a reading, and comes back on its own if a slow sensor reports later. Panels with a working light sensor are unaffected. [Issue #138](https://github.com/maxlyth/ha-paneld/issues/138)
+
 ## v0.9.8-rc1 - 2026-09-15
 
 This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.
