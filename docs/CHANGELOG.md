@@ -12,6 +12,8 @@
 
 - **A panel whose web viewer is missing or broken shows what to fix instead of a black screen.** When Android System WebView cannot be resolved at all, checking what it supports could fail outright and take the dashboard down with it; because the dashboard is the panel's home screen, Android restarted it straight back into the same fault, so the panel showed nothing and gave no way to diagnose it. A web viewer that cannot answer is now treated as one that lacks the feature, which reaches the existing screen naming Android System WebView and offering to repair it.
 
+- **The web interface's cards no longer lose a column as the window gets wider.** On a narrow window the page switched to a tighter page margin at one fixed width, and with an ordinary desktop scrollbar that step cost more width than it bought, so widening the window by a single pixel could drop a card wall from two columns to one. Just below that width the page also drew a genuinely two-column wall using the height estimates meant only for a single column, which left the columns badly balanced. The page margin now grows gradually across that range instead of stepping, and the card wall and the header's Reveal button work out what fits from the width they are actually given — including inside the Panel Assistant sidebar, where the browser window is not the frame.
+
 ## v0.9.8-rc1 - 2026-09-15
 
 This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.
