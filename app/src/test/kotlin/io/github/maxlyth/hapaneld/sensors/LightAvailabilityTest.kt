@@ -116,26 +116,47 @@ class LightAvailabilityTest {
         subject.registered(ok = true)
         val staleWindow = timers.pending.single().second
         subject.stop()
+        // A second run is acquiring again, so only the generation guard can save it here.
         subject.registered(ok = true)
-        subject.reading()
 
         staleWindow.invoke()
 
+        assertEquals(LightAvailability.ACQUIRING, subject.state)
         assertTrue(subject.available())
-        assertEquals(LightAvailability.AVAILABLE, subject.state)
     }
 
-    @Test fun `stop returns the tracker to an undecided state for the next run`() {
-        val timers = Timers()
-        val subject = tracker(timers = timers)
+    @Test fun `stop keeps the verdict, so a dead sensor is not re-advertised at every restart`() {
+        var changes = 0
+        val subject = tracker(onChange = { changes++ })
 
         subject.registered(ok = false)
-        assertFalse(subject.available())
+        assertEquals(1, changes)
 
         subject.stop()
 
-        assertEquals(LightAvailability.IDLE, subject.state)
+        // Ending a run learns nothing new about the hardware. Resetting here would re-advertise the
+        // entity on every service stop and withdraw it again at the next start.
+        assertEquals(LightAvailability.UNAVAILABLE, subject.state)
+        assertFalse(subject.available())
+        assertEquals(1, changes)
+
+        // A restart that fails the same way is silent.
+        subject.registered(ok = false)
+        assertFalse(subject.available())
+        assertEquals(1, changes)
+    }
+
+    @Test fun `a sensor that starts working after a failed run is advertised again`() {
+        var changes = 0
+        val subject = tracker(onChange = { changes++ })
+
+        subject.registered(ok = false)
+        subject.stop()
+        subject.registered(ok = true)
+
+        assertEquals(LightAvailability.ACQUIRING, subject.state)
         assertTrue(subject.available())
+        assertEquals(2, changes)
     }
 
     @Test fun `no declared sensor is absent and no registration result can revive it`() {
