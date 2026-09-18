@@ -10843,8 +10843,8 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             "Network ADB" to "cfg-network_adb",
             "Log shipping" to "cfg-log_ship_enabled",
         )
-        private const val RELEASES_URL = "https://github.com/maxlyth/ha-paneld/releases"
-        private const val REPO_URL = "https://github.com/maxlyth/ha-paneld"
+        private const val RELEASES_URL = "https://github.com/panel-assistant/android/releases"
+        private const val REPO_URL = "https://github.com/panel-assistant/android"
         private const val WEBVIEW_DOC = "https://panel-assistant.io/go/docs?page=hardware/readme"
         private const val SHIZUKU_GUIDE_DOC = "https://panel-assistant.io/go/docs?page=provisioning"
         private const val DEVICE_PROFILES_DOC = "https://panel-assistant.io/go/docs?page=architecture/device-profiles"

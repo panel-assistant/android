@@ -64,6 +64,16 @@ class SystemController(
         Log.i(TAG, "$label -> $component")
     }
 
+    /**
+     * Start the other panel-app identity's launcher activity during the application-id migration.
+     * Privileged routes only: a second package is never started from this app's own background.
+     */
+    fun launchPanelApp(applicationId: String): Boolean {
+        if (!AppIdentity.isPanelApp(applicationId) || applicationId == env.ownPackage) return false
+        return privilegedStart(AppIdentity.component(applicationId, ".MainActivity")) ==
+            PrivilegedStartResult.STARTED
+    }
+
     /** Open the local instruction surface; visibility is acknowledged separately by its session. */
     fun launchProximityWizard(): Boolean {
         val component = AppIdentity.component(env.ownPackage, ".ProximityWizardActivity")

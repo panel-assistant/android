@@ -407,7 +407,7 @@ class AppInstallerTest {
         assertTrue("the download must not be bounded below the APK itself", ceiling >= 100 * MIB)
     }
 
-    private val github = URL("https://github.com/maxlyth/ha-paneld/releases/download/v1/app.apk")
+    private val github = URL("https://github.com/panel-assistant/android/releases/download/v1/app.apk")
 
     @Test fun followsAbsoluteHttpsRedirect() {
         val next = AppInstaller.httpsRedirect(github, "https://objects.githubusercontent.com/x/app.apk")

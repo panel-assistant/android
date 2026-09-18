@@ -111,6 +111,8 @@ import io.github.maxlyth.hapaneld.http.retainCompanionLeaseUntilHelperIdle
 import io.github.maxlyth.hapaneld.logship.LogCapture
 import io.github.maxlyth.hapaneld.logship.LogShipper
 import io.github.maxlyth.hapaneld.media.AudioPlaybackCoordinator
+import io.github.maxlyth.hapaneld.migration.AndroidSuccessorHandoffPorts
+import io.github.maxlyth.hapaneld.migration.SuccessorHandoff
 import io.github.maxlyth.hapaneld.provisioning.AndroidProvisioningObservationCollector
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningActivationSnapshot
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningCoordinator
@@ -3636,6 +3638,15 @@ class PaneldService : Service() {
                         logLabel = "self-update auto",
                         operation = { SelfUpdater.checkAndUpdateResult(this@PaneldService, config.updateChannel) },
                     )
+                    // Identity migration, bridge build only, and only once this build is the one its
+                    // channel wants (a successful self-update above restarts the process first). Every
+                    // refusal leaves the panel on the bridge; the next pass offers again.
+                    if (AppIdentity.IS_BRIDGE) {
+                        val outcome = SuccessorHandoff(
+                            AndroidSuccessorHandoffPorts(this@PaneldService, config, system),
+                        ).offer(AppIdentity.SUCCESSOR)
+                        Log.i(TAG, "successor handoff: ${outcome.detail}")
+                    }
                 }
             }
             startMqttWatchdog()

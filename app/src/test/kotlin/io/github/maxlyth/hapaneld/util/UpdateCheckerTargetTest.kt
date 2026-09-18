@@ -31,7 +31,7 @@ class UpdateCheckerTargetTest {
     @Test fun persistedTargetsRoundTrip() {
         assertEquals(companion, UpdateChecker.decodeTarget(UpdateChecker.encodeTarget(companion)))
         val paneld = UpdateChecker.ResolvedTarget(
-            "0.9.8", "v0.9.8", "https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.8", "prerelease", null,
+            "0.9.8", "v0.9.8", "https://github.com/panel-assistant/android/releases/tag/v0.9.8", "prerelease", null,
         )
         assertEquals(paneld, UpdateChecker.decodeTarget(UpdateChecker.encodeTarget(paneld)))
     }
@@ -57,7 +57,7 @@ class UpdateCheckerTargetTest {
     }
 
     @Test fun theUpdateEntityReleaseLinkStaysInsideTheReleasesPath() {
-        assertEquals("https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.8", SelfUpdater.releaseNotesUrl("v0.9.8"))
+        assertEquals("https://github.com/panel-assistant/android/releases/tag/v0.9.8", SelfUpdater.releaseNotesUrl("v0.9.8"))
         assertNull(SelfUpdater.releaseNotesUrl("../../evil"))
         assertNull(SelfUpdater.releaseNotesUrl("v0.9.8?x=1"))
     }
