@@ -100,7 +100,7 @@ ha-paneld does not need to be installed as a system app. Basic Android controls 
 | Smatek S9E | Experimental | Android 11, arm64-v8a | Profile for onboard relays, button LEDs and proximity. Live confirmation on S9E hardware is still needed. |
 | Shelly Wall Display (original) | Incompatible stock software | Android 7.0, armeabi-v7a | Android is older than ha-paneld's minimum version. |
 | Shelly Wall Display X2 | Research only | Android 8.1, armeabi-v7a | No confirmed ha-paneld installation path. |
-| Shelly Wall Display X2i | Experimental | Android 11, arm64-v8a | rk3326. Confirmed on one unit: developer mode unlocks ADB, and installation, permission grants, the proximity and light sensors, brightness and taking over the home screen all work without root. The onboard relays are not exposed. |
+| Shelly Wall Display X2i | Preliminary | Android 11, arm64-v8a | rk3326. Confirmed on one unit: developer mode unlocks ADB, and installation, permission grants, the proximity and light sensors, brightness and taking over the home screen all work without root. The onboard relays are not exposed. |
 | Shelly Wall Display X1i / XL | Research only | Android 11, arm64-v8a | Profile metadata still needs to be split by model. No confirmed ha-paneld installation path. |
 
 See the [hardware documentation](https://panel-assistant.io/go/docs?page=hardware/readme) for model-specific setup, known limitations and reverse-engineered hardware details.
