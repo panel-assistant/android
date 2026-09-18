@@ -170,6 +170,46 @@ mutated = source.replace(
     '    (void)caller;\n    conn_ctx ctx = { .fd = cfd, .subscribed = 0, .caller = HELPER_CALLER_ROOT };')
 "
 
+apply 'Guard: GUARDPREPARE binds the legacy id rather than the caller' guard src/guard_maintenance.c "
+mutated = source.replace(
+    'snprintf(plan.package, sizeof plan.package, \"%s\", caller_package);',
+    'snprintf(plan.package, sizeof plan.package, \"%s\", \"io.github.maxlyth.hapaneld\");', 1)
+"
+
+apply 'Guard: the durable plan record drops the package on reload' guard src/guard_maintenance.c "
+mutated = source.replace(
+    'snprintf(plan->package, sizeof plan->package, \"%s\", tokens[42]);',
+    'snprintf(plan->package, sizeof plan->package, \"%s\", \"io.github.maxlyth.hapaneld\");', 1)
+"
+
+apply 'Guard: the database directory is not derived from the plan' guard src/guard_maintenance.c "
+mutated = source.replace(
+    'if (guard_app_db_dir_path(plan->package, path, sizeof path) != 0) return -1;',
+    '(void)plan;\n    if (guard_app_db_dir_path(\"io.github.maxlyth.hapaneld\", path, sizeof path) != 0) return -1;', 1)
+"
+
+apply 'Guard: am force-stop targets the legacy id rather than the plan' guard src/guard_maintenance.c "
+mutated = source.replace(
+    'const char *const argv[] = { \"am\", \"force-stop\", package, NULL };',
+    'const char *const argv[] = { \"am\", \"force-stop\", \"io.github.maxlyth.hapaneld\", NULL };', 1)
+"
+
+apply 'Guard: the callerless supervisor launches the legacy id' guard src/guard_maintenance.c "
+mutated = source.replace('        launch[2] = package;', '        launch[2] = \"io.github.maxlyth.hapaneld\";', 1)
+"
+
+apply 'Guard: GUARDEVIDENCE reports the legacy id rather than the plan' guard src/guard_maintenance.c "
+mutated = source.replace(
+    'plan->session, plan->boot, plan->package, plan->signer,',
+    'plan->session, plan->boot, \"io.github.maxlyth.hapaneld\", plan->signer,', 1)
+"
+
+apply 'Guard: any authorised caller may drive any session' guard src/guard_maintenance.c "
+mutated = source.replace(
+    'static int guard_caller_owns_plan(const conn_ctx *ctx, const guard_plan *plan) {',
+    'static int guard_caller_owns_plan(const conn_ctx *ctx, const guard_plan *plan) {\n    if (ctx || plan) return 1;', 1)
+"
+
 apply 'Guard: root does not adopt the package a bound plan records' guard src/guard_maintenance.c "
 mutated = source.replace(
     '    if (ctx && ctx->caller == HELPER_CALLER_ROOT) return helper_known_package(plan->package);\n',

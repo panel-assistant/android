@@ -125,6 +125,7 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 | File | Responsibility |
 | --- | --- |
 | `main.c` | accept loop, abstract-socket bind, `SO_PEERCRED` peer-auth, connection cap |
+| `identity.c` | the one table of app package ids, their data directories and the caller enum — read by peer-auth, the path and package validators, Guard, and the package-restricted verbs |
 | `server.c` | the bounded line accumulator (`server_serve`) + idle timeout |
 | `commands.def` / `dispatch.c` | the shared verb→handler manifest + exact-match `dispatch()` |
 | `version.c` | stable helper and protocol identity exposed by `VERSION` and `--version` |

@@ -62,8 +62,10 @@ typedef struct {
     const char *user_dir;  // multi-user /data/user/0 form returned by getCacheDir() on API 24+
 } helper_app_package;
 
-// Legacy first, successor second. The order is part of the contract: reported package order and the
-// root-caller default both depend on it.
+// Legacy first, successor second. The order is part of the contract in two places: the package list
+// a status reply reports, and the tie-break when one uid owns both data directories — which should
+// not happen without a sharedUserId, so the daemon settles it deterministically rather than treating
+// one caller as two identities.
 extern const helper_app_package HELPER_APP_PACKAGES[HELPER_APP_PACKAGE_COUNT];
 
 // The table entry for an app caller, or NULL for ROOT/NONE (neither owns a package identity).
