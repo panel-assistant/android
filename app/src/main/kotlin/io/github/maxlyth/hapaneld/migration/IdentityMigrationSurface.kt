@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.migration
 
+import kotlinx.coroutines.CompletableDeferred
+
 /**
  * What the HTTP surface needs from the application-id migration. The service supplies the real
  * implementation for its build identity; [NONE] is a panel that is not migrating, which answers every
@@ -9,8 +11,12 @@ internal interface IdentityMigrationSurface {
     /** Successor: true only while the migration is waiting to restore the receipt it pulled. */
     fun restoreOpen(): Boolean = false
 
-    /** Successor: the migration-mode restore ended; [succeeded] only when every part of it is durable. */
-    fun onRestoreFinished(succeeded: Boolean) {}
+    /**
+     * Successor: claim the attempt this restore request answers, at admission rather than at the end.
+     * The successor opens a fresh wait for every attempt, so a restore that outlives its own wait must
+     * still answer the attempt that started it and never the one that replaced it.
+     */
+    fun claimRestoreAttempt(): RestoreAttempt = RestoreAttempt.NONE
 
     /** Bridge: install and start the successor now. Null on a build that is not the bridge. */
     suspend fun offer(): SuccessorHandoff.Outcome? = null
@@ -22,6 +28,34 @@ internal interface IdentityMigrationSurface {
     companion object {
         val NONE: IdentityMigrationSurface = object : IdentityMigrationSurface {}
     }
+}
+
+/**
+ * One migration-mode restore attempt's answer. Reporting is idempotent and the first report wins, so
+ * the restore job may report its real outcome and the job's completion handler may report a failure
+ * behind it without the second overwriting the first.
+ */
+internal fun interface RestoreAttempt {
+    /** The restore ended; [succeeded] only when every part of it is durable. */
+    fun finished(succeeded: Boolean)
+
+    companion object {
+        /** A build that is not migrating, and every restore that is not this app's own migration. */
+        val NONE: RestoreAttempt = RestoreAttempt {}
+    }
+}
+
+/**
+ * The successor's restore attempts, one wait at a time. [begin] opens the wait the state machine will
+ * await; [claim] hands the server the attempt that is open when it admits a request, so an attempt that
+ * outlives its own wait cannot answer the next one.
+ */
+internal class RestoreAttempts {
+    private val current = java.util.concurrent.atomic.AtomicReference(CompletableDeferred<Boolean>())
+
+    fun begin(): CompletableDeferred<Boolean> = CompletableDeferred<Boolean>().also(current::set)
+
+    fun claim(): RestoreAttempt = current.get().let { attempt -> RestoreAttempt { attempt.complete(it) } }
 }
 
 /** How a restore request relates to migration mode. */

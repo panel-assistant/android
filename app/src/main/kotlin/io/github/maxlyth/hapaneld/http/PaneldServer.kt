@@ -115,6 +115,7 @@ import io.github.maxlyth.hapaneld.persistence.ConfigVault
 import io.github.maxlyth.hapaneld.persistence.StateArchiveSection
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
 import io.github.maxlyth.hapaneld.migration.MigrationRestoreAdmission
+import io.github.maxlyth.hapaneld.migration.RestoreAttempt
 import io.github.maxlyth.hapaneld.migration.migrationRestoreAdmission
 import io.github.maxlyth.hapaneld.persistence.BackupIdentity
 import io.github.maxlyth.hapaneld.persistence.RawPreferenceBackup
@@ -9600,6 +9601,13 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 HttpStatusCode.Forbidden,
             )
         }
+        // Claim the successor's wait now, not when the restore ends. A restore that outlives the five
+        // minute wait must still answer the attempt that started it: by the time it finishes, the
+        // successor may already have opened another, and answering that one would report this restore's
+        // outcome for a restore that has not run.
+        // A dry run writes nothing, so it answers nothing: the successor's real attempt stays open.
+        val restoreAttempt =
+            if (migrationRestore && !dryRun) identityMigration.claimRestoreAttempt() else RestoreAttempt.NONE
         // Claim the shared destructive-operation lane before buffering, decrypting, or parsing a bundle.
         // Otherwise several losing requests can each consume 64 MiB and expensive KDF/JSON work before
         // discovering that another restore/install already owns admission.
@@ -10163,11 +10171,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 // Only a whole success advances the migration; a partial or failed restore leaves the
                 // step open, and the successor restores the same receipt again. It is told either way,
                 // so a failure is retried at once rather than after waiting out a timeout.
-                if (migrationRestore) {
-                    identityMigration.onRestoreFinished(
-                        operation.structured.status == InstallProgress.Outcome.SUCCEEDED,
-                    )
-                }
+                restoreAttempt.finished(operation.structured.status == InstallProgress.Outcome.SUCCEEDED)
                 InstallProgress.finish(
                     progress,
                     operation.message,
@@ -10176,6 +10180,11 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 )
             }
             job.invokeOnCompletion {
+                // A job that was cancelled, or that failed somewhere its own result never reaches,
+                // still ends the attempt. Reporting is first-wins, so a job that already reported its
+                // real outcome keeps it and only an unanswered attempt is failed here — which the
+                // successor retries at once rather than waiting out the five minute timeout.
+                restoreAttempt.finished(false)
                 retainedCompanionPlan?.close()
                 restoreFiles.forEach(File::delete)
             }
@@ -10185,6 +10194,10 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             call.respondText("""{"status":"started"}""", ContentType.Application.Json)
         } finally {
             if (!transferredToJob) {
+                // Rejected before any restore ran — a bad bundle, a refused approval, a missing helper.
+                // The attempt is answered here for the same reason the job answers its own: the
+                // successor should retry now, not in five minutes.
+                restoreAttempt.finished(false)
                 retainedCompanionPlan?.close()
                 restoreFiles.forEach(File::delete)
                 val result = if (requestAccepted) {

@@ -5,6 +5,7 @@ import io.github.maxlyth.hapaneld.http.migrationRestoreComplete
 import io.github.maxlyth.hapaneld.http.migrationRestoreConfig
 import io.github.maxlyth.hapaneld.persistence.ConfigVault
 import io.github.maxlyth.hapaneld.persistence.StateBackupPolicy
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -113,5 +114,44 @@ class MigrationRestoreTest {
         listOf("panel_id", "mqtt_password", "ha_refresh_token", "kiosk_companion_packages").forEach { key ->
             assertTrue("$key must be part of the backup projection", key in carried)
         }
+    }
+
+    @Test fun aRestoreThatOutlivedItsWaitAnswersItsOwnAttemptAndNeverTheNextOne() = runBlocking {
+        val attempts = RestoreAttempts()
+        val first = attempts.begin()
+        val firstRestore = attempts.claim()
+        // The successor gave up waiting and asked again while the first restore was still running.
+        val second = attempts.begin()
+        val secondRestore = attempts.claim()
+
+        firstRestore.finished(false)
+
+        assertFalse("the first attempt is answered by its own restore", first.await())
+        assertFalse("the second attempt is still waiting for the restore it started", second.isCompleted)
+
+        secondRestore.finished(true)
+        assertTrue(second.await())
+    }
+
+    @Test fun theRestoresOwnOutcomeSurvivesTheFailureItsCompletionHandlerReportsBehindIt() = runBlocking {
+        val attempts = RestoreAttempts()
+        val outcome = attempts.begin()
+        val restore = attempts.claim()
+
+        restore.finished(true)
+        restore.finished(false)
+
+        assertTrue("the first answer wins, so a completed restore keeps its outcome", outcome.await())
+    }
+
+    @Test fun anAttemptNoRestoreAnsweredFailsAtOnceRatherThanWaitingOutTheTimeout() = runBlocking {
+        val attempts = RestoreAttempts()
+        val outcome = attempts.begin()
+        val restore = attempts.claim()
+
+        // The job was cancelled, or the request was rejected before any restore ran.
+        restore.finished(false)
+
+        assertFalse(outcome.await())
     }
 }
