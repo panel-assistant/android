@@ -53,6 +53,7 @@
     <string name="approval_op_devtools_enable">WebView-Entwicklertools bereitstellen</string>
     <string name="approval_op_remote_media">Remote-Medien-URL wiedergeben</string>
     <string name="approval_op_package_tame">Zustand des Herstellerpakets ändern</string>
+    <string name="approval_op_home_hand_back">Startbildschirm wiederherstellen</string>
     <string name="approval_op_dashboard_reload">Dashboard-Renderer neu laden</string>
     <string name="approval_op_device_reboot">Panel neu starten</string>
     <string name="approval_op_companion_repair">Companion-Konfiguration reparieren</string>

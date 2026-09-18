@@ -51,6 +51,7 @@
     <string name="approval_op_devtools_enable">Pokaż WebView narzędzia programistyczne</string>
     <string name="approval_op_remote_media">Odtwarzaj multimedia zdalnie URL</string>
     <string name="approval_op_package_tame">Zmień stan pakietu dostawcy</string>
+    <string name="approval_op_home_hand_back">Przywróć ekran główny</string>
     <string name="approval_op_dashboard_reload">Odśwież renderer pulpitu nawigacyjnego</string>
     <string name="approval_op_device_reboot">Panel ponownego uruchomienia</string>
     <string name="approval_op_companion_repair">Popraw Companion konfiguracja</string>

@@ -21929,6 +21929,92 @@
       "softMaxChars": 134,
       "hardMaxChars": 268
     },
+    "install.tame.hand_back.action": {
+      "text": "Restore the home screen",
+      "sourceHash": "2009690e210a7c546d780f1ed3f4eea8c67399962047667d76cbaf5f4b96f559",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 23,
+      "hardMaxChars": 46
+    },
+    "install.tame.hand_back.description": {
+      "text": "This re-enables the vendor apps on this panel.",
+      "sourceHash": "e27d15826d370f6cfd6bc1466f8e32e4d3ad4cba7c9cb667272e159113943990",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 46,
+      "hardMaxChars": 92
+    },
+    "install.tame.hand_back.done": {
+      "text": "Done. This panel has its own home screen again.",
+      "sourceHash": "362b1c0da01d39ea0820b7492fbb8e590d4b2e0577e99bd193c2a5e83135ccb7",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 47,
+      "hardMaxChars": 94
+    },
+    "install.tame.hand_back.failed": {
+      "text": "The home screen was not restored. Nothing was changed.",
+      "sourceHash": "6c9f87a31f1499cbf6a865211a7ee725207affa224f4257af92b067cbeab8118",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 54,
+      "hardMaxChars": 108
+    },
+    "install.tame.hand_back.scope": {
+      "text": "No other app is changed. You can run this more than once.",
+      "sourceHash": "b9cb065b203403ed171a476f9f380cbd0a71dfc58adf14536b66ca4c3cd75d7d",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 57,
+      "hardMaxChars": 114
+    },
+    "install.tame.hand_back.title": {
+      "text": "Restore this panel's own home screen",
+      "sourceHash": "aea932da8de9b14e3d0bd8578a8d6dce0071fe01600cc5ea3369129dbe1f48ab",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 36,
+      "hardMaxChars": 72
+    },
+    "install.tame.hand_back.warning": {
+      "text": "Do this before you remove ha-paneld. Otherwise the panel has no home screen.",
+      "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
+      "surface": "install",
+      "context": "Static panel administration interface copy.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "ha-paneld"
+      ],
+      "softMaxChars": 76,
+      "hardMaxChars": 152
+    },
     "install.tame.locked_empty": {
       "text": "The vendor apps this panel could hide would be listed here.",
       "sourceHash": "f638c4792f18277b2fda27370331e5e442a456222176012a8fedcf1b0cb20b46",

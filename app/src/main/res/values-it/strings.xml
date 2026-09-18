@@ -53,6 +53,7 @@
     <string name="approval_op_devtools_enable">Esponi strumenti per sviluppatori WebView</string>
     <string name="approval_op_remote_media">Riproduci URL multimediale remoto</string>
     <string name="approval_op_package_tame">Modifica stato del pacchetto del produttore</string>
+    <string name="approval_op_home_hand_back">Ripristina la schermata iniziale</string>
     <string name="approval_op_dashboard_reload">Ricarica renderer della dashboard</string>
     <string name="approval_op_device_reboot">Riavvia pannello</string>
     <string name="approval_op_companion_repair">Ripara configurazione Companion</string>

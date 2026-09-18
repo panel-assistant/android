@@ -51,6 +51,7 @@
     <string name="approval_op_devtools_enable">Weergeven WebView ontwikkelaarstools</string>
     <string name="approval_op_remote_media">Speel media op afstand af URL</string>
     <string name="approval_op_package_tame">De status van het leverancierspakket wijzigen</string>
+    <string name="approval_op_home_hand_back">Het startscherm herstellen</string>
     <string name="approval_op_dashboard_reload">Laad de dashboard-renderer opnieuw</string>
     <string name="approval_op_device_reboot">Paneel ‘Opnieuw opstarten’</string>
     <string name="approval_op_companion_repair">Herstel Companion configuratie</string>

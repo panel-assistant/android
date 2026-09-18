@@ -335,6 +335,8 @@ run_provision() {
   APP_LAUNCH_PROBE_SECONDS="${APP_LAUNCH_PROBE_SECONDS:-1}" \
   APP_HEALTH_TIMEOUT_SECONDS="${APP_HEALTH_TIMEOUT_SECONDS:-3}" \
   MOCK_STOPPED_STATE="${MOCK_STOPPED_STATE:-0}" \
+  MOCK_HAND_BACK="${MOCK_HAND_BACK:-ok}" \
+  MOCK_TAME_RECORD="${MOCK_TAME_RECORD:-ok}" \
   MOCK_LAUNCHER_START="${MOCK_LAUNCHER_START:-ok}" \
   MOCK_LAUNCHER_PID_FILE="${MOCK_LAUNCHER_PID_FILE:-}" \
   MOCK_DIRECT_START="${MOCK_DIRECT_START:-ok}" \
@@ -8742,6 +8744,66 @@ for verb in install_system install_systemless install_hybrid rollback_system rol
   fi
 done
 
+
+# ── Handing the home screen back before removing ha-paneld ─────────────────────────────────────────
+# Taming disables the panel's vendor launcher and ha-paneld then holds Android's preferred-HOME entry.
+# Uninstalling from that state leaves the device on FallbackHome with no home screen at all, which reads
+# as a brick and which Android Settings cannot recover from (it refuses to uninstall the preferred Home
+# app). So the ordering below is the contract: the home screen comes back FIRST, and a hand-back that
+# cannot be confirmed refuses the removal outright rather than recreating the failure.
+
+run_provision "$MOCK_TARGET" --uninstall
+assert_success "an uninstall that can hand the home screen back succeeds"
+assert_contains 'the panel has its home screen back' "the uninstall says the home screen came back"
+assert_log_contains '^curl .*api/v1/hand-back-home$' "the uninstall asks the panel to hand its home screen back"
+assert_log_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "the uninstall removes ha-paneld"
+hand_back_line="$(grep -nE '^curl .*api/v1/hand-back-home$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+uninstall_line="$(grep -nE '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$hand_back_line" ] && [ -n "$uninstall_line" ] && [ "$hand_back_line" -lt "$uninstall_line" ]; then
+  pass "the home screen is handed back before ha-paneld is removed"
+else
+  fail_test "the home screen is handed back before ha-paneld is removed"
+fi
+
+# The refusal that matters most. A panel with no other launcher would be stranded by the removal, so the
+# run stops with the app still installed and still serving as Home — an inconvenience, not a brick.
+MOCK_HAND_BACK=no-home run_provision "$MOCK_TARGET" --uninstall
+assert_failure "an uninstall refuses when the panel has no other launcher"
+assert_contains 'could not give its home screen to another launcher' "the refusal says the panel has nowhere to hand the home screen"
+assert_contains 'still this panel.s Home app' "the refusal says ha-paneld is still Home, so the panel still works"
+assert_not_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" "nothing is removed when the home screen cannot be handed back"
+
+MOCK_HAND_BACK=too-old run_provision "$MOCK_TARGET" --uninstall
+assert_failure "an uninstall refuses against a panel too old to hand the home screen back"
+assert_contains 'too old to hand the home screen back' "the refusal names the panel's build as the reason"
+assert_not_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" "an old panel is not removed blind"
+
+MOCK_HAND_BACK=transport-fail run_provision "$MOCK_TARGET" --uninstall
+assert_failure "an uninstall refuses when the hand-back request never landed"
+assert_not_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" "an unanswered hand-back does not proceed to removal"
+
+MOCK_HAND_BACK=approval run_provision "$MOCK_TARGET" --uninstall
+assert_failure "an uninstall refuses while the hand-back is waiting for physical approval"
+assert_contains 'approved on its screen' "the approval refusal says where to approve it"
+assert_not_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" "nothing is removed while approval is pending"
+
+# A partially completed hand-back still moved the HOME role, which is the part that strands a panel. The
+# vendor apps that are still disabled are a retry, not a reason to leave the panel without a home screen.
+MOCK_HAND_BACK=partial run_provision "$MOCK_TARGET" --uninstall
+assert_success "a partial hand-back that still moved the home role allows the removal"
+assert_contains 'still disabled; running this again will retry them' "a partial hand-back says a retry will finish the job"
+assert_log_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "a panel with its home screen back is removed"
+
+# --hand-back-home on its own is the recovery path for someone who wants their launcher back and is NOT
+# removing ha-paneld.
+run_provision "$MOCK_TARGET" --hand-back-home
+assert_success "--hand-back-home succeeds on its own"
+assert_log_contains '^curl .*api/v1/hand-back-home$' "--hand-back-home asks the panel to hand its home screen back"
+assert_not_contains '^adb .* uninstall ' "$MOCK_CALL_LOG" "--hand-back-home never removes anything"
+assert_not_contains 'install -r' "$MOCK_CALL_LOG" "--hand-back-home never installs anything"
+
+# Neither path may reach for an APK: someone handing a panel back its home screen is leaving, not upgrading.
+assert_not_contains 'releases/latest' "$MOCK_CALL_LOG" "--hand-back-home does not resolve a release"
 fi
 [ "$PROVISION_TEST_SCOPE" != shard-host-reclamation ] || finish_provision_test
 

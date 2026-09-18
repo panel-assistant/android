@@ -51,6 +51,7 @@
     <string name="approval_op_devtools_enable">Відображати WebView інструменти для розробників</string>
     <string name="approval_op_remote_media">Відтворити медіафайл на віддаленому пристрої URL</string>
     <string name="approval_op_package_tame">Змінити стан пакета постачальника</string>
+    <string name="approval_op_home_hand_back">Відновити головний екран</string>
     <string name="approval_op_dashboard_reload">Оновити рендерер інформаційної панелі</string>
     <string name="approval_op_device_reboot">Панель перезавантаження</string>
     <string name="approval_op_companion_repair">Виправлення Companion конфігурація</string>

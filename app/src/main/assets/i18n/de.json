@@ -12197,6 +12197,41 @@
       "text": "MQTT-Einstellungen gespeichert — Broker-Verbindung wird geprüft. Dies kann nach dem Speichern einen Moment dauern.",
       "sourceHash": "da508a88ecafb04836ca28a2c351d7f5dfb5864cdad65f7d8fbce4f59e9eb82b",
       "state": "machine-cross-checked"
+    },
+    "install.tame.hand_back.action": {
+      "text": "Startseite wiederherstellen",
+      "sourceHash": "2009690e210a7c546d780f1ed3f4eea8c67399962047667d76cbaf5f4b96f559",
+      "state": "machine-draft"
+    },
+    "install.tame.hand_back.description": {
+      "text": "Dadurch werden die Hersteller-Apps auf diesem Panel wieder aktiviert.",
+      "sourceHash": "e27d15826d370f6cfd6bc1466f8e32e4d3ad4cba7c9cb667272e159113943990",
+      "state": "machine-draft"
+    },
+    "install.tame.hand_back.done": {
+      "text": "Fertig. Dieses Panel hat wieder einen eigenen Startbildschirm.",
+      "sourceHash": "362b1c0da01d39ea0820b7492fbb8e590d4b2e0577e99bd193c2a5e83135ccb7",
+      "state": "machine-draft"
+    },
+    "install.tame.hand_back.failed": {
+      "text": "Der Startbildschirm wurde nicht wiederhergestellt. Es wurde nichts geändert.",
+      "sourceHash": "6c9f87a31f1499cbf6a865211a7ee725207affa224f4257af92b067cbeab8118",
+      "state": "machine-draft"
+    },
+    "install.tame.hand_back.scope": {
+      "text": "Keine andere App wird verändert. Du kannst dies mehrmals ausführen.",
+      "sourceHash": "b9cb065b203403ed171a476f9f380cbd0a71dfc58adf14536b66ca4c3cd75d7d",
+      "state": "machine-draft"
+    },
+    "install.tame.hand_back.title": {
+      "text": "Startbildschirm dieses Panels wiederherstellen",
+      "sourceHash": "aea932da8de9b14e3d0bd8578a8d6dce0071fe01600cc5ea3369129dbe1f48ab",
+      "state": "machine-draft"
+    },
+    "install.tame.hand_back.warning": {
+      "text": "Führe dies aus, bevor du „ha-paneld“ entfernst. Sonst hat das Panel keinen Startbildschirm.",
+      "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
+      "state": "machine-draft"
     }
   }
 }

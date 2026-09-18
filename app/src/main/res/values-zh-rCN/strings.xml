@@ -53,6 +53,7 @@
     <string name="approval_op_devtools_enable">开放 WebView 开发者工具</string>
     <string name="approval_op_remote_media">播放远程媒体 URL</string>
     <string name="approval_op_package_tame">更改供应商软件包状态</string>
+    <string name="approval_op_home_hand_back">恢复主屏幕</string>
     <string name="approval_op_dashboard_reload">重新加载仪表盘渲染器</string>
     <string name="approval_op_device_reboot">重启面板</string>
     <string name="approval_op_companion_repair">修复 Companion 配置</string>

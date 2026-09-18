@@ -1662,7 +1662,9 @@ wait_for_handback_health() {
 # the uninstall rather than proceeding and recreating exactly the failure this exists to prevent.
 hand_back_home() {
   local response http_status resp
-  require_healthy_agent "hand the home screen back"
+  # The health gate is wait_for_handback_health, called by the dispatch before this runs. It cannot be
+  # require_healthy_agent: these paths run before the install flow, and that helper is defined further down
+  # the script than they are, so calling it here is a "command not found" at the worst possible moment.
   step "🏠 handing back" "${D}re-enabling the vendor apps ha-paneld disabled${X}"
   response="$(curl -s --connect-timeout "$PANEL_POST_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$PANEL_POST_TIMEOUT_SECONDS" -X POST -w '\n%{http_code}' \
@@ -1681,6 +1683,30 @@ hand_back_home() {
       fail "the panel did not complete handing the home screen back" "$resp" \
         "Nothing was removed." "Re-run the same command once the panel reports it is healthy."
       ;;
+    409)
+      # The panel ran the request and refused it. Each code is a different thing for the user to fix, and
+      # the one that matters most is "there is no other launcher" — removing ha-paneld there is exactly
+      # what would strand the panel.
+      case "$resp" in
+        *no-replacement-home*)
+          fail "the panel could not give its home screen to another launcher" \
+            "There is no other home-screen app installed, so ha-paneld is the only thing this panel can show." \
+            "Nothing was removed: ha-paneld is still this panel's Home app, so the panel still works." \
+            "Install a launcher, or re-enable the vendor one, and run this again before removing ha-paneld."
+          ;;
+        *ownership-unreadable*)
+          fail "the panel could not read its own record of what it switched off" \
+            "$resp" \
+            "Nothing was removed and nothing was re-enabled." \
+            "Restart the panel and run this again; if it persists, re-enable the vendor apps by hand with: adb -s $TARGET shell pm enable <pkg>"
+          ;;
+        *)
+          fail "the panel refused to hand its home screen back" "$resp" \
+            "Nothing was removed and the panel is unchanged." \
+            "Check $URL in a browser, then re-run the same command."
+          ;;
+      esac
+      ;;
     404|308)
       fail "this ha-paneld is too old to hand the home screen back" \
         "The panel is running a build without the hand-back route, so it cannot re-enable the vendor apps it disabled." \
@@ -1696,7 +1722,7 @@ hand_back_home() {
   case "$resp" in
     *'"home_handed_to"'*) ;;
     *)
-      fail "the panel could not give its home screen to another launcher" "$resp" \
+      fail "the panel did not confirm another launcher took the home screen" "$resp" \
         "Nothing was removed: ha-paneld is still this panel's Home app, so the panel still has a working screen." \
         "Install a launcher (or re-enable the vendor one) and re-run, rather than removing ha-paneld now."
       ;;
