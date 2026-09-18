@@ -1,6 +1,6 @@
 # Releasing ha-paneld
 
-A release is cut by pushing a `vX.Y.Z` tag; the [Release workflow](../.github/workflows/release.yml) then verifies the already-green exact source, builds, signs and publishes the APK and both supported root-helper binaries, taking the human-readable notes from the matching `docs/CHANGELOG.md` section. Run this checklist **before** tagging.
+A release is cut by pushing a `vX.Y.Z` tag; the [Release workflow](../.github/workflows/release.yml) then verifies the already-green exact source, builds, signs and publishes both application APKs and both supported root-helper binaries, taking the human-readable notes from the matching `docs/CHANGELOG.md` section. Run this checklist **before** tagging.
 
 > [!IMPORTANT]
 > **Releases are contenders until approved.** Pushing a tag starts the public Release workflow and publishes the resulting GitHub release if its gates pass, so prepare and verify a release *before* tagging and **tag only on explicit approval**. Pushing dev commits to `main` is fine; the **tag push is the gate**. Don't eager-tag and then force-move the tag to absorb late fixes — fold late changes into the still-untagged contender instead. (Force-moving a published tag rewrites a release others may have pulled.)
@@ -87,4 +87,5 @@ Re-run all four inventory commands afterwards and confirm that no `vX.Y.Z-rcN` R
 
 - Follow stable releases with `scripts/update-fleet.sh --latest -- <ip> <ip> …`, or the newest published release including release candidates with `scripts/update-fleet.sh --prerelease -- <ip> <ip> …` (both install **and** launch each panel — a bare `adb install -r` loop leaves them installed-but-dead).
 - Confirm the release contains both `ha-paneld-helper-<tag>-armeabi-v7a` and `ha-paneld-helper-<tag>-arm64-v8a`, with a `.sha256` and `.sha256.sig` beside each. The provisioner fails closed before APK replacement if the selected helper or proof is absent.
+- Confirm the release contains both APKs: `ha-paneld-<tag>-manual-setup-required.apk` and `panel-assistant-<tag>-manual-setup-required.apk`, and that the first one is listed first. A panel running an earlier version resolves its update by taking the first `.apk` asset of the release, so the order is load-bearing rather than cosmetic. The workflow asserts this against the published release and fails the run if it does not hold. Note that the release is already public by then, so if that step fails, delete the release object and its tag immediately: panels poll the release and will act on whatever is there.
 - Confirm panels report the new version and reappear in HA.

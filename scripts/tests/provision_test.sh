@@ -144,7 +144,7 @@ case "${MOCK_DB_TXN:-ok}" in
   source_not_regular|source_directory)
   case "$*" in
     *'sh /data/local/tmp/.hapaneld-db-txn.'*-script*)
-      source_db="$PROVISION_TEST_STATE_DIR/db-txn-sandbox/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db"
+      source_db="$PROVISION_TEST_STATE_DIR/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db"
       if [ -f "$source_db" ] && [ ! -L "$source_db" ]; then
         rm -f "$source_db"
         if [ "${MOCK_DB_TXN:-ok}" = source_directory ]; then
@@ -416,7 +416,7 @@ run_provision() {
   MOCK_INSTALLED_CERT="${MOCK_INSTALLED_CERT:-${MOCK_RELEASE_CERT:-ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339}}" \
   MOCK_INSTALLED_APK_VERIFY_FAIL="${MOCK_INSTALLED_APK_VERIFY_FAIL:-0}" \
   MOCK_ADDITIONAL_INSTALLED_CERT="${MOCK_ADDITIONAL_INSTALLED_CERT:-}" \
-  MOCK_RELEASE_PACKAGE="${MOCK_RELEASE_PACKAGE:-io.github.maxlyth.hapaneld}" \
+  MOCK_RELEASE_PACKAGE="${MOCK_RELEASE_PACKAGE:-io.panelassistant.android}" \
   MOCK_RELEASE_VERIFY_FAIL="${MOCK_RELEASE_VERIFY_FAIL:-0}" \
   MOCK_RELEASE_PROOF_DOWNLOAD="${MOCK_RELEASE_PROOF_DOWNLOAD:-ok}" \
   MOCK_RELEASE_CHECKSUM="${MOCK_RELEASE_CHECKSUM:-ok}" \
@@ -652,9 +652,9 @@ APK="$TMP/ha-paneld.apk"
 make_local_apk "$APK" \
   "$MOCK_HELPER_DIST/armeabi-v7a/hapaneld-helper" \
   "$MOCK_HELPER_DIST/arm64-v8a/hapaneld-helper"
-RELEASE_APK="$TMP/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"
+RELEASE_APK="$TMP/panel-assistant-v0.9.2-rc3-manual-setup-required.apk"
 printf 'test release apk\n' > "$RELEASE_APK"
-HELPER_RELEASE_APK="$TMP/ha-paneld-v0.9.4-rc1-manual-setup-required.apk"
+HELPER_RELEASE_APK="$TMP/panel-assistant-v0.9.4-rc1-manual-setup-required.apk"
 printf 'test helper release apk\n' > "$HELPER_RELEASE_APK"
 NO_SIGNER_FIXTURES="$TMP/fixtures-without-apksigner"
 mkdir -p "$NO_SIGNER_FIXTURES"
@@ -806,7 +806,7 @@ while IFS=$'\t' read -r vector_id vector_contract vector_owner vector_primary ve
     REFUSE)
       assert_failure "database vector $vector_id is refused"
       assert_contains 'database compatibility could not be proven' "database vector $vector_id fails at HOST_GATE"
-      assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+      assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
         "$MOCK_CALL_LOG" "database vector $vector_id refuses before every tracked mutation"
       ;;
     *) fail_test "database vector $vector_id has an unsupported verdict" ;;
@@ -829,7 +829,7 @@ for vector_bypass in --force --reset-config; do
   MOCK_HOST_DB_PRIMARY='readable:15:ok' MOCK_HOST_DB_RECOVERY=none \
   HAPANELD_RESET_CONFIRM=RESET run_provision "$MOCK_TARGET" --apk "$APK" --no-tame "$vector_bypass"
   assert_failure "$vector_bypass cannot bypass database refusal"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "$vector_bypass refusal has zero tracked mutations"
 done
 unset vector_bypass
@@ -864,7 +864,7 @@ if [ -f "$TMP/reset-database-recreated" ]; then
 else
   fail_test "rootless reset race deterministically recreates app-private database state"
 fi
-assert_not_contains '^adb .* install( |$)|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "rootless reset race refuses before ha-paneld APK, grants or configuration mutation"
 
 # A later force-stop cannot erase the historical notLaunched=false evidence. Refuse even when the
@@ -876,7 +876,7 @@ HAPANELD_RESET_CONFIRM=RESET run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "rootless reset refuses a relaunched package that was stopped again"
 assert_contains 'package-time recheck.*reset package ran again after pm clear' \
   "rootless reset binds Android notLaunched evidence, not only current stopped state"
-assert_not_contains '^adb .* install( |$)|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "restopped rootless reset race refuses before ha-paneld mutation"
 
 for invalid_candidate_contract in \
@@ -886,7 +886,7 @@ for invalid_candidate_contract in \
   MOCK_DB_CANDIDATE_CONTRACT="$invalid_candidate_contract" \
   MOCK_HOST_DB_PRIMARY='readable:14:ok' run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_failure "non-canonical candidate contract $invalid_candidate_contract is refused"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "non-canonical candidate contract refusal has zero tracked mutations"
 done
 unset invalid_candidate_contract
@@ -902,7 +902,7 @@ MOCK_SWAP_APK_AFTER_CONTRACT=1 MOCK_HOST_DB_PRIMARY='readable:14:ok' \
   run_provision "$MOCK_TARGET" --apk "$SWAP_APK" --no-tame
 assert_failure "candidate byte replacement after authentication is refused"
 assert_contains 'candidate APK bytes changed after authentication' "candidate byte replacement names the exact binding failure"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "candidate byte replacement refuses before every tracked mutation"
 
 AAPT2_ONLY_FIXTURES="$TMP/fixtures-aapt2-only"
@@ -930,7 +930,7 @@ for metadata_scope_mode in component duplicate_application; do
   assert_failure "$metadata_scope_mode database metadata is refused"
   assert_contains 'missing, duplicate or malformed database metadata' "$metadata_scope_mode refusal names candidate metadata"
   assert_contains 'Candidate boundary: ' "$metadata_scope_mode refusal keeps the candidate-boundary advice"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "$metadata_scope_mode refusal has zero tracked mutations"
 done
 unset metadata_scope_mode aapt2_fixture
@@ -941,7 +941,7 @@ MOCK_HOST_DB_INVENTORY=unreadable \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "rooted fresh install refuses when the app-data inventory is unreadable"
 assert_contains 'app-data database inventory could not be traversed' "rooted inventory denial names the missing fresh proof"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "rooted inventory denial has zero tracked mutations"
 
 for retained_fresh_artifact in primary-journal restore-temp malformed-recovery; do
@@ -950,7 +950,7 @@ for retained_fresh_artifact in primary-journal restore-temp malformed-recovery; 
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_failure "rooted package absence with $retained_fresh_artifact is not classified fresh"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rooted retained $retained_fresh_artifact refusal has zero tracked mutations"
 done
 unset retained_fresh_artifact
@@ -961,7 +961,7 @@ MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
 assert_failure "premigration recovery with a SQLite sidecar cannot license replacement"
 assert_contains 'premigration recovery has a SQLite sidecar or temporary file' \
   "recovery-sidecar refusal names the incoherent artifact"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "recovery-sidecar refusal has zero tracked mutations"
 
 MOCK_HOST_DB_PRIMARY='readable:15:ok' MOCK_HOST_DB_RECOVERY='v14:readable:14:ok' \
@@ -971,7 +971,7 @@ MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
 assert_failure "present-package recovery refuses when the complete recovery inventory is unreadable"
 assert_contains 'complete premigration recovery inventory could not be traversed' \
   "unreadable recovery inventory names the missing proof"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "unreadable recovery inventory refuses before every tracked mutation"
 
 MOCK_HOST_DB_PRIMARY='readable:14:ok' MOCK_HOST_DB_INVENTORY=unreadable \
@@ -990,7 +990,7 @@ assert_contains 'consume-time recheck.*database schema 15 is newer than candidat
   "database drift names the consume-time authority and incompatible observed schema"
 assert_log_contains 'PREPARE_UPGRADE|ha-paneld-db-txn' \
   "database drift fixture reaches the intervening backup boundary"
-assert_not_contains '/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "database drift refuses before reset, helper, APK, grant or configuration mutation"
 
 MOCK_HOST_DB_PRIMARY='readable:15:ok' MOCK_HOST_DB_RECOVERY='v14:readable:14:ok' \
@@ -1000,7 +1000,7 @@ MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
 assert_failure "selected recovery removal after backup is refused at consume time"
 assert_contains 'consume-time recheck.*no selectable premigration recovery exists' \
   "recovery removal names the consume-time authority"
-assert_not_contains '/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "recovery drift refuses before reset, helper, APK, grant or configuration mutation"
 
 # A third observation is adjacent to ha-paneld package replacement. It closes the helper/Shizuku
@@ -1015,7 +1015,7 @@ assert_log_contains 'helper-transaction-[0-9a-f]+.*install-system' \
   "late drift fixture reaches task-owned helper preparation"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
   "package-time refusal rolls back task-owned helper preparation"
-assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "late schema drift refuses before ha-paneld APK, grants or configuration mutation"
 
 MOCK_HOST_DB_PRIMARY='readable:15:ok' MOCK_HOST_DB_RECOVERY='v14:readable:14:ok' \
@@ -1028,7 +1028,7 @@ assert_contains 'package-time recheck.*package, database or recovery inventory c
   "late recovery content drift names the exact package-time evidence mismatch"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
   "late recovery drift rolls back task-owned helper preparation"
-assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "late recovery drift refuses before ha-paneld APK, grants or configuration mutation"
 
 MOCK_HOST_DB_PRIMARY='readable:14:ok' MOCK_SWAP_APK_AFTER_CONTRACT_OBSERVATION=3 \
@@ -1039,7 +1039,7 @@ assert_contains 'package-time recheck.*candidate APK bytes changed after authent
   "late candidate drift names the package-time byte binding"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
   "late candidate drift rolls back task-owned helper preparation"
-assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "late candidate drift refuses before ha-paneld APK, grants or configuration mutation"
 
 # The last candidate assertion runs after install_apk renews the helper lease. Replacing the path in
@@ -1056,7 +1056,7 @@ assert_contains 'package-time recheck.*candidate APK bytes changed after authent
   "post-gate candidate drift retains package-time refusal ownership"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
   "post-gate candidate drift rolls back task-owned helper preparation"
-assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "post-gate candidate drift refuses before adb install, grants or configuration mutation"
 
 for late_recovery_state in none 'v14:sidecar' 'v13:readable:13:ok'; do
@@ -1068,7 +1068,7 @@ for late_recovery_state in none 'v14:sidecar' 'v13:readable:13:ok'; do
   assert_contains 'package-time recheck' "late selected recovery $late_recovery_state reaches package-time refusal"
   assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
     "late selected recovery $late_recovery_state rolls back task-owned helper preparation"
-  assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "late selected recovery $late_recovery_state refuses before ha-paneld mutation"
 done
 unset late_recovery_state
@@ -1093,7 +1093,7 @@ assert_failure "fresh-install ownership changing to present before package repla
 assert_contains 'package-time recheck' "late package ownership change reaches package-time refusal"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
   "late package ownership change rolls back task-owned helper preparation"
-assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.github\.maxlyth\.hapaneld|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "late package ownership change refuses before ha-paneld mutation"
 
 MOCK_INSTALLED_CERT=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff \
@@ -1107,13 +1107,13 @@ assert_contains 'the new APK is signed by a different key than the ha-paneld alr
 assert_contains 'Installed app signer: f{64}' "the signer refusal shows the installed signer"
 assert_contains 'New APK signer: +ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339' \
   "the signer refusal shows the candidate signer"
-assert_contains "uninstall io\\.github\\.maxlyth\\.hapaneld +\\(removes the app AND its on-panel config\\)" \
+assert_contains "uninstall io\\.panelassistant\\.android +\\(removes the app AND its on-panel config\\)" \
   "the signer refusal gives the signer-change recovery steps"
 assert_contains 'No settings backup, database quiescence, reset, helper, Shizuku, APK, permission or configuration mutation was started' \
   "the signer refusal states that nothing was changed"
 assert_not_contains 'database compatibility could not be proven|Candidate boundary|Use a candidate that supports' "$LAST_OUTPUT" \
   "a signer mismatch is not reported as a database or candidate-boundary verdict"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "incumbent signer mismatch has zero tracked mutations"
 
 # The same refusal at the package-time recheck, after the helper transaction has been prepared: it
@@ -1132,12 +1132,12 @@ assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "the late signer cha
 
 # Android's own rejection of a signer change gives the same recovery steps as the refusal above.
 MOCK_APK_INSTALL=fail \
-  MOCK_APK_INSTALL_OUTPUT='Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package io.github.maxlyth.hapaneld signatures do not match newer version; ignoring!]' \
+  MOCK_APK_INSTALL_OUTPUT='Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package io.panelassistant.android signatures do not match newer version; ignoring!]' \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
   MOCK_HOST_DB_PRIMARY='readable:14:ok' run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "Android's signer-change rejection fails the run"
 assert_contains 'install failed: signature mismatch' "Android's signer-change rejection keeps its headline"
-assert_contains "uninstall io\\.github\\.maxlyth\\.hapaneld +\\(removes the app AND its on-panel config\\)" \
+assert_contains "uninstall io\\.panelassistant\\.android +\\(removes the app AND its on-panel config\\)" \
   "Android's signer-change rejection gives the shared recovery steps"
 
 MOCK_INSTALLED_APK_VERIFY_FAIL=1 \
@@ -1151,7 +1151,7 @@ assert_not_contains 'Candidate boundary|Use a candidate that supports' "$LAST_OU
   "a refusal before the manifest is read makes no claim about the candidate boundary"
 assert_contains 'nothing about its database support was judged' \
   "a refusal before the manifest is read says the candidate's database support was not judged"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "unreadable incumbent signer has zero tracked mutations"
 
 fi
@@ -1171,7 +1171,7 @@ MOCK_ROOT=0 MOCK_STATUS_DB_SCHEMA=15 MOCK_STATUS_DB_QUICK_CHECK=ok \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "rootless too-new database refuses without inspectable recovery"
-assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "rootless refusal has zero tracked mutations"
 
 for rootless_nonce_mode in missing wrong malformed duplicate; do
@@ -1180,7 +1180,7 @@ for rootless_nonce_mode in missing wrong malformed duplicate; do
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_failure "rootless $rootless_nonce_mode observation nonce is refused"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $rootless_nonce_mode nonce refusal has zero tracked mutations"
 done
 unset rootless_nonce_mode
@@ -1191,7 +1191,7 @@ for rootless_field_mode in duplicate_schema duplicate_quick; do
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_failure "rootless $rootless_field_mode observation is refused"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $rootless_field_mode refusal has zero tracked mutations"
 done
 unset rootless_field_mode
@@ -1200,7 +1200,7 @@ MOCK_ROOT=0 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_PM_PATH=fail MOCK_PM_UNINSTALLED_RE
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "rootless package absence plus empty -u record is a proven fresh install"
-assert_log_contains 'pm list packages -u io\.github\.maxlyth\.hapaneld' \
+assert_log_contains 'pm list packages -u io\.panelassistant\.android' \
   "rootless fresh proof checks uninstalled retained-data records"
 
 for uninstalled_record_mode in retained malformed fail; do
@@ -1209,7 +1209,7 @@ for uninstalled_record_mode in retained malformed fail; do
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_failure "rootless $uninstalled_record_mode uninstalled-data observation is refused"
-  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.github\.maxlyth\.hapaneld|am start -n io\.github\.maxlyth\.hapaneld|/api/v1/config($|[? /])' \
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $uninstalled_record_mode retained-data refusal has zero tracked mutations"
 done
 unset uninstalled_record_mode
@@ -1234,14 +1234,14 @@ unset SERVER_SOURCE
 DB_OBSERVER_SOURCE="$TMP/database-compat-observer.sh"
 sed -n '/# HAPANELD_DB_COMPAT_OBSERVER_BEGIN/,/# HAPANELD_DB_COMPAT_OBSERVER_END/p' "$PROVISION" > "$DB_OBSERVER_SOURCE"
 chmod 700 "$DB_OBSERVER_SOURCE"
-DB_OBSERVER_DIR="$TMP/database-compat-observer/data/data/io.github.maxlyth.hapaneld/databases"
+DB_OBSERVER_DIR="$TMP/database-compat-observer/data/data/io.panelassistant.android/databases"
 mkdir -p "$DB_OBSERVER_DIR"
 DB_OBSERVER_DB="$DB_OBSERVER_DIR/ha-paneld.db"
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB" 'PRAGMA user_version=15; CREATE TABLE canary(value TEXT); INSERT INTO canary VALUES("primary");'
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v13.premigrate" 'PRAGMA user_version=13; CREATE TABLE canary(value TEXT);'
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v14.premigrate" 'PRAGMA user_version=14; CREATE TABLE canary(value TEXT);'
 DB_OBSERVER_RUN="$TMP/database-compat-observer-run.sh"
-sed -e "s|^db=/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db$|db=$DB_OBSERVER_DB|" \
+sed -e "s|^db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db$|db=$DB_OBSERVER_DB|" \
     -e "s|^observer_tmp=@OBSERVER_STAGE@$|observer_tmp=$DB_OBSERVER_DIR/.observer.fixture|" \
     -e 's/^minimum=@MINIMUM@$/minimum=11/' -e 's/^maximum=@MAXIMUM@$/maximum=14/' \
     -e 's/^primary_mode=@PRIMARY_MODE@$/primary_mode=stable/' \
@@ -1456,7 +1456,7 @@ MOCK_INSTALLER_RELEASE_API=authenticated MOCK_STATE_DIR="$TMP" \
 LAST_STATUS=$?
 assert_failure "checkout-free installer blocks an authenticated but guardless provisioner on an existing panel"
 assert_contains 'historical script has no database-compatibility gate' "checkout-free existing-panel refusal names the missing gate"
-assert_not_contains 'ha-paneld-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" \
   "checkout-free refusal happens before downloading or executing replacement APK bytes"
 
 : > "$MOCK_CALL_LOG"
@@ -1467,7 +1467,7 @@ MOCK_INSTALLER_RELEASE_API=authenticated MOCK_NO_INSTALLED_PACKAGE=1 MOCK_PM_PAT
 LAST_STATUS=$?
 assert_contains 'eligible only because Android.*proved this is a fresh install' \
   "checkout-free installer preserves the proven-fresh legacy install route"
-assert_log_contains 'ha-paneld-v0\.9\.3-manual-setup-required\.apk' \
+assert_log_contains 'panel-assistant-v0\.9\.3-manual-setup-required\.apk' \
   "proven-fresh checkout-free install proceeds to the exact APK"
 
 : > "$MOCK_CALL_LOG"
@@ -1480,7 +1480,7 @@ LAST_STATUS=$?
 assert_failure "checkout-free installer refuses a guardless provisioner with an uninstalled retained-data record"
 assert_contains 'retains an uninstalled ha-paneld package/data record' \
   "checkout-free retained-data refusal names why the install is not fresh"
-assert_not_contains 'ha-paneld-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" \
   "checkout-free retained-data refusal precedes replacement APK download"
 if grep -Fq 'bash "$PROVISION" "$t" "${PARGS[@]}" --force' "$UPDATE_FLEET"; then
   pass "fleet workers delegate forced replacements to the guarded provisioner"
@@ -1527,7 +1527,7 @@ assert_success "export-only succeeds"
 if [ -s "$EXPORT" ]; then pass "export-only writes a non-empty bundle"; else fail_test "export-only writes a non-empty bundle"; fi
 if [ "$(stat -c '%a' "$EXPORT")" = 600 ]; then pass "secret export is owner-readable only"; else fail_test "secret export is owner-readable only"; fi
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "export-only never installs an APK"
-assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am start|monkey -p io\.github\.maxlyth\.hapaneld))|^curl .* (-X POST|--data|--data-urlencode)' "$MOCK_CALL_LOG" "export-only performs no panel mutation"
+assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am start|monkey -p io\.panelassistant\.android))|^curl .* (-X POST|--data|--data-urlencode)' "$MOCK_CALL_LOG" "export-only performs no panel mutation"
 
 FAILED_EXPORT="$TMP/failed-backup.json"
 MOCK_EXPORT=fail run_provision "$MOCK_TARGET" --export "$FAILED_EXPORT" --apk "$APK"
@@ -1642,7 +1642,7 @@ assert_log_contains '^curl .* /api/v1/config/schema$|^curl .*http://panel\.test:
 assert_log_contains '^curl .* /api/v1/power-safety/state$|^curl .*http://panel\.test:8888/api/v1/power-safety/state$' "verify-only reads the one-token app-owned power state"
 assert_log_contains '^curl .* /api/v1/provisioning/plan\.txt$|^curl .*http://panel\.test:8888/api/v1/provisioning/plan\.txt$' "verify-only reads the provisioning plan"
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "verify-only never installs an APK"
-assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am start|monkey -p io\.github\.maxlyth\.hapaneld))|^curl .* (-X POST|--data|--data-urlencode)' "$MOCK_CALL_LOG" "verify-only performs no panel mutation"
+assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am start|monkey -p io\.panelassistant\.android))|^curl .* (-X POST|--data|--data-urlencode)' "$MOCK_CALL_LOG" "verify-only performs no panel mutation"
 
 assert_count "$(grep -c -- '--max-time 5 .*/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "a ready Configuration schema is read once within a five-second request"
 
@@ -1835,13 +1835,13 @@ HAPANELD_RESET_CONFIRM=RESET MOCK_STORAGE_HEALTH=critical \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config
 assert_success "critical storage does not impose a backup gate on a confirmed reset"
 assert_contains 'requested reset will intentionally erase ha-paneld state if confirmed' "critical storage explains why reset may proceed"
-assert_log_contains '^adb .* pm clear io.github.maxlyth.hapaneld$' "critical storage still reaches the confirmed exact-package reset"
+assert_log_contains '^adb .* pm clear io.panelassistant.android$' "critical storage still reaches the confirmed exact-package reset"
 
 HAPANELD_RESET_CONFIRM=RESET MOCK_STORAGE_HEALTH=database_failure \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config
 assert_success "database failure does not impose a backup gate on a confirmed reset"
 assert_contains 'requested reset will intentionally discard the unhealthy database if confirmed' "database failure explains why reset may proceed"
-assert_log_contains '^adb .* pm clear io.github.maxlyth.hapaneld$' "database failure still reaches the confirmed exact-package reset"
+assert_log_contains '^adb .* pm clear io.panelassistant.android$' "database failure still reaches the confirmed exact-package reset"
 
 # A panel whose health cannot be read or understood is a candidate for replacement, not a panel to
 # refuse. Standalone verification above still reports both states as failures.
@@ -2090,7 +2090,7 @@ assert_contains 'inspecting version.*installed ha-paneld package' "install repor
 assert_contains 'inspecting access.*root route.*helper compatibility' "install reports privilege and helper inspection"
 assert_contains 'Detected panel: Test Panel' "successful install identifies the resolved panel profile"
 assert_not_contains '/api/v1/tame' "$MOCK_CALL_LOG" "ordinary install never auto-applies profile recommendations"
-start_line="$(grep -nE '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+start_line="$(grep -nE '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 plan_line="$(grep -nE '^curl .*api/v1/provisioning/plan\.txt' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$start_line" ] && [ -n "$plan_line" ] && [ "$start_line" -lt "$plan_line" ]; then
   pass "profile guidance is read only after the newly installed app is launched"
@@ -2103,10 +2103,10 @@ fi
 # health plus the ordinary post-install verification must then become reachable.
 MOCK_STOPPED_STATE=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "normal package launcher clears the post-install stopped state"
-assert_log_contains '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "stopped-state recovery uses Android's normal launcher route"
-assert_not_contains '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' "$MOCK_CALL_LOG" "successful launcher recovery does not bypass the normal package route"
+assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "stopped-state recovery uses Android's normal launcher route"
+assert_not_contains '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "$MOCK_CALL_LOG" "successful launcher recovery does not bypass the normal package route"
 install_line="$(grep -nE '^adb .* install -r -g .*ha-paneld\.apk$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-launcher_line="$(grep -nE '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+launcher_line="$(grep -nE '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 plan_line="$(grep -nE '^curl .*api/v1/provisioning/plan\.txt' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$install_line" ] && [ -n "$launcher_line" ] && [ -n "$plan_line" ] && \
    [ "$install_line" -lt "$launcher_line" ] && [ "$launcher_line" -lt "$plan_line" ]; then
@@ -2119,8 +2119,8 @@ fi
 # unavailable and force the distinct direct route, whose successful start makes health reachable.
 MOCK_STOPPED_STATE=1 MOCK_LAUNCHER_START=ineffective run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "ineffective zero-exit launcher advances to direct stopped-state recovery"
-assert_log_contains '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "zero-exit recovery tries the normal launcher first"
-assert_log_contains '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' "unhealthy zero-exit launcher advances to the direct route"
+assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "zero-exit recovery tries the normal launcher first"
+assert_log_contains '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "unhealthy zero-exit launcher advances to the direct route"
 if [ ! -e "$TMP/package-stopped" ]; then pass "direct fallback actually clears stopped state after an ineffective launcher"
 else fail_test "direct fallback actually clears stopped state after an ineffective launcher"; fi
 
@@ -2128,7 +2128,7 @@ else fail_test "direct fallback actually clears stopped state after an ineffecti
 # command was invoked. Health and the fixture's stopped-state authority both have to converge.
 MOCK_STOPPED_STATE=1 MOCK_LAUNCHER_START=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "launcher failure while stopped recovers through the direct route"
-assert_log_contains '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' "launcher command failure invokes the direct component fallback"
+assert_log_contains '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "launcher command failure invokes the direct component fallback"
 if [ ! -e "$TMP/package-stopped" ]; then pass "direct fallback actually clears stopped state after launcher failure"
 else fail_test "direct fallback actually clears stopped state after launcher failure"; fi
 
@@ -2138,7 +2138,7 @@ LAUNCHER_PID_FILE="$TMP/blocked-launcher.pid"
 MOCK_STOPPED_STATE=1 MOCK_LAUNCHER_START=block MOCK_LAUNCHER_PID_FILE="$LAUNCHER_PID_FILE" \
   APP_LAUNCH_COMMAND_TIMEOUT_SECONDS=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "blocked launcher reaches its host deadline and recovers through direct start"
-assert_log_contains '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' "launcher deadline advances to the direct route"
+assert_log_contains '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "launcher deadline advances to the direct route"
 blocked_launcher_pid="$(cat "$LAUNCHER_PID_FILE" 2>/dev/null || true)"
 # The deadline fires and the reap follows, but the two are not the same instant: on a loaded
 # host the process can still be present for a moment after provisioning has moved on. Give it
@@ -2926,8 +2926,8 @@ MOCK_APK_INSTALL=ambiguous_commit \
   run_provision "$MOCK_TARGET" --apk "$HELPER_RELEASE_APK" --release-tag v0.9.4-rc1 --no-tame
 assert_success "transport loss after package-manager commit is reconciled from exact installed APK bytes"
 assert_contains 'exact target APK bytes are installed; completing the helper transaction' "ambiguous install success explains the exact-byte reconciliation"
-assert_log_contains '^adb .* shell pm path io\.github\.maxlyth\.hapaneld$' "ambiguous install outcome queries the installed package path"
-assert_log_contains '^adb .* pull /data/app/io\.github\.maxlyth\.hapaneld/base\.apk ' "ambiguous install outcome authenticates the installed base APK"
+assert_log_contains '^adb .* shell pm path io\.panelassistant\.android$' "ambiguous install outcome queries the installed package path"
+assert_log_contains '^adb .* pull /data/app/io\.panelassistant\.android/base\.apk ' "ambiguous install outcome authenticates the installed base APK"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*commit-system' "confirmed package-manager commit also commits helper recovery"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*rollback-system' "$MOCK_CALL_LOG" "confirmed package-manager commit never rolls the matching helper back"
 if [ "$(grep -Ec '^adb .* install( |$)' "$MOCK_CALL_LOG")" -eq 1 ]; then
@@ -3071,7 +3071,7 @@ MOCK_STALE_APK_SHA256="$helper_release_apk_sha" \
   run_provision "$MOCK_TARGET" --apk "$HELPER_RELEASE_APK" --release-tag v0.9.4-rc1 --no-tame
 assert_success "rerun commits a stale helper journal when the exact target APK is already installed"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*status-system' "stale transaction reads its durable target identity"
-assert_log_contains '^adb .* pull /data/app/io\.github\.maxlyth\.hapaneld/base\.apk ' "stale transaction authenticates the installed APK bytes"
+assert_log_contains '^adb .* pull /data/app/io\.panelassistant\.android/base\.apk ' "stale transaction authenticates the installed APK bytes"
 assert_log_contains 'helper-probe COMPANIONCAPS' "stale committed transaction rechecks the privileged protocol"
 assert_log_contains 'helper-probe BUILDID' "stale committed transaction rechecks the recorded helper build"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*commit-system' "stale committed transaction discards obsolete recovery"
@@ -3316,14 +3316,14 @@ run_provision "$MOCK_TARGET" --apk "$RELEASE_APK" --release-tag v0.9.2-rc3 --no-
 assert_success "release APK with the pinned signer and package is accepted"
 assert_contains 'authenticated.*v0\.9\.2-rc3' "release verification reports the signed checksum authentication"
 assert_contains 'verified.*v0\.9\.2-rc3' "release verification reports the authenticated tag"
-assert_log_contains '^curl .*https://github\.com/maxlyth/ha-paneld/releases/download/v0\.9\.2-rc3/ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk\.sha256 -o ' "release verification downloads the canonical checksum asset"
-assert_log_contains '^curl .*https://github\.com/maxlyth/ha-paneld/releases/download/v0\.9\.2-rc3/ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk\.sha256\.sig -o ' "release verification downloads the canonical detached signature"
+assert_log_contains '^curl .*https://github\.com/panel-assistant/android/releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk\.sha256 -o ' "release verification downloads the canonical checksum asset"
+assert_log_contains '^curl .*https://github\.com/panel-assistant/android/releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk\.sha256\.sig -o ' "release verification downloads the canonical detached signature"
 assert_log_contains '^openssl dgst -sha256 -verify .* -signature .*/release\.sha256\.sig .*/release\.sha256$' "release verification authenticates the checksum record"
-assert_log_contains '^openssl dgst -sha256 -r .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk$' "release verification hashes the downloaded APK"
-assert_log_contains '^apksigner verify --print-certs .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk$' "release verification invokes apksigner"
-signer_verify_count="$(grep -Ec '^apksigner verify --print-certs .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk$' "$MOCK_CALL_LOG" || true)"
+assert_log_contains '^openssl dgst -sha256 -r .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk$' "release verification hashes the downloaded APK"
+assert_log_contains '^apksigner verify --print-certs .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk$' "release verification invokes apksigner"
+signer_verify_count="$(grep -Ec '^apksigner verify --print-certs .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk$' "$MOCK_CALL_LOG" || true)"
 if [ "$signer_verify_count" = 1 ]; then pass "release signer verification runs exactly once"; else fail_test "release signer verification runs exactly once"; fi
-assert_log_contains '^aapt dump badging .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk$' "release verification inspects the package name"
+assert_log_contains '^aapt dump badging .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk$' "release verification inspects the package name"
 signer_line="$(grep -nE '^apksigner verify --print-certs ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 package_line="$(grep -nE '^aapt dump badging ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 signature_line="$(grep -nE '^openssl dgst -sha256 -verify ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
@@ -3431,7 +3431,7 @@ assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "the SDK-root-only f
 MOCK_RELEASE_VERIFY_FAIL=1 run_provision "$MOCK_TARGET" --apk "$RELEASE_APK" --release-tag v0.9.2-rc3 --no-tame
 assert_failure "a real apksigner verification failure still fails closed"
 assert_contains 'mock release verification failed' "the failing verification invocation supplies its own diagnostic"
-signer_verify_count="$(grep -Ec '^apksigner verify --print-certs .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk$' "$MOCK_CALL_LOG" || true)"
+signer_verify_count="$(grep -Ec '^apksigner verify --print-certs .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk$' "$MOCK_CALL_LOG" || true)"
 if [ "$signer_verify_count" = 1 ]; then pass "failed release signer verification runs exactly once"; else fail_test "failed release signer verification runs exactly once"; fi
 
 # The protection that must NOT be relaxed: a local APK has no signed checksum behind it, so an
@@ -3448,7 +3448,7 @@ assert_contains 'Windows:.*Git Bash or WSL' "missing OpenSSL gives novice-friend
 assert_contains 'macOS:.*xcode-select' "missing OpenSSL gives novice-friendly macOS guidance"
 assert_contains 'Debian/Ubuntu:.*apt install openssl' "missing OpenSSL gives novice-friendly Linux guidance"
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "missing OpenSSL stops before APK install"
-assert_not_contains '^adb .* shell (am start|monkey -p io\.github\.maxlyth\.hapaneld|settings put|appops set|pm grant)' "$MOCK_CALL_LOG" "missing OpenSSL stops before launch or grants"
+assert_not_contains '^adb .* shell (am start|monkey -p io\.panelassistant\.android|settings put|appops set|pm grant)' "$MOCK_CALL_LOG" "missing OpenSSL stops before launch or grants"
 
 MOCK_RELEASE_PROOF_DOWNLOAD=checksum_fail \
   run_provision "$MOCK_TARGET" --apk "$RELEASE_APK" --release-tag v0.9.2-rc3 --no-tame
@@ -3495,14 +3495,14 @@ assert_failure "release APK with a foreign signer fails closed"
 assert_contains 'release APK signer mismatch' "foreign signer failure names the trust violation"
 assert_contains 'Nothing was installed, started, or privileged' "foreign signer failure states the safe outcome"
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "foreign signer is rejected before APK install"
-assert_not_contains '^adb .* shell (am start|monkey -p io\.github\.maxlyth\.hapaneld|settings put|appops set|pm grant)' "$MOCK_CALL_LOG" "foreign signer is rejected before launch or grants"
+assert_not_contains '^adb .* shell (am start|monkey -p io\.panelassistant\.android|settings put|appops set|pm grant)' "$MOCK_CALL_LOG" "foreign signer is rejected before launch or grants"
 
 MOCK_RELEASE_PACKAGE=example.foreign \
   run_provision "$MOCK_TARGET" --apk "$RELEASE_APK" --release-tag v0.9.2-rc3 --no-tame
 assert_failure "release APK with a foreign package name fails closed"
 assert_contains 'release APK package mismatch' "foreign package failure names the trust violation"
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "foreign package is rejected before APK install"
-assert_not_contains '^adb .* shell (am start|monkey -p io\.github\.maxlyth\.hapaneld|settings put|appops set|pm grant)' "$MOCK_CALL_LOG" "foreign package is rejected before launch or grants"
+assert_not_contains '^adb .* shell (am start|monkey -p io\.panelassistant\.android|settings put|appops set|pm grant)' "$MOCK_CALL_LOG" "foreign package is rejected before launch or grants"
 
 run_provision "$MOCK_TARGET" --apk "$RELEASE_APK" --release-tag '../../main' --no-tame
 assert_status 2 "invalid internal release tag is rejected as a usage error"
@@ -3844,7 +3844,7 @@ MOCK_SHIZUKU_START=fail run_provision "$MOCK_TARGET" --apk "$APK" --shizuku --no
 assert_failure "Shizuku service-start failure returns nonzero"
 assert_contains 'service did not start' "Shizuku start failure names the incomplete step"
 assert_log_contains '^adb .* install -r -g .*ha-paneld\.apk$' "Shizuku start failure still installs the core agent"
-assert_log_contains '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "Shizuku start failure still launches the core agent"
+assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "Shizuku start failure still launches the core agent"
 
 # A stuck device-side script must be terminated at a host deadline. It has the same recoverable
 # semantics as any other service-start failure: install and relaunch the core agent, then return
@@ -3855,7 +3855,7 @@ MOCK_SHIZUKU_START=hang MOCK_SHIZUKU_HANG_PID_FILE="$SHIZUKU_HANG_PID_FILE" \
 assert_failure "stuck Shizuku service start returns nonzero at its host deadline"
 assert_contains 'service start timed out after 1s' "Shizuku timeout reports the bounded failed step"
 assert_log_contains '^adb .* install -r -g .*ha-paneld\.apk$' "Shizuku timeout still installs the core agent"
-assert_log_contains '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "Shizuku timeout still launches the core agent"
+assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "Shizuku timeout still launches the core agent"
 [ -s "$SHIZUKU_HANG_PID_FILE" ] || printf '# the Shizuku start fixture never recorded its PID before the deadline\n'
 if [ -s "$SHIZUKU_HANG_PID_FILE" ] && processes_gone "$(cat "$SHIZUKU_HANG_PID_FILE")"; then
   pass "Shizuku timeout leaves no service-start worker behind"
@@ -3885,7 +3885,7 @@ else
   fail_test "portable fallback leaves no service-start worker or child behind"
 fi
 assert_log_contains '^adb .* install -r -g .*ha-paneld\.apk$' "portable fallback timeout still installs the core agent"
-assert_log_contains '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "portable fallback timeout still launches the core agent"
+assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "portable fallback timeout still launches the core agent"
 
 # Re-running --shizuku against the trusted curated manager (or a trusted newer manager) must not try
 # to downgrade it. The manager stays locally approved; provisioning only restarts its service.
@@ -3926,8 +3926,8 @@ if provision_scope_is core all shard-install-finish; then
 MOCK_HEALTH=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "launch timeout returns nonzero"
 assert_contains '(did not start|not answering|launch|health)' "launch timeout explains what failed"
-launcher_attempts="$(grep -Ec '^adb .* shell monkey -p io\.github\.maxlyth\.hapaneld -c android\.intent\.category\.LAUNCHER 1$' "$MOCK_CALL_LOG" || true)"
-direct_attempts="$(grep -Ec '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' "$MOCK_CALL_LOG" || true)"
+launcher_attempts="$(grep -Ec '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "$MOCK_CALL_LOG" || true)"
+direct_attempts="$(grep -Ec '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "$MOCK_CALL_LOG" || true)"
 if [ "$launcher_attempts" -eq 1 ] && [ "$direct_attempts" -eq 1 ]; then
   pass "launch timeout performs one launcher attempt and one distinct direct fallback"
 else
@@ -3941,9 +3941,9 @@ assert_success "healthy panel survives one transient slow diagnostics response"
 # The runtime permissions a panel cannot be asked for in person are granted over adb instead. Both
 # are asserted, because a grant block that silently loses a line still provisions and still passes
 # every other check here: the app simply comes up with a capability quietly missing.
-assert_log_contains '^adb .* shell pm grant io\.github\.maxlyth\.hapaneld android\.permission\.POST_NOTIFICATIONS$' "provisioning grants the notification permission"
-assert_log_contains '^adb .* shell pm grant io\.github\.maxlyth\.hapaneld android\.permission\.RECORD_AUDIO$' "provisioning grants the microphone permission"
-assert_log_contains 'appops get io.github.maxlyth.hapaneld WRITE_SETTINGS' "post-install WRITE_SETTINGS verification reads Android's authority"
+assert_log_contains '^adb .* shell pm grant io\.panelassistant\.android android\.permission\.POST_NOTIFICATIONS$' "provisioning grants the notification permission"
+assert_log_contains '^adb .* shell pm grant io\.panelassistant\.android android\.permission\.RECORD_AUDIO$' "provisioning grants the microphone permission"
+assert_log_contains 'appops get io.panelassistant.android WRITE_SETTINGS' "post-install WRITE_SETTINGS verification reads Android's authority"
 assert_log_contains 'settings get secure enabled_accessibility_services' "post-install accessibility verification reads Android's authority"
 # Granting is not verifying. A vendor build can accept `pm grant` and keep nothing, so the two
 # runtime permissions are read back from the package manager the same way WRITE_SETTINGS is.
@@ -3989,8 +3989,8 @@ assert_contains 'Permissions . Microphone' "refused microphone grant gives manua
 # The pre-install version probe reads the same package report, so the call appearing in the log
 # proves nothing on its own. What matters is that a read happens after the grants: a check answered
 # from the probe taken before installation would be reporting the previous run's permissions.
-last_grant_call="$(grep -n '^adb .* shell pm grant io\.github\.maxlyth\.hapaneld' "$MOCK_CALL_LOG" | tail -1 | cut -d: -f1)"
-last_package_read="$(grep -n '^adb .* shell dumpsys package io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" | tail -1 | cut -d: -f1)"
+last_grant_call="$(grep -n '^adb .* shell pm grant io\.panelassistant\.android' "$MOCK_CALL_LOG" | tail -1 | cut -d: -f1)"
+last_package_read="$(grep -n '^adb .* shell dumpsys package io\.panelassistant\.android$' "$MOCK_CALL_LOG" | tail -1 | cut -d: -f1)"
 if [ -n "$last_grant_call" ] && [ -n "$last_package_read" ] && [ "$last_package_read" -gt "$last_grant_call" ]; then
   pass "the grant record is read back after the grants, not from the pre-install version probe"
 else
@@ -4307,7 +4307,7 @@ MOCK_UPGRADE_PREPARE=ready run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a receipt-capable build upgrades through the quiesced direct-copy path"
 assert_marker_captured "the receipt-bound direct copy earns the captured marker"
 assert_log_contains 'PREPARE_UPGRADE.*--es nonce [0-9a-f]{32}' "PREPARE carries one exact lowercase nonce"
-assert_log_contains 'exec-out su 0 cat /data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' "the join-style root route copies the closed database with binary-safe exec-out"
+assert_log_contains 'exec-out su 0 cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "the join-style root route copies the closed database with binary-safe exec-out"
 assert_not_contains '\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" "the READY path creates no on-panel staging"
 assert_not_contains 'shell df -P -k /data' "$MOCK_CALL_LOG" "the READY path has no fixed capacity floor"
 prepare_line="$(grep -n 'PREPARE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
@@ -4568,18 +4568,18 @@ done
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT=shc run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "the quiesced direct copy supports the sh -c root route"
-assert_log_contains 'exec-out su 0 sh -c cat /data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' "the direct copy uses the probed sh -c form"
+assert_log_contains 'exec-out su 0 sh -c cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "the direct copy uses the probed sh -c form"
 for direct_dialect in rootjoin:'exec-out su root cat ' rootshc:'exec-out su root sh -c cat ' suc:'exec-out su -c cat '; do
   dialect_name="${direct_dialect%%:*}"; wrapper_pattern="${direct_dialect#*:}"
   reset_db_txn_state
   MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT="$dialect_name" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_marker_captured "the READY direct copy supports the $dialect_name root form"
-  assert_log_contains "$wrapper_pattern/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db" "the direct copy dispatches through the exact $dialect_name form"
+  assert_log_contains "$wrapper_pattern/data/data/io.panelassistant.android/databases/ha-paneld.db" "the direct copy dispatches through the exact $dialect_name form"
 done
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_ADB_ROOT=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_marker_captured "the READY direct copy supports root adbd without su"
-assert_log_contains 'exec-out cat /data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' "root adbd uses the bare binary-safe copy form"
+assert_log_contains 'exec-out cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "root adbd uses the bare binary-safe copy form"
 
 # A failure after READY but before package replacement releases the exact lease once. A destructive
 # reset with rejected bytes remains fail-closed and likewise releases rather than erasing anything.
@@ -4594,7 +4594,7 @@ release_nonce="$(sed -n 's/.*RELEASE_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1
 if [ -n "$prepare_nonce" ] && [ "$release_nonce" = "$prepare_nonce" ]; then
   pass "RELEASE carries the exact READY nonce"
 else fail_test "RELEASE carries the exact READY nonce"; fi
-assert_log_contains 'am start-foreground-service --user 0 -n io.github.maxlyth.hapaneld/.PaneldService' "an acknowledged RELEASE gets the API31 root-authoritative service start"
+assert_log_contains 'am start-foreground-service --user 0 -n io.panelassistant.android/io.github.maxlyth.hapaneld.PaneldService' "an acknowledged RELEASE gets the API31 root-authoritative service start"
 
 # A non-exact response never disowns the lease. The same nonce is retried once, and every RELEASE
 # attempt receives the idempotent API31 root start backstop even when the receiver says release_failed.
@@ -4607,7 +4607,7 @@ if [ "$(printf '%s\n' "$release_nonces" | grep -c .)" = 2 ] &&
    [ "$(printf '%s\n' "$release_nonces" | sort -u | grep -c .)" = 1 ]; then
   pass "a non-exact RELEASE is retried once with the same retained nonce"
 else fail_test "a non-exact RELEASE is retried once with the same retained nonce"; fi
-if [ "$(grep -c 'am start-foreground-service --user 0 -n io.github.maxlyth.hapaneld/.PaneldService' "$MOCK_CALL_LOG")" = 2 ]; then
+if [ "$(grep -c 'am start-foreground-service --user 0 -n io.panelassistant.android/io.github.maxlyth.hapaneld.PaneldService' "$MOCK_CALL_LOG")" = 2 ]; then
   pass "each RELEASE attempt receives the idempotent API31 service-start backstop"
 else fail_test "each RELEASE attempt receives the idempotent API31 service-start backstop"; fi
 
@@ -4618,16 +4618,84 @@ assert_failure "a receiver release_failed response preserves the original provis
 if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 2 ]; then
   pass "release_failed is retried exactly once"
 else fail_test "release_failed is retried exactly once"; fi
-assert_log_contains 'am start-foreground-service --user 0 -n io.github.maxlyth.hapaneld/.PaneldService' "release_failed still receives the root-authoritative service-start backstop"
+assert_log_contains 'am start-foreground-service --user 0 -n io.panelassistant.android/io.github.maxlyth.hapaneld.PaneldService' "release_failed still receives the root-authoritative service-start backstop"
 assert_contains 'RELEASE was not acknowledged after two attempts' "release_failed warns that lease acknowledgement is still absent"
-release_clear_line="$(grep -n '^      UPGRADE_QUIESCE_NONCE=""$' "$PROVISION" | head -1 | cut -d: -f1)"
+release_clear_line="$(grep -n '^      UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""$' "$PROVISION" | head -1 | cut -d: -f1)"
 exact_release_branch_line="$(grep -n '^    if \[ "\$released_count" = 1 \]; then$' "$PROVISION" | head -1 | cut -d: -f1)"
 if [ -n "$exact_release_branch_line" ] && [ -n "$release_clear_line" ] &&
    [ "$exact_release_branch_line" -lt "$release_clear_line" ]; then
   pass "source disowns RELEASE custody only inside the exact-response branch"
 else fail_test "source disowns RELEASE custody only inside the exact-response branch"; fi
 
-if grep -Eq 'am force-stop[^\n]*io\.github\.maxlyth\.hapaneld|p?kill(all)?[^\n]*io\.github\.maxlyth\.hapaneld' "$PROVISION"; then
+# --- the application-id handover ----------------------------------------------------------------
+# A panel mid-migration still carries the bridge and not yet the successor this run installs. The
+# install target's absence is not the panel's: the database, the upgrade-control receiver and the
+# app-data directory all still belong to the old application id. So the candidate is measured
+# against THAT database instead of being admitted as a fresh install over it, and both the capture
+# and the quiescence broadcast address the package that is actually there. The receiver component is
+# the shorthand under the old id and fully qualified under the new one, because Android expands a
+# leading dot against the package half and the classes never left io.github.maxlyth.hapaneld.
+reset_db_txn_state
+MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
+MOCK_UPGRADE_PREPARE=ready \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a panel still carrying the bridge is provisioned with the successor"
+assert_contains 'schema 9 is inside candidate boundary' \
+  "the bridge's database is what the candidate boundary is measured against"
+assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
+  "the upgrade-control broadcast reaches the identity that is actually installed"
+assert_log_contains 'cat /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db' \
+  "the pre-mutation capture copies the database the bridge holds"
+# Installing the successor does not replace the bridge, so nothing stops the process this run
+# quiesced. Its lease is released back to the identity that armed it, not to the one just installed.
+assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
+  "the quiesced bridge is released after the successor is installed"
+if grep -Fq 'db=/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' \
+     "$TMP/db-observer-script.$MOCK_TARGET" 2>/dev/null; then
+  pass "the database observer inspects the bridge's app-data directory"
+else
+  fail_test "the database observer inspects the bridge's app-data directory"
+fi
+
+# The same retained database with NO bridge installed is residue under the install target itself,
+# which this gate has always refused. This is the pair that makes the resolution above load-bearing:
+# resolve the data holder wrongly and exactly one of these two runs inverts.
+reset_db_txn_state
+MOCK_NO_INSTALLED_PACKAGE=1 \
+MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "retained database state under the install target alone is still refused"
+assert_contains 'package is absent but retained database or recovery state still exists' \
+  "the residue refusal keeps naming what it found"
+
+# An accessibility entry written by an older provisioner names the OLD package, so it is a different
+# component and must be preserved rather than mistaken for this build's own service.
+reset_db_txn_state
+MOCK_A11Y_EXISTING='io.github.maxlyth.hapaneld/.input.PanelAccessibilityService' \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a panel whose accessibility list names the old package is provisioned"
+a11y_written="$(cat "$TMP/accessibility-services" 2>/dev/null || true)"
+if [ "$a11y_written" = 'io.github.maxlyth.hapaneld/.input.PanelAccessibilityService:io.panelassistant.android/io.github.maxlyth.hapaneld.input.PanelAccessibilityService' ]; then
+  pass "the successor's fully-qualified service is appended beside the old package's own entry"
+else
+  fail_test "the successor's fully-qualified service is appended beside the old package's own entry (got ${a11y_written:-nothing})"
+fi
+
+# The same component already enabled is not appended again, whatever else the list holds: a retry
+# converges rather than growing the setting by one entry per run.
+reset_db_txn_state
+MOCK_A11Y_EXISTING='com.vendor.other/.Service:io.panelassistant.android/io.github.maxlyth.hapaneld.input.PanelAccessibilityService' \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a panel that already has this build's accessibility service is provisioned"
+a11y_written="$(cat "$TMP/accessibility-services" 2>/dev/null || true)"
+if [ "$a11y_written" = 'com.vendor.other/.Service:io.panelassistant.android/io.github.maxlyth.hapaneld.input.PanelAccessibilityService' ]; then
+  pass "an already-enabled accessibility service is left exactly as it was"
+else
+  fail_test "an already-enabled accessibility service is left exactly as it was (got ${a11y_written:-nothing})"
+fi
+
+if grep -Eq 'am force-stop[^\n]*io\.panelassistant\.android|p?kill(all)?[^\n]*io\.panelassistant\.android' "$PROVISION"; then
   fail_test "the upgrade path never force-stops or kills ha-paneld"
 else pass "the upgrade path never force-stops or kills ha-paneld"; fi
 
@@ -4669,8 +4737,8 @@ else pass "the on-panel staging is really removed after capture (sandbox truth)"
 
 # A cleanly checkpointed source with an empty -wal beside it is a normal state the sandbox seeds by
 # default, and the capture above succeeded over it.
-if [ -f "$TMP/db-txn-sandbox/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db-wal" ] && \
-   [ ! -s "$TMP/db-txn-sandbox/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db-wal" ]; then
+if [ -f "$TMP/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db-wal" ] && \
+   [ ! -s "$TMP/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db-wal" ]; then
   pass "the capture succeeded over a source with a real zero-byte WAL present"
 else fail_test "the capture succeeded over a source with a real zero-byte WAL present"; fi
 
@@ -4918,7 +4986,7 @@ reset_db_txn_state
 # point, so they must consume the run's verdict at the phase's head: an undecided route stops the
 # run before the historical direct-su path can reach the APK install.
 rm -f "$TMP/adb-root-escalated"
-PRE_ASSETS_APK="$TMP/ha-paneld-v0.9.2-manual-setup-required.apk"
+PRE_ASSETS_APK="$TMP/panel-assistant-v0.9.2-manual-setup-required.apk"
 cp "$APK" "$PRE_ASSETS_APK"
 : > "$MOCK_CALL_LOG"
 MOCK_ROOT=0 MOCK_ADB_ROOT=escalates_then_drop MOCK_SNAPSHOT_TRANSPORT=dead_after_escalation \
@@ -5443,8 +5511,8 @@ assert_not_contains 'pm clear' "$MOCK_CALL_LOG" "--force never reaches the packa
 HAPANELD_RESET_CONFIRM=RESET MOCK_SETUP=identity MOCK_ROOT=0 MOCK_EXPORT=fail MOCK_DB_TXN=backup_fail MOCK_UPGRADE_PREPARE=digest_mismatch \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config
 assert_success "a confirmed reset completes"
-assert_log_contains '^adb -s panel\.test:5555 shell pm clear io.github.maxlyth.hapaneld$' "a confirmed reset targets exactly ha-paneld"
-if [ "$(grep -Ec '^adb -s panel\.test:5555 shell pm clear io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG")" = 1 ]; then
+assert_log_contains '^adb -s panel\.test:5555 shell pm clear io.panelassistant.android$' "a confirmed reset targets exactly ha-paneld"
+if [ "$(grep -Ec '^adb -s panel\.test:5555 shell pm clear io\.panelassistant\.android$' "$MOCK_CALL_LOG")" = 1 ]; then
   pass "a confirmed reset issues exactly one package clear"
 else fail_test "a confirmed reset issues exactly one package clear"; fi
 assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "reset bypasses settings export and database capture"
@@ -5454,7 +5522,7 @@ assert_contains 'Next: confirm this panel.s name' "a reset panel lands in guided
 HAPANELD_RESET_CONFIRM=RESET MOCK_PM_CLEAR=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config
 assert_failure "a failed erase returns nonzero"
 assert_contains 'could not erase the panel configuration' "a failed erase names what went wrong"
-assert_log_contains '^adb -s panel\.test:5555 shell pm clear io.github.maxlyth.hapaneld$' "a failed erase still targets exactly ha-paneld"
+assert_log_contains '^adb -s panel\.test:5555 shell pm clear io.panelassistant.android$' "a failed erase still targets exactly ha-paneld"
 assert_not_contains 'configuration erased' "$LAST_OUTPUT" "a failed erase never prints the success claim"
 
 # ── Fleet argument scope ────────────────────────────────────────────────────────────────────────
@@ -5568,7 +5636,7 @@ LAST_OUTPUT="$TMP/fleet-wrong-package-output.txt"
 MOCK_RELEASE_PACKAGE=example.foreign bash "$UPDATE_FLEET" --apk "$APK" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_failure "fleet preflight rejects a foreign package"
-assert_contains 'fleet APK package mismatch' "fleet package failure names the mismatch"
+assert_contains 'fleet successor APK package mismatch' "fleet package failure names the mismatch"
 assert_not_contains '^adb ' "$MOCK_CALL_LOG" "fleet package failure starts no panel worker"
 
 : > "$MOCK_CALL_LOG"
@@ -5576,7 +5644,7 @@ LAST_OUTPUT="$TMP/fleet-unverifiable-apk-output.txt"
 MOCK_LOCAL_APK_VERIFY_FAIL=1 bash "$UPDATE_FLEET" --apk "$APK" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_failure "fleet preflight rejects an unverifiable local APK"
-assert_contains 'fleet APK signature verification failed' "fleet unverifiable APK names the failure"
+assert_contains 'fleet successor APK signature verification failed' "fleet unverifiable APK names the failure"
 assert_not_contains '^adb ' "$MOCK_CALL_LOG" "fleet unverifiable APK starts no panel worker"
 
 : > "$MOCK_CALL_LOG"
@@ -5744,8 +5812,8 @@ unset MOCK_GH_FAIL
 # The unauthenticated fallback accepts only the exact HTTPS asset path implied by the release tag.
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=pretty run_provision "$MOCK_TARGET" --prerelease --no-tame
 assert_success "provisioner prerelease REST fallback accepts a matching GitHub asset"
-assert_log_contains 'curl .*--proto =https --proto-redir =https .*https://api\.github\.com/repos/maxlyth/ha-paneld/releases\?per_page=100' "release metadata redirects remain HTTPS"
-assert_log_contains 'curl .*--proto =https --proto-redir =https .*https://github\.com/maxlyth/ha-paneld/releases/download/v0\.9\.2-rc3/ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk' "release APK download is constrained to the exact GitHub path"
+assert_log_contains 'curl .*--proto =https --proto-redir =https .*https://api\.github\.com/repos/panel-assistant/android/releases\?per_page=100' "release metadata redirects remain HTTPS"
+assert_log_contains 'curl .*--proto =https --proto-redir =https .*https://github\.com/panel-assistant/android/releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk' "release APK download is constrained to the exact GitHub path"
 rest_signer_line="$(grep -nE '^apksigner verify --print-certs ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 rest_install_line="$(grep -nE '^adb .* install( |$)' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$rest_signer_line" ] && [ -n "$rest_install_line" ] && [ "$rest_signer_line" -lt "$rest_install_line" ]; then
@@ -5757,7 +5825,7 @@ fi
 : > "$MOCK_CALL_LOG"
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=stable_newest run_provision "$MOCK_TARGET" --prerelease --no-tame
 assert_success "provisioner inclusive channel accepts a newer stable release"
-assert_log_contains 'releases/download/v0\.9\.3/ha-paneld-v0\.9\.3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.3/panel-assistant-v0\.9\.3-manual-setup-required\.apk' \
   "provisioner inclusive channel selects the newer stable asset"
 assert_not_contains 'releases/download/v0\.9\.2-rc3/' "$MOCK_CALL_LOG" \
   "provisioner keeps the newer stable tag paired with its own asset"
@@ -5765,13 +5833,13 @@ assert_not_contains 'releases/download/v0\.9\.2-rc3/' "$MOCK_CALL_LOG" \
 : > "$MOCK_CALL_LOG"
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=stable_only run_provision "$MOCK_TARGET" --prerelease --no-tame
 assert_success "provisioner inclusive channel works after release candidates are deleted"
-assert_log_contains 'releases/download/v0\.9\.3/ha-paneld-v0\.9\.3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.3/panel-assistant-v0\.9\.3-manual-setup-required\.apk' \
   "provisioner inclusive channel falls through to the remaining stable release"
 
 : > "$MOCK_CALL_LOG"
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=draft_newest run_provision "$MOCK_TARGET" --prerelease --no-tame
 assert_success "provisioner inclusive channel ignores an unpublished draft"
-assert_log_contains 'releases/download/v0\.9\.3/ha-paneld-v0\.9\.3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.3/panel-assistant-v0\.9\.3-manual-setup-required\.apk' \
   "provisioner inclusive channel selects the first published release"
 assert_not_contains 'releases/download/v0\.9\.4-rc1/' "$MOCK_CALL_LOG" \
   "provisioner never downloads an asset from a draft release"
@@ -5784,7 +5852,7 @@ assert_not_contains 'unbound variable' "$LAST_OUTPUT" "no-gh fallback never expo
 
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=oversized run_provision "$MOCK_TARGET" --prerelease --no-tame
 assert_success "provisioner consumes an oversized prerelease response without SIGPIPE"
-assert_log_contains 'releases/download/v0\.9\.2-rc3/ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk' \
   "oversized provisioner response retains the first prerelease asset"
 
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=foreign run_provision "$MOCK_TARGET" --prerelease --no-tame
@@ -5799,13 +5867,13 @@ LAST_OUTPUT="$TMP/fleet-output.txt"
 MOCK_GITHUB_API=pretty bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_success "fleet prerelease update succeeds"
-if grep -Fq 'https://api.github.com/repos/maxlyth/ha-paneld/releases?per_page=100' "$MOCK_CALL_LOG" && \
-   grep -Fq 'https://github.com/maxlyth/ha-paneld/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk' "$MOCK_CALL_LOG"; then
+if grep -Fq 'https://api.github.com/repos/panel-assistant/android/releases?per_page=100' "$MOCK_CALL_LOG" && \
+   grep -Fq 'https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/panel-assistant-v0.9.2-rc3-manual-setup-required.apk' "$MOCK_CALL_LOG"; then
   pass "fleet prerelease resolves an explicit release-candidate tag"
 else
   fail_test "fleet prerelease resolves an explicit release-candidate tag"
 fi
-assert_log_contains 'curl .*--proto =https --proto-redir =https .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk' "fleet download pins the exact release asset name"
+assert_log_contains 'curl .*--proto =https --proto-redir =https .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk' "fleet download pins the exact release asset name"
 assert_not_contains '^gh ' "$MOCK_CALL_LOG" "fleet release resolution has no unbounded GitHub CLI branch"
 assert_contains 'verified.*v0\.9\.2-rc3' "fleet workers retain and verify the authenticated release tag"
 
@@ -5828,13 +5896,13 @@ LAST_OUTPUT="$TMP/fleet-rest-output.txt"
 MOCK_GH_FAIL=1 MOCK_GITHUB_API=pretty bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_success "fleet prerelease REST fallback accepts pretty GitHub JSON"
-if grep -Fq 'https://github.com/maxlyth/ha-paneld/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk' "$MOCK_CALL_LOG" && \
-   ! grep -Fq 'https://github.com/maxlyth/ha-paneld/releases/download/v0.9.1/ha-paneld-v0.9.1-manual-setup-required.apk' "$MOCK_CALL_LOG"; then
+if grep -Fq 'https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/panel-assistant-v0.9.2-rc3-manual-setup-required.apk' "$MOCK_CALL_LOG" && \
+   ! grep -Fq 'https://github.com/panel-assistant/android/releases/download/v0.9.1/panel-assistant-v0.9.1-manual-setup-required.apk' "$MOCK_CALL_LOG"; then
   pass "REST fallback selects the newest candidate and its paired APK"
 else
   fail_test "REST fallback selects the newest candidate and its paired APK"
 fi
-assert_log_contains 'curl .*--proto =https --proto-redir =https .*https://github\.com/maxlyth/ha-paneld/releases/download/v0\.9\.2-rc3/ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk' "fleet REST APK redirects remain HTTPS"
+assert_log_contains 'curl .*--proto =https --proto-redir =https .*https://github\.com/panel-assistant/android/releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk' "fleet REST APK redirects remain HTTPS"
 assert_contains 'verified.*v0\.9\.2-rc3' "fleet REST workers retain and verify the authenticated release tag"
 
 : > "$MOCK_CALL_LOG"
@@ -5842,7 +5910,7 @@ LAST_OUTPUT="$TMP/fleet-stable-newest-output.txt"
 MOCK_GITHUB_API=stable_newest bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_success "fleet inclusive channel accepts a newer stable release"
-assert_log_contains 'releases/download/v0\.9\.3/ha-paneld-v0\.9\.3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.3/panel-assistant-v0\.9\.3-manual-setup-required\.apk' \
   "fleet inclusive channel selects the newer stable asset"
 assert_not_contains 'releases/download/v0\.9\.2-rc3/' "$MOCK_CALL_LOG" \
   "fleet keeps the newer stable tag paired with its own asset"
@@ -5853,7 +5921,7 @@ LAST_OUTPUT="$TMP/fleet-stable-only-output.txt"
 MOCK_GITHUB_API=stable_only bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_success "fleet inclusive channel works after release candidates are deleted"
-assert_log_contains 'releases/download/v0\.9\.3/ha-paneld-v0\.9\.3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.3/panel-assistant-v0\.9\.3-manual-setup-required\.apk' \
   "fleet inclusive channel falls through to the remaining stable release"
 
 : > "$MOCK_CALL_LOG"
@@ -5861,8 +5929,53 @@ LAST_OUTPUT="$TMP/fleet-oversized-output.txt"
 MOCK_GITHUB_API=oversized bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_success "fleet updater consumes an oversized prerelease response without SIGPIPE"
-assert_log_contains 'releases/download/v0\.9\.2-rc3/ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk' \
+assert_log_contains 'releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk' \
   "oversized fleet response retains the first prerelease asset"
+
+# A panel still on the old application id is carried across in one pass: the bridge it already
+# runs is updated in place and started, the successor is then installed and provisioned, and the
+# bridge's removal — which the successor performs, not this script — is observed before the panel is
+# called done.
+: > "$MOCK_CALL_LOG"
+rm -f "$TMP/installed-apk" "$TMP/successor-installed"
+LAST_OUTPUT="$TMP/fleet-bridge-output.txt"
+MOCK_GITHUB_API=stable_only MOCK_LEGACY_INSTALLED=1 MOCK_LEGACY_REMOVED_AFTER_SUCCESSOR=1 \
+HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=5 \
+  bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_success "a panel carrying the bridge is carried across in one pass"
+assert_log_contains '^adb .* install -r .*ha-paneld-v0\.9\.3-manual-setup-required\.apk$' \
+  "the bridge is updated in place from its own release asset"
+assert_log_contains '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' \
+  "the updated bridge is started, because an install -r leaves it stopped"
+assert_contains 'fleet update complete.*1/1 panels OK' "the carried-across panel counts as complete"
+bridge_install_line="$(grep -n 'install -r .*ha-paneld-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+successor_install_line="$(grep -n 'install .*panel-assistant-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$bridge_install_line" ] && [ -n "$successor_install_line" ] &&
+   [ "$bridge_install_line" -lt "$successor_install_line" ]; then
+  pass "the bridge is in place before the successor that hands over from it is installed"
+else
+  fail_test "the bridge is in place before the successor that hands over from it is installed"
+fi
+if ! grep -Eq 'uninstall|pm uninstall' "$MOCK_CALL_LOG"; then
+  pass "update-fleet never removes a package itself"
+else
+  fail_test "update-fleet never removes a package itself"
+fi
+
+# A handover that has not finished is reported, not forced: the panel fails with the idempotent
+# re-run advice rather than update-fleet claiming a migration that never completed.
+: > "$MOCK_CALL_LOG"
+rm -f "$TMP/installed-apk" "$TMP/successor-installed"
+LAST_OUTPUT="$TMP/fleet-bridge-stuck-output.txt"
+MOCK_GITHUB_API=stable_only MOCK_LEGACY_INSTALLED=1 \
+HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=1 \
+  bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_failure "a bridge that is still installed afterwards fails its panel"
+assert_contains 'io\.github\.maxlyth\.hapaneld is still installed' "the unfinished handover is named exactly"
+assert_contains 're-run this fleet update for the panel' "the unfinished handover names the idempotent recovery"
+rm -f "$TMP/installed-apk" "$TMP/successor-installed"
 
 # A legacy literal secret is unavoidable in this wrapper's original argv, but it must be normalized
 # once rather than copied into every fleet worker, provisioner, curl or adb command.
@@ -6070,7 +6183,7 @@ assert_not_contains 'Disable those recommended vendor apps|TAME=' "$ROOT/scripts
 # before it asks for a panel or contacts one. This mirrors the release workflow's three substitutions.
 BAD_INSTALLER="$TMP/install-bad-release.sh"
 sed -e 's/^RELEASE_TAG=""/RELEASE_TAG="v0.9.2-rc3"/' \
-    -e 's/^RELEASE_APK_NAME=""/RELEASE_APK_NAME="ha-paneld-v0.9.1-manual-setup-required.apk"/' \
+    -e 's/^RELEASE_APK_NAME=""/RELEASE_APK_NAME="panel-assistant-v0.9.1-manual-setup-required.apk"/' \
     -e 's/^PROVISION_COMMIT=""/PROVISION_COMMIT="0123456789abcdef0123456789abcdef01234567"/' \
     "$ROOT/scripts/install.sh" > "$BAD_INSTALLER"
 LAST_OUTPUT="$TMP/install-bad-release-output.txt"
@@ -6083,7 +6196,7 @@ assert_not_contains '^curl |^adb ' "$MOCK_CALL_LOG" "mismatched release installe
 
 RELEASE_INSTALLER="$TMP/install-release.sh"
 sed -e 's/^RELEASE_TAG=""/RELEASE_TAG="v0.9.2-rc3"/' \
-    -e 's/^RELEASE_APK_NAME=""/RELEASE_APK_NAME="ha-paneld-v0.9.2-rc3-manual-setup-required.apk"/' \
+    -e 's/^RELEASE_APK_NAME=""/RELEASE_APK_NAME="panel-assistant-v0.9.2-rc3-manual-setup-required.apk"/' \
     -e 's/^PROVISION_COMMIT=""/PROVISION_COMMIT="0123456789abcdef0123456789abcdef01234567"/' \
     "$ROOT/scripts/install.sh" > "$RELEASE_INSTALLER"
 if bash -n "$RELEASE_INSTALLER" && \
@@ -6157,7 +6270,7 @@ LAST_OUTPUT="$TMP/install-legacy-channel-output.txt"
 MOCK_INSTALLER_RELEASE_API=legacy bash "$ROOT/scripts/install.sh" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
 assert_failure "pre-v0.9.3 channel installer reaches the prompt gate through its compatibility path"
-assert_log_contains '^curl .*raw\.githubusercontent\.com/maxlyth/ha-paneld/v0\.9\.2/scripts/provision\.sh -o ' "pre-v0.9.3 channel install retains immutable-tag compatibility"
+assert_log_contains '^curl .*raw\.githubusercontent\.com/panel-assistant/android/v0\.9\.2/scripts/provision\.sh -o ' "pre-v0.9.3 channel install retains immutable-tag compatibility"
 assert_not_contains 'ha-paneld-provision-v0\.9\.2\.sh\.sha256' "$MOCK_CALL_LOG" "legacy channel compatibility does not expect assets that were never published"
 assert_not_contains '^adb ' "$MOCK_CALL_LOG" "legacy channel resolution still occurs before panel contact"
 
@@ -6202,24 +6315,24 @@ for arg in "$@"; do
   esac
 done
 case "$url" in
-  https://api.github.com/repos/maxlyth/ha-paneld/releases/latest)
-    printf '%s\n' '{"tag_name":"v0.9.3","assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}]}'
+  https://api.github.com/repos/panel-assistant/android/releases/latest)
+    printf '%s\n' '{"tag_name":"v0.9.3","assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.3/panel-assistant-v0.9.3-manual-setup-required.apk"}]}'
     ;;
-  https://api.github.com/repos/maxlyth/ha-paneld/releases\?per_page=100)
+  https://api.github.com/repos/panel-assistant/android/releases\?per_page=100)
     case "${MOCK_ADVANCED_GITHUB_API:-small}" in
       oversized)
-        printf '%s' '[{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/204","tag_name":"v0.9.4-rc1","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.4-rc1/ha-paneld-v0.9.4-rc1-manual-setup-required.apk"}]},{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/203","tag_name":"v0.9.3","draft":false,"prerelease":false,"padding":"'
+        printf '%s' '[{"url":"https://api.github.com/repos/panel-assistant/android/releases/204","tag_name":"v0.9.4-rc1","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.4-rc1/panel-assistant-v0.9.4-rc1-manual-setup-required.apk"}]},{"url":"https://api.github.com/repos/panel-assistant/android/releases/203","tag_name":"v0.9.3","draft":false,"prerelease":false,"padding":"'
         awk 'BEGIN { for (i = 0; i < 2097152; i++) printf "x" }'
         printf '%s\n' '"}]'
         ;;
       stable_newest)
-        printf '%s\n' '[{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/205","tag_name":"v0.9.5","draft":false,"prerelease":false,"assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.5/ha-paneld-v0.9.5-manual-setup-required.apk"}]},{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/204","tag_name":"v0.9.4-rc1","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.4-rc1/ha-paneld-v0.9.4-rc1-manual-setup-required.apk"}]}]'
+        printf '%s\n' '[{"url":"https://api.github.com/repos/panel-assistant/android/releases/205","tag_name":"v0.9.5","draft":false,"prerelease":false,"assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.5/panel-assistant-v0.9.5-manual-setup-required.apk"}]},{"url":"https://api.github.com/repos/panel-assistant/android/releases/204","tag_name":"v0.9.4-rc1","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.4-rc1/panel-assistant-v0.9.4-rc1-manual-setup-required.apk"}]}]'
         ;;
       stable_only)
-        printf '%s\n' '[{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/205","tag_name":"v0.9.5","draft":false,"prerelease":false,"assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.5/ha-paneld-v0.9.5-manual-setup-required.apk"}]}]'
+        printf '%s\n' '[{"url":"https://api.github.com/repos/panel-assistant/android/releases/205","tag_name":"v0.9.5","draft":false,"prerelease":false,"assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.5/panel-assistant-v0.9.5-manual-setup-required.apk"}]}]'
         ;;
       *)
-        printf '%s\n' '[{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/204","tag_name":"v0.9.4-rc1","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.4-rc1/ha-paneld-v0.9.4-rc1-manual-setup-required.apk"}]}]'
+        printf '%s\n' '[{"url":"https://api.github.com/repos/panel-assistant/android/releases/204","tag_name":"v0.9.4-rc1","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.4-rc1/panel-assistant-v0.9.4-rc1-manual-setup-required.apk"}]}]'
         ;;
     esac
     ;;
@@ -6291,7 +6404,7 @@ run_advanced_installer --provision panel.test --id kitchen --shizuku
 assert_failure "checkout-free advanced provisioning refuses a historical guardless provisioner on an existing panel"
 assert_contains 'historical script has no database-compatibility gate' \
   "mutating advanced provisioning names the obsolete provisioner boundary"
-assert_not_contains 'ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "guardless advanced provisioning refuses before downloading replacement APK bytes"
 fi
 
@@ -6299,7 +6412,7 @@ run_generated_installer_with_real_provisioner --provision panel.test --verify
 assert_success "generated installer composes with the real provisioner for read-only verification"
 assert_contains 'root helper daemon: running' \
   "generated installer hands helper-aware verification to the real provisioner"
-assert_not_contains 'ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "generated installer plus real provisioner does not download an APK for verification"
 
 run_generated_installer_with_real_provisioner --provision panel.test --id kitchen
@@ -6345,7 +6458,7 @@ run_advanced_installer --provision panel.test:5556 --verify
 assert_success "checkout-free verify succeeds without downloading an APK"
 assert_log_contains '^provision-argv <panel\.test:5556> <--verify>$' \
   "checkout-free verify forwards only the read-only operation"
-assert_not_contains 'ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "checkout-free verify does not download or install an APK"
 assert_log_contains 'ha-paneld-provision-v0\.9\.2-rc3\.sh\.sha256\.sig -o ' \
   "checkout-free verify still authenticates its downloaded provisioner"
@@ -6354,7 +6467,7 @@ run_advanced_installer --provision panel.test --export panel-backup.json
 assert_success "checkout-free export-only succeeds without downloading an APK"
 assert_log_contains '^provision-argv <panel\.test:5555> <--export> <panel-backup\.json>$' \
   "checkout-free export-only forwards the requested backup"
-assert_not_contains 'ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "checkout-free export-only does not download or install an APK"
 
 for blocked in --apk --release-tag --latest --prerelease; do
@@ -6374,7 +6487,7 @@ assert_not_contains '^curl ' "$MOCK_CALL_LOG" "mixed read-only and mutating opti
 # provisioner and APK selection cannot drift from the already-covered immutable-release path.
 run_moving_advanced_installer --provision panel.test --id kitchen
 assert_failure "moving stable-channel advanced provisioning refuses a guardless provisioner on an existing panel"
-assert_log_contains '^curl .*api\.github\.com/repos/maxlyth/ha-paneld/releases/latest' \
+assert_log_contains '^curl .*api\.github\.com/repos/panel-assistant/android/releases/latest' \
   "moving stable-channel provisioning resolves the latest release"
 assert_contains 'historical script has no database-compatibility gate' \
   "moving stable-channel provisioning refuses the obsolete provisioner before replacement"
@@ -6382,7 +6495,7 @@ assert_contains 'historical script has no database-compatibility gate' \
 if provision_scope_is all shard-fleet-installer; then
 run_moving_advanced_installer --prerelease --provision panel.test --shizuku
 assert_failure "moving prerelease-channel advanced provisioning refuses a guardless provisioner on an existing panel"
-assert_log_contains '^curl .*api\.github\.com/repos/maxlyth/ha-paneld/releases\?per_page=100' \
+assert_log_contains '^curl .*api\.github\.com/repos/panel-assistant/android/releases\?per_page=100' \
   "moving prerelease provisioning resolves the release-candidate channel"
 assert_contains 'historical script has no database-compatibility gate' \
   "moving prerelease provisioning refuses the obsolete provisioner before replacement"
@@ -6423,14 +6536,14 @@ run_moving_advanced_installer --provision panel.test --verify
 assert_success "moving stable-channel verification succeeds without an APK"
 assert_log_contains '^provision-argv <panel\.test:5555> <--verify>$' \
   "moving stable-channel verification forwards only the read-only operation"
-assert_not_contains 'ha-paneld-v0\.9\.3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "moving stable-channel verification does not download an APK"
 
 run_moving_advanced_installer --prerelease --provision panel.test --export panel-backup.json
 assert_success "moving prerelease-channel export succeeds without an APK"
 assert_log_contains '^provision-argv <panel\.test:5555> <--export> <panel-backup\.json>$' \
   "moving prerelease-channel export forwards only the backup operation"
-assert_not_contains 'ha-paneld-v0\.9\.4-rc1-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
+assert_not_contains 'panel-assistant-v0\.9\.4-rc1-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "moving prerelease-channel export does not download an APK"
 
 LAST_OUTPUT="$TMP/provision-help.txt"
@@ -7218,7 +7331,9 @@ if grep -Fq 'hapaneld-helper-arm64-v8a \' "$RELEASE_WORKFLOW" && \
 else
   fail_test "release workflow seals both helper inputs and publishes checksums"
 fi
-if grep -Fq 'for checksum_name in "$apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"' "$RELEASE_WORKFLOW" && \
+# The release signs a checksum record for every published artifact, now including the successor APK
+# the identity migration added beside the bridge.
+if grep -Fq 'for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"' "$RELEASE_WORKFLOW" && \
    grep -Fq '"dist/$checksum_name.sig"' "$RELEASE_WORKFLOW"; then
   pass "release workflow signs both helper checksum records"
 else
@@ -7245,7 +7360,7 @@ assert_success "a failed direct start still waits out the health budget"
 MOCK_STOPPED_STATE=1 MOCK_LAUNCHER_START=ineffective APP_HEALTH_TIMEOUT_SECONDS=20 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "an ineffective launcher escalates to the direct route and still provisions"
-direct_starts="$(grep -c 'shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity' "$MOCK_CALL_LOG" || true)"
+direct_starts="$(grep -c 'shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity' "$MOCK_CALL_LOG" || true)"
 if [ "$direct_starts" -eq 1 ]; then
   pass "the direct route is issued exactly once while the agent is starting"
 else
@@ -7314,7 +7429,7 @@ LAST_OUTPUT="$TMP/output.txt"
 LAST_STATUS="$(cat "$HEALTH_HANG_STATUS_FILE")"
 assert_failure "a hanging health probe fails through the normal bounded health path"
 assert_contains 'still not answering .* after 1s' "a hanging health probe reports the configured final budget"
-direct_start_line="$(grep -n 'shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity' "$MOCK_CALL_LOG" | tail -1 | cut -d: -f1)"
+direct_start_line="$(grep -n 'shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity' "$MOCK_CALL_LOG" | tail -1 | cut -d: -f1)"
 post_direct_health_calls="$(awk -v start="$direct_start_line" 'NR > start && /^curl .*\/health$/ {count++} END {print count+0}' "$MOCK_CALL_LOG")"
 if [ "$post_direct_health_calls" -eq 2 ]; then
   pass "the direct route is followed by exactly two total health checks"
@@ -8672,7 +8787,7 @@ PATH="$GIT_BASH_HOST:$NO_BUILD_TOOL_FIXTURES" ANDROID_HOME='C:\Users\tester\AppD
 assert_success "a Git Bash host whose apksigner is only apksigner.bat passes the signer gate"
 assert_log_contains '^apksigner\.bat verify --print-certs .*installed-apk' \
   "the installed app's signer is read through apksigner.bat"
-assert_log_contains '^apksigner\.bat verify --print-certs .*ha-paneld-v0\.9\.2-rc3-manual-setup-required\.apk$' \
+assert_log_contains '^apksigner\.bat verify --print-certs .*panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk$' \
   "the candidate's signer is read through apksigner.bat"
 assert_contains 'database compatible' "the .bat-only host reaches the database decision"
 

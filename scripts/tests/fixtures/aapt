@@ -61,5 +61,13 @@ case "$*" in
       done
     fi
     ;;
-  *) printf "package: name='%s' versionCode='220' versionName='0.9.2-rc3'\n" "${MOCK_RELEASE_PACKAGE:-io.github.maxlyth.hapaneld}" ;;
+  *)
+    # One tree builds two identities and a release publishes both, so the answer depends on which
+    # artifact was handed over. The bridge keeps the historical asset name and the historical id.
+    case "$*" in
+      *ha-paneld-v*-manual-setup-required.apk*) badging_package="${MOCK_BRIDGE_PACKAGE:-io.github.maxlyth.hapaneld}" ;;
+      *) badging_package="${MOCK_RELEASE_PACKAGE:-io.panelassistant.android}" ;;
+    esac
+    printf "package: name='%s' versionCode='220' versionName='0.9.2-rc3'\n" "$badging_package"
+    ;;
 esac

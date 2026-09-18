@@ -236,7 +236,7 @@ stateful_helper_reply() {
 #                      the outer shell completes perfectly while only the child inside it dies.
 #   MOCK_PM_LIVENESS / MOCK_PM_LIVE_RC   the same two axes for the framework query.
 pm_marked_probe_reply() {
-  local text="$1" nonce other trc lrc
+  local text="$1" nonce other trc lrc probe_pkg probe_installed
   nonce="${text#*HAPANELD_PKG_BEGIN:}"
   nonce="${nonce%%[!0-9a-f]*}"
   other="${MOCK_PM_PROBE:-ok}"
@@ -279,9 +279,16 @@ pm_marked_probe_reply() {
     printf 'HAPANELD_PKG_END:%s\n' "$nonce"
     exit 0
   fi
+  # The installer asks about both identities during the migration. MOCK_LEGACY_INSTALLED models a
+  # panel still carrying the bridge; the successor's own presence remains the installed-apk state.
+  probe_pkg="${text#*pm path }"
+  probe_pkg="${probe_pkg%%;*}"
+  case "$probe_pkg" in
+    io.github.maxlyth.hapaneld) probe_installed="$([ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] && echo yes || echo no)" ;;
+    *) probe_installed="$([ -f "$STATE_DIR/installed-apk" ] && echo yes || echo no)" ;;
+  esac
   printf 'HAPANELD_PKG_BEGIN:%s\n' "$nonce"
-  pm_marked_paths "${MOCK_PM_PATH:-ok}" 'package:/data/app/io.github.maxlyth.hapaneld/base.apk' \
-    "$([ -f "$STATE_DIR/installed-apk" ] && echo yes || echo no)"
+  pm_marked_paths "${MOCK_PM_PATH:-ok}" "package:/data/app/$probe_pkg/base.apk" "$probe_installed"
   printf 'HAPANELD_PKG_TARGET:%s:%s\n' "$nonce" "$trc"
   pm_marked_paths "${MOCK_PM_LIVENESS:-ok}" 'package:/system/framework/framework-res.apk' yes
   printf 'HAPANELD_PKG_LIVE:%s:%s\n' "$nonce" "$lrc"
@@ -294,19 +301,27 @@ pm_marked_probe_reply() {
 }
 
 installer_marked_probe_reply() {
-  local text="$1" nonce trc lrc urc installed=no retained_mode
+  local text="$1" nonce trc lrc urc installed=no retained_mode probe_pkg
   nonce="${text#*HAPANELD_INSTALLER_PKG_BEGIN:}"
   nonce="${nonce%%[!0-9a-f]*}"
+  # The installer asks once per identity. MOCK_INSTALLER_PROBE_PKG names the one this scenario
+  # models; every other identity answers as a clean absence.
+  probe_pkg="${text#*pm path }"
+  probe_pkg="${probe_pkg%%;*}"
   [ -f "$STATE_DIR/installed-apk" ] && installed=yes
   case "${MOCK_PM_PATH:-ok}" in ok) trc=0 ;; *) trc=1 ;; esac
   case "${MOCK_PM_LIVENESS:-ok}" in ok) lrc=0 ;; *) lrc=1 ;; esac
   retained_mode="${MOCK_PM_UNINSTALLED_RECORD:-absent}"
+  if [ "$probe_pkg" != "${MOCK_INSTALLER_PROBE_PKG:-io.panelassistant.android}" ]; then
+    installed=no
+    retained_mode=absent
+  fi
   printf 'HAPANELD_INSTALLER_PKG_BEGIN:%s\n' "$nonce"
-  pm_marked_paths "${MOCK_PM_PATH:-ok}" 'package:/data/app/io.github.maxlyth.hapaneld/base.apk' "$installed"
+  pm_marked_paths "${MOCK_PM_PATH:-ok}" "package:/data/app/$probe_pkg/base.apk" "$installed"
   printf 'HAPANELD_INSTALLER_PKG_TARGET:%s:%s\n' "$nonce" "$trc"
   case "$retained_mode" in
     absent) urc=0 ;;
-    retained) printf 'package:io.github.maxlyth.hapaneld\n'; urc=0 ;;
+    retained) printf 'package:%s\n' "$probe_pkg"; urc=0 ;;
     malformed) printf 'package:other.package\n'; urc=0 ;;
     *) urc=1 ;;
   esac
@@ -325,7 +340,7 @@ data_record_probe_reply() {
   printf 'HAPANELD_DATA_BEGIN:%s\n' "$nonce"
   case "$mode" in
     absent) urc=0 ;;
-    retained) printf 'package:io.github.maxlyth.hapaneld\n'; urc=0 ;;
+    retained) printf 'package:io.panelassistant.android\n'; urc=0 ;;
     malformed) printf 'package:other.package\n'; urc=0 ;;
     *) urc=1 ;;
   esac
@@ -490,10 +505,13 @@ emit_system_layout_probe() {
 # on PATH, so every contract observes the shipped script's own semantics. A model can agree with a
 # test and disagree with production; an executed script cannot.
 DB_TXN_SANDBOX="$STATE_DIR/db-txn-sandbox"
+# Which identity's app data this panel holds. A panel mid-migration still carries it under the old
+# application id, and a capture that asked for the wrong path finds nothing here.
+DB_TXN_PACKAGE="${MOCK_DATA_PACKAGE:-io.panelassistant.android}"
 prepare_db_txn_sandbox() {
   [ -d "$DB_TXN_SANDBOX/bin" ] && return 0
-  mkdir -p "$DB_TXN_SANDBOX/data/local/tmp" "$DB_TXN_SANDBOX/data/data/io.github.maxlyth.hapaneld/databases" "$DB_TXN_SANDBOX/bin"
-  canonical_db="$DB_TXN_SANDBOX/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db"
+  mkdir -p "$DB_TXN_SANDBOX/data/local/tmp" "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases" "$DB_TXN_SANDBOX/bin"
+  canonical_db="$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
   rm -f "$canonical_db"
   "${HAPANELD_HOST_SQLITE3:-sqlite3}" "$canonical_db" >/dev/null <<'SQL'
 PRAGMA journal_mode=WAL;
@@ -505,7 +523,7 @@ INSERT INTO app_state VALUES
 SQL
   "${HAPANELD_HOST_SQLITE3:-sqlite3}" "$canonical_db" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null
   # A cleanly present zero-byte WAL is a NORMAL source state and must never affect a .backup capture.
-  : > "$DB_TXN_SANDBOX/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db-wal"
+  : > "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db-wal"
   cat > "$DB_TXN_SANDBOX/bin/sqlite3" <<'STUB'
 #!/bin/bash
 db="$1"; shift; op="$*"
@@ -771,20 +789,22 @@ case "${1:-}" in
     shift
     command_text="$*"
     case "$command_text" in
-      *'cat /data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db'*)
+      *"cat /data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"*)
         if [ "${MOCK_DIRECT_COPY:-ok}" = block ]; then
           [ -z "${MOCK_DIRECT_COPY_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_DIRECT_COPY_PID_FILE"
           exec /bin/sleep "${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}"
         fi
         [ "${MOCK_DIRECT_COPY:-ok}" = ok ] || exit 1
         prepare_db_txn_sandbox
-        cat "$DB_TXN_SANDBOX/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db"
+        cat "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
         ;;
       *) exit 1 ;;
     esac
     ;;
   install)
     : > "$STATE_DIR/apk-install-attempted"
+    # Which identity was installed is observable from the asset name the release publishes it under.
+    case "${!#}" in */panel-assistant-*.apk) : > "$STATE_DIR/successor-installed" ;; esac
     if [[ "${!#}" == */shizuku.apk ]] && [ "${MOCK_SHIZUKU_INSTALL:-ok}" = block ]; then
       [ -z "${MOCK_SHIZUKU_INSTALL_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_SHIZUKU_INSTALL_PID_FILE"
       trap 'exit 143' TERM INT
@@ -856,12 +876,13 @@ case "${1:-}" in
         exit $? ;;
     esac
   case "$command_text" in
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
       "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
         nonce="${command_text##*--es nonce }"
         case "${MOCK_UPGRADE_PREPARE:-unsupported}" in
           ready|size_mismatch|digest_mismatch|invalid_sqlite|schema_mismatch|rows_mismatch)
             prepare_db_txn_sandbox
-            direct_db="$DB_TXN_SANDBOX/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db"
+            direct_db="$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
             if [ "${MOCK_UPGRADE_PREPARE:-}" = invalid_sqlite ]; then
               printf 'not a sqlite database\n' > "$direct_db"
             fi
@@ -881,7 +902,7 @@ case "${1:-}" in
             printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_READY_V1:00000000000000000000000000000000:4242:513:1:%064d:9:7"\n' 0 ;;
           wrong_result)
             prepare_db_txn_sandbox
-            direct_db="$DB_TXN_SANDBOX/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db"
+            direct_db="$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
             bytes="$(wc -c < "$direct_db" | tr -d ' ')"
             sha="$(/usr/bin/sha256sum "$direct_db" | awk '{print $1}')"
             printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_READY_V1:%s:4242:513:%s:%s:9:7"\n' "$nonce" "$bytes" "$sha"
@@ -895,6 +916,7 @@ case "${1:-}" in
           *) exit 1 ;;
         esac
         ;;
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
       "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
         nonce="${command_text##*--es nonce }"
         release_attempt_file="$STATE_DIR/upgrade-release-attempts"
@@ -916,7 +938,7 @@ case "${1:-}" in
           *) exit 1 ;;
         esac
         ;;
-      "monkey -p io.github.maxlyth.hapaneld -c android.intent.category.LAUNCHER 1")
+      "monkey -p io.panelassistant.android -c android.intent.category.LAUNCHER 1")
         case "${MOCK_LAUNCHER_START:-ok}" in
           ok) rm -f "$STATE_DIR/package-stopped" ;;
           ineffective) : ;;
@@ -928,7 +950,7 @@ case "${1:-}" in
           *) exit 1 ;;
         esac
         ;;
-      "am start -n io.github.maxlyth.hapaneld/.MainActivity")
+      "am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity")
         # Compatibility fallback is independently observable: unlike an ineffective launcher result,
         # a successful direct start clears the fixture's stopped state and makes health reachable.
         [ "${MOCK_DIRECT_START:-ok}" = ok ] || exit 1
@@ -964,7 +986,7 @@ case "${1:-}" in
             ;;
         esac
         ;;
-      "pm clear io.github.maxlyth.hapaneld")
+      "pm clear io.panelassistant.android")
         [ "${MOCK_PM_CLEAR:-ok}" = ok ] || { printf 'Failed\n'; exit 0; }
         : > "$STATE_DIR/package-data-cleared"
         if [ "${MOCK_RELAUNCH_AFTER_PM_CLEAR:-0}" = 1 ]; then
@@ -1000,12 +1022,28 @@ case "${1:-}" in
         printf 'HAPANELD_RESET_STOP_END:%s\n' "$nonce"
         ;;
       "pm path io.github.maxlyth.hapaneld")
+        [ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] || exit 1
+        # The successor removes the bridge once it has taken the panel over, which is the state a
+        # fleet update observes rather than performs.
+        if [ "${MOCK_LEGACY_REMOVED_AFTER_SUCCESSOR:-0}" = 1 ] && [ -f "$STATE_DIR/successor-installed" ]; then
+          exit 1
+        fi
+        pm_query_reply ok 'package:/data/app/io.github.maxlyth.hapaneld/base.apk' ""
+        ;;
+      "pidof io.github.maxlyth.hapaneld")
+        [ "${MOCK_LEGACY_RUNNING:-1}" = 1 ] || exit 1
+        printf '4242\n'
+        ;;
+      "am start -n io.github.maxlyth.hapaneld/.MainActivity")
+        [ "${MOCK_LEGACY_START:-ok}" = ok ] || exit 1
+        ;;
+      "pm path io.panelassistant.android")
         if [ "${MOCK_APK_QUERY:-ok}" != ok ] && [ -f "$STATE_DIR/apk-install-attempted" ]; then exit 1; fi
         if [ "${MOCK_PM_PATH:-ok}" = ok ] && [ ! -f "$STATE_DIR/installed-apk" ]; then
           exit 1
         fi
         pm_query_reply "${MOCK_PM_PATH:-ok}" \
-          'package:/data/app/io.github.maxlyth.hapaneld/base.apk' "${MOCK_PM_PATH_PID_FILE:-}"
+          'package:/data/app/io.panelassistant.android/base.apk' "${MOCK_PM_PATH_PID_FILE:-}"
         ;;
       # Framework packages exist on every Android build, so resolving one proves the package manager
       # is answering whatever the ha-paneld query returned.
@@ -1037,7 +1075,7 @@ case "${1:-}" in
       # ha-paneld's own package report, which post-install verification reads the runtime permission
       # grants back from. The versionName line is emitted first and unchanged, so the version guard
       # that shares this command sees exactly what it saw before.
-      "dumpsys package io.github.maxlyth.hapaneld")
+      "dumpsys package io.panelassistant.android")
         printf 'versionName=%s\n' "${MOCK_INSTALLED_VERSION:-0.9.1}"
         printf '    runtime permissions:\n'
         if [ "$VERIFY_GRANTS_OK" = 1 ] && [ -f "$record_audio_grant_state" ]; then
@@ -1069,22 +1107,22 @@ case "${1:-}" in
       # Runtime permission grants are modelled as state, not just a call-log entry, because
       # verification now reads them back. MOCK_<PERMISSION>_GRANT_FAIL models the vendor build that
       # refuses the grant from the adb shell: the write fails and no state file is ever written.
-      "pm grant io.github.maxlyth.hapaneld android.permission.POST_NOTIFICATIONS")
+      "pm grant io.panelassistant.android android.permission.POST_NOTIFICATIONS")
         if [ "${MOCK_POST_NOTIFICATIONS_GRANT_FAIL:-0}" = 1 ]; then
           exit 1
         fi
         : > "$post_notifications_grant_state"
         ;;
-      "pm grant io.github.maxlyth.hapaneld android.permission.RECORD_AUDIO")
+      "pm grant io.panelassistant.android android.permission.RECORD_AUDIO")
         if [ "${MOCK_RECORD_AUDIO_GRANT_FAIL:-0}" = 1 ]; then
           exit 1
         fi
         : > "$record_audio_grant_state"
         ;;
-      "appops set io.github.maxlyth.hapaneld WRITE_SETTINGS allow")
+      "appops set io.panelassistant.android WRITE_SETTINGS allow")
         : > "$write_settings_grant_state"
         ;;
-      "appops get io.github.maxlyth.hapaneld WRITE_SETTINGS")
+      "appops get io.panelassistant.android WRITE_SETTINGS")
         if [ "$VERIFY_GRANTS_OK" = 1 ] && [ -f "$write_settings_grant_state" ]; then
           printf 'WRITE_SETTINGS: allow\n'
         else
@@ -1092,6 +1130,11 @@ case "${1:-}" in
         fi
         ;;
       "settings get secure enabled_accessibility_services")
+        # MOCK_A11Y_EXISTING seeds the list a panel already had, including this app's own component
+        # under a spelling an older provisioner wrote.
+        if [ ! -f "$STATE_DIR/accessibility-services" ] && [ -n "${MOCK_A11Y_EXISTING:-}" ]; then
+          printf '%s\n' "$MOCK_A11Y_EXISTING" > "$STATE_DIR/accessibility-services"
+        fi
         if [ "$VERIFY_GRANTS_OK" = 1 ] && [ -f "$STATE_DIR/accessibility-services" ]; then
           cat "$STATE_DIR/accessibility-services"
         else
