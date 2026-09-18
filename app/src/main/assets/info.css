@@ -32,6 +32,18 @@
   --shadow:rgba(0,0,0,.18);--shimA:#e8eaee;--shimB:#f6f7f9;--plot:#e8ecf0;--vtag-bg:#e2e8ef;--vtag-fg:#33586b;--vtagrec-bg:#d9efe0;--vtagrec-fg:#1f6b3a;--bexp-bg:#ddeef5;--bexp-fg:#0b607f;--bexp-bd:#b3d4e2;--bskunk-bg:#f8ead3;--bskunk-fg:#8a5800;--bskunk-bd:#e2c894;--setup-bg:#fcf4dc;--setup-bd:#e3cf94;--setup-fg:#7a5a10;--setup-link:#8a6400;--crit-bg:#fceceb;--crit-bd:#eab3ac;--crit-fg:#a02c20;--crit-link:#7c1f16;--info-bg:#e9f1fb;--info-bd:#b9d2ec;--info-fg:#26567e;--info-link:#1a4468}
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:var(--bg);color:var(--text)}
 .wrap{max-width:1860px;margin:0 auto;padding:20px}             /* cap + centre: up to 4 masonry cols on a 1920/2560 panel */
+/* Narrow screens get a tighter page gutter (8px instead of 20px) to buy back usable card width. That
+   used to be a STEP, `@media (max-width:857px){.wrap{padding:8px}}`, and a step is a dead band: widening
+   the window by 1px cost 24px of content box, so wherever a column boundary fell inside that 24px, the
+   layout LOST a column as the window grew. With a classic (space-consuming) scrollbar it did exactly
+   that — 857px showed two columns and 858px showed one.
+   Ramping instead of stepping removes the failure mode rather than relocating it: the slope is 0.5px of
+   padding per 1px of viewport, so across 834-858px the content box stays pinned at 818px — the width of
+   one 400px column, the 18px gap, and the second column — and W(V) = V - 2p(V) - scrollbar is monotone
+   for EVERY scrollbar width, with no assumption about how wide a scrollbar is. Outside that 24px band
+   nothing moves: 8px below 834px and 20px above 858px, exactly as before. Line 34's plain `padding:20px`
+   remains the fallback for a browser without clamp() (none at the fleet's WebView 138+). */
+.wrap{padding:clamp(8px, 50vw - 409px, 20px)}
 /* Fixed header + tab bar: the .topbar wraps .hdr + .nav and sticks to the top of the viewport so it
    never scrolls away; page content scrolls underneath it (opaque bg + a soft drop shadow to separate).
    When the tab bar collapses to the hamburger menu, the open menu is part of the topbar and sticks too. */
@@ -54,9 +66,14 @@ h1{font-size:1.3rem;margin:0 0 .2rem;display:flex;align-items:center} h1 small{c
 #pswitch select.pswitch-sel{font:inherit;color:var(--accent);background:var(--input-bg);border:1px solid #2a3550;border-radius:6px;padding:1px 5px;cursor:pointer;max-width:44vw;vertical-align:baseline}
 #pswitch select.pswitch-sel:hover{border-color:#4a6ba0}
 /* Hide the header "Reveal" button once the card masonry drops below 3 columns (a narrow/small panel).
-   The grid is columns:400px + 18px gap inside .wrap (40px padding), so 3 columns need viewport
-   >= 3*400 + 2*18 + 40 = 1276px; below that, hide #revbtn (per-value click-to-reveal still works). */
-@media (max-width:1275px){#revbtn{display:none}}
+   Asked of the CONTENT BOX, never the viewport: .topbar spans exactly the box the columns are laid out
+   in, so 3 columns of columns:400px with an 18px gap need 3*400 + 2*18 = 1236px of it. This was
+   `@media (max-width:1275px)`, computed as 1236 + .wrap's 40px padding — a viewport literal that
+   restates a padding this file elsewhere changes, and that is wrong again by a classic scrollbar's
+   width and inside the Panel Assistant sidebar's iframe, where the frame's width is not the viewport's.
+   .topbar carries no position:fixed descendant, so containing it moves no containing block. */
+.topbar{container:panelbar/inline-size}
+@container panelbar (width < 1236px){#revbtn{display:none}}
 h2{font-size:.95rem;margin:0 0 .5rem;color:var(--accent2);text-transform:uppercase;letter-spacing:.04em}
 h2 small{text-transform:none;letter-spacing:0;color:var(--ok-dim);font-weight:400}
 .gh svg{width:24px;height:24px;fill:var(--icon)}
@@ -64,9 +81,13 @@ h2 small{text-transform:none;letter-spacing:0;color:var(--ok-dim);font-weight:40
 .gh-inline svg{width:16px;height:16px;vertical-align:-3px}
 /* CSS multi-column masonry: the browser packs .card elements into height-balanced columns
    (column-fill:balance, the default) — ~400px wide, so 1 column on a phone up to 4 on a 1920/2560 panel.
-   No JS: this replaces a hand-rolled greedy that mis-balanced because it measured placeholder heights. */
-.cards{columns:400px;column-gap:18px}
-.card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:14px 16px;margin:0 0 18px;break-inside:avoid;-webkit-column-break-inside:avoid;box-sizing:border-box}
+   No JS: this replaces a hand-rolled greedy that mis-balanced because it measured placeholder heights.
+   .cards is also the query container for the single-column regime below: its inline size IS the content
+   box the columns are computed from, so nothing downstream has to restate a padding to know the regime.
+   Inline-size containment leaves a block-level .cards at its parent's width, and no position:fixed
+   element lives inside a card (the entity listbox is a deliberate body-level portal). */
+.cards{columns:400px;column-gap:18px;container:panelcards/inline-size}
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:14px 16px;margin:0 0 18px;break-inside:avoid;-webkit-column-break-inside:avoid;box-sizing:border-box;--single-column:0}
 /* Card title-bar: a subtly demarcated full-width header (slight tint + divider) separating the title
    from content. Also the intended drag handle for card reordering + home for a collapse triangle. */
 .card h2{margin:-14px -16px 12px;padding:9px 16px;background:var(--card-head);border-bottom:1px solid var(--divider);border-radius:12px 12px 0 0}
@@ -75,19 +96,30 @@ h2 small{text-transform:none;letter-spacing:0;color:var(--ok-dim);font-weight:40
 .cardbadge{float:right;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 8px;border-radius:10px;margin-top:1px}
 .cardbadge.skunk{background:var(--bskunk-bg);color:var(--bskunk-fg);border:1px solid var(--bskunk-bd)}
 .cardbadge.exp{background:var(--bexp-bg);color:var(--bexp-fg);border:1px solid var(--bexp-bd)}
+/* Tighter card spacing on a narrow screen. VERTICAL only, so unlike the page gutter it cannot change a
+   content box and cannot cost a column — this literal is a spacing preference, never a layout threshold,
+   and nothing may derive one from it. (The horizontal half of this rule became the `.wrap` padding ramp; the
+   single-column regime it also used to scope became a container query below. Letting one query set the
+   padding, decide the column regime AND be computed from that same padding is what produced the
+   834-857px band in the first place.) */
+@media (max-width:857px){.card{margin-bottom:10px}}
 /* content-visibility skips rendering an OFF-SCREEN card (placeholder height via contain-intrinsic-size) so
    a live card changing height while scrolled out of view can't reflow the page and shove the viewport.
-   SCOPED to the single-column regime only (<858px = one ~400px column): in multi-column it would feed
-   placeholder heights to the browser's column balancer and unbalance the layout — the bug this replaces. */
-@media (max-width:857px){.wrap{padding:8px}.card{margin-bottom:10px;content-visibility:auto;contain-intrinsic-size:auto 300px}}
+   SCOPED to the single-column regime only: in multi-column it would feed placeholder heights to the
+   browser's column balancer and unbalance the layout — the bug this replaces. The condition is asked of
+   the .cards content box itself, so it IS the column arithmetic and not a restatement of it: one 400px
+   column plus the 18px gap that would precede a second needs 418px, so below 818px there is exactly one
+   column, whatever the padding, the scrollbar, or the width of an embedding iframe.
+   --single-column publishes that regime for the one script that must agree with it (configure.js). */
+@container panelcards (width < 818px){.card{content-visibility:auto;contain-intrinsic-size:auto 300px;--single-column:1}}
 /* The Dashboard owns its card footprints through card-size-memory.js. A fixed off-screen placeholder
    corrupts both restored scroll placement and learned card sizes, so the Dashboard always uses real heights. */
-@media (max-width:857px){#dashboard-cards>.card{content-visibility:visible;contain-intrinsic-size:auto}}
+@container panelcards (width < 818px){#dashboard-cards>.card{content-visibility:visible;contain-intrinsic-size:auto}}
 /* Configure can replace cards above an already-visible Auto-sleep activity panel as independent HA
    startup results arrive. During that bounded render transaction the real upstream heights must be
    known synchronously; a fresh 300px content-visibility placeholder otherwise moves the viewed chart
    again on a later frame. configure.js applies this only while retaining an onscreen activity panel. */
-@media (max-width:857px){#cfg-groups.config-viewport-anchored>.card{content-visibility:visible}}
+@container panelcards (width < 818px){#cfg-groups.config-viewport-anchored>.card{content-visibility:visible}}
 table{border-collapse:collapse;width:100%;table-layout:fixed}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--divider);vertical-align:top;font-size:.9rem;overflow-wrap:anywhere;word-break:break-word}
 tr:last-child td,tr:last-child th{border-bottom:0}   /* dividers only BETWEEN rows, never after the last */
