@@ -113,6 +113,11 @@ import io.github.maxlyth.hapaneld.metrics.FeatureCosts
 import io.github.maxlyth.hapaneld.persistence.AppState
 import io.github.maxlyth.hapaneld.persistence.ConfigVault
 import io.github.maxlyth.hapaneld.persistence.StateArchiveSection
+import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
+import io.github.maxlyth.hapaneld.migration.MigrationRestoreAdmission
+import io.github.maxlyth.hapaneld.migration.migrationRestoreAdmission
+import io.github.maxlyth.hapaneld.persistence.BackupIdentity
+import io.github.maxlyth.hapaneld.persistence.RawPreferenceBackup
 import io.github.maxlyth.hapaneld.persistence.StateBackupPolicy
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
@@ -659,6 +664,9 @@ internal fun haLifecycleHealthToken(watching: Boolean, snap: HaLifecycle.Snapsho
 /** Add Panel Assistant's stable discovery pseudonym without exposing the Android ID itself. */
 internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
     panelAssistantDiscoveryId(androidId)?.let { " did=$it" }.orEmpty()
+
+/** Which installed identity answered: during the application-id migration a panel can hold both. */
+internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"
 
 internal fun autoSleepHistoryHours(hours: String?): Int {
     val parsed = hours?.toIntOrNull() ?: if (hours == null) 6 else null
@@ -1569,6 +1577,9 @@ class PaneldServer internal constructor(
     private val onDurableStateRestored: () -> Unit = {},
     private val profileRestartAllowed: () -> Boolean = { true },
     private val onProfileRestartAbort: (String) -> Boolean = { false },
+    // Application-id migration: the release and offer endpoints on the bridge build, and the
+    // migration-mode restore on the successor. NONE is a panel that is not migrating.
+    private val identityMigration: IdentityMigrationSurface = IdentityMigrationSurface.NONE,
     private val provisioningReader: ProvisioningReader? = null,
     private val provisioningActivation: () -> ProvisioningActivationSnapshot = {
         error("provisioning activation provider is unavailable")
@@ -1996,6 +2007,7 @@ class PaneldServer internal constructor(
                         ),
                     ),
                 )
+                identityMigrationRoutes(identityMigration, ::authorizeSensitive)
                 panelAssistantTransportRoutes(
                     PanelAssistantTransportRouteDependencies(
                         facts = panelAssistantTransportFacts,
@@ -2316,7 +2328,7 @@ class PaneldServer internal constructor(
                     call.respondText(html, ContentType.Text.Html)
                 }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -2353,7 +2365,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                     }
                     configReadRoutes(
                         currentConfigJson = ::configJson,
@@ -9224,6 +9236,21 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             }
         val sb = StringBuilder("{\"kind\":\"ha-paneld-backup\",\"schema\":${SettingsRegistry.SCHEMA}")
         sb.append(",\"panel_id\":${jsonStr(config.panelId)},\"created\":${jsonStr(System.currentTimeMillis().toString())}")
+        // Which device and which installed identity wrote this archive: the pseudonym Panel Assistant
+        // already sees, never the Android id. It lets the other identity of this app, installed beside
+        // this one, prove the archive is from the same device before it has adopted the panel id.
+        sb.append(
+            BackupIdentity.manifestFragment(
+                panelAssistantDiscoveryId(config.androidId),
+                appContext.packageName,
+                mqttConnected = mqttState() == "connected",
+            ),
+        )
+        sb.append(
+            RawPreferenceBackup.manifestFragment { store ->
+                appContext.getSharedPreferences(store, android.content.Context.MODE_PRIVATE).all
+            },
+        )
         sb.append(",\"config\":{").append(listOf(cfg, exposures).filter { it.isNotEmpty() }.joinToString(",")).append("}")
         sb.append(",\"entity_state\":").append(entityBackupArchiveJson(entity, filterBytes, overrideBytes))
         if (profileBytes != null) {
@@ -9341,6 +9368,21 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
     private suspend fun handleRestore(call: ApplicationCall) {
         val pw = call.request.headers["X-Backup-Passphrase"].orEmpty()
         val dryRun = call.request.queryParameters["dry_run"] == "1"
+        val migrationRestore = when (
+            migrationRestoreAdmission(
+                requested = call.request.queryParameters["mode"] == "migration",
+                loopbackPeer = isLoopbackPeer(call.request.origin.remoteAddress),
+                restoreOpen = identityMigration.restoreOpen(),
+            )
+        ) {
+            MigrationRestoreAdmission.NOT_REQUESTED -> false
+            MigrationRestoreAdmission.ADMITTED -> true
+            MigrationRestoreAdmission.REFUSED -> return call.respondText(
+                """{"ok":false,"error":"migration-restore-refused"}""",
+                ContentType.Application.Json,
+                HttpStatusCode.Forbidden,
+            )
+        }
         // Claim the shared destructive-operation lane before buffering, decrypting, or parsing a bundle.
         // Otherwise several losing requests can each consume 64 MiB and expensive KDF/JSON work before
         // discovering that another restore/install already owns admission.
@@ -9493,7 +9535,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 ContentType.Application.Json,
                 HttpStatusCode.BadRequest,
             )
-            val configPlan = planRestoreConfig(cfgObj, backupSchema)
+            val configPlan = planRestoreConfig(cfgObj, backupSchema).let { plan ->
+                if (migrationRestore) plan.copy(values = migrationRestoreConfig(plan.values)) else plan
+            }
             if (configPlan.errors.isNotEmpty()) {
                 return call.respondText(
                     withInstallPresentation(
@@ -9605,6 +9649,24 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 ContentType.Application.Json,
                 HttpStatusCode.UnprocessableEntity,
             )
+            // A migration-mode restore is this app's other identity handing its state over on one device.
+            // The successor has not adopted the panel id yet, so the device is proven by the discovery
+            // pseudonym instead, and an archive from anywhere else is refused outright rather than
+            // restored with its device-local rows withheld.
+            val sameDeviceByDiscoveryId =
+                BackupIdentity.sameDevice(obj, panelAssistantDiscoveryId(config.androidId))
+            if (migrationRestore && !sameDeviceByDiscoveryId) return call.respondText(
+                """{"ok":false,"error":"migration-backup-not-from-this-device"}""",
+                ContentType.Application.Json,
+                HttpStatusCode.UnprocessableEntity,
+            )
+            val rawPreferences = if (migrationRestore) {
+                RawPreferenceBackup.restorable(obj) ?: return call.respondText(
+                    """{"ok":false,"error":"invalid raw_preferences object"}""",
+                    ContentType.Application.Json,
+                    HttpStatusCode.BadRequest,
+                )
+            } else emptyMap()
             // Durable state outside the settings registry. `panel_id` is read before any config write, so
             // it still identifies the physical target: device-local rows return only to their own panel.
             // A cleared panel that no longer carries its old id is treated as a different one, which
@@ -9612,7 +9674,11 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             val restorableState = if (
                 archiveManifest != null && stateDisposition == StateArchiveSection.Disposition.RESTORABLE
             ) {
-                val samePanel = obj.optString("panel_id").let { it.isNotEmpty() && it == config.panelId }
+                val samePanel = StateBackupPolicy.sameDevice(
+                    migrationRestore = migrationRestore,
+                    panelIdMatches = obj.optString("panel_id").let { it.isNotEmpty() && it == config.panelId },
+                    discoveryIdMatches = sameDeviceByDiscoveryId,
+                )
                 runCatching {
                     val ref = archiveTextRef(
                         stateObj,
@@ -9764,6 +9830,14 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                             // Post-commit, and before the profile early-return below so a backup without
                             // profiles still restores its state. Never fatal: the configuration the owner
                             // came for is already durable, so a failure here must not roll it back.
+                            val rawPreferencesApplied = rawPreferences.all { (store, values) ->
+                                runCatching {
+                                    val editor = appContext
+                                        .getSharedPreferences(store, android.content.Context.MODE_PRIVATE).edit()
+                                    values.forEach { (key, value) -> editor.putString(key, value) }
+                                    editor.commit()
+                                }.getOrDefault(false)
+                            }
                             if (restorableState.isNotEmpty()) {
                                 restoredStateRows = runCatching {
                                     AppState.applyRestoredRows(appContext, restorableState)
@@ -9773,6 +9847,14 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                                     // already durable, and a live re-read failing must not undo it.
                                     runCatching { onDurableStateRestored() }
                                 }
+                            }
+                            // An ordinary restore forgives a state write that failed, because its archive
+                            // survives it. A migration's receipt is about to become the only copy of a
+                            // package that is then removed, so there every carried value must have landed.
+                            if (migrationRestore &&
+                                !migrationRestoreComplete(rawPreferencesApplied, restorableState.size, restoredStateRows)
+                            ) {
+                                throw IllegalStateException("migration restore did not apply every carried value")
                             }
                             val payload = profilePayload?.payload ?: return@afterApply
                             profileResult = requireNotNull(profileAdmin).restoreBackup(
@@ -9861,6 +9943,14 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                     )
                 }
                 Log.i(TAG, "restore: ${operation.message}")
+                // Only a whole success advances the migration; a partial or failed restore leaves the
+                // step open, and the successor restores the same receipt again. It is told either way,
+                // so a failure is retried at once rather than after waiting out a timeout.
+                if (migrationRestore) {
+                    identityMigration.onRestoreFinished(
+                        operation.structured.status == InstallProgress.Outcome.SUCCEEDED,
+                    )
+                }
                 InstallProgress.finish(
                     progress,
                     operation.message,
@@ -10843,8 +10933,8 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             "Network ADB" to "cfg-network_adb",
             "Log shipping" to "cfg-log_ship_enabled",
         )
-        private const val RELEASES_URL = "https://github.com/maxlyth/ha-paneld/releases"
-        private const val REPO_URL = "https://github.com/maxlyth/ha-paneld"
+        private const val RELEASES_URL = "https://github.com/panel-assistant/android/releases"
+        private const val REPO_URL = "https://github.com/panel-assistant/android"
         private const val WEBVIEW_DOC = "https://panel-assistant.io/go/docs?page=hardware/readme"
         private const val SHIZUKU_GUIDE_DOC = "https://panel-assistant.io/go/docs?page=provisioning"
         private const val DEVICE_PROFILES_DOC = "https://panel-assistant.io/go/docs?page=architecture/device-profiles"
@@ -11091,6 +11181,36 @@ internal fun restorableSettingValue(key: String, value: String, configuredOrigin
     }
 
 /** The restore plan's per-setting decision, separated from the transport so it can be asserted. */
+/**
+ * Configuration adjustments for a migration-mode restore. The bridge made the successor a kiosk
+ * companion of itself so its return loop would leave the successor in the foreground; carried into
+ * the successor that entry would exempt the legacy package, and the successor itself, from its own
+ * kiosk lock. Every other value is restored exactly as written.
+ */
+internal fun migrationRestoreConfig(values: Map<String, String>): Map<String, String> {
+    val restored = LinkedHashMap(values)
+    // A setting that names this app's own package is a sentinel, not a foreign app: the launcher
+    // selection "Panel admin" and the built-in renderer are both stored as the writer's package name.
+    // Left as written they would name the legacy package, which is about to be removed.
+    MIGRATION_OWN_PACKAGE_SETTINGS.forEach { key ->
+        if (restored[key] == io.github.maxlyth.hapaneld.AppIdentity.LEGACY) {
+            restored[key] = io.github.maxlyth.hapaneld.AppIdentity.SUCCESSOR
+        }
+    }
+    restored["kiosk_companion_packages"]?.let { companions ->
+        restored["kiosk_companion_packages"] = io.github.maxlyth.hapaneld.parseKioskCompanionPackages(companions)
+            .filterNot(io.github.maxlyth.hapaneld.AppIdentity::isPanelApp)
+            .joinToString(",")
+    }
+    return if (restored == values) values else restored
+}
+
+internal val MIGRATION_OWN_PACKAGE_SETTINGS: Set<String> = setOf("launcher_package", "dashboard_package")
+
+/** Whether a migration-mode restore wrote back everything its receipt carried. */
+internal fun migrationRestoreComplete(rawPreferencesApplied: Boolean, carriedRows: Int, restoredRows: Int): Boolean =
+    rawPreferencesApplied && restoredRows == carriedRows
+
 internal fun planRestoreSettings(
     migrated: Map<String, String>,
     configuredOrigin: String?,

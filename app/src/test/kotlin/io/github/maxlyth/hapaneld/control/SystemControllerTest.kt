@@ -728,4 +728,39 @@ class SystemControllerTest {
         assertTrue(BuiltinDashboard.consumeReloadRequest())
         assertFalse(BuiltinDashboard.consumeReloadRequest())
     }
+
+    // ---------- identity migration: starting the other panel-app id ----------
+
+    private val SUCCESSOR_MAIN = "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity"
+
+    @Test fun launchPanelAppStartsTheSuccessorByItsFullyQualifiedActivity() {
+        val (c, root, d) = sc(FakeSystemEnv(), daemon = mapOf("START $SUCCESSOR_MAIN" to "OK"))
+        assertTrue(c.launchPanelApp("io.panelassistant.android"))
+        assertEquals(listOf("START $SUCCESSOR_MAIN"), d.sent)
+        assertTrue(root.ran.isEmpty())
+    }
+
+    @Test fun launchPanelAppFallsBackToSuAndReportsAFailedStart() {
+        val (viaSu, suRoot, _) = sc(FakeSystemEnv(), daemon = null, su = true)
+        assertTrue(viaSu.launchPanelApp("io.panelassistant.android"))
+        assertEquals(listOf("am start -n $SUCCESSOR_MAIN"), suRoot.ran)
+
+        val env = FakeSystemEnv()
+        val (failed, _, _) = sc(env, daemon = null, su = false)
+        assertFalse(failed.launchPanelApp("io.panelassistant.android"))
+        assertTrue("never a direct start of another package", env.directStarts.isEmpty())
+    }
+
+    @Test fun launchPanelAppRefusesItselfAndEveryOtherPackage() {
+        val (c, root, d) = sc(FakeSystemEnv(), daemon = emptyMap())
+        assertFalse(c.launchPanelApp(OWN))
+        assertFalse(c.launchPanelApp(MIN))
+        assertTrue(root.ran.isEmpty() && d.sent.isEmpty())
+    }
+
+    @Test fun aHelperThatIsBusyBlocksTheSuccessorStartWithoutAnSuBypass() {
+        val (c, root, _) = sc(FakeSystemEnv(), daemon = mapOf("START $SUCCESSOR_MAIN" to "BUSY"))
+        assertFalse(c.launchPanelApp("io.panelassistant.android"))
+        assertTrue(root.ran.isEmpty())
+    }
 }

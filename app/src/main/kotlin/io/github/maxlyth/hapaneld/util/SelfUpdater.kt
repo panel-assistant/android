@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.util
 
 import android.content.Context
 import android.util.Log
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,10 +18,30 @@ import kotlinx.coroutines.withContext
 object SelfUpdater {
     const val STABLE = "stable"
     const val PRERELEASE = "prerelease"
-    private const val REPO = "maxlyth/ha-paneld"
+    private const val REPO = "panel-assistant/android"
     private const val TAG = "ha-paneld/selfupdate"
-    private const val RELEASES_URL = "https://github.com/maxlyth/ha-paneld/releases"
-    private val APK_MATCH: (String) -> Boolean = { it.endsWith(".apk", ignoreCase = true) }
+    private const val RELEASES_URL = "https://github.com/panel-assistant/android/releases"
+
+    /**
+     * A release from the identity migration onwards carries two APKs: the bridge under the legacy id,
+     * named as every earlier release named its only APK, and the successor as `panel-assistant-*.apk`.
+     * Each build follows its own asset by name. Shipped updaters take the first `.apk`, so the release
+     * workflow orders the bridge first; this build does not depend on that order.
+     */
+    internal fun isSuccessorAsset(name: String): Boolean =
+        name.startsWith("panel-assistant-", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true)
+
+    internal fun isBridgeAsset(name: String): Boolean =
+        name.endsWith(".apk", ignoreCase = true) && !isSuccessorAsset(name)
+
+    internal fun ownAssetMatch(bridge: Boolean): (String) -> Boolean =
+        if (bridge) ::isBridgeAsset else ::isSuccessorAsset
+
+    private val APK_MATCH: (String) -> Boolean = ownAssetMatch(AppIdentity.IS_BRIDGE)
+
+    /** The successor asset of the release that published [version], or null when it carries none. */
+    fun successorAssetUrl(version: String): String? =
+        ReleaseCatalog.apkUrl(REPO, "v${version.removePrefix("v")}", ::isSuccessorAsset)
 
     /** The release-notes page for an exact [tag]; the tag grammar keeps the value inside the URL path. */
     fun releaseNotesUrl(tag: String): String? = if (ReleaseCatalog.validTag(tag)) "$RELEASES_URL/tag/$tag" else null

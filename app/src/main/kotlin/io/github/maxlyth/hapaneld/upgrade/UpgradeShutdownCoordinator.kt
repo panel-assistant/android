@@ -88,6 +88,10 @@ internal class UpgradeRequestGate {
         return true
     }
 
+    /** A request is armed, whether or not the service has torn down yet. */
+    @Synchronized
+    fun isArmed(): Boolean = active != null
+
     @Synchronized
     fun claimShutdown(): UpgradeShutdownClaim? {
         val request = active ?: return null
@@ -211,6 +215,9 @@ internal object UpgradeShutdownCoordinator {
     ): Boolean = claim != null && gate.holdReady(claim, freeze, proof, releaseSuccessor)
 
     fun claimShutdown(): UpgradeShutdownClaim? = gate.claimShutdown()
+
+    /** True from [arm] until the request is released or cancelled: the service is, or is being, held. */
+    fun isArmed(): Boolean = gate.isArmed()
 
     fun failShutdown(
         context: Context,

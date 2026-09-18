@@ -166,6 +166,9 @@ class MdnsAdvertiser(
 
     private fun start(lanIp: String?, resetLivenessBudget: Boolean, expectedEpoch: Long): Boolean =
         ownerGate.runIfOpen(false) start@{
+            // A successor that has not restored the panel's identity yet must not advertise the one it
+            // generated for itself; it restarts from the restored configuration and advertises then.
+            if (io.github.maxlyth.hapaneld.migration.IdentityMigrationGate.holdsNetworkIdentity()) return@start false
             if (!topology.matches(expectedEpoch, lanIp)) return@start false
             if (lanIp == null) {
                 // ha-paneld can start before DHCP completes. Advertising loopback is worse than waiting:

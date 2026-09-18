@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.provider.Settings
 import android.util.Log
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.config.TamePackagePolicy
 import io.github.maxlyth.hapaneld.device.TameCandidate
 import io.github.maxlyth.hapaneld.persistence.AppState
@@ -320,7 +321,7 @@ class TameController(
         // or strand the panel. The dashboard app is re-asserted as home by ensureDashboardHome later.
         val wasDefaultHome = pkg == currentDefaultHome()
         if (wasDefaultHome) {
-            val comp = "${context.packageName}/.AdminLauncherActivity"
+            val comp = AppIdentity.component(context.packageName, ".AdminLauncherActivity")
             val set = privileged("SETHOME $comp", "cmd package set-home-activity $comp")
             val observed = currentDefaultHome()
             if (!TameStatePolicy.homeHandoffSecured(set, observed, context.packageName)) {

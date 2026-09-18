@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.input
 
+import io.github.maxlyth.hapaneld.AppIdentity
+
 /** Pure diagnostic projection for the independent Accessibility and helper-evdev capture sources. */
 internal object ButtonCaptureHealth {
     data class Result(val status: String, val note: String)
@@ -29,7 +31,7 @@ internal object ButtonCaptureHealth {
             evdevButtonCount > 0 && accessibility -> Result("degraded", "accessibility key capture works; $evdevButtonCount profiled physical button(s) are not verified ($detail)")
             evdevButtonCount > 0 -> Result("none", "$evdevButtonCount profiled physical button(s) are not verified ($detail)")
             accessibility -> Result("ok", "accessibility key capture enabled")
-            else -> Result("none", "enable (no root): adb shell settings put secure enabled_accessibility_services $packageName/.input.PanelAccessibilityService && adb shell settings put secure accessibility_enabled 1")
+            else -> Result("none", "enable (no root): adb shell settings put secure enabled_accessibility_services ${AppIdentity.component(packageName, ".input.PanelAccessibilityService")} && adb shell settings put secure accessibility_enabled 1")
         }
     }
 }

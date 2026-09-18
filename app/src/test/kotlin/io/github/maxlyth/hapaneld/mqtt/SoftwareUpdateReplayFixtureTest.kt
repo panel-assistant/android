@@ -20,8 +20,8 @@ class SoftwareUpdateReplayFixtureTest {
     private val device = """"device":{"identifiers":["ha-paneld-replay"],"name":"Replay panel","manufacturer":"Sonoff",""" +
         """"model":"NSPanel Pro (ha-paneld)","sw_version":"0.9.7-rc4 (build 767)","hw_version":"Android 8.1.0"}"""
 
-    private val paneldTarget = SoftwareTarget("0.9.8", "v0.9.8", "https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.8")
-    private val rc3 = SoftwareTarget("0.9.7-rc3", "v0.9.7-rc3", "https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.7-rc3")
+    private val paneldTarget = SoftwareTarget("0.9.8", "v0.9.8", "https://github.com/panel-assistant/android/releases/tag/v0.9.8")
+    private val rc3 = SoftwareTarget("0.9.7-rc3", "v0.9.7-rc3", "https://github.com/panel-assistant/android/releases/tag/v0.9.7-rc3")
     private val companionTarget = SoftwareTarget(
         "2026.6.5", "2026.6.5", "https://github.com/home-assistant/android/releases/tag/2026.6.5",
     )

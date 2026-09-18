@@ -1908,6 +1908,9 @@ internal class MqttBridge(
         }
 
     fun start() {
+        // A successor that has not restored the panel's identity yet must not connect under the one it
+        // generated for itself; the process restarts from the restored configuration and starts then.
+        if (io.github.maxlyth.hapaneld.migration.IdentityMigrationGate.holdsNetworkIdentity()) return
         lifecycle.runIfOpen(Unit, ::startOpen)
     }
 

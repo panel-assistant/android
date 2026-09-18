@@ -1,0 +1,117 @@
+package io.github.maxlyth.hapaneld.migration
+
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.http.migrationRestoreComplete
+import io.github.maxlyth.hapaneld.http.migrationRestoreConfig
+import io.github.maxlyth.hapaneld.persistence.ConfigVault
+import io.github.maxlyth.hapaneld.persistence.StateBackupPolicy
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MigrationRestoreTest {
+    @Test fun migrationModeIsAdmittedOnlyToALoopbackRequestWhileTheRestoreStepIsOpen() {
+        assertEquals(
+            MigrationRestoreAdmission.ADMITTED,
+            migrationRestoreAdmission(requested = true, loopbackPeer = true, restoreOpen = true),
+        )
+        assertEquals(
+            MigrationRestoreAdmission.REFUSED,
+            migrationRestoreAdmission(requested = true, loopbackPeer = false, restoreOpen = true),
+        )
+        assertEquals(
+            MigrationRestoreAdmission.REFUSED,
+            migrationRestoreAdmission(requested = true, loopbackPeer = true, restoreOpen = false),
+        )
+    }
+
+    @Test fun aRestoreThatDoesNotAskForMigrationModeIsNeverInIt() {
+        assertEquals(
+            MigrationRestoreAdmission.NOT_REQUESTED,
+            migrationRestoreAdmission(requested = false, loopbackPeer = true, restoreOpen = true),
+        )
+    }
+
+    @Test fun anOrdinaryRestoreProvesTheDeviceByPanelIdExactlyAsBefore() {
+        assertTrue(StateBackupPolicy.sameDevice(migrationRestore = false, panelIdMatches = true, discoveryIdMatches = false))
+        assertFalse(StateBackupPolicy.sameDevice(migrationRestore = false, panelIdMatches = false, discoveryIdMatches = true))
+    }
+
+    @Test fun aMigrationRestoreProvesTheDeviceByDiscoveryIdAlone() {
+        assertTrue(StateBackupPolicy.sameDevice(migrationRestore = true, panelIdMatches = false, discoveryIdMatches = true))
+        assertFalse(StateBackupPolicy.sameDevice(migrationRestore = true, panelIdMatches = true, discoveryIdMatches = false))
+    }
+
+    @Test fun deviceLocalRowsReturnUnderTheMigrationProofAndNothingElseDoes() {
+        val rows = listOf(
+            ConfigVault.StateRow("controller-state", "k", "string", "v", 0L),
+            ConfigVault.StateRow("config", "panel_id", "string", "kitchen", 0L),
+            ConfigVault.StateRow("startup-recovery", "k", "int", "1", 0L),
+            ConfigVault.StateRow("unclassified", "k", "string", "v", 0L),
+        )
+        val proven = StateBackupPolicy.sameDevice(migrationRestore = true, panelIdMatches = false, discoveryIdMatches = true)
+        val unproven = StateBackupPolicy.sameDevice(migrationRestore = true, panelIdMatches = true, discoveryIdMatches = false)
+
+        assertEquals(listOf("controller-state"), StateBackupPolicy.restorableRows(rows, proven).map { it.namespace })
+        assertEquals(emptyList<String>(), StateBackupPolicy.restorableRows(rows, unproven).map { it.namespace })
+    }
+
+    @Test fun theBridgesCompanionEntryForTheSuccessorIsNotCarriedIntoTheSuccessor() {
+        val restored = migrationRestoreConfig(
+            mapOf(
+                "panel_id" to "kitchen",
+                "kiosk_companion_packages" to
+                    "com.example.kept, io.panelassistant.android\nio.github.maxlyth.hapaneld,com.example.other",
+            ),
+        )
+
+        assertEquals("com.example.kept,com.example.other", restored["kiosk_companion_packages"])
+        assertEquals("kitchen", restored["panel_id"])
+    }
+
+    @Test fun settingsThatNameTheWritersOwnPackageFollowTheAppToItsNewId() {
+        val restored = migrationRestoreConfig(
+            mapOf(
+                "launcher_package" to "io.github.maxlyth.hapaneld",
+                "dashboard_package" to "io.github.maxlyth.hapaneld",
+                "panel_id" to "io.github.maxlyth.hapaneld",
+            ),
+        )
+
+        assertEquals("io.panelassistant.android", restored["launcher_package"])
+        assertEquals("io.panelassistant.android", restored["dashboard_package"])
+        assertEquals("only package-valued settings are rewritten", "io.github.maxlyth.hapaneld", restored["panel_id"])
+    }
+
+    @Test fun aForeignLauncherOrRendererIsRestoredAsWritten() {
+        val values = mapOf("launcher_package" to "com.example.launcher", "dashboard_package" to "builtin")
+
+        assertSame(values, migrationRestoreConfig(values))
+    }
+
+    @Test fun aMigrationRestoreIsCompleteOnlyWhenEveryCarriedValueLanded() {
+        assertTrue(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 17, restoredRows = 17))
+        assertTrue(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 0, restoredRows = 0))
+        assertFalse(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 17, restoredRows = 16))
+        assertFalse(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 17, restoredRows = 0))
+        assertFalse(migrationRestoreComplete(rawPreferencesApplied = false, carriedRows = 17, restoredRows = 17))
+    }
+
+    @Test fun aBackupWithoutCompanionPackagesIsRestoredUntouched() {
+        val values = mapOf("panel_id" to "kitchen")
+
+        assertSame(values, migrationRestoreConfig(values))
+    }
+
+    @Test fun theBackupProjectionCarriesTheCredentialsTheSuccessorMustKeep() {
+        // The successor never signs in again: the archive it pulls has to hold the broker password and
+        // the app-held Home Assistant tokens. They are in it only while they stay settable and durable.
+        val carried = SettingsRegistry.settable().filterNot { it.transient }.map { it.key }.toSet()
+
+        listOf("panel_id", "mqtt_password", "ha_refresh_token", "kiosk_companion_packages").forEach { key ->
+            assertTrue("$key must be part of the backup projection", key in carried)
+        }
+    }
+}

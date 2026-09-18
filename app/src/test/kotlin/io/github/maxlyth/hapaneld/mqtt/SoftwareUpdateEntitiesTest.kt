@@ -22,7 +22,7 @@ class SoftwareUpdateEntitiesTest {
     private val paneldTarget = SoftwareTarget(
         version = "0.9.8",
         tag = "v0.9.8",
-        releaseUrl = "https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.8",
+        releaseUrl = "https://github.com/panel-assistant/android/releases/tag/v0.9.8",
     )
     private val companionTarget = SoftwareTarget(
         version = "2026.6.5",
@@ -117,7 +117,7 @@ class SoftwareUpdateEntitiesTest {
         assertEquals("0.9.7", field(json, "installed_version"))
         assertEquals("0.9.8", field(json, "latest_version"))
         assertEquals("ha-paneld", field(json, "title"))
-        assertEquals("https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.8", field(json, "release_url"))
+        assertEquals("https://github.com/panel-assistant/android/releases/tag/v0.9.8", field(json, "release_url"))
         assertEquals(false, field(json, "in_progress"))
         assertEquals("Stable channel.", field(json, "release_summary"))
     }
@@ -132,7 +132,7 @@ class SoftwareUpdateEntitiesTest {
     }
 
     @Test fun aBuildNewerThanTheChannelHeadSaysSoAndIsNeverDowngraded() {
-        val rc3 = SoftwareTarget("0.9.7-rc3", "v0.9.7-rc3", "https://github.com/maxlyth/ha-paneld/releases/tag/v0.9.7-rc3")
+        val rc3 = SoftwareTarget("0.9.7-rc3", "v0.9.7-rc3", "https://github.com/panel-assistant/android/releases/tag/v0.9.7-rc3")
         val inputs = paneld(installed = "0.9.7-rc4", target = rc3, channel = "prerelease")
         val json = state(inputs)
         assertEquals("0.9.7-rc3", field(json, "latest_version"))

@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.security.KeyStore
 import java.security.MessageDigest
 import org.cyclonedx.gradle.CyclonedxDirectTask
 import org.cyclonedx.model.Component
@@ -13,6 +14,28 @@ plugins {
 
 val featureCostsEnabled = providers.gradleProperty("featureCosts").orNull
     ?.toBooleanStrictOrNull() ?: true
+// One tree builds two installable identities for the application-id migration. `bridge` is the
+// default and keeps the historical id, so every existing task, output path and updater sees the build
+// it always saw; `-PappIdentity=successor` builds the same app under the new id. Only the
+// applicationId moves: the namespace, the Kotlin package and the signer are shared. A Gradle property
+// rather than product flavours, because a flavour dimension renames every variant task and output
+// directory (testDebugUnitTest, outputs/apk/debug) that CI and the release tooling address by name.
+val legacyApplicationId = "io.github.maxlyth.hapaneld"
+val successorApplicationId = "io.panelassistant.android"
+val appIdentity = (providers.gradleProperty("appIdentity").orNull ?: "bridge").also {
+    require(it == "bridge" || it == "successor") { "appIdentity must be bridge or successor, not '$it'" }
+}
+val successorBridge = appIdentity == "bridge"
+
+// The migration installs and trusts the other identity only under the pinned signer. Secretless debug
+// builds are signed by the committed debug keystore, so they pin that certificate instead and the
+// two-package handover stays testable on an emulator; a release build, and any build signed with the
+// configured release key, carries an empty override and pins the release certificate alone.
+val debugKeystoreSignerSha256 = KeyStore.getInstance("PKCS12").let { store ->
+    rootProject.file("gradle/debug.keystore").inputStream().use { store.load(it, "android".toCharArray()) }
+    MessageDigest.getInstance("SHA-256").digest(store.getCertificate("androiddebugkey").encoded)
+        .joinToString("") { "%02x".format(it) }
+}
 val keystoreProps = rootProject.file("keystore.properties")
 val hasReleaseSigning = keystoreProps.exists()
 
@@ -77,7 +100,7 @@ android {
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "io.github.maxlyth.hapaneld"
+        applicationId = if (successorBridge) legacyApplicationId else successorApplicationId
         // minSdk 26: clears the HiveMQ "<26 cannot connect over IoT" bug (#598) and covers
         // the supported panels (NSPanel Pro Android 8.1 = API 27, TPA10 Android 11 = API 30).
         minSdk = 26
@@ -90,6 +113,9 @@ android {
         // Local paired performance runs can build an otherwise identical no-op arm with
         // `-PfeatureCosts=false`; release/default builds retain the fixed-key event counters.
         buildConfigField("boolean", "FEATURE_COSTS_ENABLED", featureCostsEnabled.toString())
+        buildConfigField("boolean", "SUCCESSOR_BRIDGE", successorBridge.toString())
+        buildConfigField("String", "LEGACY_APPLICATION_ID", "\"$legacyApplicationId\"")
+        buildConfigField("String", "SUCCESSOR_APPLICATION_ID", "\"$successorApplicationId\"")
         buildConfigField("String", "HELPER_BUILD_ID", "\"$helperBuildId\"")
         buildConfigField("String", "DATABASE_COMPATIBILITY", "\"$databaseCompatibilityContract\"")
         manifestPlaceholders["databaseCompatibility"] = databaseCompatibilityContract
@@ -151,6 +177,11 @@ android {
             // release artifacts. Secretless public checkouts retain
             // the deterministic debug signer and still produce a normal installable development APK.
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            buildConfigField(
+                "String",
+                "MIGRATION_SIGNER_OVERRIDE",
+                "\"${if (hasReleaseSigning) "" else debugKeystoreSignerSha256}\"",
+            )
             // Keep production ABIs unchanged while allowing the optional Shizuku integration job to
             // install the real app/native library on an x86_64 Android emulator.
             ndk.abiFilters += "x86_64"
@@ -158,6 +189,7 @@ android {
         }
         release {
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            buildConfigField("String", "MIGRATION_SIGNER_OVERRIDE", "\"\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -195,6 +227,7 @@ android {
 // cached BuildConfig from the enabled arm being reused by a disabled performance comparison.
 tasks.matching { it.name.startsWith("generate") && it.name.endsWith("BuildConfig") }.configureEach {
     inputs.property("featureCostsEnabled", featureCostsEnabled)
+    inputs.property("appIdentity", appIdentity)
     inputs.files(helperIdentityFiles)
     inputs.property("helperBuildId", helperBuildId)
     inputs.file(entityCatalogSchemaSource)

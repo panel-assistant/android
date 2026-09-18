@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.util
 
 import android.net.LocalSocket
 import android.util.Log
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
@@ -331,6 +332,9 @@ object HelperClient : Daemon by admittedHelperClient {
 
     internal fun installedBuildId(): String? = parseHelperBuildId(send("BUILDID"))
 
+    /** The running helper's dual-identity report, or null from a helper that predates the verb. */
+    internal fun helperStatus(): HelperStatus? = parseHelperStatus(send("HELPERSTATUS"))
+
     internal fun replacementProbe(stagedBuildId: String, incumbentBuildId: String): HelperReplacementProbe =
         admittedHelperClient.replacementProbe(stagedBuildId, incumbentBuildId)
 
@@ -511,6 +515,44 @@ internal fun companionCapabilitySupported(reply: String?): Boolean = reply == CO
 
 internal fun helperBuildIdentitySupported(reply: String?, expectedBuildId: String): Boolean =
     expectedBuildId.matches(Regex("[0-9a-f]{64}")) && reply == "BUILDID $expectedBuildId"
+
+/** One `HELPERSTATUS 1 BUILD=<hash> CALLER=<role> PACKAGES=<id>,<id>` record. */
+internal data class HelperStatus(val buildId: String, val caller: String, val packages: Set<String>)
+
+private val HELPER_STATUS_RE =
+    Regex("^HELPERSTATUS 1 BUILD=([0-9a-f]{64}) CALLER=(ROOT|LEGACY|SUCCESSOR) PACKAGES=([A-Za-z0-9._,]{1,256})$")
+
+internal fun parseHelperStatus(reply: String?): HelperStatus? {
+    val match = HELPER_STATUS_RE.matchEntire(reply ?: return null) ?: return null
+    val packages = match.groupValues[3].split(',')
+    if (packages.any(String::isEmpty) || packages.toSet().size != packages.size) return null
+    return HelperStatus(match.groupValues[1], match.groupValues[2], packages.toCollection(LinkedHashSet()))
+}
+
+/**
+ * Why the running helper cannot carry an identity handover, or null when it can. The successor has no
+ * root channel of its own on a panel whose `su` authorises one uid, so a handover is safe only when
+ * the running daemon is exactly the helper this APK bundles, accepts both application ids, and has
+ * authenticated this connection as [ownPackage]. A helper that answers `ERR` predates the verb.
+ */
+internal fun dualUidHelperRefusal(
+    status: HelperStatus?,
+    bundledBuildId: String,
+    ownPackage: String,
+): String? {
+    if (status == null) return "helper did not report a dual-identity status"
+    if (status.buildId != bundledBuildId) return "running helper is not the bundled build"
+    if (!status.packages.containsAll(AppIdentity.ALL)) {
+        return "running helper does not accept both application ids"
+    }
+    val expectedCaller = when (ownPackage) {
+        AppIdentity.LEGACY -> "LEGACY"
+        AppIdentity.SUCCESSOR -> "SUCCESSOR"
+        else -> return "$ownPackage is not a panel application id"
+    }
+    if (status.caller != expectedCaller) return "helper authenticated this caller as ${status.caller}"
+    return null
+}
 
 internal fun parseCompanionOperationStatus(reply: String?): CompanionOperationStatus = when (reply) {
     "IDLE" -> CompanionOperationStatus.IDLE

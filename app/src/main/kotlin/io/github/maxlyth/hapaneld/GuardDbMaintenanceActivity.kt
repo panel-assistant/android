@@ -50,11 +50,16 @@ internal class GuardDbActivityMaintenanceFence {
         return true
     }
 
+    // Every activity already asks this fence before it constructs anything, so it is also where a
+    // retired bridge or a passive successor declines to show itself during the application-id migration.
     fun stop(activity: Activity): Boolean = stop(
         maintenanceRequired = GuardDbProcessAdmission.maintenanceRequired() &&
             activity !is GuardDbMaintenanceActivity,
         redirect = { redirectToGuardDbMaintenanceIfRequired(activity) },
-    )
+    ) || (
+        activity !is GuardDbMaintenanceActivity &&
+            io.github.maxlyth.hapaneld.migration.IdentityMigrationActivityFence.stop(activity)
+        )
 }
 
 /** Native approval surface which never constructs Config, WebView, or a SQLite owner. */

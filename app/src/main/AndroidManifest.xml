@@ -26,6 +26,13 @@
          other launchers to reload them and offer launcher/home navigation. Sideloaded panel agent,
          not a Play app, so the broad query permission is appropriate. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <!-- Application-id migration. Both installable identities share one signer and declare this
+         signature-level permission, so Android itself refuses the release-token broadcast from any
+         package that is not the other identity of this app. -->
+    <permission
+        android:name="io.github.maxlyth.hapaneld.permission.IDENTITY_MIGRATION"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.maxlyth.hapaneld.permission.IDENTITY_MIGRATION" />
     <!-- Screen brightness via Settings.System (granted at provisioning: appops set WRITE_SETTINGS). -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <!-- Soft navigation-bar overlay (TYPE_APPLICATION_OVERLAY) for panels whose firmware hides the
@@ -192,6 +199,18 @@
             <intent-filter>
                 <action android:name="io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE" />
                 <action android:name="io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Receives the one-time release token from the other identity of this app during the
+             application-id migration. Only a sender holding the signature permission is delivered. -->
+        <receiver
+            android:name=".migration.MigrationTokenReceiver"
+            android:exported="true"
+            android:permission="io.github.maxlyth.hapaneld.permission.IDENTITY_MIGRATION">
+            <intent-filter>
+                <action android:name="io.github.maxlyth.hapaneld.action.MIGRATION_TOKEN" />
+                <action android:name="io.github.maxlyth.hapaneld.action.MIGRATION_STATUS" />
             </intent-filter>
         </receiver>
 

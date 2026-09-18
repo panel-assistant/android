@@ -111,6 +111,12 @@ import io.github.maxlyth.hapaneld.http.retainCompanionLeaseUntilHelperIdle
 import io.github.maxlyth.hapaneld.logship.LogCapture
 import io.github.maxlyth.hapaneld.logship.LogShipper
 import io.github.maxlyth.hapaneld.media.AudioPlaybackCoordinator
+import io.github.maxlyth.hapaneld.migration.AndroidIdentityMigration
+import io.github.maxlyth.hapaneld.migration.AndroidSuccessorHandoffPorts
+import io.github.maxlyth.hapaneld.migration.IdentityMigrationGate
+import io.github.maxlyth.hapaneld.migration.StartDisposition
+import io.github.maxlyth.hapaneld.migration.SuccessorMigrationRunner
+import io.github.maxlyth.hapaneld.migration.SuccessorHandoff
 import io.github.maxlyth.hapaneld.provisioning.AndroidProvisioningObservationCollector
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningActivationSnapshot
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningCoordinator
@@ -869,6 +875,9 @@ internal fun acceptCommittedAutoSleepSetting(
  */
 class PaneldService : Service() {
     private var guardDbRedirect = false
+    // Application-id migration: a retired bridge or a passive successor constructs nothing below.
+    private var identityMigrationStandby = false
+    private var identityMigrationSticky = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // One dedicated transition lane owns initial start, config rebuilds, reconnects, and final teardown.
     // Observations capture the generation and concrete MQTT/mDNS pair together, so watchdog/network work cannot read a generation from one runtime and then reach a replacement through a mutable field.
@@ -1058,6 +1067,7 @@ class PaneldService : Service() {
     private lateinit var profileRegistry: RuntimeProfileRegistry
     private lateinit var passiveProfileProbe: AndroidPassiveProfileProbe
     private lateinit var profileRestart: ProfileRestartCoordinator
+    private lateinit var identityMigration: AndroidIdentityMigration
     private lateinit var recoveryRestart: ProfileRestartCoordinator
     private lateinit var webViewRebindRestart: ProfileRestartCoordinator
     private lateinit var activeProfileIdentity: String
@@ -1093,6 +1103,26 @@ class PaneldService : Service() {
             GuardDbMaintenanceService.start(this)
             stopSelf()
             return
+        }
+        when (IdentityMigrationGate.disposition(this)) {
+            StartDisposition.RETIRED_BRIDGE -> {
+                // This bridge handed the panel to the successor. A sticky restart, a boot or an explicit
+                // intent must never bind the port or resume a kiosk loop beside it.
+                startForegroundCompat(nativeString(R.string.starting), silent = true)
+                identityMigrationStandby = true
+                stopSelf()
+                return
+            }
+            StartDisposition.PASSIVE_SUCCESSOR -> {
+                // The legacy app still owns the panel. Run only the migration, with no Config, server,
+                // MQTT, mDNS or controller, until the legacy app has released it.
+                startForegroundCompat(nativeString(R.string.starting), silent = true)
+                identityMigrationStandby = true
+                identityMigrationSticky = true
+                SuccessorMigrationRunner.runPassive(this, scope)
+                return
+            }
+            StartDisposition.HELD_SUCCESSOR, StartDisposition.NORMAL -> Unit
         }
         // Android starts the foreground-service deadline before onCreate. Promote before profile/DB/
         // controller construction: slow root-backed initialization must never consume that deadline.
@@ -1604,6 +1634,16 @@ class PaneldService : Service() {
             },
             completeLaunch = config::completeRendererLaunch,
         )
+        identityMigration = AndroidIdentityMigration(
+            context = this,
+            scope = scope,
+            httpPort = { config.httpPort },
+            androidId = { config.androidId },
+            mqttState = { runtime.current().mqtt.state },
+            offerHandoff = ::offerSuccessorHandoff,
+            // The restore is durable; only a fresh process runs wholly from the restored configuration.
+            requestRestart = { recoveryRestart.request() },
+        )
         server = PaneldServer(
             config, cacheDir, scope, this, sensors, profile, system, volume, audio::submit, ::reconfigure,
             // The bridge is replaceable. If its command admission is already draining, retain the
@@ -1736,6 +1776,7 @@ class PaneldService : Service() {
             onDurableStateRestored = { wifiOutageTracker.adoptRestoredRecord() },
             profileRestartAllowed = { !InstallProgress.running },
             onProfileRestartAbort = profileRegistry::abortPendingActivation,
+            identityMigration = identityMigration,
             provisioningReader = provisioningReader,
             provisioningActivation = {
                 val status = profileRegistry.status()
@@ -2955,6 +2996,31 @@ class PaneldService : Service() {
     }
 
     /** Run a scheduled destructive operation inline, or skip it when another owner holds the lane. */
+    private val successorHandoffGate = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var lastSuccessorHandoffDetail: String? = null
+
+    /**
+     * Bridge build only: install and start the successor identity. One offer at a time, whether the
+     * periodic pass or the HTTP trigger asked; the outcome is logged only when it changes, because a
+     * panel that never migrates repeats the same refusal on every pass.
+     */
+    internal suspend fun offerSuccessorHandoff(): SuccessorHandoff.Outcome? {
+        if (!AppIdentity.IS_BRIDGE) return null
+        successorHandoffGate.lock()
+        try {
+            return SuccessorHandoff(AndroidSuccessorHandoffPorts(this, config, system))
+                .offer(AppIdentity.SUCCESSOR)
+                .also { outcome ->
+                    if (outcome.detail != lastSuccessorHandoffDetail) {
+                        lastSuccessorHandoffDetail = outcome.detail
+                        Log.i(TAG, "successor handoff: ${outcome.detail}")
+                    }
+                }
+        } finally {
+            successorHandoffGate.unlock()
+        }
+    }
+
     private suspend fun runOperation(
         component: String,
         owner: String,
@@ -3349,6 +3415,7 @@ class PaneldService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (guardDbRedirect) return START_NOT_STICKY
+        if (identityMigrationStandby) return if (identityMigrationSticky) START_STICKY else START_NOT_STICKY
         // Start subsystems once. Android re-delivers onStartCommand on every startForegroundService()
         // re-issue and on START_STICKY re-create; re-running this block would call server.start() again,
         // binding a second Ktor server on :8888 -> BindException crashes the process (and would also
@@ -3365,6 +3432,9 @@ class PaneldService : Service() {
             // that no old hardware owner can overlap the replacement generation.
             restartLease.awaitPredecessor()
             if (teardownBoundary.isStopping) return@runtimeStart
+            // The predecessor this generation waited behind may have been the one that retired the
+            // bridge. A retired bridge starts nothing, however its start was queued.
+            if (IdentityMigrationGate.disposition(this) == StartDisposition.RETIRED_BRIDGE) return@runtimeStart
 
             // Everything below can start work, write hardware state, attach a process-global owner, or
             // create an overlay. Keep all of it behind the predecessor fence, not merely HTTP/MQTT start.
@@ -3495,6 +3565,8 @@ class PaneldService : Service() {
             runCatching { power.apply(config.keepAwake) }
             io.github.maxlyth.hapaneld.http.PerfReader.start(scope, packageName, rendererTargetSnapshot())
             server.start()
+            // A successor with a migration in progress continues it now that its own server listens.
+            identityMigration.startInService()
             // Startup always reconciles both additions and removals from durable desired state against
             // the write-ahead overlay ownership markers. This completes work handed off by profile restart.
             server.requestTameReconcile()
@@ -3640,6 +3712,10 @@ class PaneldService : Service() {
                         logLabel = "self-update auto",
                         operation = { SelfUpdater.checkAndUpdateResult(this@PaneldService, config.updateChannel) },
                     )
+                    // Identity migration, bridge build only, and only once this build is the one its
+                    // channel wants (a successful self-update above restarts the process first). Every
+                    // refusal leaves the panel on the bridge; the next pass offers again.
+                    offerSuccessorHandoff()
                 }
             }
             startMqttWatchdog()
@@ -4368,6 +4444,14 @@ class PaneldService : Service() {
 
     override fun onDestroy() {
         if (guardDbRedirect) {
+            stopForeground(true)
+            super.onDestroy()
+            return
+        }
+        // A retired bridge or a passive successor constructed nothing, exactly like the redirect above.
+        if (identityMigrationStandby) {
+            // Only the passive migration pass runs in this generation; nothing else was started.
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
             stopForeground(true)
             super.onDestroy()
             return
@@ -5312,6 +5396,8 @@ class PaneldService : Service() {
                 GuardDbMaintenanceService.start(context)
                 return
             }
+            // A retired bridge stays idle on every route into the app, not only inside onCreate.
+            if (IdentityMigrationGate.disposition(context) == StartDisposition.RETIRED_BRIDGE) return
             val intent = Intent(context, PaneldService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

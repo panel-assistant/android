@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.util
 
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult
 import java.io.File
 
@@ -430,7 +431,7 @@ internal object GuardDbMaintenanceProtocol {
         val premigrate = exactEvidenceFields(lines[10], "PREMIGRATE", 2) ?: return null
         val bPrimary = exactEvidenceFields(lines[11], "B_PRIMARY", 2) ?: return null
         if (!validSession(session[0]) || !validSha256(boot[0]) ||
-            packageName[0] != "io.github.maxlyth.hapaneld" || !validSha256(signer[0]) ||
+            !AppIdentity.isPanelApp(packageName[0]) || !validSha256(signer[0]) ||
             state.isEmpty()
         ) return null
         if (baseline[0].strictPositiveLong() == null || !validSha256(baseline[1]) ||
