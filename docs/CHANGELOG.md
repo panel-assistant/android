@@ -10,6 +10,8 @@
 
 - **A panel whose ambient light sensor never starts no longer reports illuminance.** Some panels declare a light part that the hardware never answers for; Home Assistant used to show an illuminance sensor for them that only ever recorded empty values. The entity now appears once the sensor has actually delivered a reading, and comes back on its own if a slow sensor reports later. Panels with a working light sensor are unaffected. [Issue #138](https://github.com/maxlyth/ha-paneld/issues/138)
 
+- **A panel whose web viewer is missing or broken shows what to fix instead of a black screen.** When Android System WebView cannot be resolved at all, checking what it supports could fail outright and take the dashboard down with it; because the dashboard is the panel's home screen, Android restarted it straight back into the same fault, so the panel showed nothing and gave no way to diagnose it. A web viewer that cannot answer is now treated as one that lacks the feature, which reaches the existing screen naming Android System WebView and offering to repair it.
+
 ## v0.9.8-rc1 - 2026-09-15
 
 This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.
