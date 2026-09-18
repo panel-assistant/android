@@ -12201,37 +12201,37 @@
   "install.tame.hand_back.action": {
    "text": "Przywróć ekran główny",
    "sourceHash": "2009690e210a7c546d780f1ed3f4eea8c67399962047667d76cbaf5f4b96f559",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "install.tame.hand_back.description": {
    "text": "Spowoduje to ponowne włączenie aplikacji producentów na tym panelu.",
    "sourceHash": "e27d15826d370f6cfd6bc1466f8e32e4d3ad4cba7c9cb667272e159113943990",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "install.tame.hand_back.done": {
    "text": "Gotowe. Ten panel ponownie posiada własny ekran główny.",
    "sourceHash": "362b1c0da01d39ea0820b7492fbb8e590d4b2e0577e99bd193c2a5e83135ccb7",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "install.tame.hand_back.failed": {
    "text": "Ekran główny nie został przywrócony. Nie wprowadzono żadnych zmian.",
    "sourceHash": "6c9f87a31f1499cbf6a865211a7ee725207affa224f4257af92b067cbeab8118",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "install.tame.hand_back.scope": {
    "text": "Żadna inna aplikacja nie ulega zmianie. Operację tę można wykonać więcej niż raz.",
    "sourceHash": "b9cb065b203403ed171a476f9f380cbd0a71dfc58adf14536b66ca4c3cd75d7d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "install.tame.hand_back.title": {
    "text": "Przywróć ekran główny tego panelu",
    "sourceHash": "aea932da8de9b14e3d0bd8578a8d6dce0071fe01600cc5ea3369129dbe1f48ab",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "install.tame.hand_back.warning": {
-   "text": "Należy to wykonać przed usunięciem pliku `ha-paneld`. W przeciwnym razie panel nie będzie posiadał ekranu głównego.",
+   "text": "Należy to wykonać przed usunięciem aplikacji „ha-paneld”. W przeciwnym razie panel nie będzie posiadał ekranu głównego.",
    "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   }
  }
 }
