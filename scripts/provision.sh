@@ -57,6 +57,10 @@ Common operations:
   --restore FILE           Import a config JSON export (not a complete .hpb backup)
   --restore-fleet FILE     Import only portable, non-secret keys from a config JSON export
   --verify                 Check the existing installation only; never installs
+  --hand-back-home         Re-enable the vendor apps ha-paneld disabled and give the panel's own
+                           home screen back. Leaves ha-paneld installed.
+  --uninstall              Hand the home screen back first, then remove ha-paneld. Refuses to
+                           remove anything if the panel would be left with no home screen.
   --no-tame                Deprecated compatibility no-op; guidance is never auto-applied
   --shizuku                Install/start pinned Shizuku for locally approved non-root access
   --allow-unsigned-helper  Developer-only: allow a privileged helper from an unsigned local APK
@@ -179,7 +183,7 @@ a11y_service_enabled() {
   return 1
 }
 A11Y="$(app_component "$PKG" .input.PanelAccessibilityService)"
-APK=""; APK_RELEASE_TAG=""; PANEL_ID=""; MQTT=""; MQTT_USER=""; MQTT_PASS=""; VERIFY_ONLY=0; LATEST=0; PRERELEASE=0; FORCE=0; PERSIST_ADB=0; STRIP_VENDOR=0; SHIZUKU=0; ALLOW_UNSIGNED_HELPER=0; REQUIRE_RELEASE_SIGNER=0; TOINSTALL_VER=""; VERIFY_DIRECT_GRANTS=0; HA_OAUTH_CONFIGURED=0; RESET_CONFIG=0; RESET_CONFIG_COMPLETED=0; CANDIDATE_SIGNER_SHA256=""
+APK=""; APK_RELEASE_TAG=""; PANEL_ID=""; MQTT=""; MQTT_USER=""; MQTT_PASS=""; VERIFY_ONLY=0; LATEST=0; PRERELEASE=0; FORCE=0; PERSIST_ADB=0; STRIP_VENDOR=0; SHIZUKU=0; ALLOW_UNSIGNED_HELPER=0; REQUIRE_RELEASE_SIGNER=0; TOINSTALL_VER=""; VERIFY_DIRECT_GRANTS=0; HA_OAUTH_CONFIGURED=0; RESET_CONFIG=0; RESET_CONFIG_COMPLETED=0; CANDIDATE_SIGNER_SHA256=""; HAND_BACK_HOME=0; UNINSTALL=0
 # The schema versions the app has actually shipped. Bump the MAX alongside every new database
 # migration; a snapshot admitting a version outside this set cannot be paired with any build this
 # installer could restore it onto.
@@ -301,6 +305,8 @@ while [ "${1:-}" ]; do
     --restore) RESTORE_FILE="$2"; RESTORE_MODE="restore"; shift 2 ;;      # import config JSON, including device-scoped keys
     --restore-fleet) RESTORE_FILE="$2"; RESTORE_MODE="fleet"; shift 2 ;;  # apply only PORTABLE keys (cross-panel deploy)
     --verify) VERIFY_ONLY=1; shift ;;
+    --hand-back-home) HAND_BACK_HOME=1; shift ;;  # re-enable the vendor apps ha-paneld disabled and stop being Home
+    --uninstall) UNINSTALL=1; shift ;;            # hand the home screen back, then remove ha-paneld
     --reset-config) RESET_CONFIG=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "${RED}unknown arg: $1${X}" >&2; exit 2 ;;
@@ -1598,6 +1604,125 @@ run_root() {
 # Tuya panels (TPA10) ship a closed vendor stack (launcher, system UI, Tuya IoT, hardware, diagnostics)
 # that does nothing for an HA panel and uses CPU/RAM. Offer to disable it — but ONLY once the panel can
 # run without it. Reversible: re-enable any package with `adb shell pm enable <pkg>`.
+# The Tuya/TPA10 vendor stack this script disables. It is a SUBSET of the packages the panel's own device
+# profile names for this hardware (the profile also covers com.smartos.xinch.smarthome, which the app tames
+# and this script does not) — `scripts/tests/provision_test.sh` pins that containment, because the profile is
+# what authorises the panel to adopt and re-enable a package it holds no ownership record for.
+VENDOR_STRIP_PACKAGES="com.smartos.xinch.launcher com.smartos.xinch.systemui com.smartos.xinch.smartiot
+com.smartos.xinch.hardware com.smartos.xinch.monitor com.smartos.xinch.setting
+com.smartos.xinch.communicate com.tuya.devicetest"
+
+# Tell the panel that WE disabled this package, so it can hand it back later. Without this the record lives
+# nowhere: `pm disable-user` over adb leaves no trace on the panel, so removing ha-paneld would strand the
+# device on Android's FallbackHome placeholder with no way for an ordinary user to recover it.
+#
+# Best-effort by design. An older app has no such route, and a panel that cannot be told is still a panel
+# that was successfully minimised — so a failure warns, points at the manual undo, and never fails the run.
+record_vendor_tame() {
+  local pkg="$1" code
+  code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout "$PANEL_POST_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$PANEL_POST_TIMEOUT_SECONDS" -X POST \
+    --data-urlencode "pkg=$pkg" "$URL/api/v1/tame/record" 2>/dev/null || true)"
+  case "$code" in
+    200) return 0 ;;
+    404|308) warn "this ha-paneld is too old to record $pkg; re-enable it by hand with: adb -s $TARGET shell pm enable $pkg" ;;
+    *) warn "could not record $pkg on the panel (HTTP ${code:-none}); re-enable it by hand with: adb -s $TARGET shell pm enable $pkg" ;;
+  esac
+  return 0
+}
+
+# Wait for the panel agent to answer, for the hand-back and uninstall paths only.
+#
+# These run before the install flow, so the ordinary post-install health poll has not happened yet and
+# AGENT_HEALTHY is still 0. The gate matters as much here as anywhere: handing the home screen back is a
+# mutating call, and removing the app on the strength of a request that never landed is exactly how a panel
+# ends up with no launcher.
+wait_for_handback_health() {
+  local deadline=$((SECONDS + APP_HEALTH_TIMEOUT_SECONDS))
+  step "🔎 checking" "${D}waiting for the panel agent on $URL${X}"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if curl -fsS --connect-timeout 2 --max-time 5 "$URL/health" >/dev/null 2>&1; then
+      AGENT_HEALTHY=1
+      return 0
+    fi
+    sleep 1
+  done
+  fail "the panel agent never answered on $URL" \
+    "Nothing was changed: the panel still has whatever home screen it had, and ha-paneld is still installed." \
+    "No packages were re-enabled and nothing was removed." \
+    "Open $URL in a browser to check the panel is up, then re-run the same command."
+}
+
+# Hand the panel its home screen back: re-enable exactly the vendor packages ha-paneld disabled, stop being
+# the preferred Home app, and confirm by readback that a real launcher took the role.
+#
+# The confirmation is the whole point. Uninstalling ha-paneld while it still holds HOME leaves the panel on
+# `com.android.settings/.FallbackHome` — "Android is starting…" forever — which reads as a brick, and Android
+# Settings will not uninstall the preferred Home app in the first place. So an unconfirmed hand-back REFUSES
+# the uninstall rather than proceeding and recreating exactly the failure this exists to prevent.
+hand_back_home() {
+  local response http_status resp
+  require_healthy_agent "hand the home screen back"
+  step "🏠 handing back" "${D}re-enabling the vendor apps ha-paneld disabled${X}"
+  response="$(curl -s --connect-timeout "$PANEL_POST_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$PANEL_POST_TIMEOUT_SECONDS" -X POST -w '\n%{http_code}' \
+    "$URL/api/v1/hand-back-home" 2>&1 || true)"
+  http_status="${response##*$'\n'}"
+  resp="$(printf '%s' "${response%$'\n'*}" | sanitize_terminal)"
+  case "$http_status" in
+    200) ;;
+    202)
+      if printf '%s' "$resp" | approval_required_response; then
+        fail "the panel needs this approved on its screen" \
+          "Hardened security is on, so handing the home screen back has to be approved physically on the panel." \
+          "Nothing was changed and ha-paneld is still installed." \
+          "Approve the request on the panel, then re-run the identical command within ten minutes."
+      fi
+      fail "the panel did not complete handing the home screen back" "$resp" \
+        "Nothing was removed." "Re-run the same command once the panel reports it is healthy."
+      ;;
+    404|308)
+      fail "this ha-paneld is too old to hand the home screen back" \
+        "The panel is running a build without the hand-back route, so it cannot re-enable the vendor apps it disabled." \
+        "Nothing was removed and the panel is unchanged." \
+        "Upgrade the panel first, or re-enable the vendor launcher by hand with: adb -s $TARGET shell pm enable <pkg>"
+      ;;
+    *)
+      fail "handing the home screen back failed (HTTP ${http_status:-none})" "$resp" \
+        "Nothing was removed and the panel is unchanged." \
+        "Check $URL in a browser, then re-run the same command."
+      ;;
+  esac
+  case "$resp" in
+    *'"home_handed_to"'*) ;;
+    *)
+      fail "the panel could not give its home screen to another launcher" "$resp" \
+        "Nothing was removed: ha-paneld is still this panel's Home app, so the panel still has a working screen." \
+        "Install a launcher (or re-enable the vendor one) and re-run, rather than removing ha-paneld now."
+      ;;
+  esac
+  echo "   ${GRN}✓${X} the panel has its home screen back"
+  case "$resp" in
+    *'"outstanding":[]'*) ;;
+    *) warn "some vendor apps are still disabled; running this again will retry them" ;;
+  esac
+}
+
+# Remove ha-paneld, handing the home screen back first so the panel is never left without one.
+uninstall_ha_paneld() {
+  hand_back_home
+  step "🗑  removing" "${D}uninstalling $PKG${X}"
+  if adb -s "$TARGET" uninstall "$PKG" >/dev/null 2>&1; then
+    echo "   ${GRN}✓${X} removed $PKG"
+    echo "   ${D}the panel keeps its own home screen; its ha-paneld configuration is gone${X}"
+  else
+    fail "could not remove $PKG" \
+      "The panel already has its home screen back, so it is usable either way." \
+      "ha-paneld is still installed." \
+      "Retry with: adb -s $TARGET uninstall $PKG"
+  fi
+}
+
 offer_strip_vendor() {
   local brand model
   # This is an optional post-verification offer. A panel can disappear after a fully successful install
@@ -1641,17 +1766,25 @@ offer_strip_vendor() {
 
   step "🧹 minimising" "${D}home → $home; disabling Tuya vendor apps${X}"
   adb -s "$TARGET" shell cmd package set-home-activity "$home" >/dev/null 2>&1 || true
-  for P in com.smartos.xinch.launcher com.smartos.xinch.systemui com.smartos.xinch.smartiot \
-           com.smartos.xinch.hardware com.smartos.xinch.monitor com.smartos.xinch.setting \
-           com.smartos.xinch.communicate com.tuya.devicetest; do
+  # Read the disabled set ONCE before touching anything. `pm disable-user` succeeds just as happily on a
+  # package the firmware already shipped disabled, so its exit status cannot tell us whether WE disabled
+  # something. Only a package observed enabled here and disabled afterwards is ours to hand back later.
+  local already_disabled
+  already_disabled="$(adb -s "$TARGET" shell pm list packages -d 2>/dev/null | tr -d '\r' || true)"
+  for P in $VENDOR_STRIP_PACKAGES; do
     adb -s "$TARGET" shell pm path "$P" >/dev/null 2>&1 || continue
     if adb -s "$TARGET" shell pm disable-user --user 0 "$P" >/dev/null 2>&1; then
       echo "   ${GRN}✓${X} disabled $P"
+      case "$already_disabled" in
+        *"package:$P"*) ;;                       # already off before we arrived — not ours, never record it
+        *) record_vendor_tame "$P" ;;
+      esac
     else
       echo "   ${YEL}–${X} could not disable $P"
     fi
   done
   echo "   ${D}undo any with: adb -s $TARGET shell pm enable <pkg>${X}"
+  echo "   ${D}or hand the panel its home screen back with: $0 $TARGET --hand-back-home${X}"
 }
 
 # Warn when the system WebView is too old for a current HA frontend (the dashboard renders blank/broken).
@@ -7656,6 +7789,15 @@ if [ "$VERIFY_ONLY" = 1 ]; then
   show_provisioning_plan 0 "${D}reading installed guidance${X}"
   verify
   exit $?
+fi
+
+# Handing the home screen back — and removing ha-paneld — are standalone operations on a panel that is
+# already provisioned. Both run here, before any release resolution or install, because neither needs an
+# APK and a user reaching for them wants out, not an upgrade.
+if [ "$HAND_BACK_HOME" = 1 ] || [ "$UNINSTALL" = 1 ]; then
+  wait_for_handback_health
+  if [ "$UNINSTALL" = 1 ]; then uninstall_ha_paneld; else hand_back_home; fi
+  exit 0
 fi
 if export_is_only_operation; then
   echo "${GRN}${B}✅ config export complete${X} — no app, setting, or panel state was changed."
