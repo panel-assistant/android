@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **The Shelly Wall Display X2i has its own panel profile.** The X2i used to share one profile with the other modern Wall Displays, which meant its details were a set of guesses that had to hold for five different models at once. A unit has now been examined, so the X2i gets a profile describing that unit: its processor, the firmware it was tested on, and its proximity and ambient light sensors, all of which work without root. The profile also stops offering the Recents control, because this firmware ignores it. The shared profile for the remaining modern models is unchanged apart from no longer claiming the X2i's hardware, and it no longer says the onboard relays have no known local control path — they do, but ha-paneld cannot yet reach them on a panel without root.
+
 ### Changed
 
 - **Setup no longer asks where Home Assistant is when Home Assistant installed the panel.** The Panel Assistant integration can now tell a panel its own address while installing or adopting it. The panel checks that address from its own network first — a wall panel often cannot reach the address Home Assistant knows for itself, such as one inside a container or behind a reverse proxy — and only then uses it and skips the question. If the address does not answer, setup still asks, but shows the address that was tried and why it did not work instead of an empty box. This needs a matching Panel Assistant release that sends the address; panels installed from the command line, and panels Home Assistant did not install, are unaffected and behave exactly as before.
