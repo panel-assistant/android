@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.control
 
 import android.os.SystemClock
 import android.util.Log
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.RendererResolver
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
@@ -65,7 +66,7 @@ class SystemController(
 
     /** Open the local instruction surface; visibility is acknowledged separately by its session. */
     fun launchProximityWizard(): Boolean {
-        val component = "${env.ownPackage}/.ProximityWizardActivity"
+        val component = AppIdentity.component(env.ownPackage, ".ProximityWizardActivity")
         return when (privilegedStart(component)) {
             PrivilegedStartResult.STARTED -> true
             PrivilegedStartResult.BLOCKED -> false
@@ -93,7 +94,7 @@ class SystemController(
             Log.w(TAG, "builtin renderer crash-latched — refusing automatic relaunch (explicit reload clears it)")
             return
         }
-        launchComponent("${env.ownPackage}/.DashboardActivity", "builtin dashboard")
+        launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
     }
 
     /** Configured dashboard package, or the automatic built-in renderer for a blank selection. The
@@ -207,7 +208,10 @@ class SystemController(
     fun isAdminLauncherSelection(configuredPkg: String): Boolean = configuredPkg == env.ownPackage
 
     private fun adminLauncherActivity() =
-        io.github.maxlyth.hapaneld.platform.ActivityRef(env.ownPackage, ".AdminLauncherActivity")
+        io.github.maxlyth.hapaneld.platform.ActivityRef(
+            env.ownPackage,
+            AppIdentity.className(env.ownPackage, ".AdminLauncherActivity"),
+        )
 
     /** Whether ha-paneld currently owns Android HOME. Android 14's HOME role is package-granular when
      * one package has multiple HOME activities and may resolve DashboardActivity even after accepting

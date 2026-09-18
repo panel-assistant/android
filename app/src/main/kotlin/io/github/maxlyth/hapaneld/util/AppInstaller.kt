@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibility
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityBoundary
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityDecision
@@ -40,7 +41,12 @@ object AppInstaller {
     internal enum class SelfInstallDatabaseDisposition { DIRECT, RECOVER }
 
     // Pinned signers (public certificate fingerprints — NOT secrets).
-    val HA_PANELD = Pin("io.github.maxlyth.hapaneld", "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339")
+    private const val RELEASE_SIGNER = "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
+    /** The two panel-app identities share one release signer; only the package half of the pin differs. */
+    val LEGACY = Pin(AppIdentity.LEGACY, RELEASE_SIGNER)
+    val SUCCESSOR = Pin(AppIdentity.SUCCESSOR, RELEASE_SIGNER)
+    /** This build's own pin: what a self-update candidate must match. */
+    val HA_PANELD = ownPin(AppIdentity.OWN)
     val COMPANION_MINIMAL = Pin("io.homeassistant.companion.android.minimal", "11194ba809b42ddf0e1a7dec6842a59c7ff1119c5482e95febffd5c6014daa5a")
 
     private const val TAG = "ha-paneld/install"
@@ -587,8 +593,14 @@ object AppInstaller {
         component,
     )
 
+    internal fun ownPin(applicationId: String): Pin = when (applicationId) {
+        LEGACY.pkg -> LEGACY
+        SUCCESSOR.pkg -> SUCCESSOR
+        else -> error("$applicationId has no pinned panel-app identity")
+    }
+
     private fun componentForPin(pin: Pin): String = when (pin.pkg) {
-        HA_PANELD.pkg -> "paneld"
+        LEGACY.pkg, SUCCESSOR.pkg -> "paneld"
         COMPANION_MINIMAL.pkg -> "companion"
         WebViewInstaller.WEBVIEW_PKG -> "webview"
         else -> "apk"
@@ -677,15 +689,25 @@ object AppInstaller {
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
         val info = pm.getPackageArchiveInfo(apkPath, flags) ?: return "unreadable APK"
-        if (info.packageName != pin.pkg) return "package ${info.packageName} not allowlisted"
         val sigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             info.signingInfo?.apkContentsSigners else info.signatures
-        if (sigs.isNullOrEmpty()) return "no signature"
         val md = MessageDigest.getInstance("SHA-256")
-        val ok = sigs.any {
-            md.digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) }.equals(pin.certSha256, true)
-        }
-        return if (ok) null else "signer mismatch"
+        return pinRefusal(
+            info.packageName,
+            sigs.orEmpty().map { md.digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) } },
+            pin,
+        )
+    }
+
+    /**
+     * Pure half of [verifyApk]: null when an APK declaring [declaredPackage] and signed by
+     * [signerSha256s] satisfies [pin]. The package is checked first and exactly, so an APK carrying the
+     * shared release signer under the other panel-app id never satisfies this id's pin.
+     */
+    internal fun pinRefusal(declaredPackage: String, signerSha256s: Collection<String>, pin: Pin): String? {
+        if (declaredPackage != pin.pkg) return "package $declaredPackage not allowlisted"
+        if (signerSha256s.isEmpty()) return "no signature"
+        return if (signerSha256s.any { it.equals(pin.certSha256, true) }) null else "signer mismatch"
     }
 
     internal fun sha256(file: File): String {
