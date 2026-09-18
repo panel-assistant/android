@@ -2953,6 +2953,31 @@ class PaneldService : Service() {
     }
 
     /** Run a scheduled destructive operation inline, or skip it when another owner holds the lane. */
+    private val successorHandoffGate = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var lastSuccessorHandoffDetail: String? = null
+
+    /**
+     * Bridge build only: install and start the successor identity. One offer at a time, whether the
+     * periodic pass or the HTTP trigger asked; the outcome is logged only when it changes, because a
+     * panel that never migrates repeats the same refusal on every pass.
+     */
+    internal suspend fun offerSuccessorHandoff(): SuccessorHandoff.Outcome? {
+        if (!AppIdentity.IS_BRIDGE) return null
+        successorHandoffGate.lock()
+        try {
+            return SuccessorHandoff(AndroidSuccessorHandoffPorts(this, config, system))
+                .offer(AppIdentity.SUCCESSOR)
+                .also { outcome ->
+                    if (outcome.detail != lastSuccessorHandoffDetail) {
+                        lastSuccessorHandoffDetail = outcome.detail
+                        Log.i(TAG, "successor handoff: ${outcome.detail}")
+                    }
+                }
+        } finally {
+            successorHandoffGate.unlock()
+        }
+    }
+
     private suspend fun runOperation(
         component: String,
         owner: String,
@@ -3641,12 +3666,7 @@ class PaneldService : Service() {
                     // Identity migration, bridge build only, and only once this build is the one its
                     // channel wants (a successful self-update above restarts the process first). Every
                     // refusal leaves the panel on the bridge; the next pass offers again.
-                    if (AppIdentity.IS_BRIDGE) {
-                        val outcome = SuccessorHandoff(
-                            AndroidSuccessorHandoffPorts(this@PaneldService, config, system),
-                        ).offer(AppIdentity.SUCCESSOR)
-                        Log.i(TAG, "successor handoff: ${outcome.detail}")
-                    }
+                    offerSuccessorHandoff()
                 }
             }
             startMqttWatchdog()

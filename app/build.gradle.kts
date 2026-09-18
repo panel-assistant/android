@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.security.KeyStore
 import java.security.MessageDigest
 import org.cyclonedx.gradle.CyclonedxDirectTask
 import org.cyclonedx.model.Component
@@ -25,6 +26,16 @@ val appIdentity = (providers.gradleProperty("appIdentity").orNull ?: "bridge").a
     require(it == "bridge" || it == "successor") { "appIdentity must be bridge or successor, not '$it'" }
 }
 val successorBridge = appIdentity == "bridge"
+
+// The migration installs and trusts the other identity only under the pinned signer. Secretless debug
+// builds are signed by the committed debug keystore, so they pin that certificate instead and the
+// two-package handover stays testable on an emulator; a release build, and any build signed with the
+// configured release key, carries an empty override and pins the release certificate alone.
+val debugKeystoreSignerSha256 = KeyStore.getInstance("PKCS12").let { store ->
+    rootProject.file("gradle/debug.keystore").inputStream().use { store.load(it, "android".toCharArray()) }
+    MessageDigest.getInstance("SHA-256").digest(store.getCertificate("androiddebugkey").encoded)
+        .joinToString("") { "%02x".format(it) }
+}
 val keystoreProps = rootProject.file("keystore.properties")
 val hasReleaseSigning = keystoreProps.exists()
 
@@ -166,6 +177,11 @@ android {
             // release artifacts. Secretless public checkouts retain
             // the deterministic debug signer and still produce a normal installable development APK.
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            buildConfigField(
+                "String",
+                "MIGRATION_SIGNER_OVERRIDE",
+                "\"${if (hasReleaseSigning) "" else debugKeystoreSignerSha256}\"",
+            )
             // Keep production ABIs unchanged while allowing the optional Shizuku integration job to
             // install the real app/native library on an x86_64 Android emulator.
             ndk.abiFilters += "x86_64"
@@ -173,6 +189,7 @@ android {
         }
         release {
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
+            buildConfigField("String", "MIGRATION_SIGNER_OVERRIDE", "\"\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

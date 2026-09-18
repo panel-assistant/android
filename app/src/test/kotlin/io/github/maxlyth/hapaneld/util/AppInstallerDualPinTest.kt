@@ -56,6 +56,25 @@ class AppInstallerDualPinTest {
         )
     }
 
+    @Test fun theMigrationTrustsTheReleaseSignerUnlessABuildCarriesAWellFormedOverride() {
+        assertEquals(signer, AppInstaller.migrationSigner(""))
+        assertEquals(signer, AppInstaller.migrationSigner("not-a-digest"))
+        assertEquals(signer, AppInstaller.migrationSigner("D".repeat(64)))
+        assertEquals("d".repeat(64), AppInstaller.migrationSigner("d".repeat(64)))
+    }
+
+    @Test fun theMigrationPinNamesTheRequestedIdentityUnderTheMigrationSigner() {
+        val pin = AppInstaller.migrationPin(AppIdentity.SUCCESSOR)
+        assertEquals(AppIdentity.SUCCESSOR, pin.pkg)
+        assertEquals(AppInstaller.MIGRATION_SIGNER, pin.certSha256)
+        assertEquals(AppIdentity.LEGACY, AppInstaller.migrationPin(AppIdentity.LEGACY).pkg)
+        assertThrows(IllegalStateException::class.java) { AppInstaller.migrationPin("com.example.other") }
+    }
+
+    @Test fun selfUpdateStaysOnTheReleaseSignerWhateverTheMigrationTrusts() {
+        assertEquals(signer, AppInstaller.HA_PANELD.certSha256)
+    }
+
     @Test fun pinnedSignerMatchesWithoutRegardToCase() {
         assertNull(
             AppInstaller.pinRefusal(AppIdentity.SUCCESSOR, listOf(signer.uppercase()), AppInstaller.SUCCESSOR),

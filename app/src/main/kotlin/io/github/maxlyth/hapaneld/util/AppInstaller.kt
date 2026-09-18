@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
+import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibility
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityBoundary
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityDecision
@@ -47,6 +48,33 @@ object AppInstaller {
     val SUCCESSOR = Pin(AppIdentity.SUCCESSOR, RELEASE_SIGNER)
     /** This build's own pin: what a self-update candidate must match. */
     val HA_PANELD = ownPin(AppIdentity.OWN)
+
+    /**
+     * The signer the identity migration trusts for the other panel-app package: the release
+     * certificate, except in a secretless debug build, whose two packages are both signed by the
+     * committed debug keystore. Self-update, Guard and every other pin stay on the release signer.
+     */
+    internal val MIGRATION_SIGNER: String = migrationSigner(BuildConfig.MIGRATION_SIGNER_OVERRIDE)
+
+    internal fun migrationSigner(override: String): String =
+        if (override.matches(Regex("[0-9a-f]{64}"))) override else RELEASE_SIGNER
+
+    /** The pin under which [applicationId], one of the two panel-app ids, is installed or trusted. */
+    internal fun migrationPin(applicationId: String): Pin = Pin(ownPin(applicationId).pkg, MIGRATION_SIGNER)
+
+    /** Signer SHA-256 set of an installed package, or null when it is absent or unreadable. */
+    @Suppress("DEPRECATION") // GET_SIGNATURES / PackageInfo.signatures for API < 28
+    internal fun installedSigners(context: Context, pkg: String): Set<String>? = runCatching {
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val info = context.packageManager.getPackageInfo(pkg, flags)
+        val sigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            info.signingInfo?.apkContentsSigners else info.signatures
+        sigs.orEmpty().mapTo(linkedSetOf()) { signature ->
+            MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+                .joinToString("") { byte -> "%02x".format(byte) }
+        }
+    }.getOrNull()
     val COMPANION_MINIMAL = Pin("io.homeassistant.companion.android.minimal", "11194ba809b42ddf0e1a7dec6842a59c7ff1119c5482e95febffd5c6014daa5a")
 
     private const val TAG = "ha-paneld/install"
