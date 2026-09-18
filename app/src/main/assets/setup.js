@@ -605,7 +605,7 @@
     switch (reason) {
       case "unresolvable": return i18nText("setup.ha_url.handover.unresolvable", "This panel could not look up that address on its network.");
       case "unreachable": return i18nText("setup.ha_url.handover.unreachable", "Nothing answered at that address from this panel’s network.");
-      case "timeout": return i18nText("setup.ha_url.handover.timeout", "That address accepted a connection but did not answer in time.");
+      case "timeout": return i18nText("setup.ha_url.handover.timeout", "That address did not answer in time.");
       case "tls": return i18nText("setup.ha_url.handover.tls", "That address uses HTTPS with a certificate this panel cannot verify.");
       case "not_home_assistant": return i18nText("setup.ha_url.handover.not_home_assistant", "Something answered at that address, but it was not Home Assistant.");
       default: return i18nText("setup.ha_url.handover.generic", "This panel could not reach Home Assistant at that address.");

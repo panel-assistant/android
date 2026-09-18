@@ -760,7 +760,25 @@ internal suspend fun rewritePostForHandover(
     verify: suspend (String) -> HaUrlHandover.Outcome,
 ): HandoverConfigPost {
     val offered = posted["ha_url_handover"]?.trim().orEmpty()
-    if (offered.isBlank()) return HandoverConfigPost(posted)
+    if (offered.isBlank()) {
+        // Saving an address directly is how the correction card is answered, so it closes the failed
+        // handover out. Without this the attempted address and its reason would outlive the problem
+        // they describe, with no way to clear them: the reason is refused from the network by design,
+        // so nothing else could ever retract it.
+        if (posted["ha_url"]?.isNotBlank() == true) {
+            return HandoverConfigPost(
+                Parameters.build {
+                    for (name in posted.names()) {
+                        if (name == "ha_url_handover") continue
+                        posted.getAll(name).orEmpty().forEach { append(name, it) }
+                    }
+                    append("ha_url_handover", "")
+                    append("ha_url_handover_reason", "")
+                },
+            )
+        }
+        return HandoverConfigPost(posted)
+    }
     val carried = Parameters.build {
         for (name in posted.names()) {
             if (name == "ha_url_handover" || name == "ha_setup_handover") continue
