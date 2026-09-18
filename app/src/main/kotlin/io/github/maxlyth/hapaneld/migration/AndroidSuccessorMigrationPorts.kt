@@ -148,7 +148,11 @@ internal class AndroidSuccessorMigrationPorts(
         }
     }.getOrDefault(false)
 
-    override fun mqttConverged(): Boolean = mqttState().let { it == "connected" || it == "disabled" }
+    // "Unchanged" is measured against the legacy app, not against an ideal: a panel that was connected
+    // when it wrote the receipt must be connected again before the legacy package goes, and a panel
+    // that was never connected is not held for ever to a broker it never had.
+    override fun mqttConverged(): Boolean =
+        mqttState() == "connected" || !ReceiptVerifier.legacyMqttConnected(state.receipt)
 
     override fun uninstallLegacy(): Boolean =
         (HelperClient.sendLong("UNINSTALL $legacy", HELPER_TIMEOUT_MS) as? DaemonLongResult.Reply)?.value == "OK"

@@ -51,6 +51,11 @@ internal object ReceiptVerifier {
         return null
     }
 
+    /** Whether the verified receipt records that the legacy app was connected to MQTT when it wrote it. */
+    fun legacyMqttConnected(archive: File): Boolean = runCatching {
+        PanelBackup.readManifest(archive, MAX_MANIFEST_BYTES)?.let { BackupIdentity.writerMqttConnected(JSONObject(it)) }
+    }.getOrNull() ?: true
+
     /**
      * Every entry name, after proving the archive whole twice over. `ZipFile` requires an intact central
      * directory, which a truncated download does not have, but never checks an entry's CRC; the

@@ -9239,7 +9239,13 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         // Which device and which installed identity wrote this archive: the pseudonym Panel Assistant
         // already sees, never the Android id. It lets the other identity of this app, installed beside
         // this one, prove the archive is from the same device before it has adopted the panel id.
-        sb.append(BackupIdentity.manifestFragment(panelAssistantDiscoveryId(config.androidId), appContext.packageName))
+        sb.append(
+            BackupIdentity.manifestFragment(
+                panelAssistantDiscoveryId(config.androidId),
+                appContext.packageName,
+                mqttConnected = mqttState() == "connected",
+            ),
+        )
         sb.append(
             RawPreferenceBackup.manifestFragment { store ->
                 appContext.getSharedPreferences(store, android.content.Context.MODE_PRIVATE).all

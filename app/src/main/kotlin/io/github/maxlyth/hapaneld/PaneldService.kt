@@ -4443,7 +4443,8 @@ class PaneldService : Service() {
         }
         // A retired bridge or a passive successor constructed nothing, exactly like the redirect above.
         if (identityMigrationStandby) {
-            scope.cancel()
+            // Only the passive migration pass runs in this generation; nothing else was started.
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
             stopForeground(true)
             super.onDestroy()
             return
