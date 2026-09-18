@@ -116,7 +116,18 @@ class NativeLocalizationContractTest {
         assertTrue(locale.contains("getSharedPreferences(LEGACY_CONFIG_PREFERENCES, Context.MODE_PRIVATE)"))
         val beforeDatabase = locale.substringAfter("fun applyBeforeDatabase").substringBefore("fun apply(raw: String)")
         assertTrue(!beforeDatabase.contains("Config(") && !beforeDatabase.contains("AppState.preferences"))
-        assertTrue(application.contains("NativeLocale.apply(Config(this).uiLanguage)"))
+        // The database-backed correction moved out of Application.onCreate and into PaneldService,
+        // after the promote: constructing Config here opened ha-paneld.db inside the
+        // startForegroundService deadline and killed the NSPanel 86 panels. The database is still
+        // authoritative, so the correction must exist — just not on the deadline.
+        assertTrue(
+            "Application.onCreate must not construct Config: it runs inside the foreground-start deadline",
+            !application.substringAfter("override fun onCreate()").contains("Config(this)"),
+        )
+        assertTrue(
+            "the authoritative locale is still applied, from PaneldService after it has promoted",
+            kotlin("PaneldService.kt").contains("NativeLocale.apply(config.uiLanguage)"),
+        )
         assertTrue(locale.contains("AppCompatDelegate.setApplicationLocales(desired)"))
         assertTrue(locale.contains("AppLocale.automaticLocaleOverride(systemLanguageTag(), AppLocale.RELEASE_LOCALES)"))
         assertTrue(locale.contains("ConfigurationCompat.getLocales(Resources.getSystem().configuration)"))

@@ -45,12 +45,25 @@ class HaPaneldApp : Application() {
         // Registers only the official Binder lifecycle listeners. No service is bound and no permission
         // is requested until the user opts in locally through the on-panel setup surface.
         ShizukuBridge.initialize(this)
-        // The database remains authoritative after ordinary admission; correct any stale compatibility
-        // mirror before activities or the foreground service render user-visible resources.
-        NativeLocale.apply(Config(this).uiLanguage)
+        // NOTHING BELOW HERE MAY OPEN THE DATABASE. On an out-of-process cold start — the provisioner's
+        // `am start-foreground-service` after `adb install -r`, a START_STICKY re-create, or the process
+        // boundary PaneldService.onDestroy re-arms — Android has already armed the
+        // startForegroundService deadline before this method runs, so every millisecond spent here is
+        // taken out of PaneldService's budget to reach startForeground.
+        //
+        // Constructing Config here used to open ha-paneld.db, which runs two full `PRAGMA quick_check`
+        // scans over a database that reaches tens of megabytes, plus the namespace load. That is what
+        // made Android 8.1 panels die with `RemoteServiceException: startForegroundService() did not
+        // then call Service.startForeground()`. Measured on such a panel on 2026-09-18, on a *warm*
+        // start with page cache hot: 2.31 s from am_proc_start to the promote. A cold post-install
+        // start, where the dex is still interpreted, clears the deadline outright.
+        //
+        // `ui_language` is already applied above from the XML mirror, and `dark_mode` is read from that
+        // same mirror. PaneldService.onCreate re-asserts both from the authoritative database, after it
+        // has promoted — see reconcileNativePresentationAfterPromotion there.
         if (Build.VERSION.SDK_INT < 29) {
             AppCompatDelegate.setDefaultNightMode(
-                if (Config(this).darkMode) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO,
+                if (darkModeBeforeDatabase(this)) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO,
             )
         }
     }
