@@ -5777,6 +5777,76 @@ assert_status 2 "fleet preflight rejects duplicate APK selectors"
 assert_contains '--apk may be supplied only once' "fleet duplicate APK failure names the conflict"
 assert_not_contains '^adb ' "$MOCK_CALL_LOG" "fleet duplicate APK failure starts no panel worker"
 
+# A locally sealed pair has no release to download from, and the acceptance that gates the identity
+# release has to run before any release publishes a successor asset. `--bridge-apk` names the bridge
+# beside a local `--apk`; it belongs to the wrapper and must never reach provision.sh, which installs
+# the successor alone and exits 2 on an argument it does not know.
+# A sealed pair carries the published contract names, which is also how the fakes tell the two
+# identities apart, so the fixtures are exercised exactly as a real pair would exercise them.
+BRIDGE_APK_LOCAL="$TMP/ha-paneld-v0.9.3-manual-setup-required.apk"
+SUCCESSOR_APK_LOCAL="$TMP/panel-assistant-v0.9.3-manual-setup-required.apk"
+cp "$APK" "$BRIDGE_APK_LOCAL"
+cp "$APK" "$SUCCESSOR_APK_LOCAL"
+
+: > "$MOCK_CALL_LOG"
+rm -f "$TMP/installed-apk" "$TMP/successor-installed"
+LAST_OUTPUT="$TMP/fleet-local-bridge-output.txt"
+MOCK_LEGACY_INSTALLED=1 MOCK_LEGACY_REMOVED_AFTER_SUCCESSOR=1 HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=5   bash "$UPDATE_FLEET" --apk "$SUCCESSOR_APK_LOCAL" --bridge-apk "$BRIDGE_APK_LOCAL" --allow-unsigned-helper --no-tame   -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_success "a locally sealed pair carries a legacy panel across without a release download"
+assert_log_contains '^adb .* install -r .*ha-paneld-v0\.9\.3-manual-setup-required\.apk$' \
+  "the bridge named by --bridge-apk is the one installed in place"
+assert_not_contains 'unknown arg' "$LAST_OUTPUT" "--bridge-apk is consumed by the wrapper and never reaches provision.sh"
+assert_not_contains 'supplies the successor only' "$LAST_OUTPUT" "a supplied bridge suppresses the successor-only warning"
+local_bridge_line="$(grep -n 'install -r .*ha-paneld-v0.9.3-manual-setup-required.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+local_successor_line="$(grep -n 'install .*panel-assistant-v0.9.3-manual-setup-required.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$local_bridge_line" ] && [ -n "$local_successor_line" ] &&
+   [ "$local_bridge_line" -lt "$local_successor_line" ]; then
+  pass "the locally supplied bridge is in place before the successor"
+else
+  fail_test "the locally supplied bridge is in place before the successor"
+fi
+
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-bridge-without-apk-output.txt"
+bash "$UPDATE_FLEET" --bridge-apk "$BRIDGE_APK_LOCAL" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_status 2 "a bridge path without a local successor is refused"
+assert_contains 'a release download carries its own' "the refusal says where a downloaded bridge comes from"
+assert_not_contains '^adb ' "$MOCK_CALL_LOG" "a bridge without --apk starts no panel worker"
+
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-duplicate-bridge-output.txt"
+bash "$UPDATE_FLEET" --apk "$APK" --bridge-apk "$BRIDGE_APK_LOCAL" --bridge-apk "$BRIDGE_APK_LOCAL" \
+  -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_status 2 "fleet preflight rejects duplicate bridge selectors"
+assert_contains '\-\-bridge-apk may be supplied only once' "duplicate bridge failure names the conflict"
+
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-bridge-equals-output.txt"
+bash "$UPDATE_FLEET" --apk "$APK" --bridge-apk="$BRIDGE_APK_LOCAL" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_status 2 "the --bridge-apk=PATH spelling is refused rather than silently ignored"
+assert_contains 'takes its path as the next argument' "the equals-form refusal says how to spell it"
+
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-missing-bridge-output.txt"
+bash "$UPDATE_FLEET" --apk "$APK" --bridge-apk "$TMP/no-such-bridge.apk" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_failure "a missing bridge path is refused before any panel worker starts"
+assert_contains 'bridge APK is missing or empty' "the missing bridge names the failure"
+assert_not_contains '^adb ' "$MOCK_CALL_LOG" "a missing bridge starts no panel worker"
+
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-foreign-bridge-output.txt"
+MOCK_BRIDGE_PACKAGE=example.foreign \
+  bash "$UPDATE_FLEET" --apk "$APK" --bridge-apk "$BRIDGE_APK_LOCAL" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_failure "a bridge carrying the wrong application id is refused"
+assert_contains 'fleet bridge APK package mismatch' "the foreign bridge names the mismatch"
+assert_not_contains '^adb ' "$MOCK_CALL_LOG" "a foreign bridge starts no panel worker"
+
 # Builds older than the setup endpoint keep working guidance, derived from config alone.
 MOCK_SETUP=missing run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a panel without the setup endpoint completes provisioning"

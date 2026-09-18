@@ -5,7 +5,9 @@ import io.github.maxlyth.hapaneld.http.migrationRestoreComplete
 import io.github.maxlyth.hapaneld.http.migrationRestoreConfig
 import io.github.maxlyth.hapaneld.persistence.ConfigVault
 import io.github.maxlyth.hapaneld.persistence.StateBackupPolicy
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -116,7 +118,7 @@ class MigrationRestoreTest {
         }
     }
 
-    @Test fun aRestoreThatOutlivedItsWaitAnswersItsOwnAttemptAndNeverTheNextOne() = runBlocking {
+    @Test fun aRestoreThatOutlivedItsWaitAnswersItsOwnAttemptAndNeverTheNextOne() {
         val attempts = RestoreAttempts()
         val first = attempts.begin()
         val firstRestore = attempts.claim()
@@ -126,14 +128,14 @@ class MigrationRestoreTest {
 
         firstRestore.finished(false)
 
-        assertFalse("the first attempt is answered by its own restore", first.await())
+        assertEquals("the first attempt is answered by its own restore", false, first.answer())
         assertFalse("the second attempt is still waiting for the restore it started", second.isCompleted)
 
         secondRestore.finished(true)
-        assertTrue(second.await())
+        assertEquals(true, second.answer())
     }
 
-    @Test fun theRestoresOwnOutcomeSurvivesTheFailureItsCompletionHandlerReportsBehindIt() = runBlocking {
+    @Test fun theRestoresOwnOutcomeSurvivesTheFailureItsCompletionHandlerReportsBehindIt() {
         val attempts = RestoreAttempts()
         val outcome = attempts.begin()
         val restore = attempts.claim()
@@ -141,10 +143,10 @@ class MigrationRestoreTest {
         restore.finished(true)
         restore.finished(false)
 
-        assertTrue("the first answer wins, so a completed restore keeps its outcome", outcome.await())
+        assertEquals("the first answer wins, so a completed restore keeps its outcome", true, outcome.answer())
     }
 
-    @Test fun anAttemptNoRestoreAnsweredFailsAtOnceRatherThanWaitingOutTheTimeout() = runBlocking {
+    @Test fun anAttemptNoRestoreAnsweredFailsAtOnceRatherThanWaitingOutTheTimeout() {
         val attempts = RestoreAttempts()
         val outcome = attempts.begin()
         val restore = attempts.claim()
@@ -152,6 +154,13 @@ class MigrationRestoreTest {
         // The job was cancelled, or the request was rejected before any restore ran.
         restore.finished(false)
 
-        assertFalse(outcome.await())
+        assertEquals(false, outcome.answer())
     }
+
+    /**
+     * The answer, or null when nobody gave one. An unanswered attempt is exactly the defect these
+     * tests guard against, so it has to fail the test rather than hang the whole run in [await].
+     */
+    private fun CompletableDeferred<Boolean>.answer(): Boolean? =
+        runBlocking { withTimeoutOrNull(5_000) { await() } }
 }
