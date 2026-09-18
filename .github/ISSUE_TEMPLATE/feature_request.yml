@@ -27,7 +27,8 @@ body:
         - ZX-SMT156 / RK3566_T (rk3566 / arm64)
         - Smatek S9E
         - Shelly Wall Display — legacy (Stargate 4", Pegasus X2, Atlantis, MT6580)
-        - Shelly Wall Display — modern (Blake XL, Jenna X2i, Cally, Maverick U1, Dayna D1, arm64)
+        - Shelly Wall Display X2i (Jenna, rk3326)
+        - Shelly Wall Display — other modern (Blake XL, Cally, Maverick U1, Dayna D1, arm64)
         - Other
   - type: textarea
     id: hardware

@@ -38,6 +38,7 @@ class ProvisioningServiceAdapterTest {
                 "s9e" to ProvisioningImportance.REQUIRED,
                 "shelly-wall-display" to ProvisioningImportance.RECOMMENDED,
                 "shelly-wall-display-v2" to ProvisioningImportance.RECOMMENDED,
+                "shelly-wall-display-x2i" to ProvisioningImportance.RECOMMENDED,
                 "smt1019" to ProvisioningImportance.REQUIRED,
                 "tpa10" to ProvisioningImportance.REQUIRED,
                 "wf1589t" to ProvisioningImportance.REQUIRED,

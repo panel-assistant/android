@@ -1,6 +1,6 @@
 schema: 2
 id: shelly-wall-display-v2
-version: 2.1.3
+version: 2.2.0
 display_name: Shelly Wall Display (modern)
 soc_class: "Model-dependent (known: RK3326-S / RK3566)"
 metadata:
@@ -10,7 +10,8 @@ metadata:
   maturity: experimental
   limitations:
     - SoC and proximity or motion details vary by model and still need live-hardware confirmation.
-    - On-board relays are not exposed because no safe supported local control path is known.
+    - On-board relays are not exposed. The one model examined on hardware routes them through a world-writable sysfs class, but ha-paneld drives relays through its privileged route, and no relay path is established for the other models this profile covers.
+    - The X2i has its own profile. What was learned there is deliberately not projected onto the remaining models.
 requires:
   min_core_version: 0.9.5-rc1
   drivers:
@@ -27,7 +28,6 @@ match:
           op: equals
           values:
             - blake
-            - jenna
             - cally
             - maverick
             - dayna
@@ -37,7 +37,6 @@ match:
           op: equals
           values:
             - blake
-            - jenna
             - cally
             - maverick
             - dayna
