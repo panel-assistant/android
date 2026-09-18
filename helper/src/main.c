@@ -211,6 +211,7 @@ static int probe_command_allowed(const char *command) {
     return strcmp(command, "PING") == 0 ||
            strcmp(command, "COMPANIONCAPS") == 0 ||
            strcmp(command, "BUILDID") == 0 ||
+           strcmp(command, "HELPERSTATUS") == 0 ||
            strcmp(command, "GUARDCAPS") == 0 ||
            strcmp(command, "GUARDSELF") == 0 ||
            strcmp(command, "GUARDSTATUS") == 0;

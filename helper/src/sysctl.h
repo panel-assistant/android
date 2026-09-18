@@ -25,5 +25,9 @@ void cmd_overlay(conn_ctx *ctx, const char *args);    // OVERLAY <pkg> deny|allo
 void cmd_install(conn_ctx *ctx, const char *args);    // INSTALL <apk-path> legacy verb; always fails closed
 void cmd_installstream(conn_ctx *ctx, const char *args); // INSTALLSTREAM <bytes> two-phase socket upload + install
 void cmd_installgc(conn_ctx *ctx, const char *args);  // INSTALLGC <apk-path> legacy cleanup acknowledgement
+// Identity-migration verbs. Both accept ONLY the two known ha-paneld package ids, so the successor
+// can complete a handover without a root shell and nothing else gains a privileged package surface.
+void cmd_uninstall(conn_ctx *ctx, const char *args);  // UNINSTALL <pkg>   remove the OTHER known package
+void cmd_grant(conn_ctx *ctx, const char *args);      // GRANT <pkg> NOTIFICATIONS|MICROPHONE|WRITESETTINGS|OVERLAY|BATTERY|ACCESSIBILITY
 
 #endif

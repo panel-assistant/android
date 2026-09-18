@@ -1,6 +1,7 @@
 #include "sysctl.h"
 #include "companion.h"
 #include "guard_maintenance.h"
+#include "identity.h"
 #include "sysexec.h"
 #include "util.h"
 
@@ -546,6 +547,168 @@ void cmd_overlay(conn_ctx *ctx, const char *args) {
     } else {
         reply(ctx->fd, "ERR\n");
     }
+}
+
+// --- identity-migration verbs ---------------------------------------------------------------------
+// UNINSTALL and GRANT exist so the successor package never needs `su`. On the six SuperSU panels root
+// is granted per uid behind a prompt nobody can answer remotely, so a new application id cannot get a
+// root shell at all; this authenticated socket is its only root channel, and these are the two things
+// the handover needs root for that no existing verb provides.
+//
+// Both refuse any package that is not one of the two known ids. That is not a convenience check: it
+// is why the verbs are safe to expose at all. Neither takes a free-form permission, appop or setting
+// name either — the capability argument selects from a fixed table, so the request can choose WHICH
+// of a known set of grants to apply and nothing else.
+//
+// Note that is_critical_pkg() cannot serve as the gate here: it now flags BOTH our ids precisely so
+// STOP/DISABLE can never tear them down, while UNINSTALL's whole purpose is to remove one of them at
+// the end of a completed handover. The allowlist is therefore its own, and narrower.
+
+// Remove one of the two known packages. Refuses to uninstall the CALLER's own package: a request to
+// delete the requester is either a mistake or a compromised caller, and the migration never needs it
+// — the successor removes the legacy app, after its own handover is confirmed. Ordering against the
+// HOME role stays with the app, which queries the resolved launcher before asking; duplicating that
+// query here would be a second definition of the same rule, and it would have to fail closed on any
+// vendor build whose `cmd package` cannot answer it.
+static int uninstall_pkg(const char *pkg, enum helper_caller caller) {
+    if (!valid_pkg(pkg) || !helper_known_package(pkg)) return -1;
+    if (helper_caller_for_package(pkg) == caller) return -1;
+    const char *const argv[] = { "pm", "uninstall", pkg, NULL };
+    return command_ok(sysexec_run_argv("/system/bin/pm", argv, 1)) ? 0 : -1;
+}
+
+void cmd_uninstall(conn_ctx *ctx, const char *args) {
+    char pkg[128] = "", extra[2] = "";
+    if (sscanf(args, "%127s %1s", pkg, extra) != 1) {
+        reply(ctx->fd, "ERR\n");
+        return;
+    }
+    if (guard_maintenance_install_begin() != 0) {
+        reply(ctx->fd, "BUSY\n");
+        return;
+    }
+    int removed = uninstall_pkg(pkg, ctx->caller) == 0;
+    guard_maintenance_install_end();
+    reply(ctx->fd, removed ? "OK\n" : "ERR\n");
+}
+
+// The grants the provisioner applies over ADB, which the successor must instead obtain for itself.
+// Each entry names the exact actuator and arguments; nothing about a request reaches the command line
+// except the already-validated package id.
+enum grant_kind { GRANT_PERMISSION, GRANT_APPOP, GRANT_BATTERY, GRANT_ACCESSIBILITY };
+
+static const struct {
+    const char *capability;
+    enum grant_kind kind;
+    const char *name;     // permission or appop name; unused by BATTERY/ACCESSIBILITY
+} GRANTS[] = {
+    { "NOTIFICATIONS",  GRANT_PERMISSION,    "android.permission.POST_NOTIFICATIONS" },
+    { "MICROPHONE",     GRANT_PERMISSION,    "android.permission.RECORD_AUDIO" },
+    { "WRITESETTINGS",  GRANT_APPOP,         "WRITE_SETTINGS" },
+    { "OVERLAY",        GRANT_APPOP,         "SYSTEM_ALERT_WINDOW" },
+    { "BATTERY",        GRANT_BATTERY,       NULL },
+    { "ACCESSIBILITY",  GRANT_ACCESSIBILITY, NULL },
+};
+
+// `cmd deviceidle` is the modern path and `dumpsys deviceidle` the fallback some vendor builds still
+// need; the app probes the same pair. Whitelisting an already-whitelisted package is a no-op, so the
+// verb stays idempotent.
+static int grant_battery(const char *pkg) {
+    char argument[160];
+    if (snprintf(argument, sizeof argument, "+%s", pkg) >= (int)sizeof argument) return -1;
+    const char *const modern[] = { "cmd", "deviceidle", "whitelist", argument, NULL };
+    if (command_ok(sysexec_run_argv("/system/bin/cmd", modern, 1))) return 0;
+    const char *const legacy[] = { "dumpsys", "deviceidle", "whitelist", argument, NULL };
+    return command_ok(sysexec_run_argv("/system/bin/dumpsys", legacy, 1)) ? 0 : -1;
+}
+
+// enabled_accessibility_services is a colon-separated list that other services share, so this is a
+// read-modify-write and never a blind overwrite. The value read back is written out again as a single
+// argv field, never through a shell, but it is still rejected unless it looks like a component list:
+// a setting this daemon cannot account for is not something root should hand back to the framework.
+static int accessibility_list_plausible(const char *value) {
+    for (const char *p = value; *p; p++) {
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9')) continue;
+        if (*p == '.' || *p == '_' || *p == '/' || *p == ':' || *p == '-') continue;
+        return 0;
+    }
+    return 1;
+}
+
+static int grant_accessibility(const char *pkg) {
+    // The service class comes from the Gradle namespace, which does NOT move with the applicationId,
+    // so the successor's component is its own id plus the unchanged class. The `.input.…` shorthand
+    // would resolve against the successor's package id and name a class that does not exist.
+    char component[256], shorthand[160];
+    if (snprintf(component, sizeof component, "%s/%s", pkg, APP_ACCESSIBILITY_CLASS) >= (int)sizeof component)
+        return -1;
+    if (snprintf(shorthand, sizeof shorthand, "%s/.input.PanelAccessibilityService", pkg) >= (int)sizeof shorthand)
+        return -1;
+
+    char existing[1024];
+    const char *const get[] = { "settings", "get", "secure", "enabled_accessibility_services", NULL };
+    if (!command_ok(sysexec_capture_argv("/system/bin/settings", get, existing, sizeof existing))) return -1;
+    size_t length = strlen(existing);
+    while (length > 0 && (existing[length - 1] == '\n' || existing[length - 1] == '\r' ||
+                          existing[length - 1] == ' ')) existing[--length] = '\0';
+    // `settings get` prints "null" for an unset secure setting; it is not a list containing "null".
+    if (strcmp(existing, "null") == 0) existing[0] = '\0', length = 0;
+    if (!accessibility_list_plausible(existing)) return -1;
+
+    // Already enabled in either spelling: nothing to write. A retry of an interrupted grant must
+    // converge rather than append the component a second time.
+    int present = 0;
+    char scan[sizeof existing];
+    memcpy(scan, existing, length + 1);
+    char *save = NULL;
+    for (char *entry = strtok_r(scan, ":", &save); entry && !present; entry = strtok_r(NULL, ":", &save))
+        present = strcmp(entry, component) == 0 || strcmp(entry, shorthand) == 0;
+
+    if (!present) {
+        char updated[sizeof existing + sizeof component];
+        int written = length > 0
+            ? snprintf(updated, sizeof updated, "%s:%s", existing, component)
+            : snprintf(updated, sizeof updated, "%s", component);
+        if (written < 0 || (size_t)written >= sizeof updated) return -1;
+        const char *const put[] = {
+            "settings", "put", "secure", "enabled_accessibility_services", updated, NULL
+        };
+        if (!command_ok(sysexec_run_argv("/system/bin/settings", put, 1))) return -1;
+    }
+
+    const char *const enable[] = { "settings", "put", "secure", "accessibility_enabled", "1", NULL };
+    return command_ok(sysexec_run_argv("/system/bin/settings", enable, 1)) ? 0 : -1;
+}
+
+static int apply_grant(const char *pkg, const char *capability) {
+    if (!valid_pkg(pkg) || !helper_known_package(pkg)) return -1;
+    for (size_t i = 0; i < sizeof GRANTS / sizeof GRANTS[0]; i++) {
+        if (strcmp(capability, GRANTS[i].capability) != 0) continue;
+        switch (GRANTS[i].kind) {
+            case GRANT_PERMISSION: {
+                const char *const argv[] = { "pm", "grant", pkg, GRANTS[i].name, NULL };
+                return command_ok(sysexec_run_argv("/system/bin/pm", argv, 1)) ? 0 : -1;
+            }
+            case GRANT_APPOP: {
+                const char *const argv[] = { "appops", "set", pkg, GRANTS[i].name, "allow", NULL };
+                return command_ok(sysexec_run_argv("/system/bin/appops", argv, 1)) ? 0 : -1;
+            }
+            case GRANT_BATTERY:
+                return grant_battery(pkg);
+            case GRANT_ACCESSIBILITY:
+                return grant_accessibility(pkg);
+        }
+    }
+    return -1;      // an unknown capability is refused, never passed through
+}
+
+void cmd_grant(conn_ctx *ctx, const char *args) {
+    char pkg[128] = "", capability[32] = "", extra[2] = "";
+    if (sscanf(args, "%127s %31s %1s", pkg, capability, extra) != 2) {
+        reply(ctx->fd, "ERR\n");
+        return;
+    }
+    reply(ctx->fd, apply_grant(pkg, capability) == 0 ? "OK\n" : "ERR\n");
 }
 
 // APK installation is streamed over the authenticated socket. The former pathname INSTALL accepted
