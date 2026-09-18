@@ -67,7 +67,7 @@ RENDER_TARGET_WINDOW = 6
 APK_FLOOR = (4, 0, 12)
 ARCHIVE_DOC = "docs/hardware/nspanel-pro-firmware-archive.md"
 ARCHIVE_DOC_URL = (
-    "https://github.com/maxlyth/ha-paneld/blob/main/docs/hardware/nspanel-pro-firmware-archive.md"
+    "https://github.com/panel-assistant/android/blob/main/docs/hardware/nspanel-pro-firmware-archive.md"
 )
 
 
@@ -499,10 +499,10 @@ INTRO = """# NSPanel Pro firmware — OTA download index (community-maintained)
 
 Direct, clickable, **live-verified** download links for Sonoff NSPanel Pro OTA firmware — both the **86P** (480×480, PX30) and the **120P** (750×1334, rk3326-S). Every link was confirmed live by a range response whose total object size exactly matches the index. The S3 bucket can't be listed, so these are exact-filename hits, not a directory listing.
 
-Flashing how-to (fully remote, no recovery-mode ADB): see [the repo's firmware guide](https://github.com/maxlyth/ha-paneld/blob/main/docs/hardware/nspanel-pro-firmware.md). `/data` (apps + settings) is preserved across an OTA.
+Flashing how-to (fully remote, no recovery-mode ADB): see [the repo's firmware guide](https://github.com/panel-assistant/android/blob/main/docs/hardware/nspanel-pro-firmware.md). `/data` (apps + settings) is preserved across an OTA.
 
 > [!TIP]
-> **How to read this index:** the per-model tables below are generated from the index data and cover the recent upgrade targets — GitHub caps the size of this post, so the authority on everything indexed is the [complete index](https://github.com/maxlyth/ha-paneld/blob/main/docs/hardware/nspanel-pro-firmware-archive.md), which lists every object including the older releases omitted here. This page deliberately does not name a “latest” version in prose, because prose goes stale the moment a release lands. `4.0.12` is the full-ROM checkpoint, and it is itself a full ROM. A release indexed after it arrives either as one or more diffs — each patching from a specific earlier version, and a release commonly has several inbound diffs to choose from — or as an APK-only update carrying no ROM at all, and a release can be a ROM on one model and APK-only on the other — so an upgrade is not always a single hop, and the per-model tables show which form each release takes. The project has hardware-verified the flashing procedure only through **4.4.0**; anything newer is CDN-verified only, so try it on one recoverable panel first.
+> **How to read this index:** the per-model tables below are generated from the index data and cover the recent upgrade targets — GitHub caps the size of this post, so the authority on everything indexed is the [complete index](https://github.com/panel-assistant/android/blob/main/docs/hardware/nspanel-pro-firmware-archive.md), which lists every object including the older releases omitted here. This page deliberately does not name a “latest” version in prose, because prose goes stale the moment a release lands. `4.0.12` is the full-ROM checkpoint, and it is itself a full ROM. A release indexed after it arrives either as one or more diffs — each patching from a specific earlier version, and a release commonly has several inbound diffs to choose from — or as an APK-only update carrying no ROM at all, and a release can be a ROM on one model and APK-only on the other — so an upgrade is not always a single hop, and the per-model tables show which form each release takes. The project has hardware-verified the flashing procedure only through **4.4.0**; anything newer is CDN-verified only, so try it on one recoverable panel first.
 
 > [!NOTE]
 > **Help wanted:** this index lists what has been *found*, not everything that exists. The bucket cannot be listed and the per-build index cannot be derived from a version number, so a failed probe rules out one filename at one index and never a build — absence here is not proof of non-existence. Spot a build or a link that is missing? Reply with the URL plus a range probe (`curl -s -r 0-0 -D - -o /dev/null "<url>"`) showing `206` and the total size, and it gets added. This thread is the living list.
@@ -517,7 +517,7 @@ Vendor release notes are written for eWeLink / Zigbee-hub users, not for people 
 > - **Lean kiosk:** a late **3.x** build is lighter, keeps the **Web Shortcut** web-app (point straight at a dashboard URL, no sideload), and ships **no Termux**.
 > - **Modern app model:** if you want F-Droid / the HA Companion app or 4.x MQTT features, stop at **4.0.12** — the conservative full-ROM checkpoint — then turn on **Settings → About → Block Firmware Updates** to pin it.
 > - **Latest / bleeding edge:** take the newest rows of the table below and of the per-model download tables. Nothing past **4.4.0** is live-flash verified by this project, and recent releases carry unverified community reports — restart loops on 4.5.1 / 4.5.2, sub-device connectivity trouble on 4.7.0. Try any of them on one recoverable panel first; **4.0.12** remains the conservative full-ROM checkpoint to pin for maximum stability.
-> - **Always:** sideload a current **System WebView** — the stock one is too old to render the HA dashboard (see the repo's [docs/hardware](https://github.com/maxlyth/ha-paneld/tree/main/docs/hardware) notes).
+> - **Always:** sideload a current **System WebView** — the stock one is too old to render the HA dashboard (see the repo's [docs/hardware](https://github.com/panel-assistant/android/tree/main/docs/hardware) notes).
 
 | Version | What it changes for HA-panel use | Watch out for |
 | --- | --- | --- |
@@ -584,12 +584,12 @@ Channels and conventions differ by model:
 `<idx>` is a per-build serial (the `rom-diff` index is per **target** version). Probing: a missing file returns `403`; a real file answers a range request with `206` + a `Content-Range` total. Check one with `curl -s -r 0-0 -D - -o /dev/null "<url>"`.
 
 > [!CAUTION]
-> The per-model tables above show the recent upgrade targets; the [complete index](https://github.com/maxlyth/ha-paneld/blob/main/docs/hardware/nspanel-pro-firmware-archive.md) is the authority on every full ROM, diff and APK indexed. Past the `4.0.12` full-ROM checkpoint a release arrives either as one or more diffs — each patching from a specific earlier version, so there is usually more than one way in — or as an APK-only update carrying no ROM diff at all, and a release can be a ROM on one model and APK-only on the other. Read the route off the tables rather than assuming a direct hop.
+> The per-model tables above show the recent upgrade targets; the [complete index](https://github.com/panel-assistant/android/blob/main/docs/hardware/nspanel-pro-firmware-archive.md) is the authority on every full ROM, diff and APK indexed. Past the `4.0.12` full-ROM checkpoint a release arrives either as one or more diffs — each patching from a specific earlier version, so there is usually more than one way in — or as an APK-only update carrying no ROM diff at all, and a release can be a ROM on one model and APK-only on the other. Read the route off the tables rather than assuming a direct hop.
 """
 
 FOOTER = """---
 
-*This page is generated and refreshed automatically — do not hand-edit the body. The link list lives in [`tools/firmware-index/`](https://github.com/maxlyth/ha-paneld/tree/main/tools/firmware-index), every URL is re-verified daily by [a GitHub Action](https://github.com/maxlyth/ha-paneld/blob/main/.github/workflows/firmware-url-monitor.yml), and the Archived dates come from the weekly [Wayback archiver](https://github.com/maxlyth/ha-paneld/blob/main/.github/workflows/firmware-wayback.yml). To add or correct a link, edit the data files (or reply below) — don't edit this post.*
+*This page is generated and refreshed automatically — do not hand-edit the body. The link list lives in [`tools/firmware-index/`](https://github.com/panel-assistant/android/tree/main/tools/firmware-index), every URL is re-verified daily by [a GitHub Action](https://github.com/panel-assistant/android/blob/main/.github/workflows/firmware-url-monitor.yml), and the Archived dates come from the weekly [Wayback archiver](https://github.com/panel-assistant/android/blob/main/.github/workflows/firmware-wayback.yml). To add or correct a link, edit the data files (or reply below) — don't edit this post.*
 """
 
 
@@ -761,7 +761,7 @@ ARCHIVE_INTRO = """# NSPanel Pro firmware — complete index
 
 Every OTA object this project has located on the CoolKit CDN, for both original NSPanel Pro models. This page is **generated from `tools/firmware-index/fw-120p.dat` and `fw-86p.dat`** — edit those, never this file.
 
-The [firmware Discussion](https://github.com/maxlyth/ha-paneld/discussions/7) carries a readable subset: recent upgrade targets and the app updates that matter for a current panel. It is capped by GitHub's body limit, which is why the exhaustive list lives here instead of being discarded.
+The [firmware Discussion](https://github.com/panel-assistant/android/discussions/7) carries a readable subset: recent upgrade targets and the app updates that matter for a current panel. It is capped by GitHub's body limit, which is why the exhaustive list lives here instead of being discarded.
 
 Nothing here is a recommendation. **The flashing procedure is hardware-verified only through 4.4.0**; everything past it is CDN-verified — confirmed to exist and to match its recorded size — and has never been flashed on a panel by this project. Read the [firmware & flashing page](nspanel-pro-firmware.md) before using any of it, and note that anything below the **4.0.12** checkpoint is expected to reach current firmware through that full ROM rather than through the older diffs listed here.
 

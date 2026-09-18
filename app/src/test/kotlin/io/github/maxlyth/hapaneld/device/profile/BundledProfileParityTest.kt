@@ -898,15 +898,15 @@ class BundledProfileParityTest {
         )
         val EXPECTED_UNOFFICIAL_SHA256 = mapOf(
             "community-cronos-lineageos18.yaml" to
-                "c0207b2b43f46d84641d2d33683cb7fb0e8a4013544827bd3041337a40d02ea2",
+                "cf42398b58f8683d642356ec77527358397dde7ef43ddebaca97da9306d3e5b2",
             "community-lenovo-thinksmart-view-lineageos.yaml" to
-                "31fb4e2af4aabf9833164473278963e73f778d8d1e2ec2b665f46d09d49db5fb",
+                "12a11b6c84e9a5d2e5f16fee6846068e715f43c012df91d2e9699ec9255c02e4",
             "community-rpi4-konstakang-lineageos.yaml" to
-                "a0dec39058b37b008c66e64462cd58f25f8827097bd56001f194db95db02658c",
+                "53d19935e662fde6402afa1fd135df31257782df4d5f19f22a4798a6f1951c77",
             "community-sunworld-yc-sm55p-p76s01.yaml" to
-                "e2ff5c96d633251fa01731016484c8c53d8d7fb952bf8e28e481bd8a98268e5c",
+                "33de85ea57739b6ee3a145dc80415e1c4697d1603de3f9209583bce05db839df",
             "community-yc-sm10p.yaml" to
-                "b51545efff1936aae12d8467440a20c128b45605262ef2df9ca5a039efa72aac",
+                "aa53937550b5b670132b9a0eb8c698dca5dfc9d58e629d6a0d7001802bdb7d72",
         )
 
         /** Branch-level collisions belong here; matrix-level cross-profile collisions are pinned above. */

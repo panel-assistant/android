@@ -60,7 +60,7 @@ jobs:
         run: |
           python tools/firmware-index/wayback_archive.py \
             --state wayback.json \
-            --page-url "https://github.com/maxlyth/ha-paneld/discussions/7"
+            --page-url "https://github.com/panel-assistant/android/discussions/7"
 
       # Append the updated state to the data branch (never force-pushes).
       - name: Persist archive state

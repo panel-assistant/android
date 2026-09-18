@@ -1,7 +1,7 @@
 # Portworld YC-SM10P profile notes
 
 > [!IMPORTANT]
-> This is an import-only community profile based on the hardware report in GitHub [#138](https://github.com/maxlyth/ha-paneld/issues/138). It is not bundled, automatically selected, maintainer-validated or fleet-qualified.
+> This is an import-only community profile based on the hardware report in GitHub [#138](https://github.com/panel-assistant/android/issues/138). It is not bundled, automatically selected, maintainer-validated or fleet-qualified.
 
 The reported YC-SM10P is a 10.1-inch Portworld panel on a Rockchip RK3566 running Android 11 userdebug. Its profile fingerprint requires both model `sm10p` and device `rk3566_r`, but it remains a manual choice for an owner who can confirm that hardware.
 

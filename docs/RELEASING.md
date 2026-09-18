@@ -51,8 +51,8 @@ After the stable Release workflow succeeds and its expected assets have been ver
 First enumerate the exact stable release and RC release, remote-tag and local-tag sets. Replace `X.Y.Z` with the stable version; do not broaden the pattern to another version line.
 
 ```sh
-gh release view vX.Y.Z --repo maxlyth/ha-paneld --json tagName,isDraft,isPrerelease,url
-gh release list --repo maxlyth/ha-paneld --limit 100 \
+gh release view vX.Y.Z --repo panel-assistant/android --json tagName,isDraft,isPrerelease,url
+gh release list --repo panel-assistant/android --limit 100 \
   --json tagName,isPrerelease,isDraft \
   --jq '.[] | select(.tagName | test("^vX\\.Y\\.Z-rc[0-9]+$")) | [.tagName, .isPrerelease, .isDraft] | @tsv'
 git ls-remote --tags origin 'refs/tags/vX.Y.Z-rc*'
@@ -72,7 +72,7 @@ Before running either remote deletion command, replace `X.Y.Z` and `N` with one 
 
 ```sh
 # A Release object exists for this exact tag:
-gh release delete vX.Y.Z-rcN --repo maxlyth/ha-paneld --cleanup-tag --yes
+gh release delete vX.Y.Z-rcN --repo panel-assistant/android --cleanup-tag --yes
 
 # No Release object exists and this exact remote tag is an orphan:
 git push origin :refs/tags/vX.Y.Z-rcN

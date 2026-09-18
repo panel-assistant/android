@@ -445,7 +445,7 @@ Use the version offered for the device's exact OTA track and check the [official
 _FOOTER = """\
 ---
 
-*This page is updated automatically when new Shelly Wall Display firmware is detected. The source data lives in [`tools/firmware-index/fw-shelly-walldisplay.dat`](https://github.com/maxlyth/ha-paneld/tree/main/tools/firmware-index/fw-shelly-walldisplay.dat). To add a missing version or report a correction, reply below or open an issue — a CDN URL + `curl -sI <url> | grep -i content-length` showing the file size is enough to add it.*
+*This page is updated automatically when new Shelly Wall Display firmware is detected. The source data lives in [`tools/firmware-index/fw-shelly-walldisplay.dat`](https://github.com/panel-assistant/android/tree/main/tools/firmware-index/fw-shelly-walldisplay.dat). To add a missing version or report a correction, reply below or open an issue — a CDN URL + `curl -sI <url> | grep -i content-length` showing the file size is enough to add it.*
 """
 
 

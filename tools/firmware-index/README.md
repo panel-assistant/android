@@ -1,6 +1,6 @@
 # Firmware index, availability monitor, and Wayback archiver
 
-Source of truth for the **NSPanel Pro firmware OTA download index**, published in two places: [Discussion #7](https://github.com/maxlyth/ha-paneld/discussions/7) carries the recent upgrade targets, because GitHub caps a Discussion body, and the generated [complete index](../../docs/hardware/nspanel-pro-firmware-archive.md) carries every indexed object. Alongside them, a daily checker verifies every download link still resolves at its recorded size, and a weekly job preserves every firmware file in the Internet Archive — each row's capture date is what the **Archived** column reports.
+Source of truth for the **NSPanel Pro firmware OTA download index**, published in two places: [Discussion #7](https://github.com/panel-assistant/android/discussions/7) carries the recent upgrade targets, because GitHub caps a Discussion body, and the generated [complete index](../../docs/hardware/nspanel-pro-firmware-archive.md) carries every indexed object. Alongside them, a daily checker verifies every download link still resolves at its recorded size, and a weekly job preserves every firmware file in the Internet Archive — each row's capture date is what the **Archived** column reports.
 
 ## Files
 
@@ -82,7 +82,7 @@ append-only `wayback-state` branch. Local run:
 
 ```bash
 WAYBACK_S3="accesskey:secret" python tools/firmware-index/wayback_archive.py \
-  --state wayback.json --page-url "https://github.com/maxlyth/ha-paneld/discussions/7" --max 5
+  --state wayback.json --page-url "https://github.com/panel-assistant/android/discussions/7" --max 5
 ```
 
 ## Adding or correcting a link

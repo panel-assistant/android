@@ -3,8 +3,8 @@
   <img src="app/src/main/res/drawable-nodpi/wordmark.png" width="360" alt="ha-paneld">
 </picture>
 
-[![CI](https://github.com/maxlyth/ha-paneld/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/maxlyth/ha-paneld/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/maxlyth/ha-paneld?include_prereleases&sort=semver&style=flat-square&color=blue)](https://github.com/maxlyth/ha-paneld/releases)
+[![CI](https://github.com/panel-assistant/android/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/panel-assistant/android/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/panel-assistant/android?include_prereleases&sort=semver&style=flat-square&color=blue)](https://github.com/panel-assistant/android/releases)
 [![License](https://assets.ha-paneld.com/docs/badge/license-apache-2-0-8aa187e4.svg)](LICENSE)
 
 **The universal Home Assistant dashboard app for Android wall panels.**
@@ -50,7 +50,7 @@ If you are unsure whether ha-paneld can run on your panel, check [Panels and sup
 First make ADB available over the network. On some panels this is a Developer options setting; others need a one-time USB connection to run `adb tcpip 5555`. The [provisioning guide](https://panel-assistant.io/go/docs?page=provisioning) and model-specific [hardware guides](https://panel-assistant.io/go/docs?page=hardware/readme) explain the available methods. Then run this from a computer with `adb` on the same network:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/maxlyth/ha-paneld/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash
 ```
 
 > [!IMPORTANT]
@@ -66,7 +66,7 @@ If a required step fails, the installer names the problem and exits without clai
 To follow the newest published release, including release candidates, add `--prerelease`. A newer stable release still wins:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/maxlyth/ha-paneld/main/scripts/install.sh | bash -s -- --prerelease
+curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash -s -- --prerelease
 ```
 
 The same installer supports unattended single-panel provisioning. See [Provisioning and fleet updates](https://panel-assistant.io/go/docs?page=provisioning) for scripted installs, USB bootstrap, panels without network ADB and whole-fleet updates.
@@ -76,7 +76,7 @@ ha-paneld is not distributed through Google Play, so installation always involve
 ### Other ways to install
 
 - **F-Droid on the panel:** add [ha-paneld's F-Droid repository](https://panel-assistant.io/go/docs?page=fdroid) to install and update stable releases without a computer. F-Droid notifies you when an update is available and lets you install it on the panel; release candidates are not included. Sonoff NSPanel Pro firmware 4.0.0 and newer includes F-Droid. This installs the app, but features requiring root still need the normal provisioning steps.
-- **Manual sideloading or USB bootstrap:** use the APK from the [latest release](https://github.com/maxlyth/ha-paneld/releases) and follow [Provisioning and fleet updates](https://panel-assistant.io/go/docs?page=provisioning) for the remaining permissions and setup.
+- **Manual sideloading or USB bootstrap:** use the APK from the [latest release](https://github.com/panel-assistant/android/releases) and follow [Provisioning and fleet updates](https://panel-assistant.io/go/docs?page=provisioning) for the remaining permissions and setup.
 
 ## Choose how the dashboard runs
 
@@ -95,8 +95,8 @@ ha-paneld does not need to be installed as a system app. Basic Android controls 
 | Sonoff NSPanel Pro / Pro 120 | Supported | Android 8.1, arm64-v8a | PX30 / rk3326-S; stock firmware provides root ADB, and normal provisioning installs ha-paneld's authenticated root helper |
 | Tuya TPA10 | Supported | Android 11, armeabi-v7a | rk3566 with 32-bit userspace |
 | Electron WF1589T | Supported | Android 14, arm64-v8a | rk3576 userdebug firmware; `adb root`, native Android navbar and RGB LED control |
-| ZHICAI SMT1019 | Community-tested, some features experimental | Android 14, arm64-v8a | rk3576; stock firmware has no app-accessible root. The authenticated helper can provide additional hardware access where installed. Climate accuracy and proximity support still need more hardware testing. [Issue #8](https://github.com/maxlyth/ha-paneld/issues/8) |
-| ZX-SMT156 / RK3566_T | Preliminary | Android 13, arm64-v8a | RGB LED and light/proximity work without root. Climate support is optional; relays and root access are still being characterised. [Issue #24](https://github.com/maxlyth/ha-paneld/issues/24) |
+| ZHICAI SMT1019 | Community-tested, some features experimental | Android 14, arm64-v8a | rk3576; stock firmware has no app-accessible root. The authenticated helper can provide additional hardware access where installed. Climate accuracy and proximity support still need more hardware testing. [Issue #8](https://github.com/panel-assistant/android/issues/8) |
+| ZX-SMT156 / RK3566_T | Preliminary | Android 13, arm64-v8a | RGB LED and light/proximity work without root. Climate support is optional; relays and root access are still being characterised. [Issue #24](https://github.com/panel-assistant/android/issues/24) |
 | Smatek S9E | Experimental | Android 11, arm64-v8a | Profile for onboard relays, button LEDs and proximity. Live confirmation on S9E hardware is still needed. |
 | Shelly Wall Display (original) | Incompatible stock software | Android 7.0, armeabi-v7a | Android is older than ha-paneld's minimum version. |
 | Shelly Wall Display X2 | Research only | Android 8.1, armeabi-v7a | No confirmed ha-paneld installation path. |
@@ -230,7 +230,7 @@ Dependency selection and updates follow the project's [dependency and supply-cha
 
 ## Translations
 
-Translations are generated and cross-checked using multiple services and models, including EuroLLM, DeepL and OpenAI. They have not been systematically reviewed by speakers of each language, so the English text remains authoritative. If wording is unclear or incorrect, [open a translation correction issue](https://github.com/maxlyth/ha-paneld/issues/new?template=translation_correction.yml).
+Translations are generated and cross-checked using multiple services and models, including EuroLLM, DeepL and OpenAI. They have not been systematically reviewed by speakers of each language, so the English text remains authoritative. If wording is unclear or incorrect, [open a translation correction issue](https://github.com/panel-assistant/android/issues/new?template=translation_correction.yml).
 
 ## Acknowledgements
 
