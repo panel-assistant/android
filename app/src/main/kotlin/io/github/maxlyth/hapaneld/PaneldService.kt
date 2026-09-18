@@ -1119,7 +1119,7 @@ class PaneldService : Service() {
                 startForegroundCompat(nativeString(R.string.starting), silent = true)
                 identityMigrationStandby = true
                 identityMigrationSticky = true
-                SuccessorMigrationRunner.runPassive(this, scope) { PaneldService.restartForMigration(this) }
+                SuccessorMigrationRunner.runPassive(this, scope)
                 return
             }
             StartDisposition.HELD_SUCCESSOR, StartDisposition.NORMAL -> Unit
@@ -3428,6 +3428,9 @@ class PaneldService : Service() {
             // that no old hardware owner can overlap the replacement generation.
             restartLease.awaitPredecessor()
             if (teardownBoundary.isStopping) return@runtimeStart
+            // The predecessor this generation waited behind may have been the one that retired the
+            // bridge. A retired bridge starts nothing, however its start was queued.
+            if (IdentityMigrationGate.disposition(this) == StartDisposition.RETIRED_BRIDGE) return@runtimeStart
 
             // Everything below can start work, write hardware state, attach a process-global owner, or
             // create an overlay. Keep all of it behind the predecessor fence, not merely HTTP/MQTT start.
@@ -5383,12 +5386,6 @@ class PaneldService : Service() {
         private const val FIRST_CONFIG_RETIRE_MS = 1_500L
         private val SERVICE_RESTART_BARRIER = ServiceRestartBarrier()
         private val PROCESS_BOUNDARY_COMMITMENT = ProcessBoundaryCommitment()
-
-        /** The passive successor finished its part: replace that service generation with a held one. */
-        internal fun restartForMigration(service: PaneldService) {
-            service.stopSelf()
-            Handler(Looper.getMainLooper()).postDelayed({ start(service.applicationContext) }, 500L)
-        }
 
         fun start(context: Context) {
             if (GuardDbProcessAdmission.maintenanceRequired()) {

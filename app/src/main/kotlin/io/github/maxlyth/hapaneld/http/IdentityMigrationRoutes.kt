@@ -5,6 +5,8 @@ import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
 import io.github.maxlyth.hapaneld.migration.ReleaseToken
 import io.github.maxlyth.hapaneld.util.Json
 import io.github.maxlyth.hapaneld.util.isLoopbackPeer
+import io.github.maxlyth.hapaneld.security.SensitiveOperation
+import io.ktor.server.application.ApplicationCall
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.plugins.origin
@@ -22,9 +24,20 @@ import io.ktor.server.routing.route
  * HTTP server is part of what is handed over; the successor learns the outcome from the bridge's
  * retired marker, not from this reply. Every refusal leaves the panel exactly as it was.
  */
-internal fun Route.identityMigrationRoutes(surface: IdentityMigrationSurface) {
+internal fun Route.identityMigrationRoutes(
+    surface: IdentityMigrationSurface,
+    authorize: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean,
+) {
     route("/api/v1/successor") {
         post("/offer") {
+            // An install like any other: under hardened security a LAN caller needs on-panel approval.
+            if (!authorize(
+                    call,
+                    SensitiveOperation.APK_INSTALL,
+                    "successor-offer",
+                    "Install and start the app under its new application id",
+                )
+            ) return@post
             val outcome = surface.offer()
                 ?: return@post call.respondText(NOT_A_BRIDGE, ContentType.Application.Json, HttpStatusCode.NotFound)
             call.respondText(

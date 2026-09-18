@@ -83,6 +83,11 @@ internal class AndroidBridgeReleasePorts(context: Context) : BridgeRelease.Ports
         return set && confirmed
     }
 
+    override fun endProcess() {
+        Log.i(TAG, "bridge retired; ending the process")
+        kotlin.system.exitProcess(0)
+    }
+
     override fun resumeBridge() {
         armedNonce?.let { UpgradeShutdownCoordinator.cancelAndResume(context, it, "retire_marker_not_durable") }
     }

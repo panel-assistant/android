@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.migration
 
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.http.migrationRestoreComplete
 import io.github.maxlyth.hapaneld.http.migrationRestoreConfig
 import io.github.maxlyth.hapaneld.persistence.ConfigVault
 import io.github.maxlyth.hapaneld.persistence.StateBackupPolicy
@@ -68,6 +69,34 @@ class MigrationRestoreTest {
 
         assertEquals("com.example.kept,com.example.other", restored["kiosk_companion_packages"])
         assertEquals("kitchen", restored["panel_id"])
+    }
+
+    @Test fun settingsThatNameTheWritersOwnPackageFollowTheAppToItsNewId() {
+        val restored = migrationRestoreConfig(
+            mapOf(
+                "launcher_package" to "io.github.maxlyth.hapaneld",
+                "dashboard_package" to "io.github.maxlyth.hapaneld",
+                "panel_id" to "io.github.maxlyth.hapaneld",
+            ),
+        )
+
+        assertEquals("io.panelassistant.android", restored["launcher_package"])
+        assertEquals("io.panelassistant.android", restored["dashboard_package"])
+        assertEquals("only package-valued settings are rewritten", "io.github.maxlyth.hapaneld", restored["panel_id"])
+    }
+
+    @Test fun aForeignLauncherOrRendererIsRestoredAsWritten() {
+        val values = mapOf("launcher_package" to "com.example.launcher", "dashboard_package" to "builtin")
+
+        assertSame(values, migrationRestoreConfig(values))
+    }
+
+    @Test fun aMigrationRestoreIsCompleteOnlyWhenEveryCarriedValueLanded() {
+        assertTrue(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 17, restoredRows = 17))
+        assertTrue(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 0, restoredRows = 0))
+        assertFalse(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 17, restoredRows = 16))
+        assertFalse(migrationRestoreComplete(rawPreferencesApplied = true, carriedRows = 17, restoredRows = 0))
+        assertFalse(migrationRestoreComplete(rawPreferencesApplied = false, carriedRows = 17, restoredRows = 17))
     }
 
     @Test fun aBackupWithoutCompanionPackagesIsRestoredUntouched() {

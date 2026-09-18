@@ -48,6 +48,8 @@ internal class AndroidSuccessorMigrationPorts(
     override fun environment(): Environment = environment
     override fun legacyInstalled(): Boolean = IdentityMigrationGate.legacyInstalled(context)
 
+    override fun releaseTokenHeld(): Boolean = ReleaseToken.of(context).current() != null
+
     override fun receiptSha256(): String? =
         state.receipt.takeIf(File::isFile)?.let { runCatching { AppInstaller.sha256(it) }.getOrNull() }
 
@@ -71,6 +73,12 @@ internal class AndroidSuccessorMigrationPorts(
             } finally {
                 connection.disconnect()
             }
+            // Promote only a verified archive: the stored receipt may be the last one obtainable.
+            ReceiptVerifier.refusal(staged, panelAssistantDiscoveryId(androidId))?.let { refusal ->
+                Log.w(TAG, "pulled backup was not kept: $refusal")
+                staged.delete()
+                return@runCatching null
+            }
             Files.move(staged.toPath(), state.receipt.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             receiptSha256()
         }.getOrElse {
@@ -82,8 +90,6 @@ internal class AndroidSuccessorMigrationPorts(
 
     override fun receiptRefusal(): String? =
         ReceiptVerifier.refusal(state.receipt, panelAssistantDiscoveryId(androidId))
-
-    override fun discardReceipt() { state.receipt.delete() }
 
     override suspend fun legacyRetired(): Boolean = MigrationTokenReceiver.legacyRetired(context)
 
@@ -142,7 +148,8 @@ internal class AndroidSuccessorMigrationPorts(
         val connection = open("/health", "GET")
         try {
             connection.responseCode == 200 &&
-                connection.inputStream.bufferedReader().use { it.readLine().orEmpty() }.startsWith("ha-paneld ")
+                connection.inputStream.bufferedReader().use { it.readLine().orEmpty() }
+                    .let { it.startsWith("ha-paneld ") && " pkg=$own" in "$it " }
         } finally {
             connection.disconnect()
         }
@@ -156,6 +163,12 @@ internal class AndroidSuccessorMigrationPorts(
 
     override fun uninstallLegacy(): Boolean =
         (HelperClient.sendLong("UNINSTALL $legacy", HELPER_TIMEOUT_MS) as? DaemonLongResult.Reply)?.value == "OK"
+
+    override fun forgetSecrets() {
+        val directory = state.receipt.parentFile ?: return
+        listOf(state.receipt, File(directory, "release-token.v1"), File(directory, "legacy-port.v1"))
+            .forEach { runCatching { it.delete() } }
+    }
 
     /** Whether [pkg] currently holds the platform state behind one helper `GRANT` capability. */
     private fun held(grant: String, pkg: String): Boolean = runCatching {

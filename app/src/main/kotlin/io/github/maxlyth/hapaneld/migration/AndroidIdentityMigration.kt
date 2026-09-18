@@ -40,7 +40,18 @@ internal object SuccessorMigrationRunner {
     }
 
     /** The successor before the legacy app has released the panel. No app state exists yet. */
-    fun runPassive(context: Context, scope: CoroutineScope, startHeldService: () -> Unit): Job = scope.launch {
+    /**
+     * The passive pass ends by ending the process, never by stopping the service. The passive service
+     * is sticky and in the foreground, so Android recreates it in a fresh process, which reads the
+     * durable markers and starts held. Stopping it and starting another would leave an instant with no
+     * foreground service, from which Android 12 and later refuse the start and nothing else would ever
+     * restart an app whose legacy counterpart has already retired.
+     */
+    fun runPassive(
+        context: Context,
+        scope: CoroutineScope,
+        startHeldService: () -> Unit = { kotlin.system.exitProcess(0) },
+    ): Job = scope.launch {
         val appContext = context.applicationContext
         val state = MigrationState.of(appContext)
         val androidId = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()

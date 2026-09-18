@@ -2007,7 +2007,7 @@ class PaneldServer internal constructor(
                         ),
                     ),
                 )
-                identityMigrationRoutes(identityMigration)
+                identityMigrationRoutes(identityMigration, ::authorizeSensitive)
                 panelAssistantTransportRoutes(
                     PanelAssistantTransportRouteDependencies(
                         facts = panelAssistantTransportFacts,
@@ -9830,13 +9830,13 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                             // Post-commit, and before the profile early-return below so a backup without
                             // profiles still restores its state. Never fatal: the configuration the owner
                             // came for is already durable, so a failure here must not roll it back.
-                            rawPreferences.forEach { (store, values) ->
+                            val rawPreferencesApplied = rawPreferences.all { (store, values) ->
                                 runCatching {
                                     val editor = appContext
                                         .getSharedPreferences(store, android.content.Context.MODE_PRIVATE).edit()
                                     values.forEach { (key, value) -> editor.putString(key, value) }
                                     editor.commit()
-                                }
+                                }.getOrDefault(false)
                             }
                             if (restorableState.isNotEmpty()) {
                                 restoredStateRows = runCatching {
@@ -9847,6 +9847,14 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                                     // already durable, and a live re-read failing must not undo it.
                                     runCatching { onDurableStateRestored() }
                                 }
+                            }
+                            // An ordinary restore forgives a state write that failed, because its archive
+                            // survives it. A migration's receipt is about to become the only copy of a
+                            // package that is then removed, so there every carried value must have landed.
+                            if (migrationRestore &&
+                                !migrationRestoreComplete(rawPreferencesApplied, restorableState.size, restoredStateRows)
+                            ) {
+                                throw IllegalStateException("migration restore did not apply every carried value")
                             }
                             val payload = profilePayload?.payload ?: return@afterApply
                             profileResult = requireNotNull(profileAdmin).restoreBackup(
@@ -11177,11 +11185,28 @@ internal fun restorableSettingValue(key: String, value: String, configuredOrigin
  * kiosk lock. Every other value is restored exactly as written.
  */
 internal fun migrationRestoreConfig(values: Map<String, String>): Map<String, String> {
-    val companions = values["kiosk_companion_packages"] ?: return values
-    val kept = io.github.maxlyth.hapaneld.parseKioskCompanionPackages(companions)
-        .filterNot(io.github.maxlyth.hapaneld.AppIdentity::isPanelApp)
-    return LinkedHashMap(values).apply { put("kiosk_companion_packages", kept.joinToString(",")) }
+    val restored = LinkedHashMap(values)
+    // A setting that names this app's own package is a sentinel, not a foreign app: the launcher
+    // selection "Panel admin" and the built-in renderer are both stored as the writer's package name.
+    // Left as written they would name the legacy package, which is about to be removed.
+    MIGRATION_OWN_PACKAGE_SETTINGS.forEach { key ->
+        if (restored[key] == io.github.maxlyth.hapaneld.AppIdentity.LEGACY) {
+            restored[key] = io.github.maxlyth.hapaneld.AppIdentity.SUCCESSOR
+        }
+    }
+    restored["kiosk_companion_packages"]?.let { companions ->
+        restored["kiosk_companion_packages"] = io.github.maxlyth.hapaneld.parseKioskCompanionPackages(companions)
+            .filterNot(io.github.maxlyth.hapaneld.AppIdentity::isPanelApp)
+            .joinToString(",")
+    }
+    return if (restored == values) values else restored
 }
+
+internal val MIGRATION_OWN_PACKAGE_SETTINGS: Set<String> = setOf("launcher_package", "dashboard_package")
+
+/** Whether a migration-mode restore wrote back everything its receipt carried. */
+internal fun migrationRestoreComplete(rawPreferencesApplied: Boolean, carriedRows: Int, restoredRows: Int): Boolean =
+    rawPreferencesApplied && restoredRows == carriedRows
 
 internal fun planRestoreSettings(
     migrated: Map<String, String>,

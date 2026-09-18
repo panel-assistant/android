@@ -18,6 +18,9 @@ internal object IdentityMigrationGate {
 
     fun holdsNetworkIdentity(): Boolean = held.get()
 
+    /** The migration is complete or was never needed; every activity callback asks, so it is cached. */
+    private val settledNormal = AtomicBoolean(false)
+
     fun disposition(context: Context): StartDisposition {
         if (AppIdentity.IS_BRIDGE) {
             return startDisposition(
@@ -30,7 +33,19 @@ internal object IdentityMigrationGate {
                 restored = false,
             )
         }
+        if (settledNormal.get()) return StartDisposition.NORMAL
         val state = MigrationState.of(context)
+        if (state.complete()) {
+            settledNormal.set(true)
+            return StartDisposition.NORMAL
+        }
+        // A successor that starts with no legacy package beside it never migrates, now or later. Latch
+        // that durably: a legacy package installed afterwards (an old deploy script, a sideload) must
+        // not turn a configured panel passive and then restore a stranger's defaults over it.
+        if (!state.started() && !legacyInstalled(context)) {
+            if (state.recordComplete()) settledNormal.set(true)
+            return StartDisposition.NORMAL
+        }
         return startDisposition(
             isBridge = false,
             bridgeRetired = false,

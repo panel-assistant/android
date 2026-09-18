@@ -36,6 +36,9 @@ internal class BridgeRelease(private val ports: Ports) {
 
         /** The freeze is released and the ordinary service restarted: the handover did not happen. */
         fun resumeBridge()
+
+        /** The handover is durable; end this process so nothing armed in it can run again. */
+        fun endProcess()
     }
 
     enum class Refusal(val code: String) {
@@ -79,5 +82,9 @@ internal class BridgeRelease(private val ports: Ports) {
             return
         }
         ports.setHomeToSuccessor()
+        // The process that armed the shutdown still holds its freeze, a watchdog that would release it,
+        // and possibly an activity drawing beneath the successor. None of that may outlive retirement;
+        // a fresh process, if Android ever starts one, is idle on every route.
+        ports.endProcess()
     }
 }

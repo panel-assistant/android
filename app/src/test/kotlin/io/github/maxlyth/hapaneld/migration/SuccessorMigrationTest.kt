@@ -39,6 +39,7 @@ class SuccessorMigrationTest {
         var home = "legacy"
         var receipt: String? = null
         var pulls = 0
+        var pullFails = false
         var receiptRefusal: String? = null
         var releaseRefusal: String? = null
         var retiresOnRelease = true
@@ -65,15 +66,23 @@ class SuccessorMigrationTest {
 
         override fun environment() = environment
         override fun legacyInstalled() = legacyInstalled
+        var secretsForgotten = false
+        override fun forgetSecrets() {
+            check(uninstalls > 0 || !legacyInstalled) { "the receipt was deleted while it could still be the only copy" }
+            secretsForgotten = true
+        }
+        var tokenHeld = true
+        override fun releaseTokenHeld() = tokenHeld
         override fun receiptSha256() = receipt
         override suspend fun pullReceipt(): String? {
             call("pull")
             check(!legacyRetired) { "a retired legacy app serves no backup" }
+            // A pull that does not verify leaves the stored receipt exactly as it was.
+            if (pullFails) return null
             receipt = "sha-${++pulls}"
             return receipt
         }
         override fun receiptRefusal() = receiptRefusal.also { call("verify") }
-        override fun discardReceipt() { call("discard"); receipt = null }
         override suspend fun legacyRetired() = legacyRetired
         override suspend fun requestRelease(): String? {
             call("release")
@@ -170,6 +179,7 @@ class SuccessorMigrationTest {
         assertFalse(world.legacyInstalled)
         assertEquals(1, world.uninstalls)
         assertTrue(markers.completeRecorded)
+        assertTrue("the plaintext receipt does not outlive the migration", world.secretsForgotten)
     }
 
     @Test fun thePassiveSuccessorStopsAtTheServiceBoundaryAndTheHeldServiceAtTheRestart() {
@@ -217,12 +227,13 @@ class SuccessorMigrationTest {
         )
     }
 
-    @Test fun aReceiptThatDoesNotVerifyIsDiscardedAndPulledAgainAndNeverReleasesThePanel() {
+    @Test fun aReceiptThatDoesNotVerifyNeverReleasesThePanelAndIsPulledAgain() {
         val world = World().apply { receiptRefusal = "discovery id is not this device" }
         val markers = FakeMarkers()
 
         assertEquals(Result.Waiting(Step.VERIFY, "discovery id is not this device"), pass(world, markers))
-        assertEquals(listOf("pull", "verify", "discard"), world.calls)
+        assertEquals(listOf("pull", "verify"), world.calls)
+        assertEquals("a refused receipt is never deleted", "sha-1", world.receipt)
 
         world.receiptRefusal = null
         assertEquals(Result.NeedsHeldService, pass(world, markers))
@@ -237,6 +248,33 @@ class SuccessorMigrationTest {
 
         assertEquals(2, world.pulls)
         assertEquals("sha-2", markers.value(Step.VERIFY))
+    }
+
+    @Test fun aBadPullDuringTheLegacyShutdownKeepsTheGoodReceiptForTheRestore() {
+        val world = World().apply { retiresOnRelease = false }
+        val markers = FakeMarkers()
+        pass(world, markers) // admitted, not yet retired: the good receipt is sha-1
+        world.pullFails = true
+
+        assertEquals(Result.Waiting(Step.PULL, "backup could not be pulled"), pass(world, markers))
+        assertEquals("sha-1", world.receipt)
+
+        world.legacyRetired = true
+        world.legacyHoldsPort = false
+        world.home = "own"
+        assertEquals(Result.Complete, runToRest(world, markers))
+        assertEquals("sha-1", markers.value(Step.VERIFY))
+    }
+
+    @Test fun noBackupIsTakenFromTheLegacyAppBeforeTheReleaseTokenArrives() {
+        val world = World().apply { tokenHeld = false }
+        val markers = FakeMarkers()
+
+        assertEquals(Result.Waiting(Step.PULL, "no release token has been delivered"), pass(world, markers))
+        assertEquals(emptyList<String>(), world.calls)
+
+        world.tokenHeld = true
+        assertEquals(Result.NeedsHeldService, pass(world, markers))
     }
 
     @Test fun aLostReceiptAfterReleaseNeverRemovesTheLegacyPackage() {

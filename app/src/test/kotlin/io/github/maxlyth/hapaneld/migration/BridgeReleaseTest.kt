@@ -36,6 +36,7 @@ class BridgeReleaseTest {
         }
         override fun setHomeToSuccessor(): Boolean = homeSets.also { events += "home" }
         override fun resumeBridge() { events += "resume" }
+        override fun endProcess() { events += "end" }
     }
 
     private fun request(ports: FakePorts, token: String? = "good", loopback: Boolean = true) =
@@ -48,7 +49,7 @@ class BridgeReleaseTest {
         assertEquals("nothing is given up before the service has torn down", listOf("quiesce"), ports.events)
 
         ports.quiesced!!.invoke()
-        assertEquals(listOf("quiesce", "marker", "home"), ports.events)
+        assertEquals(listOf("quiesce", "marker", "home", "end"), ports.events)
     }
 
     @Test fun everyRefusalLeavesNoSideEffect() {
@@ -119,7 +120,7 @@ class BridgeReleaseTest {
 
         ports.quiesced!!.invoke()
 
-        assertEquals(listOf("quiesce", "marker", "home"), ports.events)
+        assertEquals(listOf("quiesce", "marker", "home", "end"), ports.events)
         assertEquals(true, ports.retired)
     }
 }

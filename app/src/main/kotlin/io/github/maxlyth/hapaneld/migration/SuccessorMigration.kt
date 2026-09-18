@@ -55,17 +55,22 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         fun environment(): Environment
         fun legacyInstalled(): Boolean
 
+        /** The legacy app has delivered the token its release endpoint will ask for. */
+        fun releaseTokenHeld(): Boolean
+
         /** SHA-256 of the stored receipt archive, or null when there is none. */
         fun receiptSha256(): String?
 
-        /** Pull `POST /api/v1/backup` from the legacy app into the receipt; the new SHA-256 or null. */
+        /**
+         * Pull `POST /api/v1/backup` from the legacy app and, only if the pulled archive verifies,
+         * make it the receipt; the new SHA-256, or null when the stored receipt was left as it was. A
+         * pull taken while the legacy app is shutting down can be incomplete, and it must never replace
+         * a good receipt that may turn out to be the last one obtainable.
+         */
         suspend fun pullReceipt(): String?
 
         /** Why the stored receipt is not a complete backup of this device, or null when it is. */
         fun receiptRefusal(): String?
-
-        /** Delete a receipt that failed verification. */
-        fun discardReceipt()
 
         /** True when the legacy app reports its durable retired marker. */
         suspend fun legacyRetired(): Boolean
@@ -95,6 +100,9 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
 
         /** Remove the legacy package through the helper. */
         fun uninstallLegacy(): Boolean
+
+        /** Delete the receipt, the release token and the legacy port once the migration is complete. */
+        fun forgetSecrets()
     }
 
     sealed interface Result {
@@ -113,7 +121,11 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
     }
 
     suspend fun pass(): Result {
-        if (markers.complete()) return Result.Complete
+        if (markers.complete()) {
+            // Idempotent, and repeated here for a process that died between completing and forgetting.
+            ports.forgetSecrets()
+            return Result.Complete
+        }
         val started = Step.entries.any(markers::done)
         if (!started && !ports.legacyInstalled()) return Result.NotNeeded
 
@@ -143,6 +155,9 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         if (markers.done(Step.RELEASE) || !ports.legacyInstalled() || ports.legacyRetired()) {
             return if (kept) null else Result.Waiting(Step.PULL, "no receipt was kept and none can be pulled")
         }
+        // A backup occupies the legacy app's destructive-operation lane and shows there as an operation.
+        // Without the token no release can follow, so there is nothing to take one for yet.
+        if (!ports.releaseTokenHeld()) return Result.Waiting(Step.PULL, "no release token has been delivered")
         // While the legacy app still runs, every pass pulls again: a release that was refused for days
         // must not end with a restore of the state the panel had when the successor was first started.
         val sha = ports.pullReceipt() ?: return Result.Waiting(Step.PULL, "backup could not be pulled")
@@ -153,12 +168,9 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
     private fun verify(): Result? {
         val pulled = markers.value(Step.PULL)
         if (markers.value(Step.VERIFY) == pulled) return null
-        ports.receiptRefusal()?.let { refusal ->
-            // A receipt that does not verify is worthless as a receipt. While the legacy app still
-            // serves backups, drop it so the next pass pulls a fresh one instead of failing forever.
-            if (!markers.done(Step.RELEASE)) ports.discardReceipt()
-            return Result.Waiting(Step.VERIFY, refusal)
-        }
+        // Nothing is deleted on a refusal. While the legacy app still runs the next pass pulls again
+        // anyway, and once it has retired a receipt that cannot be replaced must never be discarded.
+        ports.receiptRefusal()?.let { return Result.Waiting(Step.VERIFY, it) }
         if (!markers.record(Step.VERIFY, requireNotNull(pulled))) return Result.Waiting(Step.VERIFY, "marker not durable")
         return null
     }
@@ -210,6 +222,9 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         if (!markers.record(Step.UNINSTALL) || !markers.recordComplete()) {
             return Result.Waiting(Step.UNINSTALL, "marker not durable")
         }
+        // The receipt is a plaintext backup holding the broker password and the Home Assistant tokens.
+        // It was kept as long as it could be the only copy; it is that no longer.
+        ports.forgetSecrets()
         return Result.Complete
     }
 }

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.PaneldService
+import io.github.maxlyth.hapaneld.upgrade.UpgradeShutdownCoordinator
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -32,8 +33,10 @@ class MigrationTokenReceiver : BroadcastReceiver() {
                 val retired = BridgeRetirement.isRetired(context)
                 resultCode = if (retired) STATUS_RETIRED else STATUS_ACTIVE
                 // A bridge killed after its service stopped but before it retired has nothing left to
-                // restart it, and the successor can only ask an HTTP server that is running.
-                if (!retired) runCatching { PaneldService.start(context) }
+                // restart it, and the successor can only ask an HTTP server that is running. Never while
+                // a shutdown is armed, though: the successor polls this during the handover itself, and
+                // a service generation started then would wait behind the hold and run after retirement.
+                if (!retired && !UpgradeShutdownCoordinator.isArmed()) runCatching { PaneldService.start(context) }
             }
         }
     }
