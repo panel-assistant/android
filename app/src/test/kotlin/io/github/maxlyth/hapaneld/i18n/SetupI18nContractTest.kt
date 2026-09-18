@@ -23,8 +23,8 @@ class SetupI18nContractTest {
         val frameKeys = literalSetupKeys(functionBody("setupBody"))
         val consumed = browserKeys + frameKeys
 
-        assertEquals("the reviewed Setup source slice changed", 196, sourceKeys.size)
-        assertEquals("the bounded browser consumer set changed", 193, browserKeys.size)
+        assertEquals("the reviewed Setup source slice changed", 205, sourceKeys.size)
+        assertEquals("the bounded browser consumer set changed", 202, browserKeys.size)
         assertEquals("the server frame must consume exactly its three keys", 3, frameKeys.size)
         assertEquals(
             "Every Setup key must have a literal consumer and every literal consumer must be catalogued",

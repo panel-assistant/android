@@ -10223,6 +10223,51 @@
    "sourceHash": "c236973b764d018af53248ebd56203ba203f9a875bd7d42418df34aa8bb51570",
    "state": "machine-draft"
   },
+  "setup.ha_url.handover.title": {
+   "text": "Адреса Home Assistant не спрацювала з цього панеля",
+   "sourceHash": "95566c26e1200c6aa845e89bf47830912910c45389c9dbdca04213e61a6540b1",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.attempted": {
+   "text": "Home Assistant вказує, що він за адресою {url}.",
+   "sourceHash": "6c237e4d68e162c26795de98cb0dd0cb53e4d1d5945da02de1beb64f6f2be95e",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.explanation": {
+   "text": "Зазвичай це адреса, яку Home Assistant знає про себе, а не та, до якої має доступ цей панель. Введіть адресу, за якою ви відкриваєте Home Assistant з цạї мережі.",
+   "sourceHash": "b30424a6ce1fdbd27c3bce9f2166cf47dbe9e6d573414c478e197be49f789b6d",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.unresolvable": {
+   "text": "Цей панель не зміг знайти цю адресу у своїй мережі.",
+   "sourceHash": "69b4cc0e2371cf0f76677d9487594e37cc3fd8648d5dc3401d4b1f3db32bde3f",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.unreachable": {
+   "text": "Ніщо не відповіло за цạєю адресою з мережі цього панеля.",
+   "sourceHash": "9271ab701f200ba895b1e8a80eadc7b65288bfcc23c04b97809d7f708bb8ce40",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.timeout": {
+   "text": "Ця адреса прийняла з’єднання, але не відповіла вчасно.",
+   "sourceHash": "431754418585e0e41bc0e8dc8230193523dcecc00e2b4f46d4381d91ad3f1a83",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.tls": {
+   "text": "Ця адреса використовує HTTPS із сертифікатом, який цей панель не може перевірити.",
+   "sourceHash": "1d86972863bc2466fcdeaefbd828b775593001b389d0543585b579b991ecaedf",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.not_home_assistant": {
+   "text": "Щось відповіло за цạєю адресою, але це був не Home Assistant.",
+   "sourceHash": "34fac562b46f9b22d0b29806c3b489212919474a960ea7dbce6ca5234a86dc27",
+   "state": "machine-draft"
+  },
+  "setup.ha_url.handover.generic": {
+   "text": "Цей панель не зміг з’єднатися з Home Assistant за цạєю адресою.",
+   "sourceHash": "0a57d6ea313ddef65fb24b9910bd5212ef5333fe6f55d847f3b8acd558932c9c",
+   "state": "machine-draft"
+  },
   "setup.ha_url.label": {
    "text": "Home Assistant URL",
    "sourceHash": "d8d89efc512baff4d9d1924b627322b9b007a8c08ed95af6976dfbc684d308fa",
