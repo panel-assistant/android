@@ -1147,6 +1147,7 @@ class PaneldService : Service() {
         config.migrateAutoSleepSource()
         config.migrateSetupQuestionsForExistingInstall()
         config.ensurePanelId()      // materialize the generated identity before MQTT/mDNS snapshot it
+        reconcileNativePresentationAfterPromotion()
         updateForegroundStatus(nativeString(R.string.starting))
         liveSettingAuthority = LiveSettingAuthority.persistent(this, MqttBridge.APPLY_SETTING_KEYS)
         // Resolve one immutable profile revision before constructing any hardware owner. Activations are
@@ -4319,7 +4320,48 @@ class PaneldService : Service() {
         foregroundStatusText = statusText
         val (_, channelId) = notificationChannel(silent)
         promoteToForeground(foregroundNotification(channelId, silent, statusText), microphoneForeground)
-        Log.i(TAG, "foreground service started")
+        Log.i(TAG, "foreground service started${promotionLatencySuffix()}")
+    }
+
+    /**
+     * How long this process took to reach `startForeground`, when the platform can tell us.
+     *
+     * Android gives a `startForegroundService` caller a few seconds to promote, and on an
+     * out-of-process cold start that budget covers process creation and `Application.onCreate` as well
+     * as everything above. Missing it kills the process with `RemoteServiceException`, which is what
+     * slower Android 8.1 panels were doing. An absence of crashes cannot prove that fixed, so the
+     * margin is measured on every start instead of inferred: this is the instrument that says how much
+     * headroom the slowest panel actually has.
+     *
+     * `Process.getStartElapsedRealtime` is API 24+, and minSdk is 26, so it is always available; it is
+     * still defensive because a wrong answer here must never be the thing that fails a promote.
+     */
+    private fun promotionLatencySuffix(): String = runCatching {
+        " (promoted ${android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime()} ms after process start)"
+    }.getOrDefault("")
+
+    /**
+     * Re-assert the database's view of locale and night mode, now that the service has promoted.
+     *
+     * `Application.onCreate` deliberately reads both from the downgrade-compatible XML mirror, because
+     * opening the database there spends the foreground-start deadline (see the comment in
+     * `HaPaneldApp.onCreate`). The database stays authoritative — a restore can write it without
+     * touching the mirror — so the correction happens here instead, where it is off the deadline and
+     * still before any ha-paneld screen is rendered.
+     */
+    private fun reconcileNativePresentationAfterPromotion() {
+        runCatching {
+            NativeLocale.apply(config.uiLanguage)
+            if (Build.VERSION.SDK_INT < 29) {
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                    if (config.darkMode) {
+                        androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    } else {
+                        androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                    },
+                )
+            }
+        }.onFailure { Log.w(TAG, "could not reconcile native locale/night mode from the database", it) }
     }
 
     /**
@@ -5398,6 +5440,17 @@ class PaneldService : Service() {
             }
             // A retired bridge stays idle on every route into the app, not only inside onCreate.
             if (IdentityMigrationGate.disposition(context) == StartDisposition.RETIRED_BRIDGE) return
+            // An armed upgrade has deliberately claimed this service down so an install can proceed
+            // against a quiesced database. Every route that legitimately resumes it — cancelAndResume,
+            // releaseAndResume — disarms the gate first and then calls back in here, so refusing while
+            // armed blocks only an *undeliberate* start, such as the accessibility revival below.
+            // The refusal lives here rather than at the caller because this is the single entry point:
+            // a second copy in PanelAccessibilityService would be a second definition of the contract,
+            // free to drift.
+            if (UpgradeShutdownCoordinator.isArmed()) {
+                Log.i(TAG, "not starting: an upgrade holds the service down")
+                return
+            }
             val intent = Intent(context, PaneldService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

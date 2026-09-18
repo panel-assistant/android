@@ -8,6 +8,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import io.github.maxlyth.hapaneld.PaneldService
 import io.github.maxlyth.hapaneld.platform.AccessibilityActions
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import java.util.concurrent.CountDownLatch
@@ -27,7 +28,35 @@ class PanelAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        if (GuardDbProcessAdmission.ordinaryMutationsAllowed()) instance = this
+        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return
+        instance = this
+        revivePaneldService()
+    }
+
+    /**
+     * Bring [PaneldService] up when the process was revived only for this accessibility bind.
+     *
+     * A foreground-start timeout kills the process *and* drops the started-service record, so there is
+     * no START_STICKY re-create waiting to happen. The accessibility service is bound by the system
+     * independently of that record, so the process can come back for it alone — no `:8888`, no MQTT and
+     * no log shipping. Observed lasting over eight hours, until `MainActivity` was started by hand.
+     * This is the route back.
+     *
+     * Three reasons this cannot start a second instance or fight a deliberate stop:
+     * - `PaneldService.start` issues `startForegroundService`, and Android delivers that to the single
+     *   existing instance when one is running; `onStartCommand`'s `started` guard makes the redelivery
+     *   inert, so `:8888` is never bound twice.
+     * - `onServiceConnected` fires on a bind, not on a timer, so there is no loop to run. A deliberate
+     *   stop does not unbind accessibility and therefore does not come back through here.
+     * - `PaneldService.start` itself refuses while an upgrade holds the service down, and while the
+     *   bridge is retired or Guard DB maintenance is required.
+     *
+     * Never let this throw: `onServiceConnected` failing takes the accessibility bind down with it, and
+     * on Android 12+ a foreground start from a background process can be refused outright.
+     */
+    private fun revivePaneldService() {
+        runCatching { PaneldService.start(this) }
+            .onFailure { Log.w(TAG, "could not revive PaneldService from the accessibility bind", it) }
     }
 
     override fun onDestroy() {

@@ -62,6 +62,28 @@ internal object NativeLocale {
     private const val AUTO_LANGUAGE = "auto"
 }
 
+/**
+ * Read `dark_mode` from the downgrade-compatible XML mirror, without constructing Config/AppState.
+ *
+ * Same contract, and same reason, as [NativeLocale.applyBeforeDatabase]: this runs in
+ * `Application.onCreate`, inside the `startForegroundService` deadline on a cold start, where opening
+ * the protected database costs whole seconds on slow panel hardware. `DowngradeCompatibleStatePersistence`
+ * keeps the mirror in step on every commit, and `PaneldService.onCreate` re-asserts the authoritative
+ * database value once it has already promoted to the foreground.
+ *
+ * The default matches the `dark_mode` SettingSpec default (`true`), so a panel whose mirror predates
+ * the key themes exactly as the registry says it should.
+ */
+internal fun darkModeBeforeDatabase(context: Context): Boolean = runCatching {
+    context.applicationContext
+        .getSharedPreferences(LEGACY_CONFIG_MIRROR, Context.MODE_PRIVATE)
+        .getBoolean(DARK_MODE_KEY, DARK_MODE_DEFAULT)
+}.getOrDefault(DARK_MODE_DEFAULT)
+
+private const val LEGACY_CONFIG_MIRROR = "ha-paneld"
+private const val DARK_MODE_KEY = "dark_mode"
+private const val DARK_MODE_DEFAULT = true
+
 /** Services do not inherit AppCompat's activity locale override before Android 13. */
 internal fun Context.nativeString(@StringRes id: Int, vararg formatArgs: Any): String =
     NativeLocale.string(this, id, *formatArgs)
