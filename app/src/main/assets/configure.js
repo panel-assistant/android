@@ -2933,9 +2933,20 @@
     });
   }
 
+  // The single-column placeholder regime is defined exactly once, by info.css's container query on
+  // `.cards`, which publishes `--single-column` on every card it covers. Reading that flag keeps this
+  // in step with the CSS by construction. It replaces `matchMedia("(max-width: 857px)")`, which
+  // restated a viewport threshold the CSS derived from a padding that same query changed — so the two
+  // disagreed across 834-857px — and which could not see a scrollbar's width or the width of the Panel
+  // Assistant sidebar iframe these pages now render inside.
+  function configSingleColumnRegime(node) {
+    if (!window.getComputedStyle) return true;
+    return window.getComputedStyle(node).getPropertyValue("--single-column").trim() === "1";
+  }
+
   function configViewportAnchor(node) {
     if (!node || !node.isConnected || typeof node.getBoundingClientRect !== "function") return null;
-    if (window.matchMedia && !window.matchMedia("(max-width: 857px)").matches) return null;
+    if (!configSingleColumnRegime(node)) return null;
     var rect = node.getBoundingClientRect();
     var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
     if (!isFinite(rect.top) || !isFinite(rect.bottom) || rect.height <= 0 || viewportHeight <= 0 ||

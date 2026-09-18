@@ -196,7 +196,8 @@ class AutoSleepUiContractTest {
             "retainedAutoSleepScrollTop" in source &&
                 "var retainedAutoSleepViewportAnchor = retainedAutoSleepCard ? configViewportAnchor(retainedAutoSleepPanel) : null" in source &&
                 "restoreConfigViewportAnchor(retainedAutoSleepViewportAnchor)" in source &&
-                "window.matchMedia(\"(max-width: 857px)\")" in source &&
+                "function configSingleColumnRegime(node)" in source &&
+                "getPropertyValue(\"--single-column\").trim() === \"1\"" in source &&
                 "var beforeY = window.pageYOffset || 0" in source &&
                 "window.scrollTo(window.pageXOffset || 0, beforeY + delta)" in source,
         )
@@ -278,7 +279,7 @@ class AutoSleepUiContractTest {
         val css = asset("info.css").readText()
         assertTrue(
             "narrow Configure renders must have a transaction-scoped exact-layout escape",
-            "@media (max-width:857px){#cfg-groups.config-viewport-anchored>.card{content-visibility:visible}}" in css &&
+            "@container panelcards (width < 818px){#cfg-groups.config-viewport-anchored>.card{content-visibility:visible}}" in css &&
                 "root.classList.toggle(\"config-viewport-anchored\", !!retainedAutoSleepViewportAnchor)" in source &&
                 "root.classList.remove(\"config-viewport-anchored\")" in source,
         )
