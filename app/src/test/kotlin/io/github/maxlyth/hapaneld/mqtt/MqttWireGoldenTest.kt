@@ -419,7 +419,6 @@ class MqttWireGoldenTest {
             buttonsEnabled = true,
             hasEvdevButtons = false,
             capabilities = { capabilities },
-            hasLight = true,
             hasProximity = true,
             hasTemperature = true,
             hasHumidity = true,

@@ -145,6 +145,19 @@ class SensorReporter(
     private val appContext = context.applicationContext
     private val sm = appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val lightSensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_LIGHT)
+    private val lightAvailability = LightAvailabilityTracker(
+        present = lightSensor != null,
+        acquireTimeoutMs = ON_CHANGE_ACQUIRE_TIMEOUT_MS,
+        schedule = { delayMs, expire ->
+            val handler = sensorHandler
+            val task = Runnable(expire)
+            if (handler == null) ActivationRetryCancellation {} else {
+                handler.postDelayed(task, delayMs)
+                ActivationRetryCancellation { handler.removeCallbacks(task) }
+            }
+        },
+        onChange = { notifyLightAvailability() },
+    )
     private val proximitySensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)
     private val hasCht8305: Boolean = profile.hasCht8305
     private val tempSensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE)
@@ -169,6 +182,7 @@ class SensorReporter(
     )
     @Volatile private var proximityRuntime: ProximityCalibrationRuntime? = null
     @Volatile private var learnedProximityListener: (() -> Unit)? = null
+    private var lightAvailabilityListener: (() -> Unit)? = null
     @Volatile private var lastLearnedEligibility = false
     private var proximityPrepared = false
 
@@ -314,6 +328,17 @@ class SensorReporter(
     }
 
     fun hasLight() = lightSensor != null
+
+    /** Whether the light sensor actually delivers readings, not merely whether one is declared. This
+     *  is the single answer every advertising path reads; presence alone once advertised a dead part. */
+    fun lightAvailable() = lightAvailability.available()
+
+    /** Notify the service only when advertised light availability changes. Carries no truth: every
+     *  consumer re-reads this reporter before acting, exactly as learned proximity does. */
+    fun setLightAvailabilityListener(listener: (() -> Unit)?) {
+        synchronized(this) { lightAvailabilityListener = listener }
+        listener?.invoke()
+    }
     fun hasProximity() = proximityAcquisition != ProximityAcquisition.ABSENT
     fun hasLearnedProximity() = proximityRuntime?.isLearnedSignal() == true
     fun hasTemperature() = environmentalSensorPublishes(tempUse)
@@ -456,6 +481,7 @@ class SensorReporter(
                         val now = SystemClock.elapsedRealtime()
                         liveLux = lux
                         liveLuxAt = now
+                        lightAvailability.reading()
                         run.light(lux, now)
                     }
                     Sensor.TYPE_PROXIMITY -> if (proximityAcquisition != ProximityAcquisition.STK_RAW) {
@@ -499,7 +525,13 @@ class SensorReporter(
                 },
             ).also { it.start() }
         }
-        lightSensor?.let { sm.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL, handler) }
+        lightSensor?.let {
+            // An em3071x declared by the device tree but absent from the bus refuses activation here
+            // (HAL: "Error activating sensor"). Treat that exactly as a failed proximity registration.
+            val registered = sm.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL, handler)
+            if (!registered) Log.w(TAG, "light sensor registration refused: ${it.name} (${it.vendor})")
+            lightAvailability.registered(registered)
+        }
         if (hasProximity() && !initializeProximitySource(run, { activeRun === run }) {
                 if (proximityAcquisition == ProximityAcquisition.VI530X) {
                     val client = Vi530xProximityClient(
@@ -561,7 +593,7 @@ class SensorReporter(
         humidityActivation = registerEnvironmentalSensor(humiditySensor, humidityUse, "humidity", run, handler)
         Log.i(
             TAG,
-            "sensors started (light=${hasLight()} proximity=${hasProximity()} " +
+            "sensors started (light=${lightAvailability.label()} proximity=${hasProximity()} " +
                 "temp=$tempUse humidity=$humidityUse)",
         )
     }
@@ -744,6 +776,10 @@ class SensorReporter(
         }
     }
 
+    private fun notifyLightAvailability() {
+        synchronized(this) { lightAvailabilityListener }?.invoke()
+    }
+
     private fun updateLearnedEligibility() {
         val current = hasLearnedProximity()
         val listener = synchronized(this) {
@@ -795,6 +831,7 @@ class SensorReporter(
         roomClimateRefresh = null
         roomClimateExecutor?.shutdownNow()
         roomClimateExecutor = null
+        lightAvailability.stop()
         tempActivation?.stop()
         tempActivation = null
         humidityActivation?.stop()

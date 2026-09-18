@@ -1753,6 +1753,10 @@ class PaneldService : Service() {
             server.invalidateCapabilitySnapshot()
             runtime.observe()?.value?.mqtt?.notifyLearnedProximityChanged()
         }
+        sensors.setLightAvailabilityListener {
+            server.invalidateCapabilitySnapshot()
+            runtime.observe()?.value?.mqtt?.notifyLightAvailabilityChanged()
+        }
         // Resolves the CURRENT bridge generation rather than closing over one, so a bridge rebuild
         // (reconfigure) never leaves a stale generation publishing a superseded voice_state.
         voiceStateAuthority.setChangeListener {
@@ -1797,7 +1801,7 @@ class PaneldService : Service() {
             config, brightness, screen, led, ledEffect, navigate, volume, system, navbar, watchdog, touchSound, bootChime, zigbee, relay, cpu, adb,
             accessibilityEnabled(), profile.evdevButtons.isNotEmpty(),
             { capabilitiesSnapshot() },
-            sensors.hasLight(), sensors.hasProximity(),
+            sensors.hasProximity(),
             sensors.hasTemperature(), sensors.hasHumidity(),
             profile.hasCht8305,
             // Button backlight is a distinct profiled node (TPA10), not a property of the RGB backend:
@@ -2853,7 +2857,7 @@ class PaneldService : Service() {
             Capabilities(
                 hasProximity = sensors.hasProximity(),
                 hasLearnedProximity = sensors.hasLearnedProximity(),
-                hasLight = sensors.hasLight(),
+                hasLight = sensors.lightAvailable(),
                 hasTemperature = sensors.hasTemperature(),
                 hasHumidity = sensors.hasHumidity(),
                 hasWifi = wifiAvailable.rssi,

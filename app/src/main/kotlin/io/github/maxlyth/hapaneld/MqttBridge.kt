@@ -1192,7 +1192,6 @@ internal class MqttBridge(
     // Capability snapshot supplier for availableWhen gating of registry entities (null = no gating,
     // used by tests). Called on the MQTT thread at discovery time, so probes stay off the main thread.
     private val capabilities: (() -> Capabilities)? = null,
-    private val hasLight: Boolean,
     private val hasProximity: Boolean,
     private val hasTemperature: Boolean,
     private val hasHumidity: Boolean,
@@ -3685,6 +3684,15 @@ internal class MqttBridge(
     }
 
     /** Apply an empirical mode-change notification without accepting truth from its producer. */
+    /** Re-announce discovery when the light sensor's real availability changes, so an illuminance
+     *  entity advertised optimistically at startup is withdrawn once activation is known to have failed. */
+    internal fun notifyLightAvailabilityChanged() {
+        lifecycle.runIfOpen(Unit) {
+            discoveryCapabilities.invalidate()
+            requestReAnnounce()
+        }
+    }
+
     internal fun notifyLearnedProximityChanged() {
         lifecycle.runIfOpen(Unit) {
             discoveryCapabilities.invalidate()
@@ -4001,7 +4009,9 @@ internal class MqttBridge(
 
         // Panel sensors — exposed as data only; room sensors stay the occupancy/lux authority. Their
         // registry descriptors are shared with Configure/API availability and remain the sole schema.
-        registryExposable("illuminance", availableOverride = hasLight) {
+        // No availableOverride: a static constructor snapshot cannot see a light sensor that failed
+        // to activate after the bridge was built. The live capability snapshot is the shared answer.
+        registryExposable("illuminance") {
             stateConverger.reconcile("illuminance", force = true)
         }
         val learnedProximity = capabilitySnapshot?.hasLearnedProximity == true
