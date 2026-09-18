@@ -814,7 +814,7 @@ class DashboardActivity : AppCompatActivity() {
         // Explicitly remove the legacy object as well: a V2-only renderer never leaves a V1 interface
         // installed, including across WebView reuse or a provider restoring internal state.
         runCatching { view.removeJavascriptInterface("externalApp") }
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
+        if (!webViewFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
         runCatching { WebViewCompat.removeWebMessageListener(view, EXTERNAL_APP_V2) }
         runCatching { WebViewCompat.removeWebMessageListener(view, HaPaneldV2Protocol.OBJECT_NAME) }
         if (v2ListenerView === view) v2ListenerView = null
@@ -824,7 +824,7 @@ class DashboardActivity : AppCompatActivity() {
         view: WebView,
         config: Config,
     ) {
-        check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))
+        check(webViewFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))
         val allowedOrigins = dashboardDocumentStartOrigins(config.haUrl)
         view.removeJavascriptInterface("externalApp")
         // Installation happens only before an HA navigation, never during an ordinary reload. Remove
@@ -1053,7 +1053,7 @@ class DashboardActivity : AppCompatActivity() {
             }
         val lease = EntityFilterTelemetry.started(ids)
         entityFilterLease = lease
-        if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        if (!webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             Log.w(TAG, "entity filter unavailable: document-start script unsupported")
             if (entityFilterFailureDisposition(
                     automaticLearningEnabled = config.dashboardEntityLearningEnabled,
@@ -2174,14 +2174,14 @@ class DashboardActivity : AppCompatActivity() {
         } else {
             Config(this).darkMode
         }
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+        if (webViewFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
             @Suppress("DEPRECATION")
             androidx.webkit.WebSettingsCompat.setForceDark(
                 w.settings,
                 if (dark) androidx.webkit.WebSettingsCompat.FORCE_DARK_ON else androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF,
             )
         }
-        if (dark && androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK_STRATEGY)) {
+        if (dark && webViewFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK_STRATEGY)) {
             @Suppress("DEPRECATION")
             androidx.webkit.WebSettingsCompat.setForceDarkStrategy(
                 w.settings, androidx.webkit.WebSettingsCompat.DARK_STRATEGY_WEB_THEME_DARKENING_ONLY,
@@ -2551,9 +2551,7 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         val owner = DashboardV2CompatibilityOwner(url, config.haAuthSnapshot().stableOwner())
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
-            !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
-        ) {
+        if (secureBridgeAdmission() == AdmissionOutcome.BRIDGE_UNAVAILABLE) {
             showBlockedAdmissionScreen(
                 getString(R.string.web_viewer_too_old_title),
                 getString(R.string.web_viewer_too_old_detail),
@@ -3433,7 +3431,7 @@ class DashboardActivity : AppCompatActivity() {
         val forcedThemeDark = DashboardTheme.forcedDark(config.dashboardTheme)
         dashboardThemeSignature = config.dashboardTheme
         runCatching {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
                     ExternalAuthProtocol.dashboardThemePolicyJs(forcedThemeDark),
@@ -3453,7 +3451,7 @@ class DashboardActivity : AppCompatActivity() {
         // be a second authority over it. Under Follow this is byte-identical to before, which is what
         // leaves dark_mode's meaning unchanged.
         if (android.os.Build.VERSION.SDK_INT < 29 && forcedThemeDark == null) runCatching {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
                     ExternalAuthProtocol.selectedThemeJs(config.darkMode, onlyIfAbsent = true),
@@ -3466,7 +3464,7 @@ class DashboardActivity : AppCompatActivity() {
         // and don't carry over from the Companion, and most users don't know these settings exist —
         // so seed them once (self-gated by a localStorage sentinel), then leave them user-changeable.
         runCatching {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
                     ExternalAuthProtocol.panelDefaultsJs(),
@@ -3504,7 +3502,7 @@ class DashboardActivity : AppCompatActivity() {
                 filterLeasePresent = filterLease != null,
             )
         ) runCatching {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
                     EntityFilterProtocol.trafficObserverDocumentStartScript(config.haUrl, documentStartOrigins),
@@ -3514,7 +3512,7 @@ class DashboardActivity : AppCompatActivity() {
             }
         }.onFailure { Log.w(TAG, "entity-filter traffic observer unavailable", it) }
         if (config.dashboardEntityLearningEnabled) runCatching {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
                     EntityLearningProtocol.documentStartScript(
