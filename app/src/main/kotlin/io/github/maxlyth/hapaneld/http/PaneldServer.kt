@@ -9944,9 +9944,12 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 }
                 Log.i(TAG, "restore: ${operation.message}")
                 // Only a whole success advances the migration; a partial or failed restore leaves the
-                // step open, and the successor restores the same receipt again.
-                if (migrationRestore && operation.structured.status == InstallProgress.Outcome.SUCCEEDED) {
-                    identityMigration.onRestoreCommitted()
+                // step open, and the successor restores the same receipt again. It is told either way,
+                // so a failure is retried at once rather than after waiting out a timeout.
+                if (migrationRestore) {
+                    identityMigration.onRestoreFinished(
+                        operation.structured.status == InstallProgress.Outcome.SUCCEEDED,
+                    )
                 }
                 InstallProgress.finish(
                     progress,

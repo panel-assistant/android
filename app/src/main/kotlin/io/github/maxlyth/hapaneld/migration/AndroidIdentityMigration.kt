@@ -95,13 +95,14 @@ internal class AndroidIdentityMigration(
 ) : IdentityMigrationSurface {
     private val context = context.applicationContext
     private val state = MigrationState.of(this.context)
-    private val restoreCommitted = CompletableDeferred<Unit>()
+    // One outcome per restore attempt: a failed attempt must not leave the next one already answered.
+    private val restoreOutcome = java.util.concurrent.atomic.AtomicReference(CompletableDeferred<Boolean>())
     private val held = IdentityMigrationGate.holdsNetworkIdentity()
 
     override fun restoreOpen(): Boolean =
         !AppIdentity.IS_BRIDGE && held && state.done(Step.RELEASE) && !state.done(Step.RESTORE)
 
-    override fun onRestoreCommitted() { restoreCommitted.complete(Unit) }
+    override fun onRestoreFinished(succeeded: Boolean) { restoreOutcome.get().complete(succeeded) }
 
     override suspend fun offer(): SuccessorHandoff.Outcome? = offerHandoff()
 
@@ -118,7 +119,7 @@ internal class AndroidIdentityMigration(
             httpPort = httpPort(),
             androidId = androidId(),
             mqttState = mqttState,
-            restoreCommitted = restoreCommitted,
+            beginRestore = { CompletableDeferred<Boolean>().also(restoreOutcome::set) },
         )
         return scope.launch {
             if (SuccessorMigrationRunner.drive(SuccessorMigration(ports, state)) == Result.NeedsRestart) {

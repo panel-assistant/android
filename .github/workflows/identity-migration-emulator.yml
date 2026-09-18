@@ -6,12 +6,6 @@ run-name: Optional · Identity migration emulator · ${{ github.ref_name }}
 # killed at every step. Kept separate from pull-request, CI, and release gates.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'app/src/main/kotlin/io/github/maxlyth/hapaneld/migration/**'
-      - 'app/src/main/kotlin/io/github/maxlyth/hapaneld/AppIdentity.kt'
-      - 'scripts/tests/identity_migration_emulator.sh'
-      - '.github/workflows/identity-migration-emulator.yml'
 
 permissions:
   contents: read
@@ -93,4 +87,4 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: scripts/tests/identity_migration_emulator.sh "$RUNNER_TEMP/apks/base.apk" "$RUNNER_TEMP/apks/bridge.apk" "$RUNNER_TEMP/apks/successor.apk" "$RUNNER_TEMP/hapaneld-helper"
+          script: ANDROID_SERIAL=emulator-5554 scripts/tests/identity_migration_emulator.sh "$RUNNER_TEMP/apks/base.apk" "$RUNNER_TEMP/apks/bridge.apk" "$RUNNER_TEMP/apks/successor.apk" "$RUNNER_TEMP/hapaneld-helper"

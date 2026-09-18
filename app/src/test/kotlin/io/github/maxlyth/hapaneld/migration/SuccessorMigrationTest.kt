@@ -107,6 +107,9 @@ class SuccessorMigrationTest {
             call("restore")
             invariant(environment != Environment.PASSIVE) { "restore needs the service" }
             invariant(legacyRetired || !legacyInstalled) { "restored before the legacy app released the panel" }
+            // Found on an emulator: a restore applies settings live, and one that needs a grant this app
+            // does not hold yet is refused, which fails the whole restore.
+            invariant(missingGrants().isEmpty()) { "restored without the grants its live settings need" }
             restored = restoreSucceeds
             return restoreSucceeds
         }
@@ -179,8 +182,8 @@ class SuccessorMigrationTest {
 
         assertEquals(
             listOf(
-                "pull", "verify", "release", "restore",
-                "grant ACCESSIBILITY", "grant OVERLAY", "grant BATTERY", "uninstall",
+                "pull", "verify", "release",
+                "grant ACCESSIBILITY", "grant OVERLAY", "grant BATTERY", "restore", "uninstall",
             ),
             world.calls,
         )
@@ -200,7 +203,7 @@ class SuccessorMigrationTest {
         world.environment = Environment.HELD_SERVICE
         assertEquals(Result.NeedsRestart, pass(world, markers))
         assertTrue(world.restored)
-        assertTrue("no grant is claimed before the restart", world.heldGrants.isEmpty())
+        assertEquals("the restore runs with the grants it needs", world.wantedGrants, world.heldGrants)
     }
 
     @Test fun aRefusedReleaseLeavesTheSuccessorPassiveWithNothingTaken() {
@@ -310,7 +313,8 @@ class SuccessorMigrationTest {
         val world = World().apply { failingGrant = "OVERLAY" }
         val markers = FakeMarkers()
 
-        assertEquals(Result.Waiting(Step.CLAIM, "grants not claimed: OVERLAY"), runToRest(world, markers))
+        assertEquals(Result.Waiting(Step.GRANT, "grants not claimed: OVERLAY"), runToRest(world, markers))
+        assertFalse("a restore without its grants would be refused", world.restored)
         assertTrue(world.legacyInstalled)
     }
 

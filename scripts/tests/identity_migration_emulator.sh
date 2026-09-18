@@ -33,7 +33,7 @@ URL="http://127.0.0.1:$HOST_PORT"
 MARKERS="/data/data/$SUCCESSOR/no_backup/identity-migration"
 STEP_TIMEOUT_S="${IDENTITY_MIGRATION_STEP_TIMEOUT_S:-240}"
 # Steps that record a marker, in order. The port wait records nothing, so it has no kill point.
-KILL_STEPS=(pull verify release restore claim confirm uninstall)
+KILL_STEPS=(pull verify release grant restore claim confirm uninstall)
 
 log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 fail() { log "FAIL: $*"; diagnostics; exit 1; }
@@ -57,13 +57,14 @@ wait_for() {
   done
 }
 
+health_up() { health | grep -q '^ha-paneld '; }
 health_is() { health | grep -q -- " pkg=$1\( \|$\)"; }
 health_panel_is() { health | grep -q -- " panel=$1 "; }
 installed() { adb shell pm list packages | tr -d '\r' | grep -qx "package:$1"; }
 marker_exists() { adb shell "test -f $MARKERS/$1.v1"; }
 home_package() {
-  adb shell cmd package resolve-activity --brief -c android.intent.category.HOME 2>/dev/null |
-    tr -d '\r' | tail -1 | cut -d/ -f1
+  adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN \
+    -c android.intent.category.HOME 2>/dev/null | tr -d '\r' | grep / | tail -1 | cut -d/ -f1
 }
 
 start_helper() {
@@ -97,13 +98,13 @@ resume_migration() {
 }
 
 scenario() {
-  local kill_step="${1:-}"
-  log "=== scenario: ${kill_step:+kill after the $kill_step marker}${kill_step:-uninterrupted}"
+  local kill_step="${1:-}" legacy_is_home="${2:-yes}"
+  if [ -n "$kill_step" ]; then log "=== scenario: kill after the $kill_step marker"; else log "=== scenario: uninterrupted"; fi
   reset_device
 
   adb install "$BASE_APK" >/dev/null
   launch "$LEGACY/.MainActivity"
-  wait_for 120 "the base build to answer" health
+  wait_for 120 "the base build to answer" health_up
   curl -fsS --max-time 30 -d "panel_id=$PANEL_ID" "$URL/api/v1/config" >/dev/null ||
     fail "could not set the panel id on the base build"
   wait_for 60 "the base build to adopt the panel id" health_panel_is "$PANEL_ID"
@@ -113,16 +114,31 @@ scenario() {
   wait_for 120 "the bridge to answer under the legacy id" health_is "$LEGACY"
   health_panel_is "$PANEL_ID" || fail "the in-place update to the bridge lost the panel id"
 
+  # The fleet's case is a kiosk whose HOME is this app, which the handover has to move. The other case
+  # is an owner who kept another launcher, which the handover has to leave alone.
+  if [ "$legacy_is_home" = yes ]; then
+    adb shell cmd package set-home-activity "$LEGACY/.DashboardActivity" >/dev/null
+    [ "$(home_package)" = "$LEGACY" ] || fail "could not make the legacy app HOME for the test"
+  fi
+  local home_before; home_before="$(home_package)"
+
   start_helper
   adb install "$SUCCESSOR_APK" >/dev/null
   wait_for 60 "the bridge to start the successor" offer_launched
 
   if [ -n "$kill_step" ]; then
-    wait_for "$STEP_TIMEOUT_S" "the $kill_step marker" marker_exists "step-$kill_step"
-    adb shell "kill -9 \$(pidof $SUCCESSOR)" >/dev/null 2>&1 || true
-    log "killed the successor after the $kill_step marker"
-    [ "$kill_step" = uninstall ] || ! marker_exists complete ||
-      fail "the migration completed before the kill could land; the kill point proves nothing"
+    # Watch for the marker on the device itself: the last steps follow one another within
+    # milliseconds, far inside one adb round trip.
+    adb shell "i=0; while [ ! -f $MARKERS/step-$kill_step.v1 ] && [ \$i -lt $((STEP_TIMEOUT_S * 50)) ]; do
+        i=\$((i + 1)); sleep 0.02; done; kill -9 \$(pidof $SUCCESSOR)" >/dev/null 2>&1 || true
+    marker_exists "step-$kill_step" || fail "timed out waiting for the $kill_step marker"
+    if marker_exists complete; then
+      # Still a kill worth surviving, but not the one asked for. The JVM sweep kills between every
+      # effect and its marker; here the claim is only that a finished migration stays finished.
+      log "killed the successor after the $kill_step marker, which landed after completion"
+    else
+      log "killed the successor after the $kill_step marker"
+    fi
     sleep 2
     resume_migration || true
   fi
@@ -134,17 +150,32 @@ scenario() {
   wait_for 120 "the successor to own the HTTP port" health_is "$SUCCESSOR"
   health_panel_is "$PANEL_ID" || fail "the successor did not restore the panel id: $(health)"
   local home; home="$(home_package)"
-  [ "$home" != "$LEGACY" ] || fail "HOME still resolves to the removed legacy package"
-  [ -n "$home" ] || fail "HOME resolves to nothing"
+  if [ "$legacy_is_home" = yes ]; then
+    [ "$home" = "$SUCCESSOR" ] || fail "HOME was the legacy app and is now '$home', not the successor"
+  else
+    [ "$home" = "$home_before" ] || fail "HOME was '$home_before', the owner's choice, and is now '$home'"
+  fi
   log "ok: port and panel id with the successor, HOME=$home, legacy package removed"
 }
 
+# This test uninstalls the panel app. It refuses to run unless it is aimed at exactly one named device
+# and that device is an emulator, because a workstation's adb server may also hold real panels.
+[ -n "${ANDROID_SERIAL:-}" ] || { echo "set ANDROID_SERIAL to the emulator's serial" >&2; exit 2; }
 adb wait-for-device
+case "$(adb shell getprop ro.kernel.qemu | tr -d '\r')$(adb shell getprop ro.boot.qemu | tr -d '\r')" in
+  *1*) ;;
+  *) echo "refusing: $ANDROID_SERIAL is not an emulator" >&2; exit 2 ;;
+esac
 adb root >/dev/null 2>&1 || true
+# Restarting adbd as root drops a network connection; a local emulator serial simply comes back.
+case "$ANDROID_SERIAL" in
+  *:*) sleep 3; adb disconnect "$ANDROID_SERIAL" >/dev/null 2>&1 || true; adb connect "$ANDROID_SERIAL" >/dev/null ;;
+esac
 adb wait-for-device
 
-scenario ""
+scenario "" no
+scenario "" yes
 for step in "${KILL_STEPS[@]}"; do
   scenario "$step"
 done
-log "PASS: ${#KILL_STEPS[@]} kill points and the uninterrupted run converged"
+log "PASS: both uninterrupted runs and ${#KILL_STEPS[@]} kill points converged"

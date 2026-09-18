@@ -38,8 +38,8 @@ internal class AndroidSuccessorMigrationPorts(
     private val httpPort: Int,
     private val androidId: String,
     private val mqttState: () -> String = { "disabled" },
-    /** Completed by the server when the migration-mode restore is durable. */
-    private val restoreCommitted: CompletableDeferred<Unit> = CompletableDeferred(),
+    /** A fresh outcome for one restore attempt, completed by the server when that restore ends. */
+    private val beginRestore: () -> CompletableDeferred<Boolean> = { CompletableDeferred() },
 ) : SuccessorMigration.Ports {
     private val context = context.applicationContext
     private val own = context.packageName
@@ -118,6 +118,7 @@ internal class AndroidSuccessorMigrationPorts(
     }.getOrDefault(true)
 
     override suspend fun restoreReceipt(): Boolean = withContext(Dispatchers.IO) {
+        val outcome = beginRestore()
         val accepted = runCatching {
             val connection = open("/api/v1/restore?mode=migration", "POST").apply {
                 doOutput = true
@@ -127,7 +128,7 @@ internal class AndroidSuccessorMigrationPorts(
             }
             try { connection.responseCode == 200 } finally { connection.disconnect() }
         }.getOrDefault(false)
-        accepted && withTimeoutOrNull(RESTORE_WAIT_MS) { restoreCommitted.await() } != null
+        accepted && withTimeoutOrNull(RESTORE_WAIT_MS) { outcome.await() } == true
     }
 
     override fun missingGrants(): Set<String> = GRANTS.filterTo(linkedSetOf()) { grant ->
@@ -176,7 +177,13 @@ internal class AndroidSuccessorMigrationPorts(
         when (grant) {
             "NOTIFICATIONS" -> pm.checkPermission(Manifest.permission.POST_NOTIFICATIONS, pkg) == PackageManager.PERMISSION_GRANTED
             "MICROPHONE" -> pm.checkPermission(Manifest.permission.RECORD_AUDIO, pkg) == PackageManager.PERMISSION_GRANTED
-            "BATTERY" -> context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(pkg)
+            // Claimed whatever the legacy app held. The service re-arms its own start across a process
+            // boundary, and from Android 12 only a battery-exempt app may start a foreground service
+            // from the background. Without it the restart that follows the restore ends the process and
+            // nothing starts it again, with the legacy app already retired. Found on an emulator.
+            "BATTERY" -> if (pkg == own) {
+                context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(own)
+            } else true
             "ACCESSIBILITY" -> Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
                 .orEmpty().split(':').any { it.substringBefore('/') == pkg }
             // App-op state of another package is not readable without a privileged permission. These

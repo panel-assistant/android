@@ -9,8 +9,8 @@ internal interface IdentityMigrationSurface {
     /** Successor: true only while the migration is waiting to restore the receipt it pulled. */
     fun restoreOpen(): Boolean = false
 
-    /** Successor: the migration-mode restore is durable. */
-    fun onRestoreCommitted() {}
+    /** Successor: the migration-mode restore ended; [succeeded] only when every part of it is durable. */
+    fun onRestoreFinished(succeeded: Boolean) {}
 
     /** Bridge: install and start the successor now. Null on a build that is not the bridge. */
     suspend fun offer(): SuccessorHandoff.Outcome? = null

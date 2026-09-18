@@ -26,7 +26,7 @@ internal fun homeSettled(homePackage: String?, own: String, legacy: String): Boo
     homePackage == own || (homePackage != null && homePackage != legacy && homePackage != "android")
 
 internal class SuccessorMigration(private val ports: Ports, private val markers: Markers) {
-    enum class Step { PULL, VERIFY, RELEASE, AWAIT_PORT, RESTORE, CLAIM, CONFIRM, UNINSTALL }
+    enum class Step { PULL, VERIFY, RELEASE, GRANT, AWAIT_PORT, RESTORE, CLAIM, CONFIRM, UNINSTALL }
 
     /** Where this pass is running, which bounds how far it may go. */
     enum class Environment {
@@ -132,6 +132,7 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         pull()?.let { return it }
         verify()?.let { return it }
         release()?.let { return it }
+        grant()?.let { return it }
         if (!markers.done(Step.RESTORE)) {
             if (ports.environment() == Environment.PASSIVE) {
                 // Asked only while passive: once the held service runs, this app owns the port itself.
@@ -186,11 +187,22 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         return null
     }
 
+    /**
+     * Grants come before the restore, not after it. The restore applies settings live, and a setting
+     * such as the overlay navigation bar is refused without the grant behind it, which fails the whole
+     * restore. They come after the release so that a refused successor has still changed nothing.
+     */
+    private fun grant(): Result? {
+        if (markers.done(Step.GRANT)) return null
+        val failed = ports.missingGrants().filterNot(ports::claimGrant)
+        if (failed.isNotEmpty()) return Result.Waiting(Step.GRANT, "grants not claimed: ${failed.sorted().joinToString(",")}")
+        if (ports.missingGrants().isNotEmpty()) return Result.Waiting(Step.GRANT, "grants did not read back")
+        if (!markers.record(Step.GRANT)) return Result.Waiting(Step.GRANT, "marker not durable")
+        return null
+    }
+
     private fun claim(): Result? {
         if (markers.done(Step.CLAIM)) return null
-        val failed = ports.missingGrants().filterNot(ports::claimGrant)
-        if (failed.isNotEmpty()) return Result.Waiting(Step.CLAIM, "grants not claimed: ${failed.sorted().joinToString(",")}")
-        if (ports.missingGrants().isNotEmpty()) return Result.Waiting(Step.CLAIM, "grants did not read back")
         if (!ports.homeSettled() && !(ports.claimHome() && ports.homeSettled())) {
             return Result.Waiting(Step.CLAIM, "HOME was not claimed")
         }
