@@ -142,6 +142,8 @@ int main(void) {
     CHECK(probe_command_allowed("PING"), "root probe mode must allow PING");
     CHECK(probe_command_allowed("COMPANIONCAPS"), "root probe mode must allow capability discovery");
     CHECK(probe_command_allowed("BUILDID"), "root probe mode must allow build identity");
+    CHECK(probe_command_allowed("HELPERSTATUS"),
+          "root probe mode must allow the accepted-package status read");
     CHECK(probe_command_allowed("GUARDCAPS"), "root probe mode must allow Guard capability discovery");
     CHECK(probe_command_allowed("GUARDSELF"), "root probe mode must allow live helper byte identity");
     CHECK(probe_command_allowed("GUARDSTATUS"), "root probe mode must allow Guard status observation");
@@ -163,6 +165,12 @@ int main(void) {
           "root probe mode must require an exact live helper identity verb");
     CHECK(!probe_command_allowed("GUARDSTATUS extra"),
           "root probe mode must require an exact Guard status verb");
+    CHECK(!probe_command_allowed("HELPERSTATUS extra"),
+          "root probe mode must require an exact accepted-package status verb");
+    CHECK(!probe_command_allowed("UNINSTALL io.github.maxlyth.hapaneld"),
+          "root probe mode must not expose package removal");
+    CHECK(!probe_command_allowed("GRANT io.panelassistant.android ACCESSIBILITY"),
+          "root probe mode must not expose the grant verb");
 
     puts("peer auth tests passed");
     return 0;

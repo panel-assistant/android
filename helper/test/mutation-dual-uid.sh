@@ -74,6 +74,10 @@ apply 'peer auth: an unknown uid is admitted' peer-auth src/main.c "
 mutated = source.replace('    return HELPER_CALLER_NONE;\n}', '    return HELPER_CALLER_ROOT;\n}', 1)
 "
 
+apply 'probe mode: HELPERSTATUS is not a read-only probe verb' peer-auth src/main.c "
+mutated = source.replace('           strcmp(command, \"HELPERSTATUS\") == 0 ||\n', '', 1)
+"
+
 apply 'is_critical_pkg: the known ids are no longer critical' unit src/util.c "
 mutated = source.replace('    return helper_known_package(s);', '    return 0;')
 "
