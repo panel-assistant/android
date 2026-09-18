@@ -34738,49 +34738,6 @@
       "softMaxChars": 62,
       "hardMaxChars": 89
     },
-    "setup.ha_url.help": {
-      "text": "The address you open Home Assistant at, e.g. http://homeassistant.local:8123.",
-      "sourceHash": "c236973b764d018af53248ebd56203ba203f9a875bd7d42418df34aa8bb51570",
-      "surface": "setup",
-      "context": "Setup wizard renderer or Home Assistant URL step; field help.",
-      "risk": "setup",
-      "siblings": [
-        "setup.ha_url.label",
-        "setup.ha_url.lead",
-        "setup.ha_url.title"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Home Assistant",
-        "homeassistant.local",
-        "http://homeassistant.local:8123"
-      ],
-      "softMaxChars": 100,
-      "hardMaxChars": 140
-    },
-    "setup.ha_url.handover.title": {
-      "text": "Home Assistant’s address didn’t work from this panel",
-      "sourceHash": "95566c26e1200c6aa845e89bf47830912910c45389c9dbdca04213e61a6540b1",
-      "surface": "setup",
-      "context": "Setup wizard Home Assistant URL step; heading shown when the address Home Assistant handed the panel did not answer.",
-      "risk": "setup",
-      "siblings": [
-        "setup.ha_url.handover.attempted",
-        "setup.ha_url.handover.explanation",
-        "setup.ha_url.handover.generic",
-        "setup.ha_url.handover.not_home_assistant",
-        "setup.ha_url.handover.timeout",
-        "setup.ha_url.handover.tls",
-        "setup.ha_url.handover.unreachable",
-        "setup.ha_url.handover.unresolvable"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Home Assistant"
-      ],
-      "softMaxChars": 56,
-      "hardMaxChars": 80
-    },
     "setup.ha_url.handover.attempted": {
       "text": "Home Assistant said it is at {url}.",
       "sourceHash": "6c237e4d68e162c26795de98cb0dd0cb53e4d1d5945da02de1beb64f6f2be95e",
@@ -34829,88 +34786,25 @@
       "softMaxChars": 200,
       "hardMaxChars": 280
     },
-    "setup.ha_url.handover.unresolvable": {
-      "text": "This panel could not look up that address on its network.",
-      "sourceHash": "69b4cc0e2371cf0f76677d9487594e37cc3fd8648d5dc3401d4b1f3db32bde3f",
+    "setup.ha_url.handover.generic": {
+      "text": "This panel could not reach Home Assistant at that address.",
+      "sourceHash": "0a57d6ea313ddef65fb24b9910bd5212ef5333fe6f55d847f3b8acd558932c9c",
       "surface": "setup",
-      "context": "Setup wizard Home Assistant URL step; failure reason, DNS lookup failed.",
+      "context": "Setup wizard Home Assistant URL step; failure reason, fallback for an unrecognised code.",
       "risk": "setup",
       "siblings": [
         "setup.ha_url.handover.attempted",
         "setup.ha_url.handover.explanation",
-        "setup.ha_url.handover.generic",
         "setup.ha_url.handover.not_home_assistant",
         "setup.ha_url.handover.timeout",
         "setup.ha_url.handover.title",
         "setup.ha_url.handover.tls",
-        "setup.ha_url.handover.unreachable"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 80,
-      "hardMaxChars": 112
-    },
-    "setup.ha_url.handover.unreachable": {
-      "text": "Nothing answered at that address from this panel’s network.",
-      "sourceHash": "9271ab701f200ba895b1e8a80eadc7b65288bfcc23c04b97809d7f708bb8ce40",
-      "surface": "setup",
-      "context": "Setup wizard Home Assistant URL step; failure reason, nothing accepted a connection.",
-      "risk": "setup",
-      "siblings": [
-        "setup.ha_url.handover.attempted",
-        "setup.ha_url.handover.explanation",
-        "setup.ha_url.handover.generic",
-        "setup.ha_url.handover.not_home_assistant",
-        "setup.ha_url.handover.timeout",
-        "setup.ha_url.handover.title",
-        "setup.ha_url.handover.tls",
-        "setup.ha_url.handover.unresolvable"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 80,
-      "hardMaxChars": 112
-    },
-    "setup.ha_url.handover.timeout": {
-      "text": "That address did not answer in time.",
-      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
-      "surface": "setup",
-      "context": "Setup wizard Home Assistant URL step; failure reason, connection accepted but no reply in time.",
-      "risk": "setup",
-      "siblings": [
-        "setup.ha_url.handover.attempted",
-        "setup.ha_url.handover.explanation",
-        "setup.ha_url.handover.generic",
-        "setup.ha_url.handover.not_home_assistant",
-        "setup.ha_url.handover.title",
-        "setup.ha_url.handover.tls",
-        "setup.ha_url.handover.unreachable",
-        "setup.ha_url.handover.unresolvable"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 48,
-      "hardMaxChars": 68
-    },
-    "setup.ha_url.handover.tls": {
-      "text": "That address uses HTTPS with a certificate this panel cannot verify.",
-      "sourceHash": "1d86972863bc2466fcdeaefbd828b775593001b389d0543585b579b991ecaedf",
-      "surface": "setup",
-      "context": "Setup wizard Home Assistant URL step; failure reason, HTTPS certificate could not be verified.",
-      "risk": "setup",
-      "siblings": [
-        "setup.ha_url.handover.attempted",
-        "setup.ha_url.handover.explanation",
-        "setup.ha_url.handover.generic",
-        "setup.ha_url.handover.not_home_assistant",
-        "setup.ha_url.handover.timeout",
-        "setup.ha_url.handover.title",
         "setup.ha_url.handover.unreachable",
         "setup.ha_url.handover.unresolvable"
       ],
       "placeholders": [],
       "frozen": [
-        "HTTPS"
+        "Home Assistant"
       ],
       "softMaxChars": 80,
       "hardMaxChars": 112
@@ -34938,18 +34832,39 @@
       "softMaxChars": 80,
       "hardMaxChars": 112
     },
-    "setup.ha_url.handover.generic": {
-      "text": "This panel could not reach Home Assistant at that address.",
-      "sourceHash": "0a57d6ea313ddef65fb24b9910bd5212ef5333fe6f55d847f3b8acd558932c9c",
+    "setup.ha_url.handover.timeout": {
+      "text": "That address did not answer in time.",
+      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
       "surface": "setup",
-      "context": "Setup wizard Home Assistant URL step; failure reason, fallback for an unrecognised code.",
+      "context": "Setup wizard Home Assistant URL step; failure reason, connection accepted but no reply in time.",
       "risk": "setup",
       "siblings": [
         "setup.ha_url.handover.attempted",
         "setup.ha_url.handover.explanation",
+        "setup.ha_url.handover.generic",
+        "setup.ha_url.handover.not_home_assistant",
+        "setup.ha_url.handover.title",
+        "setup.ha_url.handover.tls",
+        "setup.ha_url.handover.unreachable",
+        "setup.ha_url.handover.unresolvable"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 68
+    },
+    "setup.ha_url.handover.title": {
+      "text": "Home Assistant’s address didn’t work from this panel",
+      "sourceHash": "95566c26e1200c6aa845e89bf47830912910c45389c9dbdca04213e61a6540b1",
+      "surface": "setup",
+      "context": "Setup wizard Home Assistant URL step; heading shown when the address Home Assistant handed the panel did not answer.",
+      "risk": "setup",
+      "siblings": [
+        "setup.ha_url.handover.attempted",
+        "setup.ha_url.handover.explanation",
+        "setup.ha_url.handover.generic",
         "setup.ha_url.handover.not_home_assistant",
         "setup.ha_url.handover.timeout",
-        "setup.ha_url.handover.title",
         "setup.ha_url.handover.tls",
         "setup.ha_url.handover.unreachable",
         "setup.ha_url.handover.unresolvable"
@@ -34958,8 +34873,93 @@
       "frozen": [
         "Home Assistant"
       ],
+      "softMaxChars": 56,
+      "hardMaxChars": 80
+    },
+    "setup.ha_url.handover.tls": {
+      "text": "That address uses HTTPS with a certificate this panel cannot verify.",
+      "sourceHash": "1d86972863bc2466fcdeaefbd828b775593001b389d0543585b579b991ecaedf",
+      "surface": "setup",
+      "context": "Setup wizard Home Assistant URL step; failure reason, HTTPS certificate could not be verified.",
+      "risk": "setup",
+      "siblings": [
+        "setup.ha_url.handover.attempted",
+        "setup.ha_url.handover.explanation",
+        "setup.ha_url.handover.generic",
+        "setup.ha_url.handover.not_home_assistant",
+        "setup.ha_url.handover.timeout",
+        "setup.ha_url.handover.title",
+        "setup.ha_url.handover.unreachable",
+        "setup.ha_url.handover.unresolvable"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "HTTPS"
+      ],
       "softMaxChars": 80,
       "hardMaxChars": 112
+    },
+    "setup.ha_url.handover.unreachable": {
+      "text": "Nothing answered at that address from this panel’s network.",
+      "sourceHash": "9271ab701f200ba895b1e8a80eadc7b65288bfcc23c04b97809d7f708bb8ce40",
+      "surface": "setup",
+      "context": "Setup wizard Home Assistant URL step; failure reason, nothing accepted a connection.",
+      "risk": "setup",
+      "siblings": [
+        "setup.ha_url.handover.attempted",
+        "setup.ha_url.handover.explanation",
+        "setup.ha_url.handover.generic",
+        "setup.ha_url.handover.not_home_assistant",
+        "setup.ha_url.handover.timeout",
+        "setup.ha_url.handover.title",
+        "setup.ha_url.handover.tls",
+        "setup.ha_url.handover.unresolvable"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 80,
+      "hardMaxChars": 112
+    },
+    "setup.ha_url.handover.unresolvable": {
+      "text": "This panel could not look up that address on its network.",
+      "sourceHash": "69b4cc0e2371cf0f76677d9487594e37cc3fd8648d5dc3401d4b1f3db32bde3f",
+      "surface": "setup",
+      "context": "Setup wizard Home Assistant URL step; failure reason, DNS lookup failed.",
+      "risk": "setup",
+      "siblings": [
+        "setup.ha_url.handover.attempted",
+        "setup.ha_url.handover.explanation",
+        "setup.ha_url.handover.generic",
+        "setup.ha_url.handover.not_home_assistant",
+        "setup.ha_url.handover.timeout",
+        "setup.ha_url.handover.title",
+        "setup.ha_url.handover.tls",
+        "setup.ha_url.handover.unreachable"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 80,
+      "hardMaxChars": 112
+    },
+    "setup.ha_url.help": {
+      "text": "The address you open Home Assistant at, e.g. http://homeassistant.local:8123.",
+      "sourceHash": "c236973b764d018af53248ebd56203ba203f9a875bd7d42418df34aa8bb51570",
+      "surface": "setup",
+      "context": "Setup wizard renderer or Home Assistant URL step; field help.",
+      "risk": "setup",
+      "siblings": [
+        "setup.ha_url.label",
+        "setup.ha_url.lead",
+        "setup.ha_url.title"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "homeassistant.local",
+        "http://homeassistant.local:8123"
+      ],
+      "softMaxChars": 100,
+      "hardMaxChars": 140
     },
     "setup.ha_url.label": {
       "text": "Home Assistant URL",
