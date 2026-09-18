@@ -16,6 +16,7 @@
 #   scripts/update-fleet.sh [--jobs N] [provision-args...] -- <ip|ip:port> [<ip> ...]
 #   scripts/update-fleet.sh --jobs 2 --latest -- 192.168.1.10 192.168.1.11:5555
 #   scripts/update-fleet.sh --apk path/to.apk -- 192.168.1.10 192.168.1.11
+#   scripts/update-fleet.sh --apk successor.apk --bridge-apk bridge.apk -- 192.168.1.10
 #   printf '%s\n' 192.168.1.10 192.168.1.11 | scripts/update-fleet.sh --latest
 #
 # Panels are listed after `--` and/or on stdin (one per line). Except for this wrapper's `--jobs N`,
@@ -185,6 +186,33 @@ for ((i=0; i<${#PARGS[@]}; i++)); do
   if [ "${PARGS[$i]}" = "--apk" ]; then have_apk=1; apk_arg_count=$((apk_arg_count + 1)); fi
 done
 [ "$apk_arg_count" -le 1 ] || { echo "${RED}--apk may be supplied only once${X}" >&2; exit 2; }
+# `--bridge-apk PATH` names the legacy-id half of a locally sealed pair. It belongs to this wrapper
+# alone and is removed from the pass-through args, because provision.sh installs the successor and
+# knows nothing about the bridge. A release download resolves both halves from the release itself, so
+# supplying one by hand alongside it would give the run two answers; that is refused rather than
+# silently preferred. Without it a local --apk carries the successor only, exactly as before.
+BRIDGE_APK=""
+bridge_arg_count=0
+KEEP=()
+for ((i=0; i<${#PARGS[@]}; i++)); do
+  case "${PARGS[$i]}" in
+    --bridge-apk)
+      bridge_arg_count=$((bridge_arg_count + 1))
+      [ $((i + 1)) -lt ${#PARGS[@]} ] || { echo "${RED}--bridge-apk needs a path${X}" >&2; exit 2; }
+      BRIDGE_APK="${PARGS[$((i + 1))]}"
+      i=$((i + 1))
+      ;;
+    --bridge-apk=*)
+      echo "${RED}--bridge-apk takes its path as the next argument, not --bridge-apk=PATH${X}" >&2; exit 2 ;;
+    *) KEEP+=("${PARGS[$i]}") ;;
+  esac
+done
+PARGS=(${KEEP[@]+"${KEEP[@]}"})
+[ "$bridge_arg_count" -le 1 ] || { echo "${RED}--bridge-apk may be supplied only once${X}" >&2; exit 2; }
+if [ -n "$BRIDGE_APK" ]; then
+  [ "$have_apk" = 1 ] || { echo "${RED}--bridge-apk names the bridge beside a local --apk; a release download carries its own${X}" >&2; exit 2; }
+  [ -s "$BRIDGE_APK" ] || { echo "${RED}bridge APK is missing or empty: $BRIDGE_APK${X}" >&2; exit 1; }
+fi
 for a in "${PARGS[@]}"; do case "$a" in --prerelease|--pre) want_prerelease=1 ;; esac; done
 for a in "${PARGS[@]}"; do case "$a" in --require-release-signer) require_release_signer=1 ;; esac; done
 if [ "$have_apk" = 0 ]; then
@@ -324,7 +352,7 @@ run_bridge_phase() {
   local target="$1" deadline
   package_installed "$target" "$LEGACY_PKG" || return 0
   if [ -z "${BRIDGE_APK:-}" ]; then
-    echo "${YEL}⚠ --apk supplies the successor only, so the bridge on this panel is not updated first — use a release download to carry it across${X}"
+    echo "${YEL}⚠ --apk supplies the successor only, so the bridge on this panel is not updated first — name its sealed bridge with --bridge-apk, or use a release download that carries one${X}"
     return 0
   fi
   echo "${B}🌉 bridge${X} ${D}$(basename "$BRIDGE_APK")${X}"
