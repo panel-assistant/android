@@ -136,7 +136,7 @@ internal class AndroidSuccessorMigrationPorts(
     override fun claimHome(): Boolean =
         HelperClient.send("SETHOME ${AppIdentity.component(own, ".DashboardActivity")}") == "OK"
 
-    override fun homeIsOwn(): Boolean = AndroidSystemEnv(context).defaultHome()?.pkg == own
+    override fun homeSettled(): Boolean = homeSettled(AndroidSystemEnv(context).defaultHome()?.pkg, own, legacy)
 
     override fun healthy(): Boolean = runCatching {
         val connection = open("/health", "GET")

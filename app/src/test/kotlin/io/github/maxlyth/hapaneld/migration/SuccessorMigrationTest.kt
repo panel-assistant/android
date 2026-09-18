@@ -105,7 +105,7 @@ class SuccessorMigrationTest {
             if (homeClaimWorks) home = "own"
             return homeClaimWorks
         }
-        override fun homeIsOwn() = home == "own"
+        override fun homeSettled() = home == "own"
         override fun healthy() = healthy
         override fun mqttConverged() = mqttConverged
         override fun uninstallLegacy(): Boolean {
@@ -132,6 +132,17 @@ class SuccessorMigrationTest {
             }
         }
         return result
+    }
+
+    @Test fun homeIsSettledOnlyWhenRemovingTheLegacyPackageCannotStrandTheLauncher() {
+        val own = "io.panelassistant.android"
+        val legacy = "io.github.maxlyth.hapaneld"
+
+        assertTrue(homeSettled(own, own, legacy))
+        assertTrue("an owner's own launcher is kept", homeSettled("com.example.launcher", own, legacy))
+        assertFalse(homeSettled(legacy, own, legacy))
+        assertFalse("the resolver is not a HOME", homeSettled("android", own, legacy))
+        assertFalse(homeSettled(null, own, legacy))
     }
 
     @Test fun aPanelWithOnlyTheSuccessorInstalledNeverStartsAMigration() {

@@ -13,6 +13,18 @@ package io.github.maxlyth.hapaneld.migration
  * and the caller decides when to run another pass; a refused release in particular leaves this app
  * passive, with nothing bound, advertised or claimed.
  */
+/**
+ * Whether the platform's default HOME, [homePackage], is safe to keep once [legacy] is removed.
+ *
+ * HOME must name a real package that will still exist. On a kiosk panel that is this app, [own], which
+ * the legacy app hands over and this app otherwise claims. A panel whose owner chose another launcher
+ * keeps it: the migration moves what the legacy app held and nothing else. The platform's resolver
+ * (`android`) and an unanswered query are not a HOME, and the legacy package is the one answer that
+ * removal would turn into a panel with nothing to show.
+ */
+internal fun homeSettled(homePackage: String?, own: String, legacy: String): Boolean =
+    homePackage == own || (homePackage != null && homePackage != legacy && homePackage != "android")
+
 internal class SuccessorMigration(private val ports: Ports, private val markers: Markers) {
     enum class Step { PULL, VERIFY, RELEASE, AWAIT_PORT, RESTORE, CLAIM, CONFIRM, UNINSTALL }
 
@@ -76,8 +88,8 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         /** Assert this app as HOME through the helper. */
         fun claimHome(): Boolean
 
-        /** A fresh HOME query names this app. */
-        fun homeIsOwn(): Boolean
+        /** A fresh HOME query is [homeSettled]: removing the legacy package cannot strand the launcher. */
+        fun homeSettled(): Boolean
         fun healthy(): Boolean
         fun mqttConverged(): Boolean
 
@@ -167,7 +179,7 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         val failed = ports.missingGrants().filterNot(ports::claimGrant)
         if (failed.isNotEmpty()) return Result.Waiting(Step.CLAIM, "grants not claimed: ${failed.sorted().joinToString(",")}")
         if (ports.missingGrants().isNotEmpty()) return Result.Waiting(Step.CLAIM, "grants did not read back")
-        if (!ports.homeIsOwn() && !(ports.claimHome() && ports.homeIsOwn())) {
+        if (!ports.homeSettled() && !(ports.claimHome() && ports.homeSettled())) {
             return Result.Waiting(Step.CLAIM, "HOME was not claimed")
         }
         if (!markers.record(Step.CLAIM)) return Result.Waiting(Step.CLAIM, "marker not durable")
@@ -178,7 +190,7 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         if (markers.done(Step.CONFIRM)) return null
         if (!ports.healthy()) return Result.Waiting(Step.CONFIRM, "health check failed")
         if (!ports.mqttConverged()) return Result.Waiting(Step.CONFIRM, "MQTT has not converged")
-        if (!ports.homeIsOwn()) return Result.Waiting(Step.CONFIRM, "HOME does not resolve to this app")
+        if (!ports.homeSettled()) return Result.Waiting(Step.CONFIRM, "HOME does not resolve to this app")
         if (!markers.record(Step.CONFIRM)) return Result.Waiting(Step.CONFIRM, "marker not durable")
         return null
     }
@@ -187,7 +199,7 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         if (ports.legacyInstalled()) {
             // Asked again here, not read from the CONFIRM marker: removing the legacy package while HOME
             // still names it would strand the launcher, whatever an earlier pass observed.
-            if (!ports.homeIsOwn()) return Result.Waiting(Step.UNINSTALL, "HOME does not resolve to this app")
+            if (!ports.homeSettled()) return Result.Waiting(Step.UNINSTALL, "HOME does not resolve to this app")
             if (ports.receiptSha256() != markers.value(Step.VERIFY)) {
                 return Result.Waiting(Step.UNINSTALL, "verified receipt is missing")
             }

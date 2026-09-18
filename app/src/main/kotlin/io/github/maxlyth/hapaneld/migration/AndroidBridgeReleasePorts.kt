@@ -68,6 +68,13 @@ internal class AndroidBridgeReleasePorts(context: Context) : BridgeRelease.Ports
     override fun writeRetiredMarker(): Boolean = BridgeRetirement.marker(context).arm()
 
     override fun setHomeToSuccessor(): Boolean {
+        // HOME is handed over only when this app holds it. A panel whose owner chose another launcher
+        // keeps that choice; the successor applies the restored launcher policy like any other start.
+        val current = AndroidSystemEnv(context).defaultHome()?.pkg
+        if (current != null && current != AppIdentity.LEGACY && current != "android") {
+            Log.i(TAG, "HOME belongs to $current; nothing to hand over")
+            return true
+        }
         val component = AppIdentity.component(AppIdentity.SUCCESSOR, ".DashboardActivity")
         val set = HelperClient.send("SETHOME $component") == "OK" ||
             Su.run("cmd package set-home-activity $component")

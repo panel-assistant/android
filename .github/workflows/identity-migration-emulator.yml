@@ -1,0 +1,96 @@
+name: Optional · Identity migration emulator
+run-name: Optional · Identity migration emulator · ${{ github.ref_name }}
+
+# Slow two-package integration coverage for the application-id migration: a base build is updated to
+# the bridge, the successor is installed beside it, and the handover is repeated with the successor
+# killed at every step. Kept separate from pull-request, CI, and release gates.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/src/main/kotlin/io/github/maxlyth/hapaneld/migration/**'
+      - 'app/src/main/kotlin/io/github/maxlyth/hapaneld/AppIdentity.kt'
+      - 'scripts/tests/identity_migration_emulator.sh'
+      - '.github/workflows/identity-migration-emulator.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: optional-identity-migration-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The last release that knows nothing about the migration; every shipped panel starts here or later.
+  BASE_TAG: v0.9.7
+
+jobs:
+  handover:
+    name: API ${{ matrix.api-level }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # The fleet's oldest and newest Android: 8.1 is the Sonoff panels, 14+ the newer hardware.
+        api-level: [27, 35]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+
+      - name: Install build SDK, NDK, and emulator image
+        run: sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" "system-images;android-${{ matrix.api-level }};default;x86_64" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      # Both identities share one build directory, so each APK is copied out before the next build.
+      - name: Build the bridge and the successor
+        run: |
+          mkdir -p "$RUNNER_TEMP/apks"
+          ./gradlew :app:assembleDebug --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apks/bridge.apk"
+          ./gradlew :app:assembleDebug -PappIdentity=successor --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/apks/successor.apk"
+
+      - name: Build the base release from its tag
+        run: |
+          git fetch --depth 1 origin "refs/tags/$BASE_TAG:refs/tags/$BASE_TAG"
+          git worktree add "$RUNNER_TEMP/base" "$BASE_TAG"
+          (cd "$RUNNER_TEMP/base" && ./gradlew :app:assembleDebug --stacktrace)
+          cp "$RUNNER_TEMP/base/app/build/outputs/apk/debug/app-debug.apk" "$RUNNER_TEMP/apks/base.apk"
+
+      # The APKs bundle the helper for the fleet's ARM ABIs only. The emulator's is compiled from the
+      # same sources with the same build id, which is what the apps compare the running daemon against.
+      - name: Build the root helper for the emulator
+        run: |
+          toolchain="$ANDROID_SDK_ROOT/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          "$toolchain/x86_64-linux-android26-clang" -O2 -s -Ihelper/src \
+            "-DHAPANELD_BUILD_ID=\"$(helper/source-id.sh)\"" \
+            -o "$RUNNER_TEMP/hapaneld-helper" helper/src/*.c
+
+      - name: Enable KVM group permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Hand the panel over, then again with a kill at every step
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: scripts/tests/identity_migration_emulator.sh "$RUNNER_TEMP/apks/base.apk" "$RUNNER_TEMP/apks/bridge.apk" "$RUNNER_TEMP/apks/successor.apk" "$RUNNER_TEMP/hapaneld-helper"
