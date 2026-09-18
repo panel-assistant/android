@@ -324,8 +324,19 @@ class Config private constructor(
         if (preExisting) Log.i(TAG, "setup migration: pre-existing install, home-dashboard question marked answered")
     }
 
-    private fun configuredBeforeSetupQuestionTracking(): Boolean =
-        dashboardEntityLearningEnabled || mqttBroker.isNotBlank() || haUrl.isNotBlank()
+    /**
+     * Evidence this panel was configured before the setup questions existed.
+     *
+     * The Home Assistant URL term is delegated to [panelConfiguredBeforeSetupTracking], which is shared
+     * with the journey's copy of this question, because a handed-over URL must not read as evidence in
+     * either of them. The other two terms stay here: they are this migration's own, and differ from the
+     * journey's third term for reasons older than the handover.
+     */
+    private fun configuredBeforeSetupQuestionTracking(): Boolean = panelConfiguredBeforeSetupTracking(
+        haUrl = haUrl,
+        haSetupHandover = haSetupHandover,
+        otherEvidence = dashboardEntityLearningEnabled || mqttBroker.isNotBlank(),
+    )
 
     /**
      * Whether the user has answered setup's entity-filter question — either way.

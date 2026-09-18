@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.panelConfiguredBeforeSetupTracking
 import io.ktor.http.Parameters
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -398,10 +399,9 @@ class HaUrlHandoverTest {
         // for the panel's name.
         assertFalse(
             panelConfiguredBeforeSetupTracking(
-                mqttBroker = "",
                 haUrl = "http://ha.local:8123",
                 haSetupHandover = true,
-                dashboardPackage = "",
+                otherEvidence = false,
             ),
         )
     }
@@ -411,10 +411,9 @@ class HaUrlHandoverTest {
         // URL is exactly what an older install looks like.
         assertTrue(
             panelConfiguredBeforeSetupTracking(
-                mqttBroker = "",
                 haUrl = "http://ha.local:8123",
                 haSetupHandover = false,
-                dashboardPackage = "",
+                otherEvidence = false,
             ),
         )
     }
@@ -425,19 +424,17 @@ class HaUrlHandoverTest {
         assertTrue(
             "a stored broker still marks a pre-tracking install",
             panelConfiguredBeforeSetupTracking(
-                mqttBroker = "192.168.1.5",
                 haUrl = "http://ha.local:8123",
                 haSetupHandover = true,
-                dashboardPackage = "",
+                otherEvidence = "192.168.1.5".isNotBlank(),
             ),
         )
         assertTrue(
             "a stored renderer still marks a pre-tracking install",
             panelConfiguredBeforeSetupTracking(
-                mqttBroker = "",
                 haUrl = "http://ha.local:8123",
                 haSetupHandover = true,
-                dashboardPackage = "io.homeassistant.companion.android",
+                otherEvidence = "io.homeassistant.companion.android".isNotBlank(),
             ),
         )
     }
@@ -446,10 +443,9 @@ class HaUrlHandoverTest {
         listOf(true, false).forEach { handover ->
             assertFalse(
                 panelConfiguredBeforeSetupTracking(
-                    mqttBroker = "",
                     haUrl = "",
                     haSetupHandover = handover,
-                    dashboardPackage = "",
+                    otherEvidence = false,
                 ),
             )
         }

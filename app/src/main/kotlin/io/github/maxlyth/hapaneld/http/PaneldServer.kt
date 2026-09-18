@@ -807,28 +807,6 @@ internal suspend fun rewritePostForHandover(
     return HandoverConfigPost(augmented, outcome, offered)
 }
 
-/**
- * Durable configuration that can only have come from an install predating setup tracking.
- *
- * A handed-over Home Assistant URL is deliberately NOT such evidence, which is what [haSetupHandover]
- * is for here. The release that accepts a handover is one that tracks setup, so a URL it wrote says
- * nothing about an older install — but it is written before the wizard has asked anything. Counting it
- * would make a freshly Home-Assistant-installed panel look pre-existing the instant the handover
- * verified: identity would be inferred confirmed, `preTracking` would force-satisfy the dashboard and
- * filter questions, and the journey would report complete without ever asking for the panel's name.
- * That is the same mid-journey inference the comment in `setupJourneyInputs` records deadlocking a
- * panel on its hold screen, reached by a different route.
- */
-internal fun panelConfiguredBeforeSetupTracking(
-    mqttBroker: String,
-    haUrl: String,
-    haSetupHandover: Boolean,
-    dashboardPackage: String,
-): Boolean =
-    mqttBroker.isNotBlank() ||
-        (haUrl.isNotBlank() && !haSetupHandover) ||
-        dashboardPackage.isNotBlank()
-
 internal fun shouldDiscoverHaUrlForMqttOnboarding(currentHaUrl: String, posted: Parameters): Boolean {
     if (currentHaUrl.isNotBlank()) return false
     if (posted["ha_url"] != null) return false
@@ -8713,12 +8691,19 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
     }
 
-    private fun panelConfiguredBeforeSetupTracking(): Boolean = panelConfiguredBeforeSetupTracking(
-        mqttBroker = config.mqttBroker,
-        haUrl = config.haUrl,
-        haSetupHandover = config.haSetupHandover,
-        dashboardPackage = config.dashboardPackage,
-    )
+    /**
+     * Evidence this panel predates setup tracking, for the journey's purposes.
+     *
+     * The Home Assistant URL term is delegated to the shared [panelConfiguredBeforeSetupTracking] so the
+     * migration's copy of this question and this one cannot disagree about a handed-over URL. The other
+     * two terms are the journey's own.
+     */
+    private fun panelConfiguredBeforeSetupTracking(): Boolean =
+        io.github.maxlyth.hapaneld.panelConfiguredBeforeSetupTracking(
+            haUrl = config.haUrl,
+            haSetupHandover = config.haSetupHandover,
+            otherEvidence = config.mqttBroker.isNotBlank() || config.dashboardPackage.isNotBlank(),
+        )
 
     /**
      * Identity a render proof is valid for. Changing the endpoint, the renderer or the credentialled
