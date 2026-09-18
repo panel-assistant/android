@@ -45,6 +45,15 @@ PY
     case "$suite" in
         unit)      target="build/unit";      binary="./build/unit" ;;
         peer-auth) target="build/peer-auth"; binary="./build/peer-auth" ;;
+        guard)
+            target="build/guard-maintenance-boundary"
+            binary="./build/guard-maintenance-boundary"
+            # Guard keeps durable state under /tmp. Leftovers from an earlier run cascade into the
+            # first test of the next one, which turns a real result into an artifact of the previous
+            # mutation, so every Guard run starts from a purged fixture.
+            rm -rf /tmp/.hapaneld-guard-db-test /tmp/.hapaneld-guard-db-test.boot-id \
+                   /tmp/.hapaneld-guard-app-test /tmp/.hapaneld-guard-installed
+            ;;
         *) printf 'MUTATION ERROR  %s (unknown suite %s)\n' "$name" "$suite"; fail=$((fail + 1)); return ;;
     esac
 
@@ -159,6 +168,18 @@ apply 'server_serve: the connection identity is dropped' unit src/server.c "
 mutated = source.replace(
     '    conn_ctx ctx = { .fd = cfd, .subscribed = 0, .caller = caller };',
     '    (void)caller;\n    conn_ctx ctx = { .fd = cfd, .subscribed = 0, .caller = HELPER_CALLER_ROOT };')
+"
+
+apply 'Guard: root does not adopt the package a bound plan records' guard src/guard_maintenance.c "
+mutated = source.replace(
+    '    if (ctx && ctx->caller == HELPER_CALLER_ROOT) return helper_known_package(plan->package);\n',
+    '', 1)
+"
+
+apply 'Guard: root adopts a package even with nothing bound' guard src/guard_maintenance.c "
+mutated = source.replace(
+    '        if (resolved) return NULL;',
+    '        if (resolved) continue;', 1)
 "
 
 printf '\n%d proven, %d survived\n' "$pass" "$fail"

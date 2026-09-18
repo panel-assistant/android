@@ -1571,7 +1571,15 @@ static const char *guard_caller_package(const conn_ctx *ctx) {
 // A caller may only drive the session its own package prepared.  Startup reconcile, the supervisor
 // tick and the deadline worker have no caller at all, which is precisely why the identity lives in
 // the durable plan rather than being looked up per call.
+//
+// Root is the exception, and only once a plan exists.  The ambiguity that makes root refuse at
+// GUARDPREPARE is the absence of anything that says which app the session is for; a bound plan says
+// exactly that, and it is a durable record this daemon wrote, not a name the caller supplied.  So an
+// ADB operator keeps the ability to cancel, drive or retire a Guard session during the transition
+// window -- which is the window in which something is most likely to need driving by hand -- without
+// any verb gaining a package argument.
 static int guard_caller_owns_plan(const conn_ctx *ctx, const guard_plan *plan) {
+    if (ctx && ctx->caller == HELPER_CALLER_ROOT) return helper_known_package(plan->package);
     const char *package = guard_caller_package(ctx);
     return package && strcmp(package, plan->package) == 0;
 }

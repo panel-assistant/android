@@ -2773,6 +2773,40 @@ static void test_foreign_caller_refused_on_mutation_verbs(void) {
         "the owning package cancels the session (got %s)\n", reply);
 }
 
+/* Root is ambiguous only while nothing says which app a session is for.  A bound plan says exactly
+ * that, and it is a record this daemon wrote rather than a name a caller supplied, so an ADB operator
+ * keeps the ability to drive an existing session by hand during the transition window -- which is
+ * when a session is most likely to need it -- with both packages installed. */
+static void test_root_drives_a_bound_plan_with_both_packages_present(void) {
+    setup();
+    create_successor_test_dirs();
+    test_caller = HELPER_CALLER_SUCCESSOR;
+    prepare();
+
+    static const char a_payload[] = "exact-installed-a";
+    char a_sha[65], define[512], cancel[512], reply[1024];
+    hash_bytes(a_payload, sizeof a_payload - 1, a_sha);
+    snprintf(define, sizeof define, "GUARDDEFINE %s 1 A %zu %s 568 11 14 14",
+        SESSION, sizeof a_payload - 1, a_sha);
+
+    test_caller = HELPER_CALLER_ROOT;
+    dispatch_once(define, reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDDEFINE 2 STAGING\n") == 0,
+        "root drives a session already bound to the successor (got %s)\n", reply);
+    snprintf(cancel, sizeof cancel, "GUARDCANCEL %s 2", SESSION);
+    dispatch_once(cancel, reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDCANCEL 3 EMPTY\n") == 0,
+        "root cancels a session already bound to the successor (got %s)\n", reply);
+
+    /* Root adopting the plan's package is not root escaping the identity rule: with no plan to read,
+     * it is still refused rather than guessing. */
+    prepare_command(define);
+    dispatch_once(define, reply, sizeof reply);
+    CHECK(strcmp(reply, "ERR STATE package\n") == 0,
+        "root still refuses to PREPARE a new session while both packages are present (got %s)\n",
+        reply);
+}
+
 static void test_root_resolves_the_single_present_package(void) {
     setup();
     test_caller = HELPER_CALLER_ROOT;
@@ -2871,6 +2905,7 @@ int main(void) {
     test_pm_nonzero_target_and_uncertain_target_matrix();
     test_successor_caller_binds_its_own_package_and_database();
     test_foreign_caller_refused_on_mutation_verbs();
+    test_root_drives_a_bound_plan_with_both_packages_present();
     test_root_resolves_the_single_present_package();
     test_root_prepare_refuses_when_both_packages_present();
     guard_test_reset();
