@@ -11484,8 +11484,8 @@
       "state": "machine-cross-checked"
     },
     "setup.ha_url.handover.timeout": {
-      "text": "Esa dirección aceptó la conexión pero no respondió a tiempo.",
-      "sourceHash": "431754418585e0e41bc0e8dc8230193523dcecc00e2b4f46d4381d91ad3f1a83",
+      "text": "Esa dirección no respondió a tiempo.",
+      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
       "state": "machine-cross-checked"
     },
     "setup.ha_url.handover.tls": {

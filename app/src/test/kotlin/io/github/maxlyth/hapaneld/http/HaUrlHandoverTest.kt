@@ -191,15 +191,23 @@ class HaUrlHandoverTest {
 
     /* ---------------- acceptance case: no handover ---------------- */
 
-    @Test fun `a POST with no handover is passed through untouched and never probes`() {
+    @Test fun `a POST with no handover never probes and keeps every value it carried`() {
         var probed = false
-        val posted = params("ha_url" to "http://typed.local:8123", "panel_id" to "kitchen_panel")
+        val posted = params("ha_url" to "http://typed.local:8123", "panel_id" to "a_panel")
         val result = rewrite(posted, onVerify = { probed = true })
         assertFalse("a POST with no handover must not cost a probe", probed)
         assertNull("no handover means the response says nothing about one", result.outcome)
         assertEquals("http://typed.local:8123", result.parameters["ha_url"])
-        assertEquals("kitchen_panel", result.parameters["panel_id"])
-        assertEquals(posted.names(), result.parameters.names())
+        assertEquals("a_panel", result.parameters["panel_id"])
+        // The only additions are the cleared handover fields, because saving an address answers any
+        // correction that was outstanding. Nothing the caller sent is dropped or altered.
+        posted.names().forEach { name ->
+            assertEquals(
+                "$name must survive unchanged",
+                posted.getAll(name),
+                result.parameters.getAll(name),
+            )
+        }
     }
 
     @Test fun `a blank handover is treated as no handover at all`() {
@@ -235,6 +243,25 @@ class HaUrlHandoverTest {
         assertEquals("ha_not_a_real_key: unknown setting", (refused as ConfigPostParameters.Bad).reason)
         // And the handover key itself is admitted, so a current panel accepts the same shape.
         assertTrue(normalizeConfigPostParameters(posted) is ConfigPostParameters.Ok)
+    }
+
+    /* ---------------- answering the correction closes it out ---------------- */
+
+    @Test fun `saving an address directly clears the failed handover it answers`() {
+        // The correction card's Save posts `ha_url`. Nothing else could ever retract the attempted
+        // address and its reason, because the reason is refused from the network by design, so they
+        // would otherwise outlive the problem they describe.
+        val result = rewrite(params("ha_url" to "http://typed.local:8123"))
+        assertEquals("", result.parameters["ha_url_handover"])
+        assertEquals("", result.parameters["ha_url_handover_reason"])
+        assertEquals("http://typed.local:8123", result.parameters["ha_url"])
+        assertNull("clearing a stale verdict is not itself a handover", result.outcome)
+    }
+
+    @Test fun `clearing the address does not fabricate a handover verdict`() {
+        val result = rewrite(params("ha_url" to ""))
+        assertNull(result.parameters["ha_url_handover_reason"])
+        assertNull(result.outcome)
     }
 
     /* ---------------- idempotence ---------------- */

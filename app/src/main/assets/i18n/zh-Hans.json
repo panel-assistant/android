@@ -11484,8 +11484,8 @@
       "state": "machine-cross-checked"
     },
     "setup.ha_url.handover.timeout": {
-      "text": "该地址接受了连接，但未在规定时间内响应。",
-      "sourceHash": "431754418585e0e41bc0e8dc8230193523dcecc00e2b4f46d4381d91ad3f1a83",
+      "text": "该地址未在规定时间内响应。",
+      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
       "state": "machine-cross-checked"
     },
     "setup.ha_url.handover.tls": {

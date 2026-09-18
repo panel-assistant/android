@@ -42,7 +42,10 @@ object HaUrlHandover {
         /** Resolved, but nothing accepted a connection. */
         UNREACHABLE("unreachable"),
 
-        /** Something accepted the connection and then did not answer in time. */
+        /** Nothing completed in time. Covers a connect that never lands as well as a reply that never
+         *  arrives, because the transport reports both the same way — so the operator-facing text says
+         *  only that the address did not answer, never that anything accepted a connection. Observed
+         *  against a null-routed address, where nothing accepted anything. */
         TIMEOUT("timeout"),
 
         /** HTTPS, but the certificate could not be validated from this panel. */

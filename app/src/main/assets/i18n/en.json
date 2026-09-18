@@ -34872,8 +34872,8 @@
       "hardMaxChars": 112
     },
     "setup.ha_url.handover.timeout": {
-      "text": "That address accepted a connection but did not answer in time.",
-      "sourceHash": "431754418585e0e41bc0e8dc8230193523dcecc00e2b4f46d4381d91ad3f1a83",
+      "text": "That address did not answer in time.",
+      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
       "surface": "setup",
       "context": "Setup wizard Home Assistant URL step; failure reason, connection accepted but no reply in time.",
       "risk": "setup",
@@ -34889,8 +34889,8 @@
       ],
       "placeholders": [],
       "frozen": [],
-      "softMaxChars": 80,
-      "hardMaxChars": 112
+      "softMaxChars": 48,
+      "hardMaxChars": 68
     },
     "setup.ha_url.handover.tls": {
       "text": "That address uses HTTPS with a certificate this panel cannot verify.",
