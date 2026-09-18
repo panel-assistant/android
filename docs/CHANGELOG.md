@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **The Shelly Wall Display X2i has its own panel profile.** The X2i used to share one profile with the other modern Wall Displays, which meant its details were a set of guesses that had to hold for five different models at once. A unit has now been examined, so the X2i gets a profile describing that unit: its processor, the firmware it was tested on, and its proximity and ambient light sensors, all of which work without root. The profile also stops offering the Recents control, because this firmware ignores it. The shared profile for the remaining modern models is unchanged apart from no longer claiming the X2i's hardware, and it no longer says the onboard relays have no known local control path — they do, but ha-paneld cannot yet reach them on a panel without root.
+
 ### Changed
 
 - **A panel without the Home Assistant Companion app no longer offers a Companion update.** The MQTT "Companion app" update entity exists only while a Companion app is installed on the panel. Panels without one used to list a permanent "not installed" update under Settings, Updates in Home Assistant; a first Companion install stays on the panel's Install page.

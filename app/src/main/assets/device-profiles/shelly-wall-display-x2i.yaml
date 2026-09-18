@@ -1,0 +1,83 @@
+schema: 2
+id: shelly-wall-display-x2i
+version: 2.0.0
+display_name: Shelly Wall Display X2i
+soc_class: rk3326
+soc:
+  model: Rockchip RK3326
+  introduced_year: 2018
+  cpu_cores:
+    - architecture: Arm Cortex-A35
+      count: 4
+metadata:
+  author: ha-paneld maintainers
+  source: https://panel-assistant.io/go/docs?page=hardware/shelly-wall-display
+  links:
+    - label: SoC details
+      url: https://www.rock-chips.com/a/en/News/Press_Releases/2018/0413/898.html
+  license: Apache-2.0
+  maturity: experimental
+  tested_firmware:
+    - Jenna 2.5.4-9893aafa, build vJenna.9a5979d, Android 11
+  limitations:
+    - Recents is declared absent because the firmware ignores the Recents key from both a foreground app and Settings; only Back and Home are offered.
+    - On-board relays are present at /sys/class/strelay and switch real contacts, but ha-paneld drives relays through its privileged route, so no relay capability is offered on this unprivileged panel.
+    - Relay terminals are inert while the panel is powered over USB instead of mains, so any future relay support must state that condition.
+    - Evidence comes from one unit on factory firmware 2.5.4. Later firmware installs a device-owner policy that changes which vendor packages can be disabled, and the update is one-way.
+    - The panel declares camera features that no camera backs; ha-paneld offers the camera only when Android enumerates one, so no suppression is declared here.
+requires:
+  min_core_version: 0.9.5-rc1
+  drivers:
+    - screen.brightness-zero
+    - sensor.android
+match:
+  # The X2i reports Jenna as its model, device and build product. Its product_version
+  # carries a shelly_x2 prefix, which is deliberately not matched on: the legacy X2 may
+  # share that prefix and the codename alone is already unique.
+  priority: 500
+  fallback: false
+  any:
+    - priority: 990
+      all:
+        - field: model
+          op: equals
+          values:
+            - jenna
+    - priority: 990
+      all:
+        - field: device
+          op: equals
+          values:
+            - jenna
+platform:
+  # Nothing ha-paneld needs on this panel requires privilege: sensors, brightness,
+  # permission grants and launcher takeover all work as an ordinary app.
+  su_form: none
+  app_can_su: false
+  has_recents: false
+hardware:
+  led:
+    mechanism: none
+    transfer: identity
+  # The backlight sysfs node refuses an unprivileged write, but this route writes
+  # Settings.System instead and never touches it.
+  screen_off: brightness-zero
+  has_button_backlight: false
+sensors:
+  proximity_technology: Infrared
+  light_technology: Ambient light
+  cht8305: false
+  room_temp_offset_c: 0.0
+identity:
+  manufacturer: Shelly
+  model: Wall Display X2i
+  model_label_strategy: display-name
+input:
+  evdev_buttons: []
+cpu: {}
+display: {}
+provisioning:
+  software: {}
+  display: {}
+  packages: []
+  recipes: []
