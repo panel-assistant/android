@@ -6889,6 +6889,14 @@ $body
   <small id="tame-pkg-hint" class="note" style="grid-column:1/-1">${esc(strings.get("install.tame.package_hint"))}</small>
  </form>
 </div>
+<div id="hand-back-home" style="margin-top:16px;padding-top:12px;border-top:1px solid #222">
+ <h3 style="margin:0 0 4px">${esc(strings.get("install.tame.hand_back.title"))}</h3>
+ <p class="note" style="margin:0 0 4px">${esc(strings.get("install.tame.hand_back.description"))}</p>
+ <p class="note" style="margin:0 0 4px"><strong>${esc(strings.get("install.tame.hand_back.warning"))}</strong></p>
+ <p class="note" style="margin:0 0 8px">${esc(strings.get("install.tame.hand_back.scope"))}</p>
+ <button id="hand-back-home-button" type="button" onclick="handBackHome()"${hardenedApprovalA11yAttrs(strings = strings)}$dis>${esc(strings.get("install.tame.hand_back.action"))}</button>
+ <p id="hand-back-home-status" class="note" role="status" aria-live="polite" style="margin:8px 0 0"></p>
+</div>
 <dialog id="pkgdlg" style="background:#1a1a1a;color:#eee;border:1px solid #333;border-radius:12px;max-width:520px;width:92%;padding:16px">
  <h3 data-hardened-approval="conditional" aria-describedby="hardened-approval-section-conditional-description" title="${esc(strings.get("shell.hardened.section_conditional"))}" style="margin:0 0 4px">${esc(strings.get("install.tame.dialog.title"))}</h3>
  <p class="note" style="margin:0 0 8px">${esc(strings.get("install.tame.dialog.description"))}</p>
@@ -6898,7 +6906,12 @@ $body
 <script>function pkgPick(){var d=document.getElementById('pkgdlg');d.showModal();
 document.getElementById('pkgdlgbody').textContent=${jsonStr(strings.get("install.shared.loading"))};
 fetch(${jsonStr(localizedHref("api/v1/tame/suggest", strings))}).then(function(r){return r.text()}).then(function(t){document.getElementById('pkgdlgbody').innerHTML=t}).catch(function(){document.getElementById('pkgdlgbody').textContent=${jsonStr(strings.get("install.tame.dialog.list_failed"))};});}
-function updateTamePackageSubmit(){var input=document.getElementById('tame-pkg'),button=document.getElementById('tame-package-submit');if(!input||!button)return;button.disabled=input.disabled||!input.checkValidity();}updateTamePackageSubmit();</script></div>"""
+function updateTamePackageSubmit(){var input=document.getElementById('tame-pkg'),button=document.getElementById('tame-package-submit');if(!input||!button)return;button.disabled=input.disabled||!input.checkValidity();}updateTamePackageSubmit();
+function handBackHome(){var b=document.getElementById('hand-back-home-button'),s=document.getElementById('hand-back-home-status');if(!b||!s)return;b.disabled=true;s.textContent=${jsonStr(strings.get("install.shared.loading"))};
+fetch(${jsonStr(localizedHref("api/v1/hand-back-home", strings))},{method:'POST'}).then(function(r){return r.json().then(function(j){return {status:r.status,body:j}})}).then(function(r){
+if(r.status===200&&r.body&&r.body.home_handed_to){s.textContent=${jsonStr(strings.get("install.tame.hand_back.done"))};return;}
+b.disabled=false;s.textContent=${jsonStr(strings.get("install.tame.hand_back.failed"))};
+}).catch(function(){b.disabled=false;s.textContent=${jsonStr(strings.get("install.tame.hand_back.failed"))};});}</script></div>"""
     }
 
     /** Display-sizing card (density + text scale). Empty when su isn't reachable (no control). */

@@ -427,6 +427,49 @@ JSON
       printf '{"panel_id":"test-panel","mqtt_broker":""}\n'
     fi
     ;;
+  */api/v1/hand-back-home)
+    # Handing the home screen back. `home_handed_to` is present ONLY when the role genuinely moved, so the
+    # provisioner keys its refusal on the field's absence rather than on parsing a boolean.
+    case "${MOCK_HAND_BACK:-ok}" in
+      transport-fail) exit 22 ;;
+      too-old)
+        # A panel running a build with no hand-back route.
+        [ -z "$write_format" ] || printf '404'
+        exit 0
+        ;;
+      approval)
+        printf '{"ok":false,"error":"approval-required","approval_id":"abc"}'
+        [ -z "$write_format" ] || printf '\n202'
+        exit 0
+        ;;
+      no-home)
+        # The panel ran, but nothing else on the device can take the HOME role.
+        printf '{"ok":false,"error":"no-replacement-home"}'
+        [ -z "$write_format" ] || printf '\n409'
+        exit 0
+        ;;
+      partial)
+        printf '{"ok":false,"restored":["com.smartos.xinch.launcher"],"adopted":[],"outstanding":["com.smartos.xinch.monitor"],"home_handed_to":"com.smartos.xinch.launcher"}'
+        [ -z "$write_format" ] || printf '\n200'
+        exit 0
+        ;;
+      *)
+        printf '{"ok":true,"restored":["com.smartos.xinch.launcher"],"adopted":[],"outstanding":[],"home_handed_to":"com.smartos.xinch.launcher"}'
+        [ -z "$write_format" ] || printf '\n200'
+        exit 0
+        ;;
+    esac
+    ;;
+  */api/v1/tame/record)
+    # Recording that the provisioner disabled a package. Best-effort on the host side: `too-old` models a
+    # panel whose build predates the route, which must warn and continue rather than fail the run.
+    case "${MOCK_TAME_RECORD:-ok}" in
+      transport-fail) exit 22 ;;
+      too-old) [ -z "$write_format" ] || printf '404'; exit 0 ;;
+      not-disabled) [ -z "$write_format" ] || printf '409'; exit 0 ;;
+      *) [ -z "$write_format" ] || printf '200'; exit 0 ;;
+    esac
+    ;;
   */api/v1/config/import*)
     [ "${MOCK_RESTORE:-ok}" = "timeout" ] && exit 28
     [ "${MOCK_RESTORE:-ok}" = "ok" ] || exit 22

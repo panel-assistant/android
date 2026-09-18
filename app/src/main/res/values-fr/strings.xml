@@ -53,6 +53,7 @@
     <string name="approval_op_devtools_enable">Exposer les outils de développement WebView</string>
     <string name="approval_op_remote_media">Lire une URL multimédia distante</string>
     <string name="approval_op_package_tame">Modifier l’état d’un paquet du fabricant</string>
+    <string name="approval_op_home_hand_back">Restaurer l\'écran d\'accueil</string>
     <string name="approval_op_dashboard_reload">Recharger le moteur du tableau de bord</string>
     <string name="approval_op_device_reboot">Redémarrer le panneau</string>
     <string name="approval_op_companion_repair">Réparer la configuration de Companion</string>
