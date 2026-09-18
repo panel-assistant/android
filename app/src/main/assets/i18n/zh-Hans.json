@@ -11458,6 +11458,51 @@
       "state": "machine-cross-checked",
       "text": "你用于打开 Home Assistant 的地址，例如 http://homeassistant.local:8123。"
     },
+    "setup.ha_url.handover.title": {
+      "text": "从本面板无法通过 Home Assistant 提供的地址连接",
+      "sourceHash": "95566c26e1200c6aa845e89bf47830912910c45389c9dbdca04213e61a6540b1",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.attempted": {
+      "text": "Home Assistant 声明其地址为 {url}。",
+      "sourceHash": "6c237e4d68e162c26795de98cb0dd0cb53e4d1d5945da02de1beb64f6f2be95e",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.explanation": {
+      "text": "这通常是 Home Assistant 对自身的地址，而不是本面板能访问的地址。请输入你在本网络中打开 Home Assistant 所用的地址。",
+      "sourceHash": "b30424a6ce1fdbd27c3bce9f2166cf47dbe9e6d573414c478e197be49f789b6d",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.unresolvable": {
+      "text": "本面板无法在其网络中解析该地址。",
+      "sourceHash": "69b4cc0e2371cf0f76677d9487594e37cc3fd8648d5dc3401d4b1f3db32bde3f",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.unreachable": {
+      "text": "从本面板所在网络访问该地址时无任何响应。",
+      "sourceHash": "9271ab701f200ba895b1e8a80eadc7b65288bfcc23c04b97809d7f708bb8ce40",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.timeout": {
+      "text": "该地址接受了连接，但未在规定时间内响应。",
+      "sourceHash": "431754418585e0e41bc0e8dc8230193523dcecc00e2b4f46d4381d91ad3f1a83",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.tls": {
+      "text": "该地址使用 HTTPS，但本面板无法验证其证书。",
+      "sourceHash": "1d86972863bc2466fcdeaefbd828b775593001b389d0543585b579b991ecaedf",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.not_home_assistant": {
+      "text": "该地址有响应，但它不是 Home Assistant。",
+      "sourceHash": "34fac562b46f9b22d0b29806c3b489212919474a960ea7dbce6ca5234a86dc27",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.generic": {
+      "text": "本面板无法通过该地址连接到 Home Assistant。",
+      "sourceHash": "0a57d6ea313ddef65fb24b9910bd5212ef5333fe6f55d847f3b8acd558932c9c",
+      "state": "machine-cross-checked"
+    },
     "setup.ha_url.label": {
       "sourceHash": "d8d89efc512baff4d9d1924b627322b9b007a8c08ed95af6976dfbc684d308fa",
       "state": "machine-cross-checked",

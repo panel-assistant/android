@@ -724,6 +724,93 @@ internal fun builtinRendererNeedsConnection(
     return !effectiveCredentials
 }
 
+/** A handover POST after the panel has decided whether the address it was given actually answers. */
+internal data class HandoverConfigPost(
+    val parameters: Parameters,
+    /** Null when this POST carried no handover to settle, so the response says nothing about one. */
+    val outcome: HaUrlHandover.Outcome? = null,
+    val url: String = "",
+)
+
+/**
+ * Turn a POST carrying a handed-over Home Assistant URL into the settings write it should become.
+ *
+ * Rewrites the posted parameters rather than persisting separately, so an accepted address takes
+ * exactly the same commit and live-apply path as one a person typed — the renderer reconfigure, the
+ * read-back check and the mutation plan all behave identically. This mirrors
+ * `augmentPostWithDiscoveredHaUrlForMqttOnboarding`, which fills the same field from discovery.
+ *
+ * Three outcomes:
+ *  - **already configured** — [currentHaUrl] is set, so the handover is dropped and [verify] is never
+ *    called. Adoption is re-runnable, and a retry must converge rather than overwrite a working panel
+ *    or spend a probe proving something the panel no longer needs.
+ *  - **verified** — promoted to `ha_url`, with the handover field and its reason cleared.
+ *  - **failed** — the address is kept with its reason, so the wizard can offer a correction that shows
+ *    what was tried instead of an empty field.
+ *
+ * The provenance marker `ha_setup_handover` is deliberately untouched: it rides the POST as an ordinary
+ * key and is stored whatever [verify] decides, because an address that did not answer still means Home
+ * Assistant deployed this panel.
+ *
+ * [verify] is a parameter rather than a call so the whole decision is exercisable without a network.
+ */
+internal suspend fun rewritePostForHandover(
+    posted: Parameters,
+    currentHaUrl: String,
+    verify: suspend (String) -> HaUrlHandover.Outcome,
+): HandoverConfigPost {
+    val offered = posted["ha_url_handover"]?.trim().orEmpty()
+    if (offered.isBlank()) return HandoverConfigPost(posted)
+    val carried = Parameters.build {
+        for (name in posted.names()) {
+            if (name == "ha_url_handover" || name == "ha_setup_handover") continue
+            posted.getAll(name).orEmpty().forEach { append(name, it) }
+        }
+        // A handed-over address means Home Assistant deployed this panel whether or not the address
+        // then answers, so provenance is recorded here rather than left to the caller to remember.
+        // Every step that skips a question reads this marker, never the address's presence.
+        append("ha_setup_handover", "true")
+    }
+    if (currentHaUrl.isNotBlank()) return HandoverConfigPost(carried)
+    val outcome = verify(offered)
+    val augmented = Parameters.build {
+        for (name in carried.names()) {
+            carried.getAll(name).orEmpty().forEach { append(name, it) }
+        }
+        if (outcome.verified) {
+            append("ha_url", offered)
+            append("ha_url_handover", "")
+            append("ha_url_handover_reason", "")
+        } else {
+            append("ha_url_handover", offered)
+            append("ha_url_handover_reason", outcome.reason)
+        }
+    }
+    return HandoverConfigPost(augmented, outcome, offered)
+}
+
+/**
+ * Durable configuration that can only have come from an install predating setup tracking.
+ *
+ * A handed-over Home Assistant URL is deliberately NOT such evidence, which is what [haSetupHandover]
+ * is for here. The release that accepts a handover is one that tracks setup, so a URL it wrote says
+ * nothing about an older install — but it is written before the wizard has asked anything. Counting it
+ * would make a freshly Home-Assistant-installed panel look pre-existing the instant the handover
+ * verified: identity would be inferred confirmed, `preTracking` would force-satisfy the dashboard and
+ * filter questions, and the journey would report complete without ever asking for the panel's name.
+ * That is the same mid-journey inference the comment in `setupJourneyInputs` records deadlocking a
+ * panel on its hold screen, reached by a different route.
+ */
+internal fun panelConfiguredBeforeSetupTracking(
+    mqttBroker: String,
+    haUrl: String,
+    haSetupHandover: Boolean,
+    dashboardPackage: String,
+): Boolean =
+    mqttBroker.isNotBlank() ||
+        (haUrl.isNotBlank() && !haSetupHandover) ||
+        dashboardPackage.isNotBlank()
+
 internal fun shouldDiscoverHaUrlForMqttOnboarding(currentHaUrl: String, posted: Parameters): Boolean {
     if (currentHaUrl.isNotBlank()) return false
     if (posted["ha_url"] != null) return false
@@ -852,6 +939,33 @@ internal fun normalizeConfigPostParameters(
                     if (expiry < 0L) return ConfigPostParameters.Bad("ha_token_expiry: must be ≥ 0")
                     expiry.toString()
                 }
+                // The handover keys are a machine channel between the Panel Assistant integration and
+                // this panel, not settings. They are deliberately absent from SettingsRegistry so they
+                // can never appear on the Configure page, in the settings catalogue, or in a config
+                // bundle, exactly as `http_allowed_hosts` is.
+                name == "ha_setup_handover" -> {
+                    SettingValue.parseBool(value)?.toString()
+                        ?: return ConfigPostParameters.Bad("ha_setup_handover: expected a boolean")
+                }
+                name == "ha_url_handover" -> {
+                    val trimmed = value.trim()
+                    if (trimmed.isEmpty()) {
+                        ""
+                    } else {
+                        io.github.maxlyth.hapaneld.config.normalizeHttpOriginUrl(trimmed)
+                            ?: return ConfigPostParameters.Bad(
+                                "ha_url_handover: expected an http:// or https:// URL with no " +
+                                    "embedded credentials",
+                            )
+                    }
+                }
+                // Refused from the network outright. The panel's own probe decides this and appends it
+                // after admission; accepting it here would let the party that supplies an address also
+                // declare that address reachable.
+                name == "ha_url_handover_reason" ->
+                    return ConfigPostParameters.Bad(
+                        "ha_url_handover_reason: the panel's own verification writes this",
+                    )
                 name == "http_allowed_hosts" -> {
                     val trimmed = value.trim()
                     if (trimmed.length > 4_096) {
@@ -1234,6 +1348,11 @@ internal fun directConfigOrdinaryOutcomes(
                 config.haExposed(exposed.key, exposed.haExposedByDefault).toString()
             }
             key == "http_allowed_hosts" -> config.httpAllowedHostsRaw
+            // Bespoke keys with no spec, read back from their own accessors so a handover is reported
+            // applied on the evidence of what was stored rather than of what was planned.
+            key == "ha_setup_handover" -> config.haSetupHandover.toString()
+            key == "ha_url_handover" -> config.haUrlHandover
+            key == "ha_url_handover_reason" -> config.haUrlHandoverReason
             else -> null
         }
         if (actual == expected) applied += key else rejected += key
@@ -6987,7 +7106,11 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 return
             }
         }
-        val onboardingPost = augmentPostWithDiscoveredHaUrlForMqttOnboarding(normalizedPost)
+        // Settle a handed-over Home Assistant URL before anything else looks at `ha_url`: every
+        // admission decision below reads the posted parameters, and a handover that verified is an
+        // ordinary `ha_url` write from here on.
+        val handoverPost = augmentPostWithVerifiedHandover(normalizedPost)
+        val onboardingPost = augmentPostWithDiscoveredHaUrlForMqttOnboarding(handoverPost.parameters)
         val p = onboardingPost.parameters
         val postedValues = p.names().associateWith { p[it].orEmpty() }
         if (rejectHardenedNetworkAdb(call, p["network_adb"])) return
@@ -7316,6 +7439,15 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                         if (tamePackagesChanged) config.setTameVendorPackages(raw)
                     }
                     p["http_allowed_hosts"]?.let { config.setHttpAllowedHosts(it) }
+                    // The handover trio persists here for the same reason `http_allowed_hosts` does:
+                    // they are bespoke config keys with no SettingsRegistry spec, so the generic
+                    // registry writer never sees them. The reason is only ever appended by this
+                    // panel's own verification, never accepted from the network.
+                    p["ha_setup_handover"]?.let {
+                        config.setHaSetupHandover(SettingValue.parseBool(it) == true)
+                    }
+                    p["ha_url_handover"]?.let { config.setHaUrlHandover(it) }
+                    p["ha_url_handover_reason"]?.let { config.setHaUrlHandoverReason(it) }
                     // Live keys are deliberately excluded from this batch. Their handlers must observe
                     // the previous value before the live-setting authority persists the applied value.
                     // update_channel is the exception: its exact APK was admitted above, and putting it
@@ -7670,13 +7802,25 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             mutationPlan.changedKeys,
             onboardingPost.haDiscovery,
         )
+        // A handover that failed still saved the marker and the address, so this is a successful write
+        // reporting an unsuccessful address — not an error. The authoritative state the integration
+        // reads is `GET /api/v1/setup`, which carries the same verdict; this message exists so an
+        // operator watching the wire sees the reason immediately.
+        val handoverMessage = handoverPost.outcome?.let { outcome ->
+            if (outcome.verified) {
+                "Home Assistant's address was verified from this panel and saved."
+            } else {
+                "Home Assistant handed this panel ${handoverPost.url}, which did not answer " +
+                    "(${outcome.reason}). Setup will ask for the address instead."
+            }
+        }
         respondConfigMutation(
             call,
             if (livePending.isEmpty()) "saved" else "saved-apply-pending",
             liveApplied,
             livePending,
             emptyList(),
-            pendingMessage ?: onboardingSignInMessage,
+            pendingMessage ?: handoverMessage ?: onboardingSignInMessage,
             if (livePending.isEmpty()) HttpStatusCode.OK else HttpStatusCode.Accepted,
         )
         } finally {
@@ -7711,6 +7855,55 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         /** Carried so the response can explain a failed discovery without browsing a second time. */
         val haDiscovery: DiscoveryResult = DiscoveryResult(),
     )
+
+    /**
+     * Verify a handed-over Home Assistant URL from this panel's own network before accepting it.
+     *
+     * Rewrites the posted parameters rather than persisting separately, so an accepted address takes
+     * exactly the same commit and live-apply path as one a person typed — the renderer reconfigure, the
+     * read-back check and the mutation plan all behave identically. This mirrors
+     * [augmentPostWithDiscoveredHaUrlForMqttOnboarding], which fills the same field from discovery.
+     *
+     * Three outcomes:
+     *  - **already configured** — the panel has a URL, so the handover is dropped untouched. Adoption is
+     *    re-runnable, and a retry must converge rather than overwrite a working panel.
+     *  - **verified** — promoted to `ha_url`, and the handover field and its reason are cleared.
+     *  - **failed** — the address is kept, with the reason, so the wizard can offer a correction that
+     *    shows what was tried instead of an empty field.
+     *
+     * The provenance marker `ha_setup_handover` is NOT touched here. It rides the POST as an ordinary
+     * key and is stored whatever this decides, because a handed-over address that did not answer still
+     * means Home Assistant deployed this panel.
+     */
+    private suspend fun augmentPostWithVerifiedHandover(posted: Parameters): HandoverConfigPost =
+        rewritePostForHandover(posted, config.haUrl) { offered ->
+            withContext(Dispatchers.IO) { verifyHandedOverHaUrl(offered) }
+                .also { Log.i(TAG, "config: handed-over Home Assistant URL verification ${it.name.lowercase()}") }
+        }
+
+    /**
+     * One bounded unauthenticated `GET {url}/api/` from the panel itself.
+     *
+     * Home Assistant answers that with 401; anything else answering means something that is not Home
+     * Assistant holds the address. See [HaUrlHandover] for why a 200 there is a failure rather than a
+     * weaker success.
+     */
+    private fun verifyHandedOverHaUrl(url: String): HaUrlHandover.Outcome {
+        val probe = HaUrlHandover.probeUrl(url) ?: return HaUrlHandover.Outcome.INVALID
+        return runCatching {
+            val connection = java.net.URL(probe).openConnection() as java.net.HttpURLConnection
+            try {
+                connection.requestMethod = "GET"
+                connection.connectTimeout = HaUrlHandover.CONNECT_TIMEOUT_MS
+                connection.readTimeout = HaUrlHandover.READ_TIMEOUT_MS
+                connection.instanceFollowRedirects = false
+                connection.setRequestProperty("Accept", "application/json")
+                HaUrlHandover.classifyStatus(connection.responseCode)
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrElse(HaUrlHandover::classifyFailure)
+    }
 
     private suspend fun augmentPostWithDiscoveredHaUrlForMqttOnboarding(posted: Parameters): OnboardingConfigPost {
         if (!shouldDiscoverHaUrlForMqttOnboarding(config.haUrl, posted)) {
@@ -8502,8 +8695,12 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
     }
 
-    private fun panelConfiguredBeforeSetupTracking(): Boolean =
-        config.mqttBroker.isNotBlank() || config.haUrl.isNotBlank() || config.dashboardPackage.isNotBlank()
+    private fun panelConfiguredBeforeSetupTracking(): Boolean = panelConfiguredBeforeSetupTracking(
+        mqttBroker = config.mqttBroker,
+        haUrl = config.haUrl,
+        haSetupHandover = config.haSetupHandover,
+        dashboardPackage = config.dashboardPackage,
+    )
 
     /**
      * Identity a render proof is valid for. Changing the endpoint, the renderer or the credentialled
@@ -8584,7 +8781,24 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         // nothing usable, which a caller must be able to refuse on separately from a foreign renderer.
         val renderer = "{\"builtin\":$builtinRenderer," +
             "\"package\":${jsonStr(RendererResolver.reportedRenderer(resolvedRenderer))}}"
+        // `handover` is how the Panel Assistant integration learns, BEFORE it sends anything, that this
+        // panel understands a handed-over Home Assistant URL. `supported` is a constant: its absence on an
+        // older panel is the whole version-pairing mechanism. That matters because
+        // `normalizeConfigPostParameters` refuses an unknown key AND the admission is atomic, so an
+        // integration that posted the handover blindly would not merely fail to hand over — it would make
+        // the entire POST 400 and drop every other setting in it. The integration reads this, and only
+        // sends the handover when it is true.
+        //
+        // This endpoint is the authority for the verdict too: `url` and `reason` are non-blank only while
+        // an address was handed over and did not answer, which is exactly the state the wizard renders as
+        // a correction rather than as a blank question. Both are cheap stored reads, so the expense rule
+        // SetupStateEndpointContractTest pins is untouched — the probe itself runs on the config POST.
+        val handover = "{\"supported\":true," +
+            "\"source\":${config.haSetupHandover}," +
+            "\"url\":${jsonStr(config.haUrlHandover)}," +
+            "\"reason\":${jsonStr(config.haUrlHandoverReason)}}"
         return "{\"complete\":${journey.complete}," +
+            "\"handover\":$handover," +
             "\"repair\":${config.setupEverCompleted && !journey.complete}," +
             "\"entity_filter\":$entityFilter," +
             "\"home_dashboard\":$homeDashboard," +
