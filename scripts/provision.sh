@@ -124,14 +124,61 @@ fail() {
 case "$1" in -h|--help) usage; exit 0 ;; esac
 TARGET="$1"
 shift
-REPO="maxlyth/ha-paneld"
+REPO="panel-assistant/android"
 LOCAL_APK="app/build/outputs/apk/debug/app-debug.apk"
-PKG="io.github.maxlyth.hapaneld"
+# One source tree builds two installable identities. This provisioner installs and verifies the
+# successor; the bridge keeps the historical application id so a panel can run both for one handover.
+# Until the bridge is gone it may still be the package that holds the data, answers the upgrade
+# control broadcast and owns the app-data directory, so those reads resolve the installed data
+# holder rather than assuming the install target.
+PKG="io.panelassistant.android"
+LEGACY_PKG="io.github.maxlyth.hapaneld"
+# The Gradle namespace and Kotlin package do NOT move with the applicationId, so the merged manifest
+# carries io.github.maxlyth.hapaneld.<Class> for both builds. Android expands a `/.Class` shorthand
+# against the package half of the component, which names a real class only for the legacy id.
+# AppIdentity.className encodes the same rule inside the app.
+CODE_PACKAGE="io.github.maxlyth.hapaneld"
+# The installed package whose app-private data this run reads. resolve_data_package fills it once.
+DATA_PKG=""
 RELEASE_CERT_SHA256="ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 RELEASE_HELPER_BUILD_ID=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HELPER_DIST_DIR="${HAPANELD_HELPER_DIST_DIR:-$SCRIPT_DIR/../helper/dist}"
-A11Y="$PKG/.input.PanelAccessibilityService"
+# Flatten one of this app's own manifest components for a given installed identity.
+app_component() {
+  local pkg="$1" relative="$2"
+  case "$relative" in .*) ;; *) return 1 ;; esac
+  if [ "$pkg" = "$CODE_PACKAGE" ]; then printf '%s/%s\n' "$pkg" "$relative"
+  else printf '%s/%s%s\n' "$pkg" "$CODE_PACKAGE" "$relative"; fi
+}
+# Android's own rule for comparing flattened components: a class name beginning with a dot is
+# relative to the package half. A panel provisioned by an older script stores the shorthand
+# spelling, which denotes the same component as the fully-qualified one under the legacy id and a
+# different one under any other id.
+normalize_component() {
+  local flattened="$1" pkg class
+  case "$flattened" in
+    */*) pkg="${flattened%%/*}"; class="${flattened#*/}" ;;
+    *) printf '%s\n' "$flattened"; return 0 ;;
+  esac
+  case "$class" in .*) class="$pkg$class" ;; esac
+  printf '%s/%s\n' "$pkg" "$class"
+}
+# Is this accessibility component already in a colon-separated enabled-services list, in either
+# spelling? Written as a search rather than a substring test so a retry appends nothing twice.
+a11y_service_enabled() {
+  local state="$1" service="$2" target entry rest
+  target="$(normalize_component "$service")"
+  rest="$state"
+  while [ -n "$rest" ]; do
+    entry="${rest%%:*}"
+    if [ "$entry" = "$rest" ]; then rest=""; else rest="${rest#*:}"; fi
+    [ -n "$entry" ] || continue
+    [ "$(normalize_component "$entry")" != "$target" ] || return 0
+  done
+  return 1
+}
+A11Y="$(app_component "$PKG" .input.PanelAccessibilityService)"
 APK=""; APK_RELEASE_TAG=""; PANEL_ID=""; MQTT=""; MQTT_USER=""; MQTT_PASS=""; VERIFY_ONLY=0; LATEST=0; PRERELEASE=0; FORCE=0; PERSIST_ADB=0; STRIP_VENDOR=0; SHIZUKU=0; ALLOW_UNSIGNED_HELPER=0; REQUIRE_RELEASE_SIGNER=0; TOINSTALL_VER=""; VERIFY_DIRECT_GRANTS=0; HA_OAUTH_CONFIGURED=0; RESET_CONFIG=0; RESET_CONFIG_COMPLETED=0; CANDIDATE_SIGNER_SHA256=""
 # The schema versions the app has actually shipped. Bump the MAX alongside every new database
 # migration; a snapshot admitting a version outside this set cannot be paired with any build this
@@ -156,7 +203,7 @@ SNAPSHOT_TXN_REMOTE=""; SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
 SNAPSHOT_TXN_HOST_DB_WORK=""; SNAPSHOT_TXN_HOST_DB_TARGET=""
 SNAPSHOT_TXN_HOST_RECEIPT_WORK=""; SNAPSHOT_TXN_HOST_RECEIPT_TARGET=""
 SNAPSHOT_TXN_DEFERRED_SIGNAL=""
-UPGRADE_QUIESCE_NONCE=""
+UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""
 UPGRADE_RECEIPT_PID=""; UPGRADE_RECEIPT_VERSION_CODE=""; UPGRADE_RECEIPT_DATABASE_BYTES=""
 UPGRADE_RECEIPT_DATABASE_SHA256=""; UPGRADE_RECEIPT_USER_VERSION=""; UPGRADE_RECEIPT_APP_STATE_ROWS=""
 SETUP_JOURNEY_AVAILABLE=0; SETUP_COMPLETE=0; SETUP_REPAIR=0; SETUP_NEXT=""; SETUP_NEXT_STATUS=""; SETUP_NEXT_DETAIL=""
@@ -260,7 +307,7 @@ while [ "${1:-}" ]; do
   esac
 done
 valid_release_tag() { printf '%s\n' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; }
-release_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk\n' "$1"; }
+release_apk_name() { printf 'panel-assistant-%s-manual-setup-required.apk\n' "$1"; }
 release_apk_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$(release_apk_name "$1")"; }
 release_checksum_url() { printf '%s.sha256\n' "$(release_apk_url "$1")"; }
 release_signature_url() { printf '%s.sig\n' "$(release_checksum_url "$1")"; }
@@ -864,12 +911,12 @@ PACKAGE_MANAGER_LIVENESS_PKG="android"
 #
 # Sets PACKAGE_PRESENCE to exactly one of: present, absent, unknown. Callers fail closed on unknown.
 classify_package_presence() {
-  local seconds="$1" nonce out verdict status=0
+  local seconds="$1" pkg="${2:-$PKG}" nonce out verdict status=0
   PACKAGE_PRESENCE="unknown"
   nonce="$(host_transaction_id)" || return 0
   # `\$?` is escaped so the PANEL's shell expands each child's status, not this one.
   out="$(run_with_deadline "$seconds" adb_exec -s "$TARGET" shell \
-    "echo HAPANELD_PKG_BEGIN:$nonce; pm path $PKG; echo HAPANELD_PKG_TARGET:$nonce:\$?; \
+    "echo HAPANELD_PKG_BEGIN:$nonce; pm path $pkg; echo HAPANELD_PKG_TARGET:$nonce:\$?; \
      pm path $PACKAGE_MANAGER_LIVENESS_PKG; echo HAPANELD_PKG_LIVE:$nonce:\$?; \
      echo HAPANELD_PKG_END:$nonce" 2>/dev/null)" || status=$?
   [ "$status" -eq 0 ] || return 0
@@ -905,6 +952,27 @@ classify_package_presence() {
   case "$verdict" in
     present|absent) PACKAGE_PRESENCE="$verdict" ;;
   esac
+  return 0
+}
+
+# Which installed package holds this panel's ha-paneld data? Both identities may be installed during
+# the handover, and before it begins the bridge is the only one there. The successor is preferred
+# because it owns the state as soon as it exists, and the bridge answers for it until then. Resolved
+# once per run: the answer must not change between the observation that reads a database and the
+# mutation that acts on it.
+resolve_data_package() {
+  local verdict
+  [ -z "$DATA_PKG" ] || return 0
+  DATA_PKG="$PKG"
+  # Every caller classifies the install target immediately before asking, and that verdict is the
+  # authority for it. Only its proven absence can make the bridge the data holder, so only then is a
+  # second nonce-bound observation worth a panel round trip. `unknown` keeps the install target,
+  # whose own caller already refuses on it.
+  [ "$PACKAGE_PRESENCE" = absent ] || return 0
+  # Asked in a subshell so this resolution cannot overwrite the install target's own verdict.
+  verdict="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+  [ "$verdict" = present ] || return 0
+  DATA_PKG="$LEGACY_PKG"
   return 0
 }
 
@@ -1088,7 +1156,7 @@ verify() {
     a11y_state="${a11y_state//$'\r'/}"
     a11y_enabled_state="${a11y_enabled_state//$'\r'/}"
     if [ "$a11y_enabled_state" = 1 ]; then
-      case ":$a11y_state:" in *":$A11Y:"*) a11y_granted=1 ;; esac
+      if a11y_service_enabled "$a11y_state" "$A11Y"; then a11y_granted=1; fi
     fi
     # The runtime permissions granted over adb above are read back from the package manager, not from
     # the app's own report: a grant that a vendor build silently refuses leaves the app running with a
@@ -1555,7 +1623,7 @@ offer_strip_vendor() {
   # Guard 3 — a non-vendor home launcher must exist before we disable the vendor launcher.
   # ha-paneld itself ships an admin launcher (AdminLauncherActivity registers HOME), so it counts.
   local home=""
-  for L in io.homeassistant.companion.android.minimal io.homeassistant.companion.android io.github.maxlyth.hapaneld; do
+  for L in io.homeassistant.companion.android.minimal io.homeassistant.companion.android "$PKG" "$LEGACY_PKG"; do
     if adb -s "$TARGET" shell pm path "$L" >/dev/null 2>&1; then home="$L"; break; fi
   done
   if [ -z "$home" ]; then
@@ -1723,7 +1791,7 @@ report_timezone_alignment() {
 
 # Fetch the newest signed release APK from GitHub's bounded HTTPS API. Sets APK + TOINSTALL_VER.
 download_latest() {
-  local dir tag="" url json api record asset expected_url
+  local dir tag="" urls json api record asset expected_url
   dir="$(mktemp -d)"
   # PRERELEASE=1 → newest published release of ANY kind (incl. rc); else the newest STABLE.
   # GitHub's /releases/latest excludes prereleases, so the inclusive path lists all releases and
@@ -1736,18 +1804,20 @@ download_latest() {
   json="$(curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 30 "$api" 2>/dev/null || true)"
   if [ "$PRERELEASE" = 1 ]; then
     record="$(printf '%s' "$json" | tr -d '\r\n' | \
-      sed 's#{[[:space:]]*"url":[[:space:]]*"https://api.github.com/repos/maxlyth/ha-paneld/releases/\([0-9][0-9]*\)"#\
+      sed 's#{[[:space:]]*"url":[[:space:]]*"https://api.github.com/repos/'"$REPO"'/releases/\([0-9][0-9]*\)"#\
 &#g' | \
       awk '/"draft":[[:space:]]*false/ && !found { print; found=1 }')"
   else
     record="$json"
   fi
   tag="$(printf '%s' "$record" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
-  url="$(printf '%s' "$record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | head -1 | cut -d'"' -f4 || true)"
+  # A release carries one APK per installable identity, so the first `.apk` in the record is no
+  # longer this provisioner's artifact. Select by the exact published URL of the successor asset.
+  urls="$(printf '%s' "$record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | cut -d'"' -f4 || true)"
   if [ -n "$tag" ] && valid_release_tag "$tag"; then
     asset="$(release_apk_name "$tag")"
     expected_url="$(release_apk_url "$tag")"
-    [ "$url" = "$expected_url" ] && curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$url" -o "$dir/$asset" || true
+    printf '%s\n' "$urls" | grep -Fxq "$expected_url" && curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$expected_url" -o "$dir/$asset" || true
   fi
   [ -n "${asset:-}" ] && [ -s "$dir/$asset" ] && APK="$dir/$asset" || APK=""
   [ -n "$APK" ] || { echo "${RED}could not fetch the latest release APK from the expected GitHub release path${X}" >&2; exit 1; }
@@ -2007,7 +2077,9 @@ verify_release_apk() {
     package_name="$("$package_tool" dump badging "$APK" 2>/dev/null | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1 || true)"
     assert_candidate_apk_unchanged
     [ "$package_name" = "$PKG" ] || fail "release APK package mismatch" \
-      "Expected $PKG" "Got      ${package_name:-unavailable}" "Nothing was installed, started, or privileged."
+      "Expected $PKG" "Got      ${package_name:-unavailable}" \
+      "A local build carries $LEGACY_PKG unless it is built with -PappIdentity=successor." \
+      "Nothing was installed, started, or privileged."
   elif [ -z "$APK_RELEASE_TAG" ]; then
     fail "Android Build-Tools are required to verify a local APK package" \
       "${package_tool_problem:-Install aapt or aapt2 and retry.} Nothing was backed up, installed, started, or privileged."
@@ -6021,6 +6093,7 @@ cleanup_root_database_observer() {
 inspect_root_database_compatibility() {
   local command out begin end primary primary_fingerprint recovery retained inventory inventory_fingerprint observation_nonce
   local observer_stage observer_script observer_owner script_file script_sha panel_sha primary_mode
+  resolve_data_package
   observation_nonce="$(host_transaction_id)" || return 1
   observer_stage="/data/local/tmp/.hapaneld-db-observer.$observation_nonce"
   observer_script="${observer_stage}-script"
@@ -6029,7 +6102,7 @@ inspect_root_database_compatibility() {
   else primary_mode=stable; fi
   command='set -u
 # HAPANELD_DB_COMPAT_OBSERVER_BEGIN
-db=/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db
+db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db
 minimum=@MINIMUM@
 maximum=@MAXIMUM@
 primary_mode=@PRIMARY_MODE@
@@ -6111,7 +6184,7 @@ data_root=${app_data%/*}
 inventory=unreadable
 inventory_fingerprint=""
 if data_entries=$(ls -1A "$data_root" 2>/dev/null); then
-  if ! printf "%s\n" "$data_entries" | grep -Fxq io.github.maxlyth.hapaneld; then inventory=absent
+  if ! printf "%s\n" "$data_entries" | grep -Fxq "${app_data##*/}"; then inventory=absent
   elif [ -L "$app_data" ] || [ ! -d "$app_data" ]; then inventory=unreadable
   elif app_entries=$(ls -1A "$app_data" 2>/dev/null); then
     if ! printf "%s\n" "$app_entries" | grep -Fxq databases; then inventory=readable
@@ -6204,6 +6277,7 @@ echo "HOSTDB_INVENTORY=$inventory"
 echo "HOSTDB_INVENTORY_FINGERPRINT=$inventory_fingerprint"
 echo HOSTDB_END:@NONCE@
 # HAPANELD_DB_COMPAT_OBSERVER_END'
+  command="${command//@DATA_PACKAGE@/$DATA_PKG}"
   command="${command//@MINIMUM@/$DB_CANDIDATE_MIN}"
   command="${command//@MAXIMUM@/$DB_CANDIDATE_MAX}"
   command="${command//@PRIMARY_MODE@/$primary_mode}"
@@ -6431,11 +6505,17 @@ host_database_compatibility_decision() {
       if [ "$PACKAGE_PRESENCE" = absent ]; then
         [ "$HOST_DB_INVENTORY" != unreadable ] || \
           host_database_gate_refuse "the app-data database inventory could not be traversed"
-        [ "$HOST_DB_PRIMARY" = missing ] && [ "$HOST_DB_RETAINED" = 0 ] || \
+        if [ "$HOST_DB_PRIMARY" = missing ] && [ "$HOST_DB_RETAINED" = 0 ]; then
+          step "🛡️  database compatible" "${D}proven fresh install · no retained database state${X}"
+          DB_GATE_DECISION_KIND=FRESH
+          return 0
+        fi
+        # Retained state under the install target itself is the residue this gate has always
+        # refused. Retained state under the bridge is this panel's own data, waiting for the
+        # handover the successor performs once it is installed, so it is measured against the
+        # candidate's schema boundary below — the same question asked of an in-place upgrade.
+        [ "$DATA_PKG" != "$PKG" ] || \
           host_database_gate_refuse "the package is absent but retained database or recovery state still exists"
-        step "🛡️  database compatible" "${D}proven fresh install · no retained database state${X}"
-        DB_GATE_DECISION_KIND=FRESH
-        return 0
       fi
       if [ "${DB_GATE_PHASE:-}" = package ] && [ "${RESET_CONFIG_COMPLETED:-0}" = 1 ]; then
         [ "$HOST_DB_INVENTORY" != unreadable ] && [ "$HOST_DB_PRIMARY" = missing ] && \
@@ -6883,18 +6963,21 @@ snapshot_txn_reject_unsafe() {
 prepare_upgrade_quiescence() {
   local nonce output receipt ready_count tag receipt_nonce receipt_pid receipt_vcode
   local receipt_bytes receipt_sha receipt_uv receipt_rows receipt_extra timeout
-  UPGRADE_QUIESCE_NONCE=""
+  UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""
   UPGRADE_RECEIPT_PID=""; UPGRADE_RECEIPT_VERSION_CODE=""; UPGRADE_RECEIPT_DATABASE_BYTES=""
   UPGRADE_RECEIPT_DATABASE_SHA256=""; UPGRADE_RECEIPT_USER_VERSION=""; UPGRADE_RECEIPT_APP_STATE_ROWS=""
   nonce="$(host_transaction_id)" || return 1
-  # Retain custody before transmission: a timeout or malformed result cannot prove the app failed
-  # to arm. A harmless RELEASE to an old build is safer than abandoning a quiesced current build.
+  # The bridge answers for the panel until the successor exists, so quiesce whichever identity holds
+  # the data. Retain custody before transmission: a timeout or malformed result cannot prove the app
+  # failed to arm. A harmless RELEASE to an old build is safer than abandoning a quiesced current one.
+  resolve_data_package
   UPGRADE_QUIESCE_NONCE="$nonce"
+  UPGRADE_QUIESCE_PKG="$DATA_PKG"
   timeout="${UPGRADE_PREPARE_TIMEOUT_SECONDS:-45}"
   case "$timeout" in ''|*[!0-9]*|0) timeout=45 ;; esac
   output="$(run_with_deadline "$timeout" adb_exec -s "$TARGET" shell am broadcast --user 0 \
     -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE \
-    -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "$nonce" 2>/dev/null | tr -d '\r')" || output=""
+    -n "$(app_component "$UPGRADE_QUIESCE_PKG" .UpgradeControlReceiver)" --es nonce "$nonce" 2>/dev/null | tr -d '\r')" || output=""
   receipt="$(printf '%s\n' "$output" | sed -n 's/^Broadcast completed: result=-1, data="\([^"]*\)"$/\1/p')"
   ready_count="$(printf '%s\n' "$receipt" | grep -c '^HAPANELD_UPGRADE_READY_V1:' || true)"
   [ "$ready_count" = 1 ] || return 1
@@ -6923,27 +7006,29 @@ EOF
 }
 
 release_upgrade_quiescence() {
-  local nonce output timeout attempt released_count root_start_failed=0
+  local nonce pkg output timeout attempt released_count root_start_failed=0
   nonce="${UPGRADE_QUIESCE_NONCE:-}"
   [ -n "$nonce" ] || return 0
+  # RELEASE goes back to the identity that armed, never to the one this run happens to install.
+  pkg="${UPGRADE_QUIESCE_PKG:-$PKG}"
   timeout="${UPGRADE_RELEASE_TIMEOUT_SECONDS:-10}"
   case "$timeout" in ''|*[!0-9]*|0) timeout=10 ;; esac
   attempt=1
   while [ "$attempt" -le 2 ]; do
     output="$(run_with_deadline "$timeout" adb_exec -s "$TARGET" shell am broadcast --user 0 \
       -a io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE \
-      -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "$nonce" 2>/dev/null | tr -d '\r')" || output=""
+      -n "$(app_component "$pkg" .UpgradeControlReceiver)" --es nonce "$nonce" 2>/dev/null | tr -d '\r')" || output=""
     released_count="$(printf '%s\n' "$output" | grep -Fxc \
       "Broadcast completed: result=-1, data=\"HAPANELD_UPGRADE_RELEASED_V1:$nonce\"" || true)"
     # The receiver may have opened its barrier but be unable to restart its own foreground service
     # on API 31. Ask through the already-established root authority after every RELEASE attempt;
     # exact receipt validation below remains the only authority that can disown the nonce.
-    if ! run_root "am start-foreground-service --user 0 -n $PKG/.PaneldService" >/dev/null 2>&1; then
+    if ! run_root "am start-foreground-service --user 0 -n $(app_component "$pkg" .PaneldService)" >/dev/null 2>&1; then
       root_start_failed=1
     fi
     if [ "$released_count" = 1 ]; then
       # Disown only after the exact ordered-broadcast acknowledgement.
-      UPGRADE_QUIESCE_NONCE=""
+      UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""
       if [ "$root_start_failed" = 1 ]; then
         warn "upgrade release was acknowledged, but the root-authoritative PaneldService restart could not be confirmed; launch ha-paneld once on the panel"
       fi
@@ -6988,7 +7073,7 @@ snapshot_prepared_database() {
   SNAPSHOT_TXN_HOST_DB="$host_db"
   snapshot_txn_restore_host_signals
   chmod 600 "$host_db" 2>/dev/null || true
-  if ! copy_root_file_binary "/data/data/$PKG/databases/ha-paneld.db" "$host_db" || [ ! -s "$host_db" ]; then
+  if ! copy_root_file_binary "/data/data/${UPGRADE_QUIESCE_PKG:-$PKG}/databases/ha-paneld.db" "$host_db" || [ ! -s "$host_db" ]; then
     snapshot_txn_refuse "the quiesced database could not be copied from the panel" "Check adb/root responsiveness to $TARGET, then re-run."
     return 0
   fi
@@ -7078,13 +7163,17 @@ snapshot_panel_database() {
   # not silently treated as a fresh install.
   classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS"
   case "$PACKAGE_PRESENCE" in
-    absent) return 0 ;;
     unknown)
       snapshot_txn_refuse "the panel could not be asked whether ha-paneld is installed" \
         "Check adb connectivity to $TARGET, then re-run."
       return 0
       ;;
   esac
+  # The install target's absence is not the panel's. Before the handover the bridge is the package
+  # holding the database this capture protects, and only when neither identity is installed is there
+  # nothing to capture.
+  resolve_data_package
+  [ "$PACKAGE_PRESENCE" != absent ] || [ "$DATA_PKG" != "$PKG" ] || return 0
   # The run's one root-route verdict, resolved before this gate, decides the capture. Both unknown
   # verdicts refuse: a probe that never answered or a transport that died mid-question looks
   # exactly like a genuine "no root", and could recover minutes later, just in time for the
@@ -7124,7 +7213,7 @@ snapshot_panel_database() {
     # the capture rather than taking it.
     return 0
   fi
-  db_source="/data/data/$PKG/databases/ha-paneld.db"
+  db_source="/data/data/$DATA_PKG/databases/ha-paneld.db"
   # A globally unique staging identity: two hosts can share a pid, and a collision must be
   # impossible rather than unlikely, because the loser of a staging collision must never remove the
   # winner's in-flight capture. With 128 bits of /dev/urandom in the name, the registered path
@@ -7242,7 +7331,7 @@ EOF
     snapshot_txn_refuse "the capture script could not be written on this host" "Check TMPDIR, then re-run."
     return 0
   fi
-  if ! sed -e "s|@STAGE@|$stage|g" -e "s|@DB_SOURCE@|$db_source|g" -e "s|@PKG@|$PKG|g" \
+  if ! sed -e "s|@STAGE@|$stage|g" -e "s|@DB_SOURCE@|$db_source|g" -e "s|@PKG@|$DATA_PKG|g" \
       -e "s|@VMIN@|$DB_SUPPORTED_USER_VERSION_MIN|g" -e "s|@VMAX@|$DB_SUPPORTED_USER_VERSION_MAX|g" \
       "$script_file" > "$script_file.ready" || ! mv "$script_file.ready" "$script_file"; then
     rm -f "$script_file" "$script_file.ready" 2>/dev/null || true
@@ -7883,8 +7972,10 @@ host_database_compatibility_gate package
 step "📦 installing" "${D}$APK${X}"
 install_apk
 # Successful package replacement terminates the old quiesced process. A later failure belongs to
-# the newly installed process and must not send it the old process's release nonce.
-UPGRADE_QUIESCE_NONCE=""
+# the newly installed process and must not send it the old process's release nonce. A bridge
+# quiesced for a successor installation is a different package, which this install did not replace
+# and did not stop, so its lease is kept and released rather than silently abandoned.
+if [ "${UPGRADE_QUIESCE_PKG:-$PKG}" = "$PKG" ]; then UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""; fi
 if [ -n "$ROOT_HELPER_TRANSACTION_KIND" ]; then
   if ! commit_root_helper_upgrade "$ROOT_HELPER_TRANSACTION_KIND" && \
      ! commit_root_helper_upgrade "$ROOT_HELPER_TRANSACTION_KIND"; then
@@ -7918,11 +8009,12 @@ if EXISTING="$(adb -s "$TARGET" shell settings get secure enabled_accessibility_
     adb -s "$TARGET" shell settings put secure enabled_accessibility_services "$A11Y" >/dev/null 2>&1 \
       || warn "could not enable the accessibility service — enable manually: Settings → Accessibility → ha-paneld"
   else
-    case "$EXISTING" in
-      *"$A11Y"*) : ;;
-      *) adb -s "$TARGET" shell settings put secure enabled_accessibility_services "$EXISTING:$A11Y" >/dev/null 2>&1 \
-           || warn "could not enable the accessibility service — enable manually: Settings → Accessibility → ha-paneld" ;;
-    esac
+    # A panel provisioned by an older script stored the shorthand spelling of this component, which
+    # denotes the same service. Compare components rather than text so a retry appends nothing twice.
+    if ! a11y_service_enabled "$EXISTING" "$A11Y"; then
+      adb -s "$TARGET" shell settings put secure enabled_accessibility_services "$EXISTING:$A11Y" >/dev/null 2>&1 \
+        || warn "could not enable the accessibility service — enable manually: Settings → Accessibility → ha-paneld"
+    fi
   fi
   adb -s "$TARGET" shell settings put secure accessibility_enabled 1 >/dev/null 2>&1 || true
 else
@@ -7985,7 +8077,7 @@ start_panel_agent() {
       ;;
     direct)
       run_with_deadline "$APP_LAUNCH_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" shell \
-        am start -n "$PKG/.MainActivity" >/dev/null 2>&1 || return 1
+        am start -n "$(app_component "$PKG" .MainActivity)" >/dev/null 2>&1 || return 1
       ;;
     *) return 2 ;;
   esac

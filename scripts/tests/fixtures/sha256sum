@@ -13,7 +13,7 @@ case "${1:-}" in
       "${MOCK_SHIZUKU_DOWNLOAD_SHA:-6e273ab0e991c4e79bc8b1bbb9b9dd739ccac1a8712a541a214078886b7b790f}" \
       "$1"
     ;;
-  */installed.apk|*/ha-paneld*.apk)
+  */installed.apk|*/ha-paneld*.apk|*/panel-assistant*.apk)
     /usr/bin/sha256sum "$1"
     ;;
   # The database-capture flow authenticates its own artifacts by digest; those hashes must be real

@@ -39,12 +39,12 @@ emit_body() {
 }
 
 case "$url" in
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-helper-v*-*.sha256.sig)
+  https://github.com/panel-assistant/android/releases/download/v*/ha-paneld-helper-v*-*.sha256.sig)
     [ -n "$output_file" ] || exit 2
     [ "${MOCK_HELPER_PROOF_DOWNLOAD:-ok}" = "signature_fail" ] && exit 22
     printf 'mock detached helper signature\n' > "$output_file"
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-helper-v*-*.sha256)
+  https://github.com/panel-assistant/android/releases/download/v*/ha-paneld-helper-v*-*.sha256)
     [ -n "$output_file" ] || exit 2
     [ "${MOCK_HELPER_PROOF_DOWNLOAD:-ok}" = "checksum_fail" ] && exit 22
     helper="${RELEASE_HELPER_SOURCE:-}"
@@ -57,7 +57,7 @@ case "$url" in
       *) exit 2 ;;
     esac
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-helper-v*-*)
+  https://github.com/panel-assistant/android/releases/download/v*/ha-paneld-helper-v*-*)
     [ -n "$output_file" ] || exit 2
     # The served helper carries an embedded build identity exactly as a real helper binary does,
     # so the installer's asset-versus-provisioner cross-check has something falsifiable to read.
@@ -72,12 +72,12 @@ case "$url" in
         "${MOCK_RELEASE_HELPER_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" > "$output_file" ;;
     esac
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-provision-v*.sh.sha256.sig)
+  https://github.com/panel-assistant/android/releases/download/v*/ha-paneld-provision-v*.sh.sha256.sig)
     [ -n "$output_file" ] || exit 2
     [ "${MOCK_INSTALLER_PROOF_DOWNLOAD:-ok}" = "signature_fail" ] && exit 22
     printf 'mock detached provisioner signature\n' > "$output_file"
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-provision-v*.sh.sha256)
+  https://github.com/panel-assistant/android/releases/download/v*/ha-paneld-provision-v*.sh.sha256)
     [ -n "$output_file" ] || exit 2
     [ "${MOCK_INSTALLER_PROOF_DOWNLOAD:-ok}" = "checksum_fail" ] && exit 22
     asset="$(basename "$url" .sha256)"
@@ -100,7 +100,7 @@ case "$url" in
       *) exit 2 ;;
     esac
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-provision-v*.sh)
+  https://github.com/panel-assistant/android/releases/download/v*/ha-paneld-provision-v*.sh)
     [ -n "$output_file" ] || exit 2
     case "${MOCK_RELEASE_PROVISION_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" in
       missing) printf 'mock authenticated provisioner\n' > "$output_file" ;;
@@ -108,7 +108,7 @@ case "$url" in
         "${MOCK_RELEASE_PROVISION_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" > "$output_file" ;;
     esac
     ;;
-  https://raw.githubusercontent.com/maxlyth/ha-paneld/v0.9.2/scripts/provision.sh)
+  https://raw.githubusercontent.com/panel-assistant/android/v0.9.2/scripts/provision.sh)
     [ -n "$output_file" ] || exit 2
     printf 'mock legacy provisioner\n' > "$output_file"
     ;;
@@ -116,12 +116,12 @@ case "$url" in
     [ -n "$output_file" ] || exit 2
     printf 'mock pinned Shizuku manager apk\n' > "$output_file"
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-v*-manual-setup-required.apk.sha256.sig)
+  https://github.com/panel-assistant/android/releases/download/v*/*-manual-setup-required.apk.sha256.sig)
     [ -n "$output_file" ] || exit 2
     [ "${MOCK_RELEASE_PROOF_DOWNLOAD:-ok}" = "signature_fail" ] && exit 22
     printf 'mock detached release signature\n' > "$output_file"
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-v*-manual-setup-required.apk.sha256)
+  https://github.com/panel-assistant/android/releases/download/v*/*-manual-setup-required.apk.sha256)
     [ -n "$output_file" ] || exit 2
     [ "${MOCK_RELEASE_PROOF_DOWNLOAD:-ok}" = "checksum_fail" ] && exit 22
     apk="${RELEASE_APK_SOURCE:-}"
@@ -134,23 +134,23 @@ case "$url" in
       *) exit 2 ;;
     esac
     ;;
-  https://api.github.com/repos/maxlyth/ha-paneld/releases\?per_page=100)
+  https://api.github.com/repos/panel-assistant/android/releases\?per_page=100)
     case "${MOCK_GITHUB_API:-fail}" in
       pretty) cat <<'JSON'
 [
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/201",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/201",
     "tag_name": "v0.9.2-rc3",
     "draft": false,
     "prerelease": true,
-    "assets": [{"url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/assets/901", "browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"}]
+    "assets": [{"url": "https://api.github.com/repos/panel-assistant/android/releases/assets/901", "browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/panel-assistant-v0.9.2-rc3-manual-setup-required.apk"}]
   },
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/200",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/200",
     "tag_name": "v0.9.1",
     "draft": false,
     "prerelease": false,
-    "assets": [{"url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/assets/900", "browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.1/ha-paneld-v0.9.1-manual-setup-required.apk"}]
+    "assets": [{"url": "https://api.github.com/repos/panel-assistant/android/releases/assets/900", "browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.1/ha-paneld-v0.9.1-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.1/panel-assistant-v0.9.1-manual-setup-required.apk"}]
   }
 ]
 JSON
@@ -158,18 +158,18 @@ JSON
       stable_newest) cat <<'JSON'
 [
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/202",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/202",
     "tag_name": "v0.9.3",
     "draft": false,
     "prerelease": false,
-    "assets": [{"browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}]
+    "assets": [{"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.3/panel-assistant-v0.9.3-manual-setup-required.apk"}]
   },
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/201",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/201",
     "tag_name": "v0.9.2-rc3",
     "draft": false,
     "prerelease": true,
-    "assets": [{"browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"}]
+    "assets": [{"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/panel-assistant-v0.9.2-rc3-manual-setup-required.apk"}]
   }
 ]
 JSON
@@ -177,11 +177,11 @@ JSON
       stable_only) cat <<'JSON'
 [
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/202",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/202",
     "tag_name": "v0.9.3",
     "draft": false,
     "prerelease": false,
-    "assets": [{"browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}]
+    "assets": [{"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.3/panel-assistant-v0.9.3-manual-setup-required.apk"}]
   }
 ]
 JSON
@@ -189,18 +189,18 @@ JSON
       draft_newest) cat <<'JSON'
 [
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/203",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/203",
     "tag_name": "v0.9.4-rc1",
     "draft": true,
     "prerelease": true,
-    "assets": [{"browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.4-rc1/ha-paneld-v0.9.4-rc1-manual-setup-required.apk"}]
+    "assets": [{"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.4-rc1/ha-paneld-v0.9.4-rc1-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.4-rc1/panel-assistant-v0.9.4-rc1-manual-setup-required.apk"}]
   },
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/202",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/202",
     "tag_name": "v0.9.3",
     "draft": false,
     "prerelease": false,
-    "assets": [{"browser_download_url": "https://github.com/maxlyth/ha-paneld/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}]
+    "assets": [{"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.3/ha-paneld-v0.9.3-manual-setup-required.apk"}, {"browser_download_url": "https://github.com/panel-assistant/android/releases/download/v0.9.3/panel-assistant-v0.9.3-manual-setup-required.apk"}]
   }
 ]
 JSON
@@ -208,14 +208,14 @@ JSON
       oversized)
         # Keep the selected prerelease small, then exceed typical pipe buffers with an older
         # release. An early-exiting consumer makes an upstream stage fail with SIGPIPE.
-        printf '%s' '[{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/201","tag_name":"v0.9.2-rc3","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"}]},{"url":"https://api.github.com/repos/maxlyth/ha-paneld/releases/200","tag_name":"v0.9.1","draft":false,"prerelease":false,"padding":"'
+        printf '%s' '[{"url":"https://api.github.com/repos/panel-assistant/android/releases/201","tag_name":"v0.9.2-rc3","draft":false,"prerelease":true,"assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/ha-paneld-v0.9.2-rc3-manual-setup-required.apk"},{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.2-rc3/panel-assistant-v0.9.2-rc3-manual-setup-required.apk"}]},{"url":"https://api.github.com/repos/panel-assistant/android/releases/200","tag_name":"v0.9.1","draft":false,"prerelease":false,"padding":"'
         awk 'BEGIN { for (i = 0; i < 2097152; i++) printf "x" }'
         printf '%s\n' '"}]'
         ;;
       foreign) cat <<'JSON'
 [
   {
-    "url": "https://api.github.com/repos/maxlyth/ha-paneld/releases/201",
+    "url": "https://api.github.com/repos/panel-assistant/android/releases/201",
     "tag_name": "v0.9.2-rc3",
     "draft": false,
     "prerelease": true,
@@ -227,15 +227,15 @@ JSON
       *) exit 22 ;;
     esac
     ;;
-  https://api.github.com/repos/maxlyth/ha-paneld/releases/latest)
+  https://api.github.com/repos/panel-assistant/android/releases/latest)
     case "${MOCK_INSTALLER_RELEASE_API:-fail}" in
       legacy) tag=v0.9.2 ;;
       authenticated) tag=v0.9.3 ;;
       *) exit 22 ;;
     esac
-    printf '{"tag_name":"%s","assets":[{"browser_download_url":"https://github.com/maxlyth/ha-paneld/releases/download/%s/ha-paneld-%s-manual-setup-required.apk"}]}\n' "$tag" "$tag" "$tag"
+    printf '{"tag_name":"%s","assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/%s/ha-paneld-%s-manual-setup-required.apk"},{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/%s/panel-assistant-%s-manual-setup-required.apk"}]}\n' "$tag" "$tag" "$tag" "$tag" "$tag"
     ;;
-  https://github.com/maxlyth/ha-paneld/releases/download/v*/ha-paneld-v*-manual-setup-required.apk)
+  https://github.com/panel-assistant/android/releases/download/v*/*-manual-setup-required.apk)
     [ -n "$output_file" ] || exit 2
     printf 'test apk\n' > "$output_file"
     ;;

@@ -15,18 +15,27 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
+# The descriptor names the successor package, the identity the integration installs. Three strings
+# below used to be derived from it and must not be: the Gradle namespace does not move with the
+# applicationId, and the schema and database-compatibility contracts are compared byte for byte by
+# shipped verifiers that predate the move.
 SCHEMA = "io.github.maxlyth.hapaneld.install.v1"
-PACKAGE_ID = "io.github.maxlyth.hapaneld"
+PACKAGE_ID = "io.panelassistant.android"
+# The Kotlin package and Gradle namespace. Every manifest class stays here whichever applicationId the
+# build carries, so a component is always `<applicationId>/<fully.qualified.Class>`.
+CODE_PACKAGE = "io.github.maxlyth.hapaneld"
 MAX_APK_SIZE_BYTES = 64 * 1024 * 1024
 MAX_ANDROID_SDK = 100
 MAX_ANDROID_VERSION_CODE = 2**31 - 1
 SIGNER_CERTIFICATE_SHA256 = (
     "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 )
-DATABASE_METADATA_KEY = f"{PACKAGE_ID}.DATABASE_COMPATIBILITY"
+DATABASE_METADATA_KEY = f"{CODE_PACKAGE}.DATABASE_COMPATIBILITY"
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a")
-LAUNCH_ACTIVITY = f"{PACKAGE_ID}.MainActivity"
-LAUNCH_COMPONENT = f"{PACKAGE_ID}/.MainActivity"
+LAUNCH_ACTIVITY = f"{CODE_PACKAGE}.MainActivity"
+# Fully qualified on purpose. The `/.MainActivity` shorthand resolves against the applicationId, so
+# under the successor id it would name a class that does not exist.
+LAUNCH_COMPONENT = f"{PACKAGE_ID}/{LAUNCH_ACTIVITY}"
 RELEASE_TAG_PATTERN = re.compile(
     r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$"
@@ -139,7 +148,7 @@ def parse_badging(badging: str) -> dict[str, object]:
 
     launch_fields = _quoted_fields(_one_line("launchable-activity:", badging))
     if launch_fields.get("name") != LAUNCH_ACTIVITY:
-        _fail("APK launcher is not the canonical ha-paneld MainActivity")
+        _fail("APK launcher is not the canonical panel MainActivity")
 
     native_line = _one_line("native-code:", badging)
     abis = tuple(sorted(re.findall(r"'([^']*)'", native_line)))
@@ -252,7 +261,7 @@ def parse_signer(apksigner_output: str) -> str:
 def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -> dict[str, object]:
     if len(release_tag) > 64 or not RELEASE_TAG_PATTERN.fullmatch(release_tag):
         _fail("release tag is not an accepted vX.Y.Z or vX.Y.Z-suffix value")
-    canonical_apk_name = f"ha-paneld-{release_tag}-manual-setup-required.apk"
+    canonical_apk_name = f"panel-assistant-{release_tag}-manual-setup-required.apk"
     if apk.name != canonical_apk_name:
         _fail("APK filename is not canonical for the release tag")
     try:
