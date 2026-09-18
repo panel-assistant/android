@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **Setup no longer asks where Home Assistant is when Home Assistant installed the panel.** The Panel Assistant integration can now tell a panel its own address while installing or adopting it. The panel checks that address from its own network first — a wall panel often cannot reach the address Home Assistant knows for itself, such as one inside a container or behind a reverse proxy — and only then uses it and skips the question. If the address does not answer, setup still asks, but shows the address that was tried and why it did not work instead of an empty box. This needs a matching Panel Assistant release that sends the address; panels installed from the command line, and panels Home Assistant did not install, are unaffected and behave exactly as before.
+
 - **A panel without the Home Assistant Companion app no longer offers a Companion update.** The MQTT "Companion app" update entity exists only while a Companion app is installed on the panel. Panels without one used to list a permanent "not installed" update under Settings, Updates in Home Assistant; a first Companion install stays on the panel's Install page.
 
 ### Fixed

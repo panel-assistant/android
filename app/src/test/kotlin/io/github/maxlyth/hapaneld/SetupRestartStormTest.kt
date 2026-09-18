@@ -331,6 +331,93 @@ class SetupRestartStormTest {
         assertTrue("the sweep must actually be broad", checked > 1000)
     }
 
+    // ---- a panel Home Assistant handed a URL to ---------------------------------------------------
+
+    /**
+     * The defect this suite exists to catch, reached by the route the handover opens.
+     *
+     * A panel the Panel Assistant integration installs gets `ha_url` written before anyone opens the
+     * wizard, so `setupIdentityConfirmed` is still false. The startup migration used to read that URL as
+     * proof of an install older than the setup questions and durably `commit()` every answer — after
+     * which no read of the provenance marker could retract it, because the flags win over any later
+     * inference. The operator's brand-new panel would render unfiltered and the wizard would frame a
+     * genuine first run as a repair.
+     *
+     * Restarting inside that window is not exotic: a power cycle during mounting, an app update, a
+     * service restart or a crash all land there, and the window closes only at the wizard's first step.
+     */
+    @Test fun `a restart on a freshly handed-over panel answers none of the setup questions`() {
+        val values = mutableMapOf<String, Any?>(
+            "ha_url" to "http://ha.local:8123",
+            "ha_setup_handover" to true,
+        )
+        val config = boot(values)
+
+        assertFalse(
+            "the entity-filter question must still be asked",
+            config.setupEntityFilterAnswered,
+        )
+        assertFalse(
+            "the home-dashboard question must still be asked",
+            config.setupHomeDashboardChosen,
+        )
+        assertFalse(
+            "a first run must not be framed as a repair",
+            config.setupEverCompleted,
+        )
+        listOf(
+            "device_local_setup_entity_filter_answered",
+            "device_local_setup_home_dashboard_chosen",
+            "device_local_setup_ever_completed",
+        ).forEach { key ->
+            assertFalse("$key must not be durably stamped", values[key] == true)
+        }
+    }
+
+    @Test fun `restarting repeatedly never answers a handed-over panel's questions`() {
+        // The migration retries until it finds evidence, so once is not proof.
+        val values = mutableMapOf<String, Any?>(
+            "ha_url" to "http://ha.local:8123",
+            "ha_setup_handover" to true,
+        )
+        repeat(5) { boot(values) }
+
+        val config = boot(values)
+        assertFalse(config.setupEntityFilterAnswered)
+        assertFalse(config.setupHomeDashboardChosen)
+        assertFalse(config.setupEverCompleted)
+    }
+
+    /**
+     * The other direction, which the fix must not break: a genuinely pre-existing install still
+     * migrates. Without the marker, a stored URL is exactly what an older panel looks like, and holding
+     * such a panel on a question it predates is the defect the migration exists to prevent.
+     */
+    @Test fun `a pre-existing install with a typed URL still migrates`() {
+        val values = mutableMapOf<String, Any?>("ha_url" to "http://ha.local:8123")
+        val config = boot(values)
+
+        assertTrue("an upgraded panel must not be held on a new question", config.setupEntityFilterAnswered)
+        assertTrue(config.setupHomeDashboardChosen)
+        assertTrue(config.setupEverCompleted)
+    }
+
+    @Test fun `the marker excuses only the URL, never a broker or a learned filter`() {
+        // A panel Home Assistant adopted that ALSO carries pre-tracking evidence really is pre-existing.
+        mapOf(
+            "mqtt_broker" to "tcp://192.0.2.1:1883",
+            "dashboard_entity_learning" to true,
+        ).forEach { (key, value) ->
+            val values = mutableMapOf<String, Any?>(
+                "ha_url" to "http://ha.local:8123",
+                "ha_setup_handover" to true,
+                key to value,
+            )
+            val config = boot(values)
+            assertTrue("$key is still evidence of a pre-existing install", config.setupEntityFilterAnswered)
+        }
+    }
+
     // ---- harness -------------------------------------------------------------------------------------
 
     /**
@@ -349,8 +436,14 @@ class SetupRestartStormTest {
         proof: RenderProof = RenderProof(ProofSource.BUILTIN_FRONTEND_CONNECTED, certain = true, observedAtMs = 1L),
         webViewTooOld: Boolean = false,
     ): SetupJourney.Inputs {
-        val configuredBeforeTracking =
-            config.mqttBroker.isNotBlank() || config.haUrl.isNotBlank() || config.dashboardPackage.isNotBlank()
+        // The shared rule, not a third copy of it. Reconstructing the predicate here is what let this
+        // sweep pass while a handed-over panel was mis-read: the copy knew nothing about the marker, so
+        // no amount of breadth could reach the state the handover creates.
+        val configuredBeforeTracking = panelConfiguredBeforeSetupTracking(
+            haUrl = config.haUrl,
+            haSetupHandover = config.haSetupHandover,
+            otherEvidence = config.mqttBroker.isNotBlank() || config.dashboardPackage.isNotBlank(),
+        )
         val preTracking = !config.setupIdentityConfirmed && configuredBeforeTracking
         return SetupJourney.Inputs(
             identityConfirmed = config.setupIdentityConfirmed || configuredBeforeTracking,
