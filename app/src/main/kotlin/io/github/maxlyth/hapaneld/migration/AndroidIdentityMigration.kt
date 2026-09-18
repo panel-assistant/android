@@ -8,7 +8,6 @@ import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Environment
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Result
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Step
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -95,14 +94,15 @@ internal class AndroidIdentityMigration(
 ) : IdentityMigrationSurface {
     private val context = context.applicationContext
     private val state = MigrationState.of(this.context)
-    // One outcome per restore attempt: a failed attempt must not leave the next one already answered.
-    private val restoreOutcome = java.util.concurrent.atomic.AtomicReference(CompletableDeferred<Boolean>())
+    // One outcome per restore attempt: a failed attempt must not leave the next one already answered,
+    // and a restore that outlives its own wait must not answer the attempt that replaced it.
+    private val restoreAttempts = RestoreAttempts()
     private val held = IdentityMigrationGate.holdsNetworkIdentity()
 
     override fun restoreOpen(): Boolean =
         !AppIdentity.IS_BRIDGE && held && state.done(Step.RELEASE) && !state.done(Step.RESTORE)
 
-    override fun onRestoreFinished(succeeded: Boolean) { restoreOutcome.get().complete(succeeded) }
+    override fun claimRestoreAttempt(): RestoreAttempt = restoreAttempts.claim()
 
     override suspend fun offer(): SuccessorHandoff.Outcome? = offerHandoff()
 
@@ -119,7 +119,7 @@ internal class AndroidIdentityMigration(
             httpPort = httpPort(),
             androidId = androidId(),
             mqttState = mqttState,
-            beginRestore = { CompletableDeferred<Boolean>().also(restoreOutcome::set) },
+            beginRestore = restoreAttempts::begin,
         )
         return scope.launch {
             if (SuccessorMigrationRunner.drive(SuccessorMigration(ports, state)) == Result.NeedsRestart) {
