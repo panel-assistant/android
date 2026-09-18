@@ -101,6 +101,7 @@ internal fun Context.localizedLabel(operation: SensitiveOperation): String = get
         SensitiveOperation.DEVTOOLS_ENABLE -> R.string.approval_op_devtools_enable
         SensitiveOperation.REMOTE_MEDIA -> R.string.approval_op_remote_media
         SensitiveOperation.PACKAGE_TAME -> R.string.approval_op_package_tame
+        SensitiveOperation.HOME_ROLE_HAND_BACK -> R.string.approval_op_home_hand_back
         SensitiveOperation.DASHBOARD_RELOAD -> R.string.approval_op_dashboard_reload
         SensitiveOperation.DEVICE_REBOOT -> R.string.approval_op_device_reboot
         SensitiveOperation.COMPANION_REPAIR -> R.string.approval_op_companion_repair

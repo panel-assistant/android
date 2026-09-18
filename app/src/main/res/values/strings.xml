@@ -55,6 +55,7 @@
     <string name="approval_op_devtools_enable">Expose WebView developer tools</string>
     <string name="approval_op_remote_media">Play a remote media URL</string>
     <string name="approval_op_package_tame">Change vendor package state</string>
+    <string name="approval_op_home_hand_back">Hand the home screen back</string>
     <string name="approval_op_dashboard_reload">Reload dashboard renderer</string>
     <string name="approval_op_device_reboot">Reboot panel</string>
     <string name="approval_op_companion_repair">Repair Companion configuration</string>

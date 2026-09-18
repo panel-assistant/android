@@ -43,6 +43,21 @@ internal object HandBackHomePolicy {
      */
     data class PackageState(val present: Boolean, val disabledByUser: Boolean?)
 
+    /** Why a record of an externally-performed disable was or was not written. */
+    enum class RecordOutcome {
+        /** A marker now exists for this package and hand-back will reverse it. */
+        RECORDED,
+
+        /** The package is not disabled-by-user, so ha-paneld refuses to claim it disabled it. */
+        NOT_DISABLED,
+
+        /** Presence or enabled state could not be read; nothing was claimed. */
+        UNKNOWN,
+
+        /** The marker could not be persisted. */
+        FAILED,
+    }
+
     /** A package that declares `CATEGORY_HOME`, and whether it can take the role in its current state. */
     data class HomeCandidate(val pkg: String, val component: String, val enabled: Boolean)
 

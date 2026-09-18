@@ -265,8 +265,15 @@ class SystemController(
         return false
     }
 
-    /** Set the default HOME (launcher) to [component] ("pkg/cls"). Daemon SETHOME, else su. */
-    private fun setHomeActivity(
+    /**
+     * Set the default HOME (launcher) to [component] ("pkg/cls"). Daemon SETHOME, else su.
+     *
+     * `internal` rather than private because handing the role AWAY — to a re-enabled vendor launcher, so
+     * ha-paneld can be removed without stranding the panel — goes through the same single chokepoint as
+     * every reclaim. A second `set-home-activity` call site elsewhere would be a second definition of the
+     * same privileged transition.
+     */
+    internal fun setHomeActivity(
         component: String,
         admittedRoute: PrivilegeRoute? = null,
     ): Boolean {

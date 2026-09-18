@@ -52,6 +52,9 @@ class ApiRouteSpecContractTest {
         }
         active += "GET /health"
 
+        val handBackHome = File(root, "src/main/kotlin/io/github/maxlyth/hapaneld/http/HandBackHomeRoutes.kt").readText()
+        literalRoutes(handBackHome).mapTo(active) { (method, path) -> "$method /api/v1$path" }
+
         val panelAssistantTransport =
             File(root, "src/main/kotlin/io/github/maxlyth/hapaneld/http/PanelAssistantTransportRoutes.kt").readText()
         literalRoutes(panelAssistantTransport).mapTo(active) { (method, path) -> "$method /api/v1$path" }

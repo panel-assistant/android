@@ -81,6 +81,8 @@ import io.github.maxlyth.hapaneld.control.PowerSafetyMutationPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult
 import io.github.maxlyth.hapaneld.control.Su
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.control.HandBackHomeController
+import io.github.maxlyth.hapaneld.control.HandBackHomePolicy
 import io.github.maxlyth.hapaneld.control.TameController
 import io.github.maxlyth.hapaneld.control.TameReconcileResult
 import io.github.maxlyth.hapaneld.control.VolumeController
@@ -2069,6 +2071,7 @@ class PaneldServer internal constructor(
                 if (!call.admitEmbedProof(PanelAssistantEmbedKeys.instance)) return@intercept finish()
             }
             routing {
+                handBackHomeRoutes(handBackHomeDependencies())
                 controlPlaneRoutes(
                     ControlPlaneRouteDependencies(
                         playAudio = playAudio,
@@ -4902,6 +4905,56 @@ $body</div>"""
     }
 
     /** The server re-evaluates the same policy used by the picker; UI filtering is never authorization. */
+    /**
+     * Wire the hand-back routes to this panel's real taming state.
+     *
+     * The device profile is what authorises adopting a package carrying no ownership marker, so it is read
+     * from the active profile here rather than accepted from a caller: a panel may only hand back the vendor
+     * apps its own hardware profile names.
+     */
+    private fun handBackHomeDependencies(): HandBackHomeRouteDependencies =
+        HandBackHomeRouteDependencies(
+            profileKnownPackages = { tameProfileCandidates.mapTo(hashSetOf()) { it.pkg } },
+            handBack = { profileKnown ->
+                HandBackHomeController(
+                    ownedMarkers = tame::ownedMarkerSnapshot,
+                    packageStates = tame::handBackPackageStates,
+                    homeCandidates = tame::handBackHomeCandidates,
+                    clearDesiredState = {
+                        // Both keys, and before the role moves: the reconciler re-asserts the desired
+                        // blocklist on every wake, and `launcher_package` naming ha-paneld keeps the
+                        // admin-home repair tick putting the role straight back.
+                        runCatching {
+                            config.setTameVendorPackages("")
+                            config.setLauncherPackage("")
+                        }.isSuccess
+                    },
+                    restoreOwned = tame::restoreEveryOwnedPackage,
+                    enable = tame::adoptAndEnable,
+                    setHome = { component -> system.setHomeActivity(component) },
+                    observeHome = tame::observeDefaultHome,
+                    ownPackage = appContext.packageName,
+                ).handBack(profileKnown)
+            },
+            recordTamed = { pkg ->
+                val outcome = tame.recordExternallyTamed(pkg)
+                // An ownership marker outside the desired set is what the reconciler restores, so a recorded
+                // package has to join the desired set or the next wake would undo the provisioner's work.
+                if (outcome == HandBackHomePolicy.RecordOutcome.RECORDED) {
+                    runCatching {
+                        val desired = config.tameVendorPackages.toMutableList()
+                        if (pkg !in desired) {
+                            desired += pkg
+                            config.setTameVendorPackages(desired.joinToString(" "))
+                        }
+                    }
+                }
+                outcome
+            },
+            authorize = { call, operation, payload, summary ->
+                authorizeSensitive(call, operation, payload, summary)
+            },
+        )
     private fun removablePackages(): List<Pair<String, String>> {
         val pm = appContext.packageManager
         val homePackage = runCatching {
