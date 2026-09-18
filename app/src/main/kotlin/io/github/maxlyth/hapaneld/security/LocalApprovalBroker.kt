@@ -16,6 +16,7 @@ internal enum class SensitiveOperation(val label: String) {
     DEVTOOLS_ENABLE("Expose WebView developer tools"),
     REMOTE_MEDIA("Play a remote media URL"),
     PACKAGE_TAME("Change vendor package state"),
+    HOME_ROLE_HAND_BACK("Hand the home screen back"),
     DASHBOARD_RELOAD("Reload dashboard renderer"),
     DEVICE_REBOOT("Reboot panel"),
     COMPANION_REPAIR("Repair Companion configuration"),

@@ -134,5 +134,40 @@ provisioning:
       - test
       - clutter
     note: Tuya factory device-test app (in /odm, persists across factory reset). Diagnostic only.
+  - package: com.smartos.xinch.launcher
+    desired_state: disabled
+    importance: optional
+    tags:
+      - vendor
+      - launcher
+    note: >-
+      Xinch stock home screen. Listed so the panel can hand it BACK: taming it, or the provisioner's
+      vendor-strip, leaves the device with no launcher of its own, and only a package named here may be
+      re-enabled when ha-paneld is removed. Never a default pick.
+  - package: com.smartos.xinch.systemui
+    desired_state: disabled
+    importance: optional
+    tags:
+      - vendor
+      - systemui
+    note: >-
+      Xinch system UI. FLAG_PERSISTENT, so the brick-guard refuses to disable it from the app; listed only
+      so a panel whose provisioner disabled it can have it restored.
+  - package: com.smartos.xinch.hardware
+    desired_state: disabled
+    importance: optional
+    tags:
+      - vendor
+      - test
+    note: Xinch hardware-test app. Diagnostic only; listed so a provisioner-disabled panel can restore it.
+  - package: com.smartos.xinch.setting
+    desired_state: disabled
+    importance: optional
+    tags:
+      - vendor
+      - clutter
+    note: >-
+      Xinch vendor settings app, distinct from Android Settings. Listed so a provisioner-disabled panel can
+      restore it.
   recipes:
     - id: tpa10.vendor-stack-minimize

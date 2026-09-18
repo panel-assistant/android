@@ -292,6 +292,112 @@ class TameController(
         )?.activityInfo?.packageName
     }.getOrNull()
 
+    // ── Handing the home screen back ───────────────────────────────────────────────────────────────
+
+    /** The write-ahead ownership snapshot, for the hand-back decision. */
+    internal fun ownedMarkerSnapshot(): TameOwnedMarkers = readOwnedMarkers()
+
+    /**
+     * Presence plus the *reason* a package is disabled.
+     *
+     * `COMPONENT_ENABLED_STATE_DISABLED_USER` is what `pm disable-user` produces, so it is what ha-paneld
+     * and the provisioner leave behind; `COMPONENT_ENABLED_STATE_DISABLED` is typically a package the
+     * firmware shipped switched off. Collapsing the two into one "disabled" Boolean — which is what
+     * [toCandidate] does for the UI, where it does not matter — would let hand-back enable vendor apps that
+     * were never ha-paneld's to touch. An unreadable state stays null and refuses.
+     */
+    internal fun handBackPackageStates(packages: Set<String>): Map<String, HandBackHomePolicy.PackageState> {
+        val apps = installedAppsOrNull() ?: throw IllegalStateException("installed-package inventory unavailable")
+        val pm = context.packageManager
+        return packages.associateWith { pkg ->
+            val present = pkg in apps
+            val disabledByUser = if (!present) null else runCatching {
+                pm.getApplicationEnabledSetting(pkg) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+            }.getOrNull()
+            HandBackHomePolicy.PackageState(present, disabledByUser)
+        }
+    }
+
+    /**
+     * Every package declaring `CATEGORY_HOME`, including disabled ones, with the component to hand the role
+     * to. Null when the query failed — a hand-back must never read that as "no launcher exists".
+     */
+    internal fun handBackHomeCandidates(): List<HandBackHomePolicy.HomeCandidate>? = try {
+        val pm = context.packageManager
+        pm.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DISABLED_COMPONENTS,
+        ).map { resolved ->
+            val pkg = resolved.activityInfo.packageName
+            val enabled = runCatching {
+                pm.getApplicationEnabledSetting(pkg)
+            }.getOrNull().let {
+                it == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
+                    it == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+            HandBackHomePolicy.HomeCandidate(pkg, "$pkg/${resolved.activityInfo.name}", enabled)
+        }.distinctBy(HandBackHomePolicy.HomeCandidate::pkg)
+    } catch (error: Throwable) {
+        Log.w(TAG, "could not enumerate home launchers for hand-back", error)
+        null
+    }
+
+    /** Roll every ownership marker back, exactly as removing a package from the desired set would. */
+    internal fun restoreEveryOwnedPackage() {
+        reconcileBlocklist(emptySet())
+    }
+
+    /**
+     * Adopt and re-enable a package the panel's profile authorises but holds no marker for.
+     *
+     * No overlay app-op is restored, because none was ever captured: ha-paneld did not perform this disable
+     * and inventing a prior mode would be worse than leaving the current one alone.
+     */
+    internal fun adoptAndEnable(pkg: String): Boolean = reenable(pkg)
+
+    /**
+     * Claim ownership of a package something outside the app disabled, so hand-back can reverse it.
+     *
+     * The guard is the whole value: a marker is only written when Android reports the package
+     * `COMPONENT_ENABLED_STATE_DISABLED_USER`, which is what `pm disable-user` leaves behind. A package the
+     * firmware shipped switched off reads as `COMPONENT_ENABLED_STATE_DISABLED` and is refused, because
+     * claiming it would let a later hand-back enable something ha-paneld never disabled.
+     *
+     * The overlay app-op is captured now, exactly as [reassertTame] captures it before its own mutation. The
+     * host only ran `pm disable-user` and never touched app-ops, so what is observed here is still the
+     * pre-tame mode. Adding the package to the desired blocklist is the CALLER's job — this writes the
+     * ownership record only, and an owned package outside the desired set is what the reconciler treats as
+     * "restore this".
+     */
+    internal fun recordExternallyTamed(pkg: String): HandBackHomePolicy.RecordOutcome {
+        val observed = runCatching { handBackPackageStates(setOf(pkg))[pkg] }.getOrNull()
+            ?: return HandBackHomePolicy.RecordOutcome.UNKNOWN
+        if (!observed.present) return HandBackHomePolicy.RecordOutcome.UNKNOWN
+        when (observed.disabledByUser) {
+            null -> return HandBackHomePolicy.RecordOutcome.UNKNOWN
+            false -> return HandBackHomePolicy.RecordOutcome.NOT_DISABLED
+            true -> Unit
+        }
+        val key = TameStatePolicy.markerKey(pkg)
+        // Idempotent: a provisioning run that is repeated, or that reports the same package twice, must not
+        // overwrite the captured mode with the post-tame one.
+        if (runCatching { state.contains(key) }.getOrDefault(false)) {
+            return HandBackHomePolicy.RecordOutcome.RECORDED
+        }
+        val mode = observeOverlayMode(pkg)?.takeIf(TameStatePolicy::validOverlayMode)
+            ?: return HandBackHomePolicy.RecordOutcome.UNKNOWN
+        val persisted = runCatching {
+            state.commitWithDurableVisibility { putString(key, mode) }
+        }.getOrDefault(false)
+        return if (persisted) {
+            HandBackHomePolicy.RecordOutcome.RECORDED
+        } else {
+            HandBackHomePolicy.RecordOutcome.FAILED
+        }
+    }
+    /** Observe which package currently owns the home role, for the hand-back readback. */
+    internal fun observeDefaultHome(): String? = currentDefaultHome()
+
     /** Write-ahead-own [pkg], then force-stop + disable boot-relaunch + deny its overlay permission. */
     private fun reassertTame(pkg: String): Boolean {
         val key = TameStatePolicy.markerKey(pkg)
