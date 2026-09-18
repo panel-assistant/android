@@ -2,7 +2,7 @@
 
 Every OTA object this project has located on the CoolKit CDN, for both original NSPanel Pro models. This page is **generated from `tools/firmware-index/fw-120p.dat` and `fw-86p.dat`** — edit those, never this file.
 
-The [firmware Discussion](https://github.com/maxlyth/ha-paneld/discussions/7) carries a readable subset: recent upgrade targets and the app updates that matter for a current panel. It is capped by GitHub's body limit, which is why the exhaustive list lives here instead of being discarded.
+The [firmware Discussion](https://github.com/panel-assistant/android/discussions/7) carries a readable subset: recent upgrade targets and the app updates that matter for a current panel. It is capped by GitHub's body limit, which is why the exhaustive list lives here instead of being discarded.
 
 Nothing here is a recommendation. **The flashing procedure is hardware-verified only through 4.4.0**; everything past it is CDN-verified — confirmed to exist and to match its recorded size — and has never been flashed on a panel by this project. Read the [firmware & flashing page](nspanel-pro-firmware.md) before using any of it, and note that anything below the **4.0.12** checkpoint is expected to reach current firmware through that full ROM rather than through the older diffs listed here.
 
@@ -90,8 +90,8 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 
 | Version | Size | Download | Archived |
 | --- | --- | --- | --- |
-| 4.8.4 | 137906808 (131.5 MB) | [228V4.8.4.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/75/228V4.8.4.apk) | — |
-| 4.8.1 | 137890388 (131.5 MB) | [228V4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/74/228V4.8.1.apk) | — |
+| 4.8.4 | 137906808 (131.5 MB) | [228V4.8.4.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/75/228V4.8.4.apk) | 2026-09-05 |
+| 4.8.1 | 137890388 (131.5 MB) | [228V4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/74/228V4.8.1.apk) | 2026-09-05 |
 | 4.8.0 | 137890388 (131.5 MB) | [228V4.8.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/73/228V4.8.0.apk) | 2026-08-23 |
 | 4.7.0 | 137695680 (131.3 MB) | [228V4.7.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/72/228V4.7.0.apk) | 2026-08-03 |
 | 4.6.2 | 137533807 (131.2 MB) | [228V4.6.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/71/228V4.6.2.apk) | 2026-08-02 |
@@ -137,7 +137,7 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 | **4.8.0** | 4.7.0 | 46442328 (44.3 MB) | [CK_4.7.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.7.0_4.8.0-diff.zip) | 2026-08-23 |
 | **4.8.0** | 4.6.0 | 46939498 (44.8 MB) | [CK_4.6.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.6.0_4.8.0-diff.zip) | 2026-08-19 |
 | **4.8.0** | 4.5.1 | 166378996 (158.7 MB) | [CK_4.5.1_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.5.1_4.8.0-diff.zip) | — |
-| **4.8.0** | 4.4.0 | 172645168 (164.6 MB) | [CK_4.4.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.4.0_4.8.0-diff.zip) | — |
+| **4.8.0** | 4.4.0 | 172645168 (164.6 MB) | [CK_4.4.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.4.0_4.8.0-diff.zip) | 2026-09-05 |
 | **4.8.0** | 4.0.12 | 234385007 (223.5 MB) | [CK_4.0.12_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.0.12_4.8.0-diff.zip) | 2026-08-19 |
 | **4.7.0** | 4.6.0 | 41721861 (39.8 MB) | [CK_4.6.0_4.7.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/51/CK_4.6.0_4.7.0-diff.zip) | 2026-07-30 |
 | **4.7.0** | 4.5.1 | 164367525 (156.8 MB) | [CK_4.5.1_4.7.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/51/CK_4.5.1_4.7.0-diff.zip) | 2026-07-30 |
@@ -251,9 +251,9 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 
 | Version | Size | Download | Archived |
 | --- | --- | --- | --- |
-| 4.8.3 | 137890388 (131.5 MB) | [app4.8.3.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/134/app4.8.3.apk) | — |
-| 4.8.2 | 137890388 (131.5 MB) | [app4.8.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/133/app4.8.2.apk) | — |
-| 4.8.1 | 137890388 (131.5 MB) | [app4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/132/app4.8.1.apk) | — |
+| 4.8.3 | 137890388 (131.5 MB) | [app4.8.3.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/134/app4.8.3.apk) | 2026-09-06 |
+| 4.8.2 | 137890388 (131.5 MB) | [app4.8.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/133/app4.8.2.apk) | 2026-09-05 |
+| 4.8.1 | 137890388 (131.5 MB) | [app4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/132/app4.8.1.apk) | 2026-09-06 |
 | 4.8.0 | 137890388 (131.5 MB) | [app4.8.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/131/app4.8.0.apk) | 2026-08-19 |
 | 4.7.0 | 137695680 (131.3 MB) | [app4.7.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/130/app4.7.0.apk) | 2026-07-30 |
 | 4.6.2 | 137533807 (131.2 MB) | [app4.6.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/129/app4.6.2.apk) | 2026-07-30 |
@@ -287,7 +287,7 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 | | Count |
 |---|---|
 | Indexed objects | 240 |
-| With a Wayback capture | 233 |
-| Without a capture | 7 |
+| With a Wayback capture | 239 |
+| Without a capture | 1 |
 
 Regenerate with `python3 tools/firmware-index/firmware_index.py archive --wayback wayback.json --out docs/hardware/nspanel-pro-firmware-archive.md`, where `wayback.json` comes from the `wayback-state` branch. Without it the generator refuses to run rather than blank the Archived column.

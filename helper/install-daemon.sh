@@ -397,7 +397,7 @@ if ! probe_su; then
     "adb or a privilege prompt did not respond. Nothing was installed; restore adb responsiveness, dismiss any on-panel root prompt, then re-run."
   fail "no working root path on this panel (tried: adbd-root, 'su 0', 'su -c', 'su root')" \
     "The helper daemon requires root — it IS the privileged control path on sandbox-walled panels." \
-    "Rooted panel with a different su syntax? Run 'adb shell', find the invocation that gives uid=0, and open an issue: https://github.com/maxlyth/ha-paneld/issues" \
+    "Rooted panel with a different su syntax? Run 'adb shell', find the invocation that gives uid=0, and open an issue: https://github.com/panel-assistant/android/issues" \
     "No root at all? The daemon cannot be installed; ha-paneld still runs with reduced control (see helper/README.md)."
 fi
 case "$SU_FORM" in
@@ -2057,7 +2057,7 @@ case "$manual_journal_state" in
     "No live helper files were changed." \
     "$(describe_observed_state "$manual_journal_state")" \
     "Re-run, and if it repeats include that line and 'adb features $TARGET' in a report:" \
-    "https://github.com/maxlyth/ha-paneld/issues" ;;
+    "https://github.com/panel-assistant/android/issues" ;;
 esac
 
 # Select a verified boot-registration route before stopping the old daemon. /data/local is the only

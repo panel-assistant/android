@@ -10,7 +10,7 @@ soc:
       count: 8
 metadata:
   author: Community contributor
-  source: https://github.com/maxlyth/ha-paneld/issues/130
+  source: https://github.com/panel-assistant/android/issues/130
   links:
     - label: Lenovo specifications
       url: https://psrefstuff.lenovo.com/syspool/Sys/PDF/ThinkSmart/ThinkSmart_View/ThinkSmart_View_Spec.html

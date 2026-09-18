@@ -10,7 +10,7 @@ soc:
       count: 4
 metadata:
   author: Community contributor
-  source: https://github.com/maxlyth/ha-paneld/issues/138
+  source: https://github.com/panel-assistant/android/issues/138
   license: MIT
   maturity: draft
   tested_firmware:

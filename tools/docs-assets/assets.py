@@ -392,7 +392,7 @@ def cmd_verify(args):
         # without this header fails in a way that looks like a broken bucket rather than a rejected
         # client. Identify the tool honestly instead of impersonating a browser.
         request = urllib.request.Request(url, headers={
-            "User-Agent": "ha-paneld-docs-assets/1.0 (+https://github.com/maxlyth/ha-paneld)",
+            "User-Agent": "ha-paneld-docs-assets/1.0 (+https://github.com/panel-assistant/android)",
         })
         try:
             with urllib.request.urlopen(request, timeout=30) as resp:

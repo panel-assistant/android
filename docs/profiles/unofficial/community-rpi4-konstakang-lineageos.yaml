@@ -5,7 +5,7 @@ display_name: Unofficial Raspberry Pi 4 (KonstaKANG LineageOS)
 soc_class: Broadcom BCM2711
 metadata:
   author: Community contributor
-  source: https://github.com/maxlyth/ha-paneld/issues/107
+  source: https://github.com/panel-assistant/android/issues/107
   license: Apache-2.0
   maturity: draft
   tested_firmware:

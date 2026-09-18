@@ -5,7 +5,7 @@ display_name: Unofficial Echo Show 5 Gen 2 (LineageOS 18.1)
 soc_class: MediaTek MT8163
 metadata:
   author: Community contributor
-  source: https://github.com/maxlyth/ha-paneld/issues/28
+  source: https://github.com/panel-assistant/android/issues/28
   license: Apache-2.0
   maturity: draft
   tested_firmware:

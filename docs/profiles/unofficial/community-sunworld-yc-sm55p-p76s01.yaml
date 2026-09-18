@@ -13,7 +13,7 @@ soc:
       count: 4
 metadata:
   author: Community contributor
-  source: https://github.com/maxlyth/ha-paneld/issues/129
+  source: https://github.com/panel-assistant/android/issues/129
   links:
     - label: P76S01 board
       url: https://www.aiportpi.com/yc-p76S01.html

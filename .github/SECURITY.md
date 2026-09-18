@@ -13,7 +13,7 @@ ha-paneld is pre-1.0. Only the **latest release** receives security fixes; pleas
 
 Please **report privately** — do not open a public issue for a suspected vulnerability.
 
-Use GitHub **Private Vulnerability Reporting**: the repository's [**Security → Report a vulnerability**](https://github.com/maxlyth/ha-paneld/security/advisories/new) form. It's private to the maintainers and integrates with GitHub Security Advisories.
+Use GitHub **Private Vulnerability Reporting**: the repository's [**Security → Report a vulnerability**](https://github.com/panel-assistant/android/security/advisories/new) form. It's private to the maintainers and integrates with GitHub Security Advisories.
 
 Please include the panel hardware, the ha-paneld version, and the panel's `/diag` output (it contains no credentials) where relevant. You'll get an acknowledgement, and coordinated disclosure once a fix or mitigation is agreed.
 
