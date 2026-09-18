@@ -223,7 +223,19 @@ class PanelHaSignInReachabilityTest {
             .substringBefore("\n    /**")
         val evidence = config.substring(config.indexOf("private fun configuredBeforeSetupQuestionTracking()"))
             .substringBefore("\n\n")
-        assertTrue(evidence.contains("dashboardEntityLearningEnabled || mqttBroker.isNotBlank() || haUrl.isNotBlank()"))
+        // This migration's own evidence: an already-enabled filter and a stored broker both count.
+        assertTrue(evidence.contains("dashboardEntityLearningEnabled || mqttBroker.isNotBlank()"))
+        // The Home Assistant URL term is NOT spelled here. It is delegated to the shared rule so this
+        // copy and the journey's cannot disagree about a handed-over URL, which is written before the
+        // wizard opens and must never read as evidence of an install older than these questions.
+        assertTrue(
+            "the URL term must be delegated, not re-spelled",
+            evidence.contains("panelConfiguredBeforeSetupTracking(") && evidence.contains("haSetupHandover ="),
+        )
+        assertFalse(
+            "a bare haUrl term here would bring back the defect the shared rule removes",
+            evidence.contains("|| haUrl.isNotBlank()"),
+        )
         assertTrue("configured evidence must be the only non-wizard completion path",
             m.contains("else if (configuredBeforeSetupQuestionTracking())"))
         assertFalse("a blank fresh panel must leave v1 retryable",
