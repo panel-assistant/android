@@ -592,22 +592,59 @@
 
   /* ---------- step 3½: Home Assistant URL (built-in renderer only) ---------- */
 
+  /* Why the handed-over address the panel already tried outranks the mDNS suggestion here: reaching this
+   * card at all means it did NOT answer, so the user is correcting a specific wrong address rather than
+   * answering an open question. Showing the field blank — or silently swapping in a discovery guess —
+   * would hide which address failed and invite them to retype the same one. */
+  function handoverFailure() {
+    var h = journey && journey.handover;
+    return h && h.reason && h.url ? h : null;
+  }
+
+  function handoverReasonText(reason) {
+    switch (reason) {
+      case "unresolvable": return i18nText("setup.ha_url.handover.unresolvable", "This panel could not look up that address on its network.");
+      case "unreachable": return i18nText("setup.ha_url.handover.unreachable", "Nothing answered at that address from this panel’s network.");
+      case "timeout": return i18nText("setup.ha_url.handover.timeout", "That address did not answer in time.");
+      case "tls": return i18nText("setup.ha_url.handover.tls", "That address uses HTTPS with a certificate this panel cannot verify.");
+      case "not_home_assistant": return i18nText("setup.ha_url.handover.not_home_assistant", "Something answered at that address, but it was not Home Assistant.");
+      default: return i18nText("setup.ha_url.handover.generic", "This panel could not reach Home Assistant at that address.");
+    }
+  }
+
   function haUrlCard() {
+    var failed = handoverFailure();
+    var kids = [];
+    if (failed) {
+      kids.push(failBanner(
+        i18nText("setup.ha_url.handover.title", "Home Assistant’s address didn’t work from this panel"),
+        [
+          i18nText("setup.ha_url.handover.attempted", "Home Assistant said it is at {url}.", { url: failed.url }),
+          handoverReasonText(failed.reason),
+          i18nText("setup.ha_url.handover.explanation", "That is usually the address Home Assistant knows for itself rather than one this panel can reach. Enter the address you open Home Assistant at from this network."),
+        ]));
+    } else {
+      kids.push(discoveryNote("ha_url"));
+    }
+    kids.push(el("fieldset", { id: "wiz-fs", style: "border:0;padding:0;margin:0" }, [
+      field("ha_url", i18nText("setup.ha_url.label", "Home Assistant URL"), i18nText("setup.ha_url.help", "The address you open Home Assistant at, e.g. http://homeassistant.local:8123."),
+        { input: { inputmode: "url", placeholder: "http://homeassistant.local:8123" },
+          value: haUrlSuggestion() }),
+      primary(i18nText("setup.action.save_continue", "Save and continue"), saveHaUrl),
+    ]));
+    kids.push(el("p", { class: "muted", id: "wiz-err", role: "alert" }));
     show([card(i18nText("setup.ha_url.title", "Where is Home Assistant?"),
-      i18nText("setup.ha_url.lead", "The built-in dashboard loads straight from your Home Assistant."), [
-      discoveryNote("ha_url"),
-      el("fieldset", { id: "wiz-fs", style: "border:0;padding:0;margin:0" }, [
-        field("ha_url", i18nText("setup.ha_url.label", "Home Assistant URL"), i18nText("setup.ha_url.help", "The address you open Home Assistant at, e.g. http://homeassistant.local:8123."),
-          { input: { inputmode: "url", placeholder: "http://homeassistant.local:8123" },
-            value: discovery && discovery.ha_url || "" }),
-        primary(i18nText("setup.action.save_continue", "Save and continue"), saveHaUrl),
-      ]),
-      el("p", { class: "muted", id: "wiz-err", role: "alert" }),
-    ])], "ha_url");
+      i18nText("setup.ha_url.lead", "The built-in dashboard loads straight from your Home Assistant."), kids)], "ha_url");
+  }
+
+  function haUrlSuggestion() {
+    var failed = handoverFailure();
+    if (failed) return failed.url;
+    return discovery && discovery.ha_url || "";
   }
 
   function saveHaUrl() {
-    var url = (typed.ha_url !== undefined ? typed.ha_url : (discovery && discovery.ha_url || "")).trim();
+    var url = (typed.ha_url !== undefined ? typed.ha_url : haUrlSuggestion()).trim();
     if (!/^https?:\/\//i.test(url)) { stepErr(i18nText("setup.ha_url.error.scheme", "The URL needs to start with http:// or https://.")); focusField("ha_url"); return; }
     var startKey = renderedKey;
     lockStep(true);
