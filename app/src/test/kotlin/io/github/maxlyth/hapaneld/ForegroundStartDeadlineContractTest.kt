@@ -75,11 +75,14 @@ class ForegroundStartDeadlineContractTest {
      */
     @Test fun theDatabaseCorrectionRunsAfterThePromoteNotBeforeIt() {
         val onCreate = body(service, "override fun onCreate()")
-        val promote = onCreate.indexOf("startForegroundCompat(nativeString(R.string.starting), silent = true)")
+        // lastIndexOf, not indexOf: the early-return branches promote with the same string before the
+        // normal path does, and anchoring on the first of them would let the correction sit anywhere
+        // after the RETIRED_BRIDGE promote — including well before the promote that actually matters.
+        val promote = onCreate.lastIndexOf("startForegroundCompat(nativeString(R.string.starting), silent = true)")
         val reconcile = onCreate.indexOf("reconcileNativePresentationAfterPromotion()")
         assertTrue("the service promotes on the normal path", promote >= 0)
         assertTrue("the database-backed presentation correction exists", reconcile >= 0)
-        assertTrue("and it runs only after the promote", reconcile > promote)
+        assertTrue("and it runs only after the normal-path promote", reconcile > promote)
     }
 
     /**
@@ -89,18 +92,22 @@ class ForegroundStartDeadlineContractTest {
      */
     @Test fun everyEarlyReturnPromotesBeforeItStopsItself() {
         val onCreate = body(service, "override fun onCreate()")
-        var searched = 0
+        // Each stop needs a promote of its OWN, so the window runs from the previous stop rather than
+        // from the start of the method. Searching backwards from the stop instead would let one
+        // branch's promote vouch for a later branch that never promoted at all — which is the exact
+        // regression this test exists to catch.
+        var boundary = 0
         var found = 0
         while (true) {
-            val stop = onCreate.indexOf("stopSelf()", searched)
+            val stop = onCreate.indexOf("stopSelf()", boundary)
             if (stop < 0) break
             found++
-            val promoteBefore = onCreate.lastIndexOf("startForegroundCompat(", stop)
+            val promote = onCreate.indexOf("startForegroundCompat(", boundary)
             assertTrue(
-                "the stopSelf() at offset $stop must be preceded by a promote in the same method",
-                promoteBefore in 0 until stop,
+                "the stopSelf() at offset $stop must promote in its own branch, not borrow an earlier one",
+                promote in boundary until stop,
             )
-            searched = stop + 1
+            boundary = stop + "stopSelf()".length
         }
         assertTrue("the early-return branches still exist to be checked", found >= 2)
     }
