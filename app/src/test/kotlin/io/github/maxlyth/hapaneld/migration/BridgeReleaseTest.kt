@@ -61,8 +61,7 @@ class BridgeReleaseTest {
         )
 
         refusals.forEach { (refusal, ports) ->
-            val outcome = request(ports) as Outcome.Refused
-            assertEquals(refusal, outcome.refusal)
+            assertEquals(refusal, (request(ports) as? Outcome.Refused)?.refusal)
             assertEquals("$refusal must not touch the panel", emptyList<String>(), ports.events)
         }
     }

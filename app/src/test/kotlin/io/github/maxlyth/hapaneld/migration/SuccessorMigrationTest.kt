@@ -9,6 +9,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * A safety invariant of the fake panel. It fails as an assertion, not as an exception, so that a broken
+ * ordering reads as the contract breaking rather than as an incidental error in the fake.
+ */
+private fun invariant(holds: Boolean, message: () -> String) {
+    if (!holds) throw AssertionError(message())
+}
+
 class SuccessorMigrationTest {
     private class Killed : RuntimeException("process killed")
 
@@ -68,7 +76,7 @@ class SuccessorMigrationTest {
         override fun legacyInstalled() = legacyInstalled
         var secretsForgotten = false
         override fun forgetSecrets() {
-            check(uninstalls > 0 || !legacyInstalled) { "the receipt was deleted while it could still be the only copy" }
+            invariant(uninstalls > 0 || !legacyInstalled) { "the receipt was deleted while it could still be the only copy" }
             secretsForgotten = true
         }
         var tokenHeld = true
@@ -76,7 +84,7 @@ class SuccessorMigrationTest {
         override fun receiptSha256() = receipt
         override suspend fun pullReceipt(): String? {
             call("pull")
-            check(!legacyRetired) { "a retired legacy app serves no backup" }
+            invariant(!legacyRetired) { "a retired legacy app serves no backup" }
             // A pull that does not verify leaves the stored receipt exactly as it was.
             if (pullFails) return null
             receipt = "sha-${++pulls}"
@@ -97,8 +105,8 @@ class SuccessorMigrationTest {
         override fun portFree() = !legacyHoldsPort
         override suspend fun restoreReceipt(): Boolean {
             call("restore")
-            check(environment != Environment.PASSIVE) { "restore needs the service" }
-            check(legacyRetired || !legacyInstalled) { "restored before the legacy app released the panel" }
+            invariant(environment != Environment.PASSIVE) { "restore needs the service" }
+            invariant(legacyRetired || !legacyInstalled) { "restored before the legacy app released the panel" }
             restored = restoreSucceeds
             return restoreSucceeds
         }
@@ -119,8 +127,8 @@ class SuccessorMigrationTest {
         override fun mqttConverged() = mqttConverged
         override fun uninstallLegacy(): Boolean {
             call("uninstall")
-            check(home == "own") { "legacy package removed while it was still HOME" }
-            check(restored) { "legacy package removed before the restore" }
+            invariant(home == "own") { "legacy package removed while it was still HOME" }
+            invariant(restored) { "legacy package removed before the restore" }
             uninstalls++
             if (uninstallWorks) legacyInstalled = false
             return uninstallWorks

@@ -44,8 +44,10 @@ object BackupIdentity {
      * proves nothing and is treated as a different device.
      */
     fun sameDevice(manifest: JSONObject, ownDiscoveryId: String?): Boolean {
-        val own = ownDiscoveryId?.takeIf(DISCOVERY_ID_RE::matches) ?: return false
-        return discoveryId(manifest) == own
+        // The archive's id is only ever read as a well-formed pseudonym, so equality with it is also the
+        // proof that this device's own value is one.
+        val archived = discoveryId(manifest) ?: return false
+        return archived == ownDiscoveryId
     }
 }
 

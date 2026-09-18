@@ -70,7 +70,6 @@ internal object ReceiptVerifier {
             while (true) {
                 val entry = zip.nextEntry ?: break
                 while (zip.read(buffer) >= 0) Unit
-                zip.closeEntry()
                 streamed += entry.name
             }
         }
