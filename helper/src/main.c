@@ -10,10 +10,11 @@
 //
 // Security model (this file owns the transport + auth; see each module for its own validation):
 //   * Transport is an ABSTRACT-namespace UNIX socket (SOCK_NAME), so peer credentials are available
-//     via SO_PEERCRED. Every connection is authenticated: we accept ONLY ha-paneld's own uid (resolved
-//     at runtime from /data/data/<pkg>, which changes per reinstall), plus root. ADB operators can
-//     still connect through a root shell; accepting Android's generic shell uid would let any app with
-//     Shizuku access cross the documented shell-only boundary into this root daemon.
+//     via SO_PEERCRED. Every connection is authenticated: we accept ONLY a uid that owns one of the
+//     two known ha-paneld package data directories (resolved at runtime from /data/data/<pkg>, which
+//     changes per reinstall), plus root. ADB operators can still connect through a root shell;
+//     accepting Android's generic shell uid would let any app with Shizuku access cross the
+//     documented shell-only boundary into this root daemon.
 //   * Concurrent connections are capped (MAX_CONN) and idle non-subscribers time out (server.c), so a
 //     connection flood can't exhaust the thread-per-conn model.
 //   * The command parser is bounded and exact-match (dispatch.c / server.c); every verb's arguments
@@ -47,6 +48,7 @@
 #include "input.h"
 #include "gpio.h"
 #include "guard_maintenance.h"
+#include "identity.h"
 #include "server.h"
 #include "sysexec.h"
 #include "version.h"
@@ -59,10 +61,8 @@
 #ifndef REQUEST_TIMEOUT_MS
 #define REQUEST_TIMEOUT_MS 3000
 #endif
-// ha-paneld's data dir — we stat() it to learn the app's uid (it changes on every reinstall).
-#ifndef APP_DATA
-#define APP_DATA   "/data/data/io.github.maxlyth.hapaneld"
-#endif
+// The package data directories are stat()ed to learn each app's uid (it changes on every reinstall).
+// Their paths, and the ids they belong to, live in identity.h — the single app-identity table.
 #ifndef REPLACEMENT_RETIRE_ATTEMPTS
 #define REPLACEMENT_RETIRE_ATTEMPTS 20
 #endif
@@ -80,15 +80,24 @@
 // so the cap is unit-testable without this accept loop.
 
 // --- peer authentication --------------------------------------------------------------------------
-// ha-paneld's uid changes on every (re)install, so resolve it live by stat'ing its data dir rather
-// than hardcoding it. Resolve the directory on every connection and fail closed when it is absent:
-// this daemon can outlive an app uninstall, and Android may later reuse the former numeric app uid.
+// An app's uid changes on every (re)install, so resolve it live by stat'ing its data dir rather than
+// hardcoding it. Resolve the directories on every connection and fail closed when one is absent: this
+// daemon can outlive an app uninstall, and Android may later reuse the former numeric app uid.
+//
+// During the identity migration the legacy package and its successor are installed side by side with
+// no `sharedUserId`, so they hold two distinct uids and each owns only its own data directory. A
+// caller is authorised when it owns EITHER directory, and is identified as whichever one it owns —
+// any other uid is refused exactly as before. On a single-package panel only one directory exists,
+// so the absent one never matches and the outcome is unchanged.
 
-static int uid_allowed(uid_t uid) {
-    if (uid == 0) return 1;
-    struct stat st;
-    if (stat(APP_DATA, &st) != 0) return 0;                 // absent pre-install/after uninstall
-    return uid == st.st_uid;
+static enum helper_caller resolve_caller(uid_t uid) {
+    if (uid == 0) return HELPER_CALLER_ROOT;
+    for (size_t i = 0; i < HELPER_APP_PACKAGE_COUNT; i++) {
+        struct stat st;
+        if (stat(HELPER_APP_PACKAGES[i].data_dir, &st) != 0) continue;  // absent pre-install/after uninstall
+        if (uid == st.st_uid) return HELPER_APP_PACKAGES[i].caller;
+    }
+    return HELPER_CALLER_NONE;
 }
 
 static int set_cloexec(int fd) {
@@ -315,11 +324,19 @@ static int request_daemon(const char *command) {
 }
 
 // One thread per connection, so a long-lived async stream doesn't block other commands. Removes the
-// fd from both independent subscriber registries on disconnect.
+// fd from both independent subscriber registries on disconnect. The caller identity travels with the
+// fd because it was resolved before admission and must not be re-derived later: an app can be
+// reinstalled, and a uid reused, while this connection is still open.
+typedef struct {
+    int fd;
+    enum helper_caller caller;
+} conn_handoff;
+
 static void *conn_thread(void *arg) {
-    int cfd = *(int *)arg;
+    conn_handoff handoff = *(conn_handoff *)arg;
+    int cfd = handoff.fd;
     free(arg);
-    server_serve(cfd);
+    server_serve(cfd, handoff.caller);
     input_unsubscribe(cfd);
     gpio_unsubscribe(cfd);
     close(cfd);
@@ -380,18 +397,22 @@ static int run_daemon(
         if (set_cloexec(cfd) != 0) { close(cfd); continue; }
 
         // Authenticate the peer by uid — only possible because this is a UNIX socket. Reject (and
-        // close) anything that isn't ha-paneld / root before it can issue a single command.
+        // close) anything that is neither root nor one of the two known packages before it can issue
+        // a single command, and keep WHICH one it is: that answer is this connection's identity.
         struct ucred cred; socklen_t cl = sizeof cred;
-        if (getsockopt(cfd, SOL_SOCKET, SO_PEERCRED, &cred, &cl) < 0 || !uid_allowed(cred.uid)) {
+        enum helper_caller caller = HELPER_CALLER_NONE;
+        if (getsockopt(cfd, SOL_SOCKET, SO_PEERCRED, &cred, &cl) < 0 ||
+                (caller = resolve_caller(cred.uid)) == HELPER_CALLER_NONE) {
             close(cfd); continue;
         }
 
         // Cap concurrent connections so a connection flood can't exhaust the thread-per-conn model.
         if (!conn_admit()) { close(cfd); continue; }
 
-        int *p = malloc(sizeof(int));
+        conn_handoff *p = malloc(sizeof *p);
         if (!p) { close(cfd); conn_release(); continue; }
-        *p = cfd;
+        p->fd = cfd;
+        p->caller = caller;
         pthread_t t;
         if (pthread_create(&t, NULL, conn_thread, p) != 0) {
             free(p); close(cfd);

@@ -33,9 +33,9 @@ int  valid_component(const char *s);  // pkg/class component: package chars plus
 int  valid_num(const char *s);        // non-empty decimal digits only
 int  valid_decimal(const char *s);    // decimal with at most one dot, >=1 digit (e.g. "1.15")
 int  valid_gov(const char *s);        // CPU governor name: [a-z0-9_]+
-int  is_critical_pkg(const char *s);  // never-stop/disable backstop (systemui/settings/us/…)
+int  is_critical_pkg(const char *s);  // never-stop/disable backstop (systemui/settings/both our ids/…)
 int  valid_gbl_path(const char *s);   // absolute path, no '..', no "'", ends with ".gbl"
-int  valid_apk_path(const char *s);   // .apk under ha-paneld's own data dir, no '..', no "'" (INSTALL)
+int  valid_apk_path(const char *s);   // .apk under either known package's data dir, no '..', no "'"
 int  valid_hex_dataset(const char *s); // even-length hex string, max 508 chars (254 dataset bytes)
 
 #endif

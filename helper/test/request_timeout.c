@@ -23,7 +23,7 @@ void gpio_init(void) {}
 void screen_init(void) {}
 void led_init(void) {}
 int input_watch(const char *path, int grab) { (void)path; (void)grab; return 0; }
-void server_serve(int fd) { (void)fd; }
+void server_serve(int fd, enum helper_caller caller) { (void)fd; (void)caller; }
 void input_unsubscribe(int fd) { (void)fd; }
 void gpio_unsubscribe(int fd) { (void)fd; }
 void conn_release(void) {}

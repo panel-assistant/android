@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
             if (errno == EINTR) continue;
             break;
         }
-        server_serve(client);
+        server_serve(client, HELPER_CALLER_LEGACY);
         input_unsubscribe(client);
         gpio_unsubscribe(client);
         close(client);

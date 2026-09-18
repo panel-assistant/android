@@ -24,7 +24,7 @@ BUILD   := build
 # the unit tests, so coverage can never silently drop a module. main.c (accept loop) and sysexec.c
 # (real exec/pipe/thread/reboot) are deliberately NOT here: the fuzz and test builds swap in a stub
 # sysexec and never run main, so a valid REBOOT/RELOAD/WATCH/GPIOWATCH can't exec or spawn on the build host.
-CORE_SRCS := $(addprefix $(SRC_DIR)/, util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c server.c dispatch.c)
+CORE_SRCS := $(addprefix $(SRC_DIR)/, identity.c util.c sha256.c led.c screen.c input.c gpio.c sysctl.c perf.c cht8305.c vi530x.c version.c companion.c guard_maintenance.c server.c dispatch.c)
 DAEMON_SRCS := $(CORE_SRCS) $(SRC_DIR)/main.c $(SRC_DIR)/sysexec.c
 STUB := test/sysexec_stub.c
 TEST_BUILD_ID := aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -99,8 +99,8 @@ $(BUILD)/sysexec-fd-boundary: $(SRC_DIR)/sysexec.c test/sysexec_fd_boundary.c | 
 # production implementation and supplies inert module stubs; it never opens a socket or executes a verb.
 peer-auth-test: $(BUILD)/peer-auth
 	$(BUILD)/peer-auth
-$(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+$(BUILD)/peer-auth: test/peer_auth.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/peer_auth.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 request-timeout-test: $(BUILD)/request-timeout
 	$(BUILD)/request-timeout
@@ -111,8 +111,8 @@ bounded-exec-test: $(BUILD)/bounded-exec
 	$(BUILD)/bounded-exec
 $(BUILD)/bounded-exec: test/bounded_exec.c $(SRC_DIR)/sysexec.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) test/bounded_exec.c $(SRC_DIR)/sysexec.c $(LDLIBS) -o $@
-$(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c | $(BUILD)
-	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(LDLIBS) -o $@
+$(BUILD)/request-timeout: test/request_timeout.c $(SRC_DIR)/main.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) test/request_timeout.c $(SRC_DIR)/version.c $(SRC_DIR)/util.c $(SRC_DIR)/identity.c $(LDLIBS) -o $@
 
 # Start two real daemon binaries on an isolated socket. Their names intentionally share the exact
 # 15-byte Linux comm value used on panels while their executable inodes and BUILDIDs differ.

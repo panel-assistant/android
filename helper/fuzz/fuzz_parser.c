@@ -57,7 +57,7 @@ static void run_serve(const uint8_t *data, size_t n) {
     write_all(sv[1], data, n);
     shutdown(sv[1], SHUT_WR);
     reset_state();
-    server_serve(sv[0]);
+    server_serve(sv[0], HELPER_CALLER_LEGACY);
     close(sv[0]); close(sv[1]);
 }
 

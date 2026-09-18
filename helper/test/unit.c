@@ -232,7 +232,7 @@ static void serve_reply(const char *bytes, size_t len, char *out, size_t outsz) 
     shutdown(sv[1], SHUT_WR);
     input_init();
     gpio_init();
-    server_serve(sv[0]);
+    server_serve(sv[0], HELPER_CALLER_LEGACY);
     fcntl(sv[1], F_SETFL, O_NONBLOCK);
     ssize_t n = read(sv[1], out, outsz - 1);
     out[n > 0 ? n : 0] = '\0';
@@ -1087,7 +1087,7 @@ static void test_server_send_deadline(void) {
     CHECK(created == 0, "send-deadline socketpair created\n");
     if (created != 0) return;
     shutdown(sv[1], SHUT_WR);
-    server_serve(sv[0]);
+    server_serve(sv[0], HELPER_CALLER_LEGACY);
 
     struct timeval timeout = { 0 };
     socklen_t timeout_size = sizeof timeout;

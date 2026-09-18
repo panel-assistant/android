@@ -30,7 +30,7 @@ int conn_active(void) {
     return __atomic_load_n(&conn_count, __ATOMIC_SEQ_CST);
 }
 
-void server_serve(int cfd) {
+void server_serve(int cfd, enum helper_caller caller) {
     // A connection that sends nothing for IDLE_SEC is dropped unless it joined an async stream, where
     // sitting idle (only reading events) is the whole point. Bound writes separately so a client that
     // stops reading cannot pin one of the finite worker slots forever.
@@ -39,7 +39,7 @@ void server_serve(int cfd) {
     setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &receive_timeout, sizeof receive_timeout);
     setsockopt(cfd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof send_timeout);
 
-    conn_ctx ctx = { .fd = cfd, .subscribed = 0 };
+    conn_ctx ctx = { .fd = cfd, .subscribed = 0, .caller = caller };
     char line[MAX_LINE + 1];
     size_t len = 0;
     int overlong = 0;        // current line exceeded MAX_LINE — drop bytes through to the next newline
