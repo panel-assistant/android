@@ -11458,6 +11458,51 @@
       "state": "machine-cross-checked",
       "text": "L’indirizzo con cui apri Home Assistant, ad esempio http://homeassistant.local:8123."
     },
+    "setup.ha_url.handover.title": {
+      "text": "L’indirizzo di Home Assistant non ha funzionato da questo pannello",
+      "sourceHash": "95566c26e1200c6aa845e89bf47830912910c45389c9dbdca04213e61a6540b1",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.attempted": {
+      "text": "Home Assistant dichiara di trovarsi su {url}.",
+      "sourceHash": "6c237e4d68e162c26795de98cb0dd0cb53e4d1d5945da02de1beb64f6f2be95e",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.explanation": {
+      "text": "Di solito è l’indirizzo che Home Assistant conosce di sé e non uno raggiungibile da questo pannello. Inserisci l’indirizzo con cui apri Home Assistant da questa rete.",
+      "sourceHash": "b30424a6ce1fdbd27c3bce9f2166cf47dbe9e6d573414c478e197be49f789b6d",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.unresolvable": {
+      "text": "Questo pannello non è riuscito a risolvere quell’indirizzo sulla sua rete.",
+      "sourceHash": "69b4cc0e2371cf0f76677d9487594e37cc3fd8648d5dc3401d4b1f3db32bde3f",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.unreachable": {
+      "text": "Nessuno ha risposto a quell’indirizzo dalla rete di questo pannello.",
+      "sourceHash": "9271ab701f200ba895b1e8a80eadc7b65288bfcc23c04b97809d7f708bb8ce40",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.timeout": {
+      "text": "Quell’indirizzo non ha risposto in tempo.",
+      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.tls": {
+      "text": "Quell’indirizzo usa HTTPS con un certificato che questo pannello non può verificare.",
+      "sourceHash": "1d86972863bc2466fcdeaefbd828b775593001b389d0543585b579b991ecaedf",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.not_home_assistant": {
+      "text": "Qualcosa ha risposto a quell’indirizzo, ma non era Home Assistant.",
+      "sourceHash": "34fac562b46f9b22d0b29806c3b489212919474a960ea7dbce6ca5234a86dc27",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.generic": {
+      "text": "Questo pannello non è riuscito a raggiungere Home Assistant a quell’indirizzo.",
+      "sourceHash": "0a57d6ea313ddef65fb24b9910bd5212ef5333fe6f55d847f3b8acd558932c9c",
+      "state": "machine-cross-checked"
+    },
     "setup.ha_url.label": {
       "sourceHash": "d8d89efc512baff4d9d1924b627322b9b007a8c08ed95af6976dfbc684d308fa",
       "state": "machine-cross-checked",

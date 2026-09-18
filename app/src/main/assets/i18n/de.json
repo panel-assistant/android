@@ -11458,6 +11458,51 @@
       "sourceHash": "c236973b764d018af53248ebd56203ba203f9a875bd7d42418df34aa8bb51570",
       "state": "machine-cross-checked"
     },
+    "setup.ha_url.handover.title": {
+      "text": "Die Adresse von Home Assistant hat von diesem Panel aus nicht funktioniert",
+      "sourceHash": "95566c26e1200c6aa845e89bf47830912910c45389c9dbdca04213e61a6540b1",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.attempted": {
+      "text": "Home Assistant gibt an, unter {url} erreichbar zu sein.",
+      "sourceHash": "6c237e4d68e162c26795de98cb0dd0cb53e4d1d5945da02de1beb64f6f2be95e",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.explanation": {
+      "text": "Das ist meist die Adresse, die Home Assistant für sich selbst kennt, und nicht eine, die dieses Panel erreichen kann. Gib die Adresse ein, unter der du Home Assistant aus diesem Netzwerk öffnest.",
+      "sourceHash": "b30424a6ce1fdbd27c3bce9f2166cf47dbe9e6d573414c478e197be49f789b6d",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.unresolvable": {
+      "text": "Dieses Panel konnte diese Adresse in seinem Netzwerk nicht auflösen.",
+      "sourceHash": "69b4cc0e2371cf0f76677d9487594e37cc3fd8648d5dc3401d4b1f3db32bde3f",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.unreachable": {
+      "text": "Unter dieser Adresse hat aus dem Netzwerk dieses Panels nichts geantwortet.",
+      "sourceHash": "9271ab701f200ba895b1e8a80eadc7b65288bfcc23c04b97809d7f708bb8ce40",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.timeout": {
+      "text": "Diese Adresse hat nicht rechtzeitig geantwortet.",
+      "sourceHash": "caf8ab0186afd3a97f7dfa9da886b6175de1e525e0e24aae0175133636ca5d6e",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.tls": {
+      "text": "Diese Adresse verwendet HTTPS mit einem Zertifikat, das dieses Panel nicht prüfen kann.",
+      "sourceHash": "1d86972863bc2466fcdeaefbd828b775593001b389d0543585b579b991ecaedf",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.not_home_assistant": {
+      "text": "Unter dieser Adresse hat etwas geantwortet, aber es war nicht Home Assistant.",
+      "sourceHash": "34fac562b46f9b22d0b29806c3b489212919474a960ea7dbce6ca5234a86dc27",
+      "state": "machine-cross-checked"
+    },
+    "setup.ha_url.handover.generic": {
+      "text": "Dieses Panel konnte Home Assistant unter dieser Adresse nicht erreichen.",
+      "sourceHash": "0a57d6ea313ddef65fb24b9910bd5212ef5333fe6f55d847f3b8acd558932c9c",
+      "state": "machine-cross-checked"
+    },
     "setup.ha_url.label": {
       "text": "Home Assistant-URL",
       "sourceHash": "d8d89efc512baff4d9d1924b627322b9b007a8c08ed95af6976dfbc684d308fa",

@@ -324,8 +324,19 @@ class Config private constructor(
         if (preExisting) Log.i(TAG, "setup migration: pre-existing install, home-dashboard question marked answered")
     }
 
-    private fun configuredBeforeSetupQuestionTracking(): Boolean =
-        dashboardEntityLearningEnabled || mqttBroker.isNotBlank() || haUrl.isNotBlank()
+    /**
+     * Evidence this panel was configured before the setup questions existed.
+     *
+     * The Home Assistant URL term is delegated to [panelConfiguredBeforeSetupTracking], which is shared
+     * with the journey's copy of this question, because a handed-over URL must not read as evidence in
+     * either of them. The other two terms stay here: they are this migration's own, and differ from the
+     * journey's third term for reasons older than the handover.
+     */
+    private fun configuredBeforeSetupQuestionTracking(): Boolean = panelConfiguredBeforeSetupTracking(
+        haUrl = haUrl,
+        haSetupHandover = haSetupHandover,
+        otherEvidence = dashboardEntityLearningEnabled || mqttBroker.isNotBlank(),
+    )
 
     /**
      * Whether the user has answered setup's entity-filter question — either way.
@@ -744,6 +755,36 @@ class Config private constructor(
     /** Home Assistant base URL for the built-in dashboard renderer, e.g. "http://homeassistant.local:8123".
      *  Empty => the built-in renderer is unavailable (external renderers unaffected). */
     val haUrl: String get() = stringPref("ha_url")
+
+    /** True when the Panel Assistant integration installed or adopted this panel and said so.
+     *
+     *  This is the single definition of "Home Assistant deployed this panel". Every setup step that
+     *  skips a question Home Assistant can already answer reads THIS, never the presence of a value
+     *  Home Assistant happened to supply: a handed-over value that failed verification still came from
+     *  Home Assistant, and a later step (MQTT) needs the same predicate with no URL involved at all.
+     *  Deriving provenance from a populated field instead would re-collapse that distinction. */
+    val haSetupHandover: Boolean get() = prefs.getBoolean("ha_setup_handover", false)
+
+    fun setHaSetupHandover(value: Boolean) {
+        edit { putBoolean("ha_setup_handover", value) }
+    }
+
+    /** The Home Assistant address the integration handed this panel, kept only while it has not been
+     *  accepted. A verified address is promoted into [haUrl] and this is cleared; a failed one stays
+     *  here so the wizard can show what was tried. */
+    val haUrlHandover: String get() = prefs.getString("ha_url_handover", "")!!
+
+    fun setHaUrlHandover(raw: String) {
+        edit { putString("ha_url_handover", raw.trim()) }
+    }
+
+    /** Why [haUrlHandover] did not answer, or blank when none was tried or it verified. Written only by
+     *  the panel's own probe; `/api/v1/config` refuses it from the network. */
+    val haUrlHandoverReason: String get() = prefs.getString("ha_url_handover_reason", "")!!
+
+    fun setHaUrlHandoverReason(raw: String) {
+        edit { putString("ha_url_handover_reason", raw.trim()) }
+    }
 
     /** The built-in renderer is only ready once the URL and an actual auth route exist. */
     internal fun builtInRendererReady(): Boolean =
