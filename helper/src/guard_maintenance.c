@@ -29,20 +29,27 @@
 #ifdef HAPANELD_TEST
 #define GUARD_PARENT "/tmp"
 #define GUARD_DIR_NAME ".hapaneld-guard-db-test"
-#define GUARD_APP_DB_DIR "/tmp/.hapaneld-guard-app-test/data/user/0/io.github.maxlyth.hapaneld/databases"
+#define GUARD_APP_USER_ROOT "/tmp/.hapaneld-guard-app-test/data/user/0"
 #define GUARD_BOOT_ID "/tmp/.hapaneld-guard-db-test.boot-id"
 #define GUARD_INSTALLED_APK "/tmp/.hapaneld-guard-installed/base.apk"
 #else
 #define GUARD_PARENT "/data/local"
 #define GUARD_DIR_NAME ".hapaneld-guard-db"
-#define GUARD_APP_DB_DIR "/data/user/0/io.github.maxlyth.hapaneld/databases"
+#define GUARD_APP_USER_ROOT "/data/user/0"
 #define GUARD_BOOT_ID "/proc/sys/kernel/random/boot_id"
 #endif
 
 #define GUARD_DIR GUARD_PARENT "/" GUARD_DIR_NAME
-#define GUARD_PACKAGE "io.github.maxlyth.hapaneld"
+// Guard serves TWO app packages during the identity migration, so it can no longer name one at
+// compile time.  The package a session acts on is bound once, at GUARDPREPARE, from the caller's
+// SO_PEERCRED identity, and lives in the durable plan; every later verb and every reconcile derives
+// the package id, its database directory, `pm path`, `am force-stop` and `monkey -p` target from
+// that record.  Only the directory that CONTAINS the database varies: GUARD_DB_NAME and every
+// restore-record, schema and metadata identifier stay byte-identical for both packages, because
+// shipped 0.4.1 verifiers compare them exactly.
 #define GUARD_DB_NAME "ha-paneld.db"
-#define GUARD_DB_PATH GUARD_APP_DB_DIR "/" GUARD_DB_NAME
+#define GUARD_APP_PATH_BYTES 512
+#define GUARD_PACKAGE_BYTES 64
 #define GUARD_DRAFT "draft.v1"
 #define GUARD_DRAFT_TMP ".draft.v1.tmp"
 #define GUARD_MANIFEST "manifest.v1"
@@ -127,6 +134,7 @@ typedef struct {
     char session[65];
     char boot[65];
     char signer[65];
+    char package[GUARD_PACKAGE_BYTES];
     uint64_t generation;
     uint64_t overall_deadline_ms;
     uint64_t forward_deadline_ms;
@@ -487,7 +495,7 @@ static int serialize_plan(const guard_plan *plan, char output[GUARD_MAX_RECORD_B
         " %d %d %" PRIu64 " %s %" PRIu64 " %u %u %u"
         " %d %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
         " %" PRIu64 " %" PRIu64 " %u %s %" PRIu64 " %" PRIu64
-        " %u %" PRIu64 " %s %d\n",
+        " %u %" PRIu64 " %s %d %s\n",
         plan->session, plan->boot, plan->signer, plan->generation,
         plan->baseline_bytes, plan->baseline_sha, plan->baseline_schema,
         plan->baseline_app_state, plan->baseline_app_state_sha, plan->baseline_settings_sha,
@@ -501,7 +509,7 @@ static int serialize_plan(const guard_plan *plan, char output[GUARD_MAX_RECORD_B
         plan->db_uid, plan->db_gid, plan->db_mode, plan->captured ? plan->db_label : "NONE",
         plan->overall_deadline_ms, plan->forward_deadline_ms,
         plan->settings_authority_version, plan->settings_authority_bytes,
-        plan->settings_authority_sha, plan->settings_authority_staged);
+        plan->settings_authority_sha, plan->settings_authority_staged, plan->package);
     if (length <= 0 || (size_t)length >= sizeof body) return -1;
     return body_with_checksum(body, output, GUARD_MAX_RECORD_BYTES);
 }
@@ -543,10 +551,19 @@ static int deserialize_plan(char *record, size_t length, guard_plan *plan) {
         if (count == GUARD_TOKEN_COUNT) return -1;
         tokens[count++] = token;
     }
-    if (count != 42 || strcmp(tokens[0], "V1") != 0 ||
+    /* The bound package is a required field with NO backward-compatible default: a record without
+     * it fails the token count and is refused.  That is safe because a helper only ever replaces
+     * itself through guard_maintenance_replacement_safe() / GUARDRETIRE APP; both admit a
+     * replacement only on a provably empty Guard namespace, and the swapped-in binary re-arms in
+     * guard_maintenance_replacement_worker_commit_app() only on one too (all three go through
+     * empty_inventory_safe, which tolerates nothing but the owner lock).  So this build can never
+     * inherit a manifest, draft or journal written by a build that did not record the package. */
+    if (count != 43 || strcmp(tokens[0], "V1") != 0 ||
         !lower_hex_64(tokens[1]) || !lower_hex_64(tokens[2]) || !lower_hex_64(tokens[3]) ||
-        !lower_hex_64(tokens[6]) || !lower_hex_64(tokens[9]) || !lower_hex_64(tokens[10])) return -1;
+        !lower_hex_64(tokens[6]) || !lower_hex_64(tokens[9]) || !lower_hex_64(tokens[10]) ||
+        !helper_known_package(tokens[42])) return -1;
     memset(plan, 0, sizeof *plan);
+    snprintf(plan->package, sizeof plan->package, "%s", tokens[42]);
     snprintf(plan->session, sizeof plan->session, "%s", tokens[1]);
     snprintf(plan->boot, sizeof plan->boot, "%s", tokens[2]);
     snprintf(plan->signer, sizeof plan->signer, "%s", tokens[3]);
@@ -1222,6 +1239,7 @@ static int journal_custody_exact(int dir, const guard_plan *plan,
 
 static int plan_identity_equal(const guard_plan *a, const guard_plan *b) {
     return strcmp(a->session, b->session) == 0 && strcmp(a->boot, b->boot) == 0 &&
+        strcmp(a->package, b->package) == 0 &&
         strcmp(a->signer, b->signer) == 0 &&
         a->overall_deadline_ms == b->overall_deadline_ms &&
         a->forward_deadline_ms == b->forward_deadline_ms &&
@@ -1506,6 +1524,58 @@ static int open_dir_chain(const char *absolute) {
     return dir;
 }
 
+// The database directory of one package.  In production this is byte-identical to the constant it
+// replaces for the legacy package, and the test root mirrors the same shape, so a single-package
+// panel opens exactly the path it opened before.
+static int guard_app_db_dir_path(const char *package, char *output, size_t capacity) {
+    if (!package || !helper_known_package(package)) return -1;
+    int length = snprintf(output, capacity, GUARD_APP_USER_ROOT "/%s/databases", package);
+    return length > 0 && (size_t)length < capacity ? 0 : -1;
+}
+
+static int open_app_db_dir(const guard_plan *plan) {
+    char path[GUARD_APP_PATH_BYTES];
+    if (guard_app_db_dir_path(plan->package, path, sizeof path) != 0) return -1;
+    return open_dir_chain(path);
+}
+
+static int guard_app_dir_present(const char *package) {
+    char path[GUARD_APP_PATH_BYTES];
+    int length = snprintf(path, sizeof path, GUARD_APP_USER_ROOT "/%s", package);
+    if (length <= 0 || (size_t)length >= sizeof path) return 0;
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// Which package this connection acts on.  An app caller acts on its own package and on nothing else:
+// the answer comes from the SO_PEERCRED identity resolved once in the accept loop, never from a
+// request token, which is why no Guard verb has or needs a package argument.  Root owns no package,
+// so it resolves to the single package whose data directory is present -- on a single-package panel
+// that is the one package, and behaviour is unchanged.  With both installed, root is ambiguous and
+// gets NULL: binding a session to a guess would point `pm`, `am` and the live database at the wrong
+// app's uid.
+static const char *guard_caller_package(const conn_ctx *ctx) {
+    if (!ctx) return NULL;
+    const helper_app_package *entry = helper_app_package_for(ctx->caller);
+    if (entry) return entry->package;
+    if (ctx->caller != HELPER_CALLER_ROOT) return NULL;
+    const char *resolved = NULL;
+    for (size_t i = 0; i < HELPER_APP_PACKAGE_COUNT; i++) {
+        if (!guard_app_dir_present(HELPER_APP_PACKAGES[i].package)) continue;
+        if (resolved) return NULL;
+        resolved = HELPER_APP_PACKAGES[i].package;
+    }
+    return resolved;
+}
+
+// A caller may only drive the session its own package prepared.  Startup reconcile, the supervisor
+// tick and the deadline worker have no caller at all, which is precisely why the identity lives in
+// the durable plan rather than being looked up per call.
+static int guard_caller_owns_plan(const conn_ctx *ctx, const guard_plan *plan) {
+    const char *package = guard_caller_package(ctx);
+    return package && strcmp(package, plan->package) == 0;
+}
+
 static int sqlite_schema_fd(int fd, uint32_t *schema) {
     unsigned char header[64];
     if (lseek(fd, 0, SEEK_SET) < 0) return -1;
@@ -1575,12 +1645,14 @@ static int canonicalize_capture_sidecars(int db_dir, uid_t uid, gid_t gid) {
     return fixed_db_sidecars_absent(db_dir) ? 0 : -1;
 }
 
-static int installed_apk_exact(const guard_artifact *artifact) {
+static int installed_apk_exact(const char *package, const guard_artifact *artifact) {
 #ifdef HAPANELD_TEST
+    (void)package;
     int fd = open(GUARD_INSTALLED_APK, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
 #else
     char output[512];
-    const char *const argv[] = { "pm", "path", GUARD_PACKAGE, NULL };
+    if (!helper_known_package(package)) return -1;
+    const char *const argv[] = { "pm", "path", package, NULL };
     if (sysexec_capture_argv("/system/bin/pm", argv, output, sizeof output) != 0) return -1;
     size_t length = strlen(output);
     while (length > 0 && (output[length - 1] == '\n' || output[length - 1] == '\r')) output[--length] = 0;
@@ -1696,8 +1768,9 @@ static int copy_exact_to_custody(int custody, int source, const char *temporary,
     return hash_regular_at(custody, final, bytes, sha);
 }
 
-static int force_stop_guard_app(void) {
-    const char *const argv[] = { "am", "force-stop", GUARD_PACKAGE, NULL };
+static int force_stop_guard_app(const char *package) {
+    if (!helper_known_package(package)) return -1;
+    const char *const argv[] = { "am", "force-stop", package, NULL };
     int timed_out = 0;
     int status = sysexec_run_argv_timeout(
         "/system/bin/am", argv, 0, GUARD_AM_TIMEOUT_MS, &timed_out);
@@ -1785,9 +1858,9 @@ static int pm_process_active(const guard_journal *journal) {
 #endif
 }
 
-static int installed_apk_stable_exact(const guard_artifact *artifact) {
+static int installed_apk_stable_exact(const char *package, const guard_artifact *artifact) {
     for (int observation = 0; observation < 3; observation++) {
-        if (installed_apk_exact(artifact) != 0) return -1;
+        if (installed_apk_exact(package, artifact) != 0) return -1;
 #ifndef HAPANELD_TEST
         if (observation != 2) {
             struct timespec pause = { .tv_sec = 0, .tv_nsec = 200000000L };
@@ -2170,7 +2243,7 @@ static int db_label_matches(int fd, const guard_plan *plan) {
 
 static int live_db_semantic_exact(int custody, const guard_plan *plan,
                                   uint32_t expected_schema, int expected_probe) {
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     if (db_dir < 0) return -1;
     struct stat dir_before, dir_after;
     guard_file_snapshot before[3], after[3];
@@ -2257,7 +2330,7 @@ static int settle_submitted_locked(int dir, const guard_plan *plan, guard_journa
                                    const char *failure) {
     const char *role = journal->phase == GUARD_PHASE_SUBMITTED_A ? "A" : "B";
     const guard_artifact *artifact = strcmp(role, "A") == 0 ? &plan->a : &plan->b;
-    int exact = installed_apk_stable_exact(artifact) == 0;
+    int exact = installed_apk_stable_exact(plan->package, artifact) == 0;
     journal->generation++;
     journal->deadline_ms = 0;
     journal->pm_settled = 1;
@@ -2287,8 +2360,8 @@ static int settle_submitted_locked(int dir, const guard_plan *plan, guard_journa
 static int capture_baseline(int custody, guard_plan *plan) {
     if ((!guard_maintenance_supervised() && !guard_maintenance_supervisor_authoritative()) ||
         !plan->a.staged || !plan->b.staged ||
-        installed_apk_exact(&plan->a) != 0 || check_space(plan->baseline_bytes) != 0) return -1;
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+        installed_apk_exact(plan->package, &plan->a) != 0 || check_space(plan->baseline_bytes) != 0) return -1;
+    int db_dir = open_app_db_dir(plan);
     if (db_dir < 0) return -1;
     int db = openat(db_dir, GUARD_DB_NAME, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     struct stat dir_st, before, after;
@@ -2341,7 +2414,7 @@ static int complete_capture_locked(int dir, guard_plan *plan, guard_capture *cap
     uint64_t now = monotonic_ms();
     if ((!guard_maintenance_supervised() && !guard_maintenance_supervisor_authoritative()) ||
         !capture_matches_draft(capture, plan) || now == 0 ||
-        now >= plan->forward_deadline_ms || installed_apk_stable_exact(&plan->a) != 0)
+        now >= plan->forward_deadline_ms || installed_apk_stable_exact(plan->package, &plan->a) != 0)
         return -1;
 
     if (capture->state == GUARD_CAPTURE_INTENT) {
@@ -2349,7 +2422,7 @@ static int complete_capture_locked(int dir, guard_plan *plan, guard_capture *cap
         int stop_publish = store_capture_at(dir, capture);
         if (stop_publish != GUARD_PUBLISH_COMMITTED) return stop_publish;
     }
-    if (capture->state != GUARD_CAPTURE_STOP_ATTEMPTED || force_stop_guard_app() != 0)
+    if (capture->state != GUARD_CAPTURE_STOP_ATTEMPTED || force_stop_guard_app(plan->package) != 0)
         return GUARD_PUBLISH_FAILED;
     int baseline_publish = capture_baseline(dir, plan);
     if (baseline_publish != GUARD_PUBLISH_COMMITTED) return baseline_publish;
@@ -2416,7 +2489,7 @@ static int source_file_unchanged(int fd, const struct stat *before) {
 
 static int seal_recovery_custody(int custody, const guard_plan *plan,
                                  guard_journal *journal) {
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char premigrate_name[128];
     if (db_dir < 0 || recovery_database_name(
             premigrate_name, plan->a.expected_schema, "premigrate") != 0) {
@@ -2501,7 +2574,7 @@ static int prepare_recovery_custody_intent(int custody, const guard_plan *plan,
             journal->b_primary_bytes != 0 && lower_hex_64(journal->b_primary_sha)
             ? GUARD_PUBLISH_COMMITTED : GUARD_PUBLISH_FAILED;
 
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char premigrate_name[128];
     if (db_dir < 0 || recovery_database_name(
             premigrate_name, plan->a.expected_schema, "premigrate") != 0) {
@@ -2540,7 +2613,7 @@ static int prepare_recovery_custody_intent(int custody, const guard_plan *plan,
 }
 
 static int live_premigrate_state(const guard_plan *plan) {
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char premigrate_name[128];
     if (!db_dir_matches_plan(db_dir, plan) || recovery_database_name(
             premigrate_name, plan->a.expected_schema, "premigrate") != 0) {
@@ -2569,7 +2642,7 @@ static int live_premigrate_state(const guard_plan *plan) {
 static int remove_live_premigrate(const guard_plan *plan) {
     int state = live_premigrate_state(plan);
     if (state <= 0) return state;
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char premigrate_name[128];
     if (db_dir < 0 || recovery_database_name(
             premigrate_name, plan->a.expected_schema, "premigrate") != 0) {
@@ -2583,7 +2656,7 @@ static int remove_live_premigrate(const guard_plan *plan) {
 
 static int live_primary_matches_b_custody(const guard_plan *plan,
                                           const guard_journal *journal) {
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     if (!db_dir_matches_plan(db_dir, plan) || !checkpointed_db_sidecars_safe(db_dir, plan)) {
         if (db_dir >= 0) close(db_dir);
         return -1;
@@ -2620,7 +2693,7 @@ static int restore_live_premigrate(int custody, const guard_plan *plan,
         journal->premigrate_bytes, journal->premigrate_sha) == 0;
     if (state < 0 || !primary_exact || !custody_exact)
         return -1;
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char final[128], temporary[160];
     if (db_dir < 0 || recovery_database_name(
             final, plan->a.expected_schema, "premigrate") != 0 ||
@@ -2684,7 +2757,8 @@ static int resume_restore_intent_locked(int dir, const guard_plan *plan,
                                         guard_journal *journal) {
     if (journal->phase != GUARD_PHASE_A_REFUSED ||
         strcmp(journal->error, "RESTORE_INTENT") != 0 ||
-        installed_apk_stable_exact(&plan->b) != 0 || force_stop_guard_app() != 0)
+        installed_apk_stable_exact(plan->package, &plan->b) != 0 ||
+        force_stop_guard_app(plan->package) != 0)
         return GUARD_PUBLISH_FAILED;
     if (TEST_FAULT(GUARD_TEST_FAULT_RESTORE_AFTER_FORCE_STOP))
         return GUARD_PUBLISH_INDETERMINATE;
@@ -2723,11 +2797,12 @@ static int cleanup_rollback_recovery_artifacts(int db_dir, const guard_plan *pla
 
 static int restore_baseline_primary(int custody, const guard_plan *plan,
                                     const guard_journal *journal) {
-    if (installed_apk_stable_exact(&plan->a) != 0 || force_stop_guard_app() != 0 ||
+    if (installed_apk_stable_exact(plan->package, &plan->a) != 0 ||
+        force_stop_guard_app(plan->package) != 0 ||
         hash_regular_at(custody, GUARD_BASELINE, plan->baseline_bytes,
                         plan->baseline_sha) != 0)
         return GUARD_PUBLISH_FAILED;
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     struct stat dir_st;
     if (db_dir < 0 || fstat(db_dir, &dir_st) != 0 ||
         (uint64_t)dir_st.st_dev != plan->db_dir_dev ||
@@ -2979,7 +3054,9 @@ static int read_app_restore_receipt_at(int db_dir, const char *name,
         !lower_hex_64(staged_fields[2]) || !lower_hex_64(guard_fields[0]) ||
         parse_u64(guard_fields[1], 1, UINT64_MAX, &guard_generation) != 0) return -1;
     char expected_dir[1025], expected_name[321], expected_superseded[321], superseded[128];
-    if (ascii_hex(GUARD_APP_DB_DIR, expected_dir, sizeof expected_dir) != 0 ||
+    char db_dir_path[GUARD_APP_PATH_BYTES];
+    if (guard_app_db_dir_path(plan->package, db_dir_path, sizeof db_dir_path) != 0 ||
+        ascii_hex(db_dir_path, expected_dir, sizeof expected_dir) != 0 ||
         ascii_hex(GUARD_DB_NAME, expected_name, sizeof expected_name) != 0 ||
         recovery_database_name(superseded, plan->b.expected_schema, "superseded") != 0 ||
         ascii_hex(superseded, expected_superseded, sizeof expected_superseded) != 0 ||
@@ -3189,7 +3266,7 @@ static int cleanup_rollback_recovery_artifacts(int db_dir, const guard_plan *pla
 
 static int final_restore_receipt_exact(const guard_plan *plan,
                                        const guard_journal *journal) {
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     app_restore_receipt receipt;
     int exact = db_dir_matches_plan(db_dir, plan) &&
         read_app_restore_receipt_at(db_dir, GUARD_APP_RESTORE_RECORD,
@@ -3205,7 +3282,7 @@ static int final_recovery_artifacts_exact(const guard_plan *plan,
                                           const guard_journal *journal) {
     if (live_premigrate_state(plan) != 1 || final_restore_receipt_exact(plan, journal) != 0)
         return -1;
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char superseded[128];
     if (!db_dir_matches_plan(db_dir, plan) || recovery_database_name(
             superseded, plan->b.expected_schema, "superseded") != 0 ||
@@ -3241,7 +3318,7 @@ static const char *rollback_outcome_for_error(const char *error) {
 
 static int rollback_inventory_exact(const guard_plan *plan) {
     if (live_premigrate_state(plan) != 0) return -1;
-    int db_dir = open_dir_chain(GUARD_APP_DB_DIR);
+    int db_dir = open_app_db_dir(plan);
     char superseded[128];
     int exact = db_dir_matches_plan(db_dir, plan) && recovery_database_name(
         superseded, plan->b.expected_schema, "superseded") == 0 &&
@@ -3258,7 +3335,7 @@ static int rollback_inventory_exact(const guard_plan *plan) {
 static int advance_recovery_withheld_locked(int dir, const guard_plan *plan,
                                             guard_journal *journal) {
     if (journal->phase != GUARD_PHASE_RECOVERY_WITHHELD ||
-        installed_apk_stable_exact(&plan->b) != 0 ||
+        installed_apk_stable_exact(plan->package, &plan->b) != 0 ||
         hash_regular_at(dir, GUARD_PREMIGRATE, journal->premigrate_bytes,
                         journal->premigrate_sha) != 0 ||
         hash_regular_at(dir, GUARD_B_PRIMARY, journal->b_primary_bytes,
@@ -3348,6 +3425,10 @@ void cmd_guardprepare(conn_ctx *ctx, const char *args) {
         !lower_hex_64(tokens[12])) {
         error_reply(ctx, "ARGS", "prepare"); return;
     }
+    /* Bind the session to the caller's package here, once.  Everything downstream -- including the
+     * paths with no caller at all -- reads it back out of the durable record. */
+    const char *caller_package = guard_caller_package(ctx);
+    if (!caller_package) { error_reply(ctx, "STATE", "package"); return; }
     pthread_mutex_lock(&package_gate);
     pthread_mutex_lock(&guard_lock);
     int dir = open_guard_dir();
@@ -3373,6 +3454,7 @@ void cmd_guardprepare(conn_ctx *ctx, const char *args) {
         error_reply(ctx, "DEADLINE", "prepare"); return;
     }
     memset(&plan, 0, sizeof plan);
+    snprintf(plan.package, sizeof plan.package, "%s", caller_package);
     snprintf(plan.session, sizeof plan.session, "%s", tokens[0]);
     snprintf(plan.boot, sizeof plan.boot, "%s", tokens[1]);
     snprintf(plan.signer, sizeof plan.signer, "%s", tokens[2]);
@@ -3425,6 +3507,9 @@ void cmd_guarddefine(conn_ctx *ctx, const char *args) {
     }
     if (strcmp(plan.session, tokens[0]) != 0 || plan.generation != generation) {
         close(dir); pthread_mutex_unlock(&guard_lock); error_reply(ctx, "STALE", "generation"); return;
+    }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock); error_reply(ctx, "STATE", "package"); return;
     }
     guard_artifact *artifact;
     const char *name, *upload;
@@ -3484,6 +3569,9 @@ void cmd_guardstream(conn_ctx *ctx, const char *args) {
     }
     if (strcmp(plan.session, tokens[0]) != 0 || plan.generation != generation) {
         close(dir); pthread_mutex_unlock(&guard_lock); error_reply(ctx, "STALE", "generation"); return;
+    }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock); error_reply(ctx, "STATE", "package"); return;
     }
     guard_artifact *artifact = NULL;
     const char *name = NULL, *upload = NULL;
@@ -3592,7 +3680,7 @@ static int format_guard_evidence(const guard_plan *plan, const guard_journal *jo
         "B %d %d %" PRIu64 " %s %" PRIu64 " %u %u %u\n"
         "PREMIGRATE %" PRIu64 " %s\n"
         "B_PRIMARY %" PRIu64 " %s\nEND\n",
-        plan->session, plan->boot, GUARD_PACKAGE, plan->signer,
+        plan->session, plan->boot, plan->package, plan->signer,
         manifested ? journal->generation : plan->generation,
         guard_phase_name(manifested ? journal->phase : GUARD_PHASE_STAGING),
         manifested ? journal->role : "NONE", manifested ? journal->installed_sha : "NONE",
@@ -3759,6 +3847,10 @@ void cmd_guardcancel(conn_ctx *ctx, const char *args) {
         pthread_mutex_unlock(&guard_lock);
         error_reply(ctx, loaded == 1 ? "STALE" : (loaded == 0 ? "STATE" : "HOLD"), "cancel"); return;
     }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock);
+        error_reply(ctx, "STATE", "package"); return;
+    }
     if (manifest == 1) {
         close(dir); pthread_mutex_unlock(&guard_lock); error_reply(ctx, "ARMED", "cancel"); return;
     }
@@ -3812,6 +3904,10 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
     guard_plan plan;
     guard_journal existing;
     int manifest = dir >= 0 ? load_manifest_reconciled(dir, &plan, &existing, 1) : -1;
+    if (manifest == 1 && !guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock);
+        error_reply(ctx, "STATE", "package"); return;
+    }
     if (withhold_action) {
         if (manifest != 1) {
             if (dir >= 0) close(dir);
@@ -3844,7 +3940,7 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
         int custody_publish = GUARD_PUBLISH_FAILED;
         int exact = guard_maintenance_supervised() && now != 0 &&
             now < plan.forward_deadline_ms &&
-            installed_apk_stable_exact(&plan.b) == 0;
+            installed_apk_stable_exact(plan.package, &plan.b) == 0;
         if (exact) intent_publish = prepare_recovery_custody_intent(dir, &plan, &existing);
         if (intent_publish != GUARD_PUBLISH_COMMITTED ||
             TEST_FAULT(GUARD_TEST_FAULT_WITHHOLD_AFTER_INTENT)) {
@@ -3854,7 +3950,7 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
                         "premigrate");
             return;
         }
-        exact = force_stop_guard_app() == 0;
+        exact = force_stop_guard_app(plan.package) == 0;
         if (exact && TEST_FAULT(GUARD_TEST_FAULT_WITHHOLD_AFTER_FORCE_STOP))
             custody_publish = GUARD_PUBLISH_INDETERMINATE;
         else if (exact) custody_publish = seal_recovery_custody(dir, &plan, &existing);
@@ -3918,7 +4014,7 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
         int restore_publish = GUARD_PUBLISH_FAILED;
         int exact = guard_maintenance_supervised() && now != 0 &&
             now < plan.overall_deadline_ms &&
-            installed_apk_stable_exact(&plan.b) == 0;
+            installed_apk_stable_exact(plan.package, &plan.b) == 0;
         if (exact && strcmp(existing.error, "NONE") == 0) {
             snprintf(existing.error, sizeof existing.error, "RESTORE_INTENT");
             intent_publish = store_journal_at(dir, &existing);
@@ -3983,7 +4079,7 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
             ? rollback_outcome_for_error(existing.error) : "CANARY_PASSED";
         int exact = strcmp(existing.outcome, "NONE") == 0 &&
             now != 0 && now < plan.overall_deadline_ms &&
-            installed_apk_stable_exact(&plan.a) == 0 &&
+            installed_apk_stable_exact(plan.package, &plan.a) == 0 &&
             (rolled_back ? rollback_inventory_exact(&plan) == 0
                          : final_recovery_artifacts_exact(&plan, &existing) == 0) &&
             (rolled_back ||
@@ -4023,6 +4119,10 @@ void cmd_guardaction(conn_ctx *ctx, const char *args) {
         pthread_mutex_unlock(&guard_lock);
         error_reply(ctx, loaded == 1 ? "STALE" : (loaded == 0 ? "STATE" : "HOLD"), "capture");
         return;
+    }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock);
+        error_reply(ctx, "STATE", "package"); return;
     }
     if (!guard_maintenance_supervised()) {
         close(dir); pthread_mutex_unlock(&guard_lock);
@@ -4121,7 +4221,7 @@ int guard_maintenance_supervisor_tick(void) {
             pthread_mutex_unlock(&guard_lock);
             return GUARD_WORK_NONE;
         }
-        if (loaded < 0 || installed_apk_stable_exact(&draft.a) != 0) {
+        if (loaded < 0 || installed_apk_stable_exact(draft.package, &draft.a) != 0) {
             close(dir);
             pthread_mutex_unlock(&guard_lock);
             return -1;
@@ -4219,8 +4319,8 @@ int guard_maintenance_supervisor_tick(void) {
         work = GUARD_WORK_INSTALL_B;
     } else if (journal.phase == GUARD_PHASE_B_HEALTHY &&
                journal.premigrate_bytes != 0 && journal.b_primary_bytes != 0) {
-        int sealed = installed_apk_stable_exact(&plan.b) == 0 &&
-            force_stop_guard_app() == 0
+        int sealed = installed_apk_stable_exact(plan.package, &plan.b) == 0 &&
+            force_stop_guard_app(plan.package) == 0
             ? (TEST_FAULT(GUARD_TEST_FAULT_WITHHOLD_AFTER_FORCE_STOP)
                 ? GUARD_PUBLISH_INDETERMINATE
                 : seal_recovery_custody(dir, &plan, &journal))
@@ -4249,7 +4349,7 @@ int guard_maintenance_supervisor_tick(void) {
         work = restored == GUARD_PUBLISH_FAILED ? -1 : GUARD_WORK_NONE;
     } else if (journal.phase == GUARD_PHASE_RECOVERY_RESTORED) {
         if (overall_now >= plan.overall_deadline_ms ||
-            installed_apk_stable_exact(&plan.b) != 0 ||
+            installed_apk_stable_exact(plan.package, &plan.b) != 0 ||
             live_premigrate_state(&plan) != 1 ||
             hash_regular_at(dir, GUARD_PREMIGRATE, journal.premigrate_bytes,
                             journal.premigrate_sha) != 0) {
@@ -4276,8 +4376,8 @@ int guard_maintenance_supervisor_tick(void) {
             snprintf(journal.outcome, sizeof journal.outcome, "AMBIGUOUS");
             if (store_journal_at(dir, &journal) != GUARD_PUBLISH_COMMITTED) work = -1;
         } else {
-            int exact_a = installed_apk_stable_exact(&plan.a) == 0;
-            int exact_b = !exact_a && installed_apk_stable_exact(&plan.b) == 0;
+            int exact_a = installed_apk_stable_exact(plan.package, &plan.a) == 0;
+            int exact_b = !exact_a && installed_apk_stable_exact(plan.package, &plan.b) == 0;
             journal.generation++;
             journal.rollback_attempt_consumed = 1;
             journal.recovery_deadline_ms = plan.overall_deadline_ms;
@@ -4332,8 +4432,8 @@ int guard_maintenance_supervisor_tick(void) {
             const guard_artifact *target = journal.phase == GUARD_PHASE_SUBMITTED_B
                 ? &plan.b : &plan.a;
             const guard_artifact *incumbent = target == &plan.b ? &plan.a : &plan.b;
-            int target_exact = installed_apk_stable_exact(target) == 0;
-            int incumbent_exact = !target_exact && installed_apk_stable_exact(incumbent) == 0;
+            int target_exact = installed_apk_stable_exact(plan.package, target) == 0;
+            int incumbent_exact = !target_exact && installed_apk_stable_exact(plan.package, incumbent) == 0;
             journal_clear_pm_process(&journal);
             journal.pm_settled = 1;
             if (target_exact && rollback_submit) {
@@ -4453,6 +4553,18 @@ int guard_maintenance_supervisor_work_deadline(enum guard_supervisor_work work,
     return 0;
 }
 
+static int guard_plan_package_now(char package[GUARD_PACKAGE_BYTES]) {
+    pthread_mutex_lock(&guard_lock);
+    int dir = open_guard_dir();
+    guard_plan plan;
+    guard_journal journal;
+    int loaded = dir >= 0 ? load_manifest_reconciled(dir, &plan, &journal, 0) : -1;
+    if (loaded == 1) snprintf(package, GUARD_PACKAGE_BYTES, "%s", plan.package);
+    if (dir >= 0) close(dir);
+    pthread_mutex_unlock(&guard_lock);
+    return loaded == 1 ? 0 : -1;
+}
+
 int guard_maintenance_supervisor_start_work(enum guard_supervisor_work work, pid_t *pid) {
     if (!guard_maintenance_supervisor_authoritative() || !pid) return -1;
     uint64_t deadline;
@@ -4465,13 +4577,22 @@ int guard_maintenance_supervisor_start_work(enum guard_supervisor_work work, pid
     static const char *const install_b[] = {
         "pm", "install", "-r", "-d", GUARD_B_APK_PATH, NULL,
     };
-    static const char *const launch[] = {
-        "monkey", "-p", GUARD_PACKAGE, "-c", "android.intent.category.LAUNCHER", "1", NULL,
-    };
+    /* The launch target is the package the plan is bound to.  The supervisor has no caller, so it
+     * reads the durable record; work_deadline above already required a loadable manifest. */
+    char package[GUARD_PACKAGE_BYTES];
+    const char *launch[7];
     int package_work = 1;
     if (work == GUARD_WORK_INSTALL_A) { path = "/system/bin/pm"; argv = install_a; }
     else if (work == GUARD_WORK_INSTALL_B) { path = "/system/bin/pm"; argv = install_b; }
     else if (work == GUARD_WORK_LAUNCH_A || work == GUARD_WORK_LAUNCH_B) {
+        if (guard_plan_package_now(package) != 0) return -1;
+        launch[0] = "monkey";
+        launch[1] = "-p";
+        launch[2] = package;
+        launch[3] = "-c";
+        launch[4] = "android.intent.category.LAUNCHER";
+        launch[5] = "1";
+        launch[6] = NULL;
         path = "/system/bin/monkey"; argv = launch; package_work = 0;
     } else return -1;
     if (sysexec_start_argv(path, argv, 1, pid) != 0) return -1;
@@ -4529,7 +4650,7 @@ int guard_maintenance_supervisor_complete(enum guard_supervisor_work work,
                 capture_matches_draft(&capture, &draft) &&
                 capture.state == GUARD_CAPTURE_FAILED_LAUNCHING &&
                 result == GUARD_EXEC_REAPED && WIFEXITED(wait_status) &&
-                WEXITSTATUS(wait_status) == 0 && installed_apk_stable_exact(&draft.a) == 0) {
+                WEXITSTATUS(wait_status) == 0 && installed_apk_stable_exact(draft.package, &draft.a) == 0) {
                 capture.state = GUARD_CAPTURE_FAILED_NO_MUTATION;
                 int stored = store_capture_at(dir, &capture);
                 close(dir);
@@ -4568,8 +4689,8 @@ int guard_maintenance_supervisor_complete(enum guard_supervisor_work work,
     journal_clear_pm_process(&journal);
     const guard_artifact *target = work == GUARD_WORK_INSTALL_B ? &plan.b : &plan.a;
     const guard_artifact *incumbent = work == GUARD_WORK_INSTALL_B ? &plan.a : &plan.b;
-    int target_exact = installed_apk_stable_exact(target) == 0;
-    int incumbent_exact = !target_exact && installed_apk_stable_exact(incumbent) == 0;
+    int target_exact = installed_apk_stable_exact(plan.package, target) == 0;
+    int incumbent_exact = !target_exact && installed_apk_stable_exact(plan.package, incumbent) == 0;
     int normal_exit = result == GUARD_EXEC_REAPED && WIFEXITED(wait_status);
     int success_exit = normal_exit && WEXITSTATUS(wait_status) == 0;
     int next_work = GUARD_WORK_NONE;
@@ -4647,6 +4768,10 @@ void cmd_guardhealth(conn_ctx *ctx, const char *args) {
         error_reply(ctx, loaded == 0 ? "STATE" : "HOLD", "health");
         return;
     }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock);
+        error_reply(ctx, "STATE", "package"); return;
+    }
     const guard_artifact *artifact = strcmp(tokens[3], "A") == 0 ? &plan.a : &plan.b;
     enum guard_phase expected_phase = artifact == &plan.b
         ? GUARD_PHASE_WAIT_B_HEALTH
@@ -4690,7 +4815,7 @@ void cmd_guardhealth(conn_ctx *ctx, const char *args) {
         now < journal.deadline_ms && now < plan.overall_deadline_ms &&
         (artifact != &plan.b || now < plan.forward_deadline_ms);
     int independently_exact = phase_active &&
-        installed_apk_stable_exact(artifact) == 0 &&
+        installed_apk_stable_exact(plan.package, artifact) == 0 &&
         live_db_semantic_exact(dir, &plan, schema, strcmp(tokens[11], "PRESENT") == 0) == 0 &&
         (artifact == &plan.b ||
          (strcmp(tokens[12], "BASELINE") == 0
@@ -4751,6 +4876,10 @@ void cmd_guardrefusal(conn_ctx *ctx, const char *args) {
         error_reply(ctx, loaded == 0 ? "STATE" : "HOLD", "refusal");
         return;
     }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir); pthread_mutex_unlock(&guard_lock);
+        error_reply(ctx, "STATE", "package"); return;
+    }
     int identity = strcmp(plan.session, tokens[0]) == 0 && strcmp(plan.boot, tokens[2]) == 0 &&
         strcmp(plan.a.sha, tokens[4]) == 0 && plan.a.version_code == version_code;
     if (identity && journal.phase == GUARD_PHASE_A_REFUSED &&
@@ -4772,7 +4901,7 @@ void cmd_guardrefusal(conn_ctx *ctx, const char *args) {
     int independently_exact = journal.deadline_ms != 0 && now != 0 &&
         now < journal.deadline_ms && now < plan.forward_deadline_ms &&
         now < plan.overall_deadline_ms &&
-        installed_apk_stable_exact(&plan.b) == 0 &&
+        installed_apk_stable_exact(plan.package, &plan.b) == 0 &&
         live_db_semantic_exact(dir, &plan, plan.b.expected_schema, 1) == 0;
     if (!independently_exact) {
         close(dir);
@@ -5059,7 +5188,7 @@ static int finalized_retirement_preflight(int dir, const guard_plan *plan,
         validate_settings_authority_at(dir, plan) == 0 &&
         retirement_regular_exact_at(dir, GUARD_BASELINE, plan->baseline_bytes,
                                     plan->baseline_sha) && recovery_exact &&
-        installed_apk_stable_exact(&plan->a) == 0 &&
+        installed_apk_stable_exact(plan->package, &plan->a) == 0 &&
         (rolled_back ? rollback_inventory_exact(plan) == 0
                      : (strcmp(journal->outcome, "CANARY_PASSED") == 0 &&
                         final_recovery_artifacts_exact(plan, journal) == 0 &&
@@ -5661,6 +5790,13 @@ static void cmd_guardretire_terminal(conn_ctx *ctx, const char *args) {
         pthread_mutex_unlock(&guard_lock);
         pthread_mutex_unlock(&package_gate);
         error_reply(ctx, "MISMATCH", "evidence");
+        return;
+    }
+    if (!guard_caller_owns_plan(ctx, &plan)) {
+        close(dir);
+        pthread_mutex_unlock(&guard_lock);
+        pthread_mutex_unlock(&package_gate);
+        error_reply(ctx, "STATE", "package");
         return;
     }
     if (journal.generation != generation) {

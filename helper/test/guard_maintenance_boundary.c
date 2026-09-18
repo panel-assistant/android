@@ -25,8 +25,13 @@
 #define CUSTODY "/tmp/.hapaneld-guard-db-test"
 #define BOOT_FILE "/tmp/.hapaneld-guard-db-test.boot-id"
 #define APP_ROOT "/tmp/.hapaneld-guard-app-test"
-#define DB_DIR APP_ROOT "/data/user/0/io.github.maxlyth.hapaneld/databases"
+#define LEGACY_PKG "io.github.maxlyth.hapaneld"
+#define SUCCESSOR_PKG "io.panelassistant.android"
+#define DB_DIR APP_ROOT "/data/user/0/" LEGACY_PKG "/databases"
 #define DB_PATH DB_DIR "/ha-paneld.db"
+#define SUCCESSOR_APP_DIR APP_ROOT "/data/user/0/" SUCCESSOR_PKG
+#define SUCCESSOR_DB_DIR SUCCESSOR_APP_DIR "/databases"
+#define SUCCESSOR_DB_PATH SUCCESSOR_DB_DIR "/ha-paneld.db"
 #define INSTALLED_DIR "/tmp/.hapaneld-guard-installed"
 #define INSTALLED_APK INSTALLED_DIR "/base.apk"
 #define SESSION "1111111111111111111111111111111111111111111111111111111111111111"
@@ -45,6 +50,12 @@
 #define SHARED_LOCK_PID SHARED_LOCK "/pid"
 static const char SETTINGS_AUTHORITY[] =
     "S2\n616c706861|737472696e67|64656661756c74\n";
+
+// Guard binds a session to the package the CALLER is, and on the socket that comes from
+// SO_PEERCRED, resolved once in the accept loop.  This harness calls the handlers directly, so it
+// supplies the same identity here.  Everything written before the successor package existed runs as
+// the legacy app, which is why the default keeps today's behaviour under assertion.
+static enum helper_caller test_caller = HELPER_CALLER_LEGACY;
 
 static int failures;
 #define CHECK(condition, ...) do { if (!(condition)) { \
@@ -113,7 +124,7 @@ static ssize_t read_line(int fd, char *output, size_t capacity) {
 
 static void *dispatch_worker(void *argument) {
     dispatch_job *job = argument;
-    conn_ctx ctx = { .fd = job->fd, .subscribed = 0 };
+    conn_ctx ctx = { .fd = job->fd, .subscribed = 0, .caller = test_caller };
     dispatch(&ctx, job->line);
     close(job->fd);
     return NULL;
@@ -137,7 +148,7 @@ static void dispatch_once(const char *line, char *output, size_t capacity) {
     CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, peer) == 0, "create direct socket\n");
     char command[MAX_LINE + 1];
     snprintf(command, sizeof command, "%s", line);
-    conn_ctx ctx = { .fd = peer[0], .subscribed = 0 };
+    conn_ctx ctx = { .fd = peer[0], .subscribed = 0, .caller = test_caller };
     dispatch(&ctx, command);
     shutdown(peer[0], SHUT_WR);
     size_t used = 0;
@@ -350,15 +361,41 @@ static void create_fixed_test_dirs(void) {
     mkdir_if_missing(APP_ROOT "/data", 0700);
     mkdir_if_missing(APP_ROOT "/data/user", 0700);
     mkdir_if_missing(APP_ROOT "/data/user/0", 0700);
-    mkdir_if_missing(APP_ROOT "/data/user/0/io.github.maxlyth.hapaneld", 0700);
-    mkdir_if_missing(APP_ROOT "/data/user/0/io.github.maxlyth.hapaneld/databases", 0700);
+    mkdir_if_missing(APP_ROOT "/data/user/0/" LEGACY_PKG, 0700);
+    mkdir_if_missing(DB_DIR, 0700);
     mkdir_if_missing(INSTALLED_DIR, 0700);
 }
 
+static void create_successor_test_dirs(void) {
+    mkdir_if_missing(SUCCESSOR_APP_DIR, 0700);
+    mkdir_if_missing(SUCCESSOR_DB_DIR, 0700);
+}
+
+// A data directory that survives a test is a second installed package for every later test, which
+// would make every root caller ambiguous.  Each setup() removes it.
+static void remove_successor_test_dirs(void) {
+    static const char *const leftovers[] = {
+        SUCCESSOR_DB_PATH, SUCCESSOR_DB_PATH "-wal", SUCCESSOR_DB_PATH "-shm",
+        SUCCESSOR_DB_PATH "-journal", SUCCESSOR_DB_PATH ".restore.tmp",
+        SUCCESSOR_DB_PATH ".v14.premigrate", SUCCESSOR_DB_PATH ".v14.premigrate.guard.tmp",
+        SUCCESSOR_DB_PATH ".v15.superseded", SUCCESSOR_DB_PATH ".v15.superseded-wal",
+        SUCCESSOR_DB_PATH ".v15.superseded-shm", SUCCESSOR_DB_PATH ".v15.superseded-journal",
+        SUCCESSOR_DB_DIR "/.ha-paneld.db.restore.v1",
+        SUCCESSOR_DB_DIR "/.ha-paneld.db.restore.v1.tmp",
+        SUCCESSOR_DB_DIR "/.ha-paneld.db.restore.prepared.v1",
+        SUCCESSOR_DB_DIR "/.guard.rollback.tmp",
+    };
+    for (size_t i = 0; i < sizeof leftovers / sizeof leftovers[0]; i++) (void)unlink(leftovers[i]);
+    (void)rmdir(SUCCESSOR_DB_DIR);
+    (void)rmdir(SUCCESSOR_APP_DIR);
+}
+
 static void setup(void) {
+    test_caller = HELPER_CALLER_LEGACY;
     guard_test_reset();
     sysexec_stub_reset();
     create_fixed_test_dirs();
+    remove_successor_test_dirs();
     static const char *const leftovers[] = {
         DB_PATH, DB_PATH "-wal", DB_PATH "-shm", DB_PATH "-journal", DB_PATH ".restore.tmp",
         DB_PATH ".v14.premigrate", DB_PATH ".v14.premigrate.guard.tmp",
@@ -762,7 +799,7 @@ static void test_replacement_fence_and_same_lease_app_swap(void) {
         char command[512];
         snprintf(command, sizeof command, "GUARDRETIRE APP %s %s %s",
             REPLACEMENT_NONCE, new_sha, REPLACEMENT_BUILD);
-        conn_ctx ctx = { .fd = peer[0], .subscribed = 0 };
+        conn_ctx ctx = { .fd = peer[0], .subscribed = 0, .caller = test_caller };
         dispatch(&ctx, command);
         _exit(99);
     }
@@ -902,7 +939,7 @@ static void begin_requested_replacement_build(const char *build) {
         char command[512];
         snprintf(command, sizeof command, "GUARDRETIRE APP %s %s %s",
             REPLACEMENT_NONCE, new_sha, build);
-        conn_ctx ctx = { .fd = peer[0], .subscribed = 0 };
+        conn_ctx ctx = { .fd = peer[0], .subscribed = 0, .caller = test_caller };
         dispatch(&ctx, command);
         _exit(99);
     }
@@ -1020,7 +1057,7 @@ static void test_replacement_request_dirsync_is_indeterminate_and_reconciled(voi
         char command[512];
         snprintf(command, sizeof command, "GUARDRETIRE APP %s %s %s",
             REPLACEMENT_NONCE, new_sha, REPLACEMENT_BUILD);
-        conn_ctx ctx = { .fd = peer[0], .subscribed = 0 };
+        conn_ctx ctx = { .fd = peer[0], .subscribed = 0, .caller = test_caller };
         dispatch(&ctx, command);
         _exit(99);
     }
@@ -1113,7 +1150,7 @@ static void test_replacement_synced_temp_cuts_reconcile(void) {
         char command[512];
         snprintf(command, sizeof command, "GUARDRETIRE APP %s %s %s",
             REPLACEMENT_NONCE, new_sha, REPLACEMENT_BUILD);
-        conn_ctx ctx = { .fd = peer[0], .subscribed = 0 };
+        conn_ctx ctx = { .fd = peer[0], .subscribed = 0, .caller = test_caller };
         dispatch(&ctx, command);
         _exit(99);
     }
@@ -2596,6 +2633,190 @@ static void test_pm_nonzero_target_and_uncertain_target_matrix(void) {
     }
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Caller identity selects the Guard package.  The identity is bound once, at GUARDPREPARE, into the
+ * durable plan: startup reconcile, the supervisor tick and the deadline worker have no caller at
+ * all, so a per-call lookup could not serve them.  No Guard verb takes a package argument, so there
+ * is nothing for a caller to forge.
+ * ------------------------------------------------------------------------------------------- */
+
+static const char SUCCESSOR_B_PAYLOAD[] = "exact-candidate-b";
+
+static void arm_capture_as(enum helper_caller caller, const void *database, size_t size,
+                           char b_sha_out[65]) {
+    test_caller = caller;
+    char db_sha[65], a_sha[65], b_sha[65];
+    static const char a_payload[] = "exact-installed-a";
+    prepare_exact_baseline(database, size, db_sha);
+    hash_bytes(a_payload, sizeof a_payload - 1, a_sha);
+    hash_bytes(SUCCESSOR_B_PAYLOAD, sizeof SUCCESSOR_B_PAYLOAD - 1, b_sha);
+    define_role("A", 1, a_sha, 568, 11, 14, 14, sizeof a_payload - 1, 2);
+    define_role("B", 2, b_sha, 569, 11, 15, 15, sizeof SUCCESSOR_B_PAYLOAD - 1, 3);
+    stream_role("A", 3, a_sha, a_payload, sizeof a_payload - 1, 4);
+    stream_role("B", 4, b_sha, SUCCESSOR_B_PAYLOAD, sizeof SUCCESSOR_B_PAYLOAD - 1, 5);
+    stream_role("SETTINGS", 5, SETTINGS_AUTHORITY_SHA, SETTINGS_AUTHORITY,
+        sizeof SETTINGS_AUTHORITY - 1, 6);
+    write_file_mode(INSTALLED_APK, a_payload, sizeof a_payload - 1, 0600);
+    guard_test_set_supervised(1);
+    char command[512], reply[512];
+    snprintf(command, sizeof command, "GUARDACTION %s 6 CAPTURE_BASELINE", SESSION);
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDACTION 7 PREPARED\n") == 0,
+        "caller-bound capture arms the durable journal (got %s)\n", reply);
+    snprintf(b_sha_out, 65, "%s", b_sha);
+}
+
+static void test_successor_caller_binds_its_own_package_and_database(void) {
+    setup();
+    create_successor_test_dirs();
+    unsigned char legacy_database[128] = {0};
+    memcpy(legacy_database, "SQLite format 3", 15);
+    legacy_database[63] = 14;
+    unsigned char successor_database[128];
+    memcpy(successor_database, legacy_database, sizeof legacy_database);
+    /* Distinct trailing bytes: the captured baseline proves WHICH directory was opened, not merely
+     * that some database was found. */
+    legacy_database[120] = 0xa1;
+    successor_database[120] = 0xb2;
+    write_file_mode(DB_PATH, legacy_database, sizeof legacy_database, 0600);
+    write_file_mode(SUCCESSOR_DB_PATH, successor_database, sizeof successor_database, 0600);
+
+    char b_sha[65];
+    arm_capture_as(HELPER_CALLER_SUCCESSOR, successor_database, sizeof successor_database, b_sha);
+
+    CHECK(file_equals(CUSTODY "/baseline.db", successor_database, sizeof successor_database),
+        "baseline is captured from the successor's own database directory\n");
+    const char *const legacy_stop[] = { "am", "force-stop", LEGACY_PKG, NULL };
+    const char *const successor_stop[] = { "am", "force-stop", SUCCESSOR_PKG, NULL };
+    CHECK(sysexec_stub_count_argv("/system/bin/am", successor_stop, 0) == 1 &&
+          sysexec_stub_count_argv("/system/bin/am", legacy_stop, 0) == 0,
+        "capture force-stops the caller's package and never the other one\n");
+
+    /* The supervisor has no caller: it must read the package out of the durable plan. */
+    guard_maintenance_set_supervisor_owner();
+    int work = guard_maintenance_supervisor_tick();
+    CHECK(work == GUARD_WORK_INSTALL_B, "supervisor requests the exact B install\n");
+    pid_t executor = -1;
+    CHECK(guard_maintenance_supervisor_start_work((enum guard_supervisor_work)work, &executor) == 0 &&
+          executor > 1, "supervisor starts the B executor\n");
+    write_file_mode(INSTALLED_APK, SUCCESSOR_B_PAYLOAD, sizeof SUCCESSOR_B_PAYLOAD - 1, 0600);
+    work = guard_maintenance_supervisor_complete(GUARD_WORK_INSTALL_B, GUARD_EXEC_REAPED, 0);
+    CHECK(work == GUARD_WORK_LAUNCH_B, "settled B produces one launch work item\n");
+    CHECK(guard_maintenance_supervisor_start_work((enum guard_supervisor_work)work, &executor) == 0,
+        "supervisor starts the B launch\n");
+    const char *const legacy_launch[] = {
+        "monkey", "-p", LEGACY_PKG, "-c", "android.intent.category.LAUNCHER", "1", NULL,
+    };
+    const char *const successor_launch[] = {
+        "monkey", "-p", SUCCESSOR_PKG, "-c", "android.intent.category.LAUNCHER", "1", NULL,
+    };
+    CHECK(sysexec_stub_count_argv("/system/bin/monkey", successor_launch, 1) == 1 &&
+          sysexec_stub_count_argv("/system/bin/monkey", legacy_launch, 1) == 0,
+        "the callerless supervisor launches the package recorded in the plan\n");
+
+    char command[512], reply[4096];
+    snprintf(command, sizeof command, "GUARDEVIDENCE %s", SESSION);
+    test_caller = HELPER_CALLER_LEGACY;
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strstr(reply, "PACKAGE " SUCCESSOR_PKG "\n") != NULL,
+        "read-only evidence reports the plan's package to another authorised caller (got %s)\n",
+        reply);
+    test_caller = HELPER_CALLER_ROOT;
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strstr(reply, "PACKAGE " SUCCESSOR_PKG "\n") != NULL,
+        "root's read-only evidence reports the plan's package with both installed (got %s)\n",
+        reply);
+
+    /* A mutation verb from the package that does not own the armed plan is refused. */
+    test_caller = HELPER_CALLER_LEGACY;
+    snprintf(command, sizeof command,
+        "GUARDHEALTH %s 9 %s B %s 569 15 OK 2 %s %s PRESENT NA",
+        SESSION, boot_nonce, b_sha, STATE_SHA, SETTINGS_SHA);
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strcmp(reply, "ERR STATE package\n") == 0,
+        "the other package cannot report health for a plan it does not own (got %s)\n", reply);
+    guard_test_set_now_ms(0);
+}
+
+static void test_foreign_caller_refused_on_mutation_verbs(void) {
+    setup();
+    create_successor_test_dirs();
+    test_caller = HELPER_CALLER_SUCCESSOR;
+    prepare();
+
+    static const char a_payload[] = "exact-installed-a";
+    char a_sha[65], define[512], cancel[512], reply[1024];
+    hash_bytes(a_payload, sizeof a_payload - 1, a_sha);
+    snprintf(define, sizeof define, "GUARDDEFINE %s 1 A %zu %s 568 11 14 14",
+        SESSION, sizeof a_payload - 1, a_sha);
+    snprintf(cancel, sizeof cancel, "GUARDCANCEL %s 1", SESSION);
+
+    test_caller = HELPER_CALLER_LEGACY;
+    dispatch_once(define, reply, sizeof reply);
+    CHECK(strcmp(reply, "ERR STATE package\n") == 0,
+        "the other package cannot define a role in a session it does not own (got %s)\n", reply);
+    dispatch_once(cancel, reply, sizeof reply);
+    CHECK(strcmp(reply, "ERR STATE package\n") == 0,
+        "the other package cannot cancel a session it does not own (got %s)\n", reply);
+    dispatch_once("GUARDSTATUS", reply, sizeof reply);
+    CHECK(strstr(reply, " 1 STAGING ") != NULL,
+        "read-only status stays available across packages (got %s)\n", reply);
+
+    /* The owning package runs the very commands the other caller was refused. */
+    test_caller = HELPER_CALLER_SUCCESSOR;
+    dispatch_once(define, reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDDEFINE 2 STAGING\n") == 0,
+        "the owning package defines the role (got %s)\n", reply);
+    snprintf(cancel, sizeof cancel, "GUARDCANCEL %s 2", SESSION);
+    dispatch_once(cancel, reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDCANCEL 3 EMPTY\n") == 0,
+        "the owning package cancels the session (got %s)\n", reply);
+}
+
+static void test_root_resolves_the_single_present_package(void) {
+    setup();
+    test_caller = HELPER_CALLER_ROOT;
+    prepare();
+    char command[512], reply[4096];
+    snprintf(command, sizeof command, "GUARDEVIDENCE %s", SESSION);
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strstr(reply, "PACKAGE " LEGACY_PKG "\n") != NULL,
+        "root binds the one package a single-package panel has (got %s)\n", reply);
+
+    setup();
+    remove_successor_test_dirs();
+    create_successor_test_dirs();
+    (void)rmdir(DB_DIR);
+    (void)rmdir(APP_ROOT "/data/user/0/" LEGACY_PKG);
+    test_caller = HELPER_CALLER_ROOT;
+    prepare();
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strstr(reply, "PACKAGE " SUCCESSOR_PKG "\n") != NULL,
+        "root binds the successor when it is the only package present (got %s)\n", reply);
+    create_fixed_test_dirs();
+}
+
+static void test_root_prepare_refuses_when_both_packages_present(void) {
+    setup();
+    create_successor_test_dirs();
+    guard_test_set_supervised(1);
+    char command[512], reply[4096];
+    prepare_command(command);
+    test_caller = HELPER_CALLER_ROOT;
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strcmp(reply, "ERR STATE package\n") == 0,
+        "root GUARDPREPARE refuses rather than guessing between two packages (got %s)\n", reply);
+    dispatch_once("GUARDSTATUS", reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDSTATUS 0 EMPTY NONE NONE NONE NONE 0 0 0 NONE NONE 0 0\n") == 0,
+        "the refused root prepare published nothing (got %s)\n", reply);
+
+    /* An app caller is never ambiguous: it is its own package. */
+    test_caller = HELPER_CALLER_SUCCESSOR;
+    dispatch_once(command, reply, sizeof reply);
+    CHECK(strcmp(reply, "OK GUARDPREPARE 1 STAGING\n") == 0,
+        "an app caller binds its own package with both installed (got %s)\n", reply);
+}
+
 int main(void) {
     exec_from_canonical_helper();
     signal(SIGPIPE, SIG_IGN);
@@ -2648,6 +2869,10 @@ int main(void) {
     test_rollback_timeout_with_exact_a_holds();
     test_pm_normal_rejection_rolls_back_with_typed_outcome();
     test_pm_nonzero_target_and_uncertain_target_matrix();
+    test_successor_caller_binds_its_own_package_and_database();
+    test_foreign_caller_refused_on_mutation_verbs();
+    test_root_resolves_the_single_present_package();
+    test_root_prepare_refuses_when_both_packages_present();
     guard_test_reset();
     (void)unlink(BOOT_FILE);
     if (failures) {
