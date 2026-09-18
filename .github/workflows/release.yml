@@ -21,6 +21,9 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+  # One definition for every URL this workflow emits, including the installer one-liner in the
+  # release body. The scripts carry their own single `REPO=` definition.
+  RELEASE_REPOSITORY: panel-assistant/android
 
 concurrency:
   group: release-${{ inputs.release_tag || github.ref_name }}
@@ -279,8 +282,25 @@ jobs:
         with:
           cache-provider: basic
 
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease --stacktrace
+      # One tree, two installable identities. The default build is the `bridge`, which keeps the
+      # legacy applicationId so a shipped 0.9.7 or rc1 updater can still update in place; the
+      # successor carries the new id. A Gradle property rather than a product flavour, because a
+      # flavour dimension renames every variant task and output directory that CI, the release
+      # workflow and the sidecar tools address by name. The two builds therefore write to the same
+      # output directory in turn, so the first is copied out before the second starts.
+      - name: Build release APKs for both identities
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleRelease --stacktrace
+          /usr/bin/install -d -m 0755 release-build/bridge
+          cp app/build/outputs/apk/release/output-metadata.json release-build/bridge/
+          find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' \
+            -exec cp -t release-build/bridge {} +
+          ./gradlew :app:assembleRelease -PappIdentity=successor --stacktrace
+          /usr/bin/install -d -m 0755 release-build/successor
+          cp app/build/outputs/apk/release/output-metadata.json release-build/successor/
+          find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' \
+            -exec cp -t release-build/successor {} +
 
       - name: Verify standalone helpers match APK-bundled helpers
         run: |
@@ -292,31 +312,50 @@ jobs:
 
       - name: Collect unsigned release inputs
         run: |
+          set -euo pipefail
           mkdir -p release-input
-          mapfile -t unsigned_apks < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print)
-          if [ "${#unsigned_apks[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one unsigned release APK, found ${#unsigned_apks[@]}."
-            exit 1
-          fi
-          cp "${unsigned_apks[0]}" release-input/ha-paneld-unsigned.apk
-          metadata=app/build/outputs/apk/release/output-metadata.json
-          test -s "$metadata"
-          application_id=$(node -e 'const m=require("./"+process.argv[1]); process.stdout.write(m.applicationId || "")' "$metadata")
-          version_name=$(node -e 'const m=require("./"+process.argv[1]); const e=m.elements || []; process.stdout.write(e.length === 1 ? (e[0].versionName || "") : "")' "$metadata")
           expected_version_name="${RELEASE_TAG#v}"
-          if [ "$application_id" != "io.github.maxlyth.hapaneld" ]; then
-            echo "::error::Unsigned APK package is '$application_id', expected 'io.github.maxlyth.hapaneld'."
+          # The applicationId is asserted per artifact, from the build's own metadata. That is what
+          # catches a forgotten `-PappIdentity` property: without it both builds would be the bridge
+          # and the release would publish the same identity twice under two names.
+          collect_identity() {
+            identity=$1
+            staged=$2
+            expected_application_id=$3
+            mapfile -t unsigned_apks < <(find "release-build/$identity" -maxdepth 1 -type f -name '*-unsigned.apk' -print)
+            if [ "${#unsigned_apks[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one unsigned $identity release APK, found ${#unsigned_apks[@]}."
+              exit 1
+            fi
+            cp "${unsigned_apks[0]}" "release-input/$staged"
+            metadata="release-build/$identity/output-metadata.json"
+            test -s "$metadata"
+            application_id=$(node -e 'const m=require("./"+process.argv[1]); process.stdout.write(m.applicationId || "")' "$metadata")
+            version_name=$(node -e 'const m=require("./"+process.argv[1]); const e=m.elements || []; process.stdout.write(e.length === 1 ? (e[0].versionName || "") : "")' "$metadata")
+            if [ "$application_id" != "$expected_application_id" ]; then
+              echo "::error::Unsigned $identity APK package is '$application_id', expected '$expected_application_id'."
+              exit 1
+            fi
+            if [ "$version_name" != "$expected_version_name" ]; then
+              echo "::error::Unsigned $identity APK versionName is '$version_name', expected '$expected_version_name' from the candidate release tag."
+              exit 1
+            fi
+          }
+          collect_identity bridge ha-paneld-unsigned.apk io.github.maxlyth.hapaneld
+          collect_identity successor panel-assistant-unsigned.apk io.panelassistant.android
+          if cmp --silent release-input/ha-paneld-unsigned.apk release-input/panel-assistant-unsigned.apk; then
+            echo "::error::The bridge and successor APKs are byte-identical; the identity property did not take effect."
             exit 1
           fi
-          if [ "$version_name" != "$expected_version_name" ]; then
-            echo "::error::Unsigned APK versionName is '$version_name', expected '$expected_version_name' from the candidate release tag."
-            exit 1
-          fi
+          # One SBOM for both artifacts: it describes `releaseRuntimeClasspath`, which does not vary
+          # with the applicationId, and its component fields are build-script constants.
           test -s app/build/reports/cyclonedx-direct/bom.json
           cp app/build/reports/cyclonedx-direct/bom.json release-input/android-gradle-runtime.cdx.json
           cp scripts/generate_install_descriptor.py release-input/generate_install_descriptor.py
-          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
-          echo "APK_NAME=$apk_name" >> "$GITHUB_ENV"
+          bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          echo "BRIDGE_APK_NAME=$bridge_apk_name" >> "$GITHUB_ENV"
+          echo "SUCCESSOR_APK_NAME=$successor_apk_name" >> "$GITHUB_ENV"
 
       - name: Build release-pinned installer asset
         run: |
@@ -329,13 +368,13 @@ jobs:
           bash -n "$provisioner"
           sed \
             -e "s|^RELEASE_TAG=.*|RELEASE_TAG=\"$RELEASE_TAG\"|" \
-            -e "s|^RELEASE_APK_NAME=.*|RELEASE_APK_NAME=\"$APK_NAME\"|" \
+            -e "s|^RELEASE_APK_NAME=.*|RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"|" \
             -e "s|^PROVISION_COMMIT=.*|PROVISION_COMMIT=\"$SOURCE_COMMIT\"|" \
             scripts/install.sh > "$installer"
           chmod +x "$installer"
           bash -n "$installer"
           grep -Fq "RELEASE_TAG=\"$RELEASE_TAG\"" "$installer"
-          grep -Fq "RELEASE_APK_NAME=\"$APK_NAME\"" "$installer"
+          grep -Fq "RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"" "$installer"
           grep -Fq "PROVISION_COMMIT=\"$SOURCE_COMMIT\"" "$installer"
           grep -Fq "RELEASE_HELPER_BUILD_ID=\"$HELPER_BUILD_ID\"" "$provisioner"
 
@@ -382,10 +421,15 @@ jobs:
           From macOS, Linux, Git Bash, or WSL, run:
 
           \`\`\`sh
-          curl -fsSL https://github.com/maxlyth/ha-paneld/releases/download/$RELEASE_TAG/ha-paneld-installer-$RELEASE_TAG.sh | bash
+          curl -fsSL https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/ha-paneld-installer-$RELEASE_TAG.sh | bash
           \`\`\`
 
-          The \`$APK_NAME\` asset is for manual or on-device sideloading. After installing it, open ha-paneld and complete the on-panel setup.
+          ## Which APK
+
+          This release carries two APKs, because the app is moving to a new application id and Android treats a new application id as a new app.
+
+          - \`$SUCCESSOR_APK_NAME\` is the app. Install this one on a new panel, or for manual or on-device sideloading. After installing it, open the app and complete the on-panel setup.
+          - \`$BRIDGE_APK_NAME\` keeps the previous application id. A panel already running an earlier version updates to it in place and then moves itself across to the new one. You do not need to install it by hand.
 
           EOF
           cat "$changelog_body" >> release-input/release-body.md
@@ -402,6 +446,7 @@ jobs:
             ha-paneld-unsigned.apk \
             hapaneld-helper-arm64-v8a \
             hapaneld-helper-armeabi-v7a \
+            panel-assistant-unsigned.apk \
             profile-editor-runtime.cdx.json \
             release-body.md)
           actual=$(find release-input -maxdepth 1 -type f -printf '%f\n' | sort)
@@ -412,7 +457,7 @@ jobs:
           fi
           (
             cd release-input
-            sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py "ha-paneld-installer-${RELEASE_TAG}.sh" "ha-paneld-provision-${RELEASE_TAG}.sh" ha-paneld-unsigned.apk hapaneld-helper-arm64-v8a hapaneld-helper-armeabi-v7a profile-editor-runtime.cdx.json release-body.md > MANIFEST.sha256
+            sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py "ha-paneld-installer-${RELEASE_TAG}.sh" "ha-paneld-provision-${RELEASE_TAG}.sh" ha-paneld-unsigned.apk hapaneld-helper-arm64-v8a hapaneld-helper-armeabi-v7a panel-assistant-unsigned.apk profile-editor-runtime.cdx.json release-body.md > MANIFEST.sha256
           )
           sha256=$(sha256sum release-input/MANIFEST.sha256 | cut -d' ' -f1)
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
@@ -467,6 +512,7 @@ jobs:
             ha-paneld-unsigned.apk \
             hapaneld-helper-arm64-v8a \
             hapaneld-helper-armeabi-v7a \
+            panel-assistant-unsigned.apk \
             profile-editor-runtime.cdx.json \
             release-body.md)
           actual=$(find release-input -maxdepth 1 -type f -printf '%f\n' | sort)
@@ -523,8 +569,8 @@ jobs:
           chmod 600 "$keystore"
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
-          unsigned_apk=release-input/ha-paneld-unsigned.apk
           apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           android_sbom_name="ha-paneld-${RELEASE_TAG}-android-gradle-runtime.cdx.json"
           profile_editor_sbom_name="ha-paneld-${RELEASE_TAG}-profile-editor-runtime.cdx.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
@@ -532,57 +578,70 @@ jobs:
           helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
           signed_apk="dist/$apk_name"
           apk_idsig="$signed_apk.idsig"
+          expected_version_name="${RELEASE_TAG#v}"
+          expected_signer_digest=ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339
           /usr/bin/install -d -m 0755 dist
 
-          "$build_tools/apksigner" sign \
-            --ks "$keystore" \
-            --ks-pass "pass:$KEYSTORE_PASSWORD" \
-            --ks-key-alias "$KEY_ALIAS" \
-            --key-pass "pass:$KEY_PASSWORD" \
-            --out "$signed_apk" \
-            "$unsigned_apk"
-          if [ ! -f "$apk_idsig" ] || [ -L "$apk_idsig" ]; then
-            echo "::error::APK Signature Scheme v4 sidecar is not one regular nofollow file."
-            exit 1
-          fi
-          idsig_size=$(/usr/bin/stat --format='%s' "$apk_idsig")
-          if [ "$idsig_size" -le 0 ] || [ "$idsig_size" -gt 1048576 ]; then
-            echo "::error::APK Signature Scheme v4 sidecar is empty or exceeds 1 MiB."
-            exit 1
-          fi
-          "$build_tools/apksigner" verify \
-            --v4-signature-file "$apk_idsig" \
-            --verbose \
-            --print-certs \
-            "$signed_apk"
-          "$build_tools/zipalign" -c -P 16 4 "$signed_apk"
-          /usr/bin/chmod 0644 "$signed_apk" "$apk_idsig"
+          # Both identities are signed by the one release key, and each asserts its own package. The
+          # shared signer is what makes the handover possible: the bridge can only install the
+          # successor, and later hand it privileged operations, because they share a certificate.
+          sign_identity() {
+            unsigned_apk=$1
+            identity_apk_name=$2
+            expected_package_name=$3
+            identity_signed_apk="dist/$identity_apk_name"
+            identity_idsig="$identity_signed_apk.idsig"
 
-          badging=$("$build_tools/aapt" dump badging "$signed_apk")
-          package_line=${badging%%$'\n'*}
-          package_name=$(printf '%s\n' "$package_line" | sed -n "s/.* name='\([^']*\)'.*/\1/p")
-          version_name=$(printf '%s\n' "$package_line" | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")
-          expected_version_name="${RELEASE_TAG#v}"
-          if [ "$package_name" != "io.github.maxlyth.hapaneld" ]; then
-            echo "::error::Signed APK package is '$package_name', expected 'io.github.maxlyth.hapaneld'."
-            exit 1
-          fi
-          if [ "$version_name" != "$expected_version_name" ]; then
-            echo "::error::Signed APK versionName is '$version_name', expected '$expected_version_name' from the tag."
-            exit 1
-          fi
+            "$build_tools/apksigner" sign \
+              --ks "$keystore" \
+              --ks-pass "pass:$KEYSTORE_PASSWORD" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass "pass:$KEY_PASSWORD" \
+              --out "$identity_signed_apk" \
+              "$unsigned_apk"
+            if [ ! -f "$identity_idsig" ] || [ -L "$identity_idsig" ]; then
+              echo "::error::APK Signature Scheme v4 sidecar is not one regular nofollow file."
+              exit 1
+            fi
+            idsig_size=$(/usr/bin/stat --format='%s' "$identity_idsig")
+            if [ "$idsig_size" -le 0 ] || [ "$idsig_size" -gt 1048576 ]; then
+              echo "::error::APK Signature Scheme v4 sidecar is empty or exceeds 1 MiB."
+              exit 1
+            fi
+            "$build_tools/apksigner" verify \
+              --v4-signature-file "$identity_idsig" \
+              --verbose \
+              --print-certs \
+              "$identity_signed_apk"
+            "$build_tools/zipalign" -c -P 16 4 "$identity_signed_apk"
+            /usr/bin/chmod 0644 "$identity_signed_apk" "$identity_idsig"
 
-          mapfile -t signer_digests < <("$build_tools/apksigner" verify --v4-signature-file "$apk_idsig" --print-certs "$signed_apk" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
-          if [ "${#signer_digests[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one APK signer, found ${#signer_digests[@]}."
-            exit 1
-          fi
-          signer_digest=$(printf '%s' "${signer_digests[0]}" | tr '[:upper:]' '[:lower:]')
-          expected_signer_digest=ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339
-          if [ "$signer_digest" != "$expected_signer_digest" ]; then
-            echo "::error::Signed APK certificate SHA-256 is '$signer_digest', expected '$expected_signer_digest'."
-            exit 1
-          fi
+            badging=$("$build_tools/aapt" dump badging "$identity_signed_apk")
+            package_line=${badging%%$'\n'*}
+            package_name=$(printf '%s\n' "$package_line" | sed -n "s/.* name='\([^']*\)'.*/\1/p")
+            version_name=$(printf '%s\n' "$package_line" | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")
+            if [ "$package_name" != "$expected_package_name" ]; then
+              echo "::error::Signed APK $identity_apk_name package is '$package_name', expected '$expected_package_name'."
+              exit 1
+            fi
+            if [ "$version_name" != "$expected_version_name" ]; then
+              echo "::error::Signed APK $identity_apk_name versionName is '$version_name', expected '$expected_version_name' from the tag."
+              exit 1
+            fi
+
+            mapfile -t signer_digests < <("$build_tools/apksigner" verify --v4-signature-file "$identity_idsig" --print-certs "$identity_signed_apk" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
+            if [ "${#signer_digests[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one APK signer for $identity_apk_name, found ${#signer_digests[@]}."
+              exit 1
+            fi
+            signer_digest=$(printf '%s' "${signer_digests[0]}" | tr '[:upper:]' '[:lower:]')
+            if [ "$signer_digest" != "$expected_signer_digest" ]; then
+              echo "::error::Signed APK $identity_apk_name certificate SHA-256 is '$signer_digest', expected '$expected_signer_digest'."
+              exit 1
+            fi
+          }
+          sign_identity release-input/ha-paneld-unsigned.apk "$apk_name" io.github.maxlyth.hapaneld
+          sign_identity release-input/panel-assistant-unsigned.apk "$successor_apk_name" io.panelassistant.android
 
           cp release-input/android-gradle-runtime.cdx.json "dist/$android_sbom_name"
           cp release-input/profile-editor-runtime.cdx.json "dist/$profile_editor_sbom_name"
@@ -594,11 +653,13 @@ jobs:
           chmod +x "dist/$provisioner_name"
           chmod +x "dist/$helper_arm_name" "dist/$helper_arm64_name"
           (cd dist && sha256sum "$apk_name" > "$apk_name.sha256")
+          (cd dist && sha256sum "$successor_apk_name" > "$successor_apk_name.sha256")
           (cd dist && sha256sum "$provisioner_name" > "$provisioner_name.sha256")
           (cd dist && sha256sum "$helper_arm_name" > "$helper_arm_name.sha256")
           (cd dist && sha256sum "$helper_arm64_name" > "$helper_arm64_name.sha256")
 
           echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+          echo "successor_apk_name=$successor_apk_name" >> "$GITHUB_OUTPUT"
           echo "android_sbom_name=$android_sbom_name" >> "$GITHUB_OUTPUT"
           echo "profile_editor_sbom_name=$profile_editor_sbom_name" >> "$GITHUB_OUTPUT"
 
@@ -615,7 +676,9 @@ jobs:
 
           workspace=$(/usr/bin/pwd -P)
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
-          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+          # The descriptor describes the identity the integration installs, which is the successor.
+          # Its own asset name is unchanged: shipped integration releases look it up by that name.
+          apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           descriptor_stage=$(/usr/bin/mktemp -d "$RUNNER_TEMP/install-descriptor.XXXXXX")
           sandbox_source=$(/usr/bin/mktemp "$RUNNER_TEMP/install-descriptor-sandbox.XXXXXX.c")
@@ -789,12 +852,15 @@ jobs:
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
           apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
           helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
           helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
           signed_apk="dist/$apk_name"
           apk_idsig="$signed_apk.idsig"
+          successor_signed_apk="dist/$successor_apk_name"
+          successor_apk_idsig="$successor_signed_apk.idsig"
           proof_dir=$(/usr/bin/mktemp -d "$RUNNER_TEMP/release-proof.XXXXXX")
           keystore="$proof_dir/release-keystore"
           pkcs12="$proof_dir/release-key.p12"
@@ -809,41 +875,54 @@ jobs:
           }
           trap cleanup_release_proofs EXIT
 
-          if [ ! -f "$signed_apk" ] || [ -L "$signed_apk" ]; then
-            echo "::error::Signed release APK is not one regular nofollow file."
-            exit 1
-          fi
-          apk_size=$(/usr/bin/stat --format='%s' "$signed_apk")
-          if [ "$apk_size" -le 0 ] || [ "$apk_size" -gt 67108864 ]; then
-            echo "::error::Signed release APK is empty or exceeds the 64 MiB installer limit."
-            exit 1
-          fi
-          "$build_tools/apksigner" verify \
-            --v4-signature-file "$apk_idsig" \
-            --verbose \
-            --print-certs \
-            "$signed_apk"
-          mapfile -t signer_digests < <("$build_tools/apksigner" verify --v4-signature-file "$apk_idsig" --print-certs "$signed_apk" | /usr/bin/sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
-          if [ "${#signer_digests[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one APK signer, found ${#signer_digests[@]}."
-            exit 1
-          fi
-          signer_digest=$(/usr/bin/printf '%s' "${signer_digests[0]}" | /usr/bin/tr '[:upper:]' '[:lower:]')
           expected_signer_digest=ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339
-          if [ "$signer_digest" != "$expected_signer_digest" ]; then
-            echo "::error::Signed APK certificate SHA-256 does not match the release authority."
-            exit 1
-          fi
 
-          apk_sha256=$(/usr/bin/sha256sum "$signed_apk" | /usr/bin/cut -d' ' -f1)
-          /usr/bin/printf '%s  %s\n' "$apk_sha256" "$apk_name" > "$proof_dir/$apk_name.sha256"
-          if ! /usr/bin/cmp --silent "$proof_dir/$apk_name.sha256" "dist/$apk_name.sha256" || \
-             ! (cd dist && /usr/bin/sha256sum --strict --check "$apk_name.sha256"); then
-            echo "::error::Signed APK checksum record does not bind the exact APK."
-            exit 1
-          fi
+          # Every published APK is authenticated the same way, whichever identity it carries.
+          authenticate_apk() {
+            subject_apk=$1
+            subject_apk_name=$2
+            subject_idsig="$subject_apk.idsig"
+            if [ ! -f "$subject_apk" ] || [ -L "$subject_apk" ]; then
+              echo "::error::Signed release APK is not one regular nofollow file: $subject_apk_name"
+              exit 1
+            fi
+            subject_size=$(/usr/bin/stat --format='%s' "$subject_apk")
+            if [ "$subject_size" -le 0 ] || [ "$subject_size" -gt 67108864 ]; then
+              echo "::error::Signed release APK is empty or exceeds the 64 MiB installer limit: $subject_apk_name"
+              exit 1
+            fi
+            "$build_tools/apksigner" verify \
+              --v4-signature-file "$subject_idsig" \
+              --verbose \
+              --print-certs \
+              "$subject_apk"
+            mapfile -t signer_digests < <("$build_tools/apksigner" verify --v4-signature-file "$subject_idsig" --print-certs "$subject_apk" | /usr/bin/sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
+            if [ "${#signer_digests[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one APK signer for $subject_apk_name, found ${#signer_digests[@]}."
+              exit 1
+            fi
+            signer_digest=$(/usr/bin/printf '%s' "${signer_digests[0]}" | /usr/bin/tr '[:upper:]' '[:lower:]')
+            if [ "$signer_digest" != "$expected_signer_digest" ]; then
+              echo "::error::Signed APK certificate SHA-256 does not match the release authority: $subject_apk_name"
+              exit 1
+            fi
+            subject_sha256=$(/usr/bin/sha256sum "$subject_apk" | /usr/bin/cut -d' ' -f1)
+            /usr/bin/printf '%s  %s\n' "$subject_sha256" "$subject_apk_name" > "$proof_dir/$subject_apk_name.sha256"
+            if ! /usr/bin/cmp --silent "$proof_dir/$subject_apk_name.sha256" "dist/$subject_apk_name.sha256" || \
+               ! (cd dist && /usr/bin/sha256sum --strict --check "$subject_apk_name.sha256"); then
+              echo "::error::Signed APK checksum record does not bind the exact APK: $subject_apk_name"
+              exit 1
+            fi
+          }
+          authenticate_apk "$signed_apk" "$apk_name"
+          authenticate_apk "$successor_signed_apk" "$successor_apk_name"
 
-          badging=$("$build_tools/aapt" dump badging "$signed_apk")
+          apk_size=$(/usr/bin/stat --format='%s' "$successor_signed_apk")
+          apk_sha256=$(/usr/bin/sha256sum "$successor_signed_apk" | /usr/bin/cut -d' ' -f1)
+
+          # The descriptor binds the successor, so the manifest and badging contracts below are read
+          # from that APK. The bridge is authenticated above and published; it is not described.
+          badging=$("$build_tools/aapt" dump badging "$successor_signed_apk")
           mapfile -t package_lines < <(/usr/bin/grep '^package:' <<<"$badging")
           mapfile -t sdk_lines < <(/usr/bin/grep '^sdkVersion:' <<<"$badging")
           mapfile -t launch_lines < <(/usr/bin/grep '^launchable-activity:' <<<"$badging")
@@ -860,7 +939,9 @@ jobs:
           launch_activity=$(/usr/bin/sed -n "s/.* name='\([^']*\)'.*/\1/p" <<<"${launch_lines[0]}")
           mapfile -t supported_abis < <(/usr/bin/grep -o "'[^']*'" <<<"${native_lines[0]}" | /usr/bin/tr -d "'" | /usr/bin/sort)
           expected_version_name="${RELEASE_TAG#v}"
-          if [ "$package_name" != io.github.maxlyth.hapaneld ] || \
+          # The launcher class stays in the Gradle namespace, which does not move with the
+          # applicationId, so the successor APK reports the same launchable-activity as the bridge.
+          if [ "$package_name" != io.panelassistant.android ] || \
              [ "$version_name" != "$expected_version_name" ] || \
              [ "$launch_activity" != io.github.maxlyth.hapaneld.MainActivity ] || \
              [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]] || [ "${#version_code}" -gt 10 ] || \
@@ -872,7 +953,7 @@ jobs:
             exit 1
           fi
 
-          xmltree=$("$build_tools/aapt" dump xmltree "$signed_apk" AndroidManifest.xml)
+          xmltree=$("$build_tools/aapt" dump xmltree "$successor_signed_apk" AndroidManifest.xml)
           database_contracts=$(/usr/bin/printf '%s\n' "$xmltree" | /usr/bin/awk -v wanted='io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY' '
             function quoted(line, start, rest, stop) {
               start=index(line, "=\""); if (!start) return ""
@@ -946,7 +1027,7 @@ jobs:
             exit 1
           fi
           /usr/bin/jq -cnS \
-            --arg apk_name "$apk_name" \
+            --arg apk_name "$successor_apk_name" \
             --arg apk_sha256 "$apk_sha256" \
             --argjson apk_size "$apk_size" \
             --arg database_compatibility "$database_contract" \
@@ -954,7 +1035,7 @@ jobs:
             --arg release_tag "$RELEASE_TAG" \
             --argjson version_code "$version_code" \
             --arg version_name "$version_name" \
-            '{apkName:$apk_name,apkSha256:$apk_sha256,apkSize:$apk_size,databaseCompatibility:$database_compatibility,launchComponent:"io.github.maxlyth.hapaneld/.MainActivity",minSdk:$min_sdk,packageId:"io.github.maxlyth.hapaneld",releaseTag:$release_tag,schema:"io.github.maxlyth.hapaneld.install.v1",signerCertificateSha256:"ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",supportedAbis:["arm64-v8a","armeabi-v7a"],versionCode:$version_code,versionName:$version_name}' \
+            '{apkName:$apk_name,apkSha256:$apk_sha256,apkSize:$apk_size,databaseCompatibility:$database_compatibility,launchComponent:"io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity",minSdk:$min_sdk,packageId:"io.panelassistant.android",releaseTag:$release_tag,schema:"io.github.maxlyth.hapaneld.install.v1",signerCertificateSha256:"ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",supportedAbis:["arm64-v8a","armeabi-v7a"],versionCode:$version_code,versionName:$version_name}' \
             > "$expected_descriptor"
           if ! /usr/bin/cmp --silent "$expected_descriptor" "dist/$descriptor_name"; then
             echo "::error::Install descriptor is not the exact canonical 13-field APK contract."
@@ -1027,7 +1108,7 @@ jobs:
 
           /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$descriptor_name.sig" "dist/$descriptor_name"
           /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig" "dist/$descriptor_name"
-          for checksum_name in "$apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
+          for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
             /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$checksum_name.sig" "dist/$checksum_name"
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
           done
@@ -1038,18 +1119,24 @@ jobs:
         with:
           subject-path: dist/*
 
+      # One SBOM describes both APKs: they are the same dependency graph built twice under two
+      # application ids, so each is attested against it as its own subject.
       - name: Attest Android and Gradle runtime SBOM
         continue-on-error: true
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: dist/${{ steps.asset.outputs.apk_name }}
+          subject-path: |
+            dist/${{ steps.asset.outputs.apk_name }}
+            dist/${{ steps.asset.outputs.successor_apk_name }}
           sbom-path: dist/${{ steps.asset.outputs.android_sbom_name }}
 
       - name: Attest profile-editor runtime SBOM
         continue-on-error: true
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: dist/${{ steps.asset.outputs.apk_name }}
+          subject-path: |
+            dist/${{ steps.asset.outputs.apk_name }}
+            dist/${{ steps.asset.outputs.successor_apk_name }}
           sbom-path: dist/${{ steps.asset.outputs.profile_editor_sbom_name }}
 
       - name: Final exact verification before publication
@@ -1057,6 +1144,8 @@ jobs:
           set -euo pipefail
           apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
           apk_idsig="dist/$apk_name.idsig"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          successor_apk_idsig="dist/$successor_apk_name.idsig"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
           helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
@@ -1077,6 +1166,10 @@ jobs:
             "$apk_name.sha256" \
             "$apk_name.sha256.sig" \
             "ha-paneld-${RELEASE_TAG}-profile-editor-runtime.cdx.json" \
+            "$successor_apk_name" \
+            "$successor_apk_name.idsig" \
+            "$successor_apk_name.sha256" \
+            "$successor_apk_name.sha256.sig" \
             "$provisioner_name" \
             "$provisioner_name.sha256" \
             "$provisioner_name.sha256.sig" | /usr/bin/sort)
@@ -1093,11 +1186,13 @@ jobs:
             fi
           done <<<"$expected"
 
-          idsig_size=$(/usr/bin/stat --format='%s' "$apk_idsig")
-          if [ "$idsig_size" -le 0 ] || [ "$idsig_size" -gt 1048576 ]; then
-            echo "::error::Final APK Signature Scheme v4 sidecar is empty or exceeds 1 MiB."
-            exit 1
-          fi
+          for sidecar in "$apk_idsig" "$successor_apk_idsig"; do
+            idsig_size=$(/usr/bin/stat --format='%s' "$sidecar")
+            if [ "$idsig_size" -le 0 ] || [ "$idsig_size" -gt 1048576 ]; then
+              echo "::error::Final APK Signature Scheme v4 sidecar is empty or exceeds 1 MiB: $sidecar"
+              exit 1
+            fi
+          done
 
           final_dir=$(/usr/bin/mktemp -d "$RUNNER_TEMP/final-release-proof.XXXXXX")
           trap '/usr/bin/rm -rf -- "$final_dir"' EXIT
@@ -1116,35 +1211,51 @@ jobs:
             exit 1
           fi
 
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
-            --v4-signature-file "$apk_idsig" \
-            --verbose \
-            --print-certs \
-            "dist/$apk_name"
-          mapfile -t signer_digests < <("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --v4-signature-file "$apk_idsig" --print-certs "dist/$apk_name" | /usr/bin/sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
-          signer_digest=$(/usr/bin/printf '%s' "${signer_digests[0]:-}" | /usr/bin/tr '[:upper:]' '[:lower:]')
-          if [ "${#signer_digests[@]}" -ne 1 ] || \
-             [ "$signer_digest" != ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339 ]; then
-            echo "::error::Final release APK signer is not the release authority."
+          # Both published APKs are re-verified against the one release authority. A single signer
+          # across the two identities is what lets the bridge install and trust the successor.
+          for subject in "$apk_name" "$successor_apk_name"; do
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+              --v4-signature-file "dist/$subject.idsig" \
+              --verbose \
+              --print-certs \
+              "dist/$subject"
+            mapfile -t signer_digests < <("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --v4-signature-file "dist/$subject.idsig" --print-certs "dist/$subject" | /usr/bin/sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
+            signer_digest=$(/usr/bin/printf '%s' "${signer_digests[0]:-}" | /usr/bin/tr '[:upper:]' '[:lower:]')
+            if [ "${#signer_digests[@]}" -ne 1 ] || \
+               [ "$signer_digest" != ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339 ]; then
+              echo "::error::Final release APK signer is not the release authority: $subject"
+              exit 1
+            fi
+          done
+
+          # The two APKs must be distinct artifacts carrying distinct ids. Identical bytes would mean
+          # the identity property was dropped and the release ships one app under two names.
+          final_bridge_package=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "dist/$apk_name" | /usr/bin/sed -n "1s/.* name='\([^']*\)'.*/\1/p")
+          final_successor_package=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "dist/$successor_apk_name" | /usr/bin/sed -n "1s/.* name='\([^']*\)'.*/\1/p")
+          if [ "$final_bridge_package" != io.github.maxlyth.hapaneld ] || \
+             [ "$final_successor_package" != io.panelassistant.android ]; then
+            echo "::error::Final release APKs do not carry one bridge and one successor application id."
             exit 1
           fi
 
-          for checksum_name in "$apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
+          for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
             (cd dist && /usr/bin/sha256sum --strict --check "$checksum_name")
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
           done
           /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig" "dist/$descriptor_name"
-          final_apk_sha256=$(/usr/bin/sha256sum "dist/$apk_name" | /usr/bin/cut -d' ' -f1)
-          final_apk_size=$(/usr/bin/stat --format='%s' "dist/$apk_name")
+          # The descriptor binds the successor, so it is checked against that APK's bytes.
+          final_apk_sha256=$(/usr/bin/sha256sum "dist/$successor_apk_name" | /usr/bin/cut -d' ' -f1)
+          final_apk_size=$(/usr/bin/stat --format='%s' "dist/$successor_apk_name")
           if ! /usr/bin/jq -e \
-            --arg apk_name "$apk_name" \
+            --arg apk_name "$successor_apk_name" \
             --arg apk_sha256 "$final_apk_sha256" \
             --argjson apk_size "$final_apk_size" \
             --arg release_tag "$RELEASE_TAG" \
             'keys == ["apkName","apkSha256","apkSize","databaseCompatibility","launchComponent","minSdk","packageId","releaseTag","schema","signerCertificateSha256","supportedAbis","versionCode","versionName"] and
              .apkName == $apk_name and .apkSha256 == $apk_sha256 and .apkSize == $apk_size and
              .releaseTag == $release_tag and .schema == "io.github.maxlyth.hapaneld.install.v1" and
-             .packageId == "io.github.maxlyth.hapaneld" and
+             .packageId == "io.panelassistant.android" and
+             .launchComponent == "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity" and
              .signerCertificateSha256 == "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"' \
             "dist/$descriptor_name" >/dev/null; then
             echo "::error::Final signed descriptor does not bind the exact final release APK."
@@ -1159,3 +1270,38 @@ jobs:
           body_path: release-input/release-body.md
           # Tags with a suffix (e.g. v0.5.0-rc1) publish as pre-releases.
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+
+      # Every panel in the field running 0.9.7 or 0.9.8-rc1 resolves its update by taking the FIRST
+      # `.apk` asset of the release, whatever it is called. If the successor ever sorted first those
+      # panels would be handed a package Android cannot install over the one they are running, and
+      # they would stop updating with no way to recover remotely. GitHub returns release assets
+      # ordered by name and `ha-paneld-` sorts before `panel-assistant-`, but that is a property of
+      # the API rather than a promise, so it is asserted against the published release itself.
+      - name: Verify shipped updaters resolve the bridge APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          if ! published_asset_names=$(
+            gh api "repos/$RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG" \
+              --jq '.assets[].name | select(endswith(".apk"))'
+          ); then
+            echo "::error::Could not read the published release to verify its asset order."
+            exit 1
+          fi
+          mapfile -t published_apks <<<"$published_asset_names"
+          if [ "${#published_apks[@]}" -ne 2 ]; then
+            echo "::error::Published release carries ${#published_apks[@]} APK assets, expected exactly 2."
+            /usr/bin/printf '%s\n' "${published_apks[@]:-}"
+            exit 1
+          fi
+          if [ "${published_apks[0]}" != "$bridge_apk_name" ]; then
+            echo "::error::First published .apk asset is '${published_apks[0]}', expected the bridge '$bridge_apk_name'. Panels on an earlier release resolve the first .apk and would be handed the successor."
+            exit 1
+          fi
+          if [ "${published_apks[1]}" != "$successor_apk_name" ]; then
+            echo "::error::Second published .apk asset is '${published_apks[1]}', expected the successor '$successor_apk_name'."
+            exit 1
+          fi

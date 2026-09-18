@@ -7,6 +7,11 @@
 # The APK is downloaded once (for --latest) and reused for the whole fleet, rather than re-fetched
 # per panel.
 #
+# A release publishes one APK per installable identity, and a panel crosses the application-id change
+# by running both for one handover. Each panel that still carries the old package therefore gets the
+# bridge updated in place and started first, then the successor installed and provisioned; the
+# successor performs the handover and removes the bridge, and this script verifies that it did.
+#
 # Usage:
 #   scripts/update-fleet.sh [--jobs N] [provision-args...] -- <ip|ip:port> [<ip> ...]
 #   scripts/update-fleet.sh --jobs 2 --latest -- 192.168.1.10 192.168.1.11:5555
@@ -26,10 +31,19 @@ else B=; D=; X=; RED=; GRN=; YEL=; fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROVISION="$HERE/provision.sh"
-REPO="maxlyth/ha-paneld"
+REPO="panel-assistant/android"
+PKG="io.panelassistant.android"
+LEGACY_PKG="io.github.maxlyth.hapaneld"
+# How long a panel is given to start the updated bridge, and to complete the handover and remove it.
+BRIDGE_START_TIMEOUT="${HAPANELD_FLEET_BRIDGE_START_SECONDS:-60}"
+BRIDGE_REMOVAL_TIMEOUT="${HAPANELD_FLEET_MIGRATION_SECONDS:-180}"
 valid_release_tag() { printf '%s\n' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; }
-release_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk\n' "$1"; }
-release_apk_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$(release_apk_name "$1")"; }
+release_asset_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$2"; }
+release_apk_name() { printf 'panel-assistant-%s-manual-setup-required.apk\n' "$1"; }
+# The bridge keeps the historical asset name so a shipped updater still resolves it.
+bridge_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk\n' "$1"; }
+release_apk_url() { release_asset_url "$1" "$(release_apk_name "$1")"; }
+bridge_apk_url() { release_asset_url "$1" "$(bridge_apk_name "$1")"; }
 [ -f "$PROVISION" ] || { echo "${RED}provision.sh not found next to this script${X}" >&2; exit 1; }
 TEMP_PATHS=()
 cleanup() { local path; for path in "${TEMP_PATHS[@]}"; do rm -rf "$path"; done; }
@@ -185,21 +199,31 @@ if [ "$have_apk" = 0 ]; then
     # Split the GitHub release array at each top-level release URL, retain the first published
     # release record of either kind, then extract its tag and APK from that record only.
     record="$(printf '%s' "$json" | tr -d '\r\n' | \
-      sed 's#{[[:space:]]*"url":[[:space:]]*"https://api.github.com/repos/maxlyth/ha-paneld/releases/\([0-9][0-9]*\)"#\
+      sed 's#{[[:space:]]*"url":[[:space:]]*"https://api.github.com/repos/'"$REPO"'/releases/\([0-9][0-9]*\)"#\
 &#g' | \
       awk '/"draft":[[:space:]]*false/ && !found { print; found=1 }')"
   else
     record="$json"
   fi
   tag="$(printf '%s' "$record" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
-  url="$(printf '%s' "$record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | head -1 | cut -d'"' -f4 || true)"
+  # A release publishes one APK per installable identity, so each asset is taken by its exact
+  # published URL rather than by being the first `.apk` in the record.
+  urls="$(printf '%s' "$record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | cut -d'"' -f4 || true)"
   if [ -n "$tag" ] && valid_release_tag "$tag"; then
     asset="$(release_apk_name "$tag")"
     expected_url="$(release_apk_url "$tag")"
-    [ "$url" = "$expected_url" ] && curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$url" -o "$dir/$asset" || true
+    printf '%s\n' "$urls" | grep -Fxq "$expected_url" && curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$expected_url" -o "$dir/$asset" || true
+    bridge_asset="$(bridge_apk_name "$tag")"
+    bridge_expected_url="$(bridge_apk_url "$tag")"
+    printf '%s\n' "$urls" | grep -Fxq "$bridge_expected_url" && curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$bridge_expected_url" -o "$dir/$bridge_asset" || true
   fi
   [ -n "$asset" ] && [ -s "$dir/$asset" ] && APK="$dir/$asset" || APK=""
   [ -n "$APK" ] || { echo "${RED}could not fetch the latest release APK from the expected GitHub release path${X}" >&2; exit 1; }
+  [ -n "${bridge_asset:-}" ] && [ -s "$dir/$bridge_asset" ] && BRIDGE_APK="$dir/$bridge_asset" || BRIDGE_APK=""
+  # A release published before, or after, the two-identity window carries no bridge asset. That is
+  # only a problem for a panel that still runs the old application id, and each such panel says so
+  # for itself below, so this is a warning rather than a refusal of the whole fleet.
+  [ -n "$BRIDGE_APK" ] || echo "${YEL}⚠ this release publishes no bridge APK; a panel still on the old application id cannot be carried across by this run${X}" >&2
   # Strip channel selectors, then pin every panel to the exact one downloaded APK.
   NEW=(); for a in "${PARGS[@]}"; do case "$a" in --latest|--prerelease|--pre) ;; *) NEW+=("$a") ;; esac; done
   PARGS=("${NEW[@]}" --apk "$APK" --release-tag "$tag")
@@ -248,27 +272,94 @@ if [ -z "$AAPT" ] && [ -z "$release_tag" ]; then
   echo "Official releases are authenticated by their signed checksum and do not need it." >&2
   exit 1
 fi
-signer_output="$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null)" || { echo "${RED}fleet APK signature verification failed${X}" >&2; exit 1; }
-signer_lines="$(printf '%s\n' "$signer_output" | sed -nE 's/^Signer #[0-9]+ certificate SHA-256 digest: *//p' | tr -d ':\r' | tr '[:upper:]' '[:lower:]')"
-signer_count="$(printf '%s\n' "$signer_lines" | awk 'NF { count++ } END { print count + 0 }')"
 RELEASE_CERT_SHA256="ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
-[ "$signer_count" = 1 ] || {
-  echo "${RED}fleet APK must have exactly one signer${X}" >&2
-  echo "Got: ${signer_lines:-no signer} (count=$signer_count)" >&2
-  exit 1
+# Each artifact is authenticated against the identity it is supposed to carry. One tree builds both,
+# so a swapped pair passes every signer check and would install the wrong app on every panel.
+verify_fleet_artifact() {
+  local apk="$1" expected_package="$2" label="$3" signer_output signer_lines signer_count package_name apk_sha256
+  signer_output="$("$APKSIGNER" verify --print-certs "$apk" 2>/dev/null)" || { echo "${RED}fleet $label APK signature verification failed${X}" >&2; exit 1; }
+  signer_lines="$(printf '%s\n' "$signer_output" | sed -nE 's/^Signer #[0-9]+ certificate SHA-256 digest: *//p' | tr -d ':\r' | tr '[:upper:]' '[:lower:]')"
+  signer_count="$(printf '%s\n' "$signer_lines" | awk 'NF { count++ } END { print count + 0 }')"
+  [ "$signer_count" = 1 ] || {
+    echo "${RED}fleet $label APK must have exactly one signer${X}" >&2
+    echo "Got: ${signer_lines:-no signer} (count=$signer_count)" >&2
+    exit 1
+  }
+  if [ "$require_release_signer" = 1 ] && [ "$signer_lines" != "$RELEASE_CERT_SHA256" ]; then
+    echo "${RED}fleet $label APK does not use the required release signer${X}" >&2
+    echo "Expected: $RELEASE_CERT_SHA256" >&2
+    echo "Got: $signer_lines" >&2
+    exit 1
+  fi
+  if [ -n "$AAPT" ]; then
+    package_name="$("$AAPT" dump badging "$apk" 2>/dev/null | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1 || true)"
+    [ "$package_name" = "$expected_package" ] || { echo "${RED}fleet $label APK package mismatch: ${package_name:-unavailable} (expected $expected_package)${X}" >&2; exit 1; }
+  fi
+  apk_sha256="$(sha256sum "$apk" | awk '{print $1}')"
+  echo "${GRN}✓${X} fleet $label artifact signer ${signer_lines:0:12}… · sha256 $apk_sha256"
 }
-if [ "$require_release_signer" = 1 ] && [ "$signer_lines" != "$RELEASE_CERT_SHA256" ]; then
-  echo "${RED}fleet APK does not use the required release signer${X}" >&2
-  echo "Expected: $RELEASE_CERT_SHA256" >&2
-  echo "Got: $signer_lines" >&2
-  exit 1
-fi
-if [ -n "$AAPT" ]; then
-  package_name="$("$AAPT" dump badging "$APK" 2>/dev/null | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1 || true)"
-  [ "$package_name" = "io.github.maxlyth.hapaneld" ] || { echo "${RED}fleet APK package mismatch: ${package_name:-unavailable}${X}" >&2; exit 1; }
-fi
-apk_sha256="$(sha256sum "$APK" | awk '{print $1}')"
-echo "${GRN}✓${X} fleet artifact signer ${signer_lines:0:12}… · sha256 $apk_sha256"
+verify_fleet_artifact "$APK" "$PKG" successor
+[ -z "${BRIDGE_APK:-}" ] || verify_fleet_artifact "$BRIDGE_APK" "$LEGACY_PKG" bridge
+
+# Observations, never mutations: nothing below uninstalls a package or reboots a panel. A fleet
+# updater that strands a panel's launcher is worse than one that reports an unfinished handover.
+package_installed() {
+  local out
+  out="$(adb -s "$1" shell pm path "$2" 2>/dev/null | tr -d '\r')" || return 1
+  case "$out" in *package:/*) return 0 ;; esac
+  return 1
+}
+package_running() {
+  local out
+  out="$(adb -s "$1" shell pidof "$2" 2>/dev/null | tr -d '\r\n ')" || return 1
+  case "$out" in ''|*[!0-9]*) return 1 ;; esac
+  return 0
+}
+
+# Update and start the bridge before the successor arrives. `adb install -r` against the package the
+# panel already carries is an in-place update, never a first install, so the panel keeps its data and
+# its launcher throughout; it does leave the app in Android's stopped state, and a stopped bridge has
+# no running process to hand its state over from. A panel without the bridge skips straight ahead.
+run_bridge_phase() {
+  local target="$1" deadline
+  package_installed "$target" "$LEGACY_PKG" || return 0
+  if [ -z "${BRIDGE_APK:-}" ]; then
+    echo "${YEL}⚠ --apk supplies the successor only, so the bridge on this panel is not updated first — use a release download to carry it across${X}"
+    return 0
+  fi
+  echo "${B}🌉 bridge${X} ${D}$(basename "$BRIDGE_APK")${X}"
+  if ! adb -s "$target" install -r "$BRIDGE_APK" >/dev/null 2>&1; then
+    echo "${RED}✗ the bridge update failed; the panel keeps the app it already had${X}" >&2
+    return 1
+  fi
+  if ! package_installed "$target" "$LEGACY_PKG"; then
+    echo "${RED}✗ the bridge is absent after its own update reported success${X}" >&2
+    return 1
+  fi
+  adb -s "$target" shell am start -n "$LEGACY_PKG/.MainActivity" >/dev/null 2>&1 || true
+  deadline=$((SECONDS + BRIDGE_START_TIMEOUT))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if package_running "$target" "$LEGACY_PKG"; then return 0; fi
+    sleep 2
+  done
+  echo "${YEL}⚠ the bridge reported no running process within ${BRIDGE_START_TIMEOUT}s; continuing, and the app's own watchdog remains the fallback${X}"
+  return 0
+}
+
+# The successor removes the bridge once it has taken the panel over. This only observes that it did:
+# a re-run converges, so an unfinished handover is reported rather than forced.
+verify_bridge_removed() {
+  local target="$1" deadline
+  deadline=$((SECONDS + BRIDGE_REMOVAL_TIMEOUT))
+  while :; do
+    package_installed "$target" "$LEGACY_PKG" || return 0
+    [ "$SECONDS" -lt "$deadline" ] || break
+    sleep 5
+  done
+  echo "${RED}✗ $LEGACY_PKG is still installed ${BRIDGE_REMOVAL_TIMEOUT}s after the successor was provisioned${X}" >&2
+  echo "${D}   the handover may still be running; re-run this fleet update for the panel — it is idempotent${X}" >&2
+  return 1
+}
 
 run_dir="$(mktemp -d)"; TEMP_PATHS+=("$run_dir")
 targets=()
@@ -302,6 +393,10 @@ for p in "${PANELS[@]}"; do
     }
     trap 'stop_provisioner 130' INT
     trap 'stop_provisioner 143' TERM
+    if ! run_bridge_phase "$t"; then
+      echo 1 > "$run_dir/$index.status"
+      exit 1
+    fi
     # Job control assigns the provisioner its own process group even in this non-interactive worker.
     # Signalling that group owns synchronous adb/curl children as well as the subprocesses provision.sh
     # tracks explicitly, so interruption cannot wait indefinitely on or orphan a foreground mutation.
@@ -312,6 +407,7 @@ for p in "${PANELS[@]}"; do
     if wait "$provision_pid"; then status=0; else status=$?; fi
     provision_pid=""
     provision_pgid=""
+    if [ "$status" = 0 ] && ! verify_bridge_removed "$t"; then status=1; fi
     echo "$status" > "$run_dir/$index.status"
   ) > "$run_dir/$index.log" 2>&1 &
   pids+=("$!")

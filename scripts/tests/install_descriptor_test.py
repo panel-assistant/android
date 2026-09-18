@@ -14,13 +14,15 @@ descriptor = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(descriptor)
 
 TAG = "v1.2.3-rc1"
-APK_NAME = f"ha-paneld-{TAG}-manual-setup-required.apk"
+APK_NAME = f"panel-assistant-{TAG}-manual-setup-required.apk"
 BADGING = """\
-package: name='io.github.maxlyth.hapaneld' versionCode='701' versionName='1.2.3-rc1'
+package: name='io.panelassistant.android' versionCode='701' versionName='1.2.3-rc1' \
+platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' \
+compileSdkVersionCodename='17'
 sdkVersion:'26'
-launchable-activity: name='io.github.maxlyth.hapaneld.MainActivity' label='ha-paneld' icon=''
-native-code: 'armeabi-v7a' 'arm64-v8a'
-"""
+launchable-activity: name='io.github.maxlyth.hapaneld.MainActivity'  label='' icon=''
+native-code: 'arm64-v8a' 'armeabi-v7a'
+""".replace(" \\\n", " ")
 XMLTREE = """\
 E: manifest (line=2)
   E: application (line=8)
@@ -77,9 +79,13 @@ class InstallDescriptorTest(unittest.TestCase):
             "apkSha256": hashlib.sha256(self.apk.read_bytes()).hexdigest(),
             "apkSize": self.apk.stat().st_size,
             "databaseCompatibility": "hapaneld-db:v1:ha-paneld.db:11:14",
-            "launchComponent": "io.github.maxlyth.hapaneld/.MainActivity",
+            # Fully qualified: the `/.MainActivity` shorthand resolves against the applicationId,
+            # so under the successor id it would name a class that does not exist.
+            "launchComponent": (
+                "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity"
+            ),
             "minSdk": 26,
-            "packageId": "io.github.maxlyth.hapaneld",
+            "packageId": "io.panelassistant.android",
             "releaseTag": TAG,
             "schema": "io.github.maxlyth.hapaneld.install.v1",
             "signerCertificateSha256": (
@@ -111,7 +117,7 @@ class InstallDescriptorTest(unittest.TestCase):
 
     def test_release_tag_rejects_leading_zeroes_and_excessive_length(self):
         for release_tag in ("v01.2.3", "v1.02.3", "v1.2.03", "v1.2.3-" + "x" * 58):
-            invalid_apk = self.directory / f"ha-paneld-{release_tag}-manual-setup-required.apk"
+            invalid_apk = self.directory / f"panel-assistant-{release_tag}-manual-setup-required.apk"
             invalid_apk.write_bytes(self.apk.read_bytes())
             with self.subTest(release_tag=release_tag), self.assertRaisesRegex(
                 descriptor.DescriptorError,
@@ -126,10 +132,14 @@ class InstallDescriptorTest(unittest.TestCase):
 
     def test_package_platform_abis_and_launcher_are_closed(self):
         mutations = (
-            (BADGING.replace("io.github.maxlyth.hapaneld' versionCode", "example.foreign' versionCode"), "package ID"),
+            (BADGING.replace("io.panelassistant.android' versionCode", "example.foreign' versionCode"), "package ID"),
+            # The bridge id is a foreign id for this descriptor: a release that generated the
+            # descriptor from the bridge APK would hand the integration the package it is migrating
+            # away from, under the successor's asset name.
+            (BADGING.replace("io.panelassistant.android' versionCode", "io.github.maxlyth.hapaneld' versionCode"), "package ID"),
             (BADGING.replace("sdkVersion:'26'", "sdkVersion:'0'"), "minSdk"),
             (BADGING.replace(" 'arm64-v8a'", " 'x86_64'"), "ABI set"),
-            (BADGING.replace(".MainActivity' label", ".DashboardActivity' label"), "launcher"),
+            (BADGING.replace(".MainActivity'  label", ".DashboardActivity'  label"), "launcher"),
         )
         for badging, message in mutations:
             with self.subTest(message=message), self.assertRaisesRegex(descriptor.DescriptorError, message):

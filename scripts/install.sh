@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
 # ha-paneld one-line installer — no repo checkout needed. Run:
-#   curl -fsSL https://raw.githubusercontent.com/maxlyth/ha-paneld/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash
 #
 # To follow the newest published release, including release candidates, add --prerelease:
-#   curl -fsSL https://raw.githubusercontent.com/maxlyth/ha-paneld/main/scripts/install.sh | bash -s -- --prerelease
+#   curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash -s -- --prerelease
 #
 # Preflights adb + curl (with per-OS fix-it hints), prompts for the panel IP (and optional id / MQTT
 # broker), downloads the release, and provisions the panel. On rooted panels the authenticated
 # provisioner also installs or upgrades the matching sealed root-helper asset. No parameters required
 # (except --prerelease). Advanced checkout-free provisioning is also available with:
-#   curl -fsSL https://raw.githubusercontent.com/maxlyth/ha-paneld/main/scripts/install.sh |
+#   curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh |
 #     bash -s -- --provision panel-ip:5555 [provision options]
 # The release workflow fills RELEASE_TAG, RELEASE_APK_NAME and PROVISION_COMMIT
 # in its downloadable copy so an installer attached to a historical release always installs that exact
@@ -51,7 +51,7 @@ materialize_provision_secret() {
   PROVISION_ARGS+=("${option}-file" "$secret_file")
 }
 show_usage() {
-  echo "Usage: curl -fsSL https://raw.githubusercontent.com/maxlyth/ha-paneld/main/scripts/install.sh | bash"
+  echo "Usage: curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash"
   echo "       append: | bash -s -- --prerelease"
   echo "       advanced: | bash -s -- [--prerelease] --provision PANEL-IP[:PORT] [options]"
   echo
@@ -166,16 +166,26 @@ fi
 
 if [ -t 1 ]; then B=$'\033[1m'; R=$'\033[31m'; G=$'\033[32m'; Y=$'\033[33m'; X=$'\033[0m'
 else B=; R=; G=; Y=; X=; fi
-REPO="maxlyth/ha-paneld"
+REPO="panel-assistant/android"
+# The two installable identities. This installer hands the panel to the provisioner that belongs to
+# the release it just authenticated, so it never installs either APK itself; it only has to refuse a
+# historical provisioner when state under EITHER identity proves this is not a first installation.
+PKG="io.panelassistant.android"
+LEGACY_PKG="io.github.maxlyth.hapaneld"
 PROVISION_REF="${RELEASE_TAG:-}"
 PROVISION_URL=""
 RESOLVED_APK_URL=""
+RESOLVED_APK_NAME=""
 valid_release_tag() { printf '%s\n' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; }
 valid_commit() { printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
-release_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk\n' "$1"; }
-release_apk_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$(release_apk_name "$1")"; }
+release_asset_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$2"; }
+release_apk_name() { printf 'panel-assistant-%s-manual-setup-required.apk\n' "$1"; }
+# The bridge keeps the historical asset name. A release published before the successor existed
+# carries only that APK, and its own provisioner is the one that installs it.
+bridge_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk\n' "$1"; }
+release_apk_url() { release_asset_url "$1" "$(release_apk_name "$1")"; }
 provision_asset_name() { printf 'ha-paneld-provision-%s.sh\n' "$1"; }
-provision_asset_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$(provision_asset_name "$1")"; }
+provision_asset_url() { release_asset_url "$1" "$(provision_asset_name "$1")"; }
 release_has_authenticated_provisioner() {
   local version major minor patch
   version="${1#v}"; version="${version%%-*}"
@@ -246,15 +256,28 @@ if [ -z "$RELEASE_TAG" ]; then
   release_json="$(curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 30 "$api" 2>/dev/null || true)"
   if [ "$CHANNEL_ARG" = "--prerelease" ]; then
     release_record="$(printf '%s' "$release_json" | tr -d '\r\n' | \
-      sed 's#{[[:space:]]*"url":[[:space:]]*"https://api.github.com/repos/maxlyth/ha-paneld/releases/\([0-9][0-9]*\)"#\
+      sed 's#{[[:space:]]*"url":[[:space:]]*"https://api.github.com/repos/'"$REPO"'/releases/\([0-9][0-9]*\)"#\
 &#g' | \
       awk '/"draft":[[:space:]]*false/ && !found { print; found=1 }')"
   else
     release_record="$release_json"
   fi
   PROVISION_REF="$(printf '%s' "$release_record" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
-  RESOLVED_APK_URL="$(printf '%s' "$release_record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | head -1 | cut -d'"' -f4 || true)"
-  if [ -z "$PROVISION_REF" ] || ! valid_release_tag "$PROVISION_REF" || [ "$RESOLVED_APK_URL" != "$(release_apk_url "$PROVISION_REF")" ]; then
+  # A release carries one APK per installable identity, so the first `.apk` in the record is not
+  # necessarily the one this installer wants. Take the successor when the release publishes it and
+  # the bridge otherwise, always by exact published URL rather than by position.
+  release_apk_urls="$(printf '%s' "$release_record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | cut -d'"' -f4 || true)"
+  if [ -n "$PROVISION_REF" ] && valid_release_tag "$PROVISION_REF"; then
+    for candidate_name in "$(release_apk_name "$PROVISION_REF")" "$(bridge_apk_name "$PROVISION_REF")"; do
+      candidate_url="$(release_asset_url "$PROVISION_REF" "$candidate_name")"
+      if printf '%s\n' "$release_apk_urls" | grep -Fxq "$candidate_url"; then
+        RESOLVED_APK_URL="$candidate_url"
+        RESOLVED_APK_NAME="$candidate_name"
+        break
+      fi
+    done
+  fi
+  if [ -z "$PROVISION_REF" ] || ! valid_release_tag "$PROVISION_REF" || [ -z "$RESOLVED_APK_URL" ]; then
     echo "${R}Could not resolve a complete signed ha-paneld release.${X} Check internet/GitHub access and try again; no panel changes were made." >&2
     exit 1
   fi
@@ -334,20 +357,20 @@ case "$IP" in *:*) TARGET="$IP" ;; *) TARGET="$IP:5555" ;; esac
 # canonical-database and recovery inventory. Current provisioners expose the stable marker below and
 # perform the full exact-APK/actual-database HOST_GATE themselves.
 legacy_provisioner_package_verdict() {
-  local nonce out status=0 verdict
+  local pkg="$1" nonce out status=0 verdict
   nonce="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
   printf '%s\n' "$nonce" | grep -Eq '^[0-9a-f]{32}$' || { printf 'unknown\n'; return; }
   out="$(adb -s "$TARGET" shell \
-    "echo HAPANELD_INSTALLER_PKG_BEGIN:$nonce; pm path io.github.maxlyth.hapaneld; echo HAPANELD_INSTALLER_PKG_TARGET:$nonce:\$?; pm list packages -u io.github.maxlyth.hapaneld; echo HAPANELD_INSTALLER_DATA:$nonce:\$?; pm path android; echo HAPANELD_INSTALLER_PKG_LIVE:$nonce:\$?; echo HAPANELD_INSTALLER_PKG_END:$nonce" 2>/dev/null)" || status=$?
+    "echo HAPANELD_INSTALLER_PKG_BEGIN:$nonce; pm path $pkg; echo HAPANELD_INSTALLER_PKG_TARGET:$nonce:\$?; pm list packages -u $pkg; echo HAPANELD_INSTALLER_DATA:$nonce:\$?; pm path android; echo HAPANELD_INSTALLER_PKG_LIVE:$nonce:\$?; echo HAPANELD_INSTALLER_PKG_END:$nonce" 2>/dev/null)" || status=$?
   [ "$status" -eq 0 ] || { printf 'unknown\n'; return; }
-  verdict="$(printf '%s\n' "$out" | tr -d '\r' | awk -v n="$nonce" '
+  verdict="$(printf '%s\n' "$out" | tr -d '\r' | awk -v n="$nonce" -v p="$pkg" '
     /^HAPANELD_INSTALLER_PKG_BEGIN:/  { fields=split($0,a,":"); if (fields!=2 || a[2]!=n || seg!=0) bad=1; else seg=1; next }
     /^HAPANELD_INSTALLER_PKG_TARGET:/ { fields=split($0,a,":"); if (fields!=3 || a[2]!=n || seg!=1 || a[3]!~/^[0-9]+$/) bad=1; else { trc=a[3]; seg=2 }; next }
     /^HAPANELD_INSTALLER_DATA:/       { fields=split($0,a,":"); if (fields!=3 || a[2]!=n || seg!=2 || a[3]!~/^[0-9]+$/) bad=1; else { urc=a[3]; seg=3 }; next }
     /^HAPANELD_INSTALLER_PKG_LIVE:/   { fields=split($0,a,":"); if (fields!=3 || a[2]!=n || seg!=3 || a[3]!~/^[0-9]+$/) bad=1; else { lrc=a[3]; seg=4 }; next }
     /^HAPANELD_INSTALLER_PKG_END:/    { fields=split($0,a,":"); if (fields!=2 || a[2]!=n || seg!=4) bad=1; else seg=5; next }
     seg==1 && /^package:/ { if ($0~/^package:\/[^ \t]+$/) target=1; else malformed=1; next }
-    seg==2 && /^package:/ { if ($0=="package:io.github.maxlyth.hapaneld") retained=1; else malformed=1; next }
+    seg==2 && /^package:/ { if ($0=="package:" p) retained=1; else malformed=1; next }
     seg==3 && /^package:/ { if ($0~/^package:\/[^ \t]+$/) live=1; else malformed=1; next }
     NF { malformed=1 }
     END {
@@ -357,6 +380,23 @@ legacy_provisioner_package_verdict() {
       else print retained ? "retained" : "absent"
     }')"
   case "$verdict" in present|retained|absent) printf '%s\n' "$verdict" ;; *) printf 'unknown\n' ;; esac
+}
+
+# An installed or retained package under EITHER identity refuses the historical provisioner: a
+# bridge package or its data record on a panel mid-migration is this app's own state, not a foreign
+# app, and the guardless script must never run against it.
+legacy_provisioner_packages_verdict() {
+  local pkg verdict combined=absent
+  for pkg in "$PKG" "$LEGACY_PKG"; do
+    verdict="$(legacy_provisioner_package_verdict "$pkg")"
+    case "$verdict" in
+      present) printf 'present\n'; return ;;
+      retained) combined=retained ;;
+      absent) ;;
+      *) printf 'unknown\n'; return ;;
+    esac
+  done
+  printf '%s\n' "$combined"
 }
 
 legacy_provisioner_root_form() {
@@ -428,38 +468,40 @@ for data_base in /data/user/0 /data/data /data/user_de/0; do
     inventory=unreadable
     continue
   fi
-  app="$data_base/io.github.maxlyth.hapaneld"
-  if [ -L "$app" ] || [ -e "$app" ]; then
-    app_data=retained
-    if [ -L "$app" ] || [ ! -d "$app" ] || ! ls -1A "$app" >/dev/null 2>&1; then
-      inventory=unreadable
+  for app_package in @PACKAGES@; do
+    app="$data_base/$app_package"
+    if [ -L "$app" ] || [ -e "$app" ]; then
+      app_data=retained
+      if [ -L "$app" ] || [ ! -d "$app" ] || ! ls -1A "$app" >/dev/null 2>&1; then
+        inventory=unreadable
+        continue
+      fi
+    else
       continue
     fi
-  else
-    continue
-  fi
-  db_dir="$app/databases"
-  if [ -L "$db_dir" ]; then inventory=unreadable; database=retained; recovery=retained; continue
-  elif [ -e "$db_dir" ]; then
-    if [ ! -d "$db_dir" ] || ! ls -1A "$db_dir" >/dev/null 2>&1; then
-      inventory=unreadable
-      database=retained
-      recovery=retained
+    db_dir="$app/databases"
+    if [ -L "$db_dir" ]; then inventory=unreadable; database=retained; recovery=retained; continue
+    elif [ -e "$db_dir" ]; then
+      if [ ! -d "$db_dir" ] || ! ls -1A "$db_dir" >/dev/null 2>&1; then
+        inventory=unreadable
+        database=retained
+        recovery=retained
+        continue
+      fi
+    else
       continue
     fi
-  else
-    continue
-  fi
-  db="$db_dir/ha-paneld.db"
-  for database_path in "$db" "$db"-wal "$db"-shm "$db"-journal; do
-    if [ -L "$database_path" ] || [ -e "$database_path" ]; then database=retained; fi
-  done
-  for recovery_path in \
-    "$db".restore.tmp "$db".v*.premigrate "$db".v*.superseded \
-    "$db".v*.premigrate.tmp "$db".v*.superseded.tmp \
-    "$db".v*.premigrate-wal "$db".v*.premigrate-shm "$db".v*.premigrate-journal \
-    "$db".v*.superseded-wal "$db".v*.superseded-shm "$db".v*.superseded-journal; do
-    if [ -L "$recovery_path" ] || [ -e "$recovery_path" ]; then recovery=retained; fi
+    db="$db_dir/ha-paneld.db"
+    for database_path in "$db" "$db"-wal "$db"-shm "$db"-journal; do
+      if [ -L "$database_path" ] || [ -e "$database_path" ]; then database=retained; fi
+    done
+    for recovery_path in \
+      "$db".restore.tmp "$db".v*.premigrate "$db".v*.superseded \
+      "$db".v*.premigrate.tmp "$db".v*.superseded.tmp \
+      "$db".v*.premigrate-wal "$db".v*.premigrate-shm "$db".v*.premigrate-journal \
+      "$db".v*.superseded-wal "$db".v*.superseded-shm "$db".v*.superseded-journal; do
+      if [ -L "$recovery_path" ] || [ -e "$recovery_path" ]; then recovery=retained; fi
+    done
   done
 done
 echo HAPANELD_INSTALLER_DB_BEGIN:@NONCE@
@@ -469,6 +511,7 @@ echo HAPANELD_INSTALLER_DATABASE:$database
 echo HAPANELD_INSTALLER_RECOVERY:$recovery
 echo HAPANELD_INSTALLER_INVENTORY:$inventory
 echo HAPANELD_INSTALLER_DB_END:@NONCE@'
+  command="${command//@PACKAGES@/$PKG $LEGACY_PKG}"
   command="${command//@NONCE@/$nonce}"
   out="$(legacy_run_root "$form" "$command" 2>/dev/null)" || status=$?
   [ "$status" -eq 0 ] || { printf 'unknown\n'; return; }
@@ -505,7 +548,7 @@ echo HAPANELD_INSTALLER_DB_END:@NONCE@'
 
 legacy_provisioner_fresh_verdict() {
   local package_verdict root_verdict
-  package_verdict="$(legacy_provisioner_package_verdict)"
+  package_verdict="$(legacy_provisioner_packages_verdict)"
   case "$package_verdict" in
     present|retained) printf '%s\n' "$package_verdict"; return ;;
     absent) ;;
@@ -582,7 +625,7 @@ if [ "$PROVISION_NEEDS_APK" = 1 ] && [ -n "$RELEASE_TAG" ]; then
   fi
   ARGS+=(--apk "$APK" --release-tag "$RELEASE_TAG")
 elif [ "$PROVISION_NEEDS_APK" = 1 ]; then
-  RELEASE_APK_NAME="$(release_apk_name "$PROVISION_REF")"
+  RELEASE_APK_NAME="$RESOLVED_APK_NAME"
   APK="$TMP_DIR/$RELEASE_APK_NAME"
   if ! curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$RESOLVED_APK_URL" -o "$APK"; then
     echo "${R}Could not download the $PROVISION_REF APK.${X} Check internet/GitHub access and try again; no panel changes were made." >&2
