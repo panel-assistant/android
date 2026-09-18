@@ -321,6 +321,27 @@ class HaUrlHandoverTest {
         )
     }
 
+    @Test fun `the setup state advertises handover support, which is the whole version gate`() {
+        // An integration decides from this field alone whether it may send the handover at all. If the
+        // panel stopped advertising it, every current panel would silently fall back to asking — and if
+        // an older panel ever appeared to advertise it, the integration would 400 its whole request.
+        val server = listOf(
+            java.io.File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
+            java.io.File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
+        ).first { it.isFile }.readText()
+        val builder = server.substring(
+            server.indexOf("private fun setupJourneyJson()"),
+            server.indexOf("private fun renderConfigConcurrencyHash()"),
+        )
+        assertTrue(
+            "the setup state must advertise that this panel accepts a handover",
+            builder.contains("\"{\\\"supported\\\":true,\""),
+        )
+        listOf("\\\"source\\\":", "\\\"url\\\":", "\\\"reason\\\":").forEach { field ->
+            assertTrue("the handover object must carry $field", builder.contains(field))
+        }
+    }
+
     @Test fun `the handover keys are a machine channel, not settings`() {
         // No SettingsRegistry spec, deliberately: a spec would put them on the Configure page, in the
         // settings catalogue that every release locale must translate, and in exported config bundles.
