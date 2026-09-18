@@ -212,9 +212,6 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
             // Asked again here, not read from the CONFIRM marker: removing the legacy package while HOME
             // still names it would strand the launcher, whatever an earlier pass observed.
             if (!ports.homeSettled()) return Result.Waiting(Step.UNINSTALL, "HOME does not resolve to this app")
-            if (ports.receiptSha256() != markers.value(Step.VERIFY)) {
-                return Result.Waiting(Step.UNINSTALL, "verified receipt is missing")
-            }
             if (!ports.uninstallLegacy() || ports.legacyInstalled()) {
                 return Result.Waiting(Step.UNINSTALL, "legacy package was not removed")
             }
