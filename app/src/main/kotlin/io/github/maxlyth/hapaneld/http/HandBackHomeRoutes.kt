@@ -102,9 +102,12 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
                 )
                 return@post
             }
+            // HOME_ROLE_HAND_BACK, not PACKAGE_TAME: PACKAGE_TAME is embed-exempt, and this route writes
+            // the ownership record that decides what a later hand back re-enables and which launcher can
+            // receive the HOME role. It carries the consequences of the hand-back, so it carries its gate.
             if (!dependencies.authorize(
                     call,
-                    SensitiveOperation.PACKAGE_TAME,
+                    SensitiveOperation.HOME_ROLE_HAND_BACK,
                     exactHttpApprovalPayload(call, parameters.canonicalDigest()),
                     "Record that $pkg was disabled on this panel",
                 )

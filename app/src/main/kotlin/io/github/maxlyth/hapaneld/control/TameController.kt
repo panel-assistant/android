@@ -370,6 +370,10 @@ class TameController(
      * "restore this".
      */
     internal fun recordExternallyTamed(pkg: String): HandBackHomePolicy.RecordOutcome {
+        // The same brick-guard the tame path uses. Without it a caller could claim ownership of a critical
+        // package -- including this app's OTHER application id during the migration -- and an ownership
+        // marker is exactly what puts a package into the hand-back set and the replacement-home ranking.
+        if (isCritical(pkg) || pkg == context.packageName) return HandBackHomePolicy.RecordOutcome.NOT_DISABLED
         val observed = runCatching { handBackPackageStates(setOf(pkg))[pkg] }.getOrNull()
             ?: return HandBackHomePolicy.RecordOutcome.UNKNOWN
         if (!observed.present) return HandBackHomePolicy.RecordOutcome.UNKNOWN

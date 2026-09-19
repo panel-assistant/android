@@ -1735,18 +1735,44 @@ hand_back_home() {
 }
 
 # Remove ha-paneld, handing the home screen back first so the panel is never left without one.
+#
+# Removes EVERY installed identity, and does not assume which one is there. `$PKG` is the successor id;
+# every panel in the field today carries only `$LEGACY_PKG`, and during the migration a panel can carry
+# both. Uninstalling `$PKG` unconditionally would therefore remove nothing on an ordinary panel while
+# reporting a retry that could never work -- after hand back had already surrendered HOME and cleared the
+# desired tame state. "Uninstall ha-paneld" means no identity of it is left behind.
 uninstall_ha_paneld() {
-  hand_back_home
-  step "🗑  removing" "${D}uninstalling $PKG${X}"
-  if adb -s "$TARGET" uninstall "$PKG" >/dev/null 2>&1; then
-    echo "   ${GRN}✓${X} removed $PKG"
-    echo "   ${D}the panel keeps its own home screen; its ha-paneld configuration is gone${X}"
-  else
-    fail "could not remove $PKG" \
-      "The panel already has its home screen back, so it is usable either way." \
-      "ha-paneld is still installed." \
-      "Retry with: adb -s $TARGET uninstall $PKG"
+  local installed=() pkg removed=0
+  for pkg in "$PKG" "$LEGACY_PKG"; do
+    [ -n "$pkg" ] || continue
+    case " ${installed[*]} " in *" $pkg "*) continue ;; esac
+    adb -s "$TARGET" shell pm path "$pkg" >/dev/null 2>&1 && installed+=("$pkg")
+  done
+
+  if [ "${#installed[@]}" = 0 ]; then
+    fail "ha-paneld is not installed on this panel" \
+      "Neither $PKG nor $LEGACY_PKG is present, so there is nothing to remove." \
+      "Nothing was changed." \
+      "If the panel still shows ha-paneld, check you are pointed at the right panel: $TARGET"
   fi
+
+  # Only after we know there is something to remove, so a panel with nothing installed is never made to
+  # surrender its HOME role for no reason.
+  hand_back_home
+
+  for pkg in "${installed[@]}"; do
+    step "🗑  removing" "${D}uninstalling $pkg${X}"
+    if adb -s "$TARGET" uninstall "$pkg" >/dev/null 2>&1; then
+      echo "   ${GRN}✓${X} removed $pkg"
+      removed=$((removed + 1))
+    else
+      fail "could not remove $pkg" \
+        "The panel already has its home screen back, so it is usable either way." \
+        "$removed of ${#installed[@]} identities were removed; $pkg is still installed." \
+        "Retry with: adb -s $TARGET uninstall $pkg"
+    fi
+  done
+  echo "   ${D}the panel keeps its own home screen; its ha-paneld configuration is gone${X}"
 }
 
 offer_strip_vendor() {
@@ -1796,12 +1822,20 @@ offer_strip_vendor() {
   # package the firmware already shipped disabled, so its exit status cannot tell us whether WE disabled
   # something. Only a package observed enabled here and disabled afterwards is ours to hand back later.
   local already_disabled
-  already_disabled="$(adb -s "$TARGET" shell pm list packages -d 2>/dev/null | tr -d '\r' || true)"
+  if ! already_disabled="$(adb -s "$TARGET" shell pm list packages -d 2>/dev/null | tr -d '\r')"; then
+    # Fail closed. This snapshot is the only thing that distinguishes a package WE disabled from one the
+    # firmware shipped disabled: `pm disable-user` moves a firmware-disabled package from state 2 to
+    # state 3, so afterwards the panel cannot tell them apart either. Without the snapshot we cannot
+    # record ownership honestly, so we record nothing and say so.
+    warn "could not read which packages were already disabled, so nothing will be recorded as ours to hand back"
+    already_disabled="__snapshot_unavailable__"
+  fi
   for P in $VENDOR_STRIP_PACKAGES; do
     adb -s "$TARGET" shell pm path "$P" >/dev/null 2>&1 || continue
     if adb -s "$TARGET" shell pm disable-user --user 0 "$P" >/dev/null 2>&1; then
       echo "   ${GRN}✓${X} disabled $P"
       case "$already_disabled" in
+        __snapshot_unavailable__) ;;             # cannot prove we disabled it, so never claim it
         *"package:$P"*) ;;                       # already off before we arrived — not ours, never record it
         *) record_vendor_tame "$P" ;;
       esac
