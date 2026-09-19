@@ -5838,6 +5838,24 @@ assert_failure "a missing bridge path is refused before any panel worker starts"
 assert_contains 'bridge APK is missing or empty' "the missing bridge names the failure"
 assert_not_contains '^adb ' "$MOCK_CALL_LOG" "a missing bridge starts no panel worker"
 
+# An unset variable in a calling wrapper arrives as `--bridge-apk ""`. The selector was given, so it
+# must be answered, not dropped: a value test would let the empty string past both refusals.
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-empty-bridge-output.txt"
+bash "$UPDATE_FLEET" --apk "$SUCCESSOR_APK_LOCAL" --bridge-apk "" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_failure "an empty bridge path is refused rather than silently dropped"
+assert_contains 'bridge APK is missing or empty' "the empty bridge names the failure"
+assert_not_contains '^adb ' "$MOCK_CALL_LOG" "an empty bridge starts no panel worker"
+
+: > "$MOCK_CALL_LOG"
+LAST_OUTPUT="$TMP/fleet-empty-bridge-download-output.txt"
+bash "$UPDATE_FLEET" --latest --bridge-apk "" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+LAST_STATUS=$?
+assert_status 2 "an empty bridge path never reaches the release-download path"
+assert_contains 'a release download carries its own' "the empty bridge without --apk names the conflict"
+assert_not_contains '^adb ' "$MOCK_CALL_LOG" "an empty bridge with --latest starts no panel worker"
+
 : > "$MOCK_CALL_LOG"
 LAST_OUTPUT="$TMP/fleet-foreign-bridge-output.txt"
 MOCK_BRIDGE_PACKAGE=example.foreign \

@@ -118,6 +118,14 @@ class MigrationRestoreTest {
         }
     }
 
+    @Test fun onlyARestoreThatActuallyWritesAnswersTheSuccessorsWait() {
+        assertTrue(claimsRestoreAttempt(migrationRestore = true, dryRun = false))
+        assertFalse("a dry run writes nothing, so it must leave the real attempt open",
+            claimsRestoreAttempt(migrationRestore = true, dryRun = true))
+        assertFalse(claimsRestoreAttempt(migrationRestore = false, dryRun = false))
+        assertFalse(claimsRestoreAttempt(migrationRestore = false, dryRun = true))
+    }
+
     @Test fun aRestoreThatOutlivedItsWaitAnswersItsOwnAttemptAndNeverTheNextOne() {
         val attempts = RestoreAttempts()
         val first = attempts.begin()

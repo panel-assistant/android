@@ -116,6 +116,7 @@ import io.github.maxlyth.hapaneld.persistence.StateArchiveSection
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
 import io.github.maxlyth.hapaneld.migration.MigrationRestoreAdmission
 import io.github.maxlyth.hapaneld.migration.RestoreAttempt
+import io.github.maxlyth.hapaneld.migration.claimsRestoreAttempt
 import io.github.maxlyth.hapaneld.migration.migrationRestoreAdmission
 import io.github.maxlyth.hapaneld.persistence.BackupIdentity
 import io.github.maxlyth.hapaneld.persistence.RawPreferenceBackup
@@ -9605,9 +9606,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         // minute wait must still answer the attempt that started it: by the time it finishes, the
         // successor may already have opened another, and answering that one would report this restore's
         // outcome for a restore that has not run.
-        // A dry run writes nothing, so it answers nothing: the successor's real attempt stays open.
         val restoreAttempt =
-            if (migrationRestore && !dryRun) identityMigration.claimRestoreAttempt() else RestoreAttempt.NONE
+            if (claimsRestoreAttempt(migrationRestore, dryRun)) identityMigration.claimRestoreAttempt()
+            else RestoreAttempt.NONE
         // Claim the shared destructive-operation lane before buffering, decrypting, or parsing a bundle.
         // Otherwise several losing requests can each consume 64 MiB and expensive KDF/JSON work before
         // discovering that another restore/install already owns admission.
