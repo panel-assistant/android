@@ -149,6 +149,60 @@ class HandBackHomePolicyTest {
         assertEquals(launcher, plan.targetHome.pkg)
     }
 
+    @Test
+    fun `Android's FallbackHome placeholder is never chosen as the replacement`() {
+        // Found on a live Tuya TPA10, 2026-09-18. com.android.settings declares FallbackHome, so it is a HOME
+        // candidate on every device, and it sorts alphabetically BEFORE com.smartos.xinch.launcher. A
+        // retry on an already-handed-back panel therefore picked the "Android is starting…" placeholder
+        // as the panel's home screen -- the exact screen this feature exists to keep users away from.
+        val plan = proceed(
+            decide(
+                owned = ready(),
+                homeCandidates = homes(
+                    home(own, enabled = true),
+                    home("com.android.settings", enabled = true),
+                    home(launcher, enabled = true),
+                ),
+            ),
+        )
+        assertEquals(launcher, plan.targetHome.pkg)
+    }
+
+    @Test
+    fun `a panel whose only other home is the placeholder refuses`() {
+        // Handing HOME to FallbackHome is indistinguishable from the brick, so it cannot count as a
+        // replacement even when it is the only other candidate.
+        assertEquals(
+            HandBackHomePolicy.Refusal.NO_REPLACEMENT_HOME,
+            refusal(
+                decide(
+                    homeCandidates = homes(home(own, enabled = true), home("com.android.settings", enabled = true)),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a launcher already holding the role is re-confirmed rather than replaced`() {
+        // The second run on a handed-back panel has nothing left to re-enable, so nothing ranks by
+        // willBeEnabled. Without this the tiebreak would move HOME to whatever sorts first.
+        val plan = proceed(
+            HandBackHomePolicy.decide(
+                ready(),
+                emptySet(),
+                emptyMap(),
+                homes(
+                    home(own, enabled = true),
+                    home("com.aaa.other", enabled = true),
+                    home(launcher, enabled = true),
+                ),
+                own,
+                currentHome = launcher,
+            ),
+        )
+        assertEquals(launcher, plan.targetHome.pkg)
+    }
+
     // ── fail closed ────────────────────────────────────────────────────────────────────────────────
 
     @Test

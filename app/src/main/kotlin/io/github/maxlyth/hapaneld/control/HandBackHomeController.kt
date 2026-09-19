@@ -45,7 +45,11 @@ internal class HandBackHomeController(
         val observed = runCatching { packageStates(interesting) }.getOrNull()
             ?: return Result.Refused(HandBackHomePolicy.Refusal.PACKAGE_STATE_UNKNOWN)
 
-        val plan = when (val decision = HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage)) {
+        val currentHome = runCatching { observeHome() }.getOrNull()
+        val plan = when (
+            val decision =
+                HandBackHomePolicy.decide(owned, profileKnown, observed, homes, ownPackage, currentHome)
+        ) {
             is HandBackHomePolicy.Decision.Refuse -> return Result.Refused(decision.reason)
             is HandBackHomePolicy.Decision.Proceed -> decision.plan
         }
