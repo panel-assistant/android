@@ -209,9 +209,12 @@ for ((i=0; i<${#PARGS[@]}; i++)); do
 done
 PARGS=(${KEEP[@]+"${KEEP[@]}"})
 [ "$bridge_arg_count" -le 1 ] || { echo "${RED}--bridge-apk may be supplied only once${X}" >&2; exit 2; }
-if [ -n "$BRIDGE_APK" ]; then
+# Gate on the selector having been GIVEN, not on its value: `--bridge-apk ""` is exactly what a
+# wrapper passing an unset variable produces, and a value test lets that through both refusals in
+# silence — on the one option whose whole purpose is to name a bridge.
+if [ "$bridge_arg_count" -ge 1 ]; then
   [ "$have_apk" = 1 ] || { echo "${RED}--bridge-apk names the bridge beside a local --apk; a release download carries its own${X}" >&2; exit 2; }
-  [ -s "$BRIDGE_APK" ] || { echo "${RED}bridge APK is missing or empty: $BRIDGE_APK${X}" >&2; exit 1; }
+  [ -s "$BRIDGE_APK" ] || { echo "${RED}bridge APK is missing or empty: ${BRIDGE_APK:-(empty)}${X}" >&2; exit 1; }
 fi
 for a in "${PARGS[@]}"; do case "$a" in --prerelease|--pre) want_prerelease=1 ;; esac; done
 for a in "${PARGS[@]}"; do case "$a" in --require-release-signer) require_release_signer=1 ;; esac; done

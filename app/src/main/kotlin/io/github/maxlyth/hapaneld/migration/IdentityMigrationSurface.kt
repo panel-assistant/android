@@ -58,6 +58,13 @@ internal class RestoreAttempts {
     fun claim(): RestoreAttempt = current.get().let { attempt -> RestoreAttempt { attempt.complete(it) } }
 }
 
+/**
+ * Whether this restore request answers the successor's open wait. A dry run is admitted to migration
+ * mode and writes nothing, so it must leave the wait for the restore that will actually run.
+ */
+internal fun claimsRestoreAttempt(migrationRestore: Boolean, dryRun: Boolean): Boolean =
+    migrationRestore && !dryRun
+
 /** How a restore request relates to migration mode. */
 internal enum class MigrationRestoreAdmission { NOT_REQUESTED, ADMITTED, REFUSED }
 
