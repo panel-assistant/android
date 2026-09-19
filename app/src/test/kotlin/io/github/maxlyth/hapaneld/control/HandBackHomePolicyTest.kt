@@ -203,6 +203,49 @@ class HandBackHomePolicyTest {
         assertEquals(launcher, plan.targetHome.pkg)
     }
 
+    @Test
+    fun `ha-paneld's other application id is never chosen as the replacement`() {
+        // During the application-id migration both ids are installed, both
+        // declare CATEGORY_HOME, and the counterpart sorts ahead of a vendor launcher. Handing it the role
+        // is the same brick by another route: the migration then uninstalls the package holding HOME.
+        val counterpart = io.github.maxlyth.hapaneld.AppIdentity.ALL.first { it != own }
+        val plan = proceed(
+            decide(
+                owned = ready(),
+                homeCandidates = homes(
+                    home(own, enabled = true),
+                    home(counterpart, enabled = true),
+                    home(launcher, enabled = true),
+                ),
+            ),
+        )
+        assertEquals(launcher, plan.targetHome.pkg)
+    }
+
+    @Test
+    fun `a panel whose only other home is ha-paneld's counterpart identity refuses`() {
+        val counterpart = io.github.maxlyth.hapaneld.AppIdentity.ALL.first { it != own }
+        assertEquals(
+            HandBackHomePolicy.Refusal.NO_REPLACEMENT_HOME,
+            refusal(
+                decide(homeCandidates = homes(home(own, enabled = true), home(counterpart, enabled = true))),
+            ),
+        )
+    }
+
+    @Test
+    fun `every untouchable package is ineligible for the home role`() {
+        // The eligibility rule defers to TamePackagePolicy.isCritical rather than keeping its own list.
+        // This pins that: a second copy is what let the counterpart identity through in the first place.
+        for (critical in listOf("android", "com.android.systemui", "com.android.settings", "com.android.phone")) {
+            assertEquals(
+                "$critical must never receive the HOME role",
+                HandBackHomePolicy.Refusal.NO_REPLACEMENT_HOME,
+                refusal(decide(homeCandidates = homes(home(own, enabled = true), home(critical, enabled = true)))),
+            )
+        }
+    }
+
     // ── fail closed ────────────────────────────────────────────────────────────────────────────────
 
     @Test

@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.control
 
+import io.github.maxlyth.hapaneld.config.TamePackagePolicy
+
 /**
  * **Handing the home screen back.** Taming a panel disables its vendor launcher, and ha-paneld then holds
  * Android's preferred-HOME entry. Removing ha-paneld from that state leaves the device with no home screen
@@ -62,15 +64,19 @@ internal object HandBackHomePolicy {
     data class HomeCandidate(val pkg: String, val component: String, val enabled: Boolean)
 
     /**
-     * Packages that answer the HOME intent without being a home screen.
+     * A package that must never receive the HOME role, whatever it declares.
      *
-     * `com.android.settings` declares `FallbackHome` — the "Android is starting…" placeholder Android shows
-     * when no real launcher is available. It is a HOME candidate on every device, and on a Tuya TPA10 it
-     * sorts alphabetically ahead of `com.smartos.xinch.launcher`, so a naive tiebreak hands the role to the
-     * very screen this feature exists to keep users away from. Handing HOME to it is indistinguishable from
-     * the brick.
+     * This is deliberately [TamePackagePolicy.isCritical] rather than a list of its own. That set already
+     * names `com.android.settings` — which declares `FallbackHome`, the "Android is starting…" placeholder,
+     * and is therefore a HOME candidate on every device — and it already names both of this app's
+     * application ids through `AppIdentity.ALL`. A local list here had only the first, so hand back could
+     * give HOME to ha-paneld's other identity: enabled mid-migration, declaring `CATEGORY_HOME`, and
+     * sorting ahead of a vendor launcher. That is the same brick by another route, and the migration would
+     * then uninstall the package now holding the role.
+     *
+     * One definition. When the untouchable set grows, this grows with it.
      */
-    private val PLACEHOLDER_HOMES = setOf("com.android.settings")
+    private fun ineligibleForHome(pkg: String): Boolean = TamePackagePolicy.isCritical(pkg)
 
     /**
      * The ordered work of one hand-back.
@@ -145,7 +151,7 @@ internal object HandBackHomePolicy {
         val willBeEnabled = restore + adopt
         val target = homeCandidates
             .filter { it.pkg != ownPackage }
-            .filter { it.pkg !in PLACEHOLDER_HOMES }
+            .filter { !ineligibleForHome(it.pkg) }
             .filter { it.enabled || it.pkg in willBeEnabled }
             .minWithOrNull(
                 // A launcher that already holds the role is the answer on a panel that has been handed back
