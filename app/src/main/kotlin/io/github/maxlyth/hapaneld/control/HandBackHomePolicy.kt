@@ -62,6 +62,17 @@ internal object HandBackHomePolicy {
     data class HomeCandidate(val pkg: String, val component: String, val enabled: Boolean)
 
     /**
+     * Packages that answer the HOME intent without being a home screen.
+     *
+     * `com.android.settings` declares `FallbackHome` — the "Android is starting…" placeholder Android shows
+     * when no real launcher is available. It is a HOME candidate on every device, and on a Tuya TPA10 it
+     * sorts alphabetically ahead of `com.smartos.xinch.launcher`, so a naive tiebreak hands the role to the
+     * very screen this feature exists to keep users away from. Handing HOME to it is indistinguishable from
+     * the brick.
+     */
+    private val PLACEHOLDER_HOMES = setOf("com.android.settings")
+
+    /**
      * The ordered work of one hand-back.
      *
      * [restore] are owned packages, reversed through the existing reconciler so each one regains its exact
@@ -94,6 +105,8 @@ internal object HandBackHomePolicy {
      * @param homeCandidates every package declaring `CATEGORY_HOME`, including disabled ones, or `null` when
      *   the query failed.
      * @param ownPackage ha-paneld's own package, which can never be its own replacement home.
+     * @param currentHome the package holding the HOME role now, or null when it could not be read. When it
+     *   is already a real launcher other than ha-paneld, it is the answer, and the run re-confirms it.
      */
     fun decide(
         owned: TameOwnedMarkers,
@@ -101,6 +114,7 @@ internal object HandBackHomePolicy {
         observed: Map<String, PackageState>,
         homeCandidates: List<HomeCandidate>?,
         ownPackage: String,
+        currentHome: String? = null,
     ): Decision {
         val markers = when (owned) {
             is TameOwnedMarkers.Ready -> owned.byPackage
@@ -131,10 +145,18 @@ internal object HandBackHomePolicy {
         val willBeEnabled = restore + adopt
         val target = homeCandidates
             .filter { it.pkg != ownPackage }
+            .filter { it.pkg !in PLACEHOLDER_HOMES }
             .filter { it.enabled || it.pkg in willBeEnabled }
-            // A launcher this plan is about to hand back is the panel's own home screen; prefer it over an
-            // unrelated third-party launcher that merely happens to be installed.
-            .minWithOrNull(compareByDescending<HomeCandidate> { it.pkg in willBeEnabled }.thenBy { it.pkg })
+            .minWithOrNull(
+                // A launcher that already holds the role is the answer on a panel that has been handed back
+                // once already: re-confirming it makes the retry a clean no-op instead of moving HOME to
+                // whatever else happens to be installed.
+                compareByDescending<HomeCandidate> { it.pkg == currentHome }
+                    // Otherwise a launcher this plan is about to re-enable is the panel's own home screen,
+                    // ahead of an unrelated third-party launcher that merely happens to be present.
+                    .thenByDescending { it.pkg in willBeEnabled }
+                    .thenBy { it.pkg },
+            )
             ?: return Decision.Refuse(Refusal.NO_REPLACEMENT_HOME)
 
         return Decision.Proceed(Plan(restore = restore, adopt = adopt.toList(), targetHome = target))
