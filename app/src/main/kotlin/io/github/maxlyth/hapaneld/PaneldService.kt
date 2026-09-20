@@ -1148,6 +1148,10 @@ class PaneldService : Service() {
         config.migrateSetupQuestionsForExistingInstall()
         config.ensurePanelId()      // materialize the generated identity before MQTT/mDNS snapshot it
         reconcileNativePresentationAfterPromotion()
+        // Same reason, same window: Application.onCreate only registered the Shizuku Binder listeners,
+        // because reading its consent opens the database. Derive the bridge's real state here, after
+        // the promote, exactly as the locale/night-mode correction above is.
+        ShizukuBridge.activateAfterPromotion()
         updateForegroundStatus(nativeString(R.string.starting))
         liveSettingAuthority = LiveSettingAuthority.persistent(this, MqttBridge.APPLY_SETTING_KEYS)
         // Resolve one immutable profile revision before constructing any hardware owner. Activations are

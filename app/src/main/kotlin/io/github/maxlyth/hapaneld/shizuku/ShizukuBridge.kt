@@ -31,7 +31,7 @@ object ShizukuBridge : ShellPrivilege {
     @Volatile var state: ShizukuState = ShizukuState.DISABLED
         private set
     @Volatile private var remote: IShizukuShellService? = null
-    @Volatile private var initialized = false
+    private val startup = ShizukuStartupGate()
     @Volatile private var bindingGeneration = 0L
     @Volatile private var activeConnection: ServiceConnection? = null
     private lateinit var appContext: Context
@@ -70,30 +70,52 @@ object ShizukuBridge : ShellPrivilege {
         refresh()
     }
 
+    /**
+     * Install the Binder lifecycle listeners, and nothing else.
+     *
+     * This runs from `Application.onCreate`, inside the foreground-start deadline, so it must reach no
+     * durable state: consent lives in `ha-paneld.db`, and opening that here is what killed Android 8.1
+     * panels with `RemoteServiceException`. `addBinderReceivedListenerSticky` can call back
+     * synchronously from this very frame when Shizuku's ContentProvider already holds the binder — that
+     * callback is the reachable path, and [ShizukuStartupGate] is what stops it. [activateAfterPromotion]
+     * re-derives the state once `PaneldService` has promoted.
+     */
     @Synchronized fun initialize(context: Context) {
-        if (initialized) return
+        if (!startup.admitRegistration()) return
         appContext = context.applicationContext
-        initialized = true
         Shizuku.addBinderReceivedListenerSticky(binderReceived)
         Shizuku.addBinderDeadListener(binderDead)
         Shizuku.addRequestPermissionResultListener(permissionResult)
-        refresh()
     }
+
+    /**
+     * Open durable reads and derive the state the listeners were not allowed to derive.
+     *
+     * Called by `PaneldService.onCreate` after it has promoted, beside the other database-authoritative
+     * corrections. The service's stand-down branches deliberately never reach it: a retired bridge, a
+     * passive successor and the guard-database redirect run no controller that could use shell privilege.
+     */
+    fun activateAfterPromotion() {
+        if (admitDurableState()) refresh()
+    }
+
+    @Synchronized private fun admitDurableState(): Boolean = startup.admitActivation()
 
     fun enable(context: Context) {
         initialize(context)
+        admitDurableState()
         ShizukuConsent.enable(appContext)
         refresh(requestPermission = true)
     }
 
     fun disable() {
-        if (!initialized) return
+        if (!startup.registered) return
         ShizukuConsent.disable(appContext)
         clearBinding(managerIdleState())
     }
 
     fun refresh(requestPermission: Boolean = false) {
-        if (!initialized) return
+        if (!startup.activated) return
         val managerStatus = ShizukuManagerIdentity.status(appContext)
         if (managerStatus != ShizukuManagerIdentity.Status.TRUSTED) {
             clearBinding(if (managerStatus == ShizukuManagerIdentity.Status.UNTRUSTED) {
@@ -309,7 +331,7 @@ object ShizukuBridge : ShellPrivilege {
     @Synchronized fun snapshot(): Snapshot = Snapshot(state, remote != null && state == ShizukuState.READY)
 
     override fun available(): Boolean = snapshot().ready
-    fun managerRunning(): Boolean = initialized &&
+    fun managerRunning(): Boolean = startup.activated &&
         ShizukuManagerIdentity.status(appContext) == ShizukuManagerIdentity.Status.TRUSTED &&
         runCatching { Shizuku.pingBinder() }.getOrDefault(false)
     override fun uid(): Int? = call(FeatureCostOperation.SHIZUKU_CALL, SHORT_TIMEOUT_MS) { it.identityUid() }
@@ -382,7 +404,7 @@ object ShizukuBridge : ShellPrivilege {
     }
 
     private fun managerIdleState(): ShizukuState {
-        if (!initialized) return ShizukuState.DISABLED
+        if (!startup.activated) return ShizukuState.DISABLED
         return ShizukuPolicy.idleState(
             manager = ShizukuManagerIdentity.status(appContext),
             consentEnabled = ShizukuConsent.enabled(appContext),
@@ -390,7 +412,7 @@ object ShizukuBridge : ShellPrivilege {
     }
 
     private fun disconnectedState(): ShizukuState {
-        if (!initialized) return ShizukuState.DISABLED
+        if (!startup.activated) return ShizukuState.DISABLED
         val manager = ShizukuManagerIdentity.status(appContext)
         val consentEnabled = ShizukuConsent.enabled(appContext)
         val managerRunning = manager == ShizukuManagerIdentity.Status.TRUSTED && consentEnabled &&

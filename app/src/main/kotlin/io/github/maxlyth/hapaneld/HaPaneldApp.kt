@@ -42,11 +42,9 @@ class HaPaneldApp : Application() {
             }
             return
         }
-        // Registers only the official Binder lifecycle listeners. No service is bound and no permission
-        // is requested until the user opts in locally through the on-panel setup surface.
-        ShizukuBridge.initialize(this)
-        // NOTHING BELOW HERE MAY OPEN THE DATABASE. On an out-of-process cold start — the provisioner's
-        // `am start-foreground-service` after `adb install -r`, a START_STICKY re-create, or the process
+        // NOTHING BELOW HERE MAY OPEN THE DATABASE, INCLUDING THROUGH A CALLEE. On an out-of-process
+        // cold start — the provisioner's `am start-foreground-service` after `adb install -r`, a
+        // START_STICKY re-create, or the process
         // boundary PaneldService.onDestroy re-arms — Android has already armed the
         // startForegroundService deadline before this method runs, so every millisecond spent here is
         // taken out of PaneldService's budget to reach startForeground.
@@ -61,6 +59,11 @@ class HaPaneldApp : Application() {
         // `ui_language` is already applied above from the XML mirror, and `dark_mode` is read from that
         // same mirror. PaneldService.onCreate re-asserts both from the authoritative database, after it
         // has promoted — see reconcileNativePresentationAfterPromotion there.
+        //
+        // Registers only the official Binder lifecycle listeners: no consent read, no bind, no
+        // permission request. Shizuku's own consent lives in ha-paneld.db, so deriving the bridge's
+        // state is deferred to ShizukuBridge.activateAfterPromotion, called from the same place.
+        ShizukuBridge.initialize(this)
         if (Build.VERSION.SDK_INT < 29) {
             AppCompatDelegate.setDefaultNightMode(
                 if (darkModeBeforeDatabase(this)) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO,

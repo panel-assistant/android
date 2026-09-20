@@ -108,6 +108,42 @@ internal object ShizukuPolicy {
         explicitRequest && !rationaleRequired
 }
 
+/**
+ * Two-stage startup admission for the bridge, so `Application.onCreate` reaches no durable state.
+ *
+ * Android arms the `startForegroundService` deadline at the caller, so on an out-of-process cold start
+ * the whole of `Application.onCreate` is spent out of `PaneldService`'s budget to reach
+ * `startForeground`. Registration therefore only installs the Binder lifecycle listeners; reading
+ * consent — which opens `ha-paneld.db` — waits for [admitActivation], which the service calls once it
+ * has promoted. Nothing is lost by waiting: a listener that fires before activation is discarded, and
+ * the activating `refresh()` re-derives the whole state from `PackageManager` and `pingBinder()`
+ * rather than from having observed the event.
+ */
+internal class ShizukuStartupGate {
+    @Volatile private var registeredFlag = false
+    @Volatile private var activatedFlag = false
+
+    /** Listeners are installed, but durable state is still off limits. */
+    val registered: Boolean get() = registeredFlag
+
+    /** Durable state — consent, and so the database — may be read. */
+    val activated: Boolean get() = activatedFlag
+
+    /** True exactly once, for the caller that installs the listeners. */
+    @Synchronized fun admitRegistration(): Boolean {
+        if (registeredFlag) return false
+        registeredFlag = true
+        return true
+    }
+
+    /** True exactly once, for the caller that opens durable reads after the promote. */
+    @Synchronized fun admitActivation(): Boolean {
+        if (!registeredFlag || activatedFlag) return false
+        activatedFlag = true
+        return true
+    }
+}
+
 internal fun interface ShizukuScheduledHandle {
     fun cancel()
 }
