@@ -21,25 +21,32 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal enum class SuExecFailure {
     FIRST_MISSING,
     ALREADY_MISSING,
-    OTHER,
+    FIRST_DENIED,
+    ALREADY_DENIED,
+    OTHER;
+
+    /** True when this launch proved root structurally unusable, so further execs are pointless. */
+    val unusable: Boolean
+        get() = this == FIRST_MISSING || this == ALREADY_MISSING ||
+            this == FIRST_DENIED || this == ALREADY_DENIED
 }
 
 /**
  * Decide what one root attempt proved, separated from the exec machinery so it can be tested without a
  * device — this is the judgement that decides whether a setting may be presented as unappliable.
  *
- * [launchCreatedNoProcess] covers every launch-level refusal, not only a missing file: the shipped su on
- * at least one supported panel is mode 4750 `root:shell`, so an app outside that group is refused EACCES
- * while the binary plainly exists. A command that ran and exited non-zero is a root manager saying no,
- * which can change on the next attempt and must stay retryable.
+ * [launchCreatedNoProcess] covers every launch-level refusal, not only a missing file — see
+ * [SuExecFailureCache] for which of those are decidable enough to latch. [rootKnownUnusable] is that
+ * latch's verdict from an earlier call. A command that ran and exited non-zero is a root manager saying
+ * no, which can change on the next attempt and must stay retryable.
  */
 internal fun classifyRootRun(
     ran: Boolean,
     launchCreatedNoProcess: Boolean,
-    binaryKnownMissing: Boolean,
+    rootKnownUnusable: Boolean,
 ): RootRunOutcome = when {
     ran -> RootRunOutcome.RAN_OK
-    launchCreatedNoProcess || binaryKnownMissing -> RootRunOutcome.NO_LAUNCH
+    launchCreatedNoProcess || rootKnownUnusable -> RootRunOutcome.NO_LAUNCH
     else -> RootRunOutcome.RAN_FAILED
 }
 
@@ -67,43 +74,191 @@ internal fun readPersistentShellReply(stdout: BufferedReader, sentinel: String):
     }
 }
 
-/** Process-lifetime cache for the definitive "su binary does not exist" launch failure. */
-internal class SuExecFailureCache {
+/**
+ * The standard places an Android `su` lives, used when the process has no `PATH` of its own.
+ * `Runtime.exec` resolves the bare name `su` the way `execvp` does — it walks every `PATH` entry and an
+ * EACCES in one directory does not end the search — so a decidable answer has to walk the same list.
+ */
+internal val DEFAULT_SU_SEARCH_PATH = listOf("/sbin", "/system/sbin", "/system/bin", "/system/xbin", "/vendor/bin")
+
+internal fun suSearchPath(pathVariable: String? = System.getenv("PATH")): List<String> =
+    pathVariable?.split(':')?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() } ?: DEFAULT_SU_SEARCH_PATH
+
+/**
+ * True when a `su` exists on the search path and **none** that exists may be executed by this uid.
+ *
+ * This is the decidable half of a launch refusal: a supported panel ships `su` mode 4750 `root:shell`, so an app
+ * uid outside that group is refused EACCES before any retry can matter. [File.canExecute] is `access(X_OK)`,
+ * the same permission check the kernel makes at exec — DAC mode and owning group, and SELinux `execute` on
+ * the file — so it answers for this uid exactly as the launch will. What it cannot see is a refusal raised
+ * after that check passes, such as a denied domain transition at execve; that stays an ordinary refusal and
+ * stays retryable, which is the conservative way round.
+ */
+internal fun suDeniedToCaller(
+    searchPath: List<String> = suSearchPath(),
+    exists: (String) -> Boolean = { File(it).exists() },
+    canExecute: (String) -> Boolean = { File(it).canExecute() },
+): Boolean {
+    var found = false
+    for (directory in searchPath) {
+        val candidate = "$directory/su"
+        if (!exists(candidate)) continue
+        if (canExecute(candidate)) return false
+        found = true
+    }
+    return found
+}
+
+/**
+ * Process-lifetime cache for launch failures that prove root structurally unusable on this device.
+ *
+ * Two classes latch, and they latch differently:
+ *
+ * - **Missing binary** (ENOENT). Unchanged since it was introduced: once seen it suppresses every later
+ *   exec for the process lifetime, because a `su` that is not there cannot be launched.
+ * - **Denied to this caller** (EACCES *and* [suDeniedToCaller]). The permission on an existing `su` refuses
+ *   exec to the app uid, so every retry is provably futile — one supported panel logged such a refusal
+ *   roughly every 25 seconds, each with a stack. This latch is re-tested rather than permanent:
+ *   [shouldSkipExec] re-runs the same `access(X_OK)` sweep before skipping, which costs no fork and no log,
+ *   and clears the latch the moment an executable `su` appears on the path. So a panel that gains root
+ *   during its uptime still finds it.
+ *
+ * Everything else is [SuExecFailure.OTHER] and is never cached: a refusal raised after the permission check
+ * passes, such as a denied domain transition at execve, can change without the file changing. A command that
+ * ran and exited non-zero never reaches here at all — a root manager saying no, or a prompt nobody has
+ * answered, is RAN_FAILED and always retryable.
+ */
+internal class SuExecFailureCache(
+    private val deniedToCaller: () -> Boolean = { suDeniedToCaller() },
+) {
     private val missing = AtomicBoolean(false)
+    private val denied = AtomicBoolean(false)
 
-    fun shouldSkipExec(): Boolean = missing.get()
-
-    fun record(error: Exception): SuExecFailure {
-        if (!isMissingBinary(error)) return SuExecFailure.OTHER
-        return if (missing.compareAndSet(false, true)) {
-            SuExecFailure.FIRST_MISSING
-        } else {
-            SuExecFailure.ALREADY_MISSING
-        }
+    fun shouldSkipExec(): Boolean {
+        if (missing.get()) return true
+        if (!denied.get()) return false
+        if (deniedToCaller()) return true
+        denied.set(false)               // an executable su appeared during this boot; stop skipping
+        return false
     }
 
+    fun record(error: Exception): SuExecFailure {
+        if (isMissingBinary(error)) {
+            return if (missing.compareAndSet(false, true)) {
+                SuExecFailure.FIRST_MISSING
+            } else {
+                SuExecFailure.ALREADY_MISSING
+            }
+        }
+        if (isPermissionDenied(error) && deniedToCaller()) {
+            return if (denied.compareAndSet(false, true)) {
+                SuExecFailure.FIRST_DENIED
+            } else {
+                SuExecFailure.ALREADY_DENIED
+            }
+        }
+        return SuExecFailure.OTHER
+    }
+
+    private fun isPermissionDenied(error: Exception): Boolean =
+        messages(error).any { message ->
+            message.contains("Permission denied", ignoreCase = true) ||
+                message.contains("EACCES", ignoreCase = true) ||
+                EACCES_ERROR_NUMBER.containsMatchIn(message)
+        }
+
     private fun isMissingBinary(error: Exception): Boolean =
+        messages(error).any { message ->
+            message.contains("No such file or directory", ignoreCase = true) ||
+                message.contains("ENOENT", ignoreCase = true) ||
+                ENOENT_ERROR_NUMBER.containsMatchIn(message)
+        }
+
+    private fun messages(error: Exception): Sequence<String> =
         generateSequence(error as Throwable?) { it.cause }
             .filterIsInstance<IOException>()
             .mapNotNull { it.message }
-            .any { message ->
-                message.contains("No such file or directory", ignoreCase = true) ||
-                    message.contains("ENOENT", ignoreCase = true) ||
-                    ENOENT_ERROR_NUMBER.containsMatchIn(message)
-            }
 
     private companion object {
         val ENOENT_ERROR_NUMBER = Regex("(?:^|\\D)error=2(?:\\D|$)", RegexOption.IGNORE_CASE)
+        val EACCES_ERROR_NUMBER = Regex("(?:^|\\D)error=13(?:\\D|$)", RegexOption.IGNORE_CASE)
     }
 }
+
+/**
+ * One detailed line per failure class per boot, then counts.
+ *
+ * The volume this exists to remove was not one loud event: it was the same launch refusal re-logged with a
+ * full stack roughly every 25 seconds. A class is logged in full the first time it is seen, which keeps the
+ * diagnostic, and after that only a periodic count, which keeps the evidence that it is still happening. A
+ * genuinely new class has its own signature, so it is never suppressed by a class already seen.
+ */
+internal class SuFailureLogThrottle(
+    private val summaryIntervalMs: Long = SUMMARY_INTERVAL_MS,
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+) {
+    sealed interface Decision {
+        /** First of its class this boot: log the message with its stack. */
+        object Detailed : Decision
+
+        /** Already reported and not yet due a count: log nothing. */
+        object Silent : Decision
+
+        /** Due a count: log [suppressed] occurrences since the last line, without a stack. */
+        data class Summary(val suppressed: Long) : Decision
+    }
+
+    private class Seen(var suppressed: Long = 0L, var lastLineMs: Long)
+
+    private val seen = HashMap<String, Seen>()
+
+    @Synchronized
+    fun onFailure(signature: String): Decision {
+        val now = nowMs()
+        val state = seen[signature]
+        if (state == null) {
+            seen[signature] = Seen(lastLineMs = now)
+            return Decision.Detailed
+        }
+        state.suppressed++
+        if (now - state.lastLineMs < summaryIntervalMs) return Decision.Silent
+        state.lastLineMs = now
+        return Decision.Summary(state.suppressed).also { state.suppressed = 0L }
+    }
+
+    private companion object {
+        const val SUMMARY_INTERVAL_MS = 3_600_000L
+    }
+}
+
+/**
+ * What distinguishes one failure class from another for [SuFailureLogThrottle].
+ *
+ * A latched class is one signature whatever operation hit it — the point is that the device cannot run
+ * `su` at all, and repeating that per call site is the noise. An uncached failure keeps its exception type
+ * and errno, so a different failure appearing later is a new class and still gets its own full line.
+ */
+internal fun suFailureSignature(outcome: SuExecFailure, error: Exception): String = when {
+    outcome == SuExecFailure.FIRST_MISSING || outcome == SuExecFailure.ALREADY_MISSING -> "missing"
+    outcome == SuExecFailure.FIRST_DENIED || outcome == SuExecFailure.ALREADY_DENIED -> "denied"
+    else -> "other:${error.javaClass.name}:${errorNumber(error) ?: "none"}"
+}
+
+private val ERROR_NUMBER = Regex("error=(\\d+)")
+
+private fun errorNumber(error: Exception): String? =
+    generateSequence(error as Throwable?) { it.cause }
+        .mapNotNull { it.message }
+        .mapNotNull { ERROR_NUMBER.find(it)?.groupValues?.get(1) }
+        .firstOrNull()
 
 /**
  * Root command execution.
  *
  * Two su syntaxes across the fleet: toolbox `su -c '<cmd>'` (Sonoff PX30) and Android `su 0 sh -c
  * '<cmd>'` (Tuya TPA10 userdebug). A working form is cached; a negative probe is retried by later
- * one-shot operations because the root manager may become ready after boot. Only a definitive missing
- * executable is cached for the process lifetime. Graceful: returns false/null if no su works (a panel
+ * one-shot operations because the root manager may become ready after boot. Only a launch failure that
+ * proves root structurally unusable is cached ([SuExecFailureCache]). Graceful: returns false/null if no su works (a panel
  * without root just loses the root-gated capabilities).
  *
  * **Persistent shell (0.8.3).** [run]/[runOutput] are piped into a single long-lived root shell rather
@@ -122,6 +277,7 @@ object Su : RootShell {
     private const val SENTINEL = "__hapaneld_done__"
     private const val CMD_TIMEOUT_MS = 5000L
     private const val AVAILABILITY_TTL_MS = 60_000L
+    private const val SKIPPED_EXEC_SIGNATURE = "skipped-exec"
 
     // A successful dialect is sticky. NONE_LAST_PROBE records diagnostics only; it must not suppress
     // later one-shot probes because root-manager readiness can change during the process lifetime.
@@ -129,6 +285,7 @@ object Su : RootShell {
 
     private var shell: ShellHandle? = null
     private val execFailureCache = SuExecFailureCache()
+    private val failureLog = SuFailureLogThrottle()
     /** Set by any launch in the current [runClassified] call that started no child process. Reset per
      *  call and never latched, so a refusal this boot cannot disable root for the process lifetime. */
     @Volatile private var launchCreatedNoProcess = false
@@ -194,10 +351,10 @@ object Su : RootShell {
     /**
      * Run [cmd] and report whether a root process was ever created.
      *
-     * Deliberately NOT derived from [SuExecFailureCache]: that cache latches only the definitive
-     * missing-binary case and suppresses every later exec for the process lifetime, which is exactly
-     * why it must not learn about EACCES — a launch refused once must still be retried. This records
-     * only what this call's own launches did, and never latches.
+     * Deliberately NOT derived from [SuExecFailureCache]: that cache answers whether root is unusable on
+     * this device at all, which is a durable property, while this flag answers what this one call's own
+     * launches did and never latches. Both feed [classifyRootRun], which still reports the true outcome
+     * of this command whatever the logging did with it.
      */
     @Synchronized
     override fun runClassified(cmd: String): RootRunOutcome {
@@ -206,14 +363,17 @@ object Su : RootShell {
         return classifyRootRun(
             ran = ran,
             launchCreatedNoProcess = launchCreatedNoProcess,
-            binaryKnownMissing = execFailureCache.shouldSkipExec(),
+            rootKnownUnusable = execFailureCache.shouldSkipExec(),
         )
     }
 
     /** Fire [cmd] as root without waiting (for commands like `reboot` that kill the process). Always a
      *  one-shot — never sent into the shared persistent shell (it would take the shell down with it). */
     override fun fireAndForget(cmd: String): Boolean {
-        if (execFailureCache.shouldSkipExec()) return false
+        if (execFailureCache.shouldSkipExec()) {
+            noteSkippedExec()
+            return false
+        }
         val forms = formState.candidates()
         for (f in forms) {
             try {
@@ -376,7 +536,10 @@ object Su : RootShell {
         deadline: MonotonicDeadline,
         reader: (Process) -> T,
     ): T? {
-        if (execFailureCache.shouldSkipExec()) return null
+        if (execFailureCache.shouldSkipExec()) {
+            noteSkippedExec()
+            return null
+        }
         return runBoundedLaunch(
             deadline = deadline,
             threadName = "ha-paneld-su-1shot",
@@ -394,21 +557,35 @@ object Su : RootShell {
         )
     }
 
-    /** Log unexpected launch failures with their stack. Returns true when `su` is definitively absent. */
+    /**
+     * Log a launch failure at most once per class per boot, then as periodic counts, and report whether
+     * `su` is structurally unusable on this device (absent, or refused to this uid by its own mode).
+     */
     private fun logExecFailure(operation: String, error: Exception): Boolean {
         // Runtime.exec throws only when no child was started, so reaching here at all means this launch
         // produced no process — whether the binary is missing or this app may not execute it.
         launchCreatedNoProcess = true
-        return when (execFailureCache.record(error)) {
-            SuExecFailure.FIRST_MISSING -> {
-                Log.d(TAG, "su binary not found; root-only operations are unavailable")
-                true
+        val outcome = execFailureCache.record(error)
+        when (val decision = failureLog.onFailure(suFailureSignature(outcome, error))) {
+            SuFailureLogThrottle.Decision.Detailed -> when (outcome) {
+                SuExecFailure.FIRST_MISSING, SuExecFailure.ALREADY_MISSING ->
+                    Log.d(TAG, "su binary not found; root-only operations are unavailable")
+                SuExecFailure.FIRST_DENIED, SuExecFailure.ALREADY_DENIED ->
+                    Log.d(TAG, "su exists but this app's uid may not execute it; root-only operations are unavailable", error)
+                SuExecFailure.OTHER -> Log.d(TAG, "su $operation", error)
             }
-            SuExecFailure.ALREADY_MISSING -> true
-            SuExecFailure.OTHER -> {
-                Log.d(TAG, "su $operation", error)
-                false
-            }
+            SuFailureLogThrottle.Decision.Silent -> Unit
+            is SuFailureLogThrottle.Decision.Summary ->
+                Log.d(TAG, "su launch refused ${decision.suppressed} more times since the last line")
+        }
+        return outcome.unusable
+    }
+
+    /** Count execs skipped because root is known unusable, and report the total at most once an hour. */
+    private fun noteSkippedExec() {
+        val decision = failureLog.onFailure(SKIPPED_EXEC_SIGNATURE)
+        if (decision is SuFailureLogThrottle.Decision.Summary) {
+            Log.d(TAG, "su unusable; skipped ${decision.suppressed} root attempts since the last line")
         }
     }
 

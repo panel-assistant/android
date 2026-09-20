@@ -49,20 +49,20 @@ class ControlUnavailabilityTest {
         assertEquals(
             "a launch refusal is a property of the device, not of this attempt",
             RootRunOutcome.NO_LAUNCH,
-            classifyRootRun(ran = false, launchCreatedNoProcess = true, binaryKnownMissing = false),
+            classifyRootRun(ran = false, launchCreatedNoProcess = true, rootKnownUnusable = false),
         )
         assertEquals(
             RootRunOutcome.NO_LAUNCH,
-            classifyRootRun(ran = false, launchCreatedNoProcess = false, binaryKnownMissing = true),
+            classifyRootRun(ran = false, launchCreatedNoProcess = false, rootKnownUnusable = true),
         )
         assertEquals(
             "a root manager that ran the command and refused it can succeed next time",
             RootRunOutcome.RAN_FAILED,
-            classifyRootRun(ran = false, launchCreatedNoProcess = false, binaryKnownMissing = false),
+            classifyRootRun(ran = false, launchCreatedNoProcess = false, rootKnownUnusable = false),
         )
         assertEquals(
             RootRunOutcome.RAN_OK,
-            classifyRootRun(ran = true, launchCreatedNoProcess = false, binaryKnownMissing = false),
+            classifyRootRun(ran = true, launchCreatedNoProcess = false, rootKnownUnusable = false),
         )
     }
 
