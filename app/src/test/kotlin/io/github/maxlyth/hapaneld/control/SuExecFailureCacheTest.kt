@@ -31,7 +31,9 @@ class SuExecFailureCacheTest {
 
     @Test
     fun `permission and other launch failures retain normal diagnostics and retries`() {
-        val cache = SuExecFailureCache()
+        // An su that exists and is executable by this uid: EACCES here is a root manager or SELinux
+        // saying no, which can change. The mode-denied case is covered in SuRefusalCacheTest.
+        val cache = SuExecFailureCache(deniedToCaller = { false })
 
         assertEquals(
             SuExecFailure.OTHER,
