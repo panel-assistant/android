@@ -6,6 +6,10 @@ import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.config.navbarModeDefault
 import io.github.maxlyth.hapaneld.control.NavbarController
 import io.github.maxlyth.hapaneld.device.DeviceProfile
+import io.github.maxlyth.hapaneld.device.EvdevButton
+import io.github.maxlyth.hapaneld.device.LedMechanism
+import io.github.maxlyth.hapaneld.device.ScreenOff
+import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.device.profile.BundledProfileFixtures
 import java.io.File
 import java.lang.reflect.Proxy
@@ -112,6 +116,9 @@ class NavbarCapabilityDefaultTest {
         val caps = capsOf(x2i, androidShowsNavbar = true)
         assertEquals("Off", legacyDefault(caps))
         assertEquals("Always on", navbarModeDefault(caps))
+        // Through the mechanism that actually ships, not only the rule function: the spec must declare
+        // the derivation and SettingSpec must consult it, or the rule is correct and never consulted.
+        assertEquals("Always on", SettingsRegistry.spec("navbar_mode")!!.defaultFor(caps))
         assertTrue(
             "the default must be a bar that is actually drawn",
             navbarModeDefault(caps) in NavbarController.OVERLAY_MODES,
@@ -190,6 +197,39 @@ class NavbarCapabilityDefaultTest {
             config.attachProfile(profile)
             assertEquals(profile.id, legacyDefault(capsOf(profile)), config.navbarMode)
         }
+
+        // A profile that is not catalog-backed carries the same stranded shape and must still derive
+        // nothing: the last-resort profile used when the catalog fails to load declares no capability
+        // at all, so reading its silence as absent hardware would put a bar on a panel nobody measured.
+        val undeclared = emptyConfig()
+        undeclared.attachProfile(NonCatalogProfile)
+        assertTrue("the fixture must have the stranded shape, or it proves nothing",
+            !NonCatalogProfile.hasNativeNavbar && !NonCatalogProfile.hasRecents &&
+                NonCatalogProfile.evdevButtons.isEmpty())
+        assertEquals("Off", undeclared.navbarMode)
+    }
+
+    /** The shape of the last-resort profile: stranded on every declaration, and catalog-backed on
+     *  none. `declarationsFromCatalog` is left at its interface default deliberately. */
+    private object NonCatalogProfile : DeviceProfile {
+        override val id = "last-resort"
+        override val revision = "1"
+        override val displayName = "Last resort"
+        override val socClass = "unknown"
+        override val suForm = SuForm.NONE
+        override val appCanSu = false
+        override val usesDaemon = false
+        override val hasRecents = false
+        override val hasNativeNavbar = false
+        override val ledMechanism = LedMechanism.NONE
+        override val screenOff = ScreenOff.BRIGHTNESS_ZERO
+        override val zigbeeGatewayDir: String? = null
+        override val relayBase: String? = null
+        override val buttonLedGpioBase: Int? = null
+        override val manufacturer: String? = null
+        override val model: String? = null
+        override val evdevButtons = emptyList<EvdevButton>()
+        override val cpuGovernors: Map<String, String>? = null
     }
 
     /** A stored value wins over the derived default on the real path too, not only in the resolver. */
