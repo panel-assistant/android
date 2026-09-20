@@ -23,6 +23,7 @@ class ForegroundStartDeadlineContractTest {
 
     private val application by lazy { TestSources.kotlin("HaPaneldApp.kt").readText() }
     private val service by lazy { TestSources.kotlin("PaneldService.kt").readText() }
+    private val bridge by lazy { TestSources.kotlin("shizuku/ShizukuBridge.kt").readText() }
 
     private fun body(source: String, name: String): String {
         val start = source.indexOf(name)
@@ -44,6 +45,11 @@ class ForegroundStartDeadlineContractTest {
      * This is an allowlist rather than an index comparison on purpose. Asserting only that some
      * marker precedes another lets a future helper — `warmCaches()`, `reconcileState()` — be inserted
      * into the same window and still pass. Naming what may appear is what actually holds the line.
+     *
+     * It scans the direct text of `onCreate` and nothing else, so it cannot see a callee, and it never
+     * could: the one callee that reached the database, `ShizukuBridge.initialize`, went unnoticed here
+     * for exactly that reason. That call is pinned separately by
+     * [shizukuRegistrationReachesNoDurableStateDuringApplicationStartup].
      */
     @Test fun applicationStartupNeverOpensTheDatabase() {
         val onCreate = body(application, "override fun onCreate()")
@@ -55,6 +61,61 @@ class ForegroundStartDeadlineContractTest {
                     onCreate.contains(forbidden),
                 )
             }
+    }
+
+    /**
+     * The one callee on the startup path that reached the database.
+     *
+     * `ShizukuBridge.initialize` ended in `refresh()`, which reads consent through
+     * `AppState.preferences` and so opens `ha-paneld.db`. Removing that one call is not enough:
+     * `addBinderReceivedListenerSticky` can invoke its listener synchronously from the same frame when
+     * Shizuku's ContentProvider — installed before `Application.onCreate` — already holds the binder,
+     * and `refresh()` is that listener. So the gate has to sit in every function that reads consent,
+     * not only in the registration call.
+     */
+    @Test fun shizukuRegistrationReachesNoDurableStateDuringApplicationStartup() {
+        assertTrue(
+            "the listeners are still installed from Application.onCreate",
+            body(application, "override fun onCreate()").contains("ShizukuBridge.initialize(this)"),
+        )
+        val initialize = body(bridge, "fun initialize")
+        assertTrue("registration still installs the Binder listeners", initialize.contains("addBinderReceivedListenerSticky"))
+        listOf("refresh(", "ShizukuConsent", "AppState").forEach { forbidden ->
+            assertFalse(
+                "initialize runs inside the foreground-start deadline, so it must not reach `$forbidden`",
+                initialize.contains(forbidden),
+            )
+        }
+        listOf("fun refresh", "private fun managerIdleState", "private fun disconnectedState").forEach { name ->
+            val function = body(bridge, name)
+            val gate = function.indexOf("startup.activated")
+            assertTrue("$name is gated on the post-promote activation", gate >= 0)
+            val consent = function.indexOf("ShizukuConsent")
+            assertTrue(
+                "$name must check the gate before it reads consent, not after",
+                consent < 0 || gate < consent,
+            )
+        }
+        assertTrue(
+            "activation derives the state the listeners were not allowed to derive",
+            body(bridge, "fun activateAfterPromotion").contains("refresh()"),
+        )
+    }
+
+    /**
+     * The deferred half: the service opens durable Shizuku reads once it has promoted.
+     *
+     * `lastIndexOf` for the same reason as [theDatabaseCorrectionRunsAfterThePromoteNotBeforeIt] — the
+     * early-return branches promote with the same string first, and anchoring on one of those would
+     * let the activation sit anywhere after it, including before the promote that actually matters.
+     */
+    @Test fun theShizukuBridgeIsActivatedAfterThePromoteNotBeforeIt() {
+        val onCreate = body(service, "override fun onCreate()")
+        val promote = onCreate.lastIndexOf("startForegroundCompat(nativeString(R.string.starting), silent = true)")
+        val activate = onCreate.indexOf("ShizukuBridge.activateAfterPromotion()")
+        assertTrue("the service promotes on the normal path", promote >= 0)
+        assertTrue("the bridge is activated from the service", activate >= 0)
+        assertTrue("and only after the normal-path promote", activate > promote)
     }
 
     @Test fun theNightModeDefaultComesFromTheMirrorNotTheDatabase() {
