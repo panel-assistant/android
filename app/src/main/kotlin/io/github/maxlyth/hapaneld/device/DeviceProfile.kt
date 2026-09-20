@@ -85,6 +85,13 @@ interface DeviceProfile {
      *  Recents button is omitted where false rather than presenting a dead control. Default true. */
     val hasRecents: Boolean get() = true
 
+    /** Whether this profile's hardware declarations were read from a catalog profile document, rather
+     *  than being the conservative defaults of a last-resort runtime contract. It separates "this panel
+     *  declares no Recents" from "nothing declared anything", which for most capabilities is a
+     *  distinction without a difference — both withhold a feature — but not for one that must add a
+     *  control where hardware is absent. See `navbarModeDefault`. Default false. */
+    val declarationsFromCatalog: Boolean get() = false
+
     /** Whether the firmware draws Android's own navigation bar, making the soft overlay unnecessary.
      *  Declared rather than probed: the generic Android signals lie in both directions — NSPanel Pro
      *  hardcodes `config_showNavigationBar` false while having no bar (so the `policy_control` select

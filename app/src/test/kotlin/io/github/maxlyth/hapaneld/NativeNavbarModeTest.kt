@@ -21,6 +21,27 @@ class NativeNavbarModeTest {
 
     private val navbarSpec get() = SettingsRegistry.spec("navbar_mode")!!
 
+    /**
+     * A capability set for the resolver. `hasRecents` defaults to TRUE here, unlike [Capabilities]
+     * itself, because every one of these cases describes a panel that can navigate by other means —
+     * writing that out at each call site would bury the one case where it is false.
+     */
+    private fun caps(
+        hasNativeNavbar: Boolean = false,
+        androidShowsNavbar: Boolean? = null,
+        vendorNavbarProperty: String? = null,
+        profileId: String? = null,
+        hasRecents: Boolean = true,
+        hasEvdevButtons: Boolean = false,
+    ) = Capabilities(
+        hasNativeNavbar = hasNativeNavbar,
+        androidShowsNavbar = androidShowsNavbar,
+        vendorNavbarProperty = vendorNavbarProperty,
+        profileId = profileId,
+        hasRecents = hasRecents,
+        hasEvdevButtons = hasEvdevButtons,
+    )
+
     // ---- availability ------------------------------------------------------------------------
 
     @Test fun `native is offered only where the profile declares a native bar`() {
@@ -66,18 +87,18 @@ class NativeNavbarModeTest {
     @Test fun `a capable panel resolves to native when nothing is stored`() {
         assertEquals(
             "Native",
-            resolveNavbarMode(null, hasNativeNavbar = true, androidResourceShowsNavbar = true, vendorShowsNavbar = null),
+            resolveNavbarMode(null, caps(hasNativeNavbar = true, androidShowsNavbar = true)),
         )
     }
 
     @Test fun `an explicit choice on a capable panel is authoritative`() {
         assertEquals(
             "Always on",
-            resolveNavbarMode("Always on", hasNativeNavbar = true, androidResourceShowsNavbar = true, vendorShowsNavbar = null),
+            resolveNavbarMode("Always on", caps(hasNativeNavbar = true, androidShowsNavbar = true)),
         )
         assertEquals(
             "Off",
-            resolveNavbarMode("Off", hasNativeNavbar = true, androidResourceShowsNavbar = true, vendorShowsNavbar = null),
+            resolveNavbarMode("Off", caps(hasNativeNavbar = true, androidShowsNavbar = true)),
         )
     }
 
@@ -86,31 +107,31 @@ class NativeNavbarModeTest {
     @Test fun `a stored native on a panel without a native bar falls back to a working bar`() {
         assertEquals(
             "Swipe reveal",
-            resolveNavbarMode("Native", hasNativeNavbar = false, androidResourceShowsNavbar = false, vendorShowsNavbar = null),
+            resolveNavbarMode("Native", caps(androidShowsNavbar = false)),
         )
         assertEquals(
             "Swipe reveal",
-            resolveNavbarMode("Native", hasNativeNavbar = false, androidResourceShowsNavbar = null, vendorShowsNavbar = "false"),
+            resolveNavbarMode("Native", caps(vendorNavbarProperty = "false")),
         )
     }
 
     @Test fun `the pre-existing default tiers are unchanged for panels with no native bar`() {
         assertEquals(
             "Swipe reveal",
-            resolveNavbarMode(null, hasNativeNavbar = false, androidResourceShowsNavbar = true, vendorShowsNavbar = "false"),
+            resolveNavbarMode(null, caps(androidShowsNavbar = true, vendorNavbarProperty = "false")),
         )
         assertEquals(
             "Off",
-            resolveNavbarMode(null, hasNativeNavbar = false, androidResourceShowsNavbar = false, vendorShowsNavbar = "true"),
+            resolveNavbarMode(null, caps(androidShowsNavbar = false, vendorNavbarProperty = "true")),
         )
         assertEquals(
             "Swipe reveal",
-            resolveNavbarMode(null, hasNativeNavbar = false, androidResourceShowsNavbar = false, vendorShowsNavbar = ""),
+            resolveNavbarMode(null, caps(androidShowsNavbar = false, vendorNavbarProperty = "")),
         )
         // The nspanel-pro tier still covers the raw-config path, where the resource is unknown, not false.
         assertEquals(
             "Swipe reveal",
-            resolveNavbarMode(null, hasNativeNavbar = false, androidResourceShowsNavbar = null, vendorShowsNavbar = null, profileId = "nspanel-pro"),
+            resolveNavbarMode(null, caps(profileId = "nspanel-pro")),
         )
     }
 

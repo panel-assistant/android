@@ -33,6 +33,7 @@ class DataDeviceProfile internal constructor(
     }
     override val appCanSu = document.platform.appCanSu
     override val hasRecents = document.platform.hasRecents
+    override val declarationsFromCatalog = true
     override val hasNativeNavbar = document.platform.hasNativeNavbar
     override val ledMechanism = when (document.hardware.led.mechanism) {
         "rk3576-ioctl" -> LedMechanism.RK3576_IOCTL

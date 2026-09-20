@@ -1,6 +1,8 @@
 package io.github.maxlyth.hapaneld
 
 import android.content.SharedPreferences
+import io.github.maxlyth.hapaneld.config.Capabilities
+import io.github.maxlyth.hapaneld.config.navbarModeDefault
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.config.Validation
@@ -25,10 +27,10 @@ import java.lang.reflect.Proxy
 class ConfigAccessorDefaultCoherenceTest {
 
     @Test fun px30VendorNavbarOverrideWinsOverAndroidResourceDefault() {
-        assertEquals("Swipe reveal", defaultNavbarMode(androidResourceShowsNavbar = true, vendorShowsNavbar = "false"))
-        assertEquals("Off", defaultNavbarMode(androidResourceShowsNavbar = false, vendorShowsNavbar = "true"))
-        assertEquals("Swipe reveal", defaultNavbarMode(androidResourceShowsNavbar = false, vendorShowsNavbar = ""))
-        assertEquals("Swipe reveal", defaultNavbarMode(androidResourceShowsNavbar = true, vendorShowsNavbar = "", profileId = "nspanel-pro"))
+        assertEquals("Swipe reveal", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = true, vendorNavbarProperty = "false")))
+        assertEquals("Off", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = false, vendorNavbarProperty = "true")))
+        assertEquals("Swipe reveal", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = false, vendorNavbarProperty = "")))
+        assertEquals("Swipe reveal", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = true, vendorNavbarProperty = "", profileId = "nspanel-pro")))
     }
 
     @Test fun behaviourOrderKeepsIdleDimAboveKeepResponsive() {
