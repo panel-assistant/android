@@ -2913,6 +2913,13 @@ class PaneldService : Service() {
                 hasMicrophone = profile.hasMicrophone,
                 appCanSu = profile.appCanSu,
                 hasRecents = profile.hasRecents,
+                // Declared physical buttons. Populated because a capability whose value is always its
+                // `false` default is indistinguishable from "this panel has none", and the navbar
+                // no-way-out default reads it as evidence that a panel has no navigation affordance.
+                hasEvdevButtons = profile.evdevButtons.isNotEmpty(),
+                profileId = profile.id,
+                // Carried so a consumer can tell a real declaration from an unpopulated `false`.
+                hardwareDeclarationsKnown = profile.declarationsFromCatalog,
                 // Profile declaration only, deliberately not the Android/vendor navbar-visibility signals
                 // that seed the fresh-install default: those are known to misreport in both directions,
                 // and this decides whether "Native" may be selected rather than merely suggested.

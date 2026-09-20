@@ -68,6 +68,22 @@ data class Capabilities(
     // only (see DeviceProfile.hasNativeNavbar) — the generic Android signals lie in both directions, and this
     // gates whether "Native" may be chosen at all rather than merely seeding a default.
     val hasNativeNavbar: Boolean = false,
+    // Android's own generic `config_showNavigationBar` resource, or null where it could not be read
+    // (the raw-config path has no `resources`, so "unknown" and "false" must stay distinguishable).
+    val androidShowsNavbar: Boolean? = null,
+    // Vendor navbar-visibility property, verbatim. Authoritative over the Android resource where
+    // present: some PX30 firmware hardcodes the generic resource true while suppressing its own bar.
+    val vendorNavbarProperty: String? = null,
+    // The resolved device profile's id, or null when no profile is resolved. NOT a licence for settings
+    // to branch on hardware by name: it carries one legacy navbar tier that predates the capability
+    // fields, and nothing else may read it.
+    val profileId: String? = null,
+    // True when the profile-declared fields in this snapshot were read from a catalog profile document.
+    // Most capability fields need no such marker, because their `false` and their unset value both mean
+    // "withhold the feature". A field that makes something APPEAR where hardware is absent inverts that:
+    // an unpopulated snapshot and a last-resort profile both read `false` while knowing nothing, and
+    // acting on that would add a control everywhere. See [navbarModeDefault].
+    val hardwareDeclarationsKnown: Boolean = false,
     val ledAvailable: Boolean = false,
     val ledColorCapable: Boolean = false,
     val zigbeePresent: Boolean = false,
@@ -197,6 +213,15 @@ data class SettingSpec(
     // one of its choices is not. `availableWhen` cannot express this: hiding the whole setting would
     // remove working choices too. A choice with no entry here is always offered.
     val optionRequires: Map<String, (Capabilities) -> Boolean> = emptyMap(),
+    // Capability-derived fresh-install default, the sibling of [optionRequires]: where that withholds a
+    // choice a panel must not have, this chooses the value a panel should start at when the user has
+    // never set one. Null means [default] is the answer everywhere.
+    //
+    // Two properties make this safe to add to any spec. It is consulted ONLY where no value was ever
+    // stored, so an explicit choice and an existing panel's persisted value are both untouched; and it
+    // never replaces [default], which remains the durable, capability-independent string sealed into
+    // the guard-database settings authority (`authoritativeGuardDbSettingDefaults`).
+    val derivedDefault: ((Capabilities) -> String)? = null,
     val validate: (String) -> Validation = { Validation.Ok(it) },
 ) {
     /** Stable catalogue ids derived from the durable setting key, never from editable English copy. */
@@ -213,6 +238,12 @@ data class SettingSpec(
      */
     fun optionsFor(caps: Capabilities): List<String> =
         options.filter { optionRequires[it]?.invoke(caps) ?: true }
+
+    /**
+     * The value this panel should start at when nothing was ever stored for [key]. Falls back to the
+     * static [default], so a spec that declares no [derivedDefault] is unaffected.
+     */
+    fun defaultFor(caps: Capabilities): String = derivedDefault?.invoke(caps) ?: default
 
     /**
      * The `{options}` substitution for this spec's HA select, or null when it declares no per-choice
