@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.camera.CameraResolution
+import io.github.maxlyth.hapaneld.config.Capabilities
 import io.github.maxlyth.hapaneld.config.Migrations
 import io.github.maxlyth.hapaneld.config.SettingSpec
 import io.github.maxlyth.hapaneld.config.SettingType
@@ -19,6 +20,7 @@ import io.github.maxlyth.hapaneld.config.defaultBool
 import io.github.maxlyth.hapaneld.config.defaultFloat
 import io.github.maxlyth.hapaneld.config.defaultInt
 import io.github.maxlyth.hapaneld.config.defaultLong
+import io.github.maxlyth.hapaneld.config.navbarModeDefault
 import io.github.maxlyth.hapaneld.dashboard.HomeDashboardLaunchCache
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.persistence.AppState
@@ -51,49 +53,27 @@ internal data class HaAuthSnapshot(
     val clientId: String,
 )
 
-/** Resolve the fresh-install software-navbar default from Android and vendor visibility signals.
- * Some PX30 firmware hardcodes Android's generic `config_showNavigationBar` to true even though the
- * vendor navbar is suppressed; the vendor property is authoritative when present.
- *
- * [hasNativeNavbar] is the profile's declaration that the firmware draws its own navigation bar, and
- * it wins outright: that is the one case where we know the panel needs no software bar, as opposed to
- * merely failing to prove it needs one. The remaining tiers are unchanged and still answer "the panel
- * probably has no usable system bar, so seed Swipe reveal". */
-internal fun defaultNavbarMode(
-    androidResourceShowsNavbar: Boolean?,
-    vendorShowsNavbar: String?,
-    profileId: String? = null,
-    hasNativeNavbar: Boolean = false,
-): String {
-    if (hasNativeNavbar) return "Native"
-    when (vendorShowsNavbar?.trim()?.lowercase(Locale.ROOT)) {
-        "false", "0", "no", "off" -> return "Swipe reveal"
-        "true", "1", "yes", "on" -> return "Off"
-    }
-    // Retained deliberately: it also covers the raw-config read path, where `resources` is null and
-    // `androidResourceShowsNavbar` is therefore unknown rather than false.
-    if (profileId in setOf("nspanel-pro")) return "Swipe reveal"
-    return if (androidResourceShowsNavbar == false) "Swipe reveal" else "Off"
-}
-
 /**
- * The navbar mode this panel should actually run, given what it has stored. Separate from
- * [defaultNavbarMode] because a stored value can become invalid after the fact: config bundles carry
- * `navbar_mode` and are imported with no capability filter at all, so a bundle captured on a panel
- * with a native bar can land on one without. Coercing to the computed default rather than to `Off`
- * is deliberate — on a panel with no system bar that yields `Swipe reveal`, leaving the user with
- * working navigation instead of none.
+ * The navbar mode this panel should actually run, given what it has stored.
+ *
+ * The fresh-install default itself is [navbarModeDefault], the sole definition of that rule, which
+ * lives in the settings registry beside the spec it belongs to and is reached here through
+ * [SettingSpec.defaultFor]. This function answers the separate question of what to do with a value
+ * that is already on disk, and there are exactly two answers.
+ *
+ * **A stored value the user chose is kept, including `Off`.** That is the whole reason a derived
+ * default cannot change an existing panel's navigation on upgrade: it is consulted only where nothing
+ * was ever written for the key.
+ *
+ * **A stored value can become invalid after the fact**, because config bundles carry `navbar_mode` and
+ * are imported with no capability filter at all, so a bundle captured on a panel with a native bar can
+ * land on one without. Coercing such a value to the derived default rather than to `Off` is
+ * deliberate — on a panel with no system bar that yields working navigation instead of none.
  */
-internal fun resolveNavbarMode(
-    stored: String?,
-    hasNativeNavbar: Boolean,
-    androidResourceShowsNavbar: Boolean?,
-    vendorShowsNavbar: String?,
-    profileId: String? = null,
-): String {
-    val default = defaultNavbarMode(androidResourceShowsNavbar, vendorShowsNavbar, profileId, hasNativeNavbar)
+internal fun resolveNavbarMode(stored: String?, caps: Capabilities): String {
+    val default = requireNotNull(SettingsRegistry.spec("navbar_mode")).defaultFor(caps)
     if (stored == null) return default
-    if (!navbarModePermitted(stored, hasNativeNavbar)) return default
+    if (!navbarModePermitted(stored, caps.hasNativeNavbar)) return default
     return stored
 }
 
@@ -2015,13 +1995,27 @@ class Config private constructor(
     // authority and is only selectable where the profile declares one. Persisted so the mode is
     // restored on boot; a stored value that this panel may no longer use falls back to the default.
     val navbarMode: String
-        get() = resolveNavbarMode(
-            prefs.getString("navbar_mode", null),
-            hasNativeNavbar,
-            resourceShowsNavbar(),
-            SystemProps.get("persist.smatek.show.navigationbar"),
-            profile?.id,
-        )
+        get() = resolveNavbarMode(prefs.getString("navbar_mode", null), navbarCapabilities())
+
+    /**
+     * The capability inputs [navbarModeDefault] reads, built here from the resolved profile plus the
+     * two navbar-visibility signals only this Android edge can read. The service builds a much larger
+     * snapshot for discovery and option gating; the profile-declared fields are drawn from the same
+     * profile in both places, so the two cannot disagree about what this panel declares.
+     *
+     * `hardwareDeclarationsKnown` is what holds the no-way-out tier closed until the declarations
+     * behind it have actually been read from a catalog profile — false for the JVM-test seams, where
+     * no profile is resolved, and for the last-resort profile used when the catalog fails to load.
+     */
+    private fun navbarCapabilities(): Capabilities = Capabilities(
+        hasRecents = profile?.hasRecents == true,
+        hasEvdevButtons = profile?.evdevButtons?.isNotEmpty() == true,
+        hasNativeNavbar = hasNativeNavbar,
+        androidShowsNavbar = resourceShowsNavbar(),
+        vendorNavbarProperty = SystemProps.get("persist.smatek.show.navigationbar"),
+        profileId = profile?.id,
+        hardwareDeclarationsKnown = profile?.declarationsFromCatalog == true,
+    )
 
     /** The profile's native-navbar declaration; false whenever no profile is resolved (JVM-test seams). */
     internal val hasNativeNavbar: Boolean get() = profile?.hasNativeNavbar == true
