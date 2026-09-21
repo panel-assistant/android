@@ -7188,10 +7188,10 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             config.autoSleep, config.autoSleepSource, requestedAutoSleep, requestedAutoSleepSource,
         )
         var autoSleepPrerequisiteOwner: HaAuthOwner? = null
-        var prerequisiteAndroidId: String? = null
+        var prerequisiteDeviceUid: String? = null
         val prerequisitePanelId = config.panelId
         if (enablingAutoSleep) {
-            prerequisiteAndroidId = config.androidId
+            prerequisiteDeviceUid = config.deviceUid
             val connectionChanged = p["ha_url"]?.trimEnd('/')?.let { it != config.haUrl.trimEnd('/') } == true ||
                 listOf("ha_token", "ha_refresh_token", "ha_token_expiry", "ha_client_id").any { p[it] != null }
             val identityChanged = p["panel_id"]?.let { it != prerequisitePanelId } == true
@@ -7466,7 +7466,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                     }
                     if (autoSleepPrerequisiteOwner != null &&
                         (config.haAuthSnapshot().stableOwner() != autoSleepPrerequisiteOwner ||
-                            config.androidId != prerequisiteAndroidId || config.panelId != prerequisitePanelId ||
+                            config.deviceUid != prerequisiteDeviceUid || config.panelId != prerequisitePanelId ||
                             (config.autoSleep && config.autoSleepSource == "home_assistant"))
                     ) {
                         autoSleepPrerequisiteStale = true
@@ -8590,7 +8590,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
      */
     private data class HaAreaSnapshot(
         val ownerKey: String,
-        val androidId: String,
+        val deviceUid: String,
         val panelId: String,
         val localArea: String,
         val userOverride: Boolean = false,
@@ -8598,7 +8598,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
 
     private fun captureHaAreaSnapshot(): HaAreaSnapshot = HaAreaSnapshot(
         ownerKey = entityLearning.haAreaOwnerKey(),
-        androidId = config.androidId,
+        deviceUid = config.deviceUid,
         panelId = config.panelId,
         localArea = config.haArea,
         userOverride = config.haAreaUserOverride,
@@ -8623,7 +8623,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
     @Volatile private var haAreaCatalogCache: HaAreaCatalogCacheEntry? = null
 
     private fun haAreaCatalogKey(snapshot: HaAreaSnapshot): String =
-        "${snapshot.ownerKey}|${snapshot.androidId}|${snapshot.panelId}"
+        "${snapshot.ownerKey}|${snapshot.deviceUid}|${snapshot.panelId}"
 
     private fun cacheHaAreaCatalog(
         snapshot: HaAreaSnapshot,
@@ -8648,7 +8648,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 haAreaCacheEntryUsable(entry.key, key, entry.cachedAtMs, now, HA_AREA_CATALOG_TTL_MS)
             }?.catalog?.let { return it }
         }
-        val catalog = entityLearning.haAreaCatalog(snapshot.androidId, snapshot.panelId)
+        val catalog = entityLearning.haAreaCatalog(snapshot.deviceUid, snapshot.panelId)
         cacheHaAreaCatalog(snapshot, catalog, now)
         return catalog
     }
@@ -8673,7 +8673,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
 
     private fun ownsHaAreaSnapshot(snapshot: HaAreaSnapshot): Boolean =
         snapshot.ownerKey == entityLearning.haAreaOwnerKey() &&
-            snapshot.androidId == config.androidId && snapshot.panelId == config.panelId &&
+            snapshot.deviceUid == config.deviceUid && snapshot.panelId == config.panelId &&
             snapshot.localArea == config.haArea && snapshot.userOverride == config.haAreaUserOverride
 
     private suspend fun applyHaAreaPrecedence(
@@ -8699,14 +8699,14 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             }
             HaAreaProtocol.ReconcileAction.WRITE_BACK -> if (allowWriteBack && ownsHaAreaSnapshot(snapshot)) {
                 val moved = entityLearning.applyRequestedArea(
-                    snapshot.androidId,
+                    snapshot.deviceUid,
                     snapshot.panelId,
                     snapshot.localArea,
                     snapshot.ownerKey,
                 )
                 if (moved && ownsHaAreaSnapshot(snapshot)) {
                     invalidateHaAreaCatalogCache()
-                    val after = entityLearning.haAreaCatalog(snapshot.androidId, snapshot.panelId)
+                    val after = entityLearning.haAreaCatalog(snapshot.deviceUid, snapshot.panelId)
                     cacheHaAreaCatalog(snapshot, after)
                     return applyHaAreaPrecedence(snapshot, after, allowWriteBack = false)
                 }

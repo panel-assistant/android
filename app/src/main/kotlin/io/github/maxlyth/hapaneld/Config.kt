@@ -7,6 +7,7 @@ import android.content.res.Resources
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
+import java.security.SecureRandom
 import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.camera.CameraResolution
 import io.github.maxlyth.hapaneld.config.Capabilities
@@ -460,10 +461,26 @@ class Config private constructor(
     private fun defaultPanelId(): String {
         val resolver = requireNotNull(contentResolver) { "Android settings unavailable" }
         val name = Settings.Global.getString(resolver, Settings.Global.DEVICE_NAME)
-        // A meaningful, non-generic device name → use it; else model + a short ANDROID_ID suffix.
+        // A meaningful, non-generic device name → use it; else model + a short id suffix.
         return if (!name.isNullOrBlank() && !name.equals(Build.MODEL, ignoreCase = true)) slug(name)
-        else slug(Build.MODEL) + "_" + androidId.takeLast(4).ifBlank { "panel" }
+        else slug(Build.MODEL) + "_" + defaultPanelIdSuffix()
     }
+
+    /**
+     * The disambiguating suffix a generated panel id carries when the device name is generic.
+     *
+     * Two panels off one factory image report the same model AND the same ANDROID_ID, so the historical
+     * suffix gave them one identical panel id — identical MQTT topics and entity ids, not merely a
+     * merged device. The minted identity fixes that for panels that can still take a new id.
+     *
+     * A panel that already has a broker cannot: it has published entities under the ANDROID_ID-derived
+     * id, and changing it now would rename every entity and discard the customisation attached to it.
+     * That panel keeps the historical suffix. Only an installation that has never had a broker — one
+     * whose `panel_id` was never materialized before this version, so nothing has been published under
+     * it — takes the minted suffix.
+     */
+    private fun defaultPanelIdSuffix(): String =
+        panelIdSuffix(androidId, deviceUid, hasConfiguredBroker = mqttBroker.isNotBlank())
 
     // --- atomic batch writes -----------------------------------------------------------------------
     // Setters normally each fire their own async prefs.edit().apply(). Inside [applyBatch] they instead
@@ -677,9 +694,91 @@ class Config private constructor(
         edit { putString("friendly_name", name) }
     }
 
-    /** Stable per-device id (Settings.Secure.ANDROID_ID); used as the HA device serial_number. */
+    /**
+     * Settings.Secure.ANDROID_ID, reported as the Home Assistant device `serial_number`.
+     *
+     * NOT an identity key, and never again one. Panels flashed from a single factory image share the
+     * Android 8.1 SSAID seed, so this value is duplicated across a whole fleet (#155). The panel's
+     * identity is [deviceUid].
+     */
     val androidId: String
         get() = Settings.Secure.getString(requireNotNull(contentResolver), Settings.Secure.ANDROID_ID) ?: ""
+
+    /**
+     * This installation's own device identity: minted once, at random, derived from nothing.
+     *
+     * Home Assistant merges two devices whenever ANY identifier matches, so an identity that is not
+     * unique silently collapses distinct panels into one device — losing per-panel areas, device pages
+     * and device automations, and naming one panel's entities after another. [androidId] is exactly
+     * such a value on a cloned factory image, which is what #155 reports.
+     *
+     * Minted rather than read from the hardware because no readable hardware value is dependable
+     * across this project's panels: `ro.serialno` needs shell or privileged access that not every
+     * panel grants, and its uniqueness on the affected images is unproven.
+     *
+     * Deliberately NOT a [SettingsRegistry] spec, which is what keeps it out of the settings export
+     * and out of a restore: `projectConfigSnapshot` only ever writes registered specs, and
+     * `planRestoreSettings` refuses an unregistered key outright. That exclusion cannot be delegated
+     * to the archive's same-device proof, because that proof is a digest of [androidId] and is
+     * therefore cloned across precisely the panels this identity exists to separate.
+     *
+     * Blank only before [ensureDeviceUid] has run.
+     */
+    val deviceUid: String
+        get() = prefs.getString(DEVICE_UID_PREF, null)?.takeIf { it.isNotBlank() } ?: runtimeDeviceUid ?: ""
+
+    /** Retains a minted identity whose durable write failed, so one boot cannot mint two identities. */
+    @Volatile private var runtimeDeviceUid: String? = null
+
+    /**
+     * Materialize [deviceUid] once. Runs before [ensurePanelId], because a generated panel id takes its
+     * suffix from the minted identity, and before MQTT or mDNS read either.
+     *
+     * Also decides, once and durably, whether this panel needs the legacy-identifier bridge: see
+     * [legacyAidBridgePending].
+     */
+    internal fun ensureDeviceUid(mint: () -> String = ::mintDeviceUid): String = synchronized(CONFIG_LOCK) {
+        prefs.getString(DEVICE_UID_PREF, null)?.takeIf { it.isNotBlank() }?.let { return@synchronized it }
+        val minted = mint().takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("minted device id is blank")
+        // A panel that has never had a broker cannot have registered an MQTT device in Home Assistant,
+        // so it has nothing to re-attach to and must never publish the shared identifier even once.
+        val bridge = mqttBroker.isNotBlank()
+        runtimeDeviceUid = minted
+        val committed = durableCommit {
+            putString(DEVICE_UID_PREF, minted)
+            putBoolean(LEGACY_AID_BRIDGE_PREF, bridge)
+        }
+        if (!committed) {
+            Log.w(TAG, "could not persist minted device id; retaining runtime identity for this boot")
+        }
+        minted
+    }
+
+    /**
+     * Whether this panel still owes Home Assistant one publication of the legacy
+     * `ha-paneld-aid-<androidId>` identifier.
+     *
+     * An installation already registered under that identifier would otherwise become unreachable if it
+     * were renamed before its first publication under the minted identity: the new payload would share
+     * no identifier with the existing device and Home Assistant would mint a duplicate. Publishing it
+     * once lets Home Assistant union the minted identity onto the existing device.
+     * [retireLegacyAidBridge] then stops it for good, because continuing to publish a cloned value
+     * would re-merge a cloned fleet the moment its merged device is deleted.
+     */
+    val legacyAidBridgePending: Boolean
+        get() = prefs.getBoolean(LEGACY_AID_BRIDGE_PREF, false)
+
+    /** Stop publishing the legacy identifier. Called once a discovery publication has carried it. */
+    fun retireLegacyAidBridge() = synchronized(CONFIG_LOCK) {
+        if (!prefs.getBoolean(LEGACY_AID_BRIDGE_PREF, false)) return@synchronized
+        if (durableCommit { putBoolean(LEGACY_AID_BRIDGE_PREF, false) }) {
+            Log.i(TAG, "legacy Android-id device identifier retired after discovery publication")
+        } else {
+            Log.w(TAG, "could not retire legacy Android-id device identifier; it will be republished")
+        }
+        Unit
+    }
 
     /** The device's configured name (Companion's default-name source), else the model. */
     private fun deviceName(): String =
@@ -2604,6 +2703,19 @@ class Config private constructor(
         return committed
     }
 
+    /**
+     * A fresh random device identity: 16 bytes from [SecureRandom], lowercase hex.
+     *
+     * [SecureRandom] rather than [java.util.Random] because the seed is the whole point — a cloned
+     * factory image gives every panel the same boot state, and a predictably seeded generator would
+     * reproduce the defect this identity exists to remove.
+     */
+    private fun mintDeviceUid(): String {
+        val bytes = ByteArray(DEVICE_UID_BYTES)
+        SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
+    }
+
     /** Whether an HA-capable setting is currently exposed to Home Assistant (per-panel override). */
     fun haExposed(key: String, default: Boolean): Boolean =
         prefs.getBoolean("${SettingsRegistry.HA_EXPOSE_PREFIX}$key", default)
@@ -2623,6 +2735,10 @@ class Config private constructor(
          * must be process-wide as well. */
         private val CONFIG_LOCK = Any()
         private const val SECURITY_MODE_PREF = "device_local_hardened_security"
+        /** The minted device identity. `device_local_` and unregistered: never exported, never restored. */
+        internal const val DEVICE_UID_PREF = "device_local_device_uid_v1"
+        private const val LEGACY_AID_BRIDGE_PREF = "device_local_legacy_aid_bridge_pending_v1"
+        private const val DEVICE_UID_BYTES = 16
         private const val SETUP_IDENTITY_CONFIRMED_PREF = "device_local_setup_identity_confirmed"
         private const val SETUP_ENTITY_FILTER_ANSWERED_PREF = "device_local_setup_entity_filter_answered"
         private const val SETUP_HOME_DASHBOARD_CHOSEN_PREF = "device_local_setup_home_dashboard_chosen"
@@ -2749,4 +2865,25 @@ internal fun sameOriginDashboardRoute(raw: String, configuredOrigin: String?): S
     val afterScheme = trimmed.substringAfter("://")
     val slash = afterScheme.indexOf('/')
     return if (slash < 0) "/" else afterScheme.substring(slash)
+}
+
+/**
+ * The disambiguating suffix a generated panel id carries when the device name is too generic to use.
+ *
+ * Two panels flashed from one factory image report the same model AND the same ANDROID_ID, so the
+ * historical suffix gave them one identical panel id — identical MQTT topics and entity ids, not
+ * merely a merged device (#155). The minted identity separates them.
+ *
+ * [hasConfiguredBroker] is the one thing that may not change: a panel with a broker has already
+ * published entities under the ANDROID_ID-derived id, and renaming it now would rename every entity
+ * and strand the customisation attached to it. Only an installation that has never had a broker —
+ * one that cannot have published anything — takes the minted suffix.
+ *
+ * Falls back to the legacy suffix, and then to a constant, so a panel that can read neither value
+ * still gets a well-formed id.
+ */
+internal fun panelIdSuffix(androidId: String, deviceUid: String, hasConfiguredBroker: Boolean): String {
+    val legacy = androidId.takeLast(4).ifBlank { "panel" }
+    if (hasConfiguredBroker) return legacy
+    return deviceUid.takeLast(4).ifBlank { legacy }
 }

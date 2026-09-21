@@ -1689,7 +1689,7 @@ class EntityLearningManager(
      * are readable by any user; only writes need an admin. `queried=false` means "could not ask Home
      * Assistant", which callers must keep distinct from "device has no area".
      */
-    suspend fun haAreaCatalog(androidId: String, panelId: String): HaAreaCatalog = withContext(Dispatchers.IO) {
+    suspend fun haAreaCatalog(deviceUid: String, panelId: String): HaAreaCatalog = withContext(Dispatchers.IO) {
         val ownerKey = credentialFingerprint()
         val base = config.haUrl.trim().trimEnd('/')
         if (base.isBlank()) return@withContext HaAreaCatalog(ownerKey = ownerKey)
@@ -1706,7 +1706,7 @@ class EntityLearningManager(
                 val device = io.github.maxlyth.hapaneld.http.HaAreaProtocol.panelDeviceArea(
                     request(JSONObject().put("type", "config/device_registry/list")),
                     areas,
-                    androidId,
+                    deviceUid,
                     panelId,
                 )
                 // Login shortname, best-effort: only config/auth/list carries it and only admins may
@@ -1738,7 +1738,7 @@ class EntityLearningManager(
      * area. Every failure is non-fatal — the caller's reconciliation rule owns the consequences.
      */
     suspend fun applyRequestedArea(
-        androidId: String,
+        deviceUid: String,
         panelId: String,
         areaName: String,
         expectedOwnerKey: String? = null,
@@ -1763,7 +1763,7 @@ class EntityLearningManager(
                     val device = io.github.maxlyth.hapaneld.http.HaAreaProtocol.panelDeviceArea(
                         request(JSONObject().put("type", "config/device_registry/list")),
                         areas,
-                        androidId,
+                        deviceUid,
                         panelId,
                     )
                     if (!device.found || device.deviceId.isBlank()) return@withHaSocket

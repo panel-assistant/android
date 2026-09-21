@@ -55,7 +55,7 @@ internal data class AutoSleepManagerHandle(
 
 internal data class AutoSleepRuntimeConfig(
     val enabled: Boolean,
-    val androidId: String,
+    val deviceUid: String,
     val panelId: String,
     val haUrl: String,
     /** Locally configured area name (`ha_area`); presence sources come from here when it is set. */
@@ -124,7 +124,7 @@ internal class AutoSleepController private constructor(
         scope = scope,
         screen = screen,
         configuration = {
-            AutoSleepRuntimeConfig(config.autoSleep, config.androidId, config.panelId, config.haUrl, config.haArea, config.autoSleepSource)
+            AutoSleepRuntimeConfig(config.autoSleep, config.deviceUid, config.panelId, config.haUrl, config.haArea, config.autoSleepSource)
         },
         learning = StoredAutoSleepLearning(context),
         subscribeToTouches = { callback -> PanelTouchObserver.shared(context).subscribeWithActivityFallback(callback) },
@@ -227,7 +227,7 @@ internal class AutoSleepController private constructor(
 
     suspend fun prerequisite(): HaPanelAreaPrerequisite {
         val current = configuration()
-        return manager.prerequisite(current.androidId, current.panelId, current.haArea)
+        return manager.prerequisite(current.deviceUid, current.panelId, current.haArea)
     }
 
     /** Counterfactual history using today's policy/lease and HA Area-source history only. */
@@ -577,7 +577,7 @@ internal class AutoSleepController private constructor(
         }
         manager.configure(HaPresenceRequest(
             enabled = next.value.enabled && !usesPanelPresence,
-            androidId = next.value.androidId,
+            deviceUid = next.value.deviceUid,
             panelId = next.value.panelId,
             controllerEpoch = next.epoch,
             preferredAreaName = next.value.haArea,

@@ -36,7 +36,7 @@ class HaPresenceSourceManagerTest {
             this, provider, discovery, owner, { true }, dispatcher, ::epochMillis,
         )
 
-        val result = manager.prerequisite("android-id", "panel")
+        val result = manager.prerequisite("device-uid", "panel")
 
         assertEquals(listOf(false, true), forces)
         assertEquals(HaPanelAreaPrerequisitePhase.ASSIGNED, result.phase)
@@ -78,7 +78,7 @@ class HaPresenceSourceManagerTest {
         val exact = FakeExactTransport(FakeExactConnection())
         val (manager, owner) = manager(dispatcher, discovery, exact, mutableListOf())
 
-        val result = manager.prerequisite("android-id", "panel")
+        val result = manager.prerequisite("device-uid", "panel")
 
         assertEquals(HaPanelAreaPrerequisitePhase.ASSIGNED, result.phase)
         assertEquals("Room", result.areaName)
@@ -95,7 +95,7 @@ class HaPresenceSourceManagerTest {
         val exact = FakeExactTransport(FakeExactConnection())
         val (manager, owner) = manager(dispatcher, discovery, exact, mutableListOf())
 
-        val result = manager.prerequisite("android-id", "panel")
+        val result = manager.prerequisite("device-uid", "panel")
 
         assertEquals(HaPanelAreaPrerequisitePhase.UNASSIGNED, result.phase)
         assertFalse(result.eligible)
@@ -642,7 +642,7 @@ class HaPresenceSourceManagerTest {
 
     private fun request(enabled: Boolean = true, controllerEpoch: Long = 1L) = HaPresenceRequest(
         enabled = enabled,
-        androidId = "android-id",
+        deviceUid = "device-uid",
         panelId = "panel",
         controllerEpoch = controllerEpoch,
     )
@@ -711,7 +711,7 @@ class HaPresenceSourceManagerTest {
             registryCount++
             if (registryAuthFailures-- > 0) throw HaAuthenticationException("rejected")
             if (registryFailure) error("registry unavailable")
-            val devices = JSONArray().put(device("panel-device", "ha-paneld-aid-android-id"))
+            val devices = JSONArray().put(device("panel-device", "ha-paneld-uid-device-uid"))
             val entities = JSONArray()
             val states = JSONArray()
             if (includePanelActivity) {
@@ -749,7 +749,7 @@ class HaPresenceSourceManagerTest {
             return HaPanelAreaRegistrySnapshot(
                 JSONObject().put("result", JSONArray().put(
                     JSONObject().put("id", "panel-device").put("area_id", area)
-                        .put("identifiers", JSONArray().put(JSONArray().put("mqtt").put("ha-paneld-aid-android-id"))),
+                        .put("identifiers", JSONArray().put(JSONArray().put("mqtt").put("ha-paneld-uid-device-uid"))),
                 )),
                 JSONObject().put("result", JSONArray().put(
                     JSONObject().put("area_id", areaId).put("name", areaName),

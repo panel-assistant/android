@@ -1146,6 +1146,10 @@ class PaneldService : Service() {
         config.migrateLogShipTcpDefault()
         config.migrateAutoSleepSource()
         config.migrateSetupQuestionsForExistingInstall()
+        // Must run BEFORE ensurePanelId: a generated panel id takes its suffix from this identity, and
+        // this is also where a panel decides, once, whether it owes Home Assistant a final publication
+        // of the legacy Android-id device identifier.
+        config.ensureDeviceUid()
         config.ensurePanelId()      // materialize the generated identity before MQTT/mDNS snapshot it
         reconcileNativePresentationAfterPromotion()
         // Same reason, same window: Application.onCreate only registered the Shizuku Binder listeners,
