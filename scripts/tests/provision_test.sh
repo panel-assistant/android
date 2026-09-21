@@ -287,6 +287,42 @@ failures=0
 LAST_OUTPUT=""
 LAST_STATUS=0
 
+# Everything a single provisioner run leaves behind in $TMP, removed before the NEXT run so that no
+# case can be satisfied by state a previous case happened to create.
+#
+# This list is the whole isolation guarantee, and a list is a fragile place to keep one: state added
+# later is shared by default and leaks in silence, which is how the entries below accumulated - each
+# was added after some test was found passing off an earlier test's leftovers. They are grouped by
+# what writes them so a new mock knob can be filed with its siblings instead of appended to a wall.
+#
+# The last group was measured rather than reasoned about (2026-09-21): hashing every $TMP file either
+# side of a run_provision boundary showed the `late primary` loop's second iteration inheriting four
+# files the first iteration wrote - the pushed database-observer and database-transaction scripts.
+# $TMP/db-txn-sandbox is deliberately NOT reset here. It is an expensive prepared sqlite fixture, not
+# per-run state, and the cases that need it rebuilt call reset_db_txn_state.
+reset_per_run_state() {
+  # Probe counters and grant state. Left behind, a run that granted nothing still verifies green off
+  # the previous run's grant, and one test's outcome depends on how many probes an earlier test made.
+  rm -f "$TMP/diag-attempts" "$TMP/config-schema-probes" "$TMP"/write-settings-granted* \
+    "$TMP/accessibility-services" "$TMP/accessibility-enabled" \
+    "$TMP"/record-audio-granted* "$TMP"/post-notifications-granted* \
+    "$TMP/plan-attempts" "$TMP/storage-status-attempts" "$TMP/health-probes" \
+    "$TMP/upgrade-release-attempts" "$TMP/installed-apk-signer-reads" \
+    "$TMP/pm-probe-count" "$TMP/candidate-contract-read-count" \
+    "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
+    "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
+  # Package and helper lifecycle markers.
+  rm -f "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
+    "$TMP/manual-helper-transaction" "$TMP/package-stopped" "$TMP/apk-install-attempted" \
+    "$TMP/package-data-cleared" "$TMP/candidate-apk-path" "$TMP/successor-installed" \
+    "$TMP/reset-package-relaunched" "$TMP/reset-database-recreated" "$TMP/reset-package-restopped" \
+    "$TMP/adb-root-escalated"
+  # The database observation and transaction scripts the fixture pushes, the panel-side data marker
+  # and the one-shot cleanup block. These shapes are what the loop iterations were inheriting.
+  rm -f "$TMP"/db-observer-remote.* "$TMP"/db-observer-script.* "$TMP"/db-txn-script.* \
+    "$TMP/device-data-adb-hapaneld" "$TMP/db-cleanup-blocked-once"
+}
+
 run_provision() {
   local unsigned_ack=()
   local provision_path="$PATH"
@@ -298,21 +334,7 @@ run_provision() {
   : > "$MSYS_ARGV_LOG"
   [ "${RUN_UNSIGNED_ACK:-1}" != 1 ] || unsigned_ack=(--allow-unsigned-helper)
   : > "$MOCK_CALL_LOG"
-  rm -f "$TMP/diag-attempts" "$TMP/config-schema-probes" "$TMP"/write-settings-granted* "$TMP/accessibility-services" "$TMP/accessibility-enabled"
-  # Runtime-permission grant state is per-run for the same reason: left behind, a run that never
-  # granted anything would still verify green off the previous run's grant.
-  rm -f "$TMP"/record-audio-granted* "$TMP"/post-notifications-granted*
-  # The slow-health probe counter is per-run state; leaving it behind made one test's outcome
-  # depend on how many health probes an earlier test happened to make.
-  rm -f "$TMP/plan-attempts" "$TMP/storage-status-attempts" "$TMP/health-probes"
-  rm -f "$TMP/upgrade-release-attempts" "$TMP/installed-apk-signer-reads"
-  rm -f "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction"
-  rm -f "$TMP/package-stopped" "$TMP/apk-install-attempted" "$TMP/pm-probe-count"
-  rm -f "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
-    "$TMP/package-data-cleared" "$TMP/candidate-contract-read-count" \
-    "$TMP/candidate-apk-path" \
-    "$TMP/helper-lease-observation-count" "$TMP/reset-package-relaunched" \
-    "$TMP/reset-database-recreated" "$TMP/reset-package-restopped"
+  reset_per_run_state
   if [ "${MOCK_STALE_TRANSACTION:-0}" = 1 ]; then : > "$TMP/stale-helper-transaction"; fi
   # Every run used to fabricate a previously-installed package, which made a genuine first
   # installation inexpressible — the reason no test caught that a failed first install strands the
@@ -547,10 +569,52 @@ assert_success() {
   else fail_test "$description (status $LAST_STATUS)"; fi
 }
 
+# The refusal provision.sh actually printed. `fail` emits exactly one "x <headline>" line and exits,
+# so the last one is why the run ended - a stable identifier that needs no production change to read.
+# Colour is off when stdout is not a tty, but the escapes are stripped anyway so a coloured capture
+# cannot silently stop matching.
+last_refusal_headline() {
+  [ -f "$LAST_OUTPUT" ] || return 0
+  sed 's/\x1b\[[0-9;]*m//g' "$LAST_OUTPUT" | sed -n 's/^[[:space:]]*✗ //p' | tail -n 1
+}
+
+# Refusals that mean the harness or the host broke rather than the condition under test.
+#
+# Each one is a fallthrough in provision.sh reached when an `adb shell` probe whose exit status is
+# discarded with `|| true` returns nothing the classifier recognises. An empty or garbled probe is
+# indistinguishable there from a genuine panel answer, so provision.sh reports it as a partition
+# state - and a test that merely required a non-zero exit records a green pass for a run that never
+# reached the behaviour it names. That is not hypothetical: on the CI runner, `late primary
+# unreadable` refused at the read-only-/system fallthrough, `assert_failure` passed, and only the
+# two content assertions after it failed.
+#
+# A case that MEANS to assert one of these passes it as assert_failure's second argument.
+UNRELATED_REFUSALS='the panel has read-only /system and no verified systemless boot-service runner|/vendor/etc/init is not writable for the hybrid root helper|the root-helper transaction could not be promoted into protected storage'
+
+# assert_failure "<description>" ["<expected refusal pattern>"]
+#
+# With a second argument the refusal headline must match it, so the case passes only on the reason it
+# exists to produce. Without one the run must at least not have refused from one of the unrelated
+# paths above. The two are different strengths and the second argument is the strong one; a bare call
+# rejects a class, it does not pin a reason.
 assert_failure() {
   description="$1"
-  if [ "$LAST_STATUS" -ne 0 ]; then pass "$description"
-  else fail_test "$description (unexpected status 0)"; fi
+  expected_refusal="${2-}"
+  refusal_headline="$(last_refusal_headline)"
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    fail_test "$description (unexpected status 0)"
+    return
+  fi
+  if [ -n "$expected_refusal" ]; then
+    if printf '%s\n' "$refusal_headline" | grep -Eq -- "$expected_refusal"; then pass "$description"
+    else fail_test "$description (refused for the wrong reason: wanted /$expected_refusal/, got '${refusal_headline:-no refusal line at all}')"; fi
+    return
+  fi
+  if [ -n "$refusal_headline" ] && printf '%s\n' "$refusal_headline" | grep -Eq -- "$UNRELATED_REFUSALS"; then
+    fail_test "$description (refused from an unrelated path: '$refusal_headline'; if this case means to assert that, pass it as assert_failure's second argument)"
+    return
+  fi
+  pass "$description"
 }
 
 assert_contains() {
@@ -830,7 +894,8 @@ for vector_bypass in --force --reset-config; do
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
   MOCK_HOST_DB_PRIMARY='readable:15:ok' MOCK_HOST_DB_RECOVERY=none \
   HAPANELD_RESET_CONFIRM=RESET run_provision "$MOCK_TARGET" --apk "$APK" --no-tame "$vector_bypass"
-  assert_failure "$vector_bypass cannot bypass database refusal"
+  assert_failure "$vector_bypass cannot bypass database refusal" \
+  "database schema 15 is newer than candidate maximum 14 and no selectable premigration recovery exists"
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "$vector_bypass refusal has zero tracked mutations"
 done
@@ -887,7 +952,8 @@ for invalid_candidate_contract in \
   'hapaneld-db:v1:ha-paneld.db:11:2147483648'; do
   MOCK_DB_CANDIDATE_CONTRACT="$invalid_candidate_contract" \
   MOCK_HOST_DB_PRIMARY='readable:14:ok' run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "non-canonical candidate contract $invalid_candidate_contract is refused"
+  assert_failure "non-canonical candidate contract $invalid_candidate_contract is refused" \
+  "the authenticated APK has missing, duplicate or malformed database metadata"
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "non-canonical candidate contract refusal has zero tracked mutations"
 done
@@ -951,7 +1017,8 @@ for retained_fresh_artifact in primary-journal restore-temp malformed-recovery; 
   MOCK_HOST_DB_PRIMARY=missing MOCK_HOST_DB_RECOVERY=none MOCK_HOST_DB_RETAINED=1 \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "rooted package absence with $retained_fresh_artifact is not classified fresh"
+  assert_failure "rooted package absence with $retained_fresh_artifact is not classified fresh" \
+  "the package is absent but retained database or recovery state still exists"
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rooted retained $retained_fresh_artifact refusal has zero tracked mutations"
 done
@@ -1062,29 +1129,40 @@ assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panel
   "$MOCK_CALL_LOG" "post-gate candidate drift refuses before adb install, grants or configuration mutation"
 
 for late_recovery_state in none 'v14:sidecar' 'v13:readable:13:ok'; do
+  case "$late_recovery_state" in
+    none) late_recovery_refusal="database schema 15 is newer than candidate maximum 14 and no selectable premigration recovery exists" ;;
+    'v14:sidecar') late_recovery_refusal="the newest selectable premigration recovery has a SQLite sidecar or temporary file" ;;
+    *) late_recovery_refusal="the package, database or recovery inventory changed after the consume-time observation" ;;
+  esac
   MOCK_HOST_DB_PRIMARY='readable:15:ok' MOCK_HOST_DB_RECOVERY='v14:readable:14:ok' \
   MOCK_HOST_DB_RECOVERY_AFTER_SECOND="$late_recovery_state" \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "late selected recovery state $late_recovery_state is refused at package time"
+  assert_failure "late selected recovery state $late_recovery_state is refused at package time" \
+    "package-time recheck: $late_recovery_refusal"
   assert_contains 'package-time recheck' "late selected recovery $late_recovery_state reaches package-time refusal"
   assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
     "late selected recovery $late_recovery_state rolls back task-owned helper preparation"
   assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set io\.panelassistant\.android|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "late selected recovery $late_recovery_state refuses before ha-paneld mutation"
 done
-unset late_recovery_state
+unset late_recovery_state late_recovery_refusal
 
 for late_primary_state in missing unreadable; do
+  case "$late_primary_state" in
+    missing) late_primary_refusal="ha-paneld is installed but its canonical database is missing" ;;
+    unreadable) late_primary_refusal="the canonical database is unreadable or is not a regular file" ;;
+  esac
   MOCK_HOST_DB_PRIMARY='readable:14:ok' MOCK_HOST_DB_PRIMARY_AFTER_SECOND="$late_primary_state" \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "late primary state $late_primary_state is refused at package time"
+  assert_failure "late primary state $late_primary_state is refused at package time" \
+    "package-time recheck: $late_primary_refusal"
   assert_contains 'package-time recheck' "late primary $late_primary_state reaches package-time refusal"
   assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
     "late primary $late_primary_state rolls back task-owned helper preparation"
 done
-unset late_primary_state
+unset late_primary_state late_primary_refusal
 
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_PM_PATH=fail MOCK_PM_UNINSTALLED_RECORD=absent \
 MOCK_HOST_DB_PRIMARY=missing MOCK_HOST_DB_RECOVERY=none MOCK_HOST_DB_RETAINED=0 \
@@ -1172,27 +1250,33 @@ assert_log_contains '/api/v1/status\?database_observation_nonce=[0-9a-f]{32}' \
 MOCK_ROOT=0 MOCK_STATUS_DB_SCHEMA=15 MOCK_STATUS_DB_QUICK_CHECK=ok \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "rootless too-new database refuses without inspectable recovery"
+assert_failure "rootless too-new database refuses without inspectable recovery" \
+  "database schema 15 is newer than candidate maximum 14; rootless recovery cannot be proven"
 assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
   "$MOCK_CALL_LOG" "rootless refusal has zero tracked mutations"
 
 for rootless_nonce_mode in missing wrong malformed duplicate; do
+  case "$rootless_nonce_mode" in
+    missing) rootless_nonce_refusal="" ;;
+    *) rootless_nonce_refusal="rootless status did not echo this run.s database observation nonce" ;;
+  esac
   MOCK_ROOT=0 MOCK_STATUS_DB_SCHEMA=14 MOCK_STATUS_DB_QUICK_CHECK=ok \
   MOCK_STATUS_DB_NONCE="$rootless_nonce_mode" \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "rootless $rootless_nonce_mode observation nonce is refused"
+  assert_failure "rootless $rootless_nonce_mode observation nonce is refused" "$rootless_nonce_refusal"
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $rootless_nonce_mode nonce refusal has zero tracked mutations"
 done
-unset rootless_nonce_mode
+unset rootless_nonce_mode rootless_nonce_refusal
 
 for rootless_field_mode in duplicate_schema duplicate_quick; do
   MOCK_ROOT=0 MOCK_STATUS_DB_SCHEMA=14 MOCK_STATUS_DB_QUICK_CHECK=ok \
   MOCK_STATUS_DB_FIELDS="$rootless_field_mode" \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "rootless $rootless_field_mode observation is refused"
+  assert_failure "rootless $rootless_field_mode observation is refused" \
+    "rootless status did not echo this run.s database observation nonce"
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $rootless_field_mode refusal has zero tracked mutations"
 done
@@ -1210,7 +1294,8 @@ for uninstalled_record_mode in retained malformed fail; do
   MOCK_PM_UNINSTALLED_RECORD="$uninstalled_record_mode" \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "rootless $uninstalled_record_mode uninstalled-data observation is refused"
+  assert_failure "rootless $uninstalled_record_mode uninstalled-data observation is refused" \
+    "database compatibility could not be proven: Android "
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $uninstalled_record_mode retained-data refusal has zero tracked mutations"
 done
@@ -1533,7 +1618,8 @@ assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am
 
 FAILED_EXPORT="$TMP/failed-backup.json"
 MOCK_EXPORT=fail run_provision "$MOCK_TARGET" --export "$FAILED_EXPORT" --apk "$APK"
-assert_failure "failed pre-install backup returns nonzero"
+assert_failure "failed pre-install backup returns nonzero" \
+  "config export returned unexpected HTTP"
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "failed pre-install backup stops before APK install"
 if [ ! -e "$FAILED_EXPORT" ]; then pass "failed backup leaves no misleading output file"; else fail_test "failed backup leaves no misleading output file"; fi
 
@@ -1615,7 +1701,8 @@ rm -f "$UNUSABLE_BACKUP_DIR"
 rm -rf "$TMP/auto-backups"
 EXPLICIT_STRICT_EXPORT="$TMP/explicit-strict-backup.json"
 MOCK_EXPORT=fail HAPANELD_SKIP_AUTO_EXPORT=0 run_provision "$MOCK_TARGET" --export "$EXPLICIT_STRICT_EXPORT" --apk "$APK"
-assert_failure "explicit export failure blocks an upgrade"
+assert_failure "explicit export failure blocks an upgrade" \
+  "config export returned unexpected HTTP"
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "explicit export failure stops before APK mutation"
 if [ ! -e "$EXPLICIT_STRICT_EXPORT" ]; then
   pass "a failed explicit export publishes no file"
@@ -1718,7 +1805,8 @@ printf '#!/usr/bin/env bash\ncase "$1" in 1|2|3) /bin/sleep 3 ;; *) /bin/sleep "
 chmod +x "$SCHEMA_OVERRUN_DIR/sleep"
 PATH="$SCHEMA_OVERRUN_DIR:$PATH" CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS=3 MOCK_CONFIG_SCHEMA=transport-fail \
   run_provision "$MOCK_TARGET" --verify
-assert_failure "verify-only rejects a schema still unavailable when an overrunning pause ends"
+assert_failure "verify-only rejects a schema still unavailable when an overrunning pause ends" \
+  "provisioning incomplete .* re-run the SAME command to finish"
 assert_count "$(grep -c '/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "no schema request starts after an overrunning pause reaches the deadline"
 
 MOCK_CONFIG_SCHEMA=malformed run_provision "$MOCK_TARGET" --verify
@@ -2411,7 +2499,8 @@ assert_log_contains 'exec /data/local/hapaneld-helper --request COMPANIONCAPS' "
 assert_not_contains 'exec /(system/bin|data/adb/hapaneld)/hapaneld-helper --request' "$MOCK_CALL_LOG" "systemless validation never probes an alternate install location"
 
 MOCK_SYSTEM_WRITABLE=0 MOCK_SYSTEMLESS_RUNNER=0 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "read-only system without a verified service.d runner fails closed"
+assert_failure "read-only system without a verified service.d runner fails closed" \
+  "the panel has read-only /system and no verified systemless boot-service runner"
 assert_contains 'read-only /system and no verified systemless boot-service runner' "missing persistence mechanism names the migration blocker"
 assert_contains 'Magisk, KernelSU, or APatch' "missing persistence mechanism gives supported recovery choices"
 # A rooted panel may need its existing overlay mounted or may still have verity enabled, rather than
@@ -2489,14 +2578,16 @@ for capacity_state in missing missing-df missing-sed malformed ambiguous; do
 done
 
 MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=0 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "full /system without writable vendor init authority fails closed"
+assert_failure "full /system without writable vendor init authority fails closed" \
+  "/vendor/etc/init is not writable for the hybrid root helper"
 assert_contains '/vendor/etc/init.*not writable|writable.*vendor.*init' "vendor-blocked hybrid names the unavailable boot authority"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
   "unwritable vendor init stops before a helper transaction or APK replacement"
 
 MOCK_SYSTEM_AVAIL_KB=1048576 MOCK_VENDOR_RC_STATE=managed MOCK_VENDOR_INIT_RW=0 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "an established hybrid layout fails closed when its vendor authority becomes unwritable"
+assert_failure "an established hybrid layout fails closed when its vendor authority becomes unwritable" \
+  "/vendor/etc/init is not writable for the hybrid root helper"
 assert_contains '/vendor/etc/init.*not writable|writable.*vendor.*init' "unwritable managed hybrid gives a direct recovery reason"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
   "unwritable managed hybrid stops before a helper transaction or APK replacement"
@@ -2550,7 +2641,8 @@ assert_contains 'helper/install-daemon\.sh' "manual-to-provision handoff gives t
 assert_not_contains '^adb .* push .* /data/local/tmp/hapaneld-helper|^adb .* install( |$)' "$MOCK_CALL_LOG" "manual-to-provision handoff stops before privileged staging or APK replacement"
 
 MOCK_TRANSACTION_TAMPER=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "a transaction substituted after adb staging fails before root execution"
+assert_failure "a transaction substituted after adb staging fails before root execution" \
+  "the root-helper transaction could not be promoted into protected storage"
 assert_contains 'could not be promoted into protected storage' "substituted transaction names the protected-storage boundary"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless)|^adb .* install( |$)' "$MOCK_CALL_LOG" "substituted transaction executes no privileged installer and replaces no APK"
 
@@ -3607,7 +3699,8 @@ assert_not_contains 'api/v1/setup/home-dashboard' "$MOCK_CALL_LOG" \
   "a refused dashboard path records no wizard answer"
 
 MOCK_SEED_CONFIG=fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --entity-filter on --no-tame
-assert_failure "a failed seed write fails the run"
+assert_failure "a failed seed write fails the run" \
+  "provisioning incomplete .* correct the failed item above"
 assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LOG" \
   "no answer is recorded for a seed that did not persist"
 unset MOCK_SEED_CONFIG
@@ -4170,7 +4263,8 @@ HA_TOKEN_FILE="$TMP/ha-token.txt"
 printf '%s\n' 'file-token-secret-a4b781' > "$HA_TOKEN_FILE"
 chmod 600 "$HA_TOKEN_FILE"
 MOCK_HA_TOKEN=invalid run_provision "$MOCK_TARGET" --apk "$APK" --builtin --ha-url https://ha.test --ha-token-file "$HA_TOKEN_FILE" --no-tame
-assert_failure "Home Assistant token file is accepted and validated"
+assert_failure "Home Assistant token file is accepted and validated" \
+  "provisioning incomplete .* correct the failed item above"
 assert_not_contains 'file-token-secret-a4b781' "$MOCK_CALL_LOG" "token-file content stays out of descendant argv"
 
 EMPTY_SECRET_FILE="$TMP/empty-secret.txt"
@@ -4542,7 +4636,8 @@ for uncertain_prepare in malformed timeout; do
   [ "$uncertain_prepare" != timeout ] || uncertain_timeout=1
   UPGRADE_PREPARE_TIMEOUT_SECONDS="$uncertain_timeout" MOCK_UPGRADE_PREPARE="$uncertain_prepare" \
   MOCK_HELPER_INSTALL=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "a post-$uncertain_prepare abort fails before package replacement"
+  assert_failure "a post-$uncertain_prepare abort fails before package replacement" \
+    "/system root-helper install failed; the prior helper was preserved or restored"
   if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
     pass "a post-$uncertain_prepare abort releases its retained nonce exactly once"
   else fail_test "a post-$uncertain_prepare abort releases its retained nonce exactly once"; fi
@@ -4587,7 +4682,8 @@ assert_log_contains 'exec-out cat /data/data/io.panelassistant.android/databases
 # reset with rejected bytes remains fail-closed and likewise releases rather than erasing anything.
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_HELPER_INSTALL=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "a pre-install helper failure aborts after READY"
+assert_failure "a pre-install helper failure aborts after READY" \
+  "/system root-helper install failed; the prior helper was preserved or restored"
 if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
   pass "a pre-install abort sends exactly one RELEASE"
 else fail_test "a pre-install abort sends exactly one RELEASE"; fi
@@ -4603,7 +4699,8 @@ assert_log_contains 'am start-foreground-service --user 0 -n io.panelassistant.a
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RELEASE=fail_once MOCK_HELPER_INSTALL=fail \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "a transient RELEASE response preserves the original provisioning failure"
+assert_failure "a transient RELEASE response preserves the original provisioning failure" \
+  "/system root-helper install failed; the prior helper was preserved or restored"
 release_nonces="$(sed -n 's/.*RELEASE_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG")"
 if [ "$(printf '%s\n' "$release_nonces" | grep -c .)" = 2 ] &&
    [ "$(printf '%s\n' "$release_nonces" | sort -u | grep -c .)" = 1 ]; then
@@ -4616,7 +4713,8 @@ else fail_test "each RELEASE attempt receives the idempotent API31 service-start
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RELEASE=release_failed MOCK_HELPER_INSTALL=fail \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "a receiver release_failed response preserves the original provisioning failure"
+assert_failure "a receiver release_failed response preserves the original provisioning failure" \
+  "/system root-helper install failed; the prior helper was preserved or restored"
 if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 2 ]; then
   pass "release_failed is retried exactly once"
 else fail_test "release_failed is retried exactly once"; fi
@@ -4836,7 +4934,8 @@ assert_marker_absent "an unanswerable discovery never claims a captured snapshot
 assert_not_contains '^adb .* install' "$MOCK_CALL_LOG" "the unanswerable discovery refuses before APK install"
 reset_db_txn_state
 MOCK_PM_PATH=fail MOCK_PM_LIVENESS=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --allow-missing-db-snapshot
-assert_failure "the deprecated snapshot flag cannot bypass unknown database ownership"
+assert_failure "the deprecated snapshot flag cannot bypass unknown database ownership" \
+  "the installed-package state is unknown"
 assert_marker_absent "the compatibility flag does not manufacture a captured verdict"
 reset_db_txn_state
 # Package-manager absence does not erase retained storage authority. This fixture deliberately keeps
@@ -5507,7 +5606,8 @@ assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*h
 
 # --force skips a version comparison; it must not stand in for authorising a wipe.
 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config --force
-assert_failure "--force does not authorise an unconfirmed reset"
+assert_failure "--force does not authorise an unconfirmed reset" \
+  "--reset-config was not confirmed"
 assert_not_contains 'pm clear' "$MOCK_CALL_LOG" "--force never reaches the package manager on its own"
 
 HAPANELD_RESET_CONFIRM=RESET MOCK_SETUP=identity MOCK_ROOT=0 MOCK_EXPORT=fail MOCK_DB_TXN=backup_fail MOCK_UPGRADE_PREPARE=digest_mismatch \
@@ -8783,7 +8883,8 @@ assert_contains 'too old to hand the home screen back' "the refusal names the pa
 assert_not_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" "an old panel is not removed blind"
 
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_HAND_BACK=transport-fail run_provision "$MOCK_TARGET" --uninstall
-assert_failure "an uninstall refuses when the hand-back request never landed"
+assert_failure "an uninstall refuses when the hand-back request never landed" \
+  "handing the home screen back failed"
 assert_not_contains '^adb .* uninstall io\.github\.maxlyth\.hapaneld$' "$MOCK_CALL_LOG" "an unanswered hand-back does not proceed to removal"
 
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_HAND_BACK=approval run_provision "$MOCK_TARGET" --uninstall
