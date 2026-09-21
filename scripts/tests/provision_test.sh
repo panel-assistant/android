@@ -1169,10 +1169,14 @@ for late_recovery_state in none 'v14:sidecar' 'v13:readable:13:ok'; do
 done
 unset late_recovery_state late_recovery_refusal
 
-for late_primary_state in missing unreadable; do
+for late_primary_state in missing unreadable changed; do
   case "$late_primary_state" in
     missing) late_primary_refusal="ha-paneld is installed but its canonical database is missing" ;;
-    unreadable) late_primary_refusal="the canonical database is unreadable or is not a regular file" ;;
+    # `unreadable` and `changed` used to share one refusal, which told an operator the database was
+    # unreadable when it was merely being written to. They are separate verdicts now, so this case
+    # asserts the one that belongs to an observer that genuinely could not read the store.
+    unreadable) late_primary_refusal="the canonical database could not be read" ;;
+    changed) late_primary_refusal="the canonical database kept changing while it was read" ;;
   esac
   MOCK_HOST_DB_PRIMARY='readable:14:ok' MOCK_HOST_DB_PRIMARY_AFTER_SECOND="$late_primary_state" \
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
