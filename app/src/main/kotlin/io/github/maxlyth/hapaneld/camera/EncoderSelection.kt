@@ -8,11 +8,10 @@ data class EncoderCandidate(
     val minBps: Int,
     val maxBps: Int,
     val sizeSupported: Boolean,
-    val cbr: Boolean,
 )
 
 sealed interface EncoderChoice {
-    data class Chosen(val name: String, val bps: Int, val cbr: Boolean) : EncoderChoice
+    data class Chosen(val name: String, val bps: Int) : EncoderChoice
     /** A classified reason, safe for `fault_detail`; never an exception message. */
     data class Refused(val detail: String) : EncoderChoice
 }
@@ -35,7 +34,7 @@ object EncoderSelection {
         if (withinFloor.isEmpty()) return EncoderChoice.Refused("bitrate_below_encoder_floor")
         // MediaCodecList order is the platform's preference; the first fitting hardware encoder wins.
         val chosen = withinFloor.first()
-        return EncoderChoice.Chosen(chosen.name, bps = minOf(target, chosen.maxBps), cbr = chosen.cbr)
+        return EncoderChoice.Chosen(chosen.name, bps = minOf(target, chosen.maxBps))
     }
 
     /** `isHardwareAccelerated` exists from API 29; before that the name is the only evidence there is. */

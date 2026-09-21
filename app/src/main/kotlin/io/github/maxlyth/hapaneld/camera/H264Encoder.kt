@@ -57,10 +57,12 @@ sealed interface EncoderOpen {
  * Buffer input rather than an input surface is deliberate: the owner already paces frames to the cap,
  * and only frames it chooses to hand over are encoded, so the frame-rate ceiling is a property of this
  * class rather than a promise the sensor cannot keep (the panels' HALs offer no fixed low rate).
- * The bitrate target is configured through [EncoderFormat], which also grants the component the whole
- * H.264 quantiser range: measured on `c2.rk.avc.encoder`, a ceiling left to the vendor held the slices
- * at a median QP of 22 and delivered 4716 kbps against a 1000 kbps target. The owner still measures the
- * delivered rate and reports it, because the target remains the vendor's to meet.
+ * The bitrate target is configured through [EncoderFormat], which asks every encoder for constant
+ * bitrate because the capability query understates what a component will accept: `c2.rk.avc.encoder`
+ * denies CBR and honours it, and in the variable mode its denial left it in it delivered 4716 kbps
+ * against a 1000 kbps target. A component that genuinely refuses the format is opened again in the
+ * vendor's own mode. The owner still measures the delivered rate and reports it, because the target
+ * remains the vendor's to meet.
  */
 class MediaCodecH264Encoder private constructor(
     private val codec: MediaCodec,
@@ -213,9 +215,6 @@ class MediaCodecH264Encoder private constructor(
                         minBps = video.bitrateRange.lower,
                         maxBps = video.bitrateRange.upper,
                         sizeSupported = runCatching { video.isSizeSupported(width, height) }.getOrDefault(false),
-                        cbr = runCatching {
-                            caps.encoderCapabilities?.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) == true
-                        }.getOrDefault(false),
                     )
                 }
 
@@ -225,10 +224,34 @@ class MediaCodecH264Encoder private constructor(
                 is EncoderChoice.Refused -> return EncoderOpen.Refused(c.detail)
                 is EncoderChoice.Chosen -> c
             }
-            val keys = EncoderFormat.keys(fps = fps, bps = choice.bps, cbr = choice.cbr, sdkInt = Build.VERSION.SDK_INT)
+            // Constant bitrate first for every encoder, the vendor's own mode only after a refusal:
+            // the capability query is not evidence, and `configure` is. See EncoderFormat.
+            var refusal: EncoderOpen.Refused? = null
+            for (constantBitrate in listOf(true, false)) {
+                when (val attempt = openWith(width, height, fps, choice, constantBitrate, handler, listener)) {
+                    is EncoderOpen.Ready -> return attempt
+                    is EncoderOpen.Refused -> {
+                        refusal = attempt
+                        if (constantBitrate) Log.i(TAG, "encoder ${choice.name} refused constant bitrate (${attempt.detail}); retrying in the vendor's own mode")
+                    }
+                }
+            }
+            return refusal ?: EncoderOpen.Refused("configure_unavailable")
+        }
+
+        private fun openWith(
+            width: Int,
+            height: Int,
+            fps: Int,
+            choice: EncoderChoice.Chosen,
+            constantBitrate: Boolean,
+            handler: Handler,
+            listener: VideoEncoder.Listener,
+        ): EncoderOpen {
             val format = MediaFormat.createVideoFormat(MIME, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-                keys.forEach { (key, value) -> setInteger(key, value) }
+                EncoderFormat.keys(fps = fps, bps = choice.bps, constantBitrate = constantBitrate)
+                    .forEach { (key, value) -> setInteger(key, value) }
             }
             val codec = try {
                 MediaCodec.createByCodecName(choice.name)
@@ -249,11 +272,11 @@ class MediaCodecH264Encoder private constructor(
                 )
                 codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 negotiated = runCatching { codec.inputFormat.getInteger(MediaFormat.KEY_COLOR_FORMAT) }.getOrNull()
-                val facts = EncoderFacts(choice.name, width, height, fps, choice.bps / 1_000, negotiated, choice.cbr)
+                val facts = EncoderFacts(choice.name, width, height, fps, choice.bps / 1_000, negotiated, constantBitrate)
                 val encoder = MediaCodecH264Encoder(codec, facts, listener)
                 holder[0] = encoder
                 codec.start()
-                Log.i(TAG, "encoder ${choice.name} started ${width}x$height@$fps ${choice.bps / 1_000}kbps cbr=${choice.cbr} qp_max=${keys[EncoderFormat.QP_MAX] ?: "vendor"} input_color_format=$negotiated")
+                Log.i(TAG, "encoder ${choice.name} started ${width}x$height@$fps ${choice.bps / 1_000}kbps cbr=$constantBitrate input_color_format=$negotiated")
                 return EncoderOpen.Ready(encoder)
             } catch (e: Exception) {
                 runCatching { codec.release() }
