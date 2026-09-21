@@ -618,6 +618,22 @@ internal class ProximityCalibrationEngine(
         /** A boundary above this fraction of the span is indistinguishable from the near observation. */
         const val MAXIMUM_NEAR_ENTER = .85f
 
+        /** Readings this far above the band confirm they are counted in the same unit as it. */
+        const val DRIFT_SCALE_FLOOR = 2f
+
+        /**
+         * Whether these readings are denominated in the same unit as the band.
+         *
+         * A band is a count of raw units on one acquisition route, and the Android proximity contract
+         * is centimetres, so a conforming HAL reports something like 0 and 5 where the panels this
+         * band was measured on report hundreds or thousands. Five centimetres cannot hold a
+         * hundred-count band, and imposing it there would refuse every calibration on hardware that
+         * worked perfectly well before. A route whose readings are not on the band's scale keeps the
+         * unmargined behaviour, because the band says nothing about it either way.
+         */
+        private fun onTheBandsScale(clear: Float, near: Float, margin: Float): Boolean =
+            max(abs(clear), abs(near)) >= margin * DRIFT_SCALE_FLOOR
+
         /**
          * Hold both decision boundaries above the source's own multi-day clear-floor drift.
          *
@@ -634,7 +650,7 @@ internal class ProximityCalibrationEngine(
          * Fractions only ever rise, so a calibration with room to spare is returned unchanged.
          */
         fun driftMargined(value: Calibration, margin: Float): Calibration? {
-            if (margin <= 0f || value.mode == Mode.BINARY) return value
+            if (margin <= 0f || value.mode == Mode.BINARY || !onTheBandsScale(value.clearRaw, value.nearRaw, margin)) return value
             val span = abs(value.nearRaw - value.clearRaw)
             if (!span.isFinite() || span <= 0f) return null
             val nearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
@@ -648,7 +664,9 @@ internal class ProximityCalibrationEngine(
 
         /** The same rule for a deliberate wave, whose baseline drifts exactly as the clear floor does. */
         fun driftMargined(value: WaveCalibration, margin: Float): WaveCalibration? {
-            if (margin <= 0f || isBinaryPair(value.clearRaw, value.nearRaw)) return value
+            if (margin <= 0f || isBinaryPair(value.clearRaw, value.nearRaw) ||
+                !onTheBandsScale(value.clearRaw, value.nearRaw, margin)
+            ) return value
             val span = abs(value.nearRaw - value.clearRaw)
             if (!span.isFinite() || span <= 0f) return null
             val waveNearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)

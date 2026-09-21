@@ -239,6 +239,34 @@ class ProximityDriftMarginTest {
         assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, margin))
     }
 
+    @Test fun aSensorReportingCentimetresIsNotOnTheBandsScaleAndKeepsWorking() {
+        // The Android proximity contract is centimetres, so a conforming HAL reports something like
+        // five and zero where every unit this band was measured on reports hundreds. A hundred-count
+        // band cannot be imposed on five centimetres without refusing every calibration on hardware
+        // that worked, so a route whose readings are not on the band's scale is left alone.
+        val hal = proximityDriftMargin(ProximityAcquisition.ANDROID_HAL)
+        val centimetres = Calibration(mode = Mode.RANGED, clearRaw = 5f, nearRaw = 0f)
+        assertEquals(centimetres, ProximityCalibrationEngine.driftMargined(centimetres, hal))
+        val centimetreWave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = 5f, nearRaw = 0f)
+        assertEquals(centimetreWave, ProximityCalibrationEngine.driftMargined(centimetreWave, hal))
+        // A HAL that counts, which is what every measured unit does, still gets the band.
+        val counts = requireNotNull(
+            ProximityCalibrationEngine.driftMargined(
+                Calibration(mode = Mode.RANGED, clearRaw = 19f, nearRaw = 900f), hal,
+            ),
+        )
+        assertTrue(
+            "a counting HAL must still hold its boundary above the band",
+            counts.clearExit * (counts.nearRaw - counts.clearRaw) >= hal,
+        )
+        assertNull(
+            "and a counting HAL whose approach is too weak is still declined",
+            ProximityCalibrationEngine.driftMargined(
+                Calibration(mode = Mode.RANGED, clearRaw = 464f, nearRaw = 550f), hal,
+            ),
+        )
+    }
+
     @Test fun aRouteWithNoMeasuredDriftBandKeepsItsCalibrationExactly() {
         val value = Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear)
         assertEquals(value, ProximityCalibrationEngine.driftMargined(value, 0f))
