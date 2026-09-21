@@ -298,12 +298,33 @@ LAST_STATUS=0
 # The last group was measured rather than reasoned about (2026-09-21): hashing every $TMP file either
 # side of a run_provision boundary showed the `late primary` loop's second iteration inheriting four
 # files the first iteration wrote - the pushed database-observer and database-transaction scripts.
-# $TMP/db-txn-sandbox is deliberately NOT reset here. It is an expensive prepared sqlite fixture, not
-# per-run state, and the cases that need it rebuilt call reset_db_txn_state.
+# Two things are deliberately NOT reset here, and both were checked rather than assumed.
+#
+# $TMP/db-txn-sandbox is an expensive prepared sqlite fixture rather than per-run state; the cases
+# that need it rebuilt call reset_db_txn_state.
+#
+# $TMP/auto-backups accumulates across runs ON PURPOSE. It does carry state between cases - a
+# directory-aware snapshot shows its contents differing between the two `late primary` iterations -
+# but that is the contract the suite is written against: the cases whose assertions depend on a
+# count clear it themselves first, and adding it here fails four assertions across the
+# database-authority and host-reclamation shards. Measured, not guessed; leave it alone.
+#
+# $TMP/device-data-adb-hapaneld is not host state at all. It is the PANEL's filesystem, and the
+# host-reclamation cases plant a concurrent provisioner's staged bundle in it before calling
+# run_provision precisely to assert that a run reclaims its own identity and nothing else. Clearing
+# it here destroys the survivor those cases exist to observe, which is how it was caught: three
+# assertions, all of the form "never touches another run's ...". A panel does not forget its own
+# disk between two host runs, so nothing here should pretend it does.
+#
+# Every group removes with -rf, not -f. device-data-adb-hapaneld is a directory, and `rm -f` on a
+# directory does not remove it - it refuses, prints to stderr and returns, so the entry read as reset
+# while the state stayed exactly where it was. Whether a piece of per-run state happens to be a file
+# or a tree is not something a caller should have to know, and the next entry that quietly becomes a
+# directory must not reintroduce the same silent gap.
 reset_per_run_state() {
   # Probe counters and grant state. Left behind, a run that granted nothing still verifies green off
   # the previous run's grant, and one test's outcome depends on how many probes an earlier test made.
-  rm -f "$TMP/diag-attempts" "$TMP/config-schema-probes" "$TMP"/write-settings-granted* \
+  rm -rf "$TMP/diag-attempts" "$TMP/config-schema-probes" "$TMP"/write-settings-granted* \
     "$TMP/accessibility-services" "$TMP/accessibility-enabled" \
     "$TMP"/record-audio-granted* "$TMP"/post-notifications-granted* \
     "$TMP/plan-attempts" "$TMP/storage-status-attempts" "$TMP/health-probes" \
@@ -312,15 +333,15 @@ reset_per_run_state() {
     "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
     "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
   # Package and helper lifecycle markers.
-  rm -f "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
+  rm -rf "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
     "$TMP/manual-helper-transaction" "$TMP/package-stopped" "$TMP/apk-install-attempted" \
     "$TMP/package-data-cleared" "$TMP/candidate-apk-path" "$TMP/successor-installed" \
     "$TMP/reset-package-relaunched" "$TMP/reset-database-recreated" "$TMP/reset-package-restopped" \
     "$TMP/adb-root-escalated"
   # The database observation and transaction scripts the fixture pushes, the panel-side data marker
   # and the one-shot cleanup block. These shapes are what the loop iterations were inheriting.
-  rm -f "$TMP"/db-observer-remote.* "$TMP"/db-observer-script.* "$TMP"/db-txn-script.* \
-    "$TMP/device-data-adb-hapaneld" "$TMP/db-cleanup-blocked-once"
+  rm -rf "$TMP"/db-observer-remote.* "$TMP"/db-observer-script.* "$TMP"/db-txn-script.* \
+    "$TMP/db-cleanup-blocked-once"
 }
 
 run_provision() {
