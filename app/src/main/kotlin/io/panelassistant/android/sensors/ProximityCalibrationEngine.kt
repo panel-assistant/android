@@ -262,9 +262,8 @@ internal class ProximityCalibrationEngine(
                     // A separation too small to hold the drift margin is not a weaker calibration to
                     // save; it is one this position never produced. Keep measuring until it does or
                     // the approach times out into NOT_DETECTED.
-                    val margined = driftMargined(
-                        Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near), driftMargin,
-                    )
+                    val proposed = Calibration(mode = mode(clear, near), clearRaw = clear, nearRaw = near)
+                    val margined = driftMargined(proposed, driftMargin)
                     if (margined == null) {
                         nearSamples.clear(); captureStarted = null
                         return

@@ -2,6 +2,7 @@ package io.panelassistant.android.sensors
 
 import io.panelassistant.android.dashboard.EntityCatalogStore
 import io.panelassistant.android.sensors.ProximityCalibrationEngine.Calibration
+import io.panelassistant.android.sensors.ProximityCalibrationEngine.CapabilityStatus
 import io.panelassistant.android.sensors.ProximityCalibrationEngine.Mode
 import io.panelassistant.android.sensors.ProximityCalibrationEngine.Result
 import io.panelassistant.android.sensors.ProximityCalibrationEngine.Stage
@@ -18,10 +19,10 @@ import org.junit.Test
 /**
  * A calibration's decision boundary has to outlive the clear floor it was measured against.
  *
- * The recorded series replayed here is four days of two-second polling from one raw16 unit whose
- * saved calibration put the boundary 13.7 counts above its clear stage. The floor walked across it
- * within a day and the unit then reported near with nobody in the building, so it could not sleep
- * and a single approach could not rearm its wake.
+ * The series replayed here is four recorded days of two-second polling from one raw16 unit. Its
+ * saved calibration put the boundary 13.7 counts above the clear stage that derived it; the floor
+ * walked across that within a day and the unit then reported near with nobody in front of it, so it
+ * could not sleep and a single approach could not rearm its wake.
  */
 class ProximityDriftMarginTest {
     /** The clear-floor median of the recorded session, and what a person and a hand actually read. */
@@ -29,12 +30,12 @@ class ProximityDriftMarginTest {
     private val occupant = 3_413f
     private val hand = 49_235f
 
-    /** What that session saved: a near observation twenty-one counts above its own clear stage. */
+    /** What that session measured as near: twenty-one counts above its own clear stage. */
     private val weakNear = 995f
 
     private val margin = proximityDriftMargin(ProximityAcquisition.STK_RAW)
 
-    @Test fun `the raw16 route carries the drift band its own four-day series measured`() {
+    @Test fun eachRouteCarriesTheDriftBandItsOwnSeriesMeasured() {
         assertEquals(300f, margin, 0f)
         assertEquals(100f, proximityDriftMargin(ProximityAcquisition.ANDROID_HAL), 0f)
         assertEquals(0f, proximityDriftMargin(ProximityAcquisition.VI530X), 0f)
@@ -42,30 +43,32 @@ class ProximityDriftMarginTest {
         assertEquals(0f, proximityDriftMargin(ProximityAcquisition.ABSENT), 0f)
     }
 
-    @Test fun `the recorded series never reports near once nobody is in front of the panel`() {
+    /**
+     * The headline contract, run end to end: put the recorded session's own observations through
+     * setup, then replay four recorded days against whatever setup was willing to save. Without the
+     * margin, setup saves that pair and the replay reports near with nobody present for hours.
+     */
+    @Test fun whateverSetupSavesFromTheRecordedSessionStaysClearAcrossTheRecordedDays() {
+        val journey = Journey(driftMargin = margin)
+        journey.runToReview(clearFloor, weakNear)
+        val engine = ProximityCalibrationEngine(journey.saved, observedSourceMode = Mode.RANGED, driftMargin = margin)
         val series = recordedSeries()
         assertTrue("the recorded series must carry four days of samples", series.size > 10_000)
-        val engine = ProximityCalibrationEngine(admitted(), observedSourceMode = Mode.RANGED, driftMargin = margin)
-        var near = 0
         series.forEach { (atMs, raw) ->
             engine.observe(raw, atMs)
             // The service ticks the engine between samples; without that the debounce window never
-            // closes and every reading is read one sample late.
+            // closes and every reading lands one sample late.
             val state = engine.tick(atMs + SETTLE_MS)
-            if (state.near == true) {
-                near++
-                assertTrue(
-                    "near at ${atMs / 3_600_000}h with raw $raw, which is the clear floor and its drift",
-                    raw > PRESENCE_FLOOR,
-                )
-            }
+            assertFalse(
+                "near at ${atMs / 3_600_000}h with raw $raw, which is this unit's clear floor and its drift",
+                state.near == true && raw <= PRESENCE_FLOOR,
+            )
         }
-        assertTrue("the replay must exercise presence, not only the clear floor", near > 0)
     }
 
-    @Test fun `the same series under the saved boundary is stuck near for hours at a time`() {
-        // The defect, replayed. This is the control: it holds with or without the margin, and it is
-        // what the admission rule below exists to stop anyone saving again.
+    @Test fun theRecordedDaysUnderTheSavedBoundaryAreStuckNearForHoursAtATime() {
+        // The defect, replayed: the control that proves the fixture carries it. This holds with and
+        // without the margin, and it is what the admission rule exists to stop anyone saving again.
         val engine = ProximityCalibrationEngine(
             Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear),
             observedSourceMode = Mode.RANGED,
@@ -87,7 +90,7 @@ class ProximityDriftMarginTest {
         )
     }
 
-    @Test fun `a near observation inside the drift band is never saved as a calibration`() {
+    @Test fun aNearObservationInsideTheDriftBandIsNeverSavedAsACalibration() {
         val journey = Journey(driftMargin = margin)
         journey.begin(clearFloor)
         journey.capture(clearFloor)
@@ -99,41 +102,23 @@ class ProximityDriftMarginTest {
         )
         journey.tick(ProximityCalibrationEngine.APPROACH_TIMEOUT_MS)
         assertEquals(Stage.WAVE_BASELINE, journey.state.stage)
-        assertEquals(
-            ProximityCalibrationEngine.CapabilityStatus.NOT_DETECTED,
-            journey.state.presenceStatus,
-        )
+        assertEquals(CapabilityStatus.NOT_DETECTED, journey.state.presenceStatus)
         assertFalse(journey.state.presenceSupported)
     }
 
-    @Test fun `the same observation pair is saved without the margin, which is the defect`() {
-        val journey = Journey(driftMargin = 0f)
-        journey.begin(clearFloor)
-        journey.capture(clearFloor)
-        journey.capture(weakNear)
-        assertEquals(Stage.RETURN_CLEAR, journey.state.stage)
-    }
-
-    @Test fun `an occupant separation is saved and holds its boundary above the drift band`() {
+    @Test fun anOccupantSeparationIsSavedAndHoldsItsBoundaryAboveTheDriftBand() {
         val journey = Journey(driftMargin = margin)
-        journey.begin(clearFloor)
-        journey.capture(clearFloor)
-        journey.capture(occupant)
-        assertEquals(Stage.RETURN_CLEAR, journey.state.stage)
-        journey.capture(clearFloor)
-        assertEquals(Stage.WAVE_BASELINE, journey.state.stage)
-        assertEquals(
-            ProximityCalibrationEngine.CapabilityStatus.VALIDATED,
-            journey.state.presenceStatus,
-        )
-        val candidate = requireNotNull(journey.state.calibration ?: admitted())
+        journey.runToReview(clearFloor, occupant)
+        val saved = requireNotNull(journey.saved) { "an occupant separation must remain saveable" }
+        assertEquals(CapabilityStatus.VALIDATED, journey.state.presenceStatus)
         assertTrue(
-            "the boundary must sit further above the clear floor than the band it must outlive",
-            enterRaw(candidate) - candidate.clearRaw >= margin,
+            "entering near must sit further above the clear floor than the band it must outlive",
+            enterRaw(saved) - saved.clearRaw >= margin,
         )
+        assertTrue("leaving near must also sit above the band", exitRaw(saved) - saved.clearRaw >= margin)
     }
 
-    @Test fun `an occupant reads near and a hand certainly does`() {
+    @Test fun anOccupantReadsNearAndAHandCertainlyDoes() {
         val calibration = admitted()
         assertEquals(100, calibration.level(occupant))
         assertEquals(100, calibration.level(hand))
@@ -148,10 +133,9 @@ class ProximityDriftMarginTest {
         assertEquals(true, engine.tick(13_000L).near)
     }
 
-    @Test fun `a floor drifting up and down across the calibration value never reports near`() {
+    @Test fun aFloorDriftingUpAndDownAcrossTheCalibrationValueNeverReportsNear() {
         val engine = ProximityCalibrationEngine(admitted(), observedSourceMode = Mode.RANGED, driftMargin = margin)
         var at = 0L
-        // The whole band, in both directions, twice: this is the excursion the recorded unit made.
         listOf(0f, margin, 0f, -100f, 0f, margin, -100f, margin).forEach { offset ->
             repeat(40) {
                 at += 60_000L
@@ -161,21 +145,20 @@ class ProximityDriftMarginTest {
         }
     }
 
-    @Test fun `a floor that drifts the whole band while an occupant is present still clears when they leave`() {
-        // Hysteresis holds near until the level falls back to clearExit. If only the entry boundary
-        // carried the margin, a floor that rose while someone stood there would sit above the exit
-        // boundary after they left, and the panel would never clear again.
+    @Test fun aFloorThatDriftsTheWholeBandWhileOccupiedStillClearsWhenTheyLeave() {
+        // Hysteresis holds near until the level falls back to the exit boundary. If only the entry
+        // boundary carried the margin, a floor that rose while someone stood there would sit above
+        // the exit boundary once they left, and the panel would never clear again.
         val engine = ProximityCalibrationEngine(admitted(), observedSourceMode = Mode.RANGED, driftMargin = margin)
         engine.observe(clearFloor, 0L)
         assertEquals(false, engine.tick(1_000L).near)
         engine.observe(occupant, 60_000L)
         assertEquals(true, engine.tick(61_000L).near)
-        val drifted = clearFloor + margin
-        engine.observe(drifted, 120_000L)
-        assertEquals("the occupant left onto a floor that drifted the whole band", false, engine.tick(121_000L).near)
+        engine.observe(clearFloor + margin, 120_000L)
+        assertEquals("they left onto a floor that drifted the whole band", false, engine.tick(121_000L).near)
     }
 
-    @Test fun `admission is exactly the headroom rule, not merely some separation`() {
+    @Test fun admissionIsExactlyTheHeadroomRuleNotMerelySomeSeparation() {
         val least = margin * ProximityCalibrationEngine.NEAR_ENTER_DRIFT_HEADROOM /
             ProximityCalibrationEngine.MAXIMUM_NEAR_ENTER
         assertNotNull(margined(clearFloor, clearFloor + least * 1.001f))
@@ -185,19 +168,23 @@ class ProximityDriftMarginTest {
             "entering near must stay a headroom multiple of the band above the floor",
             enterRaw(admitted) - clearFloor >= margin * ProximityCalibrationEngine.NEAR_ENTER_DRIFT_HEADROOM,
         )
-        assertTrue(
-            "leaving near must also stay above the band",
-            exitRaw(admitted) - clearFloor >= margin,
-        )
+        assertTrue("leaving near must also stay above the band", exitRaw(admitted) - clearFloor >= margin)
     }
 
-    @Test fun `a separation with room to spare keeps the boundaries it was given`() {
+    @Test fun aSeparationWithRoomToSpareKeepsTheBoundariesItWasGiven() {
         val spacious = requireNotNull(margined(clearFloor, occupant))
         assertEquals(.65f, spacious.nearEnter, 1e-6f)
         assertEquals(.30f, spacious.clearExit, 1e-6f)
     }
 
-    @Test fun `a stored calibration inside the drift band is declined on upgrade, not reinterpreted`() {
+    @Test fun aWaveWhoseBaselineCannotHoldTheBandIsNotValidatedEither() {
+        val wave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = clearFloor, nearRaw = weakNear)
+        assertNull(ProximityCalibrationEngine.driftMargined(wave, margin))
+        val real = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = occupant, nearRaw = hand)
+        assertNotNull(ProximityCalibrationEngine.driftMargined(real, margin))
+    }
+
+    @Test fun aStoredCalibrationInsideTheDriftBandIsDeclinedOnUpgradeNotReinterpreted() {
         val stored = row(Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear))
         val backing = Backing(stored)
         val runtime = runtime(backing, driftMargin = margin)
@@ -208,12 +195,12 @@ class ProximityDriftMarginTest {
         assertTrue(status.getBoolean("calibrationDriftUnsafe"))
         assertFalse(runtime.isPresenceReady())
         runtime.close()
-        assertEquals("the user's own observations must survive the decline", stored, backing.row)
+        assertEquals("the saved observations must survive the decline", stored, backing.row)
         assertEquals(0, backing.writes)
         assertEquals(0, backing.clears)
     }
 
-    @Test fun `the same stored calibration is honoured without the margin, which is the defect`() {
+    @Test fun theSameStoredCalibrationIsHonouredWithoutTheMarginWhichIsTheDefect() {
         val backing = Backing(row(Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear)))
         val runtime = runtime(backing, driftMargin = 0f)
         runtime.observe(clearFloor, 1_000L, false)
@@ -224,7 +211,7 @@ class ProximityDriftMarginTest {
         runtime.close()
     }
 
-    @Test fun `a stored calibration with room is migrated and still reports as a user setup`() {
+    @Test fun aStoredCalibrationWithRoomIsMigratedAndStillReportsAsAUserSetup() {
         val stored = row(Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = occupant))
         val backing = Backing(stored)
         val runtime = runtime(backing, driftMargin = margin)
@@ -238,14 +225,14 @@ class ProximityDriftMarginTest {
         assertEquals(0, backing.writes)
     }
 
-    @Test fun `a panel whose sensor reports near or clear only is untouched`() {
+    @Test fun aPanelWhoseSensorReportsNearOrClearOnlyIsUntouched() {
         val binary = Calibration(mode = Mode.BINARY, clearRaw = 0f, nearRaw = 1f)
         assertEquals(binary, ProximityCalibrationEngine.driftMargined(binary, margin))
         val wave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = 1f, nearRaw = 0f)
         assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, margin))
     }
 
-    @Test fun `a route with no measured drift band keeps its calibration exactly`() {
+    @Test fun aRouteWithNoMeasuredDriftBandKeepsItsCalibrationExactly() {
         val value = Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear)
         assertEquals(value, ProximityCalibrationEngine.driftMargined(value, 0f))
     }
@@ -277,9 +264,10 @@ class ProximityDriftMarginTest {
 
     private class Journey(driftMargin: Float) {
         var now = 0L
+        var saved: Calibration? = null
         val engine = ProximityCalibrationEngine(
             null, observedSourceMode = Mode.RANGED, driftMargin = driftMargin,
-        ) { true }
+        ) { saved = it; true }
         val state: Result get() = engine.current()
         fun tick(delta: Long): Result { now += delta; return engine.tick(now) }
         fun begin(clear: Float) {
@@ -291,6 +279,18 @@ class ProximityDriftMarginTest {
             tick(ProximityCalibrationEngine.COUNTDOWN_MS)
             engine.observe(raw, now)
             tick(ProximityCalibrationEngine.CAPTURE_HOLD_MS)
+        }
+
+        /** Clear, approach, clear again, then let the wave phase lapse and save whatever is offered. */
+        fun runToReview(clear: Float, near: Float) {
+            begin(clear)
+            capture(clear)
+            capture(near)
+            if (state.stage == Stage.RETURN_CLEAR) capture(clear) else tick(ProximityCalibrationEngine.APPROACH_TIMEOUT_MS)
+            assertEquals(Stage.WAVE_BASELINE, state.stage)
+            tick(ProximityCalibrationEngine.WAVE_PHASE_TIMEOUT_MS)
+            assertEquals(Stage.REVIEW, state.stage)
+            if (state.canSave) engine.action("save", now)
         }
     }
 
@@ -319,7 +319,7 @@ class ProximityDriftMarginTest {
         const val SOURCE = "sysfs-stk3a5x-raw16-v1"
         const val PROFILE = "profile-r1"
 
-        /** Above the recorded unit's clear floor and every excursion its drift ever made. */
+        /** Above this unit's clear floor and every excursion its drift ever made. */
         const val PRESENCE_FLOOR = 1_100f
 
         /** Long enough for the engine's debounce window to close between recorded samples. */
