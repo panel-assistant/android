@@ -35,6 +35,9 @@ object EncoderFormat {
 
     const val BITRATE_MODE_CBR = 2
 
+    /** Throwaway: does a component that denies CBR through the capability query honour it anyway? */
+    const val FORCE_CBR_EXPERIMENT = true
+
     /** `MediaFormat.KEY_VIDEO_QP_MAX`, and its per-picture-type companions, all from API 31. */
     const val QP_MAX = "video-qp-max"
     const val QP_I_MAX = "video-qp-i-max"
@@ -54,7 +57,7 @@ object EncoderFormat {
         put(BIT_RATE, bps)
         put(FRAME_RATE, fps)
         put(I_FRAME_INTERVAL, IDR_INTERVAL_S)
-        if (cbr) put(BITRATE_MODE, BITRATE_MODE_CBR)
+        if (cbr || FORCE_CBR_EXPERIMENT) put(BITRATE_MODE, BITRATE_MODE_CBR)
         if (sdkInt >= QP_KEYS_FROM_SDK) {
             put(QP_MAX, QP_CEILING)
             put(QP_I_MAX, QP_CEILING)
