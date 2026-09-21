@@ -4911,6 +4911,24 @@ helper_journal_state() {
   fi
 }
 
+# `rm -f` is not uniformly forgiving about a path that is not there. On a panel whose /vendor is a
+# read-only mount, toybox 0.7.4 still fails on an ABSENT path under it, so a single rm naming
+# /vendor/etc/init/hapaneld-helper.rc aborts the install on every panel that never had a vendor rc —
+# which is the normal state of an NSPanel 86 (landing panel, 2026-09-20). Remove what is actually
+# there, and judge the result by what remains rather than by rm's exit status: a path that is gone
+# afterwards is the guarantee this step owes, however the removal was reported.
+remove_if_present() {
+  for stale in "$@"; do
+    if [ -e "$stale" ]; then
+      rm -f "$stale"
+      if [ -e "$stale" ]; then
+        return 1
+      fi
+    fi
+  done
+  return 0
+}
+
 install_system() {
   marker=/system/bin/.hapaneld-helper-upgrade
   state=$(helper_journal_state)
@@ -5026,7 +5044,7 @@ install_system() {
   sync || { echo "INSTALL_STEP_FAILED install_system sync"; return 1; }
   mv -f /system/etc/init/hapaneld-helper.rc.new /system/etc/init/hapaneld-helper.rc || { echo "INSTALL_STEP_FAILED install_system mv_hapaneld-helper.rc"; return 1; }
   sync || { echo "INSTALL_STEP_FAILED install_system sync"; return 1; }
-  rm -f /system/bin/hapaneld-helper \
+  remove_if_present /system/bin/hapaneld-helper \
     /system/bin/hapaneld-ledd /system/etc/init/hapaneld-ledd.rc \
     /data/adb/hapaneld/hapaneld-helper /data/adb/service.d/hapaneld-helper.sh \
     /vendor/etc/init/hapaneld-helper.rc || { echo "INSTALL_STEP_FAILED install_system remove_noncanonical_helpers"; return 1; }
@@ -5132,7 +5150,7 @@ install_systemless() {
   sync || { echo "INSTALL_STEP_FAILED install_systemless sync"; return 1; }
   mv -f /data/adb/service.d/hapaneld-helper.sh.new /data/adb/service.d/hapaneld-helper.sh || { echo "INSTALL_STEP_FAILED install_systemless mv_hapaneld-helper.sh"; return 1; }
   sync || { echo "INSTALL_STEP_FAILED install_systemless sync"; return 1; }
-  rm -f /data/adb/hapaneld/hapaneld-helper || { echo "INSTALL_STEP_FAILED install_systemless remove_noncanonical_helpers"; return 1; }
+  remove_if_present /data/adb/hapaneld/hapaneld-helper || { echo "INSTALL_STEP_FAILED install_systemless remove_noncanonical_helpers"; return 1; }
   sync || { echo "INSTALL_STEP_FAILED install_systemless sync"; return 1; }
   v2_target systemless "$marker" || { echo "INSTALL_STEP_FAILED install_systemless v2_target"; return 1; }
   echo INSTALL_OK
@@ -5250,7 +5268,7 @@ install_hybrid() {
   sync || { echo "INSTALL_STEP_FAILED install_hybrid sync"; return 1; }
   mv -f /vendor/etc/init/hapaneld-helper.rc.new /vendor/etc/init/hapaneld-helper.rc || { echo "INSTALL_STEP_FAILED install_hybrid mv_hapaneld-helper.rc"; return 1; }
   sync || { echo "INSTALL_STEP_FAILED install_hybrid sync"; return 1; }
-  rm -f /system/etc/init/hapaneld-helper.rc /system/bin/hapaneld-helper \
+  remove_if_present /system/etc/init/hapaneld-helper.rc /system/bin/hapaneld-helper \
     /system/bin/hapaneld-ledd /system/etc/init/hapaneld-ledd.rc \
     /data/adb/hapaneld/hapaneld-helper /data/adb/service.d/hapaneld-helper.sh || { echo "INSTALL_STEP_FAILED install_hybrid remove_noncanonical_helpers"; return 1; }
   [ ! -e /system/etc/init/hapaneld-helper.rc ] && [ ! -e /system/bin/hapaneld-helper ] && \
