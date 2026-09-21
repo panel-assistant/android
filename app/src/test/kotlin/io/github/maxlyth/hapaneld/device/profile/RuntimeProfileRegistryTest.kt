@@ -477,6 +477,79 @@ class RuntimeProfileRegistryTest {
         assertTrue(secondAdmin.select(ProfileSelection.Pinned(ref), sharedRevision) is ProfileMutation.Rejected)
     }
 
+    // The next four assertions hold at this lane's base commit: content dedup and the guarded
+    // removal path were already shipped. They are written down because Issue #138's catalogue
+    // hygiene report is what they answer, and because nothing else stated them as one contract.
+    // Reverting the picker collapse cannot make them fail; they are mutation-proven instead.
+
+    @Test fun `byte identical yaml imported twice yields one revision`() {
+        val registry = registry(mapOf("generic.yaml" to genericYaml()))
+        val raw = ProfileYaml.serialize(testProfileDocument(version = "0.1.1", facts = facts))
+
+        val first = import(registry, raw)
+        val second = import(registry, raw)
+
+        assertEquals(first, second)
+        assertEquals(1, registry.list().count { it.origin == ProfileOrigin.IMPORTED })
+    }
+
+    @Test fun `changed yaml under the same id remains a distinct revision`() {
+        val registry = registry(mapOf("generic.yaml" to genericYaml()))
+        val first = import(registry, ProfileYaml.serialize(testProfileDocument(version = "0.1.1", facts = facts)))
+        val second = import(registry, ProfileYaml.serialize(testProfileDocument(version = "0.1.2", facts = facts)))
+
+        assertEquals(first.id, second.id)
+        assertFalse("an edited profile must not overwrite the revision it was edited from", first == second)
+        assertEquals(2, registry.list().count { it.origin == ProfileOrigin.IMPORTED })
+    }
+
+    @Test fun `an inactive imported revision is removable and the active one is refused with its reason`() {
+        val registry = registry(mapOf("generic.yaml" to genericYaml()))
+        val inactive = import(registry, ProfileYaml.serialize(testProfileDocument(version = "0.1.1", facts = facts)))
+        val active = import(registry, ProfileYaml.serialize(testProfileDocument(version = "0.1.2", facts = facts)))
+        registry.select(ProfileSelection.Pinned(active), registry.status().catalogRevision)
+        registry.markActivationHealthy(registry.resolveForStartup().activationGeneration!!)
+
+        assertEquals(active, registry.status().active!!.ref)
+        val refused = registry.deleteProfile(active, registry.status().catalogRevision)
+        assertTrue(refused is ProfileMutation.Rejected)
+        assertEquals(
+            "referenced-profile-delete-forbidden",
+            (refused as ProfileMutation.Rejected).issues.first().presentation!!.code,
+        )
+        assertTrue(registry.deleteProfile(inactive, registry.status().catalogRevision) is ProfileMutation.Success)
+        assertEquals(active, registry.status().active!!.ref)
+    }
+
+    // A catalog that already holds the reporter's duplicates before this change lands must present
+    // its whole history and keep running exactly what it was running. The picker's collapse is a
+    // presentation of this list, so the list is what has to survive; the DOM contract owns the rest.
+    @Test fun `a catalog of four pre existing revisions keeps every revision and its active selection`() {
+        val refs = (1..4).map { index -> restore(ProfileYaml.serialize(testProfileDocument(version = "0.1.$index", facts = facts))) }
+        val registry = registry(mapOf("generic.yaml" to genericYaml()))
+        registry.select(ProfileSelection.Pinned(refs[2]), registry.status().catalogRevision)
+        registry.markActivationHealthy(registry.resolveForStartup().activationGeneration!!)
+
+        val imported = registry.list().filter { it.origin == ProfileOrigin.IMPORTED }
+        assertEquals(4, imported.size)
+        assertEquals(refs.toSet(), imported.map { it.ref }.toSet())
+        assertEquals(1, imported.map { it.ref.id }.distinct().size)
+        assertEquals(refs[2], registry.status().active!!.ref)
+        assertTrue("every stored revision must carry its import time", imported.all { (it.importedAtEpochMs ?: 0L) > 0L })
+    }
+
+    // The import time exists to order a profile's own revisions in the picker. It is read from the
+    // immutable file rather than stored beside it, so it must not leak onto bundled content, which
+    // has no import event at all and would otherwise sort against a real one.
+    @Test fun `bundled revisions carry no import time`() {
+        val registry = registry(mapOf("generic.yaml" to genericYaml()))
+        import(registry, ProfileYaml.serialize(testProfileDocument(version = "0.1.1", facts = facts)))
+
+        val bundled = registry.list().filter { it.origin == ProfileOrigin.BUNDLED }
+        assertTrue("the fixture must supply bundled content", bundled.isNotEmpty())
+        assertTrue(bundled.all { it.importedAtEpochMs == null })
+    }
+
     @Test fun `last known good imported revision cannot be deleted`() {
         val registry = registry(mapOf("generic.yaml" to genericYaml()))
         val first = import(registry, ProfileYaml.serialize(testProfileDocument(version = "1.0.0", facts = facts)))

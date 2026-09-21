@@ -353,6 +353,13 @@ data class ProfileSummary(
     val issues: List<ProfileIssue> = emptyList(),
     val soc: ProfileSoc? = null,
     val links: List<ProfileLink> = emptyList(),
+    /**
+     * When this imported revision was stored, taken from its immutable file's modification time.
+     * Null for bundled content, which has no import event. It orders a profile's own revisions so a
+     * picker can show the newest and keep the rest as history; it is not an identity or a trust
+     * signal, and a backup restore rewrites it, so equal values must fall back to a stable tiebreak.
+     */
+    val importedAtEpochMs: Long? = null,
 )
 
 enum class ProfileDriverKind { LED, SCREEN, RADIO, RELAY, SENSOR, INPUT, UPDATE, ACCESS }
