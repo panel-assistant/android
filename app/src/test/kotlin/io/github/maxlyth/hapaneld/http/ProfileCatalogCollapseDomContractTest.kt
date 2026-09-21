@@ -167,6 +167,21 @@ class ProfileCatalogCollapseDomContractTest {
             if (select.value !== global.refKey(orphanNew.ref)) throw new Error("fallback assigned an option that was never rendered");
             if (global.refKey(model.selected) !== global.refKey(orphanNew.ref)) throw new Error("model.selected disagrees with the control");
 
+            // A bundled id can list a retired copy beside its successor so that a pinned revision
+            // stays resolvable across a core upgrade. Collapsing those would hide a rollback
+            // destination, so bundled groups are left whole whatever the toggle says.
+            const retiredBundled = Object.assign({}, bundled, { ref: { id: "generic", revision: "b1".repeat(32) }, content_version: "0.0.9" });
+            options = render([bundled, retiredBundled, first, second], null, false);
+            const bundledValues = options.map(function (option) { return option.value; });
+            if (bundledValues.indexOf(global.refKey(bundled.ref)) < 0) throw new Error("bundled revision was collapsed away");
+            if (bundledValues.indexOf(global.refKey(retiredBundled.ref)) < 0) throw new Error("retired bundled revision was collapsed away");
+            if (options.length !== 3) throw new Error("bundled pair did not stay whole beside a collapsed import: " + options.length);
+
+            // A bundled pair is not hidden history, so it must not offer to reveal any: a toggle
+            // that appears here would expand to exactly the list already on screen.
+            render([bundled, retiredBundled], null, false);
+            if (toggle.hidden !== true) throw new Error("toggle offered to reveal bundled revisions that were never collapsed");
+
             // The toggle only appears where there is history to reveal.
             render([bundled], null, false);
             if (toggle.hidden !== true) throw new Error("toggle shown with no superseded revisions");

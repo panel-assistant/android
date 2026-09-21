@@ -547,7 +547,17 @@
     });
     return order.map(function (id) {
       var revisions = byId[id];
-      return { id: id, revisions: revisions, representative: representativeRevision(revisions) };
+      // Only imported revisions collapse. A bundled id can also list more than one entry -- a
+      // retired copy is kept beside its successor so a pinned revision stays resolvable -- and
+      // hiding one of those would hide a rollback destination the panel may need. Iterating on an
+      // imported YAML is the defect; shipped content is not it.
+      var collapsible = revisions.every(function (item) { return string(item.origin).toLowerCase() === "imported"; });
+      return {
+        id: id,
+        revisions: revisions,
+        collapsible: collapsible,
+        representative: collapsible ? representativeRevision(revisions) : null,
+      };
     });
   }
   // Newest wins, but only where "newest" is a fact: import times are absent on bundled content and
@@ -615,10 +625,10 @@
       // An option is offered when it represents its group, when the toggle is open, or when it is
       // the one the user currently has selected: a collapse that could hide the current selection
       // would leave the control disagreeing with what the page thinks is selected.
-      var offered = group.revisions.filter(function (profile) {
+      var offered = group.collapsible ? group.revisions.filter(function (profile) {
         return profile === group.representative || model.showAllRevisions || refKey(profile.ref) === wanted;
-      });
-      superseded += group.revisions.length - 1;
+      }) : group.revisions;
+      if (group.collapsible) superseded += group.revisions.length - 1;
       var parent = select;
       if (offered.length > 1) {
         parent = document.createElement("optgroup");
