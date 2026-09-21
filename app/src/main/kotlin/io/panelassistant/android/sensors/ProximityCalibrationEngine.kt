@@ -640,7 +640,10 @@ internal class ProximityCalibrationEngine(
             val nearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
             if (!(nearEnter <= MAXIMUM_NEAR_ENTER)) return null
             val wave = value.wave?.let { driftMargined(it, margin) ?: return null }
-            return value.copy(nearEnter = nearEnter, clearExit = max(value.clearExit, margin / span), wave = wave)
+            // A boundary pair the model itself refuses is not a calibration to fall back on.
+            return runCatching {
+                value.copy(nearEnter = nearEnter, clearExit = max(value.clearExit, margin / span), wave = wave)
+            }.getOrNull()
         }
 
         /** The same rule for a deliberate wave, whose baseline drifts exactly as the clear floor does. */
@@ -648,9 +651,11 @@ internal class ProximityCalibrationEngine(
             if (margin <= 0f || isBinaryPair(value.clearRaw, value.nearRaw)) return value
             val span = abs(value.nearRaw - value.clearRaw)
             if (!span.isFinite() || span <= 0f) return null
-            val nearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
-            if (!(nearEnter <= MAXIMUM_NEAR_ENTER)) return null
-            return value.copy(nearEnter = nearEnter, clearExit = max(value.clearExit, margin / span))
+            val waveNearEnter = max(value.nearEnter, margin * NEAR_ENTER_DRIFT_HEADROOM / span)
+            if (!(waveNearEnter <= MAXIMUM_NEAR_ENTER)) return null
+            return runCatching {
+                value.copy(nearEnter = waveNearEnter, clearExit = max(value.clearExit, margin / span))
+            }.getOrNull()
         }
     }
 }

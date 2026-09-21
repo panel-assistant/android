@@ -149,13 +149,16 @@ class ProximityDriftMarginTest {
         // Hysteresis holds near until the level falls back to the exit boundary. If only the entry
         // boundary carried the margin, a floor that rose while someone stood there would sit above
         // the exit boundary once they left, and the panel would never clear again.
-        val engine = ProximityCalibrationEngine(admitted(), observedSourceMode = Mode.RANGED, driftMargin = margin)
+        // A separation wide enough to admit but narrow enough that the band, not the fraction, sets
+        // the boundaries: this is where a panel actually lives once it is not a metre from a wall.
+        val modest = requireNotNull(margined(clearFloor, clearFloor + MODEST_SPAN))
+        val engine = ProximityCalibrationEngine(modest, observedSourceMode = Mode.RANGED, driftMargin = margin)
         engine.observe(clearFloor, 0L)
         assertEquals(false, engine.tick(1_000L).near)
-        engine.observe(occupant, 60_000L)
+        engine.observe(clearFloor + MODEST_SPAN, 60_000L)
         assertEquals(true, engine.tick(61_000L).near)
-        engine.observe(clearFloor + margin, 120_000L)
-        assertEquals("they left onto a floor that drifted the whole band", false, engine.tick(121_000L).near)
+        engine.observe(clearFloor + margin * .95f, 120_000L)
+        assertEquals("they left onto a floor that drifted the band", false, engine.tick(121_000L).near)
     }
 
     @Test fun admissionIsExactlyTheHeadroomRuleNotMerelySomeSeparation() {
@@ -163,6 +166,10 @@ class ProximityDriftMarginTest {
             ProximityCalibrationEngine.MAXIMUM_NEAR_ENTER
         assertNotNull(margined(clearFloor, clearFloor + least * 1.001f))
         assertNull(margined(clearFloor, clearFloor + least * .999f))
+        // The same rule at fixed separations, so a relaxed constant cannot move the rule with it:
+        // 500 counts leaves only 1.67 bands of room and 600 leaves two.
+        assertNull("500 counts of separation cannot carry a 300-count band", margined(clearFloor, clearFloor + 500f))
+        assertNotNull("600 counts of separation can", margined(clearFloor, clearFloor + 600f))
         val admitted = requireNotNull(margined(clearFloor, clearFloor + least * 1.001f))
         assertTrue(
             "entering near must stay a headroom multiple of the band above the floor",
@@ -235,6 +242,10 @@ class ProximityDriftMarginTest {
     @Test fun aRouteWithNoMeasuredDriftBandKeepsItsCalibrationExactly() {
         val value = Calibration(mode = Mode.RANGED, clearRaw = clearFloor, nearRaw = weakNear)
         assertEquals(value, ProximityCalibrationEngine.driftMargined(value, 0f))
+        // Including one whose own boundary the margined rule would never place: a route with no
+        // measured band is not a route this rule has anything to say about.
+        val steep = value.copy(nearEnter = .9f, clearExit = .5f)
+        assertEquals(steep, ProximityCalibrationEngine.driftMargined(steep, 0f))
     }
 
     private fun admitted() = requireNotNull(margined(clearFloor, occupant))
@@ -324,6 +335,9 @@ class ProximityDriftMarginTest {
 
         /** Long enough for the engine's debounce window to close between recorded samples. */
         const val SETTLE_MS = 200L
+
+        /** Admissible, but narrow enough that the band rather than the fraction sets the boundaries. */
+        const val MODEST_SPAN = 700f
 
         fun row(value: Calibration) = EntityCatalogStore.ProximityModelRow(
             ProximityCalibrationRuntime.fingerprint("$PROFILE|$SOURCE"),
