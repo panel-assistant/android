@@ -29788,6 +29788,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 64
     },
+    "profiles.toolbar.show_superseded": {
+      "text": "Show superseded revisions",
+      "sourceHash": "45e23ea6f6e48b9a82ac11ec04490dad65aa20aef837ccfe94f9c4596fd0c58f",
+      "surface": "profiles",
+      "context": "picker toggle revealing a profile’s older revisions",
+      "risk": "ordinary",
+      "siblings": [
+        "profiles.toolbar.revision",
+        "profiles.toolbar.revision_label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 64
+    },
     "profiles.validation.invalid_profile": {
       "text": "Invalid profile",
       "sourceHash": "f48e372cc3ae5e58783e229ba563e2edbbeb13af014134f9e26ca685e9f82288",

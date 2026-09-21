@@ -7,6 +7,7 @@
     profiles: [],
     status: {},
     selected: null,
+    showAllRevisions: false,
     source: "",
     originalSource: "",
     preview: null,
@@ -531,43 +532,141 @@
   function isDirty() { return model.editable && model.source !== model.originalSource; }
   function confirmDiscard() { return !isDirty() || confirm(t("profiles.confirm.discard", "Discard this unsaved profile edit?")); }
 
+  // A profile whose YAML is iterated during bring-up accumulates one immutable revision per edit,
+  // and every one of them used to render as a sibling option distinguished only by a sha256 prefix.
+  // Revisions are grouped by profile id and only the representative of each group is offered by
+  // default; the rest stay in the catalogue, stay selectable through the revisions toggle, and are
+  // never removed by anything here. Nothing about this changes what the panel runs.
+  function catalogGroups(profiles) {
+    var order = [];
+    var byId = {};
+    profiles.forEach(function (profile) {
+      var id = string(profile.ref && profile.ref.id);
+      if (!own.call(byId, id)) { byId[id] = []; order.push(id); }
+      byId[id].push(profile);
+    });
+    return order.map(function (id) {
+      var revisions = byId[id];
+      // Only imported revisions collapse. A bundled id can also list more than one entry -- a
+      // retired copy is kept beside its successor so a pinned revision stays resolvable -- and
+      // hiding one of those would hide a rollback destination the panel may need. Iterating on an
+      // imported YAML is the defect; shipped content is not it.
+      var collapsible = revisions.every(function (item) { return string(item.origin).toLowerCase() === "imported"; });
+      return {
+        id: id,
+        revisions: revisions,
+        collapsible: collapsible,
+        representative: collapsible ? representativeRevision(revisions) : null,
+      };
+    });
+  }
+  // Newest wins, but only where "newest" is a fact: import times are absent on bundled content and
+  // are rewritten wholesale by a backup restore, so equal or missing times fall back to the list's
+  // own deterministic order rather than to an invented one. What the panel is actually running
+  // outranks both, so an active or selected revision always represents its own group and can never
+  // be the one the collapse hides.
+  function representativeRevision(revisions) {
+    var active = revisions.find(function (item) { return item.active; });
+    if (active) return active;
+    var selected = revisions.find(function (item) { return item.selected; });
+    if (selected) return selected;
+    return revisions.reduce(function (best, item) {
+      var bestAt = Number(best.imported_at) || 0;
+      var itemAt = Number(item.imported_at) || 0;
+      return itemAt > bestAt ? item : best;
+    }, revisions[0]);
+  }
+  // A ten-character hash told the reporter nothing about which of four near-identical entries was
+  // which. The declared version and the import time are what a person iterating on a YAML actually
+  // recognises; the hash tail stays last so two same-version same-minute revisions remain distinct.
+  function revisionLabel(profile) {
+    var parts = [];
+    var version = string(profile.content_version);
+    if (version) parts.push(version);
+    var importedAt = Number(profile.imported_at);
+    if (importedAt > 0) {
+      var rendered = "";
+      try { rendered = new Date(importedAt).toLocaleString(); } catch (_) { rendered = ""; }
+      if (rendered) parts.push(rendered);
+    }
+    parts.push(string(profile.ref && profile.ref.revision).slice(0, 10));
+    return parts.join(" · ");
+  }
+  function optionLabel(profile) {
+    var rawOrigin = string(profile.origin);
+    var originLookup = rawOrigin.toLowerCase();
+    var origin = originLookup === "bundled" ? "bundled" : originLookup === "imported" ? "local" : rawOrigin;
+    var state = profile.compatible === false ? "incompatible" : profile.active ? "active" : profile.selected ? "selected" : "";
+    var variant = (origin === "bundled" || origin === "local") ? origin + (state ? "_" + state : "") : "";
+    var optionTemplates = {
+      bundled: ["profiles.catalog.option.bundled", "{name} · Bundled · {revision}"],
+      local: ["profiles.catalog.option.local", "{name} · Local · {revision}"],
+      bundled_incompatible: ["profiles.catalog.option.bundled_incompatible", "{name} · Bundled · {revision} · incompatible"],
+      local_incompatible: ["profiles.catalog.option.local_incompatible", "{name} · Local · {revision} · incompatible"],
+      bundled_active: ["profiles.catalog.option.bundled_active", "{name} · Bundled · {revision} · active"],
+      local_active: ["profiles.catalog.option.local_active", "{name} · Local · {revision} · active"],
+      bundled_selected: ["profiles.catalog.option.bundled_selected", "{name} · Bundled · {revision} · selected"],
+      local_selected: ["profiles.catalog.option.local_selected", "{name} · Local · {revision} · selected"],
+    };
+    var values = { name: string(profile.display_name || profile.ref.id), revision: revisionLabel(profile) };
+    return own.call(optionTemplates, variant)
+      ? t(optionTemplates[variant][0], optionTemplates[variant][1], values)
+      : values.name + " · " + origin + " · " + values.revision + (state ? " · " + state : "");
+  }
   function renderCatalog() {
     var select = byId("profile-select");
     if (!select) return;
     var wanted = refKey(model.selected);
     select.textContent = "";
-    model.profiles.forEach(function (profile) {
-      var option = document.createElement("option");
-      option.value = refKey(profile.ref);
-      var rawOrigin = string(profile.origin);
-      var originLookup = rawOrigin.toLowerCase();
-      var origin = originLookup === "bundled" ? "bundled" : originLookup === "imported" ? "local" : rawOrigin;
-      var state = profile.compatible === false ? "incompatible" : profile.active ? "active" : profile.selected ? "selected" : "";
-      var variant = (origin === "bundled" || origin === "local") ? origin + (state ? "_" + state : "") : "";
-      var optionTemplates = {
-        bundled: ["profiles.catalog.option.bundled", "{name} · Bundled · {revision}"],
-        local: ["profiles.catalog.option.local", "{name} · Local · {revision}"],
-        bundled_incompatible: ["profiles.catalog.option.bundled_incompatible", "{name} · Bundled · {revision} · incompatible"],
-        local_incompatible: ["profiles.catalog.option.local_incompatible", "{name} · Local · {revision} · incompatible"],
-        bundled_active: ["profiles.catalog.option.bundled_active", "{name} · Bundled · {revision} · active"],
-        local_active: ["profiles.catalog.option.local_active", "{name} · Local · {revision} · active"],
-        bundled_selected: ["profiles.catalog.option.bundled_selected", "{name} · Bundled · {revision} · selected"],
-        local_selected: ["profiles.catalog.option.local_selected", "{name} · Local · {revision} · selected"],
-      };
-      var values = { name: string(profile.display_name || profile.ref.id), revision: string(profile.ref.revision).slice(0, 10) };
-      option.textContent = own.call(optionTemplates, variant)
-        ? t(optionTemplates[variant][0], optionTemplates[variant][1], values)
-        : values.name + " · " + origin + " · " + values.revision + (state ? " · " + state : "");
-      select.appendChild(option);
+    var groups = catalogGroups(model.profiles);
+    var superseded = 0;
+    var rendered = [];
+    groups.forEach(function (group) {
+      // An option is offered when it represents its group, when the toggle is open, or when it is
+      // the one the user currently has selected: a collapse that could hide the current selection
+      // would leave the control disagreeing with what the page thinks is selected.
+      var offered = group.collapsible ? group.revisions.filter(function (profile) {
+        return profile === group.representative || model.showAllRevisions || refKey(profile.ref) === wanted;
+      }) : group.revisions;
+      if (group.collapsible) superseded += group.revisions.length - 1;
+      var parent = select;
+      if (offered.length > 1) {
+        parent = document.createElement("optgroup");
+        parent.label = string(group.revisions[0].display_name || group.id);
+        select.appendChild(parent);
+      }
+      offered.forEach(function (profile) {
+        var option = document.createElement("option");
+        option.value = refKey(profile.ref);
+        option.textContent = optionLabel(profile);
+        parent.appendChild(option);
+        rendered.push(profile);
+      });
     });
-    if (wanted && model.profiles.some(function (item) { return refKey(item.ref) === wanted; })) select.value = wanted;
+    renderRevisionsToggle(superseded);
+    if (wanted && rendered.some(function (item) { return refKey(item.ref) === wanted; })) select.value = wanted;
     else {
-      var active = model.profiles.find(function (item) { return item.active; }) || model.profiles[0];
+      // The fallback is chosen from what was actually appended, never from the whole catalogue: an
+      // unrendered option cannot be assigned to select.value, and assigning one silently leaves the
+      // control and model.selected describing different revisions.
+      var active = rendered.find(function (item) { return item.active; }) || rendered[0];
       model.selected = active ? active.ref : null;
       if (active) select.value = refKey(active.ref);
     }
     renderBadges();
     updateActions();
+  }
+  function renderRevisionsToggle(superseded) {
+    var toggle = byId("profile-revisions");
+    if (!toggle) return;
+    // Visibility, not presence: the control is laid out from the first paint and only becomes
+    // visible once the catalogue says there is history to reveal, so discovering duplicates never
+    // moves the toolbar under it. Its box is reserved either way.
+    var row = (toggle.closest ? toggle.closest(".profile-revisions") : null) || toggle;
+    var revealed = superseded > 0;
+    if (row.classList) row.classList.toggle("has-superseded", revealed);
+    toggle.disabled = !revealed;
+    toggle.checked = revealed && !!model.showAllRevisions;
   }
   function badge(label, kind) {
     var item = document.createElement("span");
@@ -1072,6 +1171,8 @@
       var summary = model.profiles.find(function (item) { return refKey(item.ref) === event.target.value; });
       model.selected = summary && summary.ref; loadSelected();
     });
+    var revisions = byId("profile-revisions");
+    if (revisions) revisions.addEventListener("change", function () { model.showAllRevisions = !!this.checked; renderCatalog(); });
     byId("profile-new").addEventListener("click", function () { if (confirmDiscard()) loadTemplate(); });
     byId("profile-edit").addEventListener("click", function () { beginEdit(false); });
     byId("profile-fork").addEventListener("click", function () { beginEdit(true); });

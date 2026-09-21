@@ -9873,6 +9873,11 @@
       "sourceHash": "e32d92ca67311957e26a16144a0f1017b93543890544507c353cb0d84978f270",
       "state": "machine-cross-checked"
     },
+    "profiles.toolbar.show_superseded": {
+      "text": "Afficher les révisions remplacées",
+      "sourceHash": "45e23ea6f6e48b9a82ac11ec04490dad65aa20aef837ccfe94f9c4596fd0c58f",
+      "state": "machine-cross-checked"
+    },
     "profiles.validation.invalid_profile": {
       "text": "Profil non valide",
       "sourceHash": "f48e372cc3ae5e58783e229ba563e2edbbeb13af014134f9e26ca685e9f82288",

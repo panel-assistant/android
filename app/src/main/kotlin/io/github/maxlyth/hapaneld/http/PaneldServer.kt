@@ -4530,6 +4530,7 @@ $proximityScript"""
     <div class="profile-pickers">
       <label for="profile-select" class="muted">${esc(strings.get("profiles.toolbar.revision"))}</label>
       <select id="profile-select" aria-label="${esc(strings.get("profiles.toolbar.revision_label"))}"><option>${esc(strings.get("profiles.status.loading_catalog"))}</option></select>
+      <label class="profile-revisions muted" for="profile-revisions"><input id="profile-revisions" type="checkbox">${esc(strings.get("profiles.toolbar.show_superseded"))}</label>
     </div>
     <div class="profile-actions">
       <div class="profile-action-group" aria-label="${esc(strings.get("profiles.toolbar.editing_label"))}">

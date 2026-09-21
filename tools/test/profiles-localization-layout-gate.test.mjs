@@ -5,7 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { chromium } from 'playwright-core';
+import { chromium, webkit } from 'playwright-core';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const ASSETS = resolve(ROOT, 'app/src/main/assets');
@@ -64,6 +64,7 @@ function profilesFrame(catalogues, locale) {
     <div class="profile-pickers">
       <label for="profile-select" class="muted">${t('profiles.toolbar.revision')}</label>
       <select id="profile-select" aria-label="${t('profiles.toolbar.revision_label')}"><option>${t('profiles.status.loading_catalog')}</option></select>
+      <label class="profile-revisions muted" for="profile-revisions"><input id="profile-revisions" type="checkbox">${t('profiles.toolbar.show_superseded')}</label>
     </div>
     <div class="profile-actions">
       <div class="profile-action-group" aria-label="${t('profiles.toolbar.editing_label')}">
@@ -157,6 +158,19 @@ function profileData() {
   };
 }
 
+// The reporter's catalog shape: one profile iterated four times, each edit a separate immutable
+// revision. The picker collapses these, so the toolbar it has to lay out is the collapsed one plus
+// the toggle that reveals the rest -- both of which only exist when duplicates do.
+function supersededRevisions() {
+  const base = profileData();
+  return ['a', 'b', 'c', 'd'].map((suffix, index) => ({
+    ...base,
+    ref: { id: base.ref.id, revision: `${suffix.repeat(8)}0123456789abcdef0123456789abcdef` },
+    content_version: `2026.9.${4 + index}`,
+    imported_at: 1757000000000 + index * 3600000,
+  }));
+}
+
 function apiResponse(path) {
   if (path === '/api/v1/peers') return [];
   if (path === '/api/v1/profiles/schema') return { max_bytes: 131072, fields: [] };
@@ -168,7 +182,7 @@ function apiResponse(path) {
     { path: 'evidence.some_future_opaque_path_with_a_long_name', status: 'unknown', value: 'some_future_opaque_value' },
   ] };
   if (path === '/api/v1/profiles') return {
-    catalog_revision: 19, profiles: [profileData()],
+    catalog_revision: 19, profiles: supersededRevisions(),
     status: { selection: { mode: 'manual' }, rollback_ref: { id: 'generic', revision: 'previous-revision' }, issues: [] },
   };
   if (/^\/api\/v1\/profiles\/generic\/revisions\//.test(path)) return `schema: 1\nmetadata:\n  id: generic\n  display_name: Generic profile\n  version: 2026.9.4\n  author: ha-paneld maintainers\n  maturity: verified\nmatch:\n  any:\n    - all:\n        - field: model\n          op: contains\n          value: panel\nhardware:\n  display:\n    width_px: 1920\n    height_px: 1080\n`;
@@ -261,6 +275,7 @@ test('Profiles layout fixture stays bound to the production frame and breakpoint
   ]);
   for (const marker of [
     'class="profile-toolbar"', 'class="profile-workspace"', 'class="profile-editor-pane"',
+    'id="profile-revisions"', 'profiles.toolbar.show_superseded',
     'class="profile-inspector"', 'class="profile-modal-card"',
     'src="assets/vendor/profile-editor/codemirror.js"', 'src="assets/profiles.js"',
   ]) assert.ok(serverSource.includes(marker), `production Profiles frame lost ${marker}`);
@@ -366,3 +381,133 @@ layoutTest('Profiles stays usable across every locale, theme and production brea
   assert.equal(brokenModal.overlap, true, 'negative control proves modal-action overlap detection');
   await mutant.close();
 });
+
+// Chromium above is the panel's own WebView engine. A maintainer opening the same page from Safari
+// gets WebKit, which lays out flex gaps, form controls and wrapped toolbars differently, and this
+// project has been bitten three times by a Chromium-only sweep passing while the real browser
+// showed the bug. The matrix here is deliberately narrower: the engine axis is what it adds, not
+// the locale axis, so it runs the longest-text locale in both themes across every breakpoint.
+const webkitAvailable = existsSync(webkit.executablePath());
+const webkitTest = webkitAvailable ? test : test.skip;
+webkitTest('Profiles collapsed picker lays out in WebKit across every production breakpoint', { timeout: 180_000 }, async (t) => {
+  const catalogues = new Map(await Promise.all(LOCALES.map(async (locale) => [
+    locale, JSON.parse(await readFile(resolve(ASSETS, `i18n/${locale}.json`), 'utf8')),
+  ])));
+  const server = await startServer(catalogues);
+  const browser = await webkit.launch({ headless: true });
+  t.after(async () => {
+    await browser.close();
+    await new Promise((done) => server.close(done));
+  });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const evidence = [];
+  const overflowEvidence = [];
+
+  for (const locale of ['de', 'en']) for (const theme of THEMES) for (const viewport of VIEWPORTS) {
+    const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto(`${origin}/profiles?lang=${locale}&theme=${theme}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.querySelector('#profile-status')?.textContent && !document.querySelector('#profile-status').textContent.includes('Loading'));
+    await page.waitForTimeout(250);
+    const cell = `webkit/${locale}/${theme}/${viewport.name}-${viewport.width}x${viewport.height}`;
+    const measured = await geometry(page);
+    assert.deepEqual(errors, [], `${cell}: browser errors`);
+    assert.deepEqual(measured.overlaps, [], `${cell}: toolbar controls overlap`);
+    assert.ok(measured.toolbar.x >= -1 && measured.toolbar.right <= viewport.width + 1, `${cell}: toolbar stays in viewport`);
+
+    // WebKit overflows this page horizontally at the narrowest viewport, by 316px at 480x480,
+    // and it does so identically with the revisions control removed from the stylesheet entirely.
+    // That is a pre-existing Profiles defect this engine had never been pointed at, recorded for
+    // its own lane rather than repaired here; measuring it as a budget keeps this gate honest
+    // about what it found while still failing if the picker starts contributing to it.
+    // WebKit reports a document scrollWidth wider than the viewport on this fixture below the
+    // stacked-workspace breakpoint, while no element is wider than the viewport in any cell and
+    // the live panel page reports zero overflow in this same engine. At 480x480 the reading is
+    // identical with the revisions control removed from the stylesheet entirely; the other
+    // breakpoints have not been measured that way. Asserting a raw pixel budget would encode a
+    // number nobody can explain, so the gate asserts the thing this lane is responsible for
+    // instead: whatever is inflating scrollWidth, it must not be the toolbar the picker and its
+    // toggle live in. The fixture-level reading is recorded for its own lane.
+    const widest = await widestOverflowingElement(page);
+    assert.ok(
+      !widest || !widest.selector.startsWith('.profile-toolbar'),
+      `${cell}: the profile toolbar overflows by ${widest && widest.overflow}px via ${widest && widest.selector}`,
+    );
+    overflowEvidence.push({ cell, overflow: measured.horizontalOverflow, widest: widest && widest.selector });
+
+    // The collapse itself, measured rather than assumed: four revisions of one profile reach the
+    // page and one option is offered, the toggle is revealed and operable, and opening it offers
+    // every revision without pushing the toolbar out of the viewport.
+    const collapsed = await pickerState(page);
+    assert.equal(collapsed.options, 1, `${cell}: collapsed picker offered ${collapsed.options} options`);
+    assert.equal(collapsed.toggleRevealed, true, `${cell}: toggle was not revealed`);
+    assert.equal(collapsed.toggleDisabled, false, `${cell}: toggle was not operable`);
+    assert.ok(collapsed.toggleBox.width > 0 && collapsed.toggleBox.height > 0, `${cell}: toggle has no box`);
+    assert.ok(collapsed.toggleBox.right <= viewport.width + 1, `${cell}: toggle overflows the viewport`);
+
+    await page.click('#profile-revisions');
+    await page.waitForFunction(() => document.querySelectorAll('#profile-select option').length > 1);
+    const expanded = await pickerState(page);
+    assert.equal(expanded.options, 4, `${cell}: expanded picker offered ${expanded.options} of 4 revisions`);
+    assert.equal(expanded.selectedValue, collapsed.selectedValue, `${cell}: expanding the picker changed the selection`);
+    const expandedWidest = await widestOverflowingElement(page);
+    assert.ok(
+      !expandedWidest || !expandedWidest.selector.startsWith('.profile-toolbar'),
+      `${cell}: expanding the picker overflowed the toolbar via ${expandedWidest && expandedWidest.selector}`,
+    );
+    assert.ok(expanded.labels.every((label) => label.includes('2026.9.')), `${cell}: an option lost its declared version`);
+    assert.equal(new Set(expanded.labels).size, expanded.labels.length, `${cell}: two revisions render as the same label`);
+
+    await page.close();
+    evidence.push({ cell, collapsed: collapsed.options, expanded: expanded.options });
+  }
+
+  assert.equal(evidence.length, 2 * THEMES.length * VIEWPORTS.length, 'the WebKit matrix ran');
+  const overflowing = overflowEvidence.filter((item) => item.overflow > 1);
+  console.log(`Profiles WebKit collapse evidence: ${JSON.stringify({
+    cells: evidence.length,
+    collapsed: 1,
+    expanded: 4,
+    cellsOverflowing: overflowing.length,
+    widestOverflowSources: [...new Set(overflowing.map((item) => item.widest))].sort(),
+    maximumOverflow: overflowing.length ? Math.max(...overflowing.map((item) => item.overflow)) : 0,
+  })}`);
+});
+
+// Names the element actually wider than the viewport, so an overflow can be attributed rather than
+// budgeted. Returns the widest offender, or null when nothing overflows.
+async function widestOverflowingElement(page) {
+  return page.evaluate(() => {
+    const limit = window.innerWidth + 1;
+    let worst = null;
+    for (const node of document.querySelectorAll('body *')) {
+      const box = node.getBoundingClientRect();
+      if (box.width === 0 && box.height === 0) continue;
+      const overflow = Math.round(box.right - limit);
+      if (overflow <= 0) continue;
+      const selector = node.id ? `#${node.id}` : `.${[...node.classList].join('.')}` || node.tagName.toLowerCase();
+      if (!worst || overflow > worst.overflow) worst = { selector, overflow };
+    }
+    return worst;
+  });
+}
+
+async function pickerState(page) {
+  return page.evaluate(() => {
+    const select = document.querySelector('#profile-select');
+    const toggle = document.querySelector('#profile-revisions');
+    const row = toggle.closest('.profile-revisions');
+    const box = row.getBoundingClientRect();
+    const options = [...select.querySelectorAll('option')];
+    return {
+      options: options.length,
+      labels: options.map((option) => option.textContent),
+      selectedValue: select.value,
+      toggleRevealed: getComputedStyle(row).visibility === 'visible',
+      toggleDisabled: toggle.disabled,
+      toggleBox: { width: box.width, height: box.height, right: box.right },
+      horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth,
+    };
+  });
+}

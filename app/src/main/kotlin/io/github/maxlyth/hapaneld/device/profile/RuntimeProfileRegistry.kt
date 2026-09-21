@@ -151,6 +151,7 @@ class RuntimeProfileRegistry internal constructor(
         val document: ProfileDocument?,
         val issues: List<ProfileIssue> = emptyList(),
         val rollbackOnly: Boolean = false,
+        val importedAtEpochMs: Long? = null,
     ) {
         val compatible: Boolean get() = document != null && issues.none { it.severity == ProfileIssueSeverity.ERROR }
     }
@@ -1264,6 +1265,7 @@ class RuntimeProfileRegistry internal constructor(
                 addAll(document.metadata.links)
             }.distinctBy { it.url }
         }.orEmpty(),
+        importedAtEpochMs = entry.importedAtEpochMs.takeIf { entry.origin == ProfileOrigin.IMPORTED },
     )
 
     private fun statusLocked(): ProfileStatus {
@@ -1411,7 +1413,16 @@ class RuntimeProfileRegistry internal constructor(
             )
             return
         }
-        loadEntry(raw, origin, file.path, loaded, issues, expectedRef = expected, rollbackOnly = rollbackOnly)
+        loadEntry(
+            raw,
+            origin,
+            file.path,
+            loaded,
+            issues,
+            expectedRef = expected,
+            rollbackOnly = rollbackOnly,
+            importedAtEpochMs = if (origin == ProfileOrigin.IMPORTED) importedAt(file) else null,
+        )
     }
 
     private fun reload() = loadCatalog(markHydrated = true) { loaded, issues ->
@@ -1468,7 +1479,7 @@ class RuntimeProfileRegistry internal constructor(
                 issues += issue(ProfileIssueSeverity.ERROR, "catalog[${file.path}]", "Could not read imported profile.", "imported-profile-read-failed")
                 return@forEach
             }
-            loadEntry(raw, ProfileOrigin.IMPORTED, file.path, loaded, issues, expectedRef = expected)
+            loadEntry(raw, ProfileOrigin.IMPORTED, file.path, loaded, issues, expectedRef = expected, importedAtEpochMs = importedAt(file))
         }
     }
 
@@ -1521,6 +1532,7 @@ class RuntimeProfileRegistry internal constructor(
         issues: MutableList<ProfileIssue>,
         expectedRef: ProfileRef? = null,
         rollbackOnly: Boolean = false,
+        importedAtEpochMs: Long? = null,
     ) {
         val parsed = measuredParse(raw)
         val document = parsed.document
@@ -1552,7 +1564,7 @@ class RuntimeProfileRegistry internal constructor(
         val storedDocument = document?.takeIf { identityIssue == null }
         val previous = loaded.putIfAbsent(
             ref,
-            StoredProfile(ref, origin, raw, parsed.sourceBytes, storedDocument, storedIssues, rollbackOnly),
+            StoredProfile(ref, origin, raw, parsed.sourceBytes, storedDocument, storedIssues, rollbackOnly, importedAtEpochMs),
         )
         if (previous != null) issues += issue(ProfileIssueSeverity.WARNING, "catalog[$source]", "Duplicate immutable revision ignored.", "duplicate-revision-ignored")
     }
@@ -1584,6 +1596,14 @@ class RuntimeProfileRegistry internal constructor(
     }
 
     private fun writeImported(ref: ProfileRef, raw: String): Boolean = writeImmutable(importedFile(ref), raw)
+
+    /**
+     * The import event's time, read from the immutable revision file rather than stored beside it,
+     * because the file is written once at import and never rewritten. A filesystem that reports no
+     * modification time answers 0, which is indistinguishable from the epoch, so both become null
+     * and the caller falls back to its stable tiebreak rather than inventing an order.
+     */
+    private fun importedAt(file: File): Long? = runCatching { file.lastModified() }.getOrNull()?.takeIf { it > 0L }
 
     private fun readBounded(file: File): String {
         if (file.length() > ProfileMetadata.MAX_BYTES) error("profile is too large")

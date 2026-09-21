@@ -70,7 +70,7 @@ class ProfileFrameI18nSourceTest {
         keys.forEach { key ->
             assertTrue("missing escaped frame key $key", body.contains("\${esc(strings.get(\"$key\"))}"))
         }
-        assertEquals(39, Regex("""\$\{esc\(strings\.get\(\"profiles\.[^\"]+\"\)\)}""").findAll(body).count())
+        assertEquals(40, Regex("""\$\{esc\(strings\.get\(\"profiles\.[^\"]+\"\)\)}""").findAll(body).count())
     }
 
     @Test fun `protected profile actions use request-local approval descriptions`() {
