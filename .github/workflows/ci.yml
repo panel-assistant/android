@@ -459,6 +459,9 @@ jobs:
           sudo -E env "PROVISION_TEST_SCOPE=$PROVISION_TEST_SCOPE" bash -c '
             set -e
             scripts/tests/install_legacy_database_gate_test.sh
+            scripts/tests/database_observer_retry_test.sh
+            scripts/tests/helper_actuator_environment_test.sh
+            scripts/tests/remove_if_present_test.sh
             scripts/tests/hardware_collector_test.sh
             scripts/tests/consumer_docs_test.sh
             scripts/tests/gitbash_path_conversion_test.sh
