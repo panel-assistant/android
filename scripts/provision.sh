@@ -3501,21 +3501,36 @@ describe_target() {
     set +f
     if [ "$#" -eq 6 ]; then
       case "$4" in ''|*[!0-9]*) ;; *) diag_availkb=$4 ;; esac
-      diag_mount=$6
     fi
   fi
 
-  # The LAST /proc/mounts row for a mount point is the effective one, so an overmount that made this
-  # directory read-only under a writable parent is reported as read-only rather than missed.
-  if [ "$diag_mount" != unknown ]; then
-    while read -r mount_source mount_point mount_type mount_options mount_rest; do
-      [ "$mount_point" = "$diag_mount" ] || continue
-      case ",$mount_options," in
-        *,rw,*) diag_state=rw ;;
-        *,ro,*) diag_state=ro ;;
-        *) diag_state=unknown ;;
+  # Resolve the mount point here rather than taking df's sixth column. On a system-as-root image
+  # carrying two dozen overlay and apex mounts, toybox df answered `/apex/com.android.art` for
+  # /system/etc/init — a filesystem that directory is not on — and the read-only verdict that
+  # followed refused an install into a directory that was plainly writable. A longest-prefix walk of
+  # /proc/mounts cannot make that mistake: it only ever selects a mount point this path is under.
+  # The LAST row of equal length still wins, so an overmount that made this directory read-only
+  # under a writable parent is reported as read-only rather than missed.
+  describe_best=""
+  describe_best_options=""
+  while read -r mount_source mount_point mount_type mount_options mount_rest; do
+    if [ "$mount_point" != / ]; then
+      case "$describe_dir" in
+        "$mount_point"|"$mount_point"/*) ;;
+        *) continue ;;
       esac
-    done < /proc/mounts 2>/dev/null
+    fi
+    [ "${#mount_point}" -ge "${#describe_best}" ] || continue
+    describe_best=$mount_point
+    describe_best_options=$mount_options
+  done < /proc/mounts 2>/dev/null
+  if [ -n "$describe_best" ]; then
+    diag_mount=$describe_best
+    case ",$describe_best_options," in
+      *,rw,*) diag_state=rw ;;
+      *,ro,*) diag_state=ro ;;
+      *) diag_state=unknown ;;
+    esac
   fi
 
   # Android 8.1's toybox df has no -i, so free inodes are best effort through whichever tool can
@@ -3644,6 +3659,11 @@ preflight_target() {
   fi
 
   describe_target "$preflight_dir"
+  # A genuinely read-only filesystem is still refused here, and still named as read-only rather than
+  # as a failed write, because the remedy differs: one needs a remount, the other needs space or
+  # permissions. What changed is that describe_target now resolves the mount by walking /proc/mounts
+  # instead of believing df, so this no longer fires against a writable directory that df attributed
+  # to an unrelated read-only apex mount.
   if [ "$diag_state" = ro ]; then
     emit_target_diag "$preflight_verb" target "$preflight_dir"
     echo "INSTALL_UNCHANGED $preflight_verb target_read_only"
@@ -6367,20 +6387,52 @@ inspect_database() {
     inspected_source="file:$inspected_path?mode=ro"
     "$sqlite3_bin" "$inspected_source" ".backup $inspected_copy" 2>/dev/null || { echo unreadable; return; }
   else
-    inspected_before=$(source_fingerprint "$inspected_path") || { echo unreadable; return; }
-    cp "$inspected_path" "$inspected_copy" 2>/dev/null || { echo unreadable; return; }
-    for inspected_suffix in -wal -shm -journal; do
-      if [ -e "$inspected_path$inspected_suffix" ]; then
-        cp "$inspected_path$inspected_suffix" "$inspected_copy$inspected_suffix" 2>/dev/null || { echo unreadable; return; }
+    # One shot at a stable copy is not enough on a real panel. The window scales with the database,
+    # and a running app writes its WAL continuously, so a single change anywhere in db/-wal/-shm
+    # condemned the whole gate: a 1 MB store passed while 16 MB, 33 MB and 37 MB stores failed every
+    # time, on hardware, with nothing wrong with any of them. Retry the copy instead of refusing on
+    # the first write. The guarantee is unchanged — only a copy whose source did not move while it
+    # was taken is ever inspected — but a busy app now costs another attempt rather than the install.
+    inspected_attempt=${3:-0}
+    while :; do
+      inspected_before=$(source_fingerprint "$inspected_path") || { echo unreadable; return; }
+      cp "$inspected_path" "$inspected_copy" 2>/dev/null || { echo unreadable; return; }
+      for inspected_suffix in -wal -shm -journal; do
+        if [ -e "$inspected_path$inspected_suffix" ]; then
+          cp "$inspected_path$inspected_suffix" "$inspected_copy$inspected_suffix" 2>/dev/null || { echo unreadable; return; }
+        fi
+      done
+      inspected_after=$(source_fingerprint "$inspected_path") || { echo unreadable; return; }
+      [ "$inspected_before" != "$inspected_after" ] || break
+      inspected_attempt=$((inspected_attempt + 1))
+      if [ "$inspected_attempt" -ge 6 ]; then
+        echo changed
+        return
       fi
+      rm -f "$inspected_copy" "$inspected_copy"-wal "$inspected_copy"-shm "$inspected_copy"-journal
+      sleep 2
     done
-    inspected_after=$(source_fingerprint "$inspected_path") || { echo unreadable; return; }
-    [ "$inspected_before" = "$inspected_after" ] || { echo changed; return; }
   fi
   inspected=$("$sqlite3_bin" "$inspected_copy" "PRAGMA query_only=ON; PRAGMA user_version; PRAGMA quick_check;" 2>/dev/null) || { echo unreadable; return; }
   if [ "$inspected_mode" != live ]; then
+    # The source must still be untouched now, not merely at the end of the copy: quick_check reads the
+    # whole store, so it is the longest part of the window and the likeliest place for a write to land.
+    # This is inside the same retry as the copy — checking it here and giving up would have made the
+    # retry cosmetic, since on a busy panel the read, not the copy, is what a writer usually collides
+    # with. Measured while building the test for this: the copy came back stable on the first attempt
+    # and the verdict was still `changed`, because the collision happened during quick_check.
     inspected_final=$(source_fingerprint "$inspected_path") || { echo unreadable; return; }
-    [ "$inspected_before" = "$inspected_final" ] || { echo changed; return; }
+    if [ "$inspected_before" != "$inspected_final" ]; then
+      inspected_attempt=$((inspected_attempt + 1))
+      if [ "$inspected_attempt" -ge 6 ]; then
+        echo changed
+        return
+      fi
+      rm -f "$inspected_copy" "$inspected_copy"-wal "$inspected_copy"-shm "$inspected_copy"-journal
+      sleep 2
+      inspect_database "$inspected_path" "$inspected_mode" "$inspected_attempt"
+      return
+    fi
   fi
   inspected_version=$(printf "%s\n" "$inspected" | sed -n "1p") || { echo unreadable; return; }
   inspected_quick=$(printf "%s\n" "$inspected" | sed -n "2p") || { echo unreadable; return; }
@@ -6744,7 +6796,13 @@ host_database_compatibility_decision() {
           [ "$primary_quick" = ok ] || host_database_gate_refuse "the canonical database failed quick_check"
           ;;
         missing) host_database_gate_refuse "ha-paneld is installed but its canonical database is missing" ;;
-        *) host_database_gate_refuse "the canonical database is unreadable or is not a regular file" ;;
+        # A database that keeps changing under the observer is busy, not broken. Saying so sends the
+        # operator to the app that is still writing rather than to a database that is perfectly fine:
+        # this verdict was previously folded into the unreadable case and cost hours of looking at
+        # healthy stores whose quick_check passed in under a second.
+        changed) host_database_gate_refuse "the canonical database kept changing while it was read, so no stable copy could be taken" ;;
+        not_regular) host_database_gate_refuse "the canonical database is not a regular file" ;;
+        *) host_database_gate_refuse "the canonical database could not be read" ;;
       esac
       [ "$primary_version" -ge "$DB_CANDIDATE_MIN" ] || \
         host_database_gate_refuse "database schema $primary_version is below candidate minimum $DB_CANDIDATE_MIN"
