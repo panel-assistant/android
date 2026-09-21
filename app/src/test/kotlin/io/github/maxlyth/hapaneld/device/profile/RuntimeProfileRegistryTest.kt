@@ -477,10 +477,11 @@ class RuntimeProfileRegistryTest {
         assertTrue(secondAdmin.select(ProfileSelection.Pinned(ref), sharedRevision) is ProfileMutation.Rejected)
     }
 
-    // The next four assertions hold at this lane's base commit: content dedup and the guarded
-    // removal path were already shipped. They are written down because Issue #138's catalogue
-    // hygiene report is what they answer, and because nothing else stated them as one contract.
-    // Reverting the picker collapse cannot make them fail; they are mutation-proven instead.
+    // These hold at this lane's base commit already: content deduplication and the guarded removal
+    // path were both shipped before it. They are written down because the catalogue-hygiene report
+    // is what they answer and nothing else stated them as one contract, and because a later change
+    // to either could break them silently. They are regression contracts, not evidence of this
+    // lane's change: reverting the picker collapse cannot make any of them fail.
 
     @Test fun `byte identical yaml imported twice yields one revision`() {
         val registry = registry(mapOf("generic.yaml" to genericYaml()))

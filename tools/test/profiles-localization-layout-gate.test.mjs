@@ -421,11 +421,14 @@ webkitTest('Profiles collapsed picker lays out in WebKit across every production
     // That is a pre-existing Profiles defect this engine had never been pointed at, recorded for
     // its own lane rather than repaired here; measuring it as a budget keeps this gate honest
     // about what it found while still failing if the picker starts contributing to it.
-    // WebKit overflows this page horizontally below the stacked-workspace breakpoint, and it does
-    // so identically with the revisions control removed from the stylesheet. Asserting a raw pixel
-    // budget would encode a number nobody can explain, so the gate asserts the thing this lane is
-    // responsible for instead: whatever is overflowing, it must not be the toolbar the picker and
-    // its toggle live in. The page-level defect is recorded for its own lane.
+    // WebKit reports a document scrollWidth wider than the viewport on this fixture below the
+    // stacked-workspace breakpoint, while no element is wider than the viewport in any cell and
+    // the live panel page reports zero overflow in this same engine. At 480x480 the reading is
+    // identical with the revisions control removed from the stylesheet entirely; the other
+    // breakpoints have not been measured that way. Asserting a raw pixel budget would encode a
+    // number nobody can explain, so the gate asserts the thing this lane is responsible for
+    // instead: whatever is inflating scrollWidth, it must not be the toolbar the picker and its
+    // toggle live in. The fixture-level reading is recorded for its own lane.
     const widest = await widestOverflowingElement(page);
     assert.ok(
       !widest || !widest.selector.startsWith('.profile-toolbar'),
