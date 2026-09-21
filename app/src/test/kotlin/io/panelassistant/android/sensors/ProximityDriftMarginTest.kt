@@ -237,6 +237,12 @@ class ProximityDriftMarginTest {
         assertEquals(binary, ProximityCalibrationEngine.driftMargined(binary, margin))
         val wave = WaveCalibration(pattern = WavePattern.SINGLE, clearRaw = 1f, nearRaw = 0f)
         assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, margin))
+        // Near-or-clear is exempt because it is near or clear, not because one and zero happen to
+        // sit below every band this project has measured. A band small enough to be on their scale
+        // must still leave them alone, or a future route in finer units silently starts margining a
+        // sensor that reports two values.
+        assertEquals(binary, ProximityCalibrationEngine.driftMargined(binary, .4f))
+        assertEquals(wave, ProximityCalibrationEngine.driftMargined(wave, .4f))
     }
 
     @Test fun aSensorReportingCentimetresIsNotOnTheBandsScaleAndKeepsWorking() {
