@@ -9874,9 +9874,9 @@
       "state": "machine-cross-checked"
     },
     "profiles.toolbar.show_superseded": {
-      "text": "Veraltete Versionen anzeigen",
+      "text": "Ersetzte Revisionen anzeigen",
       "sourceHash": "45e23ea6f6e48b9a82ac11ec04490dad65aa20aef837ccfe94f9c4596fd0c58f",
-      "state": "machine-draft"
+      "state": "machine-cross-checked"
     },
     "profiles.validation.invalid_profile": {
       "text": "Ungültiges Profil",
