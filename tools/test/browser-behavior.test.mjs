@@ -4565,6 +4565,7 @@ function cameraStatus(overrides = {}) {
     stream_clients: 1, stream_port: 8554, encoder: 'c2.rk.avc.encoder',
     encode_width: 1280, encode_height: 720, encode_fps: 15, encode_kbps: 2000,
     delivered_fps: 14.8, delivered_kbps: 1660,
+    snapshot_exposure: 'converged', snapshot_exposure_fallbacks: 0,
     summary: 'camera open for 1 client (1 streaming); stream listening on port 8554', action: 'none',
     ...overrides,
   };
