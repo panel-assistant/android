@@ -36,6 +36,16 @@
 
 - **A panel no longer loses the app for hours after an update or a restart.** Starting up could take longer than Android allows a background service to come up in, because that limit also covers creating the process, and the app was opening its own database before the service existed. When Android stopped the app for missing the deadline, nothing brought it back: the panel went quiet — no web interface, no updates in Home Assistant, no logs — until someone restarted it by hand. The slowest panels were the most affected, and a fresh install was the likeliest moment to hit it. Startup no longer reads the database that early, and a panel that is stopped this way now starts the app again by itself.
 
+- **Updating a panel no longer stops partway through installing its privileged helper.** The installer clears out older helper files before putting the new one in place, and on a panel where one of those files had never existed the removal reported a failure instead of nothing to do. The update stopped there and the panel kept the helper it already had, which affected every panel that had never carried a vendor-specific helper file.
+
+- **The privileged helper can run the Android commands it depends on again.** Installing and removing apps, granting permissions and changing system settings are handled on the panel by small system scripts, and those scripts need two pieces of environment to start at all. The helper was not passing them, so each command stopped the instant it ran and anything that relied on one quietly did nothing.
+
+- **A panel whose system area is mounted through an overlay is no longer refused as read-only.** Before writing anything the installer asked the operating system which filesystem held the directory it was about to use, and on these panels the answer named an unrelated read-only area. The install was refused as read-only although the directory was perfectly writable. It now checks the directory it is actually going to write to.
+
+- **A panel with more stored history no longer refuses its own update.** The installer takes a consistent copy of the panel's database before changing anything and confirms it did not change while being copied. Copying takes longer the more you have stored, so on a busy panel the check could never succeed and panels with more history were refused while otherwise identical panels with less went through. The copy is retried now instead of being abandoned at the first write.
+
+- **An update held up by a busy database now says that, rather than calling the database unreadable.** A database being written to while it was read reported itself as unreadable or not a file at all, which pointed at the stored data instead of at the app that was still writing to it.
+
 ## v0.9.8-rc1 - 2026-09-15
 
 This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.
