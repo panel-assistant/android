@@ -126,6 +126,24 @@ class CameraStreamContractTest {
     }
 
     /**
+     * The exposure disposition the session records must actually reach the projection. Like the capture
+     * callback, this is wiring no JVM test can execute — the owner needs a camera device — so a
+     * regression that pinned the projection to the default would leave every unit test green while the
+     * panel reported `none` however many snapshots the budget had answered.
+     */
+    @Test fun theProjectionIsFedTheSessionsOwnExposureDisposition() {
+        val owner = TestSources.kotlin("camera/CameraSessionOwner.kt").readText()
+        assertTrue(
+            "the projection must read the session's recorded disposition",
+            owner.contains("snapshotExposure = state.lastSnapshotExposure"),
+        )
+        assertTrue(
+            "and its fallback count",
+            owner.contains("snapshotExposureFallbacks = state.snapshotExposureFallbacks"),
+        )
+    }
+
+    /**
      * The processing choices must actually reach the capture request. Like the exposure callback, this
      * is Android wiring no JVM test can execute: deleting the call would leave every unit test green
      * while the panel silently went back to the pipeline defaults.
