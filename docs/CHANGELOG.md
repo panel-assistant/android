@@ -4,6 +4,8 @@
 
 ### Added
 
+- **The camera status now says how a snapshot got its picture.** A snapshot waits up to 1.2 seconds for the camera's exposure to settle instead of returning the first frame, which is usually dark, and answers with the picture it has if the exposure has not settled by then. That fallback was invisible from outside the panel, so a panel quietly taking it looked exactly like one that never needed to. The camera status now reports how the last snapshot got its frame, either a settled exposure or the fallback, together with a count of the snapshots the fallback answered. Both appear on the dashboard's camera card, at `/api/v1/camera/status` and `/api/v1/status`, and in the support dump. Nothing about how snapshots are taken has changed.
+
 - **The Shelly Wall Display X2i has its own panel profile.** The X2i used to share one profile with the other modern Wall Displays, which meant its details were a set of guesses that had to hold for five different models at once. A unit has now been examined, so the X2i gets a profile describing that unit: its processor, the firmware it was tested on, and its proximity and ambient light sensors, all of which work without root. The profile also stops offering the Recents control, because this firmware ignores it. The shared profile for the remaining modern models is unchanged apart from no longer claiming the X2i's hardware, and it no longer says the onboard relays have no known local control path — they do, but ha-paneld cannot yet reach them on a panel without root.
 
 ### Changed
