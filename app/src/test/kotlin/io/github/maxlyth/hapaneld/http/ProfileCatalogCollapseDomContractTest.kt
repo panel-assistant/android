@@ -33,6 +33,12 @@ class ProfileCatalogCollapseDomContractTest {
                 checked: false,
                 appendChild: function (child) { this.childNodes.push(child); return child; },
                 closest: function () { return null; },
+                disabled: false,
+                classList: {
+                  names: {},
+                  toggle: function (name, on) { this.names[name] = !!on; },
+                  contains: function (name) { return !!this.names[name]; }
+                },
                 set textContent(value) { if (!String(value)) this.childNodes = []; this._text = String(value); },
                 get textContent() { return this._text || ""; }
               };
@@ -180,13 +186,16 @@ class ProfileCatalogCollapseDomContractTest {
             // A bundled pair is not hidden history, so it must not offer to reveal any: a toggle
             // that appears here would expand to exactly the list already on screen.
             render([bundled, retiredBundled], null, false);
-            if (toggle.hidden !== true) throw new Error("toggle offered to reveal bundled revisions that were never collapsed");
+            if (toggle.classList.contains("has-superseded")) throw new Error("toggle offered to reveal bundled revisions that were never collapsed");
+            if (toggle.disabled !== true) throw new Error("toggle stayed operable with nothing to reveal");
 
             // The toggle only appears where there is history to reveal.
             render([bundled], null, false);
-            if (toggle.hidden !== true) throw new Error("toggle shown with no superseded revisions");
+            if (toggle.classList.contains("has-superseded")) throw new Error("toggle shown with no superseded revisions");
+            if (toggle.disabled !== true) throw new Error("toggle stayed operable with no superseded revisions");
             render(catalog, third.ref, false);
-            if (toggle.hidden !== false) throw new Error("toggle hidden while revisions are collapsed");
+            if (!toggle.classList.contains("has-superseded")) throw new Error("toggle not revealed while revisions are collapsed");
+            if (toggle.disabled !== false) throw new Error("toggle left inoperable while revisions are collapsed");
 
             if (badges < 1 || actions < 1) throw new Error("renderCatalog stopped refreshing badges and actions");
         """.trimIndent()

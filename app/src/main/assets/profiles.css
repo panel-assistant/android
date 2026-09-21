@@ -6,8 +6,8 @@
    the first fit publishes a value. */
 .profile-toolbar{position:sticky;top:var(--topbar-h,91px);z-index:16;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;background:var(--card);border:1px solid var(--card-border);border-radius:10px;box-shadow:0 6px 14px -12px var(--shadow)}
 .profile-toolbar .profile-pickers{display:flex;align-items:center;gap:8px;min-width:min(280px,100%);max-width:420px;flex:1 1 280px}
-.profile-toolbar .profile-pickers .profile-revisions{display:flex;align-items:center;gap:5px;white-space:nowrap;flex:0 0 auto;font-size:.82rem}
-.profile-toolbar .profile-pickers .profile-revisions[hidden]{display:none}
+.profile-toolbar .profile-pickers .profile-revisions{display:flex;align-items:center;gap:5px;white-space:nowrap;flex:0 0 auto;font-size:.82rem;visibility:hidden}
+.profile-toolbar .profile-pickers .profile-revisions.has-superseded{visibility:visible}
 .profile-toolbar .profile-pickers select{min-width:0;flex:1 1 auto}
 .profile-toolbar select{min-width:0;max-width:100%;flex:1}
 .profile-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:1 1 auto;margin-left:auto;flex-wrap:wrap}

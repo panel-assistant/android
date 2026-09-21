@@ -659,9 +659,14 @@
   function renderRevisionsToggle(superseded) {
     var toggle = byId("profile-revisions");
     if (!toggle) return;
-    var row = toggle.closest ? toggle.closest(".profile-revisions") : null;
-    (row || toggle).hidden = superseded < 1;
-    toggle.checked = !!model.showAllRevisions;
+    // Visibility, not presence: the control is laid out from the first paint and only becomes
+    // visible once the catalogue says there is history to reveal, so discovering duplicates never
+    // moves the toolbar under it. Its box is reserved either way.
+    var row = (toggle.closest ? toggle.closest(".profile-revisions") : null) || toggle;
+    var revealed = superseded > 0;
+    if (row.classList) row.classList.toggle("has-superseded", revealed);
+    toggle.disabled = !revealed;
+    toggle.checked = revealed && !!model.showAllRevisions;
   }
   function badge(label, kind) {
     var item = document.createElement("span");
