@@ -106,20 +106,25 @@ object HaAreaProtocol {
     }
 
     /**
-     * Find this panel's own device row by the MQTT identifiers it publishes — the immutable
-     * `ha-paneld-aid-<androidId>` preferred, the historical `ha-paneld-<panelId>` as fallback — and join
+     * Find this panel's own device row by the MQTT identifiers it publishes — the minted
+     * `ha-paneld-uid-<deviceUid>` preferred, the historical `ha-paneld-<panelId>` as fallback — and join
      * its `area_id` against the area list. Unlike the presence path this never throws: setup must be able
      * to say "couldn't find the device" calmly.
+     *
+     * `ha-paneld-aid-<androidId>` is deliberately NOT matched, even though existing registrations still
+     * carry it: it is duplicated across a cloned fleet (#155), so preferring it is what resolved several
+     * panels to one device row in the first place. Every panel publishes its `panel_id` identifier on
+     * every pass, so the fallback covers an installation that has not yet been seen under its minted one.
      */
     fun panelDeviceArea(
         deviceResponse: JSONObject?,
         areas: List<HaArea>,
-        androidId: String,
+        deviceUid: String,
         panelId: String,
     ): PanelDeviceArea {
         val rows = deviceResponse?.optJSONArray("result") ?: return PanelDeviceArea()
         val devices = (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
-        val immutable = androidId.trim().takeIf(String::isNotEmpty)?.let { "ha-paneld-aid-$it" }
+        val immutable = deviceUid.trim().takeIf(String::isNotEmpty)?.let { "ha-paneld-uid-$it" }
         val legacy = "ha-paneld-${panelId.trim()}"
         val exact = devices.filter { immutable != null && hasMqttIdentifier(it, immutable) }
         val matches = exact.ifEmpty { devices.filter { hasMqttIdentifier(it, legacy) } }

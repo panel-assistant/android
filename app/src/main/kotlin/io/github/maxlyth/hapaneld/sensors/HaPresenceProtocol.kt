@@ -118,17 +118,17 @@ internal object HaPresenceProtocol {
         areaResponse: JSONObject,
         entityResponse: JSONObject,
         states: JSONArray,
-        androidId: String,
+        deviceUid: String,
         panelId: String,
         preferredAreaName: String = "",
     ): HaPresenceAreaProjection {
         val devices = rows(deviceResponse.optJSONArray("result"), "device registry")
-        val panelArea = projectPanelArea(deviceResponse, areaResponse, androidId, panelId, preferredAreaName)
+        val panelArea = projectPanelArea(deviceResponse, areaResponse, deviceUid, panelId, preferredAreaName)
         val entities = entityResponse.optJSONObject("result")?.optJSONArray("entities")
             ?: entityResponse.optJSONArray("result")
             ?: throw HaProtocolException("Home Assistant entity registry is incomplete")
 
-        val panelDeviceIds = panelDeviceIds(devices, androidId, panelId)
+        val panelDeviceIds = panelDeviceIds(devices, deviceUid, panelId)
         val panelAreaId = panelArea.id
         val panelAreaName = panelArea.name
 
@@ -210,7 +210,7 @@ internal object HaPresenceProtocol {
     fun projectPanelArea(
         deviceResponse: JSONObject,
         areaResponse: JSONObject,
-        androidId: String,
+        deviceUid: String,
         panelId: String,
         preferredAreaName: String = "",
     ): HaPanelArea {
@@ -224,7 +224,7 @@ internal object HaPresenceProtocol {
                 if (name.equals(preferred, ignoreCase = true)) return HaPanelArea(id, name)
             }
         }
-        val device = panelDevice(devices, androidId, panelId)
+        val device = panelDevice(devices, deviceUid, panelId)
         val areaId = device.optString("area_id").trim().lowercase(Locale.ROOT)
         if (!validRegistryId(areaId)) throw HaProtocolException("Home Assistant panel device has no Area")
         return HaPanelArea(areaId, areas[areaId]?.optString("name")?.safeName() ?: areaId)
@@ -362,8 +362,13 @@ internal object HaPresenceProtocol {
         return false
     }
 
-    private fun panelDeviceIds(devices: List<JSONObject>, androidId: String, panelId: String): Set<String> {
-        val immutable = androidId.trim().takeIf(String::isNotEmpty)?.let { "ha-paneld-aid-$it" }
+    /**
+     * The minted `ha-paneld-uid-<deviceUid>` identifier preferred, the historical `ha-paneld-<panelId>`
+     * as fallback. `ha-paneld-aid-<androidId>` is deliberately not matched: it is duplicated across a
+     * cloned factory image (#155), so it resolves several panels to one device row.
+     */
+    private fun panelDeviceIds(devices: List<JSONObject>, deviceUid: String, panelId: String): Set<String> {
+        val immutable = deviceUid.trim().takeIf(String::isNotEmpty)?.let { "ha-paneld-uid-$it" }
         val legacy = "ha-paneld-${panelId.trim()}"
         val matches = devices.filter { device ->
             immutable != null && hasIdentifier(device, "mqtt", immutable) || hasIdentifier(device, "mqtt", legacy)
@@ -374,8 +379,9 @@ internal object HaPresenceProtocol {
             ?: throw HaProtocolException("Home Assistant panel device has no valid id")
     }
 
-    private fun panelDevice(devices: List<JSONObject>, androidId: String, panelId: String): JSONObject {
-        val immutable = androidId.trim().takeIf(String::isNotEmpty)?.let { "ha-paneld-aid-$it" }
+    /** Same identifier precedence, and the same exclusion, as [panelDeviceIds]. */
+    private fun panelDevice(devices: List<JSONObject>, deviceUid: String, panelId: String): JSONObject {
+        val immutable = deviceUid.trim().takeIf(String::isNotEmpty)?.let { "ha-paneld-uid-$it" }
         val legacy = "ha-paneld-${panelId.trim()}"
         val exact = devices.filter { device -> immutable != null && hasIdentifier(device, "mqtt", immutable) }
         val matches = if (exact.isNotEmpty()) exact else devices.filter { hasIdentifier(it, "mqtt", legacy) }

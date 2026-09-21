@@ -21,7 +21,7 @@ class HaAreaProtocolTest {
     private fun devicesJson(areaId: String = "office") = JSONObject(
         """{"result":[
             {"id":"other","identifiers":[["mqtt","something-else"]],"area_id":"kitchen"},
-            {"id":"dev1","identifiers":[["mqtt","ha-paneld-aid-abc123"],["mqtt","ha-paneld-office_panel"]],"area_id":"$areaId"}
+            {"id":"dev1","identifiers":[["mqtt","ha-paneld-uid-abc123"],["mqtt","ha-paneld-office_panel"]],"area_id":"$areaId"}
         ]}""",
     )
 
@@ -135,7 +135,7 @@ class HaAreaProtocolTest {
             File("app/src/main/kotlin/io/github/maxlyth/hapaneld/control/AutoSleepController.kt"),
         ).first { it.isFile }.readText()
         assertTrue(controller.contains("preferredAreaName = next.value.haArea"))
-        assertTrue(controller.contains("manager.prerequisite(current.androidId, current.panelId, current.haArea)"))
+        assertTrue(controller.contains("manager.prerequisite(current.deviceUid, current.panelId, current.haArea)"))
     }
 
     @Test fun thePrecedenceRuleIsHaWinsLocalOnlySeedsAndAdminsApply() {
@@ -271,7 +271,7 @@ class HaAreaProtocolTest {
             File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
         ).first { it.isFile }.readText()
         assertTrue(server.contains("get(\"/config/ha-area\")"))
-        assertTrue(server.contains("entityLearning.haAreaCatalog(snapshot.androidId, snapshot.panelId)"))
+        assertTrue(server.contains("entityLearning.haAreaCatalog(snapshot.deviceUid, snapshot.panelId)"))
         assertTrue(server.contains("captureHaAreaSnapshot()"))
         assertTrue(server.contains("catalog.ownerKey != snapshot.ownerKey"))
         assertTrue(server.contains("synchronized(directConfigMutationLock)"))

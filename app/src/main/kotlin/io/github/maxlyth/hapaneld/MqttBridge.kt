@@ -472,6 +472,35 @@ internal fun autoSleepAvailabilityFragment(
     policyAvailabilityTopic: String,
 ): String = dualAvailabilityFragment(panelAvailabilityTopic, policyAvailabilityTopic)
 
+/**
+ * The device identifiers one discovery payload publishes, in order.
+ *
+ * Home Assistant matches a device on ANY identifier in the set and UNIONS what it did not already
+ * hold, so every member of this list is a permanent claim on whichever device it reaches.
+ *
+ * - `ha-paneld-<panelId>` is the historical primary and is always present: it is what an existing
+ *   registration matches on across an upgrade, which is what keeps the user's customisation.
+ * - `ha-paneld-uid-<deviceUid>` is this installation's minted identity. It is what makes a later
+ *   panel_id change re-attach to the same device rather than mint a duplicate.
+ * - `ha-paneld-aid-<androidId>` is the retired identifier from #155 and is emitted ONLY while
+ *   [Config.legacyAidBridgePending] — that is, at most once, by an installation that may already be
+ *   registered under it. It is cloned across a factory image, so publishing it routinely is what
+ *   merged whole fleets into one device, and republishing it would re-merge them the moment a
+ *   merged device is deleted.
+ *
+ * A blank member is omitted rather than published as a bare prefix: `ha-paneld-uid-` would itself be
+ * a shared identifier, and would merge every panel that could not read its own.
+ */
+internal fun mqttDeviceIdentifiers(
+    panelId: String,
+    deviceUid: String,
+    legacyAndroidId: String,
+): List<String> = buildList {
+    add("ha-paneld-$panelId")
+    deviceUid.trim().takeIf(String::isNotEmpty)?.let { add("ha-paneld-uid-$it") }
+    legacyAndroidId.trim().takeIf(String::isNotEmpty)?.let { add("ha-paneld-aid-$it") }
+}
+
 internal fun autoSleepMqttProjection(snapshot: AutoSleepActivitySnapshot): AutoSleepMqttProjection {
     fun category(raw: String): String = raw.trim().lowercase(java.util.Locale.ROOT)
         .replace(Regex("[^a-z0-9_-]+"), "_")
@@ -3924,10 +3953,20 @@ internal class MqttBridge(
         // ha-paneld's own version). serial_number = stable Android id.
         val hw = jsonEsc("Android ${Build.VERSION.RELEASE} · ${Build.DISPLAY}")
         // Two device identifiers: the panel_id one (historical primary — existing registrations match
-        // on it) plus the IMMUTABLE Android device id. HA merges a device on ANY matching identifier,
-        // so a later panel_id change re-attaches to the SAME HA device instead of minting a duplicate.
-        val aid = config.androidId
-        val ids = if (aid.isNotBlank()) """["ha-paneld-$panel","ha-paneld-aid-$aid"]""" else """["ha-paneld-$panel"]"""
+        // on it) plus this installation's minted identity. HA merges a device on ANY matching
+        // identifier, so a later panel_id change re-attaches to the SAME HA device instead of minting a
+        // duplicate.
+        //
+        // The minted identity replaced `ha-paneld-aid-<ANDROID_ID>` (#155). Panels flashed from one
+        // factory image share the Android 8.1 SSAID seed, so that identifier was identical across a
+        // fleet and Home Assistant merged every such panel into a single device. Because HA UNIONS
+        // identifiers and never removes one, a shared identifier published even once is permanent for
+        // that device, and republishing it would re-merge those panels as soon as the merged device is
+        // deleted — so it is published at most once more, by an installation that was already
+        // registered under it, and then retired below.
+        val legacyAid = if (config.legacyAidBridgePending) config.androidId else ""
+        val identifiers = mqttDeviceIdentifiers(panel, config.deviceUid, legacyAid)
+        val ids = identifiers.joinToString(",", "[", "]") { """"${jsonEsc(it)}"""" }
         // suggested_area applies only when HA first registers the device (it auto-creates the area and
         // never overrides a manual move) — exactly the semantics of the local ha_area REQUEST, whose
         // canonical source stays Home Assistant once the device exists.
@@ -4214,6 +4253,12 @@ internal class MqttBridge(
             "button", "${panel}_reboot",
             """{"name":"Reboot","object_id":"${panel}_reboot","unique_id":"${panel}_reboot","command_topic":"$cmdReboot","device_class":"restart","icon":"mdi:restart",$avail,$device}""",
         )
+
+        // Every config topic above carried the device block, so the legacy Android-id identifier has now
+        // been published for the last time and Home Assistant has had its chance to union the minted
+        // identity onto the existing device. Retire it here, at the end of a complete pass, rather than
+        // where the block is built: a pass that threw part-way has not published the whole device.
+        if (legacyAid.isNotBlank()) config.retireLegacyAidBridge()
     }
 
     private fun jsonEsc(s: String): String = Json.esc(s)

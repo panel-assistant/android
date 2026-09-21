@@ -11,7 +11,7 @@ import java.net.URLEncoder
 
 class HaPresenceProtocolTest {
     @Test fun `panel Area projection needs only device and Area registries`() {
-        val devices = response(JSONArray().put(device("panel-device", "office", "ha-paneld-aid-abc")))
+        val devices = response(JSONArray().put(device("panel-device", "office", "ha-paneld-uid-abc")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "office").put("name", "Office")))
 
         val area = HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy")
@@ -23,7 +23,7 @@ class HaPresenceProtocolTest {
         // A person may deliberately point the panel at a different room than its HA device sits in: a
         // panel whose own area holds no motion entities takes its auto-sleep sources
         // from a neighbouring room. Resolution is by NAME, case-insensitively, against HA's own list.
-        val devices = response(JSONArray().put(device("panel-device", "hall", "ha-paneld-aid-abc")))
+        val devices = response(JSONArray().put(device("panel-device", "hall", "ha-paneld-uid-abc")))
         val areas = response(JSONArray()
             .put(JSONObject().put("area_id", "hall").put("name", "Hall"))
             .put(JSONObject().put("area_id", "office").put("name", "Office")))
@@ -43,7 +43,7 @@ class HaPresenceProtocolTest {
             HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", preferredAreaName = "Snug"),
         )
         // And a resolvable preference works even for a device HA has not put in any area yet.
-        val bareDevice = response(JSONArray().put(device("panel-device", "", "ha-paneld-aid-abc")))
+        val bareDevice = response(JSONArray().put(device("panel-device", "", "ha-paneld-uid-abc")))
         assertEquals(
             HaPanelArea("office", "Office"),
             HaPresenceProtocol.projectPanelArea(bareDevice, areas, "abc", "legacy", preferredAreaName = "Office"),
@@ -51,7 +51,7 @@ class HaPresenceProtocolTest {
     }
 
     @Test fun `panel Area projection reports unassigned without entity data`() {
-        val devices = response(JSONArray().put(device("panel-device", "", "ha-paneld-aid-abc")))
+        val devices = response(JSONArray().put(device("panel-device", "", "ha-paneld-uid-abc")))
         val areas = response(JSONArray())
 
         val failure = runCatching {
@@ -86,7 +86,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `panel-owned occupancy is excluded while external Area motion remains`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(device("motion-device", "kitchen", "motion-id")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
         val entities = JSONObject().put("result", JSONObject().put("entities", JSONArray()
@@ -103,7 +103,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `panel device area inherits through candidate device`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(device("motion-device", "kitchen", "motion-id")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
         val entities = JSONObject().put("result", JSONObject().put("entities", JSONArray()
@@ -150,7 +150,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `malformed unrelated device rows do not abort Area projection`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(JSONObject().put("area_id", "elsewhere"))
             .put(JSONObject().put("id", "not.a.registry.id").put("area_id", "elsewhere"))
             .put(device("motion-device", "kitchen", "motion-id")))
@@ -167,7 +167,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `entity with an unprojectable device remains supporting only`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(JSONObject().put("area_id", "kitchen")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
         val entities = JSONObject().put("result", JSONObject().put("entities", JSONArray()
@@ -186,7 +186,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `entity area override excludes a device inherited from panel area`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(device("motion-device", "kitchen", "motion-id")))
         val areas = response(JSONArray()
             .put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen"))
@@ -200,7 +200,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `unrelated binary device classes are excluded`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(device("door-device", "kitchen", "door-id")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
         val entities = JSONObject().put("result", JSONObject().put("entities", JSONArray()
@@ -214,7 +214,7 @@ class HaPresenceProtocolTest {
 
     @Test fun `presence authority follows registry provenance rather than entity wording`() {
         val devices = response(JSONArray()
-            .put(device("panel-device", "kitchen", "ha-paneld-aid-abc"))
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-abc"))
             .put(device("motion-device", "kitchen", "motion-id")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
         val entities = JSONObject().put("result", JSONObject().put("entities", JSONArray()

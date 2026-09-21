@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 internal data class HaPresenceRequest(
     val enabled: Boolean,
-    val androidId: String,
+    val deviceUid: String,
     val panelId: String,
     val controllerEpoch: Long = 0L,
     /** The panel's locally configured area name; when set it names the room presence sources come from. */
@@ -276,7 +276,7 @@ internal class HaPresenceSourceManager(
         }
     }
 
-    suspend fun prerequisite(androidId: String, panelId: String, preferredAreaName: String = ""): HaPanelAreaPrerequisite {
+    suspend fun prerequisite(deviceUid: String, panelId: String, preferredAreaName: String = ""): HaPanelAreaPrerequisite {
         return try {
             suspend fun resolveAndRead(force: Boolean): Pair<HaApiSession, HaPanelAreaRegistrySnapshot> {
                 val session = resolveSession(force)
@@ -290,7 +290,7 @@ internal class HaPresenceSourceManager(
             } catch (rejected: HaAuthenticationException) {
                 resolveAndRead(force = true)
             }
-            val area = HaPresenceProtocol.projectPanelArea(snapshot.devices, snapshot.areas, androidId, panelId, preferredAreaName)
+            val area = HaPresenceProtocol.projectPanelArea(snapshot.devices, snapshot.areas, deviceUid, panelId, preferredAreaName)
             HaPanelAreaPrerequisite(
                 HaPanelAreaPrerequisitePhase.ASSIGNED,
                 areaName = area.name,
@@ -521,7 +521,7 @@ internal class HaPresenceSourceManager(
             HaPresenceProtocol.projectPanelArea(
                 snapshot.devices,
                 snapshot.areas,
-                requested.androidId,
+                requested.deviceUid,
                 requested.panelId,
                 requested.preferredAreaName,
             ).name
@@ -532,7 +532,7 @@ internal class HaPresenceSourceManager(
                 snapshot.areas,
                 snapshot.entities,
                 snapshot.states,
-                requested.androidId,
+                requested.deviceUid,
                 requested.panelId,
                 requested.preferredAreaName,
             )
