@@ -9873,6 +9873,11 @@
       "state": "machine-cross-checked",
       "text": "Revisione del profilo"
     },
+    "profiles.toolbar.show_superseded": {
+      "text": "Mostra le revisioni sostituite",
+      "sourceHash": "45e23ea6f6e48b9a82ac11ec04490dad65aa20aef837ccfe94f9c4596fd0c58f",
+      "state": "machine-cross-checked"
+    },
     "profiles.validation.invalid_profile": {
       "sourceHash": "f48e372cc3ae5e58783e229ba563e2edbbeb13af014134f9e26ca685e9f82288",
       "state": "machine-cross-checked",
