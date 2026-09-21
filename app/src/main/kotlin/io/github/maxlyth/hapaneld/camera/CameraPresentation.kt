@@ -220,6 +220,15 @@ data class CameraPresentation(
     val encodeKbps: Int? = null,
     val deliveredFps: Double? = null,
     val deliveredKbps: Int? = null,
+    /**
+     * How the last answered snapshot got its frame. The exposure gate falls back on a spent budget when
+     * a device never reports `CONTROL_AE_STATE`, and that fallback is otherwise invisible: the snapshot
+     * still returns a picture, just not a settled one. Reporting it is what lets a panel taking the
+     * fallback be told apart from one converging properly.
+     */
+    val snapshotExposure: SnapshotExposureOutcome = SnapshotExposureOutcome.NONE,
+    /** How many snapshots that fallback has answered; `0` alongside `converged` is a healthy sensor. */
+    val snapshotExposureFallbacks: Int = 0,
 ) {
     /** Stable flat JSON for `GET /api/v1/status`; `state` stays first for shell clients. */
     fun statusJson(): String = buildString {
@@ -255,6 +264,8 @@ data class CameraPresentation(
         field("encode_kbps", encodeKbps)
         field("delivered_fps", deliveredFps)
         field("delivered_kbps", deliveredKbps)
+        field("snapshot_exposure", snapshotExposure.wire)
+        field("snapshot_exposure_fallbacks", snapshotExposureFallbacks)
         field("summary", summary)
         field("action", action)
         append('}')
@@ -290,6 +301,8 @@ data class CameraPresentation(
         // consumers pin the encode-to-delivered run of this line as one substring. The dump is flat
         // key=value text whose order carries no contract, so the field goes where it costs nothing.
         append(" requested_fps=").append(requestedFps?.toString() ?: "none")
+        append(" snapshot_exposure=").append(snapshotExposure.wire)
+        append('/').append(snapshotExposureFallbacks)
     }
 
     companion object {

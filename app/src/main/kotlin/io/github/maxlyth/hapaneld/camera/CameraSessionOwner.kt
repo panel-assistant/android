@@ -1233,6 +1233,10 @@ class CameraSessionOwner(
             state = presented, outcome = outcome, fault = fault, faultDetail = faultDetail, recovery = recovery,
             clients = clients, lastFrameAgeMs = last?.let { (now - it).coerceAtLeast(0) },
             consecutiveFailures = failures, indication = indicator.route(),
+            // Carried on every live projection, including an idle one: the question "is this panel's
+            // camera taking the exposure fallback?" is asked precisely when nobody is watching.
+            snapshotExposure = state.lastSnapshotExposure,
+            snapshotExposureFallbacks = state.snapshotExposureFallbacks,
             summary = when (phase) {
                 Phase.LIVE -> "camera open for $clients client${if (clients == 1) "" else "s"}" +
                     (if (streaming > 0) " ($streaming streaming)" else "") + "; $stream"

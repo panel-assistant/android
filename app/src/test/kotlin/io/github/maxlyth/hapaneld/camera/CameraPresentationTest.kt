@@ -53,7 +53,8 @@ class CameraPresentationTest {
             "state", "outcome", "fault", "fault_detail", "recovery", "clients",
             "last_frame_age_ms", "consecutive_failures", "indication", "live",
             "stream_clients", "stream_port", "encoder", "encode_width", "encode_height", "encode_fps", "encode_kbps",
-            "delivered_fps", "delivered_kbps", "summary", "action",
+            "delivered_fps", "delivered_kbps", "snapshot_exposure", "snapshot_exposure_fallbacks",
+            "summary", "action",
         ).forEach { assertTrue("missing $it", j.has(it)) }
         assertEquals("absent", j.getString("state"))
         assertEquals("none", j.getString("fault"))
@@ -90,6 +91,38 @@ class CameraPresentationTest {
         val line = p.diagnosticLine()
         assertTrue(line, line.contains(" stream_clients=1 stream_port=8554 encoder=OMX.rk.video_encoder.avc encode=1280x720@15/2000kbps delivered=15.0fps/1870kbps"))
         assertFalse("the dump carries the port but never an address or URL", line.contains("rtsp://"))
+    }
+
+    /**
+     * The exposure gate answers a snapshot either way — converged, or on a spent budget — so a panel
+     * whose sensor never reports `CONTROL_AE_STATE` returns a picture that may still be dark and is
+     * otherwise indistinguishable from a settled one. The projection is where that difference becomes
+     * visible, so both the JSON and the dump must carry it.
+     */
+    @Test fun theSnapshotExposureDispositionIsVisibleInBothTheStatusObjectAndTheDump() {
+        // Presence as an assertion before any accessor: a field that stops being emitted must fail this
+        // test by assertion, not by the JSON accessor throwing, which reports as an error instead.
+        val nothingYet = JSONObject(CameraPresentation.absent().statusJson())
+        assertTrue("missing snapshot_exposure", nothingYet.has("snapshot_exposure"))
+        assertTrue("missing snapshot_exposure_fallbacks", nothingYet.has("snapshot_exposure_fallbacks"))
+        assertEquals("nothing is claimed before a snapshot", "none", nothingYet.optString("snapshot_exposure", ""))
+        assertEquals(0, nothingYet.optInt("snapshot_exposure_fallbacks", -1))
+
+        val converged = CameraPresentation.absent().copy(
+            state = CameraState.IDLE, snapshotExposure = SnapshotExposureOutcome.CONVERGED,
+        )
+        assertEquals("converged", JSONObject(converged.statusJson()).optString("snapshot_exposure", ""))
+        assertTrue(converged.diagnosticLine(), converged.diagnosticLine().contains(" snapshot_exposure=converged/0"))
+
+        val fallingBack = CameraPresentation.absent().copy(
+            state = CameraState.IDLE, snapshotExposure = SnapshotExposureOutcome.BUDGET, snapshotExposureFallbacks = 7,
+        )
+        val j = JSONObject(fallingBack.statusJson())
+        assertTrue("missing snapshot_exposure", j.has("snapshot_exposure"))
+        assertTrue("missing snapshot_exposure_fallbacks", j.has("snapshot_exposure_fallbacks"))
+        assertEquals("budget", j.optString("snapshot_exposure", ""))
+        assertEquals("the count is what separates one cold miss from a sensor that never converges", 7, j.optInt("snapshot_exposure_fallbacks", -1))
+        assertTrue(fallingBack.diagnosticLine(), fallingBack.diagnosticLine().contains(" snapshot_exposure=budget/7"))
     }
 
     @Test fun permissionNeededCarriesTheListeningPortSoAUserSeesTheStreamIsWaitingOnThem() {

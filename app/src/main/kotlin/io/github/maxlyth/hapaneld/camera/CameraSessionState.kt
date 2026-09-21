@@ -43,6 +43,23 @@ object SnapshotExposure {
 }
 
 /**
+ * How the last answered snapshot got its frame.
+ *
+ * The gate is a budget, not a precondition, so a device that never reports `CONTROL_AE_STATE` still
+ * returns a picture — and from the outside that picture is indistinguishable from a properly converged
+ * one, which is exactly what somebody diagnosing a dark still needs told apart. So the session records
+ * which path answered, and the projection carries it.
+ */
+enum class SnapshotExposureOutcome(val wire: String) {
+    /** No snapshot has been answered yet, so nothing is claimed either way. */
+    NONE("none"),
+    /** The sensor reported converged, locked or flash-required exposure before the frame was handed over. */
+    CONVERGED("converged"),
+    /** The budget was spent without the sensor reporting convergence, and the frame was handed over anyway. */
+    BUDGET("budget"),
+}
+
+/**
  * The processing knobs these panels actually expose, and how to choose them.
  *
  * Kept pure because the choice is a policy, and because what the hardware offers differs per board:
@@ -415,8 +432,24 @@ class CameraSessionState(private val policy: () -> CameraSessionPolicy) {
         // exposure gate is holding is still alive, and the watchdog must not read it as starved.
         val ready = frameWaiters.filter { SnapshotExposure.admits(exposureSettled, nowMs - it.addedAtMs) }
         frameWaiters.removeAll(ready.toSet())
+        if (ready.isNotEmpty()) {
+            // Only a frame that actually answered a waiter says anything about a SNAPSHOT's exposure. The
+            // frames delivered while nobody is waiting belong to the stream, which settles within its first
+            // second, and recording those would report a converged stream as a converged snapshot.
+            lastSnapshotExposure =
+                if (exposureSettled) SnapshotExposureOutcome.CONVERGED else SnapshotExposureOutcome.BUDGET
+            if (!exposureSettled) snapshotExposureFallbacks += ready.size
+        }
         return ready
     }
+
+    /** How the last answered snapshot got its frame; it outlives a session, because the sensor does. */
+    var lastSnapshotExposure = SnapshotExposureOutcome.NONE
+        private set
+
+    /** How many snapshots the settle budget has answered without convergence, over this owner's life. */
+    var snapshotExposureFallbacks = 0
+        private set
 
     fun addWaiter(w: CompletableFuture<ByteArray?>, nowMs: Long) {
         frameWaiters += SnapshotWaiter(w, nowMs)

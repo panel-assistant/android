@@ -649,6 +649,63 @@ class CameraSessionStateTest {
         assertNull(shot.get())
     }
 
+    // ---- telling the fallback apart from a converged sensor ------------------------------------------
+    // The gate answers either way, so without this the two are indistinguishable from outside the panel.
+
+    @Test fun nothingIsClaimedAboutExposureBeforeASnapshotIsAnswered() {
+        val first = open()
+        assertTrue(state.openSucceeded(first.attempt))
+        assertEquals(SnapshotExposureOutcome.NONE, state.lastSnapshotExposure)
+        assertEquals(0, state.snapshotExposureFallbacks)
+    }
+
+    @Test fun aSnapshotAnsweredByAConvergedSensorIsRecordedAsConverged() {
+        val first = open()
+        assertTrue(state.openSucceeded(first.attempt))
+        state.addWaiter(CompletableFuture<ByteArray?>(), 1_000L)
+        state.frame(first.attempt, 1_010L, exposureSettled = true)
+        assertEquals(SnapshotExposureOutcome.CONVERGED, state.lastSnapshotExposure)
+        assertEquals("a converged answer is not a fallback", 0, state.snapshotExposureFallbacks)
+    }
+
+    @Test fun aSnapshotAnsweredByTheSpentBudgetIsRecordedAsTheFallbackAndCounted() {
+        val first = open()
+        assertTrue(state.openSucceeded(first.attempt))
+        state.addWaiter(CompletableFuture<ByteArray?>(), 1_000L)
+        state.frame(first.attempt, 1_000L + SnapshotExposure.SETTLE_BUDGET_MS, exposureSettled = false)
+        assertEquals(SnapshotExposureOutcome.BUDGET, state.lastSnapshotExposure)
+        assertEquals(1, state.snapshotExposureFallbacks)
+
+        // A device that never reports convergence keeps taking it, and the count is what says so.
+        state.addWaiter(CompletableFuture<ByteArray?>(), 2_000L)
+        state.frame(first.attempt, 2_000L + SnapshotExposure.SETTLE_BUDGET_MS, exposureSettled = false)
+        assertEquals(2, state.snapshotExposureFallbacks)
+    }
+
+    @Test fun aHeldFrameRecordsNothing() {
+        // The frames the gate holds have not answered anything, so they must not claim the fallback
+        // before the budget has actually been spent.
+        val first = open()
+        assertTrue(state.openSucceeded(first.attempt))
+        state.addWaiter(CompletableFuture<ByteArray?>(), 1_000L)
+        assertEquals(emptyList<SnapshotWaiter>(), state.frame(first.attempt, 1_100L, exposureSettled = false))
+        assertEquals(SnapshotExposureOutcome.NONE, state.lastSnapshotExposure)
+        assertEquals(0, state.snapshotExposureFallbacks)
+    }
+
+    @Test fun theStreamsOwnFramesSayNothingAboutSnapshotExposure() {
+        // A stream settles within its first second, so recording every delivered frame would report a
+        // converged stream as a converged snapshot on a panel whose snapshots always take the fallback.
+        val stream = openStream()
+        assertTrue(state.openSucceeded(stream.attempt))
+        state.frame(stream.attempt, 1_100L, exposureSettled = true)
+        assertEquals(
+            "no waiter was answered, so nothing is known about a snapshot",
+            SnapshotExposureOutcome.NONE,
+            state.lastSnapshotExposure,
+        )
+    }
+
     // ---- stream demand in both lease orderings -------------------------------------------------------
     // The processing budget follows `encoderWanted`, so these pin the signal the repeating request reads.
     // Keying it on whatever opened the session instead was the defect the first submission carried.

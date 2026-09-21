@@ -6,6 +6,7 @@ import io.github.maxlyth.hapaneld.camera.CameraPresentation
 import io.github.maxlyth.hapaneld.camera.CameraRefusal
 import io.github.maxlyth.hapaneld.camera.CameraResolution
 import io.github.maxlyth.hapaneld.camera.CameraState
+import io.github.maxlyth.hapaneld.camera.SnapshotExposureOutcome
 import io.github.maxlyth.hapaneld.testsupport.TestSources
 import java.io.File
 import org.json.JSONObject
@@ -121,6 +122,7 @@ class CameraSurfaceContractTest {
         assertEquals(CameraState.entries.map { it.wire }.toSet(), enumOf("state"))
         assertEquals(CameraFault.entries.map { it.wire }.toSet(), enumOf("fault"))
         assertEquals(CameraIndication.entries.map { it.wire }.toSet(), enumOf("indication"))
+        assertEquals(SnapshotExposureOutcome.entries.map { it.wire }.toSet(), enumOf("snapshot_exposure"))
     }
 
     @Test fun theSnapshotRouteIsDocumentedWithTheResolutionEnumAndNoFixedDefault() {
