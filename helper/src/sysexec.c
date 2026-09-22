@@ -20,17 +20,8 @@ int sysexec_run_constant(const char *program) {
     return sysexec_run_argv("/system/bin/sh", argv, 0);
 }
 
-// Several /system/bin actuators — pm, am, appops, settings — are shell wrappers whose real body is
-// `exec app_process … com.android.commands.…`, and app_process aborts outright without ANDROID_ROOT
-// and ANDROID_DATA. A daemon launched from init inherits neither, so every one of those actuators
-// died with SIGABRT here while the same command succeeded from a root shell that had them. Measured
-// on an Android 8.1 device, 2026-09-20: `env -i PATH=/system/bin:/vendor/bin pm path android`
-// returns 134, and adding exactly these two returns 0. Keep the environment otherwise minimal:
-// these name the platform's own fixed roots, not anything a caller can influence.
 static char *const clean_env[] = {
     "PATH=/system/bin:/vendor/bin",
-    "ANDROID_ROOT=/system",
-    "ANDROID_DATA=/data",
     "LANG=C",
     "LC_ALL=C",
     NULL
