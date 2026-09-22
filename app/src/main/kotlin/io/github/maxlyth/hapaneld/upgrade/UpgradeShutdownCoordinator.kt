@@ -32,21 +32,6 @@ internal fun formatUpgradeReleased(nonce: String): String =
 internal interface UpgradeRequestCompletion {
     fun ready(nonce: String, proof: CleanDatabaseProof)
     fun failed(reason: String)
-
-    /**
-     * MIGRATION-ONLY. Delete with the identity migration; nothing else implements this.
-     *
-     * The service is tearing down into a process exit, so no clean proof and no same-process
-     * successor will follow. An ordinary upgrade request has nothing to do here and keeps the
-     * default; the bridge release overrides it, because a bridge whose process is ending has in
-     * substance retired — the port frees and the service stops — and its durable marker must not
-     * depend on the one teardown shape it cannot have. Measured on hardware, 2026-09-20: every
-     * release ended this way, so the marker was never written and the successor waited forever.
-     *
-     * Removing it means deleting this method, its default, the call in [failShutdown] and
-     * [Gate.notifyExitingProcess]. No permanent caller depends on any of them.
-     */
-    fun exitingProcess(reason: String) {}
 }
 
 internal data class UpgradeCancellation(
@@ -135,23 +120,6 @@ internal class UpgradeRequestGate {
         // monitor: cancel/recovery observers must still be able to inspect the unique active claim.
         completion.first.ready(completion.second, proof)
         return true
-    }
-
-    /**
-     * MIGRATION-ONLY. Delete with the identity migration, along with its call in [failShutdown].
-     *
-     * Tell the armed request that this teardown ends in a process exit, before the claim is
-     * cancelled. Read the completion under the monitor and call it outside: retirement writes a
-     * durable marker and may end the process, neither of which may run while the gate is held.
-     */
-    fun notifyExitingProcess(claim: UpgradeShutdownClaim?, reason: String) {
-        val completion = synchronized(this) {
-            val request = active ?: return
-            if (claim != null && request.claimToken !== claim.token) return
-            if (request.ready) return
-            request.completion
-        }
-        completion.exitingProcess(reason)
     }
 
     fun cancel(nonce: String?, reason: String): UpgradeCancellation {
@@ -258,11 +226,6 @@ internal object UpgradeShutdownCoordinator {
         releaseSuccessor: () -> Unit,
         reason: String,
     ) {
-        // MIGRATION-ONLY (delete with the identity migration). A request that can still act on a
-        // process exit gets told before its claim is torn down.
-        // The bridge release retires here; every other request keeps the default no-op and is
-        // cancelled and resumed exactly as before.
-        gate.notifyExitingProcess(claim, reason)
         val cancelled = if (claim == null) UpgradeCancellation(matched = false)
             else gate.cancelClaim(claim, reason)
         logReleaseFailures(releaseUpgradeHold(

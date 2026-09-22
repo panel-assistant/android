@@ -52,14 +52,6 @@ internal class AndroidBridgeReleasePorts(context: Context) : BridgeRelease.Ports
                 // The coordinator resumes the service itself on every failure path.
                 Log.w(TAG, "bridge release abandoned: $reason")
             }
-
-            // The teardown is ending in a process exit rather than a same-process handoff. That is
-            // still a retirement in substance — the service stops and the port frees — so complete
-            // it here instead of abandoning a release the successor is already waiting on.
-            override fun exitingProcess(reason: String) {
-                Log.i(TAG, "bridge retiring on process exit: $reason")
-                onQuiesced()
-            }
         }
         if (!UpgradeShutdownCoordinator.arm(context, nonce, completion)) return false
         armedNonce = nonce
