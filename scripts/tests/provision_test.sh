@@ -1863,7 +1863,7 @@ assert_log_contains '^curl .* /api/v1/provisioning/plan\.txt$|^curl .*http://pan
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "verify-only never installs an APK"
 assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am start|monkey -p io\.panelassistant\.android))|^curl .* (-X POST|--data|--data-urlencode)' "$MOCK_CALL_LOG" "verify-only performs no panel mutation"
 
-assert_count "$(grep -c -- '--max-time 5 .*/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "a ready Configuration schema is read once within a five-second request"
+assert_count "$(grep -c -- '--max-time 60 .*/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "a ready Configuration schema is read once within the total request budget"
 
 # Grant state left by an earlier case would let a later case pass without granting anything, so every
 # run starts without it. A read-only verify creates none, which isolates the reset itself.
@@ -1895,6 +1895,16 @@ assert_success "verify-only accepts a Configuration schema that answers on the s
 assert_contains 'Configuration schema: ready' "a schema that answers after the startup race is ready"
 assert_count "$(grep -c '/api/v1/config/schema$' "$MOCK_CALL_LOG")" 2 "an unanswered schema read is retried until it answers"
 assert_count "$(grep -c '^sleep 1$' "$SCHEMA_SLEEP_DIR/calls")" 1 "the schema retry pauses before its second attempt"
+assert_log_contains 'curl .*--max-time 60 .*/api/v1/config/schema$' \
+  "the default schema budget covers measured cold startup"
+
+CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS=8 MOCK_CONFIG_SCHEMA=cold-six-seconds \
+  run_provision "$MOCK_TARGET" --verify
+assert_success "a cold schema response can finish beyond the former five-second request cap"
+assert_count "$(grep -c '/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 \
+  "a cold schema completes in one request without restarting its wait"
+assert_log_contains 'curl .*--max-time 8 .*/api/v1/config/schema$' \
+  "a schema request receives its full remaining total budget"
 
 MOCK_CONFIG_SCHEMA=transport-fail run_provision "$MOCK_TARGET" --verify
 assert_failure "verify-only rejects an unavailable Configuration schema"

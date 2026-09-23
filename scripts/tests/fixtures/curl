@@ -509,6 +509,12 @@ JSON
         /bin/sleep "$max_time"
         exit 28
         ;;
+      cold-six-seconds)
+        case "$max_time" in ''|*[!0-9]*|0) exit 2 ;; esac
+        if [ "$max_time" -lt 6 ]; then /bin/sleep "$max_time"; exit 28; fi
+        /bin/sleep 6
+        printf '[{"key":"panel_id","label":"Panel ID"}]\n'
+        ;;
       ready-after-2)
         probe_file="${MOCK_STATE_DIR:?}/config-schema-probes"
         probes=0; [ ! -f "$probe_file" ] || probes="$(cat "$probe_file")"
