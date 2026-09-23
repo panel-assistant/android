@@ -102,7 +102,9 @@ class EntityCatalogUpgradeTest {
                 assertTrue(cursor.moveToFirst())
                 assertEquals(25.0, cursor.getDouble(0), 0.0)
             }
-            assertEquals("0", scalar(db, "SELECT count(*) FROM pragma_foreign_key_check"))
+            db.rawQuery("PRAGMA foreign_key_check", emptyArray()).use { cursor ->
+                assertFalse("the upgraded database must not contain foreign-key violations", cursor.moveToFirst())
+            }
         }
 
         val target = context.getDatabasePath(EntityCatalogStore.DATABASE_NAME)
