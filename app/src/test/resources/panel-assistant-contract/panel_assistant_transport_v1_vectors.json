@@ -1,0 +1,1065 @@
+{
+  "sourceRevision": "f8f3bc883ebfa82ac957706dad363be4b42a1010",
+  "messages": [
+    {
+      "name": "hello_minimal",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_unknown_fields_ignored",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ],
+        "future": {
+          "x": 1
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_without_did",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_protocol_range_inverted",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 2,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_duplicate_channel",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          },
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_family_without_index",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": null,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_family_index_above_bound",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay65",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 65,
+            "unique_suffix": "relay65"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_select_without_options",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "navbar",
+            "platform": "select",
+            "translation_key": "navbar",
+            "unique_suffix": "navbar"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_event_without_options",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "button",
+            "platform": "event",
+            "translation_key": "button",
+            "unique_suffix": "button"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_unknown_platform",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "vacuum",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_channel_uppercase",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events"
+        ],
+        "channels": [
+          {
+            "channel": "Relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "report_state_delta",
+      "message": {
+        "type": "panel_assistant/report_state",
+        "session": "abcDEF_-123",
+        "sync": "delta",
+        "observations": [
+          {
+            "channel": "relay1",
+            "state": "known",
+            "value": true
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "report_state_unknown_sync",
+      "message": {
+        "type": "panel_assistant/report_state",
+        "session": "abcDEF_-123",
+        "sync": "partial",
+        "observations": []
+      },
+      "valid": false
+    },
+    {
+      "name": "report_state_unknown_state",
+      "message": {
+        "type": "panel_assistant/report_state",
+        "session": "abcDEF_-123",
+        "sync": "delta",
+        "observations": [
+          {
+            "channel": "relay1",
+            "state": "unknown"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "report_state_known_without_value",
+      "message": {
+        "type": "panel_assistant/report_state",
+        "session": "abcDEF_-123",
+        "sync": "delta",
+        "observations": [
+          {
+            "channel": "relay1",
+            "state": "known"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "report_event",
+      "message": {
+        "type": "panel_assistant/report_event",
+        "session": "abcDEF_-123",
+        "channel": "button",
+        "event_id": 1042,
+        "event_type": "keycode_home"
+      },
+      "valid": true
+    },
+    {
+      "name": "report_event_negative_id",
+      "message": {
+        "type": "panel_assistant/report_event",
+        "session": "abcDEF_-123",
+        "channel": "button",
+        "event_id": -1,
+        "event_type": "keycode_home"
+      },
+      "valid": false
+    },
+    {
+      "name": "report_event_uppercase_type",
+      "message": {
+        "type": "panel_assistant/report_event",
+        "session": "abcDEF_-123",
+        "channel": "button",
+        "event_id": 1,
+        "event_type": "KEYCODE_HOME"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_applied",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "applied"
+      },
+      "valid": true
+    },
+    {
+      "name": "command_result_superseded",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "superseded"
+      },
+      "valid": true
+    },
+    {
+      "name": "command_result_pending_approval",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "pending_approval"
+      },
+      "valid": true
+    },
+    {
+      "name": "command_result_refused_with_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "refused",
+        "code": "approval_denied",
+        "placeholders": {
+          "seconds": "30"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "command_result_failed_with_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "failed",
+        "code": "hardware_unavailable"
+      },
+      "valid": true
+    },
+    {
+      "name": "command_result_unknown_fields_ignored",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "applied",
+        "future": {
+          "x": 1
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "command_result_refused_without_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "refused"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_failed_without_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "failed"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_applied_with_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "applied",
+        "code": "failed"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_pending_approval_with_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "pending_approval",
+        "code": "expired"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_unknown_outcome",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "done"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_code_outside_the_closed_list",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "refused",
+        "code": "busy"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_superseded_is_not_a_code",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "refused",
+        "code": "superseded"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_command_id_too_long",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "applied"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_command_id_bad_character",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "session": "tttttttttttttttttttttttt",
+        "command_id": "a/b",
+        "outcome": "applied"
+      },
+      "valid": false
+    },
+    {
+      "name": "command_result_without_session",
+      "message": {
+        "type": "panel_assistant/command_result",
+        "command_id": "c0mmand_ID-1",
+        "outcome": "applied"
+      },
+      "valid": false
+    }
+  ],
+  "observations": [
+    {
+      "name": "relay_boolean",
+      "channel": "relay1",
+      "value": true,
+      "accepted": true
+    },
+    {
+      "name": "relay_string",
+      "channel": "relay1",
+      "value": "ON",
+      "accepted": false
+    },
+    {
+      "name": "screen_object",
+      "channel": "screen",
+      "value": {
+        "on": true,
+        "brightness": 180
+      },
+      "accepted": true
+    },
+    {
+      "name": "screen_brightness_above_byte",
+      "channel": "screen",
+      "value": {
+        "on": true,
+        "brightness": 256
+      },
+      "accepted": false
+    },
+    {
+      "name": "led_effect_code",
+      "channel": "led",
+      "value": {
+        "on": true,
+        "effect": "pulse"
+      },
+      "accepted": true
+    },
+    {
+      "name": "led_effect_unknown",
+      "channel": "led",
+      "value": {
+        "on": true,
+        "effect": "rainbow"
+      },
+      "accepted": false
+    },
+    {
+      "name": "volume_number",
+      "channel": "volume",
+      "value": 40,
+      "accepted": true
+    },
+    {
+      "name": "volume_numeric_string",
+      "channel": "volume",
+      "value": "40",
+      "accepted": false
+    },
+    {
+      "name": "cpu_governor_code",
+      "channel": "cpu_governor",
+      "value": "efficiency",
+      "accepted": true
+    },
+    {
+      "name": "cpu_governor_label",
+      "channel": "cpu_governor",
+      "value": "Efficiency",
+      "accepted": false
+    },
+    {
+      "name": "navigate_text",
+      "channel": "navigate",
+      "value": "/lovelace/0",
+      "accepted": true
+    },
+    {
+      "name": "navigate_control_character",
+      "channel": "navigate",
+      "value": "/a\nb",
+      "accepted": false
+    },
+    {
+      "name": "temperature_number",
+      "channel": "temperature",
+      "value": 21.5,
+      "accepted": true
+    },
+    {
+      "name": "temperature_text",
+      "channel": "temperature",
+      "value": "21.5",
+      "accepted": false
+    },
+    {
+      "name": "storage_health_code",
+      "channel": "storage_health",
+      "value": "warning",
+      "accepted": true
+    },
+    {
+      "name": "storage_health_unknown_code",
+      "channel": "storage_health",
+      "value": "fine",
+      "accepted": false
+    },
+    {
+      "name": "diag_boot_zoned_time",
+      "channel": "diag_boot",
+      "value": "2026-09-14T08:00:00+00:00",
+      "accepted": true
+    },
+    {
+      "name": "diag_boot_naive_time",
+      "channel": "diag_boot",
+      "value": "2026-09-14T08:00:00",
+      "accepted": false
+    },
+    {
+      "name": "diag_ip_text",
+      "channel": "diag_ip",
+      "value": "192.0.2.4",
+      "accepted": true
+    },
+    {
+      "name": "diag_wifi_ssid_text",
+      "channel": "diag_wifi_ssid",
+      "value": "Home Net",
+      "accepted": true
+    },
+    {
+      "name": "proximity_boolean",
+      "channel": "proximity",
+      "value": false,
+      "accepted": true
+    },
+    {
+      "name": "camera_snapshot_url",
+      "channel": "camera_snapshot",
+      "value": {
+        "url": "http://panel.local:8888/snapshot.jpg"
+      },
+      "accepted": true
+    },
+    {
+      "name": "camera_snapshot_file_url",
+      "channel": "camera_snapshot",
+      "value": {
+        "url": "file:///etc/passwd"
+      },
+      "accepted": false
+    },
+    {
+      "name": "update_facts",
+      "channel": "update_companion",
+      "value": {
+        "installed_version": "2026.1.1",
+        "latest_version": null,
+        "release_url": null,
+        "in_progress": false
+      },
+      "accepted": true
+    },
+    {
+      "name": "update_plain_http_release",
+      "channel": "update_companion",
+      "value": {
+        "installed_version": "1",
+        "release_url": "http://example.com/r"
+      },
+      "accepted": false
+    },
+    {
+      "name": "button_never_reported",
+      "channel": "reload",
+      "value": null,
+      "accepted": false
+    }
+  ],
+  "results": [
+    {
+      "name": "hello_result_native_withdraw_granted",
+      "offeredCapabilities": [
+        "state",
+        "commands",
+        "approval",
+        "mqtt_withdraw"
+      ],
+      "request": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "commands",
+          "approval",
+          "mqtt_withdraw"
+        ],
+        "channels": []
+      },
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "native",
+        "mqtt_discovery": "withdraw",
+        "capabilities": [
+          "approval",
+          "commands",
+          "mqtt_withdraw",
+          "state"
+        ],
+        "integration": {
+          "version": "0.2.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_result_withdraw_not_granted_by_an_older_integration",
+      "offeredCapabilities": [
+        "state",
+        "commands",
+        "approval",
+        "mqtt_withdraw"
+      ],
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "native",
+        "capabilities": [
+          "approval",
+          "commands",
+          "state"
+        ],
+        "integration": {
+          "version": "0.2.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_result_withdraw_granted_without_mqtt_discovery",
+      "offeredCapabilities": [
+        "state",
+        "commands",
+        "approval",
+        "mqtt_withdraw"
+      ],
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "native",
+        "capabilities": [
+          "approval",
+          "commands",
+          "mqtt_withdraw",
+          "state"
+        ],
+        "integration": {
+          "version": "0.2.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_result_unknown_mqtt_discovery",
+      "offeredCapabilities": [
+        "state",
+        "commands",
+        "approval",
+        "mqtt_withdraw"
+      ],
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "native",
+        "mqtt_discovery": "keep",
+        "capabilities": [
+          "approval",
+          "commands",
+          "mqtt_withdraw",
+          "state"
+        ],
+        "integration": {
+          "version": "0.2.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_result_embed_proof_granted_with_future_fields",
+      "offeredCapabilities": [
+        "state",
+        "commands",
+        "approval",
+        "embed_proof",
+        "future_capability"
+      ],
+      "request": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "capabilities": [
+          "state",
+          "commands",
+          "approval",
+          "embed_proof",
+          "future_capability"
+        ],
+        "channels": []
+      },
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "native",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "approval",
+          "commands",
+          "embed_proof",
+          "state"
+        ],
+        "embed": {
+          "key_id": "0123456789abcdef",
+          "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+        },
+        "integration": {
+          "version": "0.5.1",
+          "future": true
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": [],
+          "future": 1
+        },
+        "future": {
+          "ignored": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_result_embed_proof_granted_without_key",
+      "offeredCapabilities": [
+        "state",
+        "embed_proof"
+      ],
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "embed_proof",
+          "state"
+        ],
+        "integration": {
+          "version": "0.5.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_result_ungranted_embed_object_is_ignored",
+      "offeredCapabilities": [
+        "state"
+      ],
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "state"
+        ],
+        "embed": {
+          "key_id": "0123456789abcdef",
+          "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+        },
+        "integration": {
+          "version": "0.5.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_result_grants_capability_not_offered",
+      "offeredCapabilities": [
+        "state"
+      ],
+      "result": {
+        "protocol": 1,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "events",
+          "state"
+        ],
+        "integration": {
+          "version": "0.5.1"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": false
+    }
+  ]
+}

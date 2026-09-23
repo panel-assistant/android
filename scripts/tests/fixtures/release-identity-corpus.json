@@ -1,0 +1,58 @@
+{
+  "purpose": "One corpus for both sides of the release-identity grammar. The integration reads it from tests/test_release.py and the browser installer from frontend/tests/release-identity.test.mjs, so a rule that moves on one side alone fails on the other.",
+  "tags": [
+    {"tag": "v0.9.7", "kind": "stable"},
+    {"tag": "v0.0.0", "kind": "stable"},
+    {"tag": "v10.20.30", "kind": "stable"},
+    {"tag": "v1.0.0-rc1", "kind": "rc"},
+    {"tag": "v0.9.8-rc12", "kind": "rc"},
+    {"tag": "build-1", "kind": "build", "versionCode": 1},
+    {"tag": "build-772", "kind": "build", "versionCode": 772},
+    {"tag": "build-2147483647", "kind": "build", "versionCode": 2147483647},
+    {"tag": "0.9.7", "kind": "refused", "why": "a GitHub tag carries its v"},
+    {"tag": "v01.2.3", "kind": "refused", "why": "no leading zero in a part"},
+    {"tag": "v1.2", "kind": "refused", "why": "three parts, always"},
+    {"tag": "v1.2.3-rc0", "kind": "refused", "why": "release candidates start at one"},
+    {"tag": "v1.2.3-rc", "kind": "refused", "why": "a candidate carries its number"},
+    {"tag": "v1.2.3-beta1", "kind": "refused", "why": "only rc is a GitHub prerelease"},
+    {"tag": "V1.2.3", "kind": "refused", "why": "the v is lower case"},
+    {"tag": "build-0", "kind": "refused", "why": "version codes start at one"},
+    {"tag": "build-01", "kind": "refused", "why": "no leading zero"},
+    {"tag": "build-2147483648", "kind": "refused", "why": "past the Android version-code bound"},
+    {"tag": "build-772x", "kind": "refused", "why": "a build tag is only its number"},
+    {"tag": "v1.2.3-rc1-rc1", "kind": "refused", "why": "one candidate suffix"},
+    {"tag": "v1.2.3 ", "kind": "refused", "why": "no surrounding space"},
+    {"tag": "v1.2.30000000000000000000000000000000000000000000000000000000000000", "kind": "refused", "why": "past 64 characters"}
+  ],
+  "apkNames": [
+    {
+      "tag": "v0.9.7",
+      "legacy": "ha-paneld-v0.9.7-manual-setup-required.apk",
+      "successor": "panel-assistant-v0.9.7-manual-setup-required.apk"
+    },
+    {
+      "tag": "v1.0.0-rc1",
+      "legacy": "ha-paneld-v1.0.0-rc1-manual-setup-required.apk",
+      "successor": "panel-assistant-v1.0.0-rc1-manual-setup-required.apk"
+    }
+  ],
+  "descriptorNames": [
+    {"tag": "v0.9.7", "name": "ha-paneld-v0.9.7-install.json"},
+    {"tag": "v1.0.0-rc1", "name": "ha-paneld-v1.0.0-rc1-install.json"}
+  ],
+  "versionNames": [
+    {"value": "0.9.7", "accepted": true},
+    {"value": "0.9.8-rc4", "accepted": true},
+    {"value": "0.9.8+abc", "accepted": true},
+    {"value": "dev-772", "accepted": true},
+    {"value": "0.9.8_1", "accepted": true},
+    {"value": "a", "accepted": true},
+    {"value": "1.2", "accepted": true, "why": "a feed build names itself freely"},
+    {"value": "", "accepted": false},
+    {"value": ".9.8", "accepted": false, "why": "it starts with a letter or a digit"},
+    {"value": "0.9.8 ", "accepted": false},
+    {"value": "0.9.8/1", "accepted": false},
+    {"value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "accepted": true, "why": "exactly 64"},
+    {"value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "accepted": false, "why": "65"}
+  ]
+}
