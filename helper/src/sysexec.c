@@ -36,6 +36,26 @@ static char *const clean_env[] = {
     NULL
 };
 
+// Some vendor builds ship these fixed platform wrappers without a shebang. Raw execve then
+// returns ENOEXEC even though an interactive shell runs them. Interpret only that format failure,
+// only for these trusted paths, and keep every argument separate (never shell command text).
+static void exec_platform_argv(const char *path, const char *const argv[]) {
+    execve(path, (char *const *)argv, clean_env);
+    if (errno != ENOEXEC ||
+        (strcmp(path, "/system/bin/pm") != 0 && strcmp(path, "/system/bin/am") != 0 &&
+         strcmp(path, "/system/bin/appops") != 0 && strcmp(path, "/system/bin/settings") != 0)) return;
+
+    // All callers have small fixed vectors. Bound the fallback without allocating after fork.
+    const char *shell_argv[66] = { "sh", path };
+    size_t i = 1;
+    for (; argv[i]; i++) {
+        if (i >= 64) { errno = E2BIG; return; }
+        shell_argv[i + 1] = argv[i];
+    }
+    shell_argv[i + 1] = NULL;
+    execve("/system/bin/sh", (char *const *)shell_argv, clean_env);
+}
+
 static void close_inherited_fds(int keep_a, int keep_b) {
     long limit = sysconf(_SC_OPEN_MAX);
     if (limit < 0 || limit > 65536) limit = 65536;
@@ -47,7 +67,7 @@ static void child_exec(const char *path, const char *const argv[], int input, in
     if (dup2(input, STDIN_FILENO) < 0 || dup2(output, STDOUT_FILENO) < 0 ||
         dup2(error, STDERR_FILENO) < 0) _exit(127);
     close_inherited_fds(-1, -1);
-    execve(path, (char *const *)argv, clean_env);
+    exec_platform_argv(path, argv);
     _exit(127);
 }
 
@@ -83,7 +103,7 @@ static pid_t spawn_argv(const char *path, const char *const argv[], int quiet, i
         (void)setpgid(0, 0);
         if (quiet) child_exec(path, argv, null_fd, null_fd, null_fd);
         close_inherited_fds(-1, -1);
-        execve(path, (char *const *)argv, clean_env);
+        exec_platform_argv(path, argv);
         _exit(127);
     }
 
@@ -266,7 +286,7 @@ int sysexec_start_argv(const char *path, const char *const argv[], int quiet, pi
              dup2(null_fd, STDERR_FILENO) < 0)) failure = errno ? errno : EIO;
         if (!failure) {
             close_inherited_fds(errors[1], -1);
-            execve(path, (char *const *)argv, clean_env);
+            exec_platform_argv(path, argv);
             failure = errno ? errno : EIO;
         }
         const unsigned char *error_bytes = (const unsigned char *)&failure;

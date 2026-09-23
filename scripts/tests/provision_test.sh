@@ -331,6 +331,7 @@ reset_per_run_state() {
     "$TMP/upgrade-release-attempts" "$TMP/installed-apk-signer-reads" \
     "$TMP/pm-probe-count" "$TMP/candidate-contract-read-count" \
     "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
+    "$TMP/host-db-observation-count.LEGACY" "$TMP/host-db-observation-count.SUCCESSOR" \
     "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
   # Package and helper lifecycle markers.
   rm -rf "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
@@ -1358,6 +1359,7 @@ sed -e "s|^db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db$|db=$DB_OBSERVER_
     -e "s|^observer_tmp=@OBSERVER_STAGE@$|observer_tmp=$DB_OBSERVER_DIR/.observer.fixture|" \
     -e 's/^minimum=@MINIMUM@$/minimum=11/' -e 's/^maximum=@MAXIMUM@$/maximum=14/' \
     -e 's/^primary_mode=@PRIMARY_MODE@$/primary_mode=stable/' \
+    -e 's/^passive_owner_check=@PASSIVE_OWNER_CHECK@$/passive_owner_check=0/' \
     -e 's/^observer_owner=@OBSERVER_OWNER@$/observer_owner=.owner-fixture/' \
     -e 's/@NONCE@/0123456789abcdef0123456789abcdef/g' \
     "$DB_OBSERVER_SOURCE" > "$DB_OBSERVER_RUN"
@@ -1572,6 +1574,88 @@ for observer_retained_suffix in -journal .restore.tmp .vbad.premigrate.tmp; do
   rm -f "$DB_OBSERVER_DB$observer_retained_suffix"
 done
 unset observer_retained_suffix
+
+# Execute the production passive-owner proof against real marker/path shapes. Host decision-table
+# fixtures above cannot prove that a failed directory listing is not mistaken for marker absence.
+PASSIVE_OBSERVER_RUN="$TMP/passive-owner-observer-run.sh"
+PASSIVE_SUCCESSOR="$TMP/database-compat-observer/data/data/io.panelassistant.android"
+PASSIVE_LEGACY="$TMP/database-compat-observer/data/data/io.github.maxlyth.hapaneld"
+mkdir -p "$PASSIVE_LEGACY"
+sed -e "s|^db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db$|db=$DB_OBSERVER_DB|" \
+    -e "s|^observer_tmp=@OBSERVER_STAGE@$|observer_tmp=$DB_OBSERVER_DIR/.observer.passive|" \
+    -e "s|successor_app=/data/data/io.panelassistant.android|successor_app=$PASSIVE_SUCCESSOR|" \
+    -e "s|legacy_app=/data/data/io.github.maxlyth.hapaneld|legacy_app=$PASSIVE_LEGACY|" \
+    -e 's/^minimum=@MINIMUM@$/minimum=11/' -e 's/^maximum=@MAXIMUM@$/maximum=14/' \
+    -e 's/^primary_mode=@PRIMARY_MODE@$/primary_mode=stable/' \
+    -e 's/^passive_owner_check=@PASSIVE_OWNER_CHECK@$/passive_owner_check=1/' \
+    -e 's/^observer_owner=@OBSERVER_OWNER@$/observer_owner=.owner-passive/' \
+    -e 's/@NONCE@/0123456789abcdef0123456789abcdef/g' \
+    "$DB_OBSERVER_SOURCE" > "$PASSIVE_OBSERVER_RUN"
+assert_production_passive_owner() {
+  local expected="$1" description="$2" proof_output
+  proof_output="$(PATH="${PASSIVE_OBSERVER_PATH:-$DB_OBSERVER_BIN}" "$BASH" "$PASSIVE_OBSERVER_RUN")"
+  if printf '%s\n' "$proof_output" | grep -qx "HOSTDB_PASSIVE_OWNER=$expected"; then pass "$description"
+  else
+    LAST_OUTPUT="$TMP/passive-observer-output"
+    printf '%s\n' "$proof_output" > "$LAST_OUTPUT"
+    fail_test "$description"
+  fi
+}
+assert_production_passive_owner passive "production passive proof positively observes absent migration directories"
+mkdir -p "$PASSIVE_SUCCESSOR/no_backup/identity-migration" "$PASSIVE_LEGACY/no_backup/identity-migration"
+assert_production_passive_owner passive "production passive proof permits an empty successor migration directory"
+for passive_marker in complete.v1 step-release.v1 step-restore.v1 .complete.v1.tmp .step-release.v1.tmp \
+    .step-restore.v1.tmp release-token.v1 .unknown-entry; do
+  : > "$PASSIVE_SUCCESSOR/no_backup/identity-migration/$passive_marker"
+  assert_production_passive_owner blocked "production passive proof blocks successor marker $passive_marker regardless of contents"
+  rm -f "$PASSIVE_SUCCESSOR/no_backup/identity-migration/$passive_marker"
+done
+for passive_marker in bridge-retired.v1 .bridge-retired.v1.tmp; do
+  : > "$PASSIVE_LEGACY/no_backup/identity-migration/$passive_marker"
+  assert_production_passive_owner blocked "production passive proof blocks bridge retirement marker $passive_marker"
+  rm -f "$PASSIVE_LEGACY/no_backup/identity-migration/$passive_marker"
+done
+for passive_symlink in "$PASSIVE_SUCCESSOR/no_backup/identity-migration" "$PASSIVE_LEGACY/no_backup/identity-migration" \
+    "$PASSIVE_SUCCESSOR/no_backup" "$PASSIVE_LEGACY/no_backup" "$PASSIVE_LEGACY"; do
+  mv "$passive_symlink" "$passive_symlink.real"
+  ln -s "$passive_symlink.real" "$passive_symlink"
+  assert_production_passive_owner unreadable "production passive proof rejects symlink ${passive_symlink#"$TMP/database-compat-observer/data/data/"}"
+  rm "$passive_symlink"
+  mv "$passive_symlink.real" "$passive_symlink"
+done
+PASSIVE_OBSERVER_BIN="$TMP/passive-observer-bin"
+mkdir -p "$PASSIVE_OBSERVER_BIN"
+for passive_tool in "$DB_OBSERVER_BIN"/*; do ln -s "$passive_tool" "$PASSIVE_OBSERVER_BIN/${passive_tool##*/}"; done
+rm "$PASSIVE_OBSERVER_BIN/ls"
+cat > "$PASSIVE_OBSERVER_BIN/ls" <<'EOF'
+#!/bin/sh
+for argument in "$@"; do
+  if [ -n "${PASSIVE_DENY_PATH:-}" ] && [ "$argument" = "$PASSIVE_DENY_PATH" ]; then exit 1; fi
+  if [ -n "${PASSIVE_RETIRE_ON_LIST:-}" ] && [ "$argument" = "$PASSIVE_RETIRE_ON_LIST" ]; then
+    : > "$PASSIVE_RETIRE_MARKER"
+  fi
+done
+exec /bin/ls "$@"
+EOF
+chmod 700 "$PASSIVE_OBSERVER_BIN/ls"
+PASSIVE_OBSERVER_PATH="$PASSIVE_OBSERVER_BIN" PASSIVE_DENY_PATH="$PASSIVE_LEGACY/no_backup" \
+  assert_production_passive_owner unreadable "production passive proof refuses failed marker-parent enumeration"
+PASSIVE_OBSERVER_PATH="$PASSIVE_OBSERVER_BIN" PASSIVE_RETIRE_ON_LIST="${PASSIVE_SUCCESSOR%/*}" \
+PASSIVE_RETIRE_MARKER="$PASSIVE_LEGACY/no_backup/identity-migration/bridge-retired.v1" \
+  assert_production_passive_owner changed "production passive proof detects retirement during database observation"
+rm -f "$PASSIVE_LEGACY/no_backup/identity-migration/bridge-retired.v1"
+rm "$PASSIVE_OBSERVER_BIN/grep"
+cat > "$PASSIVE_OBSERVER_BIN/grep" <<'EOF'
+#!/bin/sh
+for argument in "$@"; do
+  [ "$argument" != no_backup ] || exit 2
+done
+exec /bin/grep "$@"
+EOF
+chmod 700 "$PASSIVE_OBSERVER_BIN/grep"
+PASSIVE_OBSERVER_PATH="$PASSIVE_OBSERVER_BIN" \
+  assert_production_passive_owner unreadable "production passive proof refuses a failed marker-parent lookup"
+unset PASSIVE_OBSERVER_RUN PASSIVE_SUCCESSOR PASSIVE_LEGACY PASSIVE_OBSERVER_BIN passive_marker passive_symlink passive_tool
 unset DB_OBSERVER_SOURCE DB_OBSERVER_DIR DB_OBSERVER_DB DB_OBSERVER_RUN DB_OBSERVER_BIN DB_OBSERVER_SQLITE_LOG DB_OBSERVER_HOST_SED observer_output observer_primary_sha
 unset wal_source_hash_before wal_source_hash_after wal_source_inventory_before wal_source_inventory_after
 
@@ -4967,6 +5051,125 @@ MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready \
 assert_success "a rerun with both installed identities requests the remaining handover"
 assert_log_contains 'am start-foreground-service --user 0 -n io\.github\.maxlyth\.hapaneld/\.PaneldService -a io\.github\.maxlyth\.hapaneld\.action\.HANDOFF_INSTALLED_SUCCESSOR' \
   "an installed successor does not hide the bridge handoff wake"
+
+# A successor package can be installed but remain entirely passive, without a canonical database.
+# The observer fixture reads the package from the actual staged script, so choosing the wrong
+# identity sees missing rather than being handed the bridge's healthy database by the mock.
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_UPGRADE_PREPARE=ready \
+MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
+MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
+MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a passive installed successor preserves the bridge-owned canonical database"
+assert_marker_captured "passive successor handover captures the real bridge database"
+assert_log_contains 'host-db-observe package=io.panelassistant.android count=1 primary=missing passive=passive' \
+  "passive ownership starts with an actual missing-successor observation"
+assert_log_contains 'host-db-observe package=io.github.maxlyth.hapaneld .*primary=readable:9:ok' \
+  "passive ownership measures the bridge database against the candidate"
+passive_bridge_line="$(grep -n 'host-db-observe package=io.github.maxlyth.hapaneld count=1 ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+passive_recheck_line="$(grep -n 'host-db-observe package=io.panelassistant.android count=2 primary=missing passive=passive' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+passive_prepare_line="$(grep -n 'PREPARE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$passive_bridge_line" ] && [ -n "$passive_recheck_line" ] && [ -n "$passive_prepare_line" ] && \
+   [ "$passive_bridge_line" -lt "$passive_recheck_line" ] && [ "$passive_recheck_line" -lt "$passive_prepare_line" ]; then
+  pass "passive ownership rechecks the empty successor after measuring the bridge"
+else fail_test "passive ownership rechecks the empty successor after measuring the bridge"; fi
+unset passive_bridge_line passive_recheck_line passive_prepare_line
+assert_log_contains 'PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver' \
+  "passive successor quiescence addresses the proven bridge owner"
+assert_log_contains 'cp /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db ' \
+  "passive successor capture copies the proven bridge owner"
+assert_log_contains 'RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver' \
+  "passive successor release returns to the proven bridge owner"
+
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=blocked \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a successor with its own canonical database remains the data owner"
+assert_not_contains 'host-db-observe package=io.github.maxlyth.hapaneld' "$MOCK_CALL_LOG" \
+  "a valid successor database never falls back to stale bridge data"
+assert_log_contains 'PREPARE_UPGRADE -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.UpgradeControlReceiver' \
+  "an owning successor keeps its own quiescence receiver"
+
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
+MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
+MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
+HAPANELD_RESET_CONFIRM=RESET \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config
+assert_failure "reset cannot adopt bridge data through a passive missing-successor fallback" \
+  'database compatibility could not be proven'
+assert_not_contains 'pm clear' "$MOCK_CALL_LOG" \
+  "a passive missing-successor reset refusal never clears either identity"
+
+for passive_refusal in retained recovery retired nonempty unreadable symlink missing-bridge unreadable-bridge incompatible-bridge; do
+  reset_db_txn_state
+  passive_retained=0; passive_recovery=none; passive_proof=passive
+  passive_bridge_present=1; passive_bridge_primary=readable:9:ok
+  case "$passive_refusal" in
+    retained) passive_retained=1 ;;
+    recovery) passive_recovery=v9:readable:9:ok ;;
+    retired|nonempty) passive_proof=blocked ;;
+    unreadable|symlink) passive_proof=unreadable ;;
+    missing-bridge) passive_bridge_present=0 ;;
+    unreadable-bridge) passive_bridge_primary=unreadable ;;
+    incompatible-bridge) passive_bridge_primary=readable:99:ok ;;
+  esac
+  MOCK_LEGACY_INSTALLED="$passive_bridge_present" MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+  MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED="$passive_retained" \
+  MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY="$passive_recovery" \
+  MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER="$passive_proof" MOCK_HOST_DB_LEGACY_PRIMARY="$passive_bridge_primary" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$passive_refusal cannot authorize a missing-successor database fallback" \
+    'database compatibility could not be proven'
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p' \
+    "$MOCK_CALL_LOG" "$passive_refusal ownership refusal precedes every tracked mutation"
+done
+
+for passive_field in missing duplicate invalid; do
+  passive_field_mode="$passive_field"; passive_field_value=none
+  if [ "$passive_field" = invalid ]; then passive_field_mode=normal; passive_field_value=unknown; fi
+  MOCK_HOST_DB_PASSIVE_FIELD="$passive_field_mode" MOCK_HOST_DB_PASSIVE_OWNER="$passive_field_value" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$passive_field passive-owner protocol field is refused" \
+    'database compatibility could not be proven'
+  assert_not_contains 'config/export|PREPARE_UPGRADE|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR' \
+    "$MOCK_CALL_LOG" "$passive_field passive-owner field refuses before mutation"
+done
+unset passive_field passive_field_mode passive_field_value
+
+# The same schema and database fingerprint must not conceal an ownership transition. Successor
+# observations 1/2 bracket the initial bridge read, 3/4 consume, and 5/6 the package-time read.
+for passive_drift in inside-retired inside-database consume-retired package-retired; do
+  reset_db_txn_state
+  passive_change_at=2; passive_changed_proof=blocked; passive_changed_primary=missing
+  case "$passive_drift" in
+    inside-database) passive_changed_proof=passive; passive_changed_primary=readable:9:ok ;;
+    consume-retired) passive_change_at=3 ;;
+    package-retired) passive_change_at=5 ;;
+  esac
+  MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_UPGRADE_PREPARE=ready \
+  MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
+  MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
+  MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
+  MOCK_HOST_DB_SUCCESSOR_CHANGE_AT="$passive_change_at" \
+  MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER_CHANGED="$passive_changed_proof" \
+  MOCK_HOST_DB_SUCCESSOR_PRIMARY_CHANGED="$passive_changed_primary" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$passive_drift ownership change cannot license package replacement" \
+    'database compatibility could not be proven'
+  passive_mutations='^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p'
+  case "$passive_drift" in inside-*) passive_mutations="$passive_mutations|PREPARE_UPGRADE" ;; esac
+  assert_not_contains "$passive_mutations" \
+    "$MOCK_CALL_LOG" "$passive_drift ownership change stops before target mutation"
+  if [ "$passive_drift" = package-retired ]; then
+    assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
+      "package-time passive ownership drift rolls back prepared helper custody"
+  fi
+done
+unset passive_refusal passive_retained passive_recovery passive_proof passive_bridge_present passive_bridge_primary \
+  passive_drift passive_change_at passive_changed_proof passive_changed_primary passive_mutations
 
 # The same retained database with NO bridge installed is residue under the install target itself,
 # which this gate has always refused. This is the pair that makes the resolution above load-bearing:

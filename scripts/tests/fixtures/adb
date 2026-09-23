@@ -381,6 +381,7 @@ pm_query_reply() {
 
 emit_host_database_gate() {
   local primary primary_fingerprint recovery retained inventory inventory_fingerprint nonce observation_count
+  local passive_owner observed_package identity identity_count field variable destination change_at
   nonce="${command_text#*HOSTDB_BEGIN:}"
   nonce="${nonce%%[!0-9a-f]*}"
   primary="${MOCK_HOST_DB_PRIMARY:-readable:${MOCK_DB_DEVICE_USER_VERSION:-9}:ok}"
@@ -402,6 +403,7 @@ emit_host_database_gate() {
   fi
   inventory_fingerprint="${MOCK_HOST_DB_INVENTORY_FINGERPRINT:-fixture:$recovery:$retained}"
   primary_fingerprint="${MOCK_HOST_DB_PRIMARY_FINGERPRINT:-fixture:$primary}"
+  passive_owner="${MOCK_HOST_DB_PASSIVE_OWNER:-none}"
   printf x >> "$STATE_DIR/host-db-observation-count"
   observation_count="$(wc -c < "$STATE_DIR/host-db-observation-count")"
   if [ "$observation_count" -gt 1 ]; then
@@ -420,6 +422,30 @@ emit_host_database_gate() {
     inventory="${MOCK_HOST_DB_INVENTORY_AFTER_SECOND:-$inventory}"
     inventory_fingerprint="${MOCK_HOST_DB_INVENTORY_FINGERPRINT_AFTER_SECOND:-$inventory_fingerprint}"
   fi
+  # The staged production script determines which identity is observed. A passive successor can
+  # have no database while the bridge beside it owns a healthy one; one global reply hides that bug.
+  observed_package="$(sed -n 's#^db=/data/data/\([^/]*\)/databases/ha-paneld.db$#\1#p' "$STATE_DIR/db-observer-script.$ADB_TARGET")"
+  case "$observed_package" in
+    io.github.maxlyth.hapaneld) identity=LEGACY ;;
+    io.panelassistant.android) identity=SUCCESSOR ;;
+    *) return 1 ;;
+  esac
+  printf x >> "$STATE_DIR/host-db-observation-count.$identity"
+  identity_count="$(wc -c < "$STATE_DIR/host-db-observation-count.$identity")"
+  variable="MOCK_HOST_DB_${identity}_CHANGE_AT"
+  change_at="${!variable:-0}"
+  for field in PRIMARY:primary PRIMARY_FINGERPRINT:primary_fingerprint RECOVERY:recovery \
+      RETAINED:retained INVENTORY:inventory INVENTORY_FINGERPRINT:inventory_fingerprint PASSIVE_OWNER:passive_owner; do
+    destination="${field#*:}"
+    variable="MOCK_HOST_DB_${identity}_${field%%:*}"
+    if [ -n "${!variable+x}" ]; then printf -v "$destination" '%s' "${!variable}"; fi
+    if [ "$change_at" -gt 0 ] && [ "$identity_count" -ge "$change_at" ]; then
+      variable="${variable}_CHANGED"
+      if [ -n "${!variable+x}" ]; then printf -v "$destination" '%s' "${!variable}"; fi
+    fi
+  done
+  [ -z "${MOCK_CALL_LOG:-}" ] || printf 'host-db-observe package=%s count=%s primary=%s passive=%s\n' \
+    "$observed_package" "$identity_count" "$primary" "$passive_owner" >> "$MOCK_CALL_LOG"
   if [ -f "$STATE_DIR/package-data-cleared" ]; then
     primary=missing
     primary_fingerprint=none
@@ -436,6 +462,11 @@ emit_host_database_gate() {
   printf 'HOSTDB_RETAINED=%s\n' "$retained"
   printf 'HOSTDB_INVENTORY=%s\n' "$inventory"
   printf 'HOSTDB_INVENTORY_FINGERPRINT=%s\n' "$inventory_fingerprint"
+  case "${MOCK_HOST_DB_PASSIVE_FIELD:-normal}" in
+    missing) ;;
+    duplicate) printf 'HOSTDB_PASSIVE_OWNER=%s\nHOSTDB_PASSIVE_OWNER=%s\n' "$passive_owner" "$passive_owner" ;;
+    *) printf 'HOSTDB_PASSIVE_OWNER=%s\n' "$passive_owner" ;;
+  esac
   printf 'HOSTDB_END:%s\n' "$nonce"
   if [ -n "${MOCK_PACKAGE_APPEAR_AFTER_DB_OBSERVATION:-}" ] && \
      [ "$observation_count" -eq "$MOCK_PACKAGE_APPEAR_AFTER_DB_OBSERVATION" ]; then
