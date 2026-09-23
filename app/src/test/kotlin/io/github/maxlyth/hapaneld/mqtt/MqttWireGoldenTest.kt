@@ -42,6 +42,8 @@ import io.github.maxlyth.hapaneld.control.fakeProfile
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.hardware.LedController
 import io.github.maxlyth.hapaneld.platform.RootShell
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommand
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandResult
 import io.github.maxlyth.hapaneld.storage.StorageHealthSeverity
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
 import io.github.maxlyth.hapaneld.storage.StorageQuickCheck
@@ -100,6 +102,47 @@ import java.util.concurrent.atomic.AtomicInteger
  * ever written and is assembled from segments rather than spelled as one runtime-read literal.
  */
 class MqttWireGoldenTest {
+
+    @Test(timeout = 90_000)
+    fun queuedMqttCommandsYieldAtExecutionAfterNativeTakeover() {
+        queuedAuthorityChange("native", expectedMqttWrites = 0)
+    }
+
+    @Test(timeout = 90_000)
+    fun queuedMqttCommandsContinueWhenAuthorityRemainsShadow() {
+        queuedAuthorityChange("shadow", expectedMqttWrites = 1)
+    }
+
+    private fun queuedAuthorityChange(authority: String, expectedMqttWrites: Int) {
+        val rig = rig()
+        try {
+            rig.announce()
+            rig.sysfs.blockNextWrite("$RELAY_BASE/relay1")
+            rig.transport.deliver("ha-paneld/$PANEL/relay1/set", "OFF")
+            assertTrue("first MQTT handler is running", rig.sysfs.blockEntered.await(10, TimeUnit.SECONDS))
+            val relay2Before = rig.sysfs.writes.count { it.startsWith("$RELAY_BASE/relay2=") }
+            val actionsBefore = rig.companionUpdateRequests.get()
+            rig.transport.deliver("ha-paneld/$PANEL/relay2/set", "ON")
+            rig.transport.deliver("ha-paneld/$PANEL/update_companion/set", "PRESS")
+            rig.config.setPanelAssistantAuthority(authority)
+            val completed = CountDownLatch(1)
+            val result = java.util.concurrent.atomic.AtomicReference<PanelAssistantCommandResult>()
+            rig.bridge.submitPanelAssistantCommand(
+                PanelAssistantCommand("relay1", "ON", admit = { null }),
+            ) { result.set(it); completed.countDown() }
+            rig.sysfs.blockRelease.countDown()
+            assertTrue("native command runs after queued MQTT commands", completed.await(10, TimeUnit.SECONDS))
+            assertEquals(PanelAssistantCommandResult.Applied, result.get())
+            assertEquals("queued MQTT relay mutations", expectedMqttWrites,
+                rig.sysfs.writes.count { it.startsWith("$RELAY_BASE/relay2=") } - relay2Before)
+            assertEquals("queued MQTT action mutations", expectedMqttWrites,
+                rig.companionUpdateRequests.get() - actionsBefore)
+            assertEquals("native handler reached hardware", "$RELAY_BASE/relay1=1", rig.sysfs.writes.last())
+        } finally {
+            rig.sysfs.blockRelease.countDown()
+            rig.close()
+        }
+    }
 
     @Test(timeout = 180_000)
     fun `bridge wire output matches the golden fixture`() {

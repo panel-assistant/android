@@ -2694,7 +2694,15 @@ internal class MqttBridge(
         // HiveMQ reuses callback-owned values. Copy only after the cheap retained/topic/size gates, then
         // return immediately so a root call or slow controller can never pin its network callback.
         val payload = payloadBytes.copyOf()
-        val command = { consumeCommand(topic, payload, MQTT_PEER); Unit }
+        val command = {
+            // Authority may have changed while this command waited behind a slow handler.
+            if (mqttAcceptsCommand(!lifecycle.isOpen(), retained, config.panelAssistantAuthority)) {
+                consumeCommand(topic, payload, MQTT_PEER)
+            } else {
+                FeatureCosts.registry.recordDropped(FeatureCostOperation.MQTT_COMMAND_DISPATCH)
+            }
+            Unit
+        }
         val admission = when (kind) {
             CommandKind.LATEST -> commandDispatcher.submitLatest(requireNotNull(channel), command)
             CommandKind.ACTION -> commandDispatcher.submitAction(command)
