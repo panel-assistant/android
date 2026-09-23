@@ -46,8 +46,8 @@ jobs:
 
       - name: Validate release tag and source commit
         run: |
-          if [ "${#RELEASE_TAG}" -gt 64 ] || [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
-            echo "::error::Release tag is not an accepted vX.Y.Z or vX.Y.Z-suffix version: $RELEASE_TAG"
+          if [ "${#RELEASE_TAG}" -gt 64 ] || [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc[1-9][0-9]*)?$ ]]; then
+            echo "::error::Release tag is not an accepted vX.Y.Z or vX.Y.Z-rcN version: $RELEASE_TAG"
             exit 1
           fi
           if ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
@@ -204,8 +204,8 @@ jobs:
 
       - name: Validate release tag and source commit
         run: |
-          if [ "${#RELEASE_TAG}" -gt 64 ] || [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
-            echo "::error::Release tag is not an accepted vX.Y.Z or vX.Y.Z-suffix version: $RELEASE_TAG"
+          if [ "${#RELEASE_TAG}" -gt 64 ] || [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc[1-9][0-9]*)?$ ]]; then
+            echo "::error::Release tag is not an accepted vX.Y.Z or vX.Y.Z-rcN version: $RELEASE_TAG"
             exit 1
           fi
           if ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
