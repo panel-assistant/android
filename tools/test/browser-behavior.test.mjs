@@ -168,7 +168,7 @@ browserTest('Configure localizes finite enum labels while preserving submitted w
 
 });
 
-browserTest('Configure enum labels fit Hall width at large text in every release locale', async (t) => {
+browserTest('Configure enum labels fit a 1361px viewport at large text in every release locale', async (t) => {
   const enumSpecs = [
     ['mqtt_address_family', 'MQTT', ['Automatic', 'Prefer IPv4', 'Force IPv4']],
     ['navbar_mode', 'Behaviour', ['Off', 'Always on', 'Swipe reveal', 'Native']],
@@ -1253,7 +1253,7 @@ browserTest('Configure help wraps a frozen URL without applying break-all global
   assert.equal(layout.ordinaryWordBreak, 'normal');
 });
 
-browserTest('Configure exposure-linked native selects stay inside a Hall-width card', async (t) => {
+browserTest('Configure exposure-linked native selects stay inside a 1361px viewport card', async (t) => {
   const schema = [
     { key: 'navbar_mode', label: '导航栏模式', help: '选择导航栏的显示方式。', labelLanguage: 'zh-Hans', helpLanguage: 'zh-Hans', group: 'Behaviour', tier: 'BASIC', type: 'ENUM', options: ['auto', 'visible', 'hidden'], available: true, ha: true },
     { key: 'cpu_governor', label: 'CPU 调速器', help: '选择系统性能策略。', labelLanguage: 'zh-Hans', helpLanguage: 'zh-Hans', group: 'System', tier: 'ADVANCED', type: 'ENUM', options: ['ondemand', 'performance', 'powersave'], available: true, ha: true },
@@ -1447,12 +1447,12 @@ browserTest('Configure retains an explicit renderer when the app catalogue fails
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 5_000 });
   assert.equal(await page.locator('#cfg-dashboard_package select').inputValue(), thirdParty,
     'a configured third-party renderer remains selected');
-  await page.locator('#cfg-friendly_name input').fill('Kitchen wall panel');
+  await page.locator('#cfg-friendly_name input').fill('Example device');
   const saved = page.waitForResponse((response) => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
   await page.locator('#savebtn').click();
   await saved;
   await page.locator('#cfg-msg').getByText('Saved.').waitFor();
-  assert.deepEqual(posts.at(-1), { friendly_name: 'Kitchen wall panel' },
+  assert.deepEqual(posts.at(-1), { friendly_name: 'Example device' },
     'an unrelated save must not erase the renderer hidden by a failed catalogue');
   assert.equal(dashboardPackage, thirdParty);
 });
@@ -1597,7 +1597,7 @@ browserTest('Unrelated Configure saves preserve the connected HA identity withou
     if (path === '/api/v1/config') {
       if (request.method === 'POST') return json({});
       return json({
-        settings: { ha_url: 'https://ha.example', friendly_name: 'Office' },
+        settings: { ha_url: 'https://ha.example', friendly_name: 'Alpha' },
         ha_expose: {},
         ha_auth: { configured: true, oauth: true },
       });
@@ -2319,11 +2319,11 @@ browserTest('Configure reconciles structured partial failure instead of blindly 
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
 
-  await page.locator('#cfg-friendly_name input').fill('Kitchen');
+  await page.locator('#cfg-friendly_name input').fill('Alpha');
   await page.locator('#cfg-touch_sound [role=switch]').click();
   await page.locator('#savebtn').click();
   await page.getByText('保存失败。').waitFor();
-  assert.equal(await page.locator('#cfg-friendly_name input').inputValue(), 'Kitchen');
+  assert.equal(await page.locator('#cfg-friendly_name input').inputValue(), 'Alpha');
   assert.equal(await page.locator('#cfg-touch_sound [role=switch]').getAttribute('aria-checked'), 'false');
   assert.equal(await page.locator('#savebtn').isDisabled(), true);
   assert.equal(posts, 1);
@@ -4079,7 +4079,7 @@ browserTest('upload-busy offers Discard only when the panel actually holds a pen
 });
 
 // ---- Home dashboard: choosing a specific VIEW, not only a dashboard root (issue #90) --------------
-// Home Assistant's list endpoint returns dashboard ROOTS, so a view below one (/dashboard-test/office)
+// Home Assistant's list endpoint returns dashboard ROOTS, so a view below one (/dashboard-test/alpha)
 // can only ever be typed. These drive the real control and assert on the value that reaches the config
 // POST, because every failure this feature can have is a wrong-but-plausible saved path: the sentinel
 // leaking out, an empty box meaning Auto, or a stale custom value surviving a switch back to the list.
@@ -4088,13 +4088,13 @@ const DASHBOARD_CATALOG = {
   queried: true,
   items: [
     { path: '/lovelace', title: 'Overview', icon: 'mdi:view-dashboard', group: 'dashboard' },
-    { path: '/office', title: 'Office', icon: 'mdi:desk', group: 'dashboard' },
+    { path: '/alpha', title: 'Office', icon: 'mdi:desk', group: 'dashboard' },
   ],
   default: { explicit: true, path: '/lovelace' },
 };
 
 function dashboardHarness(options = {}) {
-  const state = { posts: [], current: options.current ?? '/office' };
+  const state = { posts: [], current: options.current ?? '/alpha' };
   const schema = [{
     key: 'home_dashboard', label: 'Home dashboard', group: 'Dashboard', type: 'STRING',
     picker: 'ha_dashboard', maxLength: 2048, available: true,
@@ -4172,11 +4172,11 @@ browserTest('A custom dashboard view is posted exactly as typed', async (t) => {
   const { page, select, input, state } = await openDashboardPicker(t);
 
   await select.selectOption('__custom__');
-  await input.fill('/dashboard-test/office');
+  await input.fill('/dashboard-test/alpha');
   await savedOnce(page, () => page.locator('#savebtn').click());
 
   // The sentinel must never be what gets saved, and the view must survive intact.
-  assert.deepEqual(state.posts, ['/dashboard-test/office']);
+  assert.deepEqual(state.posts, ['/dashboard-test/alpha']);
 });
 
 browserTest('An empty custom dashboard path never reaches the server as Auto', async (t) => {
@@ -4197,16 +4197,16 @@ browserTest('An empty custom dashboard path never reaches the server as Auto', a
 });
 
 browserTest('A configured view path opens in Custom mode and stays editable', async (t) => {
-  const { select, input } = await openDashboardPicker(t, { current: '/dashboard-test/office' });
+  const { select, input } = await openDashboardPicker(t, { current: '/dashboard-test/alpha' });
 
   // Previously this arrived as an inert "· configured dashboard" option that could not be corrected.
   assert.equal(await select.inputValue(), '__custom__');
-  assert.equal(await input.inputValue(), '/dashboard-test/office');
+  assert.equal(await input.inputValue(), '/dashboard-test/alpha');
   assert.equal(await input.isVisible(), true);
 });
 
 browserTest('Switching Custom to Auto and to a listed dashboard posts each choice', async (t) => {
-  const { page, select, input, state } = await openDashboardPicker(t, { current: '/dashboard-test/office' });
+  const { page, select, input, state } = await openDashboardPicker(t, { current: '/dashboard-test/alpha' });
 
   await select.selectOption('');
   assert.equal(await input.isVisible(), false, 'the path input must be hidden once Auto is chosen');
@@ -4219,43 +4219,43 @@ browserTest('Switching Custom to Auto and to a listed dashboard posts each choic
 });
 
 browserTest('Returning to Custom without retyping still posts the retained path', async (t) => {
-  const { page, select, input, state } = await openDashboardPicker(t, { current: '/office' });
+  const { page, select, input, state } = await openDashboardPicker(t, { current: '/alpha' });
 
   // Leaving Custom and coming back exercises the select handler against an input that already holds a
   // value — the one route where the sentinel could become the saved value with no later input event to
   // repair it. The trip has to END somewhere other than the stored value, or the form is legitimately
   // clean and there is nothing to save.
   await select.selectOption('__custom__');
-  await input.fill('/dashboard-test/office');
+  await input.fill('/dashboard-test/alpha');
   await select.selectOption('/lovelace');
   await select.selectOption('__custom__');
-  assert.equal(await input.inputValue(), '/dashboard-test/office');
+  assert.equal(await input.inputValue(), '/dashboard-test/alpha');
 
   await savedOnce(page, () => page.locator('#savebtn').click());
-  assert.deepEqual(state.posts, ['/dashboard-test/office']);
+  assert.deepEqual(state.posts, ['/dashboard-test/alpha']);
 });
 
 browserTest('A view under an unknown dashboard warns but is still saveable', async (t) => {
   const { page, row, select, input, state } = await openDashboardPicker(t);
 
   await select.selectOption('__custom__');
-  await input.fill('/dashboard-test/office');
+  await input.fill('/dashboard-test/alpha');
   // The renderer would silently fall back to the account default here, so the warning is the only
   // thing standing between the user and a panel showing the wrong dashboard for no visible reason.
   await assert.doesNotReject(row.locator('.hd-custom-note.warn').waitFor());
 
-  await input.fill('/office/upper-floor');
+  await input.fill('/alpha/upper-floor');
   await assert.doesNotReject(row.locator('.hd-custom-note:not(.warn)').waitFor());
 
   // …and an unknown root must never block the save: the dashboard may not exist yet.
-  await input.fill('/dashboard-test/office');
+  await input.fill('/dashboard-test/alpha');
   await savedOnce(page, () => page.locator('#savebtn').click());
-  assert.deepEqual(state.posts, ['/dashboard-test/office']);
+  assert.deepEqual(state.posts, ['/dashboard-test/alpha']);
 });
 
 browserTest('The dashboard picker fits a 480px panel without overflowing its card', async (t) => {
   const { row, select, input } = await openDashboardPicker(t, {
-    current: '/dashboard-test/office', viewport: { width: 480, height: 480 },
+    current: '/dashboard-test/alpha', viewport: { width: 480, height: 480 },
   });
 
   const rowBox = await row.boundingBox();
@@ -4279,10 +4279,10 @@ browserTest('Custom is reachable when the account can see no dashboards at all',
 
   assert.equal(await select.isDisabled(), false, 'the picker must stay usable with an empty catalogue');
   await select.selectOption('__custom__');
-  await input.fill('/office/kitchen');
+  await input.fill('/alpha/beta');
   await savedOnce(page, () => page.locator('#savebtn').click());
 
-  assert.deepEqual(state.posts, ['/office/kitchen']);
+  assert.deepEqual(state.posts, ['/alpha/beta']);
 });
 
 browserTest('A malformed Custom path left behind never blocks a later Auto or listed save', async (t) => {
@@ -4290,7 +4290,7 @@ browserTest('A malformed Custom path left behind never blocks a later Auto or li
   // hidden control in the row once a malformed value is typed and then abandoned. The row-wide validity
   // scan finds it, Save is refused, and reportValidity() on something invisible shows nothing — a save
   // that can never succeed with no cause on screen.
-  const { page, select, input, state } = await openDashboardPicker(t, { current: '/office' });
+  const { page, select, input, state } = await openDashboardPicker(t, { current: '/alpha' });
 
   await select.selectOption('__custom__');
   await input.fill('http://elsewhere.example/x');   // rejected by the client pattern
@@ -4314,7 +4314,7 @@ browserTest('The client never refuses a dashboard route the server would accept'
   // stricter. A stricter client blocks a legal route, worst when the catalogue is unavailable and
   // Custom is the only way in.
   const matrix = JSON.parse(await readFile(join(process.cwd(), 'fixtures', 'dashboard-path-parity.json'), 'utf8'));
-  const { select, input } = await openDashboardPicker(t, { current: '/office' });
+  const { select, input } = await openDashboardPicker(t, { current: '/alpha' });
   await select.selectOption('__custom__');
 
   const refused = [];

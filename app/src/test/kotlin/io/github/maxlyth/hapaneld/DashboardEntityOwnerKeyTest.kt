@@ -51,9 +51,9 @@ class DashboardEntityOwnerKeyTest {
 
     @Test fun `an instance whose own name contains the separator still splits correctly`() {
         // The length prefix exists for this: a naive indexOf on '/' or ':' would tear the key apart.
-        val key = dashboardEntityTargetKey("https://ha.example:8123", "/office")
+        val key = dashboardEntityTargetKey("https://ha.example:8123", "/alpha")
         assertEquals("https://ha.example:8123", dashboardEntityInstanceOf(key))
-        assertEquals("/office", dashboardEntityPathOf(key))
+        assertEquals("/alpha", dashboardEntityPathOf(key))
     }
 
     @Test fun `a route-qualified owner from an older build still names the rooted dashboard`() {
@@ -65,7 +65,7 @@ class DashboardEntityOwnerKeyTest {
         assertEquals("/lovelace", dashboardEntityScopePath(dashboardEntityPathOf(legacyOwner)))
         // A genuinely different dashboard must NOT root to the same place, or a real dashboard change
         // would silently inherit another dashboard's learned list instead of re-learning.
-        assertEquals("/kitchen", dashboardEntityScopePath(dashboardEntityPathOf("6:ha-abc/kitchen/tab")))
+        assertEquals("/beta", dashboardEntityScopePath(dashboardEntityPathOf("6:ha-abc/beta/tab")))
     }
 
     @Test fun `an unparseable key yields neither an instance nor a scope`() {

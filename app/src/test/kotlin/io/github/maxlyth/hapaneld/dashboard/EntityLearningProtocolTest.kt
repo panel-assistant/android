@@ -492,22 +492,22 @@ class EntityLearningProtocolTest {
     @Test fun deterministicHomeDashboardResolutionUsesOnlyAuthenticatedLegalChoices() {
         val legal = listOf(
             EntityLearningProtocol.HomeDashboardChoice("/lovelace", "Overview"),
-            EntityLearningProtocol.HomeDashboardChoice("/office", "Office"),
+            EntityLearningProtocol.HomeDashboardChoice("/alpha", "Office"),
             EntityLearningProtocol.HomeDashboardChoice("/energy", "Energy"),
         )
         assertEquals(
             EntityLearningProtocol.HomeDashboardResolution(
-                "/office/view?kiosk=1#main",
+                "/alpha/view?kiosk=1#main",
                 EntityLearningProtocol.HomeDashboardSource.EXPLICIT,
             ),
             EntityLearningProtocol.resolveHomeDashboard(
-                "/office/view?kiosk=1#main", "lovelace", "energy", legal,
+                "/alpha/view?kiosk=1#main", "lovelace", "energy", legal,
             ),
         )
         assertEquals(
-            "/office/Upper%20Floor?panel=Wall#main",
+            "/alpha/Upper%20Floor?panel=Wall#main",
             EntityLearningProtocol.resolveHomeDashboard(
-                "/office/Upper%20Floor?panel=Wall#main", null, null, legal,
+                "/alpha/Upper%20Floor?panel=Wall#main", null, null, legal,
             ).path,
         )
         assertEquals(
@@ -530,13 +530,13 @@ class EntityLearningProtocolTest {
         )
         assertEquals(
             EntityLearningProtocol.HomeDashboardResolution(),
-            EntityLearningProtocol.resolveHomeDashboard("/office/view", "office", "energy", emptyList()),
+            EntityLearningProtocol.resolveHomeDashboard("/alpha/view", "alpha", "energy", emptyList()),
         )
     }
 
     @Test fun malformedDashboardCandidatesNeverEscapeTheAuthenticatedLegalList() {
         val legal = listOf(
-            EntityLearningProtocol.HomeDashboardChoice("/office", "Office"),
+            EntityLearningProtocol.HomeDashboardChoice("/alpha", "Office"),
             EntityLearningProtocol.HomeDashboardChoice("/energy", "Energy"),
         )
         val malformed = listOf(
@@ -550,7 +550,7 @@ class EntityLearningProtocolTest {
         for (candidate in malformed) {
             assertEquals(
                 EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT,
-                EntityLearningProtocol.resolveHomeDashboard(candidate, "office", "energy", legal).source,
+                EntityLearningProtocol.resolveHomeDashboard(candidate, "alpha", "energy", legal).source,
             )
             assertEquals(
                 EntityLearningProtocol.HomeDashboardSource.SYSTEM_DEFAULT,
@@ -561,10 +561,10 @@ class EntityLearningProtocolTest {
                 EntityLearningProtocol.resolveHomeDashboard("", null, candidate, legal).source,
             )
         }
-        for (traversal in listOf("/office/%2e%2e/evil", "/office/%2Foutside")) {
+        for (traversal in listOf("/alpha/%2e%2e/evil", "/alpha/%2Foutside")) {
             assertEquals(
                 EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT,
-                EntityLearningProtocol.resolveHomeDashboard(traversal, "office", "energy", legal).source,
+                EntityLearningProtocol.resolveHomeDashboard(traversal, "alpha", "energy", legal).source,
             )
         }
     }
@@ -573,9 +573,9 @@ class EntityLearningProtocolTest {
         val dashboards = JSONArray("""
             [
               {"url_path":"lovelace","title":"Home"},
-              {"url_path":"office","title":"Office"},
+              {"url_path":"alpha","title":"Office"},
               {"url_path":"admin","title":"Admin","require_admin":true},
-              {"url_path":"office","title":"Duplicate"},
+              {"url_path":"alpha","title":"Duplicate"},
               {"url_path":"https://invalid","title":"Invalid"}
             ]
         """.trimIndent())
@@ -583,12 +583,12 @@ class EntityLearningProtocolTest {
         assertEquals(
             listOf(
                 EntityLearningProtocol.HomeDashboardChoice("/lovelace", "Home"),
-                EntityLearningProtocol.HomeDashboardChoice("/office", "Office"),
+                EntityLearningProtocol.HomeDashboardChoice("/alpha", "Office"),
             ),
             EntityLearningProtocol.homeDashboardChoices(dashboards, isAdmin = false),
         )
         assertEquals(
-            listOf("/lovelace", "/office", "/admin"),
+            listOf("/lovelace", "/alpha", "/admin"),
             EntityLearningProtocol.homeDashboardChoices(dashboards, isAdmin = true).map { it.path },
         )
     }
@@ -598,7 +598,7 @@ class EntityLearningProtocolTest {
         // to blank (client falls back to mdi:view-dashboard) rather than reach innerHTML.
         val dashboards = JSONArray("""
             [
-              {"url_path":"office","title":"Office","icon":"mdi:sofa"},
+              {"url_path":"alpha","title":"Office","icon":"mdi:sofa"},
               {"url_path":"garden","title":"Garden","icon":"<script>alert(1)</script>"},
               {"url_path":"plain","title":"Plain"}
             ]
@@ -640,15 +640,15 @@ class EntityLearningProtocolTest {
         // default is then HA's own fallback — rarely what a wall panel should show.
         val legal = listOf(
             EntityLearningProtocol.HomeDashboardChoice("/energy", "Energy"),
-            EntityLearningProtocol.HomeDashboardChoice("/office", "Office"),
+            EntityLearningProtocol.HomeDashboardChoice("/alpha", "Office"),
         )
         assertEquals(
             EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/energy"),
             EntityLearningProtocol.homeDashboardDefault("energy", null, legal),
         )
         assertEquals(
-            EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/office"),
-            EntityLearningProtocol.homeDashboardDefault("", "office", legal),
+            EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/alpha"),
+            EntityLearningProtocol.homeDashboardDefault("", "alpha", legal),
         )
         assertEquals(
             EntityLearningProtocol.HomeDashboardDefault(),
@@ -656,8 +656,8 @@ class EntityLearningProtocolTest {
         )
         // Malformed and out-of-list user values are rejected; a legal system value remains eligible.
         assertEquals(
-            EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/office"),
-            EntityLearningProtocol.homeDashboardDefault("https://evil", "office", legal),
+            EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/alpha"),
+            EntityLearningProtocol.homeDashboardDefault("https://evil", "alpha", legal),
         )
     }
 

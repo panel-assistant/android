@@ -16,7 +16,7 @@ class ScopeCollapsePlanTest {
     private val root: (String) -> String = ::dashboardEntityScopePath
 
     @Test fun `a target already keyed by its root is left completely alone`() {
-        val plan = planRouteKeyCollapse(listOf("ha" to "/lovelace", "ha" to "/office"), root)
+        val plan = planRouteKeyCollapse(listOf("ha" to "/lovelace", "ha" to "/alpha"), root)
         assertTrue("nothing to collapse: $plan", plan.isEmpty())
     }
 
@@ -51,7 +51,7 @@ class ScopeCollapsePlanTest {
     }
 
     @Test fun `running the plan a second time finds nothing left to do`() {
-        val rows = listOf("ha" to "/lovelace/kiosk", "ha" to "/office/tab")
+        val rows = listOf("ha" to "/lovelace/kiosk", "ha" to "/alpha/tab")
         val after = planRouteKeyCollapse(rows, root)
             .map { it.instance to it.to }
             .distinct()

@@ -125,7 +125,7 @@ class VoiceRoutesTest {
         val result = normalizeConfigPostParameters(
             Parameters.build {
                 append("voice_wake_words", "not json")
-                append("panel_id", "hall")
+                append("panel_id", "alpha")
             },
         )
         assertTrue(result is ConfigPostParameters.Bad)

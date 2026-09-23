@@ -19,12 +19,12 @@ class ReceiptVerifierTest {
     private fun manifest(
         kind: String = "ha-paneld-backup",
         discoveryId: String? = own,
-        config: String = """{"panel_id":"kitchen"}""",
+        config: String = """{"panel_id":"alpha"}""",
         state: String? = """{"entry":"state/app-state","size":5,"rows":76}""",
         entity: String? = """{"filter_ids_entry":"entity/filter","overrides_entry":"entity/overrides"}""",
         profiles: String? = null,
     ) = buildString {
-        append("{\"kind\":\"$kind\",\"schema\":1,\"panel_id\":\"kitchen\"")
+        append("{\"kind\":\"$kind\",\"schema\":1,\"panel_id\":\"alpha\"")
         if (discoveryId != null) append(",\"discovery_id\":\"$discoveryId\"")
         append(",\"config\":$config")
         if (entity != null) append(",\"entity_state\":$entity")

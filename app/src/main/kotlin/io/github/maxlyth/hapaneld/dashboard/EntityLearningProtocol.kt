@@ -320,7 +320,7 @@ object EntityLearningProtocol {
     /**
      * Resolve the renderer target strictly against the dashboards visible to the authenticated user.
      * Explicit routes retain their view/query/fragment, but membership is checked by dashboard root
-     * (`/lovelace/0` belongs to `/lovelace`; `/office/view` belongs to `/office`). Defaults are untrusted
+     * (`/lovelace/0` belongs to `/lovelace`; `/alpha/view` belongs to `/alpha`). Defaults are untrusted
      * profile data and are independently checked so a stale user value cannot suppress a legal system
      * value. The final fallback is the first legal choice in Home Assistant's supplied order.
      */

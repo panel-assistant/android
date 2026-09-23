@@ -15,17 +15,17 @@ class RestorePlanLegacyDashboardTest {
 
     @Test fun `an archive holding this panel's own address restores, and restores to a path`() {
         val decision = planRestoreSettings(
-            mapOf("home_dashboard" to "https://ha.example:8123/lovelace/kitchen", "panel_id" to "hall"),
+            mapOf("home_dashboard" to "https://ha.example:8123/lovelace/beta", "panel_id" to "alpha"),
             origin,
         )
         assertTrue("archive must restore, errors were ${decision.errors}", decision.errors.isEmpty())
-        assertEquals("/lovelace/kitchen", decision.accepted["home_dashboard"])
-        assertEquals("hall", decision.accepted["panel_id"])
+        assertEquals("/lovelace/beta", decision.accepted["home_dashboard"])
+        assertEquals("alpha", decision.accepted["panel_id"])
     }
 
     @Test fun `an address on someone else's server is refused rather than silently retargeted`() {
         val decision = planRestoreSettings(
-            mapOf("home_dashboard" to "https://other.example:8123/lovelace/kitchen"),
+            mapOf("home_dashboard" to "https://other.example:8123/lovelace/beta"),
             origin,
         )
         assertTrue("a foreign origin must be refused", decision.errors.any { it.startsWith("home_dashboard:") })
@@ -33,9 +33,9 @@ class RestorePlanLegacyDashboardTest {
     }
 
     @Test fun `a plain path still restores unchanged`() {
-        val decision = planRestoreSettings(mapOf("home_dashboard" to "/lovelace/kitchen"), origin)
+        val decision = planRestoreSettings(mapOf("home_dashboard" to "/lovelace/beta"), origin)
         assertTrue(decision.errors.isEmpty())
-        assertEquals("/lovelace/kitchen", decision.accepted["home_dashboard"])
+        assertEquals("/lovelace/beta", decision.accepted["home_dashboard"])
     }
 
     @Test fun `a bare origin restores as follow-the-account-default`() {
@@ -46,7 +46,7 @@ class RestorePlanLegacyDashboardTest {
 
     @Test fun `with no configured Home Assistant an absolute value is still refused, not guessed`() {
         val decision = planRestoreSettings(
-            mapOf("home_dashboard" to "https://ha.example:8123/lovelace/kitchen"),
+            mapOf("home_dashboard" to "https://ha.example:8123/lovelace/beta"),
             null,
         )
         assertTrue(decision.errors.any { it.startsWith("home_dashboard:") })

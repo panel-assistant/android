@@ -633,12 +633,12 @@ class AppStateConcurrencyTest {
 
     @Test fun driftedMirrorNeverWipesLiveConfig() {
         val fullConfig: Map<String, Any> = linkedMapOf(
-            "panel_id" to "kitchen",
+            "panel_id" to "alpha",
             "ha_url" to "https://ha.example",
             "dashboard_package" to "builtin",
         )
         val primary = ImportingPersistence(fullConfig)
-        val legacy = RecordingLegacyMirror(linkedMapOf("panel_id" to "kitchen"))
+        val legacy = RecordingLegacyMirror(linkedMapOf("panel_id" to "alpha"))
         val metadata = RecordingBridgeMetadata().also {
             it.writeHash(stateSnapshotHash(fullConfig))
         }
@@ -647,7 +647,7 @@ class AppStateConcurrencyTest {
 
         assertEquals("https://ha.example", snapshot["ha_url"])
         assertEquals("builtin", snapshot["dashboard_package"])
-        assertEquals("kitchen", snapshot["panel_id"])
+        assertEquals("alpha", snapshot["panel_id"])
         assertEquals(fullConfig, primary.snapshot())
     }
 

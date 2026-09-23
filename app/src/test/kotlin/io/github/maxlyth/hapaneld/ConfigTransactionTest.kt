@@ -89,11 +89,11 @@ class ConfigTransactionTest {
     }
 
     @Test fun explicitPanelIdentityIsNeverReplacedByGeneration() {
-        val prefs = fakePreferences(initial = mapOf("panel_id" to "office_panel"))
+        val prefs = fakePreferences(initial = mapOf("panel_id" to "alpha"))
         val config = Config(prefs.instance)
 
-        assertEquals("office_panel", config.ensurePanelId { "generated_panel" })
-        assertEquals("office_panel", prefs.values["panel_id"])
+        assertEquals("alpha", config.ensurePanelId { "generated_panel" })
+        assertEquals("alpha", prefs.values["panel_id"])
     }
 
     @Test fun failedGeneratedIdentityCommitStillReturnsTheGeneratedValue() {
@@ -1099,14 +1099,14 @@ class ConfigTransactionTest {
     @Test fun anOwnerFromADifferentDashboardIsNeverReRootedIntoTheConfiguredOne() {
         // The other half of the boundary. Migrating this would let a real dashboard change silently
         // inherit another dashboard's learned list, trading the reported bug for a silent one.
-        val foreignOwner = "7:url-key/kitchen"
+        val foreignOwner = "7:url-key/beta"
         val prefs = fakePreferences(
             initial = mapOf(
                 "ha_url" to "http://ha.local:8123",
                 "home_dashboard" to "/lovelace",
                 "dashboard_entity_instance" to "url-key",
                 "dashboard_entity_instance_origin" to "http://ha.local:8123",
-                "dashboard_entity_dashboard_path" to "/kitchen",
+                "dashboard_entity_dashboard_path" to "/beta",
                 "dashboard_entity_filter_enabled" to true,
                 "dashboard_entity_filter_ids" to "light.kitchen",
                 "dashboard_entity_filter_instance" to foreignOwner,
@@ -1127,7 +1127,7 @@ class ConfigTransactionTest {
         // stranded any intent captured before a dashboard change: adoption skipped it, and it then read
         // as owned by the legacy instance under the stable key — invisible, and overwritten by the next
         // edit.
-        val capturedElsewhere = dashboardEntityTargetKey("url-key", "/kitchen")
+        val capturedElsewhere = dashboardEntityTargetKey("url-key", "/beta")
         val prefs = fakePreferences(
             initial = mapOf(
                 "ha_url" to "http://ha.local:8123",
@@ -1150,7 +1150,7 @@ class ConfigTransactionTest {
         val owner = prefs.values["dashboard_entity_override_instance"] as String
         assertEquals("stable-key", dashboardEntityInstanceOf(owner))
         // The captured scope is preserved rather than restamped: it records where intent was taken.
-        assertEquals("/kitchen", dashboardEntityPathOf(owner))
+        assertEquals("/beta", dashboardEntityPathOf(owner))
         assertEquals(
             mapOf("person.lise" to "pinned", "sensor.noisy" to "forced_exclude"),
             config.dashboardEntityOverrides,
@@ -1269,7 +1269,7 @@ class ConfigTransactionTest {
         val prefs = fakePreferences(
             initial = mapOf(
                 "ha_url" to "http://ha.local:8123",
-                "home_dashboard" to "/lovelace/office",
+                "home_dashboard" to "/lovelace/alpha",
                 "dashboard_entity_filter_enabled" to true,
                 "dashboard_entity_filter_ids" to "light.office",
                 "dashboard_entity_learning_applied" to true,
@@ -1278,10 +1278,10 @@ class ConfigTransactionTest {
         )
         val config = Config(prefs.instance)
         assertEquals("url-key", config.prepareDashboardEntityInstance(
-            "http://ha.local:8123", "/lovelace/office", "url-key",
+            "http://ha.local:8123", "/lovelace/alpha", "url-key",
         ))
         assertTrue(config.adoptDashboardEntityInstance(
-            "http://ha.local:8123", "/lovelace/office", "00112233445566778899aabbccddeeff", "url-key", "uuid-key",
+            "http://ha.local:8123", "/lovelace/alpha", "00112233445566778899aabbccddeeff", "url-key", "uuid-key",
         ))
 
         config.setHomeDashboard("/second-dash")
@@ -1349,17 +1349,17 @@ class ConfigTransactionTest {
 
     @Test fun staleUuidAdoptionCannotCrossAConcurrentDashboardChange() {
         val prefs = fakePreferences(
-            initial = mapOf("ha_url" to "http://ha.local:8123", "home_dashboard" to "/lovelace/office"),
+            initial = mapOf("ha_url" to "http://ha.local:8123", "home_dashboard" to "/lovelace/alpha"),
         )
         val config = Config(prefs.instance)
         assertEquals("url-key", config.prepareDashboardEntityInstance(
-            "http://ha.local:8123", "/lovelace/office", "url-key",
+            "http://ha.local:8123", "/lovelace/alpha", "url-key",
         ))
 
         config.setHomeDashboard("/second-dash")
 
         assertFalse(config.adoptDashboardEntityInstance(
-            "http://ha.local:8123", "/lovelace/office", "00112233445566778899aabbccddeeff", "url-key", "uuid-key",
+            "http://ha.local:8123", "/lovelace/alpha", "00112233445566778899aabbccddeeff", "url-key", "uuid-key",
         ))
         assertEquals("url-key", config.dashboardEntityInstanceKey)
         assertEquals("", config.dashboardEntityInstanceUuid)
@@ -1412,13 +1412,13 @@ class ConfigTransactionTest {
         val prefs = fakePreferences(
             initial = mapOf(
                 "ha_url" to "http://ha.local:8123",
-                "home_dashboard" to "/lovelace/office",
+                "home_dashboard" to "/lovelace/alpha",
                 "dashboard_entity_learning" to true,
             ),
         )
         val config = Config(prefs.instance)
         assertEquals("url-key", config.prepareDashboardEntityInstance(
-            "http://ha.local:8123", "/lovelace/office", "url-key",
+            "http://ha.local:8123", "/lovelace/alpha", "url-key",
         ))
         assertTrue(config.setDashboardEntityFilter(true, listOf("light.office")))
 
@@ -1435,9 +1435,9 @@ class ConfigTransactionTest {
         assertTrue(config.dashboardEntityFilterIds.isEmpty())
         assertEquals("light.office", prefs.values["dashboard_entity_filter_ids"])
 
-        config.setHomeDashboard("/lovelace/office")
+        config.setHomeDashboard("/lovelace/alpha")
         assertEquals("url-key", config.prepareDashboardEntityInstance(
-            "http://ha.local:8123", "/lovelace/office", "url-key",
+            "http://ha.local:8123", "/lovelace/alpha", "url-key",
         ))
         assertEquals(listOf("light.office"), config.dashboardEntityFilterIds)
         assertFalse("disabled learning must not reactivate the old target's interceptor", config.dashboardEntityFilterEnabled)
@@ -1909,20 +1909,20 @@ class ConfigTransactionTest {
         val prefs = fakePreferences(
             initial = mapOf(
                 "ha_url" to "http://ha.local:8123",
-                "home_dashboard" to "/office/music",
+                "home_dashboard" to "/alpha/music",
                 "dashboard_entity_overrides" to "+person.lise\n-sensor.chatty",
             ),
         )
         val config = Config(prefs.instance)
         assertEquals("url-key", config.prepareDashboardEntityInstance(
-            "http://ha.local:8123", "/office/music", "url-key",
+            "http://ha.local:8123", "/alpha/music", "url-key",
         ))
         assertTrue(config.setDashboardEntityOverrides(
             mapOf("person.lise" to "pinned", "sensor.chatty" to "forced_exclude"),
         ))
 
         // Another dashboard entirely, on the same Home Assistant.
-        config.setHomeDashboard("/kitchen-dash")
+        config.setHomeDashboard("/beta-dash")
         assertEquals(
             mapOf("person.lise" to "pinned", "sensor.chatty" to "forced_exclude"),
             config.dashboardEntityOverrides,
@@ -1950,10 +1950,10 @@ class ConfigTransactionTest {
         val prefs = fakePreferences(
             initial = mapOf(
                 "ha_url" to "http://new-ha.local:8123",
-                "home_dashboard" to "/office",
+                "home_dashboard" to "/alpha",
                 "dashboard_entity_instance" to "url-key",
                 "dashboard_entity_instance_origin" to "http://old-ha.local:8123",
-                "dashboard_entity_override_instance" to dashboardEntityTargetKey("url-key", "/office"),
+                "dashboard_entity_override_instance" to dashboardEntityTargetKey("url-key", "/alpha"),
                 "dashboard_entity_overrides" to "+person.lise\n-sensor.chatty",
             ),
         )
@@ -1966,18 +1966,18 @@ class ConfigTransactionTest {
     }
 
     @Test fun followingTheAccountDefaultKeepsTheLearnedFilterItAlreadyOwns() {
-        // Reported from a panel: the home dashboard moved from a view of /office to "Account default",
-        // which resolves to /office, and the learned filter was discarded. Auto names no dashboard of
+        // Reported from a panel: the home dashboard moved from a view of /alpha to "Account default",
+        // which resolves to /alpha, and the learned filter was discarded. Auto names no dashboard of
         // its own, so it must not act as a scope change on the way in.
-        val prefs = learnedFilterAt("/office")
+        val prefs = learnedFilterAt("/alpha")
         val config = Config(prefs.instance)
-        config.setHomeDashboard("/office/music")
+        config.setHomeDashboard("/alpha/music")
         assertTrue("the filter must start owned or this proves nothing", config.dashboardEntityFilterEnabled)
 
         config.setHomeDashboard("")
 
         assertEquals("", prefs.values["home_dashboard"])
-        assertEquals("/office", prefs.values["dashboard_entity_dashboard_path"])
+        assertEquals("/alpha", prefs.values["dashboard_entity_dashboard_path"])
         assertTrue("following the account default must not re-scope learning", config.dashboardEntityFilterEnabled)
         assertEquals(listOf("light.hall", "light.porch"), config.dashboardEntityFilterIds)
     }
@@ -1987,17 +1987,17 @@ class ConfigTransactionTest {
         // DIFFERENT dashboard, keeping the old learned list would filter out entities the new dashboard
         // renders and its cards would quietly stop updating. Rebinding to the resolved dashboard — which
         // is what the scan does once an authenticated read answers — must withdraw the old list.
-        val prefs = learnedFilterAt("/office")
+        val prefs = learnedFilterAt("/alpha")
         val config = Config(prefs.instance)
         config.setHomeDashboard("")
         assertTrue(config.dashboardEntityFilterEnabled)
 
         // Standing in for the scan's reconciliation: the resolution named a different dashboard.
         assertEquals("url-key", config.prepareDashboardEntityInstance(
-            "http://ha.local:8123", "/kitchen-dash", "url-key",
+            "http://ha.local:8123", "/beta-dash", "url-key",
         ))
 
-        assertEquals("/kitchen-dash", prefs.values["dashboard_entity_dashboard_path"])
+        assertEquals("/beta-dash", prefs.values["dashboard_entity_dashboard_path"])
         assertFalse("a different resolved dashboard must not inherit the filter", config.dashboardEntityFilterEnabled)
         assertEquals(emptyList<String>(), config.dashboardEntityFilterIds)
     }
@@ -2036,7 +2036,7 @@ class ConfigTransactionTest {
     @Test fun anEstablishedDashboardIsNotRebootstrappedJustForFollowingTheDefault() {
         // The other side of the same boundary: this panel's list was learned for a named dashboard, so
         // it was never derived under the ambiguous blank resolution and there is nothing to invalidate.
-        val prefs = learnedFilterAt("/office")
+        val prefs = learnedFilterAt("/alpha")
         val config = Config(prefs.instance)
         config.setHomeDashboard("")
 
@@ -2056,9 +2056,9 @@ class ConfigTransactionTest {
         val config = Config(prefs.instance)
         assertTrue("the filter must start owned or this proves nothing", config.dashboardEntityFilterEnabled)
 
-        config.setHomeDashboard("/dashboard-test/office")
+        config.setHomeDashboard("/dashboard-test/alpha")
 
-        assertEquals("/dashboard-test/office", prefs.values["home_dashboard"])
+        assertEquals("/dashboard-test/alpha", prefs.values["home_dashboard"])
         assertEquals("/dashboard-test", prefs.values["dashboard_entity_dashboard_path"])
         assertTrue("a view change must not re-scope learning", config.dashboardEntityFilterEnabled)
         assertEquals(listOf("light.hall", "light.porch"), config.dashboardEntityFilterIds)
@@ -2071,7 +2071,7 @@ class ConfigTransactionTest {
         val config = Config(prefs.instance)
         assertTrue(config.dashboardEntityFilterEnabled)
 
-        config.setHomeDashboard("/other-dash/office")
+        config.setHomeDashboard("/other-dash/alpha")
 
         assertEquals("/other-dash", prefs.values["dashboard_entity_dashboard_path"])
         assertFalse("a different dashboard must not inherit the filter", config.dashboardEntityFilterEnabled)
@@ -2084,9 +2084,9 @@ class ConfigTransactionTest {
         val prefs = learnedFilterAt("/dashboard-test")
         val config = Config(prefs.instance)
 
-        config.setHomeDashboard("/dashboard-test/office?kiosk=1#main")
+        config.setHomeDashboard("/dashboard-test/alpha?kiosk=1#main")
 
-        assertEquals("/dashboard-test/office?kiosk=1#main", prefs.values["home_dashboard"])
+        assertEquals("/dashboard-test/alpha?kiosk=1#main", prefs.values["home_dashboard"])
         assertEquals("/dashboard-test", prefs.values["dashboard_entity_dashboard_path"])
         assertTrue("a query-only change must not re-scope learning", config.dashboardEntityFilterEnabled)
         assertEquals(listOf("light.hall", "light.porch"), config.dashboardEntityFilterIds)

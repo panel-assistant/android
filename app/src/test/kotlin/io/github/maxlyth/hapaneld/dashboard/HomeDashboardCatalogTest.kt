@@ -22,13 +22,13 @@ class HomeDashboardCatalogTest {
                     "home", JSONObject().put("title", "Home").put("icon", "mdi:home"),
                 ))
                 "lovelace/dashboards/list" -> result(JSONArray().put(
-                    JSONObject().put("url_path", "office").put("title", "Office"),
+                    JSONObject().put("url_path", "alpha").put("title", "Office"),
                 ))
                 "frontend/get_user_data" -> result(JSONObject().put("value", JSONObject().put(
                     "default_panel", "deleted-user-dashboard",
                 )))
                 "frontend/get_system_data" -> result(JSONObject().put("value", JSONObject().put(
-                    "default_panel", "office",
+                    "default_panel", "alpha",
                 )))
                 else -> error("unexpected command $type")
             }
@@ -45,9 +45,9 @@ class HomeDashboardCatalogTest {
             commands,
         )
         assertTrue(catalog.queried)
-        assertEquals(listOf("/home", "/office"), catalog.items.map { it.path })
+        assertEquals(listOf("/home", "/alpha"), catalog.items.map { it.path })
         assertEquals(
-            EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/office"),
+            EntityLearningProtocol.HomeDashboardDefault(explicit = true, path = "/alpha"),
             catalog.default,
         )
         assertEquals(
@@ -134,14 +134,14 @@ class HomeDashboardCatalogTest {
                 "auth/current_user" -> result(JSONObject().put("is_admin", false))
                 "get_panels" -> result(JSONObject())
                 "lovelace/dashboards/list" -> result(JSONArray().put(
-                    JSONObject().put("url_path", "office").put("title", "Office"),
+                    JSONObject().put("url_path", "alpha").put("title", "Office"),
                 ))
                 else -> error("lower-priority command must not run: $type")
             }
-        }, "/office/view?kiosk=1")
+        }, "/alpha/view?kiosk=1")
 
         assertEquals(EntityLearningProtocol.HomeDashboardSource.EXPLICIT, resolution.source)
-        assertEquals("/office/view?kiosk=1", resolution.path)
+        assertEquals("/alpha/view?kiosk=1", resolution.path)
         assertEquals(
             listOf("auth/current_user", "get_panels", "lovelace/dashboards/list"),
             commands,
@@ -157,17 +157,17 @@ class HomeDashboardCatalogTest {
                 "auth/current_user" -> result(JSONObject().put("is_admin", false))
                 "get_panels" -> result(JSONObject())
                 "lovelace/dashboards/list" -> result(JSONArray().put(
-                    JSONObject().put("url_path", "office").put("title", "Office"),
+                    JSONObject().put("url_path", "alpha").put("title", "Office"),
                 ))
                 "frontend/get_user_data" -> result(JSONObject().put(
-                    "value", JSONObject().put("default_panel", "office"),
+                    "value", JSONObject().put("default_panel", "alpha"),
                 ))
                 else -> error("lower-priority command must not run: $type")
             }
         }, "")
 
         assertEquals(EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT, resolution.source)
-        assertEquals("/office", resolution.path)
+        assertEquals("/alpha", resolution.path)
         assertEquals(
             listOf("auth/current_user", "get_panels", "lovelace/dashboards/list", "frontend/get_user_data"),
             commands,
@@ -210,10 +210,10 @@ class HomeDashboardCatalogTest {
         val ownerB = ownerA.copy(refreshToken = "refresh-b")
         val keyA = HomeDashboardResolutionAuthority.Key("https://ha", ownerA, "")
         val office = EntityLearningProtocol.HomeDashboardResolution(
-            "/office", EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT,
+            "/alpha", EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT,
         )
         val kitchen = EntityLearningProtocol.HomeDashboardResolution(
-            "/kitchen", EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT,
+            "/beta", EntityLearningProtocol.HomeDashboardSource.USER_DEFAULT,
         )
         var reads = 0
 
@@ -234,7 +234,7 @@ class HomeDashboardCatalogTest {
         )
         val none = EntityLearningProtocol.HomeDashboardResolution()
         val office = EntityLearningProtocol.HomeDashboardResolution(
-            "/office", EntityLearningProtocol.HomeDashboardSource.FIRST_LEGAL,
+            "/alpha", EntityLearningProtocol.HomeDashboardSource.FIRST_LEGAL,
         )
         var reads = 0
 

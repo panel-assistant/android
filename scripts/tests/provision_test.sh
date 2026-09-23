@@ -3666,13 +3666,13 @@ assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LO
   "omitting both options records neither wizard answer"
 assert_not_contains 'seeding dashboard' "$LAST_OUTPUT" "omitting both options performs no seed step"
 
-run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --entity-filter on --no-tame
+run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --entity-filter on --no-tame
 assert_success "seeding both a dashboard path and the entity filter succeeds"
-assert_log_contains 'curl .*-X POST .*home_dashboard=/office.*api/v1/config' "the seeded dashboard path is written"
+assert_log_contains 'curl .*-X POST .*home_dashboard=/alpha.*api/v1/config' "the seeded dashboard path is written"
 assert_log_contains 'curl .*-X POST .*dashboard_entity_learning=true.*api/v1/config' "--entity-filter on enables entity filtering"
 assert_log_contains 'curl .*-X POST .*api/v1/setup/home-dashboard' "seeding the dashboard records the wizard answer"
 assert_log_contains 'curl .*-X POST .*api/v1/setup/entity-filter' "seeding the filter records the wizard answer"
-assert_contains 'home dashboard: /office' "the applied dashboard path is reported"
+assert_contains 'home dashboard: /alpha' "the applied dashboard path is reported"
 assert_contains 'entity filtering: on' "the applied filter policy is reported"
 
 run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --entity-filter off --no-tame
@@ -3691,19 +3691,19 @@ assert_not_contains 'api/v1/config/home-dashboards' "$MOCK_CALL_LOG" \
   "auto names no dashboard, so no catalogue lookup is made"
 
 # Repeated options follow the same last-wins rule as every other provisioner value option.
-run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /lovelace --home-dashboard /office --no-tame
+run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /lovelace --home-dashboard /alpha --no-tame
 assert_success "a repeated --home-dashboard succeeds"
-assert_log_contains 'curl .*-X POST .*home_dashboard=/office.*api/v1/config' "the last --home-dashboard wins"
+assert_log_contains 'curl .*-X POST .*home_dashboard=/alpha.*api/v1/config' "the last --home-dashboard wins"
 assert_not_contains 'home_dashboard=/lovelace' "$MOCK_CALL_LOG" "an earlier --home-dashboard is not also written"
 
 # Specificity: an explicitly named value must beat a bulk import, which means the seed has to be
 # applied AFTER it. Seeded earlier, the bundle would silently overwrite the operator's own choice.
 SEED_RESTORE="$TMP/seed-restore.json"
 printf '{"kind":"ha-paneld-config","schema":1,"values":{}}\n' > "$SEED_RESTORE"
-run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --restore "$SEED_RESTORE" --home-dashboard /office --no-tame
+run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --restore "$SEED_RESTORE" --home-dashboard /alpha --no-tame
 assert_success "seeding alongside a config import succeeds"
 if [ "$(grep -n 'api/v1/config/import' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)" -lt \
-     "$(grep -n 'home_dashboard=/office' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)" ]; then
+     "$(grep -n 'home_dashboard=/alpha' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)" ]; then
   pass "an explicit seed is applied after a restored bundle, so the named value wins"
 else
   fail_test "an explicit seed is applied after a restored bundle, so the named value wins"
@@ -3718,17 +3718,17 @@ assert_contains 'value is saved' "an unknown dashboard is retained rather than r
 assert_log_contains 'curl .*-X POST .*api/v1/setup/home-dashboard' "an unknown-but-valid dashboard is still a recorded answer"
 
 # A view BELOW a known dashboard root is exactly what Issue #90 added, and must not warn.
-run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office/kitchen --no-tame
+run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha/beta --no-tame
 assert_success "a view below a known dashboard succeeds"
 assert_not_contains 'does not currently list a dashboard' "$LAST_OUTPUT" "a view below a known dashboard root does not warn"
 
-MOCK_HOME_DASHBOARDS=unreachable run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --no-tame
+MOCK_HOME_DASHBOARDS=unreachable run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --no-tame
 assert_success "an unqueryable dashboard catalogue does not fail provisioning"
 assert_contains 'Could not verify the dashboard' "an unqueryable catalogue is reported as unverified, not as absent"
 assert_not_contains 'does not currently list a dashboard' "$LAST_OUTPUT" "an unqueryable catalogue never claims the dashboard is missing"
 unset MOCK_HOME_DASHBOARDS
 
-MOCK_HOME_DASHBOARDS=transport-fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --no-tame
+MOCK_HOME_DASHBOARDS=transport-fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --no-tame
 assert_success "a failed catalogue request does not fail provisioning"
 assert_contains 'Could not verify the dashboard' "a failed catalogue request is reported as unverified"
 unset MOCK_HOME_DASHBOARDS
@@ -3742,14 +3742,14 @@ assert_contains 'guided setup still asks' "a refused dashboard path leaves the q
 assert_not_contains 'api/v1/setup/home-dashboard' "$MOCK_CALL_LOG" \
   "a refused dashboard path records no wizard answer"
 
-MOCK_SEED_CONFIG=fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --entity-filter on --no-tame
+MOCK_SEED_CONFIG=fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --entity-filter on --no-tame
 assert_failure "a failed seed write fails the run" \
   "provisioning incomplete .* correct the failed item above"
 assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LOG" \
   "no answer is recorded for a seed that did not persist"
 unset MOCK_SEED_CONFIG
 
-MOCK_SETUP_ANSWER=fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --no-tame
+MOCK_SETUP_ANSWER=fail run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --no-tame
 assert_failure "a seed whose answer could not be recorded fails the run"
 assert_contains 'applied but not recorded as answered' "an unrecorded answer is distinguished from an unapplied value"
 assert_contains 'Re-run the same command' "an unrecorded answer names the idempotent recovery"
@@ -3765,36 +3765,36 @@ unset MOCK_SETUP_ANSWER
 # A blank stored selection that the panel resolves to the built-in renderer. This is the live-hardware
 # case the literal gate got wrong.
 MOCK_DASHBOARD_PACKAGE='' MOCK_RENDERER=builtin \
-  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --no-tame
+  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --no-tame
 assert_success "a blank dashboard selection the panel resolves to the built-in renderer accepts a seed"
-assert_log_contains 'curl .*-X POST .*home_dashboard=/office.*api/v1/config' "a blank-but-built-in panel is seeded"
+assert_log_contains 'curl .*-X POST .*home_dashboard=/alpha.*api/v1/config' "a blank-but-built-in panel is seeded"
 assert_not_contains 'not set to use|could not confirm' "$LAST_OUTPUT" \
   "a panel using the built-in renderer is never told it is not"
 
-MOCK_DASHBOARD_PACKAGE=builtin run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --no-tame
+MOCK_DASHBOARD_PACKAGE=builtin run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --no-tame
 assert_success "a panel already on the built-in renderer accepts a seed without --builtin"
-assert_log_contains 'curl .*-X POST .*home_dashboard=/office.*api/v1/config' "an already-built-in panel is seeded"
+assert_log_contains 'curl .*-X POST .*home_dashboard=/alpha.*api/v1/config' "an already-built-in panel is seeded"
 unset MOCK_DASHBOARD_PACKAGE
 
 # A genuinely foreign renderer: refused, and named, because the operator's next move depends on which app
 # the panel actually resolves to.
 MOCK_RENDERER=io.homeassistant.companion.android.minimal \
-  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --entity-filter on --no-tame
+  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --entity-filter on --no-tame
 assert_failure "seeding a panel that resolves to a foreign renderer fails"
 assert_contains 'resolves to io.homeassistant.companion.android.minimal' "the refusal names the renderer the panel resolves to"
 assert_contains 'Add --builtin' "the refusal names the fix"
-assert_not_contains 'home_dashboard=/office|dashboard_entity_learning=' "$MOCK_CALL_LOG" \
+assert_not_contains 'home_dashboard=/alpha|dashboard_entity_learning=' "$MOCK_CALL_LOG" \
   "a refused seed mutates neither the dashboard nor the filter"
 assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LOG" \
   "a refused seed records no wizard answer"
 
 # The panel answered, and its answer is that it cannot resolve its own selection. Distinct from a foreign
 # renderer: there is no app to name, and the stored value itself is what needs correcting.
-MOCK_RENDERER=unresolved run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --no-tame
+MOCK_RENDERER=unresolved run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --no-tame
 assert_failure "seeding a panel that cannot resolve its renderer fails"
 assert_contains 'cannot resolve which renderer it is set to use' "the refusal reports an unresolvable selection as its own state"
 assert_not_contains 'resolves to ' "$LAST_OUTPUT" "an unresolvable selection names no renderer"
-assert_not_contains 'home_dashboard=/office' "$MOCK_CALL_LOG" "an unresolvable selection is not seeded"
+assert_not_contains 'home_dashboard=/alpha' "$MOCK_CALL_LOG" "an unresolvable selection is not seeded"
 assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LOG" \
   "an unresolvable selection records no wizard answer"
 
@@ -3802,36 +3802,36 @@ assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LO
 # every version, so it is admitted; blank is exactly the value only the panel can interpret, so without an
 # answer it stays ambiguous and is refused — as "could not confirm", never as "not set to use".
 MOCK_RENDERER=absent MOCK_DASHBOARD_PACKAGE=builtin \
-  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --no-tame
+  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --no-tame
 assert_success "a literal built-in selection is admitted by a panel too old to report a resolution"
-assert_log_contains 'curl .*-X POST .*home_dashboard=/office.*api/v1/config' "the literal fallback seeds the panel"
+assert_log_contains 'curl .*-X POST .*home_dashboard=/alpha.*api/v1/config' "the literal fallback seeds the panel"
 
 MOCK_RENDERER=absent MOCK_DASHBOARD_PACKAGE='' \
-  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --no-tame
+  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --no-tame
 assert_failure "a blank selection no panel can resolve fails closed"
 assert_contains 'could not confirm this panel uses' "an unobtainable resolution is reported as unconfirmed"
 assert_not_contains 'not set to use|resolves to ' "$LAST_OUTPUT" \
   "an unconfirmed panel is never described as running something else"
-assert_not_contains 'home_dashboard=/office' "$MOCK_CALL_LOG" "an unconfirmed renderer is not seeded"
+assert_not_contains 'home_dashboard=/alpha' "$MOCK_CALL_LOG" "an unconfirmed renderer is not seeded"
 assert_not_contains 'api/v1/setup/(home-dashboard|entity-filter)' "$MOCK_CALL_LOG" \
   "an unconfirmed renderer records no wizard answer"
 
 # An unreadable setup endpoint is the same fail-closed answer as an absent field, reached by a different
 # route: a swallowed transport error must never become an assumed yes.
 MOCK_SETUP=missing MOCK_DASHBOARD_PACKAGE='' \
-  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /office --no-tame
+  run_provision "$MOCK_TARGET" --apk "$APK" --home-dashboard /alpha --no-tame
 assert_failure "an unreadable renderer answer fails closed"
 assert_contains 'could not confirm this panel uses' "an unreadable answer is reported as unconfirmed"
-assert_not_contains 'home_dashboard=/office' "$MOCK_CALL_LOG" "an unreadable answer is not seeded"
+assert_not_contains 'home_dashboard=/alpha' "$MOCK_CALL_LOG" "an unreadable answer is not seeded"
 unset MOCK_SETUP
 
 # --builtin selects the built-in renderer in the same command, so it is an override rather than a claim to
 # be checked: the seed proceeds even when the panel currently resolves to something else.
 MOCK_RENDERER=io.homeassistant.companion.android.minimal \
-  run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --no-tame
+  run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --no-tame
 assert_success "--builtin admits the seed whatever the panel currently resolves to"
 assert_log_contains 'curl .*-X POST .*dashboard_package=builtin.*api/v1/config' "--builtin selects the built-in renderer first"
-assert_log_contains 'curl .*-X POST .*home_dashboard=/office.*api/v1/config' "the override seeds the panel"
+assert_log_contains 'curl .*-X POST .*home_dashboard=/alpha.*api/v1/config' "the override seeds the panel"
 unset MOCK_RENDERER MOCK_DASHBOARD_PACKAGE
 
 # Usage refusals happen before the panel is contacted at all.
@@ -3840,7 +3840,7 @@ assert_status 2 "an unrecognised --entity-filter value is rejected"
 assert_contains 'must be on or off' "the invalid filter value names the accepted spellings"
 assert_not_contains '^adb |^curl ' "$MOCK_CALL_LOG" "an invalid filter value contacts no panel"
 
-run_provision "$MOCK_TARGET" --verify --home-dashboard /office
+run_provision "$MOCK_TARGET" --verify --home-dashboard /alpha
 assert_status 2 "--home-dashboard is rejected with --verify"
 assert_contains 'cannot be combined with --verify' "the verify refusal explains that verification never writes"
 assert_not_contains '^adb |^curl ' "$MOCK_CALL_LOG" "a seed with --verify contacts no panel"
@@ -3852,10 +3852,10 @@ assert_not_contains '^adb |^curl ' "$MOCK_CALL_LOG" "a seed with --reset-config 
 
 # A seed configures the renderer's Home Assistant connection, so it cannot be trusted after a failed
 # login: the panel would be pointed at a dashboard it has no credential to open.
-MOCK_HA_LOGIN=rejected run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /office --no-tame
+MOCK_HA_LOGIN=rejected run_provision "$MOCK_TARGET" --apk "$APK" "${SEED_BUILTIN[@]}" --home-dashboard /alpha --no-tame
 assert_failure "a seed after a failed Home Assistant login fails the run"
 assert_contains 'skipped --home-dashboard/--entity-filter' "the skipped seed is reported, not silently dropped"
-assert_not_contains 'home_dashboard=/office' "$MOCK_CALL_LOG" "a failed login writes no dashboard seed"
+assert_not_contains 'home_dashboard=/alpha' "$MOCK_CALL_LOG" "a failed login writes no dashboard seed"
 unset MOCK_HA_LOGIN
 
 fi
@@ -6634,7 +6634,7 @@ run_moving_advanced_installer() {
 }
 
 if provision_scope_is all shard-fleet-installer; then
-run_advanced_installer --provision panel.test --id kitchen --shizuku
+run_advanced_installer --provision panel.test --id alpha --shizuku
 assert_failure "checkout-free advanced provisioning refuses a historical guardless provisioner on an existing panel"
 assert_contains 'historical script has no database-compatibility gate' \
   "mutating advanced provisioning names the obsolete provisioner boundary"
@@ -6649,7 +6649,7 @@ assert_contains 'root helper daemon: running' \
 assert_not_contains 'panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk -o ' "$MOCK_CALL_LOG" \
   "generated installer plus real provisioner does not download an APK for verification"
 
-run_generated_installer_with_real_provisioner --provision panel.test --id kitchen
+run_generated_installer_with_real_provisioner --provision panel.test --id alpha
 assert_success "generated installer composes with the real provisioner for a mocked install"
 assert_log_contains '^adb -s panel\.test:5555 install ' \
   "generated installer hands the authenticated APK to the real provisioner"
@@ -6662,9 +6662,9 @@ assert_contains 'Detected panel: Test Panel' \
 # reached, which no provision.sh-level test can see.
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_PM_PATH=fail run_advanced_installer \
   --provision panel.test --builtin --ha-url https://ha.test --ha-user owner \
-  --home-dashboard /panel-dashboard/kitchen --entity-filter on
+  --home-dashboard /panel-dashboard/beta --entity-filter on
 assert_success "the checkout-free installer accepts the dashboard seeds"
-assert_log_contains '^provision-argv .*<--home-dashboard> </panel-dashboard/kitchen>' \
+assert_log_contains '^provision-argv .*<--home-dashboard> </panel-dashboard/beta>' \
   "the checkout-free installer forwards --home-dashboard with its exact value"
 assert_log_contains '^provision-argv .*<--entity-filter> <on>' \
   "the checkout-free installer forwards --entity-filter with its exact value"
@@ -6712,14 +6712,14 @@ done
 run_advanced_installer --provision panel.test --unknown
 assert_status 2 "checkout-free provisioning rejects unknown options"
 assert_not_contains '^curl ' "$MOCK_CALL_LOG" "unknown advanced option stops before downloads"
-run_advanced_installer --provision panel.test --verify --id kitchen
+run_advanced_installer --provision panel.test --verify --id alpha
 assert_status 2 "checkout-free verification rejects ignored mutating options"
 assert_not_contains '^curl ' "$MOCK_CALL_LOG" "mixed read-only and mutating options stop before downloads"
 
 # The user-facing command downloads the moving main installer rather than a release-generated copy.
 # Exercise both channel resolvers through the complete advanced hand-off so their authenticated
 # provisioner and APK selection cannot drift from the already-covered immutable-release path.
-run_moving_advanced_installer --provision panel.test --id kitchen
+run_moving_advanced_installer --provision panel.test --id alpha
 assert_failure "moving stable-channel advanced provisioning refuses a guardless provisioner on an existing panel"
 assert_log_contains '^curl .*api\.github\.com/repos/panel-assistant/android/releases/latest' \
   "moving stable-channel provisioning resolves the latest release"

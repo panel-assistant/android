@@ -29,11 +29,11 @@ class RetiredSensitivityKeyTest {
     @Test fun `the retired key does not take the rest of the request down with it`() {
         val result = normalize(
             SettingsRegistry.LEGACY_SENSITIVITY_KEY to "25",
-            "panel_id" to "hall",
+            "panel_id" to "alpha",
         )
         assertTrue("expected acceptance, got $result", result is ConfigPostParameters.Ok)
         val ok = result as ConfigPostParameters.Ok
-        assertEquals("hall", ok.values["panel_id"])
+        assertEquals("alpha", ok.values["panel_id"])
         assertEquals("50", ok.values[SettingsRegistry.RESPONSE_PERCENT_KEY])
     }
 

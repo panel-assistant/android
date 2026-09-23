@@ -29,7 +29,7 @@ object DashboardPath {
 
     /**
      * The canonical form of [raw], or null when it could never address a dashboard on the panel's own
-     * Home Assistant. [preserveRoute] keeps an explicit view, query and fragment (`/office/view?k=1#m`);
+     * Home Assistant. [preserveRoute] keeps an explicit view, query and fragment (`/alpha/view?k=1#m`);
      * false reduces the value to its dashboard root, which is how list membership is tested.
      */
     fun canonical(raw: String?, preserveRoute: Boolean): String? {
@@ -46,7 +46,7 @@ object DashboardPath {
         return if (preserveRoute) "/$route${value.substring(routeEnd)}" else "/${segments.first()}"
     }
 
-    /** The dashboard root [value] belongs to (`/office/view` → `/office`), or null when malformed. */
+    /** The dashboard root [value] belongs to (`/alpha/view` → `/alpha`), or null when malformed. */
     fun root(value: String): String? = canonical(value, preserveRoute = false)
 
     /** Chromium canonicalizes percent-encoded dot/slash segments before navigation; reject them here. */

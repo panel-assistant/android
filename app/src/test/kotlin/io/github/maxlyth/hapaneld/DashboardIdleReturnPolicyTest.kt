@@ -13,7 +13,7 @@ class DashboardIdleReturnPolicyTest {
     @Test fun `same home path with a popup fragment returns to fragment-free home`() {
         assertEquals(
             "lovelace/0",
-            DashboardIdleReturnPolicy.target("/lovelace/0", "kitchen", "/lovelace/0"),
+            DashboardIdleReturnPolicy.target("/lovelace/0", "beta", "/lovelace/0"),
         )
     }
 
@@ -22,8 +22,8 @@ class DashboardIdleReturnPolicyTest {
             "lovelace/0?theme=dark&return=/",
             DashboardIdleReturnPolicy.target(
                 currentPath = "/lovelace/0",
-                currentFragment = "kitchen",
-                homeDashboard = "/lovelace/0?theme=dark&return=/#kitchen",
+                currentFragment = "beta",
+                homeDashboard = "/lovelace/0?theme=dark&return=/#beta",
             ),
         )
     }
@@ -36,7 +36,7 @@ class DashboardIdleReturnPolicyTest {
     }
 
     @Test fun `fragment only home resolves to root`() {
-        assertEquals("/", DashboardIdleReturnPolicy.target("/lovelace/0", "kitchen", "#home"))
+        assertEquals("/", DashboardIdleReturnPolicy.target("/lovelace/0", "beta", "#home"))
     }
 
     @Test fun `matching external auth query does not trigger a return`() {
@@ -59,6 +59,6 @@ class DashboardIdleReturnPolicyTest {
     }
 
     @Test fun `blank home target remains disabled`() {
-        assertNull(DashboardIdleReturnPolicy.target("/lovelace/0", "kitchen", "  "))
+        assertNull(DashboardIdleReturnPolicy.target("/lovelace/0", "beta", "  "))
     }
 }

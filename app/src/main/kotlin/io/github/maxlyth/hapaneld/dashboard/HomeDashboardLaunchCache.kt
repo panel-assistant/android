@@ -45,7 +45,7 @@ internal object HomeDashboardLaunchCache {
         if (value.isEmpty() || value.length > MAX_STORED_PATH_CHARS) return null
         // Admit by the SAME semantics the live resolution used to produce this route: a local
         // first-segment check was weaker than the resolver, so a corrupt or restored row such as
-        // `/office/../auth` — or its percent-encoded equivalent, which Chromium canonicalises back
+        // `/alpha/../auth` — or its percent-encoded equivalent, which Chromium canonicalises back
         // into separators — passed the guard and could be launched provisionally. Separate
         // leading-slash and `//` checks used to sit here; a battery survivor proved them dead, since
         // canonicalisation rejects protocol-relative and scheme forms and always yields a leading
@@ -72,7 +72,7 @@ internal object HomeDashboardLaunchCache {
 
     /**
      * Whether the page's reported location proves a correction landed: membership is by dashboard
-     * root, the same rule the resolver uses (`/office/view` belongs to `/office`), because the
+     * root, the same rule the resolver uses (`/alpha/view` belongs to `/alpha`), because the
      * frontend may open the dashboard's default view rather than the literal corrected route. A null
      * or blank location proves nothing and reads as not converged.
      */

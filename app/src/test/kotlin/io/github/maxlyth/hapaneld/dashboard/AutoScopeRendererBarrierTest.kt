@@ -8,7 +8,7 @@ import org.junit.Test
 
 /**
  * The exact case the review named: `Auto` selected, a previous sync on record, an enabled allow-list
- * retained for `/office`, and the account default now resolving to `/kitchen`. Scheduling a scan fixes
+ * retained for `/alpha`, and the account default now resolving to `/beta`. Scheduling a scan fixes
  * where the panel ends up; this fixes what it may install before the scan answers.
  */
 class AutoScopeRendererBarrierTest {
@@ -64,7 +64,7 @@ class AutoScopeRendererBarrierTest {
     @Test fun `an explicitly configured dashboard is never held for verification`() {
         // Its scope is configured rather than discovered, so a live read could add nothing and holding
         // would strand every explicit panel behind a round trip it does not need.
-        for (explicit in listOf("/lovelace", "/office/kitchen")) {
+        for (explicit in listOf("/lovelace", "/alpha/beta")) {
             assertFalse(explicit, AutoScopeVerification.unverified(explicit))
             assertFalse(
                 explicit,

@@ -8730,7 +8730,7 @@ seed_builtin_renderer_preferences() {
     # This runs after the value is already durable and deliberately changes no outcome.
     catalog="$(curl -fsS --max-time 5 "$URL/api/v1/config/home-dashboards" 2>/dev/null || true)"
     # Compare on the dashboard ROOT: the catalogue lists dashboards, while a seed may name a view
-    # BELOW one (/office/kitchen), which is exactly the case Issue #90 added and must not warn.
+    # BELOW one (/alpha/beta), which is exactly the case Issue #90 added and must not warn.
     root="/$(printf '%s' "${seeded_path#/}" | cut -d/ -f1 | cut -d'?' -f1 | cut -d'#' -f1)"
     if ! printf '%s' "$catalog" | grep -Eq '"queried"[[:space:]]*:[[:space:]]*true'; then
       echo "   ${D}Could not verify the dashboard against Home Assistant just now; the value is saved either way.${X}"

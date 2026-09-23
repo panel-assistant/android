@@ -124,9 +124,9 @@ class LiveSettingHandlerBindingTest {
             ),
             Case(
                 "home_dashboard",
-                "/dashboard-office/0",
+                "/dashboard-alpha/0",
                 previous = "/lovelace/0",
-                expected = invocation("handleHomeDashboard", "/dashboard-office/0", "/lovelace/0"),
+                expected = invocation("handleHomeDashboard", "/dashboard-alpha/0", "/lovelace/0"),
             ),
             Case("ha_area", "Office", expected = invocation("handleHaAreaPublishOnly")),
         )

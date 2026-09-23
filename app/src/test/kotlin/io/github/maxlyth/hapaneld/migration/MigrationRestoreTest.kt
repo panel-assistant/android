@@ -50,7 +50,7 @@ class MigrationRestoreTest {
     @Test fun deviceLocalRowsReturnUnderTheMigrationProofAndNothingElseDoes() {
         val rows = listOf(
             ConfigVault.StateRow("controller-state", "k", "string", "v", 0L),
-            ConfigVault.StateRow("config", "panel_id", "string", "kitchen", 0L),
+            ConfigVault.StateRow("config", "panel_id", "string", "alpha", 0L),
             ConfigVault.StateRow("startup-recovery", "k", "int", "1", 0L),
             ConfigVault.StateRow("unclassified", "k", "string", "v", 0L),
         )
@@ -64,14 +64,14 @@ class MigrationRestoreTest {
     @Test fun theBridgesCompanionEntryForTheSuccessorIsNotCarriedIntoTheSuccessor() {
         val restored = migrationRestoreConfig(
             mapOf(
-                "panel_id" to "kitchen",
+                "panel_id" to "alpha",
                 "kiosk_companion_packages" to
                     "com.example.kept, io.panelassistant.android\nio.github.maxlyth.hapaneld,com.example.other",
             ),
         )
 
         assertEquals("com.example.kept,com.example.other", restored["kiosk_companion_packages"])
-        assertEquals("kitchen", restored["panel_id"])
+        assertEquals("alpha", restored["panel_id"])
     }
 
     @Test fun settingsThatNameTheWritersOwnPackageFollowTheAppToItsNewId() {
@@ -103,7 +103,7 @@ class MigrationRestoreTest {
     }
 
     @Test fun aBackupWithoutCompanionPackagesIsRestoredUntouched() {
-        val values = mapOf("panel_id" to "kitchen")
+        val values = mapOf("panel_id" to "alpha")
 
         assertSame(values, migrationRestoreConfig(values))
     }
