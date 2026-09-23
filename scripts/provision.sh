@@ -8292,6 +8292,15 @@ if [ -n "$ROOT_HELPER_TRANSACTION_KIND" ]; then
   ROOT_HELPER_TRANSACTION_KIND=""
 fi
 
+# The bridge is a different package: installing the successor did not replace its held process.
+# Resume it after helper commit so it can deliver the handover token before the successor waits for
+# the bridge's backup/release. Keeping this lease until EXIT makes health wait on our own hold.
+if [ -n "$UPGRADE_QUIESCE_NONCE" ] && [ "${UPGRADE_QUIESCE_PKG:-$PKG}" != "$PKG" ]; then
+  release_upgrade_quiescence
+  [ -z "$UPGRADE_QUIESCE_NONCE" ] || fail "the previous app has not resumed for the handover" \
+    "The successor and root helper are installed. Re-run this command to finish the handover."
+fi
+
 step "🔑 permissions" "${D}notifications · WRITE_SETTINGS (brightness/screen) · SYSTEM_ALERT_WINDOW (navbar) · a11y (buttons)${X}"
 # Grants degrade gracefully: some vendor builds refuse appops/settings writes from the adb shell.
 # A failed grant must not abort the run — the app works with reduced capability, verify() reports the

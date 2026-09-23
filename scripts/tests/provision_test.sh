@@ -4795,12 +4795,43 @@ assert_log_contains 'cat /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-p
 # quiesced. Its lease is released back to the identity that armed it, not to the one just installed.
 assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
   "the quiesced bridge is released after the successor is installed"
+handover_install_line="$(grep -nE '^adb .* install( |$)' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_commit_line="$(grep -nE 'helper-transaction-[0-9a-f]+.*commit-system' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_release_line="$(grep -n 'RELEASE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_launch_line="$(grep -n 'monkey -p io.panelassistant.android -c android.intent.category.LAUNCHER 1' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$handover_install_line" ] && [ -n "$handover_commit_line" ] && \
+   [ -n "$handover_release_line" ] && [ -n "$handover_launch_line" ] && \
+   [ "$handover_install_line" -lt "$handover_commit_line" ] && \
+   [ "$handover_commit_line" -lt "$handover_release_line" ] && \
+   [ "$handover_release_line" -lt "$handover_launch_line" ]; then
+  pass "bridge quiescence ends after helper commit and before successor launch"
+else
+  fail_test "bridge quiescence ends after helper commit and before successor launch"
+fi
+if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
+  pass "the acknowledged bridge release is not repeated at EXIT"
+else fail_test "the acknowledged bridge release is not repeated at EXIT"; fi
 if grep -Fq 'db=/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' \
      "$TMP/db-observer-script.$MOCK_TARGET" 2>/dev/null; then
   pass "the database observer inspects the bridge's app-data directory"
 else
   fail_test "the database observer inspects the bridge's app-data directory"
 fi
+
+# A failed RELEASE must keep the bridge's lease available to EXIT cleanup, without launching the
+# successor into a wait for a token from the service we still hold down.
+reset_db_txn_state
+MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
+MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RELEASE=fail \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "an unacknowledged bridge release stops before successor launch"
+assert_contains 'previous app has not resumed for the handover' "the retained bridge hold is reported"
+assert_not_contains 'monkey -p io.panelassistant.android|am start -n io.panelassistant.android/' "$MOCK_CALL_LOG" \
+  "a held bridge cannot strand a newly launched successor"
+if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 4 ]; then
+  pass "unacknowledged bridge release retains its nonce for EXIT retry"
+else fail_test "unacknowledged bridge release retains its nonce for EXIT retry"; fi
 
 # The same retained database with NO bridge installed is residue under the install target itself,
 # which this gate has always refused. This is the pair that makes the resolution above load-bearing:

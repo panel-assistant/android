@@ -58,6 +58,39 @@ class SuccessorHandoffTest {
 
     private fun offer(ports: FakePorts) = runBlocking { SuccessorHandoff(ports).offer(successor) }
 
+    @Test fun installedOnlyHandoffNeverResolvesAnAssetForAbsentOrOlderSuccessor() = runBlocking {
+        for (installed in listOf(null, InstalledSuccessor("0.9", setOf(SIGNER)))) {
+            val ports = FakePorts(installed = installed)
+            assertEquals(Outcome.NoSuitableInstalledSuccessor, SuccessorHandoff(ports).offer(successor, allowInstall = false))
+            assertEquals(listOf("helper"), ports.events)
+            assertEquals(installed, ports.installed)
+        }
+    }
+
+    @Test fun installedOnlyHandoffLaunchesCurrentOrNewerSuccessorWithoutUpdating() = runBlocking {
+        for (version in listOf("1.0", "1.1")) {
+            val installed = InstalledSuccessor(version, setOf(SIGNER))
+            val ports = FakePorts(installed = installed)
+            assertEquals(Outcome.Launched, SuccessorHandoff(ports).offer(successor, allowInstall = false))
+            assertEquals(listOf("helper", "helper", "companion $successor", "launch", "token"), ports.events)
+            assertEquals(installed, ports.installed)
+        }
+    }
+
+    @Test fun installedOnlyHandoffRetainsBothHelperGatesAndTheExactSignerGate() = runBlocking {
+        val untrusted = FakePorts(installed = InstalledSuccessor("1.0", setOf(OTHER_SIGNER)))
+        assertEquals(Outcome.UntrustedSuccessor, SuccessorHandoff(untrusted).offer(successor, allowInstall = false))
+        assertEquals(listOf("helper"), untrusted.events)
+        for (refusals in listOf(mutableListOf<String?>("unconfirmed"), mutableListOf(null, "unconfirmed"))) {
+            val ports = FakePorts(
+                installed = InstalledSuccessor("1.0", setOf(SIGNER)),
+                helperRefusals = refusals,
+            )
+            assertEquals(Outcome.HelperNotConfirmed("unconfirmed"), SuccessorHandoff(ports).offer(successor, allowInstall = false))
+            assertTrue(ports.events.all { it == "helper" })
+        }
+    }
+
     @Test fun installsConfirmsBothPreconditionsLaunchesThenDeliversTheTokenInThatOrder() {
         val ports = FakePorts()
 

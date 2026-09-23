@@ -7,6 +7,7 @@ import io.github.maxlyth.hapaneld.CoreInstrumentation
 import java.io.File
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,10 +41,11 @@ class CdpRelayInventoryInstrumentedTest {
     }
 
     private fun probe(proc: File): RelayExposureState {
+        val forbiddenCat = File(proc, "forbidden-per-process-cat")
         val script = """
             cat() {
                 case "${'$'}1" in
-                    */[0-9]*/comm) echo forbidden_per_process_cat >&2; return 99 ;;
+                    */[0-9]*/comm) : > "${forbiddenCat.absolutePath}"; return 99 ;;
                     *) /system/bin/cat "${'$'}@" ;;
                 esac
             }
@@ -52,7 +54,8 @@ class CdpRelayInventoryInstrumentedTest {
         try {
             assertTrue("inventory exceeded the production two-second probe budget", process.waitFor(2, TimeUnit.SECONDS))
             val output = process.inputStream.bufferedReader().use { it.readText() }
-            assertTrue("inventory used an executable per process: $output", "forbidden_per_process_cat" !in output)
+            // The old command redirects cat's stderr inside command substitution. A file survives both.
+            assertFalse("inventory used an executable per process: $output", forbiddenCat.exists())
             return relayExposureState(output.takeIf { process.exitValue() == 0 })
         } finally {
             process.destroy()
