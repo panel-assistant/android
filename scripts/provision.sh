@@ -7348,8 +7348,16 @@ copy_root_file_binary() {
   # Some vendor su implementations allocate a PTY even behind exec-out and expand LF to CRLF.
   # Keep binary bytes off that stream. The already-closed file is copied unchanged, not re-backed-up
   # by SQLite, so the app's exact size/digest receipt remains authoritative after adb pull.
+  # A failed mkdir grants no cleanup authority over a pre-existing path. Defer host signals until
+  # admission is known; an ambiguous lost response can leave only an empty root-owned directory.
+  snapshot_txn_defer_host_signals
+  if ! run_root "umask 077; mkdir -m 700 $stage" >/dev/null 2>&1; then
+    snapshot_txn_restore_host_signals
+    return 1
+  fi
   SNAPSHOT_TXN_REMOTE="$stage"
-  run_root "umask 077; mkdir -m 700 $stage && cp $source $stage/ha-paneld.db && chown shell:shell $stage $stage/ha-paneld.db && chmod 700 $stage && chmod 600 $stage/ha-paneld.db" >/dev/null 2>&1 || return 1
+  snapshot_txn_restore_host_signals
+  run_root "cp $source $stage/ha-paneld.db && chown shell:shell $stage $stage/ha-paneld.db && chmod 700 $stage && chmod 600 $stage/ha-paneld.db" >/dev/null 2>&1 || return 1
   run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" pull "$stage/ha-paneld.db" "$destination" >/dev/null 2>&1
 }
 
