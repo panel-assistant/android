@@ -875,6 +875,7 @@ case "${1:-}" in
     ;;
   install)
     : > "$STATE_DIR/apk-install-attempted"
+    [ -z "${MOCK_APK_INSTALL_DELAY_SECONDS:-}" ] || /bin/sleep "$MOCK_APK_INSTALL_DELAY_SECONDS"
     # Which identity was installed is observable from the asset name the release publishes it under.
     case "${!#}" in */panel-assistant-*.apk) : > "$STATE_DIR/successor-installed" ;; esac
     if [[ "${!#}" == */shizuku.apk ]] && [ "${MOCK_SHIZUKU_INSTALL:-ok}" = block ]; then
@@ -985,6 +986,26 @@ case "${1:-}" in
             [ -z "${MOCK_UPGRADE_PREPARE_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_UPGRADE_PREPARE_PID_FILE"
             exec /bin/sleep "${MOCK_UPGRADE_PREPARE_BLOCK_SECONDS:-30}"
             ;;
+          *) exit 1 ;;
+        esac
+        ;;
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
+        nonce="${command_text##*--es nonce }"
+        case "${MOCK_UPGRADE_RENEW:-ok}" in
+          ok) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce" ;;
+          unsupported) printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:unknown_action"\n' ;;
+          fail_after_helper)
+            if [ -f "$STATE_DIR/active-helper-transaction" ]; then
+              printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:renewal_failed"\n'
+            else printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce"; fi ;;
+          refused) printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:renewal_failed"\n' ;;
+          wrong_nonce) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:00000000000000000000000000000000"\n' ;;
+          duplicate) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce" "$nonce" ;;
+          malformed) printf 'Broadcast completed: result=0\n' ;;
+          timeout)
+            [ -z "${MOCK_UPGRADE_RENEW_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_UPGRADE_RENEW_PID_FILE"
+            exec /bin/sleep 30 ;;
           *) exit 1 ;;
         esac
         ;;

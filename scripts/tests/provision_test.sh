@@ -4527,6 +4527,105 @@ fi
 
 # ── Data-store snapshot: acknowledged quiescence with one legacy fallback ──────────────────────
 if provision_scope_is backup core all shard-backup; then
+# Renewal preserves the original snapshot epoch; only an explicit old-receiver response can retain
+# the legacy bounded hold. All other failures stop before helper/APK mutation and release custody.
+reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RENEW=unsupported run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "an explicit old receiver retains the bounded nonrenewable upgrade path"
+assert_contains 'does not support hold renewal' "legacy renewal compatibility is explicit rather than a silent failure"
+assert_log_contains 'RENEW_UPGRADE.*--es nonce [0-9a-f]{32}' "a READY receipt negotiates renewal before using the hold"
+for renewal_failure in refused wrong_nonce duplicate malformed timeout; do
+  reset_db_txn_state
+  MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RENEW="$renewal_failure" UPGRADE_RENEW_TIMEOUT_SECONDS=1 \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "initial renewal $renewal_failure cannot claim continuing quiescence" 'clean-database hold could not be renewed'
+  assert_not_contains '^adb .* install( |$)|helper-transaction-.* install-' "$MOCK_CALL_LOG" \
+    "initial renewal $renewal_failure refuses before helper or APK mutation"
+  assert_log_contains 'RELEASE_UPGRADE' "initial renewal $renewal_failure retains release custody"
+done
+reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RENEW=fail_after_helper \
+  run_provision "$MOCK_TARGET" --apk "$HELPER_RELEASE_APK" --release-tag v0.9.4-rc1 --no-tame
+assert_failure "a lost hold after helper preparation refuses package consumption" 'original clean-database hold could not be renewed'
+assert_contains 'rolled back and verified' "a package-boundary renewal failure verifies helper rollback"
+assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "a package-boundary renewal failure leaves the APK untouched"
+reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready UPGRADE_RENEW_INTERVAL_SECONDS=1 MOCK_APK_INSTALL_DELAY_SECONDS=2 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "same-package installation consumes its renewable hold without a false renewal failure"
+if awk '/^adb .* install( |$)/ { installing=1 } installing && /RENEW_UPGRADE/ { found=1 } END { exit found ? 1 : 0 }' "$MOCK_CALL_LOG"; then
+  pass "same-package consumption stops renewal before package-manager process replacement"
+else fail_test "same-package consumption stops renewal before package-manager process replacement"; fi
+
+# Execute the actual guard with real bounded subprocesses. A signal during the renewal command must
+# not orphan its adb process, and an unexpectedly dead guard must never mean a successful lease.
+renewal_guard_report="$TMP/renewal-guard.report"
+(
+  eval "$(sed -n '/^run_with_deadline()/,/^# Resolve the executable/{ /^# Resolve the executable/d; p; }' "$PROVISION")"
+  eval "$(sed -n '/^renew_upgrade_quiescence()/,/^prepare_upgrade_quiescence()/{ /^prepare_upgrade_quiescence()/d; p; }' "$PROVISION")"
+  UPGRADE_QUIESCE_NONCE=0123456789abcdef0123456789abcdef
+  UPGRADE_QUIESCE_PKG=io.github.maxlyth.hapaneld
+  UPGRADE_RENEW_GUARD_PID=""; UPGRADE_RENEW_GUARD_FAILURE=""
+  UPGRADE_RENEW_INTERVAL_SECONDS=1; UPGRADE_RENEW_TIMEOUT_SECONDS=1
+  TARGET=fixture
+  app_component() { printf '%s/%s\n' "$1" "$2"; }
+  host_database_gate_refuse() { printf 'REFUSED:%s\n' "$1"; return 1; }
+  adb_exec() {
+    printf '%s\n' "$*" >> "$TMP/renewal-guard.calls"
+    if [ -e "$TMP/renewal-guard.block" ]; then
+      printf '%s\n' "$BASHPID" > "$TMP/renewal-guard.child"
+      exec /bin/sleep 30
+    fi
+    printf 'Broadcasting: Intent { fixture }\nBroadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$UPGRADE_QUIESCE_NONCE"
+  }
+  start_upgrade_renewal_guard
+  renewal_guard_pid="$UPGRADE_RENEW_GUARD_PID"
+  /bin/sleep 1.2
+  [ "$(wc -l < "$TMP/renewal-guard.calls")" -ge 2 ] && echo periodic
+  : > "$UPGRADE_RENEW_GUARD_FAILURE"
+  printf 'failed\n' > "$UPGRADE_RENEW_GUARD_FAILURE"
+  if require_upgrade_renewal; then echo incorrectly-recovered; else echo latched; fi
+  stop_upgrade_renewal_guard
+  processes_gone "$renewal_guard_pid" && echo stopped
+  start_upgrade_renewal_guard
+  renewal_guard_pid="$UPGRADE_RENEW_GUARD_PID"
+  kill -KILL "$renewal_guard_pid"
+  wait "$renewal_guard_pid" 2>/dev/null || true
+  if require_upgrade_renewal; then echo incorrectly-alive; else echo dead-refused; fi
+  stop_upgrade_renewal_guard
+  start_upgrade_renewal_guard
+  renewal_guard_pid="$UPGRADE_RENEW_GUARD_PID"
+  : > "$TMP/renewal-guard.block"
+  for renewal_wait in {1..60}; do
+    [ ! -s "$TMP/renewal-guard.child" ] || break
+    /bin/sleep 0.05
+  done
+  [ -s "$TMP/renewal-guard.child" ] && echo entered-renewal
+  renewal_stop_started=$SECONDS
+  stop_upgrade_renewal_guard
+  [ "$((SECONDS - renewal_stop_started))" -lt 10 ] && echo bounded-stop
+  processes_gone "$renewal_guard_pid" "$(cat "$TMP/renewal-guard.child")" && echo child-reaped
+  rm -f "$TMP/renewal-guard.block"
+  export TMP TARGET UPGRADE_QUIESCE_NONCE UPGRADE_QUIESCE_PKG UPGRADE_RENEW_INTERVAL_SECONDS UPGRADE_RENEW_TIMEOUT_SECONDS
+  export UPGRADE_RENEW_GUARD_PID UPGRADE_RENEW_GUARD_FAILURE
+  export -f run_with_deadline renew_upgrade_quiescence start_upgrade_renewal_guard app_component adb_exec
+  bash -c 'start_upgrade_renewal_guard; printf "%s\n" "$UPGRADE_RENEW_GUARD_PID" > "$TMP/renewal-orphan.pid"; exec /bin/sleep 30' &
+  renewal_owner_pid=$!
+  for renewal_wait in {1..60}; do
+    [ ! -s "$TMP/renewal-orphan.pid" ] || break
+    /bin/sleep 0.05
+  done
+  renewal_orphan_pid="$(cat "$TMP/renewal-orphan.pid")"
+  kill -KILL "$renewal_owner_pid"
+  wait "$renewal_owner_pid" 2>/dev/null || true
+  if processes_gone "$renewal_orphan_pid"; then echo owner-death
+  else kill "$renewal_orphan_pid" 2>/dev/null || true; fi
+) > "$renewal_guard_report" 2>&1
+for renewal_proof in periodic latched stopped dead-refused entered-renewal bounded-stop child-reaped owner-death; do
+  if grep -qx "$renewal_proof" "$renewal_guard_report"; then pass "renewal guard proves $renewal_proof"
+  else fail_test "renewal guard proves $renewal_proof"; fi
+done
+
 reset_db_txn_state
 unrelated_direct_stage="$TMP/db-txn-sandbox/data/local/tmp/.hapaneld-db-txn.ffffffffffffffffffffffffffffffff"
 mkdir -p "$unrelated_direct_stage"
@@ -4535,6 +4634,11 @@ MOCK_UPGRADE_PREPARE=ready MOCK_SU_ONLCR=1 run_provision "$MOCK_TARGET" --apk "$
 assert_success "a receipt-capable build upgrades through the quiesced direct-copy path"
 assert_marker_captured "the receipt-bound direct copy earns the captured marker"
 assert_log_contains 'PREPARE_UPGRADE.*--es nonce [0-9a-f]{32}' "PREPARE carries one exact lowercase nonce"
+ready_nonce="$(sed -n 's/.*PREPARE_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG" | head -1)"
+renewed_nonces="$(sed -n 's/.*RENEW_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG" | sort -u)"
+if [ -n "$ready_nonce" ] && [ "$renewed_nonces" = "$ready_nonce" ]; then
+  pass "every renewal retains the original READY nonce"
+else fail_test "every renewal retains the original READY nonce"; fi
 assert_log_contains 'shell su 0 .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "the join-style root route stages the closed database byte for byte"
 assert_not_contains 'exec-out .*ha-paneld.db|^sqlite3 \.backup$' "$MOCK_CALL_LOG" "READY keeps database bytes off the root output stream without another SQLite backup"
 assert_not_contains 'shell df -P -k /data' "$MOCK_CALL_LOG" "the READY path has no fixed capacity floor"
@@ -4969,9 +5073,12 @@ else fail_test "source disowns RELEASE custody only inside the exact-response br
 reset_db_txn_state
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
 MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
-MOCK_UPGRADE_PREPARE=ready \
+MOCK_UPGRADE_PREPARE=ready UPGRADE_RENEW_INTERVAL_SECONDS=1 MOCK_APK_INSTALL_DELAY_SECONDS=2 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a panel still carrying the bridge is provisioned with the successor"
+if awk '/^adb .* install( |$)/ { installing=1 } /RELEASE_UPGRADE/ { installing=0 } installing && /RENEW_UPGRADE/ { found=1 } END { exit found ? 0 : 1 }' "$MOCK_CALL_LOG"; then
+  pass "the bridge hold continues renewing while the successor installation is in progress"
+else fail_test "the bridge hold continues renewing while the successor installation is in progress"; fi
 assert_contains 'schema 9 is inside candidate boundary' \
   "the bridge's database is what the candidate boundary is measured against"
 assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \

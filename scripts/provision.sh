@@ -208,6 +208,7 @@ SNAPSHOT_TXN_HOST_DB_WORK=""; SNAPSHOT_TXN_HOST_DB_TARGET=""
 SNAPSHOT_TXN_HOST_RECEIPT_WORK=""; SNAPSHOT_TXN_HOST_RECEIPT_TARGET=""
 SNAPSHOT_TXN_DEFERRED_SIGNAL=""
 UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""
+UPGRADE_RENEW_GUARD_PID=""; UPGRADE_RENEW_GUARD_FAILURE=""
 UPGRADE_RECEIPT_PID=""; UPGRADE_RECEIPT_VERSION_CODE=""; UPGRADE_RECEIPT_DATABASE_BYTES=""
 UPGRADE_RECEIPT_DATABASE_SHA256=""; UPGRADE_RECEIPT_USER_VERSION=""; UPGRADE_RECEIPT_APP_STATE_ROWS=""
 SETUP_JOURNEY_AVAILABLE=0; SETUP_COMPLETE=0; SETUP_REPAIR=0; SETUP_NEXT=""; SETUP_NEXT_STATUS=""; SETUP_NEXT_DETAIL=""
@@ -2804,6 +2805,11 @@ terminate_root_helper_apk_install() {
 run_adb_install_attempt() {
   local status deadline
   assert_candidate_apk_unchanged
+  require_upgrade_renewal
+  # Replacing this same package consumes its process-local hold. Its death is expected from this
+  # point. Continue bridge renewal best-effort during successor installation; post-commit handoff
+  # obtains its own fresh backup and can also resume a bridge whose hold expired after consumption.
+  if [ "${UPGRADE_QUIESCE_PKG:-$PKG}" = "$PKG" ]; then stop_upgrade_renewal_guard; fi
   ROOT_HELPER_APK_INSTALL_OUTPUT_FILE="$(mktemp)"
   # The only adb execution that does not route through adb_exec, because this one is backgrounded and
   # `terminate_root_helper_apk_install` signals a single PID rather than a process group: a shell
@@ -7381,6 +7387,75 @@ snapshot_txn_reject_unsafe() {
   snapshot_txn_refuse "$reason" "$advice"
 }
 
+renew_upgrade_quiescence() {
+  local output timeout="${UPGRADE_RENEW_TIMEOUT_SECONDS:-10}"
+  case "$timeout" in ''|*[!0-9]*|0) timeout=10 ;; esac
+  [ "$timeout" -le 30 ] || timeout=10
+  output="$(run_with_deadline "$timeout" adb_exec -s "$TARGET" shell am broadcast --user 0 \
+    -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE \
+    -n "$(app_component "$UPGRADE_QUIESCE_PKG" .UpgradeControlReceiver)" \
+    --es nonce "$UPGRADE_QUIESCE_NONCE" 2>/dev/null | tr -d '\r')" || return 1
+  output="$(printf '%s\n' "$output" | grep '^Broadcast completed:' || true)"
+  [ "$output" = "Broadcast completed: result=-1, data=\"HAPANELD_UPGRADE_RENEWED_V1:$UPGRADE_QUIESCE_NONCE\"" ] && return 0
+  # Only an explicit old-receiver response negotiates the legacy bounded hold. Silence, a malformed
+  # receipt and renewal_failed cannot establish either compatibility or continuing ownership.
+  [ "$output" = 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:unknown_action"' ] && return 2
+  return 1
+}
+
+start_upgrade_renewal_guard() {
+  local status owner_pid="$$" interval="${UPGRADE_RENEW_INTERVAL_SECONDS:-30}"
+  case "$interval" in ''|*[!0-9]*|0) interval=30 ;; esac
+  [ "$interval" -le 30 ] || interval=30
+  if renew_upgrade_quiescence; then :
+  else
+    status=$?
+    if [ "$status" = 2 ]; then
+      warn "the installed app does not support hold renewal; retaining its bounded hold and unchanged database gates"
+      return 0
+    fi
+    return 1
+  fi
+  UPGRADE_RENEW_GUARD_FAILURE="$(mktemp)" || return 1
+  (
+    sleep_pid=""
+    stop_upgrade_guard_sleep() {
+      [ -z "$sleep_pid" ] || kill "$sleep_pid" >/dev/null 2>&1 || true
+      [ -z "$sleep_pid" ] || wait "$sleep_pid" >/dev/null 2>&1 || true
+      exit 0
+    }
+    trap 'stop_upgrade_guard_sleep' INT TERM
+    while :; do
+      /bin/sleep "$interval" &
+      sleep_pid=$!
+      wait "$sleep_pid" || exit 0
+      sleep_pid=""
+      kill -0 "$owner_pid" >/dev/null 2>&1 || exit 0
+      renew_upgrade_quiescence || { printf 'failed\n' > "$UPGRADE_RENEW_GUARD_FAILURE"; exit 1; }
+    done
+  ) >/dev/null 2>&1 &
+  UPGRADE_RENEW_GUARD_PID=$!
+}
+
+stop_upgrade_renewal_guard() {
+  if [ -n "$UPGRADE_RENEW_GUARD_PID" ]; then
+    kill "$UPGRADE_RENEW_GUARD_PID" >/dev/null 2>&1 || true
+    wait "$UPGRADE_RENEW_GUARD_PID" >/dev/null 2>&1 || true
+    UPGRADE_RENEW_GUARD_PID=""
+  fi
+  [ -z "$UPGRADE_RENEW_GUARD_FAILURE" ] || rm -f "$UPGRADE_RENEW_GUARD_FAILURE"
+  UPGRADE_RENEW_GUARD_FAILURE=""
+}
+
+require_upgrade_renewal() {
+  [ -n "$UPGRADE_RENEW_GUARD_FAILURE" ] || return 0
+  if [ -s "$UPGRADE_RENEW_GUARD_FAILURE" ] ||
+     ! kill -0 "$UPGRADE_RENEW_GUARD_PID" >/dev/null 2>&1 ||
+     ! renew_upgrade_quiescence; then
+    host_database_gate_refuse "the original clean-database hold could not be renewed"
+  fi
+}
+
 prepare_upgrade_quiescence() {
   local nonce output receipt ready_count tag receipt_nonce receipt_pid receipt_vcode
   local receipt_bytes receipt_sha receipt_uv receipt_rows receipt_extra timeout
@@ -7428,6 +7503,7 @@ EOF
 
 release_upgrade_quiescence() {
   local nonce pkg output timeout attempt released_count root_start_failed=0
+  stop_upgrade_renewal_guard
   nonce="${UPGRADE_QUIESCE_NONCE:-}"
   [ -n "$nonce" ] || return 0
   # RELEASE goes back to the identity that armed, never to the one this run happens to install.
@@ -7673,6 +7749,8 @@ snapshot_panel_database() {
   fi
   base="$base.break-glass"
   if prepare_upgrade_quiescence; then
+    start_upgrade_renewal_guard || fail "the clean-database hold could not be renewed" \
+      "No helper or APK was changed; the original hold will be released before exit."
     snapshot_prepared_database "$base" "$stage"
     return 0
   fi
@@ -8146,7 +8224,10 @@ host_database_compatibility_gate
 # cannot license reset/helper/Shizuku/APK/configuration mutation. The final digest assertion binds
 # this re-observation to the exact candidate bytes Android will receive.
 # DB_COMPAT_MUTATION_ANCHOR: HOST_CONSUME_REVALIDATION
+DB_GATE_PHASE=consume
+require_upgrade_renewal
 host_database_compatibility_gate consume
+require_upgrade_renewal
 
 # THE mutation gate for an undecided route. The capture above may refuse on an unknown verdict and
 # an ordinary backup failure may be advisory, but neither condition authorises mutating a panel whose
@@ -8405,7 +8486,10 @@ fi
 # consume-time check. Re-observe one final time immediately beside ha-paneld package replacement. A
 # refusal rolls back this run's uncommitted helper transaction before exiting.
 # DB_COMPAT_MUTATION_ANCHOR: HOST_PACKAGE_REVALIDATION
+DB_GATE_PHASE=package
+require_upgrade_renewal
 host_database_compatibility_gate package
+require_upgrade_renewal
 step "📦 installing" "${D}$APK${X}"
 install_apk
 # Successful package replacement terminates the old quiesced process. A later failure belongs to
