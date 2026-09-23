@@ -4187,7 +4187,7 @@ assert_success "handover retains the existing slow package-manager query allowan
 
 # The existing package classifier owns its child timeout, clamped to the launch wait's remainder.
 handover_wait_started=$SECONDS
-MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=hang APP_HEALTH_TIMEOUT_SECONDS=1 \
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=hang STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=15 APP_HEALTH_TIMEOUT_SECONDS=1 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "a blocked handover package observation remains bounded" 'did not finish its handover'
 if [ $((SECONDS - handover_wait_started)) -lt 10 ]; then
