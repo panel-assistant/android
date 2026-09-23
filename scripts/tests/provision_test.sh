@@ -4501,8 +4501,10 @@ prepare_send_line="$(grep -n -- '-a io.github.maxlyth.hapaneld.action.PREPARE_UP
 if [ -n "$nonce_owner_line" ] && [ -n "$prepare_send_line" ] && [ "$nonce_owner_line" -lt "$prepare_send_line" ]; then
   pass "the host retains nonce custody before PREPARE can arm the app"
 else fail_test "the host retains nonce custody before PREPARE can arm the app"; fi
-cleanup_discard_line="$(grep -n 'if type discard_db_snapshot_txn' "$PROVISION" | head -1 | cut -d: -f1)"
-cleanup_release_line="$(grep -n 'if type release_upgrade_quiescence' "$PROVISION" | head -1 | cut -d: -f1)"
+cleanup_source="$TMP/provision-cleanup.sh"
+sed -n '/^cleanup_provision_resources()/,/^}/p' "$PROVISION" > "$cleanup_source"
+cleanup_discard_line="$(grep -n 'if type discard_db_snapshot_txn' "$cleanup_source" | cut -d: -f1)"
+cleanup_release_line="$(grep -n 'if type release_upgrade_quiescence' "$cleanup_source" | cut -d: -f1)"
 if [ -n "$cleanup_discard_line" ] && [ -n "$cleanup_release_line" ] && [ "$cleanup_discard_line" -lt "$cleanup_release_line" ]; then
   pass "abort cleanup releases quiescence only after owned snapshot cleanup"
 else fail_test "abort cleanup releases quiescence only after owned snapshot cleanup"; fi
@@ -5659,16 +5661,20 @@ reset_db_txn_state
 # breakable by a named mutation: the snapshot reaches its final name only through no-replace ln
 # after an existence refusal, and the database and receipt are registered as ONE cleanup unit so a
 # signal in the publication window removes the pair or neither.
-if [ "$(grep -c 'ln "\$pull_tmp" "\$base.db"' "$PROVISION")" -eq 1 ] &&    grep -q 'if \[ -e "\$base.db" \] || \[ -L "\$base.db" \]; then' "$PROVISION"; then
+legacy_publisher="$TMP/legacy-publisher.sh"
+# This function contains a device-script heredoc with its own unindented braces. Bound the
+# extraction by the next host function, not the first closing brace inside that heredoc.
+sed -n '/^snapshot_panel_database()/,/^reset_panel_config()/p' "$PROVISION" > "$legacy_publisher"
+if [ "$(grep -c 'ln "\$pull_tmp" "\$base.db"' "$legacy_publisher")" -eq 1 ] &&    grep -q 'if \[ -e "\$base.db" \] || \[ -L "\$base.db" \]; then' "$legacy_publisher"; then
   pass "publication is no-replace: existence refusal plus hardlink finalization"
 else fail_test "publication is no-replace: existence refusal plus hardlink finalization"; fi
-if [ "$(grep -c 'SNAPSHOT_TXN_HOST_DB="\$base.db"' "$PROVISION")" -eq 1 ] &&
-   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$PROVISION" &&
+if [ "$(grep -c 'SNAPSHOT_TXN_HOST_DB="\$base.db"' "$legacy_publisher")" -eq 1 ] &&
+   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$legacy_publisher" &&
    grep -q 'for stale in "\${SNAPSHOT_TXN_HOST_DB:-}" "\${SNAPSHOT_TXN_HOST_RECEIPT:-}"' "$PROVISION"; then
   pass "the database and its receipt are registered as one cleanup unit, in separate unsplittable variables"
 else fail_test "the database and its receipt are registered as one cleanup unit, in separate unsplittable variables"; fi
-receipt_guard_line="$(grep -n 'if \[ -e "\$receipt" \] || \[ -L "\$receipt" \]; then' "$PROVISION" | cut -d: -f1)"
-receipt_owner_line="$(grep -n 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$PROVISION" | tail -1 | cut -d: -f1)"
+receipt_guard_line="$(grep -n 'if \[ -e "\$receipt" \] || \[ -L "\$receipt" \]; then' "$legacy_publisher" | cut -d: -f1)"
+receipt_owner_line="$(grep -n 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$legacy_publisher" | cut -d: -f1)"
 if [ -n "$receipt_guard_line" ] && [ -n "$receipt_owner_line" ] && [ "$receipt_guard_line" -lt "$receipt_owner_line" ]; then
   pass "a pre-existing receipt is refused before this run claims ownership"
 else fail_test "a pre-existing receipt is refused before this run claims ownership"; fi
@@ -5676,23 +5682,25 @@ if grep -q '\[ "\$SNAPSHOT_TXN_HOST_DB_WORK" -ef "\$SNAPSHOT_TXN_HOST_DB_TARGET"
    grep -q '\[ "\$SNAPSHOT_TXN_HOST_RECEIPT_WORK" -ef "\$SNAPSHOT_TXN_HOST_RECEIPT_TARGET" \]' "$PROVISION"; then
   pass "publication-window cleanup removes final paths only when their working hardlink proves ownership"
 else fail_test "publication-window cleanup removes final paths only when their working hardlink proves ownership"; fi
-if [ "$(grep -c 'snapshot_txn_defer_host_signals' "$PROVISION")" -eq 7 ] &&
-   [ "$(grep -c 'snapshot_txn_restore_host_signals' "$PROVISION")" -eq 9 ] &&
-   grep -q 'SNAPSHOT_TXN_HOST_DB_WORK="\$pull_tmp"' "$PROVISION" &&
-   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT_WORK="\$receipt_tmp"' "$PROVISION"; then
+if [ "$(grep -c '^  snapshot_txn_defer_host_signals$' "$legacy_publisher")" -eq 3 ] &&
+   [ "$(grep -c '^  snapshot_txn_restore_host_signals$' "$legacy_publisher")" -eq 3 ] &&
+   grep -q 'SNAPSHOT_TXN_HOST_DB_WORK="\$pull_tmp"' "$legacy_publisher" &&
+   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT_WORK="\$receipt_tmp"' "$legacy_publisher"; then
   pass "temporary creation defers signals until database and receipt ownership are registered"
 else fail_test "temporary creation defers signals until database and receipt ownership are registered"; fi
-legacy_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | tail -1 | cut -d: -f1)"
-legacy_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""$' "$PROVISION" | tail -1 | cut -d: -f1)"
-legacy_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | tail -1 | cut -d: -f1)"
-legacy_remote_cleanup_line="$(grep -n 'run_root "rm -f \${stage}-script && rm -rf \$stage"' "$PROVISION" | tail -1 | cut -d: -f1)"
+legacy_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$legacy_publisher" | tail -1 | cut -d: -f1)"
+legacy_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""$' "$legacy_publisher" | cut -d: -f1)"
+legacy_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$legacy_publisher" | tail -1 | cut -d: -f1)"
+legacy_remote_cleanup_line="$(grep -n 'run_root "rm -f \${stage}-script && rm -rf \$stage"' "$legacy_publisher" | cut -d: -f1)"
 if [ -n "$legacy_handoff_defer_line" ] && [ "$legacy_handoff_defer_line" -lt "$legacy_db_disown_line" ] &&
    [ "$legacy_db_disown_line" -lt "$legacy_handoff_restore_line" ] &&
    [ "$legacy_handoff_restore_line" -lt "$legacy_remote_cleanup_line" ]; then
   pass "legacy accepted database and receipt handoff is signal-atomic before remote cleanup"
 else fail_test "legacy accepted database and receipt handoff is signal-atomic before remote cleanup"; fi
-restore_handler_line="$(grep -n "trap 'handle_provision_signal 130' INT" "$PROVISION" | tail -1 | cut -d: -f1)"
-read_deferred_line="$(grep -n 'deferred="\$SNAPSHOT_TXN_DEFERRED_SIGNAL"' "$PROVISION" | cut -d: -f1)"
+restore_source="$TMP/snapshot-signal-restore.sh"
+sed -n '/^snapshot_txn_restore_host_signals()/,/^}/p' "$PROVISION" > "$restore_source"
+restore_handler_line="$(grep -n "trap 'handle_provision_signal 130' INT" "$restore_source" | cut -d: -f1)"
+read_deferred_line="$(grep -n 'deferred="\$SNAPSHOT_TXN_DEFERRED_SIGNAL"' "$restore_source" | cut -d: -f1)"
 if [ -n "$restore_handler_line" ] && [ -n "$read_deferred_line" ] && [ "$restore_handler_line" -lt "$read_deferred_line" ]; then
   pass "real signal handlers are restored before the deferred signal is read or cleared"
 else fail_test "real signal handlers are restored before the deferred signal is read or cleared"; fi
