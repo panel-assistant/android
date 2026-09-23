@@ -18,6 +18,9 @@ fi
 
 printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?MOCK_CALL_LOG is required}"
 STATE_DIR="${MOCK_STATE_DIR:-$(dirname "$MOCK_CALL_LOG")}"
+case "$*" in *' -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR'*)
+  : > "$STATE_DIR/handoff-started" ;;
+esac
 MOCK_DIAG_ID="${MOCK_DIAG_ID:-abcdef0123456789abcdef0123456789}"
 HELPER_STATE_FIXTURE="$(cd "$(dirname "$0")" && pwd)/helper-state"
 # A clean panel has no package at all. Without this the fixture would silently re-create one and a
@@ -287,6 +290,22 @@ pm_marked_probe_reply() {
     io.github.maxlyth.hapaneld) probe_installed="$([ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] && echo yes || echo no)" ;;
     *) probe_installed="$([ -f "$STATE_DIR/installed-apk" ] && echo yes || echo no)" ;;
   esac
+  if [ "$probe_pkg" = io.github.maxlyth.hapaneld ] && [ -f "$STATE_DIR/handoff-started" ]; then
+    case "${MOCK_HANDOVER_PRESENCE:-ok}" in
+      unknown) other=truncated ;;
+      hang) /bin/sleep 30 ;;
+      present) ;;
+      slow|ok)
+        [ "${MOCK_HANDOVER_PRESENCE:-ok}" != slow ] || /bin/sleep 6
+        handover_probes=0
+        [ ! -f "$STATE_DIR/handoff-health-probes" ] || handover_probes="$(cat "$STATE_DIR/handoff-health-probes")"
+        if [ "$handover_probes" -gt "$(( ${MOCK_HANDOVER_BRIDGE_PROBES:-0} + ${MOCK_HANDOVER_HELD_PROBES:-0} ))" ]; then
+          probe_installed=no
+          printf 'handover-legacy-absent\n' >> "$MOCK_CALL_LOG"
+        fi
+        ;;
+    esac
+  fi
   printf 'HAPANELD_PKG_BEGIN:%s\n' "$nonce"
   pm_marked_paths "${MOCK_PM_PATH:-ok}" "package:/data/app/$probe_pkg/base.apk" "$probe_installed"
   printf 'HAPANELD_PKG_TARGET:%s:%s\n' "$nonce" "$trc"

@@ -290,6 +290,20 @@ JSON
     if [ "${MOCK_STOPPED_STATE:-0}" = 1 ] && [ -f "${MOCK_STATE_DIR:?}/package-stopped" ]; then
       exit 22
     fi
+    if [ -f "${MOCK_STATE_DIR:?}/handoff-started" ]; then
+      handover_probes=0
+      [ ! -f "$MOCK_STATE_DIR/handoff-health-probes" ] || handover_probes="$(cat "$MOCK_STATE_DIR/handoff-health-probes")"
+      handover_probes=$((handover_probes + 1))
+      printf '%s\n' "$handover_probes" > "$MOCK_STATE_DIR/handoff-health-probes"
+      health_package=io.panelassistant.android
+      if [ "$handover_probes" -le "${MOCK_HANDOVER_BRIDGE_PROBES:-0}" ]; then
+        health_package=io.github.maxlyth.hapaneld
+      fi
+      health_package="${MOCK_HANDOVER_HEALTH_PACKAGE:-$health_package}"
+      printf 'handover-health package=%s probe=%s\n' "$health_package" "$handover_probes" >> "$MOCK_CALL_LOG"
+      printf '%s test health pkg=%s\n' "${MOCK_HANDOVER_HEALTH_PREFIX:-ha-paneld}" "$health_package"
+      exit 0
+    fi
     printf 'ha-paneld test health\n'
     ;;
   */api/v1/power-safety/state)

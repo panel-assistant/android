@@ -8593,7 +8593,7 @@ fi
 # Wait up to $1 seconds for the agent to answer. Deliberately does NOT relaunch while waiting: a
 # repeat launch during first-run migration restarts the very work being waited on.
 wait_for_launch_health() {
-  local budget="$1" announced=0 deadline remaining probe
+  local budget="$1" handover="${2:-0}" announced=0 deadline remaining probe health health_pkg presence
   # Bound by a real DEADLINE, and never start work that would cross it: checking elapsed only at the
   # top of the loop let a final curl plus sleep overrun the budget by their combined cost.
   deadline=$(( SECONDS + budget ))
@@ -8602,7 +8602,20 @@ wait_for_launch_health() {
     [ "$remaining" -gt 0 ] || break
     probe=2
     [ "$remaining" -ge "$probe" ] || probe="$remaining"
-    curl -fsS --max-time "$probe" "$URL/health" >/dev/null 2>&1 && return 0
+    if health="$(curl -fsS --max-time "$probe" "$URL/health" 2>/dev/null)"; then
+      [ "$handover" != 0 ] || return 0
+      # Both apps answer on the same port. Even the successor serves health while held for restore;
+      # only its removal of the bridge proves restore, restart, HOME and connection checks completed.
+      health_pkg="$(printf '%s\n' "$health" | awk '{for (i=1; i<=NF; i++) if ($i ~ /^pkg=/) print substr($i,5)}')"
+      if [[ "$health" == ha-paneld\ * ]] && [ "$health_pkg" = "$PKG" ]; then
+        remaining=$(( deadline - SECONDS ))
+        [ "$remaining" -gt 0 ] || break
+        probe="$STORAGE_HEALTH_PACKAGE_QUERY_SECONDS"
+        [ "$remaining" -ge "$probe" ] || probe="$remaining"
+        presence="$(classify_package_presence "$probe" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+        [ "$presence" != absent ] || return 0
+      fi
+    fi
     if [ "$announced" = 0 ] && [ $(( budget - (deadline - SECONDS) )) -ge "$APP_LAUNCH_PROBE_SECONDS" ]; then
       announced=1
       echo "   ${D}still starting — the first launch after an upgrade migrates the database; allowing up to ${budget}s${X}"
@@ -8632,7 +8645,14 @@ start_panel_agent() {
 
 step "▶️  starting" "the panel agent"
 start_panel_agent launcher || true
-if wait_for_launch_health "$APP_LAUNCH_PROBE_SECONDS"; then
+if [ "${handoff_bridge_presence:-absent}" = present ]; then
+  # A direct re-launch would restart the migration being observed. Launch once, then wait for its
+  # own completion before reading the provisioning plan or applying any settings to this endpoint.
+  if wait_for_launch_health "$APP_HEALTH_TIMEOUT_SECONDS" 1; then AGENT_HEALTHY=1; else
+    fail "the installed successor did not finish its handover on $URL within ${APP_HEALTH_TIMEOUT_SECONDS}s" \
+      "The APK and helper are installed. The handover may still be running; no configuration was applied or verified. Re-run this command after it completes."
+  fi
+elif wait_for_launch_health "$APP_LAUNCH_PROBE_SECONDS"; then
   AGENT_HEALTHY=1
 else
   # Escalate ONCE, and only while the agent is still not answering: a second start restarts the
