@@ -142,7 +142,7 @@ LEGACY_PKG="io.github.maxlyth.hapaneld"
 # against the package half of the component, which names a real class only for the legacy id.
 # AppIdentity.className encodes the same rule inside the app.
 CODE_PACKAGE="io.github.maxlyth.hapaneld"
-# The installed package whose app-private data this run reads. resolve_data_package fills it once.
+# The installed package whose app-private data this run reads; the database gate pins its owner.
 DATA_PKG=""
 RELEASE_CERT_SHA256="ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 RELEASE_HELPER_BUILD_ID=""
@@ -963,9 +963,8 @@ classify_package_presence() {
 
 # Which installed package holds this panel's ha-paneld data? Both identities may be installed during
 # the handover, and before it begins the bridge is the only one there. The successor is preferred
-# because it owns the state as soon as it exists, and the bridge answers for it until then. Resolved
-# once per run: the answer must not change between the observation that reads a database and the
-# mutation that acts on it.
+# by default. The rooted database gate can prove that an installed successor is still passive and
+# pin the bridge instead; that proof is rechecked at every gate, not inferred from installation.
 resolve_data_package() {
   local verdict
   [ -z "$DATA_PKG" ] || return 0
@@ -6326,9 +6325,10 @@ cleanup_root_database_observer() {
 }
 
 inspect_root_database_compatibility() {
-  local command out begin end primary primary_fingerprint recovery retained inventory inventory_fingerprint observation_nonce
+  local command out begin end primary primary_fingerprint recovery retained inventory inventory_fingerprint observation_nonce passive_owner
   local observer_stage observer_script observer_owner script_file script_sha panel_sha primary_mode
   resolve_data_package
+  local observed_package="${1:-$DATA_PKG}" passive_owner_check="${2:-0}"
   observation_nonce="$(host_transaction_id)" || return 1
   observer_stage="/data/local/tmp/.hapaneld-db-observer.$observation_nonce"
   observer_script="${observer_stage}-script"
@@ -6341,6 +6341,45 @@ db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db
 minimum=@MINIMUM@
 maximum=@MAXIMUM@
 primary_mode=@PRIMARY_MODE@
+passive_owner_check=@PASSIVE_OWNER_CHECK@
+passive_owner_proof() {
+  successor_app=/data/data/io.panelassistant.android
+  legacy_app=/data/data/io.github.maxlyth.hapaneld
+  # Enumerate each parent before interpreting an absent child. A dangling symlink or an
+  # inaccessible parent is not absence, and any successor migration record defeats fallback.
+  for owner_app in "$successor_app" "$legacy_app"; do
+    owner_dir=$owner_app
+    [ ! -L "$owner_dir" ] && [ -d "$owner_dir" ] && [ -r "$owner_dir" ] && [ -x "$owner_dir" ] || { echo unreadable; return; }
+    owner_entries=$(ls -1A "$owner_dir" 2>/dev/null) || { echo unreadable; return; }
+    for owner_child in no_backup identity-migration; do
+      owner_lookup=0
+      printf "%s\n" "$owner_entries" | grep -qx "$owner_child" || owner_lookup=$?
+      case "$owner_lookup" in 0|1) ;; *) echo unreadable; return ;; esac
+      if [ "$owner_lookup" = 1 ]; then
+        owner_dir=""
+        break
+      fi
+      owner_dir=$owner_dir/$owner_child
+      [ ! -L "$owner_dir" ] && [ -d "$owner_dir" ] && [ -r "$owner_dir" ] && [ -x "$owner_dir" ] || { echo unreadable; return; }
+      owner_entries=$(ls -1A "$owner_dir" 2>/dev/null) || { echo unreadable; return; }
+    done
+    [ -n "$owner_dir" ] || continue
+    if [ "$owner_app" = "$successor_app" ]; then
+      [ -z "$owner_entries" ] || { echo blocked; return; }
+    else
+      owner_lookup=0
+      printf "%s\n" "$owner_entries" | grep -Eq "^(bridge-retired[.]v1|[.]bridge-retired[.]v1[.]tmp)$" || owner_lookup=$?
+      case "$owner_lookup" in
+        0) echo blocked; return ;;
+        1) ;;
+        *) echo unreadable; return ;;
+      esac
+    fi
+  done
+  echo passive
+}
+passive_owner=none
+[ "$passive_owner_check" = 0 ] || passive_owner=$(passive_owner_proof)
 sqlite3_bin=""
 if [ -x /system/bin/sqlite3 ]; then sqlite3_bin=/system/bin/sqlite3
 else sqlite3_bin=$(command -v sqlite3 2>/dev/null) || sqlite3_bin=""; fi
@@ -6559,6 +6598,10 @@ elif [ -e "$best_path".tmp ] || [ -L "$best_path".tmp ] || \
      [ -e "$best_path"-journal ] || [ -L "$best_path"-journal ]; then
   recovery="v$best_version:sidecar"
 else recovery="v$best_version:$(inspect_database "$best_path")"; fi
+if [ "$passive_owner_check" != 0 ]; then
+  passive_owner_after=$(passive_owner_proof)
+  [ "$passive_owner" = "$passive_owner_after" ] || passive_owner=changed
+fi
 echo HOSTDB_BEGIN:@NONCE@
 echo "HOSTDB_PRIMARY=$primary"
 echo "HOSTDB_PRIMARY_FINGERPRINT=$primary_fingerprint"
@@ -6566,9 +6609,11 @@ echo "HOSTDB_RECOVERY=$recovery"
 echo "HOSTDB_RETAINED=$retained"
 echo "HOSTDB_INVENTORY=$inventory"
 echo "HOSTDB_INVENTORY_FINGERPRINT=$inventory_fingerprint"
+echo "HOSTDB_PASSIVE_OWNER=$passive_owner"
 echo HOSTDB_END:@NONCE@
 # HAPANELD_DB_COMPAT_OBSERVER_END'
-  command="${command//@DATA_PACKAGE@/$DATA_PKG}"
+  command="${command//@DATA_PACKAGE@/$observed_package}"
+  command="${command//@PASSIVE_OWNER_CHECK@/$passive_owner_check}"
   command="${command//@MINIMUM@/$DB_CANDIDATE_MIN}"
   command="${command//@MAXIMUM@/$DB_CANDIDATE_MAX}"
   command="${command//@PRIMARY_MODE@/$primary_mode}"
@@ -6621,11 +6666,13 @@ echo HOSTDB_END:@NONCE@
   retained="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_RETAINED=//p')"
   inventory="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_INVENTORY=//p')"
   inventory_fingerprint="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_INVENTORY_FINGERPRINT=//p')"
+  passive_owner="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_PASSIVE_OWNER=//p')"
   [ "$(printf '%s\n' "$primary" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   [ "$(printf '%s\n' "$primary_fingerprint" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   [ "$(printf '%s\n' "$recovery" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   case "$retained" in 0|1) ;; *) return 1 ;; esac
   case "$inventory" in absent|readable|unreadable) ;; *) return 1 ;; esac
+  case "$passive_owner" in none|passive|blocked|unreadable|changed) ;; *) return 1 ;; esac
   [ "$(printf '%s\n' "$inventory_fingerprint" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   HOST_DB_PRIMARY="$primary"
   HOST_DB_PRIMARY_FINGERPRINT="$primary_fingerprint"
@@ -6633,7 +6680,46 @@ echo HOSTDB_END:@NONCE@
   HOST_DB_RETAINED="$retained"
   HOST_DB_INVENTORY="$inventory"
   HOST_DB_INVENTORY_FINGERPRINT="$inventory_fingerprint"
+  HOST_DB_PASSIVE_OWNER="$passive_owner"
   return 0
+}
+
+successor_database_is_passive() {
+  [ "$HOST_DB_PRIMARY" = missing ] && [ "$HOST_DB_RETAINED" = 0 ] &&
+    [ "$HOST_DB_INVENTORY" = readable ] && [ "$HOST_DB_RECOVERY" = none ] &&
+    [ "$HOST_DB_PASSIVE_OWNER" = passive ]
+}
+
+inspect_root_data_owner() {
+  local legacy_presence pinned_package="$DATA_PKG"
+  local primary primary_fingerprint recovery retained inventory inventory_fingerprint
+  DATA_OWNER_PROOF=none
+  # A deliberate reset must still operate on its exact package target. It cannot select an old
+  # bridge after pm clear, nor does this fallback authorize clearing the bridge instead.
+  if [ "$PACKAGE_PRESENCE" != present ] || [ "$RESET_CONFIG" = 1 ]; then
+    inspect_root_database_compatibility
+    return $?
+  fi
+  inspect_root_database_compatibility "$PKG" 1 || return 1
+  if ! successor_database_is_passive; then
+    [ "$pinned_package" != "$LEGACY_PKG" ] || return 1
+    return 0
+  fi
+  legacy_presence="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+  [ "$legacy_presence" = present ] || return 1
+  inspect_root_database_compatibility "$LEGACY_PKG" || return 1
+  primary="$HOST_DB_PRIMARY"; primary_fingerprint="$HOST_DB_PRIMARY_FINGERPRINT"
+  recovery="$HOST_DB_RECOVERY"; retained="$HOST_DB_RETAINED"
+  inventory="$HOST_DB_INVENTORY"; inventory_fingerprint="$HOST_DB_INVENTORY_FINGERPRINT"
+  # Bracket the bridge read: neither a newly created successor database nor migration authority
+  # acquired during that read may be hidden by restoring the bridge observation below.
+  inspect_root_database_compatibility "$PKG" 1 || return 1
+  successor_database_is_passive || return 1
+  DATA_PKG="$LEGACY_PKG"
+  DATA_OWNER_PROOF=passive-successor
+  HOST_DB_PRIMARY="$primary"; HOST_DB_PRIMARY_FINGERPRINT="$primary_fingerprint"
+  HOST_DB_RECOVERY="$recovery"; HOST_DB_RETAINED="$retained"
+  HOST_DB_INVENTORY="$inventory"; HOST_DB_INVENTORY_FINGERPRINT="$inventory_fingerprint"
 }
 
 # Every refusal inside the gate stops the same way: a package-phase refusal first rolls back the
@@ -6792,7 +6878,7 @@ host_database_compatibility_decision() {
   case "$ROOT_ROUTE_VERDICT" in
     rooted)
       HOST_DB_PRIMARY=""; HOST_DB_PRIMARY_FINGERPRINT=""; HOST_DB_RECOVERY=""; HOST_DB_RETAINED=""; HOST_DB_INVENTORY=""; HOST_DB_INVENTORY_FINGERPRINT=""
-      inspect_root_database_compatibility || host_database_gate_refuse "the canonical database observation was unreadable"
+      inspect_root_data_owner || host_database_gate_refuse "the canonical database or data-owner observation was unreadable or changed"
       if [ "$PACKAGE_PRESENCE" = absent ]; then
         [ "$HOST_DB_INVENTORY" != unreadable ] || \
           host_database_gate_refuse "the app-data database inventory could not be traversed"
@@ -6922,7 +7008,8 @@ host_database_compatibility_gate() {
   local phase="${1:-initial}" semantic evidence
   DB_GATE_PHASE="$phase"
   host_database_compatibility_decision
-  semantic="package=$PACKAGE_PRESENCE;contract=$DB_COMPATIBILITY_CONTRACT;root=$ROOT_ROUTE_VERDICT;decision=$DB_GATE_DECISION_KIND;primary=$HOST_DB_PRIMARY"
+  resolve_data_package
+  semantic="package=$PACKAGE_PRESENCE;data_package=$DATA_PKG;owner_proof=${DATA_OWNER_PROOF:-none};contract=$DB_COMPATIBILITY_CONTRACT;root=$ROOT_ROUTE_VERDICT;decision=$DB_GATE_DECISION_KIND;primary=$HOST_DB_PRIMARY"
   case "$DB_GATE_DECISION_KIND" in
     DIRECT)
       evidence="$semantic;primary_fingerprint=$HOST_DB_PRIMARY_FINGERPRINT"

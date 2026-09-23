@@ -42,7 +42,7 @@ $(BUILD)/hapaneld-helper: $(DAEMON_SRCS) | $(BUILD)
 # Unit tests: CORE modules + the sysexec stub (no real exec) + the test driver. `test` runs the three
 # groups one after another, even under -j; CI runs each group as its own job because the two installer
 # scripts spend most of their time waiting on the installer's retry intervals.
-TEST_BINS := $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
+TEST_BINS := $(BUILD)/unit $(BUILD)/hapaneld-helper $(BUILD)/companion-boundary $(BUILD)/guard-maintenance-boundary $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new $(BUILD)/sysexec-fd-boundary $(BUILD)/sysexec-platform-wrapper $(BUILD)/peer-auth $(BUILD)/request-timeout $(BUILD)/bounded-exec $(BUILD)/hapaneld-helper-old $(BUILD)/hapaneld-helper-new $(BUILD)/cdprelay-resource-test $(BUILD)/cdprelay-test
 test:
 	$(MAKE) test-units
 	$(MAKE) test-transaction
@@ -55,6 +55,7 @@ test-units: $(TEST_BINS)
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new
 	$(BUILD)/sysexec-fd-boundary
+	$(BUILD)/sysexec-platform-wrapper
 	$(BUILD)/peer-auth
 	$(BUILD)/request-timeout
 	$(BUILD)/bounded-exec
@@ -94,6 +95,9 @@ $(BUILD)/replacement-lease-new: $(CORE_SRCS) $(STUB) test/replacement_lease_proc
 
 $(BUILD)/sysexec-fd-boundary: $(SRC_DIR)/sysexec.c test/sysexec_fd_boundary.c | $(BUILD)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) $(SRC_DIR)/sysexec.c test/sysexec_fd_boundary.c $(LDLIBS) -o $@
+
+$(BUILD)/sysexec-platform-wrapper: $(SRC_DIR)/sysexec.c test/sysexec_platform_wrapper.c | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) $(SRC_DIR)/sysexec.c test/sysexec_platform_wrapper.c $(LDLIBS) -Wl,--wrap=execve -o $@
 
 # Peer-credential policy is owned by main.c rather than CORE_SRCS. The white-box test includes that
 # production implementation and supplies inert module stubs; it never opens a socket or executes a verb.
