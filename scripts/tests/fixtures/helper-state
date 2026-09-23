@@ -455,9 +455,10 @@ emitted_rollback_cuts() {
   mkdir -p "$gold"
   cp -a "$work/." "$gold/"
 
-  # The wrappers perform the real copy/removal first, then fail the exact authoritative operation
-  # selected by FAULT_AFTER. That is a power/process cut immediately after durable mutation, not a
-  # modelled state transition. Probe staging, journals, locks and recovery-file cleanup are excluded.
+  # The wrappers perform the real copy/removal first, then kill the transaction at the exact
+  # authoritative operation selected by FAULT_AFTER. That is a process cut immediately after durable
+  # mutation, not a command error that postcondition-based production code may validly recover from.
+  # Probe staging, journals, locks and recovery-file cleanup are excluded.
   printf '%s\n' '#!/usr/bin/env bash' \
     'set -u' \
     '/bin/cp "$@" || exit $?' \
@@ -470,7 +471,7 @@ emitted_rollback_cuts() {
     '[ "$authoritative" = 1 ] || exit 0' \
     'count=$(( $(cat "$FAULT_COUNTER" 2>/dev/null || echo 0) + 1 ))' \
     'printf "%s\n" "$count" > "$FAULT_COUNTER"' \
-    '[ "$count" != "$FAULT_AFTER" ] || exit 99' > "$fault_bin/cp"
+    '[ "$count" != "$FAULT_AFTER" ] || { kill -KILL "$PPID"; exit 137; }' > "$fault_bin/cp"
   printf '%s\n' '#!/usr/bin/env bash' \
     'set -u' \
     '/bin/rm "$@" || exit $?' \
@@ -483,7 +484,7 @@ emitted_rollback_cuts() {
     '[ "$authoritative" = 1 ] || exit 0' \
     'count=$(( $(cat "$FAULT_COUNTER" 2>/dev/null || echo 0) + 1 ))' \
     'printf "%s\n" "$count" > "$FAULT_COUNTER"' \
-    '[ "$count" != "$FAULT_AFTER" ] || exit 99' > "$fault_bin/rm"
+    '[ "$count" != "$FAULT_AFTER" ] || { kill -KILL "$PPID"; exit 137; }' > "$fault_bin/rm"
   printf '%s\n' '#!/usr/bin/env bash' \
     'set -u' \
     '/bin/mv "$@" || exit $?' \
@@ -496,7 +497,7 @@ emitted_rollback_cuts() {
     '[ "$authoritative" = 1 ] || exit 0' \
     'count=$(( $(cat "$FAULT_COUNTER" 2>/dev/null || echo 0) + 1 ))' \
     'printf "%s\n" "$count" > "$FAULT_COUNTER"' \
-    '[ "$count" != "$FAULT_AFTER" ] || exit 99' > "$fault_bin/mv"
+    '[ "$count" != "$FAULT_AFTER" ] || { kill -KILL "$PPID"; exit 137; }' > "$fault_bin/mv"
   chmod 755 "$fault_bin/cp" "$fault_bin/rm" "$fault_bin/mv"
 
   rm -rf "$work"; mkdir -p "$work"; cp -a "$gold/." "$work/"
