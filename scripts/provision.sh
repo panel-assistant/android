@@ -4227,7 +4227,7 @@ publish_v1_rollback_intent() {
 restore_or_remove() {
   v1_restore_name=$1 v1_restore_recovery=$2 v1_restore_live=$3 v1_restore_mode=$4 v1_restore_marker=$5
   v1_restore_staging="$v1_restore_live.rollback-v1-$transaction_id"
-  rm -f "$v1_restore_staging" || return 1
+  remove_if_present "$v1_restore_staging" || return 1
   if flag "$v1_restore_name" "$v1_restore_marker"; then
     v1_restore_expected=$(sed -n "s/^${v1_restore_name}_SHA256=//p" "$v1_restore_marker")
     cp -p "$v1_restore_recovery" "$v1_restore_staging" || return 1
@@ -4239,7 +4239,7 @@ restore_or_remove() {
     sync || return 1
     file_exact "$v1_restore_expected" "$v1_restore_live" "$v1_restore_mode" || return 1
   else
-    rm -f "$v1_restore_live" || return 1
+    remove_if_present "$v1_restore_live" || return 1
     sync || return 1
     [ ! -e "$v1_restore_live" ] && [ ! -L "$v1_restore_live" ] || return 1
   fi
@@ -4300,7 +4300,7 @@ cleanup_v1_rollback_staging() {
 restore_or_remove_v2() {
   name=$1 recovery=$2 live=$3 mode=$4 marker=$5
   staging="$live.rollback-$transaction_id"
-  rm -f "$staging" || return 1
+  remove_if_present "$staging" || return 1
   if flag "$name" "$marker"; then
     expected=$(sed -n "s/^${name}_SHA256=//p" "$marker")
     cp -p "$recovery" "$staging" || return 1
@@ -4312,7 +4312,7 @@ restore_or_remove_v2() {
     sync || return 1
     file_exact "$expected" "$live" "$mode" || return 1
   else
-    rm -f "$live" || return 1
+    remove_if_present "$live" || return 1
     sync || return 1
     [ ! -e "$live" ] && [ ! -L "$live" ] || return 1
   fi
@@ -7344,22 +7344,17 @@ release_upgrade_quiescence() {
 }
 
 copy_root_file_binary() {
-  local source="$1" destination="$2" command quoted
-  command="cat $source"
-  quoted="$(quote_root_command "$command")"
-  case "$SU_FORM" in
-    shell)      run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out cat "$source" > "$destination" ;;
-    su0join)    run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su 0 "$quoted" > "$destination" ;;
-    su0shc)     run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su 0 sh -c "$quoted" > "$destination" ;;
-    surootjoin) run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su root "$quoted" > "$destination" ;;
-    surootshc)  run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su root sh -c "$quoted" > "$destination" ;;
-    suc)        run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su -c "$quoted" > "$destination" ;;
-    *) return 1 ;;
-  esac
+  local source="$1" destination="$2" stage="$3"
+  # Some vendor su implementations allocate a PTY even behind exec-out and expand LF to CRLF.
+  # Keep binary bytes off that stream. The already-closed file is copied unchanged, not re-backed-up
+  # by SQLite, so the app's exact size/digest receipt remains authoritative after adb pull.
+  SNAPSHOT_TXN_REMOTE="$stage"
+  run_root "umask 077; mkdir -m 700 $stage && cp $source $stage/ha-paneld.db && chown shell:shell $stage $stage/ha-paneld.db && chmod 700 $stage && chmod 600 $stage/ha-paneld.db" >/dev/null 2>&1 || return 1
+  run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" pull "$stage/ha-paneld.db" "$destination" >/dev/null 2>&1
 }
 
 snapshot_prepared_database() {
-  local base="$1" host_db receipt host_sha host_bytes sqlite_bin integrity user_version app_state_rows
+  local base="$1" stage="$2" host_db receipt host_sha host_bytes sqlite_bin integrity user_version app_state_rows
   host_db="${base%.break-glass}-$UPGRADE_QUIESCE_NONCE.break-glass.db"
   snapshot_txn_defer_host_signals
   if [ -e "$host_db" ] || [ -L "$host_db" ] || ! (umask 077; set -o noclobber; : > "$host_db") 2>/dev/null; then
@@ -7370,7 +7365,7 @@ snapshot_prepared_database() {
   SNAPSHOT_TXN_HOST_DB="$host_db"
   snapshot_txn_restore_host_signals
   chmod 600 "$host_db" 2>/dev/null || true
-  if ! copy_root_file_binary "/data/data/${UPGRADE_QUIESCE_PKG:-$PKG}/databases/ha-paneld.db" "$host_db" || [ ! -s "$host_db" ]; then
+  if ! copy_root_file_binary "/data/data/${UPGRADE_QUIESCE_PKG:-$PKG}/databases/ha-paneld.db" "$host_db" "$stage" || [ ! -s "$host_db" ]; then
     snapshot_txn_refuse "the quiesced database could not be copied from the panel" "Check adb/root responsiveness to $TARGET, then re-run."
     return 0
   fi
@@ -7432,6 +7427,10 @@ snapshot_prepared_database() {
   SNAPSHOT_TXN_HOST_DB=""
   SNAPSHOT_TXN_HOST_RECEIPT=""
   snapshot_txn_restore_host_signals
+  # The verified host pair is already authoritative. Cleanup of this capture's random stage is
+  # best-effort; an unreachable panel must neither withdraw that pair nor authorize another capture.
+  run_root "rm -rf $stage" >/dev/null 2>&1 || true
+  SNAPSHOT_TXN_REMOTE=""
   echo "   ${GRN}✓${X} data-store snapshot: ${B}$host_db${X} ${D}(quiesced direct copy, receipt and local SQLite validation matched)${X}"
   echo "   ${D}        Receipt: $receipt${X}"
   echo "HAPANELD_SNAPSHOT_RESULT=captured"
@@ -7542,7 +7541,7 @@ snapshot_panel_database() {
   fi
   base="$base.break-glass"
   if prepare_upgrade_quiescence; then
-    snapshot_prepared_database "$base"
+    snapshot_prepared_database "$base" "$stage"
     return 0
   fi
   warn "data-store snapshot: no valid upgrade-ready receipt was received (unsupported, non-ready, malformed, or timed out); using one legacy live SQLite backup attempt"
