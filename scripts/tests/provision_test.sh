@@ -337,6 +337,7 @@ reset_per_run_state() {
   rm -rf "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
     "$TMP/manual-helper-transaction" "$TMP/package-stopped" "$TMP/apk-install-attempted" \
     "$TMP/package-data-cleared" "$TMP/candidate-apk-path" "$TMP/successor-installed" \
+    "$TMP/handoff-started" "$TMP/handoff-health-probes" \
     "$TMP/reset-package-relaunched" "$TMP/reset-database-recreated" "$TMP/reset-package-restopped" \
     "$TMP/adb-root-escalated"
   # The database observation and transaction scripts the fixture pushes, the panel-side data marker
@@ -4145,6 +4146,53 @@ fi
 [ "$PROVISION_TEST_SCOPE" != shard-release-integrity ] || finish_provision_test
 
 if provision_scope_is core all shard-install-finish; then
+
+# The bridge and the held successor both serve health before migration is ready for host writes.
+# Only exact successor identity plus the app's own bridge removal admits the plan and verification.
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_BRIDGE_PROBES=2 MOCK_HANDOVER_HELD_PROBES=2 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "handover waits through bridge and held-successor health"
+assert_log_contains 'handover-health package=io.github.maxlyth.hapaneld probe=2' \
+  "bridge health does not admit the installed successor"
+assert_log_contains 'handover-health package=io.panelassistant.android probe=5' \
+  "held-successor health does not admit a handover before bridge removal"
+handover_absent_line="$(grep -n '^handover-legacy-absent$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_plan_line="$(grep -n 'curl .*\/api/v1/provisioning/plan.txt' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$handover_absent_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_absent_line" -lt "$handover_plan_line" ]; then
+  pass "the first installed-app plan follows proven bridge removal"
+else fail_test "the first installed-app plan follows proven bridge removal"; fi
+assert_not_contains 'shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity' "$MOCK_CALL_LOG" \
+  "an in-progress handover never receives the direct relaunch fallback"
+
+for handover_wait_case in present unknown wrong_identity duplicate_identity malformed_health; do
+  handover_presence=ok; handover_health_package=io.panelassistant.android; handover_health_prefix=ha-paneld
+  case "$handover_wait_case" in
+    present|unknown) handover_presence="$handover_wait_case" ;;
+    wrong_identity) handover_health_package=io.panelassistant.android.other ;;
+    duplicate_identity) handover_health_package='io.panelassistant.android pkg=io.panelassistant.android' ;;
+    malformed_health) handover_health_prefix=unrelated-service ;;
+  esac
+  MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE="$handover_presence" \
+  MOCK_HANDOVER_HEALTH_PACKAGE="$handover_health_package" MOCK_HANDOVER_HEALTH_PREFIX="$handover_health_prefix" APP_HEALTH_TIMEOUT_SECONDS=1 \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --id after-handover
+  assert_failure "$handover_wait_case handover is not admitted by HTTP success" 'did not finish its handover'
+  assert_not_contains 'curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config|shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity' \
+    "$MOCK_CALL_LOG" "$handover_wait_case handover neither configures nor verifies nor relaunches"
+done
+
+# Supported older panels can need more than five seconds for the two package-manager queries.
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=slow STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=15 APP_HEALTH_TIMEOUT_SECONDS=12 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "handover retains the existing slow package-manager query allowance"
+
+# The existing package classifier owns its child timeout, clamped to the launch wait's remainder.
+handover_wait_started=$SECONDS
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=hang APP_HEALTH_TIMEOUT_SECONDS=1 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a blocked handover package observation remains bounded" 'did not finish its handover'
+if [ $((SECONDS - handover_wait_started)) -lt 10 ]; then
+  pass "handover package observation cannot consume its thirty-second blocked fixture"
+else fail_test "handover package observation cannot consume its thirty-second blocked fixture"; fi
 
 # A launched app that never answers is not provisioned, even if adb install itself succeeded.
 MOCK_HEALTH=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
