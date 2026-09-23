@@ -20,6 +20,13 @@ RELEASE_IDENTITY_CORPUS = json.loads(
         encoding="utf-8"
     )
 )
+ANDROID_PRODUCER_FIXTURE = json.loads(
+    (
+        Path(__file__).resolve().parents[2]
+        / "app/src/test/resources/panel-assistant-contract/android_producer_v1.json"
+    ).read_text(encoding="utf-8")
+)
+ANDROID_PRODUCER_SOURCE_REVISION = "2836b4e9863c876b53536ddcea8f93b135e378bd"
 BADGING = """\
 package: name='io.panelassistant.android' versionCode='701' versionName='1.2.3-rc1' \
 platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' \
@@ -140,6 +147,30 @@ class InstallDescriptorTest(unittest.TestCase):
                     len(case["tag"]) <= 64
                     and descriptor.RELEASE_TAG_PATTERN.fullmatch(case["tag"]) is not None,
                 )
+
+    def test_source_stamped_producer_fixture_is_reproducible(self):
+        self.assertEqual(
+            ANDROID_PRODUCER_SOURCE_REVISION,
+            ANDROID_PRODUCER_FIXTURE["sourceRevision"],
+        )
+        expected_verdicts = [
+            {
+                "tag": case["tag"],
+                "accepted": case["kind"] in {"stable", "rc"},
+            }
+            for case in RELEASE_IDENTITY_CORPUS["tags"]
+        ]
+        actual_verdicts = [
+            {
+                "tag": case["tag"],
+                "accepted": len(case["tag"]) <= 64
+                and descriptor.RELEASE_TAG_PATTERN.fullmatch(case["tag"]) is not None,
+            }
+            for case in RELEASE_IDENTITY_CORPUS["tags"]
+        ]
+        self.assertEqual(expected_verdicts, ANDROID_PRODUCER_FIXTURE["releaseTagVerdicts"])
+        self.assertEqual(actual_verdicts, ANDROID_PRODUCER_FIXTURE["releaseTagVerdicts"])
+        self.assertEqual(self.build(), ANDROID_PRODUCER_FIXTURE["installDescriptors"][0])
 
     def test_package_platform_abis_and_launcher_are_closed(self):
         mutations = (

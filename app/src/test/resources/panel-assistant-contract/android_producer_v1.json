@@ -1,0 +1,186 @@
+{
+  "sourceRevision": "2836b4e9863c876b53536ddcea8f93b135e378bd",
+  "releaseTagVerdicts": [
+    {
+      "tag": "v0.9.7",
+      "accepted": true
+    },
+    {
+      "tag": "v0.0.0",
+      "accepted": true
+    },
+    {
+      "tag": "v10.20.30",
+      "accepted": true
+    },
+    {
+      "tag": "v1.0.0-rc1",
+      "accepted": true
+    },
+    {
+      "tag": "v0.9.8-rc12",
+      "accepted": true
+    },
+    {
+      "tag": "build-1",
+      "accepted": false
+    },
+    {
+      "tag": "build-772",
+      "accepted": false
+    },
+    {
+      "tag": "build-2147483647",
+      "accepted": false
+    },
+    {
+      "tag": "0.9.7",
+      "accepted": false
+    },
+    {
+      "tag": "v01.2.3",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2.3-rc0",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2.3-rc",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2.3-beta1",
+      "accepted": false
+    },
+    {
+      "tag": "V1.2.3",
+      "accepted": false
+    },
+    {
+      "tag": "build-0",
+      "accepted": false
+    },
+    {
+      "tag": "build-01",
+      "accepted": false
+    },
+    {
+      "tag": "build-2147483648",
+      "accepted": false
+    },
+    {
+      "tag": "build-772x",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2.3-rc1-rc1",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2.3 ",
+      "accepted": false
+    },
+    {
+      "tag": "v1.2.30000000000000000000000000000000000000000000000000000000000000",
+      "accepted": false
+    }
+  ],
+  "installDescriptors": [
+    {
+      "apkName": "panel-assistant-v1.2.3-rc1-manual-setup-required.apk",
+      "apkSha256": "48c0c1ac3eb738792ec63151e674be740a40d53dc4f33675bc2c8b5c2c51b45b",
+      "apkSize": 19,
+      "databaseCompatibility": "hapaneld-db:v1:ha-paneld.db:11:14",
+      "launchComponent": "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity",
+      "minSdk": 26,
+      "packageId": "io.panelassistant.android",
+      "releaseTag": "v1.2.3-rc1",
+      "schema": "io.github.maxlyth.hapaneld.install.v1",
+      "signerCertificateSha256": "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",
+      "supportedAbis": [
+        "arm64-v8a",
+        "armeabi-v7a"
+      ],
+      "versionCode": 701,
+      "versionName": "1.2.3-rc1"
+    }
+  ],
+  "transportMessages": [
+    {
+      "name": "hello",
+      "message": {
+        "id": 1,
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc2",
+          "version_code": 801
+        },
+        "contract_digest": "ed4d5f88540dc08ba6e27ee7887ba8f8f5b9f166dc71e1e329b16357d16fe195",
+        "capabilities": [
+          "state",
+          "commands",
+          "approval",
+          "mqtt_withdraw",
+          "embed_proof"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "unique_suffix": "relay1",
+            "family": "relay",
+            "index": 1,
+            "entity_category": null,
+            "enabled_default": true,
+            "device_class": null,
+            "unit": null,
+            "state_class": null,
+            "force_update": false,
+            "options": null,
+            "min": null,
+            "max": null,
+            "step": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "report_state",
+      "message": {
+        "id": 2,
+        "type": "panel_assistant/report_state",
+        "session": "fixture-session",
+        "sync": "delta",
+        "observations": [
+          {
+            "channel": "relay1",
+            "state": "known",
+            "value": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "command_result",
+      "message": {
+        "id": 3,
+        "type": "panel_assistant/command_result",
+        "session": "fixture-session",
+        "command_id": "fixture-command",
+        "outcome": "refused",
+        "code": "approval_timeout"
+      }
+    }
+  ]
+}
