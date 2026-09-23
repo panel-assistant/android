@@ -343,6 +343,42 @@ class MqttWireGoldenTest {
 
     // ---- rig ----
 
+    @Test fun malformedMqttConfigurationStillObservesLocalChangesForNative() {
+        val rig = rig(runtimeBroker = "unsupported://broker")
+        val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+        rig.bridge.addStateSink(native.bind(rig.bridge::stateChannelKeys))
+        try {
+            rig.bridge.start()
+            assertEquals("config-error", rig.bridge.state)
+            rig.bridge.heartbeat()
+            native.open(native.descriptors())
+            fun report(id: Long): org.json.JSONObject {
+                val json = native.next(id, "session", 0L)
+                assertTrue("native report $id must be ready", json != null)
+                return org.json.JSONObject(requireNotNull(json)).also {
+                    native.onResult(
+                        io.github.maxlyth.hapaneld.panelassistant.PanelAssistantReportResult.Acknowledged(id, emptyMap()),
+                        0L,
+                    )
+                }
+            }
+            fun storageValue(report: org.json.JSONObject): String? {
+                val observations = report.getJSONArray("observations")
+                return (0 until observations.length()).map(observations::getJSONObject)
+                    .firstOrNull { it.getString("channel") == "storage_health" }?.getString("value")
+            }
+            assertEquals("healthy", storageValue(report(1)))
+            report(2) // Complete the initial native snapshot.
+            rig.storage.set(storageSnapshot(StorageHealthSeverity.WARNING, walBytes = 65_536))
+            rig.bridge.heartbeat()
+            assertEquals("warning", storageValue(report(3)))
+            assertEquals("config-error", rig.bridge.state)
+            assertTrue("an invalid URL must not connect or publish MQTT", rig.transport.snapshot().isEmpty())
+        } finally {
+            rig.close()
+        }
+    }
+
     /** The real bridge on fake hardware and a recording transport; [announce] runs one connect to quiescence. */
     private class Rig(
         val tmp: File,
@@ -369,7 +405,7 @@ class MqttWireGoldenTest {
         }
     }
 
-    private fun rig(configure: (Config) -> Unit = {}): Rig {
+    private fun rig(runtimeBroker: String = "tcp://127.0.0.1:1883", configure: (Config) -> Unit = {}): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
         val prefs = MemoryPreferences()
         val context = FakeContext(tmp, prefs)
@@ -481,7 +517,7 @@ class MqttWireGoldenTest {
             onAutoSleepConfigChanged = { autoSleepConfigChanges.incrementAndGet() },
             runtimePanelId = PANEL,
             runtimeFriendlyName = "Golden panel",
-            runtimeBroker = "tcp://127.0.0.1:1883",
+            runtimeBroker = runtimeBroker,
             runtimeMqttUser = "panel-user",
             runtimeMqttPassword = "panel-password",
             runtimeMqttAddressFamily = "Automatic",

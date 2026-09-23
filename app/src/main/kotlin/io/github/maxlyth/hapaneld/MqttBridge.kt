@@ -1645,8 +1645,7 @@ internal class MqttBridge(
     // no reconcile can reach the sink for a channel without its route. Declared ahead of the converger,
     // whose construction registers channels.
     private val mqttStateRoutes = java.util.concurrent.ConcurrentHashMap<String, MqttStateRoute>()
-    // The converger's sender. MQTT is the primary, whose acknowledgement alone drives convergence.
-    private val stateSinks = io.github.maxlyth.hapaneld.mqtt.StateSinkFanOut(::publishStateObservation)
+    @Volatile private var nativeStateSink: io.github.maxlyth.hapaneld.mqtt.StateSink? = null
     private val stateConverger = createStateConverger()
     private val zigbeeActuation = MqttZigbeeActuationCoordinators.forController(zigbee)
     private val zigbeeLease = zigbeeActuation.activate()
@@ -1679,8 +1678,9 @@ internal class MqttBridge(
         val known = { payload: String -> io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Known(payload) }
         val unknown = io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Unknown
         val c = io.github.maxlyth.hapaneld.mqtt.StateConverger(
-            sender = stateSinks,
+            sender = ::publishStateObservation,
             schedule = ::dispatchStateWork,
+            onObservation = { channel, observation -> nativeStateSink?.invoke(channel, observation) {} },
         )
         fun channel(
             key: String,
@@ -1849,8 +1849,8 @@ internal class MqttBridge(
         converger.register(mqtt.channel)
     }
 
-    /** Report every admitted observation to [sink] too; only MQTT's acknowledgement drives convergence. */
-    internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) = stateSinks.add(sink)
+    /** Bind the native reporter directly to observations, independently of MQTT delivery capacity. */
+    internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) { nativeStateSink = sink }
 
     /** The converger's registered channels, which grow as hardware capabilities are confirmed. */
     internal fun stateChannelKeys(): Set<String> = stateConverger.keys()
@@ -4392,15 +4392,15 @@ internal class MqttBridge(
      * Liveness probe: publish a monotonic-independent `last_seen_at` (epoch seconds) so a healthy link keeps
      * [lastOkMs] fresh even when nothing else is publishing, and a dead half-open link stops ACKing and
      * goes stale (→ watchdog reconnect). Non-retained (a stale retained heartbeat would be misleading).
-     * No-op when there's no client / broker. Called each watchdog tick from the service.
+     * Local observations run even without a client / broker. Called each watchdog tick from the service.
      */
     fun heartbeat() {
         if (!lifecycle.isOpen()) return
-        if (state == "disabled" || state == "config-error") return
-        runCatching { publish("ha-paneld/$panel/last_seen_at", (System.currentTimeMillis() / 1000).toString()) }
-        // The transport probe remains sacrificial: if HiveMQ wedges, it owns no lifecycle mutation lock.
-        // Hardware observation begins only after the probe returns and is then covered by retirement.
+        // Local observations serve both transports, including when MQTT configuration is invalid.
         lifecycle.runIfOpen(Unit) { runCatching { syncLocalState() } }
+        if (state == "disabled" || state == "config-error") return
+        // The transport probe remains sacrificial: if HiveMQ wedges, it owns no lifecycle mutation lock.
+        runCatching { publish("ha-paneld/$panel/last_seen_at", (System.currentTimeMillis() / 1000).toString()) }
     }
 
     /**
