@@ -53,6 +53,23 @@ class UpgradeShutdownContractTest {
         assertFalse(source.contains("helper.use"))
     }
 
+    @Test fun renewalDispatchAndWatchdogUseTheSameMonotonicDeadline() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val receiver = source("upgrade/UpgradeControlReceiver.kt")
+        val coordinator = source("upgrade/UpgradeShutdownCoordinator.kt")
+        assertTrue(manifest.contains("io.github.maxlyth.hapaneld.action.RENEW_UPGRADE"))
+        assertTrue(receiver.contains("RENEW_UPGRADE_ACTION -> renew(context, intent)"))
+        assertTrue(receiver.contains("if (!UpgradeShutdownCoordinator.renew(context, nonce)) return failResult(\"renewal_failed\")"))
+        assertTrue(receiver.contains("resultData = formatUpgradeRenewed(nonce)"))
+        assertTrue(coordinator.contains("gate.arm(nonce, completion, SystemClock.elapsedRealtime() + UPGRADE_HOLD_TIMEOUT_MS)"))
+        assertTrue(coordinator.contains("gate.renew(nonce, SystemClock.elapsedRealtime(), UPGRADE_HOLD_TIMEOUT_MS)"))
+        val renewal = coordinator.substring(coordinator.indexOf("fun renew(context:"), coordinator.indexOf("private fun scheduleWatchdog("))
+        assertTrue(renewal.contains("scheduleWatchdog(context, nonce)"))
+        assertTrue(renewal.indexOf("gate.renew(") < renewal.indexOf("scheduleWatchdog(context, nonce)"))
+        assertTrue(coordinator.contains("cancelAndResume(appContext, nonce, \"watchdog_expired\", SystemClock.elapsedRealtime())"))
+        assertTrue(coordinator.contains("val cancelled = gate.cancel(nonce, reason, expiredAtMillis)"))
+    }
+
     private fun source(path: String): String =
         File("src/main/kotlin/io/github/maxlyth/hapaneld/$path").readText()
 }

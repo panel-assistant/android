@@ -331,11 +331,13 @@ reset_per_run_state() {
     "$TMP/upgrade-release-attempts" "$TMP/installed-apk-signer-reads" \
     "$TMP/pm-probe-count" "$TMP/candidate-contract-read-count" \
     "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
+    "$TMP/host-db-observation-count.LEGACY" "$TMP/host-db-observation-count.SUCCESSOR" \
     "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
   # Package and helper lifecycle markers.
   rm -rf "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
     "$TMP/manual-helper-transaction" "$TMP/package-stopped" "$TMP/apk-install-attempted" \
     "$TMP/package-data-cleared" "$TMP/candidate-apk-path" "$TMP/successor-installed" \
+    "$TMP/handoff-started" "$TMP/handoff-health-probes" \
     "$TMP/reset-package-relaunched" "$TMP/reset-database-recreated" "$TMP/reset-package-restopped" \
     "$TMP/adb-root-escalated"
   # The database observation and transaction scripts the fixture pushes, the panel-side data marker
@@ -406,6 +408,7 @@ run_provision() {
   MOCK_UPGRADE_PREPARE_BLOCK_SECONDS="${MOCK_UPGRADE_PREPARE_BLOCK_SECONDS:-30}" \
   MOCK_UPGRADE_RELEASE="${MOCK_UPGRADE_RELEASE:-ok}" \
   MOCK_DIRECT_COPY="${MOCK_DIRECT_COPY:-ok}" \
+  MOCK_SU_ONLCR="${MOCK_SU_ONLCR:-0}" \
   MOCK_DIRECT_COPY_PID_FILE="${MOCK_DIRECT_COPY_PID_FILE:-}" \
   MOCK_DIRECT_COPY_BLOCK_SECONDS="${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}" \
   MOCK_PM_PATH="${MOCK_PM_PATH:-ok}" \
@@ -1357,6 +1360,7 @@ sed -e "s|^db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db$|db=$DB_OBSERVER_
     -e "s|^observer_tmp=@OBSERVER_STAGE@$|observer_tmp=$DB_OBSERVER_DIR/.observer.fixture|" \
     -e 's/^minimum=@MINIMUM@$/minimum=11/' -e 's/^maximum=@MAXIMUM@$/maximum=14/' \
     -e 's/^primary_mode=@PRIMARY_MODE@$/primary_mode=stable/' \
+    -e 's/^passive_owner_check=@PASSIVE_OWNER_CHECK@$/passive_owner_check=0/' \
     -e 's/^observer_owner=@OBSERVER_OWNER@$/observer_owner=.owner-fixture/' \
     -e 's/@NONCE@/0123456789abcdef0123456789abcdef/g' \
     "$DB_OBSERVER_SOURCE" > "$DB_OBSERVER_RUN"
@@ -1571,6 +1575,88 @@ for observer_retained_suffix in -journal .restore.tmp .vbad.premigrate.tmp; do
   rm -f "$DB_OBSERVER_DB$observer_retained_suffix"
 done
 unset observer_retained_suffix
+
+# Execute the production passive-owner proof against real marker/path shapes. Host decision-table
+# fixtures above cannot prove that a failed directory listing is not mistaken for marker absence.
+PASSIVE_OBSERVER_RUN="$TMP/passive-owner-observer-run.sh"
+PASSIVE_SUCCESSOR="$TMP/database-compat-observer/data/data/io.panelassistant.android"
+PASSIVE_LEGACY="$TMP/database-compat-observer/data/data/io.github.maxlyth.hapaneld"
+mkdir -p "$PASSIVE_LEGACY"
+sed -e "s|^db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db$|db=$DB_OBSERVER_DB|" \
+    -e "s|^observer_tmp=@OBSERVER_STAGE@$|observer_tmp=$DB_OBSERVER_DIR/.observer.passive|" \
+    -e "s|successor_app=/data/data/io.panelassistant.android|successor_app=$PASSIVE_SUCCESSOR|" \
+    -e "s|legacy_app=/data/data/io.github.maxlyth.hapaneld|legacy_app=$PASSIVE_LEGACY|" \
+    -e 's/^minimum=@MINIMUM@$/minimum=11/' -e 's/^maximum=@MAXIMUM@$/maximum=14/' \
+    -e 's/^primary_mode=@PRIMARY_MODE@$/primary_mode=stable/' \
+    -e 's/^passive_owner_check=@PASSIVE_OWNER_CHECK@$/passive_owner_check=1/' \
+    -e 's/^observer_owner=@OBSERVER_OWNER@$/observer_owner=.owner-passive/' \
+    -e 's/@NONCE@/0123456789abcdef0123456789abcdef/g' \
+    "$DB_OBSERVER_SOURCE" > "$PASSIVE_OBSERVER_RUN"
+assert_production_passive_owner() {
+  local expected="$1" description="$2" proof_output
+  proof_output="$(PATH="${PASSIVE_OBSERVER_PATH:-$DB_OBSERVER_BIN}" "$BASH" "$PASSIVE_OBSERVER_RUN")"
+  if printf '%s\n' "$proof_output" | grep -qx "HOSTDB_PASSIVE_OWNER=$expected"; then pass "$description"
+  else
+    LAST_OUTPUT="$TMP/passive-observer-output"
+    printf '%s\n' "$proof_output" > "$LAST_OUTPUT"
+    fail_test "$description"
+  fi
+}
+assert_production_passive_owner passive "production passive proof positively observes absent migration directories"
+mkdir -p "$PASSIVE_SUCCESSOR/no_backup/identity-migration" "$PASSIVE_LEGACY/no_backup/identity-migration"
+assert_production_passive_owner passive "production passive proof permits an empty successor migration directory"
+for passive_marker in complete.v1 step-release.v1 step-restore.v1 .complete.v1.tmp .step-release.v1.tmp \
+    .step-restore.v1.tmp release-token.v1 .unknown-entry; do
+  : > "$PASSIVE_SUCCESSOR/no_backup/identity-migration/$passive_marker"
+  assert_production_passive_owner blocked "production passive proof blocks successor marker $passive_marker regardless of contents"
+  rm -f "$PASSIVE_SUCCESSOR/no_backup/identity-migration/$passive_marker"
+done
+for passive_marker in bridge-retired.v1 .bridge-retired.v1.tmp; do
+  : > "$PASSIVE_LEGACY/no_backup/identity-migration/$passive_marker"
+  assert_production_passive_owner blocked "production passive proof blocks bridge retirement marker $passive_marker"
+  rm -f "$PASSIVE_LEGACY/no_backup/identity-migration/$passive_marker"
+done
+for passive_symlink in "$PASSIVE_SUCCESSOR/no_backup/identity-migration" "$PASSIVE_LEGACY/no_backup/identity-migration" \
+    "$PASSIVE_SUCCESSOR/no_backup" "$PASSIVE_LEGACY/no_backup" "$PASSIVE_LEGACY"; do
+  mv "$passive_symlink" "$passive_symlink.real"
+  ln -s "$passive_symlink.real" "$passive_symlink"
+  assert_production_passive_owner unreadable "production passive proof rejects symlink ${passive_symlink#"$TMP/database-compat-observer/data/data/"}"
+  rm "$passive_symlink"
+  mv "$passive_symlink.real" "$passive_symlink"
+done
+PASSIVE_OBSERVER_BIN="$TMP/passive-observer-bin"
+mkdir -p "$PASSIVE_OBSERVER_BIN"
+for passive_tool in "$DB_OBSERVER_BIN"/*; do ln -s "$passive_tool" "$PASSIVE_OBSERVER_BIN/${passive_tool##*/}"; done
+rm "$PASSIVE_OBSERVER_BIN/ls"
+cat > "$PASSIVE_OBSERVER_BIN/ls" <<'EOF'
+#!/bin/sh
+for argument in "$@"; do
+  if [ -n "${PASSIVE_DENY_PATH:-}" ] && [ "$argument" = "$PASSIVE_DENY_PATH" ]; then exit 1; fi
+  if [ -n "${PASSIVE_RETIRE_ON_LIST:-}" ] && [ "$argument" = "$PASSIVE_RETIRE_ON_LIST" ]; then
+    : > "$PASSIVE_RETIRE_MARKER"
+  fi
+done
+exec /bin/ls "$@"
+EOF
+chmod 700 "$PASSIVE_OBSERVER_BIN/ls"
+PASSIVE_OBSERVER_PATH="$PASSIVE_OBSERVER_BIN" PASSIVE_DENY_PATH="$PASSIVE_LEGACY/no_backup" \
+  assert_production_passive_owner unreadable "production passive proof refuses failed marker-parent enumeration"
+PASSIVE_OBSERVER_PATH="$PASSIVE_OBSERVER_BIN" PASSIVE_RETIRE_ON_LIST="${PASSIVE_SUCCESSOR%/*}" \
+PASSIVE_RETIRE_MARKER="$PASSIVE_LEGACY/no_backup/identity-migration/bridge-retired.v1" \
+  assert_production_passive_owner changed "production passive proof detects retirement during database observation"
+rm -f "$PASSIVE_LEGACY/no_backup/identity-migration/bridge-retired.v1"
+rm "$PASSIVE_OBSERVER_BIN/grep"
+cat > "$PASSIVE_OBSERVER_BIN/grep" <<'EOF'
+#!/bin/sh
+for argument in "$@"; do
+  [ "$argument" != no_backup ] || exit 2
+done
+exec /bin/grep "$@"
+EOF
+chmod 700 "$PASSIVE_OBSERVER_BIN/grep"
+PASSIVE_OBSERVER_PATH="$PASSIVE_OBSERVER_BIN" \
+  assert_production_passive_owner unreadable "production passive proof refuses a failed marker-parent lookup"
+unset PASSIVE_OBSERVER_RUN PASSIVE_SUCCESSOR PASSIVE_LEGACY PASSIVE_OBSERVER_BIN passive_marker passive_symlink passive_tool
 unset DB_OBSERVER_SOURCE DB_OBSERVER_DIR DB_OBSERVER_DB DB_OBSERVER_RUN DB_OBSERVER_BIN DB_OBSERVER_SQLITE_LOG DB_OBSERVER_HOST_SED observer_output observer_primary_sha
 unset wal_source_hash_before wal_source_hash_after wal_source_inventory_before wal_source_inventory_after
 
@@ -1777,7 +1863,7 @@ assert_log_contains '^curl .* /api/v1/provisioning/plan\.txt$|^curl .*http://pan
 assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "verify-only never installs an APK"
 assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am start|monkey -p io\.panelassistant\.android))|^curl .* (-X POST|--data|--data-urlencode)' "$MOCK_CALL_LOG" "verify-only performs no panel mutation"
 
-assert_count "$(grep -c -- '--max-time 5 .*/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "a ready Configuration schema is read once within a five-second request"
+assert_count "$(grep -c -- '--max-time 60 .*/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "a ready Configuration schema is read once within the total request budget"
 
 # Grant state left by an earlier case would let a later case pass without granting anything, so every
 # run starts without it. A read-only verify creates none, which isolates the reset itself.
@@ -1809,6 +1895,16 @@ assert_success "verify-only accepts a Configuration schema that answers on the s
 assert_contains 'Configuration schema: ready' "a schema that answers after the startup race is ready"
 assert_count "$(grep -c '/api/v1/config/schema$' "$MOCK_CALL_LOG")" 2 "an unanswered schema read is retried until it answers"
 assert_count "$(grep -c '^sleep 1$' "$SCHEMA_SLEEP_DIR/calls")" 1 "the schema retry pauses before its second attempt"
+assert_log_contains 'curl .*--max-time 60 .*/api/v1/config/schema$' \
+  "the default schema budget covers measured cold startup"
+
+CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS=8 MOCK_CONFIG_SCHEMA=cold-six-seconds \
+  run_provision "$MOCK_TARGET" --verify
+assert_success "a cold schema response can finish beyond the former five-second request cap"
+assert_count "$(grep -c '/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 \
+  "a cold schema completes in one request without restarting its wait"
+assert_log_contains 'curl .*--max-time 8 .*/api/v1/config/schema$' \
+  "a schema request receives its full remaining total budget"
 
 MOCK_CONFIG_SCHEMA=transport-fail run_provision "$MOCK_TARGET" --verify
 assert_failure "verify-only rejects an unavailable Configuration schema"
@@ -4061,6 +4157,57 @@ fi
 
 if provision_scope_is core all shard-install-finish; then
 
+# The bridge and the held successor both serve health before migration is ready for host writes.
+# Only exact successor identity plus the app's own bridge removal admits the plan and verification.
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_BRIDGE_PROBES=2 MOCK_HANDOVER_HELD_PROBES=2 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "handover waits through bridge and held-successor health"
+handover_plan_line="$(grep -n 'curl .*\/api/v1/provisioning/plan.txt' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_bridge_probe_line="$(grep -n '^handover-health package=io.github.maxlyth.hapaneld probe=2$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_held_probe_line="$(grep -n '^handover-health package=io.panelassistant.android probe=5$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$handover_bridge_probe_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_bridge_probe_line" -lt "$handover_plan_line" ]; then
+  pass "bridge health does not admit the installed successor"
+else fail_test "bridge health does not admit the installed successor"; fi
+if [ -n "$handover_held_probe_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_held_probe_line" -lt "$handover_plan_line" ]; then
+  pass "held-successor health does not admit a handover before bridge removal"
+else fail_test "held-successor health does not admit a handover before bridge removal"; fi
+handover_absent_line="$(grep -n '^handover-legacy-absent$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$handover_absent_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_absent_line" -lt "$handover_plan_line" ]; then
+  pass "the first installed-app plan follows proven bridge removal"
+else fail_test "the first installed-app plan follows proven bridge removal"; fi
+assert_not_contains 'shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity' "$MOCK_CALL_LOG" \
+  "an in-progress handover never receives the direct relaunch fallback"
+
+for handover_wait_case in present unknown wrong_identity duplicate_identity malformed_health; do
+  handover_presence=ok; handover_health_package=io.panelassistant.android; handover_health_prefix=ha-paneld
+  case "$handover_wait_case" in
+    present|unknown) handover_presence="$handover_wait_case" ;;
+    wrong_identity) handover_health_package=io.panelassistant.android.other ;;
+    duplicate_identity) handover_health_package='io.panelassistant.android pkg=io.panelassistant.android' ;;
+    malformed_health) handover_health_prefix=unrelated-service ;;
+  esac
+  MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE="$handover_presence" \
+  MOCK_HANDOVER_HEALTH_PACKAGE="$handover_health_package" MOCK_HANDOVER_HEALTH_PREFIX="$handover_health_prefix" APP_HEALTH_TIMEOUT_SECONDS=1 \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --id after-handover
+  assert_failure "$handover_wait_case handover is not admitted by HTTP success" 'did not finish its handover'
+  assert_not_contains 'curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config|shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity' \
+    "$MOCK_CALL_LOG" "$handover_wait_case handover neither configures nor verifies nor relaunches"
+done
+
+# Supported older panels can need more than five seconds for the two package-manager queries.
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=slow STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=15 APP_HEALTH_TIMEOUT_SECONDS=12 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "handover retains the existing slow package-manager query allowance"
+
+# The existing package classifier owns its child timeout, clamped to the launch wait's remainder.
+handover_wait_started=$SECONDS
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=hang STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=15 APP_HEALTH_TIMEOUT_SECONDS=1 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a blocked handover package observation remains bounded" 'did not finish its handover'
+if [ $((SECONDS - handover_wait_started)) -lt 10 ]; then
+  pass "handover package observation cannot consume its thirty-second blocked fixture"
+else fail_test "handover package observation cannot consume its thirty-second blocked fixture"; fi
+
 # A launched app that never answers is not provisioned, even if adb install itself succeeded.
 MOCK_HEALTH=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "launch timeout returns nonzero"
@@ -4442,16 +4589,123 @@ fi
 
 # ── Data-store snapshot: acknowledged quiescence with one legacy fallback ──────────────────────
 if provision_scope_is backup core all shard-backup; then
+# Renewal preserves the original snapshot epoch; only an explicit old-receiver response can retain
+# the legacy bounded hold. All other failures stop before helper/APK mutation and release custody.
 reset_db_txn_state
-MOCK_UPGRADE_PREPARE=ready run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RENEW=unsupported run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "an explicit old receiver retains the bounded nonrenewable upgrade path"
+assert_contains 'does not support hold renewal' "legacy renewal compatibility is explicit rather than a silent failure"
+assert_log_contains 'RENEW_UPGRADE.*--es nonce [0-9a-f]{32}' "a READY receipt negotiates renewal before using the hold"
+for renewal_failure in refused wrong_nonce duplicate malformed timeout; do
+  reset_db_txn_state
+  MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RENEW="$renewal_failure" UPGRADE_RENEW_TIMEOUT_SECONDS=1 \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "initial renewal $renewal_failure cannot claim continuing quiescence" 'clean-database hold could not be renewed'
+  assert_not_contains '^adb .* install( |$)|helper-transaction-.* install-' "$MOCK_CALL_LOG" \
+    "initial renewal $renewal_failure refuses before helper or APK mutation"
+  assert_log_contains 'RELEASE_UPGRADE' "initial renewal $renewal_failure retains release custody"
+done
+reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RENEW=fail_after_helper \
+  run_provision "$MOCK_TARGET" --apk "$HELPER_RELEASE_APK" --release-tag v0.9.4-rc1 --no-tame
+assert_failure "a lost hold after helper preparation refuses package consumption" 'original clean-database hold could not be renewed'
+assert_contains 'rolled back and verified' "a package-boundary renewal failure verifies helper rollback"
+assert_not_contains '^adb .* install( |$)' "$MOCK_CALL_LOG" "a package-boundary renewal failure leaves the APK untouched"
+reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready UPGRADE_RENEW_INTERVAL_SECONDS=1 MOCK_APK_INSTALL_DELAY_SECONDS=2 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "same-package installation consumes its renewable hold without a false renewal failure"
+if awk '/^adb .* install( |$)/ { installing=1 } installing && /RENEW_UPGRADE/ { found=1 } END { exit found ? 1 : 0 }' "$MOCK_CALL_LOG"; then
+  pass "same-package consumption stops renewal before package-manager process replacement"
+else fail_test "same-package consumption stops renewal before package-manager process replacement"; fi
+
+# Execute the actual guard with real bounded subprocesses. A signal during the renewal command must
+# not orphan its adb process, and an unexpectedly dead guard must never mean a successful lease.
+renewal_guard_report="$TMP/renewal-guard.report"
+(
+  eval "$(sed -n '/^run_with_deadline()/,/^# Resolve the executable/{ /^# Resolve the executable/d; p; }' "$PROVISION")"
+  eval "$(sed -n '/^renew_upgrade_quiescence()/,/^prepare_upgrade_quiescence()/{ /^prepare_upgrade_quiescence()/d; p; }' "$PROVISION")"
+  UPGRADE_QUIESCE_NONCE=0123456789abcdef0123456789abcdef
+  UPGRADE_QUIESCE_PKG=io.github.maxlyth.hapaneld
+  UPGRADE_RENEW_GUARD_PID=""; UPGRADE_RENEW_GUARD_FAILURE=""
+  UPGRADE_RENEW_INTERVAL_SECONDS=1; UPGRADE_RENEW_TIMEOUT_SECONDS=1
+  TARGET=fixture
+  app_component() { printf '%s/%s\n' "$1" "$2"; }
+  host_database_gate_refuse() { printf 'REFUSED:%s\n' "$1"; return 1; }
+  adb_exec() {
+    printf '%s\n' "$*" >> "$TMP/renewal-guard.calls"
+    if [ -e "$TMP/renewal-guard.block" ]; then
+      printf '%s\n' "$BASHPID" > "$TMP/renewal-guard.child"
+      exec /bin/sleep 30
+    fi
+    printf 'Broadcasting: Intent { fixture }\nBroadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$UPGRADE_QUIESCE_NONCE"
+  }
+  start_upgrade_renewal_guard
+  renewal_guard_pid="$UPGRADE_RENEW_GUARD_PID"
+  /bin/sleep 1.2
+  [ "$(wc -l < "$TMP/renewal-guard.calls")" -ge 2 ] && echo periodic
+  : > "$UPGRADE_RENEW_GUARD_FAILURE"
+  printf 'failed\n' > "$UPGRADE_RENEW_GUARD_FAILURE"
+  if require_upgrade_renewal; then echo incorrectly-recovered; else echo latched; fi
+  stop_upgrade_renewal_guard
+  processes_gone "$renewal_guard_pid" && echo stopped
+  start_upgrade_renewal_guard
+  renewal_guard_pid="$UPGRADE_RENEW_GUARD_PID"
+  kill -KILL "$renewal_guard_pid"
+  wait "$renewal_guard_pid" 2>/dev/null || true
+  if require_upgrade_renewal; then echo incorrectly-alive; else echo dead-refused; fi
+  stop_upgrade_renewal_guard
+  start_upgrade_renewal_guard
+  renewal_guard_pid="$UPGRADE_RENEW_GUARD_PID"
+  : > "$TMP/renewal-guard.block"
+  for renewal_wait in {1..60}; do
+    [ ! -s "$TMP/renewal-guard.child" ] || break
+    /bin/sleep 0.05
+  done
+  [ -s "$TMP/renewal-guard.child" ] && echo entered-renewal
+  renewal_stop_started=$SECONDS
+  stop_upgrade_renewal_guard
+  [ "$((SECONDS - renewal_stop_started))" -lt 10 ] && echo bounded-stop
+  processes_gone "$renewal_guard_pid" "$(cat "$TMP/renewal-guard.child")" && echo child-reaped
+  rm -f "$TMP/renewal-guard.block"
+  export TMP TARGET UPGRADE_QUIESCE_NONCE UPGRADE_QUIESCE_PKG UPGRADE_RENEW_INTERVAL_SECONDS UPGRADE_RENEW_TIMEOUT_SECONDS
+  export UPGRADE_RENEW_GUARD_PID UPGRADE_RENEW_GUARD_FAILURE
+  export -f run_with_deadline renew_upgrade_quiescence start_upgrade_renewal_guard app_component adb_exec
+  bash -c 'start_upgrade_renewal_guard; printf "%s\n" "$UPGRADE_RENEW_GUARD_PID" > "$TMP/renewal-orphan.pid"; exec /bin/sleep 30' &
+  renewal_owner_pid=$!
+  for renewal_wait in {1..60}; do
+    [ ! -s "$TMP/renewal-orphan.pid" ] || break
+    /bin/sleep 0.05
+  done
+  renewal_orphan_pid="$(cat "$TMP/renewal-orphan.pid")"
+  kill -KILL "$renewal_owner_pid"
+  wait "$renewal_owner_pid" 2>/dev/null || true
+  if processes_gone "$renewal_orphan_pid"; then echo owner-death
+  else kill "$renewal_orphan_pid" 2>/dev/null || true; fi
+) > "$renewal_guard_report" 2>&1
+for renewal_proof in periodic latched stopped dead-refused entered-renewal bounded-stop child-reaped owner-death; do
+  if grep -qx "$renewal_proof" "$renewal_guard_report"; then pass "renewal guard proves $renewal_proof"
+  else fail_test "renewal guard proves $renewal_proof"; fi
+done
+
+reset_db_txn_state
+unrelated_direct_stage="$TMP/db-txn-sandbox/data/local/tmp/.hapaneld-db-txn.ffffffffffffffffffffffffffffffff"
+mkdir -p "$unrelated_direct_stage"
+: > "$unrelated_direct_stage/other-owner"
+MOCK_UPGRADE_PREPARE=ready MOCK_SU_ONLCR=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a receipt-capable build upgrades through the quiesced direct-copy path"
 assert_marker_captured "the receipt-bound direct copy earns the captured marker"
 assert_log_contains 'PREPARE_UPGRADE.*--es nonce [0-9a-f]{32}' "PREPARE carries one exact lowercase nonce"
-assert_log_contains 'exec-out su 0 cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "the join-style root route copies the closed database with binary-safe exec-out"
-assert_not_contains '\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" "the READY path creates no on-panel staging"
+ready_nonce="$(sed -n 's/.*PREPARE_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG" | head -1)"
+renewed_nonces="$(sed -n 's/.*RENEW_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG" | sort -u)"
+if [ -n "$ready_nonce" ] && [ "$renewed_nonces" = "$ready_nonce" ]; then
+  pass "every renewal retains the original READY nonce"
+else fail_test "every renewal retains the original READY nonce"; fi
+assert_log_contains 'shell su 0 .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "the join-style root route stages the closed database byte for byte"
+assert_not_contains 'exec-out .*ha-paneld.db|^sqlite3 \.backup$' "$MOCK_CALL_LOG" "READY keeps database bytes off the root output stream without another SQLite backup"
 assert_not_contains 'shell df -P -k /data' "$MOCK_CALL_LOG" "the READY path has no fixed capacity floor"
 prepare_line="$(grep -n 'PREPARE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-copy_line="$(grep -n 'exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+copy_line="$(grep -n 'pull /data/local/tmp/\.hapaneld-db-txn\..*/ha-paneld.db' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 install_line="$(grep -n '^adb .* install' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$prepare_line" ] && [ -n "$copy_line" ] && [ -n "$install_line" ] && \
    [ "$prepare_line" -lt "$copy_line" ] && [ "$copy_line" -lt "$install_line" ]; then
@@ -4467,6 +4721,22 @@ direct_actual_sha="$(/usr/bin/sha256sum "$direct_database" 2>/dev/null | awk '{p
 if [ -n "$direct_database" ] && [ "$direct_receipt_sha" = "$direct_actual_sha" ]; then
   pass "the direct-copy receipt digest equals the actual published database bytes"
 else fail_test "the direct-copy receipt digest equals the actual published database bytes"; fi
+# The vendor su fault is independent of the source database. Exercise the old stream against the
+# same real SQLite fixture (including LF, CRLF and NUL), then require the staged capture to match it.
+MOCK_STATE_DIR="$TMP" MOCK_SU_ONLCR=1 "$FIXTURES/adb" -s "$MOCK_TARGET" exec-out su 0 \
+  'cat /data/data/io.panelassistant.android/databases/ha-paneld.db' > "$TMP/onlcr-database"
+if ! cmp -s "$TMP/onlcr-database" "$TMP/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db"; then
+  pass "vendor su newline expansion corrupts the old binary output stream"
+else fail_test "vendor su newline expansion corrupts the old binary output stream"; fi
+if cmp -s "$direct_database" "$TMP/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db"; then
+  pass "staged pull preserves every receipt-bound byte on a vendor su panel"
+else fail_test "staged pull preserves every receipt-bound byte on a vendor su panel"; fi
+if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' ! -path "$unrelated_direct_stage" | grep -q .; then
+  fail_test "accepted direct capture removes its remote stage"
+else pass "accepted direct capture removes its remote stage"; fi
+if [ -f "$unrelated_direct_stage/other-owner" ]; then
+  pass "direct capture cleanup preserves another owner's staging"
+else fail_test "direct capture cleanup preserves another owner's staging"; fi
 prepare_nonce="$(sed -n 's/.*PREPARE_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG" | head -1)"
 if grep -Fq "quiescence_nonce=$prepare_nonce" "$direct_receipt" 2>/dev/null; then
   pass "the published receipt binds the exact acknowledged nonce"
@@ -4481,8 +4751,10 @@ prepare_send_line="$(grep -n -- '-a io.github.maxlyth.hapaneld.action.PREPARE_UP
 if [ -n "$nonce_owner_line" ] && [ -n "$prepare_send_line" ] && [ "$nonce_owner_line" -lt "$prepare_send_line" ]; then
   pass "the host retains nonce custody before PREPARE can arm the app"
 else fail_test "the host retains nonce custody before PREPARE can arm the app"; fi
-cleanup_discard_line="$(grep -n 'if type discard_db_snapshot_txn' "$PROVISION" | head -1 | cut -d: -f1)"
-cleanup_release_line="$(grep -n 'if type release_upgrade_quiescence' "$PROVISION" | head -1 | cut -d: -f1)"
+cleanup_source="$TMP/provision-cleanup.sh"
+sed -n '/^cleanup_provision_resources()/,/^}/p' "$PROVISION" > "$cleanup_source"
+cleanup_discard_line="$(grep -n 'if type discard_db_snapshot_txn' "$cleanup_source" | cut -d: -f1)"
+cleanup_release_line="$(grep -n 'if type release_upgrade_quiescence' "$cleanup_source" | cut -d: -f1)"
 if [ -n "$cleanup_discard_line" ] && [ -n "$cleanup_release_line" ] && [ "$cleanup_discard_line" -lt "$cleanup_release_line" ]; then
   pass "abort cleanup releases quiescence only after owned snapshot cleanup"
 else fail_test "abort cleanup releases quiescence only after owned snapshot cleanup"; fi
@@ -4490,18 +4762,20 @@ else fail_test "abort cleanup releases quiescence only after owned snapshot clea
 # Direct host artifacts use the same deferred-signal ownership primitive as the legacy publisher.
 # Creation and registration are indivisible, and the successful handoff changes owners before
 # signals are replayed.
-direct_db_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | sed -n '1s/:.*//p')"
-direct_receipt_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | sed -n '2s/:.*//p')"
-direct_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | sed -n '3s/:.*//p')"
-direct_db_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | sed -n '1s/:.*//p')"
-direct_receipt_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | sed -n '2s/:.*//p')"
-direct_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | sed -n '3s/:.*//p')"
-direct_db_create_line="$(grep -n 'if \[ -e "\$host_db" \].*: > "\$host_db"' "$PROVISION" | cut -d: -f1)"
-direct_db_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB="\$host_db"$' "$PROVISION" | cut -d: -f1)"
-direct_receipt_create_line="$(grep -n 'if \[ -e "\$receipt" \].*: > "\$receipt"' "$PROVISION" | head -1 | cut -d: -f1)"
-direct_receipt_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"$' "$PROVISION" | head -1 | cut -d: -f1)"
-direct_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""$' "$PROVISION" | cut -d: -f1)"
-direct_receipt_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT=""$' "$PROVISION" | cut -d: -f1)"
+direct_publisher="$TMP/direct-publisher.sh"
+sed -n '/^snapshot_prepared_database()/,/^}/p' "$PROVISION" > "$direct_publisher"
+direct_db_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$direct_publisher" | sed -n '1s/:.*//p')"
+direct_receipt_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$direct_publisher" | sed -n '2s/:.*//p')"
+direct_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$direct_publisher" | sed -n '3s/:.*//p')"
+direct_db_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$direct_publisher" | sed -n '1s/:.*//p')"
+direct_receipt_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$direct_publisher" | sed -n '2s/:.*//p')"
+direct_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$direct_publisher" | sed -n '3s/:.*//p')"
+direct_db_create_line="$(grep -n 'if \[ -e "\$host_db" \].*: > "\$host_db"' "$direct_publisher" | cut -d: -f1)"
+direct_db_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB="\$host_db"$' "$direct_publisher" | cut -d: -f1)"
+direct_receipt_create_line="$(grep -n 'if \[ -e "\$receipt" \].*: > "\$receipt"' "$direct_publisher" | head -1 | cut -d: -f1)"
+direct_receipt_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"$' "$direct_publisher" | head -1 | cut -d: -f1)"
+direct_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""$' "$direct_publisher" | cut -d: -f1)"
+direct_receipt_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT=""$' "$direct_publisher" | cut -d: -f1)"
 if [ -n "$direct_db_defer_line" ] && [ "$direct_db_defer_line" -lt "$direct_db_create_line" ] &&
    [ "$direct_db_create_line" -lt "$direct_db_owner_line" ] && [ "$direct_db_owner_line" -lt "$direct_db_restore_line" ]; then
   pass "direct database creation and cleanup registration are signal-atomic"
@@ -4510,8 +4784,8 @@ if [ -n "$direct_receipt_defer_line" ] && [ "$direct_receipt_defer_line" -lt "$d
    [ "$direct_receipt_create_line" -lt "$direct_receipt_owner_line" ] && [ "$direct_receipt_owner_line" -lt "$direct_receipt_restore_line" ]; then
   pass "direct receipt creation and cleanup registration are signal-atomic"
 else fail_test "direct receipt creation and cleanup registration are signal-atomic"; fi
-if grep -q 'set -o noclobber; : > "\$host_db"' "$PROVISION" &&
-   grep -q 'set -o noclobber; : > "\$receipt"' "$PROVISION"; then
+if grep -q 'set -o noclobber; : > "\$host_db"' "$direct_publisher" &&
+   grep -q 'set -o noclobber; : > "\$receipt"' "$direct_publisher"; then
   pass "direct database and receipt creation both enforce shell noclobber"
 else fail_test "direct database and receipt creation both enforce shell noclobber"; fi
 if [ -n "$direct_handoff_defer_line" ] && [ "$direct_handoff_defer_line" -lt "$direct_db_disown_line" ] &&
@@ -4554,6 +4828,11 @@ else
   LAST_OUTPUT="$direct_copy_output"
   fail_test "the direct database is registered before its transfer can block"
 fi
+direct_remote_stage="$(find "$TMP/db-txn-sandbox/data/local/tmp" -type d -name '.hapaneld-db-txn.*' | head -1)"
+if [ -n "$direct_remote_stage" ] && [ "$(stat -c '%a' "$direct_remote_stage")" = 700 ] &&
+   [ "$(stat -c '%a' "$direct_remote_stage/ha-paneld.db")" = 600 ]; then
+  pass "the closed database stage is owner-only throughout transfer"
+else fail_test "the closed database stage is owner-only throughout transfer"; fi
 direct_interrupt_started="$(date +%s)"
 kill -INT -- "-$direct_copy_owner_pid" 2>/dev/null || true
 if wait "$direct_copy_owner_pid"; then direct_copy_status=0; else direct_copy_status=$?; fi
@@ -4569,6 +4848,9 @@ if find "$TMP/auto-backups" -maxdepth 1 -type f -name '*.break-glass.db*' | grep
   LAST_OUTPUT="$direct_copy_output"
   fail_test "an interrupted unaccepted direct pair is removed"
 else pass "an interrupted unaccepted direct pair is removed"; fi
+if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' | grep -q .; then
+  fail_test "an interrupted direct transfer removes its remote stage"
+else pass "an interrupted direct transfer removes its remote stage"; fi
 direct_copy_blocked_pid="$(cat "$direct_copy_pid_file" 2>/dev/null || true)"
 if [ -n "$direct_copy_blocked_pid" ] && processes_gone "-$direct_copy_blocked_pid"; then
   pass "direct-copy interruption reaps the entire nested adb process group"
@@ -4649,7 +4931,7 @@ for prepare_mode in unsupported malformed wrong_nonce wrong_result nonready; do
      [ "$(grep -c '^sqlite3 \.backup$' "$MOCK_CALL_LOG")" = 1 ]; then
     pass "a $prepare_mode outcome executes exactly one legacy transaction and one SQLite .backup"
   else fail_test "a $prepare_mode outcome executes exactly one legacy transaction and one SQLite .backup"; fi
-  assert_not_contains 'exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "a $prepare_mode receipt is never accepted for direct copy"
+  assert_not_contains 'exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db ' "$MOCK_CALL_LOG" "a $prepare_mode receipt is never accepted for direct copy"
   assert_not_contains 'RELEASE_UPGRADE' "$MOCK_CALL_LOG" "successful replacement retires a $prepare_mode custody nonce without RELEASE"
 done
 
@@ -4700,27 +4982,98 @@ for direct_failure in size_mismatch digest_mismatch schema_mismatch rows_mismatc
   assert_success "a $direct_failure direct copy is discarded while the ordinary upgrade continues"
   assert_marker_absent "a $direct_failure direct copy never earns the captured marker"
   assert_log_contains '^adb .* install' "a $direct_failure optional backup does not preempt install"
-  assert_not_contains '\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" "a $direct_failure result does not retry through the legacy path"
+  assert_not_contains '^sqlite3 \.backup$|sh /data/local/tmp/\.hapaneld-db-txn\..*-script' "$MOCK_CALL_LOG" "a $direct_failure result does not retry through the legacy path"
   if find "$TMP/auto-backups" -maxdepth 1 -type f -name '*.break-glass.db*' | grep -q .; then
     fail_test "a $direct_failure rejection removes its host artifacts"
   else pass "a $direct_failure rejection removes its host artifacts"; fi
+  if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' | grep -q .; then
+    fail_test "a $direct_failure rejection removes its remote stage"
+  else pass "a $direct_failure rejection removes its remote stage"; fi
 done
+
+for direct_transfer_failure in stage_fail fail; do
+  reset_db_txn_state
+  MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY="$direct_transfer_failure" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_success "a $direct_transfer_failure transfer keeps the ordinary upgrade available"
+  assert_marker_absent "a $direct_transfer_failure transfer cannot publish a receipt"
+  if find "$TMP/auto-backups" -name '*.break-glass.db*' | grep -q . ||
+     find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' | grep -q .; then
+    fail_test "a $direct_transfer_failure transfer removes both owned partial copies"
+  else pass "a $direct_transfer_failure transfer removes both owned partial copies"; fi
+done
+
+reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY=stage_collision run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "an exact staging collision keeps the ordinary upgrade available"
+assert_marker_absent "an exact staging collision cannot authorize a capture"
+collided_stage="$(find "$TMP/db-txn-sandbox/data/local/tmp" -name other-owner -printf '%h\n' | head -1)"
+if [ -n "$collided_stage" ] && [ "$(cat "$collided_stage/other-owner")" = 'other owner' ]; then
+  pass "a rejected exact staging collision preserves the original owner"
+else fail_test "a rejected exact staging collision preserves the original owner"; fi
+assert_not_contains 'rm -rf /data/local/tmp/\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" \
+  "failed staging admission never registers cleanup authority"
+
+# An interrupted mkdir response is ambiguous. It may leave an empty private directory, never a
+# copied database or permission to remove an unconfirmed path. Signals replay before any copy.
+reset_db_txn_state
+: > "$MOCK_CALL_LOG"
+admission_pid_file="$TMP/direct-admission-block.pid"
+admission_output="$TMP/direct-admission-block-output.txt"
+rm -f "$admission_pid_file"
+set -m
+MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY=admission_block MOCK_DIRECT_COPY_PID_FILE="$admission_pid_file" \
+ADB_COMMAND_TIMEOUT_SECONDS=2 HAPANELD_SKIP_AUTO_EXPORT=1 \
+HAPANELD_CONFIG_BACKUP_DIR="$TMP/auto-backups" MOCK_STATE_DIR="$TMP" \
+  bash "$PROVISION" "$MOCK_TARGET" --apk "$APK" --no-tame --allow-unsigned-helper > "$admission_output" 2>&1 &
+admission_owner_pid=$!
+ACTIVE_PUBLICATION_PGID="$admission_owner_pid"
+set +m
+admission_ready=0
+for _ in {1..100}; do
+  if [ -s "$admission_pid_file" ]; then admission_ready=1; break; fi
+  /bin/sleep 0.05
+done
+LAST_OUTPUT="$admission_output"
+if [ "$admission_ready" = 1 ]; then
+  pass "staging interruption reaches the unacknowledged mkdir response"
+else fail_test "staging interruption reaches the unacknowledged mkdir response"; fi
+kill -INT -- "-$admission_owner_pid" 2>/dev/null || true
+if wait "$admission_owner_pid"; then admission_status=0; else admission_status=$?; fi
+ACTIVE_PUBLICATION_PGID=""
+if [ "$admission_status" = 130 ]; then
+  pass "interrupted staging admission replays the deferred signal status"
+else fail_test "interrupted staging admission replays the deferred signal status (got $admission_status)"; fi
+if find "$TMP/auto-backups" -name '*.break-glass.db*' | grep -q .; then
+  fail_test "interrupted staging admission removes unaccepted host artifacts"
+else pass "interrupted staging admission removes unaccepted host artifacts"; fi
+admission_stage="$(find "$TMP/db-txn-sandbox/data/local/tmp" -type d -name '.hapaneld-db-txn.*' | head -1)"
+if [ -n "$admission_stage" ] && [ "$(stat -c '%a' "$admission_stage")" = 700 ] &&
+   [ -z "$(find "$admission_stage" -mindepth 1 -print -quit)" ]; then
+  pass "a lost staging acknowledgement leaves only an empty private directory"
+else fail_test "a lost staging acknowledgement leaves only an empty private directory"; fi
+admission_blocked_pid="$(cat "$admission_pid_file" 2>/dev/null || true)"
+if [ -n "$admission_blocked_pid" ] && processes_gone "$admission_blocked_pid"; then
+  pass "interrupted staging admission reaps its nested adb child"
+else fail_test "interrupted staging admission reaps its nested adb child"; fi
+if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
+  pass "interrupted staging admission releases quiescence exactly once"
+else fail_test "interrupted staging admission releases quiescence exactly once"; fi
 
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT=shc run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "the quiesced direct copy supports the sh -c root route"
-assert_log_contains 'exec-out su 0 sh -c cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "the direct copy uses the probed sh -c form"
-for direct_dialect in rootjoin:'exec-out su root cat ' rootshc:'exec-out su root sh -c cat ' suc:'exec-out su -c cat '; do
+assert_log_contains 'shell su 0 sh -c .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "the direct copy uses the probed sh -c form"
+for direct_dialect in rootjoin:'shell su root ' rootshc:'shell su root sh -c ' suc:'shell su -c '; do
   dialect_name="${direct_dialect%%:*}"; wrapper_pattern="${direct_dialect#*:}"
   reset_db_txn_state
   MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT="$dialect_name" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_marker_captured "the READY direct copy supports the $dialect_name root form"
-  assert_log_contains "$wrapper_pattern/data/data/io.panelassistant.android/databases/ha-paneld.db" "the direct copy dispatches through the exact $dialect_name form"
+  assert_log_contains "${wrapper_pattern}.*cp /data/data/io.panelassistant.android/databases/ha-paneld.db " "the direct copy dispatches through the exact $dialect_name form"
 done
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_ADB_ROOT=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_marker_captured "the READY direct copy supports root adbd without su"
-assert_log_contains 'exec-out cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "root adbd uses the bare binary-safe copy form"
+assert_log_contains 'shell cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "root adbd stages the copy without su"
 
 # A failure after READY but before package replacement releases the exact lease once. A destructive
 # reset with rejected bytes remains fail-closed and likewise releases rather than erasing anything.
@@ -4782,25 +5135,210 @@ else fail_test "source disowns RELEASE custody only inside the exact-response br
 reset_db_txn_state
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
 MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
-MOCK_UPGRADE_PREPARE=ready \
+MOCK_UPGRADE_PREPARE=ready UPGRADE_RENEW_INTERVAL_SECONDS=1 MOCK_APK_INSTALL_DELAY_SECONDS=2 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a panel still carrying the bridge is provisioned with the successor"
+if awk '/^adb .* install( |$)/ { installing=1 } /RELEASE_UPGRADE/ { installing=0 } installing && /RENEW_UPGRADE/ { found=1 } END { exit found ? 0 : 1 }' "$MOCK_CALL_LOG"; then
+  pass "the bridge hold continues renewing while the successor installation is in progress"
+else fail_test "the bridge hold continues renewing while the successor installation is in progress"; fi
 assert_contains 'schema 9 is inside candidate boundary' \
   "the bridge's database is what the candidate boundary is measured against"
 assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
   "the upgrade-control broadcast reaches the identity that is actually installed"
-assert_log_contains 'cat /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db' \
+assert_log_contains 'cp /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db ' \
   "the pre-mutation capture copies the database the bridge holds"
 # Installing the successor does not replace the bridge, so nothing stops the process this run
 # quiesced. Its lease is released back to the identity that armed it, not to the one just installed.
 assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
   "the quiesced bridge is released after the successor is installed"
+assert_log_contains 'am start-foreground-service --user 0 -n io\.github\.maxlyth\.hapaneld/\.PaneldService -a io\.github\.maxlyth\.hapaneld\.action\.HANDOFF_INSTALLED_SUCCESSOR' \
+  "release explicitly wakes installed handoff even when the watchdog already resumed the bridge"
+handover_install_line="$(grep -nE '^adb .* install( |$)' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_commit_line="$(grep -nE 'helper-transaction-[0-9a-f]+.*commit-system' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_release_line="$(grep -n 'RELEASE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_wake_line="$(grep -n 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_launch_line="$(grep -n 'monkey -p io.panelassistant.android -c android.intent.category.LAUNCHER 1' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$handover_install_line" ] && [ -n "$handover_commit_line" ] && \
+   [ -n "$handover_release_line" ] && [ -n "$handover_wake_line" ] && [ -n "$handover_launch_line" ] && \
+   [ "$handover_install_line" -lt "$handover_commit_line" ] && \
+   [ "$handover_commit_line" -lt "$handover_release_line" ] && \
+   [ "$handover_release_line" -lt "$handover_wake_line" ] && \
+   [ "$handover_wake_line" -lt "$handover_launch_line" ]; then
+  pass "bridge quiescence ends after helper commit and before successor launch"
+else
+  fail_test "bridge quiescence ends after helper commit and before successor launch"
+fi
+if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
+  pass "the acknowledged bridge release is not repeated at EXIT"
+else fail_test "the acknowledged bridge release is not repeated at EXIT"; fi
 if grep -Fq 'db=/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' \
      "$TMP/db-observer-script.$MOCK_TARGET" 2>/dev/null; then
   pass "the database observer inspects the bridge's app-data directory"
 else
   fail_test "the database observer inspects the bridge's app-data directory"
 fi
+
+# A failed RELEASE must keep the bridge's lease available to EXIT cleanup, without launching the
+# successor into a wait for a token from the service we still hold down.
+reset_db_txn_state
+MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
+MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RELEASE=fail \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "an unacknowledged bridge release stops before successor launch"
+assert_contains 'previous app has not resumed for the handover' "the retained bridge hold is reported"
+assert_not_contains 'monkey -p io.panelassistant.android|am start -n io.panelassistant.android/' "$MOCK_CALL_LOG" \
+  "a held bridge cannot strand a newly launched successor"
+assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
+  "unacknowledged release and abort cleanup do not request handoff"
+if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 4 ]; then
+  pass "unacknowledged bridge release retains its nonce for EXIT retry"
+else fail_test "unacknowledged bridge release retains its nonce for EXIT retry"; fi
+
+# Abort cleanup must only resume the incumbent.
+# The handoff wake is owned by the successful installation path, not generic RELEASE.
+for handover_failure in install helper-commit; do
+  reset_db_txn_state
+  handover_apk_result=ok; handover_commit_result=ok
+  if [ "$handover_failure" = install ]; then handover_apk_result=fail
+  else handover_commit_result=fail; fi
+  MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+  MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
+  MOCK_UPGRADE_PREPARE=ready MOCK_APK_INSTALL="$handover_apk_result" MOCK_HELPER_COMMIT="$handover_commit_result" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$handover_failure refusal stops a handover rerun"
+  assert_log_contains 'RELEASE_UPGRADE' "$handover_failure cleanup resumes the quiesced incumbent"
+  assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
+    "$handover_failure cleanup never starts successor handoff"
+done
+
+# A prior failed run may have installed the passive successor already. Package presence is not
+# runtime ownership: its own database gate must not hide the bridge's post-commit handoff wake.
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a rerun with both installed identities requests the remaining handover"
+assert_log_contains 'am start-foreground-service --user 0 -n io\.github\.maxlyth\.hapaneld/\.PaneldService -a io\.github\.maxlyth\.hapaneld\.action\.HANDOFF_INSTALLED_SUCCESSOR' \
+  "an installed successor does not hide the bridge handoff wake"
+
+# A successor package can be installed but remain entirely passive, without a canonical database.
+# The observer fixture reads the package from the actual staged script, so choosing the wrong
+# identity sees missing rather than being handed the bridge's healthy database by the mock.
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_UPGRADE_PREPARE=ready \
+MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
+MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
+MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a passive installed successor preserves the bridge-owned canonical database"
+assert_marker_captured "passive successor handover captures the real bridge database"
+assert_log_contains 'host-db-observe package=io.panelassistant.android count=1 primary=missing passive=passive' \
+  "passive ownership starts with an actual missing-successor observation"
+assert_log_contains 'host-db-observe package=io.github.maxlyth.hapaneld .*primary=readable:9:ok' \
+  "passive ownership measures the bridge database against the candidate"
+passive_bridge_line="$(grep -n 'host-db-observe package=io.github.maxlyth.hapaneld count=1 ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+passive_recheck_line="$(grep -n 'host-db-observe package=io.panelassistant.android count=2 primary=missing passive=passive' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+passive_prepare_line="$(grep -n 'PREPARE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$passive_bridge_line" ] && [ -n "$passive_recheck_line" ] && [ -n "$passive_prepare_line" ] && \
+   [ "$passive_bridge_line" -lt "$passive_recheck_line" ] && [ "$passive_recheck_line" -lt "$passive_prepare_line" ]; then
+  pass "passive ownership rechecks the empty successor after measuring the bridge"
+else fail_test "passive ownership rechecks the empty successor after measuring the bridge"; fi
+unset passive_bridge_line passive_recheck_line passive_prepare_line
+assert_log_contains 'PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver' \
+  "passive successor quiescence addresses the proven bridge owner"
+assert_log_contains 'cp /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db ' \
+  "passive successor capture copies the proven bridge owner"
+assert_log_contains 'RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver' \
+  "passive successor release returns to the proven bridge owner"
+
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=blocked \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a successor with its own canonical database remains the data owner"
+assert_not_contains 'host-db-observe package=io.github.maxlyth.hapaneld' "$MOCK_CALL_LOG" \
+  "a valid successor database never falls back to stale bridge data"
+assert_log_contains 'PREPARE_UPGRADE -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.UpgradeControlReceiver' \
+  "an owning successor keeps its own quiescence receiver"
+
+reset_db_txn_state
+MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
+MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
+MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
+HAPANELD_RESET_CONFIRM=RESET \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config
+assert_failure "reset cannot adopt bridge data through a passive missing-successor fallback" \
+  'database compatibility could not be proven'
+assert_not_contains 'pm clear' "$MOCK_CALL_LOG" \
+  "a passive missing-successor reset refusal never clears either identity"
+
+for passive_refusal in retained recovery retired nonempty unreadable symlink missing-bridge unreadable-bridge incompatible-bridge; do
+  reset_db_txn_state
+  passive_retained=0; passive_recovery=none; passive_proof=passive
+  passive_bridge_present=1; passive_bridge_primary=readable:9:ok
+  case "$passive_refusal" in
+    retained) passive_retained=1 ;;
+    recovery) passive_recovery=v9:readable:9:ok ;;
+    retired|nonempty) passive_proof=blocked ;;
+    unreadable|symlink) passive_proof=unreadable ;;
+    missing-bridge) passive_bridge_present=0 ;;
+    unreadable-bridge) passive_bridge_primary=unreadable ;;
+    incompatible-bridge) passive_bridge_primary=readable:99:ok ;;
+  esac
+  MOCK_LEGACY_INSTALLED="$passive_bridge_present" MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
+  MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED="$passive_retained" \
+  MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY="$passive_recovery" \
+  MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER="$passive_proof" MOCK_HOST_DB_LEGACY_PRIMARY="$passive_bridge_primary" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$passive_refusal cannot authorize a missing-successor database fallback" \
+    'database compatibility could not be proven'
+  assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p' \
+    "$MOCK_CALL_LOG" "$passive_refusal ownership refusal precedes every tracked mutation"
+done
+
+for passive_field in missing duplicate invalid; do
+  passive_field_mode="$passive_field"; passive_field_value=none
+  if [ "$passive_field" = invalid ]; then passive_field_mode=normal; passive_field_value=unknown; fi
+  MOCK_HOST_DB_PASSIVE_FIELD="$passive_field_mode" MOCK_HOST_DB_PASSIVE_OWNER="$passive_field_value" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$passive_field passive-owner protocol field is refused" \
+    'database compatibility could not be proven'
+  assert_not_contains 'config/export|PREPARE_UPGRADE|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR' \
+    "$MOCK_CALL_LOG" "$passive_field passive-owner field refuses before mutation"
+done
+unset passive_field passive_field_mode passive_field_value
+
+# The same schema and database fingerprint must not conceal an ownership transition. Successor
+# observations 1/2 bracket the initial bridge read, 3/4 consume, and 5/6 the package-time read.
+for passive_drift in inside-retired inside-database consume-retired package-retired; do
+  reset_db_txn_state
+  passive_change_at=2; passive_changed_proof=blocked; passive_changed_primary=missing
+  case "$passive_drift" in
+    inside-database) passive_changed_proof=passive; passive_changed_primary=readable:9:ok ;;
+    consume-retired) passive_change_at=3 ;;
+    package-retired) passive_change_at=5 ;;
+  esac
+  MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_UPGRADE_PREPARE=ready \
+  MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
+  MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
+  MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
+  MOCK_HOST_DB_SUCCESSOR_CHANGE_AT="$passive_change_at" \
+  MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER_CHANGED="$passive_changed_proof" \
+  MOCK_HOST_DB_SUCCESSOR_PRIMARY_CHANGED="$passive_changed_primary" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "$passive_drift ownership change cannot license package replacement" \
+    'database compatibility could not be proven'
+  passive_mutations='^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p'
+  case "$passive_drift" in inside-*) passive_mutations="$passive_mutations|PREPARE_UPGRADE" ;; esac
+  assert_not_contains "$passive_mutations" \
+    "$MOCK_CALL_LOG" "$passive_drift ownership change stops before target mutation"
+  if [ "$passive_drift" = package-retired ]; then
+    assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
+      "package-time passive ownership drift rolls back prepared helper custody"
+  fi
+done
+unset passive_refusal passive_retained passive_recovery passive_proof passive_bridge_present passive_bridge_primary \
+  passive_drift passive_change_at passive_changed_proof passive_changed_primary passive_mutations
 
 # The same retained database with NO bridge installed is residue under the install target itself,
 # which this gate has always refused. This is the pair that makes the resolution above load-bearing:
@@ -4999,7 +5537,7 @@ MOCK_ROOT=0 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "an upgrade on a panel with no root route still succeeds"
 assert_contains 'no root route, so only settings could be saved' "a sandboxed panel is told what was and was not saved"
 assert_marker_absent "a rootless skip never claims a captured snapshot"
-assert_not_contains 'PREPARE_UPGRADE|exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "a rootless panel is neither quiesced nor asked for an inaccessible database"
+assert_not_contains 'PREPARE_UPGRADE|exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db ' "$MOCK_CALL_LOG" "a rootless panel is neither quiesced nor asked for an inaccessible database"
 
 # The rootless skip above is only accepted from a transport that proves it is still alive: a probe
 # whose transport died mid-question looks identical to a genuine "no root", and skipping on it would
@@ -5527,16 +6065,20 @@ reset_db_txn_state
 # breakable by a named mutation: the snapshot reaches its final name only through no-replace ln
 # after an existence refusal, and the database and receipt are registered as ONE cleanup unit so a
 # signal in the publication window removes the pair or neither.
-if [ "$(grep -c 'ln "\$pull_tmp" "\$base.db"' "$PROVISION")" -eq 1 ] &&    grep -q 'if \[ -e "\$base.db" \] || \[ -L "\$base.db" \]; then' "$PROVISION"; then
+legacy_publisher="$TMP/legacy-publisher.sh"
+# This function contains a device-script heredoc with its own unindented braces. Bound the
+# extraction by the next host function, not the first closing brace inside that heredoc.
+sed -n '/^snapshot_panel_database()/,/^reset_panel_config()/p' "$PROVISION" > "$legacy_publisher"
+if [ "$(grep -c 'ln "\$pull_tmp" "\$base.db"' "$legacy_publisher")" -eq 1 ] &&    grep -q 'if \[ -e "\$base.db" \] || \[ -L "\$base.db" \]; then' "$legacy_publisher"; then
   pass "publication is no-replace: existence refusal plus hardlink finalization"
 else fail_test "publication is no-replace: existence refusal plus hardlink finalization"; fi
-if [ "$(grep -c 'SNAPSHOT_TXN_HOST_DB="\$base.db"' "$PROVISION")" -eq 1 ] &&
-   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$PROVISION" &&
+if [ "$(grep -c 'SNAPSHOT_TXN_HOST_DB="\$base.db"' "$legacy_publisher")" -eq 1 ] &&
+   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$legacy_publisher" &&
    grep -q 'for stale in "\${SNAPSHOT_TXN_HOST_DB:-}" "\${SNAPSHOT_TXN_HOST_RECEIPT:-}"' "$PROVISION"; then
   pass "the database and its receipt are registered as one cleanup unit, in separate unsplittable variables"
 else fail_test "the database and its receipt are registered as one cleanup unit, in separate unsplittable variables"; fi
-receipt_guard_line="$(grep -n 'if \[ -e "\$receipt" \] || \[ -L "\$receipt" \]; then' "$PROVISION" | cut -d: -f1)"
-receipt_owner_line="$(grep -n 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$PROVISION" | tail -1 | cut -d: -f1)"
+receipt_guard_line="$(grep -n 'if \[ -e "\$receipt" \] || \[ -L "\$receipt" \]; then' "$legacy_publisher" | cut -d: -f1)"
+receipt_owner_line="$(grep -n 'SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"' "$legacy_publisher" | cut -d: -f1)"
 if [ -n "$receipt_guard_line" ] && [ -n "$receipt_owner_line" ] && [ "$receipt_guard_line" -lt "$receipt_owner_line" ]; then
   pass "a pre-existing receipt is refused before this run claims ownership"
 else fail_test "a pre-existing receipt is refused before this run claims ownership"; fi
@@ -5544,23 +6086,25 @@ if grep -q '\[ "\$SNAPSHOT_TXN_HOST_DB_WORK" -ef "\$SNAPSHOT_TXN_HOST_DB_TARGET"
    grep -q '\[ "\$SNAPSHOT_TXN_HOST_RECEIPT_WORK" -ef "\$SNAPSHOT_TXN_HOST_RECEIPT_TARGET" \]' "$PROVISION"; then
   pass "publication-window cleanup removes final paths only when their working hardlink proves ownership"
 else fail_test "publication-window cleanup removes final paths only when their working hardlink proves ownership"; fi
-if [ "$(grep -c 'snapshot_txn_defer_host_signals' "$PROVISION")" -eq 7 ] &&
-   [ "$(grep -c 'snapshot_txn_restore_host_signals' "$PROVISION")" -eq 9 ] &&
-   grep -q 'SNAPSHOT_TXN_HOST_DB_WORK="\$pull_tmp"' "$PROVISION" &&
-   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT_WORK="\$receipt_tmp"' "$PROVISION"; then
+if [ "$(grep -c '^  snapshot_txn_defer_host_signals$' "$legacy_publisher")" -eq 3 ] &&
+   [ "$(grep -c '^  snapshot_txn_restore_host_signals$' "$legacy_publisher")" -eq 3 ] &&
+   grep -q 'SNAPSHOT_TXN_HOST_DB_WORK="\$pull_tmp"' "$legacy_publisher" &&
+   grep -q 'SNAPSHOT_TXN_HOST_RECEIPT_WORK="\$receipt_tmp"' "$legacy_publisher"; then
   pass "temporary creation defers signals until database and receipt ownership are registered"
 else fail_test "temporary creation defers signals until database and receipt ownership are registered"; fi
-legacy_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | tail -1 | cut -d: -f1)"
-legacy_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""$' "$PROVISION" | tail -1 | cut -d: -f1)"
-legacy_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | tail -1 | cut -d: -f1)"
-legacy_remote_cleanup_line="$(grep -n 'run_root "rm -f \${stage}-script && rm -rf \$stage"' "$PROVISION" | tail -1 | cut -d: -f1)"
+legacy_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$legacy_publisher" | tail -1 | cut -d: -f1)"
+legacy_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""$' "$legacy_publisher" | cut -d: -f1)"
+legacy_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$legacy_publisher" | tail -1 | cut -d: -f1)"
+legacy_remote_cleanup_line="$(grep -n 'run_root "rm -f \${stage}-script && rm -rf \$stage"' "$legacy_publisher" | cut -d: -f1)"
 if [ -n "$legacy_handoff_defer_line" ] && [ "$legacy_handoff_defer_line" -lt "$legacy_db_disown_line" ] &&
    [ "$legacy_db_disown_line" -lt "$legacy_handoff_restore_line" ] &&
    [ "$legacy_handoff_restore_line" -lt "$legacy_remote_cleanup_line" ]; then
   pass "legacy accepted database and receipt handoff is signal-atomic before remote cleanup"
 else fail_test "legacy accepted database and receipt handoff is signal-atomic before remote cleanup"; fi
-restore_handler_line="$(grep -n "trap 'handle_provision_signal 130' INT" "$PROVISION" | tail -1 | cut -d: -f1)"
-read_deferred_line="$(grep -n 'deferred="\$SNAPSHOT_TXN_DEFERRED_SIGNAL"' "$PROVISION" | cut -d: -f1)"
+restore_source="$TMP/snapshot-signal-restore.sh"
+sed -n '/^snapshot_txn_restore_host_signals()/,/^}/p' "$PROVISION" > "$restore_source"
+restore_handler_line="$(grep -n "trap 'handle_provision_signal 130' INT" "$restore_source" | cut -d: -f1)"
+read_deferred_line="$(grep -n 'deferred="\$SNAPSHOT_TXN_DEFERRED_SIGNAL"' "$restore_source" | cut -d: -f1)"
 if [ -n "$restore_handler_line" ] && [ -n "$read_deferred_line" ] && [ "$restore_handler_line" -lt "$read_deferred_line" ]; then
   pass "real signal handlers are restored before the deferred signal is read or cleared"
 else fail_test "real signal handlers are restored before the deferred signal is read or cleared"; fi
@@ -5646,7 +6190,7 @@ assert_failure "an unconfirmed reset returns nonzero"
 assert_contains 'was not confirmed' "an unconfirmed reset says so"
 assert_contains 'Nothing was erased' "an unconfirmed reset states that the panel is untouched"
 assert_not_contains 'pm clear' "$MOCK_CALL_LOG" "an unconfirmed reset never reaches the package manager"
-assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db|^adb .* install' "$MOCK_CALL_LOG" "an unconfirmed reset performs no backup or install work"
+assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db |^adb .* install' "$MOCK_CALL_LOG" "an unconfirmed reset performs no backup or install work"
 
 # --force skips a version comparison; it must not stand in for authorising a wipe.
 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config --force
@@ -5661,7 +6205,7 @@ assert_log_contains '^adb -s panel\.test:5555 shell pm clear io.panelassistant.a
 if [ "$(grep -Ec '^adb -s panel\.test:5555 shell pm clear io\.panelassistant\.android$' "$MOCK_CALL_LOG")" = 1 ]; then
   pass "a confirmed reset issues exactly one package clear"
 else fail_test "a confirmed reset issues exactly one package clear"; fi
-assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "reset bypasses settings export and database capture"
+assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db ' "$MOCK_CALL_LOG" "reset bypasses settings export and database capture"
 assert_contains 'configuration erased' "a confirmed reset reports what it did"
 assert_contains 'Next: confirm this panel.s name' "a reset panel lands in guided setup, not in repair"
 
@@ -7953,6 +8497,48 @@ case "$CLEANUP_PROBE_COMMAND" in
   *) fail_test "a promoted record's .new leftover is reclaimed once the path is owned" ;;
 esac
 
+# Execute that exact cleanup command, redirecting only its absolute roots into a private fixture.
+# A timed-out host must not delete inputs still owned by the device-side transaction.
+CLEANUP_EXEC_ROOT="$TMP/cleanup-device"
+mkdir -p "$CLEANUP_EXEC_ROOT/dev" "$CLEANUP_EXEC_ROOT/data/local/tmp" "$CLEANUP_EXEC_ROOT/data/adb/hapaneld"
+CLEANUP_EXEC_COMMAND="$(printf '%s\n' "$CLEANUP_PROBE_COMMAND" | sed \
+  -e "s|/dev/|$CLEANUP_EXEC_ROOT/dev/|g" -e "s|/data/|$CLEANUP_EXEC_ROOT/data/|g")"
+cleanup_exec_stage="$CLEANUP_EXEC_ROOT/data/local/tmp/hapaneld-helper-$CLEANUP_PROBE_ID"
+cleanup_exec_candidate="$CLEANUP_EXEC_ROOT/data/local/.hapaneld-helper.provision-$CLEANUP_PROBE_ID"
+cleanup_exec_lock="$CLEANUP_EXEC_ROOT/dev/.hapaneld-helper-transaction.lock"
+printf 'transaction input\n' > "$cleanup_exec_stage"
+printf 'candidate input\n' > "$cleanup_exec_candidate"
+mkdir "$cleanup_exec_lock"
+printf '%s\n' "$$" > "$cleanup_exec_lock/pid"
+printf 'foreign lock sentinel\n' > "$cleanup_exec_lock/sentinel"
+if /bin/sh -uc "$CLEANUP_EXEC_COMMAND"; then pass "busy staging cleanup remains best effort"
+else fail_test "busy staging cleanup remains best effort"; fi
+if [ -f "$cleanup_exec_stage" ] && [ -f "$cleanup_exec_candidate" ]; then
+  pass "busy staging cleanup preserves the in-flight bundle and candidate"
+else fail_test "busy staging cleanup preserves the in-flight bundle and candidate"; fi
+if [ "$(cat "$cleanup_exec_lock/pid")" = "$$" ] && [ "$(cat "$cleanup_exec_lock/sentinel")" = 'foreign lock sentinel' ]; then
+  pass "staging cleanup never takes over or removes the existing transaction lock"
+else fail_test "staging cleanup never takes over or removes the existing transaction lock"; fi
+rm -rf "$cleanup_exec_lock"
+printf 'unknown lock custody\n' > "$cleanup_exec_lock"
+if /bin/sh -uc "$CLEANUP_EXEC_COMMAND" && [ -f "$cleanup_exec_stage" ] && \
+   [ "$(cat "$cleanup_exec_lock")" = 'unknown lock custody' ]; then
+  pass "staging cleanup preserves malformed or unknown lock custody"
+else fail_test "staging cleanup preserves malformed or unknown lock custody"; fi
+rm "$cleanup_exec_lock"
+printf 'unrelated input\n' > "$CLEANUP_EXEC_ROOT/data/local/tmp/hapaneld-helper-unrelated"
+if /bin/sh -uc "$CLEANUP_EXEC_COMMAND"; then pass "unlocked staging cleanup acquires exclusive custody"
+else fail_test "unlocked staging cleanup acquires exclusive custody"; fi
+if [ ! -e "$cleanup_exec_stage" ] && [ ! -e "$cleanup_exec_candidate" ]; then
+  pass "lock-owned staging cleanup removes its exact bundle and candidate"
+else fail_test "lock-owned staging cleanup removes its exact bundle and candidate"; fi
+if [ ! -e "$cleanup_exec_lock" ]; then pass "staging cleanup releases only its acquired transaction lock"
+else fail_test "staging cleanup releases only its acquired transaction lock"; fi
+if [ -f "$CLEANUP_EXEC_ROOT/data/local/tmp/hapaneld-helper-unrelated" ]; then
+  pass "lock-owned staging cleanup preserves unrelated inputs"
+else fail_test "lock-owned staging cleanup preserves unrelated inputs"; fi
+unset CLEANUP_EXEC_ROOT CLEANUP_EXEC_COMMAND cleanup_exec_stage cleanup_exec_candidate cleanup_exec_lock
+
 fi
 
 if provision_scope_is core all shard-host-reclamation; then
@@ -8334,6 +8920,89 @@ else
   LAST_OUTPUT="$app_stage_install_output"
   fail_test "an executing authority-free stage blocks install before mutation"
 fi
+
+# Exercise the emitted inode scanner itself with real /proc identities and instrument only stat.
+# Faults are injected at the bulk command boundary, not by inventing process-name matches.
+INODE_SCAN_SOURCE="$(sed -n '/^legacy_path_processes()/,/^}/p' "$DEVICE_HEREDOC")"
+INODE_SCAN_BIN="$TMP/inode-scan-bin"
+INODE_SCAN_LOG="$TMP/inode-scan-stat.log"
+mkdir "$INODE_SCAN_BIN"
+cat > "$INODE_SCAN_BIN/stat" <<'EOF'
+#!/bin/sh
+printf 'stat\n' >> "$INODE_SCAN_LOG"
+[ "${INODE_SCAN_MODE:-}" != initial-failure ] || exit 1
+bulk=0
+for argument in "$@"; do [ "$argument" != '%d:%i:%n' ] || bulk=1; done
+if [ "$bulk" = 1 ]; then
+  case "${INODE_SCAN_MODE:-}" in
+    empty) exit 1 ;;
+    no-terminal-anchor)
+      /usr/bin/stat -Lc '%d:%i:%n' "$INODE_SCAN_TARGET"
+      printf '1:1:/proc/123/exe\n'
+      exit 1 ;;
+    no-anchor)
+      /usr/bin/stat "$@" 2>/dev/null | /bin/grep -vF ":$INODE_SCAN_TARGET"
+      exit 1 ;;
+    target-swap)
+      /usr/bin/stat "$@" 2>/dev/null
+      mv "$INODE_SCAN_TARGET" "$INODE_SCAN_TARGET.original"
+      cp /bin/sleep "$INODE_SCAN_TARGET"
+      exit 0 ;;
+    partial)
+      /usr/bin/stat "$@" 2>/dev/null
+      exit 1 ;;
+    fallback-truncated)
+      /usr/bin/stat "$@" 2>/dev/null
+      [ "$1" = -Lc ] || printf '1:1:/proc/123/exe\n'
+      exit 1 ;;
+  esac
+fi
+exec /usr/bin/stat "$@"
+EOF
+cat > "$INODE_SCAN_BIN/toybox" <<'EOF'
+#!/bin/sh
+[ "$1" = stat ] || exit 1
+shift
+exec "$INODE_SCAN_BIN/stat" "$@"
+EOF
+chmod 700 "$INODE_SCAN_BIN/stat" "$INODE_SCAN_BIN/toybox"
+run_inode_scan() {
+  : > "$INODE_SCAN_LOG"
+  inode_scan_output="$(PATH="$INODE_SCAN_BIN:/usr/bin:/bin" INODE_SCAN_BIN="$INODE_SCAN_BIN" \
+    INODE_SCAN_LOG="$INODE_SCAN_LOG" INODE_SCAN_TARGET="$1" INODE_SCAN_MODE="$2" \
+    /bin/sh -uc "$INODE_SCAN_SOURCE
+legacy_path_processes \"\$1\"" inode-scan "$1")"
+  inode_scan_status=$?
+}
+run_inode_scan "$stage_path" normal
+if [ "$inode_scan_status" = 0 ] && [ "$inode_scan_output" = " $app_stage_pid/exe" ]; then
+  pass "bulk inode scan identifies the real executing stage PID"
+else fail_test "bulk inode scan identifies the real executing stage PID"; fi
+if [ "$(wc -l < "$INODE_SCAN_LOG")" -le 4 ]; then
+  pass "bulk inode scan uses a constant number of stat commands"
+else fail_test "bulk inode scan uses a constant number of stat commands"; fi
+run_inode_scan "$stage_path" partial
+if [ "$inode_scan_status" = 0 ] && [ "$inode_scan_output" = " $app_stage_pid/exe" ]; then
+  pass "bulk inode scan deduplicates partial primary and fallback process rows"
+else fail_test "bulk inode scan deduplicates partial primary and fallback process rows"; fi
+ln "$stage_path" "$TMP/differently-named-stage"
+run_inode_scan "$TMP/differently-named-stage" normal
+if [ "$inode_scan_status" = 0 ] && [ "$inode_scan_output" = " $app_stage_pid/exe" ]; then
+  pass "bulk inode scan recognizes an executing inode through a differently named hard link"
+else fail_test "bulk inode scan recognizes an executing inode through a differently named hard link"; fi
+mkdir "$TMP/unrelated-stage"
+cp /bin/sleep "$TMP/unrelated-stage/.hapaneld-helper.new"
+run_inode_scan "$TMP/unrelated-stage/.hapaneld-helper.new" normal
+if [ "$inode_scan_status" = 0 ] && [ -z "$inode_scan_output" ]; then
+  pass "bulk inode scan never confuses the same basename with executable identity"
+else fail_test "bulk inode scan never confuses the same basename with executable identity"; fi
+for inode_fault in initial-failure empty no-anchor no-terminal-anchor fallback-truncated target-swap; do
+  run_inode_scan "$TMP/unrelated-stage/.hapaneld-helper.new" "$inode_fault"
+  if [ "$inode_scan_status" != 0 ] && [ -z "$inode_scan_output" ]; then
+    pass "bulk inode scan refuses $inode_fault without claiming process absence"
+  else fail_test "bulk inode scan refuses $inode_fault without claiming process absence"; fi
+done
+unset INODE_SCAN_SOURCE INODE_SCAN_BIN INODE_SCAN_LOG inode_scan_output inode_scan_status inode_fault
 kill "$app_stage_pid" 2>/dev/null || true
 wait "$app_stage_pid" 2>/dev/null || true
 unset APP_STAGE_SHA app_stage_output app_authority malformed_stage stage_path malformed_output \

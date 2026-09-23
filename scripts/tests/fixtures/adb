@@ -18,6 +18,9 @@ fi
 
 printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?MOCK_CALL_LOG is required}"
 STATE_DIR="${MOCK_STATE_DIR:-$(dirname "$MOCK_CALL_LOG")}"
+case "$*" in *' -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR'*)
+  : > "$STATE_DIR/handoff-started" ;;
+esac
 MOCK_DIAG_ID="${MOCK_DIAG_ID:-abcdef0123456789abcdef0123456789}"
 HELPER_STATE_FIXTURE="$(cd "$(dirname "$0")" && pwd)/helper-state"
 # A clean panel has no package at all. Without this the fixture would silently re-create one and a
@@ -287,6 +290,22 @@ pm_marked_probe_reply() {
     io.github.maxlyth.hapaneld) probe_installed="$([ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] && echo yes || echo no)" ;;
     *) probe_installed="$([ -f "$STATE_DIR/installed-apk" ] && echo yes || echo no)" ;;
   esac
+  if [ "$probe_pkg" = io.github.maxlyth.hapaneld ] && [ -f "$STATE_DIR/handoff-started" ]; then
+    case "${MOCK_HANDOVER_PRESENCE:-ok}" in
+      unknown) other=truncated ;;
+      hang) /bin/sleep 30 ;;
+      present) ;;
+      slow|ok)
+        [ "${MOCK_HANDOVER_PRESENCE:-ok}" != slow ] || /bin/sleep 6
+        handover_probes=0
+        [ ! -f "$STATE_DIR/handoff-health-probes" ] || handover_probes="$(cat "$STATE_DIR/handoff-health-probes")"
+        if [ "$handover_probes" -gt "$(( ${MOCK_HANDOVER_BRIDGE_PROBES:-0} + ${MOCK_HANDOVER_HELD_PROBES:-0} ))" ]; then
+          probe_installed=no
+          printf 'handover-legacy-absent\n' >> "$MOCK_CALL_LOG"
+        fi
+        ;;
+    esac
+  fi
   printf 'HAPANELD_PKG_BEGIN:%s\n' "$nonce"
   pm_marked_paths "${MOCK_PM_PATH:-ok}" "package:/data/app/$probe_pkg/base.apk" "$probe_installed"
   printf 'HAPANELD_PKG_TARGET:%s:%s\n' "$nonce" "$trc"
@@ -381,6 +400,7 @@ pm_query_reply() {
 
 emit_host_database_gate() {
   local primary primary_fingerprint recovery retained inventory inventory_fingerprint nonce observation_count
+  local passive_owner observed_package identity identity_count field variable destination change_at
   nonce="${command_text#*HOSTDB_BEGIN:}"
   nonce="${nonce%%[!0-9a-f]*}"
   primary="${MOCK_HOST_DB_PRIMARY:-readable:${MOCK_DB_DEVICE_USER_VERSION:-9}:ok}"
@@ -402,6 +422,7 @@ emit_host_database_gate() {
   fi
   inventory_fingerprint="${MOCK_HOST_DB_INVENTORY_FINGERPRINT:-fixture:$recovery:$retained}"
   primary_fingerprint="${MOCK_HOST_DB_PRIMARY_FINGERPRINT:-fixture:$primary}"
+  passive_owner="${MOCK_HOST_DB_PASSIVE_OWNER:-none}"
   printf x >> "$STATE_DIR/host-db-observation-count"
   observation_count="$(wc -c < "$STATE_DIR/host-db-observation-count")"
   if [ "$observation_count" -gt 1 ]; then
@@ -420,6 +441,30 @@ emit_host_database_gate() {
     inventory="${MOCK_HOST_DB_INVENTORY_AFTER_SECOND:-$inventory}"
     inventory_fingerprint="${MOCK_HOST_DB_INVENTORY_FINGERPRINT_AFTER_SECOND:-$inventory_fingerprint}"
   fi
+  # The staged production script determines which identity is observed. A passive successor can
+  # have no database while the bridge beside it owns a healthy one; one global reply hides that bug.
+  observed_package="$(sed -n 's#^db=/data/data/\([^/]*\)/databases/ha-paneld.db$#\1#p' "$STATE_DIR/db-observer-script.$ADB_TARGET")"
+  case "$observed_package" in
+    io.github.maxlyth.hapaneld) identity=LEGACY ;;
+    io.panelassistant.android) identity=SUCCESSOR ;;
+    *) return 1 ;;
+  esac
+  printf x >> "$STATE_DIR/host-db-observation-count.$identity"
+  identity_count="$(wc -c < "$STATE_DIR/host-db-observation-count.$identity")"
+  variable="MOCK_HOST_DB_${identity}_CHANGE_AT"
+  change_at="${!variable:-0}"
+  for field in PRIMARY:primary PRIMARY_FINGERPRINT:primary_fingerprint RECOVERY:recovery \
+      RETAINED:retained INVENTORY:inventory INVENTORY_FINGERPRINT:inventory_fingerprint PASSIVE_OWNER:passive_owner; do
+    destination="${field#*:}"
+    variable="MOCK_HOST_DB_${identity}_${field%%:*}"
+    if [ -n "${!variable+x}" ]; then printf -v "$destination" '%s' "${!variable}"; fi
+    if [ "$change_at" -gt 0 ] && [ "$identity_count" -ge "$change_at" ]; then
+      variable="${variable}_CHANGED"
+      if [ -n "${!variable+x}" ]; then printf -v "$destination" '%s' "${!variable}"; fi
+    fi
+  done
+  [ -z "${MOCK_CALL_LOG:-}" ] || printf 'host-db-observe package=%s count=%s primary=%s passive=%s\n' \
+    "$observed_package" "$identity_count" "$primary" "$passive_owner" >> "$MOCK_CALL_LOG"
   if [ -f "$STATE_DIR/package-data-cleared" ]; then
     primary=missing
     primary_fingerprint=none
@@ -436,6 +481,11 @@ emit_host_database_gate() {
   printf 'HOSTDB_RETAINED=%s\n' "$retained"
   printf 'HOSTDB_INVENTORY=%s\n' "$inventory"
   printf 'HOSTDB_INVENTORY_FINGERPRINT=%s\n' "$inventory_fingerprint"
+  case "${MOCK_HOST_DB_PASSIVE_FIELD:-normal}" in
+    missing) ;;
+    duplicate) printf 'HOSTDB_PASSIVE_OWNER=%s\nHOSTDB_PASSIVE_OWNER=%s\n' "$passive_owner" "$passive_owner" ;;
+    *) printf 'HOSTDB_PASSIVE_OWNER=%s\n' "$passive_owner" ;;
+  esac
   printf 'HOSTDB_END:%s\n' "$nonce"
   if [ -n "${MOCK_PACKAGE_APPEAR_AFTER_DB_OBSERVATION:-}" ] && \
      [ "$observation_count" -eq "$MOCK_PACKAGE_APPEAR_AFTER_DB_OBSERVATION" ]; then
@@ -518,7 +568,7 @@ PRAGMA journal_mode=WAL;
 PRAGMA user_version=9;
 CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT INTO app_state VALUES
- ('fixture-1','1'),('fixture-2','2'),('fixture-3','3'),('fixture-4','4'),
+ ('fixture-1',char(13,10,0,10,13)),('fixture-2','2'),('fixture-3','3'),('fixture-4','4'),
  ('fixture-5','5'),('fixture-6','6'),('fixture-7','7');
 SQL
   "${HAPANELD_HOST_SQLITE3:-sqlite3}" "$canonical_db" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null
@@ -596,8 +646,35 @@ run_db_txn_script() {
 }
 
 handle_db_txn_command() {
-  local text="$1"
+  local text="$1" copy_command cleanup_stage
   case "$text" in
+    *'umask 077; mkdir -m 700 '*'.hapaneld-db-txn.'*)
+      prepare_db_txn_sandbox
+      [ "${MOCK_DIRECT_COPY:-ok}" != stage_fail ] || return 1
+      copy_command="umask 077; ${text#*umask 077; }"
+      copy_command="${copy_command%\"}"
+      copy_command="${copy_command//\/data\//$DB_TXN_SANDBOX/data/}"
+      if [ "${MOCK_DIRECT_COPY:-ok}" = stage_collision ]; then
+        cleanup_stage="${copy_command##* }"
+        mkdir -m 700 "$cleanup_stage"
+        printf 'other owner\n' > "$cleanup_stage/other-owner"
+      fi
+      bash -c "$copy_command" || return 1
+      if [ "${MOCK_DIRECT_COPY:-ok}" = admission_block ]; then
+        [ -z "${MOCK_DIRECT_COPY_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_DIRECT_COPY_PID_FILE"
+        exec /bin/sleep "${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}"
+      fi
+      return 0 ;;
+    *'cp /data/data/'*'/databases/ha-paneld.db '*'.hapaneld-db-txn.'*)
+      prepare_db_txn_sandbox
+      # Execute the actual shipped copy/permissions command, translating only device paths and
+      # Android's shell ownership to this sandbox's user. Never manufacture the staged bytes.
+      copy_command="cp /data/data/${text#*cp /data/data/}"
+      copy_command="${copy_command%\"}"
+      copy_command="${copy_command//\/data\//$DB_TXN_SANDBOX/data/}"
+      copy_command="${copy_command//chown shell:shell/chown $(id -u):$(id -g)}"
+      bash -c "$copy_command"
+      return $? ;;
     *sha256sum*.hapaneld-db-txn.*-script*)
       [ "${MOCK_DB_TXN:-ok}" != panel_hash_transport ] || return 1
       prepare_db_txn_sandbox
@@ -636,7 +713,9 @@ handle_db_txn_command() {
         exec /bin/sleep "${MOCK_DB_CLEANUP_BLOCK_SECONDS:-30}"
       fi
       if [ "${MOCK_DB_CLEANUP:-ok}" = ok ]; then
-        rm -rf "$DB_TXN_SANDBOX/data/local/tmp"/.hapaneld-db-txn.* 2>/dev/null
+        for cleanup_stage in $(printf '%s' "$text" | grep -oE '/data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+(-script)?' | sort -u); do
+          rm -rf "$DB_TXN_SANDBOX$cleanup_stage" 2>/dev/null
+        done
       fi
       return 0 ;;
   esac
@@ -776,6 +855,13 @@ case "${1:-}" in
     if [ "${MOCK_APK_QUERY:-ok}" != ok ] && [ -f "$STATE_DIR/apk-install-attempted" ]; then exit 1; fi
     case "${2:-}" in
       *.hapaneld-db-txn.*/ha-paneld.db)
+        if [ "${MOCK_UPGRADE_PREPARE:-unsupported}" = ready ]; then
+          if [ "${MOCK_DIRECT_COPY:-ok}" = block ]; then
+            [ -z "${MOCK_DIRECT_COPY_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_DIRECT_COPY_PID_FILE"
+            exec /bin/sleep "${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}"
+          fi
+          [ "${MOCK_DIRECT_COPY:-ok}" = ok ] || exit 1
+        fi
         [ "${MOCK_DB_TXN:-ok}" = pull_fail ] && exit 1
         # The pulled bytes come from the sandbox the executed script actually wrote, so a transfer
         # contract observes the real captured file, not a manufactured stand-in.
@@ -796,13 +882,19 @@ case "${1:-}" in
         fi
         [ "${MOCK_DIRECT_COPY:-ok}" = ok ] || exit 1
         prepare_db_txn_sandbox
-        cat "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
+        if [ "${MOCK_SU_ONLCR:-0}" = 1 ]; then
+          # Binary-safe expansion of each LF, including NUL-containing SQLite pages.
+          sed -z 's/\n/\r\n/g' "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
+        else
+          cat "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
+        fi
         ;;
       *) exit 1 ;;
     esac
     ;;
   install)
     : > "$STATE_DIR/apk-install-attempted"
+    [ -z "${MOCK_APK_INSTALL_DELAY_SECONDS:-}" ] || /bin/sleep "$MOCK_APK_INSTALL_DELAY_SECONDS"
     # Which identity was installed is observable from the asset name the release publishes it under.
     case "${!#}" in */panel-assistant-*.apk) : > "$STATE_DIR/successor-installed" ;; esac
     if [[ "${!#}" == */shizuku.apk ]] && [ "${MOCK_SHIZUKU_INSTALL:-ok}" = block ]; then
@@ -913,6 +1005,26 @@ case "${1:-}" in
             [ -z "${MOCK_UPGRADE_PREPARE_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_UPGRADE_PREPARE_PID_FILE"
             exec /bin/sleep "${MOCK_UPGRADE_PREPARE_BLOCK_SECONDS:-30}"
             ;;
+          *) exit 1 ;;
+        esac
+        ;;
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
+        nonce="${command_text##*--es nonce }"
+        case "${MOCK_UPGRADE_RENEW:-ok}" in
+          ok) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce" ;;
+          unsupported) printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:unknown_action"\n' ;;
+          fail_after_helper)
+            if [ -f "$STATE_DIR/active-helper-transaction" ]; then
+              printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:renewal_failed"\n'
+            else printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce"; fi ;;
+          refused) printf 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:renewal_failed"\n' ;;
+          wrong_nonce) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:00000000000000000000000000000000"\n' ;;
+          duplicate) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce" "$nonce" ;;
+          malformed) printf 'Broadcast completed: result=0\n' ;;
+          timeout)
+            [ -z "${MOCK_UPGRADE_RENEW_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_UPGRADE_RENEW_PID_FILE"
+            exec /bin/sleep 30 ;;
           *) exit 1 ;;
         esac
         ;;

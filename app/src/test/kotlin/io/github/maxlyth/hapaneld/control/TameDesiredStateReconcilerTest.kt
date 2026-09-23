@@ -6,6 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TameDesiredStateReconcilerTest {
+    @Test fun `already stopping skips observation and all package work`() {
+        val reconciler = TameDesiredStateReconciler(
+            readOwned = { throw AssertionError("stopping owner must not read ownership") },
+            observePackages = { throw AssertionError("stopping owner must not observe packages") },
+            reassert = { throw AssertionError("stopping owner must not tame") },
+            restore = { throw AssertionError("stopping owner must not restore") },
+            clearAbsent = { throw AssertionError("stopping owner must not clear markers") },
+        )
+        assertEquals(TameReconcileResult(0, false), reconciler.reconcile(setOf("vendor.one")) { true })
+    }
+
     private class Fixture(initial: Map<String, String?> = emptyMap()) {
         val markers = initial.toMutableMap()
         val presence = mutableMapOf<String, TamePackagePresence>()

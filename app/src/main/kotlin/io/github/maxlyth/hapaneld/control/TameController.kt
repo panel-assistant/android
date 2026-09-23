@@ -51,8 +51,8 @@ class TameController(
     )
 
     /** Reconcile desired state against the existing write-ahead overlay restoration records. */
-    internal fun reconcileBlocklist(packages: Set<String>): TameReconcileResult =
-        desiredStateReconciler.reconcile(packages)
+    internal fun reconcileBlocklist(packages: Set<String>, stopping: () -> Boolean = { false }): TameReconcileResult =
+        desiredStateReconciler.reconcile(packages, stopping)
 
     /** Installed, safe recommended selections; mutation remains owned by [reconcileBlocklist]. */
     fun recommendedSelections(profileCandidates: List<TameCandidate>): List<String> {

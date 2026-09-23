@@ -1,12 +1,18 @@
 package io.github.maxlyth.hapaneld.control
 
+import java.io.File
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class CdpRelayStateTest {
+    @get:Rule val temporary = TemporaryFolder()
+
     @Test fun acceptedLaunchIsNotRunningWhenChildProbeFails() {
         val state = RelayProcessState(probe = { RelayExposureState.ABSENT })
         assertFalse(state.start { true })
@@ -107,6 +113,80 @@ class CdpRelayStateTest {
         )
         assertEquals(RelayExposureState.UNKNOWN, relayExposureState(null))
         assertEquals(RelayExposureState.UNKNOWN, relayExposureState("process=0\ntcp_begin\nbad\ntcp_end"))
+    }
+
+    @Test fun `process inventory uses shell reads and finds an orphan without a listener`() {
+        val proc = procFixture()
+        repeat(128) { pid -> File(proc, "${pid + 1}/comm").apply {
+            parentFile.mkdirs()
+            writeText("unrelated\n")
+        } }
+        File(proc, "999/comm").apply { parentFile.mkdirs(); writeText("cdprelay\n") }
+
+        assertEquals(RelayExposureState.PRESENT, runProbe(proc))
+    }
+
+    @Test fun `complete process and listener inventory proves absence`() {
+        val proc = procFixture()
+        File(proc, "1/comm").apply { parentFile.mkdirs(); writeText("cdprelay-other\n") }
+        // An entry that disappeared before its comm could be opened is not a surviving process.
+        File(proc, "2").mkdir()
+
+        assertEquals(RelayExposureState.ABSENT, runProbe(proc))
+    }
+
+    @Test fun `process inventory still checks both IPv4 and IPv6 listeners`() {
+        for (table in listOf("tcp", "tcp6")) {
+            val proc = procFixture()
+            File(proc, "net/$table").appendText("0: 00000000:2406 00000000:0000 0A\n")
+
+            assertEquals(table, RelayExposureState.PRESENT, runProbe(proc))
+        }
+    }
+
+    @Test fun `failed live process read cannot prove absence`() {
+        val proc = procFixture()
+        File(proc, "1/comm").apply { parentFile.mkdirs(); writeText("") }
+
+        assertEquals(RelayExposureState.UNKNOWN, runProbe(proc))
+    }
+
+    @Test fun `missing or unreadable listener table cannot prove absence`() {
+        val missing = procFixture()
+        assertTrue(File(missing, "net/tcp").delete())
+        assertEquals(RelayExposureState.UNKNOWN, runProbe(missing))
+
+        val unreadable = procFixture()
+        // A directory fails cat even when this test runs as root, unlike permission-bit fixtures.
+        assertTrue(File(unreadable, "net/tcp6").delete())
+        assertTrue(File(unreadable, "net/tcp6").mkdir())
+        assertEquals(RelayExposureState.UNKNOWN, runProbe(unreadable))
+    }
+
+    private fun procFixture(): File = temporary.newFolder().also { proc ->
+        File(proc, "net").mkdir()
+        for (table in listOf("tcp", "tcp6")) {
+            File(proc, "net/$table").writeText("  sl  local_address rem_address   st\n")
+        }
+    }
+
+    private fun runProbe(proc: File): RelayExposureState {
+        // Run the production command unchanged apart from its proc mount. Reject external per-process
+        // reads so a return to one cat invocation per pid fails independently of host execution speed.
+        val procPath = "'${proc.absolutePath.replace("'", "'\\''")}'/"
+        val command = CdpRelay.relayProbeCommand().replace("/proc/", procPath)
+        val rejectCommCat = "cat() { case \"\$1\" in */comm) " +
+            "echo unexpected_comm_cat >&2; return 97;; esac; command cat \"\$@\"; }; "
+        val shell = ProcessBuilder("/bin/sh", "-c", rejectCommCat + command).start()
+        return try {
+            assertTrue("relay inventory exceeded its production deadline", shell.waitFor(2, TimeUnit.SECONDS))
+            val output = shell.inputStream.bufferedReader().readText()
+            val errors = shell.errorStream.bufferedReader().readText()
+            assertFalse(errors, errors.contains("unexpected_comm_cat"))
+            relayExposureState(output.takeIf { shell.exitValue() == 0 })
+        } finally {
+            shell.destroyForcibly()
+        }
     }
 
     @Test fun `never-rooted panel without a listener can enter Hardened mode`() {

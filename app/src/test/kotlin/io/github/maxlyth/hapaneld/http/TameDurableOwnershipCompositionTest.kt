@@ -9,9 +9,11 @@ import io.github.maxlyth.hapaneld.persistence.SqliteStatePreferences
 import io.github.maxlyth.hapaneld.persistence.StateMutation
 import io.github.maxlyth.hapaneld.persistence.StateNamespacePersistence
 import io.github.maxlyth.hapaneld.persistence.commitWithDurableVisibility
+import io.github.maxlyth.hapaneld.util.LatestDispatcher
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +21,117 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TameDurableOwnershipCompositionTest {
+    @Test fun `shutdown finishes active package without interruption and new owner resumes durable work`() {
+        for (restoring in listOf(false, true)) for (firstSucceeds in listOf(false, true)) {
+            val first = "com.vendor.one"
+            val second = "com.vendor.two"
+            val firstKey = TameStatePolicy.markerKey(first)
+            val secondKey = TameStatePolicy.markerKey(second)
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val interrupted = AtomicBoolean()
+            val active = AtomicBoolean(true)
+            val actions = AtomicInteger()
+            val converged = CountDownLatch(1)
+            val initial = if (restoring) mapOf(firstKey to "foreground", secondKey to "deny") else emptyMap()
+            val persistence = FailOncePersistence(initial, CountDownLatch(0), failuresRemaining = 0)
+            val writer = Executors.newSingleThreadExecutor()
+            val state = SqliteStatePreferences(persistence, writer)
+            val desired = if (restoring) emptySet() else setOf(first, second)
+            fun mutate(pkg: String): Boolean {
+                actions.incrementAndGet()
+                if (active.get() && pkg == first) {
+                    // The real policy commits this restoration mode before entering the actuator.
+                    assertEquals("foreground", persistence.snapshot()[firstKey])
+                    entered.countDown()
+                    try {
+                        check(release.await(10, TimeUnit.SECONDS))
+                    } catch (error: InterruptedException) {
+                        interrupted.set(true)
+                        throw error
+                    }
+                    return firstSucceeds
+                }
+                return true
+            }
+            val reconciler = TameDesiredStateReconciler(
+                readOwned = { TameStatePolicy.parseOwnedMarkers(state.all) },
+                observePackages = ::presentAndSafe,
+                reassert = { pkg ->
+                    val key = TameStatePolicy.markerKey(pkg)
+                    TameStatePolicy.reassertOwnership(
+                        markerExists = state.contains(key),
+                        markerMode = state.getString(key, null),
+                        captureMode = { "foreground" },
+                        persistMarker = { mode -> state.commitWithDurableVisibility { putString(key, mode) } },
+                        mutate = { mutate(pkg) },
+                    )
+                },
+                restore = { marker ->
+                    TameStatePolicy.restoreOwnership(
+                        markerMode = marker.overlayMode,
+                        enable = { mutate(marker.pkg) },
+                        restoreOverlay = { it == marker.overlayMode },
+                        removeMarker = { state.commitWithDurableVisibility { remove(TameStatePolicy.markerKey(marker.pkg)) } },
+                    )
+                },
+                clearAbsent = { error("fixture packages are present") },
+            )
+            val owner = TameReconcileAuthority(
+                readDesired = { desired },
+                reconcile = reconciler::reconcile,
+                stopping = { false },
+            )
+            var restarted: TameReconcileAuthority? = null
+            try {
+                owner.request()
+                assertTrue(entered.await(5, TimeUnit.SECONDS))
+                owner.request() // This pending wake must never run on the closing owner.
+                assertFalse("an active package cannot prove quiescence", owner.closeAndJoin(10))
+                assertFalse("close must not interrupt a package transaction", interrupted.get())
+                assertEquals(1, actions.get())
+                assertEquals("foreground", persistence.snapshot()[firstKey])
+
+                release.countDown()
+                assertTrue(owner.closeAndJoin(2_000))
+                assertFalse(interrupted.get())
+                assertEquals("neither the rest of the pass nor the queued wake ran", 1, actions.get())
+                assertEquals(LatestDispatcher.Admission.CLOSED, owner.request())
+                if (restoring) {
+                    assertEquals(if (firstSucceeds) null else "foreground", persistence.snapshot()[firstKey])
+                    assertEquals("deny", persistence.snapshot()[secondKey])
+                } else {
+                    assertEquals("foreground", persistence.snapshot()[firstKey])
+                    assertFalse(secondKey in persistence.snapshot())
+                }
+
+                active.set(false)
+                restarted = TameReconcileAuthority(
+                    readDesired = { desired },
+                    reconcile = { value, stopping ->
+                        reconciler.reconcile(value, stopping).also { converged.countDown() }
+                    },
+                    stopping = { false },
+                )
+                restarted.request()
+                assertTrue(converged.await(5, TimeUnit.SECONDS))
+                assertTrue(restarted.closeAndJoin(2_000))
+                if (restoring) {
+                    assertTrue(persistence.snapshot().isEmpty())
+                    assertEquals(if (firstSucceeds) 2 else 3, actions.get())
+                } else {
+                    assertEquals(mapOf(firstKey to "foreground", secondKey to "foreground"), persistence.snapshot())
+                    assertEquals(3, actions.get())
+                }
+            } finally {
+                release.countDown()
+                owner.closeAndJoin(2_000)
+                restarted?.closeAndJoin(2_000)
+                writer.shutdownNow()
+            }
+        }
+    }
+
     @Test fun `failed backend marker creation stays invisible and automatic retry precedes mutation`() {
         val failedWrite = CountDownLatch(1)
         val retryPaused = CountDownLatch(1)
@@ -55,13 +168,16 @@ class TameDurableOwnershipCompositionTest {
         )
         val owner = TameReconcileAuthority(
             readDesired = { setOf(pkg) },
-            reconcile = reconciler::reconcile,
+            reconcile = { desired, stopping ->
+                reconciler.reconcile(desired, stopping).also { result ->
+                    if (result.retryableFailure) {
+                        retryPaused.countDown()
+                        releaseRetry.await(10, TimeUnit.SECONDS)
+                    }
+                }
+            },
             stopping = { false },
             retryDelayMs = 1,
-            sleep = {
-                retryPaused.countDown()
-                releaseRetry.await(10, TimeUnit.SECONDS)
-            },
         )
         try {
             owner.request()
@@ -116,13 +232,16 @@ class TameDurableOwnershipCompositionTest {
         )
         val owner = TameReconcileAuthority(
             readDesired = { emptySet() },
-            reconcile = reconciler::reconcile,
+            reconcile = { desired, stopping ->
+                reconciler.reconcile(desired, stopping).also { result ->
+                    if (result.retryableFailure) {
+                        retryPaused.countDown()
+                        releaseRetry.await(10, TimeUnit.SECONDS)
+                    }
+                }
+            },
             stopping = { false },
             retryDelayMs = 1,
-            sleep = {
-                retryPaused.countDown()
-                releaseRetry.await(10, TimeUnit.SECONDS)
-            },
         )
         try {
             owner.request()
@@ -153,9 +272,9 @@ class TameDurableOwnershipCompositionTest {
     private class FailOncePersistence(
         initial: Map<String, Any>,
         private val failedWrite: CountDownLatch,
+        private var failuresRemaining: Int = 1,
     ) : StateNamespacePersistence {
         private val values = initial.toMutableMap()
-        private var failuresRemaining = 1
 
         @Synchronized
         override fun initialize(): Map<String, Any> = values.toMap()

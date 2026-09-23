@@ -199,6 +199,7 @@
             <intent-filter>
                 <action android:name="io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE" />
                 <action android:name="io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE" />
+                <action android:name="io.github.maxlyth.hapaneld.action.RENEW_UPGRADE" />
             </intent-filter>
         </receiver>
 

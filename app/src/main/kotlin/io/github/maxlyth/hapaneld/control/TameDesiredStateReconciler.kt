@@ -34,7 +34,8 @@ internal class TameDesiredStateReconciler(
     private val restore: (TameOwnedMarker) -> Boolean,
     private val clearAbsent: (TameOwnedMarker) -> Boolean,
 ) {
-    fun reconcile(desired: Set<String>): TameReconcileResult {
+    fun reconcile(desired: Set<String>, stopping: () -> Boolean = { false }): TameReconcileResult {
+        if (stopping()) return TameReconcileResult(0, retryableFailure = false)
         val owned = when (val snapshot = readOwned()) {
             is TameOwnedMarkers.Ready -> snapshot.byPackage
             is TameOwnedMarkers.Overflow,
@@ -49,6 +50,9 @@ internal class TameDesiredStateReconciler(
         // Ownership, not current device role, decides rollback. A package that became HOME/IME/persistent
         // after we tamed it must still be restored when the user removes it from the desired selection.
         for (marker in owned.values.filter { it.pkg !in desired }.sortedBy(TameOwnedMarker::pkg)) {
+            // Complete any transaction already entered, retaining its marker on failure. The next
+            // owner re-reads durable desired state and these same markers to finish the remaining work.
+            if (stopping()) return TameReconcileResult(attempted, retryableFailure)
             when (observed[marker.pkg]?.presence ?: TamePackagePresence.UNKNOWN) {
                 TamePackagePresence.PRESENT -> {
                     attempted++
@@ -65,6 +69,7 @@ internal class TameDesiredStateReconciler(
         // Reassert every desired PRESENT+SAFE package on every bounded wake, even when already owned.
         // This heals a reinstall, firmware reset or vendor process/package-state resurrection.
         for (pkg in desired.sorted()) {
+            if (stopping()) return TameReconcileResult(attempted, retryableFailure)
             val marker = owned[pkg]
             val observation = observed[pkg]
             when (observation?.presence ?: TamePackagePresence.UNKNOWN) {
