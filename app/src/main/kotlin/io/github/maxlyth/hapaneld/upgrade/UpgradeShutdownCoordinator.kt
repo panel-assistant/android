@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.upgrade
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.PaneldService
 import io.github.maxlyth.hapaneld.persistence.CleanDatabaseProof
@@ -10,6 +11,7 @@ import java.util.concurrent.TimeUnit
 
 internal const val PREPARE_UPGRADE_ACTION = "io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE"
 internal const val RELEASE_UPGRADE_ACTION = "io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE"
+internal const val RENEW_UPGRADE_ACTION = "io.github.maxlyth.hapaneld.action.RENEW_UPGRADE"
 internal const val UPGRADE_NONCE_EXTRA = "nonce"
 
 private const val UPGRADE_HOLD_TIMEOUT_MS = 180_000L
@@ -28,6 +30,9 @@ internal fun formatUpgradeReady(
 
 internal fun formatUpgradeReleased(nonce: String): String =
     "HAPANELD_UPGRADE_RELEASED_V1:$nonce"
+
+internal fun formatUpgradeRenewed(nonce: String): String =
+    "HAPANELD_UPGRADE_RENEWED_V1:$nonce"
 
 internal interface UpgradeRequestCompletion {
     fun ready(nonce: String, proof: CleanDatabaseProof)
@@ -92,14 +97,25 @@ internal class UpgradeRequestGate {
         var releaseSuccessor: (() -> Unit)? = null,
         var ready: Boolean = false,
         var claimToken: Any? = null,
+        var expiresAtMillis: Long? = null,
     )
 
     private var active: Active? = null
 
     @Synchronized
-    fun arm(nonce: String, completion: UpgradeRequestCompletion): Boolean {
+    fun arm(nonce: String, completion: UpgradeRequestCompletion, expiresAtMillis: Long? = null): Boolean {
         if (active != null) return false
-        active = Active(nonce, completion)
+        active = Active(nonce, completion, expiresAtMillis = expiresAtMillis)
+        return true
+    }
+
+    /** Renewal retains the original freeze; it can never revive an expired or unbounded request. */
+    @Synchronized
+    fun renew(nonce: String, nowMillis: Long, timeoutMillis: Long): Boolean {
+        val request = active ?: return false
+        val deadline = request.expiresAtMillis ?: return false
+        if (request.nonce != nonce || !request.ready || nowMillis >= deadline) return false
+        request.expiresAtMillis = nowMillis + timeoutMillis
         return true
     }
 
@@ -154,10 +170,14 @@ internal class UpgradeRequestGate {
         completion.exitingProcess(reason)
     }
 
-    fun cancel(nonce: String?, reason: String): UpgradeCancellation {
+    fun cancel(nonce: String?, reason: String, expiredAtMillis: Long? = null): UpgradeCancellation {
         val cancelled = synchronized(this) {
             val request = active ?: return UpgradeCancellation(matched = false)
             if (nonce != null && request.nonce != nonce) return UpgradeCancellation(matched = false)
+            if (expiredAtMillis != null) {
+                val deadline = request.expiresAtMillis ?: return UpgradeCancellation(matched = false)
+                if (expiredAtMillis < deadline) return UpgradeCancellation(matched = false)
+            }
             active = null
             request to UpgradeCancellation(
                 matched = true,
@@ -224,14 +244,24 @@ internal object UpgradeShutdownCoordinator {
     }
 
     fun arm(context: Context, nonce: String, completion: UpgradeRequestCompletion): Boolean {
-        if (!gate.arm(nonce, completion)) return false
+        if (!gate.arm(nonce, completion, SystemClock.elapsedRealtime() + UPGRADE_HOLD_TIMEOUT_MS)) return false
+        scheduleWatchdog(context, nonce)
+        return true
+    }
+
+    fun renew(context: Context, nonce: String): Boolean {
+        if (!gate.renew(nonce, SystemClock.elapsedRealtime(), UPGRADE_HOLD_TIMEOUT_MS)) return false
+        scheduleWatchdog(context, nonce)
+        return true
+    }
+
+    private fun scheduleWatchdog(context: Context, nonce: String) {
         val appContext = context.applicationContext
         watchdog.schedule(
-            { cancelAndResume(appContext, nonce, "watchdog_expired") },
+            { cancelAndResume(appContext, nonce, "watchdog_expired", SystemClock.elapsedRealtime()) },
             UPGRADE_HOLD_TIMEOUT_MS,
             TimeUnit.MILLISECONDS,
         )
-        return true
     }
 
     /** Guard DB owns its settlement deadline in the root journal. A generic app watchdog must never
@@ -275,8 +305,8 @@ internal object UpgradeShutdownCoordinator {
         ))
     }
 
-    fun cancelAndResume(context: Context, nonce: String, reason: String): Boolean {
-        val cancelled = gate.cancel(nonce, reason)
+    fun cancelAndResume(context: Context, nonce: String, reason: String, expiredAtMillis: Long? = null): Boolean {
+        val cancelled = gate.cancel(nonce, reason, expiredAtMillis)
         if (!cancelled.matched) return false
         logReleaseFailures(releaseUpgradeHold(cancelled.freeze, releaseSuccessor = cancelled.releaseSuccessor, restartService = {
             PaneldService.start(context.applicationContext)
