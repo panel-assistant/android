@@ -15,6 +15,11 @@ SPEC.loader.exec_module(descriptor)
 
 TAG = "v1.2.3-rc1"
 APK_NAME = f"panel-assistant-{TAG}-manual-setup-required.apk"
+RELEASE_IDENTITY_CORPUS = json.loads(
+    (Path(__file__).parent / "fixtures" / "release-identity-corpus.json").read_text(
+        encoding="utf-8"
+    )
+)
 BADGING = """\
 package: name='io.panelassistant.android' versionCode='701' versionName='1.2.3-rc1' \
 platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' \
@@ -79,11 +84,7 @@ class InstallDescriptorTest(unittest.TestCase):
             "apkSha256": hashlib.sha256(self.apk.read_bytes()).hexdigest(),
             "apkSize": self.apk.stat().st_size,
             "databaseCompatibility": "hapaneld-db:v1:ha-paneld.db:11:14",
-            # Fully qualified: the `/.MainActivity` shorthand resolves against the applicationId,
-            # so under the successor id it would name a class that does not exist.
-            "launchComponent": (
-                "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity"
-            ),
+            "launchComponent": "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity",
             "minSdk": 26,
             "packageId": "io.panelassistant.android",
             "releaseTag": TAG,
@@ -128,6 +129,16 @@ class InstallDescriptorTest(unittest.TestCase):
                     release_tag,
                     Path("/tools/aapt"),
                     Path("/tools/apksigner"),
+                )
+
+    def test_shared_release_identity_corpus_matches_the_descriptor_producer(self):
+        for case in RELEASE_IDENTITY_CORPUS["tags"]:
+            expected = case["kind"] in {"stable", "rc"}
+            with self.subTest(release_tag=case["tag"]):
+                self.assertEqual(
+                    expected,
+                    len(case["tag"]) <= 64
+                    and descriptor.RELEASE_TAG_PATTERN.fullmatch(case["tag"]) is not None,
                 )
 
     def test_package_platform_abis_and_launcher_are_closed(self):
