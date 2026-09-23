@@ -504,10 +504,10 @@ STORAGE_HEALTH_PACKAGE_QUERY_SECONDS="${STORAGE_HEALTH_PACKAGE_QUERY_SECONDS:-15
 # may have been held open indefinitely. Slightly longer than the pre-install probe because the panel
 # has been idle in the meantime, and short enough that a wedged panel cannot stall a confirmed reset.
 RESET_RECHECK_PACKAGE_QUERY_SECONDS="${RESET_RECHECK_PACKAGE_QUERY_SECONDS:-10}"
-# Total deadline for reading the Configure settings schema during verification. A verify that follows
-# an app restart can reach the HTTP server a moment before it answers, so an unanswered read is
-# retried a few times inside this bound instead of failing a healthy panel.
-CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS="${CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS:-12}"
+# Total deadline for reading the Configure settings schema during verification. A cold management
+# snapshot can take about thirty seconds on older panels even after health answers. Give that first
+# response one bounded opportunity to complete; quick unanswered reads still retry inside this bound.
+CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS="${CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS:-60}"
 for timeout_name in HA_AUTH_CONNECT_TIMEOUT_SECONDS HA_AUTH_TIMEOUT_SECONDS \
     PANEL_POST_CONNECT_TIMEOUT_SECONDS PANEL_POST_TIMEOUT_SECONDS PANEL_RESTORE_TIMEOUT_SECONDS \
     APK_INSTALL_TIMEOUT_SECONDS APP_LAUNCH_COMMAND_TIMEOUT_SECONDS APP_LAUNCH_PROBE_SECONDS \
@@ -1118,7 +1118,6 @@ read_config_schema() {
   local attempt=1 request_timeout="$CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS" deadline body
   deadline=$((SECONDS + CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS))
   while :; do
-    [ "$request_timeout" -le 5 ] || request_timeout=5
     body="$(curl -fsS --max-time "$request_timeout" "$URL/api/v1/config/schema" 2>/dev/null || true)"
     if [ -n "$body" ]; then
       printf '%s' "$body"
