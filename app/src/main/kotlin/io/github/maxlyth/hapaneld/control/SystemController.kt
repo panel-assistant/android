@@ -187,7 +187,7 @@ class SystemController(
         val default = env.defaultHome()?.pkg
         // Apps that register CATEGORY_HOME but are NOT an app-drawer launcher we'd want to land on:
         // ourselves, Settings, the HA Companion (a kiosk dashboard, which registers as HOME), and known
-        // vendor kiosk pseudo-launchers (e.g. eWeLink's control panel on Sonoff panels) — landing on
+        // vendor kiosk pseudo-launchers (e.g. eWeLink's control panel on Sonoff panels) — arriving at
         // those obstructs the dashboard instead of giving the user an app drawer.
         val notALauncher = { p: String ->
             p == env.ownPackage || p == "com.android.settings" ||

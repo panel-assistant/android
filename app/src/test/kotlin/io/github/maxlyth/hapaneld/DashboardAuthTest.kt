@@ -28,7 +28,7 @@ class DashboardAuthTest {
         assertNull(r.session); assertNull(r.persist)
     }
 
-    // The 2026-08-17 boot race: on a cold start the configuration can still be loading, so the URL
+    // On a cold start the configuration can still be loading, so the URL
     // reads blank and NOTHING judges the credential. That empty result was indistinguishable from a
     // server refusal, and the panel parked on a credential screen it could never clear.
     @Test fun `an empty result says whether the credential was actually judged`() {

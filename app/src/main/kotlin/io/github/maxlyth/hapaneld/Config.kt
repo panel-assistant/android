@@ -266,7 +266,7 @@ class Config private constructor(
             // wizard's own broker save as upgrade evidence on the first mid-journey service restart and
             // durably stamped every question answered: the panel rendered unfiltered, the journey reported
             // complete, and the sign-in return dumped the user to Configure with two questions never asked
-            // (second hardware walk, 2026-07-26). Migration is DONE for such a panel: the wizard records the
+            // after setup begins. Migration is DONE for such a panel: the wizard records the
             // real answers itself.
             if (setupIdentityConfirmed) {
                 prefs.edit().putBoolean(SETUP_QUESTION_MIGRATION_PREF, true).commit()
@@ -1502,7 +1502,7 @@ class Config private constructor(
      * The panel's REQUESTED Home Assistant area, by name. Home Assistant's value is canonical over
      * ADOPTED values, but a person's explicit choice is a deliberate local override that adoption must
      * not undo — a panel whose own HA area holds no motion entities may have its area
-     * deliberately set to a neighbouring room for auto-sleep sources (2026-07-26). [haAreaUserOverride]
+     * deliberately set to a neighbouring room for auto-sleep sources. [haAreaUserOverride]
      * records which kind of value this is. Setter is a plain pref write on purpose — adoption must not
      * re-trigger the write-back side effect.
      */
@@ -1518,7 +1518,7 @@ class Config private constructor(
      * Set when a user saves a non-blank area, cleared when they save blank ("follow Home Assistant") and
      * when Home Assistant comes to agree — an override that matches HA is no longer overriding anything.
      * Without this bit the two kinds of value are indistinguishable, and the convergence pass reverted
-     * every deliberate divergence seconds after it was saved (hardware report, 2026-07-26).
+     * every deliberate divergence seconds after it was saved.
      */
     var haAreaUserOverride: Boolean
         get() = prefs.getBoolean(HA_AREA_USER_OVERRIDE_PREF, false)

@@ -11,10 +11,10 @@ import kotlinx.coroutines.withContext
 /**
  * Reads + repairs the HA Companion's connection database — the `servers` table in `HomeAssistantDB`.
  *
- * Incident 2026-07-01: a Companion `servers` row with an EMPTY `internal_url` (while `internal_ssids`
- * matched the panel's Wi-Fi) makes the Companion request a host-less URL, which HA 2026.7 (new aiohttp)
+ * A Companion `servers` row with an EMPTY `internal_url` (while `internal_ssids` matches the panel's
+ * Wi-Fi) makes the Companion request a host-less URL, which HA 2026.7 (new aiohttp)
  * rejects with a full-screen **"Missing 'Host' header in request."** — blanking the dashboard on the
- * whole restored fleet. This detects that state (a panel-health warning) and offers a one-tap repair:
+ * restored panels. This detects that state (a panel-health warning) and offers a one-tap repair:
  * copy the row's `external_url` into the empty `internal_url`. Backup restore applies the same policy
  * to its staged database and verifies it before the live transaction begins.
  *

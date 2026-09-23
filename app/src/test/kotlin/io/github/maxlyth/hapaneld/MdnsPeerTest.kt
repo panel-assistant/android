@@ -66,7 +66,7 @@ class MdnsPeerTest {
 
     @Test fun ordersPurelyByNameSoEveryPanelMatches() {
         // Self is flagged, NOT pulled to the top — the roster must be identical on every panel so the
-        // switcher menu looks the same everywhere (user, 2026-07-05).
+        // switcher menu looks the same everywhere.
         val out = dedupePeers(
             listOf(
                 peer("z", name = "Zzz Panel"),

@@ -47,8 +47,8 @@ object SetupBanner {
         // The status string comes from a stale-while-revalidate snapshot; the canonical live state arrives
         // separately precisely so a FINISHED transition clears this banner within one poll cycle. Without
         // it, "publishing Home Assistant discovery" kept narrating a publish that had completed — the
-        // bridge flips announcing→connected on the discovery PUBACK, but the snapshot lagged behind
-        // (maintainer report, 2026-07-27). Blank means the caller has no live reading; trust the snapshot.
+        // bridge flips announcing→connected on the discovery PUBACK, but the snapshot can lag behind.
+        // Blank means the caller has no live reading; trust the snapshot.
         if (liveState == "connected") return null
         val next = if (dashboardStepPending) " The dashboard setup step appears next." else ""
         return when {

@@ -404,13 +404,13 @@ class DashboardActivity : AppCompatActivity() {
     private var signInLoadRetries = 0
 
     /**
-     * Maintainer rule: every DELIBERATE dashboard restart announces itself on the panel, so an
+     * Every DELIBERATE dashboard restart announces itself on the panel, so an
      * on-purpose reset can never be mistaken for a crash — otherwise the built-in renderer earns a
      * reputation for unreliability one report at a time. Native (no WebView dependency), transient,
      * never blocks the reload, names ha-paneld as the actor, and never shown for genuine crashes:
-     * the distinction is the point. A full-rebuild overlay was tried (round 10) and rejected on
+     * the distinction is the point. A full-rebuild overlay was tried and rejected on
      * hardware — it vanished with the container the moment the rebuild swapped views and its
-     * full-bleed layout read no better than the toast (maintainer, round 11).
+     * full-bleed layout read no better than the toast.
      */
     private fun announceDeliberateRestart(reason: String) {
         val shownReason = when (reason) {
@@ -2637,8 +2637,8 @@ class DashboardActivity : AppCompatActivity() {
                     // this outcome manual, which left the screen promising a retry that never came.
                     DashboardV2ProbeResult.AuthenticationFailed -> {
                         val neverSignedIn = config.haToken.isBlank() && config.haRefreshToken.isBlank()
-                        // Nothing recorded WHY the panel reached this verdict, which left a 2026-08-17
-                        // field report with no way to tell a refusal from a probe that ran too early.
+                        // Nothing recorded WHY the panel reached this verdict, leaving no way to tell a
+                        // refusal from a probe that ran too early.
                         Log.w(
                             TAG,
                             "HA admission refused authentication (neverSignedIn=$neverSignedIn) — " +
@@ -3742,8 +3742,8 @@ class DashboardActivity : AppCompatActivity() {
         private const val SIGN_IN_LOAD_RETRIES_MAX = 4
         private const val SIGN_IN_LOAD_RETRY_MS = 4_000L
         private const val ADMISSION_COUNTDOWN_TICK_MS = 1_000L  // repaint cadence of the visible retry countdown
-        // Tightened once commit-from-catalog made the happy bootstrap take milliseconds (maintainer,
-        // round-10): the net now assumes seconds are normal and anything past twenty is a fault.
+        // Tightened once commit-from-catalog made the happy bootstrap take milliseconds: the net now
+        // assumes seconds are normal and anything past twenty is a fault.
         private const val BOOTSTRAP_HOLD_HONESTY_MS = 20_000L
         /** Named once so the button that offers the repair and the button that is handed back
          *  after a refusal cannot drift apart. */

@@ -125,10 +125,9 @@ class DashboardV2CompatibilityProbeTest {
         assertEquals(0, networkCalls)
     }
 
-    // Field report 2026-08-17: the probe ran 1.5 s into a cold boot, before the configuration store had
-    // loaded, so no credential was judged at all — and the panel showed "version check rejected" and
-    // stayed there. The operator's first manual retry loaded the dashboard, proving the credential was
-    // never refused. A session that was never ATTEMPTED must therefore not reach an auth verdict.
+    // A probe can run 1.5 s into a cold boot, before the configuration store has loaded, so no credential
+    // is judged at all. A later retry can succeed with the same credential. A session that was never
+    // ATTEMPTED must therefore not reach an auth verdict.
     @Test fun `a session that was never attempted is unavailable, not an auth rejection`() = runTest {
         var networkCalls = 0
         val result = DashboardV2CompatibilityProbe(

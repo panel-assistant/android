@@ -47,7 +47,7 @@ class DiscoveryParityTest {
     private val avail =
         """"availability_topic":"ha-paneld/test/availability","payload_available":"online","payload_not_available":"offline""""
     private val device =
-        """"device":{"identifiers":["ha-paneld-test"],"name":"Bedroom","manufacturer":"Sonoff","model":"NSPanel Pro","sw_version":"9.9.9","hw_version":"hw","serial_number":"abc"}"""
+        """"device":{"identifiers":["ha-paneld-test"],"name":"Test Panel","manufacturer":"Sonoff","model":"NSPanel Pro","sw_version":"9.9.9","hw_version":"hw","serial_number":"abc"}"""
 
     private fun build(key: String): String =
         SettingsRegistry.spec(key)!!.ha!!.buildDiscoveryJson(panel, avail, device)

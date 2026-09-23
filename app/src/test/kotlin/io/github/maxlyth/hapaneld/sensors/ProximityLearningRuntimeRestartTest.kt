@@ -10,21 +10,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProximityLearningRuntimeRestartTest {
-    @Test fun denseHallRestartKeepsPersistedModelUntilFullContradictoryHold() {
-        val backing = StoreBacking(hallRow())
+    @Test fun denseGradedRestartKeepsPersistedModelUntilFullContradictoryHold() {
+        val backing = StoreBacking(startupRow())
         val journal = MemoryJournal()
         val runtime = runtime(backing, journal, sparse = false)
 
-        for (now in 0L..300L step 100L) assertAvailable(runtime.observe(HALL_FAR, now), runtime)
+        for (now in 0L..300L step 100L) assertAvailable(runtime.observe(STARTUP_FAR, now), runtime)
         assertEquals(0L, runtime.wakeEvidenceGenerationForTest())
         for (now in 350L until 30_350L step 50L) {
-            assertAvailable(runtime.observe(HALL_BOOT_TAIL, now), runtime)
+            assertAvailable(runtime.observe(STARTUP_BOOT_TAIL, now), runtime)
         }
         assertTrue(backing.row?.ready == true)
         assertTrue(backing.row?.snapshotJson?.contains("\"farRaw\":37.8244") == true)
         assertEquals(0L, runtime.wakeEvidenceGenerationForTest())
 
-        val shifted = runtime.observe(HALL_BOOT_TAIL, 30_350L)
+        val shifted = runtime.observe(STARTUP_BOOT_TAIL, 30_350L)
         assertNull(shifted.near)
         assertNull(shifted.normalizedLevel)
         assertEquals(1L, runtime.wakeEvidenceGenerationForTest())
@@ -34,11 +34,11 @@ class ProximityLearningRuntimeRestartTest {
     }
 
     @Test fun sparseHeldContradictionUsesTheSameLongBoundary() {
-        val backing = StoreBacking(hallRow())
+        val backing = StoreBacking(startupRow())
         val journal = MemoryJournal()
         val runtime = runtime(backing, journal, sparse = true)
 
-        assertAvailable(runtime.observe(HALL_BOOT_TAIL, 0L, sparseReporting = true), runtime)
+        assertAvailable(runtime.observe(STARTUP_BOOT_TAIL, 0L, sparseReporting = true), runtime)
         assertAvailable(runtime.tick(29_999L, sparseReporting = true), runtime)
         assertEquals(0L, runtime.wakeEvidenceGenerationForTest())
         val shifted = runtime.tick(30_000L, sparseReporting = true)
@@ -51,16 +51,16 @@ class ProximityLearningRuntimeRestartTest {
     }
 
     @Test fun contradictoryFirstDenseStartupCannotUseTheSeedMismatchShortcut() {
-        val backing = StoreBacking(hallRow())
+        val backing = StoreBacking(startupRow())
         val journal = MemoryJournal()
         val runtime = runtime(backing, journal, sparse = false)
 
         for (now in 0L..2_000L step 50L) {
-            assertAvailable(runtime.observe(HALL_BOOT_TAIL, now), runtime)
+            assertAvailable(runtime.observe(STARTUP_BOOT_TAIL, now), runtime)
         }
         assertEquals(0, journal.marks)
-        for (now in 2_050L until 30_000L step 50L) runtime.observe(HALL_BOOT_TAIL, now)
-        val shifted = runtime.observe(HALL_BOOT_TAIL, 30_000L)
+        for (now in 2_050L until 30_000L step 50L) runtime.observe(STARTUP_BOOT_TAIL, now)
+        val shifted = runtime.observe(STARTUP_BOOT_TAIL, 30_000L)
         assertNull(shifted.near)
         assertNull(shifted.normalizedLevel)
         assertEquals(1, journal.marks)
@@ -68,34 +68,34 @@ class ProximityLearningRuntimeRestartTest {
     }
 
     @Test fun staleStreamRecoversTheTrustedModelWithoutAdvancingGeneration() {
-        val backing = StoreBacking(hallRow())
+        val backing = StoreBacking(startupRow())
         val journal = MemoryJournal()
         val runtime = runtime(backing, journal, sparse = false)
 
-        assertAvailable(runtime.observe(HALL_FAR, 0L), runtime)
+        assertAvailable(runtime.observe(STARTUP_FAR, 0L), runtime)
         assertEquals(0L, runtime.wakeEvidenceGenerationForTest())
         val stale = runtime.tick(60_001L)
         assertNull(stale.near)
         assertNull(stale.normalizedLevel)
         assertEquals(0L, runtime.wakeEvidenceGenerationForTest())
-        assertAvailable(runtime.observe(HALL_FAR, 60_002L), runtime)
+        assertAvailable(runtime.observe(STARTUP_FAR, 60_002L), runtime)
         assertEquals(0L, runtime.wakeEvidenceGenerationForTest())
         assertEquals(0, journal.marks)
         close(runtime)
     }
 
     @Test fun persistedStoreReopensWithAFreshValidationGeneration() {
-        val backing = StoreBacking(hallRow())
+        val backing = StoreBacking(startupRow())
         val journal = MemoryJournal()
         val first = runtime(backing, journal, sparse = false)
-        for (now in 0L..30_000L step 100L) first.observe(HALL_FAR, now)
+        for (now in 0L..30_000L step 100L) first.observe(STARTUP_FAR, now)
         assertTrue(first.isReady())
         close(first)
 
         val second = runtime(backing, journal, sparse = false)
         assertEquals(0L, second.wakeEvidenceGenerationForTest())
         assertFalse(second.isReady())
-        assertAvailable(second.observe(HALL_BOOT_TAIL, 0L), second)
+        assertAvailable(second.observe(STARTUP_BOOT_TAIL, 0L), second)
         assertEquals(0L, second.wakeEvidenceGenerationForTest())
         assertEquals(2, backing.opens)
         assertTrue(backing.writes >= 2)
@@ -109,16 +109,16 @@ class ProximityLearningRuntimeRestartTest {
         val journal = MemoryJournal()
         try {
             SqliteProximityModelStore(CliSqliteStore(database)).use { first ->
-                first.writeProximityBatch(hallRow(), emptyList(), emptyList(), 1L)
+                first.writeProximityBatch(startupRow(), emptyList(), emptyList(), 1L)
             }
             assertTrue(database.isFile)
             assertTrue(database.length() > 0L)
 
             val reopened = SqliteProximityModelStore(CliSqliteStore(database))
-            assertEquals(hallRow(), reopened.readProximityModel(ProximityLearningRuntime.fingerprint(SOURCE)))
+            assertEquals(startupRow(), reopened.readProximityModel(ProximityLearningRuntime.fingerprint(SOURCE)))
             val firstRuntime = runtime(reopened, journal, sparse = false)
             assertEquals(0L, firstRuntime.wakeEvidenceGenerationForTest())
-            assertAvailable(firstRuntime.observe(HALL_FAR, 0L), firstRuntime)
+            assertAvailable(firstRuntime.observe(STARTUP_FAR, 0L), firstRuntime)
             assertEquals(0L, firstRuntime.wakeEvidenceGenerationForTest())
             close(firstRuntime)
 
@@ -127,7 +127,7 @@ class ProximityLearningRuntimeRestartTest {
             assertTrue(persisted.ready)
             val secondRuntime = runtime(reopenedAgain, journal, sparse = false)
             assertEquals(0L, secondRuntime.wakeEvidenceGenerationForTest())
-            assertAvailable(secondRuntime.observe(HALL_BOOT_TAIL, 0L), secondRuntime)
+            assertAvailable(secondRuntime.observe(STARTUP_BOOT_TAIL, 0L), secondRuntime)
             assertEquals(0L, secondRuntime.wakeEvidenceGenerationForTest())
             close(secondRuntime)
         } finally {
@@ -162,10 +162,10 @@ class ProximityLearningRuntimeRestartTest {
         runtime.closeAsync().get(5, TimeUnit.SECONDS)
     }
 
-    private fun hallRow(): EntityCatalogStore.ProximityModelRow {
+    private fun startupRow(): EntityCatalogStore.ProximityModelRow {
         val fingerprint = ProximityLearningRuntime.fingerprint(SOURCE)
         val snapshot = ProximityLearningEngine.Snapshot(
-            farRaw = HALL_FAR,
+            farRaw = STARTUP_FAR,
             nearRaw = 69.0891f,
             noise = 1.392f,
             mode = ProximityLearningEngine.Mode.GRADED,
@@ -298,8 +298,8 @@ class ProximityLearningRuntimeRestartTest {
     }
 
     companion object {
-        private const val SOURCE = "hal:8:hall-tpa10"
-        private const val HALL_FAR = 37.8244f
-        private const val HALL_BOOT_TAIL = 25.875f
+        private const val SOURCE = "hal:8:graded-sensor"
+        private const val STARTUP_FAR = 37.8244f
+        private const val STARTUP_BOOT_TAIL = 25.875f
     }
 }

@@ -124,10 +124,9 @@ class SetupJourneyTest {
     }
 
     @Test fun theWalkNeverJumpsOverAStepThatIsMidFlight() {
-        // Round-5 hardware walk: the moment the panel-side OAuth attempt armed, sign-in read IN_FLIGHT,
-        // and ranking blocked-above-in-flight sent the wizard to the LATER blocked broker step — it
-        // abandoned "waiting for you at the panel" while the user stood mid-login at the panel. Strict
-        // walk order: the first step that is blocked OR in flight is next, full stop.
+        // The moment the panel-side OAuth attempt arms, sign-in reads IN_FLIGHT. Ranking blocked above
+        // in-flight would send the wizard to the LATER blocked broker step and abandon the unfinished
+        // sign-in. Strict walk order: the first step that is blocked OR in flight is next, full stop.
         val midSignIn = SetupJourney.evaluate(inputs(
             haCredentialed = false, haOAuthInFlight = true,
             brokerConfigured = false, mqttUserConfigured = false, mqttPasswordConfigured = false,
@@ -457,7 +456,7 @@ class SetupJourneyTest {
         // suggested_area applies only at the device's FIRST registration, which happens the moment MQTT
         // connects — and the valid area names are only readable after HA sign-in. If MQTT ever moves
         // ahead of HOME_DASHBOARD again, every non-admin user loses the ability to place their panel in
-        // an area at all (the catch-22 found on the round-4 hardware walk).
+        // an area at all.
         assertTrue(Stage.HOME_DASHBOARD.ordinal < Stage.MQTT_BROKER.ordinal)
         assertTrue(Stage.HA_CREDENTIALS.ordinal < Stage.HOME_DASHBOARD.ordinal)
         // MQTT still precedes the filter question, so the journey cannot present as finished while the

@@ -413,8 +413,8 @@ internal enum class AdmissionOutcome {
  * A credential the server REFUSED sits in the second group, not the third, and the distinction is the
  * whole reason this rule is asked in two parts. Re-enabling an HA user, reissuing a token or repairing
  * a reverse proxy that was answering 401 all happen server-side with no event reaching the panel, so a
- * refusal that never re-asks parks the panel until a person walks to it. That is what a 2026-08-17
- * field report showed, where the screen also blamed a credential that was never actually refused.
+ * refusal that never re-asks stays parked indefinitely. That failure mode can also blame a credential
+ * that was never actually refused.
  *
  * Note the pairs that look alike and are not: a WebView that cannot bridge at all is terminal, while
  * one that failed to attach the bridge it does support is retried; a handshake Home Assistant never

@@ -179,9 +179,8 @@ internal class DashboardV2CompatibilityProbe(
      *
      *  A session that was never ATTEMPTED is the same kind of non-verdict and must be ordered ahead of
      *  the terminal default. On a cold boot the probe can run before the configuration store has
-     *  loaded, so the URL reads blank and no credential is judged; the panel then showed a credential
-     *  screen it could never clear (field report 2026-08-17: the verdict landed 1.5 s after boot and
-     *  the operator's first manual retry succeeded, proving the credential was always good). */
+     *  loaded, so the URL reads blank and no credential is judged; the panel can then show a credential
+     *  screen it cannot clear even though a later retry succeeds with the same credential. */
     private fun blockedBy(session: HaApiSession): DashboardV2ProbeResult? = when {
         session.rejected -> DashboardV2ProbeResult.AuthenticationFailed
         !session.accessToken.isNullOrBlank() -> null

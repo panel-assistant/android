@@ -9,12 +9,12 @@ import org.junit.Test
 /** The device projection is presentation text, so every unusable field must vanish, not leak. */
 class PanelAssistantDeviceTest {
     private fun project(
-        friendlyName: String? = "Office HA Dash",
+        friendlyName: String? = "Test Panel",
         manufacturer: String? = "Electron",
         model: String? = "WF1589T (ha-paneld)",
         androidRelease: String? = "14",
         buildDisplay: String? = "TQ3A.230805.001",
-        area: String? = "Office",
+        area: String? = "Test Area",
     ) = JSONObject(
         PanelAssistantDevice.json(
             friendlyName, manufacturer, model, androidRelease, buildDisplay, area,
@@ -23,11 +23,11 @@ class PanelAssistantDeviceTest {
 
     @Test fun completeHardwareFactsProjectEveryCardField() {
         val device = project()
-        assertEquals("Office HA Dash", device.getString("name"))
+        assertEquals("Test Panel", device.getString("name"))
         assertEquals("Electron", device.getString("manufacturer"))
         assertEquals("WF1589T", device.getString("model"))
         assertEquals("Android 14 · TQ3A.230805.001", device.getString("hw_version"))
-        assertEquals("Office", device.getString("area"))
+        assertEquals("Test Area", device.getString("area"))
         assertEquals(5, device.length())
     }
 
@@ -75,7 +75,7 @@ class PanelAssistantDeviceTest {
 
     @Test fun theProjectionNeverCarriesAHardwareIdentifier() {
         val raw = PanelAssistantDevice.json(
-            "Office HA Dash", "Electron", "WF1589T (ha-paneld)", "14", "TQ3A.230805.001", "Office",
+            "Test Panel", "Electron", "WF1589T (ha-paneld)", "14", "TQ3A.230805.001", "Test Area",
         )
         for (forbidden in listOf("serial", "android_id", "androidId", "mac", "did")) {
             assertFalse(forbidden, raw.contains(forbidden, ignoreCase = true))

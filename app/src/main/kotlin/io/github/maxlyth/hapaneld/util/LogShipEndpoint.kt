@@ -71,10 +71,10 @@ object LogShipEndpoint {
      * not listening succeeds locally and vanishes, so the wrong first choice is a permanent, silent
      * failure with no signal to correct it.
      *
-     * Proven on hardware 2026-07-27: a collector name with both A and AAAA records resolved to a
-     * global IPv6 address, the panel reported a successful UDP send, and nothing ever arrived; the
-     * same collector by IPv4 literal worked on every transport. LAN log collectors are IPv4 in
-     * practice, so IPv4-first is the ordering that fails least often — and where the transport does
+     * A collector name with both A and AAAA records can resolve first to a global IPv6 address while
+     * UDP reports a successful local send and nothing arrives; the same collector by IPv4 literal can
+     * still work on every transport. LAN log collectors are IPv4 in practice, so IPv4-first is the
+     * ordering that fails least often — and where the transport does
      * give feedback (TCP, HTTP) the caller walks the whole list rather than trusting this order.
      *
      * An IPv6-only collector is unaffected: it resolves to AAAA records only, so IPv6 is all there

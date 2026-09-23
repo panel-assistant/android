@@ -59,9 +59,8 @@ class DashboardScreenPolicyTest {
         assertTrue(block.contains("config.haToken.isBlank() && config.haRefreshToken.isBlank()"))
         assertTrue(block.contains("getString(R.string.ha_sign_in_needed)"))
         assertEquals("Home Assistant sign-in needed", englishString("ha_sign_in_needed"))
-        // The refusal title must name the SIGN-IN, not the version check. A panel reported on
-        // 2026-08-17 showing "Home Assistant version check rejected" sent diagnosis after a version
-        // problem that did not exist; the body had always said authentication.
+        // The refusal title must name the SIGN-IN, not the version check. A version-check title sends
+        // diagnosis after a version problem that does not exist; the body has always said authentication.
         assertTrue(block.contains("getString(R.string.ha_sign_in_rejected)"))
         assertEquals("Home Assistant sign-in rejected", englishString("ha_sign_in_rejected"))
         assertFalse(block.contains("version check rejected"))

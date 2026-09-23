@@ -7,7 +7,7 @@ import org.junit.Test
 
 /** Pins the dashboard-zoom setting's contract: a visible, tunable INT % on the Dashboard card that
  *  defaults to 100 (HA Companion parity, so a switched-over panel keeps its sizing) and is never an HA
- *  entity (user, 2026-07-11). */
+ *  entity. */
 class DashboardZoomSpecTest {
     private val spec = SettingsRegistry.spec("dashboard_zoom")
 

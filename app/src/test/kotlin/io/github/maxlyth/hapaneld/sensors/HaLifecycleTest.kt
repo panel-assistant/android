@@ -409,8 +409,8 @@ class HaLifecycleTest {
     }
 
     @Test fun aRefusedPanelAnnouncesOneRecoveryAcrossHandshakeThenBirth() {
-        // The hardware sequence of 2026-08-17, non-admin panels: shutting_down -> back_online(socket)
-        // -> normal -> back_online(mqtt) 39 s later. Two banners for one outage, with a gap between.
+        // A refused subscription can produce shutting_down -> back_online(socket) -> normal ->
+        // back_online(mqtt) 39 s later. Two banners for one outage, with a gap between.
         val ha = lifecycle()
         ha.onEvent(HaLifecycleEvent.STOP, HaLifecycleSource.MQTT, 1_000)
         ha.onDisconnected(1_100)
