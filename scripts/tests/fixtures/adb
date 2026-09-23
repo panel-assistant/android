@@ -518,7 +518,7 @@ PRAGMA journal_mode=WAL;
 PRAGMA user_version=9;
 CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT INTO app_state VALUES
- ('fixture-1','1'),('fixture-2','2'),('fixture-3','3'),('fixture-4','4'),
+ ('fixture-1',char(13,10,0,10,13)),('fixture-2','2'),('fixture-3','3'),('fixture-4','4'),
  ('fixture-5','5'),('fixture-6','6'),('fixture-7','7');
 SQL
   "${HAPANELD_HOST_SQLITE3:-sqlite3}" "$canonical_db" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null
@@ -596,8 +596,19 @@ run_db_txn_script() {
 }
 
 handle_db_txn_command() {
-  local text="$1"
+  local text="$1" copy_command cleanup_stage
   case "$text" in
+    *'umask 077; mkdir -m 700 '*'.hapaneld-db-txn.'*' && cp '*)
+      prepare_db_txn_sandbox
+      [ "${MOCK_DIRECT_COPY:-ok}" != stage_fail ] || return 1
+      # Execute the actual shipped copy/permissions command, translating only device paths and
+      # Android's shell ownership to this sandbox's user. Never manufacture the staged bytes.
+      copy_command="umask 077; ${text#*umask 077; }"
+      copy_command="${copy_command%\"}"
+      copy_command="${copy_command//\/data\//$DB_TXN_SANDBOX/data/}"
+      copy_command="${copy_command//chown shell:shell/chown $(id -u):$(id -g)}"
+      bash -c "$copy_command"
+      return $? ;;
     *sha256sum*.hapaneld-db-txn.*-script*)
       [ "${MOCK_DB_TXN:-ok}" != panel_hash_transport ] || return 1
       prepare_db_txn_sandbox
@@ -636,7 +647,9 @@ handle_db_txn_command() {
         exec /bin/sleep "${MOCK_DB_CLEANUP_BLOCK_SECONDS:-30}"
       fi
       if [ "${MOCK_DB_CLEANUP:-ok}" = ok ]; then
-        rm -rf "$DB_TXN_SANDBOX/data/local/tmp"/.hapaneld-db-txn.* 2>/dev/null
+        for cleanup_stage in $(printf '%s' "$text" | grep -oE '/data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+(-script)?' | sort -u); do
+          rm -rf "$DB_TXN_SANDBOX$cleanup_stage" 2>/dev/null
+        done
       fi
       return 0 ;;
   esac
@@ -776,6 +789,13 @@ case "${1:-}" in
     if [ "${MOCK_APK_QUERY:-ok}" != ok ] && [ -f "$STATE_DIR/apk-install-attempted" ]; then exit 1; fi
     case "${2:-}" in
       *.hapaneld-db-txn.*/ha-paneld.db)
+        if [ "${MOCK_UPGRADE_PREPARE:-unsupported}" = ready ]; then
+          if [ "${MOCK_DIRECT_COPY:-ok}" = block ]; then
+            [ -z "${MOCK_DIRECT_COPY_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_DIRECT_COPY_PID_FILE"
+            exec /bin/sleep "${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}"
+          fi
+          [ "${MOCK_DIRECT_COPY:-ok}" = ok ] || exit 1
+        fi
         [ "${MOCK_DB_TXN:-ok}" = pull_fail ] && exit 1
         # The pulled bytes come from the sandbox the executed script actually wrote, so a transfer
         # contract observes the real captured file, not a manufactured stand-in.
@@ -796,7 +816,12 @@ case "${1:-}" in
         fi
         [ "${MOCK_DIRECT_COPY:-ok}" = ok ] || exit 1
         prepare_db_txn_sandbox
-        cat "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
+        if [ "${MOCK_SU_ONLCR:-0}" = 1 ]; then
+          # Binary-safe expansion of each LF, including NUL-containing SQLite pages.
+          sed -z 's/\n/\r\n/g' "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
+        else
+          cat "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db"
+        fi
         ;;
       *) exit 1 ;;
     esac

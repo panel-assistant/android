@@ -406,6 +406,7 @@ run_provision() {
   MOCK_UPGRADE_PREPARE_BLOCK_SECONDS="${MOCK_UPGRADE_PREPARE_BLOCK_SECONDS:-30}" \
   MOCK_UPGRADE_RELEASE="${MOCK_UPGRADE_RELEASE:-ok}" \
   MOCK_DIRECT_COPY="${MOCK_DIRECT_COPY:-ok}" \
+  MOCK_SU_ONLCR="${MOCK_SU_ONLCR:-0}" \
   MOCK_DIRECT_COPY_PID_FILE="${MOCK_DIRECT_COPY_PID_FILE:-}" \
   MOCK_DIRECT_COPY_BLOCK_SECONDS="${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}" \
   MOCK_PM_PATH="${MOCK_PM_PATH:-ok}" \
@@ -4443,15 +4444,18 @@ fi
 # ── Data-store snapshot: acknowledged quiescence with one legacy fallback ──────────────────────
 if provision_scope_is backup core all shard-backup; then
 reset_db_txn_state
-MOCK_UPGRADE_PREPARE=ready run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+unrelated_direct_stage="$TMP/db-txn-sandbox/data/local/tmp/.hapaneld-db-txn.ffffffffffffffffffffffffffffffff"
+mkdir -p "$unrelated_direct_stage"
+: > "$unrelated_direct_stage/other-owner"
+MOCK_UPGRADE_PREPARE=ready MOCK_SU_ONLCR=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a receipt-capable build upgrades through the quiesced direct-copy path"
 assert_marker_captured "the receipt-bound direct copy earns the captured marker"
 assert_log_contains 'PREPARE_UPGRADE.*--es nonce [0-9a-f]{32}' "PREPARE carries one exact lowercase nonce"
-assert_log_contains 'exec-out su 0 cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "the join-style root route copies the closed database with binary-safe exec-out"
-assert_not_contains '\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" "the READY path creates no on-panel staging"
+assert_log_contains 'shell su 0 .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "the join-style root route stages the closed database byte for byte"
+assert_not_contains 'exec-out .*ha-paneld.db|^sqlite3 \.backup$' "$MOCK_CALL_LOG" "READY keeps database bytes off the root output stream without another SQLite backup"
 assert_not_contains 'shell df -P -k /data' "$MOCK_CALL_LOG" "the READY path has no fixed capacity floor"
 prepare_line="$(grep -n 'PREPARE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-copy_line="$(grep -n 'exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+copy_line="$(grep -n 'pull /data/local/tmp/\.hapaneld-db-txn\..*/ha-paneld.db' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 install_line="$(grep -n '^adb .* install' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$prepare_line" ] && [ -n "$copy_line" ] && [ -n "$install_line" ] && \
    [ "$prepare_line" -lt "$copy_line" ] && [ "$copy_line" -lt "$install_line" ]; then
@@ -4467,6 +4471,22 @@ direct_actual_sha="$(/usr/bin/sha256sum "$direct_database" 2>/dev/null | awk '{p
 if [ -n "$direct_database" ] && [ "$direct_receipt_sha" = "$direct_actual_sha" ]; then
   pass "the direct-copy receipt digest equals the actual published database bytes"
 else fail_test "the direct-copy receipt digest equals the actual published database bytes"; fi
+# The vendor su fault is independent of the source database. Exercise the old stream against the
+# same real SQLite fixture (including LF, CRLF and NUL), then require the staged capture to match it.
+MOCK_STATE_DIR="$TMP" MOCK_SU_ONLCR=1 "$FIXTURES/adb" -s "$MOCK_TARGET" exec-out su 0 \
+  'cat /data/data/io.panelassistant.android/databases/ha-paneld.db' > "$TMP/onlcr-database"
+if ! cmp -s "$TMP/onlcr-database" "$TMP/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db"; then
+  pass "vendor su newline expansion corrupts the old binary output stream"
+else fail_test "vendor su newline expansion corrupts the old binary output stream"; fi
+if cmp -s "$direct_database" "$TMP/db-txn-sandbox/data/data/io.panelassistant.android/databases/ha-paneld.db"; then
+  pass "staged pull preserves every receipt-bound byte on a vendor su panel"
+else fail_test "staged pull preserves every receipt-bound byte on a vendor su panel"; fi
+if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' ! -path "$unrelated_direct_stage" | grep -q .; then
+  fail_test "accepted direct capture removes its remote stage"
+else pass "accepted direct capture removes its remote stage"; fi
+if [ -f "$unrelated_direct_stage/other-owner" ]; then
+  pass "direct capture cleanup preserves another owner's staging"
+else fail_test "direct capture cleanup preserves another owner's staging"; fi
 prepare_nonce="$(sed -n 's/.*PREPARE_UPGRADE.*--es nonce \([0-9a-f]\{32\}\).*/\1/p' "$MOCK_CALL_LOG" | head -1)"
 if grep -Fq "quiescence_nonce=$prepare_nonce" "$direct_receipt" 2>/dev/null; then
   pass "the published receipt binds the exact acknowledged nonce"
@@ -4554,6 +4574,11 @@ else
   LAST_OUTPUT="$direct_copy_output"
   fail_test "the direct database is registered before its transfer can block"
 fi
+direct_remote_stage="$(find "$TMP/db-txn-sandbox/data/local/tmp" -type d -name '.hapaneld-db-txn.*' | head -1)"
+if [ -n "$direct_remote_stage" ] && [ "$(stat -c '%a' "$direct_remote_stage")" = 700 ] &&
+   [ "$(stat -c '%a' "$direct_remote_stage/ha-paneld.db")" = 600 ]; then
+  pass "the closed database stage is owner-only throughout transfer"
+else fail_test "the closed database stage is owner-only throughout transfer"; fi
 direct_interrupt_started="$(date +%s)"
 kill -INT -- "-$direct_copy_owner_pid" 2>/dev/null || true
 if wait "$direct_copy_owner_pid"; then direct_copy_status=0; else direct_copy_status=$?; fi
@@ -4569,6 +4594,9 @@ if find "$TMP/auto-backups" -maxdepth 1 -type f -name '*.break-glass.db*' | grep
   LAST_OUTPUT="$direct_copy_output"
   fail_test "an interrupted unaccepted direct pair is removed"
 else pass "an interrupted unaccepted direct pair is removed"; fi
+if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' | grep -q .; then
+  fail_test "an interrupted direct transfer removes its remote stage"
+else pass "an interrupted direct transfer removes its remote stage"; fi
 direct_copy_blocked_pid="$(cat "$direct_copy_pid_file" 2>/dev/null || true)"
 if [ -n "$direct_copy_blocked_pid" ] && processes_gone "-$direct_copy_blocked_pid"; then
   pass "direct-copy interruption reaps the entire nested adb process group"
@@ -4649,7 +4677,7 @@ for prepare_mode in unsupported malformed wrong_nonce wrong_result nonready; do
      [ "$(grep -c '^sqlite3 \.backup$' "$MOCK_CALL_LOG")" = 1 ]; then
     pass "a $prepare_mode outcome executes exactly one legacy transaction and one SQLite .backup"
   else fail_test "a $prepare_mode outcome executes exactly one legacy transaction and one SQLite .backup"; fi
-  assert_not_contains 'exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "a $prepare_mode receipt is never accepted for direct copy"
+  assert_not_contains 'exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db ' "$MOCK_CALL_LOG" "a $prepare_mode receipt is never accepted for direct copy"
   assert_not_contains 'RELEASE_UPGRADE' "$MOCK_CALL_LOG" "successful replacement retires a $prepare_mode custody nonce without RELEASE"
 done
 
@@ -4700,27 +4728,41 @@ for direct_failure in size_mismatch digest_mismatch schema_mismatch rows_mismatc
   assert_success "a $direct_failure direct copy is discarded while the ordinary upgrade continues"
   assert_marker_absent "a $direct_failure direct copy never earns the captured marker"
   assert_log_contains '^adb .* install' "a $direct_failure optional backup does not preempt install"
-  assert_not_contains '\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" "a $direct_failure result does not retry through the legacy path"
+  assert_not_contains '^sqlite3 \.backup$|sh /data/local/tmp/\.hapaneld-db-txn\..*-script' "$MOCK_CALL_LOG" "a $direct_failure result does not retry through the legacy path"
   if find "$TMP/auto-backups" -maxdepth 1 -type f -name '*.break-glass.db*' | grep -q .; then
     fail_test "a $direct_failure rejection removes its host artifacts"
   else pass "a $direct_failure rejection removes its host artifacts"; fi
+  if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' | grep -q .; then
+    fail_test "a $direct_failure rejection removes its remote stage"
+  else pass "a $direct_failure rejection removes its remote stage"; fi
+done
+
+for direct_transfer_failure in stage_fail fail; do
+  reset_db_txn_state
+  MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY="$direct_transfer_failure" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_success "a $direct_transfer_failure transfer keeps the ordinary upgrade available"
+  assert_marker_absent "a $direct_transfer_failure transfer cannot publish a receipt"
+  if find "$TMP/auto-backups" -name '*.break-glass.db*' | grep -q . ||
+     find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' | grep -q .; then
+    fail_test "a $direct_transfer_failure transfer removes both owned partial copies"
+  else pass "a $direct_transfer_failure transfer removes both owned partial copies"; fi
 done
 
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT=shc run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "the quiesced direct copy supports the sh -c root route"
-assert_log_contains 'exec-out su 0 sh -c cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "the direct copy uses the probed sh -c form"
-for direct_dialect in rootjoin:'exec-out su root cat ' rootshc:'exec-out su root sh -c cat ' suc:'exec-out su -c cat '; do
+assert_log_contains 'shell su 0 sh -c .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "the direct copy uses the probed sh -c form"
+for direct_dialect in rootjoin:'shell su root ' rootshc:'shell su root sh -c ' suc:'shell su -c '; do
   dialect_name="${direct_dialect%%:*}"; wrapper_pattern="${direct_dialect#*:}"
   reset_db_txn_state
   MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT="$dialect_name" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_marker_captured "the READY direct copy supports the $dialect_name root form"
-  assert_log_contains "$wrapper_pattern/data/data/io.panelassistant.android/databases/ha-paneld.db" "the direct copy dispatches through the exact $dialect_name form"
+  assert_log_contains "${wrapper_pattern}.*cp /data/data/io.panelassistant.android/databases/ha-paneld.db " "the direct copy dispatches through the exact $dialect_name form"
 done
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_ADB_ROOT=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_marker_captured "the READY direct copy supports root adbd without su"
-assert_log_contains 'exec-out cat /data/data/io.panelassistant.android/databases/ha-paneld.db' "root adbd uses the bare binary-safe copy form"
+assert_log_contains 'shell umask 077; mkdir .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "root adbd stages the copy without su"
 
 # A failure after READY but before package replacement releases the exact lease once. A destructive
 # reset with rejected bytes remains fail-closed and likewise releases rather than erasing anything.
@@ -4789,7 +4831,7 @@ assert_contains 'schema 9 is inside candidate boundary' \
   "the bridge's database is what the candidate boundary is measured against"
 assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
   "the upgrade-control broadcast reaches the identity that is actually installed"
-assert_log_contains 'cat /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db' \
+assert_log_contains 'cp /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db ' \
   "the pre-mutation capture copies the database the bridge holds"
 # Installing the successor does not replace the bridge, so nothing stops the process this run
 # quiesced. Its lease is released back to the identity that armed it, not to the one just installed.
@@ -5030,7 +5072,7 @@ MOCK_ROOT=0 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "an upgrade on a panel with no root route still succeeds"
 assert_contains 'no root route, so only settings could be saved' "a sandboxed panel is told what was and was not saved"
 assert_marker_absent "a rootless skip never claims a captured snapshot"
-assert_not_contains 'PREPARE_UPGRADE|exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "a rootless panel is neither quiesced nor asked for an inaccessible database"
+assert_not_contains 'PREPARE_UPGRADE|exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db ' "$MOCK_CALL_LOG" "a rootless panel is neither quiesced nor asked for an inaccessible database"
 
 # The rootless skip above is only accepted from a transport that proves it is still alive: a probe
 # whose transport died mid-question looks identical to a genuine "no root", and skipping on it would
@@ -5677,7 +5719,7 @@ assert_failure "an unconfirmed reset returns nonzero"
 assert_contains 'was not confirmed' "an unconfirmed reset says so"
 assert_contains 'Nothing was erased' "an unconfirmed reset states that the panel is untouched"
 assert_not_contains 'pm clear' "$MOCK_CALL_LOG" "an unconfirmed reset never reaches the package manager"
-assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db|^adb .* install' "$MOCK_CALL_LOG" "an unconfirmed reset performs no backup or install work"
+assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db |^adb .* install' "$MOCK_CALL_LOG" "an unconfirmed reset performs no backup or install work"
 
 # --force skips a version comparison; it must not stand in for authorising a wipe.
 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame --reset-config --force
@@ -5692,7 +5734,7 @@ assert_log_contains '^adb -s panel\.test:5555 shell pm clear io.panelassistant.a
 if [ "$(grep -Ec '^adb -s panel\.test:5555 shell pm clear io\.panelassistant\.android$' "$MOCK_CALL_LOG")" = 1 ]; then
   pass "a confirmed reset issues exactly one package clear"
 else fail_test "a confirmed reset issues exactly one package clear"; fi
-assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db' "$MOCK_CALL_LOG" "reset bypasses settings export and database capture"
+assert_not_contains 'config/export|PREPARE_UPGRADE|sqlite3 \.backup|exec-out .*ha-paneld.db|cp /data/data/[^ ]*/databases/ha-paneld.db ' "$MOCK_CALL_LOG" "reset bypasses settings export and database capture"
 assert_contains 'configuration erased' "a confirmed reset reports what it did"
 assert_contains 'Next: confirm this panel.s name' "a reset panel lands in guided setup, not in repair"
 
