@@ -598,12 +598,28 @@ run_db_txn_script() {
 handle_db_txn_command() {
   local text="$1" copy_command cleanup_stage
   case "$text" in
-    *'umask 077; mkdir -m 700 '*'.hapaneld-db-txn.'*' && cp '*)
+    *'umask 077; mkdir -m 700 '*'.hapaneld-db-txn.'*)
       prepare_db_txn_sandbox
       [ "${MOCK_DIRECT_COPY:-ok}" != stage_fail ] || return 1
+      copy_command="umask 077; ${text#*umask 077; }"
+      copy_command="${copy_command%\"}"
+      copy_command="${copy_command//\/data\//$DB_TXN_SANDBOX/data/}"
+      if [ "${MOCK_DIRECT_COPY:-ok}" = stage_collision ]; then
+        cleanup_stage="${copy_command##* }"
+        mkdir -m 700 "$cleanup_stage"
+        printf 'other owner\n' > "$cleanup_stage/other-owner"
+      fi
+      bash -c "$copy_command" || return 1
+      if [ "${MOCK_DIRECT_COPY:-ok}" = admission_block ]; then
+        [ -z "${MOCK_DIRECT_COPY_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_DIRECT_COPY_PID_FILE"
+        exec /bin/sleep "${MOCK_DIRECT_COPY_BLOCK_SECONDS:-30}"
+      fi
+      return 0 ;;
+    *'cp /data/data/'*'/databases/ha-paneld.db '*'.hapaneld-db-txn.'*)
+      prepare_db_txn_sandbox
       # Execute the actual shipped copy/permissions command, translating only device paths and
       # Android's shell ownership to this sandbox's user. Never manufacture the staged bytes.
-      copy_command="umask 077; ${text#*umask 077; }"
+      copy_command="cp /data/data/${text#*cp /data/data/}"
       copy_command="${copy_command%\"}"
       copy_command="${copy_command//\/data\//$DB_TXN_SANDBOX/data/}"
       copy_command="${copy_command//chown shell:shell/chown $(id -u):$(id -g)}"

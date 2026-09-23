@@ -4510,18 +4510,20 @@ else fail_test "abort cleanup releases quiescence only after owned snapshot clea
 # Direct host artifacts use the same deferred-signal ownership primitive as the legacy publisher.
 # Creation and registration are indivisible, and the successful handoff changes owners before
 # signals are replayed.
-direct_db_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | sed -n '1s/:.*//p')"
-direct_receipt_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | sed -n '2s/:.*//p')"
-direct_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$PROVISION" | sed -n '3s/:.*//p')"
-direct_db_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | sed -n '1s/:.*//p')"
-direct_receipt_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | sed -n '2s/:.*//p')"
-direct_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$PROVISION" | sed -n '3s/:.*//p')"
-direct_db_create_line="$(grep -n 'if \[ -e "\$host_db" \].*: > "\$host_db"' "$PROVISION" | cut -d: -f1)"
-direct_db_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB="\$host_db"$' "$PROVISION" | cut -d: -f1)"
-direct_receipt_create_line="$(grep -n 'if \[ -e "\$receipt" \].*: > "\$receipt"' "$PROVISION" | head -1 | cut -d: -f1)"
-direct_receipt_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"$' "$PROVISION" | head -1 | cut -d: -f1)"
-direct_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""$' "$PROVISION" | cut -d: -f1)"
-direct_receipt_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT=""$' "$PROVISION" | cut -d: -f1)"
+direct_publisher="$TMP/direct-publisher.sh"
+sed -n '/^snapshot_prepared_database()/,/^}/p' "$PROVISION" > "$direct_publisher"
+direct_db_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$direct_publisher" | sed -n '1s/:.*//p')"
+direct_receipt_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$direct_publisher" | sed -n '2s/:.*//p')"
+direct_handoff_defer_line="$(grep -n '^  snapshot_txn_defer_host_signals$' "$direct_publisher" | sed -n '3s/:.*//p')"
+direct_db_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$direct_publisher" | sed -n '1s/:.*//p')"
+direct_receipt_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$direct_publisher" | sed -n '2s/:.*//p')"
+direct_handoff_restore_line="$(grep -n '^  snapshot_txn_restore_host_signals$' "$direct_publisher" | sed -n '3s/:.*//p')"
+direct_db_create_line="$(grep -n 'if \[ -e "\$host_db" \].*: > "\$host_db"' "$direct_publisher" | cut -d: -f1)"
+direct_db_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB="\$host_db"$' "$direct_publisher" | cut -d: -f1)"
+direct_receipt_create_line="$(grep -n 'if \[ -e "\$receipt" \].*: > "\$receipt"' "$direct_publisher" | head -1 | cut -d: -f1)"
+direct_receipt_owner_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT="\$receipt"$' "$direct_publisher" | head -1 | cut -d: -f1)"
+direct_db_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_DB=""$' "$direct_publisher" | cut -d: -f1)"
+direct_receipt_disown_line="$(grep -n '^  SNAPSHOT_TXN_HOST_RECEIPT=""$' "$direct_publisher" | cut -d: -f1)"
 if [ -n "$direct_db_defer_line" ] && [ "$direct_db_defer_line" -lt "$direct_db_create_line" ] &&
    [ "$direct_db_create_line" -lt "$direct_db_owner_line" ] && [ "$direct_db_owner_line" -lt "$direct_db_restore_line" ]; then
   pass "direct database creation and cleanup registration are signal-atomic"
@@ -4530,8 +4532,8 @@ if [ -n "$direct_receipt_defer_line" ] && [ "$direct_receipt_defer_line" -lt "$d
    [ "$direct_receipt_create_line" -lt "$direct_receipt_owner_line" ] && [ "$direct_receipt_owner_line" -lt "$direct_receipt_restore_line" ]; then
   pass "direct receipt creation and cleanup registration are signal-atomic"
 else fail_test "direct receipt creation and cleanup registration are signal-atomic"; fi
-if grep -q 'set -o noclobber; : > "\$host_db"' "$PROVISION" &&
-   grep -q 'set -o noclobber; : > "\$receipt"' "$PROVISION"; then
+if grep -q 'set -o noclobber; : > "\$host_db"' "$direct_publisher" &&
+   grep -q 'set -o noclobber; : > "\$receipt"' "$direct_publisher"; then
   pass "direct database and receipt creation both enforce shell noclobber"
 else fail_test "direct database and receipt creation both enforce shell noclobber"; fi
 if [ -n "$direct_handoff_defer_line" ] && [ "$direct_handoff_defer_line" -lt "$direct_db_disown_line" ] &&
@@ -4749,6 +4751,63 @@ for direct_transfer_failure in stage_fail fail; do
 done
 
 reset_db_txn_state
+MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY=stage_collision run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "an exact staging collision keeps the ordinary upgrade available"
+assert_marker_absent "an exact staging collision cannot authorize a capture"
+collided_stage="$(find "$TMP/db-txn-sandbox/data/local/tmp" -name other-owner -printf '%h\n' | head -1)"
+if [ -n "$collided_stage" ] && [ "$(cat "$collided_stage/other-owner")" = 'other owner' ]; then
+  pass "a rejected exact staging collision preserves the original owner"
+else fail_test "a rejected exact staging collision preserves the original owner"; fi
+assert_not_contains 'rm -rf /data/local/tmp/\.hapaneld-db-txn\.' "$MOCK_CALL_LOG" \
+  "failed staging admission never registers cleanup authority"
+
+# An interrupted mkdir response is ambiguous. It may leave an empty private directory, never a
+# copied database or permission to remove an unconfirmed path. Signals replay before any copy.
+reset_db_txn_state
+: > "$MOCK_CALL_LOG"
+admission_pid_file="$TMP/direct-admission-block.pid"
+admission_output="$TMP/direct-admission-block-output.txt"
+rm -f "$admission_pid_file"
+set -m
+MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY=admission_block MOCK_DIRECT_COPY_PID_FILE="$admission_pid_file" \
+ADB_COMMAND_TIMEOUT_SECONDS=2 HAPANELD_SKIP_AUTO_EXPORT=1 \
+HAPANELD_CONFIG_BACKUP_DIR="$TMP/auto-backups" MOCK_STATE_DIR="$TMP" \
+  bash "$PROVISION" "$MOCK_TARGET" --apk "$APK" --no-tame --allow-unsigned-helper > "$admission_output" 2>&1 &
+admission_owner_pid=$!
+ACTIVE_PUBLICATION_PGID="$admission_owner_pid"
+set +m
+admission_ready=0
+for _ in {1..100}; do
+  if [ -s "$admission_pid_file" ]; then admission_ready=1; break; fi
+  /bin/sleep 0.05
+done
+LAST_OUTPUT="$admission_output"
+if [ "$admission_ready" = 1 ]; then
+  pass "staging interruption reaches the unacknowledged mkdir response"
+else fail_test "staging interruption reaches the unacknowledged mkdir response"; fi
+kill -INT -- "-$admission_owner_pid" 2>/dev/null || true
+if wait "$admission_owner_pid"; then admission_status=0; else admission_status=$?; fi
+ACTIVE_PUBLICATION_PGID=""
+if [ "$admission_status" = 130 ]; then
+  pass "interrupted staging admission replays the deferred signal status"
+else fail_test "interrupted staging admission replays the deferred signal status (got $admission_status)"; fi
+if find "$TMP/auto-backups" -name '*.break-glass.db*' | grep -q .; then
+  fail_test "interrupted staging admission removes unaccepted host artifacts"
+else pass "interrupted staging admission removes unaccepted host artifacts"; fi
+admission_stage="$(find "$TMP/db-txn-sandbox/data/local/tmp" -type d -name '.hapaneld-db-txn.*' | head -1)"
+if [ -n "$admission_stage" ] && [ "$(stat -c '%a' "$admission_stage")" = 700 ] &&
+   [ -z "$(find "$admission_stage" -mindepth 1 -print -quit)" ]; then
+  pass "a lost staging acknowledgement leaves only an empty private directory"
+else fail_test "a lost staging acknowledgement leaves only an empty private directory"; fi
+admission_blocked_pid="$(cat "$admission_pid_file" 2>/dev/null || true)"
+if [ -n "$admission_blocked_pid" ] && processes_gone "$admission_blocked_pid"; then
+  pass "interrupted staging admission reaps its nested adb child"
+else fail_test "interrupted staging admission reaps its nested adb child"; fi
+if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
+  pass "interrupted staging admission releases quiescence exactly once"
+else fail_test "interrupted staging admission releases quiescence exactly once"; fi
+
+reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_SU_DIALECT=shc run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "the quiesced direct copy supports the sh -c root route"
 assert_log_contains 'shell su 0 sh -c .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "the direct copy uses the probed sh -c form"
@@ -4762,7 +4821,7 @@ done
 reset_db_txn_state
 MOCK_UPGRADE_PREPARE=ready MOCK_ADB_ROOT=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_marker_captured "the READY direct copy supports root adbd without su"
-assert_log_contains 'shell umask 077; mkdir .*cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "root adbd stages the copy without su"
+assert_log_contains 'shell cp /data/data/io.panelassistant.android/databases/ha-paneld.db ' "root adbd stages the copy without su"
 
 # A failure after READY but before package replacement releases the exact lease once. A destructive
 # reset with rejected bytes remains fail-closed and likewise releases rather than erasing anything.
