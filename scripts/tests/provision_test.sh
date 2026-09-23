@@ -1533,6 +1533,25 @@ observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
 if printf '%s\n' "$observer_output" 2>/dev/null | grep -qx 'HOSTDB_PRIMARY=not_regular'; then
   pass "production observer refuses to follow a symlinked canonical database"
 else fail_test "production observer refuses to follow a symlinked canonical database"; fi
+# Feed the real observer's verdict through the host gate: checking only HOSTDB_PRIMARY misses
+# regressions that collapse this specific refusal back into the generic unreadable message.
+MOCK_HOST_DB_PRIMARY="$(printf '%s\n' "$observer_output" | sed -n 's/^HOSTDB_PRIMARY=//p')" \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a real symlinked canonical database refuses installation"
+assert_contains 'the canonical database is not a regular file' "a symlink names the non-regular database refusal"
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
+  "$MOCK_CALL_LOG" "a non-regular database refuses before tracked mutations"
+rm -f "$DB_OBSERVER_DB"
+mkdir "$DB_OBSERVER_DB"
+observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
+if printf '%s\n' "$observer_output" | grep -qx 'HOSTDB_PRIMARY=not_regular'; then
+  pass "production observer classifies a real directory as a non-regular canonical database"
+else fail_test "production observer classifies a real directory as a non-regular canonical database"; fi
+MOCK_HOST_DB_PRIMARY="$(printf '%s\n' "$observer_output" | sed -n 's/^HOSTDB_PRIMARY=//p')" \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a real directory at the canonical database path refuses installation"
+assert_contains 'the canonical database is not a regular file' "a directory names the non-regular database refusal"
+rmdir "$DB_OBSERVER_DB"
 rm -f "$DB_OBSERVER_DB" "$DB_OBSERVER_DB.v13.premigrate" "$DB_OBSERVER_DB.v14.premigrate"
 "$HAPANELD_HOST_SQLITE3" "$DB_OBSERVER_DB.v14.superseded" 'PRAGMA user_version=14;'
 observer_output="$(PATH="$DB_OBSERVER_BIN" "$BASH" "$DB_OBSERVER_RUN")"
@@ -7055,6 +7074,44 @@ mkdir -p "$PREFLIGHT_DIR/target"
 printf 'staged helper bytes\n' > "$PREFLIGHT_DIR/staged"
 PREFLIGHT_SHA="$(/usr/bin/sha256sum "$PREFLIGHT_DIR/staged" | cut -d' ' -f1)"
 PREFLIGHT_WRONG_SHA="$(printf 'not the staged file\n' | /usr/bin/sha256sum | cut -d' ' -f1)"
+
+# Exercise the shipped mount walk with real symlinks and a deterministic mount table. Only the
+# kernel table path is substituted; resolution, component matching and option parsing stay real.
+MOUNT_TABLE="$PREFLIGHT_DIR/mounts"
+MOUNT_FN="$PREFLIGHT_DIR/mount-fn.sh"
+sed "s|< /proc/mounts |< '$MOUNT_TABLE' |" "$PREFLIGHT_FN" > "$MOUNT_FN"
+mkdir -p "$PREFLIGHT_DIR/system/vendor/etc/init" "$PREFLIGHT_DIR/system/ven"
+ln -s "$PREFLIGHT_DIR/system/vendor" "$PREFLIGHT_DIR/vendor"
+printf '%s\n' 'rootfs / rootfs ro 0 0' \
+  "system $PREFLIGHT_DIR/system ext4 rw 0 0" \
+  "sibling $PREFLIGHT_DIR/system/ven ext4 ro 0 0" > "$MOUNT_TABLE"
+mount_out="$(PATH=/usr/bin:/bin /bin/sh -c ". '$MOUNT_FN'
+# Reproduce the misleading df mount from the measured system-as-root failure.
+df() { printf '%s\\n' 'Filesystem 1024-blocks Used Available Capacity Mounted on' '/dev/fake 1000 1 999 1% /apex/com.android.art'; }
+describe_target '$PREFLIGHT_DIR/vendor/etc/init'
+printf '%s %s\\n' \"\$diag_mount\" \"\$diag_state\"")"
+if [ "$mount_out" = "$PREFLIGHT_DIR/system rw" ]; then
+  pass "a symlinked vendor resolves its real mount despite misleading df and sibling prefixes"
+else
+  fail_test "a symlinked vendor resolves its real mount despite misleading df and sibling prefixes"
+fi
+
+# An overmount wins by path length even if its writable parent occurs later in the table. The
+# final same-path row wins after remount, and a second observation must read the updated table.
+printf '%s\n' "vendor $PREFLIGHT_DIR/system/vendor ext4 rw 0 0" \
+  "overmount $PREFLIGHT_DIR/system/vendor ext4 ro 0 0" \
+  "system $PREFLIGHT_DIR/system ext4 rw 0 0" 'rootfs / rootfs rw 0 0' > "$MOUNT_TABLE"
+mount_out="$(PATH=/usr/bin:/bin /bin/sh -c ". '$MOUNT_FN'
+describe_target '$PREFLIGHT_DIR/vendor/etc/init'
+printf '%s %s\\n' \"\$diag_mount\" \"\$diag_state\"
+printf '%s\\n' 'remounted $PREFLIGHT_DIR/system/vendor ext4 rw 0 0' >> '$MOUNT_TABLE'
+describe_target '$PREFLIGHT_DIR/vendor/etc/init'
+printf '%s %s\\n' \"\$diag_mount\" \"\$diag_state\"")"
+if [ "$mount_out" = "$(printf '%s\n' "$PREFLIGHT_DIR/system/vendor ro" "$PREFLIGHT_DIR/system/vendor rw")" ]; then
+  pass "the longest real mount uses its last row and rereads remount state on every observation"
+else
+  fail_test "the longest real mount uses its last row and rereads remount state on every observation"
+fi
 
 # A destination that can take the write says nothing at all. Silence is the contract: any output on
 # the success path would be parsed as a marker by the host.

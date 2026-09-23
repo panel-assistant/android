@@ -29,7 +29,8 @@ cat > "$work/bin/rm" <<'STUB'
 #!/usr/bin/env bash
 for arg in "$@"; do
   case "$arg" in -*) continue ;; esac
-  [ -e "$arg" ] || { echo "rm: $arg: No such file or directory" >&2; exit 1; }
+  [ -e "$arg" ] || [ -L "$arg" ] || { echo "rm: $arg: No such file or directory" >&2; exit 1; }
+  [ "$arg" != "${REFUSE_REMOVAL:-}" ] || exit 1
   /bin/rm -f -- "$arg" || exit 1
 done
 exit 0
@@ -53,18 +54,23 @@ run_subject "$work/absent-c" "$work/present2" "$work/absent-d" || fail "a mixed 
 [ -e "$work/present2" ] && fail "the present path in a mixed list survived" \
   || pass "a mixed list removes what exists and tolerates what does not"
 
-# 4. The guarantee still holds: something that exists and cannot be removed is a failure. This is
-#    what stops the fix from degrading into "ignore every error".
+# 4. A directory cannot be removed by rm -f even as root, as used by CI.
 mkdir -p "$work/undeletable"
 : > "$work/undeletable/file"
-chmod 500 "$work/undeletable"
-if [ "$(id -u)" = 0 ]; then
-  printf 'ok %s - skipped: root removes a file in a read-only directory anyway\n' "$((passes + 1))"
-  passes=$((passes + 1))
-else
-  run_subject "$work/undeletable/file" && fail "an unremovable present path was reported as removed" \
-    || pass "an unremovable present path is still a failure"
-fi
-chmod 700 "$work/undeletable"
+run_subject "$work/undeletable" && fail "an unremovable present path was reported as removed" \
+  || pass "an unremovable present path is still a failure"
+
+# 5. -e follows symlinks, so a dangling stale helper needs an explicit no-follow existence check.
+ln -s "$work/missing-target" "$work/broken-link"
+run_subject "$work/broken-link" || fail "a removable broken symlink made the removal fail"
+[ ! -L "$work/broken-link" ] || fail "a broken symlink survived successful removal"
+pass "a broken symlink is removed"
+
+# 6. Check the postcondition too: a failed unlink must not turn a dangling link into success.
+ln -s "$work/missing-target" "$work/refused-link"
+REFUSE_REMOVAL="$work/refused-link" run_subject "$work/refused-link" \
+  && fail "an unremovable broken symlink was reported as removed" \
+  || pass "an unremovable broken symlink is still a failure"
+[ -L "$work/refused-link" ] || fail "the failed-unlink fixture did not retain its symlink"
 
 printf '1..%s\n' "$passes"

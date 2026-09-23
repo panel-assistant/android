@@ -3494,6 +3494,10 @@ describe_target() {
   # reporter and the gate two places that can decide the same thing.
   [ -d "$describe_dir" ] || return 0
 
+  # /vendor may be a symlink into /system. Match the physical path against the kernel's mount
+  # points, or a writable /system overlay can be mistaken for the read-only root (and vice versa).
+  describe_dir=$(CDPATH= cd -P "$describe_dir" 2>/dev/null && pwd -P) || return 0
+
   describe_row=$(df -P -k "$describe_dir" 2>/dev/null | sed -n 2p) || describe_row=
   if [ -n "$describe_row" ]; then
     set -f
@@ -4939,9 +4943,9 @@ helper_journal_state() {
 # afterwards is the guarantee this step owes, however the removal was reported.
 remove_if_present() {
   for stale in "$@"; do
-    if [ -e "$stale" ]; then
+    if [ -e "$stale" ] || [ -L "$stale" ]; then
       rm -f "$stale"
-      if [ -e "$stale" ]; then
+      if [ -e "$stale" ] || [ -L "$stale" ]; then
         return 1
       fi
     fi

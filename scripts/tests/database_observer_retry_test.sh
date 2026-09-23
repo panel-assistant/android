@@ -15,10 +15,21 @@ passes=0
 fail() { printf 'not ok - %s\n' "$*"; exit 1; }
 pass() { passes=$((passes + 1)); printf 'ok %s - %s\n' "$passes" "$*"; }
 
-command -v sqlite3 >/dev/null || { printf '1..0 # skipped: sqlite3 is required\n'; exit 0; }
+command -v sqlite3 >/dev/null || fail "sqlite3 is required"
 
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
+
+# Exercise the dependency check with a PATH that really has no sqlite3. The child stops before
+# creating fixtures, so only dirname (used to resolve ROOT) is needed in this environment.
+mkdir "$work/no-sqlite"
+ln -s "$(command -v dirname)" "$work/no-sqlite/dirname"
+PATH="$work/no-sqlite" "$BASH" "${BASH_SOURCE[0]}" > "$work/no-sqlite.log" 2>&1
+status=$?
+[ "$status" = 1 ] || fail "missing sqlite3 returned $status instead of failing"
+grep -qx 'not ok - sqlite3 is required' "$work/no-sqlite.log" ||
+  fail "missing sqlite3 did not name the required dependency"
+pass "missing sqlite3 is a hard failure"
 
 # Take the functions from the shipped transaction script, never a copy written here, so the test
 # cannot pass against a definition this file invented.
@@ -50,6 +61,56 @@ case "$verdict" in
   readable:*) pass "a quiet database is read and reported readable" ;;
   *) fail "a quiet database reported '$verdict'" ;;
 esac
+
+# Force failures at the in-loop fingerprints, independently of writer timing and the final
+# post-quick_check call. Persist calls outside command-substitution subshells. Remove only retry
+# sleeps: the shipped copy, fingerprint, SQLite check and six-attempt budget still execute.
+run_observer_failing_in_loop() (
+  cd "$work" || exit 1
+  sqlite3_bin=$(command -v sqlite3)
+  observer_tmp="$work/in-loop-$1"
+  mkdir -p "$observer_tmp"
+  # shellcheck disable=SC1090
+  . "$subject"
+  eval "$(declare -f source_fingerprint | sed '1s/^source_fingerprint/real_source_fingerprint/')"
+  counter="$observer_tmp/fingerprint-calls"
+  printf '0\n' > "$counter"
+  failure=$1
+  sleep() { :; }
+  source_fingerprint() {
+    local n
+    n=$(( $(cat "$counter") + 1 ))
+    printf '%s\n' "$n" > "$counter"
+    case "$failure" in
+      before-once) [ "$n" != 1 ] || return 1 ;;
+      after-once) [ "$n" != 2 ] || return 1 ;;
+      before-always) return 1 ;;
+      after-always) [ $((n % 2)) != 0 ] || return 1 ;;
+      after-then-before) [ "$n" = 1 ] || return 1 ;;
+    esac
+    real_source_fingerprint "$@"
+  }
+  inspect_database "$work/live.db" stable
+)
+
+# A transient failure at either position must recover. Persistent before failures have never
+# observed a readable source; persistent after failures have. The mixed schedule also proves that
+# a later failed before call cannot erase the earlier successful observation.
+while read -r scenario expected calls; do
+  verdict="$(run_observer_failing_in_loop "$scenario")"
+  [ "$verdict" = "$expected" ] ||
+    fail "$scenario fingerprint failure reported '$verdict', expected '$expected'"
+  actual_calls=$(cat "$work/in-loop-$scenario/fingerprint-calls")
+  [ "$actual_calls" = "$calls" ] ||
+    fail "$scenario used $actual_calls fingerprint calls, expected $calls"
+  pass "$scenario fingerprint failure returns $expected after $calls calls"
+done <<'CASES'
+before-once readable:0:ok 4
+after-once readable:0:ok 5
+before-always unreadable 6
+after-always changed 12
+after-then-before changed 7
+CASES
 
 # 2. A database written to during the read still succeeds, because the retry outlasts the writer.
 #    The writer stops well inside the retry budget, so a single-attempt observer fails this and the
