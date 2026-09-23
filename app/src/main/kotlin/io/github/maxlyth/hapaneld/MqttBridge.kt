@@ -1322,7 +1322,7 @@ internal class MqttBridge(
     // reconfigure, so every observation carries the lease and the runtime drops it once a newer bridge
     // holds one — otherwise a queued callback from a superseded broker session mutates whichever
     // coordinator happens to be installed when it finally runs.
-    private val haLifecycleLease: HaLifecycleRuntime.MqttLease? = null,
+    internal val haLifecycleLease: HaLifecycleRuntime.MqttLease? = null,
     private val transport: MqttTransport = HiveMqTransport(),
 ) : LiveSettingHandlers {
     private enum class CommandKind { LATEST, ACTION }
@@ -4388,29 +4388,43 @@ internal class MqttBridge(
         )
     }
 
+    private val localObservationPending = AtomicBoolean(false)
+
+    /** One queued/running local pass per bridge, independent of broker heartbeat admission. */
+    internal fun requestLocalObservation(stillCurrent: () -> Boolean) {
+        if (!lifecycle.isOpen() || !localObservationPending.compareAndSet(false, true)) return
+        io.github.maxlyth.hapaneld.mqtt.StateConverger.dispatch {
+            try {
+                lifecycle.runIfOpen(Unit) {
+                    if (stillCurrent()) runCatching { syncLocalState() }
+                }
+            } finally {
+                localObservationPending.set(false)
+            }
+        }
+    }
+
     /**
      * Liveness probe: publish a monotonic-independent `last_seen_at` (epoch seconds) so a healthy link keeps
      * [lastOkMs] fresh even when nothing else is publishing, and a dead half-open link stops ACKing and
      * goes stale (→ watchdog reconnect). Non-retained (a stale retained heartbeat would be misleading).
-     * Local observations run even without a client / broker. Called each watchdog tick from the service.
+     * Local observations have separate watchdog admission; this only probes the broker connection.
      */
     fun heartbeat() {
         if (!lifecycle.isOpen()) return
-        // Local observations serve both transports, including when MQTT configuration is invalid.
-        lifecycle.runIfOpen(Unit) { runCatching { syncLocalState() } }
         if (state == "disabled" || state == "config-error") return
         // The transport probe remains sacrificial: if HiveMQ wedges, it owns no lifecycle mutation lock.
         runCatching { publish("ha-paneld/$panel/last_seen_at", (System.currentTimeMillis() / 1000).toString()) }
     }
 
     /**
-     * Local-state → MQTT sync: panel values can change OUTSIDE ha-paneld's API (auto-brightness and
+     * Local-state observation: panel values can change OUTSIDE ha-paneld's API (auto-brightness and
      * any local app writing the setting, hardware volume keys, vendor firmware dimming the backlight
      * node), and HA must track them without being flooded. One pass per heartbeat tick per channel:
      * publish only when the value differs from the LAST PUBLISHED beyond the channel's deadband AND
      * has settled (change since the previous tick within the settle band) — fast oscillation
      * publishes nothing until it stops, a slow ramp publishes at most once per tick, steady state
-     * publishes zero messages. Runs on the watchdog thread (su-safe, off-main).
+     * publishes zero MQTT messages. Runs on the convergence pump (su-safe, off-main).
      */
     private fun syncLocalState() {
         runCatching {
@@ -4583,7 +4597,7 @@ internal class MqttBridge(
     }
 
     /** Publish screen=ON at [level] and remember it as the last-reported brightness (the reconcile
-     *  in [heartbeat] compares the effective backlight against this). */
+     *  in [syncLocalState] compares the effective backlight against this). */
     private fun publishScreenBrightness(level: Int) {
         lastScreenBrightness = level
         screenEffectiveBaseline = -1   // re-capture on the next tick, after the framework settles
