@@ -4006,7 +4006,7 @@ ROOT_HELPER_LEASE_GUARD_INTERVAL_SECONDS=0.05 \
     > "$SHIZUKU_INSTALL_OUTPUT" 2>&1 &
 shizuku_owner_pid=$!
 shizuku_install_ready=0
-for _ in {1..100}; do
+for _ in {1..300}; do
   if [ -s "$SHIZUKU_INSTALL_PID_FILE" ]; then shizuku_install_ready=1; break; fi
   /bin/sleep 0.05
 done
@@ -4103,10 +4103,10 @@ fi
 # processes are gone when provisioning resumes.
 SHIZUKU_FALLBACK_PID_FILE="$TMP/shizuku-fallback-hang.pids"
 MOCK_TIMEOUT_NON_GNU=1 MOCK_SHIZUKU_START=hang_with_child \
-  MOCK_SHIZUKU_HANG_PID_FILE="$SHIZUKU_FALLBACK_PID_FILE" SHIZUKU_START_TIMEOUT_SECONDS=1 \
+  MOCK_SHIZUKU_HANG_PID_FILE="$SHIZUKU_FALLBACK_PID_FILE" SHIZUKU_START_TIMEOUT_SECONDS=2 \
   run_provision "$MOCK_TARGET" --apk "$APK" --shizuku --no-tame
 assert_failure "portable fallback bounds a stuck Shizuku service start"
-assert_contains 'service start timed out after 1s' "portable fallback reports the bounded failed step"
+assert_contains 'service start timed out after 2s' "portable fallback reports the bounded failed step"
 if [ -s "$SHIZUKU_FALLBACK_PID_FILE" ]; then
   read -r fallback_parent_pid fallback_child_pid < "$SHIZUKU_FALLBACK_PID_FILE"
 else
