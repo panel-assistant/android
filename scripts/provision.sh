@@ -2950,7 +2950,8 @@ cleanup_root_helper_staging() {
   # A host adb deadline does not prove the device-side transaction stopped. Reclamation must
   # acquire the same lock before removing inputs that a still-running transaction may consume.
   # Never recover an existing lock here: uncertain custody leaves staging for the next sweep.
-  if ! run_root 'lock=/dev/.hapaneld-helper-transaction.lock
+  # Quote the device path explicitly: MSYS exclusions match the whole argument, not lock= values.
+  if ! run_root "lock='/dev/.hapaneld-helper-transaction.lock'"'
     trap "" 1 2 3 15
     mkdir "$lock" 2>/dev/null || exit 0
     trap "rm -f $lock/pid; rmdir $lock" 0
