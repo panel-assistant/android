@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.maxlyth.hapaneld.CoreInstrumentation
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
+import io.github.maxlyth.hapaneld.dashboard.use
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
