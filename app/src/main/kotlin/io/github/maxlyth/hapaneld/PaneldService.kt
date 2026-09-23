@@ -154,6 +154,7 @@ import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandSink
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantHelloIdentity
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportOwner
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.panelassistant.panelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.sensors.KtorHaExactEntityStreamTransport
 import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
@@ -1046,6 +1047,7 @@ class PaneldService : Service() {
     private lateinit var haLifecycle: HaLifecycleCoordinator
     private lateinit var haNetworkPath: HaNetworkPathMonitor
     private lateinit var haPathProbe: PathProbeMonitor
+    private val haSocketClock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
     private val rendererSettledForLifecycle: () -> Unit = { runCatching { refreshHaLifecycleWatch() } }
     private lateinit var haSiteMetadata: HaSiteMetadataClient
     private var brightnessObserver: ContentObserver? = null
@@ -1276,9 +1278,6 @@ class PaneldService : Service() {
         haSiteMetadata = HaSiteMetadataClient(config)
         val haSessionAuthority = DashboardHaApiSessionProvider(config)
         val haApi = KtorHaAmbientTransport()
-        // ONE monotonic clock for the socket owner and its transport: the round trip is the owner's
-        // send stamp against the transport's decode stamp, and two clocks would make it meaningless.
-        val haSocketClock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
         // The layer-3 probe is constructed before the transport so the transport can report the
         // address each route connects on straight to it. It measures the path the dashboard is
         // actually using; a fresh resolution could name a family the connect race already rejected.
@@ -1335,7 +1334,6 @@ class PaneldService : Service() {
                 BuiltinDashboard.onHaLifecycleChanged()
             },
         )
-        haExactEntityStream.bindLifecycle(haLifecycle)
         // The network-path monitor rides the same socket, the same clock and the same renderer poke.
         // Installed BEFORE it is bound, because binding announces the current demand at once and that
         // first verdict must already be readable by whoever the poke wakes.
@@ -1356,21 +1354,6 @@ class PaneldService : Service() {
             // process start is read on the same monotonic clock every probe is stamped with.
             path = HaNetworkPath(processStartElapsedMs = android.os.Process.getStartElapsedRealtime()),
         )
-        HaNetworkPathRuntime.install(haNetworkPath)
-        haExactEntityStream.bindNetworkPath(haNetworkPath)
-        // Installed before binding for the same reason as the pair above: the first state the owner
-        // announces on bind must already be readable.
-        PathProbeRuntime.install(haPathProbe, haSocketClock)
-        haExactEntityStream.bindPathProbe(haPathProbe)
-        // One atomic install: the coordinator and its MQTT read arrive together, so no reader can pair
-        // this service's coordinator with a predecessor's bridge. The supplier reads the bridge's
-        // canonical serialized connection state through the runtime owner, so it follows reconfigure()'s
-        // bridge reassignment and never keeps a copy that a stale callback could overwrite; it is
-        // null-safe across the swap window and before first configuration.
-        HaLifecycleRuntime.install(haLifecycle)
-        // Tell a live renderer ownership changed, so a card rendered from a predecessor's state is
-        // re-read against this service's rather than surviving the replacement.
-        BuiltinDashboard.onHaLifecycleChanged()
         haAmbientLux = HaAmbientLuxSubscriber(
             scope = scope,
             auth = haSessionAuthority,
@@ -1396,13 +1379,6 @@ class PaneldService : Service() {
         ledEffect = LedEffectController(led)
         // Camera trial. Owned here, beside the LED it borrows for off-screen indication and the screen
         // whose intended-off state decides the handover; nothing runs until a subscriber asks for a frame.
-        io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.install(
-            object : io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.Store {
-                override var declined: Boolean
-                    get() = config.cameraPermissionDeclined
-                    set(value) { config.cameraPermissionDeclined = value }
-            },
-        )
         // The stream transport reads the owner through the FIELD so construction order does not matter:
         // it only asks for the camera once a client connects, which cannot happen before the owner
         // exists because the owner is what turns listening on.
@@ -1454,9 +1430,6 @@ class PaneldService : Service() {
             state = voiceStateAuthority,
             engineFactory = io.github.maxlyth.hapaneld.assist.WakeWordEngineFactory.NONE,
         )
-        config.registerChangeListener(voicePrefsListener)
-        voiceForegroundRetry = { voice.retryStart() }
-        scope.launch { voice.start() }
         system = SystemController(AndroidSystemEnv(this))
         companionDataOperationState = CompanionDataOperationState.from(this)
         entityLearning = EntityLearningManager(
@@ -1841,12 +1814,6 @@ class PaneldService : Service() {
         voiceStateAuthority.setChangeListener {
             runtime.observe()?.value?.mqtt?.publishVoiceState()
         }
-        // Deferred, NOT run here: opening an authenticated socket purely to watch lifecycle events must
-        // not compete with the renderer's startup, which is the panel's most contended moment. The
-        // renderer reports when it has settled and the demand is evaluated then. Fires immediately if it
-        // had already settled, so a service restart behind a live renderer is not left waiting. Held as
-        // a field so teardown can clear exactly this identity.
-        BuiltinDashboard.setRendererSettledListener(rendererSettledForLifecycle)
     }
 
     private fun refreshAutoSleepPresence(): Boolean {
@@ -2517,6 +2484,9 @@ class PaneldService : Service() {
             Log.w(TAG, "network reconfigure failed", e)
             if (executionDeadline.remainingMs() > 0L) requestNetworkRecovery()
         } finally {
+            if (obligationsCompleted && ownerRefresh.panelAssistantTransport) {
+                runCatching { refreshPanelAssistantTransport() }
+            }
             if (!obligationsCompleted) synchronized(reconfigureKeysLock) {
                 pendingReconfigureKeys += changedKeys
             }
@@ -2627,27 +2597,31 @@ class PaneldService : Service() {
         }
         if (ownerRefresh.haLifecycle) runCatching { refreshHaLifecycleWatch() }
         if (ownerRefresh.camera && ::camera.isInitialized) runCatching { camera.onEnabledChanged() }
-        if (ownerRefresh.panelAssistantTransport) runCatching { refreshPanelAssistantTransport() }
         // A camera switch moved on the Configure page, by a bundle import or by provisioning must reach
         // Home Assistant too; otherwise its switch keeps a position the panel has already left.
         if (ownerRefresh.camera) runCatching { mqtt.publishCameraState() }
     }
 
-    /** Start, keep or stop the native transport to match the current credential and panel identity. */
-    private fun refreshPanelAssistantTransport() {
-        if (!::panelAssistantTransport.isInitialized) return
+    private fun currentPanelAssistantTransportDemand(): PanelAssistantTransportDemand? {
         val auth = config.haAuthSnapshot()
-        panelAssistantTransport.replaceDemand(
-            panelAssistantTransportDemand(
-                credential = auth.stableOwner(),
-                accessTokenPresent = auth.accessToken.isNotBlank(),
-                identity = PanelAssistantHelloIdentity(
-                    did = panelAssistantDiscoveryId(config.androidId),
-                    appVersion = BuildConfig.VERSION_NAME,
-                    appVersionCode = BuildConfig.VERSION_CODE,
-                ),
+        return panelAssistantTransportDemand(
+            credential = auth.stableOwner(),
+            accessTokenPresent = auth.accessToken.isNotBlank(),
+            identity = PanelAssistantHelloIdentity(
+                did = panelAssistantDiscoveryId(config.androidId),
+                appVersion = BuildConfig.VERSION_NAME,
+                appVersionCode = BuildConfig.VERSION_CODE,
             ),
         )
+    }
+
+    /** Start, keep or stop native transport only on the successfully started, admitted service owner. */
+    private fun refreshPanelAssistantTransport() {
+        if (!::panelAssistantTransport.isInitialized) return
+        val demand = currentPanelAssistantTransportDemand()
+        runtime.runIfRunning {
+            if (!teardownBoundary.isStopping) panelAssistantTransport.replaceDemand(demand)
+        }
     }
 
     /**
@@ -3502,7 +3476,8 @@ class PaneldService : Service() {
         if (started) return START_STICKY
         started = true
         val startupActivationGeneration = profileActivationGeneration
-        val startup = runtime.start runtimeStart@{ activeRuntime ->
+        var initialNativeDemand: PanelAssistantTransportDemand? = null
+        val startup = runtime.start(block = runtimeStart@{ activeRuntime ->
             // A prior START_STICKY instance may still be draining after its bounded main-thread wait. It
             // never releases this in-process fence: completed teardown exits the process, guaranteeing
             // that no old hardware owner can overlap the replacement generation.
@@ -3514,6 +3489,31 @@ class PaneldService : Service() {
 
             // Everything below can start work, write hardware state, attach a process-global owner, or
             // create an overlay. Keep all of it behind the predecessor fence, not merely HTTP/MQTT start.
+            // Publish each holder before binding can announce its first state to a live renderer.
+            HaNetworkPathRuntime.install(haNetworkPath)
+            haExactEntityStream.bindNetworkPath(haNetworkPath)
+            PathProbeRuntime.install(haPathProbe, haSocketClock)
+            haExactEntityStream.bindPathProbe(haPathProbe)
+            HaLifecycleRuntime.install(haLifecycle)
+            haExactEntityStream.bindLifecycle(haLifecycle)
+            activeRuntime.mqtt.haLifecycleLease?.let { lease ->
+                HaLifecycleRuntime.installMqttLease(haLifecycle, lease) {
+                    runtime.observe()?.value?.mqtt?.isConnected() == true
+                }
+            }
+            BuiltinDashboard.onHaLifecycleChanged()
+            // Registration can call back immediately when the renderer has already settled.
+            BuiltinDashboard.setRendererSettledListener(rendererSettledForLifecycle)
+            io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.install(
+                object : io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.Store {
+                    override var declined: Boolean
+                        get() = config.cameraPermissionDeclined
+                        set(value) { config.cameraPermissionDeclined = value }
+                },
+            )
+            config.registerChangeListener(voicePrefsListener)
+            voiceForegroundRetry = { voice.retryStart() }
+            scope.launch { if (!teardownBoundary.isStopping) voice.start() }
             startStorageHealthChecks()
             reconcileHelperInstallStaging()
             registerBrightnessPreferenceObserver()
@@ -3836,7 +3836,11 @@ class PaneldService : Service() {
             }
             // Issue #93: read-only button-LED GPIO proof in its own coroutine, not queued behind prewarm().
             scope.launch(Dispatchers.IO) { relay.warmUp() }
-        }
+            initialNativeDemand = currentPanelAssistantTransportDemand()
+        }, complete = {
+            // Demand construction reads configuration before this short, lock-admitted publication.
+            if (!teardownBoundary.isStopping) panelAssistantTransport.replaceDemand(initialNativeDemand)
+        })
         Thread({
             val disposition = awaitServiceStartup(startup, startupActivationGeneration)
             Log.i(TAG, "service startup health: $disposition, stopping=${teardownBoundary.isStopping}")
@@ -3879,7 +3883,6 @@ class PaneldService : Service() {
             }
         }, "service-startup-health").apply { isDaemon = true; start() }
         registerNetworkCallback()
-        runCatching { refreshPanelAssistantTransport() }
         return START_STICKY
     }
 
@@ -3935,6 +3938,7 @@ class PaneldService : Service() {
                 while (mqttWatchdogAlive) {
                     try { Thread.sleep(MQTT_WATCHDOG_MS) } catch (e: InterruptedException) { break }
                     if (!mqttWatchdogAlive) break
+                    requestWatchdogLocalObservation(runtime) { it.mqtt }
                     heartbeats.removeAll { !it.thread.isAlive }
                     if (terminalRecoveryNeeded) {
                         if (!teardownBoundary.isStopping && recoveryRestart.request()) break
@@ -5541,4 +5545,13 @@ class PaneldService : Service() {
             }
         }
     }
+}
+
+/** The periodic hardware pass belongs to the running service, not to an MQTT connection. */
+internal fun <T : Any> requestWatchdogLocalObservation(
+    runtime: ServiceRuntimeOwner<T>,
+    mqtt: (T) -> MqttBridge,
+) {
+    val observed = runtime.observe() ?: return
+    mqtt(observed.value).requestLocalObservation { runtime.isCurrent(observed) }
 }

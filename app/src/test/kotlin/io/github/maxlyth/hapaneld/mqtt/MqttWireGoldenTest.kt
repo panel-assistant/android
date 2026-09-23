@@ -11,6 +11,7 @@ import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.MqttAddressFamily
 import io.github.maxlyth.hapaneld.MqttBridge
 import io.github.maxlyth.hapaneld.mqttKnownConfigTopics
+import io.github.maxlyth.hapaneld.requestWatchdogLocalObservation
 import io.github.maxlyth.hapaneld.config.Capabilities
 import io.github.maxlyth.hapaneld.control.AdbController
 import io.github.maxlyth.hapaneld.control.AutoBrightnessController
@@ -42,11 +43,14 @@ import io.github.maxlyth.hapaneld.control.fakeProfile
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.hardware.LedController
 import io.github.maxlyth.hapaneld.platform.RootShell
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommand
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandResult
 import io.github.maxlyth.hapaneld.storage.StorageHealthSeverity
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
 import io.github.maxlyth.hapaneld.storage.StorageQuickCheck
 import io.github.maxlyth.hapaneld.testsupport.TestSources
 import io.github.maxlyth.hapaneld.util.MonotonicDeadline
+import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -100,6 +104,47 @@ import java.util.concurrent.atomic.AtomicInteger
  * ever written and is assembled from segments rather than spelled as one runtime-read literal.
  */
 class MqttWireGoldenTest {
+
+    @Test(timeout = 90_000)
+    fun queuedMqttCommandsYieldAtExecutionAfterNativeTakeover() {
+        queuedAuthorityChange("native", expectedMqttWrites = 0)
+    }
+
+    @Test(timeout = 90_000)
+    fun queuedMqttCommandsContinueWhenAuthorityRemainsShadow() {
+        queuedAuthorityChange("shadow", expectedMqttWrites = 1)
+    }
+
+    private fun queuedAuthorityChange(authority: String, expectedMqttWrites: Int) {
+        val rig = rig()
+        try {
+            rig.announce()
+            rig.sysfs.blockNextWrite("$RELAY_BASE/relay1")
+            rig.transport.deliver("ha-paneld/$PANEL/relay1/set", "OFF")
+            assertTrue("first MQTT handler is running", rig.sysfs.blockEntered.await(10, TimeUnit.SECONDS))
+            val relay2Before = rig.sysfs.writes.count { it.startsWith("$RELAY_BASE/relay2=") }
+            val actionsBefore = rig.companionUpdateRequests.get()
+            rig.transport.deliver("ha-paneld/$PANEL/relay2/set", "ON")
+            rig.transport.deliver("ha-paneld/$PANEL/update_companion/set", "PRESS")
+            rig.config.setPanelAssistantAuthority(authority)
+            val completed = CountDownLatch(1)
+            val result = java.util.concurrent.atomic.AtomicReference<PanelAssistantCommandResult>()
+            rig.bridge.submitPanelAssistantCommand(
+                PanelAssistantCommand("relay1", "ON", admit = { null }),
+            ) { result.set(it); completed.countDown() }
+            rig.sysfs.blockRelease.countDown()
+            assertTrue("native command runs after queued MQTT commands", completed.await(10, TimeUnit.SECONDS))
+            assertEquals(PanelAssistantCommandResult.Applied, result.get())
+            assertEquals("queued MQTT relay mutations", expectedMqttWrites,
+                rig.sysfs.writes.count { it.startsWith("$RELAY_BASE/relay2=") } - relay2Before)
+            assertEquals("queued MQTT action mutations", expectedMqttWrites,
+                rig.companionUpdateRequests.get() - actionsBefore)
+            assertEquals("native handler reached hardware", "$RELAY_BASE/relay1=1", rig.sysfs.writes.last())
+        } finally {
+            rig.sysfs.blockRelease.countDown()
+            rig.close()
+        }
+    }
 
     @Test(timeout = 180_000)
     fun `bridge wire output matches the golden fixture`() {
@@ -300,6 +345,110 @@ class MqttWireGoldenTest {
 
     // ---- rig ----
 
+    @Test fun watchdogObservesNativeChangesWithoutMqttConnection() {
+        val rig = rig(runtimeBroker = "unsupported://broker")
+        val owner = ServiceRuntimeOwner(rig.bridge, "native-observation-test")
+        val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+        rig.bridge.addStateSink(native.bind(rig.bridge::stateChannelKeys))
+        try {
+            requestWatchdogLocalObservation(owner) { it }
+            drainStatePump()
+            assertEquals("an unstarted service cannot observe hardware", 0, rig.storageReads.get())
+            assertTrue(owner.start { it.start() }.get(5, TimeUnit.SECONDS))
+            assertEquals("config-error", rig.bridge.state)
+            assertEquals(null, rig.bridge.heartbeatConnectionGeneration())
+            assertEquals(HeartbeatAdmission.Decision.NoCurrentConnection, HeartbeatAdmission.decide(
+                rig.bridge.heartbeatConnectionGeneration(), emptyList(),
+            ))
+            requestWatchdogLocalObservation(owner) { it }
+            drainStatePump()
+            native.open(native.descriptors())
+            fun report(id: Long): org.json.JSONObject {
+                val json = native.next(id, "session", 0L)
+                assertTrue("native report $id must be ready", json != null)
+                return org.json.JSONObject(requireNotNull(json)).also {
+                    native.onResult(
+                        io.github.maxlyth.hapaneld.panelassistant.PanelAssistantReportResult.Acknowledged(id, emptyMap()),
+                        0L,
+                    )
+                }
+            }
+            fun value(report: org.json.JSONObject, channel: String): String? {
+                val observations = report.getJSONArray("observations")
+                return (0 until observations.length()).map(observations::getJSONObject)
+                    .firstOrNull { it.getString("channel") == channel }?.get("value")?.toString()
+            }
+            val initial = report(1)
+            assertEquals("healthy", value(initial, "storage_health"))
+            assertEquals("false", value(initial, "relay1"))
+            report(2) // Complete the initial native snapshot.
+            rig.storage.set(storageSnapshot(StorageHealthSeverity.WARNING, walBytes = 65_536))
+            rig.sysfs.writeSysfs("$RELAY_BASE/relay1", "1")
+            requestWatchdogLocalObservation(owner) { it }
+            drainStatePump()
+            val changed = report(3)
+            assertEquals("warning", value(changed, "storage_health"))
+            assertEquals("true", value(changed, "relay1"))
+
+            val readsBeforeRetirement = rig.storageReads.get()
+            owner.closeAdmission()
+            rig.storage.set(storageSnapshot(StorageHealthSeverity.HEALTHY, walBytes = 4_096))
+            rig.sysfs.writeSysfs("$RELAY_BASE/relay1", "0")
+            requestWatchdogLocalObservation(owner) { it }
+            drainStatePump()
+            assertEquals("retired service must not sample", readsBeforeRetirement, rig.storageReads.get())
+            assertEquals("retired service must not report", null, native.next(4, "session", 0L))
+            assertEquals("config-error", rig.bridge.state)
+            assertFalse("an invalid URL must not connect or publish MQTT", rig.transport.snapshot().any {
+                it.startsWith("connect\t") || it.isPublication()
+            })
+        } finally {
+            owner.shutdown(1_000) {}
+            rig.close()
+        }
+    }
+
+    @Test fun watchdogLocalObservationIsBoundedAndRechecksOwnerAtExecution() {
+        val rig = rig(runtimeBroker = "unsupported://broker")
+        val owner = ServiceRuntimeOwner(rig.bridge, "bounded-observation-test")
+        val release = CountDownLatch(1)
+        try {
+            assertTrue(owner.start { it.start() }.get(5, TimeUnit.SECONDS))
+            val entered = CountDownLatch(1)
+            StateConverger.dispatch {
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val before = rig.storageReads.get()
+            repeat(100) { requestWatchdogLocalObservation(owner) { it } }
+            release.countDown()
+            drainStatePump()
+            // The audit has two storage observers: health and its attributes.
+            assertEquals("a burst admits exactly one hardware pass", before + 2, rig.storageReads.get())
+
+            val retireRelease = CountDownLatch(1)
+            try {
+                val retireEntered = CountDownLatch(1)
+                StateConverger.dispatch {
+                    retireEntered.countDown()
+                    check(retireRelease.await(10, TimeUnit.SECONDS))
+                }
+                assertTrue(retireEntered.await(5, TimeUnit.SECONDS))
+                requestWatchdogLocalObservation(owner) { it }
+                owner.closeAdmission()
+            } finally {
+                retireRelease.countDown()
+            }
+            drainStatePump()
+            assertEquals("queued work must recheck its retired owner", before + 2, rig.storageReads.get())
+        } finally {
+            release.countDown()
+            owner.shutdown(1_000) {}
+            rig.close()
+        }
+    }
+
     /** The real bridge on fake hardware and a recording transport; [announce] runs one connect to quiescence. */
     private class Rig(
         val tmp: File,
@@ -308,6 +457,7 @@ class MqttWireGoldenTest {
         val sysfs: SysfsRootShell,
         val bridge: MqttBridge,
         val storage: java.util.concurrent.atomic.AtomicReference<StorageHealthSnapshot>,
+        val storageReads: AtomicInteger,
         val updateSources: java.util.concurrent.atomic.AtomicReference<SoftwareUpdateSources>,
         val autoSleepConfigChanges: AtomicInteger,
         val companionUpdateRequests: AtomicInteger,
@@ -326,7 +476,7 @@ class MqttWireGoldenTest {
         }
     }
 
-    private fun rig(configure: (Config) -> Unit = {}): Rig {
+    private fun rig(runtimeBroker: String = "tcp://127.0.0.1:1883", configure: (Config) -> Unit = {}): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
         val prefs = MemoryPreferences()
         val context = FakeContext(tmp, prefs)
@@ -391,6 +541,7 @@ class MqttWireGoldenTest {
             webViewManaged = true,
         )
         val storage = java.util.concurrent.atomic.AtomicReference(storageSnapshot(StorageHealthSeverity.HEALTHY, walBytes = 4_096))
+        val storageReads = AtomicInteger()
         val updateSources = java.util.concurrent.atomic.AtomicReference(updateSources())
         val autoSleepConfigChanges = AtomicInteger()
         val companionUpdateRequests = AtomicInteger()
@@ -432,19 +583,19 @@ class MqttWireGoldenTest {
             onSelfUpdateChannelChange = { _, _ -> false },
             softwareUpdateSources = { updateSources.get() },
             onDirectKioskSetting = { true },
-            storageHealth = { storage.get() },
+            storageHealth = { storageReads.incrementAndGet(); storage.get() },
             wifiOutages = { WifiOutageCounts(last24h = 3) },
             learnedProximityEligibility = { true },
             onAutoSleepConfigChanged = { autoSleepConfigChanges.incrementAndGet() },
             runtimePanelId = PANEL,
             runtimeFriendlyName = "Golden panel",
-            runtimeBroker = "tcp://127.0.0.1:1883",
+            runtimeBroker = runtimeBroker,
             runtimeMqttUser = "panel-user",
             runtimeMqttPassword = "panel-password",
             runtimeMqttAddressFamily = "Automatic",
             transport = transport,
         )
-        return Rig(tmp, config, transport, sysfs, bridge, storage, updateSources, autoSleepConfigChanges, companionUpdateRequests)
+        return Rig(tmp, config, transport, sysfs, bridge, storage, storageReads, updateSources, autoSleepConfigChanges, companionUpdateRequests)
     }
 
     private fun command(
@@ -743,6 +894,12 @@ class MqttWireGoldenTest {
     }
 
     private companion object {
+        fun drainStatePump() {
+            val drained = CountDownLatch(1)
+            StateConverger.dispatch { drained.countDown() }
+            assertTrue("convergence pump drained", drained.await(5, TimeUnit.SECONDS))
+        }
+
         const val PANEL = "golden"
         const val RELAY_BASE = "/sys/class/strelay"
         const val LED_GPIO_BASE = 147

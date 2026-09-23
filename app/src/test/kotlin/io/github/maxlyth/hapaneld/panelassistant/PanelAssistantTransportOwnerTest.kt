@@ -4,6 +4,8 @@ import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.sensors.HaApiSession
 import io.github.maxlyth.hapaneld.sensors.HaApiSessionProvider
 import io.github.maxlyth.hapaneld.sensors.HaAuthenticationException
+import io.github.maxlyth.hapaneld.util.ServiceRestartBarrier
+import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -24,9 +26,114 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PanelAssistantTransportOwnerTest {
+
+    @Test fun `native activation waits for predecessor teardown and successful core startup`() = runTest {
+        val harness = harness(FakeConnection(Ha.accepting()), FakeConnection(Ha.accepting()))
+        val barrier = ServiceRestartBarrier()
+        val predecessor = barrier.enter()
+        val successor = barrier.enter()
+        val waiting = CountDownLatch(1)
+        val coreStarts = AtomicInteger()
+        val runtime = ServiceRuntimeOwner(Unit, "native-startup-fence-test")
+        try {
+            val started = runtime.start(
+                block = {
+                    waiting.countDown()
+                    successor.awaitPredecessor()
+                    coreStarts.incrementAndGet()
+                },
+                complete = { harness.owner.replaceDemand(DEMAND) },
+            )
+            assertTrue(waiting.await(2, TimeUnit.SECONDS))
+            runCurrent()
+            assertEquals(0, coreStarts.get())
+            assertEquals(emptyList<Pair<String, String>>(), harness.connector.connects)
+
+            predecessor.completeTeardown()
+            assertTrue(started.get(2, TimeUnit.SECONDS))
+            runCurrent()
+            assertEquals(1, coreStarts.get())
+            assertEquals(listOf("https://ha.example" to "token"), harness.connector.connects)
+
+            assertTrue(runtime.runIfRunning { harness.owner.replaceDemand(null) })
+            runCurrent()
+            assertEquals(PanelAssistantTransportPhase.STOPPED, harness.owner.status.phase)
+            assertFalse(runtime.start(
+                block = { coreStarts.incrementAndGet() },
+                complete = { harness.owner.replaceDemand(DEMAND) },
+            ).get(2, TimeUnit.SECONDS))
+            runCurrent()
+            assertEquals(1, coreStarts.get())
+            assertEquals(1, harness.connector.connects.size)
+            assertTrue(runtime.runIfRunning { harness.owner.replaceDemand(DEMAND) })
+            runCurrent()
+            assertEquals(2, harness.connector.connects.size)
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+        } finally {
+            predecessor.completeTeardown()
+            runtime.shutdown(2_000L) { harness.owner.close() }
+            successor.completeTeardown()
+        }
+    }
+
+    @Test fun `stopping a successor behind its predecessor prevents native activation and refresh`() = runTest {
+        val harness = harness(FakeConnection(Ha.accepting()))
+        val barrier = ServiceRestartBarrier()
+        val predecessor = barrier.enter()
+        val successor = barrier.enter()
+        val waiting = CountDownLatch(1)
+        val coreStarts = AtomicInteger()
+        val runtime = ServiceRuntimeOwner(Unit, "native-stopped-startup-test")
+        try {
+            val started = runtime.start(
+                block = {
+                    waiting.countDown()
+                    successor.awaitPredecessor()
+                    coreStarts.incrementAndGet()
+                },
+                complete = { harness.owner.replaceDemand(DEMAND) },
+            )
+            assertTrue(waiting.await(2, TimeUnit.SECONDS))
+            runtime.closeAdmission()
+            predecessor.completeTeardown()
+            assertTrue(started.get(2, TimeUnit.SECONDS))
+            assertEquals(1, coreStarts.get())
+            assertFalse(runtime.runIfRunning { harness.owner.replaceDemand(DEMAND) })
+            runCurrent()
+            assertEquals(emptyList<Pair<String, String>>(), harness.connector.connects)
+        } finally {
+            predecessor.completeTeardown()
+            runtime.shutdown(2_000L) { harness.owner.close() }
+            successor.completeTeardown()
+        }
+    }
+
+    @Test fun `failed core startup cannot activate or refresh native transport`() = runTest {
+        val harness = harness(FakeConnection(Ha.accepting()))
+        val coreStarts = AtomicInteger()
+        val runtime = ServiceRuntimeOwner(Unit, "native-failed-startup-test")
+        try {
+            assertFalse(runtime.start(
+                block = {
+                    coreStarts.incrementAndGet()
+                    error("core listener failed")
+                },
+                complete = { harness.owner.replaceDemand(DEMAND) },
+            ).get(2, TimeUnit.SECONDS))
+            assertEquals(1, coreStarts.get())
+            assertFalse(runtime.runIfRunning { harness.owner.replaceDemand(DEMAND) })
+            runCurrent()
+            assertEquals(emptyList<Pair<String, String>>(), harness.connector.connects)
+        } finally {
+            runtime.shutdown(2_000L) { harness.owner.close() }
+        }
+    }
 
     @Test fun `an accepted hello carries the panel identity and learns the integration version`() = runTest {
         val connection = FakeConnection(Ha.accepting())

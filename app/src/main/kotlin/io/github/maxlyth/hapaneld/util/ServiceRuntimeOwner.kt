@@ -194,8 +194,20 @@ internal class ServiceRuntimeOwner<T : Any>(
     }
 
     /** Queue the one initial start. Duplicate starts are rejected when they reach the lane. */
-    fun start(block: (T) -> Unit): Future<Boolean> = submit("start") {
-        transition(State.STARTING, setOf(State.NEW)) { block(view.value) }
+    fun start(block: (T) -> Unit): Future<Boolean> = start(block, complete = {})
+
+    /** Activate dependants only after successful startup, while shutdown admission is still open. */
+    fun start(block: (T) -> Unit, complete: (T) -> Unit): Future<Boolean> = submit("start") {
+        val started = transition(State.STARTING, setOf(State.NEW)) { block(view.value) }
+        if (started) runIfRunning(complete)
+        started
+    }
+
+    /** A short, non-blocking activation is atomic with closing admission; never wait for work here. */
+    fun runIfRunning(block: (T) -> Unit): Boolean = synchronized(lock) {
+        if (view.state != State.RUNNING) return@synchronized false
+        block(view.value)
+        true
     }
 
     /** Queue a full retire/build/start replacement. [retire] must close recovery admission for the old

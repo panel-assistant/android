@@ -8,6 +8,62 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServiceProcessBoundaryContractTest {
+    @Test fun watchdogObservationsPrecedeEveryMqttAdmissionGate() {
+        val service = source("PaneldService.kt")
+        val watchdog = service.substring(service.indexOf("private fun startMqttWatchdog()"), service.indexOf("private fun revalidateMdns("))
+        val tick = watchdog.indexOf("requestWatchdogLocalObservation(runtime) { it.mqtt }")
+        assertTrue("running watchdog must request hardware observations", tick >= 0)
+        assertTrue(tick > watchdog.indexOf("if (!mqttWatchdogAlive) break"))
+        assertTrue(tick < watchdog.indexOf("if (terminalRecoveryNeeded)"))
+        assertTrue(tick < watchdog.indexOf("supervisor.tick("))
+        assertTrue(tick < watchdog.indexOf("if (rebuild != null) continue"))
+        assertTrue(tick < watchdog.indexOf("HeartbeatAdmission.decide("))
+        val bridge = source("MqttBridge.kt")
+        val heartbeat = bridge.substring(bridge.indexOf("fun heartbeat()"), bridge.indexOf("private fun syncLocalState()"))
+        assertFalse("MQTT heartbeats must not duplicate local observations", heartbeat.contains("syncLocalState()"))
+    }
+
+    @Test fun nativeActivationAndPublishedServiceOwnersStayBehindStartupFence() {
+        val service = source("PaneldService.kt")
+        val create = service.substring(service.indexOf("override fun onCreate()"), service.indexOf("private fun buildMqtt("))
+        val start = service.substring(service.indexOf("override fun onStartCommand("), service.indexOf("private fun startMqttWatchdog()"))
+        val fence = start.indexOf("restartLease.awaitPredecessor()")
+        val complete = start.indexOf("}, complete = {")
+        assertTrue(fence >= 0)
+        assertTrue(complete > fence)
+        listOf(
+            "HaNetworkPathRuntime.install(haNetworkPath)",
+            "PathProbeRuntime.install(haPathProbe, haSocketClock)",
+            "HaLifecycleRuntime.install(haLifecycle)",
+            "BuiltinDashboard.setRendererSettledListener(rendererSettledForLifecycle)",
+            "CameraPermissionPrompt.install(",
+            "config.registerChangeListener(voicePrefsListener)",
+            "voiceForegroundRetry =",
+            "voice.start()",
+        ).forEach { publication ->
+            assertFalse("construction published $publication", create.contains(publication))
+            assertTrue("$publication must follow the predecessor fence", start.indexOf(publication) > fence)
+        }
+        assertTrue(start.indexOf("activeRuntime.mqtt.haLifecycleLease?.let") > start.indexOf("HaLifecycleRuntime.install(haLifecycle)"))
+        assertTrue(start.contains("HaLifecycleRuntime.installMqttLease(haLifecycle, lease)"))
+        assertTrue(start.indexOf("initialNativeDemand = currentPanelAssistantTransportDemand()") > start.indexOf("activeRuntime.mqtt.start()"))
+        // These short callbacks contain no nested blocks. Bound their closing brace, not merely
+        // their opener: an empty callback followed by publication must fail this contract.
+        val activation = Regex("""\}, complete = \{([^{}]*)\}""").find(start)
+        assertTrue("startup completion callback must remain bounded", activation != null)
+        assertTrue(activation!!.groupValues[1].contains("panelAssistantTransport.replaceDemand(initialNativeDemand)"))
+        assertFalse(start.substring(0, activation.range.first).contains("replaceDemand("))
+        val tail = start.substring(activation.range.last + 1)
+        assertFalse(tail.contains("refreshPanelAssistantTransport()"))
+        assertFalse(tail.contains("replaceDemand("))
+        val refresh = service.substring(service.indexOf("private fun refreshPanelAssistantTransport()"), service.indexOf("private fun refreshHaLifecycleWatch()"))
+        val admitted = Regex("""runtime\.runIfRunning \{([^{}]*)\}""").find(refresh)
+        assertTrue("refresh admission callback must remain bounded", admitted != null)
+        assertTrue(admitted!!.groupValues[1].contains("panelAssistantTransport.replaceDemand(demand)"))
+        assertFalse(refresh.substring(0, admitted.range.first).contains("replaceDemand("))
+        assertFalse(refresh.substring(admitted.range.last + 1).contains("replaceDemand("))
+    }
+
     @Test fun servicePromotesForegroundBeforeHeavyweightCreation() {
         val source = source("PaneldService.kt")
         val create = source.substring(
