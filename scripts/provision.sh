@@ -142,7 +142,7 @@ LEGACY_PKG="io.github.maxlyth.hapaneld"
 # against the package half of the component, which names a real class only for the legacy id.
 # AppIdentity.className encodes the same rule inside the app.
 CODE_PACKAGE="io.github.maxlyth.hapaneld"
-# The installed package whose app-private data this run reads. resolve_data_package fills it once.
+# The installed package whose app-private data this run reads; the database gate pins its owner.
 DATA_PKG=""
 RELEASE_CERT_SHA256="ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 RELEASE_HELPER_BUILD_ID=""
@@ -208,6 +208,7 @@ SNAPSHOT_TXN_HOST_DB_WORK=""; SNAPSHOT_TXN_HOST_DB_TARGET=""
 SNAPSHOT_TXN_HOST_RECEIPT_WORK=""; SNAPSHOT_TXN_HOST_RECEIPT_TARGET=""
 SNAPSHOT_TXN_DEFERRED_SIGNAL=""
 UPGRADE_QUIESCE_NONCE=""; UPGRADE_QUIESCE_PKG=""
+UPGRADE_RENEW_GUARD_PID=""; UPGRADE_RENEW_GUARD_FAILURE=""
 UPGRADE_RECEIPT_PID=""; UPGRADE_RECEIPT_VERSION_CODE=""; UPGRADE_RECEIPT_DATABASE_BYTES=""
 UPGRADE_RECEIPT_DATABASE_SHA256=""; UPGRADE_RECEIPT_USER_VERSION=""; UPGRADE_RECEIPT_APP_STATE_ROWS=""
 SETUP_JOURNEY_AVAILABLE=0; SETUP_COMPLETE=0; SETUP_REPAIR=0; SETUP_NEXT=""; SETUP_NEXT_STATUS=""; SETUP_NEXT_DETAIL=""
@@ -503,10 +504,10 @@ STORAGE_HEALTH_PACKAGE_QUERY_SECONDS="${STORAGE_HEALTH_PACKAGE_QUERY_SECONDS:-15
 # may have been held open indefinitely. Slightly longer than the pre-install probe because the panel
 # has been idle in the meantime, and short enough that a wedged panel cannot stall a confirmed reset.
 RESET_RECHECK_PACKAGE_QUERY_SECONDS="${RESET_RECHECK_PACKAGE_QUERY_SECONDS:-10}"
-# Total deadline for reading the Configure settings schema during verification. A verify that follows
-# an app restart can reach the HTTP server a moment before it answers, so an unanswered read is
-# retried a few times inside this bound instead of failing a healthy panel.
-CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS="${CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS:-12}"
+# Total deadline for reading the Configure settings schema during verification. A cold management
+# snapshot can take about thirty seconds on older panels even after health answers. Give that first
+# response one bounded opportunity to complete; quick unanswered reads still retry inside this bound.
+CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS="${CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS:-60}"
 for timeout_name in HA_AUTH_CONNECT_TIMEOUT_SECONDS HA_AUTH_TIMEOUT_SECONDS \
     PANEL_POST_CONNECT_TIMEOUT_SECONDS PANEL_POST_TIMEOUT_SECONDS PANEL_RESTORE_TIMEOUT_SECONDS \
     APK_INSTALL_TIMEOUT_SECONDS APP_LAUNCH_COMMAND_TIMEOUT_SECONDS APP_LAUNCH_PROBE_SECONDS \
@@ -963,9 +964,8 @@ classify_package_presence() {
 
 # Which installed package holds this panel's ha-paneld data? Both identities may be installed during
 # the handover, and before it begins the bridge is the only one there. The successor is preferred
-# because it owns the state as soon as it exists, and the bridge answers for it until then. Resolved
-# once per run: the answer must not change between the observation that reads a database and the
-# mutation that acts on it.
+# by default. The rooted database gate can prove that an installed successor is still passive and
+# pin the bridge instead; that proof is rechecked at every gate, not inferred from installation.
 resolve_data_package() {
   local verdict
   [ -z "$DATA_PKG" ] || return 0
@@ -1118,7 +1118,6 @@ read_config_schema() {
   local attempt=1 request_timeout="$CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS" deadline body
   deadline=$((SECONDS + CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS))
   while :; do
-    [ "$request_timeout" -le 5 ] || request_timeout=5
     body="$(curl -fsS --max-time "$request_timeout" "$URL/api/v1/config/schema" 2>/dev/null || true)"
     if [ -n "$body" ]; then
       printf '%s' "$body"
@@ -2805,6 +2804,11 @@ terminate_root_helper_apk_install() {
 run_adb_install_attempt() {
   local status deadline
   assert_candidate_apk_unchanged
+  require_upgrade_renewal
+  # Replacing this same package consumes its process-local hold. Its death is expected from this
+  # point. Continue bridge renewal best-effort during successor installation; post-commit handoff
+  # obtains its own fresh backup and can also resume a bridge whose hold expired after consumption.
+  if [ "${UPGRADE_QUIESCE_PKG:-$PKG}" = "$PKG" ]; then stop_upgrade_renewal_guard; fi
   ROOT_HELPER_APK_INSTALL_OUTPUT_FILE="$(mktemp)"
   # The only adb execution that does not route through adb_exec, because this one is backgrounded and
   # `terminate_root_helper_apk_install` signals a single PID rather than a process group: a shell
@@ -2948,7 +2952,20 @@ cleanup_root_helper_staging() {
   case "$ROOT_HELPER_TRANSACTION_PATH" in
     "/data/adb/hapaneld/.helper-transaction-$id-"*) paths="$paths $ROOT_HELPER_TRANSACTION_PATH.new" ;;
   esac
-  if ! run_root 'rm -f'"$paths" >/dev/null 2>&1; then
+  # A host adb deadline does not prove the device-side transaction stopped. Reclamation must
+  # acquire the same lock before removing inputs that a still-running transaction may consume.
+  # Never recover an existing lock here: uncertain custody leaves staging for the next sweep.
+  # Quote the device path explicitly: MSYS exclusions match the whole argument, not lock= values.
+  if ! run_root "lock='/dev/.hapaneld-helper-transaction.lock'"'
+    trap "" 1 2 3 15
+    mkdir "$lock" 2>/dev/null || exit 0
+    trap "rm -f $lock/pid; rmdir $lock" 0
+    trap "exit 129" 1
+    trap "exit 130" 2
+    trap "exit 131" 3
+    trap "exit 143" 15
+    echo $$ > "$lock/pid" || exit 1
+    rm -f'"$paths" >/dev/null 2>&1; then
     echo "   ${YEL}note${X} could not reclaim this run's root-helper staging on the panel;" >&2
     echo "   the next provisioning transaction against this panel removes it automatically" >&2
   fi
@@ -4227,7 +4244,7 @@ publish_v1_rollback_intent() {
 restore_or_remove() {
   v1_restore_name=$1 v1_restore_recovery=$2 v1_restore_live=$3 v1_restore_mode=$4 v1_restore_marker=$5
   v1_restore_staging="$v1_restore_live.rollback-v1-$transaction_id"
-  rm -f "$v1_restore_staging" || return 1
+  remove_if_present "$v1_restore_staging" || return 1
   if flag "$v1_restore_name" "$v1_restore_marker"; then
     v1_restore_expected=$(sed -n "s/^${v1_restore_name}_SHA256=//p" "$v1_restore_marker")
     cp -p "$v1_restore_recovery" "$v1_restore_staging" || return 1
@@ -4239,7 +4256,7 @@ restore_or_remove() {
     sync || return 1
     file_exact "$v1_restore_expected" "$v1_restore_live" "$v1_restore_mode" || return 1
   else
-    rm -f "$v1_restore_live" || return 1
+    remove_if_present "$v1_restore_live" || return 1
     sync || return 1
     [ ! -e "$v1_restore_live" ] && [ ! -L "$v1_restore_live" ] || return 1
   fi
@@ -4300,7 +4317,7 @@ cleanup_v1_rollback_staging() {
 restore_or_remove_v2() {
   name=$1 recovery=$2 live=$3 mode=$4 marker=$5
   staging="$live.rollback-$transaction_id"
-  rm -f "$staging" || return 1
+  remove_if_present "$staging" || return 1
   if flag "$name" "$marker"; then
     expected=$(sed -n "s/^${name}_SHA256=//p" "$marker")
     cp -p "$recovery" "$staging" || return 1
@@ -4312,7 +4329,7 @@ restore_or_remove_v2() {
     sync || return 1
     file_exact "$expected" "$live" "$mode" || return 1
   else
-    rm -f "$live" || return 1
+    remove_if_present "$live" || return 1
     sync || return 1
     [ ! -e "$live" ] && [ ! -L "$live" ] || return 1
   fi
@@ -4603,13 +4620,37 @@ legacy_exact_file() {
 }
 
 legacy_path_processes() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
   legacy_process_inode=$(stat -c '%d:%i' "$1" 2>/dev/null || toybox stat -c '%d:%i' "$1" 2>/dev/null) || return 1
+  # One process per /proc entry takes almost a minute on older panels. Read the same inode
+  # identities in one batch; a disappearing process can make stat exit nonzero after valid rows.
+  # The target anchor must finish that partial result, and the final read must still agree.
+  # Thus unsupported stat, argument overflow, and target replacement cannot mean "no processes".
+  legacy_process_rows=$(stat -Lc '%d:%i:%n' /proc/[0-9]*/exe "$1" 2>/dev/null ||
+    toybox stat -L -c '%d:%i:%n' /proc/[0-9]*/exe "$1" 2>/dev/null) || :
+  legacy_process_anchor=0
   legacy_process_found=
-  for legacy_executable in /proc/[0-9]*/exe; do
-    legacy_executable_inode=$(stat -Lc '%d:%i' "$legacy_executable" 2>/dev/null || toybox stat -L -c '%d:%i' "$legacy_executable" 2>/dev/null) || continue
-    [ "$legacy_executable_inode" != "$legacy_process_inode" ] ||
-      legacy_process_found="$legacy_process_found ${legacy_executable#/proc/}"
-  done
+  while IFS= read -r legacy_process_row; do
+    legacy_process_anchor=0
+    case "$legacy_process_row" in
+      *:"$1")
+        [ "$legacy_process_row" = "$legacy_process_inode:$1" ] || return 1
+        legacy_process_anchor=1 ;;
+      "$legacy_process_inode":/proc/*/exe)
+        legacy_process=${legacy_process_row#"$legacy_process_inode":/proc/}
+        legacy_pid=${legacy_process%/exe}
+        case "$legacy_pid" in ''|*[!0-9]*) return 1 ;; esac
+        case " $legacy_process_found " in
+          *" $legacy_process "*) ;;
+          *) legacy_process_found="$legacy_process_found $legacy_process" ;;
+        esac ;;
+    esac
+  done <<EOF_PROCESS_INODES
+$legacy_process_rows
+EOF_PROCESS_INODES
+  [ "$legacy_process_anchor" = 1 ] || return 1
+  legacy_process_after=$(stat -c '%d:%i' "$1" 2>/dev/null || toybox stat -c '%d:%i' "$1" 2>/dev/null) || return 1
+  [ "$legacy_process_after" = "$legacy_process_inode" ] || return 1
   printf '%s\n' "$legacy_process_found"
 }
 
@@ -6326,9 +6367,10 @@ cleanup_root_database_observer() {
 }
 
 inspect_root_database_compatibility() {
-  local command out begin end primary primary_fingerprint recovery retained inventory inventory_fingerprint observation_nonce
+  local command out begin end primary primary_fingerprint recovery retained inventory inventory_fingerprint observation_nonce passive_owner
   local observer_stage observer_script observer_owner script_file script_sha panel_sha primary_mode
   resolve_data_package
+  local observed_package="${1:-$DATA_PKG}" passive_owner_check="${2:-0}"
   observation_nonce="$(host_transaction_id)" || return 1
   observer_stage="/data/local/tmp/.hapaneld-db-observer.$observation_nonce"
   observer_script="${observer_stage}-script"
@@ -6341,6 +6383,45 @@ db=/data/data/@DATA_PACKAGE@/databases/ha-paneld.db
 minimum=@MINIMUM@
 maximum=@MAXIMUM@
 primary_mode=@PRIMARY_MODE@
+passive_owner_check=@PASSIVE_OWNER_CHECK@
+passive_owner_proof() {
+  successor_app=/data/data/io.panelassistant.android
+  legacy_app=/data/data/io.github.maxlyth.hapaneld
+  # Enumerate each parent before interpreting an absent child. A dangling symlink or an
+  # inaccessible parent is not absence, and any successor migration record defeats fallback.
+  for owner_app in "$successor_app" "$legacy_app"; do
+    owner_dir=$owner_app
+    [ ! -L "$owner_dir" ] && [ -d "$owner_dir" ] && [ -r "$owner_dir" ] && [ -x "$owner_dir" ] || { echo unreadable; return; }
+    owner_entries=$(ls -1A "$owner_dir" 2>/dev/null) || { echo unreadable; return; }
+    for owner_child in no_backup identity-migration; do
+      owner_lookup=0
+      printf "%s\n" "$owner_entries" | grep -qx "$owner_child" || owner_lookup=$?
+      case "$owner_lookup" in 0|1) ;; *) echo unreadable; return ;; esac
+      if [ "$owner_lookup" = 1 ]; then
+        owner_dir=""
+        break
+      fi
+      owner_dir=$owner_dir/$owner_child
+      [ ! -L "$owner_dir" ] && [ -d "$owner_dir" ] && [ -r "$owner_dir" ] && [ -x "$owner_dir" ] || { echo unreadable; return; }
+      owner_entries=$(ls -1A "$owner_dir" 2>/dev/null) || { echo unreadable; return; }
+    done
+    [ -n "$owner_dir" ] || continue
+    if [ "$owner_app" = "$successor_app" ]; then
+      [ -z "$owner_entries" ] || { echo blocked; return; }
+    else
+      owner_lookup=0
+      printf "%s\n" "$owner_entries" | grep -Eq "^(bridge-retired[.]v1|[.]bridge-retired[.]v1[.]tmp)$" || owner_lookup=$?
+      case "$owner_lookup" in
+        0) echo blocked; return ;;
+        1) ;;
+        *) echo unreadable; return ;;
+      esac
+    fi
+  done
+  echo passive
+}
+passive_owner=none
+[ "$passive_owner_check" = 0 ] || passive_owner=$(passive_owner_proof)
 sqlite3_bin=""
 if [ -x /system/bin/sqlite3 ]; then sqlite3_bin=/system/bin/sqlite3
 else sqlite3_bin=$(command -v sqlite3 2>/dev/null) || sqlite3_bin=""; fi
@@ -6559,6 +6640,10 @@ elif [ -e "$best_path".tmp ] || [ -L "$best_path".tmp ] || \
      [ -e "$best_path"-journal ] || [ -L "$best_path"-journal ]; then
   recovery="v$best_version:sidecar"
 else recovery="v$best_version:$(inspect_database "$best_path")"; fi
+if [ "$passive_owner_check" != 0 ]; then
+  passive_owner_after=$(passive_owner_proof)
+  [ "$passive_owner" = "$passive_owner_after" ] || passive_owner=changed
+fi
 echo HOSTDB_BEGIN:@NONCE@
 echo "HOSTDB_PRIMARY=$primary"
 echo "HOSTDB_PRIMARY_FINGERPRINT=$primary_fingerprint"
@@ -6566,9 +6651,11 @@ echo "HOSTDB_RECOVERY=$recovery"
 echo "HOSTDB_RETAINED=$retained"
 echo "HOSTDB_INVENTORY=$inventory"
 echo "HOSTDB_INVENTORY_FINGERPRINT=$inventory_fingerprint"
+echo "HOSTDB_PASSIVE_OWNER=$passive_owner"
 echo HOSTDB_END:@NONCE@
 # HAPANELD_DB_COMPAT_OBSERVER_END'
-  command="${command//@DATA_PACKAGE@/$DATA_PKG}"
+  command="${command//@DATA_PACKAGE@/$observed_package}"
+  command="${command//@PASSIVE_OWNER_CHECK@/$passive_owner_check}"
   command="${command//@MINIMUM@/$DB_CANDIDATE_MIN}"
   command="${command//@MAXIMUM@/$DB_CANDIDATE_MAX}"
   command="${command//@PRIMARY_MODE@/$primary_mode}"
@@ -6621,11 +6708,13 @@ echo HOSTDB_END:@NONCE@
   retained="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_RETAINED=//p')"
   inventory="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_INVENTORY=//p')"
   inventory_fingerprint="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_INVENTORY_FINGERPRINT=//p')"
+  passive_owner="$(printf '%s\n' "$out" | sed -n 's/^HOSTDB_PASSIVE_OWNER=//p')"
   [ "$(printf '%s\n' "$primary" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   [ "$(printf '%s\n' "$primary_fingerprint" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   [ "$(printf '%s\n' "$recovery" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   case "$retained" in 0|1) ;; *) return 1 ;; esac
   case "$inventory" in absent|readable|unreadable) ;; *) return 1 ;; esac
+  case "$passive_owner" in none|passive|blocked|unreadable|changed) ;; *) return 1 ;; esac
   [ "$(printf '%s\n' "$inventory_fingerprint" | awk 'NF { n++ } END { print n + 0 }')" = 1 ] || return 1
   HOST_DB_PRIMARY="$primary"
   HOST_DB_PRIMARY_FINGERPRINT="$primary_fingerprint"
@@ -6633,7 +6722,46 @@ echo HOSTDB_END:@NONCE@
   HOST_DB_RETAINED="$retained"
   HOST_DB_INVENTORY="$inventory"
   HOST_DB_INVENTORY_FINGERPRINT="$inventory_fingerprint"
+  HOST_DB_PASSIVE_OWNER="$passive_owner"
   return 0
+}
+
+successor_database_is_passive() {
+  [ "$HOST_DB_PRIMARY" = missing ] && [ "$HOST_DB_RETAINED" = 0 ] &&
+    [ "$HOST_DB_INVENTORY" = readable ] && [ "$HOST_DB_RECOVERY" = none ] &&
+    [ "$HOST_DB_PASSIVE_OWNER" = passive ]
+}
+
+inspect_root_data_owner() {
+  local legacy_presence pinned_package="$DATA_PKG"
+  local primary primary_fingerprint recovery retained inventory inventory_fingerprint
+  DATA_OWNER_PROOF=none
+  # A deliberate reset must still operate on its exact package target. It cannot select an old
+  # bridge after pm clear, nor does this fallback authorize clearing the bridge instead.
+  if [ "$PACKAGE_PRESENCE" != present ] || [ "$RESET_CONFIG" = 1 ]; then
+    inspect_root_database_compatibility
+    return $?
+  fi
+  inspect_root_database_compatibility "$PKG" 1 || return 1
+  if ! successor_database_is_passive; then
+    [ "$pinned_package" != "$LEGACY_PKG" ] || return 1
+    return 0
+  fi
+  legacy_presence="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+  [ "$legacy_presence" = present ] || return 1
+  inspect_root_database_compatibility "$LEGACY_PKG" || return 1
+  primary="$HOST_DB_PRIMARY"; primary_fingerprint="$HOST_DB_PRIMARY_FINGERPRINT"
+  recovery="$HOST_DB_RECOVERY"; retained="$HOST_DB_RETAINED"
+  inventory="$HOST_DB_INVENTORY"; inventory_fingerprint="$HOST_DB_INVENTORY_FINGERPRINT"
+  # Bracket the bridge read: neither a newly created successor database nor migration authority
+  # acquired during that read may be hidden by restoring the bridge observation below.
+  inspect_root_database_compatibility "$PKG" 1 || return 1
+  successor_database_is_passive || return 1
+  DATA_PKG="$LEGACY_PKG"
+  DATA_OWNER_PROOF=passive-successor
+  HOST_DB_PRIMARY="$primary"; HOST_DB_PRIMARY_FINGERPRINT="$primary_fingerprint"
+  HOST_DB_RECOVERY="$recovery"; HOST_DB_RETAINED="$retained"
+  HOST_DB_INVENTORY="$inventory"; HOST_DB_INVENTORY_FINGERPRINT="$inventory_fingerprint"
 }
 
 # Every refusal inside the gate stops the same way: a package-phase refusal first rolls back the
@@ -6792,7 +6920,7 @@ host_database_compatibility_decision() {
   case "$ROOT_ROUTE_VERDICT" in
     rooted)
       HOST_DB_PRIMARY=""; HOST_DB_PRIMARY_FINGERPRINT=""; HOST_DB_RECOVERY=""; HOST_DB_RETAINED=""; HOST_DB_INVENTORY=""; HOST_DB_INVENTORY_FINGERPRINT=""
-      inspect_root_database_compatibility || host_database_gate_refuse "the canonical database observation was unreadable"
+      inspect_root_data_owner || host_database_gate_refuse "the canonical database or data-owner observation was unreadable or changed"
       if [ "$PACKAGE_PRESENCE" = absent ]; then
         [ "$HOST_DB_INVENTORY" != unreadable ] || \
           host_database_gate_refuse "the app-data database inventory could not be traversed"
@@ -6922,7 +7050,8 @@ host_database_compatibility_gate() {
   local phase="${1:-initial}" semantic evidence
   DB_GATE_PHASE="$phase"
   host_database_compatibility_decision
-  semantic="package=$PACKAGE_PRESENCE;contract=$DB_COMPATIBILITY_CONTRACT;root=$ROOT_ROUTE_VERDICT;decision=$DB_GATE_DECISION_KIND;primary=$HOST_DB_PRIMARY"
+  resolve_data_package
+  semantic="package=$PACKAGE_PRESENCE;data_package=$DATA_PKG;owner_proof=${DATA_OWNER_PROOF:-none};contract=$DB_COMPATIBILITY_CONTRACT;root=$ROOT_ROUTE_VERDICT;decision=$DB_GATE_DECISION_KIND;primary=$HOST_DB_PRIMARY"
   case "$DB_GATE_DECISION_KIND" in
     DIRECT)
       evidence="$semantic;primary_fingerprint=$HOST_DB_PRIMARY_FINGERPRINT"
@@ -7257,6 +7386,75 @@ snapshot_txn_reject_unsafe() {
   snapshot_txn_refuse "$reason" "$advice"
 }
 
+renew_upgrade_quiescence() {
+  local output timeout="${UPGRADE_RENEW_TIMEOUT_SECONDS:-10}"
+  case "$timeout" in ''|*[!0-9]*|0) timeout=10 ;; esac
+  [ "$timeout" -le 30 ] || timeout=10
+  output="$(run_with_deadline "$timeout" adb_exec -s "$TARGET" shell am broadcast --user 0 \
+    -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE \
+    -n "$(app_component "$UPGRADE_QUIESCE_PKG" .UpgradeControlReceiver)" \
+    --es nonce "$UPGRADE_QUIESCE_NONCE" 2>/dev/null | tr -d '\r')" || return 1
+  output="$(printf '%s\n' "$output" | grep '^Broadcast completed:' || true)"
+  [ "$output" = "Broadcast completed: result=-1, data=\"HAPANELD_UPGRADE_RENEWED_V1:$UPGRADE_QUIESCE_NONCE\"" ] && return 0
+  # Only an explicit old-receiver response negotiates the legacy bounded hold. Silence, a malformed
+  # receipt and renewal_failed cannot establish either compatibility or continuing ownership.
+  [ "$output" = 'Broadcast completed: result=0, data="HAPANELD_UPGRADE_ERROR_V1:unknown_action"' ] && return 2
+  return 1
+}
+
+start_upgrade_renewal_guard() {
+  local status owner_pid="$$" interval="${UPGRADE_RENEW_INTERVAL_SECONDS:-30}"
+  case "$interval" in ''|*[!0-9]*|0) interval=30 ;; esac
+  [ "$interval" -le 30 ] || interval=30
+  if renew_upgrade_quiescence; then :
+  else
+    status=$?
+    if [ "$status" = 2 ]; then
+      warn "the installed app does not support hold renewal; retaining its bounded hold and unchanged database gates"
+      return 0
+    fi
+    return 1
+  fi
+  UPGRADE_RENEW_GUARD_FAILURE="$(mktemp)" || return 1
+  (
+    sleep_pid=""
+    stop_upgrade_guard_sleep() {
+      [ -z "$sleep_pid" ] || kill "$sleep_pid" >/dev/null 2>&1 || true
+      [ -z "$sleep_pid" ] || wait "$sleep_pid" >/dev/null 2>&1 || true
+      exit 0
+    }
+    trap 'stop_upgrade_guard_sleep' INT TERM
+    while :; do
+      /bin/sleep "$interval" &
+      sleep_pid=$!
+      wait "$sleep_pid" || exit 0
+      sleep_pid=""
+      kill -0 "$owner_pid" >/dev/null 2>&1 || exit 0
+      renew_upgrade_quiescence || { printf 'failed\n' > "$UPGRADE_RENEW_GUARD_FAILURE"; exit 1; }
+    done
+  ) >/dev/null 2>&1 &
+  UPGRADE_RENEW_GUARD_PID=$!
+}
+
+stop_upgrade_renewal_guard() {
+  if [ -n "$UPGRADE_RENEW_GUARD_PID" ]; then
+    kill "$UPGRADE_RENEW_GUARD_PID" >/dev/null 2>&1 || true
+    wait "$UPGRADE_RENEW_GUARD_PID" >/dev/null 2>&1 || true
+    UPGRADE_RENEW_GUARD_PID=""
+  fi
+  [ -z "$UPGRADE_RENEW_GUARD_FAILURE" ] || rm -f "$UPGRADE_RENEW_GUARD_FAILURE"
+  UPGRADE_RENEW_GUARD_FAILURE=""
+}
+
+require_upgrade_renewal() {
+  [ -n "$UPGRADE_RENEW_GUARD_FAILURE" ] || return 0
+  if [ -s "$UPGRADE_RENEW_GUARD_FAILURE" ] ||
+     ! kill -0 "$UPGRADE_RENEW_GUARD_PID" >/dev/null 2>&1 ||
+     ! renew_upgrade_quiescence; then
+    host_database_gate_refuse "the original clean-database hold could not be renewed"
+  fi
+}
+
 prepare_upgrade_quiescence() {
   local nonce output receipt ready_count tag receipt_nonce receipt_pid receipt_vcode
   local receipt_bytes receipt_sha receipt_uv receipt_rows receipt_extra timeout
@@ -7304,6 +7502,7 @@ EOF
 
 release_upgrade_quiescence() {
   local nonce pkg output timeout attempt released_count root_start_failed=0
+  stop_upgrade_renewal_guard
   nonce="${UPGRADE_QUIESCE_NONCE:-}"
   [ -n "$nonce" ] || return 0
   # RELEASE goes back to the identity that armed, never to the one this run happens to install.
@@ -7344,22 +7543,25 @@ release_upgrade_quiescence() {
 }
 
 copy_root_file_binary() {
-  local source="$1" destination="$2" command quoted
-  command="cat $source"
-  quoted="$(quote_root_command "$command")"
-  case "$SU_FORM" in
-    shell)      run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out cat "$source" > "$destination" ;;
-    su0join)    run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su 0 "$quoted" > "$destination" ;;
-    su0shc)     run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su 0 sh -c "$quoted" > "$destination" ;;
-    surootjoin) run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su root "$quoted" > "$destination" ;;
-    surootshc)  run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su root sh -c "$quoted" > "$destination" ;;
-    suc)        run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" exec-out su -c "$quoted" > "$destination" ;;
-    *) return 1 ;;
-  esac
+  local source="$1" destination="$2" stage="$3"
+  # Some vendor su implementations allocate a PTY even behind exec-out and expand LF to CRLF.
+  # Keep binary bytes off that stream. The already-closed file is copied unchanged, not re-backed-up
+  # by SQLite, so the app's exact size/digest receipt remains authoritative after adb pull.
+  # A failed mkdir grants no cleanup authority over a pre-existing path. Defer host signals until
+  # admission is known; an ambiguous lost response can leave only an empty root-owned directory.
+  snapshot_txn_defer_host_signals
+  if ! run_root "umask 077; mkdir -m 700 $stage" >/dev/null 2>&1; then
+    snapshot_txn_restore_host_signals
+    return 1
+  fi
+  SNAPSHOT_TXN_REMOTE="$stage"
+  snapshot_txn_restore_host_signals
+  run_root "cp $source $stage/ha-paneld.db && chown shell:shell $stage $stage/ha-paneld.db && chmod 700 $stage && chmod 600 $stage/ha-paneld.db" >/dev/null 2>&1 || return 1
+  run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" pull "$stage/ha-paneld.db" "$destination" >/dev/null 2>&1
 }
 
 snapshot_prepared_database() {
-  local base="$1" host_db receipt host_sha host_bytes sqlite_bin integrity user_version app_state_rows
+  local base="$1" stage="$2" host_db receipt host_sha host_bytes sqlite_bin integrity user_version app_state_rows
   host_db="${base%.break-glass}-$UPGRADE_QUIESCE_NONCE.break-glass.db"
   snapshot_txn_defer_host_signals
   if [ -e "$host_db" ] || [ -L "$host_db" ] || ! (umask 077; set -o noclobber; : > "$host_db") 2>/dev/null; then
@@ -7370,7 +7572,7 @@ snapshot_prepared_database() {
   SNAPSHOT_TXN_HOST_DB="$host_db"
   snapshot_txn_restore_host_signals
   chmod 600 "$host_db" 2>/dev/null || true
-  if ! copy_root_file_binary "/data/data/${UPGRADE_QUIESCE_PKG:-$PKG}/databases/ha-paneld.db" "$host_db" || [ ! -s "$host_db" ]; then
+  if ! copy_root_file_binary "/data/data/${UPGRADE_QUIESCE_PKG:-$PKG}/databases/ha-paneld.db" "$host_db" "$stage" || [ ! -s "$host_db" ]; then
     snapshot_txn_refuse "the quiesced database could not be copied from the panel" "Check adb/root responsiveness to $TARGET, then re-run."
     return 0
   fi
@@ -7432,6 +7634,10 @@ snapshot_prepared_database() {
   SNAPSHOT_TXN_HOST_DB=""
   SNAPSHOT_TXN_HOST_RECEIPT=""
   snapshot_txn_restore_host_signals
+  # The verified host pair is already authoritative. Cleanup of this capture's random stage is
+  # best-effort; an unreachable panel must neither withdraw that pair nor authorize another capture.
+  run_root "rm -rf $stage" >/dev/null 2>&1 || true
+  SNAPSHOT_TXN_REMOTE=""
   echo "   ${GRN}✓${X} data-store snapshot: ${B}$host_db${X} ${D}(quiesced direct copy, receipt and local SQLite validation matched)${X}"
   echo "   ${D}        Receipt: $receipt${X}"
   echo "HAPANELD_SNAPSHOT_RESULT=captured"
@@ -7542,7 +7748,9 @@ snapshot_panel_database() {
   fi
   base="$base.break-glass"
   if prepare_upgrade_quiescence; then
-    snapshot_prepared_database "$base"
+    start_upgrade_renewal_guard || fail "the clean-database hold could not be renewed" \
+      "No helper or APK was changed; the original hold will be released before exit."
+    snapshot_prepared_database "$base" "$stage"
     return 0
   fi
   warn "data-store snapshot: no valid upgrade-ready receipt was received (unsupported, non-ready, malformed, or timed out); using one legacy live SQLite backup attempt"
@@ -8015,7 +8223,10 @@ host_database_compatibility_gate
 # cannot license reset/helper/Shizuku/APK/configuration mutation. The final digest assertion binds
 # this re-observation to the exact candidate bytes Android will receive.
 # DB_COMPAT_MUTATION_ANCHOR: HOST_CONSUME_REVALIDATION
+DB_GATE_PHASE=consume
+require_upgrade_renewal
 host_database_compatibility_gate consume
+require_upgrade_renewal
 
 # THE mutation gate for an undecided route. The capture above may refuse on an unknown verdict and
 # an ordinary backup failure may be advisory, but neither condition authorises mutating a panel whose
@@ -8274,7 +8485,10 @@ fi
 # consume-time check. Re-observe one final time immediately beside ha-paneld package replacement. A
 # refusal rolls back this run's uncommitted helper transaction before exiting.
 # DB_COMPAT_MUTATION_ANCHOR: HOST_PACKAGE_REVALIDATION
+DB_GATE_PHASE=package
+require_upgrade_renewal
 host_database_compatibility_gate package
+require_upgrade_renewal
 step "📦 installing" "${D}$APK${X}"
 install_apk
 # Successful package replacement terminates the old quiesced process. A later failure belongs to
@@ -8290,6 +8504,32 @@ if [ -n "$ROOT_HELPER_TRANSACTION_KIND" ]; then
   fi
   cleanup_root_helper_staging
   ROOT_HELPER_TRANSACTION_KIND=""
+fi
+
+# The bridge is a different package: installing the successor did not replace its held process.
+# Resume it after helper commit so it can deliver the handover token before the successor waits for
+# the bridge's backup/release. Keeping this lease until EXIT makes health wait on our own hold.
+if [ -n "$UPGRADE_QUIESCE_NONCE" ] && [ "${UPGRADE_QUIESCE_PKG:-$PKG}" != "$PKG" ]; then
+  release_upgrade_quiescence
+  [ -z "$UPGRADE_QUIESCE_NONCE" ] || fail "the previous app has not resumed for the handover" \
+    "The successor and root helper are installed. Re-run this command to finish the handover."
+fi
+if [ "$PKG" != "$LEGACY_PKG" ]; then
+  # A previous partial install can leave both packages present with the successor still passive.
+  # DATA_PKG prefers that successor, so it cannot establish whether the bridge still needs a wake.
+  handoff_bridge_presence="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+  case "$handoff_bridge_presence" in
+    present)
+      # Unlike generic RELEASE (also used by abort cleanup), this wake follows successful install,
+      # helper commit, and acknowledged release of any held bridge. It also reaches a bridge resumed by watchdog.
+      run_root "am start-foreground-service --user 0 -n $(app_component "$LEGACY_PKG" .PaneldService) -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR" >/dev/null 2>&1 \
+        || fail "the previous app could not start the installed successor handover" \
+          "The successor and root helper are installed. Re-run this command to finish the handover."
+      ;;
+    absent) ;;
+    *) fail "could not confirm whether the previous app needs a handover" \
+      "The successor and root helper are installed. Reconnect adb and re-run this command." ;;
+  esac
 fi
 
 step "🔑 permissions" "${D}notifications · WRITE_SETTINGS (brightness/screen) · SYSTEM_ALERT_WINDOW (navbar) · a11y (buttons)${X}"
@@ -8352,7 +8592,7 @@ fi
 # Wait up to $1 seconds for the agent to answer. Deliberately does NOT relaunch while waiting: a
 # repeat launch during first-run migration restarts the very work being waited on.
 wait_for_launch_health() {
-  local budget="$1" announced=0 deadline remaining probe
+  local budget="$1" handover="${2:-0}" announced=0 deadline remaining probe health health_pkg presence
   # Bound by a real DEADLINE, and never start work that would cross it: checking elapsed only at the
   # top of the loop let a final curl plus sleep overrun the budget by their combined cost.
   deadline=$(( SECONDS + budget ))
@@ -8361,7 +8601,20 @@ wait_for_launch_health() {
     [ "$remaining" -gt 0 ] || break
     probe=2
     [ "$remaining" -ge "$probe" ] || probe="$remaining"
-    curl -fsS --max-time "$probe" "$URL/health" >/dev/null 2>&1 && return 0
+    if health="$(curl -fsS --max-time "$probe" "$URL/health" 2>/dev/null)"; then
+      [ "$handover" != 0 ] || return 0
+      # Both apps answer on the same port. Even the successor serves health while held for restore;
+      # only its removal of the bridge proves restore, restart, HOME and connection checks completed.
+      health_pkg="$(printf '%s\n' "$health" | awk '{for (i=1; i<=NF; i++) if ($i ~ /^pkg=/) print substr($i,5)}')"
+      if [[ "$health" == ha-paneld\ * ]] && [ "$health_pkg" = "$PKG" ]; then
+        remaining=$(( deadline - SECONDS ))
+        [ "$remaining" -gt 0 ] || break
+        probe="$STORAGE_HEALTH_PACKAGE_QUERY_SECONDS"
+        [ "$remaining" -ge "$probe" ] || probe="$remaining"
+        presence="$(classify_package_presence "$probe" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+        [ "$presence" != absent ] || return 0
+      fi
+    fi
     if [ "$announced" = 0 ] && [ $(( budget - (deadline - SECONDS) )) -ge "$APP_LAUNCH_PROBE_SECONDS" ]; then
       announced=1
       echo "   ${D}still starting — the first launch after an upgrade migrates the database; allowing up to ${budget}s${X}"
@@ -8391,7 +8644,14 @@ start_panel_agent() {
 
 step "▶️  starting" "the panel agent"
 start_panel_agent launcher || true
-if wait_for_launch_health "$APP_LAUNCH_PROBE_SECONDS"; then
+if [ "${handoff_bridge_presence:-absent}" = present ]; then
+  # A direct re-launch would restart the migration being observed. Launch once, then wait for its
+  # own completion before reading the provisioning plan or applying any settings to this endpoint.
+  if wait_for_launch_health "$APP_HEALTH_TIMEOUT_SECONDS" 1; then AGENT_HEALTHY=1; else
+    fail "the installed successor did not finish its handover on $URL within ${APP_HEALTH_TIMEOUT_SECONDS}s" \
+      "The APK and helper are installed. The handover may still be running; no configuration was applied or verified. Re-run this command after it completes."
+  fi
+elif wait_for_launch_health "$APP_LAUNCH_PROBE_SECONDS"; then
   AGENT_HEALTHY=1
 else
   # Escalate ONCE, and only while the agent is still not answering: a second start restarts the

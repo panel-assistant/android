@@ -1866,10 +1866,10 @@ class PaneldServer internal constructor(
     private var haAreaWriteJob: kotlinx.coroutines.Job? = null
     private val tameReconciliation = TameReconcileAuthority(
         readDesired = { config.tameVendorPackages.toSet() },
-        reconcile = { desired ->
+        reconcile = { desired, stopping ->
             val cost = FeatureCosts.registry.span(FeatureCostOperation.TAME_MUTATION)
             try {
-                tame.reconcileBlocklist(desired).also { result ->
+                tame.reconcileBlocklist(desired, stopping).also { result ->
                     cost.work(units = result.attempted.toLong())
                     if (result.retryableFailure) cost.outcome(FeatureCostOutcome.FAILURE)
                 }

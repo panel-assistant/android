@@ -425,6 +425,34 @@ internal enum class ServiceStartupDisposition {
     DEGRADED,
 }
 
+internal const val INSTALLED_SUCCESSOR_HANDOFF_ACTION =
+    "io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR"
+
+internal fun installedHandoffWakeRequested(isBridge: Boolean, action: String?): Boolean =
+    isBridge && action == INSTALLED_SUCCESSOR_HANDOFF_ACTION
+
+/** Retains only an explicit host handoff wake until this service's startup is healthy. */
+internal class InstalledSuccessorHandoffWake {
+    private var requested = false
+    private var healthy = false
+
+    @Synchronized fun request(): Boolean {
+        requested = true
+        return consumeIfHealthy()
+    }
+
+    @Synchronized fun markStartupHealthy(): Boolean {
+        healthy = true
+        return consumeIfHealthy()
+    }
+
+    private fun consumeIfHealthy(): Boolean {
+        if (!healthy || !requested) return false
+        requested = false
+        return true
+    }
+}
+
 internal data class StartupRecoveryDecision(val restart: Boolean, val nextAttempt: Int)
 
 internal fun shouldForceFreshProcessAfterExternalRecovery(
@@ -1076,6 +1104,7 @@ class PaneldService : Service() {
     private var profileActivationGeneration: Long? = null
     // One-time-start guard for onStartCommand (see there for why). Reset in onDestroy.
     @Volatile private var started = false
+    private val installedHandoffWake = InstalledSuccessorHandoffWake()
     // This generation was created inside a process that had already committed to exiting, so it owns
     // nothing and must not be torn down as though it did. Never cleared: a stood-down generation stays
     // stood down for as long as the doomed process lives.
@@ -1622,7 +1651,7 @@ class PaneldService : Service() {
             httpPort = { config.httpPort },
             androidId = { config.androidId },
             mqttState = { runtime.current().mqtt.state },
-            offerHandoff = ::offerSuccessorHandoff,
+            offerHandoff = { offerSuccessorHandoff() },
             // The restore is durable; only a fresh process runs wholly from the restored configuration.
             requestRestart = { recoveryRestart.request() },
         )
@@ -2994,12 +3023,14 @@ class PaneldService : Service() {
      * periodic pass or the HTTP trigger asked; the outcome is logged only when it changes, because a
      * panel that never migrates repeats the same refusal on every pass.
      */
-    internal suspend fun offerSuccessorHandoff(): SuccessorHandoff.Outcome? {
+    internal suspend fun offerSuccessorHandoff(allowInstall: Boolean = true): SuccessorHandoff.Outcome? {
         if (!AppIdentity.IS_BRIDGE) return null
         successorHandoffGate.lock()
         try {
+            // A finite host request may have waited behind another offer during teardown.
+            if (teardownBoundary.isStopping) return null
             return SuccessorHandoff(AndroidSuccessorHandoffPorts(this, config, system))
-                .offer(AppIdentity.SUCCESSOR)
+                .offer(AppIdentity.SUCCESSOR, allowInstall)
                 .also { outcome ->
                     if (outcome.detail != lastSuccessorHandoffDetail) {
                         lastSuccessorHandoffDetail = outcome.detail
@@ -3008,6 +3039,28 @@ class PaneldService : Service() {
                 }
         } finally {
             successorHandoffGate.unlock()
+        }
+    }
+
+    private fun requestInstalledSuccessorHandoff(reason: String) {
+        if (!AppIdentity.IS_BRIDGE) return
+        if (teardownBoundary.isStopping) {
+            Log.i(TAG, "installed successor handover skipped: $reason, stopping")
+            return
+        }
+        Log.i(TAG, "installed successor handover queued: $reason, scopeActive=${scope.coroutineContext[Job]?.isActive}")
+        scope.launch {
+            Log.i(TAG, "installed successor handover entered: $reason, stopping=${teardownBoundary.isStopping}")
+            try {
+                if (!teardownBoundary.isStopping) offerSuccessorHandoff(allowInstall = false)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "installed successor handover failed: $reason", error)
+            }
+        }.invokeOnCompletion { failure ->
+            // Also records cancellation before the coroutine body gets its first dispatch.
+            Log.i(TAG, "installed successor handover completed: $reason, result=${failure?.javaClass?.simpleName ?: "completed"}")
         }
     }
 
@@ -3413,6 +3466,13 @@ class PaneldService : Service() {
         // A stood-down generation has no owner to start. START_STICKY is the point of keeping it: the
         // live started-service record is what Android recreates once the committed process has exited.
         if (standingDown) return START_STICKY
+        // Generic RELEASE also runs on abort. Only the host's separate, post-commit handoff action
+        // may request migration; retain it across cold startup or an already-starting generation.
+        if (!teardownBoundary.isStopping && installedHandoffWakeRequested(AppIdentity.IS_BRIDGE, intent?.action)) {
+            val ready = installedHandoffWake.request()
+            Log.i(TAG, "installed successor handover requested: host commit, ready=$ready")
+            if (ready) requestInstalledSuccessorHandoff("host commit")
+        }
         if (started) return START_STICKY
         started = true
         val startupActivationGeneration = profileActivationGeneration
@@ -3782,13 +3842,20 @@ class PaneldService : Service() {
             if (!teardownBoundary.isStopping) panelAssistantTransport.replaceDemand(initialNativeDemand)
         })
         Thread({
-            when (awaitServiceStartup(startup, startupActivationGeneration)) {
+            val disposition = awaitServiceStartup(startup, startupActivationGeneration)
+            Log.i(TAG, "service startup health: $disposition, stopping=${teardownBoundary.isStopping}")
+            when (disposition) {
                 ServiceStartupDisposition.RUNNING -> {
                     // DHCP may have arrived while ServiceRuntimeOwner was STARTING, when callbacks cannot
                     // borrow a runtime observation. Replay their latest topology after RUNNING is published.
                     mdnsRuntimeReconciler.runtimeRunning()
                     startupRecoveryPrefs.edit().clear().commit()
                     updateForegroundStatus(nativeString(R.string.listening_on_port, config.httpPort))
+                    // Ordinary startup must not migrate an already-installed successor before the
+                    // host has prepared and committed its transaction. Consume only an explicit wake.
+                    if (installedHandoffWake.markStartupHealthy()) {
+                        requestInstalledSuccessorHandoff("pending host commit")
+                    }
                 }
                 ServiceStartupDisposition.PROFILE_ACTIVATION_ROLLBACK -> {
                     updateForegroundStatus(nativeString(R.string.degraded_profile_startup))

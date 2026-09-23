@@ -257,8 +257,12 @@ object CdpRelay {
 
     internal fun relayProbeCommand(): String =
         "found=0; for comm in /proc/[0-9]*/comm; do " +
-            "[ -r \"\$comm\" ] || continue; " +
-            "[ \"\$(cat \"\$comm\" 2>/dev/null)\" = cdprelay ] && found=1 && break; done; " +
+            // A fork per process can exhaust the bounded probe before it reaches the listener tables.
+            // A process disappearing during the scan is harmless; an unreadable live entry is not proof.
+            "[ -e \"\$comm\" ] || continue; " +
+            "IFS= read -r process_name < \"\$comm\" 2>/dev/null || " +
+            "{ [ ! -e \"\$comm\" ] && continue; exit 1; }; " +
+            "[ \"\$process_name\" = cdprelay ] && found=1 && break; done; " +
             "echo process=\$found; echo tcp_begin; " +
             "[ -r /proc/net/tcp ] || exit 1; cat /proc/net/tcp || exit 1; " +
             "if [ -e /proc/net/tcp6 ]; then [ -r /proc/net/tcp6 ] || exit 1; " +

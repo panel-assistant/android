@@ -13,6 +13,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TameReconcileAuthorityTest {
+    @Test fun `close wakes retry backoff without waiting for its delay`() {
+        val returned = CountDownLatch(1)
+        val calls = AtomicInteger()
+        val worker = AtomicReference<Thread>()
+        val owner = TameReconcileAuthority(
+            readDesired = { setOf("vendor.one") },
+            reconcile = { _, _ ->
+                worker.set(Thread.currentThread())
+                calls.incrementAndGet()
+                returned.countDown()
+                TameReconcileResult(1, retryableFailure = true)
+            },
+            stopping = { false },
+            retryDelayMs = 60_000,
+        )
+        try {
+            owner.request()
+            assertTrue(returned.await(2, TimeUnit.SECONDS))
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+            while (worker.get().state != Thread.State.TIMED_WAITING && System.nanoTime() < deadline) Thread.yield()
+            assertEquals("the retry is actually waiting before close", Thread.State.TIMED_WAITING, worker.get().state)
+            assertTrue(owner.closeAndJoin(2_000))
+            assertEquals(1, calls.get())
+        } finally {
+            owner.closeAndJoin(2_000)
+            worker.get()?.interrupt()
+        }
+    }
+
     @Test fun `backlog telemetry clears when queued work is taken and completed`() {
         val firstEntered = CountDownLatch(1)
         val releaseFirst = CountDownLatch(1)
@@ -21,7 +50,7 @@ class TameReconcileAuthorityTest {
         val backlogs = Collections.synchronizedList(mutableListOf<Int>())
         val owner = TameReconcileAuthority(
             readDesired = { setOf("vendor.one") },
-            reconcile = {
+            reconcile = { _, _ ->
                 if (calls.incrementAndGet() == 1) {
                     firstEntered.countDown()
                     releaseFirst.await(2, TimeUnit.SECONDS)
@@ -52,7 +81,7 @@ class TameReconcileAuthorityTest {
         val observed = mutableListOf<Set<String>>()
         val owner = TameReconcileAuthority(
             readDesired = desired::get,
-            reconcile = { value ->
+            reconcile = { value, _ ->
                 synchronized(observed) { observed += value }
                 if (value == setOf("vendor.old")) {
                     firstEntered.countDown()
@@ -80,7 +109,7 @@ class TameReconcileAuthorityTest {
         var calls = 0
         val owner = TameReconcileAuthority(
             readDesired = { setOf("vendor.one") },
-            reconcile = {
+            reconcile = { _, _ ->
                 calls++
                 attempts.countDown()
                 TameReconcileResult(1, retryableFailure = calls == 1)
@@ -100,7 +129,7 @@ class TameReconcileAuthorityTest {
         val exhausted = CountDownLatch(4)
         val owner = TameReconcileAuthority(
             readDesired = { setOf("vendor.one") },
-            reconcile = {
+            reconcile = { _, _ ->
                 calls.incrementAndGet()
                 exhausted.countDown()
                 TameReconcileResult(1, retryableFailure = true)
@@ -122,7 +151,7 @@ class TameReconcileAuthorityTest {
         val release = CountDownLatch(1)
         val first = TameReconcileAuthority(
             readDesired = desired::get,
-            reconcile = {
+            reconcile = { _, _ ->
                 entered.countDown()
                 release.await(2, TimeUnit.SECONDS)
                 TameReconcileResult(1, false)
@@ -141,8 +170,8 @@ class TameReconcileAuthorityTest {
         val startupConverged = CountDownLatch(1)
         val restarted = TameReconcileAuthority(
             readDesired = desired::get,
-            reconcile = {
-                if (it == setOf("vendor.one")) startupConverged.countDown()
+            reconcile = { desired, _ ->
+                if (desired == setOf("vendor.one")) startupConverged.countDown()
                 TameReconcileResult(1, false)
             },
             stopping = { false },

@@ -174,6 +174,38 @@ class SuccessorMigrationTest {
         assertTrue(markers.values.isEmpty())
     }
 
+    @Test fun installedOnlyBridgeHandoffUnblocksTheSuccessorsRealMigrationWithoutAnUpdate() = runBlocking {
+        val world = World().apply { tokenHeld = false }
+        val markers = FakeMarkers()
+        assertEquals(Result.Waiting(Step.PULL, "no release token has been delivered"), pass(world, markers))
+        val handoffEvents = mutableListOf<String>()
+        var companion = false
+        val signer = "a".repeat(64)
+        val ports = object : SuccessorHandoff.Ports {
+            override fun retired() = world.legacyRetired
+            override fun helperRefusal(): String? = null.also { handoffEvents += "helper" }
+            override fun installedSuccessor() = SuccessorHandoff.InstalledSuccessor("1.0", setOf(signer))
+            override fun trustedSigner() = signer
+            override fun ownVersion() = "1.0"
+            override fun compareVersions(left: String, right: String) = 0
+            override fun successorAssetUrl(): String? = throw AssertionError("startup must not resolve an update")
+            override suspend fun installSuccessor(url: String): String? = throw AssertionError("startup must not install an update")
+            override fun companionPackages() = if (companion) setOf("successor") else emptySet()
+            override fun addCompanionPackage(pkg: String) { companion = true; handoffEvents += "companion" }
+            override fun launchSuccessor() = true.also { handoffEvents += "launch" }
+            override fun deliverReleaseToken() = true.also { world.tokenHeld = true; handoffEvents += "token" }
+        }
+
+        assertEquals(SuccessorHandoff.Outcome.Launched, SuccessorHandoff(ports).offer("successor", allowInstall = false))
+        assertEquals(listOf("helper", "helper", "companion", "launch", "token"), handoffEvents)
+        assertTrue("token delivery does not remove the bridge", world.legacyInstalled)
+        assertEquals(Result.Complete, runToRest(world, markers))
+        assertTrue(world.restored)
+        assertEquals(1, world.uninstalls)
+        assertFalse(world.legacyInstalled)
+        assertTrue(markers.completeRecorded)
+    }
+
     @Test fun theStepsRunInTheOneSafeOrder() {
         val world = World()
         val markers = FakeMarkers()
