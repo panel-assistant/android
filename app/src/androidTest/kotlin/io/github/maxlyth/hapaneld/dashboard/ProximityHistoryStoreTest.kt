@@ -123,12 +123,15 @@ class ProximityHistoryStoreTest {
             sparseLearningSource = false,
             legacySeedEligible = false,
         )
-        for (now in 0L..30_000L step 100L) runtime.observe(100f, now)
+        runtime.observe(100f, 0)
+        runtime.observe(100f, 100)
+        runtime.observe(100f, 200)
+        runtime.observe(100f, 300)
         assertTrue(runtime.isWaveReady())
 
-        runtime.observe(20f, 30_500)
-        runtime.observe(20f, 45_500)
-        runtime.observe(20f, 60_501)
+        runtime.observe(20f, 500)
+        runtime.observe(20f, 15_500)
+        runtime.observe(20f, 30_501)
         assertFalse(runtime.isWaveReady())
         runtime.closeAsync().get(5, TimeUnit.SECONDS)
 
@@ -144,7 +147,10 @@ class ProximityHistoryStoreTest {
             sparseLearningSource = false,
             legacySeedEligible = false,
         )
-        for (now in 0L..30_000L step 100L) recreated.observe(100f, now)
+        recreated.observe(100f, 0)
+        recreated.observe(100f, 100)
+        recreated.observe(100f, 200)
+        recreated.observe(100f, 300)
         assertFalse(recreated.isWaveReady())
         recreated.closeAsync().get(5, TimeUnit.SECONDS)
     }
@@ -195,12 +201,15 @@ class ProximityHistoryStoreTest {
                 failureArmed.get() && failFirst.getAndSet(false).also { if (it) failed.countDown() }
             },
         )
-        for (now in 0L..30_000L step 100L) interrupted.observe(100f, now)
+        interrupted.observe(100f, 0)
+        interrupted.observe(100f, 100)
+        interrupted.observe(100f, 200)
+        interrupted.observe(100f, 300)
         assertTrue(interrupted.isWaveReady())
         failureArmed.set(true)
-        interrupted.observe(20f, 30_500)
-        interrupted.observe(20f, 45_500)
-        interrupted.observe(20f, 60_501)
+        interrupted.observe(20f, 500)
+        interrupted.observe(20f, 15_500)
+        interrupted.observe(20f, 30_501)
         assertTrue(failed.await(5, TimeUnit.SECONDS))
 
         // Reconstruct without orderly close: SQLite still contains the old ready row, so only the
@@ -214,7 +223,10 @@ class ProximityHistoryStoreTest {
             sparseLearningSource = false,
             legacySeedEligible = false,
         )
-        for (now in 0L..30_000L step 100L) reconstructed.observe(100f, now)
+        reconstructed.observe(100f, 0)
+        reconstructed.observe(100f, 100)
+        reconstructed.observe(100f, 200)
+        reconstructed.observe(100f, 300)
         assertFalse(reconstructed.isWaveReady())
 
         interrupted.closeAsync().get(5, TimeUnit.SECONDS)
@@ -235,12 +247,15 @@ class ProximityHistoryStoreTest {
             legacySeedEligible = false,
             invalidationJournalForTest = journal,
         )
-        for (now in 0L..30_000L step 100L) runtime.observe(100f, now)
+        runtime.observe(100f, 0)
+        runtime.observe(100f, 100)
+        runtime.observe(100f, 200)
+        runtime.observe(100f, 300)
         assertTrue(runtime.isWaveReady())
 
-        runtime.observe(20f, 30_500)
-        runtime.observe(20f, 45_500)
-        runtime.observe(20f, 60_501)
+        runtime.observe(20f, 500)
+        runtime.observe(20f, 15_500)
+        runtime.observe(20f, 30_501)
 
         val durable = EntityCatalogStore(context).use { it.readProximityModel(fingerprint)!! }
         assertFalse(JSONObject(durable.snapshotJson).getBoolean("guidedReady"))

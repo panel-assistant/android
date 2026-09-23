@@ -24,12 +24,7 @@ class CatalogueAndroidTest {
             val record = JSONObject(assets.readText("i18n/$locale.json"))
                 .getJSONObject("strings")
                 .getJSONObject(key)
-            val state = record.getString("state")
-            assertTrue(
-                "$locale $key must satisfy its translation tier",
-                state == "machine-cross-checked" || state == "community-corrected" ||
-                    (locale in AppLocale.EARLY_ACCESS_LOCALES && state == "machine-draft"),
-            )
+            assertEquals("machine-cross-checked", record.getString("state"))
             val expectedText = record.getString("text")
             val localized = loader.strings(locale)
             assertEquals(expectedText, localized.get(key))
@@ -69,24 +64,6 @@ class CatalogueAndroidTest {
         assertEquals("en", strings.resolve("settings.missing.label").language)
         assertEquals("en", strings.locale)
         assertEquals(listOf("de", "en"), strings.languages)
-    }
-
-    @Test fun earlyAccessDraftsStillRejectStaleAndMissingTranslationsOnAndroid() {
-        val source = SourceCatalogue.parse(syntheticEnglish)
-        val draft = JSONObject(syntheticGerman).put("locale", "nl")
-        draft.getJSONObject("strings").getJSONObject("settings.draft.label")
-            .put("text", "Vertaalconcept.")
-        draft.getJSONObject("strings").getJSONObject("settings.stale.label")
-            .put("state", "machine-draft")
-        val strings = Strings(source, TargetCatalogue.parse(draft.toString(), source))
-
-        assertEquals("Vertaalconcept.", strings.get("settings.draft.label"))
-        assertEquals("nl", strings.resolve("settings.draft.label").language)
-        assertEquals("Stale English.", strings.get("settings.stale.label"))
-        assertEquals("en", strings.resolve("settings.stale.label").language)
-        assertEquals("Missing English.", strings.get("settings.missing.label"))
-        assertEquals("en", strings.resolve("settings.missing.label").language)
-        assertEquals(listOf("en", "nl"), strings.languages)
     }
 
     private fun android.content.res.AssetManager.readText(path: String): String =

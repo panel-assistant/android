@@ -21,7 +21,7 @@ import org.junit.runner.RunWith
  * fresh install. No other test reads the realized schema, and asserting on migration SQL strings
  * cannot catch this.
  *
- * The shared v11 fixture is deliberately a *literal copy of what the v0.9.5 tag shipped* rather than a
+ * The v11 fixture below is deliberately a *literal copy of what the v0.9.5 tag shipped* rather than a
  * reference to today's production constants. Deriving the baseline from current code would inherit any
  * drift and make the comparison vacuous.
  *
@@ -32,9 +32,7 @@ import org.junit.runner.RunWith
 @CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class EntityCatalogSchemaParityTest {
-    private val context = HistoricalCatalogFixture.isolatedContext(
-        ApplicationProvider.getApplicationContext<Context>(), "schema-parity",
-    )
+    private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Before fun cleanBefore() = clean()
     @After fun cleanAfter() = clean()
@@ -57,57 +55,26 @@ class EntityCatalogSchemaParityTest {
         }
     }
 
-    /** Realized schemas must preserve the additive contract at each step that declares it. */
-    @Test fun additiveStepsPreserveExistingColumnsAndAllowOlderInserts() {
-        HistoricalCatalogFixture.create(context).use { db ->
-            val steps = EntityCatalogSchema.plan(11, 13)
-            assertEquals(listOf(12, 13), steps.map { it.to })
-            steps.forEach { step ->
-                assertTrue("step ${step.from}->${step.to} must remain additive", !step.breaksCompatibility)
-                val baseline = columns(db)
-                step.sql.forEach(db::execSQL)
-                step.transform?.invoke(db)
-                assertAdditive(baseline, columns(db))
-            }
-        }
-    }
+    /**
+     * The realized-schema form of the additive rule, and the stronger half: it catches a removal or a
+     * retype however the SQL was spelled, which a text lint cannot. Everything public v0.9.5 shipped must
+     * still be present with the same declared type, and anything added since must be insertable by a
+     * build that has never heard of it.
+     */
+    @Test fun theCurrentSchemaRemainsAnAdditiveSupersetOfTheV095Baseline() {
+        v095Database()
+        val baseline = SQLiteDatabase.openDatabase(
+            context.getDatabasePath(EntityCatalogStore.DATABASE_NAME).path, null, SQLiteDatabase.OPEN_READONLY,
+        ).use { columns(it) }
+        clean()
+        val current = EntityCatalogStore(context).use { columns(it.writableDatabase) }
 
-    @Test fun schema14ChangesOnlyTheDeclaredNamesAndRetiredPerformanceTable() {
-        HistoricalCatalogFixture.create(context).use { db ->
-            EntityCatalogSchema.plan(11, 13).forEach { step ->
-                step.sql.forEach(db::execSQL)
-                step.transform?.invoke(db)
-            }
-            val baseline = columns(db)
-            val step = EntityCatalogSchema.plan(13, 14).single()
-            assertTrue("the naming migration must declare its compatibility break", step.breaksCompatibility)
-            step.sql.forEach(db::execSQL)
-            step.transform?.invoke(db)
-            val tables = mapOf(
-                "membership" to "dashboard_entity", "minute_rollup" to "dashboard_entity_traffic_minute",
-                "dashboard_issue_ignore" to "dashboard_ignored_issue", "proximity_rollup" to "proximity_sample",
-            )
-            val names = mapOf(
-                "entity.first_seen" to "first_seen_at", "entity.last_seen" to "last_seen_at",
-                "dashboard.last_sync" to "last_sync_at", "membership.static_ref" to "referenced_by_config",
-                "membership.runtime_ref" to "referenced_at_runtime", "membership.first_access" to "first_access_at",
-                "membership.last_access" to "last_access_at", "membership.rate_window_start" to "rate_window_started_at",
-                "minute_rollup.span_start" to "span_started_at", "proximity_rollup.raw_square_sum" to "raw_sum_squares",
-            )
-            val expected = baseline.filterValues { it.table != "dashboard_performance" }.map { (key, column) ->
-                column.copy(table = tables[column.table] ?: column.table, name = names[key] ?: column.name)
-            }.associateBy { "${it.table}.${it.name}" }
-            assertEquals("v14 must preserve every other column and its constraints", expected, columns(db))
-        }
-    }
-
-    private fun assertAdditive(baseline: Map<String, Column>, current: Map<String, Column>) {
         val removed = baseline.keys - current.keys
-        assertTrue("additive steps must not remove or rename columns: $removed", removed.isEmpty())
+        assertTrue("v0.9.5 columns must not be removed or renamed: $removed", removed.isEmpty())
 
         val retyped = baseline.filter { (key, column) -> current[key]?.type != column.type }
             .map { (key, column) -> "$key was ${column.type}, now ${current[key]?.type}" }
-        assertTrue("additive steps must not retype columns: $retyped", retyped.isEmpty())
+        assertTrue("v0.9.5 columns must not be retyped: $retyped", retyped.isEmpty())
 
         // Scoped to tables that already existed: the constraint exists because an older build's INSERT
         // omits a column it does not know about, and it never inserts into a table it has never heard of.
@@ -169,7 +136,11 @@ class EntityCatalogSchemaParityTest {
 
     /** Exactly the schema the v0.9.5 tag created, at user_version 11. Do not refactor to use production constants. */
     private fun v095Database() {
-        HistoricalCatalogFixture.create(context).close()
+        context.deleteDatabase(EntityCatalogStore.DATABASE_NAME)
+        context.openOrCreateDatabase(EntityCatalogStore.DATABASE_NAME, Context.MODE_PRIVATE, null).use { db ->
+            V095_SCHEMA.forEach(db::execSQL)
+            db.version = 11
+        }
     }
 
     private fun schemaFingerprint(db: SQLiteDatabase): String {
@@ -209,6 +180,124 @@ class EntityCatalogSchemaParityTest {
         return "fresh:\n$fresh\nupgraded:\n$upgraded"
     }
 
-    private fun clean() = HistoricalCatalogFixture.clean(context)
+    private fun clean() {
+        context.deleteDatabase(EntityCatalogStore.DATABASE_NAME)
+        // Upgrading from the v11 fixture leaves a .v11.premigrate snapshot; sweep it so a later run
+        // cannot silently restore it instead of exercising the upgrade.
+        val target = context.getDatabasePath(EntityCatalogStore.DATABASE_NAME)
+        target.parentFile?.listFiles()
+            ?.filter { it.name.startsWith("${target.name}.v") }
+            ?.forEach { it.delete() }
+    }
 
+    private companion object {
+        val V095_SCHEMA = listOf(
+            """CREATE TABLE entity(
+                instance TEXT NOT NULL, entity_id TEXT NOT NULL, state TEXT NOT NULL DEFAULT '',
+                attributes_json TEXT NOT NULL DEFAULT '{}', metadata_json TEXT NOT NULL DEFAULT '{}',
+                first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, missing_streak INTEGER NOT NULL DEFAULT 0,
+                tombstone_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(instance,entity_id))""",
+            """CREATE TABLE dashboard(
+                instance TEXT NOT NULL, path TEXT NOT NULL, config_hash TEXT NOT NULL DEFAULT '',
+                config_json TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'disabled',
+                last_sync INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '',
+                unresolved_json TEXT NOT NULL DEFAULT '[]', sync_generation INTEGER NOT NULL DEFAULT 0,
+                issues_json TEXT NOT NULL DEFAULT '[]',
+                PRIMARY KEY(instance,path))""",
+            """CREATE TABLE membership(
+                instance TEXT NOT NULL, path TEXT NOT NULL, entity_id TEXT NOT NULL,
+                static_ref INTEGER NOT NULL DEFAULT 0, runtime_ref INTEGER NOT NULL DEFAULT 0,
+                pinned INTEGER NOT NULL DEFAULT 0, excluded INTEGER NOT NULL DEFAULT 0,
+                reasons TEXT NOT NULL DEFAULT '', first_access INTEGER NOT NULL DEFAULT 0,
+                last_access INTEGER NOT NULL DEFAULT 0, access_count INTEGER NOT NULL DEFAULT 0,
+                update_count INTEGER NOT NULL DEFAULT 0, update_bytes INTEGER NOT NULL DEFAULT 0,
+                rate_window_start INTEGER NOT NULL DEFAULT 0, rate_update_bytes INTEGER NOT NULL DEFAULT 0,
+                last_update_at INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(instance,path,entity_id))""",
+            """CREATE TABLE minute_rollup(
+                instance TEXT NOT NULL, path TEXT NOT NULL, entity_id TEXT NOT NULL, minute INTEGER NOT NULL,
+                access_count INTEGER NOT NULL DEFAULT 0, update_count INTEGER NOT NULL DEFAULT 0,
+                update_bytes INTEGER NOT NULL DEFAULT 0, span_start INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(instance,path,entity_id,minute))""",
+            "CREATE INDEX entity_missing ON entity(instance,missing_streak)",
+            "CREATE INDEX membership_load ON membership(instance,path,update_bytes DESC)",
+            "CREATE INDEX minute_rollup_age ON minute_rollup(instance,path,minute)",
+            """CREATE TABLE dashboard_issue_ignore(
+                instance TEXT NOT NULL, path TEXT NOT NULL, fingerprint TEXT NOT NULL, ignored_at INTEGER NOT NULL,
+                PRIMARY KEY(instance,path,fingerprint),
+                FOREIGN KEY(instance,path) REFERENCES dashboard(instance,path) ON DELETE CASCADE)""",
+            """CREATE TABLE dashboard_performance(
+                instance TEXT NOT NULL,path TEXT NOT NULL,minute INTEGER NOT NULL,
+                filter_active INTEGER NOT NULL DEFAULT 0,entity_count INTEGER NOT NULL DEFAULT 0,
+                sample_ms INTEGER NOT NULL DEFAULT 0,frames INTEGER NOT NULL DEFAULT 0,
+                payload_bytes INTEGER NOT NULL DEFAULT 0,updates INTEGER NOT NULL DEFAULT 0,
+                hydration_updates INTEGER NOT NULL DEFAULT 0,observer_micros INTEGER NOT NULL DEFAULT 0,
+                dropped_frames INTEGER NOT NULL DEFAULT 0,state_task_micros INTEGER NOT NULL DEFAULT 0,
+                state_task_max_micros INTEGER NOT NULL DEFAULT 0,interaction_count INTEGER NOT NULL DEFAULT 0,
+                interaction_max_micros INTEGER NOT NULL DEFAULT 0,input_delay_micros INTEGER NOT NULL DEFAULT 0,
+                interaction_processing_micros INTEGER NOT NULL DEFAULT 0,presentation_micros INTEGER NOT NULL DEFAULT 0,
+                loaf_count INTEGER NOT NULL DEFAULT 0,blocking_micros INTEGER NOT NULL DEFAULT 0,
+                loaf_max_micros INTEGER NOT NULL DEFAULT 0,script_micros INTEGER NOT NULL DEFAULT 0,
+                render_micros INTEGER NOT NULL DEFAULT 0,long_task_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(instance,path,minute))""",
+            "CREATE INDEX dashboard_performance_age ON dashboard_performance(minute)",
+            """CREATE TABLE app_state_revision(
+                revision INTEGER PRIMARY KEY AUTOINCREMENT,
+                committed_at INTEGER NOT NULL,
+                namespace TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'app')""",
+            """CREATE TABLE app_state_namespace(
+                namespace TEXT PRIMARY KEY,
+                imported_at INTEGER NOT NULL,
+                legacy_name TEXT NOT NULL DEFAULT '')""",
+            """CREATE TABLE app_state(
+                namespace TEXT NOT NULL,
+                state_key TEXT NOT NULL,
+                value_type TEXT NOT NULL,
+                value_text TEXT,
+                updated_at INTEGER NOT NULL,
+                revision INTEGER NOT NULL,
+                PRIMARY KEY(namespace,state_key),
+                FOREIGN KEY(revision) REFERENCES app_state_revision(revision))""",
+            "CREATE INDEX app_state_updated ON app_state(namespace,updated_at)",
+            """CREATE TABLE proximity_model(
+                fingerprint TEXT PRIMARY KEY,
+                algorithm_version INTEGER NOT NULL,
+                behavior_signature TEXT NOT NULL DEFAULT '',
+                snapshot_json TEXT NOT NULL,
+                ready INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL)""",
+            """CREATE TABLE proximity_rollup(
+                fingerprint TEXT NOT NULL,
+                bucket INTEGER NOT NULL,
+                sample_count INTEGER NOT NULL,
+                raw_min REAL NOT NULL,
+                raw_max REAL NOT NULL,
+                raw_sum REAL NOT NULL,
+                raw_square_sum REAL NOT NULL,
+                excursion_count INTEGER NOT NULL DEFAULT 0,
+                gesture_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(fingerprint,bucket),
+                FOREIGN KEY(fingerprint) REFERENCES proximity_model(fingerprint) ON DELETE CASCADE)""",
+            "CREATE INDEX proximity_rollup_age ON proximity_rollup(bucket)",
+            """CREATE TABLE proximity_episode(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                peak_level INTEGER NOT NULL,
+                completed INTEGER NOT NULL,
+                guided INTEGER NOT NULL,
+                FOREIGN KEY(fingerprint) REFERENCES proximity_model(fingerprint) ON DELETE CASCADE)""",
+            "CREATE INDEX proximity_episode_age ON proximity_episode(started_at)",
+            """CREATE TABLE ambient_lux_minute(
+                context_id TEXT NOT NULL,source_id TEXT NOT NULL,minute INTEGER NOT NULL,
+                lux_integral REAL NOT NULL DEFAULT 0,coverage_ms INTEGER NOT NULL DEFAULT 0,
+                min_lux REAL NOT NULL DEFAULT 0,max_lux REAL NOT NULL DEFAULT 0,last_lux REAL NOT NULL DEFAULT 0,
+                sample_count INTEGER NOT NULL DEFAULT 0,baseline_log_integral REAL NOT NULL DEFAULT 0,
+                baseline_coverage_ms INTEGER NOT NULL DEFAULT 0,
+                 PRIMARY KEY(context_id,source_id,minute))""",
+            "CREATE INDEX ambient_lux_minute_age ON ambient_lux_minute(minute)",
+        )
+    }
 }

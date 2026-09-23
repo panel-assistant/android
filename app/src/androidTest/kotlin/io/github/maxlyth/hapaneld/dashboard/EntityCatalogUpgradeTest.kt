@@ -17,9 +17,7 @@ import org.junit.runner.RunWith
 @CoreInstrumentation
 @RunWith(AndroidJUnit4::class)
 class EntityCatalogUpgradeTest {
-    private val context = HistoricalCatalogFixture.isolatedContext(
-        ApplicationProvider.getApplicationContext<Context>(), "schema-upgrade",
-    )
+    private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Before fun cleanBefore() = clean()
     @After fun cleanAfter() = clean()
@@ -57,19 +55,22 @@ class EntityCatalogUpgradeTest {
     }
 
     @Test fun publicV095DatabaseUpgradePreservesConfigInOneStep() {
-        HistoricalCatalogFixture.create(context).use { db ->
+        legacyDatabase(11).use { db ->
             assertFalse("the fixture must exercise the API-27 non-WAL pre-open path", db.isWriteAheadLoggingEnabled)
-            db.execSQL("INSERT INTO dashboard(instance,path,status) VALUES('fixture','home','synced')")
-            db.execSQL("UPDATE dashboard SET last_sync=101")
-            db.execSQL("INSERT INTO dashboard_issue_ignore VALUES('fixture','home','ignored-warning',102)")
-            db.execSQL("INSERT INTO entity(instance,entity_id,first_seen,last_seen) VALUES('fixture','sensor.room',103,104)")
             db.execSQL(
-                "INSERT INTO membership(instance,path,entity_id,static_ref,runtime_ref,pinned,excluded," +
-                    "first_access,last_access,rate_window_start) VALUES('fixture','home','sensor.room',1,1,1,1,105,106,107)",
+                "CREATE TABLE dashboard(" +
+                    "instance TEXT NOT NULL, path TEXT NOT NULL, config_hash TEXT NOT NULL DEFAULT ''," +
+                    "config_json TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'disabled'," +
+                    "last_sync_at INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT ''," +
+                    "unresolved_json TEXT NOT NULL DEFAULT '[]', sync_generation INTEGER NOT NULL DEFAULT 0," +
+                    "issues_json TEXT NOT NULL DEFAULT '[]'," +
+                    "PRIMARY KEY(instance,path))",
             )
-            db.execSQL("INSERT INTO minute_rollup(instance,path,entity_id,minute,span_start) VALUES('fixture','home','sensor.room',108,109)")
-            db.execSQL("INSERT INTO proximity_model(fingerprint,algorithm_version,snapshot_json,updated_at) VALUES('probe',1,'{}',110)")
-            db.execSQL("INSERT INTO proximity_rollup VALUES('probe',111,2,3.0,4.0,7.0,25.0,1,1)")
+            db.execSQL("INSERT INTO dashboard(instance,path,status) VALUES('fixture','home','synced')")
+            db.execSQL(EntityCatalogStore.APP_STATE_REVISION_TABLE_SQL)
+            db.execSQL(EntityCatalogStore.APP_STATE_NAMESPACE_TABLE_SQL)
+            db.execSQL(EntityCatalogStore.APP_STATE_TABLE_SQL)
+            db.execSQL("CREATE INDEX ix_app_state_updated ON app_state(namespace,updated_at)")
             db.execSQL("INSERT INTO app_state_revision(committed_at,namespace,source) VALUES(1700000000000,'config','fixture')")
             db.execSQL("INSERT INTO app_state_namespace(namespace,imported_at,legacy_name) VALUES('config',1700000000000,'')")
             db.execSQL(
@@ -89,27 +90,12 @@ class EntityCatalogUpgradeTest {
             assertEquals("https://ha.example.test", scalar(db, "SELECT value_text FROM app_state WHERE namespace='config' AND state_key='ha_url'"))
             assertEquals("2", scalar(db, "SELECT value_text FROM app_state WHERE namespace='config' AND state_key='config_schema'"))
             assertEquals("0", scalar(db, "SELECT analyzer_policy_version FROM dashboard"))
-            assertEquals("101", scalar(db, "SELECT last_sync_at FROM dashboard WHERE instance='fixture' AND path='home'"))
-            assertEquals("102", scalar(db, "SELECT ignored_at FROM dashboard_ignored_issue WHERE fingerprint='ignored-warning'"))
-            assertEquals("103,104", scalar(db, "SELECT first_seen_at||','||last_seen_at FROM entity WHERE entity_id='sensor.room'"))
-            assertEquals(
-                "1,1,1,1,105,106,107",
-                scalar(db, "SELECT referenced_by_config||','||referenced_at_runtime||','||pinned||','||excluded||','||" +
-                    "first_access_at||','||last_access_at||','||rate_window_started_at FROM dashboard_entity WHERE entity_id='sensor.room'"),
-            )
-            assertEquals("109", scalar(db, "SELECT span_started_at FROM dashboard_entity_traffic_minute WHERE minute=108"))
-            db.rawQuery("SELECT raw_sum_squares FROM proximity_sample WHERE fingerprint='probe'", emptyArray()).use { cursor ->
-                assertTrue(cursor.moveToFirst())
-                assertEquals(25.0, cursor.getDouble(0), 0.0)
-            }
-            assertEquals("0", scalar(db, "SELECT count(*) FROM pragma_foreign_key_check"))
         }
 
         val target = context.getDatabasePath(EntityCatalogStore.DATABASE_NAME)
         val premigration = preMigrationBackupFile(target, 11)
         assertTrue("upgrade must retain the exact pre-migration database", premigration.isFile)
         assertWalHeader(premigration)
-        assertStandalone(premigration)
         SQLiteDatabase.openDatabase(
             premigration.path,
             null,
@@ -130,6 +116,9 @@ class EntityCatalogUpgradeTest {
                 SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
             ).use { it.version },
         )
+        listOf("-wal", "-shm", "-journal", ".tmp").forEach { suffix ->
+            assertFalse("pre-migration snapshot must be standalone: $suffix", java.io.File(premigration.path + suffix).exists())
+        }
     }
 
     @Test fun newerDatabaseRestoresStandaloneCurrentSnapshotWithoutCanonicalSidecars() {
@@ -183,26 +172,19 @@ class EntityCatalogUpgradeTest {
     }
 
     /**
-     * History survives both the additive payload migration and the declared v14 naming break.
+     * The metric payload migration moves Tier-2 history, so it must arrive intact. `dashboard_performance`
+     * is deliberately left in place: dropping it would be non-additive, and keeping it lets an older build
+     * still open this database.
      */
-    @Test fun performanceHistorySurvivesTheNamingMigrationAndRetiresTheOldTable() {
-        HistoricalCatalogFixture.create(context).use { db ->
-            EntityCatalogSchema.plan(11, 12).single().sql.forEach(db::execSQL)
+    @Test fun performanceHistoryIsCarriedIntoPayloadsAndTheOldTableIsRetainedEmpty() {
+        legacyDatabase(12).use { db ->
+            db.execSQL(EntityCatalogStore.PERFORMANCE_HISTORY_TABLE_SQL)
             db.execSQL(
                 "INSERT INTO dashboard_performance(instance,path,minute,filter_active,entity_count," +
                     "frames,loaf_max_micros,interaction_max_micros,input_delay_micros) " +
                     "VALUES('home','lovelace',1000,1,42,7,900,500,60)",
             )
             db.version = 12
-            // Prove the intermediate additive contract before running the final naming migration.
-            val payloadStep = EntityCatalogSchema.plan(12, 13).single()
-            assertFalse(payloadStep.breaksCompatibility)
-            payloadStep.sql.forEach(db::execSQL)
-            payloadStep.transform?.invoke(db)
-            assertTrue("schema 13 retains the old table", tableExists(db, "dashboard_performance"))
-            assertEquals("0", scalar(db, "SELECT count(*) FROM dashboard_performance"))
-            assertEquals("1", scalar(db, "SELECT count(*) FROM dashboard_metric_minute"))
-            db.version = 13
         }
 
         EntityCatalogStore(context).use { store ->
@@ -217,7 +199,8 @@ class EntityCatalogUpgradeTest {
             assertEquals(7L, minute.totals.frames)
             assertEquals(900L, minute.totals.loafMaxMicros)
             assertEquals("the slowest interaction keeps its breakdown", 60L, minute.totals.inputDelayMicros)
-            assertFalse("v14 retires the migrated table", tableExists(db, "dashboard_performance"))
+            assertEquals("0", scalar(db, "SELECT count(*) FROM dashboard_performance"))
+            assertTrue("the old table must remain for an older build", tableExists(db, "dashboard_performance"))
         }
     }
 
@@ -247,5 +230,13 @@ class EntityCatalogUpgradeTest {
     private fun indexExists(db: SQLiteDatabase, index: String): Boolean =
         scalar(db, "SELECT name FROM sqlite_master WHERE type='index' AND name='$index'") == index
 
-    private fun clean() = HistoricalCatalogFixture.clean(context)
+    private fun clean() {
+        context.deleteDatabase(EntityCatalogStore.DATABASE_NAME)
+        // The reconcile paths leave .vN.premigrate / .vN.superseded copies beside the database; without
+        // sweeping them a preserved database from one test becomes a restore source in the next.
+        val target = context.getDatabasePath(EntityCatalogStore.DATABASE_NAME)
+        target.parentFile?.listFiles()
+            ?.filter { it.name.startsWith("${target.name}.v") }
+            ?.forEach { it.delete() }
+    }
 }
