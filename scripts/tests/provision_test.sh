@@ -4152,12 +4152,16 @@ if provision_scope_is core all shard-install-finish; then
 MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_BRIDGE_PROBES=2 MOCK_HANDOVER_HELD_PROBES=2 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "handover waits through bridge and held-successor health"
-assert_log_contains 'handover-health package=io.github.maxlyth.hapaneld probe=2' \
-  "bridge health does not admit the installed successor"
-assert_log_contains 'handover-health package=io.panelassistant.android probe=5' \
-  "held-successor health does not admit a handover before bridge removal"
-handover_absent_line="$(grep -n '^handover-legacy-absent$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 handover_plan_line="$(grep -n 'curl .*\/api/v1/provisioning/plan.txt' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_bridge_probe_line="$(grep -n '^handover-health package=io.github.maxlyth.hapaneld probe=2$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+handover_held_probe_line="$(grep -n '^handover-health package=io.panelassistant.android probe=5$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
+if [ -n "$handover_bridge_probe_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_bridge_probe_line" -lt "$handover_plan_line" ]; then
+  pass "bridge health does not admit the installed successor"
+else fail_test "bridge health does not admit the installed successor"; fi
+if [ -n "$handover_held_probe_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_held_probe_line" -lt "$handover_plan_line" ]; then
+  pass "held-successor health does not admit a handover before bridge removal"
+else fail_test "held-successor health does not admit a handover before bridge removal"; fi
+handover_absent_line="$(grep -n '^handover-legacy-absent$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 if [ -n "$handover_absent_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_absent_line" -lt "$handover_plan_line" ]; then
   pass "the first installed-app plan follows proven bridge removal"
 else fail_test "the first installed-app plan follows proven bridge removal"; fi
