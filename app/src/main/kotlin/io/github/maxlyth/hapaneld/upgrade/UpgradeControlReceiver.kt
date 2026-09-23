@@ -8,12 +8,14 @@ import android.util.Log
 import io.github.maxlyth.hapaneld.persistence.CleanDatabaseProof
 import io.github.maxlyth.hapaneld.upgrade.PREPARE_UPGRADE_ACTION
 import io.github.maxlyth.hapaneld.upgrade.RELEASE_UPGRADE_ACTION
+import io.github.maxlyth.hapaneld.upgrade.RENEW_UPGRADE_ACTION
 import io.github.maxlyth.hapaneld.upgrade.UPGRADE_NONCE_EXTRA
 import io.github.maxlyth.hapaneld.upgrade.UpgradeRequestCompletion
 import io.github.maxlyth.hapaneld.upgrade.UpgradeShutdownCoordinator
 import io.github.maxlyth.hapaneld.upgrade.canonicalUpgradeNonce
 import io.github.maxlyth.hapaneld.upgrade.formatUpgradeReady
 import io.github.maxlyth.hapaneld.upgrade.formatUpgradeReleased
+import io.github.maxlyth.hapaneld.upgrade.formatUpgradeRenewed
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -27,6 +29,7 @@ class UpgradeControlReceiver : BroadcastReceiver() {
         when (intent.action) {
             PREPARE_UPGRADE_ACTION -> prepare(context, intent)
             RELEASE_UPGRADE_ACTION -> release(context, intent)
+            RENEW_UPGRADE_ACTION -> renew(context, intent)
             else -> failResult("unknown_action")
         }
     }
@@ -56,6 +59,14 @@ class UpgradeControlReceiver : BroadcastReceiver() {
         }
         resultCode = Activity.RESULT_OK
         resultData = formatUpgradeReleased(nonce)
+    }
+
+    private fun renew(context: Context, intent: Intent) {
+        val nonce = canonicalUpgradeNonce(intent.getStringExtra(UPGRADE_NONCE_EXTRA))
+            ?: return failResult("invalid_nonce")
+        if (!UpgradeShutdownCoordinator.renew(context, nonce)) return failResult("renewal_failed")
+        resultCode = Activity.RESULT_OK
+        resultData = formatUpgradeRenewed(nonce)
     }
 
     private fun failResult(reason: String) {
