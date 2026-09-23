@@ -63,6 +63,9 @@ class UpgradeShutdownContractTest {
         assertTrue(receiver.contains("resultData = formatUpgradeRenewed(nonce)"))
         assertTrue(coordinator.contains("gate.arm(nonce, completion, SystemClock.elapsedRealtime() + UPGRADE_HOLD_TIMEOUT_MS)"))
         assertTrue(coordinator.contains("gate.renew(nonce, SystemClock.elapsedRealtime(), UPGRADE_HOLD_TIMEOUT_MS)"))
+        val renewal = coordinator.substring(coordinator.indexOf("fun renew(context:"), coordinator.indexOf("private fun scheduleWatchdog("))
+        assertTrue(renewal.contains("scheduleWatchdog(context, nonce)"))
+        assertTrue(renewal.indexOf("gate.renew(") < renewal.indexOf("scheduleWatchdog(context, nonce)"))
         assertTrue(coordinator.contains("cancelAndResume(appContext, nonce, \"watchdog_expired\", SystemClock.elapsedRealtime())"))
         assertTrue(coordinator.contains("val cancelled = gate.cancel(nonce, reason, expiredAtMillis)"))
     }
