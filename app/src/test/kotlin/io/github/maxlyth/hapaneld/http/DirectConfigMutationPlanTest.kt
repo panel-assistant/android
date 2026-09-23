@@ -75,7 +75,7 @@ class DirectConfigMutationPlanTest {
 
     @Test fun `ordinary or exposure change requests reconfigure while local live change does not`() {
         assertTrue(planDirectConfigMutation(
-            posted = mapOf("friendly_name" to "Kitchen"),
+            posted = mapOf("friendly_name" to "Alpha"),
             before = mapOf("friendly_name" to "Panel"),
         ).requiresReconfigure)
         assertTrue(planDirectConfigMutation(

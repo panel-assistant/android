@@ -21,7 +21,7 @@ class HaAreaProtocolTest {
     private fun devicesJson(areaId: String = "office") = JSONObject(
         """{"result":[
             {"id":"other","identifiers":[["mqtt","something-else"]],"area_id":"kitchen"},
-            {"id":"dev1","identifiers":[["mqtt","ha-paneld-uid-abc123"],["mqtt","ha-paneld-office_panel"]],"area_id":"$areaId"}
+            {"id":"dev1","identifiers":[["mqtt","ha-paneld-uid-abc123"],["mqtt","ha-paneld-alpha"]],"area_id":"$areaId"}
         ]}""",
     )
 
@@ -171,15 +171,15 @@ class HaAreaProtocolTest {
 
     @Test fun thePanelDeviceIsFoundByItsOwnMqttIdentifiersAndJoinedToItsArea() {
         val areas = HaAreaProtocol.areas(areasJson())
-        val found = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "abc123", "office_panel")
+        val found = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "abc123", "alpha")
         assertTrue(found.found)
         assertEquals("dev1", found.deviceId)
         assertEquals("Office", found.areaName)
         // Legacy panel-id identifier is the fallback when the immutable one is absent.
-        val legacyOnly = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "", "office_panel")
+        val legacyOnly = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "", "alpha")
         assertTrue(legacyOnly.found)
         // No area on the device reads as blank, never as a guess.
-        val bare = HaAreaProtocol.panelDeviceArea(devicesJson(areaId = ""), areas, "abc123", "office_panel")
+        val bare = HaAreaProtocol.panelDeviceArea(devicesJson(areaId = ""), areas, "abc123", "alpha")
         assertTrue(bare.found)
         assertEquals("", bare.areaName)
         // Unlike the presence path this never throws — setup must be able to say "not found" calmly.

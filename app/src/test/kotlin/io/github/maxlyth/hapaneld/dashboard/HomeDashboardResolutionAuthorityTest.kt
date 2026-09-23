@@ -27,24 +27,24 @@ class HomeDashboardResolutionAuthorityTest {
     @Test fun `an ordinary resolve replays the process answer instead of re-reading`() = runBlocking {
         val authority = HomeDashboardResolutionAuthority()
         var reads = 0
-        authority.resolve(key, { true }) { reads++; resolution("/office") }
-        val replayed = authority.resolve(key, { true }) { reads++; resolution("/kitchen") }
+        authority.resolve(key, { true }) { reads++; resolution("/alpha") }
+        val replayed = authority.resolve(key, { true }) { reads++; resolution("/beta") }
         assertEquals(1, reads)
-        assertEquals("/office", replayed?.path)
+        assertEquals("/alpha", replayed?.path)
     }
 
     @Test fun `a forced refresh re-reads home assistant and republishes the new answer`() = runBlocking {
         val authority = HomeDashboardResolutionAuthority()
         var reads = 0
-        authority.resolve(key, { true }) { reads++; resolution("/office") }
+        authority.resolve(key, { true }) { reads++; resolution("/alpha") }
         // The account default moved while the panel was off; a forced read must observe it.
-        val forced = authority.resolve(key, { true }, forceLive = true) { reads++; resolution("/kitchen") }
+        val forced = authority.resolve(key, { true }, forceLive = true) { reads++; resolution("/beta") }
         assertEquals(2, reads)
-        assertEquals("/kitchen", forced?.path)
+        assertEquals("/beta", forced?.path)
         // …and the corrected answer becomes the process answer, so the next ordinary caller agrees.
         val afterwards = authority.resolve(key, { true }) { reads++; resolution("/stale") }
         assertEquals(2, reads)
-        assertEquals("/kitchen", afterwards?.path)
+        assertEquals("/beta", afterwards?.path)
     }
 
     @Test fun `a forced read that finds no legal dashboard is not cached`() = runBlocking {
@@ -55,16 +55,16 @@ class HomeDashboardResolutionAuthorityTest {
             EntityLearningProtocol.HomeDashboardResolution()
         }
         // A true zero is authoritative only for that read, so the next caller must ask again.
-        val next = authority.resolve(key, { true }) { reads++; resolution("/office") }
+        val next = authority.resolve(key, { true }) { reads++; resolution("/alpha") }
         assertEquals(2, reads)
-        assertEquals("/office", next?.path)
+        assertEquals("/alpha", next?.path)
     }
 
     @Test fun `a forced read is abandoned when the owner stops being current`() = runBlocking {
         val authority = HomeDashboardResolutionAuthority()
         var reads = 0
-        authority.resolve(key, { true }) { reads++; resolution("/office") }
-        val abandoned = authority.resolve(key, { false }, forceLive = true) { reads++; resolution("/kitchen") }
+        authority.resolve(key, { true }) { reads++; resolution("/alpha") }
+        val abandoned = authority.resolve(key, { false }, forceLive = true) { reads++; resolution("/beta") }
         assertNull(abandoned)
         assertEquals(1, reads)
     }
@@ -72,7 +72,7 @@ class HomeDashboardResolutionAuthorityTest {
     @Test fun `an authoritative empty retires the positive answer this process is holding`() = runBlocking {
         val authority = HomeDashboardResolutionAuthority()
         var reads = 0
-        authority.resolve(key, { true }) { reads++; resolution("/office") }
+        authority.resolve(key, { true }) { reads++; resolution("/alpha") }
         // The account loses access to every dashboard; the forced read completes and reports zero.
         authority.resolve(key, { true }, forceLive = true) {
             reads++
@@ -88,11 +88,11 @@ class HomeDashboardResolutionAuthorityTest {
     @Test fun `a transient failure preserves the positive answer`() = runBlocking {
         val authority = HomeDashboardResolutionAuthority()
         var reads = 0
-        authority.resolve(key, { true }) { reads++; resolution("/office") }
+        authority.resolve(key, { true }) { reads++; resolution("/alpha") }
         // A null READ is a transport/auth failure, not an authoritative zero.
         assertNull(authority.resolve(key, { true }, forceLive = true) { reads++; null })
-        val replayed = authority.resolve(key, { true }) { reads++; resolution("/kitchen") }
+        val replayed = authority.resolve(key, { true }) { reads++; resolution("/beta") }
         assertEquals(2, reads)
-        assertEquals("/office", replayed?.path)
+        assertEquals("/alpha", replayed?.path)
     }
 }

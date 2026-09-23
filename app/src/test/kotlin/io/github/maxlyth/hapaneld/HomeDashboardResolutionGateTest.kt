@@ -13,9 +13,9 @@ class HomeDashboardResolutionGateTest {
         assertTrue(gate.owns(first, firstOwner))
         assertFalse(gate.owns(first, owner("https://changed.example", "first-refresh", "")))
         assertFalse(gate.owns(first, owner("https://first.example", "replacement-refresh", "")))
-        assertFalse(gate.owns(first, owner("https://first.example", "first-refresh", "/office")))
+        assertFalse(gate.owns(first, owner("https://first.example", "first-refresh", "/alpha")))
 
-        val secondOwner = owner("https://first.example", "first-refresh", "/office")
+        val secondOwner = owner("https://first.example", "first-refresh", "/alpha")
         val second = gate.start(secondOwner)
         assertFalse(gate.owns(first, firstOwner))
         assertTrue(gate.owns(second, secondOwner))

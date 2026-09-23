@@ -41,11 +41,11 @@ class SetupRestartStormTest {
 
     /** What each wizard step durably commits, in the journey's stage order. */
     private val walk: List<Pair<String, (MutableMap<String, Any?>, Config) -> Unit>> = listOf(
-        "identity" to { v, c -> v["panel_id"] = "office_panel"; c.setupIdentityConfirmed = true },
+        "identity" to { v, c -> v["panel_id"] = "alpha"; c.setupIdentityConfirmed = true },
         "renderer" to { v, _ -> v["dashboard_package"] = "builtin" },
         "ha_url" to { v, _ -> v["ha_url"] = "http://ha.local:8123" },
         "ha_sign_in" to { v, _ -> v["ha_token"] = "test-token" },
-        "home_dashboard" to { v, c -> v["home_dashboard"] = "/office"; c.setupHomeDashboardChosen = true },
+        "home_dashboard" to { v, c -> v["home_dashboard"] = "/alpha"; c.setupHomeDashboardChosen = true },
         "mqtt" to { v, _ ->
             v["mqtt_broker"] = "tcp://ha.local:1883"
             v["mqtt_user"] = "panel"
@@ -140,7 +140,7 @@ class SetupRestartStormTest {
         // Headless provisioning writes a full configuration and never confirms identity through the wizard.
         // That panel must take the upgrade path on its very first boot — nobody is standing there to answer.
         val provisioned = mutableMapOf<String, Any?>(
-            "panel_id" to "office_panel",
+            "panel_id" to "alpha",
             "mqtt_broker" to "tcp://ha.local:1883",
             "mqtt_user" to "panel",
             "mqtt_password" to "secret",
@@ -171,7 +171,7 @@ class SetupRestartStormTest {
     }
 
     @Test fun aSeededScriptedInstallKeepsItsDashboardAndAnswersAcrossRestarts() {
-        // `provision.sh --home-dashboard /office --entity-filter on`: the two values, then the two
+        // `provision.sh --home-dashboard /alpha --entity-filter on`: the two values, then the two
         // answers the installer records because an operator who supplied them should not be asked
         // again on the panel. The failure this guards is the one that produced the whole class of
         // first-run defects this suite exists for — a restart landing mid-setup and changing what the
@@ -184,14 +184,14 @@ class SetupRestartStormTest {
         val panel = mutableMapOf<String, Any?>()
         var config = boot(panel)
         provisionerConfigPost(panel)
-        panel["home_dashboard"] = "/office"
+        panel["home_dashboard"] = "/alpha"
         panel["dashboard_entity_learning"] = true
         config.setupHomeDashboardChosen = true
         config.setupEntityFilterAnswered = true
 
         repeat(3) { config = boot(panel) }
 
-        assertEquals("the seeded dashboard survives every restart", "/office", config.homeDashboard)
+        assertEquals("the seeded dashboard survives every restart", "/alpha", config.homeDashboard)
         assertTrue("the seeded filter policy survives every restart", config.dashboardEntityLearningEnabled)
         assertTrue("the recorded dashboard answer survives", config.setupHomeDashboardChosen)
         assertTrue("the recorded filter answer survives", config.setupEntityFilterAnswered)
@@ -222,11 +222,11 @@ class SetupRestartStormTest {
             "ha_url" to "http://ha.local:8123",
             "ha_token" to "test-token",
             "dashboard_package" to "builtin",
-            "home_dashboard" to "/office",
+            "home_dashboard" to "/alpha",
         )
         val config = Config(fakePreferences(seeded))
 
-        assertEquals("the seeded value is still durable", "/office", config.homeDashboard)
+        assertEquals("the seeded value is still durable", "/alpha", config.homeDashboard)
         assertFalse("but the question is not recorded as answered", config.setupHomeDashboardChosen)
         assertTrue(
             "so the renderer still holds rather than rendering behind an unanswered question",
@@ -244,7 +244,7 @@ class SetupRestartStormTest {
 
     /** What `provision.sh` commits in its one `POST /api/v1/config` for `--builtin`. */
     private fun provisionerConfigPost(values: MutableMap<String, Any?>) {
-        values["panel_id"] = "office_panel"
+        values["panel_id"] = "alpha"
         values["ha_url"] = "http://ha.local:8123"
         values["ha_token"] = "test-token"
         values["dashboard_package"] = "builtin"
@@ -449,7 +449,7 @@ class SetupRestartStormTest {
             identityConfirmed = config.setupIdentityConfirmed || configuredBeforeTracking,
             // A real panel always resolves an id: the generated default reads Android settings, which the
             // JVM seam cannot serve. Substituting a stable one keeps the blank-panel case in the sweep.
-            panelId = runCatching { config.panelId }.getOrElse { "office_panel" },
+            panelId = runCatching { config.panelId }.getOrElse { "alpha" },
             brokerConfigured = config.mqttBroker.isNotBlank(),
             mqttUserConfigured = config.mqttUser.isNotBlank(),
             mqttPasswordConfigured = config.mqttPassword.isNotEmpty(),

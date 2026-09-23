@@ -238,7 +238,7 @@ class HaUrlHandoverTest {
         // an old panel ignore a key it does not know. Admission refuses the unknown name AND the refusal
         // is atomic, so a blind handover would not merely fail to hand over — it would drop every other
         // setting in the same request.
-        val posted = params("ha_url_handover" to "http://ha.local:8123", "panel_id" to "kitchen_panel")
+        val posted = params("ha_url_handover" to "http://ha.local:8123", "panel_id" to "alpha")
         val refused = normalizeConfigPostParameters(Parameters.build { append("ha_not_a_real_key", "x") })
         assertTrue(refused is ConfigPostParameters.Bad)
         assertEquals("ha_not_a_real_key: unknown setting", (refused as ConfigPostParameters.Bad).reason)

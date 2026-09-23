@@ -103,7 +103,7 @@ class OriginGuardTest {
 
     @Test fun localhostAllowed() = assertTrue(OriginGuard.hostAllowed("localhost:8888", none))
 
-    @Test fun mdnsLocalAllowed() = assertTrue(OriginGuard.hostAllowed("kitchen-panel.local:8888", none))
+    @Test fun mdnsLocalAllowed() = assertTrue(OriginGuard.hostAllowed("device-a.local:8888", none))
 
     @Test fun missingHostAllowed() {
         assertTrue(OriginGuard.hostAllowed(null, none))
@@ -114,13 +114,13 @@ class OriginGuardTest {
         assertFalse("a rebound public hostname must be refused", OriginGuard.hostAllowed("panel.attacker.example:8888", none))
 
     @Test fun configuredNameAllowed() =
-        assertTrue(OriginGuard.hostAllowed("kitchen-panel.myhome.lan:8888", setOf("kitchen-panel.myhome.lan")))
+        assertTrue(OriginGuard.hostAllowed("device-a.example.lan:8888", setOf("device-a.example.lan")))
 
     @Test fun configuredNameCaseInsensitive() =
-        assertTrue(OriginGuard.hostAllowed("Kitchen-Panel.MyHome.LAN", setOf("kitchen-panel.myhome.lan")))
+        assertTrue(OriginGuard.hostAllowed("Device-A.Example.LAN", setOf("device-a.example.lan")))
 
     @Test fun nonConfiguredNameStillRefused() =
-        assertFalse(OriginGuard.hostAllowed("other.myhome.lan", setOf("kitchen-panel.myhome.lan")))
+        assertFalse(OriginGuard.hostAllowed("other.example.lan", setOf("device-a.example.lan")))
 
     @Test fun almostIpNotTreatedAsLiteral() =
         assertFalse("300 is not a valid octet — treat as a hostname, refuse", OriginGuard.hostAllowed("300.1.2.3", none))

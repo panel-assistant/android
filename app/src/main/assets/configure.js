@@ -29,13 +29,13 @@
   // `pattern` with the `v` flag, where the unescaped `/` and `?` in `[^/?#\s]` are invalid, and a
   // browser that cannot parse a pattern silently IGNORES the constraint. That made this check inert on
   // Configure while the wizard's identical expression worked, and no string-comparing contract test
-  // could see the difference. A trailing slash is accepted because the server canonicalizes `/office/`
-  // to `/office`; the client must never refuse what the authority would accept.
+  // could see the difference. A trailing slash is accepted because the server canonicalizes `/alpha/`
+  // to `/alpha`; the client must never refuse what the authority would accept.
   var DASHBOARD_PATH_PATTERN = "\\s*/?[a-z0-9][a-z0-9_-]*(?:/[^/?#]*)*(?:\\?[^#]*)?(?:#.*)?\\s*";
   function wellFormedDashboardPath(path) {
     return new RegExp("^(?:" + DASHBOARD_PATH_PATTERN + ")$").test(String(path || ""));
   }
-  // The dashboard root a path belongs to (/office/view?k=1 → /office), or "" when it has none.
+  // The dashboard root a path belongs to (/alpha/view?k=1 → /alpha), or "" when it has none.
   function dashboardRootOf(path) {
     var route = String(path || "").trim().split("?")[0].split("#")[0];
     var first = route.split("/").filter(function (s) { return s !== ""; })[0] || "";
@@ -825,7 +825,7 @@
     // list; this form keeps HA's GROUPING via native optgroups, which is the part that carries real information.
     // Auto intentionally remains first; a legacy/custom configured path is preserved rather than silently lost.
     // "Custom…" reveals a plain text input UNDER the select, which is how a specific view below a
-    // dashboard root (/office/kitchen) is entered — Home Assistant's list endpoint only ever
+    // dashboard root (/alpha/beta) is entered — Home Assistant's list endpoint only ever
     // returns roots. A revealed input, rather than an editable combobox, is what keeps the earlier
     // hardware verdict intact: nothing floats, nothing escapes the card, the native popup still owns
     // the list. A configured path that is not in the list now lands here instead of in a dead-end

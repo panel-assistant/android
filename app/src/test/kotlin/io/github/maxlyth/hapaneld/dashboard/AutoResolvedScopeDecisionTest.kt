@@ -21,7 +21,7 @@ class AutoResolvedScopeDecisionTest {
     @Test fun `an explicitly chosen dashboard may reuse the memo within one pass`() {
         // The configured path is part of the key here, so a change to it already invalidates the memo.
         // Forcing a live read for these would cost a round trip per scan and prove nothing.
-        for (explicit in listOf("/lovelace", "/lovelace/kiosk", "/office/tab")) {
+        for (explicit in listOf("/lovelace", "/lovelace/kiosk", "/alpha/tab")) {
             assertFalse(explicit, homeDashboardResolutionMustBeLive(explicit))
         }
     }
@@ -42,7 +42,7 @@ class AutoResolvedScopeDecisionTest {
         assertFalse(
             "the configured dashboard moved under a cancelled pass",
             resolvedScopeRebindIsStillCurrent(
-                snapshotConfigured = "", currentConfigured = "/office",
+                snapshotConfigured = "", currentConfigured = "/alpha",
                 snapshotOrigin = "https://ha.example", currentOrigin = "https://ha.example",
                 generationMatches = true,
             ),

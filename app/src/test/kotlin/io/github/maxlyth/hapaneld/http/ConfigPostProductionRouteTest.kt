@@ -93,7 +93,7 @@ class ConfigPostProductionRouteTest {
 
                 val response = client.submitForm(
                     url = "/api/v1/config",
-                    formParameters = Parameters.build { append(spec.key, "/lovelace/kitchen") },
+                    formParameters = Parameters.build { append(spec.key, "/lovelace/beta") },
                 ) { accept(ContentType.Application.Json) }
 
                 val responseText = response.bodyAsText()
@@ -103,14 +103,14 @@ class ConfigPostProductionRouteTest {
                 assertEquals(listOf(spec.key), body.getJSONArray("applied").let { array ->
                     List(array.length()) { array.getString(it) }
                 })
-                assertEquals("/lovelace/kitchen", body.getJSONObject("settings").getString(spec.key))
+                assertEquals("/lovelace/beta", body.getJSONObject("settings").getString(spec.key))
             }
 
             assertEquals(1, runtimeRefreshes.size, "the concrete MqttBridge effect owner must run")
-            assertEquals("/lovelace/kitchen", config.getRaw(spec))
+            assertEquals("/lovelace/beta", config.getRaw(spec))
             val reopened = Config(SqliteStatePreferences(JdbcStatePersistence(database), reopenedWriter))
             assertEquals(
-                "/lovelace/kitchen",
+                "/lovelace/beta",
                 reopened.getRaw(spec),
                 "a new production preference owner must read SQLite",
             )

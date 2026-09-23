@@ -24,7 +24,7 @@ class TouchSoundDriftContractTest {
         // Settled at an earlier boot: the user switched touch sound off.
         val intent = false
         // The Configure page was rendered from that intent, and the user then changed only the name.
-        val posted = mapOf("touch_sound" to intent.toString(), "friendly_name" to "Kitchen")
+        val posted = mapOf("touch_sound" to intent.toString(), "friendly_name" to "Alpha")
         // Meanwhile firmware turned SOUND_EFFECTS_ENABLED back on underneath the app.
         val before = mapOf(
             "touch_sound" to resolveTouchSoundIntent(
@@ -33,7 +33,7 @@ class TouchSoundDriftContractTest {
                 observedHardware = true,
                 registryDefault = true,
             ).enabled.toString(),
-            "friendly_name" to "Hall",
+            "friendly_name" to "Beta",
         )
 
         val plan = planDirectConfigMutation(posted, before)
@@ -48,8 +48,8 @@ class TouchSoundDriftContractTest {
      * defect, written down.
      */
     @Test fun resolvingFromTheObservationIsWhatManufacturedTheEdit() {
-        val posted = mapOf("touch_sound" to "false", "friendly_name" to "Kitchen")
-        val before = mapOf("touch_sound" to "true", "friendly_name" to "Hall")
+        val posted = mapOf("touch_sound" to "false", "friendly_name" to "Alpha")
+        val before = mapOf("touch_sound" to "true", "friendly_name" to "Beta")
 
         val plan = planDirectConfigMutation(posted, before)
 
@@ -76,8 +76,8 @@ class TouchSoundDriftContractTest {
      */
     @Test fun aSaveThatDoesNotNameTouchSoundLeavesItAlone() {
         val plan = planDirectConfigMutation(
-            posted = mapOf("friendly_name" to "Kitchen"),
-            before = mapOf("touch_sound" to "false", "friendly_name" to "Hall"),
+            posted = mapOf("friendly_name" to "Alpha"),
+            before = mapOf("touch_sound" to "false", "friendly_name" to "Beta"),
         )
 
         assertEquals(setOf("friendly_name"), plan.changedKeys)

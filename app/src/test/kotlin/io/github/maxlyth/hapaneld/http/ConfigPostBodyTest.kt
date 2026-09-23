@@ -189,7 +189,7 @@ class ConfigPostBodyTest {
             append("ha_url", "")
         }))
         assertFalse(shouldDiscoverHaUrlForMqttOnboarding("", Parameters.build {
-            append("friendly_name", "Office")
+            append("friendly_name", "Alpha")
         }))
     }
 

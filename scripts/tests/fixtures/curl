@@ -481,7 +481,7 @@ JSON
     case "${MOCK_HOME_DASHBOARDS:-ok}" in
       transport-fail) exit 22 ;;
       unreachable) printf '{"queried":false,"items":[],"default":{"explicit":false,"path":""}}\n' ;;
-      *) printf '{"queried":true,"items":[{"path":"/lovelace","title":"Home","icon":"","group":"lovelace"},{"path":"/office","title":"Office","icon":"","group":"lovelace"}],"default":{"explicit":true,"path":"/lovelace"}}\n' ;;
+      *) printf '{"queried":true,"items":[{"path":"/lovelace","title":"Home","icon":"","group":"lovelace"},{"path":"/alpha","title":"Office","icon":"","group":"lovelace"}],"default":{"explicit":true,"path":"/lovelace"}}\n' ;;
     esac
     ;;
   */api/v1/config/schema)

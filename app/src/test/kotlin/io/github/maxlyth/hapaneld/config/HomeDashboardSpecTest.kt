@@ -30,9 +30,9 @@ class HomeDashboardSpecTest {
 
     @Test fun `a view below a dashboard root is accepted and stored canonically`() {
         // The issue's own examples. Before this, only the root /dashboard-test could be chosen.
-        assertEquals("/dashboard-test/office", accepted("/dashboard-test/office"))
+        assertEquals("/dashboard-test/alpha", accepted("/dashboard-test/alpha"))
         assertEquals("/dashboard-test/laundry", accepted("dashboard-test/laundry"))
-        assertEquals("/office/view?kiosk=1#main", accepted("  /office/view?kiosk=1#main  "))
+        assertEquals("/alpha/view?kiosk=1#main", accepted("  /alpha/view?kiosk=1#main  "))
         assertEquals("/lovelace/0", accepted("/lovelace/0"))
     }
 
@@ -53,9 +53,9 @@ class HomeDashboardSpecTest {
             "//ha.example/wall-panel",
             "../wall-panel",
             "wall\\panel",
-            "/office/%2e%2e/evil",
-            "/office/%2Foutside",
-            "/Office",
+            "/alpha/%2e%2e/evil",
+            "/alpha/%2Foutside",
+            "/Alpha",
             "null",
         )) {
             rejected(bad)
@@ -66,7 +66,7 @@ class HomeDashboardSpecTest {
         // The catalogue can be unfetched, the account may not see the dashboard yet, and a dashboard
         // may be created after setup. Both pickers warn about this; the API must not block it, or a
         // panel could not be configured ahead of the dashboard it is meant to show.
-        assertEquals("/not-created-yet/office", accepted("/not-created-yet/office"))
+        assertEquals("/not-created-yet/alpha", accepted("/not-created-yet/alpha"))
     }
 
     @Test fun `a scheme inside a query or fragment is opaque state, not an absolute URL`() {
@@ -79,7 +79,7 @@ class HomeDashboardSpecTest {
             "/lovelace/view?url=https://example.invalid/x",
             accepted("/lovelace/view?url=https://example.invalid/x"),
         )
-        assertEquals("/office/view#ref=ws://bridge", accepted("/office/view#ref=ws://bridge"))
+        assertEquals("/alpha/view#ref=ws://bridge", accepted("/alpha/view#ref=ws://bridge"))
     }
 
     @Test fun `the shapes a command path used to coerce are canonicalized or refused, never rewritten`() {
@@ -87,8 +87,8 @@ class HomeDashboardSpecTest {
         // retained in a form the renderer and Configure then disagreed about. One authority now decides:
         // a trailing slash is canonicalized away, and traversal is refused outright rather than flattened
         // into some other dashboard's route.
-        assertEquals("/office", accepted("/office/"))
-        rejected("/office/../evil")
+        assertEquals("/alpha", accepted("/alpha/"))
+        rejected("/alpha/../evil")
     }
 
     @Test fun `the setting still lives on the Dashboard card and applies without a restart`() {

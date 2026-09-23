@@ -944,7 +944,7 @@
       sel.appendChild(og);
     });
     // Home Assistant's list endpoint returns dashboard ROOTS only, so a specific view below one
-    // (/office/kitchen) can never appear as an option — it has to be typed. A configured path
+    // (/alpha/beta) can never appear as an option — it has to be typed. A configured path
     // that is not in the list opens here rather than as an uneditable row, which is what finally lets
     // it be corrected on the panel itself.
     var customActive = !!preselect && !seen[preselect];

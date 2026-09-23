@@ -40,7 +40,7 @@ class SetupJourneyTest {
         currentFingerprint: String = "",
     ) = SetupJourney.Inputs(
         identityConfirmed = identityConfirmed,
-        panelId = "kitchen_panel",
+        panelId = "alpha",
         brokerConfigured = brokerConfigured,
         mqttUserConfigured = mqttUserConfigured,
         mqttPasswordConfigured = mqttPasswordConfigured,

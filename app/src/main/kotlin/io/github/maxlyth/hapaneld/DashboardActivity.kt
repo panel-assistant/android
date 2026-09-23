@@ -1758,7 +1758,7 @@ class DashboardActivity : AppCompatActivity() {
         val observed = runCatching { android.net.Uri.parse(url).path }.getOrNull() ?: return false
         val claimed = appNavigatedDashboardRoute ?: return false
         // Once the frontend has connected, the page belongs to the user: ANY route change is their
-        // choice, including a view change inside the same dashboard (/office -> /office/view-2),
+        // choice, including a view change inside the same dashboard (/alpha -> /alpha/view-2),
         // which a root-only comparison silently allowed a delayed correction to overrule. Before the
         // first connection the page is still OUR load settling — the frontend normalising to a
         // default view, or a server redirect — so only a different dashboard root counts, otherwise

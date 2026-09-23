@@ -25,7 +25,7 @@ class HaMdnsIdentityTest {
         val record = requireNotNull(parseHaTxtRecord(
             firstUuid, "http://ha.local:8123", "https://ha.example.net", null, "$firstUuid.local.",
         ))
-        assertEquals(firstUuid, matchHaInstanceUuid(listOf("http://HA.local:8123/lovelace/office"), listOf(record)))
+        assertEquals(firstUuid, matchHaInstanceUuid(listOf("http://HA.local:8123/lovelace/alpha"), listOf(record)))
         assertEquals(firstUuid, matchHaInstanceUuid(listOf("https://ha.example.net"), listOf(record)))
     }
 

@@ -65,8 +65,8 @@ class HaLinkPolicyTest {
     @Test fun `stable panel identity wins over an earlier friendly name match`() {
         val response = """
             {"result":{"entities":[
-              {"ei":"text.kitchen_display_home_dashboard","di":"friendly-device"},
-              {"ei":"light.kitchen_display_screen","di":"friendly-device"},
+              {"ei":"text.alpha_display_home_dashboard","di":"friendly-device"},
+              {"ei":"light.alpha_display_screen","di":"friendly-device"},
               {"ei":"text.wall_panel_home_dashboard","di":"stable-device"},
               {"ei":"light.wall_panel_screen","di":"stable-device"}
             ]}}
@@ -74,72 +74,72 @@ class HaLinkPolicyTest {
 
         assertEquals(
             "stable-device",
-            HaLink.matchDeviceId(response, listOf("wall_panel", "kitchen_display")),
+            HaLink.matchDeviceId(response, listOf("wall_panel", "alpha_display")),
         )
     }
 
-    @Test fun `room-name prefix cannot select an unrelated device before the panel entities`() {
+    @Test fun `candidate prefix cannot select an unrelated device before the panel entities`() {
         val response = """
             {"result":{"entities":[
-              {"ei":"sensor.kitchen_temperature","di":"temperature-device"},
-              {"ei":"binary_sensor.kitchen_motion","di":"motion-device"},
-              {"ei":"text.kitchen_home_dashboard","di":"panel-device"},
-              {"ei":"light.kitchen_screen","di":"panel-device"}
+              {"ei":"sensor.alpha_temperature","di":"temperature-device"},
+              {"ei":"binary_sensor.alpha_motion","di":"motion-device"},
+              {"ei":"text.alpha_home_dashboard","di":"panel-device"},
+              {"ei":"light.alpha_screen","di":"panel-device"}
             ]}}
         """.trimIndent()
 
-        assertEquals("panel-device", HaLink.matchDeviceId(response, listOf("kitchen")))
+        assertEquals("panel-device", HaLink.matchDeviceId(response, listOf("alpha")))
     }
 
     @Test fun `numeric HA collision suffix combines with an exact panel marker`() {
         val response = """
             {"result":[
-              {"ei":"light.kitchen_screen","di":"unrelated-screen"},
-              {"ei":"text.kitchen_home_dashboard","di":"panel-device"},
-              {"ei":"light.kitchen_screen_2","di":"panel-device"}
+              {"ei":"light.alpha_screen","di":"unrelated-screen"},
+              {"ei":"text.alpha_home_dashboard","di":"panel-device"},
+              {"ei":"light.alpha_screen_2","di":"panel-device"}
             ]}
         """.trimIndent()
 
-        assertEquals("panel-device", HaLink.matchDeviceId(response, listOf("kitchen")))
+        assertEquals("panel-device", HaLink.matchDeviceId(response, listOf("alpha")))
     }
 
     @Test fun `qualified exact collision owner cannot outrank the suffixed panel device`() {
         val response = """
             {"result":[
-              {"ei":"text.kitchen_home_dashboard","di":"collision-owner"},
-              {"ei":"light.kitchen_screen","di":"collision-owner"},
-              {"ei":"text.kitchen_home_dashboard_2","di":"panel-device"},
-              {"ei":"light.kitchen_screen_2","di":"panel-device"}
+              {"ei":"text.alpha_home_dashboard","di":"collision-owner"},
+              {"ei":"light.alpha_screen","di":"collision-owner"},
+              {"ei":"text.alpha_home_dashboard_2","di":"panel-device"},
+              {"ei":"light.alpha_screen_2","di":"panel-device"}
             ]}
         """.trimIndent()
 
-        assertNull(HaLink.matchDeviceId(response, listOf("kitchen")))
+        assertNull(HaLink.matchDeviceId(response, listOf("alpha")))
     }
 
     @Test fun `historical friendly name remains a fallback when stable identity has no candidate`() {
         val response = """
             {"result":{"entities":[
               {"ei":"light.wall_panel_screen","di":"incomplete-stable-device"},
-              {"ei":"text.kitchen_display_home_dashboard","di":"legacy-device"},
-              {"ei":"light.kitchen_display_screen","di":"legacy-device"}
+              {"ei":"text.alpha_display_home_dashboard","di":"legacy-device"},
+              {"ei":"light.alpha_display_screen","di":"legacy-device"}
             ]}}
         """.trimIndent()
 
         assertEquals(
             "legacy-device",
-            HaLink.matchDeviceId(response, listOf("wall_panel", "kitchen_display")),
+            HaLink.matchDeviceId(response, listOf("wall_panel", "alpha_display")),
         )
     }
 
     @Test fun `one same-prefix known-looking entity is insufficient evidence`() {
         val response = """
             {"result":[
-              {"ei":"light.kitchen_screen","di":"unrelated-screen"},
-              {"ei":"sensor.kitchen_temperature","di":"temperature-device"}
+              {"ei":"light.alpha_screen","di":"unrelated-screen"},
+              {"ei":"sensor.alpha_temperature","di":"temperature-device"}
             ]}
         """.trimIndent()
 
-        assertNull(HaLink.matchDeviceId(response, listOf("kitchen")))
+        assertNull(HaLink.matchDeviceId(response, listOf("alpha")))
     }
 
     @Test fun `registry response without a matching panel entity has no device destination`() {

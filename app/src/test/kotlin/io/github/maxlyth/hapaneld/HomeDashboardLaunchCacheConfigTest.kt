@@ -32,53 +32,53 @@ class HomeDashboardLaunchCacheConfigTest {
     @Test fun `a resolved path persists and reads back for the same owner`() {
         val (config, values) = seeded()
         assertNull(config.cachedHomeDashboardLaunchPath())
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/office"))
-        assertEquals("/office", config.cachedHomeDashboardLaunchPath())
-        assertEquals("/office", values["dashboard_launch_path"])
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/alpha"))
+        assertEquals("/alpha", config.cachedHomeDashboardLaunchPath())
+        assertEquals("/alpha", values["dashboard_launch_path"])
     }
 
     @Test fun `a write with a superseded owner fingerprint is refused`() {
         val (config, values) = seeded()
         val staleOwner = config.homeDashboardLaunchOwner()
-        values["home_dashboard"] = "/kitchen" // the setting changed while the resolution was in flight
-        assertFalse(config.setHomeDashboardLaunchPathIfOwned(staleOwner, "/office"))
+        values["home_dashboard"] = "/beta" // the setting changed while the resolution was in flight
+        assertFalse(config.setHomeDashboardLaunchPathIfOwned(staleOwner, "/alpha"))
         assertNull(values["dashboard_launch_path"])
         assertNull(config.cachedHomeDashboardLaunchPath())
     }
 
     @Test fun `an explicit home dashboard change makes the cache unreadable without cleanup`() {
         val (config, values) = seeded()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/office"))
-        values["home_dashboard"] = "/kitchen"
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/alpha"))
+        values["home_dashboard"] = "/beta"
         assertNull(config.cachedHomeDashboardLaunchPath())
-        assertEquals("/office", values["dashboard_launch_path"]) // row remains; identity gates it
+        assertEquals("/alpha", values["dashboard_launch_path"]) // row remains; identity gates it
     }
 
     @Test fun `a server change never reuses the prior instance cache`() {
         val (config, values) = seeded()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/office"))
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/alpha"))
         values["ha_url"] = "https://moved.example:8123"
         assertNull(config.cachedHomeDashboardLaunchPath())
     }
 
     @Test fun `an account change never reuses the prior identity cache`() {
         val (config, values) = seeded()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/office"))
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/alpha"))
         values["ha_refresh_token"] = "refresh-b" // re-login / different HA user
         assertNull(config.cachedHomeDashboardLaunchPath())
     }
 
     @Test fun `a static token panel keys its cache on that token`() {
         val (config, values) = seeded("ha_refresh_token" to "", "ha_token" to "long-lived-a")
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/office"))
-        assertEquals("/office", config.cachedHomeDashboardLaunchPath())
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/alpha"))
+        assertEquals("/alpha", config.cachedHomeDashboardLaunchPath())
         values["ha_token"] = "long-lived-b"
         assertNull(config.cachedHomeDashboardLaunchPath())
     }
 
     @Test fun `a corrupt stored value fails closed to a live resolution`() {
         val (config, values) = seeded()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/office"))
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(config.homeDashboardLaunchOwner(), "/alpha"))
         values["dashboard_launch_path"] = "//evil.example/pwn"
         assertNull(config.cachedHomeDashboardLaunchPath())
     }
@@ -86,9 +86,9 @@ class HomeDashboardLaunchCacheConfigTest {
     @Test fun `clearing requires the live owner and removes the row`() {
         val (config, values) = seeded()
         val owner = config.homeDashboardLaunchOwner()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(owner, "/office"))
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(owner, "/alpha"))
         assertFalse(config.clearHomeDashboardLaunchPathIfOwned("not-the-owner"))
-        assertEquals("/office", config.cachedHomeDashboardLaunchPath())
+        assertEquals("/alpha", config.cachedHomeDashboardLaunchPath())
         assertTrue(config.clearHomeDashboardLaunchPathIfOwned(owner))
         assertNull(config.cachedHomeDashboardLaunchPath())
         assertNull(values["dashboard_launch_path"])
@@ -98,7 +98,7 @@ class HomeDashboardLaunchCacheConfigTest {
     @Test fun `an over-long resolved path is refused rather than truncated into a new route`() {
         val (config, values) = seeded()
         val owner = config.homeDashboardLaunchOwner()
-        val overLong = "/office/" + "a".repeat(HomeDashboardLaunchCache.MAX_STORED_PATH_CHARS)
+        val overLong = "/alpha/" + "a".repeat(HomeDashboardLaunchCache.MAX_STORED_PATH_CHARS)
         assertFalse(config.setHomeDashboardLaunchPathIfOwned(owner, overLong))
         // Truncation would have manufactured a route Home Assistant never validated.
         assertNull(values["dashboard_launch_path"])
@@ -124,11 +124,11 @@ class HomeDashboardLaunchCacheConfigTest {
         val editorOpens = java.util.concurrent.atomic.AtomicInteger()
         val config = Config(fakePreferences(values, editorOpens))
         val owner = config.homeDashboardLaunchOwner()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(owner, "/office"))
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(owner, "/alpha"))
         val opensAfterFirstWrite = editorOpens.get()
-        assertTrue(config.setHomeDashboardLaunchPathIfOwned(owner, "/office"))
+        assertTrue(config.setHomeDashboardLaunchPathIfOwned(owner, "/alpha"))
         assertEquals(opensAfterFirstWrite, editorOpens.get()) // confirmation was a read, not a write
-        assertEquals("/office", config.cachedHomeDashboardLaunchPath())
+        assertEquals("/alpha", config.cachedHomeDashboardLaunchPath())
     }
 
     private fun fakePreferences(

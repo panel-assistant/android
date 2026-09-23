@@ -18,16 +18,16 @@ class AutoResolvedScopeContractTest {
 
     @Test fun aResolutionNamingAnotherDashboardRequiresARebind() {
         // Same dashboard, whatever the route below it: the learned list is identical, so it stays.
-        assertFalse(resolvedScopeRequiresRebind("/office", "/office"))
-        assertFalse(resolvedScopeRequiresRebind("/office", "/office/music"))
-        assertFalse(resolvedScopeRequiresRebind("/office/music", "/office/kitchen"))
-        assertFalse(resolvedScopeRequiresRebind("/office", "/office/view?kiosk=1#main"))
+        assertFalse(resolvedScopeRequiresRebind("/alpha", "/alpha"))
+        assertFalse(resolvedScopeRequiresRebind("/alpha", "/alpha/music"))
+        assertFalse(resolvedScopeRequiresRebind("/alpha/music", "/alpha/beta"))
+        assertFalse(resolvedScopeRequiresRebind("/alpha", "/alpha/view?kiosk=1#main"))
 
         // A different dashboard is a different document; inheriting the old list would filter out
         // entities the new one renders and its cards would quietly stop updating.
-        assertTrue(resolvedScopeRequiresRebind("/office", "/kitchen-dash"))
+        assertTrue(resolvedScopeRequiresRebind("/alpha", "/beta-dash"))
         // A panel with no established dashboard adopts whatever the default resolved to.
-        assertTrue(resolvedScopeRequiresRebind("/", "/office"))
+        assertTrue(resolvedScopeRequiresRebind("/", "/alpha"))
     }
 
     @Test fun theScanActsOnTheResolvedScopeBeforeFetchingTheDashboard() {
