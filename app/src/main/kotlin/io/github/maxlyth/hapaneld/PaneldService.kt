@@ -1649,7 +1649,7 @@ class PaneldService : Service() {
             httpPort = { config.httpPort },
             androidId = { config.androidId },
             mqttState = { runtime.current().mqtt.state },
-            offerHandoff = ::offerSuccessorHandoff,
+            offerHandoff = { offerSuccessorHandoff() },
             // The restore is durable; only a fresh process runs wholly from the restored configuration.
             requestRestart = { recoveryRestart.request() },
         )
@@ -3020,12 +3020,12 @@ class PaneldService : Service() {
      * periodic pass or the HTTP trigger asked; the outcome is logged only when it changes, because a
      * panel that never migrates repeats the same refusal on every pass.
      */
-    internal suspend fun offerSuccessorHandoff(): SuccessorHandoff.Outcome? {
+    internal suspend fun offerSuccessorHandoff(allowInstall: Boolean = true): SuccessorHandoff.Outcome? {
         if (!AppIdentity.IS_BRIDGE) return null
         successorHandoffGate.lock()
         try {
             return SuccessorHandoff(AndroidSuccessorHandoffPorts(this, config, system))
-                .offer(AppIdentity.SUCCESSOR)
+                .offer(AppIdentity.SUCCESSOR, allowInstall)
                 .also { outcome ->
                     if (outcome.detail != lastSuccessorHandoffDetail) {
                         lastSuccessorHandoffDetail = outcome.detail
@@ -3785,6 +3785,18 @@ class PaneldService : Service() {
                     mdnsRuntimeReconciler.runtimeRunning()
                     startupRecoveryPrefs.edit().clear().commit()
                     updateForegroundStatus(nativeString(R.string.listening_on_port, config.httpPort))
+                    // Provisioning releases this bridge only after installing the successor and
+                    // committing its helper. Complete that handover independently of auto-update;
+                    // the same signer/helper gates apply, and this startup pass cannot install APKs.
+                    if (AppIdentity.IS_BRIDGE) scope.launch {
+                        try {
+                            if (!teardownBoundary.isStopping) offerSuccessorHandoff(allowInstall = false)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w(TAG, "installed successor handover failed", error)
+                        }
+                    }
                 }
                 ServiceStartupDisposition.PROFILE_ACTIVATION_ROLLBACK -> {
                     updateForegroundStatus(nativeString(R.string.degraded_profile_startup))

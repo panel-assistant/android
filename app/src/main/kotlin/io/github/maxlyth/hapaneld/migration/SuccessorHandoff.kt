@@ -64,6 +64,9 @@ internal class SuccessorHandoff(private val ports: Ports) {
             override val detail = "installed successor is not signed by the pinned signer"
         }
         data object NoSuccessorAsset : Outcome { override val detail = "this release carries no successor" }
+        data object NoSuitableInstalledSuccessor : Outcome {
+            override val detail = "no current or newer successor is installed"
+        }
         data class InstallFailed(override val detail: String) : Outcome
         data object CompanionNotHonoured : Outcome {
             override val detail = "successor was not accepted as a kiosk companion"
@@ -75,7 +78,7 @@ internal class SuccessorHandoff(private val ports: Ports) {
         data object Launched : Outcome { override val detail = "successor started" }
     }
 
-    suspend fun offer(successorPackage: String): Outcome {
+    suspend fun offer(successorPackage: String, allowInstall: Boolean = true): Outcome {
         if (ports.retired()) return Outcome.Retired
         // Checked before anything is installed: a panel whose helper cannot serve the successor keeps
         // exactly one package, not a second one that could never take over.
@@ -86,6 +89,9 @@ internal class SuccessorHandoff(private val ports: Ports) {
         // Absent or older only. A successor newer than this bridge is kept: the installer allows
         // downgrades, and reinstalling would also kill a migration that is already running.
         if (present == null || ports.compareVersions(present.version, ports.ownVersion())?.let { it < 0 } == true) {
+            // Host provisioning already installed its authenticated pair. A startup handover may
+            // finish that transfer even with self-update off, but never downloads or replaces an app.
+            if (!allowInstall) return Outcome.NoSuitableInstalledSuccessor
             val url = ports.successorAssetUrl() ?: return Outcome.NoSuccessorAsset
             ports.installSuccessor(url)?.let { return Outcome.InstallFailed(it) }
             val installed = ports.installedSuccessor()
