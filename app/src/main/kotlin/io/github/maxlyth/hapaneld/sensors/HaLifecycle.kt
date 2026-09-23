@@ -426,9 +426,9 @@ internal class HaLifecycle(
     /**
      * Announce recovery, or clear silently when THIS episode's recovery has already been announced.
      *
-     * Measured on hardware 2026-08-17: a panel whose lifecycle subscription was refused announced
-     * recovery on its socket handshake, decayed to NORMAL, and then announced again 39 s later when Home
-     * Assistant's broker birth arrived — one outage, two banners with a gap between them. Both clearers
+     * A client whose lifecycle subscription was refused can announce recovery on its socket handshake,
+     * decay to NORMAL, and then announce again 39 s later when Home Assistant's broker birth arrives —
+     * one outage, two banners with a gap between them. Both clearers
      * are legitimate and neither can be removed, so the episode is what de-duplicates them.
      *
      * Deliberately NOT keyed on the live state: by the time the second clearer lands the notice has

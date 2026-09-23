@@ -518,17 +518,17 @@
       // While the connection is genuinely mid-flight the ladder must not diagnose. On slow hardware a
       // save is retire-old-bridge → rebuild → connect (root-shell fences included), so absolute time
       // alone said "wrong address or port" and then failed the card over a connection that landed
-      // seconds later (round-5 walk). A verdict needs a settled state, or a 60s ceiling — whichever
+      // seconds later. A verdict needs a settled state, or a 60s ceiling — whichever
       // comes first — and the poll keeps running after any card, so a late success still advances.
       var inFlight = conn.status === "in_flight";
       // A verdict requires a SETTLED state. Even the ceiling may not diagnose while the journey still
-      // reads in-flight — a live probe during the round-6 failure caught the red card sitting over a
+      // reads in-flight — a live probe caught the red card sitting over a
       // genuinely connecting bridge. Past the ceiling with the state still moving, the ladder stops
       // pretending to know and keeps the cancel affordance in reach; the poll runs on either way, so a
       // late success still advances the journey.
       // Rungs tightened after the pre-flight + first-configuration fast path landed: a healthy first
-      // save now connects in single-digit seconds even on the slowest fleet chip, so anything past
-      // twenty is genuinely wrong and the ladder may say so much sooner (maintainer, round-10).
+      // save now connects in single-digit seconds even on the slowest supported chip, so anything past
+      // twenty is genuinely wrong and the ladder may say so much sooner.
       if (t > 20000 && !inFlight) {
         clearInterval(ladderTimer);
         verify = null;

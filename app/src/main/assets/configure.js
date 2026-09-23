@@ -3,7 +3,7 @@
 // "expose to HA" pip on each HA-capable row, and saves via partial-merge POST. Vanilla, no build.
 (function () {
   "use strict";
-  // Advanced is the DEFAULT view until the reduced Basic set is settled (user, 2026-07-01).
+  // Advanced is the DEFAULT view until the reduced Basic set is settled.
   var schema = [], values = {}, expose = {}, haAuth = {}, applyPending = {}, applyStalled = {}, applyPendingTimer = null, advanced = true, dirty = false, saving = false, editGeneration = 0, configDiscoveryRequest = 0, schemaLanguageRequest = 0, apps = [], rendererChoices = [], radio = null;
   var savedValues = {}, savedExpose = {};
   var dirtyValues = Object.create(null), dirtyExpose = Object.create(null);
@@ -821,8 +821,8 @@
     // Deliberately a NATIVE select. A custom popup was tried (to carry the dashboards' icons like HA's
     // own picker) and was a bust on hardware review: it escaped the card, ran off the viewport and stole
     // wheel scrolling — the browser's own popup gets all of that right on every platform, and the
-    // maintainer chose clean-over-icons. The wizard's dedicated page keeps the icon list; this form
-    // keeps HA's GROUPING via native optgroups, which is the part that carries real information.
+    // compact form deliberately favours clean rows over icons. The wizard's dedicated page keeps the icon
+    // list; this form keeps HA's GROUPING via native optgroups, which is the part that carries real information.
     // Auto intentionally remains first; a legacy/custom configured path is preserved rather than silently lost.
     // "Custom…" reveals a plain text input UNDER the select, which is how a specific view below a
     // dashboard root (/office/kitchen) is entered — Home Assistant's list endpoint only ever
@@ -960,14 +960,14 @@
       var areaAdmin = null;
       // The note describes the VALUE, not permissions. Shown for every non-admin session it told a panel
       // whose value MATCHED Home Assistant that it had been overridden locally — untrue, and alarming on a
-      // panel that had just converged correctly (reported on an upgraded panel, 2026-07-26). It may appear only
+      // panel that had just converged correctly. It may appear only
       // while the local request genuinely differs from what Home Assistant holds, and it must stay honest
       // after an edit, so it is recomputed rather than decided once.
       function syncAreaNote() {
         var localArea = values[f.key] == null ? "" : String(values[f.key]);
         if (areaQueried && haAreaUserOverride && localArea !== areaHa) {
-          // Name what Home Assistant actually holds, so the divergence is legible at a glance —
-          // "Office while HA has Hall" is the whole story (maintainer, rc2 request 2026-07-27).
+          // Name what Home Assistant actually holds so a local override remains distinguishable from
+          // an adopted value at a glance.
           areaNote.textContent = areaHa
             ? i18nText("configure.area.local_override_ha", "Local override only — Home Assistant has “{area}”", { area: areaHa })
             : i18nText("configure.area.local_override", "Local override only");
@@ -2820,9 +2820,9 @@
   }
 
   // Per-card maturity badges: [text, css-modifier]. Applied to the card heading by render().
-  // Logging lost its experimental badge on 2026-07-27, when log shipping was finally proven on
-  // hardware: all three transports delivered marked probe records AND real shipped log lines into a
-  // live collector, addressed by hostname. Display keeps its badge — that work is still unvalidated.
+  // Logging lost its experimental badge after all three transports delivered marked probe records
+  // AND real shipped log lines into a collector addressed by hostname. Display keeps its badge — that
+  // work is still unvalidated.
   // Camera is an experimental trial: it ships to earn permanent inclusion and can be withdrawn, so
   // its card says so in the heading rather than only in each setting's help text.
   var CARD_BADGES = {

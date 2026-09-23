@@ -58,9 +58,9 @@ object HaAreaProtocol {
      *
      * HA is canonical over ADOPTED values — but a value a PERSON chose is a deliberate local override
      * that adoption must never undo. The first version had no such distinction, so saving a divergent
-     * area was impossible: the convergence pass reverted it seconds after the save (hardware report,
-     * 2026-07-26 — a panel sits in an HA area with no motion entities, and its area
-     * is deliberately set to a neighbouring room so auto-sleep has sources). Blank local = "follow HA".
+     * area was impossible: the convergence pass reverted it seconds after the save. Motion sources may
+     * come from a neighbouring HA area while the local area is deliberately different. Blank local =
+     * "follow HA".
      * A user override matching HA (any casing) is not overriding anything, so HA's spelling is adopted
      * and the caller should clear the override bit.
      */
@@ -84,7 +84,7 @@ object HaAreaProtocol {
      * The precedence rule above was true only of readers, and every reader was a UI control: the browser's
      * area picker and the wizard's dashboard step. So a panel nobody had opened that dropdown on never
      * adopted anything — affected panels sat with a blank `ha_area` while their Home Assistant
-     * devices had real areas, every surface faithfully reporting "No area" (reported 2026-07-26). The rule
+     * devices had real areas, every surface faithfully reporting "No area". The rule
      * now needs an owner that runs without a person, which is what this gates: HA must be reachable and
      * credentialled, since the registry read is an authenticated WebSocket call.
      */

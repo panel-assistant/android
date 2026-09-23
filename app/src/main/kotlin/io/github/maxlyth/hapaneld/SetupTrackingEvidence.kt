@@ -25,8 +25,8 @@ package io.github.maxlyth.hapaneld
  * panel, any service restart before the operator presses Continue on the Name step would permanently
  * stamp the entity-filter and home-dashboard questions answered, leaving the renderer unfiltered and
  * the wizard framing a genuine first run as a repair. No later read of the provenance marker can
- * retract a committed preference. The migration's own comment records this class of defect reaching
- * hardware on 2026-07-26 by a different route, which is why its `setupIdentityConfirmed` gate exists;
+ * retract a committed preference. The migration's `setupIdentityConfirmed` gate protects the same
+ * one-way failure through a different route;
  * a handed-over URL is written before that gate can ever be true, so it walks straight past it.
  */
 internal fun panelConfiguredBeforeSetupTracking(

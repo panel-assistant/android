@@ -217,7 +217,7 @@ internal object SoftwareUpdateEntities {
     /**
      * A Companion entity exists only while a Companion app is installed. A panel without one is not
      * missing an update, so Home Assistant is shown nothing rather than a permanent "not installed"
-     * offer under every panel (maintainer, 2026-09-17); the Install page still adds the app.
+     * offer under every panel; the Install page still adds the app.
      */
     fun companionAbsent(inputs: SoftwareUpdateInputs): Boolean =
         inputs.component == SoftwareComponent.COMPANION && inputs.installedVersion == null

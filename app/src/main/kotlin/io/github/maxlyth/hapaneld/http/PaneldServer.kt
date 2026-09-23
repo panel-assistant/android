@@ -6378,8 +6378,8 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val hints = autoHints(strings)
         val caps = liveCapabilities(s.caps)
         keys.mapNotNull { key ->
-            // A deliberately overridden area must say so wherever the value is shown — at rest it is
-            // otherwise indistinguishable from an adopted value (maintainer, rc2 request 2026-07-27).
+            // A deliberately overridden area must say so wherever the value is shown; at rest it is
+            // otherwise indistinguishable from an adopted value.
             val areaFormatter: SettingRowFormatter? =
                 if (key == "ha_area" && config.haAreaUserOverride) {
                     SettingRowFormatter.of(key) { raw ->
@@ -8608,8 +8608,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
     /**
      * A briefly-held copy of the area registry, this device's row and the account's admin flag.
      *
-     * All three change about once in a panel's life — "in real life this is a value that changes once and
-     * almost never again" (maintainer, 2026-07-26) — yet the picker asked Home Assistant for them on EVERY
+     * All three change infrequently, yet the picker asked Home Assistant for them on EVERY
      * Configure paint: one authenticated WebSocket session per page load, and one per reload through an
      * upgrade round, which is what made the control look like it was constantly refreshing. Only successful
      * reads are held, so a failed query never becomes authoritative; the unprompted convergence pass
@@ -8737,7 +8736,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
      * the Configure area picker and the wizard's dashboard step. A panel nobody had opened that dropdown on
      * therefore never adopted anything: affected panels held a blank `ha_area` while their HA
      * devices sat in real areas, so every surface honestly reported "No area" and discovery published no
-     * `suggested_area` (reported 2026-07-26 on a panel whose device is plainly in Office). One unprompted
+     * `suggested_area`. One unprompted
      * pass after start, then a slow repeat, is enough: the area of a wall panel changes about never, and the
      * read is one authenticated WebSocket round trip.
      */

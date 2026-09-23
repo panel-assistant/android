@@ -209,7 +209,7 @@ class HaAreaProtocolTest {
         // The rule "Home Assistant's area is canonical" was implemented only at read time, and every reader
         // was a UI control. So a panel nobody had opened the area dropdown on never adopted anything:
         // affected panels held a blank ha_area while their HA devices sat in real areas, and every
-        // surface honestly reported "No area" (2026-07-26). Reachable-and-credentialled is the only
+        // surface honestly reported "No area". Reachable-and-credentialled is the only
         // precondition — the registry read is an authenticated WebSocket call.
         assertTrue(HaAreaProtocol.canQueryUnprompted("http://ha.local:8123", credentialed = true))
         assertFalse("no endpoint means nothing to ask", HaAreaProtocol.canQueryUnprompted("", credentialed = true))

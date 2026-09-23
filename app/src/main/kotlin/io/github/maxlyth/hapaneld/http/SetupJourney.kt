@@ -263,8 +263,8 @@ object SetupJourney {
      *
      * STRICT walk order — blocked or in-flight, whichever comes first. Ranking blocked above in-flight
      * globally was also tried and is also wrong: with a later stage blocked, an in-flight sign-in was
-     * jumped over — the wizard abandoned "waiting for you at the panel" for the broker card while the
-     * user stood mid-login at the panel (round-5 hardware walk). The walk never jumps over a step that
+     * jumped over — the wizard abandoned "waiting for you at the panel" for the broker card while
+     * sign-in was still in progress. The walk never jumps over a step that
      * is mid-flight; the wizard's own verify ladder owns how a transient is presented. [Status.UNKNOWN]
      * is never reported: it means "not observable", which is not an instruction. Where proof genuinely
      * needs a human it is [Status.BLOCKED] instead, and a non-actionable UNKNOWN can only arise

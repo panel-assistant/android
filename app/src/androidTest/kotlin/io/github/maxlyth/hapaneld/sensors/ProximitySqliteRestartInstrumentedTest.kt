@@ -17,12 +17,12 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ProximitySqliteRestartInstrumentedTest {
-    @Test fun productionSqliteStorePersistsAndReopensTrustedHallStartup() {
+    @Test fun productionSqliteStorePersistsAndReopensTrustedGradedStartup() {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
         val directory = File(base.cacheDir, "proximity-sqlite-${System.nanoTime()}").apply { mkdirs() }
         val context = IsolatedDatabaseContext(base, directory)
         val fingerprint = ProximityLearningRuntime.fingerprint(SOURCE)
-        val expected = hallRow(fingerprint)
+        val expected = startupRow(fingerprint)
 
         SqliteProximityModelStore(EntityCatalogStore(context)).use { first ->
             first.writeProximityBatch(expected, emptyList(), emptyList(), 1L)
@@ -35,7 +35,7 @@ class ProximitySqliteRestartInstrumentedTest {
         assertEquals(expected, reopened.readProximityModel(fingerprint))
         val firstRuntime = runtime(reopened)
         assertEquals(0L, firstRuntime.wakeEvidenceGenerationForTest())
-        val anchor = firstRuntime.observe(HALL_FAR, 0L)
+        val anchor = firstRuntime.observe(STARTUP_FAR, 0L)
         assertEquals(false, anchor.near)
         assertTrue(anchor.normalizedLevel != null)
         assertFalse(firstRuntime.isReady())
@@ -46,13 +46,13 @@ class ProximitySqliteRestartInstrumentedTest {
         val persisted = reopenedAgain.readProximityModel(fingerprint)!!
         assertTrue(persisted.ready)
         val decoded = ProximityLearningRuntime.persistedModel(persisted.snapshotJson)!!
-        assertEquals(HALL_FAR, decoded.snapshot.farRaw, 0f)
+        assertEquals(STARTUP_FAR, decoded.snapshot.farRaw, 0f)
         assertEquals(69.0891f, decoded.snapshot.nearRaw, 0f)
         assertEquals(ProximityLearningEngine.Polarity.NEAR_IS_HIGHER, decoded.snapshot.polarity)
 
         val secondRuntime = runtime(reopenedAgain)
         assertEquals(0L, secondRuntime.wakeEvidenceGenerationForTest())
-        val bootTail = secondRuntime.observe(HALL_BOOT_TAIL, 0L)
+        val bootTail = secondRuntime.observe(STARTUP_BOOT_TAIL, 0L)
         assertEquals(false, bootTail.near)
         assertTrue(bootTail.normalizedLevel != null)
         assertFalse(secondRuntime.isReady())
@@ -70,9 +70,9 @@ class ProximitySqliteRestartInstrumentedTest {
         modelStoreForTest = store,
     )
 
-    private fun hallRow(fingerprint: String): EntityCatalogStore.ProximityModelRow {
+    private fun startupRow(fingerprint: String): EntityCatalogStore.ProximityModelRow {
         val snapshot = ProximityLearningEngine.Snapshot(
-            farRaw = HALL_FAR,
+            farRaw = STARTUP_FAR,
             nearRaw = 69.0891f,
             noise = 1.392f,
             mode = ProximityLearningEngine.Mode.GRADED,
@@ -124,8 +124,8 @@ class ProximitySqliteRestartInstrumentedTest {
     }
 
     companion object {
-        private const val SOURCE = "hal:8:hall-tpa10-sqlite"
-        private const val HALL_FAR = 37.8244f
-        private const val HALL_BOOT_TAIL = 25.875f
+        private const val SOURCE = "hal:8:graded-sensor-sqlite"
+        private const val STARTUP_FAR = 37.8244f
+        private const val STARTUP_BOOT_TAIL = 25.875f
     }
 }

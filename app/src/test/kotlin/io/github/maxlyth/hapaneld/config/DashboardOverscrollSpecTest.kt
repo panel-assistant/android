@@ -9,7 +9,7 @@ import org.junit.Test
 
 /** Pins the dashboard-overscroll setting's contract: a hidden (API-only), off-by-default BOOL on the
  *  Dashboard card that never surfaces in the Configure form or as an HA entity, but stays a first-class
- *  registry citizen so it persists, exports in bundles, and reads back via GET /config (user, 2026-07-11). */
+ *  registry citizen so it persists, exports in bundles, and reads back via GET /config. */
 class DashboardOverscrollSpecTest {
     private val spec = SettingsRegistry.spec("dashboard_overscroll")
 

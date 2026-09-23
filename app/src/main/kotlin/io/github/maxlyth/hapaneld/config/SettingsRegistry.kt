@@ -184,7 +184,7 @@ object SettingsRegistry {
             help = "HA device-card model override (blank = profile/auto).",
         ),
 
-        // LAST in the Identity card on purpose (maintainer, 2026-07-26): this is the group's only
+        // LAST in the Identity card on purpose: this is the group's only
         // picker, and a select does not share the text fields' column metrics — mid-card it broke the
         // column line, so it sits at the card's edge where the difference reads as intentional. The
         // columns themselves are deliberately left alone for now; only the order changed.

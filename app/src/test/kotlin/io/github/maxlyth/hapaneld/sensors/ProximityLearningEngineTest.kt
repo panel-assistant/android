@@ -447,8 +447,8 @@ class ProximityLearningEngineTest {
         assertNull(engine.snapshot())
     }
 
-    @Test fun hallFarSidePlateauTooSmallForAnEpisodeNeverDropsAvailability() {
-        val engine = restoredHallEngine()
+    @Test fun gradedFarSidePlateauTooSmallForAnEpisodeNeverDropsAvailability() {
+        val engine = restoredGradedEngine()
 
         var now = 1_000L
         while (now <= 5_500L) {
@@ -471,8 +471,8 @@ class ProximityLearningEngineTest {
         assertTrue(engine.snapshot() != null)
     }
 
-    @Test fun hallSubDwellOppositeTailNeverDropsAvailability() {
-        val engine = restoredHallEngine()
+    @Test fun gradedSubDwellOppositeTailNeverDropsAvailability() {
+        val engine = restoredGradedEngine()
         var now = 1_000L
         for (raw in floatArrayOf(25.875f, 33.75f, 38.25f, 32.625f, 37.8244f, 37.8244f, 37.8244f)) {
             val output = engine.observe(raw, now)
@@ -488,8 +488,8 @@ class ProximityLearningEngineTest {
         assertTrue(engine.snapshot() != null)
     }
 
-    @Test fun persistedHallModelSurvivesItsRestartTailUntilLongChangePointEvidence() {
-        val source = restoredHallEngine()
+    @Test fun persistedGradedModelSurvivesItsRestartTailUntilLongChangePointEvidence() {
+        val source = restoredGradedEngine()
         val trusted = source.snapshot()!!
         val persisted = ProximityLearningRuntime.persistedModelJson(trusted, guidedReady = true)
         val restartedModel = ProximityLearningRuntime.persistedModel(persisted)!!
@@ -1045,7 +1045,7 @@ class ProximityLearningEngineTest {
         assertEquals(LearningStatus.READY, engine.current().learning)
     }
 
-    private fun restoredHallEngine(): ProximityLearningEngine {
+    private fun restoredGradedEngine(): ProximityLearningEngine {
         val engine = ProximityLearningEngine(ProximityLearningRuntime.learningPolicy(sparseSource = false))
         assertTrue(
             engine.restore(

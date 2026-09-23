@@ -245,7 +245,7 @@ class PanelHaSignInReachabilityTest {
     }
 
     @Test fun theMigrationNeverStampsAPanelWhoseGuidedSetupHasBegun() {
-        // Second hardware walk, 2026-07-26: the retrying migration read the WIZARD'S OWN broker save as
+        // A retrying migration can read the WIZARD'S OWN broker save as
         // upgrade evidence on the first mid-journey service restart and durably stamped every question
         // answered — the panel rendered unfiltered, the journey reported complete, and the sign-in return
         // dumped the user to Configure with the dashboard and filter questions never asked. Identity

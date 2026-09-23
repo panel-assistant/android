@@ -314,7 +314,7 @@ class DashboardRecoveryTest {
     @Test fun `a server-repairable answer nobody will announce is probed slowly`() {
         // Creating a dashboard, or a proxy that stops mangling the version, happens entirely
         // server-side and nothing tells the panel — so asking again slowly is the only way it finds
-        // out. This is the round-2 regression: NO_LEGAL_DASHBOARD was latched and its resolution
+        // out. NO_LEGAL_DASHBOARD was latched and its resolution
         // cached, so restoring access left the panel blocked until somebody touched it.
         listOf(
             AdmissionOutcome.VERSION_UNVERIFIABLE,

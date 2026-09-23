@@ -15,9 +15,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Regression cover for the defect proven on hardware 2026-07-27: a collector name carrying both A
- * and AAAA records resolved to a global IPv6 address, the panel reported a successful UDP send, and
- * nothing ever arrived. The same collector by IPv4 literal worked on every transport.
+ * Regression cover for a dual-stack collector name resolving first to a global IPv6 address while
+ * UDP reports a successful local send and nothing arrives. The same collector by IPv4 literal works
+ * on every transport.
  */
 class LogShipAddressFamilyTest {
 

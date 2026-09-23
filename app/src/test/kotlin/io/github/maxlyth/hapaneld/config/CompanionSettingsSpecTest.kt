@@ -4,7 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Pins the Companion auto-update settings' contract (user decisions, 2026-07-10): both are hidden —
+/** Pins the Companion auto-update settings' contract: both are hidden —
  *  and their HA entities withdrawn — when no HA Companion is installed (the settings are meaningless
  *  without it), and both list AFTER the ha-paneld update settings in the System card. */
 class CompanionSettingsSpecTest {

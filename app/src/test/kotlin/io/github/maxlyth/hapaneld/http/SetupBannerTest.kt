@@ -34,8 +34,8 @@ class SetupBannerTest {
 
     @Test fun aLiveConnectedStateClearsTheProgressBannerWhateverTheSnapshotSays() {
         // The status string is a stale-while-revalidate snapshot; the bridge flips announcing→connected on
-        // the discovery PUBACK, but the snapshot lagged and the banner kept narrating a finished publish
-        // (maintainer report, 2026-07-27). The live canonical state is authoritative for CLEARING.
+        // the discovery PUBACK, but the snapshot can lag and keep narrating a finished publish. The live
+        // canonical state is authoritative for CLEARING.
         assertEquals(
             null,
             SetupBanner.progress(
