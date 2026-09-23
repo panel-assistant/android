@@ -2947,7 +2947,19 @@ cleanup_root_helper_staging() {
   case "$ROOT_HELPER_TRANSACTION_PATH" in
     "/data/adb/hapaneld/.helper-transaction-$id-"*) paths="$paths $ROOT_HELPER_TRANSACTION_PATH.new" ;;
   esac
-  if ! run_root 'rm -f'"$paths" >/dev/null 2>&1; then
+  # A host adb deadline does not prove the device-side transaction stopped. Reclamation must
+  # acquire the same lock before removing inputs that a still-running transaction may consume.
+  # Never recover an existing lock here: uncertain custody leaves staging for the next sweep.
+  if ! run_root 'lock=/dev/.hapaneld-helper-transaction.lock
+    trap "" 1 2 3 15
+    mkdir "$lock" 2>/dev/null || exit 0
+    trap "rm -f $lock/pid; rmdir $lock" 0
+    trap "exit 129" 1
+    trap "exit 130" 2
+    trap "exit 131" 3
+    trap "exit 143" 15
+    echo $$ > "$lock/pid" || exit 1
+    rm -f'"$paths" >/dev/null 2>&1; then
     echo "   ${YEL}note${X} could not reclaim this run's root-helper staging on the panel;" >&2
     echo "   the next provisioning transaction against this panel removes it automatically" >&2
   fi
@@ -4602,13 +4614,37 @@ legacy_exact_file() {
 }
 
 legacy_path_processes() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 1
   legacy_process_inode=$(stat -c '%d:%i' "$1" 2>/dev/null || toybox stat -c '%d:%i' "$1" 2>/dev/null) || return 1
+  # One process per /proc entry takes almost a minute on older panels. Read the same inode
+  # identities in one batch; a disappearing process can make stat exit nonzero after valid rows.
+  # The target anchor must finish that partial result, and the final read must still agree.
+  # Thus unsupported stat, argument overflow, and target replacement cannot mean "no processes".
+  legacy_process_rows=$(stat -Lc '%d:%i:%n' /proc/[0-9]*/exe "$1" 2>/dev/null ||
+    toybox stat -L -c '%d:%i:%n' /proc/[0-9]*/exe "$1" 2>/dev/null) || :
+  legacy_process_anchor=0
   legacy_process_found=
-  for legacy_executable in /proc/[0-9]*/exe; do
-    legacy_executable_inode=$(stat -Lc '%d:%i' "$legacy_executable" 2>/dev/null || toybox stat -L -c '%d:%i' "$legacy_executable" 2>/dev/null) || continue
-    [ "$legacy_executable_inode" != "$legacy_process_inode" ] ||
-      legacy_process_found="$legacy_process_found ${legacy_executable#/proc/}"
-  done
+  while IFS= read -r legacy_process_row; do
+    legacy_process_anchor=0
+    case "$legacy_process_row" in
+      *:"$1")
+        [ "$legacy_process_row" = "$legacy_process_inode:$1" ] || return 1
+        legacy_process_anchor=1 ;;
+      "$legacy_process_inode":/proc/*/exe)
+        legacy_process=${legacy_process_row#"$legacy_process_inode":/proc/}
+        legacy_pid=${legacy_process%/exe}
+        case "$legacy_pid" in ''|*[!0-9]*) return 1 ;; esac
+        case " $legacy_process_found " in
+          *" $legacy_process "*) ;;
+          *) legacy_process_found="$legacy_process_found $legacy_process" ;;
+        esac ;;
+    esac
+  done <<EOF_PROCESS_INODES
+$legacy_process_rows
+EOF_PROCESS_INODES
+  [ "$legacy_process_anchor" = 1 ] || return 1
+  legacy_process_after=$(stat -c '%d:%i' "$1" 2>/dev/null || toybox stat -c '%d:%i' "$1" 2>/dev/null) || return 1
+  [ "$legacy_process_after" = "$legacy_process_inode" ] || return 1
   printf '%s\n' "$legacy_process_found"
 }
 

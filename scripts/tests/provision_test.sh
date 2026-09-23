@@ -8328,6 +8328,48 @@ case "$CLEANUP_PROBE_COMMAND" in
   *) fail_test "a promoted record's .new leftover is reclaimed once the path is owned" ;;
 esac
 
+# Execute that exact cleanup command, redirecting only its absolute roots into a private fixture.
+# A timed-out host must not delete inputs still owned by the device-side transaction.
+CLEANUP_EXEC_ROOT="$TMP/cleanup-device"
+mkdir -p "$CLEANUP_EXEC_ROOT/dev" "$CLEANUP_EXEC_ROOT/data/local/tmp" "$CLEANUP_EXEC_ROOT/data/adb/hapaneld"
+CLEANUP_EXEC_COMMAND="$(printf '%s\n' "$CLEANUP_PROBE_COMMAND" | sed \
+  -e "s|/dev/|$CLEANUP_EXEC_ROOT/dev/|g" -e "s|/data/|$CLEANUP_EXEC_ROOT/data/|g")"
+cleanup_exec_stage="$CLEANUP_EXEC_ROOT/data/local/tmp/hapaneld-helper-$CLEANUP_PROBE_ID"
+cleanup_exec_candidate="$CLEANUP_EXEC_ROOT/data/local/.hapaneld-helper.provision-$CLEANUP_PROBE_ID"
+cleanup_exec_lock="$CLEANUP_EXEC_ROOT/dev/.hapaneld-helper-transaction.lock"
+printf 'transaction input\n' > "$cleanup_exec_stage"
+printf 'candidate input\n' > "$cleanup_exec_candidate"
+mkdir "$cleanup_exec_lock"
+printf '%s\n' "$$" > "$cleanup_exec_lock/pid"
+printf 'foreign lock sentinel\n' > "$cleanup_exec_lock/sentinel"
+if /bin/sh -uc "$CLEANUP_EXEC_COMMAND"; then pass "busy staging cleanup remains best effort"
+else fail_test "busy staging cleanup remains best effort"; fi
+if [ -f "$cleanup_exec_stage" ] && [ -f "$cleanup_exec_candidate" ]; then
+  pass "busy staging cleanup preserves the in-flight bundle and candidate"
+else fail_test "busy staging cleanup preserves the in-flight bundle and candidate"; fi
+if [ "$(cat "$cleanup_exec_lock/pid")" = "$$" ] && [ "$(cat "$cleanup_exec_lock/sentinel")" = 'foreign lock sentinel' ]; then
+  pass "staging cleanup never takes over or removes the existing transaction lock"
+else fail_test "staging cleanup never takes over or removes the existing transaction lock"; fi
+rm -rf "$cleanup_exec_lock"
+printf 'unknown lock custody\n' > "$cleanup_exec_lock"
+if /bin/sh -uc "$CLEANUP_EXEC_COMMAND" && [ -f "$cleanup_exec_stage" ] && \
+   [ "$(cat "$cleanup_exec_lock")" = 'unknown lock custody' ]; then
+  pass "staging cleanup preserves malformed or unknown lock custody"
+else fail_test "staging cleanup preserves malformed or unknown lock custody"; fi
+rm "$cleanup_exec_lock"
+printf 'unrelated input\n' > "$CLEANUP_EXEC_ROOT/data/local/tmp/hapaneld-helper-unrelated"
+if /bin/sh -uc "$CLEANUP_EXEC_COMMAND"; then pass "unlocked staging cleanup acquires exclusive custody"
+else fail_test "unlocked staging cleanup acquires exclusive custody"; fi
+if [ ! -e "$cleanup_exec_stage" ] && [ ! -e "$cleanup_exec_candidate" ]; then
+  pass "lock-owned staging cleanup removes its exact bundle and candidate"
+else fail_test "lock-owned staging cleanup removes its exact bundle and candidate"; fi
+if [ ! -e "$cleanup_exec_lock" ]; then pass "staging cleanup releases only its acquired transaction lock"
+else fail_test "staging cleanup releases only its acquired transaction lock"; fi
+if [ -f "$CLEANUP_EXEC_ROOT/data/local/tmp/hapaneld-helper-unrelated" ]; then
+  pass "lock-owned staging cleanup preserves unrelated inputs"
+else fail_test "lock-owned staging cleanup preserves unrelated inputs"; fi
+unset CLEANUP_EXEC_ROOT CLEANUP_EXEC_COMMAND cleanup_exec_stage cleanup_exec_candidate cleanup_exec_lock
+
 fi
 
 if provision_scope_is core all shard-host-reclamation; then
@@ -8709,6 +8751,89 @@ else
   LAST_OUTPUT="$app_stage_install_output"
   fail_test "an executing authority-free stage blocks install before mutation"
 fi
+
+# Exercise the emitted inode scanner itself with real /proc identities and instrument only stat.
+# Faults are injected at the bulk command boundary, not by inventing process-name matches.
+INODE_SCAN_SOURCE="$(sed -n '/^legacy_path_processes()/,/^}/p' "$DEVICE_HEREDOC")"
+INODE_SCAN_BIN="$TMP/inode-scan-bin"
+INODE_SCAN_LOG="$TMP/inode-scan-stat.log"
+mkdir "$INODE_SCAN_BIN"
+cat > "$INODE_SCAN_BIN/stat" <<'EOF'
+#!/bin/sh
+printf 'stat\n' >> "$INODE_SCAN_LOG"
+[ "${INODE_SCAN_MODE:-}" != initial-failure ] || exit 1
+bulk=0
+for argument in "$@"; do [ "$argument" != '%d:%i:%n' ] || bulk=1; done
+if [ "$bulk" = 1 ]; then
+  case "${INODE_SCAN_MODE:-}" in
+    empty) exit 1 ;;
+    no-terminal-anchor)
+      /usr/bin/stat -Lc '%d:%i:%n' "$INODE_SCAN_TARGET"
+      printf '1:1:/proc/123/exe\n'
+      exit 1 ;;
+    no-anchor)
+      /usr/bin/stat "$@" 2>/dev/null | /bin/grep -vF ":$INODE_SCAN_TARGET"
+      exit 1 ;;
+    target-swap)
+      /usr/bin/stat "$@" 2>/dev/null
+      mv "$INODE_SCAN_TARGET" "$INODE_SCAN_TARGET.original"
+      cp /bin/sleep "$INODE_SCAN_TARGET"
+      exit 0 ;;
+    partial)
+      /usr/bin/stat "$@" 2>/dev/null
+      exit 1 ;;
+    fallback-truncated)
+      /usr/bin/stat "$@" 2>/dev/null
+      [ "$1" = -Lc ] || printf '1:1:/proc/123/exe\n'
+      exit 1 ;;
+  esac
+fi
+exec /usr/bin/stat "$@"
+EOF
+cat > "$INODE_SCAN_BIN/toybox" <<'EOF'
+#!/bin/sh
+[ "$1" = stat ] || exit 1
+shift
+exec "$INODE_SCAN_BIN/stat" "$@"
+EOF
+chmod 700 "$INODE_SCAN_BIN/stat" "$INODE_SCAN_BIN/toybox"
+run_inode_scan() {
+  : > "$INODE_SCAN_LOG"
+  inode_scan_output="$(PATH="$INODE_SCAN_BIN:/usr/bin:/bin" INODE_SCAN_BIN="$INODE_SCAN_BIN" \
+    INODE_SCAN_LOG="$INODE_SCAN_LOG" INODE_SCAN_TARGET="$1" INODE_SCAN_MODE="$2" \
+    /bin/sh -uc "$INODE_SCAN_SOURCE
+legacy_path_processes \"\$1\"" inode-scan "$1")"
+  inode_scan_status=$?
+}
+run_inode_scan "$stage_path" normal
+if [ "$inode_scan_status" = 0 ] && [ "$inode_scan_output" = " $app_stage_pid/exe" ]; then
+  pass "bulk inode scan identifies the real executing stage PID"
+else fail_test "bulk inode scan identifies the real executing stage PID"; fi
+if [ "$(wc -l < "$INODE_SCAN_LOG")" -le 4 ]; then
+  pass "bulk inode scan uses a constant number of stat commands"
+else fail_test "bulk inode scan uses a constant number of stat commands"; fi
+run_inode_scan "$stage_path" partial
+if [ "$inode_scan_status" = 0 ] && [ "$inode_scan_output" = " $app_stage_pid/exe" ]; then
+  pass "bulk inode scan deduplicates partial primary and fallback process rows"
+else fail_test "bulk inode scan deduplicates partial primary and fallback process rows"; fi
+ln "$stage_path" "$TMP/differently-named-stage"
+run_inode_scan "$TMP/differently-named-stage" normal
+if [ "$inode_scan_status" = 0 ] && [ "$inode_scan_output" = " $app_stage_pid/exe" ]; then
+  pass "bulk inode scan recognizes an executing inode through a differently named hard link"
+else fail_test "bulk inode scan recognizes an executing inode through a differently named hard link"; fi
+mkdir "$TMP/unrelated-stage"
+cp /bin/sleep "$TMP/unrelated-stage/.hapaneld-helper.new"
+run_inode_scan "$TMP/unrelated-stage/.hapaneld-helper.new" normal
+if [ "$inode_scan_status" = 0 ] && [ -z "$inode_scan_output" ]; then
+  pass "bulk inode scan never confuses the same basename with executable identity"
+else fail_test "bulk inode scan never confuses the same basename with executable identity"; fi
+for inode_fault in initial-failure empty no-anchor no-terminal-anchor fallback-truncated target-swap; do
+  run_inode_scan "$TMP/unrelated-stage/.hapaneld-helper.new" "$inode_fault"
+  if [ "$inode_scan_status" != 0 ] && [ -z "$inode_scan_output" ]; then
+    pass "bulk inode scan refuses $inode_fault without claiming process absence"
+  else fail_test "bulk inode scan refuses $inode_fault without claiming process absence"; fi
+done
+unset INODE_SCAN_SOURCE INODE_SCAN_BIN INODE_SCAN_LOG inode_scan_output inode_scan_status inode_fault
 kill "$app_stage_pid" 2>/dev/null || true
 wait "$app_stage_pid" 2>/dev/null || true
 unset APP_STAGE_SHA app_stage_output app_authority malformed_stage stage_path malformed_output \
