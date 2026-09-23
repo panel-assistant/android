@@ -8307,6 +8307,23 @@ if [ -n "$UPGRADE_QUIESCE_NONCE" ] && [ "${UPGRADE_QUIESCE_PKG:-$PKG}" != "$PKG"
   [ -z "$UPGRADE_QUIESCE_NONCE" ] || fail "the previous app has not resumed for the handover" \
     "The successor and root helper are installed. Re-run this command to finish the handover."
 fi
+if [ "$PKG" != "$LEGACY_PKG" ]; then
+  # A previous partial install can leave both packages present with the successor still passive.
+  # DATA_PKG prefers that successor, so it cannot establish whether the bridge still needs a wake.
+  handoff_bridge_presence="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+  case "$handoff_bridge_presence" in
+    present)
+      # Unlike generic RELEASE (also used by abort cleanup), this wake follows successful install,
+      # helper commit, and acknowledged release of any held bridge. It also reaches a bridge resumed by watchdog.
+      run_root "am start-foreground-service --user 0 -n $(app_component "$LEGACY_PKG" .PaneldService) -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR" >/dev/null 2>&1 \
+        || fail "the previous app could not start the installed successor handover" \
+          "The successor and root helper are installed. Re-run this command to finish the handover."
+      ;;
+    absent) ;;
+    *) fail "could not confirm whether the previous app needs a handover" \
+      "The successor and root helper are installed. Reconnect adb and re-run this command." ;;
+  esac
+fi
 
 step "🔑 permissions" "${D}notifications · WRITE_SETTINGS (brightness/screen) · SYSTEM_ALERT_WINDOW (navbar) · a11y (buttons)${X}"
 # Grants degrade gracefully: some vendor builds refuse appops/settings writes from the adb shell.
