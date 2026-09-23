@@ -2396,6 +2396,10 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
                 )
             }
 
+            // These tables were not rebuilt, so their old indexes still exist.
+            db.execSQL("DROP INDEX IF EXISTS app_state_updated")
+            db.execSQL("DROP INDEX IF EXISTS proximity_episode_age")
+            db.execSQL("DROP INDEX IF EXISTS ambient_lux_minute_age")
             listOf(
                 "CREATE INDEX ix_entity_missing ON entity(instance,missing_streak)",
                 "CREATE INDEX ix_dashboard_entity_load ON dashboard_entity(instance,path,update_bytes DESC)",

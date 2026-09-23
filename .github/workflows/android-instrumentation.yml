@@ -94,7 +94,14 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: |
-            adb install app/build/outputs/apk/debug/app-debug.apk
-            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -e annotation io.github.maxlyth.hapaneld.CoreInstrumentation io.github.maxlyth.hapaneld.test/androidx.test.runner.AndroidJUnitRunner
+          script: >-
+            bash -euo pipefail -c '
+            adb install app/build/outputs/apk/debug/app-debug.apk;
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk;
+            log="$RUNNER_TEMP/core-instrumentation.log";
+            status=0;
+            adb shell am instrument -w -e annotation io.github.maxlyth.hapaneld.CoreInstrumentation io.github.maxlyth.hapaneld.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
+            cat "$log";
+            test "$status" -eq 0;
+            if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;
+            grep -Eq "^OK \\([1-9][0-9]* tests?\\)[[:space:]]*$" "$log"'
