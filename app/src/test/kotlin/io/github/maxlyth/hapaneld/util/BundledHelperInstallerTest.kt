@@ -167,6 +167,80 @@ class BundledHelperInstallerTest {
         }
     }
 
+    @Test fun `every foreign journal blocks staging without changing retained custody`() {
+        foreignHelperJournals.forEach { path ->
+            val root = Files.createTempDirectory("bundled-helper-foreign-stage-").toFile()
+            try {
+                val dataLocal = File(root, "data/local").apply { mkdirs() }
+                File(root, "dev").mkdirs()
+                val stage = File(dataLocal, ".hapaneld-helper.new").apply { writeText("retained candidate") }
+                val journal = foreignHelperJournal(root, path)
+                val recordTmp = File(dataLocal, ".hapaneld-helper.legacy-takeover.tmp")
+                    .apply { writeText("partial preauthority record") }
+                setMode(recordTmp, 600)
+                val candidate = "new candidate\n"
+                val command = bundledHelperStageCommand(sha256(candidate), root.absolutePath)
+                val result = runCommandWithInput(command, candidate)
+                assertEquals(path, 75, result.exitCode)
+                assertEquals(path, "retained candidate", stage.readText())
+                assertEquals(path, "retained authority\n", journal.readText())
+                assertEquals(path, "partial preauthority record", recordTmp.readText())
+                assertFalse(path, result.output.contains("STAGED_OK"))
+                assertFalse(path, File(root, "dev/.hapaneld-helper-transaction.lock").exists())
+
+                assertTrue(path, journal.delete())
+                assertEquals(path, 0, runCommandWithInput(command, candidate).exitCode)
+                assertEquals(path, candidate, stage.readText())
+                assertFalse(path, recordTmp.exists())
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test fun `every foreign journal blocks takeover without changing retained custody`() {
+        foreignHelperJournals.forEach { path ->
+            withTakeoverFiles(TakeoverTopology.SYSTEM, candidateStarts = true) { fixture ->
+                val journal = foreignHelperJournal(fixture.root, path)
+                val command = bundledLegacyHelperTakeoverCommand(
+                    sha256(fixture.stage), stagedBuild, incumbentBuild,
+                    filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )
+                assertEquals(path, 75, runTakeoverCommand(command))
+                assertEquals(path, fixture.candidateBytes, fixture.stage.readText())
+                assertEquals(path, fixture.oldBytes, fixture.oldBin.readText())
+                assertEquals(path, fixture.oldRegistration, fixture.registration.readText())
+                assertEquals(path, "retained authority\n", journal.readText())
+                assertTrue(path, fixture.incumbentReady.isFile)
+                assertFalse(path, fixture.live.exists())
+                assertFalse(path, File(fixture.dataLocal, ".hapaneld-helper.legacy-takeover").exists())
+                assertFalse(path, File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
+
+                assertTrue(path, journal.delete())
+                assertEquals(path, 0, runTakeoverCommand(command))
+                assertEquals(path, fixture.candidateBytes, fixture.live.readText())
+            }
+        }
+    }
+
+    // Independent of the production list: removing an authority must not remove its test case.
+    private val foreignHelperJournals = listOf(
+        "data/local/.hapaneld-guard-db/replacement.v1",
+        "data/local/.hapaneld-guard-db/.replacement.v1.tmp",
+        "system/bin/.hapaneld-helper-upgrade",
+        "system/bin/.hapaneld-helper-manual-upgrade",
+        "data/adb/hapaneld/.helper-upgrade.marker",
+        "data/adb/hapaneld/.helper-hybrid-upgrade.marker",
+        "data/adb/hapaneld/.helper-manual-upgrade.marker",
+        "data/local/.hapaneld-helper-manual-upgrade",
+    )
+
+    private fun foreignHelperJournal(root: File, path: String): File = File(root, path).apply {
+        parentFile!!.mkdirs()
+        writeText("retained authority\n")
+        setMode(this, 600)
+    }
+
     @Test fun `interrupted upload removes only its unique partial and releases admission`() {
         val root = Files.createTempDirectory("bundled-helper-stage-signal-").toFile()
         try {

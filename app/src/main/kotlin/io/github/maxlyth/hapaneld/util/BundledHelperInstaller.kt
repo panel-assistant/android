@@ -484,6 +484,19 @@ internal fun bundledHelperReplacementMode(
     GuardDbMaintenanceClient.StatusProbe.Malformed -> null
 }
 
+// Foreign recovery authorities fence both staging and takeover, even after their writer exits.
+// App-owned takeover records and previous-byte custody have separate admission/resume rules.
+private val BUNDLED_HELPER_FOREIGN_JOURNALS = listOf(
+    "/data/local/.hapaneld-guard-db/replacement.v1",
+    "/data/local/.hapaneld-guard-db/.replacement.v1.tmp",
+    "/system/bin/.hapaneld-helper-upgrade",
+    "/system/bin/.hapaneld-helper-manual-upgrade",
+    "/data/adb/hapaneld/.helper-upgrade.marker",
+    "/data/adb/hapaneld/.helper-hybrid-upgrade.marker",
+    "/data/adb/hapaneld/.helper-manual-upgrade.marker",
+    "/data/local/.hapaneld-helper-manual-upgrade",
+).joinToString(" ") { "\"\$root$it\"" }
+
 /** Root stages one fixed candidate; replacement happens only through the selected exact authority. */
 internal fun bundledHelperStageCommand(
     expectedSha256: String,
@@ -514,16 +527,10 @@ internal fun bundledHelperStageCommand(
         [ -d "${dollar}data_local" ] && [ ! -L "${dollar}data_local" ] || exit 1
         other_authority_absent() {
           for authority in \
-            "${dollar}root/data/local/.hapaneld-guard-db/replacement.v1" \
-            "${dollar}root/data/local/.hapaneld-guard-db/.replacement.v1.tmp" \
+            $BUNDLED_HELPER_FOREIGN_JOURNALS \
             "${dollar}root/data/local/.hapaneld-helper.legacy-takeover" \
             "${dollar}root/data/local/.hapaneld-helper.previous" \
-            "${dollar}root/data/local/.hapaneld-helper.previous.tmp" \
-            "${dollar}root/system/bin/.hapaneld-helper-upgrade" \
-            "${dollar}root/system/bin/.hapaneld-helper-manual-upgrade" \
-            "${dollar}root/data/adb/hapaneld/.helper-upgrade.marker" \
-            "${dollar}root/data/adb/hapaneld/.helper-hybrid-upgrade.marker" \
-            "${dollar}root/data/adb/hapaneld/.helper-manual-upgrade.marker"; do
+            "${dollar}root/data/local/.hapaneld-helper.previous.tmp"; do
             [ ! -e "${dollar}authority" ] && [ ! -L "${dollar}authority" ] || return 1
           done
         }
@@ -675,14 +682,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
             [ "${dollar}(file_meta "${dollar}1")" = "0:0:${dollar}3:1:${dollar}4" ]
         }
 
-        for foreign_journal in \
-          "${dollar}root/data/local/.hapaneld-guard-db/replacement.v1" \
-          "${dollar}root/data/local/.hapaneld-guard-db/.replacement.v1.tmp" \
-          "${dollar}root/system/bin/.hapaneld-helper-upgrade" \
-          "${dollar}root/system/bin/.hapaneld-helper-manual-upgrade" \
-          "${dollar}root/data/adb/hapaneld/.helper-upgrade.marker" \
-          "${dollar}root/data/adb/hapaneld/.helper-hybrid-upgrade.marker" \
-          "${dollar}root/data/adb/hapaneld/.helper-manual-upgrade.marker"; do
+        for foreign_journal in $BUNDLED_HELPER_FOREIGN_JOURNALS; do
           absent "${dollar}foreign_journal" || exit 75
         done
         absent "${dollar}data_local/.hapaneld-helper.previous" &&
