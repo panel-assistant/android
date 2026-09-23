@@ -23,7 +23,8 @@ class PanelAssistantShadowWiringContractTest {
     @Test fun everyBridgeGenerationBindsItsConvergerToTheReporter() {
         val build = service.substringAfter("private fun buildMqtt(").substringBefore("\n    }\n")
         assertTrue(build.contains(".also { bridge -> bridge.addStateSink(panelAssistantShadow.bind(bridge::stateChannelKeys)) }"))
-        assertTrue(bridge.contains("internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) = stateSinks.add(sink)"))
+        assertTrue(bridge.contains("internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) { nativeStateSink = sink }"))
+        assertTrue(bridge.contains("onObservation = { channel, observation -> nativeStateSink?.invoke(channel, observation) {} }"))
         assertTrue(bridge.contains("internal fun stateChannelKeys(): Set<String> = stateConverger.keys()"))
     }
 }

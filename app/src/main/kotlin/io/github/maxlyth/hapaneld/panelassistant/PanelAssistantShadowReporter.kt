@@ -8,10 +8,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Shadow-mode state reporting (protocol sections 8 and 10): every observation the converger admits for
- * MQTT is also reported over the native transport, so the integration can compare values and freshness.
+ * Native state reporting (protocol sections 8 and 10): every accepted observation is reported over the
+ * native transport independently of MQTT delivery, so the integration can compare values and freshness.
  *
- * The converger's added sinks do not converge, so this keeps its own per-channel state: the latest
+ * This keeps its own per-channel state: the latest
  * observation, whether it still needs sending, the request carrying it, and the revision the integration
  * acknowledged or rejected. Channel state is keyed by wire channel; the two attribute channels are folded
  * into their parents.
@@ -76,7 +76,7 @@ internal class PanelAssistantShadowReporter(
 
     /**
      * The only work on the convergence pump: constant-time bookkeeping under a lock no caller holds for
-     * translation or I/O. Nothing here throws, so the fan-out's isolation is never needed.
+     * translation or I/O. Nothing here throws into observation delivery.
      */
     private fun record(bound: Long, channel: String, observation: StateConverger.Observation.Reportable) {
         synchronized(lock) {

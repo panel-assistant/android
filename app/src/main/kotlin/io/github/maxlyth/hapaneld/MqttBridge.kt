@@ -1322,7 +1322,7 @@ internal class MqttBridge(
     // reconfigure, so every observation carries the lease and the runtime drops it once a newer bridge
     // holds one — otherwise a queued callback from a superseded broker session mutates whichever
     // coordinator happens to be installed when it finally runs.
-    private val haLifecycleLease: HaLifecycleRuntime.MqttLease? = null,
+    internal val haLifecycleLease: HaLifecycleRuntime.MqttLease? = null,
     private val transport: MqttTransport = HiveMqTransport(),
 ) : LiveSettingHandlers {
     private enum class CommandKind { LATEST, ACTION }
@@ -1645,8 +1645,7 @@ internal class MqttBridge(
     // no reconcile can reach the sink for a channel without its route. Declared ahead of the converger,
     // whose construction registers channels.
     private val mqttStateRoutes = java.util.concurrent.ConcurrentHashMap<String, MqttStateRoute>()
-    // The converger's sender. MQTT is the primary, whose acknowledgement alone drives convergence.
-    private val stateSinks = io.github.maxlyth.hapaneld.mqtt.StateSinkFanOut(::publishStateObservation)
+    @Volatile private var nativeStateSink: io.github.maxlyth.hapaneld.mqtt.StateSink? = null
     private val stateConverger = createStateConverger()
     private val zigbeeActuation = MqttZigbeeActuationCoordinators.forController(zigbee)
     private val zigbeeLease = zigbeeActuation.activate()
@@ -1679,8 +1678,9 @@ internal class MqttBridge(
         val known = { payload: String -> io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Known(payload) }
         val unknown = io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Unknown
         val c = io.github.maxlyth.hapaneld.mqtt.StateConverger(
-            sender = stateSinks,
+            sender = ::publishStateObservation,
             schedule = ::dispatchStateWork,
+            onObservation = { channel, observation -> nativeStateSink?.invoke(channel, observation) {} },
         )
         fun channel(
             key: String,
@@ -1849,8 +1849,8 @@ internal class MqttBridge(
         converger.register(mqtt.channel)
     }
 
-    /** Report every admitted observation to [sink] too; only MQTT's acknowledgement drives convergence. */
-    internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) = stateSinks.add(sink)
+    /** Bind the native reporter directly to observations, independently of MQTT delivery capacity. */
+    internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) { nativeStateSink = sink }
 
     /** The converger's registered channels, which grow as hardware capabilities are confirmed. */
     internal fun stateChannelKeys(): Set<String> = stateConverger.keys()
@@ -2694,7 +2694,15 @@ internal class MqttBridge(
         // HiveMQ reuses callback-owned values. Copy only after the cheap retained/topic/size gates, then
         // return immediately so a root call or slow controller can never pin its network callback.
         val payload = payloadBytes.copyOf()
-        val command = { consumeCommand(topic, payload, MQTT_PEER); Unit }
+        val command = {
+            // Authority may have changed while this command waited behind a slow handler.
+            if (mqttAcceptsCommand(!lifecycle.isOpen(), retained, config.panelAssistantAuthority)) {
+                consumeCommand(topic, payload, MQTT_PEER)
+            } else {
+                FeatureCosts.registry.recordDropped(FeatureCostOperation.MQTT_COMMAND_DISPATCH)
+            }
+            Unit
+        }
         val admission = when (kind) {
             CommandKind.LATEST -> commandDispatcher.submitLatest(requireNotNull(channel), command)
             CommandKind.ACTION -> commandDispatcher.submitAction(command)
@@ -4380,29 +4388,43 @@ internal class MqttBridge(
         )
     }
 
+    private val localObservationPending = AtomicBoolean(false)
+
+    /** One queued/running local pass per bridge, independent of broker heartbeat admission. */
+    internal fun requestLocalObservation(stillCurrent: () -> Boolean) {
+        if (!lifecycle.isOpen() || !localObservationPending.compareAndSet(false, true)) return
+        io.github.maxlyth.hapaneld.mqtt.StateConverger.dispatch {
+            try {
+                lifecycle.runIfOpen(Unit) {
+                    if (stillCurrent()) runCatching { syncLocalState() }
+                }
+            } finally {
+                localObservationPending.set(false)
+            }
+        }
+    }
+
     /**
      * Liveness probe: publish a monotonic-independent `last_seen_at` (epoch seconds) so a healthy link keeps
      * [lastOkMs] fresh even when nothing else is publishing, and a dead half-open link stops ACKing and
      * goes stale (→ watchdog reconnect). Non-retained (a stale retained heartbeat would be misleading).
-     * No-op when there's no client / broker. Called each watchdog tick from the service.
+     * Local observations have separate watchdog admission; this only probes the broker connection.
      */
     fun heartbeat() {
         if (!lifecycle.isOpen()) return
         if (state == "disabled" || state == "config-error") return
-        runCatching { publish("ha-paneld/$panel/last_seen_at", (System.currentTimeMillis() / 1000).toString()) }
         // The transport probe remains sacrificial: if HiveMQ wedges, it owns no lifecycle mutation lock.
-        // Hardware observation begins only after the probe returns and is then covered by retirement.
-        lifecycle.runIfOpen(Unit) { runCatching { syncLocalState() } }
+        runCatching { publish("ha-paneld/$panel/last_seen_at", (System.currentTimeMillis() / 1000).toString()) }
     }
 
     /**
-     * Local-state → MQTT sync: panel values can change OUTSIDE ha-paneld's API (auto-brightness and
+     * Local-state observation: panel values can change OUTSIDE ha-paneld's API (auto-brightness and
      * any local app writing the setting, hardware volume keys, vendor firmware dimming the backlight
      * node), and HA must track them without being flooded. One pass per heartbeat tick per channel:
      * publish only when the value differs from the LAST PUBLISHED beyond the channel's deadband AND
      * has settled (change since the previous tick within the settle band) — fast oscillation
      * publishes nothing until it stops, a slow ramp publishes at most once per tick, steady state
-     * publishes zero messages. Runs on the watchdog thread (su-safe, off-main).
+     * publishes zero MQTT messages. Runs on the convergence pump (su-safe, off-main).
      */
     private fun syncLocalState() {
         runCatching {
@@ -4575,7 +4597,7 @@ internal class MqttBridge(
     }
 
     /** Publish screen=ON at [level] and remember it as the last-reported brightness (the reconcile
-     *  in [heartbeat] compares the effective backlight against this). */
+     *  in [syncLocalState] compares the effective backlight against this). */
     private fun publishScreenBrightness(level: Int) {
         lastScreenBrightness = level
         screenEffectiveBaseline = -1   // re-capture on the next tick, after the framework settles

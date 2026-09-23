@@ -25,6 +25,8 @@ class StateConverger(
     private val schedule: (() -> Unit) -> Unit = ::dispatch,
     private val featureCosts: FeatureCostRegistry = FeatureCosts.registry,
     private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    /** Bounded, non-blocking observer, independent of this sender's delivery and acknowledgements. */
+    private val onObservation: (String, Observation.Reportable) -> Unit = { _, _ -> },
 ) {
     sealed interface Observation {
         /** What a sink may receive. Unknown publishes nothing, so it is never reported. */
@@ -79,7 +81,7 @@ class StateConverger(
     }
 
     /**
-     * [admit] is evaluated under this monitor immediately before a publish is committed, so a caller
+     * [admit] is evaluated under this monitor immediately before an observation is accepted, so a caller
      * can withdraw a reconcile whose observation was overtaken (e.g. a command read-back superseded by
      * a newer command mid-observation). A refused admission changes no channel state: the caller
      * guarantees a later reconcile for the same channel is already ordered behind it.
@@ -91,37 +93,29 @@ class StateConverger(
     private fun reconcileAdmitted(key: String, force: Boolean, admit: () -> Boolean) {
         val runtime = synchronized(this) { if (closed) null else channels[key] } ?: return
         val observation = runCatching { runtime.channel.observe() }.getOrDefault(Observation.Unknown)
-        val observedPayload = when (observation) {
-            is Observation.Known -> observation.payload.also {
-                synchronized(this) {
-                    if (closed) return
-                    runtime.unknown = false
-                }
-            }
-            Observation.Unknown -> {
-                synchronized(this) {
-                    if (closed) return
-                    runtime.unknown = true
-                    // An observation failure cannot cancel a publish already admitted to the bounded
-                    // outbox. Keep its slot until the callback arrives; otherwise repeated unknown reads
-                    // can make the actual MQTT in-flight count exceed MAX_IN_FLIGHT.
-                    if (!runtime.inFlight) runtime.dirty = false
-                }
-                return
-            }
-            Observation.Unavailable -> "".also {
-                synchronized(this) {
-                    if (closed) return
-                    runtime.unknown = true
-                }
-            }
-        }
-
         val generation: Long
         val payload: String
         var admittedCost: FeatureCostRegistry.Span? = null
         synchronized(this) {
             if (closed) return
+            // Withdraw superseded command read-backs before either transport receives them. Keep
+            // observation delivery ordered under the monitor, ahead of MQTT's ACK/capacity gates.
+            if (!admit()) return
+            runtime.unknown = observation !is Observation.Known
+            val observedPayload = when (observation) {
+                is Observation.Known -> observation.payload
+                Observation.Unavailable -> ""
+                Observation.Unknown -> {
+                    // An unreadable sample cannot free an MQTT slot still awaiting acknowledgement.
+                    if (!runtime.inFlight) runtime.dirty = false
+                    return
+                }
+            }
+            try {
+                onObservation(runtime.channel.key, observation as Observation.Reportable)
+            } catch (_: Exception) {
+                // Native delivery never changes MQTT admission or acknowledgement state.
+            }
             val acknowledged = runtime.acknowledged
             val equivalent = acknowledged?.let { runtime.channel.equivalent(it, observedPayload) } == true
             val refreshDue = !runtime.unknown && runtime.channel.refreshEligible(observedPayload) &&
@@ -154,9 +148,8 @@ class StateConverger(
                 updateBacklog()
                 return
             }
-            // Last-instant withdrawal, under the monitor: an observation overtaken between the
-            // caller's own pre-check and this admission must not become a publish — the newer
-            // reconcile ordered behind it observes fresher hardware and owns the publication.
+            // Native recording and equivalence checks may overlap a newer command's admission.
+            // Retain MQTT's final read-back check immediately before committing its publication.
             if (!admit()) return
             generation = ++runtime.generation
             runtime.sent = payload
