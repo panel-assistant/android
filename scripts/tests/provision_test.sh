@@ -3249,7 +3249,7 @@ TMPDIR="$lease_guard_tmp" \
 blocked_provision_pid=$!
 blocked_ready=0
 blocked_wait_attempt=0
-while [ "$blocked_wait_attempt" -lt 100 ]; do
+while [ "$blocked_wait_attempt" -lt 300 ]; do
   if [ -s "$blocked_install_pid_file" ]; then blocked_ready=1; break; fi
   /bin/sleep 0.05
   blocked_wait_attempt=$((blocked_wait_attempt + 1))
