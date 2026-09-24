@@ -125,7 +125,11 @@ class DeviceProfileCapabilityTest {
             assertTrue("blank soc class on ${profile.id}", profile.socClass.isNotBlank())
             profile.recommendedDensity?.let { assertTrue("invalid density on ${profile.id}", it in 72..640) }
             profile.recommendedFontScale?.let { assertTrue("invalid font scale on ${profile.id}", it in 0.5f..2f) }
-            profile.physicalPpi?.let { assertTrue("invalid physical ppi on ${profile.id}", it in 50..1000) }
+            listOf(480 to 480, 750 to 1334, 1920 to 1200).forEach { (width, height) ->
+                profile.displayGeometry(width, height)?.physical?.let {
+                    assertTrue("invalid physical ppi on ${profile.id}", it.ppi in 50.0..1000.0)
+                }
+            }
             assertTrue("non-finite room offset on ${profile.id}", profile.roomTempOffsetC.isFinite())
             profile.recommendedWebView?.let { webView ->
                 assertTrue("non-HTTPS WebView pin on ${profile.id}", webView.url.startsWith("https://"))

@@ -18,6 +18,59 @@
           "message": { "type": "string" }
         }
       },
+      "DisplayGeometry": {
+        "description": "The panel's physical display and its logical rendering density, kept separate. Logical DPI is a rendering setting, never measured pixel density; physical_size is omitted whenever no trustworthy profile evidence selects this panel.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["physical_pixels", "logical_dpi"],
+        "properties": {
+          "physical_pixels": {
+            "description": "The physical display mode, unaffected by any wm size or wm density override.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["width", "height"],
+            "properties": { "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 } }
+          },
+          "physical_size": {
+            "description": "Active display area from the profile variant matching this panel's product identity and physical pixels. A legacy profile physical_ppi value appears here with evidence approximate.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["diagonal_in", "width_mm", "height_mm", "ppi", "evidence", "approximate"],
+            "properties": {
+              "diagonal_in": { "type": "number" },
+              "width_mm": { "type": "number" },
+              "height_mm": { "type": "number" },
+              "ppi": { "type": "number", "description": "Physical pixel density derived from physical pixels and the active size." },
+              "evidence": { "type": "string", "enum": ["measured", "module", "specification", "approximate"], "description": "measured: direct measurement; module: identified LCD module data; specification: manufacturer specification; approximate: not to be read as a measurement." },
+              "approximate": { "type": "boolean" },
+              "variant": { "type": "string", "maxLength": 40 },
+              "evidence_note": { "type": "string", "maxLength": 200 }
+            }
+          },
+          "logical_dpi": {
+            "description": "Android rendering densities. None of these is physical pixel density.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "factory_base": { "type": "integer", "description": "Android's factory reset logical DPI, which wm density labels Physical density." },
+              "profile_factory_base": { "type": "integer", "description": "The factory-base logical DPI the matched profile variant declares." },
+              "current": { "type": "integer", "description": "The logical DPI rendering now, after any override." },
+              "recommended": { "type": "integer", "description": "The profile's dashboard-sizing preset; a preference, not a measurement." }
+            }
+          },
+          "viewport_dp": {
+            "description": "The rendered screen in density-independent pixels at the current logical DPI. Omitted when the current DPI is unreadable.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["width", "height", "density_scale"],
+            "properties": {
+              "width": { "type": "number" },
+              "height": { "type": "number" },
+              "density_scale": { "type": "number", "description": "current logical DPI / 160." }
+            }
+          }
+        }
+      },
       "ProfileRef": {
         "description": "Identifies one exact profile revision, as returned by every read route's `ref` field.",
         "type": "object",
@@ -1090,6 +1143,7 @@
     },
     "/api/v1/tame/record": { "post": { "summary": "Record that a package was disabled outside the app, so it can be handed back", "tags": ["install"], "requestBody": { "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object", "required": ["pkg"], "properties": { "pkg": { "type": "string" } } } } } }, "responses": { "200": { "description": "recorded" }, "202": { "$ref": "#/components/responses/ApprovalRequired" }, "400": { "description": "bad package" }, "409": { "description": "the package is not disabled by a user action" }, "503": { "description": "package state unreadable, or the record could not be persisted" } } } },
     "/api/v1/tame/suggest": { "get": { "summary": "Grouped package-picker suggestions (recommended / other / top-CPU)", "tags": ["control"], "responses": { "200": { "description": "HTML fragment; browsers must pass same-origin Fetch Metadata admission" }, "403": { "description": "Cross-origin or unverifiable browser request refused; headerless LAN automation remains supported" } } } },
+    "/api/v1/display": { "get": { "summary": "Physical display geometry and logical rendering density as separate facts", "tags": ["status"], "description": "Physical values come only from profile evidence selected by product identity and the live physical display mode; they are never inferred from Android's logical density, and a density change cannot move them. Logical DPI decides the dp viewport only and is not a measured density.", "responses": { "200": { "description": "Display geometry", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DisplayGeometry" } } } }, "503": { "description": "The display could not be read" } } } },
     "/api/v1/display/density": {
       "post": { "summary": "Display sizing: density (dpi) + text scale (su panels)", "tags": ["control"],
         "requestBody": { "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object", "properties": { "density": { "type": "integer" }, "font": { "type": "number" }, "action": { "type": "string", "enum": ["reset", "rec"] } } } } } },

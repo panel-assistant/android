@@ -197,6 +197,7 @@ data class ProfilePresentation(
             "density-range",
             "font-scale-range",
             "physical-ppi-range",
+            "display-geometry-invalid",
             "touch-click-gain-range",
             "evdev-mapping-count-limit",
             "evdev-device-node-invalid",
