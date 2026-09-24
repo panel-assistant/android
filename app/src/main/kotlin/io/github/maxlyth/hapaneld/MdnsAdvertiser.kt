@@ -46,10 +46,14 @@ class MdnsAdvertiser(
     private val runtimePanelId: String = config.panelId,
     private val runtimeFriendlyName: String = config.friendlyName,
     private val runtimeHttpPort: Int = config.httpPort,
+    // Acquires the Wi-Fi multicast lock and returns its release. Injectable so the responder can run
+    // on a JVM, where there is no WifiManager.
+    private val acquireMulticastLock: () -> () -> Unit = { acquireWifiMulticastLock(context) },
+    private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.androidId) },
 ) {
     private val ownerGate = RetirableMutationGate()
     private var jmdns: JmDNS? = null
-    private var lock: WifiManager.MulticastLock? = null
+    private var lock: (() -> Unit)? = null
     @Volatile private var browsing = false
     @Volatile private var refreshThread: Thread? = null
     @Volatile private var resolver: ThreadPoolExecutor? = null
@@ -199,12 +203,7 @@ class MdnsAdvertiser(
             }
             if (resolver?.isShutdown != false) resolver = newResolver()
             try {
-                val wifi = context.applicationContext
-                    .getSystemService(Context.WIFI_SERVICE) as WifiManager
-                lock = wifi.createMulticastLock("ha-paneld-mdns").apply {
-                    setReferenceCounted(true)
-                    acquire()
-                }
+                lock = acquireMulticastLock()
                 val addr = InetAddress.getByName(lanIp)
                 val dns = JmDNS.create(addr, runtimePanelId)
                 dns.setDelegate { failedDns, _ ->
@@ -226,7 +225,7 @@ class MdnsAdvertiser(
                     put("probe", generationProbeToken)
                     // A stable token lets Panel Assistant distinguish the mutable mDNS instance/name from
                     // a panel identity without advertising Settings.Secure.ANDROID_ID on the LAN.
-                    panelAssistantDiscoveryId(config.androidId)?.let { put("did", it) }
+                    discoveryId()?.let { put("did", it) }
                 }
                 val info = ServiceInfo.create(
                     Config.MDNS_SERVICE_TYPE,
@@ -519,7 +518,7 @@ class MdnsAdvertiser(
         advertisedProps = null
         peerMap.clear()
         val activeLock = lock
-        if (activeLock != null && runCatching { activeLock.release() }.isFailure) {
+        if (activeLock != null && runCatching { activeLock() }.isFailure) {
             return false
         }
         lock = null
@@ -727,6 +726,15 @@ private const val PANEL_ASSISTANT_DISCOVERY_NAMESPACE = "panel-assistant-mdns-v1
  * one. This deliberately does not expose the Android ID itself: the domain-separated digest cannot be
  * confused with ha-paneld's MQTT or Home Assistant device identity.
  */
+private fun acquireWifiMulticastLock(context: Context): () -> Unit {
+    val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    val lock = wifi.createMulticastLock("ha-paneld-mdns").apply {
+        setReferenceCounted(true)
+        acquire()
+    }
+    return lock::release
+}
+
 internal fun panelAssistantDiscoveryId(androidId: String): String? {
     val source = androidId.trim()
     if (source.isEmpty()) return null
