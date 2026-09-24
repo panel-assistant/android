@@ -690,6 +690,8 @@ handle_db_txn_command() {
       fi
       return 0 ;;
     *'sh /data/local/tmp/.hapaneld-db-txn.'*-script*)
+      # no_verdict: the transaction runs, then the transport dies before its answer arrives.
+      if [ "${MOCK_DB_TXN:-ok}" = no_verdict ]; then run_db_txn_script >/dev/null; return 1; fi
       run_db_txn_script
       return 0 ;;
     *.hapaneld-db-txn.*HAPANELD_STALE_PRESENT*)
