@@ -24,9 +24,10 @@ enum class StorageQuickCheck {
  * Whether bounded freelist reclamation is even possible for this database.
  *
  * `NONE` is not a fault and is never converted implicitly — enabling auto-vacuum on such a database
- * needs a full `VACUUM`, whose temporary-space demand can worsen a low-space incident. It does mean
- * freelist pages will never return to the filesystem, which an operator reading a large
- * `freelist_count` otherwise has no way to tell from reclamation that is merely lagging.
+ * needs a full `VACUUM`, whose temporary-space demand can worsen a low-space incident. Until then
+ * freelist pages cannot return to the filesystem, which an operator reading a large `freelist_count`
+ * otherwise has no way to tell from reclamation that is merely lagging. The one conversion is inside a
+ * full `VACUUM` that [fullVacuumAdmission] admits during storage remediation.
  */
 enum class StorageAutoVacuumMode {
     UNKNOWN,
@@ -82,6 +83,8 @@ data class StorageHealthSnapshot(
     val autoVacuumMode: StorageAutoVacuumMode = StorageAutoVacuumMode.UNKNOWN,
     val databaseFailureKind: StorageDatabaseFailureKind? = null,
     val databaseFailureOperation: String? = null,
+    /** The most recent remediation run in this process, or null when none has run. */
+    val remediation: StorageRemediationSummary? = null,
 ) {
     /**
      * The failing operation as it may be shown, reduced to the closed internal vocabulary.
@@ -246,7 +249,15 @@ internal class StorageHealthState(
             pressureSeverity = pressureSeverity,
             databaseFailureKind = databaseFailureKind,
             databaseFailureOperation = databaseFailureOperation,
+            remediation = current.remediation,
         )
+        return current
+    }
+
+    /** Remediation never changes severity: only a later observation can say whether pressure cleared. */
+    @Synchronized
+    fun recordRemediation(summary: StorageRemediationSummary): StorageHealthSnapshot {
+        current = current.copy(remediation = summary)
         return current
     }
 
@@ -321,6 +332,9 @@ internal class StorageHealthAuthority(policy: StorageHealthPolicy) {
 
     fun recordDatabaseWriteSuccess(): StorageHealthSnapshot =
         publishIfChanged { state.recordDatabaseWriteSuccess() }
+
+    fun recordRemediation(summary: StorageRemediationSummary): StorageHealthSnapshot =
+        publishIfChanged { state.recordRemediation(summary) }
 
     fun subscribe(listener: (StorageHealthSnapshot) -> Unit): AutoCloseable {
         synchronized(publicationLock) {
@@ -414,6 +428,9 @@ object StorageHealthRuntime {
     }
 
     fun recordDatabaseWriteSuccess(): StorageHealthSnapshot = authority.recordDatabaseWriteSuccess()
+
+    fun recordRemediation(summary: StorageRemediationSummary): StorageHealthSnapshot =
+        authority.recordRemediation(summary)
 
     fun subscribe(listener: (StorageHealthSnapshot) -> Unit): AutoCloseable =
         listenerDispatch.subscribe(authority, listener)
@@ -558,6 +575,7 @@ private fun StorageHealthObservation.toSnapshot(
     pressureSeverity: StorageHealthSeverity,
     databaseFailureKind: StorageDatabaseFailureKind?,
     databaseFailureOperation: String?,
+    remediation: StorageRemediationSummary?,
 ) = StorageHealthSnapshot(
     severity = severity,
     pressureSeverity = pressureSeverity,
@@ -576,6 +594,7 @@ private fun StorageHealthObservation.toSnapshot(
     autoVacuumMode = autoVacuumMode,
     databaseFailureKind = databaseFailureKind,
     databaseFailureOperation = databaseFailureOperation,
+    remediation = remediation,
 )
 
 private const val MAX_FAILURE_CAUSE_DEPTH = 8
@@ -595,18 +614,21 @@ internal val KNOWN_DATABASE_OPERATIONS = setOf(
     "catalog-metric-history",
     "catalog-overrides",
     "catalog-reset",
+    "catalog-retention",
     "catalog-scope-migration",
     "catalog-status",
     "catalog-sync",
     "dashboard-performance-history",
     "database-checkpoint",
     "database-create",
+    "database-vacuum",
     "database-downgrade-tripwire",
     "database-preopen-reconcile",
     "database-upgrade",
     "database-vault-read",
     "database-vault-restore",
     "database-version-read",
+    "database-wal-truncate",
     "proximity-history",
     "proximity-history-reset",
     "quick-check",
