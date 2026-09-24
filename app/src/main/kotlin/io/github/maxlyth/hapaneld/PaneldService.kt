@@ -1418,7 +1418,7 @@ class PaneldService : Service() {
                     )) {
                     system.reloadDashboard(
                         SystemController.BUILTIN_DASHBOARD,
-                        reason = "applying the entity filter",
+                        reason = BuiltinDashboard.LEARNING_RELOAD_REASON,
                     )
                 }
             },

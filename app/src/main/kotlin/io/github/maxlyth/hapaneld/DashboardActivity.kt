@@ -412,9 +412,21 @@ class DashboardActivity : AppCompatActivity() {
      * hardware — it vanished with the container the moment the rebuild swapped views and its
      * full-bleed layout read no better than the toast.
      */
-    private fun announceDeliberateRestart(reason: String) {
+    private fun announceDeliberateRestart(
+        reason: String,
+        learning: Boolean = reason == BuiltinDashboard.LEARNING_RELOAD_REASON,
+    ) {
+        if (!BuiltinDashboard.restartAnnouncements.shouldAnnounce(
+                learning = learning,
+                dashboardShown = web != null,
+                nowMs = SystemClock.elapsedRealtime(),
+            )
+        ) {
+            Log.i(TAG, "learning restart not announced again (${if (web == null) "no dashboard shown" else "learning window open"})")
+            return
+        }
         val shownReason = when (reason) {
-            "applying the entity filter", "updating the entity filter" ->
+            BuiltinDashboard.LEARNING_RELOAD_REASON, "updating the entity filter" ->
                 getString(R.string.optimizing_entities_restart)
             "applying your settings", "clearing the dashboard’s stored data" ->
                 getString(R.string.applying_changes)
