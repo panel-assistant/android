@@ -48,6 +48,8 @@
 
 - **A computer without sha256sum is now told so, instead of the installer stopping without a reason.** The installer checks every file it works with by its SHA-256 digest. On a computer with neither `sha256sum` nor `shasum` it used to stop right after the time zone check without printing why. It now says that neither tool is installed, names what it was hashing, and says which one to install.
 
+- **When the pre-update database backup cannot be taken, the installer now says why for each cause, and no longer claims the panel was left clean when it cannot know.** Every reason the backup on the panel could stop used to end with the same advice, that the panel "left nothing behind" and the named stage should be fixed, even when the connection had dropped and no answer came back at all. Each reason now has its own advice, and a lost answer is reported as exactly that: nothing is known about what the panel did, and the installer asks it to remove the backup's working files. The update carries on either way, as before.
+
 ## v0.9.8-rc1 - 2026-09-15
 
 This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.

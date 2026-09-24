@@ -203,7 +203,7 @@ DB_GATE_HELPER_RECOVERY=""
 DB_GATE_PROGRESS=""
 HOST_DB_PRIMARY_FINGERPRINT=""
 RESET_PACKAGE_STOPPED="unknown"
-SNAPSHOT_TXN_REMOTE=""; SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
+SNAPSHOT_TXN_REMOTE=""; SNAPSHOT_TXN_REMOTE_SCRIPT=""; SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
 SNAPSHOT_TXN_HOST_DB_WORK=""; SNAPSHOT_TXN_HOST_DB_TARGET=""
 SNAPSHOT_TXN_HOST_RECEIPT_WORK=""; SNAPSHOT_TXN_HOST_RECEIPT_TARGET=""
 SNAPSHOT_TXN_DEFERRED_SIGNAL=""
@@ -7378,6 +7378,10 @@ discard_db_snapshot_txn() {
     fi
   done
   SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
+  if [ -n "${SNAPSHOT_TXN_REMOTE_SCRIPT:-}" ]; then
+    stale="$SNAPSHOT_TXN_REMOTE_SCRIPT"; SNAPSHOT_TXN_REMOTE_SCRIPT=""
+    run_root "rm -f $stale" >/dev/null 2>&1 || true
+  fi
   if [ -n "${SNAPSHOT_TXN_REMOTE:-}" ]; then
     stale="$SNAPSHOT_TXN_REMOTE"; SNAPSHOT_TXN_REMOTE=""
     # Staging is owner-only, uniquely named so no later run can collide with it, and confined to
@@ -7394,6 +7398,32 @@ snapshot_txn_refuse() {
   discard_db_snapshot_txn
   warn "data-store snapshot: $reason — continuing the ordinary in-place upgrade WITHOUT a database restore point. $advice"
   return 0
+}
+
+# What each verdict of the on-panel capture transaction supports saying, and nothing more. Every
+# named refusal is one the script reached itself, after trying to remove any staging it created; an
+# empty verdict is the host hearing nothing back, which proves nothing about what the panel did.
+snapshot_txn_verdict_advice() {
+  case "$1" in
+    sqlite_missing) echo "The panel has no sqlite3 at /system/bin/sqlite3 or on root's PATH, and this backup needs one." ;;
+    source_missing) echo "The panel had no database file when the capture ran, so there was nothing to copy." ;;
+    source_not_regular) echo "The database path on the panel is not a regular file, so it was not copied." ;;
+    stage_exists) echo "The capture's uniquely named staging directory could not be created on the panel: the path already existed, or /data/local/tmp is full or not writable. This run left that path alone." ;;
+    provenance_unreadable) echo "The panel did not report the installed build, so a copy could not be tied to the version that wrote it." ;;
+    provenance_changed) echo "The installed build changed while the copy was taken. Re-run once nothing else is installing on the panel." ;;
+    backup_failed) echo "The panel's sqlite3 could not back up the database. Re-run, and check the panel's free storage if it fails again." ;;
+    backup_empty) echo "The panel's sqlite3 produced an empty copy. Re-run, and check the panel's free storage if it happens again." ;;
+    integrity_unreadable) echo "SQLite could not run its integrity check on the copy, so it was not kept." ;;
+    integrity_failed) echo "The copy failed SQLite's integrity check, so it was not kept. The panel's own database may need attention." ;;
+    rows_unreadable) echo "The copy's settings rows could not be counted, so it was not kept." ;;
+    rows_empty) echo "The copy holds no settings rows, so it was not kept." ;;
+    schema_unreadable) echo "The copy's schema version could not be read, so it was not kept." ;;
+    schema_alien) echo "The copy's schema version is outside the range this installer can restore, so it was not kept." ;;
+    size_unreadable) echo "The copy's size could not be read on the panel, so it was not transferred." ;;
+    permissions_failed) echo "The copy's permissions could not be restricted on the panel, so it was not transferred." ;;
+    '') echo "The panel sent back no verdict, so whether the capture ran, and what it left in /data/local/tmp, is unknown. This run asked the panel to remove the capture's staging." ;;
+    *) echo "The panel refused for a reason this installer does not recognise." ;;
+  esac
 }
 
 # A rejected backup is discarded and treated as unavailable. Android package replacement preserves
@@ -7906,19 +7936,27 @@ EOF2
   fi
   if [ "$txn_ok" != 1 ]; then
     if [ "$fail_reason" = stage_exists ]; then
-      # The path is occupied by a DIFFERENT owner's staging — with a urandom identity that is a
-      # deliberate-interference signal, not a plausible accident. Either way it is not this run's to
-      # remove: disown it so the refusal cleanup cannot delete the winner's in-flight capture.
+      # The script's mkdir failed, so the path is not this run's: it may be a DIFFERENT owner's
+      # staging (with a urandom identity, a deliberate-interference signal rather than an accident),
+      # or the directory could not be made at all. Disown it so the refusal cleanup cannot delete a
+      # winner's in-flight capture. The -script beside it is the file this run pushed, so it stays
+      # this run's to remove; it is registered only after the stage is disowned, so a signal between
+      # the two can leak that file but never reach the other owner's staging.
       SNAPSHOT_TXN_REMOTE=""
+      SNAPSHOT_TXN_REMOTE_SCRIPT="${stage}-script"
     fi
     case "$fail_reason" in
       integrity_failed|rows_empty|schema_alien|provenance_unreadable|provenance_changed|source_not_regular|stage_exists)
         snapshot_txn_reject_unsafe "the on-panel capture transaction refused ($fail_reason)" \
-          "The panel left nothing behind. Fix the named stage on the panel, then re-run."
+          "$(snapshot_txn_verdict_advice "$fail_reason")"
+        ;;
+      '')
+        snapshot_txn_refuse "the on-panel capture transaction gave no verdict" \
+          "$(snapshot_txn_verdict_advice "")"
         ;;
       *)
-        snapshot_txn_refuse "the on-panel capture transaction refused (${fail_reason:-no transaction verdict})" \
-          "The panel left nothing behind. Fix the named stage on the panel, then re-run."
+        snapshot_txn_refuse "the on-panel capture transaction refused ($fail_reason)" \
+          "$(snapshot_txn_verdict_advice "$fail_reason")"
         ;;
     esac
     return 0

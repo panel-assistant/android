@@ -6020,17 +6020,62 @@ MOCK_ADB_ROOT=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_marker_captured "the plain-shell (adb root) form produces whole-line captured evidence"
 reset_db_txn_state
 
-# A staging collision: the loser must refuse by name and remove NOTHING — the winner's in-flight
-# marker survives and no privileged removal for the staging path is even attempted.
+# A staging collision: the loser must refuse by name and remove nothing of the winner's — the
+# winner's in-flight marker survives and no privileged removal of the staging path is even attempted.
+# The -script beside it is the file the loser itself pushed, and the loser still removes that.
 MOCK_DB_TXN=stage_collision run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a staging collision refuses the backup without blocking the ordinary upgrade"
-assert_contains 'stage_exists' "the collision refusal names its stage"
+assert_contains 'on-panel capture transaction refused \(stage_exists\)' "the collision refusal names its stage"
+assert_contains 'staging directory could not be created on the panel: the path already existed, or /data/local/tmp is full or not writable\. This run left that path alone' \
+  "the collision advice names every cause its verdict allows and disowns only that path"
 collision_marker="$(find "$TMP/db-txn-sandbox/data/local/tmp" -name winner-in-flight 2>/dev/null | head -1)"
 if [ -n "$collision_marker" ] && [ -f "$collision_marker" ]; then
   pass "the loser of a staging collision leaves the winner's in-flight capture untouched"
 else fail_test "the loser of a staging collision leaves the winner's in-flight capture untouched"; fi
-assert_not_contains 'rm -rf? [^|]*hapaneld-db-txn' "$MOCK_CALL_LOG" "the loser never even attempts a privileged removal of the contested staging"
+assert_not_contains 'rm -rf? [^|]*hapaneld-db-txn\.[0-9a-f]+([ "]|$)' "$MOCK_CALL_LOG" "the loser never even attempts a privileged removal of the contested staging"
+assert_log_contains 'rm -f /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+-script' \
+  "the loser still removes the capture script it pushed itself"
+assert_not_contains 'left nothing behind' "$LAST_OUTPUT" "the collision refusal claims no cleanliness it did not establish"
 reset_db_txn_state
+
+# The transport dies after the transaction ran and before its answer arrived. The host heard no
+# verdict, so it cannot say what the panel did or what is left there; it says that, asks the panel
+# to remove the capture's staging, and still lets the ordinary upgrade continue.
+MOCK_DB_TXN=no_verdict run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a capture with no verdict remains advisory for an ordinary upgrade"
+assert_contains 'on-panel capture transaction gave no verdict' "a lost verdict is reported as no verdict, not as a refusal"
+assert_contains 'whether the capture ran, and what it left in /data/local/tmp, is unknown' \
+  "a lost verdict says the panel's state is unknown"
+assert_not_contains 'left nothing behind|refused \(' "$LAST_OUTPUT" "a lost verdict claims neither cleanliness nor a refusal"
+assert_log_contains 'rm -rf /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+ ' "a lost verdict still asks the panel to remove the capture's staging"
+assert_marker_absent "a capture with no verdict never claims a captured snapshot"
+if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' 2>/dev/null | grep -q .; then
+  fail_test "the staging a lost verdict left behind is removed by the host's request"
+else pass "the staging a lost verdict left behind is removed by the host's request"; fi
+reset_db_txn_state
+
+# Every reason the shipped capture script can refuse with has advice of its own. The fallback is for
+# a reason a later script might add; no reason the script emits today may land on it, on the
+# no-verdict text, or on another reason's text.
+capture_script_body="$(sed -n "/^  if ! cat > \"\$script_file\" <<'EOF'\$/,/^EOF\$/p" "$PROVISION")"
+eval "$(sed -n '/^snapshot_txn_verdict_advice() {$/,/^}$/p' "$PROVISION")"
+capture_reasons="$(printf '%s\n' "$capture_script_body" | grep -oE '(^|[^_a-z])refuse [a-z_]+' | sed -E 's/.*refuse //' | sort -u)"
+capture_reason_count="$(printf '%s\n' "$capture_reasons" | grep -c . || true)"
+unrecognised_advice="$(snapshot_txn_verdict_advice not-a-shipped-reason)"
+no_verdict_advice="$(snapshot_txn_verdict_advice '')"
+shared_advice=""
+for capture_reason in $capture_reasons; do
+  reason_advice="$(snapshot_txn_verdict_advice "$capture_reason")"
+  if [ -z "$reason_advice" ] || [ "$reason_advice" = "$unrecognised_advice" ] || [ "$reason_advice" = "$no_verdict_advice" ]; then
+    shared_advice="$shared_advice $capture_reason"
+  fi
+done
+duplicate_advice="$(for capture_reason in $capture_reasons; do snapshot_txn_verdict_advice "$capture_reason"; done | sort | uniq -d)"
+if [ "$capture_reason_count" -eq 16 ] && [ -z "$shared_advice" ] && [ -z "$duplicate_advice" ]; then
+  pass "each of the capture script's 16 refusal reasons has advice of its own"
+else
+  fail_test "each of the capture script's 16 refusal reasons has advice of its own (found $capture_reason_count; fallback or no-verdict text:${shared_advice:- none}; shared: ${duplicate_advice:-none})"
+fi
 
 # Panel-only digest degradation is stated, never silent: a panel with no digest tool still captures,
 # while the host digest remains mandatory and is recorded in full.
