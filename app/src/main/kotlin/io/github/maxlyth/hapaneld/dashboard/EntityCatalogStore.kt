@@ -20,6 +20,7 @@ import io.github.maxlyth.hapaneld.persistence.ConfigVault
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
 import io.github.maxlyth.hapaneld.storage.DatabaseBusyRetry
+import io.github.maxlyth.hapaneld.storage.FREELIST_RETAINED_PAGES
 import io.github.maxlyth.hapaneld.storage.StorageAutoVacuumMode
 import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
 import io.github.maxlyth.hapaneld.storage.VacuumOutcome
@@ -2078,8 +2079,6 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         private const val VACUUM_CHUNK_PAGES = 256L
         /** Cap one maintenance pass's total reclamation (~20 MiB) so it never monopolizes the writer. */
         private const val MAX_VACUUM_PAGES_PER_PASS = 5_120L
-        /** Small freelist retained for ordinary page reuse; below this, reclamation is not worth a lock. */
-        private const val FREELIST_RETAINED_PAGES = 512L
         /**
          * Free space a reclamation pass needs on top of its own transient cost. Reclamation adds WAL
          * frames for the pages it relocates before the checkpoint gives anything back, so a pass run

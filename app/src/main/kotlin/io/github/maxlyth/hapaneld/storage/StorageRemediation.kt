@@ -540,8 +540,14 @@ internal class StorageRemediationLadder(
             val after = storageRemediationSaturatingAdd(it.mainDatabaseBytes, it.walBytes)
             (before - after).coerceAtLeast(0L)
         } ?: 0L
-        // Contention and a busy owner are not exhaustion: a later run can still do more.
-        val deferred = !ownedAtStart ||
+        // Contention, a busy owner and freelist pages bounded reclamation has yet to return are not
+        // exhaustion: a later run or maintenance pass can still do more. Deleted rows reach the
+        // filesystem only through that reclamation, which is gated and capped per pass.
+        val reclamationPending = final != null &&
+            final.pressureSeverity == StorageHealthSeverity.WARNING &&
+            final.autoVacuumMode == StorageAutoVacuumMode.INCREMENTAL &&
+            final.freelistCount > FREELIST_RETAINED_PAGES
+        val deferred = !ownedAtStart || reclamationPending ||
             retention == RetentionResult.SKIPPED_LIFECYCLE ||
             checkpoint.result == WalCheckpointResult.DEFERRED_BUSY ||
             vacuum.result == VacuumResult.DEFERRED_BUSY ||
@@ -578,6 +584,12 @@ internal fun <T> configurationBackupVerified(written: List<T>, readBack: List<T>
         readBack.toSet() == written.toSet()
 
 internal const val WAL_CHECKPOINT_MARGIN_BYTES = 16L * 1024L * 1024L
+
+/**
+ * Small freelist bounded reclamation leaves for ordinary page reuse; below it, reclamation is not
+ * worth a lock. Pages above it on an INCREMENTAL database are returned by a later maintenance pass.
+ */
+internal const val FREELIST_RETAINED_PAGES = 512L
 
 private fun storageRemediationSaturatingAdd(left: Long, right: Long): Long =
     if (right > 0L && left > Long.MAX_VALUE - right) Long.MAX_VALUE else left + right

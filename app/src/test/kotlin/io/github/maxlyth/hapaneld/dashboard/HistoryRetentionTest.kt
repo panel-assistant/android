@@ -13,8 +13,9 @@ import org.junit.Test
 
 /**
  * The history pruning class, run as the store runs it (each bounded statement repeated until a chunk
- * comes back short) against real SQLite. Only rows past their own age limit go; configuration, live
- * entities, pinned or excluded memberships and anything within its window stay.
+ * comes back short) against real SQLite and the store's real `CREATE TABLE` statements — one history
+ * table is `WITHOUT ROWID`, which a hand-written fixture would hide. Only rows past their own age limit
+ * go; configuration, live entities, pinned or excluded memberships and anything within its window stay.
  */
 class HistoryRetentionTest {
     private lateinit var directory: File
@@ -30,13 +31,14 @@ class HistoryRetentionTest {
         db = DriverManager.getConnection("jdbc:sqlite:${File(directory, "catalog.db").path}")
         listOf(
             "CREATE TABLE app_state(namespace TEXT, state_key TEXT, value_text TEXT, updated_at INTEGER)",
-            "CREATE TABLE entity(instance TEXT, entity_id TEXT, tombstone_at INTEGER NOT NULL DEFAULT 0)",
-            "CREATE TABLE dashboard_entity(instance TEXT, entity_id TEXT, pinned INTEGER, excluded INTEGER)",
-            "CREATE TABLE dashboard_entity_traffic_minute(entity_id TEXT, minute INTEGER)",
-            "CREATE TABLE dashboard_metric_minute(path TEXT, minute INTEGER)",
-            "CREATE TABLE ambient_lux_minute(source_id TEXT, minute INTEGER)",
-            "CREATE TABLE proximity_sample(fingerprint TEXT, bucket INTEGER)",
-            "CREATE TABLE proximity_model(fingerprint TEXT, updated_at INTEGER)",
+            EntityCatalogStore.ENTITY_TABLE_SQL,
+            EntityCatalogStore.DASHBOARD_TABLE_SQL,
+            EntityCatalogStore.DASHBOARD_ENTITY_TABLE_SQL,
+            EntityCatalogStore.DASHBOARD_ENTITY_TRAFFIC_TABLE_SQL,
+            EntityCatalogStore.DASHBOARD_METRIC_TABLE_SQL,
+            EntityCatalogStore.AMBIENT_HISTORY_TABLE_SQL,
+            EntityCatalogStore.PROXIMITY_MODEL_TABLE_SQL,
+            EntityCatalogStore.PROXIMITY_SAMPLE_TABLE_SQL,
         ).forEach(::exec)
     }
 
@@ -57,6 +59,22 @@ class HistoryRetentionTest {
             }
         }
 
+    private fun traffic(id: String, minute: Long) =
+        exec("INSERT INTO dashboard_entity_traffic_minute(instance,path,entity_id,minute) VALUES('ha','lovelace',?,?)", id, minute)
+    private fun entity(id: String, tombstoneAt: Long) =
+        exec("INSERT INTO entity(instance,entity_id,first_seen_at,last_seen_at,tombstone_at) VALUES('ha',?,0,0,?)", id, tombstoneAt)
+    private fun membership(id: String, pinned: Int) =
+        exec("INSERT INTO dashboard_entity(instance,path,entity_id,pinned,excluded) VALUES('ha','lovelace',?,?,0)", id, pinned)
+    private fun metric(path: String, minute: Long) =
+        exec("INSERT INTO dashboard_metric_minute(instance,path,minute,payload) VALUES('ha',?,?,x'00')", path, minute)
+    private fun ambient(source: String, minute: Long) =
+        exec("INSERT INTO ambient_lux_minute(context_id,source_id,minute) VALUES('ctx',?,?)", source, minute)
+    private fun proximity(fingerprint: String, bucket: Long) = exec(
+        "INSERT INTO proximity_sample(fingerprint,bucket,sample_count,raw_min,raw_max,raw_sum,raw_sum_squares) " +
+            "VALUES(?,?,1,0,0,0,0)",
+        fingerprint, bucket,
+    )
+
     /** Exactly the store's `chunkedWrite` loop. */
     private fun enforce(chunkRows: Int = 2) {
         historyRetentionStatements(now, chunkRows).forEach { statement ->
@@ -65,9 +83,9 @@ class HistoryRetentionTest {
     }
 
     @Test fun expiredTrafficMinutesGoAndTheLastDayStays() {
-        (1..5).forEach { exec("INSERT INTO dashboard_entity_traffic_minute VALUES(?,?)", "old-$it", nowMinute - 2 * 24 * 60 - it) }
-        exec("INSERT INTO dashboard_entity_traffic_minute VALUES(?,?)", "recent", nowMinute - 60)
-        exec("INSERT INTO dashboard_entity_traffic_minute VALUES(?,?)", "edge", trafficMinuteCutoff(now))
+        (1..5).forEach { traffic("old-$it", nowMinute - 2 * 24 * 60 - it) }
+        traffic("recent", nowMinute - 60)
+        traffic("edge", trafficMinuteCutoff(now))
 
         enforce()
 
@@ -77,14 +95,14 @@ class HistoryRetentionTest {
     @Test fun onlyTombstonedEntitiesPastRetentionAndTheirUnpinnedMembershipsGo() {
         val expired = now - TOMBSTONE_RETENTION_MS - day
         val recent = now - day
-        exec("INSERT INTO entity VALUES('ha','sensor.gone',?)", expired)
-        exec("INSERT INTO entity VALUES('ha','sensor.recently_gone',?)", recent)
-        exec("INSERT INTO entity VALUES('ha','sensor.live',0)")
-        exec("INSERT INTO entity VALUES('ha','sensor.pinned_gone',?)", expired)
-        exec("INSERT INTO dashboard_entity VALUES('ha','sensor.gone',0,0)")
-        exec("INSERT INTO dashboard_entity VALUES('ha','sensor.recently_gone',0,0)")
-        exec("INSERT INTO dashboard_entity VALUES('ha','sensor.live',0,0)")
-        exec("INSERT INTO dashboard_entity VALUES('ha','sensor.pinned_gone',1,0)")
+        entity("sensor.gone", expired)
+        entity("sensor.recently_gone", recent)
+        entity("sensor.live", 0L)
+        entity("sensor.pinned_gone", expired)
+        membership("sensor.gone", pinned = 0)
+        membership("sensor.recently_gone", pinned = 0)
+        membership("sensor.live", pinned = 0)
+        membership("sensor.pinned_gone", pinned = 1)
 
         enforce()
 
@@ -97,12 +115,12 @@ class HistoryRetentionTest {
     }
 
     @Test fun performanceAmbientAndProximityHistoryKeepTheirOwnWindows() {
-        exec("INSERT INTO dashboard_metric_minute VALUES('old',?)", performanceCutoffMinute(nowMinute) - 1)
-        exec("INSERT INTO dashboard_metric_minute VALUES('kept',?)", performanceCutoffMinute(nowMinute))
-        exec("INSERT INTO ambient_lux_minute VALUES('old',?)", nowMinute - AMBIENT_RETENTION_MINUTES - 1)
-        exec("INSERT INTO ambient_lux_minute VALUES('kept',?)", nowMinute - 60)
-        exec("INSERT INTO proximity_sample VALUES('old',?)", proximityCutoffBucket(now) - 1)
-        exec("INSERT INTO proximity_sample VALUES('kept',?)", proximityCutoffBucket(now))
+        (1..5).forEach { metric("old-$it", performanceCutoffMinute(nowMinute) - it) }
+        metric("kept", performanceCutoffMinute(nowMinute))
+        ambient("old", nowMinute - AMBIENT_RETENTION_MINUTES - 1)
+        ambient("kept", nowMinute - 60)
+        proximity("old", proximityCutoffBucket(now) - 1)
+        proximity("kept", proximityCutoffBucket(now))
 
         enforce()
 
@@ -113,7 +131,7 @@ class HistoryRetentionTest {
 
     @Test fun configurationAndLearnedModelsAreNeverTouched() {
         exec("INSERT INTO app_state VALUES('config','home_dashboard','lovelace',0)")
-        exec("INSERT INTO proximity_model VALUES('model',0)")
+        exec("INSERT INTO proximity_model(fingerprint,algorithm_version,snapshot_json,updated_at) VALUES('model',1,'{}',0)")
 
         enforce()
 
@@ -129,7 +147,8 @@ class HistoryRetentionTest {
     }
 
     @Test fun aSecondRunFindsNothingLeftToPrune() {
-        (1..7).forEach { exec("INSERT INTO dashboard_entity_traffic_minute VALUES(?,?)", "old-$it", 0L) }
+        (1..7).forEach { traffic("old-$it", 0L) }
+        (1..7).forEach { metric("old-$it", 0L) }
         enforce()
         val second = historyRetentionStatements(now, 2).sumOf { exec(it.sql, it.cutoff) }
         assertEquals("retention converges", 0, second)

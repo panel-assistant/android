@@ -54,11 +54,16 @@ internal fun historyRetentionStatements(now: Long, chunkRows: Int): List<History
     require(chunkRows > 0)
     val nowMinute = now / RETENTION_MINUTE_MS
     val tombstones = tombstoneCutoff(now)
-    fun expired(table: String, column: String, cutoff: Long) = HistoryRetentionStatement(
-        table,
-        "DELETE FROM $table WHERE rowid IN (SELECT rowid FROM $table WHERE $column<? LIMIT $chunkRows)",
-        cutoff,
-    )
+    // A WITHOUT ROWID table has no rowid, so it is chunked by its primary key instead.
+    fun expired(table: String, column: String, cutoff: Long, key: List<String> = listOf("rowid")): HistoryRetentionStatement {
+        val keys = key.joinToString(",")
+        val selector = if (key.size == 1) keys else "($keys)"
+        return HistoryRetentionStatement(
+            table,
+            "DELETE FROM $table WHERE $selector IN (SELECT $keys FROM $table WHERE $column<? LIMIT $chunkRows)",
+            cutoff,
+        )
+    }
     return listOf(
         expired("dashboard_entity_traffic_minute", "minute", trafficMinuteCutoff(now)),
         // Membership first: deleting the entity row first would strand its memberships.
@@ -73,7 +78,12 @@ internal fun historyRetentionStatements(now: Long, chunkRows: Int): List<History
                 "SELECT rowid FROM entity WHERE tombstone_at>0 AND tombstone_at<? LIMIT $chunkRows)",
             tombstones,
         ),
-        expired("dashboard_metric_minute", "minute", performanceCutoffMinute(nowMinute)),
+        expired(
+            "dashboard_metric_minute",
+            "minute",
+            performanceCutoffMinute(nowMinute),
+            key = listOf("instance", "path", "minute"),
+        ),
         expired("ambient_lux_minute", "minute", ambientOldestMinute(nowMinute)),
         expired("proximity_sample", "bucket", proximityCutoffBucket(now)),
     )

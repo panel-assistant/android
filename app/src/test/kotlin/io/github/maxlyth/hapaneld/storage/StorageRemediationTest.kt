@@ -286,6 +286,26 @@ class StorageRemediationTest {
         assertTrue(summary.escalated)
     }
 
+    @Test fun prunedRowsStillAwaitingBoundedReclamationDeferRatherThanEscalate() {
+        // Deleted rows reach the filesystem only through incremental reclamation, which is gated and
+        // capped per pass; a freelist above its retained floor will still come back.
+        val warning = snapshot(StorageHealthSeverity.WARNING)
+        val pending = snapshot(StorageHealthSeverity.WARNING, freelist = FREELIST_RETAINED_PAGES + 1L)
+        val operations = Recorder(ArrayDeque(listOf(pending)), retention = RetentionResult.PRUNED)
+
+        val summary = run(operations, warning)!!
+
+        assertEquals(StorageRemediationVerdict.DEFERRED, summary.verdict)
+        assertFalse(summary.escalated)
+
+        val atFloor = snapshot(StorageHealthSeverity.WARNING, freelist = FREELIST_RETAINED_PAGES)
+        assertEquals(
+            "at the retained floor nothing more will come back",
+            StorageRemediationVerdict.EXHAUSTED,
+            run(Recorder(ArrayDeque(listOf(atFloor)), retention = RetentionResult.PRUNED), warning)!!.verdict,
+        )
+    }
+
     @Test fun aCheckpointFailureIsReportedAsAFailure() {
         val warning = snapshot(StorageHealthSeverity.WARNING)
         val operations = Recorder(
