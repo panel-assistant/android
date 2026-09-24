@@ -74,7 +74,7 @@ implementation_seams=(
   'HAPANELD_UPGRADE_READY_V1:'
   'exec-out'
   '".backup '\''@STAGE@/ha-paneld.db'\''"'
-  'host_sha="$(host_sha256 "$host_db"'
+  'host_sha256 "$host_db" "the database copy"'
   'continuing the ordinary in-place upgrade WITHOUT a database restore point'
   '[ "$RESET_CONFIG" = 1 ] || auto_export_before_upgrade'
   '[ "$RESET_CONFIG" = 1 ] || snapshot_panel_database'
