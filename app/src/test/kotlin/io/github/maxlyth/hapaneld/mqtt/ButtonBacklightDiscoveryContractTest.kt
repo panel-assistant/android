@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.mqtt
 
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,6 +43,6 @@ class ButtonBacklightDiscoveryContractTest {
 
         assertTrue(navbar.contains("registryExposable(\"navbar_mode\")"))
         assertTrue(settingsRegistry.contains("\"select\", \"navbar\", \"Navbar\""))
-        assertTrue(settingsRegistry.contains("\"icon\":\"mdi:gesture-tap-button\""))
+        assertTrue(SettingsRegistry.spec("navbar_mode")!!.ha!!.body.contains("\"icon\":\"mdi:gesture-tap-button\""))
     }
 }

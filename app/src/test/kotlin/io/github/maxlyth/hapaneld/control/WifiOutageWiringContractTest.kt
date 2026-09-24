@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.control
 
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -148,7 +149,8 @@ class WifiOutageWiringContractTest {
         // An integer state cannot say "at least"; without the attribute Home Assistant records a
         // capped 200 as an exact measurement while the panel's own row says it is a floor.
         assertTrue(bridge.contains("""json_attributes_topic":"ha-paneld/{panel}/diag_wifi_outages_24h/attributes""") ||
-            source("config/SettingsRegistry.kt").contains("""json_attributes_topic":"ha-paneld/{panel}/diag_wifi_outages_24h/attributes"""))
+            SettingsRegistry.spec("diag_wifi_outages_24h")!!.ha!!.body
+                .contains("""json_attributes_topic":"ha-paneld/{panel}/diag_wifi_outages_24h/attributes"""))
         assertTrue(bridge.contains("""channel("diag_wifi_outages_attributes", attrWifiOutages)"""))
         assertTrue(bridge.contains("""put("is_lower_bound", counts.saturated)"""))
     }

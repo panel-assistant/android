@@ -54,6 +54,21 @@ class PanelAssistantTransportContractFixtureTest {
     }
 
     @Test
+    fun `every channel descriptor this build describes matches the exported producer fixture`() {
+        val fixture = JSONObject(resource(PRODUCER_FIXTURE))
+        val wires = PanelAssistantChannelCatalogTest.convergerChannels()
+            .mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
+        val described = wires.map { wire ->
+            val descriptor = PanelAssistantChannelCatalog.describe(wire)
+            assertNotNull("$wire must remain describable", descriptor)
+            descriptor!!.toJson().toString()
+        }
+        val exported = fixture.getJSONArray("channelDescriptors").objects()
+        assertEquals(wires, exported.map { it.getString("channel") })
+        assertEquals(exported.map(JSONObject::toString), described)
+    }
+
+    @Test
     fun `shared Home Assistant replies pass through the real parser`() {
         val fixture = JSONObject(resource(FIXTURE))
         assertTrue(fixture.getString("sourceRevision").matches(Regex("^[0-9a-f]{40}$")))

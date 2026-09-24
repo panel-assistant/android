@@ -43,8 +43,15 @@ import io.github.maxlyth.hapaneld.control.fakeProfile
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.hardware.LedController
 import io.github.maxlyth.hapaneld.platform.RootShell
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelCatalog
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelDescriptor
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommand
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandProcessor
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandResult
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandTranslation
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantValueKind
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantValueTranslation
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantWireValue
 import io.github.maxlyth.hapaneld.storage.StorageHealthSeverity
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
 import io.github.maxlyth.hapaneld.storage.StorageQuickCheck
@@ -53,6 +60,7 @@ import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -264,6 +272,147 @@ class MqttWireGoldenTest {
             rig.close()
         }
         return transport.snapshot()
+    }
+
+    // ---- native and MQTT command parity ----
+
+    /**
+     * Every commandable channel the bridge serves, driven once over MQTT and once over the native adapter
+     * in two identical rigs: the native value must translate to the exact payload an MQTT client sends,
+     * and both must leave the same publications and hardware writes. The MQTT payloads are written out
+     * here, independently of the translation under test.
+     */
+    @Test(timeout = 300_000)
+    fun `every commandable channel has the same effect over MQTT and the native adapter`() {
+        val mqtt = rig()
+        val native = rig()
+        try {
+            mqtt.announce()
+            native.announce()
+            val channels = native.bridge.stateChannelKeys()
+                .mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
+                .mapNotNull(PanelAssistantChannelCatalog::describe)
+                .filter { it.platform in PanelAssistantCommandTranslation.COMMANDABLE_PLATFORMS }
+            assertEquals(
+                "commandable channels this rig serves",
+                COMMANDABLE_IN_RIG,
+                channels.map { it.channel }.toSet(),
+            )
+            val results = mutableMapOf<String, PanelAssistantCommandResult>()
+            for (descriptor in channels) for ((value, mqttPayload) in commandSamples(descriptor)) {
+                val label = "${descriptor.channel} $value"
+                assertEquals("$label payload", normalise(mqttPayload), PanelAssistantCommandTranslation.payload(descriptor, value)?.let(::normalise))
+                val overMqtt = effect(mqtt) {
+                    mqtt.transport.deliver("ha-paneld/$PANEL/${descriptor.channel}/set", mqttPayload)
+                    barrier(mqtt, descriptor.channel)
+                }
+                var result: PanelAssistantCommandResult? = null
+                val overNative = effect(native) {
+                    result = submitNative(native, descriptor.channel, PanelAssistantCommandTranslation.payload(descriptor, value)!!)
+                }
+                results[label] = result!!
+                assertEquals("$label effect", overMqtt, overNative)
+                // What MQTT published as this channel's state, the native transport reports as a typed value.
+                overNative.filter { it.startsWith("true\tha-paneld/$PANEL/${descriptor.channel}/state\t") }.forEach { line ->
+                    val payload = line.substringAfterLast('\t').let { String(Base64.getDecoder().decode(it)) }
+                    assertNotNull(
+                        "$label state $payload has no native form",
+                        PanelAssistantValueTranslation.translate(descriptor, StateConverger.Observation.Known(payload)),
+                    )
+                }
+            }
+            val unrouted = results.filterValues {
+                it == PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL) ||
+                    it == PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE)
+            }
+            assertEquals("commands the adapter did not route to a handler", emptyMap<String, PanelAssistantCommandResult>(), unrouted)
+            // Refused, failed and pending outcomes still reached the common handler; only these two mean it did not.
+            assertTrue("a command was applied", results.values.count { it == PanelAssistantCommandResult.Applied } >= 20)
+            println("native parity results: $results")
+        } finally {
+            mqtt.close()
+            native.close()
+        }
+    }
+
+    /** Every state the bridge announces, on every channel it serves, has a typed native form. */
+    @Test(timeout = 180_000)
+    fun `every announced channel state translates to a native value`() {
+        val rig = rig()
+        try {
+            rig.announce()
+            val lines = rig.transport.snapshot()
+            val translated = mutableSetOf<String>()
+            for (converger in rig.bridge.stateChannelKeys()) {
+                val wire = PanelAssistantChannelCatalog.wireChannel(converger) ?: continue
+                val descriptor = requireNotNull(PanelAssistantChannelCatalog.describe(wire)) { wire }
+                lines.filter { it.isPublication() && it.topic().startsWith("ha-paneld/$PANEL/") && it.topic().endsWith("/state") }
+                    .filter { it.topic().removePrefix("ha-paneld/$PANEL/").removeSuffix("/state") == converger }
+                    .forEach { line ->
+                        val payload = line.decodedPayload()
+                        assertNotNull(
+                            "$wire state $payload has no native form",
+                            PanelAssistantValueTranslation.translate(descriptor, StateConverger.Observation.Known(payload)),
+                        )
+                        translated += wire
+                    }
+            }
+            assertTrue("only $translated were announced", translated.size >= 30)
+            assertTrue(translated.containsAll(listOf("navbar", "update_channel", "companion_update_channel", "voice_state", "storage_health")))
+        } finally {
+            rig.close()
+        }
+    }
+
+    /** Native values beside the payloads an MQTT client sends for them. */
+    private fun commandSamples(descriptor: PanelAssistantChannelDescriptor): List<Pair<Any, String>> = when (descriptor.kind) {
+        PanelAssistantValueKind.BOOLEAN -> listOf(true to "ON", false to "OFF")
+        PanelAssistantValueKind.NUMBER -> listOf(35L to "35")
+        PanelAssistantValueKind.TEXT -> listOf("/lovelace/1" to "/lovelace/1")
+        PanelAssistantValueKind.OPTION -> requireNotNull(LEGACY_LABELS[descriptor.channel]) { descriptor.channel }.toList()
+        PanelAssistantValueKind.LIGHT -> when {
+            descriptor.family == "button_led" -> listOf(org.json.JSONObject().put("on", true) to "ON")
+            descriptor.channel == "led" -> listOf(
+                org.json.JSONObject().put("on", true).put("color", org.json.JSONObject().put("r", 1).put("g", 2).put("b", 3)).put("effect", "pulse") to
+                    """{"state":"ON","color":{"r":1,"g":2,"b":3},"effect":"pulse"}""",
+            )
+            else -> listOf(org.json.JSONObject().put("on", true).put("brightness", 128) to """{"state":"ON","brightness":128}""")
+        }
+        PanelAssistantValueKind.UPDATE -> emptyList()
+    }
+
+    private fun normalise(payload: String): String =
+        if (payload.startsWith("{")) org.json.JSONObject(payload).toString() else payload
+
+    /** The publications and hardware writes [action] causes, sorted, with discovery excluded. */
+    private fun effect(rig: Rig, action: () -> Unit): List<String> {
+        val lines = rig.transport.size()
+        val writes = rig.sysfs.writes.size
+        action()
+        rig.transport.drain()
+        val published = rig.transport.snapshot().drop(lines).filter { it.isPublication() && !it.topic().startsWith("homeassistant/") }
+        return (published + rig.sysfs.writes.drop(writes).map { "write\t$it" }).sorted()
+    }
+
+    private fun submitNative(rig: Rig, channel: String, payload: String): PanelAssistantCommandResult {
+        val done = CountDownLatch(1)
+        val result = java.util.concurrent.atomic.AtomicReference<PanelAssistantCommandResult>()
+        rig.bridge.submitPanelAssistantCommand(PanelAssistantCommand(channel, payload, admit = { null })) {
+            result.set(it)
+            done.countDown()
+        }
+        assertTrue("$channel native command finished", done.await(20, TimeUnit.SECONDS))
+        return result.get()
+    }
+
+    /** Waits until the ordered command worker has run everything queued before it. */
+    private fun barrier(rig: Rig, busy: String) {
+        val done = CountDownLatch(1)
+        val key = if (busy == "navigate") "home_dashboard" else "navigate"
+        rig.bridge.submitPanelAssistantCommand(
+            PanelAssistantCommand(key, "", admit = { PanelAssistantCommandResult.Refused("barrier") }),
+        ) { done.countDown() }
+        assertTrue("command worker drained", done.await(20, TimeUnit.SECONDS))
     }
 
     // ---- withdrawn discovery ----
@@ -901,6 +1050,22 @@ class MqttWireGoldenTest {
         }
 
         const val PANEL = "golden"
+
+        /** The MQTT labels each option code has always stood for: the legacy wire contract, written out. */
+        val LEGACY_LABELS: Map<String, Map<Any, String>> = mapOf(
+            "navbar" to mapOf("off" to "Off", "always_on" to "Always on", "swipe_reveal" to "Swipe reveal", "native" to "Native"),
+            "cpu_governor" to mapOf("performance" to "Performance", "efficiency" to "Efficiency", "auto" to "Auto"),
+            "update_channel" to mapOf("stable" to "Stable", "prerelease" to "Pre-release"),
+            "companion_update_channel" to mapOf("stable" to "Stable", "prerelease" to "Pre-release"),
+        )
+
+        /** Everything commandable except `cpu_governor`, `network_adb` and `zigbee_router`, which need hardware this rig lacks. */
+        val COMMANDABLE_IN_RIG = setOf(
+            "auto_brightness", "auto_sleep", "button_led1", "buttons", "camera_enabled", "companion_auto_update",
+            "companion_update_channel", "home_dashboard", "kiosk_lock", "led", "navbar", "navigate", "prevent_idle_dim",
+            "relay1", "relay2", "screen", "self_update", "silence_boot_chime", "touch_sound", "update_channel",
+            "voice_enabled", "volume", "wake_on_wave", "watchdog", "webview_auto_update",
+        )
         const val RELAY_BASE = "/sys/class/strelay"
         const val LED_GPIO_BASE = 147
         const val FIXTURE = "mqtt-wire-golden/bridge.txt"

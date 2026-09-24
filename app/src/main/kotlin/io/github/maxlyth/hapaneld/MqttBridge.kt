@@ -2760,6 +2760,10 @@ internal class MqttBridge(
      * Run one Panel Assistant command on the same ordered authority MQTT commands use, keyed by the same
      * channel, so a command for one channel conflates identically whichever transport delivered it. [done]
      * receives exactly one result. Action channels (reload, reboot, updates) are not accepted here.
+     *
+     * A temporary adapter: until the common handlers take a channel identity, it reaches them through the
+     * channel's MQTT command topic, with the payload `PanelAssistantCommandTranslation` mapped from the
+     * channel's declared options.
      */
     internal fun submitPanelAssistantCommand(
         command: PanelAssistantCommand,
