@@ -26,6 +26,9 @@ orgJson = "20260814"
 # Test-only real SQLite (JDBC): reproduces WAL writer-lock BUSY semantics between two connections
 # deterministically on the JVM (Issue #91). Never packaged in the APK.
 sqliteJdbc = "3.53.2.1"
+# Test-only model checker: explores every interleaving of a concurrent unit test at each shared-memory
+# access, so an ownership race is reproduced on purpose rather than by luck. Never packaged in the APK.
+lincheck = "3.7"
 # 3.x raises the library bytecode floor from Java 8 to Java 11; retain 2.10 until it has separate
 # oldest-Android runtime qualification rather than coupling that risk to the build-tool migration.
 snakeyamlEngine = "3.1.1"
@@ -52,6 +55,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqliteJdbc" }
+lincheck = { group = "org.jetbrains.lincheck", name = "lincheck", version.ref = "lincheck" }
 snakeyaml-engine = { group = "org.snakeyaml", name = "snakeyaml-engine", version.ref = "snakeyamlEngine" }
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }

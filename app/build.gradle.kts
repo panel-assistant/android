@@ -291,6 +291,8 @@ dependencies {
     // Real SQLite over JDBC — deterministic reproduction of cross-connection WAL BUSY contention
     // (Issue #91) that android.jar stubs cannot exercise; never packaged in the APK.
     testImplementation(libs.sqlite.jdbc)
+    // Deterministic interleaving exploration for process-global ownership races; never packaged in the APK.
+    testImplementation(libs.lincheck)
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
