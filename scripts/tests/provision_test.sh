@@ -3116,10 +3116,10 @@ assert_not_contains 'helper-transaction-[0-9a-f]+.*commit-hybrid' "$MOCK_CALL_LO
 
 APK_INSTALL_PID_FILE="$TMP/apk-install-hang.pid"
 MOCK_APK_INSTALL=ignore_term MOCK_APK_INSTALL_PID_FILE="$APK_INSTALL_PID_FILE" \
-APK_INSTALL_TIMEOUT_SECONDS=1 \
+APK_INSTALL_TIMEOUT_SECONDS=4 \
   run_provision "$MOCK_TARGET" --apk "$HELPER_RELEASE_APK" --release-tag v0.9.4-rc1 --no-tame
 assert_failure "stuck main APK install returns nonzero at its host deadline"
-assert_contains 'install did not finish within the 1s safety deadline' "main APK timeout names the bounded failed step"
+assert_contains 'install did not finish within the 4s safety deadline' "main APK timeout names the bounded failed step"
 apk_install_pid="$(cat "$APK_INSTALL_PID_FILE" 2>/dev/null || true)"
 if [ -n "$apk_install_pid" ] && processes_gone "$apk_install_pid"; then
   pass "main APK timeout reaps the blocked adb install"
