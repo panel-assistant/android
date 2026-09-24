@@ -7894,8 +7894,8 @@
       "state": "machine-cross-checked"
     },
     "logs.note.sources": {
-      "text": "App = das eigene Prozessprotokoll von ha-paneld (kein root erforderlich). System = das vollständige logcat des Geräts (root).",
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
+      "text": "App = das eigene Prozessprotokoll von ha-paneld (kein root erforderlich). System = das vollständige logcat des Geräts (root). Browser-Konsole = die JavaScript-Konsole des Dashboards (erfordert konfigurierte Protokollübertragung).",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
       "state": "machine-cross-checked"
     },
     "logs.source.app": {

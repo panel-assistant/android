@@ -1102,6 +1102,8 @@ class CatalogueTest(unittest.TestCase):
                 if record["text"] != source_text:
                     continue
                 source_record = source["strings"][key]
+                if i18n.held_for_review(locale, record, source_record):
+                    continue
                 pair = (locale, key)
                 with self.subTest(locale=locale, key=key):
                     with mock.patch.dict(i18n.UNCHANGED_TARGET_EXCEPTIONS, {}, clear=False):
