@@ -41,8 +41,7 @@ internal object PanelAssistantValueTranslation {
                 else -> null
             }
             PanelAssistantValueKind.NUMBER -> number(payload)
-            PanelAssistantValueKind.OPTION -> PanelAssistantChannelCatalog.optionCode(payload)
-                .takeIf { code -> descriptor.options?.contains(code) == true }
+            PanelAssistantValueKind.OPTION -> descriptor.code(payload)
             PanelAssistantValueKind.TEXT -> payload
             PanelAssistantValueKind.LIGHT -> light(payload)
             PanelAssistantValueKind.UPDATE -> update(payload)

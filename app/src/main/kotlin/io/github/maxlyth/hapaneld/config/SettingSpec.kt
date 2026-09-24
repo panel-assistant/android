@@ -114,8 +114,9 @@ data class Capabilities(
  *
  * [body] holds the entity-specific middle of the discovery JSON — every field between `unique_id`
  * and the shared `availability` + `device` fragments — with `{panel}` as the topic placeholder.
- * Keeping the body verbatim (rather than re-deriving field order) keeps discovery stable apart from
- * explicit descriptor-level policy fields such as the bounded measurement refresh below.
+ * [haEntity] renders it field by field in the declared order (rather than re-deriving field order), which
+ * keeps discovery stable apart from explicit descriptor-level policy fields such as the bounded
+ * measurement refresh below.
  */
 data class HaEntity(
     val component: String,        // light | switch | number | select | sensor | binary_sensor | text | button | event
@@ -130,9 +131,14 @@ data class HaEntity(
      *  force_update to turn those reports into graph/recorder points; controls and attributes must not
      *  inherit it because their duplicate reports can wake automations or grow unrelated history. */
     val periodicRefresh: Boolean = false,
+    /** The channel id: the topic leaf on MQTT and the channel on the native transport. Usually the
+     *  [objectSuffix]; `voice_enabled` keeps its historical `voice_assistant` unique id. */
+    val channel: String = objectSuffix,
+    /** The transport-neutral facts both serialisations take, rendered into [body] where declared. */
+    val facts: ChannelFacts = ChannelFacts(),
 ) {
     /** State topic this entity reports on, e.g. `ha-paneld/<panel>/wake_on_wave/state`. */
-    fun stateTopic(panel: String): String = "ha-paneld/$panel/$objectSuffix/state"
+    fun stateTopic(panel: String): String = "ha-paneld/$panel/$channel/state"
 
     /**
      * Build the discovery payload. Entities without an explicit descriptor-level policy remain
@@ -162,6 +168,100 @@ data class HaEntity(
 
     companion object {
         fun jsonEsc(s: String): String = Json.esc(s)
+    }
+}
+
+/**
+ * One value of a channel's closed set: the stable wire [code] and the [label] MQTT has always carried for
+ * it. The code is declared, never derived from the label, so renaming a label changes no wire code.
+ */
+data class ChannelOption(val code: String, val label: String)
+
+/** Transport-neutral facts of one channel, declared once ahead of the MQTT and native serialisations. */
+data class ChannelFacts(
+    val deviceClass: String? = null,
+    val unit: String? = null,
+    val stateClass: String? = null,
+    val entityCategory: String? = null,
+    val min: Number? = null,
+    val max: Number? = null,
+    val step: Number? = null,
+    val options: List<ChannelOption>? = null,
+    /** A sensor whose value is free text rather than a number. */
+    val text: Boolean = false,
+)
+
+/**
+ * Declares an [HaEntity]'s discovery body and its [ChannelFacts] in one pass. Each call records its fact
+ * and renders it where it is written, so the MQTT bytes keep their historical field order while the
+ * native descriptor reads the same typed values.
+ */
+fun haEntity(
+    component: String,
+    objectSuffix: String,
+    name: String,
+    channel: String = objectSuffix,
+    readOnly: Boolean = false,
+    periodicRefresh: Boolean = false,
+    discovery: HaDiscovery.() -> Unit,
+): HaEntity {
+    val declared = HaDiscovery(channel).apply(discovery)
+    return HaEntity(
+        component, objectSuffix, name, declared.body, readOnly, periodicRefresh,
+        channel = channel, facts = declared.facts,
+    )
+}
+
+class HaDiscovery internal constructor(private val channel: String) {
+    private val parts = mutableListOf<String>()
+    internal var facts = ChannelFacts()
+        private set
+    internal val body: String get() = parts.joinToString(",")
+
+    fun commandTopic() = raw(""""command_topic":"ha-paneld/{panel}/$channel/set"""")
+    fun stateTopic() = raw(""""state_topic":"ha-paneld/{panel}/$channel/state"""")
+    fun attributesTopic() = raw(""""json_attributes_topic":"ha-paneld/{panel}/$channel/attributes"""")
+    fun icon(icon: String) = raw(""""icon":${Json.str(icon)}""")
+
+    /** MQTT-only presentation (schema, mode, payload literals). Never a channel fact. */
+    fun raw(fragment: String) {
+        parts += fragment
+    }
+
+    fun deviceClass(value: String) = fact("device_class", value) { copy(deviceClass = value) }
+    fun unit(value: String) = fact("unit_of_measurement", value) { copy(unit = value) }
+    fun stateClass(value: String) = fact("state_class", value) { copy(stateClass = value) }
+    fun entityCategory(value: String) = fact("entity_category", value) { copy(entityCategory = value) }
+
+    fun range(min: Int, max: Int, step: Int) {
+        facts = facts.copy(min = min, max = max, step = step)
+        raw(""""min":$min,"max":$max,"step":$step""")
+    }
+
+    /** A select's options; MQTT lists their labels. */
+    fun options(options: List<ChannelOption>) {
+        facts = facts.copy(options = options)
+        raw(""""options":${options.joinToString(",", "[", "]") { Json.str(it.label) }}""")
+    }
+
+    /** A select whose MQTT label list is filtered by capability at publish time (the `{options}` placeholder). */
+    fun capabilityOptions(options: List<ChannelOption>) {
+        facts = facts.copy(options = options)
+        raw(""""options":{options}""")
+    }
+
+    /** A sensor's closed value set, which MQTT discovery has never listed. */
+    fun sensorOptions(options: List<ChannelOption>) {
+        facts = facts.copy(options = options)
+    }
+
+    fun textValue() {
+        facts = facts.copy(text = true)
+    }
+
+    private fun fact(key: String, value: String, record: ChannelFacts.() -> ChannelFacts) {
+        facts = facts.record()
+        raw(""""$key":${Json.str(value)}""")
     }
 }
 
