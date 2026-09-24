@@ -4863,6 +4863,55 @@ if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
   pass "direct-copy interruption RELEASEs quiescence exactly once"
 else fail_test "direct-copy interruption RELEASEs quiescence exactly once"; fi
 
+# An interrupted run keeps its signal's exit status even when a cleanup removal fails. Cleanup runs
+# under set -e inside the signal handler, so a single unguarded removal that fails there would end
+# the run with status 1, which a fleet summary records as an ordinary failure. The host's rm starts
+# failing the moment the interrupt is sent, so every removal cleanup attempts meets a failure.
+reset_db_txn_state
+: > "$MOCK_CALL_LOG"
+failing_rm_host="$TMP/host-with-failing-rm"
+failing_rm_flag="$TMP/host-rm-fails"
+failing_rm_pid_file="$TMP/failing-rm-block.pid"
+failing_rm_output="$TMP/failing-rm-output.txt"
+rm -f "$failing_rm_flag" "$failing_rm_pid_file"
+make_host_without "$failing_rm_host" rm
+cat > "$failing_rm_host/rm" <<'FAILING_RM'
+#!/bin/bash
+if [ -e "${MOCK_HOST_RM_FAIL_FLAG:?}" ]; then
+  printf 'host-rm-refused %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
+  exit 1
+fi
+exec /bin/rm "$@"
+FAILING_RM
+chmod 755 "$failing_rm_host/rm"
+set -m
+MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY=block MOCK_DIRECT_COPY_PID_FILE="$failing_rm_pid_file" \
+ADB_COMMAND_TIMEOUT_SECONDS=5 HAPANELD_SKIP_AUTO_EXPORT=1 MOCK_HOST_RM_FAIL_FLAG="$failing_rm_flag" \
+HAPANELD_CONFIG_BACKUP_DIR="$TMP/auto-backups" MOCK_STATE_DIR="$TMP" PATH="$failing_rm_host" \
+  bash "$PROVISION" "$MOCK_TARGET" --apk "$APK" --no-tame --allow-unsigned-helper > "$failing_rm_output" 2>&1 &
+failing_rm_owner_pid=$!
+ACTIVE_PUBLICATION_PGID="$failing_rm_owner_pid"
+set +m
+failing_rm_ready=0
+for _ in {1..100}; do
+  if [ -s "$failing_rm_pid_file" ]; then failing_rm_ready=1; break; fi
+  /bin/sleep 0.05
+done
+: > "$failing_rm_flag"
+kill -INT -- "-$failing_rm_owner_pid" 2>/dev/null || true
+if wait "$failing_rm_owner_pid"; then failing_rm_status=0; else failing_rm_status=$?; fi
+ACTIVE_PUBLICATION_PGID=""
+/bin/rm -f "$failing_rm_flag"
+LAST_OUTPUT="$failing_rm_output"
+# The fixtures run on the same failing rm, so only a refused removal of the provisioner's own
+# registered backup file shows that its cleanup, not a fixture's, met the failure.
+if [ "$failing_rm_ready" -eq 1 ] && grep -Eq '^host-rm-refused .*\.break-glass\.db$' "$MOCK_CALL_LOG"; then
+  pass "the interrupted run's own cleanup met a failing host removal"
+else fail_test "the interrupted run's own cleanup met a failing host removal (blocked: $failing_rm_ready)"; fi
+if [ "$failing_rm_status" -eq 130 ]; then
+  pass "an interrupted run exits 130 even when a cleanup removal fails"
+else fail_test "an interrupted run exits 130 even when a cleanup removal fails (got $failing_rm_status)"; fi
+
 reset_db_txn_state
 : > "$MOCK_CALL_LOG"
 direct_install_pid_file="$TMP/direct-handoff-install.pid"
