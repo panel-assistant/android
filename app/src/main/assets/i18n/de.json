@@ -8603,6 +8603,11 @@
       "sourceHash": "1625bf8ef923d238548f956c43c57a920741ee682be625ff2fc9bfe6b0bfe990",
       "state": "machine-cross-checked"
     },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "Die Displaygeometrie ist unvollständig, mehrdeutig oder außerhalb des zulässigen Bereichs.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "state": "machine-cross-checked"
+    },
     "profiles.issue.dotted-release-version-required": {
       "text": "Erwartet wurde eine begrenzte, durch Punkte getrennte Release-Version.",
       "sourceHash": "922627d4dc899617b9dbc8ecb2344e94cdf89b479a9d485e6b6bdcef6bd89205",
@@ -8851,11 +8856,6 @@
     "profiles.issue.package-tag-bounds": {
       "text": "Verwende höchstens 8 kleingeschriebene Tags mit jeweils höchstens 24 Zeichen.",
       "sourceHash": "e8ddb87f342f6191d79477057a94a0c44ef0dc4910d69863abe9b3709402fe71",
-      "state": "machine-cross-checked"
-    },
-    "profiles.issue.display-geometry-invalid": {
-      "text": "Die Displaygeometrie ist unvollständig, mehrdeutig oder außerhalb des zulässigen Bereichs.",
-      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
       "state": "machine-cross-checked"
     },
     "profiles.issue.physical-ppi-range": {
