@@ -11171,7 +11171,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         // smaller than the streamed/file-backed v2 manifest. New backups are always v2.
         internal const val MAX_LEGACY_BACKUP_JSON_BYTES = 6L * 1024L * 1024L
         internal const val BACKUP_STORAGE_MARGIN_BYTES = 64L * 1024L * 1024L
-        private const val PROFILE_BACKUP_ENTRY = "profiles/catalog.json"
+        internal const val PROFILE_BACKUP_ENTRY = "profiles/catalog.json"
         private const val ENTITY_FILTER_BACKUP_ENTRY = "entity/filter-ids.txt"
         private const val ENTITY_OVERRIDES_BACKUP_ENTRY = "entity/overrides.txt"
 

@@ -81,8 +81,11 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         /** True when nothing is listening on the panel's HTTP port. */
         fun portFree(): Boolean
 
-        /** Restore the receipt in migration mode and wait for it to become durable. */
-        suspend fun restoreReceipt(): Boolean
+        /**
+         * Restore the receipt in migration mode and wait for it to become durable; null when it did,
+         * otherwise why not, carrying the restore's own refusal rather than a bare failure.
+         */
+        suspend fun restoreReceipt(): String?
 
         /** Grants the legacy app holds that this app does not hold yet. */
         fun missingGrants(): Set<String>
@@ -139,7 +142,7 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
                 if (!ports.portFree()) return Result.Waiting(Step.AWAIT_PORT, "legacy app still holds the HTTP port")
                 return Result.NeedsHeldService
             }
-            if (!ports.restoreReceipt()) return Result.Waiting(Step.RESTORE, "restore did not complete")
+            ports.restoreReceipt()?.let { return Result.Waiting(Step.RESTORE, it) }
             if (!markers.record(Step.RESTORE)) return Result.Waiting(Step.RESTORE, "marker not durable")
         }
         if (ports.environment() != Environment.SERVICE) return Result.NeedsRestart
