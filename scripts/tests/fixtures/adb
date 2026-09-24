@@ -33,7 +33,8 @@ fi
 # root; the escalates* modes model a userdebug panel that answers uid=2000 until the `root` verb is
 # called and only then changes state — the sequence the capture gate's escalation contracts need.
 # escalates: `id` answers uid=0 after the verb. escalates_then_hang: the probe never answers after
-# the verb. escalates_then_drop: the transport dies after the verb.
+# the verb. escalates_then_drop: the transport dies after the verb. hang: the probe never answers
+# at all, so the run's first root probe times out before any escalation.
 adb_root_active() {
   [ "${MOCK_ADB_ROOT:-0}" = 1 ] && return 0
   [ "${MOCK_ADB_ROOT:-0}" = escalates ] && [ -f "$STATE_DIR/adb-root-escalated" ]
@@ -574,6 +575,8 @@ SQL
   "${HAPANELD_HOST_SQLITE3:-sqlite3}" "$canonical_db" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null
   # A cleanly present zero-byte WAL is a NORMAL source state and must never affect a .backup capture.
   : > "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db-wal"
+  # source_missing: the app holding the data has never created its database.
+  [ "${MOCK_DB_TXN:-ok}" != source_missing ] || rm -f "$canonical_db" "$canonical_db-wal"
   cat > "$DB_TXN_SANDBOX/bin/sqlite3" <<'STUB'
 #!/bin/bash
 db="$1"; shift; op="$*"
@@ -628,6 +631,16 @@ exec /usr/bin/sha256sum "$@"
 STUB
   chmod 755 "$DB_TXN_SANDBOX/bin/sha256sum" "$DB_TXN_SANDBOX/bin/toybox" "$DB_TXN_SANDBOX/bin/busybox"
   chmod 755 "$DB_TXN_SANDBOX/bin/sqlite3" "$DB_TXN_SANDBOX/bin/dumpsys"
+  # sqlite_missing: a panel with no sqlite3 anywhere. The script falls back to `command -v sqlite3`,
+  # so the host's own copy must be out of reach too: run_db_txn_script then searches only the
+  # sandbox and a directory of the panel's ordinary shell tools.
+  if [ "${MOCK_DB_TXN:-ok}" = sqlite_missing ]; then
+    rm -f "$DB_TXN_SANDBOX/bin/sqlite3"
+    mkdir -p "$DB_TXN_SANDBOX/core-bin"
+    for core_tool in rm mkdir sed head wc chown chmod cat; do
+      ln -s "$(command -v "$core_tool")" "$DB_TXN_SANDBOX/core-bin/$core_tool"
+    done
+  fi
 }
 
 run_db_txn_script() {
@@ -642,7 +655,11 @@ run_db_txn_script() {
   fi
   sed -e "s|/data/|$DB_TXN_SANDBOX/data/|g" -e "s|/system/bin/sqlite3|$DB_TXN_SANDBOX/bin/sqlite3|g" \
     "$STATE_DIR/db-txn-script.$ADB_TARGET" > "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
-  PATH="$DB_TXN_SANDBOX/bin:$PATH" bash "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
+  if [ "${MOCK_DB_TXN:-ok}" = sqlite_missing ]; then
+    PATH="$DB_TXN_SANDBOX/bin:$DB_TXN_SANDBOX/core-bin" /bin/bash "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
+  else
+    PATH="$DB_TXN_SANDBOX/bin:$PATH" bash "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
+  fi
 }
 
 handle_db_txn_command() {
@@ -1301,6 +1318,11 @@ case "${1:-}" in
         ;;
       "id")
         case "${MOCK_ADB_ROOT:-0}" in
+          hang)
+            # The run's FIRST root probe never answers, so no escalation is ever reached.
+            trap 'exit 143' TERM INT
+            while :; do /bin/sleep 1; done
+            ;;
           escalates_then_hang)
             if [ -f "$STATE_DIR/adb-root-escalated" ]; then
               trap 'exit 143' TERM INT
