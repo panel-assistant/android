@@ -173,25 +173,14 @@ class RuntimeProfileRegistry internal constructor(
 
     constructor(
         context: Context,
-        facts: DeviceFacts = DeviceFacts(
-            Build.MODEL.orEmpty(),
-            Build.DEVICE.orEmpty(),
-            SystemProps.get("ro.product.version"),
-        ),
+        facts: DeviceFacts = buildFacts(),
         coreVersion: String = BuildConfig.VERSION_NAME,
     ) : this(
         filesDir = context.applicationContext.filesDir,
         preferences = AndroidProfilePreferences(
             AppState.preferences(context, "device-profiles", PREFS_NAME),
         ),
-        bundledLoader = {
-            context.applicationContext.assets.list(BUNDLED_DIR).orEmpty()
-                .filter { it.endsWith(".yaml") || it.endsWith(".yml") }
-                .sorted()
-                .associateWith { name ->
-                    context.applicationContext.assets.open("$BUNDLED_DIR/$name").bufferedReader().use { it.readText() }
-                }
-        },
+        bundledLoader = { bundledAssets(context) },
         facts = facts,
         coreVersion = coreVersion,
         clock = System::currentTimeMillis,
@@ -401,8 +390,9 @@ class RuntimeProfileRegistry internal constructor(
             )
         }
 
+        val restored = requireNotNull(plan.selection)
         val current = readSelection()
-        if (payload.selection == current) {
+        if (restored == current) {
             return ProfileBackupRestoreResult(
                 outcome = ProfileBackupRestoreOutcome.SUCCEEDED,
                 status = statusLocked(),
@@ -418,7 +408,7 @@ class RuntimeProfileRegistry internal constructor(
 
         // Do not copy transient activation state or replace the destination rollback target. select()
         // records the current proven selection as `previous` and health-gates the restored selection.
-        return when (val selected = select(payload.selection, catalogRevision())) {
+        return when (val selected = select(restored, catalogRevision())) {
             is ProfileMutation.Success -> ProfileBackupRestoreResult(
                 outcome = ProfileBackupRestoreOutcome.SUCCEEDED,
                 status = selected.status,
@@ -806,13 +796,13 @@ class RuntimeProfileRegistry internal constructor(
         }
 
         val available = entries.filterValues { it.compatible }.keys + validated.keys
-        fun requireSelection(selection: ProfileSelection?, path: String) {
-            val ref = (selection as? ProfileSelection.Pinned)?.ref ?: return
-            if (ref !in available) {
-                issues += issue(ProfileIssueSeverity.ERROR, path, "Referenced immutable revision is missing or incompatible.", "backup-referenced-revision-unavailable")
-            }
+        val selection = restorableSelection(payload, available)
+        if (selection == null) {
+            issues += issue(ProfileIssueSeverity.ERROR, "profiles.selection", "Referenced immutable revision is missing or incompatible.", "backup-referenced-revision-unavailable")
+        } else if (selection != payload.selection) {
+            issues += repinIssue(payload.selection as ProfileSelection.Pinned, entries.getValue((selection as ProfileSelection.Pinned).ref))
+                .copy(path = "profiles.selection")
         }
-        requireSelection(payload.selection, "profiles.selection")
         (payload.lastKnownGood as? ProfileSelection.Pinned)?.ref?.takeIf { it !in available }?.let {
             issues += ProfileIssue(
                 ProfileIssueSeverity.WARNING,
@@ -840,8 +830,30 @@ class RuntimeProfileRegistry internal constructor(
             toImport = toImport,
             alreadyPresent = alreadyPresent.sortedRefs(),
             issues = issues,
-            restartRequired = payload.selection != readSelection(),
+            restartRequired = selection != null && selection != readSelection(),
+            selection = selection,
         )
+    }
+
+    /**
+     * The selection a restore stages, or null when the backup's selection cannot be restored here.
+     *
+     * A pin this core carries, or that the backup carries, is restored exactly. A pin of a bundled
+     * revision this release does not ship follows the id's current bundled revision through the health
+     * gate, the same rule [retiredBundledSuccessor] applies at startup: the source pinned the profile,
+     * and a backup cannot carry a bundled revision, because only imported revisions are exported. The
+     * usual way to hold such a pin is an activation that rolled back onto a retained snapshot.
+     *
+     * The source's hold on a rejected successor is not in the backup, so it cannot be honoured; the
+     * destination's own previous selection stays the rollback target, and a second unhealthy start
+     * rolls back away from the successor. A pin whose id the backup carries imported revisions of
+     * belongs to an imported lineage and is never swapped for the stock profile.
+     */
+    private fun restorableSelection(payload: ProfileBackup, available: Set<ProfileRef>): ProfileSelection? {
+        val pinned = payload.selection as? ProfileSelection.Pinned ?: return payload.selection
+        if (pinned.ref in available) return pinned
+        if (payload.revisions.any { it.ref.id == pinned.ref.id }) return null
+        return currentBundledAsset(pinned)?.let { ProfileSelection.Pinned(it.ref) }
     }
 
     private fun rejectedBackupRestore(
@@ -1798,6 +1810,35 @@ class RuntimeProfileRegistry internal constructor(
     )
 
     companion object {
+        /**
+         * A registry over this build's bundled catalogue alone: no stored revision, no snapshot and no
+         * persisted selection. That is the catalogue of a successor that has not restored yet, so it plans
+         * a restore exactly as that successor's first restore will plan it, and it writes nothing: the
+         * store it names does not exist and its preferences live only in memory.
+         */
+        internal fun bundledOnly(context: Context): RuntimeProfileRegistry = RuntimeProfileRegistry(
+            filesDir = File(context.applicationContext.cacheDir, "profile-restore-plan-${System.nanoTime()}"),
+            preferences = TransientProfilePreferences(),
+            bundledLoader = { bundledAssets(context) },
+            facts = buildFacts(),
+            coreVersion = BuildConfig.VERSION_NAME,
+            clock = System::currentTimeMillis,
+        )
+
+        private fun buildFacts() = DeviceFacts(
+            Build.MODEL.orEmpty(),
+            Build.DEVICE.orEmpty(),
+            SystemProps.get("ro.product.version"),
+        )
+
+        private fun bundledAssets(context: Context): Map<String, String> =
+            context.applicationContext.assets.list(BUNDLED_DIR).orEmpty()
+                .filter { it.endsWith(".yaml") || it.endsWith(".yml") }
+                .sorted()
+                .associateWith { name ->
+                    context.applicationContext.assets.open("$BUNDLED_DIR/$name").bufferedReader().use { it.readText() }
+                }
+
         private const val PREFS_NAME = "ha-paneld-device-profiles"
         private const val BUNDLED_DIR = "device-profiles"
         private const val AUTO = "auto"
@@ -1862,6 +1903,17 @@ internal interface ProfilePreferences {
     fun getLong(key: String, default: Long): Long
     /** Null values remove keys; all changes are committed atomically. */
     fun put(vararg values: Pair<String, Any?>): Boolean
+}
+
+/** Preferences that exist only for the life of one registry; see [RuntimeProfileRegistry.bundledOnly]. */
+internal class TransientProfilePreferences : ProfilePreferences {
+    private val values = HashMap<String, Any>()
+    override fun getString(key: String, default: String): String = values[key] as? String ?: default
+    override fun getLong(key: String, default: Long): Long = values[key] as? Long ?: default
+    override fun put(vararg values: Pair<String, Any?>): Boolean {
+        values.forEach { (key, value) -> if (value == null) this.values.remove(key) else this.values[key] = value }
+        return true
+    }
 }
 
 private class AndroidProfilePreferences(private val preferences: SharedPreferences) : ProfilePreferences {

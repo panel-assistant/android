@@ -52,6 +52,7 @@ class SuccessorMigrationTest {
         var releaseRefusal: String? = null
         var retiresOnRelease = true
         var restoreSucceeds = true
+        var restoreRefusal = "restore did not complete"
         var restored = false
         var heldGrants = mutableSetOf<String>()
         val wantedGrants = setOf("ACCESSIBILITY", "OVERLAY", "BATTERY")
@@ -103,7 +104,7 @@ class SuccessorMigrationTest {
             return null
         }
         override fun portFree() = !legacyHoldsPort
-        override suspend fun restoreReceipt(): Boolean {
+        override suspend fun restoreReceipt(): String? {
             call("restore")
             invariant(environment != Environment.PASSIVE) { "restore needs the service" }
             invariant(legacyRetired || !legacyInstalled) { "restored before the legacy app released the panel" }
@@ -111,7 +112,7 @@ class SuccessorMigrationTest {
             // does not hold yet is refused, which fails the whole restore.
             invariant(missingGrants().isEmpty()) { "restored without the grants its live settings need" }
             restored = restoreSucceeds
-            return restoreSucceeds
+            return if (restoreSucceeds) null else restoreRefusal
         }
         override fun missingGrants() = wantedGrants - heldGrants
         override fun claimGrant(grant: String): Boolean {
@@ -339,6 +340,15 @@ class SuccessorMigrationTest {
         assertEquals(Result.Waiting(Step.RESTORE, "restore did not complete"), runToRest(world, markers))
         assertFalse(markers.done(Step.RESTORE))
         assertEquals(0, world.uninstalls)
+    }
+
+    @Test fun aRefusedRestoreReportsTheRestoresOwnReason() {
+        val refusal = "restore refused (HTTP 422, restore-profile-catalog-not-restorable): profile catalog is not restorable"
+        val world = World().apply { restoreSucceeds = false; restoreRefusal = refusal }
+        val markers = FakeMarkers()
+
+        assertEquals(Result.Waiting(Step.RESTORE, refusal), runToRest(world, markers))
+        assertTrue(world.legacyInstalled)
     }
 
     @Test fun aGrantThatCannotBeClaimedBlocksTheRemoval() {
