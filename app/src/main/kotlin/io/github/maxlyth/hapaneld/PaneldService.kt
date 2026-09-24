@@ -928,7 +928,7 @@ class PaneldService : Service() {
     private var netCallback: ConnectivityManager.NetworkCallback? = null
     private data class MdnsRevalidation(
         val observed: ServiceRuntimeOwner.Observation<NetworkRuntime>,
-        val lanIp: String?,
+        val addresses: MdnsLanAddresses?,
     )
     private val mdnsRevalidation = LatestDispatcher.singleSlot<MdnsRevalidation>(
         threadName = "ha-paneld-mdns-revalidation",
@@ -937,7 +937,7 @@ class PaneldService : Service() {
             if (current.generation != request.observed.generation || current.value !== request.observed.value) {
                 return@singleSlot
             }
-            current.value.mdns.start(request.lanIp)
+            current.value.mdns.start(request.addresses?.primary, request.addresses?.secondary)
         },
         onFailure = { failure -> Log.w(TAG, "mDNS revalidation failed", failure) },
     )
@@ -4106,11 +4106,20 @@ class PaneldService : Service() {
      */
     private fun revalidateMdns(
         observed: ServiceRuntimeOwner.Observation<NetworkRuntime>,
-        lanIp: String?,
+        addresses: MdnsLanAddresses?,
     ) {
         // Discovery can fail while MQTT remains connected, so it cannot share MQTT's state gate.
         // One dedicated latest-value slot prevents callback bursts from saturating MQTT recovery workers.
-        mdnsRevalidation.submit(MdnsRevalidation(observed, lanIp))
+        mdnsRevalidation.submit(MdnsRevalidation(observed, addresses))
+    }
+
+    /** Temporary (privacy) IPv6 addresses are marked so the advertiser can prefer a stable one. */
+    private fun mdnsNetworkChanged(linkAddresses: List<android.net.LinkAddress>) {
+        mdnsRuntimeReconciler.networkChanged(
+            linkAddresses.map { it.address },
+            linkAddresses.filter { it.flags and android.system.OsConstants.IFA_F_TEMPORARY != 0 }
+                .mapTo(mutableSetOf()) { it.address },
+        )
     }
 
     private fun registerNetworkCallback() {
@@ -4138,9 +4147,7 @@ class PaneldService : Service() {
                 wifiOutageTracker.onDefaultAvailable(network.hashCode().toLong())
                 if (::panelAssistantTransport.isInitialized) panelAssistantTransport.nudge()
                 observeTransport(network, capabilities)
-                mdnsRuntimeReconciler.networkChanged(
-                    cm.getLinkProperties(network)?.linkAddresses.orEmpty().map { it.address },
-                )
+                mdnsNetworkChanged(cm.getLinkProperties(network)?.linkAddresses.orEmpty())
                 val observed = runtime.observe() ?: return
                 val target = observed.value.mqtt
                 target.refreshDiscoveryAddress()
@@ -4161,9 +4168,7 @@ class PaneldService : Service() {
 
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 if (network != defaultNetwork) return
-                mdnsRuntimeReconciler.networkChanged(
-                    linkProperties.linkAddresses.map { it.address },
-                )
+                mdnsNetworkChanged(linkProperties.linkAddresses)
                 val observed = runtime.observe() ?: return
                 observed.value.mqtt.refreshDiscoveryAddress()
             }

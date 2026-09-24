@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld
 
 import java.net.DatagramPacket
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
@@ -28,7 +29,13 @@ internal fun probeMdnsService(
     val localIp = local.hostAddress ?: return MdnsProbeResult.UNAVAILABLE
     val network = runCatching { NetworkInterface.getByInetAddress(local) }.getOrNull()
         ?: return MdnsProbeResult.UNAVAILABLE
-    val group = InetAddress.getByName(MDNS_GROUP)
+    val group = InetAddress.getByName(mdnsGroupFor(local))
+    // An IPv6 responder's unicast reply leaves from whichever of the interface's addresses the kernel
+    // selects, often a temporary one, never necessarily the one JmDNS is bound to. Any address of the
+    // bound interface is this panel; IPv4 keeps its exact-source rule.
+    val ownSources = if (local is Inet6Address) {
+        network.inetAddresses.toList().mapNotNull { it.hostAddress?.substringBefore('%') }.toSet()
+    } else emptySet()
     val queryName = "$instanceName.${serviceType.trimEnd('.')}."
     val queryId = ThreadLocalRandom.current().nextInt(1, 65_536)
     val query = runCatching { mdnsQuery(queryName, queryId) }.getOrNull()
@@ -59,7 +66,9 @@ internal fun probeMdnsService(
                 }
                 when (classifyMdnsProbeResponse(
                     packet.data, packet.length, queryId, queryName,
-                    packet.address?.hostAddress, packet.port, localIp, probeToken,
+                    packet.address?.hostAddress, packet.port,
+                    packet.address?.hostAddress?.takeIf { it.substringBefore('%') in ownSources } ?: localIp,
+                    probeToken,
                 )) {
                     MdnsProbeResult.VISIBLE -> return@use MdnsProbeResult.VISIBLE
                     MdnsProbeResult.INCONCLUSIVE -> inconclusiveResponseSeen = true
@@ -220,10 +229,15 @@ private fun decodeDnsName(packet: ByteArray, length: Int, start: Int): DecodedDn
     }
 }
 
+/** The mDNS group for the responder's address family: 224.0.0.251, or ff02::fb for IPv6. */
+internal fun mdnsGroupFor(local: InetAddress): String =
+    if (local is Inet6Address) MDNS_GROUP_V6 else MDNS_GROUP
+
 private fun unsignedShort(packet: ByteArray, offset: Int): Int =
     ((packet[offset].toInt() and 0xff) shl 8) or (packet[offset + 1].toInt() and 0xff)
 
 private const val MDNS_GROUP = "224.0.0.251"
+private const val MDNS_GROUP_V6 = "ff02::fb"
 private const val MDNS_PORT = 5353
 private const val MAX_PACKET = 9_000
 private const val MAX_NAME_JUMPS = 16
