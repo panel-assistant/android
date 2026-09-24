@@ -21,6 +21,16 @@ import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
 import io.github.maxlyth.hapaneld.storage.DatabaseBusyRetry
 import io.github.maxlyth.hapaneld.storage.StorageAutoVacuumMode
+import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
+import io.github.maxlyth.hapaneld.storage.VacuumOutcome
+import io.github.maxlyth.hapaneld.storage.VacuumRefusal
+import io.github.maxlyth.hapaneld.storage.VacuumResult
+import io.github.maxlyth.hapaneld.storage.WalCheckpointOutcome
+import io.github.maxlyth.hapaneld.storage.WalCheckpointResult
+import io.github.maxlyth.hapaneld.storage.classifyDatabaseFailure
+import io.github.maxlyth.hapaneld.storage.configurationBackupVerified
+import io.github.maxlyth.hapaneld.storage.fullVacuumAdmission
+import io.github.maxlyth.hapaneld.storage.interpretWalCheckpoint
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservation
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.reclamationAdmitted
@@ -351,13 +361,13 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
                     arrayOf(instance, path, fingerprint),
                 )
             }
-            val cutoff = now - TOMBSTONE_RETENTION_MS
+            val cutoff = tombstoneCutoff(now)
             db.execSQL(
                 "$DELETE_MEMBERSHIP_FOR_PURGED_ENTITIES AND e.instance=? AND e.tombstone_at>0 AND e.tombstone_at<?)",
                 arrayOf<Any?>(instance, cutoff),
             )
             db.execSQL("DELETE FROM entity WHERE instance=? AND tombstone_at>0 AND tombstone_at<?", arrayOf<Any?>(instance, cutoff))
-            db.execSQL("DELETE FROM dashboard_entity_traffic_minute WHERE minute<?", arrayOf((now - DAY_MS) / MINUTE_MS))
+            db.execSQL("DELETE FROM dashboard_entity_traffic_minute WHERE minute<?", arrayOf(trafficMinuteCutoff(now)))
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }.also { observedMaintenance(now) }
@@ -451,7 +461,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
             if (performanceMaintenanceGate.admit(latestMinute * MINUTE_MS)) {
                 db.execSQL(
                     "DELETE FROM dashboard_metric_minute WHERE minute<?",
-                    arrayOf(latestMinute - PERFORMANCE_RETENTION_MINUTES),
+                    arrayOf(performanceCutoffMinute(latestMinute)),
                 )
             }
             db.setTransactionSuccessful()
@@ -469,7 +479,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
     ): Unit = observedWrite("ambient-history") {
         if (samples.isEmpty() || nowMs < 0L) return
         val nowMinute = nowMs / MINUTE_MS
-        val oldestMinute = nowMinute - AMBIENT_RETENTION_MINUTES
+        val oldestMinute = ambientOldestMinute(nowMinute)
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -520,7 +530,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         observedWrite("ambient-history-seed") {
         if (samples.isEmpty() || nowMs < 0L) return
         val nowMinute = nowMs / MINUTE_MS
-        val oldestMinute = nowMinute - AMBIENT_RETENTION_MINUTES
+        val oldestMinute = ambientOldestMinute(nowMinute)
         val db = writableDatabase
         db.beginTransaction()
         try {
@@ -1190,7 +1200,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
                     """DELETE FROM dashboard_entity_traffic_minute WHERE rowid IN (
                        SELECT rowid FROM dashboard_entity_traffic_minute WHERE minute<?
                        LIMIT $MAINTENANCE_CHUNK_ROWS)""",
-                    arrayOf<Any?>((now - DAY_MS) / MINUTE_MS),
+                    arrayOf<Any?>(trafficMinuteCutoff(now)),
                 ) || wrote
                 wrote = chunkedWrite(
                     db,
@@ -1284,7 +1294,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
      * a plain header change that is legal at any time, so flip once and reclaim pages in bounded
      * [incrementalVacuumStep] slices instead. NONE is left alone: enabling auto-vacuum on such a
      * database requires a full `VACUUM`, whose temporary-space demand may worsen a low-space incident
-     * — never run it implicitly (storage-health remediation policy).
+     * — never run it implicitly. Only [vacuumDatabase], behind [fullVacuumAdmission], converts it.
      *
      * @return true when the database is in INCREMENTAL mode and bounded reclamation may run.
      */
@@ -1473,6 +1483,115 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         db.rawQuery("PRAGMA wal_checkpoint(PASSIVE)", null).use { cursor -> cursor.moveToFirst() }
         val bytesAfter = storageKnownFileBytes(databaseFile)
         return (bytesBefore - bytesAfter).coerceAtLeast(0L)
+    }
+
+    /**
+     * Applies every age-based history limit now, instead of waiting for the write that normally
+     * applies it. Each limit is otherwise enforced only on its own write path — entity traffic and
+     * tombstones on a dashboard sync, performance minutes on a performance sample, ambient minutes on an
+     * ambient sample, proximity rollups on a proximity batch — so a panel on which one of those writers
+     * has gone quiet keeps that history indefinitely. The same cutoff functions serve both paths.
+     *
+     * Only expired history rows are deleted, in bounded chunks. Configuration, the active entity set,
+     * pinned and excluded memberships, learned models and anything not past its limit are untouched.
+     * Bounded freelist reclamation then runs through the ordinary maintenance gate.
+     *
+     * @return true when at least one expired row was removed.
+     */
+    fun enforceRetention(now: Long = System.currentTimeMillis()): Boolean {
+        val pruned = observedWrite("catalog-retention", reportsSuccessfulWrite = { it }) {
+            pruneExpiredHistory(now)
+        }
+        observedMaintenance(now)
+        return pruned
+    }
+
+    private fun pruneExpiredHistory(now: Long): Boolean {
+        val db = writableDatabase
+        return historyRetentionStatements(now, MAINTENANCE_CHUNK_ROWS).fold(false) { wrote, statement ->
+            chunkedWrite(db, statement.sql, arrayOf<Any?>(statement.cutoff)) || wrote
+        }
+    }
+
+    /**
+     * Checkpoints the whole WAL into the main file and truncates it, reporting what happened.
+     *
+     * `TRUNCATE` is used because it is the only mode that shrinks the WAL file itself. It waits on
+     * the busy handler, so a reader or writer holding the log makes it report `busy=1`: that is this
+     * app's own concurrency and is returned as deferred, never latched and never reported as success.
+     * A BUSY-classified throw is the same thing. Any other throw is IO or corruption, and latches.
+     */
+    fun truncateWal(): WalCheckpointOutcome {
+        val db = writableDatabase
+        val wal = File(db.path + "-wal")
+        val before = storageKnownFileBytes(wal)
+        return try {
+            val row = db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor ->
+                if (cursor.moveToFirst() && cursor.columnCount == 3) {
+                    Triple(cursor.getLong(0), cursor.getLong(1), cursor.getLong(2))
+                } else {
+                    null
+                }
+            }
+            interpretWalCheckpoint(row?.first, row?.second, row?.third, before, storageKnownFileBytes(wal))
+                .also { if (it.result == WalCheckpointResult.COMPLETED) StorageHealthRuntime.recordDatabaseWriteSuccess() }
+        } catch (failure: SQLException) {
+            if (classifyDatabaseFailure(failure) == StorageDatabaseFailureKind.BUSY) {
+                WalCheckpointOutcome(WalCheckpointResult.DEFERRED_BUSY, before, storageKnownFileBytes(wal))
+            } else {
+                StorageHealthRuntime.recordDatabaseFailure("database-wal-truncate", failure)
+                WalCheckpointOutcome(WalCheckpointResult.FAILED, before, storageKnownFileBytes(wal))
+            }
+        }
+    }
+
+    /**
+     * Writes a fresh configuration vault generation from the live `app_state` rows and imported
+     * profiles, then reads that exact file back and proves it decodes to the same content. This is the
+     * backup a full `VACUUM` requires; it is a tiny text file, so it costs no meaningful space even
+     * under pressure. Any failure is simply "no verified backup".
+     */
+    fun writeVerifiedConfigurationBackup(now: Long = System.currentTimeMillis()): Boolean = runCatching {
+        val rows = exportAppState()
+        val profiles = vaultedProfiles(appContext)
+        val written = ConfigVault.write(
+            File(appContext.filesDir, ConfigVault.VAULT_DIRECTORY),
+            ConfigVault.Export(rows, profiles),
+            now,
+        ) ?: return false
+        val readBack = ConfigVault.decode(written.readText())
+        configurationBackupVerified(rows, readBack?.rows) && readBack?.profiles == profiles
+    }.getOrDefault(false)
+
+    /**
+     * Rebuilds the database with a full `VACUUM`. Callers must pass [fullVacuumAdmission] first; this
+     * performs no admission of its own beyond refusing a closing owner.
+     *
+     * A database created with `auto_vacuum=NONE` is switched to INCREMENTAL in the same rebuild, the
+     * only moment that switch can happen, so its freelist is reachable by bounded reclamation from then
+     * on and a rebuild is never needed again. The WAL is then truncated so the new image reaches the
+     * main file. BUSY is deferred, not latched; anything else latches.
+     */
+    fun vacuumDatabase(): VacuumOutcome {
+        if (isBusyRetryAbandoned()) return VacuumOutcome(VacuumResult.REFUSED, VacuumRefusal.LIFECYCLE)
+        val db = writableDatabase
+        return try {
+            val mode = db.rawQuery("PRAGMA auto_vacuum", null).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+            }
+            if (mode == AUTO_VACUUM_NONE) db.execSQL("PRAGMA auto_vacuum=INCREMENTAL")
+            db.execSQL("VACUUM")
+            StorageHealthRuntime.recordDatabaseWriteSuccess()
+            truncateWal()
+            VacuumOutcome(VacuumResult.COMPLETED)
+        } catch (failure: SQLException) {
+            if (classifyDatabaseFailure(failure) == StorageDatabaseFailureKind.BUSY) {
+                VacuumOutcome(VacuumResult.DEFERRED_BUSY)
+            } else {
+                StorageHealthRuntime.recordDatabaseFailure("database-vacuum", failure)
+                VacuumOutcome(VacuumResult.FAILED)
+            }
+        }
     }
 
     /** Rewrite only derived telemetry rows. Each tier is transactionally replace-or-delete so a
@@ -1664,7 +1783,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
                     ),
                 )
             }
-            val cutoffBucket = (now / PROXIMITY_BUCKET_MS) - PROXIMITY_RETENTION_BUCKETS
+            val cutoffBucket = proximityCutoffBucket(now)
             db.execSQL("DELETE FROM proximity_sample WHERE bucket<?", arrayOf(cutoffBucket))
             db.execSQL(
                 """DELETE FROM proximity_sample WHERE rowid IN (
@@ -1942,7 +2061,6 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         private const val HOUR_MS = 3_600_000L
         private const val MINUTE_MS = 60_000L
         private const val RUNTIME_RETENTION_MS = 30L * 24 * HOUR_MS
-        private const val TOMBSTONE_RETENTION_MS = 30L * 24 * HOUR_MS
         private const val SOFT_LIMIT_BYTES = 128L * 1024 * 1024
         private const val RATE_WINDOW_MS = 5L * 60_000
         private const val RATE_STALE_MS = 90_000L
@@ -1971,7 +2089,6 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         private const val RECLAMATION_HEADROOM_MARGIN_BYTES = 64L * 1024L * 1024L
         private const val MAX_SQL_ID_FILTER = 800
         internal const val PERFORMANCE_RETENTION_DAYS = 7
-        private const val PERFORMANCE_RETENTION_MINUTES = PERFORMANCE_RETENTION_DAYS * 24L * 60L
         private const val PERFORMANCE_MAINTENANCE_INTERVAL_MS = HOUR_MS
         /**
          * Per-minute dashboard measurements, with the metric *set* held as data in [payload].
@@ -2135,8 +2252,6 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
         private const val MAX_PROXIMITY_MODELS = 2
         private const val MAX_PROXIMITY_ROLLUPS = 5_000
         private const val MAX_PROXIMITY_EPISODES = 512
-        private const val PROXIMITY_BUCKET_MS = 5L * 60_000L
-        private const val PROXIMITY_RETENTION_BUCKETS = 7L * 24L * 12L
         internal val AMBIENT_HISTORY_TABLE_SQL = """CREATE TABLE ambient_lux_minute(
             context_id TEXT NOT NULL,source_id TEXT NOT NULL,minute INTEGER NOT NULL,
             lux_integral REAL NOT NULL DEFAULT 0,coverage_ms INTEGER NOT NULL DEFAULT 0,
@@ -2247,12 +2362,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
                 }
             }.onFailure { retainDatabaseFailure("database-vault-read", it) }.getOrDefault(emptyList())
 
-            val profiles = runCatching {
-                File(context.filesDir, IMPORTED_PROFILE_DIRECTORY).listFiles()
-                    ?.filter { it.isFile && it.length() <= MAX_VAULTED_PROFILE_BYTES }
-                    ?.associate { it.name to it.readText() }
-                    .orEmpty()
-            }.getOrDefault(emptyMap())
+            val profiles = runCatching { vaultedProfiles(context) }.getOrDefault(emptyMap())
 
             ConfigVault.write(
                 File(context.filesDir, ConfigVault.VAULT_DIRECTORY),
@@ -2260,6 +2370,13 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
                 System.currentTimeMillis(),
             )
         }
+
+        /** Imported device profiles, which live outside the database, as the vault carries them. */
+        internal fun vaultedProfiles(context: Context): Map<String, String> =
+            File(context.filesDir, IMPORTED_PROFILE_DIRECTORY).listFiles()
+                ?.filter { it.isFile && it.length() <= MAX_VAULTED_PROFILE_BYTES }
+                ?.associate { it.name to it.readText() }
+                .orEmpty()
 
         /**
          * Restores vaulted configuration and imported profiles into a freshly created database.

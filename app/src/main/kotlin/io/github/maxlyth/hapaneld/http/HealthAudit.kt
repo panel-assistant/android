@@ -119,6 +119,14 @@ object HealthAudit {
         val autoVacuum: String,
         val failure: String?,
         val failureOperation: String?,
+        /** The last remediation run in this process; every field is null when none has run. */
+        val remediation: String? = null,
+        val remediationAtMillis: Long? = null,
+        val remediationFreedBytes: Long? = null,
+        val remediationRetention: String? = null,
+        val remediationWalCheckpoint: String? = null,
+        val remediationVacuum: String? = null,
+        val remediationVacuumRefusal: String? = null,
         val summary: String,
         val action: String,
         /** Additive typed metadata for [warningHtml], absent when this state has no warning. */
@@ -153,6 +161,15 @@ object HealthAudit {
             field("checked_at", checkedAtMillis)
             failure?.let { field("failure", it) }
             failureOperation?.let { field("failure_operation", it) }
+            remediation?.let {
+                field("remediation", it)
+                field("remediation_at", remediationAtMillis)
+                field("remediation_freed_bytes", remediationFreedBytes)
+                field("remediation_retention", remediationRetention)
+                field("remediation_wal_checkpoint", remediationWalCheckpoint)
+                field("remediation_vacuum", remediationVacuum)
+                remediationVacuumRefusal?.let { refusal -> field("remediation_vacuum_refusal", refusal) }
+            }
             field("summary", summary)
             field("action", action)
             append('}')
@@ -196,6 +213,15 @@ object HealthAudit {
             // it was rendered here, a reported `failure=unknown` named nothing an operator could act
             // on and nothing a maintainer could reproduce (Issue #91 residual).
             metric("failure_operation", failureOperation ?: "none")
+            metric("remediation", remediation ?: "not_run")
+            if (remediation != null) {
+                metric("remediation_at", remediationAtMillis)
+                metric("remediation_freed_bytes", remediationFreedBytes)
+                metric("remediation_retention", remediationRetention)
+                metric("remediation_wal_checkpoint", remediationWalCheckpoint)
+                metric("remediation_vacuum", remediationVacuum)
+                metric("remediation_vacuum_refusal", remediationVacuumRefusal ?: "none")
+            }
         }
     }
 
@@ -239,7 +265,11 @@ object HealthAudit {
                     "A database operation$during failed${failure?.let { " ($it)" }.orEmpty()}; recovery is not yet verified. Last measured storage metrics: $headroom."
             }
         }
-        val action = when (snapshot.severity) {
+        // Escalation: automatic remediation already ran every safe step and pressure remains. Only
+        // pressure states carry it; a later healthy observation or a database failure speaks for itself.
+        val escalated = snapshot.remediation?.escalated == true &&
+            (snapshot.severity == StorageHealthSeverity.WARNING || snapshot.severity == StorageHealthSeverity.CRITICAL)
+        val baseAction = when (snapshot.severity) {
             StorageHealthSeverity.UNCHECKED -> if (probeRan) {
                 "Retry the storage check and inspect diagnostics if filesystem capacity remains unavailable."
             } else {
@@ -264,6 +294,14 @@ object HealthAudit {
                     "Preserve the database and inspect diagnostics before retrying; do not delete or recreate the database."
             }
         }
+        val action = if (escalated) {
+            "Automatic cleanup has already removed everything it can safely remove and pressure remains; " +
+                "free space on the panel by hand or contact support. $baseAction"
+        } else {
+            baseAction
+        }
+        val remediation = snapshot.remediation
+        fun token(value: Enum<*>): String = value.name.lowercase(java.util.Locale.ROOT)
         return StoragePresentation(
             state = state,
             pressureState = snapshot.pressureSeverity.name.lowercase(java.util.Locale.ROOT),
@@ -282,6 +320,13 @@ object HealthAudit {
             autoVacuum = snapshot.autoVacuumMode.name.lowercase(java.util.Locale.ROOT),
             failure = failure,
             failureOperation = failureOperation,
+            remediation = remediation?.verdict?.let(::token),
+            remediationAtMillis = remediation?.ranAtMillis,
+            remediationFreedBytes = remediation?.bytesFreed,
+            remediationRetention = remediation?.retention?.let(::token),
+            remediationWalCheckpoint = remediation?.walCheckpoint?.let(::token),
+            remediationVacuum = remediation?.vacuum?.result?.let(::token),
+            remediationVacuumRefusal = remediation?.vacuum?.refusal?.let(::token),
             summary = summary,
             action = action,
             warningPresentation = storageWarningPresentation(

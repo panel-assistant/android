@@ -157,7 +157,19 @@ import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportOwner
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.panelassistant.panelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.sensors.KtorHaExactEntityStreamTransport
+import io.github.maxlyth.hapaneld.storage.DisposableFileSweeper
+import io.github.maxlyth.hapaneld.storage.DisposableSweepResult
+import io.github.maxlyth.hapaneld.storage.RetentionResult
 import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
+import io.github.maxlyth.hapaneld.storage.StorageMaintenancePlan
+import io.github.maxlyth.hapaneld.storage.StorageRemediationLadder
+import io.github.maxlyth.hapaneld.storage.StorageRemediationOperations
+import io.github.maxlyth.hapaneld.storage.VacuumOutcome
+import io.github.maxlyth.hapaneld.storage.VacuumResult
+import io.github.maxlyth.hapaneld.storage.WalCheckpointOutcome
+import io.github.maxlyth.hapaneld.storage.WalCheckpointResult
+import io.github.maxlyth.hapaneld.storage.appOwnedDisposableFileRules
+import io.github.maxlyth.hapaneld.storage.storageMaintenancePlan
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservation
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservationQueue
 import io.github.maxlyth.hapaneld.storage.StorageHealthRecoveryLifecycle
@@ -4209,7 +4221,10 @@ class PaneldService : Service() {
                 if (teardownBoundary.isStopping) return@periodic
                 val attempt = index + 1
                 when (runQueuedStorageHealthObservation()) {
-                    StorageHealthObservationAttempt.Complete,
+                    StorageHealthObservationAttempt.Complete -> {
+                        runStorageMaintenance()
+                        return@periodic
+                    }
                     StorageHealthObservationAttempt.Stopped -> return@periodic
                     StorageHealthObservationAttempt.Retry -> Unit
                 }
@@ -4221,6 +4236,71 @@ class PaneldService : Service() {
                 kotlinx.coroutines.delay(STORAGE_HEALTH_RETRY_MS)
             }
         }
+    }
+
+    /**
+     * Daily storage maintenance after a completed observation, serialized with every observation so
+     * no SQLite work overlaps a health read. A healthy panel converges its existing retention limits;
+     * elevated pressure runs the fail-safe remediation ladder, whose measured result is published on
+     * every storage-health surface. Prompt recovery and HTTP refreshes never start remediation.
+     */
+    private suspend fun runStorageMaintenance() {
+        storageHealthObservationQueue.run { signal ->
+            if (teardownBoundary.isStopping) return@run Unit
+            val snapshot = StorageHealthRuntime.snapshot()
+            when (storageMaintenancePlan(snapshot)) {
+                StorageMaintenancePlan.NONE -> Unit
+                StorageMaintenancePlan.RETENTION -> runCatching { entityLearning.enforceHistoryRetention() }
+                    .onFailure { Log.w(TAG, "history retention failed (${it.javaClass.simpleName})") }
+                StorageMaintenancePlan.REMEDIATE ->
+                    StorageRemediationLadder(storageRemediationOperations(signal)).run(snapshot)?.let { summary ->
+                        StorageHealthRuntime.recordRemediation(summary)
+                        Log.w(
+                            TAG,
+                            "storage remediation ${summary.verdict.name.lowercase(Locale.ROOT)}: " +
+                                "freed ${summary.bytesFreed} bytes (${summary.filesDeleted} files), " +
+                                "retention=${summary.retention.name.lowercase(Locale.ROOT)} " +
+                                "wal=${summary.walCheckpoint.name.lowercase(Locale.ROOT)} " +
+                                "vacuum=${summary.vacuum.result.name.lowercase(Locale.ROOT)}" +
+                                (summary.vacuum.refusal?.let { "/${it.name.lowercase(Locale.ROOT)}" } ?: ""),
+                        )
+                    }
+            }
+            Unit
+        }
+    }
+
+    private fun storageRemediationOperations(signal: CancellationSignal) = object : StorageRemediationOperations {
+        override fun sweepDisposableFiles(): List<DisposableSweepResult> {
+            // Wall-clock process start: only files written before this process existed can be orphans.
+            val processStart = System.currentTimeMillis() -
+                (android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime())
+            val sweeper = DisposableFileSweeper(processStart)
+            return appOwnedDisposableFileRules(cacheDir, filesDir).map(sweeper::sweep)
+        }
+
+        override fun enforceRetention(): RetentionResult = runCatching {
+            if (entityLearning.enforceHistoryRetention()) RetentionResult.PRUNED else RetentionResult.CONVERGED
+        }.getOrElse { RetentionResult.FAILED }
+
+        override fun checkpointWal(): WalCheckpointOutcome = runCatching { entityLearning.truncateDatabaseWal() }
+            .getOrElse { WalCheckpointOutcome(WalCheckpointResult.FAILED, 0L, 0L) }
+
+        override fun writeVerifiedBackup(): Boolean = entityLearning.writeVerifiedConfigurationBackup()
+
+        override fun vacuum(): VacuumOutcome = runCatching { entityLearning.vacuumDatabase() }
+            .getOrElse { VacuumOutcome(VacuumResult.FAILED) }
+
+        // A companion data backup or restore owns the data directory until its marker clears.
+        override fun lifecycleOwned(): Boolean = !teardownBoundary.isStopping && !signal.isCanceled &&
+            !(::companionDataOperationState.isInitialized && companionDataOperationState.isPending())
+
+        override suspend fun observe(): StorageHealthSnapshot? =
+            when (runStorageHealthObservation(signal)) {
+                StorageHealthObservationAttempt.Complete -> StorageHealthRuntime.snapshot()
+                StorageHealthObservationAttempt.Retry,
+                StorageHealthObservationAttempt.Stopped -> null
+            }
     }
 
     /** One bounded observation attempt shared by prompt recovery and the independent daily loop. */

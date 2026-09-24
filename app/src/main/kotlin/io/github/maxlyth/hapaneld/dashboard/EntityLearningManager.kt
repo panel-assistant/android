@@ -16,6 +16,8 @@ import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservation
+import io.github.maxlyth.hapaneld.storage.VacuumOutcome
+import io.github.maxlyth.hapaneld.storage.WalCheckpointOutcome
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
 import io.github.maxlyth.hapaneld.util.HaWebSocketClients
@@ -1372,6 +1374,12 @@ class EntityLearningManager(
     /** Service-owned startup/daily health check; teardown cancellation reaches SQLite quick_check. */
     fun storageHealthObservation(cancellationSignal: CancellationSignal? = null): StorageHealthObservation =
         store.storageHealthObservation(cancellationSignal)
+
+    // Storage remediation steps, owned by the service's serialized storage-health lifecycle.
+    fun enforceHistoryRetention(): Boolean = store.enforceRetention()
+    fun truncateDatabaseWal(): WalCheckpointOutcome = store.truncateWal()
+    fun writeVerifiedConfigurationBackup(): Boolean = store.writeVerifiedConfigurationBackup()
+    fun vacuumDatabase(): VacuumOutcome = store.vacuumDatabase()
 
     @Synchronized fun setIssueIgnored(fingerprint: String, ignored: Boolean): String {
         ensureInitialized()
