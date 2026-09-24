@@ -7,6 +7,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,12 +30,19 @@ class WebViewConsoleTest {
         """{"method":"Runtime.consoleAPICalled","params":{"type":"$type","args":$argsJson,""" +
             """"executionContextId":1,"timestamp":$ts$stack}}"""
 
+    /** A missing mapping is an assertion failure, never a NullPointerException. */
+    private fun mapped(frame: String): ConsoleEvent {
+        val event = CdpConsoleMapper.map(frame)
+        assertNotNull("frame was not mapped: $frame", event)
+        return event!!
+    }
+
     private fun line(event: ConsoleEvent) =
         CdpConsoleMapper.format(event.level, event.text, event.timestampMs, utc)
 
     @Test
     fun consoleErrorMapsToAnELineWithItsSourceLocation() {
-        val event = CdpConsoleMapper.map(
+        val event = mapped(
             consoleFrame(
                 "error",
                 """[{"type":"string","value":"card failed:"},{"type":"number","value":42},""" +
@@ -42,7 +50,7 @@ class WebViewConsoleTest {
                 ""","stackTrace":{"callFrames":[{"functionName":"f","url":"http://ha.local/card.js",""" +
                     """"lineNumber":9,"columnNumber":3}]}""",
             ),
-        )!!
+        )
         assertEquals(
             "09-24 14:05:06.789     0     0 E webview/console: " +
                 "card failed: 42 TypeError: x is undefined (http://ha.local/card.js:10)",
@@ -54,7 +62,7 @@ class WebViewConsoleTest {
     fun consoleLevelsMapToLogcatLetters() {
         val expected = mapOf("warning" to 'W', "debug" to 'D', "log" to 'I', "info" to 'I', "assert" to 'E')
         for ((type, letter) in expected) {
-            val event = CdpConsoleMapper.map(consoleFrame(type, """[{"type":"string","value":"m"}]"""))!!
+            val event = mapped(consoleFrame(type, """[{"type":"string","value":"m"}]"""))
             assertEquals(type, letter, event.level)
         }
         assertNull(CdpConsoleMapper.map(consoleFrame("clear", "[]")))
@@ -65,33 +73,33 @@ class WebViewConsoleTest {
 
     @Test
     fun styleDirectivesDropTheirCssArguments() {
-        val event = CdpConsoleMapper.map(
+        val event = mapped(
             consoleFrame(
                 "log",
                 """[{"type":"string","value":"%c CARD %c v1.1.0"},{"type":"string","value":"color: red"},""" +
                     """{"type":"string","value":"color: blue"},{"type":"string","value":"loaded"}]""",
             ),
-        )!!
+        )
         assertEquals("CARD  v1.1.0 loaded", event.text)
     }
 
     @Test
     fun logEntryMapsLevelTextAndLocation() {
-        val event = CdpConsoleMapper.map(
+        val event = mapped(
             """{"method":"Log.entryAdded","params":{"entry":{"source":"network","level":"error",""" +
                 """"text":"Failed to load resource","timestamp":$ts,"url":"http://ha.local/x.png"}}}""",
-        )!!
+        )
         assertEquals(
             "09-24 14:05:06.789     0     0 E webview/console: Failed to load resource (http://ha.local/x.png)",
             line(event),
         )
-        val verbose = CdpConsoleMapper.map(
+        val verbose = mapped(
             """{"method":"Log.entryAdded","params":{"entry":{"level":"verbose","text":"v","timestamp":$ts}}}""",
-        )!!
+        )
         assertEquals('V', verbose.level)
-        val warning = CdpConsoleMapper.map(
+        val warning = mapped(
             """{"method":"Log.entryAdded","params":{"entry":{"level":"warning","text":"w","timestamp":$ts}}}""",
-        )!!
+        )
         assertEquals('W', warning.level)
     }
 
@@ -106,14 +114,14 @@ class WebViewConsoleTest {
     @Test
     fun consoleLineCarryingATokenIsRedactedBeforeAnyConsumerSeesIt() {
         val raw = line(
-            CdpConsoleMapper.map(
+            mapped(
                 consoleFrame(
                     "error",
                     """[{"type":"string","value":"auth failed token=abc123secret for """ +
                         """https://admin:hunter2@ha.local:8123/api?access_token=qwerty bearer """ +
                         """eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N"}]""",
                 ),
-            )!!,
+            ),
         )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
