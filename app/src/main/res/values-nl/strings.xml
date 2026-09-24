@@ -200,6 +200,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant De aanmelding voor dit paneel is afgewezen toen het paneel vroeg welke entiteiten er getoond moesten worden. Het dashboard is niet geopend. Met ‘Configureren’ open je de instellingen van dit paneel, waar Home Assistant De verbinding houdt de aanmelding in stand; het dashboard verschijnt vanzelf weer zodra het werkt.</string>
     <string name="entity_scan_failed_detail">Het scannen van je entiteiten is niet voltooid, dus het dashboard is niet geopend. Controleer of Home Assistant is actief en het paneel is verbonden met het netwerk, probeer het dan nog eens.</string>
     <string name="entity_scan_preparing_detail">Home Assistant wordt geopend zodra de eerste gefilterde entiteitsset klaar is.</string>
+    <string name="entity_learning_reload_notice">Zodra Home Assistant geopend is, kan het een paar keer opnieuw laden terwijl het paneel leert. Dat is normaal.</string>
     <string name="entity_scan_taking_longer">Het duurt langer dan normaal — het paneel is er nog mee bezig. Als dit niet afloopt, kun je het entiteitsfilter uitschakelen via de instellingen van het paneel.</string>
     <string name="ignore_flagged_entities">Negeer gemarkeerde entiteiten en ga verder</string>
     <string name="preparing_dashboard">Dashboard wordt voorbereid…</string>
