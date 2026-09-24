@@ -177,10 +177,18 @@ class NativeLocalizationContractTest {
     }
 
     @Test fun everyFiniteDashboardRestartReasonHasANativeLocalization() {
+        // A reason may be named once as a BuiltinDashboard constant; resolve it so it stays in scope here.
+        val namedReasons = Regex("const val (\\w+_RELOAD_REASON) = \"([^\"]+)\"")
+            .findAll(kotlin("control/BuiltinDashboard.kt"))
+            .associate { it.groupValues[1] to it.groupValues[2] }
         val finiteReasons = productionKotlin.values.flatMap { source ->
-            Regex("system\\.reloadDashboard\\([\\s\\S]{0,300}?reason\\s*=\\s*\"([^\"]+)\"")
+            Regex("system\\.reloadDashboard\\([\\s\\S]{0,300}?reason\\s*=\\s*(?:\"([^\"]+)\"|BuiltinDashboard\\.(\\w+_RELOAD_REASON)\\b)")
                 .findAll(source)
-                .map { it.groupValues[1] }
+                .map { match ->
+                    match.groupValues[1].ifEmpty {
+                        namedReasons[match.groupValues[2]] ?: error("unresolved reason ${match.groupValues[2]}")
+                    }
+                }
                 .toList()
         }.toSet()
         assertEquals(
@@ -194,7 +202,12 @@ class NativeLocalizationContractTest {
         )
         val dashboard = kotlin("DashboardActivity.kt")
         finiteReasons.forEach { reason ->
-            assertTrue("restart reason is not localized: $reason", dashboard.contains("\"$reason\""))
+            // Localized means it is a branch label in the reason mapping, by literal or by constant.
+            val labels = listOf("\"$reason\"") + namedReasons.filterValues { it == reason }.keys.map { "BuiltinDashboard.$it" }
+            assertTrue(
+                "restart reason is not localized: $reason",
+                labels.any { label -> Regex(Regex.escape(label) + "\\s*(?:,|->)").containsMatchIn(dashboard) },
+            )
         }
     }
 

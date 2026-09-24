@@ -124,6 +124,12 @@ object BuiltinDashboard {
 
     @Synchronized fun consumeReloadReason(): String = reloadReason.also { reloadReason = "" }
 
+    /** Reload reason the entity-filter learner passes when a learned set changes. */
+    const val LEARNING_RELOAD_REASON = "applying the entity filter"
+
+    /** Process-global, like the rebuild budget below: a recreated renderer keeps the learning window. */
+    val restartAnnouncements = DeliberateRestartAnnouncements(learningWindowMs = 10L * 60_000)
+
     // --- renderer crash-loop budget + latch (process-global, NOT per-activity-instance) ---
     //
     // The budget must outlive the activity: a crash fallback finishes the activity, the kiosk/watchdog
