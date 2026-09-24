@@ -3812,7 +3812,13 @@ class PaneldServer internal constructor(
                         call.respondText(recBtn + frag, ContentType.Text.Html)
                     }
                     get("/display") {
-                        val observation = withContext(Dispatchers.IO) { DisplayGeometryReport.observe(appContext) }
+                        // The factory base is the `wm density` reset reference the sizing control restores;
+                        // the framework's stable density stands in only where that read is unavailable.
+                        val observation = withContext(Dispatchers.IO) {
+                            DisplayGeometryReport.observe(appContext)?.let { framework ->
+                                framework.copy(factoryBaseDpi = densityCache.get().base ?: framework.factoryBaseDpi)
+                            }
+                        }
                         if (observation == null) {
                             call.respondText("""{"error":"display-unavailable"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
                             return@get

@@ -14,7 +14,8 @@ internal data class DisplayObservation(
     val physicalHeightPx: Int,
     val viewportWidthPx: Int,
     val viewportHeightPx: Int,
-    /** Android's factory reset logical DPI (`ro.sf.lcd_density`), which `wm density` labels "Physical density". */
+    /** Android's factory reset logical DPI: the `wm density` reset reference ("Physical density") when a
+     *  privileged read has it, otherwise the framework's stable density. */
     val factoryBaseDpi: Int?,
     val currentDpi: Int?,
 )
