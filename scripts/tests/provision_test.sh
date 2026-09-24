@@ -158,7 +158,7 @@ case "${MOCK_DB_TXN:-ok}" in
   ;;
 esac
 case "${MOCK_DB_TXN:-ok}" in
-  manifest_missing_bytes|manifest_missing_rows|manifest_missing_schema|manifest_missing_provenance|manifest_missing_integrity|manifest_missing_sqlite|panel_digest_invalid|panel_digest_mismatch)
+  manifest_missing_bytes|manifest_missing_rows|manifest_missing_schema|manifest_missing_provenance|manifest_missing_integrity|manifest_missing_sqlite|manifest_missing_sha|panel_digest_invalid|panel_digest_mismatch)
     case "$*" in
       *'sh /data/local/tmp/.hapaneld-db-txn.'*-script*)
         output="$("$PROVISION_TEST_ADB_FIXTURE" "$@")"; status=$?
@@ -169,6 +169,7 @@ case "${MOCK_DB_TXN:-ok}" in
           manifest_missing_provenance) output="$(printf '%s\n' "$output" | sed '/^MF_VCODE=/d')" ;;
           manifest_missing_integrity) output="$(printf '%s\n' "$output" | sed '/^MF_INTEGRITY=/d')" ;;
           manifest_missing_sqlite) output="$(printf '%s\n' "$output" | sed '/^MF_SQLITE=/d')" ;;
+          manifest_missing_sha) output="$(printf '%s\n' "$output" | sed '/^MF_SHA256=/d')" ;;
           panel_digest_invalid) output="$(printf '%s\n' "$output" | sed 's/^MF_SHA256=.*/MF_SHA256=not-a-digest/')" ;;
           panel_digest_mismatch) output="$(printf '%s\n' "$output" | sed "s/^MF_SHA256=.*/MF_SHA256=$(printf '%064d' 0)/")" ;;
         esac
@@ -5580,6 +5581,20 @@ assert_marker_absent "a hung post-escalation probe never claims a captured snaps
 rm -f "$TMP/adb-root-escalated"
 reset_db_txn_state
 
+# The run's FIRST root probe is the one a wedged panel meets. Its timeout is already an undecided
+# route, so the resolver stops there: no `adb root` restart of a panel that never answered, and no
+# backup, quiescence or install under an unknown capability.
+PRIVILEGE_INSPECTION_TIMEOUT_SECONDS=1 MOCK_ADB_ROOT=hang \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a first root probe that never answers stops the upgrade" \
+  'database compatibility could not be proven: the panel root route is unknown'
+assert_log_contains 'shell id$' "the refusal followed the run's first root probe"
+assert_not_contains '^adb -s [^ ]+ root$' "$MOCK_CALL_LOG" \
+  "a first-probe timeout never escalates with adb root"
+assert_not_contains 'PREPARE_UPGRADE|hapaneld-db-txn|^adb .* install( |$)' "$MOCK_CALL_LOG" \
+  "a first-probe timeout precedes quiescence, capture and install"
+reset_db_txn_state
+
 # A transport that dies in the adbd restart answers exactly like a genuine "no root": the
 # post-escalation negative is only accepted from a transport that proves it is still alive.
 MOCK_ROOT=0 MOCK_ADB_ROOT=escalates_then_drop MOCK_SNAPSHOT_TRANSPORT=dead_after_escalation \
@@ -5886,9 +5901,11 @@ for admission in MOCK_DB_DEVICE_ROWS=0:rows_empty MOCK_DB_DEVICE_USER_VERSION=0:
 done
 
 # The host accepts only a complete manifest from the legacy transaction, while an invalid optional
-# manifest is discarded without blocking an ordinary Android package replacement.
-for manifest_case in manifest_missing_bytes:bytes manifest_missing_rows:rows manifest_missing_schema:schema manifest_missing_provenance:provenance manifest_missing_integrity:'capture manifest is incomplete' manifest_missing_sqlite:'capture manifest is incomplete'; do
-  txn_mode="${manifest_case%%:*}"; named="${manifest_case#*:}"
+# manifest is discarded without blocking an ordinary Android package replacement. Each case names the
+# whole refusal: a bare field word such as "schema" or "rows" also appears in an ordinary run's
+# compatibility line, so matching it alone would pass with the guard deleted.
+for manifest_case in manifest_missing_bytes:' \(bytes\)' manifest_missing_rows:' \(rows\)' manifest_missing_schema:' \(schema\)' manifest_missing_provenance:' \(provenance\)' manifest_missing_integrity:' —' manifest_missing_sqlite:' —' manifest_missing_sha:' —'; do
+  txn_mode="${manifest_case%%:*}"; named="capture manifest is incomplete${manifest_case#*:}"
   reset_db_txn_state
   MOCK_DB_TXN="$txn_mode" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_success "a $txn_mode unsafe manifest is discarded while the ordinary upgrade continues"
@@ -5896,6 +5913,28 @@ for manifest_case in manifest_missing_bytes:bytes manifest_missing_rows:rows man
   assert_marker_absent "a $txn_mode manifest never earns a captured marker"
   assert_log_contains '^adb .* install' "a $txn_mode manifest does not preempt APK install"
 done
+
+# The executed script's first two refusals. Both are reached without a race on a panel whose bridge
+# holds the data but has never created its database: the compatibility gate proves that state fresh,
+# and the capture still runs against the bridge. The sandbox seeds a database and a sqlite3 unless
+# told otherwise, which is why neither refusal had ever run.
+for first_refusal in source_missing sqlite_missing; do
+  reset_db_txn_state
+  MOCK_DB_TXN="$first_refusal" MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 \
+  MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_HOST_DB_PRIMARY=missing MOCK_HOST_DB_RECOVERY=none \
+  MOCK_HOST_DB_RETAINED=0 MOCK_HOST_DB_INVENTORY=readable \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_success "a $first_refusal capture refusal remains advisory for the successor install"
+  assert_contains "on-panel capture transaction refused \\($first_refusal\\)" \
+    "the $first_refusal refusal is the executed script's own verdict"
+  assert_log_contains 'sh /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+-script' \
+    "the $first_refusal verdict came from running the pushed transaction"
+  assert_marker_absent "a $first_refusal refusal never claims a captured snapshot"
+  assert_log_contains '^adb .* install' "a $first_refusal refusal does not preempt APK install"
+  assert_log_contains 'rm -rf /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+ ' \
+    "a $first_refusal refusal still asks the panel to remove the capture's staging"
+done
+reset_db_txn_state
 
 reset_db_txn_state
 MOCK_DB_TXN=panel_digest_invalid run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
