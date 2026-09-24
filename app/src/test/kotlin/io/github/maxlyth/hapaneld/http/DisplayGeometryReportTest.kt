@@ -36,45 +36,45 @@ class DisplayGeometryReportTest {
             Triple(tpa10, 1920 to 1200, listOf(160, 212, 226, 240, 320)),
         ).forEach { (profile, pixels, densities) ->
             val reports = densities.map { dpi -> report(observation(pixels.first, pixels.second, dpi, factoryBaseDpi = dpi + 40), profile) }
-            val physical = reports.map { it.getJSONObject("physical_size").toString() }
+            val physical = reports.map { it.obj("physical_size").toString() }
             assertEquals("physical size moved with logical DPI on ${profile.id}", 1, physical.toSet().size)
             // The same report does respond to DPI where it should, so an inert builder cannot pass.
-            val viewports = reports.map { it.getJSONObject("viewport_dp").getDouble("width") }
+            val viewports = reports.map { it.obj("viewport_dp").getDouble("width") }
             assertEquals("dp viewport ignored logical DPI on ${profile.id}", densities.size, viewports.toSet().size)
             reports.zip(densities).forEach { (json, dpi) ->
-                assertEquals(dpi, json.getJSONObject("logical_dpi").getInt("current"))
+                assertEquals(dpi, json.obj("logical_dpi").int("current"))
             }
         }
-        val compact = report(observation(480, 480, 250), nspanel).getJSONObject("physical_size")
+        val compact = report(observation(480, 480, 250), nspanel).obj("physical_size")
         assertEquals(3.95, compact.getDouble("diagonal_in"), 0.0)
         assertEquals(171.9, compact.getDouble("ppi"), 0.0)
-        val hall = report(observation(1920, 1200, 212), tpa10).getJSONObject("physical_size")
+        val hall = report(observation(1920, 1200, 212), tpa10).obj("physical_size")
         assertEquals(226.0, hall.getDouble("ppi"), 0.0)
         assertEquals(10.02, hall.getDouble("diagonal_in"), 0.0)
     }
 
     @Test fun reportKeepsEveryDensityDistinctAndMarksApproximateEvidence() {
         val json = report(observation(1920, 1200, 212, factoryBaseDpi = 240), tpa10)
-        assertEquals(1920, json.getJSONObject("physical_pixels").getInt("width"))
-        assertEquals(1200, json.getJSONObject("physical_pixels").getInt("height"))
-        val size = json.getJSONObject("physical_size")
+        assertEquals(1920, json.obj("physical_pixels").int("width"))
+        assertEquals(1200, json.obj("physical_pixels").int("height"))
+        val size = json.obj("physical_size")
         assertEquals("approximate", size.getString("evidence"))
         assertTrue(size.getBoolean("approximate"))
-        val logical = json.getJSONObject("logical_dpi")
-        assertEquals(240, logical.getInt("factory_base"))
-        assertEquals(212, logical.getInt("current"))
-        assertEquals(212, logical.getInt("recommended"))
+        val logical = json.obj("logical_dpi")
+        assertEquals(240, logical.int("factory_base"))
+        assertEquals(212, logical.int("current"))
+        assertEquals(212, logical.int("recommended"))
         assertFalse("legacy ppi declares no factory base", logical.has("profile_factory_base"))
-        val viewport = json.getJSONObject("viewport_dp")
+        val viewport = json.obj("viewport_dp")
         assertEquals(1449.1, viewport.getDouble("width"), 0.0)
         assertEquals(905.7, viewport.getDouble("height"), 0.0)
         assertEquals(1.325, viewport.getDouble("density_scale"), 0.0)
 
         val specified = report(observation(480, 480, 160), nspanel)
-        assertEquals("specification", specified.getJSONObject("physical_size").getString("evidence"))
-        assertFalse(specified.getJSONObject("physical_size").getBoolean("approximate"))
-        assertEquals("86P", specified.getJSONObject("physical_size").getString("variant"))
-        assertEquals(160, specified.getJSONObject("logical_dpi").getInt("profile_factory_base"))
+        assertEquals("specification", specified.obj("physical_size").getString("evidence"))
+        assertFalse(specified.obj("physical_size").getBoolean("approximate"))
+        assertEquals("86P", specified.obj("physical_size").getString("variant"))
+        assertEquals(160, specified.obj("logical_dpi").int("profile_factory_base"))
     }
 
     @Test fun unknownGeometryIsAbsentAndNeverInferredFromDensity() {
@@ -101,6 +101,17 @@ class DisplayGeometryReportTest {
         assertConforms("DisplayGeometry", schema, json)
         val required = schema.getJSONArray("required")
         (0 until required.length()).forEach { assertTrue(json.has(required.getString(it))) }
+    }
+
+    /** Asserts before reading, so a missing field fails as an assertion rather than a JSONException. */
+    private fun JSONObject.obj(key: String): JSONObject {
+        assertTrue("report is missing $key: $this", has(key))
+        return getJSONObject(key)
+    }
+
+    private fun JSONObject.int(key: String): Int {
+        assertTrue("report is missing $key: $this", has(key))
+        return getInt(key)
     }
 
     private fun assertConforms(path: String, schema: JSONObject, value: JSONObject) {
