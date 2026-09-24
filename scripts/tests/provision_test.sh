@@ -4086,9 +4086,9 @@ assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c andr
 # nonzero to both an individual caller and an enclosing fleet run.
 SHIZUKU_HANG_PID_FILE="$TMP/shizuku-hang.pid"
 MOCK_SHIZUKU_START=hang MOCK_SHIZUKU_HANG_PID_FILE="$SHIZUKU_HANG_PID_FILE" \
-  SHIZUKU_START_TIMEOUT_SECONDS=1 run_provision "$MOCK_TARGET" --apk "$APK" --shizuku --no-tame
+  SHIZUKU_START_TIMEOUT_SECONDS=4 run_provision "$MOCK_TARGET" --apk "$APK" --shizuku --no-tame
 assert_failure "stuck Shizuku service start returns nonzero at its host deadline"
-assert_contains 'service start timed out after 1s' "Shizuku timeout reports the bounded failed step"
+assert_contains 'service start timed out after 4s' "Shizuku timeout reports the bounded failed step"
 assert_log_contains '^adb .* install -r -g .*ha-paneld\.apk$' "Shizuku timeout still installs the core agent"
 assert_log_contains '^adb .* shell monkey -p io\.panelassistant\.android -c android\.intent\.category\.LAUNCHER 1$' "Shizuku timeout still launches the core agent"
 [ -s "$SHIZUKU_HANG_PID_FILE" ] || printf '# the Shizuku start fixture never recorded its PID before the deadline\n'
