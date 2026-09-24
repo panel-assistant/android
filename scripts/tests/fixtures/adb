@@ -21,7 +21,7 @@ STATE_DIR="${MOCK_STATE_DIR:-$(dirname "$MOCK_CALL_LOG")}"
 case "$*" in *' -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR'*)
   : > "$STATE_DIR/handoff-started" ;;
 esac
-MOCK_DIAG_ID="${MOCK_DIAG_ID:-abcdef0123456789abcdef0123456789}"
+DIAG_ID=abcdef0123456789abcdef0123456789
 HELPER_STATE_FIXTURE="$(cd "$(dirname "$0")" && pwd)/helper-state"
 # A clean panel has no package at all. Without this the fixture would silently re-create one and a
 # genuine first installation could never be modelled.
@@ -33,7 +33,8 @@ fi
 # root; the escalates* modes model a userdebug panel that answers uid=2000 until the `root` verb is
 # called and only then changes state — the sequence the capture gate's escalation contracts need.
 # escalates: `id` answers uid=0 after the verb. escalates_then_hang: the probe never answers after
-# the verb. escalates_then_drop: the transport dies after the verb.
+# the verb. escalates_then_drop: the transport dies after the verb. hang: the probe never answers
+# at all, so the run's first root probe times out before any escalation.
 adb_root_active() {
   [ "${MOCK_ADB_ROOT:-0}" = 1 ] && return 0
   [ "${MOCK_ADB_ROOT:-0}" = escalates ] && [ -f "$STATE_DIR/adb-root-escalated" ]
@@ -323,15 +324,15 @@ installer_marked_probe_reply() {
   local text="$1" nonce trc lrc urc installed=no retained_mode probe_pkg
   nonce="${text#*HAPANELD_INSTALLER_PKG_BEGIN:}"
   nonce="${nonce%%[!0-9a-f]*}"
-  # The installer asks once per identity. MOCK_INSTALLER_PROBE_PKG names the one this scenario
-  # models; every other identity answers as a clean absence.
+  # The installer asks once per identity. The successor is the one modelled; every other identity
+  # answers as a clean absence.
   probe_pkg="${text#*pm path }"
   probe_pkg="${probe_pkg%%;*}"
   [ -f "$STATE_DIR/installed-apk" ] && installed=yes
   case "${MOCK_PM_PATH:-ok}" in ok) trc=0 ;; *) trc=1 ;; esac
   case "${MOCK_PM_LIVENESS:-ok}" in ok) lrc=0 ;; *) lrc=1 ;; esac
   retained_mode="${MOCK_PM_UNINSTALLED_RECORD:-absent}"
-  if [ "$probe_pkg" != "${MOCK_INSTALLER_PROBE_PKG:-io.panelassistant.android}" ]; then
+  if [ "$probe_pkg" != io.panelassistant.android ]; then
     installed=no
     retained_mode=absent
   fi
@@ -494,27 +495,15 @@ emit_host_database_gate() {
 }
 
 emit_legacy_installer_database_inventory() {
-  local nonce app_data database recovery inventory observation_count
+  local nonce
   nonce="${command_text#*HAPANELD_INSTALLER_DB_BEGIN:}"
   nonce="${nonce%%[!0-9a-f]*}"
-  app_data="${MOCK_INSTALLER_APP_DATA:-absent}"
-  database="${MOCK_INSTALLER_DATABASE:-absent}"
-  recovery="${MOCK_INSTALLER_RECOVERY:-absent}"
-  inventory="${MOCK_INSTALLER_INVENTORY:-readable}"
-  printf x >> "$STATE_DIR/installer-db-observation-count"
-  observation_count="$(wc -c < "$STATE_DIR/installer-db-observation-count")"
-  if [ "$observation_count" -gt 1 ]; then
-    app_data="${MOCK_INSTALLER_APP_DATA_AFTER_FIRST:-$app_data}"
-    database="${MOCK_INSTALLER_DATABASE_AFTER_FIRST:-$database}"
-    recovery="${MOCK_INSTALLER_RECOVERY_AFTER_FIRST:-$recovery}"
-    inventory="${MOCK_INSTALLER_INVENTORY_AFTER_FIRST:-$inventory}"
-  fi
   printf 'HAPANELD_INSTALLER_DB_BEGIN:%s\n' "$nonce"
   printf 'HAPANELD_INSTALLER_ROOT_UID:zero\n'
-  printf 'HAPANELD_INSTALLER_APP_DATA:%s\n' "$app_data"
-  printf 'HAPANELD_INSTALLER_DATABASE:%s\n' "$database"
-  printf 'HAPANELD_INSTALLER_RECOVERY:%s\n' "$recovery"
-  printf 'HAPANELD_INSTALLER_INVENTORY:%s\n' "$inventory"
+  printf 'HAPANELD_INSTALLER_APP_DATA:absent\n'
+  printf 'HAPANELD_INSTALLER_DATABASE:absent\n'
+  printf 'HAPANELD_INSTALLER_RECOVERY:absent\n'
+  printf 'HAPANELD_INSTALLER_INVENTORY:readable\n'
   printf 'HAPANELD_INSTALLER_DB_END:%s\n' "$nonce"
 }
 
@@ -574,6 +563,8 @@ SQL
   "${HAPANELD_HOST_SQLITE3:-sqlite3}" "$canonical_db" 'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null
   # A cleanly present zero-byte WAL is a NORMAL source state and must never affect a .backup capture.
   : > "$DB_TXN_SANDBOX/data/data/$DB_TXN_PACKAGE/databases/ha-paneld.db-wal"
+  # source_missing: the app holding the data has never created its database.
+  [ "${MOCK_DB_TXN:-ok}" != source_missing ] || rm -f "$canonical_db" "$canonical_db-wal"
   cat > "$DB_TXN_SANDBOX/bin/sqlite3" <<'STUB'
 #!/bin/bash
 db="$1"; shift; op="$*"
@@ -628,6 +619,16 @@ exec /usr/bin/sha256sum "$@"
 STUB
   chmod 755 "$DB_TXN_SANDBOX/bin/sha256sum" "$DB_TXN_SANDBOX/bin/toybox" "$DB_TXN_SANDBOX/bin/busybox"
   chmod 755 "$DB_TXN_SANDBOX/bin/sqlite3" "$DB_TXN_SANDBOX/bin/dumpsys"
+  # sqlite_missing: a panel with no sqlite3 anywhere. The script falls back to `command -v sqlite3`,
+  # so the host's own copy must be out of reach too: run_db_txn_script then searches only the
+  # sandbox and a directory of the panel's ordinary shell tools.
+  if [ "${MOCK_DB_TXN:-ok}" = sqlite_missing ]; then
+    rm -f "$DB_TXN_SANDBOX/bin/sqlite3"
+    mkdir -p "$DB_TXN_SANDBOX/core-bin"
+    for core_tool in rm mkdir sed head wc chown chmod cat; do
+      ln -s "$(command -v "$core_tool")" "$DB_TXN_SANDBOX/core-bin/$core_tool"
+    done
+  fi
 }
 
 run_db_txn_script() {
@@ -642,7 +643,11 @@ run_db_txn_script() {
   fi
   sed -e "s|/data/|$DB_TXN_SANDBOX/data/|g" -e "s|/system/bin/sqlite3|$DB_TXN_SANDBOX/bin/sqlite3|g" \
     "$STATE_DIR/db-txn-script.$ADB_TARGET" > "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
-  PATH="$DB_TXN_SANDBOX/bin:$PATH" bash "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
+  if [ "${MOCK_DB_TXN:-ok}" = sqlite_missing ]; then
+    PATH="$DB_TXN_SANDBOX/bin:$DB_TXN_SANDBOX/core-bin" /bin/bash "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
+  else
+    PATH="$DB_TXN_SANDBOX/bin:$PATH" bash "$STATE_DIR/db-txn-script.runnable.$ADB_TARGET"
+  fi
 }
 
 handle_db_txn_command() {
@@ -685,6 +690,8 @@ handle_db_txn_command() {
       fi
       return 0 ;;
     *'sh /data/local/tmp/.hapaneld-db-txn.'*-script*)
+      # no_verdict: the transaction runs, then the transport dies before its answer arrives.
+      if [ "${MOCK_DB_TXN:-ok}" = no_verdict ]; then run_db_txn_script >/dev/null; return 1; fi
       run_db_txn_script
       return 0 ;;
     *.hapaneld-db-txn.*HAPANELD_STALE_PRESENT*)
@@ -710,7 +717,7 @@ handle_db_txn_command() {
       if [ "${MOCK_DB_CLEANUP:-ok}" = block ] && [ ! -f "$STATE_DIR/db-cleanup-blocked-once" ]; then
         : > "$STATE_DIR/db-cleanup-blocked-once"
         [ -z "${MOCK_DB_CLEANUP_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_DB_CLEANUP_PID_FILE"
-        exec /bin/sleep "${MOCK_DB_CLEANUP_BLOCK_SECONDS:-30}"
+        exec /bin/sleep 30
       fi
       if [ "${MOCK_DB_CLEANUP:-ok}" = ok ]; then
         for cleanup_stage in $(printf '%s' "$text" | grep -oE '/data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+(-script)?' | sort -u); do
@@ -1023,7 +1030,6 @@ case "${1:-}" in
           duplicate) printf 'Broadcast completed: result=-1, data="HAPANELD_UPGRADE_RENEWED_V1:%s"\n' "$nonce" "$nonce" ;;
           malformed) printf 'Broadcast completed: result=0\n' ;;
           timeout)
-            [ -z "${MOCK_UPGRADE_RENEW_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_UPGRADE_RENEW_PID_FILE"
             exec /bin/sleep 30 ;;
           *) exit 1 ;;
         esac
@@ -1143,11 +1149,10 @@ case "${1:-}" in
         pm_query_reply ok 'package:/data/app/io.github.maxlyth.hapaneld/base.apk' ""
         ;;
       "pidof io.github.maxlyth.hapaneld")
-        [ "${MOCK_LEGACY_RUNNING:-1}" = 1 ] || exit 1
         printf '4242\n'
         ;;
       "am start -n io.github.maxlyth.hapaneld/.MainActivity")
-        [ "${MOCK_LEGACY_START:-ok}" = ok ] || exit 1
+        :
         ;;
       "pm path io.panelassistant.android")
         if [ "${MOCK_APK_QUERY:-ok}" != ok ] && [ -f "$STATE_DIR/apk-install-attempted" ]; then exit 1; fi
@@ -1188,7 +1193,7 @@ case "${1:-}" in
       # grants back from. The versionName line is emitted first and unchanged, so the version guard
       # that shares this command sees exactly what it saw before.
       "dumpsys package io.panelassistant.android")
-        printf 'versionName=%s\n' "${MOCK_INSTALLED_VERSION:-0.9.1}"
+        printf 'versionName=0.9.1\n'
         printf '    runtime permissions:\n'
         if [ "$VERIFY_GRANTS_OK" = 1 ] && [ -f "$record_audio_grant_state" ]; then
           printf '      android.permission.RECORD_AUDIO: granted=true\n'
@@ -1206,7 +1211,7 @@ case "${1:-}" in
         fi
         ;;
       "dumpsys package "*)
-        printf 'versionName=%s\n' "${MOCK_INSTALLED_VERSION:-0.9.1}"
+        printf 'versionName=0.9.1\n'
         ;;
       # Deliberately CRLF, like every other property this shell returns. MOCK_SDK is printed raw
       # rather than normalised, so a test can model a panel whose platform level cannot be read.
@@ -1273,7 +1278,7 @@ case "${1:-}" in
         if [ "${MOCK_LATE_ADB_PHASE:-identity}" = "persistence" ] && [ "${MOCK_LATE_ADB_STATUS:-0}" -ne 0 ]; then
           exit "$MOCK_LATE_ADB_STATUS"
         fi
-        printf '%s\n' "${MOCK_ADB_ENABLED:-1}"
+        printf '1\n'
         ;;
       "getprop ro.product.brand"|"getprop ro.product.model")
         if [ "${MOCK_LATE_ADB_PHASE:-identity}" = "identity" ] && [ "${MOCK_LATE_ADB_STATUS:-0}" -ne 0 ]; then
@@ -1294,13 +1299,18 @@ case "${1:-}" in
         if [ "${MOCK_LATE_ADB_PHASE:-identity}" = "persistence" ] && [ "${MOCK_LATE_ADB_STATUS:-0}" -ne 0 ]; then
           exit "$MOCK_LATE_ADB_STATUS"
         fi
-        printf '%s\n' "${MOCK_ADB_TCP_PORT:-5555}"
+        printf '5555\n'
         ;;
       "dumpsys webviewupdate")
         printf 'Current WebView package (name, version): (com.android.webview, %s)\n' "${MOCK_WEBVIEW_VERSION:-150.0.0.0}"
         ;;
       "id")
         case "${MOCK_ADB_ROOT:-0}" in
+          hang)
+            # The run's FIRST root probe never answers, so no escalation is ever reached.
+            trap 'exit 143' TERM INT
+            while :; do /bin/sleep 1; done
+            ;;
           escalates_then_hang)
             if [ -f "$STATE_DIR/adb-root-escalated" ]; then
               trap 'exit 143' TERM INT
@@ -1371,7 +1381,7 @@ case "${1:-}" in
           elif [ "${MOCK_TRANSACTION_BUSY:-0}" = 1 ]; then
             printf 'TRANSACTION_BUSY\n'
           elif [ -f "$STATE_DIR/stale-helper-transaction" ]; then
-            case "${MOCK_ACTIVE_TRANSACTION_KIND:-${MOCK_STALE_TRANSACTION_KIND:-system}}" in
+            case "${MOCK_STALE_TRANSACTION_KIND:-system}" in
               system) [ "${MOCK_ACTIVE_TRANSACTION:-0}" = 1 ] && printf 'ACTIVE_SYSTEM_TRANSACTION\n' || printf 'STALE_SYSTEM_TRANSACTION\n' ;;
               systemless) [ "${MOCK_ACTIVE_TRANSACTION:-0}" = 1 ] && printf 'ACTIVE_SYSTEMLESS_TRANSACTION\n' || printf 'STALE_SYSTEMLESS_TRANSACTION\n' ;;
               hybrid) [ "${MOCK_ACTIVE_TRANSACTION:-0}" = 1 ] && printf 'ACTIVE_HYBRID_TRANSACTION\n' || printf 'STALE_HYBRID_TRANSACTION\n' ;;
@@ -1390,8 +1400,8 @@ case "${1:-}" in
             # The Issue #120 shape as a panel now answers it: the errno cp already printed, the two
             # bounded fixed-key lines beside it, then the same step marker as before. The helper is
             # staged under /data/local in this layout, so that is the directory a refused copy names.
-            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new errno=cp: /data/local/.hapaneld-helper.provision-%s: No space left on device\n' "$MOCK_DIAG_ID"
-            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new source=/data/local/tmp/hapaneld-helper-%s state=verified bytes=77848\n' "$MOCK_DIAG_ID"
+            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new errno=cp: /data/local/.hapaneld-helper.provision-%s: No space left on device\n' "$DIAG_ID"
+            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new source=/data/local/tmp/hapaneld-helper-%s state=verified bytes=77848\n' "$DIAG_ID"
             printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new dir=/data/local mount=/data state=rw availkb=44 inodesfree=unknown mode=771 owner=2000:2000 selinux=Enforcing context=u:object_r:shell_data_file:s0\n'
             printf 'INSTALL_STEP_FAILED install_system cp_hapaneld-helper_new\n'
           elif [ "${MOCK_HELPER_INSTALL:-ok}" = preflight_space ]; then
@@ -1411,8 +1421,7 @@ case "${1:-}" in
             [ "${MOCK_HELPER_INSTALL:-ok}" != ok ] || : > "$STATE_DIR/active-helper-transaction"
           fi
         elif printf '%s' "$command_text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*finalize-rollback-(system|systemless|hybrid)'; then
-          if [ "${MOCK_TRANSACTION_TOKEN_MISMATCH:-0}" != 1 ] && [ "${MOCK_TOKEN_MISMATCH_ACTION:-}" != finalize ] && \
-             [ "${MOCK_FINALIZE_RECORDED_STATE:-ok}" = ok ]; then
+          if [ "${MOCK_TRANSACTION_TOKEN_MISMATCH:-0}" != 1 ] && [ "${MOCK_TOKEN_MISMATCH_ACTION:-}" != finalize ]; then
             printf 'ROLLBACK_FINALIZED\n'
             rm -f "$STATE_DIR/stale-helper-transaction" "$STATE_DIR/active-helper-transaction"
           fi
@@ -1440,9 +1449,9 @@ case "${1:-}" in
           [ "${MOCK_TRANSACTION_TOKEN_MISMATCH:-0}" != 1 ] && [ "${MOCK_TOKEN_MISMATCH_ACTION:-}" != lease ] && printf 'LEASE_OK\n'
         elif printf '%s' "$command_text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*(discover|status)-(system|systemless|hybrid)'; then
           printf 'JOURNAL_VERSION=1\nJOURNAL_SCOPE=%s\nTRANSACTION_ID=%s\nTARGET_APK_SHA256=%s\nTARGET_BUILD_ID=%s\nTARGET_HELPER_SHA256=%s\nLEASE_BOOT_ID=fixture-boot\nLEASE_UNTIL_UPTIME=999999\nLIVE_STATE=%s\n' \
-            "${MOCK_STALE_SCOPE:-APK_HELPER}" "${MOCK_STALE_TRANSACTION_ID:-0123456789abcdef0123456789abcdef}" \
+            APK_HELPER 0123456789abcdef0123456789abcdef \
             "${MOCK_STALE_APK_SHA256:?}" \
-            "${MOCK_STALE_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" "${MOCK_STALE_HELPER_SHA256:-$(printf '%064d' 0)}" \
+            "${MOCK_STALE_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" "$(printf '%064d' 0)" \
             "${MOCK_STALE_LIVE_STATE:-TARGET}"
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'pidof hapaneld-helper'; then
           [ "${MOCK_HELPER_START:-ok}" = ok ] && printf '4242\n'
@@ -1486,7 +1495,7 @@ case "${1:-}" in
           elif [ "${MOCK_TRANSACTION_BUSY:-0}" = 1 ]; then
             printf 'TRANSACTION_BUSY\n'
           elif [ -f "$STATE_DIR/stale-helper-transaction" ]; then
-            case "${MOCK_ACTIVE_TRANSACTION_KIND:-${MOCK_STALE_TRANSACTION_KIND:-system}}" in
+            case "${MOCK_STALE_TRANSACTION_KIND:-system}" in
               system) [ "${MOCK_ACTIVE_TRANSACTION:-0}" = 1 ] && printf 'ACTIVE_SYSTEM_TRANSACTION\n' || printf 'STALE_SYSTEM_TRANSACTION\n' ;;
               systemless) [ "${MOCK_ACTIVE_TRANSACTION:-0}" = 1 ] && printf 'ACTIVE_SYSTEMLESS_TRANSACTION\n' || printf 'STALE_SYSTEMLESS_TRANSACTION\n' ;;
               hybrid) [ "${MOCK_ACTIVE_TRANSACTION:-0}" = 1 ] && printf 'ACTIVE_HYBRID_TRANSACTION\n' || printf 'STALE_HYBRID_TRANSACTION\n' ;;
@@ -1505,8 +1514,8 @@ case "${1:-}" in
             # The Issue #120 shape as a panel now answers it: the errno cp already printed, the two
             # bounded fixed-key lines beside it, then the same step marker as before. The helper is
             # staged under /data/local in this layout, so that is the directory a refused copy names.
-            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new errno=cp: /data/local/.hapaneld-helper.provision-%s: No space left on device\n' "$MOCK_DIAG_ID"
-            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new source=/data/local/tmp/hapaneld-helper-%s state=verified bytes=77848\n' "$MOCK_DIAG_ID"
+            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new errno=cp: /data/local/.hapaneld-helper.provision-%s: No space left on device\n' "$DIAG_ID"
+            printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new source=/data/local/tmp/hapaneld-helper-%s state=verified bytes=77848\n' "$DIAG_ID"
             printf 'INSTALL_DIAG install_system cp_hapaneld-helper_new dir=/data/local mount=/data state=rw availkb=44 inodesfree=unknown mode=771 owner=2000:2000 selinux=Enforcing context=u:object_r:shell_data_file:s0\n'
             printf 'INSTALL_STEP_FAILED install_system cp_hapaneld-helper_new\n'
           elif [ "${MOCK_HELPER_INSTALL:-ok}" = preflight_space ]; then
@@ -1526,8 +1535,7 @@ case "${1:-}" in
             [ "${MOCK_HELPER_INSTALL:-ok}" != ok ] || : > "$STATE_DIR/active-helper-transaction"
           fi
         elif printf '%s' "$command_text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*finalize-rollback-(system|systemless|hybrid)'; then
-          if [ "${MOCK_TRANSACTION_TOKEN_MISMATCH:-0}" != 1 ] && [ "${MOCK_TOKEN_MISMATCH_ACTION:-}" != finalize ] && \
-             [ "${MOCK_FINALIZE_RECORDED_STATE:-ok}" = ok ]; then
+          if [ "${MOCK_TRANSACTION_TOKEN_MISMATCH:-0}" != 1 ] && [ "${MOCK_TOKEN_MISMATCH_ACTION:-}" != finalize ]; then
             printf 'ROLLBACK_FINALIZED\n'
             rm -f "$STATE_DIR/stale-helper-transaction" "$STATE_DIR/active-helper-transaction"
           fi
@@ -1555,9 +1563,9 @@ case "${1:-}" in
           [ "${MOCK_TRANSACTION_TOKEN_MISMATCH:-0}" != 1 ] && [ "${MOCK_TOKEN_MISMATCH_ACTION:-}" != lease ] && printf 'LEASE_OK\n'
         elif printf '%s' "$command_text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*(discover|status)-(system|systemless|hybrid)'; then
           printf 'JOURNAL_VERSION=1\nJOURNAL_SCOPE=%s\nTRANSACTION_ID=%s\nTARGET_APK_SHA256=%s\nTARGET_BUILD_ID=%s\nTARGET_HELPER_SHA256=%s\nLEASE_BOOT_ID=fixture-boot\nLEASE_UNTIL_UPTIME=999999\nLIVE_STATE=%s\n' \
-            "${MOCK_STALE_SCOPE:-APK_HELPER}" "${MOCK_STALE_TRANSACTION_ID:-0123456789abcdef0123456789abcdef}" \
+            APK_HELPER 0123456789abcdef0123456789abcdef \
             "${MOCK_STALE_APK_SHA256:?}" \
-            "${MOCK_STALE_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" "${MOCK_STALE_HELPER_SHA256:-$(printf '%064d' 0)}" \
+            "${MOCK_STALE_BUILD_ID:-${MOCK_HELPER_BUILD_ID:?}}" "$(printf '%064d' 0)" \
             "${MOCK_STALE_LIVE_STATE:-TARGET}"
         fi
         ;;

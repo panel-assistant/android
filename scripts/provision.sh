@@ -203,7 +203,7 @@ DB_GATE_HELPER_RECOVERY=""
 DB_GATE_PROGRESS=""
 HOST_DB_PRIMARY_FINGERPRINT=""
 RESET_PACKAGE_STOPPED="unknown"
-SNAPSHOT_TXN_REMOTE=""; SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
+SNAPSHOT_TXN_REMOTE=""; SNAPSHOT_TXN_REMOTE_SCRIPT=""; SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
 SNAPSHOT_TXN_HOST_DB_WORK=""; SNAPSHOT_TXN_HOST_DB_TARGET=""
 SNAPSHOT_TXN_HOST_RECEIPT_WORK=""; SNAPSHOT_TXN_HOST_RECEIPT_TARGET=""
 SNAPSHOT_TXN_DEFERRED_SIGNAL=""
@@ -2431,15 +2431,29 @@ fetch_release_helper_build_id() {
   printf '%s\n' "$build_id"
 }
 
+# Every host digest goes through here, into HOST_SHA256. A missing digest tool is a fact about this
+# computer, so it is refused the same way wherever it is met, naming what the caller was hashing
+# ($2). The function runs in the caller's shell, not a command substitution, so that refusal stops
+# the run instead of dying unseen in a subshell. A digest command that runs and fails returns 1, and
+# what that means is the caller's own policy; its own error stays on stderr, because at the callers
+# that abort on it that error is the only explanation the run prints.
+HOST_SHA256=""
 host_sha256() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
-  else fail "cannot authenticate helper staging" "Install sha256sum (or shasum), then re-run."
+  local file="$1" subject="$2"
+  HOST_SHA256=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    HOST_SHA256="$(sha256sum "$file" | awk '{print $1}')" || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    HOST_SHA256="$(shasum -a 256 "$file" | awk '{print $1}')" || return 1
+  else
+    fail "this computer cannot hash $subject: neither sha256sum nor shasum is installed" \
+      "Install sha256sum (coreutils) or shasum, then re-run."
   fi
 }
 
 bind_candidate_apk_bytes() {
-  TARGET_APK_SHA256="$(host_sha256 "$APK" 2>/dev/null || true)"
+  host_sha256 "$APK" "the candidate APK" || true
+  TARGET_APK_SHA256="$HOST_SHA256"
   printf '%s\n' "$TARGET_APK_SHA256" | grep -Eq '^[0-9a-f]{64}$' || fail "could not bind the authenticated candidate APK bytes" \
     "No panel mutation was started. Check that the APK is a readable regular file, then retry."
 }
@@ -2448,7 +2462,8 @@ assert_candidate_apk_unchanged() {
   local observed
   [ -n "$TARGET_APK_SHA256" ] || fail "the candidate APK has no authenticated byte binding" \
     "No panel mutation was started. Re-run the same provisioning command."
-  observed="$(host_sha256 "$APK" 2>/dev/null || true)"
+  host_sha256 "$APK" "the candidate APK" || true
+  observed="$HOST_SHA256"
   if [ "$observed" != "$TARGET_APK_SHA256" ]; then
     if { [ "${DB_GATE_PHASE:-}" = consume ] || [ "${DB_GATE_PHASE:-}" = package ]; } && \
        type host_database_gate_refuse >/dev/null 2>&1; then
@@ -3007,7 +3022,8 @@ installed_apk_matches_hash() {
     rm -rf "$dir"
     return 2
   fi
-  actual="$(host_sha256 "$pulled" 2>/dev/null || true)"
+  host_sha256 "$pulled" "the installed ha-paneld APK" || true
+  actual="$HOST_SHA256"
   rm -rf "$dir"
   [ "$actual" = "$expected" ]
 }
@@ -3387,12 +3403,12 @@ while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 3; done
 /system/bin/pkill -x hapaneld-ledd 2>/dev/null
 /data/adb/hapaneld/hapaneld-helper --supervise >/dev/null 2>&1 &
 EOF
-  legacy_rc_sha256="$(host_sha256 "$legacy_rc_file")"
-  legacy_rc_supervised_sha256="$(host_sha256 "$legacy_rc_supervised_file")"
-  legacy_hybrid_rc_sha256="$(host_sha256 "$legacy_hybrid_rc_file")"
-  legacy_hybrid_rc_supervised_sha256="$(host_sha256 "$legacy_hybrid_rc_supervised_file")"
-  legacy_service_sha256="$(host_sha256 "$legacy_service_file")"
-  legacy_service_supervised_sha256="$(host_sha256 "$legacy_service_supervised_file")"
+  host_sha256 "$legacy_rc_file" "the root-helper staging"; legacy_rc_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_rc_supervised_file" "the root-helper staging"; legacy_rc_supervised_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_hybrid_rc_file" "the root-helper staging"; legacy_hybrid_rc_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_hybrid_rc_supervised_file" "the root-helper staging"; legacy_hybrid_rc_supervised_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_service_file" "the root-helper staging"; legacy_service_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_service_supervised_file" "the root-helper staging"; legacy_service_supervised_sha256="$HOST_SHA256"
   rm -f "$legacy_rc_file" "$legacy_rc_supervised_file" \
     "$legacy_hybrid_rc_file" "$legacy_hybrid_rc_supervised_file" \
     "$legacy_service_file" "$legacy_service_supervised_file"
@@ -5819,10 +5835,10 @@ case "${1:-}" in
   *) exit 2 ;;
 esac
 EOF
-  bin_sha256="$(host_sha256 "$helper")"
-  rc_sha256="$(host_sha256 "$rc_file")"
-  hybrid_rc_sha256="$(host_sha256 "$hybrid_rc_file")"
-  service_sha256="$(host_sha256 "$service_file")"
+  host_sha256 "$helper" "the root-helper staging"; bin_sha256="$HOST_SHA256"
+  host_sha256 "$rc_file" "the root-helper staging"; rc_sha256="$HOST_SHA256"
+  host_sha256 "$hybrid_rc_file" "the root-helper staging"; hybrid_rc_sha256="$HOST_SHA256"
+  host_sha256 "$service_file" "the root-helper staging"; service_sha256="$HOST_SHA256"
   sed -e "s/@BIN_SHA256@/$bin_sha256/g" \
       -e "s/@RC_SHA256@/$rc_sha256/g" \
       -e "s/@HYBRID_RC_SHA256@/$hybrid_rc_sha256/g" \
@@ -5842,7 +5858,7 @@ EOF
       -e "s|@STAGED_SERVICE@|$ROOT_HELPER_STAGED_SERVICE|g" \
       "$transaction_file" > "$transaction_file.ready"
   mv "$transaction_file.ready" "$transaction_file"
-  transaction_sha256="$(host_sha256 "$transaction_file")"
+  host_sha256 "$transaction_file" "the root-helper staging"; transaction_sha256="$HOST_SHA256"
   ROOT_HELPER_TARGET_SHA256="$bin_sha256"
   ROOT_HELPER_TRANSACTION_SHA256="$transaction_sha256"
   ROOT_HELPER_TRANSACTION_PATH="/data/adb/hapaneld/.helper-transaction-$ROOT_HELPER_TRANSACTION_ID-$transaction_sha256"
@@ -6668,10 +6684,11 @@ echo HOSTDB_END:@NONCE@
     cleanup_root_database_observer
     return 1
   fi
-  script_sha="$(host_sha256 "$script_file" 2>/dev/null)" || {
+  host_sha256 "$script_file" "the database observer script" || {
     cleanup_root_database_observer
     return 1
   }
+  script_sha="$HOST_SHA256"
   if ! run_root "[ ! -e $observer_script ] && [ ! -L $observer_script ] && [ ! -e $observer_stage ] && [ ! -L $observer_stage ]" >/dev/null 2>&1; then
     cleanup_root_database_observer
     return 1
@@ -7361,6 +7378,10 @@ discard_db_snapshot_txn() {
     fi
   done
   SNAPSHOT_TXN_HOST_DB=""; SNAPSHOT_TXN_HOST_RECEIPT=""
+  if [ -n "${SNAPSHOT_TXN_REMOTE_SCRIPT:-}" ]; then
+    stale="$SNAPSHOT_TXN_REMOTE_SCRIPT"; SNAPSHOT_TXN_REMOTE_SCRIPT=""
+    run_root "rm -f $stale" >/dev/null 2>&1 || true
+  fi
   if [ -n "${SNAPSHOT_TXN_REMOTE:-}" ]; then
     stale="$SNAPSHOT_TXN_REMOTE"; SNAPSHOT_TXN_REMOTE=""
     # Staging is owner-only, uniquely named so no later run can collide with it, and confined to
@@ -7377,6 +7398,32 @@ snapshot_txn_refuse() {
   discard_db_snapshot_txn
   warn "data-store snapshot: $reason — continuing the ordinary in-place upgrade WITHOUT a database restore point. $advice"
   return 0
+}
+
+# What each verdict of the on-panel capture transaction supports saying, and nothing more. Every
+# named refusal is one the script reached itself, after trying to remove any staging it created; an
+# empty verdict is the host hearing nothing back, which proves nothing about what the panel did.
+snapshot_txn_verdict_advice() {
+  case "$1" in
+    sqlite_missing) echo "The panel has no sqlite3 at /system/bin/sqlite3 or on root's PATH, and this backup needs one." ;;
+    source_missing) echo "The panel had no database file when the capture ran, so there was nothing to copy." ;;
+    source_not_regular) echo "The database path on the panel is not a regular file, so it was not copied." ;;
+    stage_exists) echo "The capture's uniquely named staging directory could not be created on the panel: the path already existed, or /data/local/tmp is full or not writable. This run left that path alone." ;;
+    provenance_unreadable) echo "The panel did not report the installed build, so a copy could not be tied to the version that wrote it." ;;
+    provenance_changed) echo "The installed build changed while the copy was taken. Re-run once nothing else is installing on the panel." ;;
+    backup_failed) echo "The panel's sqlite3 could not back up the database. Re-run, and check the panel's free storage if it fails again." ;;
+    backup_empty) echo "The panel's sqlite3 produced an empty copy. Re-run, and check the panel's free storage if it happens again." ;;
+    integrity_unreadable) echo "SQLite could not run its integrity check on the copy, so it was not kept." ;;
+    integrity_failed) echo "The copy failed SQLite's integrity check, so it was not kept. The panel's own database may need attention." ;;
+    rows_unreadable) echo "The copy's settings rows could not be counted, so it was not kept." ;;
+    rows_empty) echo "The copy holds no settings rows, so it was not kept." ;;
+    schema_unreadable) echo "The copy's schema version could not be read, so it was not kept." ;;
+    schema_alien) echo "The copy's schema version is outside the range this installer can restore, so it was not kept." ;;
+    size_unreadable) echo "The copy's size could not be read on the panel, so it was not transferred." ;;
+    permissions_failed) echo "The copy's permissions could not be restricted on the panel, so it was not transferred." ;;
+    '') echo "The panel sent back no verdict, so whether the capture ran, and what it left in /data/local/tmp, is unknown. This run asked the panel to remove the capture's staging." ;;
+    *) echo "The panel refused for a reason this installer does not recognise." ;;
+  esac
 }
 
 # A rejected backup is discarded and treated as unavailable. Android package replacement preserves
@@ -7580,10 +7627,11 @@ snapshot_prepared_database() {
     snapshot_txn_refuse "the direct copy size could not be read on this host" "Check the backup filesystem, then re-run."
     return 0
   fi
-  if ! host_sha="$(host_sha256 "$host_db" 2>/dev/null)"; then
-    snapshot_txn_refuse "the direct copy could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+  if ! host_sha256 "$host_db" "the database copy"; then
+    snapshot_txn_refuse "the direct copy could not be hashed on this host" "The host digest command failed on it; re-run, and check the host's sha256sum or shasum if it fails again."
     return 0
   fi
+  host_sha="$HOST_SHA256"
   if [ "$host_bytes" != "$UPGRADE_RECEIPT_DATABASE_BYTES" ] || [ "$host_sha" != "$UPGRADE_RECEIPT_DATABASE_SHA256" ]; then
     snapshot_txn_reject_unsafe "the direct copy did not match the app's clean-shutdown receipt" "The rejected copy was removed; re-run against the same panel."
     return 0
@@ -7843,7 +7891,8 @@ EOF
     snapshot_txn_refuse "the capture script could not be finalized on this host" "Check TMPDIR and sed, then re-run."
     return 0
   fi
-  script_sha="$(host_sha256 "$script_file")" || { rm -f "$script_file" 2>/dev/null || true; snapshot_txn_refuse "could not hash the capture script" "Check host sha256 tooling."; return 0; }
+  host_sha256 "$script_file" "the database capture script" || { rm -f "$script_file" 2>/dev/null || true; snapshot_txn_refuse "could not hash the capture script" "The host digest command failed on it; re-run, and check the host's sha256sum or shasum if it fails again."; return 0; }
+  script_sha="$HOST_SHA256"
   if ! adb -s "$TARGET" push "$script_file" "${stage}-script" >/dev/null 2>&1; then
     rm -f "$script_file" 2>/dev/null || true
     snapshot_txn_refuse "the capture script could not be pushed to the panel" "Check adb connectivity to $TARGET."
@@ -7887,19 +7936,27 @@ EOF2
   fi
   if [ "$txn_ok" != 1 ]; then
     if [ "$fail_reason" = stage_exists ]; then
-      # The path is occupied by a DIFFERENT owner's staging — with a urandom identity that is a
-      # deliberate-interference signal, not a plausible accident. Either way it is not this run's to
-      # remove: disown it so the refusal cleanup cannot delete the winner's in-flight capture.
+      # The script's mkdir failed, so the path is not this run's: it may be a DIFFERENT owner's
+      # staging (with a urandom identity, a deliberate-interference signal rather than an accident),
+      # or the directory could not be made at all. Disown it so the refusal cleanup cannot delete a
+      # winner's in-flight capture. The -script beside it is the file this run pushed, so it stays
+      # this run's to remove; it is registered only after the stage is disowned, so a signal between
+      # the two can leak that file but never reach the other owner's staging.
       SNAPSHOT_TXN_REMOTE=""
+      SNAPSHOT_TXN_REMOTE_SCRIPT="${stage}-script"
     fi
     case "$fail_reason" in
       integrity_failed|rows_empty|schema_alien|provenance_unreadable|provenance_changed|source_not_regular|stage_exists)
         snapshot_txn_reject_unsafe "the on-panel capture transaction refused ($fail_reason)" \
-          "The panel left nothing behind. Fix the named stage on the panel, then re-run."
+          "$(snapshot_txn_verdict_advice "$fail_reason")"
+        ;;
+      '')
+        snapshot_txn_refuse "the on-panel capture transaction gave no verdict" \
+          "$(snapshot_txn_verdict_advice "")"
         ;;
       *)
-        snapshot_txn_refuse "the on-panel capture transaction refused (${fail_reason:-no transaction verdict})" \
-          "The panel left nothing behind. Fix the named stage on the panel, then re-run."
+        snapshot_txn_refuse "the on-panel capture transaction refused ($fail_reason)" \
+          "$(snapshot_txn_verdict_advice "$fail_reason")"
         ;;
     esac
     return 0
@@ -7979,18 +8036,19 @@ EOF2
   # The host digest is mandatory because the host copy is the artifact an operator may later use.
   # A panel without digest tooling may report `none`; byte count still binds that transfer, while a
   # panel digest, when present, must match the mandatory host digest.
-  if ! host_sha="$(host_sha256 "$base.db" 2>/dev/null)"; then
-    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+  if ! host_sha256 "$base.db" "the database backup"; then
+    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "The host digest command failed on it; re-run, and check the host's sha256sum or shasum if it fails again."
     return 0
   fi
+  host_sha="$HOST_SHA256"
   case "$host_sha" in
     *[!0-9a-f]*|'')
-      snapshot_txn_refuse "the published snapshot could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+      snapshot_txn_refuse "the published snapshot could not be hashed on this host" "The host digest command gave no usable digest; check the host's sha256sum or shasum, then re-run."
       return 0
       ;;
   esac
   if [ "${#host_sha}" -ne 64 ]; then
-    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "The host digest command gave no usable digest; check the host's sha256sum or shasum, then re-run."
     return 0
   fi
   if [ "$mf_sha" != none ] && [ "$host_sha" != "$mf_sha" ]; then
@@ -8372,13 +8430,8 @@ if [ "$SHIZUKU" = 1 ]; then
     SHIZUKU_CURRENT_APK="$SHIZUKU_DIR/installed-shizuku.apk"
     if run_with_deadline "$SHIZUKU_INSPECT_TIMEOUT_SECONDS" \
         adb_exec -s "$TARGET" pull "$SHIZUKU_CURRENT_PATH" "$SHIZUKU_CURRENT_APK" >/dev/null 2>&1; then
-      if command -v sha256sum >/dev/null 2>&1; then
-        SHIZUKU_CURRENT_SHA="$(sha256sum "$SHIZUKU_CURRENT_APK" | awk '{print $1}')"
-      elif command -v shasum >/dev/null 2>&1; then
-        SHIZUKU_CURRENT_SHA="$(shasum -a 256 "$SHIZUKU_CURRENT_APK" | awk '{print $1}')"
-      else
-        SHIZUKU_CURRENT_SHA=""
-      fi
+      host_sha256 "$SHIZUKU_CURRENT_APK" "the installed Shizuku manager"
+      SHIZUKU_CURRENT_SHA="$HOST_SHA256"
       [ "$SHIZUKU_CURRENT_SHA" = "$SHIZUKU_SHA256" ] && SHIZUKU_CURRENT_TRUSTED=1
       if [ "$SHIZUKU_CURRENT_TRUSTED" = 0 ]; then
         APKSIGNER="$(find_android_build_tool apksigner || true)"
@@ -8408,13 +8461,8 @@ if [ "$SHIZUKU" = 1 ]; then
     curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 \
       "$SHIZUKU_URL" -o "$SHIZUKU_APK" || fail "Shizuku download failed" \
       "Check internet access to github.com, then re-run. ha-paneld was not replaced or stopped."
-    if command -v sha256sum >/dev/null 2>&1; then
-      SHIZUKU_GOT="$(sha256sum "$SHIZUKU_APK" | awk '{print $1}')"
-    elif command -v shasum >/dev/null 2>&1; then
-      SHIZUKU_GOT="$(shasum -a 256 "$SHIZUKU_APK" | awk '{print $1}')"
-    else
-      fail "cannot verify the Shizuku download" "Install sha256sum (or shasum) and re-run."
-    fi
+    host_sha256 "$SHIZUKU_APK" "the Shizuku download"
+    SHIZUKU_GOT="$HOST_SHA256"
     [ "$SHIZUKU_GOT" = "$SHIZUKU_SHA256" ] || fail "Shizuku download checksum mismatch" \
       "Expected $SHIZUKU_SHA256" "Got      $SHIZUKU_GOT" "Nothing was installed."
     SHIZUKU_INSTALL_TIMEOUT_SECONDS="${SHIZUKU_INSTALL_TIMEOUT_SECONDS:-180}"

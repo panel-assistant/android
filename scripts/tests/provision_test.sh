@@ -158,7 +158,7 @@ case "${MOCK_DB_TXN:-ok}" in
   ;;
 esac
 case "${MOCK_DB_TXN:-ok}" in
-  manifest_missing_bytes|manifest_missing_rows|manifest_missing_schema|manifest_missing_provenance|manifest_missing_integrity|manifest_missing_sqlite|panel_digest_invalid|panel_digest_mismatch)
+  manifest_missing_bytes|manifest_missing_rows|manifest_missing_schema|manifest_missing_provenance|manifest_missing_integrity|manifest_missing_sqlite|manifest_missing_sha|panel_digest_invalid|panel_digest_mismatch)
     case "$*" in
       *'sh /data/local/tmp/.hapaneld-db-txn.'*-script*)
         output="$("$PROVISION_TEST_ADB_FIXTURE" "$@")"; status=$?
@@ -169,6 +169,7 @@ case "${MOCK_DB_TXN:-ok}" in
           manifest_missing_provenance) output="$(printf '%s\n' "$output" | sed '/^MF_VCODE=/d')" ;;
           manifest_missing_integrity) output="$(printf '%s\n' "$output" | sed '/^MF_INTEGRITY=/d')" ;;
           manifest_missing_sqlite) output="$(printf '%s\n' "$output" | sed '/^MF_SQLITE=/d')" ;;
+          manifest_missing_sha) output="$(printf '%s\n' "$output" | sed '/^MF_SHA256=/d')" ;;
           panel_digest_invalid) output="$(printf '%s\n' "$output" | sed 's/^MF_SHA256=.*/MF_SHA256=not-a-digest/')" ;;
           panel_digest_mismatch) output="$(printf '%s\n' "$output" | sed "s/^MF_SHA256=.*/MF_SHA256=$(printf '%064d' 0)/")" ;;
         esac
@@ -330,9 +331,9 @@ reset_per_run_state() {
     "$TMP/plan-attempts" "$TMP/storage-status-attempts" "$TMP/health-probes" \
     "$TMP/upgrade-release-attempts" "$TMP/installed-apk-signer-reads" \
     "$TMP/pm-probe-count" "$TMP/candidate-contract-read-count" \
-    "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
+    "$TMP/host-db-observation-count" \
     "$TMP/host-db-observation-count.LEGACY" "$TMP/host-db-observation-count.SUCCESSOR" \
-    "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
+    "$TMP/helper-lease-observation-count" "$TMP/bare-id-count" "$TMP/host-digest-vanish-count"
   # Package and helper lifecycle markers.
   rm -rf "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
     "$TMP/manual-helper-transaction" "$TMP/package-stopped" "$TMP/apk-install-attempted" \
@@ -4862,6 +4863,55 @@ if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
   pass "direct-copy interruption RELEASEs quiescence exactly once"
 else fail_test "direct-copy interruption RELEASEs quiescence exactly once"; fi
 
+# An interrupted run keeps its signal's exit status even when a cleanup removal fails. Cleanup runs
+# under set -e inside the signal handler, so a single unguarded removal that fails there would end
+# the run with status 1, which a fleet summary records as an ordinary failure. The host's rm starts
+# failing the moment the interrupt is sent, so every removal cleanup attempts meets a failure.
+reset_db_txn_state
+: > "$MOCK_CALL_LOG"
+failing_rm_host="$TMP/host-with-failing-rm"
+failing_rm_flag="$TMP/host-rm-fails"
+failing_rm_pid_file="$TMP/failing-rm-block.pid"
+failing_rm_output="$TMP/failing-rm-output.txt"
+rm -f "$failing_rm_flag" "$failing_rm_pid_file"
+make_host_without "$failing_rm_host" rm
+cat > "$failing_rm_host/rm" <<'FAILING_RM'
+#!/bin/bash
+if [ -e "${MOCK_HOST_RM_FAIL_FLAG:?}" ]; then
+  printf 'host-rm-refused %s\n' "$*" >> "${MOCK_CALL_LOG:?}"
+  exit 1
+fi
+exec /bin/rm "$@"
+FAILING_RM
+chmod 755 "$failing_rm_host/rm"
+set -m
+MOCK_UPGRADE_PREPARE=ready MOCK_DIRECT_COPY=block MOCK_DIRECT_COPY_PID_FILE="$failing_rm_pid_file" \
+ADB_COMMAND_TIMEOUT_SECONDS=5 HAPANELD_SKIP_AUTO_EXPORT=1 MOCK_HOST_RM_FAIL_FLAG="$failing_rm_flag" \
+HAPANELD_CONFIG_BACKUP_DIR="$TMP/auto-backups" MOCK_STATE_DIR="$TMP" PATH="$failing_rm_host" \
+  bash "$PROVISION" "$MOCK_TARGET" --apk "$APK" --no-tame --allow-unsigned-helper > "$failing_rm_output" 2>&1 &
+failing_rm_owner_pid=$!
+ACTIVE_PUBLICATION_PGID="$failing_rm_owner_pid"
+set +m
+failing_rm_ready=0
+for _ in {1..100}; do
+  if [ -s "$failing_rm_pid_file" ]; then failing_rm_ready=1; break; fi
+  /bin/sleep 0.05
+done
+: > "$failing_rm_flag"
+kill -INT -- "-$failing_rm_owner_pid" 2>/dev/null || true
+if wait "$failing_rm_owner_pid"; then failing_rm_status=0; else failing_rm_status=$?; fi
+ACTIVE_PUBLICATION_PGID=""
+/bin/rm -f "$failing_rm_flag"
+LAST_OUTPUT="$failing_rm_output"
+# The fixtures run on the same failing rm, so only a refused removal of the provisioner's own
+# registered backup file shows that its cleanup, not a fixture's, met the failure.
+if [ "$failing_rm_ready" -eq 1 ] && grep -Eq '^host-rm-refused .*\.break-glass\.db$' "$MOCK_CALL_LOG"; then
+  pass "the interrupted run's own cleanup met a failing host removal"
+else fail_test "the interrupted run's own cleanup met a failing host removal (blocked: $failing_rm_ready)"; fi
+if [ "$failing_rm_status" -eq 130 ]; then
+  pass "an interrupted run exits 130 even when a cleanup removal fails"
+else fail_test "an interrupted run exits 130 even when a cleanup removal fails (got $failing_rm_status)"; fi
+
 reset_db_txn_state
 : > "$MOCK_CALL_LOG"
 direct_install_pid_file="$TMP/direct-handoff-install.pid"
@@ -5580,6 +5630,20 @@ assert_marker_absent "a hung post-escalation probe never claims a captured snaps
 rm -f "$TMP/adb-root-escalated"
 reset_db_txn_state
 
+# The run's FIRST root probe is the one a wedged panel meets. Its timeout is already an undecided
+# route, so the resolver stops there: no `adb root` restart of a panel that never answered, and no
+# backup, quiescence or install under an unknown capability.
+PRIVILEGE_INSPECTION_TIMEOUT_SECONDS=1 MOCK_ADB_ROOT=hang \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a first root probe that never answers stops the upgrade" \
+  'database compatibility could not be proven: the panel root route is unknown'
+assert_log_contains 'shell id$' "the refusal followed the run's first root probe"
+assert_not_contains '^adb -s [^ ]+ root$' "$MOCK_CALL_LOG" \
+  "a first-probe timeout never escalates with adb root"
+assert_not_contains 'PREPARE_UPGRADE|hapaneld-db-txn|^adb .* install( |$)' "$MOCK_CALL_LOG" \
+  "a first-probe timeout precedes quiescence, capture and install"
+reset_db_txn_state
+
 # A transport that dies in the adbd restart answers exactly like a genuine "no root": the
 # post-escalation negative is only accepted from a transport that proves it is still alive.
 MOCK_ROOT=0 MOCK_ADB_ROOT=escalates_then_drop MOCK_SNAPSHOT_TRANSPORT=dead_after_escalation \
@@ -5886,9 +5950,11 @@ for admission in MOCK_DB_DEVICE_ROWS=0:rows_empty MOCK_DB_DEVICE_USER_VERSION=0:
 done
 
 # The host accepts only a complete manifest from the legacy transaction, while an invalid optional
-# manifest is discarded without blocking an ordinary Android package replacement.
-for manifest_case in manifest_missing_bytes:bytes manifest_missing_rows:rows manifest_missing_schema:schema manifest_missing_provenance:provenance manifest_missing_integrity:'capture manifest is incomplete' manifest_missing_sqlite:'capture manifest is incomplete'; do
-  txn_mode="${manifest_case%%:*}"; named="${manifest_case#*:}"
+# manifest is discarded without blocking an ordinary Android package replacement. Each case names the
+# whole refusal: a bare field word such as "schema" or "rows" also appears in an ordinary run's
+# compatibility line, so matching it alone would pass with the guard deleted.
+for manifest_case in manifest_missing_bytes:' \(bytes\)' manifest_missing_rows:' \(rows\)' manifest_missing_schema:' \(schema\)' manifest_missing_provenance:' \(provenance\)' manifest_missing_integrity:' —' manifest_missing_sqlite:' —' manifest_missing_sha:' —'; do
+  txn_mode="${manifest_case%%:*}"; named="capture manifest is incomplete${manifest_case#*:}"
   reset_db_txn_state
   MOCK_DB_TXN="$txn_mode" run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_success "a $txn_mode unsafe manifest is discarded while the ordinary upgrade continues"
@@ -5896,6 +5962,28 @@ for manifest_case in manifest_missing_bytes:bytes manifest_missing_rows:rows man
   assert_marker_absent "a $txn_mode manifest never earns a captured marker"
   assert_log_contains '^adb .* install' "a $txn_mode manifest does not preempt APK install"
 done
+
+# The executed script's first two refusals. Both are reached without a race on a panel whose bridge
+# holds the data but has never created its database: the compatibility gate proves that state fresh,
+# and the capture still runs against the bridge. The sandbox seeds a database and a sqlite3 unless
+# told otherwise, which is why neither refusal had ever run.
+for first_refusal in source_missing sqlite_missing; do
+  reset_db_txn_state
+  MOCK_DB_TXN="$first_refusal" MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 \
+  MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_HOST_DB_PRIMARY=missing MOCK_HOST_DB_RECOVERY=none \
+  MOCK_HOST_DB_RETAINED=0 MOCK_HOST_DB_INVENTORY=readable \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_success "a $first_refusal capture refusal remains advisory for the successor install"
+  assert_contains "on-panel capture transaction refused \\($first_refusal\\)" \
+    "the $first_refusal refusal is the executed script's own verdict"
+  assert_log_contains 'sh /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+-script' \
+    "the $first_refusal verdict came from running the pushed transaction"
+  assert_marker_absent "a $first_refusal refusal never claims a captured snapshot"
+  assert_log_contains '^adb .* install' "a $first_refusal refusal does not preempt APK install"
+  assert_log_contains 'rm -rf /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+ ' \
+    "a $first_refusal refusal still asks the panel to remove the capture's staging"
+done
+reset_db_txn_state
 
 reset_db_txn_state
 MOCK_DB_TXN=panel_digest_invalid run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
@@ -5981,17 +6069,62 @@ MOCK_ADB_ROOT=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_marker_captured "the plain-shell (adb root) form produces whole-line captured evidence"
 reset_db_txn_state
 
-# A staging collision: the loser must refuse by name and remove NOTHING — the winner's in-flight
-# marker survives and no privileged removal for the staging path is even attempted.
+# A staging collision: the loser must refuse by name and remove nothing of the winner's — the
+# winner's in-flight marker survives and no privileged removal of the staging path is even attempted.
+# The -script beside it is the file the loser itself pushed, and the loser still removes that.
 MOCK_DB_TXN=stage_collision run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a staging collision refuses the backup without blocking the ordinary upgrade"
-assert_contains 'stage_exists' "the collision refusal names its stage"
+assert_contains 'on-panel capture transaction refused \(stage_exists\)' "the collision refusal names its stage"
+assert_contains 'staging directory could not be created on the panel: the path already existed, or /data/local/tmp is full or not writable\. This run left that path alone' \
+  "the collision advice names every cause its verdict allows and disowns only that path"
 collision_marker="$(find "$TMP/db-txn-sandbox/data/local/tmp" -name winner-in-flight 2>/dev/null | head -1)"
 if [ -n "$collision_marker" ] && [ -f "$collision_marker" ]; then
   pass "the loser of a staging collision leaves the winner's in-flight capture untouched"
 else fail_test "the loser of a staging collision leaves the winner's in-flight capture untouched"; fi
-assert_not_contains 'rm -rf? [^|]*hapaneld-db-txn' "$MOCK_CALL_LOG" "the loser never even attempts a privileged removal of the contested staging"
+assert_not_contains 'rm -rf? [^|]*hapaneld-db-txn\.[0-9a-f]+([ "]|$)' "$MOCK_CALL_LOG" "the loser never even attempts a privileged removal of the contested staging"
+assert_log_contains 'rm -f /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+-script' \
+  "the loser still removes the capture script it pushed itself"
+assert_not_contains 'left nothing behind' "$LAST_OUTPUT" "the collision refusal claims no cleanliness it did not establish"
 reset_db_txn_state
+
+# The transport dies after the transaction ran and before its answer arrived. The host heard no
+# verdict, so it cannot say what the panel did or what is left there; it says that, asks the panel
+# to remove the capture's staging, and still lets the ordinary upgrade continue.
+MOCK_DB_TXN=no_verdict run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a capture with no verdict remains advisory for an ordinary upgrade"
+assert_contains 'on-panel capture transaction gave no verdict' "a lost verdict is reported as no verdict, not as a refusal"
+assert_contains 'whether the capture ran, and what it left in /data/local/tmp, is unknown' \
+  "a lost verdict says the panel's state is unknown"
+assert_not_contains 'left nothing behind|refused \(' "$LAST_OUTPUT" "a lost verdict claims neither cleanliness nor a refusal"
+assert_log_contains 'rm -rf /data/local/tmp/\.hapaneld-db-txn\.[0-9a-f]+ ' "a lost verdict still asks the panel to remove the capture's staging"
+assert_marker_absent "a capture with no verdict never claims a captured snapshot"
+if find "$TMP/db-txn-sandbox/data/local/tmp" -name '.hapaneld-db-txn.*' 2>/dev/null | grep -q .; then
+  fail_test "the staging a lost verdict left behind is removed by the host's request"
+else pass "the staging a lost verdict left behind is removed by the host's request"; fi
+reset_db_txn_state
+
+# Every reason the shipped capture script can refuse with has advice of its own. The fallback is for
+# a reason a later script might add; no reason the script emits today may land on it, on the
+# no-verdict text, or on another reason's text.
+capture_script_body="$(sed -n "/^  if ! cat > \"\$script_file\" <<'EOF'\$/,/^EOF\$/p" "$PROVISION")"
+eval "$(sed -n '/^snapshot_txn_verdict_advice() {$/,/^}$/p' "$PROVISION")"
+capture_reasons="$(printf '%s\n' "$capture_script_body" | grep -oE '(^|[^_a-z])refuse [a-z_]+' | sed -E 's/.*refuse //' | sort -u)"
+capture_reason_count="$(printf '%s\n' "$capture_reasons" | grep -c . || true)"
+unrecognised_advice="$(snapshot_txn_verdict_advice not-a-shipped-reason)"
+no_verdict_advice="$(snapshot_txn_verdict_advice '')"
+shared_advice=""
+for capture_reason in $capture_reasons; do
+  reason_advice="$(snapshot_txn_verdict_advice "$capture_reason")"
+  if [ -z "$reason_advice" ] || [ "$reason_advice" = "$unrecognised_advice" ] || [ "$reason_advice" = "$no_verdict_advice" ]; then
+    shared_advice="$shared_advice $capture_reason"
+  fi
+done
+duplicate_advice="$(for capture_reason in $capture_reasons; do snapshot_txn_verdict_advice "$capture_reason"; done | sort | uniq -d)"
+if [ "$capture_reason_count" -eq 16 ] && [ -z "$shared_advice" ] && [ -z "$duplicate_advice" ]; then
+  pass "each of the capture script's 16 refusal reasons has advice of its own"
+else
+  fail_test "each of the capture script's 16 refusal reasons has advice of its own (found $capture_reason_count; fallback or no-verdict text:${shared_advice:- none}; shared: ${duplicate_advice:-none})"
+fi
 
 # Panel-only digest degradation is stated, never silent: a panel with no digest tool still captures,
 # while the host digest remains mandatory and is recorded in full.
@@ -6051,6 +6184,45 @@ assert_contains 'direct copy could not be hashed on this host' "direct digest pr
 assert_log_contains '^adb .* install' "direct digest process failure still reaches APK install"
 unset -f sha256sum
 unset PROVISION_TEST_SHA256_FIXTURE
+reset_db_txn_state
+
+# Every host digest goes through one function, and a host with neither sha256sum nor shasum is refused
+# wherever it is met, naming what was being hashed. A real host lacks the tool from the start, so it
+# meets only the first digest; MOCK_HOST_DIGEST_VANISH takes the tool away after a chosen digest so
+# that every later caller is reached too. Each case names the digest just before its target, so an
+# added or removed digest earlier in the run fails here by naming the wrong subject, never silently.
+digest_absent_host="$TMP/host-without-digest"
+make_host_without "$digest_absent_host" sha256sum shasum
+digest_vanish_host="$TMP/host-losing-digest"
+make_host_without "$digest_vanish_host" shasum
+for digest_case in \
+  'none||the candidate APK' \
+  '*/ha-paneld.apk:8||the database observer script' \
+  '*/ha-paneld.apk:9||the database capture script' \
+  '*.db-txn-script:1||the database backup' \
+  '*/ha-paneld.apk:9|MOCK_UPGRADE_PREPARE=ready|the database copy' \
+  '*/ha-paneld.apk:15||the root-helper staging' \
+  '*/tmp.??????????:10|MOCK_STALE_TRANSACTION=1|the installed ha-paneld APK' \
+  '*/tmp.??????????:10|MOCK_SHIZUKU_VERSION_CODE=1 SHIZUKU=1|the installed Shizuku manager' \
+  '*/tmp.??????????:10|SHIZUKU=1|the Shizuku download'; do
+  digest_vanish="${digest_case%%|*}"; digest_rest="${digest_case#*|}"
+  digest_env="${digest_rest%%|*}"; digest_subject="${digest_rest#*|}"
+  digest_args=()
+  case " $digest_env " in *' SHIZUKU=1 '*) digest_args=(--shizuku); digest_env="${digest_env/SHIZUKU=1/}" ;; esac
+  reset_db_txn_state
+  if [ "$digest_vanish" = none ]; then
+    digest_path="$digest_absent_host"; digest_vanish=""
+  else
+    ln -sfn "$FIXTURES/sha256sum" "$digest_vanish_host/sha256sum"
+    digest_path="$digest_vanish_host"
+  fi
+  eval "$digest_env PATH=\"\$digest_path\" MOCK_HOST_DIGEST_VANISH=\"\$digest_vanish\" \
+    run_provision \"\$MOCK_TARGET\" --apk \"\$APK\" \"\${digest_args[@]}\" --no-tame"
+  assert_failure "a host without a digest tool is refused at $digest_subject" \
+    "this computer cannot hash $digest_subject: neither sha256sum nor shasum is installed"
+done
+assert_not_contains '^adb .* install .*shizuku\.apk' "$MOCK_CALL_LOG" \
+  "a host that loses its digest tool before the Shizuku download never installs it"
 reset_db_txn_state
 
 # An install racing the capture changes the provenance answer between the transaction's two reads,
