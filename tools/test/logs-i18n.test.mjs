@@ -29,7 +29,7 @@ function element(id) {
 
 async function loadLogs(translations = {}, helper = true) {
   const source = await readFile(asset, 'utf8');
-  const ids = ['lg-out', 'lg-state', 'lg-pause', 'lg-src-app', 'lg-src-system', 'lg-level', 'lg-filter', 'lg-follow'];
+  const ids = ['lg-out', 'lg-state', 'lg-pause', 'lg-src-app', 'lg-src-system', 'lg-src-webview', 'lg-level', 'lg-filter', 'lg-follow'];
   const nodes = Object.fromEntries(ids.map((id) => [id, element(id)]));
   const events = [];
   const document = {
@@ -71,6 +71,8 @@ test('logs status and pause controls consume translations while preserving UI sy
     'logs.state.app_paused': 'APP-PAUSED-T',
     'logs.state.system_live': 'SYSTEM-LIVE-T',
     'logs.state.system_paused': 'SYSTEM-PAUSED-T',
+    'logs.state.webview_live': 'WEBVIEW-LIVE-T',
+    'logs.state.webview_paused': 'WEBVIEW-PAUSED-T',
     'logs.state.reconnecting': 'RECONNECTING-T',
     'logs.state.hidden': 'HIDDEN-T',
     'logs.action.pause': 'PAUSE-T',
@@ -100,6 +102,15 @@ test('logs status and pause controls consume translations while preserving UI sy
   assert.equal(rig.nodes['lg-state'].textContent, '· SYSTEM-LIVE-T');
   rig.streams[1].onerror();
   assert.equal(rig.nodes['lg-state'].textContent, '· RECONNECTING-T');
+
+  rig.window.lgSource('webview');
+  assert.equal(rig.streams[2].url, 'api/v1/logs/stream?source=webview');
+  rig.streams[2].onopen();
+  assert.equal(rig.nodes['lg-state'].textContent, '· WEBVIEW-LIVE-T');
+  rig.window.lgPause();
+  assert.equal(rig.nodes['lg-state'].textContent, '· WEBVIEW-PAUSED-T');
+  rig.window.lgPause();
+  assert.equal(rig.nodes['lg-state'].textContent, '· WEBVIEW-LIVE-T');
 
   rig.document.hidden = true;
   rig.events.find(({ name }) => name === 'visibilitychange').callback();

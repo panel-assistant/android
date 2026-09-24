@@ -7913,6 +7913,16 @@
       "state": "machine-cross-checked",
       "text": "La disponibilidad de root se comprueba al abrir el flujo"
     },
+    "logs.source.webview": {
+      "text": "Consola del navegador",
+      "sourceHash": "6fd4e6a13f23312fb198b6fb47a5013687d31f5c9a8b389bce479772da5a14d6",
+      "state": "machine-cross-checked"
+    },
+    "logs.source.webview_hint": {
+      "text": "Consola JavaScript del panel de control; requiere el envío de registros configurado y el relé DevTools en ejecución",
+      "sourceHash": "5e04aff148bc43faa3aef257af4b79aae5c01fe4e902c4faa5c3399caac59908",
+      "state": "machine-cross-checked"
+    },
     "logs.state.app_live": {
       "sourceHash": "30f051b05d0ec7e9b1931b2d8f036f92ba4b3d8987408e6b778a36aeea0a1f73",
       "state": "machine-cross-checked",
@@ -7947,6 +7957,16 @@
       "sourceHash": "c12ac7b68e0bd60dd136296827ac6fc6e67e3c6a121c57d7e27c8ed39c9eb74d",
       "state": "machine-cross-checked",
       "text": "sistema · en pausa"
+    },
+    "logs.state.webview_live": {
+      "text": "navegador · en directo",
+      "sourceHash": "0892a17cf3398b2c81d85b1822f633ce9c2bc65894f2167eb5f2c23f4a386e98",
+      "state": "machine-cross-checked"
+    },
+    "logs.state.webview_paused": {
+      "text": "navegador · en pausa",
+      "sourceHash": "784bfaddb8a895cca3c82ed554dd6ba636d45067f4ce072aa700d4100a7e084c",
+      "state": "machine-cross-checked"
     },
     "logs.title": {
       "sourceHash": "a60eb9b8f87dc926287ed3ef7acfa1ebadd4007139e8423e99f09b33f47fd7c0",

@@ -65,17 +65,30 @@
     }
   }
 
+  // Per-source live/paused state text — keyed by source id so lgSource()/lgPause() don't need to
+  // branch on which source is active (i18nText() keys stay literal string args for the catalogue scan).
+  var STATE_TEXT = {
+    app: {
+      live: function () { return i18nText("logs.state.app_live", "app · live"); },
+      paused: function () { return i18nText("logs.state.app_paused", "app · paused"); },
+    },
+    system: {
+      live: function () { return i18nText("logs.state.system_live", "system · live"); },
+      paused: function () { return i18nText("logs.state.system_paused", "system · paused"); },
+    },
+    webview: {
+      live: function () { return i18nText("logs.state.webview_live", "browser · live"); },
+      paused: function () { return i18nText("logs.state.webview_paused", "browser · paused"); },
+    },
+  };
+
   function connect() {
     if (es) es.close();
     buf = [];
     out.textContent = "";
     state(i18nText("logs.state.connecting", "connecting…"));
     es = new EventSource("api/v1/logs/stream?source=" + source);
-    es.onopen = function () {
-      state(source === "app"
-        ? i18nText("logs.state.app_live", "app · live")
-        : i18nText("logs.state.system_live", "system · live"));
-    };
+    es.onopen = function () { state(STATE_TEXT[source].live()); };
     es.onerror = function () { state(i18nText("logs.state.reconnecting", "reconnecting…")); };   // EventSource retries itself
     es.onmessage = function (e) { append({ raw: e.data, lvl: levelOf(e.data) }); };
   }
@@ -85,6 +98,7 @@
     source = s;
     document.getElementById("lg-src-app").classList.toggle("on", s === "app");
     document.getElementById("lg-src-system").classList.toggle("on", s === "system");
+    document.getElementById("lg-src-webview").classList.toggle("on", s === "webview");
     connect();
   };
 
@@ -94,15 +108,7 @@
       ? "▶ " + i18nText("logs.action.resume", "Resume")
       : "⏸ " + i18nText("logs.action.pause", "Pause");
     if (!paused) window.lgRender();                          // flush what buffered while paused
-    if (source === "app") {
-      state(paused
-        ? i18nText("logs.state.app_paused", "app · paused")
-        : i18nText("logs.state.app_live", "app · live"));
-    } else {
-      state(paused
-        ? i18nText("logs.state.system_paused", "system · paused")
-        : i18nText("logs.state.system_live", "system · live"));
-    }
+    state(paused ? STATE_TEXT[source].paused() : STATE_TEXT[source].live());
   };
 
   window.lgClear = function () { buf = []; out.textContent = ""; };
