@@ -194,7 +194,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val hardware = map(root["hardware"], "hardware", setOf(
             "led", "screen_off", "has_button_backlight", "zigbee_gateway_dir", "relay_base",
             "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone",
-            "camera_lens_offset_px",
+            "camera_lens_offset_px", "backlight",
         ), required = true).orEmpty()
         val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer"), required = true).orEmpty()
         val sensors = map(
@@ -301,6 +301,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 cameraDeclared = boolean(hardware, "camera", "hardware"),
                 hasMicrophone = boolean(hardware, "microphone", "hardware") ?: false,
                 cameraLensOffsetPx = integer(hardware, "camera_lens_offset_px", "hardware"),
+                backlight = backlight(hardware["backlight"]),
             ),
             sensors = ProfileSensors(
                 proximityTechnology = string(sensors, "proximity_technology", "sensors"),
@@ -531,6 +532,31 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         }
     }
 
+    private fun backlight(value: Any?): ProfileBacklight? {
+        val path = "hardware.backlight"
+        val fields = map(value, path, setOf("transfer", "gamma", "points", "floor")) ?: return null
+        return ProfileBacklight(
+            transfer = string(fields, "transfer", path, required = true).orEmpty(),
+            gamma = float(fields, "gamma", path)?.let { (fields["gamma"] as Number).toDouble() },
+            points = if (fields["points"] != null) controlPoints(fields["points"], "$path.points") else null,
+            floor = integer(fields, "floor", path),
+        )
+    }
+
+    /** `[[request, hardware], ...]` integer pairs; shape rules (ends, monotonicity) belong to the curve. */
+    private fun controlPoints(value: Any?, path: String): List<Pair<Int, Int>> =
+        list(value, path, required = true).mapIndexedNotNull { index, item ->
+            val pair = item as? List<*>
+            val request = (pair?.getOrNull(0) as? Number)?.takeIf { it.toDouble() % 1.0 == 0.0 }
+            val level = (pair?.getOrNull(1) as? Number)?.takeIf { it.toDouble() % 1.0 == 0.0 }
+            if (pair?.size != 2 || request == null || level == null) {
+                issues += error("$path[$index]", "Expected an integer pair [request, hardware].")
+                null
+            } else {
+                request.toInt() to level.toInt()
+            }
+        }
+
     private fun proximityCalibration(value: Any?): ProfileProximityCalibration? {
         val path = "sensors.proximity_calibration"
         val fields = map(value, path, setOf(
@@ -694,6 +720,14 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "camera" to hardware.cameraDeclared,
         "microphone" to hardware.hasMicrophone,
         "camera_lens_offset_px" to hardware.cameraLensOffsetPx,
+        "backlight" to hardware.backlight?.let { backlight ->
+            linkedMapOf(
+                "transfer" to backlight.transfer,
+                "gamma" to backlight.gamma,
+                "points" to backlight.points?.map { (request, level) -> listOf(request, level) },
+                "floor" to backlight.floor,
+            ).withoutNullValues()
+        },
     ).withoutNullValues(),
     "sensors" to linkedMapOf(
         "proximity_technology" to sensors.proximityTechnology,

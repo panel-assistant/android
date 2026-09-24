@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.hardware.LedTransfer
+
 /** Core-owned vocabulary available to untrusted profile files. */
 object ProfileMetadata {
     const val SCHEMA = 2
@@ -94,7 +96,11 @@ object ProfileMetadata {
             field("platform.has_recents", "boolean", false, "Whether Android Recents is functional."),
             field("platform.has_native_navbar", "boolean", false, "Whether the firmware draws its own Android navigation bar."),
             field("hardware.led.mechanism", "enum", true, "Built-in LED route.", listOf("none", "autodetect", "rk3576-ioctl", "rk3576-ioctl-daemon", "sysfs-daemon")),
-            field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", listOf("identity", "rk3576-four-bit")),
+            field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", LedTransfer.NAMES.toList()),
+            field("hardware.backlight.transfer", "enum", true, "Backlight transfer curve from Home Assistant brightness to the backlight node.", listOf("identity", "perceptual", "gamma", "points")),
+            field("hardware.backlight.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
+            field("hardware.backlight.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
+            field("hardware.backlight.floor", "integer", false, "Hardware level, 0 through 127, that the lowest non-zero brightness lands on."),
             field("hardware.screen_off", "enum", true, "Preferred screen-off route.", listOf("brightness-zero", "su-blpower", "daemon-blpower", "keyevent")),
             field("hardware.has_button_backlight", "boolean", false, "Helper-backed button backlight capability."),
             field("hardware.camera", "boolean", false, "Board carries a usable camera."),

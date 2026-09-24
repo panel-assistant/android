@@ -50,9 +50,14 @@ class NoOpLedController : LedController {
 object LedFactory {
     fun detect(profile: DeviceProfile): LedController = when (profile.ledMechanism) {
         LedMechanism.NONE -> NoOpLedController()
-        LedMechanism.SYSFS_DAEMON -> SocketLedController()
-        LedMechanism.RK3576_IOCTL_DAEMON -> SocketLedController()
+        LedMechanism.SYSFS_DAEMON -> socket(profile)
+        LedMechanism.RK3576_IOCTL_DAEMON -> socket(profile)
+        // A fallback from the ioctl reaches whatever LED the daemon finds, which the ioctl transfer (the
+        // rk3576 four-bit stub on these profiles) does not describe, so it stays a passthrough.
         LedMechanism.RK3576_IOCTL -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: SocketLedController()
         LedMechanism.AUTODETECT -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: SocketLedController()
     }
+
+    /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
+    private fun socket(profile: DeviceProfile) = SocketLedController(transfer = profile.ledTransfer)
 }

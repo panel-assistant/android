@@ -5,6 +5,7 @@ import android.provider.Settings
 import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.RootShell
 import io.github.maxlyth.hapaneld.util.Cached
@@ -70,14 +71,17 @@ internal fun preventIdleDimDiagnostic(enabled: Boolean, timeoutMs: Int): String 
  * (`switch.<panel>_auto_brightness`, default off), which runs an on-device curve off the panel's light
  * sensor (or HA-fed lux) — see its docs for why that's worth a local loop.
  *
- * HA brightness is 0–255; Android `SCREEN_BRIGHTNESS` is also 0–255, so it maps 1:1.
+ * HA brightness is 0–255; Android `SCREEN_BRIGHTNESS` is also 0–255, so it maps 1:1 and stays on the HA
+ * scale. The profile's [transfer] curve applies only where this controller drives the backlight node
+ * itself, and its inverse maps the node back for the effective read.
  */
 class BrightnessController(
     private val context: Context,
     private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
+    private val transfer: TransferCurve = TransferCurve.Identity,
 ) : Backlight {
-    private val hardwareWriter = BrightnessHardwareWriter(root, daemon)
+    private val hardwareWriter = BrightnessHardwareWriter(root, daemon, transfer)
     private val successfulWrites = BacklightWriteTracker()
     private val writeSequencer = BrightnessWriteSequencer(
         actuator = BrightnessWriteSequencer.Actuator(::applyBrightnessUnserialized),
@@ -179,20 +183,21 @@ class BrightnessController(
     // include per-tick reconciles and UI polls — cache briefly; writes invalidate so a fresh set reads back.
     private val effective = Cached(EFFECTIVE_TTL_MS) { readEffective() }
 
-    /** Sysfs actual_brightness scaled to 0–255 (plain file read, else su), or -1 when unavailable. */
+    /** Sysfs actual_brightness mapped back to 0–255 through [transfer] (plain file read, else the helper,
+     *  else su), or -1 when unavailable. */
     private fun readEffective(): Int {
         readNode.get()?.let { (f, max) ->
             runCatching { f.readText().trim().toIntOrNull() }.getOrNull()?.let {
-                return (it.toLong() * 255 / max).toInt().coerceIn(0, 255)
+                return transfer.toLevel(it, max)
             }
         }
         // Daemon leg (TPA10-class panels: the app is SELinux-denied on the node and has no su).
         parseBacklightReading(daemon.send("BLREAD"))?.let {
-            return (it.actual.toLong() * 255 / it.maximum).toInt().coerceIn(0, 255)
+            return transfer.toLevel(it.actual, it.maximum)
         }
         backlight.get()?.let { node ->
             root.runOutput("cat ${node.directory}actual_brightness 2>/dev/null")?.trim()?.toIntOrNull()?.let {
-                return (it.toLong() * 255 / node.maximum).toInt().coerceIn(0, 255)
+                return transfer.toLevel(it, node.maximum)
             }
         }
         return -1

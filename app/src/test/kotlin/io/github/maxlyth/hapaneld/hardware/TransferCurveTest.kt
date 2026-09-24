@@ -100,7 +100,7 @@ class TransferCurveTest {
         assertEquals(1, TransferCurve.Gamma(2.2).toHardware(1, 255)) // no floor: still the least lit value
         // Linear with a floor is spelled gamma 1.0, since identity takes no floor.
         val linear = TransferCurve.from("gamma", gamma = 1.0, floor = 20)
-        assertEquals(20, linear.toHardware(1))
+        assertEquals(21, linear.toHardware(1))      // 20 + 235/255 = 20.92
         assertEquals(138, linear.toHardware(128))   // 20 + 128/255 · 235 = 137.96
     }
 

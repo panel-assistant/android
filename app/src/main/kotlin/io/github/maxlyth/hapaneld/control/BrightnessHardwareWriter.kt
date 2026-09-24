@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.control
 
 import io.github.maxlyth.hapaneld.platform.Daemon
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
 import io.github.maxlyth.hapaneld.platform.RootShell
 
 internal data class BacklightNode(val directory: String, val maximum: Int)
@@ -8,10 +9,12 @@ internal data class BacklightReading(val actual: Int, val maximum: Int)
 
 internal enum class BrightnessWriteRoute { SU, HELPER, NONE }
 
-/** Applies a 0–255 brightness command to the real hardware backlight, accepting only actual results. */
+/** Applies a 0–255 brightness command to the real hardware backlight, accepting only actual results.
+ *  [transfer] maps the command onto the node's own range (the profile's curve; linear by default). */
 internal class BrightnessHardwareWriter(
     private val root: RootShell,
     private val daemon: Daemon,
+    private val transfer: TransferCurve = TransferCurve.Identity,
 ) {
     fun write(level: Int, node: BacklightNode?): BrightnessWriteRoute {
         val commanded = level.coerceIn(0, 255)
@@ -30,8 +33,7 @@ internal class BrightnessHardwareWriter(
         }
     }
 
-    private fun scale(level: Int, maximum: Int): Int =
-        (level.toLong() * maximum / 255).toInt().coerceIn(0, maximum)
+    private fun scale(level: Int, maximum: Int): Int = transfer.toHardware(level, maximum)
 }
 
 internal fun parseBacklightReading(reply: String?): BacklightReading? {

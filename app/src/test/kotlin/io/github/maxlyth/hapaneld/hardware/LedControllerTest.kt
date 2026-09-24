@@ -17,6 +17,12 @@ class LedControllerTest {
         assertEquals(listOf("LEDPROBE", "RGB 0 128 255", "OFF"), daemon.sent)
     }
 
+    @Test fun socketBackendAppliesTheProfileTransfer() {
+        val daemon = FakeDaemon(mapOf("RGB 56 0 255" to "OK"))
+        assertTrue(SocketLedController(daemon, LedTransfer.named("perceptual")).setRgb(128, 0, 255))
+        assertEquals(listOf("RGB 56 0 255"), daemon.sent)
+    }
+
     @Test fun socketProbeDistinguishesAbsentAndLegacyHelpers() {
         assertFalse(SocketLedController(FakeDaemon(mapOf("LEDPROBE" to "none"))).available())
         assertTrue(SocketLedController(FakeDaemon(mapOf("LEDPROBE" to "ERR"), available = true)).available())

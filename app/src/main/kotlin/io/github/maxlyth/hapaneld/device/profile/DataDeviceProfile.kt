@@ -10,6 +10,7 @@ import io.github.maxlyth.hapaneld.device.ProvisioningIntent
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.hardware.LedTransfer
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
 
 /** DeviceProfile adapter for a validated declarative document. */
 class DataDeviceProfile internal constructor(
@@ -42,10 +43,9 @@ class DataDeviceProfile internal constructor(
         "autodetect" -> LedMechanism.AUTODETECT
         else -> LedMechanism.NONE
     }
-    override val ledTransfer: LedTransfer = when (document.hardware.led.transfer) {
-        "rk3576-four-bit" -> LedTransfer.Rk3576FourBit
-        else -> LedTransfer.Identity
-    }
+    override val ledTransfer: LedTransfer = LedTransfer.named(document.hardware.led.transfer)
+    override val backlightTransfer: TransferCurve =
+        document.hardware.backlight?.let { runCatching { it.toTransferCurve() }.getOrNull() } ?: TransferCurve.Identity
     override val screenOff = when (document.hardware.screenOff) {
         "su-blpower" -> ScreenOff.SU_BLPOWER
         "daemon-blpower" -> ScreenOff.DAEMON_BLPOWER

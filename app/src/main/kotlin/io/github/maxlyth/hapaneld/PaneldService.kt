@@ -1239,7 +1239,7 @@ class PaneldService : Service() {
         // onStartCommand alongside the other network subsystems; restarted on a /config change.
         logShipper = LogShipper(config, scope, logCaptureApp, logCaptureWebView)
 
-        brightness = BrightnessController(this)
+        brightness = BrightnessController(this, transfer = profile.backlightTransfer)
         screen = ScreenController(
             brightness,
             AndroidScreenPower(this),
