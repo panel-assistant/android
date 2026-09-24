@@ -179,6 +179,28 @@ class DisplayGeometrySchemaTest {
         assertTrue(badBase.toString(), ("display.geometry[0].factory_base_dpi" to "density-range") in badBase)
     }
 
+    @Test fun anAreaDeclaredInOneOrientationFollowsThePanelIntoTheOther() {
+        val display = ProfileDisplay(
+            geometry = listOf(
+                ProfileDisplayGeometry(
+                    widthPx = 1920,
+                    heightPx = 1200,
+                    activeWidthMm = 217.5f,
+                    activeHeightMm = 136.0f,
+                    evidence = DisplayGeometryEvidence.MEASURED,
+                ),
+            ),
+        )
+        val landscape = assertNotNull(DisplayGeometryResolver.resolve(display, "", 1920, 1200)?.physical)
+        val portrait = assertNotNull(DisplayGeometryResolver.resolve(display, "", 1200, 1920)?.physical)
+        assertEquals(217.5, landscape.widthMm, 1e-9)
+        assertEquals(136.0, landscape.heightMm, 1e-9)
+        assertEquals(136.0, portrait.widthMm, 1e-9)
+        assertEquals(217.5, portrait.heightMm, 1e-9)
+        assertEquals(10.10, landscape.diagonalInches, 0.01)
+        assertEquals(landscape.ppi, portrait.ppi, 1e-9)
+    }
+
     @Test fun overlappingVariantsLeaveGeometryUnknownRatherThanPickingOne() {
         val display = ProfileDisplay(
             geometry = listOf(
