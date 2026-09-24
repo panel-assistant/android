@@ -52,7 +52,7 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "factory_base": { "type": "integer", "description": "Android's factory reset logical DPI, which wm density labels Physical density." },
+              "factory_base": { "type": "integer", "description": "Android's factory reset logical DPI: the wm density reset reference (labelled Physical density) that display sizing restores, or the framework's stable density where the panel has no privilege to read it." },
               "profile_factory_base": { "type": "integer", "description": "The factory-base logical DPI the matched profile variant declares." },
               "current": { "type": "integer", "description": "The logical DPI rendering now, after any override." },
               "recommended": { "type": "integer", "description": "The profile's dashboard-sizing preset; a preference, not a measurement." }
