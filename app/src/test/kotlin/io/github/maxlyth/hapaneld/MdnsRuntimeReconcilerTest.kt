@@ -20,7 +20,7 @@ class MdnsRuntimeReconcilerTest {
         val reconciler = MdnsRuntimeReconciler<FakeRuntime>(
             owner = owner,
             revalidate = { observation, lanIp ->
-                if (owner.isCurrent(observation)) applied += observation.generation to lanIp
+                if (owner.isCurrent(observation)) applied += observation.generation to lanIp?.primary
             },
         )
         val startupEntered = CountDownLatch(1)
@@ -56,7 +56,7 @@ class MdnsRuntimeReconcilerTest {
         val reconciler = MdnsRuntimeReconciler<FakeRuntime>(
             owner = owner,
             revalidate = { observation, lanIp ->
-                if (owner.isCurrent(observation)) applied += observation.generation to lanIp
+                if (owner.isCurrent(observation)) applied += observation.generation to lanIp?.primary
             },
         )
         val startupEntered = CountDownLatch(1)
@@ -88,7 +88,7 @@ class MdnsRuntimeReconcilerTest {
         val reconciler = MdnsRuntimeReconciler<FakeRuntime>(
             owner = owner,
             revalidate = { observation, lanIp ->
-                if (owner.isCurrent(observation)) applied += observation.generation to lanIp
+                if (owner.isCurrent(observation)) applied += observation.generation to lanIp?.primary
             },
         )
         assertFalse("no callback means there is nothing to reconcile", reconciler.runtimeRunning())
@@ -107,7 +107,7 @@ class MdnsRuntimeReconcilerTest {
         val reconciler = MdnsRuntimeReconciler<FakeRuntime>(
             owner = owner,
             revalidate = { observation, lanIp ->
-                if (owner.isCurrent(observation)) applied += observation.generation to lanIp
+                if (owner.isCurrent(observation)) applied += observation.generation to lanIp?.primary
             },
         )
         try {

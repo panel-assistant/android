@@ -42,7 +42,9 @@ class PanelAssistantDiscoveryIdentityTest {
         val advertiser = TestSources.kotlin("MdnsAdvertiser.kt").readText()
 
         assertEquals(2, Regex("panelAssistantDiscoveryHealthToken\\(config\\.androidId\\)").findAll(server).count())
-        assertTrue(advertiser.contains("panelAssistantDiscoveryId(config.androidId)?.let { put(\"did\", it) }"))
+        // The advertiser's production discovery id is this token; the TXT record carries whatever it yields.
+        assertTrue(advertiser.contains("private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.androidId) },"))
+        assertTrue(advertiser.contains("discoveryId()?.let { put(\"did\", it) }"))
     }
 
     @Test fun healthOpenApiDocumentsTheIdentityGrammarAndOmissionRule() {
