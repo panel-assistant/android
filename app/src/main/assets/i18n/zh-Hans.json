@@ -8853,6 +8853,11 @@
       "state": "machine-cross-checked",
       "text": "最多使用 8 个小写标签，每个标签不超过 24 个字符。"
     },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "显示屏几何参数不完整、有歧义或超出范围。",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "state": "machine-cross-checked"
+    },
     "profiles.issue.physical-ppi-range": {
       "sourceHash": "acb105ce000f923c4b962599719e02613b68b65a2848be62ca8ef148d271656a",
       "state": "machine-cross-checked",

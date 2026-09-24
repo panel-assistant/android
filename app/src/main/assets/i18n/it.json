@@ -8853,6 +8853,11 @@
       "state": "machine-cross-checked",
       "text": "Usare al massimo 8 tag in minuscolo di non più di 24 caratteri ciascuno."
     },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "La geometria del display è incompleta, ambigua o fuori intervallo.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "state": "machine-cross-checked"
+    },
     "profiles.issue.physical-ppi-range": {
       "sourceHash": "acb105ce000f923c4b962599719e02613b68b65a2848be62ca8ef148d271656a",
       "state": "machine-cross-checked",

@@ -8853,6 +8853,11 @@
       "sourceHash": "e8ddb87f342f6191d79477057a94a0c44ef0dc4910d69863abe9b3709402fe71",
       "state": "machine-cross-checked"
     },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "La géométrie de l’écran est incomplète, ambiguë ou hors limites.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "state": "machine-cross-checked"
+    },
     "profiles.issue.physical-ppi-range": {
       "text": "La résolution physique en PPI doit être comprise entre 50 et 1000.",
       "sourceHash": "acb105ce000f923c4b962599719e02613b68b65a2848be62ca8ef148d271656a",

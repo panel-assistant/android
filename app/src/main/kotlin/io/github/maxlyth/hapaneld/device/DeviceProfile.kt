@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.device
 import io.github.maxlyth.hapaneld.device.profile.ProfileArtifacts
 import io.github.maxlyth.hapaneld.device.profile.ProfileProximityCalibration
 import io.github.maxlyth.hapaneld.device.profile.ProfileLink
+import io.github.maxlyth.hapaneld.device.profile.ProfiledDisplayGeometry
 import io.github.maxlyth.hapaneld.device.profile.ProfileSoc
 import io.github.maxlyth.hapaneld.device.profile.ShizukuRecommendation
 
@@ -210,9 +211,10 @@ interface DeviceProfile {
     val recommendedDensity: Int? get() = provisioning.density
     val recommendedFontScale: Float? get() = provisioning.fontScale
 
-    /** Trustworthy physical display pixel density. This is profile evidence, not Android's misleading
-     *  `wm density` "Physical density" field (which is only a base logical DPI). Null when unknown. */
-    val physicalPpi: Int? get() = null
+    /** Profile evidence for the panel whose physical display mode is [physicalWidthPx]×[physicalHeightPx]:
+     *  physical size, and the variant's declared factory-base logical DPI. Never derived from Android's
+     *  `wm density` "Physical density" field, which is a base logical DPI. Null when the profile has none. */
+    fun displayGeometry(physicalWidthPx: Int, physicalHeightPx: Int): ProfiledDisplayGeometry? = null
 
     /** The System WebView build to install when this panel's stock WebView is too old to render the HA
      *  dashboard. These panels have no Play Store, so ha-paneld sideloads a known-good `com.android.webview`

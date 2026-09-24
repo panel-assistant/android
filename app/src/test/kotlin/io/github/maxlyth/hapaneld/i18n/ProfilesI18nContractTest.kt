@@ -54,7 +54,7 @@ class ProfilesI18nContractTest {
 
         assertTrue("Profiles must expose backend issue presentation codes", issue.isNotEmpty())
         assertTrue("Profiles must expose backend result presentation codes", result.isNotEmpty())
-        assertEquals("the closed Profiles issue presentation vocabulary changed", 123, issue.size)
+        assertEquals("the closed Profiles issue presentation vocabulary changed", 124, issue.size)
         assertEquals("the closed Profiles result presentation vocabulary changed", 47, result.size)
         assertEquals("the closed Profiles parameterized vocabulary changed", 34, parameters.size)
         assertTrue("one presentation code must not be assigned to issue and result namespaces", issue.keys.intersect(result.keys).isEmpty())

@@ -74,7 +74,8 @@ class DataDeviceProfile internal constructor(
         EvdevButton(it.node, it.code, it.grab, it.eventType, it.sw)
     }
     override val cpuGovernors = document.cpu.governors
-    override val physicalPpi = document.display.physicalPpi
+    override fun displayGeometry(physicalWidthPx: Int, physicalHeightPx: Int) =
+        DisplayGeometryResolver.resolve(document.display, productVersion, physicalWidthPx, physicalHeightPx)
     override val provisioning = ProvisioningIntent(
         shizuku = document.provisioning.access.shizuku,
         webViewArtifactId = document.provisioning.software.webView?.artifact,

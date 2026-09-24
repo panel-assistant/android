@@ -251,6 +251,42 @@ internal object ProfileValidator {
             if (it !in 0.5f..1.5f) reject("provisioning.display.font_scale", "Font scale must be between 0.5 and 1.5.", "font-scale-range")
         }
         document.display.physicalPpi?.let { if (it !in 50..1000) reject("display.physical_ppi", "Physical PPI must be between 50 and 1000.", "physical-ppi-range") }
+        val geometry = document.display.geometry
+        if (geometry.isNotEmpty() && document.display.physicalPpi != null) {
+            reject("display.physical_ppi", "Use display.geometry or the legacy display.physical_ppi, not both.", "display-geometry-invalid")
+        }
+        if (geometry.size > 8) reject("display.geometry", "At most 8 display geometry variants are allowed.", "display-geometry-invalid")
+        val geometrySelectors = mutableSetOf<Pair<List<Int>, Set<String>>>()
+        geometry.forEachIndexed { index, entry ->
+            val path = "display.geometry[$index]"
+            boundedText(entry.variant, "$path.variant", 40)
+            boundedText(entry.evidenceNote, "$path.evidence_note", 200)
+            if (entry.productVersionPrefixes.size > 8) reject("$path.product_version_prefixes", "At most 8 product version prefixes are allowed.", "display-geometry-invalid")
+            entry.productVersionPrefixes.forEachIndexed { prefixIndex, prefix ->
+                boundedText(prefix, "$path.product_version_prefixes[$prefixIndex]", 64)
+            }
+            if (entry.widthPx !in 16..16384 || entry.heightPx !in 16..16384) {
+                reject(path, "Physical width_px and height_px must each be between 16 and 16384.", "display-geometry-invalid")
+            }
+            val diagonal = entry.activeDiagonalIn
+            val widthMm = entry.activeWidthMm
+            val heightMm = entry.activeHeightMm
+            when {
+                diagonal != null && (widthMm != null || heightMm != null) ->
+                    reject(path, "State the active size as a diagonal or as width and height, not both.", "display-geometry-invalid")
+                diagonal != null -> if (diagonal !in 1f..120f) reject("$path.active_diagonal_in", "Active diagonal must be between 1 and 120 inches.", "display-geometry-invalid")
+                widthMm != null && heightMm != null -> if (widthMm !in 5f..3000f || heightMm !in 5f..3000f) {
+                    reject(path, "Active width and height must each be between 5 and 3000 mm.", "display-geometry-invalid")
+                }
+                else -> reject(path, "An active diagonal, or both active width and height, is required.", "display-geometry-invalid")
+            }
+            DisplayGeometryResolver.derive(entry, entry.widthPx, entry.heightPx)?.let {
+                if (it.ppi !in 50.0..1000.0) reject(path, "Physical PPI must be between 50 and 1000.", "physical-ppi-range")
+            }
+            entry.factoryBaseDpi?.let { if (it !in 80..640) reject("$path.factory_base_dpi", "Density must be between 80 and 640 dpi.", "density-range") }
+            val selector = listOf(entry.widthPx, entry.heightPx).sorted() to entry.productVersionPrefixes.toSet()
+            if (!geometrySelectors.add(selector)) reject(path, "Another variant already selects these pixels and product versions.", "display-geometry-invalid")
+        }
         document.hardware.touchClickGain?.let {
             if (it !in 0.05f..1f) reject("hardware.touch_click_gain", "Touch-click gain must be between 0.05 and 1.0.", "touch-click-gain-range")
         }
