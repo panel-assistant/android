@@ -34,7 +34,7 @@ class PanelAssistantTransportProtocolTest {
         val hello = JSONObject(
             PanelAssistantTransportProtocol.hello(1L, IDENTITY, unsupported = listOf("humidity", "temperature")),
         )
-        assertEquals(listOf("humidity", "temperature"), hello.getJSONArray("unsupported").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("humidity", "temperature"), hello.optJSONArray("unsupported")?.let { (0 until it.length()).map(it::getString) })
     }
 
     @Test fun `the contract digest is pinned to the canonical handshake text`() {
