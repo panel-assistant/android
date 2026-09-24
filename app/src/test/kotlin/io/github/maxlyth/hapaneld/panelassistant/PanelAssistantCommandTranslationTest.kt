@@ -41,7 +41,7 @@ class PanelAssistantCommandTranslationTest {
             val descriptor = describe(channel)
             requireNotNull(descriptor.options).forEach { code ->
                 val label = requireNotNull(PanelAssistantCommandTranslation.payload(descriptor, code)) { "$channel $code" }
-                assertEquals(code, PanelAssistantChannelCatalog.optionCode(label))
+                assertEquals(code, descriptor.code(label))
             }
         }
     }

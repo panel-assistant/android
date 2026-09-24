@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.panelassistant
 
-import io.github.maxlyth.hapaneld.assist.VoiceState
+import io.github.maxlyth.hapaneld.config.ChannelOption
+import io.github.maxlyth.hapaneld.config.SettingSpec
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.mqtt.SoftwareComponent
 import io.github.maxlyth.hapaneld.mqtt.SoftwareUpdateEntities
@@ -28,11 +29,19 @@ internal data class PanelAssistantChannelDescriptor(
     val unit: String? = null,
     val stateClass: String? = null,
     val forceUpdate: Boolean = false,
-    val options: List<String>? = null,
+    /** The closed value set: each wire code with the label the MQTT handlers and state payloads use. */
+    val choices: List<ChannelOption>? = null,
     val min: Number? = null,
     val max: Number? = null,
     val step: Number? = null,
 ) {
+    /** The option codes the wire carries. */
+    val options: List<String>? get() = choices?.map { it.code }
+
+    fun code(label: String): String? = choices?.firstOrNull { it.label == label }?.code
+
+    fun label(code: String): String? = choices?.firstOrNull { it.code == code }?.label
+
     fun toJson(): JSONObject = JSONObject()
         .put("channel", channel)
         .put("platform", platform)
@@ -53,10 +62,10 @@ internal data class PanelAssistantChannelDescriptor(
 }
 
 /**
- * The native transport's view of the converger's channels, derived from the same registrations the MQTT
- * edge announces: registry-backed entities from their [SettingsRegistry] discovery descriptor, matched by
- * the state topic leaf (which is the channel), and the hand-written discovery entities from the literals
- * in `MqttBridge.publishDiscovery`. `unique_suffix` is always today's MQTT unique id after `<panel>_`.
+ * The native transport's view of the converger's channels, read from the same definitions the MQTT edge
+ * serialises: registry-backed entities from their [SettingsRegistry] channel id and typed facts, and the
+ * hand-written discovery entities from the typed descriptors below, which mirror the literals in
+ * `MqttBridge.publishDiscovery`. `unique_suffix` is always today's MQTT unique id after `<panel>_`.
  *
  * Two converger channels are MQTT plumbing rather than channels on the wire: their attribute payloads
  * are folded into the parent channel's observation (protocol section 16). The update channels are
@@ -77,50 +86,10 @@ internal object PanelAssistantChannelCatalog {
     fun wireChannel(converger: String): String? =
         if (converger in FOLDED) null else RENAMED[converger] ?: converger
 
-    /** Sensors with no closed value set; their string payload goes on the wire unchanged. */
-    private val TEXT_SENSORS = setOf("diag_ip", "diag_boot", "diag_wifi_ssid")
-
-    /** Closed value sets of sensors whose registry descriptor carries no options. */
-    private val SENSOR_OPTIONS: Map<String, List<String>> = mapOf(
-        "voice_state" to VoiceState.entries.map { it.wireValue },
-    )
-
     private val FAMILY = Regex("^(relay|button_led)([1-9][0-9]*)$")
 
-    private val registryByLeaf: Map<String, io.github.maxlyth.hapaneld.config.SettingSpec> by lazy {
-        SettingsRegistry.haCapable().mapNotNull { spec ->
-            val topic = registryBody(spec).optString("state_topic")
-            STATE_LEAF.find(topic)?.groupValues?.get(1)?.let { it to spec }
-        }.toMap()
-    }
-
-    private val STATE_LEAF = Regex("^ha-paneld/panel/([a-z][a-z0-9_]*)/state$")
-
-    private fun registryBody(spec: io.github.maxlyth.hapaneld.config.SettingSpec): JSONObject {
-        val entity = requireNotNull(spec.ha)
-        val options = JSONArray(spec.options).toString()
-        return JSONObject("{" + entity.body.replace("{panel}", "panel").replace("{options}", options) + "}")
-    }
-
-    /** A snake_case code for an MQTT display label: `Pre-release` → `prerelease`, `Always on` → `always_on`. */
-    fun optionCode(label: String): String = label.lowercase(Locale.ROOT)
-        .replace("-", "")
-        .replace(Regex("[^a-z0-9]+"), "_")
-        .trim('_')
-
-    /**
-     * The MQTT display label a command handler takes for option [code] of [wire], or null when the channel
-     * has no such option. The inverse of [optionCode] over the same labels the descriptor was built from.
-     */
-    fun optionLabel(wire: String, code: String): String? {
-        val labels = if (wire == "update_channel") {
-            UPDATE_CHANNEL_LABELS
-        } else {
-            registryByLeaf[wire]?.let { spec ->
-                registryBody(spec).optJSONArray("options")?.let { array -> (0 until array.length()).map(array::getString) }
-            }
-        }
-        return labels?.firstOrNull { optionCode(it) == code }
+    private val registryByChannel: Map<String, SettingSpec> by lazy {
+        SettingsRegistry.haCapable().associateBy { requireNotNull(it.ha).channel }
     }
 
     /** Built descriptors by wire channel, [UNDESCRIBED] for a channel this build does not know. */
@@ -149,13 +118,14 @@ internal object PanelAssistantChannelCatalog {
             )
         }
         HAND_WRITTEN[wire]?.let { return it }
-        val spec = registryByLeaf[wire] ?: return null
+        return registryByChannel[wire]?.let(::describe)
+    }
+
+    /** The descriptor of a registry-backed channel, from its declared facts alone. */
+    internal fun describe(spec: SettingSpec): PanelAssistantChannelDescriptor {
         val entity = requireNotNull(spec.ha)
-        val body = registryBody(spec)
+        val facts = entity.facts
         val platform = entity.component
-        val options = body.optJSONArray("options")
-            ?.let { array -> (0 until array.length()).map { optionCode(array.getString(it)) } }
-            ?: SENSOR_OPTIONS[wire]
         val kind = when (platform) {
             "switch", "binary_sensor" -> PanelAssistantValueKind.BOOLEAN
             "number" -> PanelAssistantValueKind.NUMBER
@@ -163,51 +133,51 @@ internal object PanelAssistantChannelCatalog {
             "light" -> PanelAssistantValueKind.LIGHT
             "text" -> PanelAssistantValueKind.TEXT
             else -> when {
-                options != null -> PanelAssistantValueKind.OPTION
-                wire in TEXT_SENSORS -> PanelAssistantValueKind.TEXT
+                facts.options != null -> PanelAssistantValueKind.OPTION
+                facts.text -> PanelAssistantValueKind.TEXT
                 else -> PanelAssistantValueKind.NUMBER
             }
         }
         return PanelAssistantChannelDescriptor(
-            channel = wire,
+            channel = entity.channel,
             platform = platform,
-            translationKey = wire,
+            translationKey = entity.channel,
             uniqueSuffix = entity.objectSuffix,
             kind = kind,
-            entityCategory = body.optString("entity_category").ifEmpty { null },
+            entityCategory = facts.entityCategory,
             enabledDefault = spec.haExposedByDefault,
-            deviceClass = body.optString("device_class").ifEmpty { null },
-            unit = body.optString("unit_of_measurement").ifEmpty { null },
-            stateClass = body.optString("state_class").ifEmpty { null },
+            deviceClass = facts.deviceClass,
+            unit = facts.unit,
+            stateClass = facts.stateClass,
             forceUpdate = entity.periodicRefresh,
-            options = options,
-            min = body.opt("min") as? Number,
-            max = body.opt("max") as? Number,
-            step = body.opt("step") as? Number,
+            choices = facts.options,
+            min = facts.min,
+            max = facts.max,
+            step = facts.step,
         )
     }
 
-    private fun wireOnly(channel: String, platform: String, options: List<String>? = null) =
+    private fun wireOnly(channel: String, platform: String, choices: List<ChannelOption>? = null) =
         PanelAssistantChannelDescriptor(
             channel = channel,
             platform = platform,
             translationKey = channel,
             // The retired discovery tombstone's id, so a later entity attaches to the same suffix.
             uniqueSuffix = channel,
-            kind = if (options == null) PanelAssistantValueKind.BOOLEAN else PanelAssistantValueKind.OPTION,
+            kind = if (choices == null) PanelAssistantValueKind.BOOLEAN else PanelAssistantValueKind.OPTION,
             entityCategory = "config",
             // No MQTT entity exists for these today (protocol section 15).
             enabledDefault = false,
-            options = options,
+            choices = choices,
         )
 
-    private val UPDATE_CHANNEL_LABELS = listOf("Stable", "Pre-release")
-    private val UPDATE_CHANNEL_OPTIONS = UPDATE_CHANNEL_LABELS.map(::optionCode)
+    /** A value set whose MQTT payloads are already the codes. */
+    private fun sameAsCode(codes: List<String>) = codes.map { ChannelOption(it, it) }
 
     private val HAND_WRITTEN: Map<String, PanelAssistantChannelDescriptor> = listOf(
         PanelAssistantChannelDescriptor(
             channel = "led", platform = "light", translationKey = "led", uniqueSuffix = "led",
-            kind = PanelAssistantValueKind.LIGHT, options = listOf("none", "strobe", "blink", "pulse"),
+            kind = PanelAssistantValueKind.LIGHT, choices = sameAsCode(listOf("none", "strobe", "blink", "pulse")),
         ),
         PanelAssistantChannelDescriptor(
             channel = "buttons", platform = "light", translationKey = "buttons", uniqueSuffix = "buttons",
@@ -224,14 +194,14 @@ internal object PanelAssistantChannelCatalog {
         PanelAssistantChannelDescriptor(
             channel = "storage_health", platform = "sensor", translationKey = "storage_health",
             uniqueSuffix = "storage_health", kind = PanelAssistantValueKind.OPTION, entityCategory = "diagnostic",
-            options = StorageHealthSeverity.entries.map { it.name.lowercase(Locale.ROOT) },
+            choices = sameAsCode(StorageHealthSeverity.entries.map { it.name.lowercase(Locale.ROOT) }),
         ),
         wireOnly("watchdog", "switch"),
         wireOnly("silence_boot_chime", "switch"),
         wireOnly("prevent_idle_dim", "switch"),
         wireOnly("self_update", "switch"),
         wireOnly("zigbee_router", "switch"),
-        wireOnly("update_channel", "select", UPDATE_CHANNEL_OPTIONS),
+        wireOnly("update_channel", "select", SettingsRegistry.RELEASE_CHANNEL_OPTIONS),
     ).associateBy { it.channel } + SoftwareComponent.entries.associate { component ->
         val wire = "update_${component.wire}"
         wire to PanelAssistantChannelDescriptor(
