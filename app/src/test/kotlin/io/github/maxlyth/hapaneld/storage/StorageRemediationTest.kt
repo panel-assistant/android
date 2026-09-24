@@ -312,6 +312,35 @@ class StorageRemediationTest {
         assertFalse(summary.escalated)
     }
 
+    @Test fun anOwnerHoldingTheDataDirectoryDefersEveryStepRatherThanEscalating() {
+        val warning = snapshot(StorageHealthSeverity.WARNING)
+        val operations = Recorder(ArrayDeque(listOf(warning)), owned = false)
+
+        val summary = run(operations, warning)!!
+
+        assertFalse("files are not swept while another owner holds the directory", "sweep" in operations.calls)
+        assertFalse("retention" in operations.calls)
+        assertEquals(RetentionResult.SKIPPED_LIFECYCLE, summary.retention)
+        assertEquals(StorageRemediationVerdict.DEFERRED, summary.verdict)
+        assertFalse("a later run can still do more", summary.escalated)
+    }
+
+    @Test fun aRebuildWhoseImageIsStillInABusyWalDefersRatherThanEscalating() {
+        val none = snapshot(StorageHealthSeverity.WARNING, usableBytes = 400L * mib, mainBytes = 5_000L * pageSize,
+            walBytes = 0L, pageCount = 5_000L, freelist = 3_000L, autoVacuum = StorageAutoVacuumMode.NONE)
+        val stillPressured = none.copy(walBytes = 2_000L * (pageSize + 24L), freelistCount = 0L,
+            autoVacuumMode = StorageAutoVacuumMode.INCREMENTAL)
+        val operations = Recorder(
+            ArrayDeque(listOf(none, stillPressured)),
+            vacuumOutcome = VacuumOutcome(VacuumResult.COMPLETED, checkpoint = WalCheckpointResult.DEFERRED_BUSY),
+        )
+
+        val summary = run(operations, none)!!
+
+        assertEquals(VacuumResult.COMPLETED, summary.vacuum.result)
+        assertEquals(StorageRemediationVerdict.DEFERRED, summary.verdict)
+    }
+
     @Test fun aCheckpointWithoutRoomForTheBackfillIsRefusedNotRun() {
         val tight = snapshot(StorageHealthSeverity.CRITICAL, usableBytes = 10L * mib, walBytes = 2L * mib)
         val operations = Recorder(ArrayDeque(listOf(tight)))

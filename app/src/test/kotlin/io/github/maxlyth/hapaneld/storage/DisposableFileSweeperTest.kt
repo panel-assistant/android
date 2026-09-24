@@ -62,14 +62,28 @@ class DisposableFileSweeperTest {
     }
 
     @Test fun downloadsKeepsAFileThisProcessMayStillHold() {
-        // Written after this process started: a live download, upload or prepared install may own it.
-        val live = file(cacheDir, "hapaneld-prepared-1.apk", modified = processStart + 1_000L)
+        // Written after this process started: a live download, upload or prepared install may own it,
+        // however old it is. The process has run for three hours, so the age floor alone would pass it.
+        val longRunningStart = now - 3L * DISPOSABLE_ORPHAN_MINIMUM_AGE_MS
+        val live = file(cacheDir, "hapaneld-prepared-1.apk", modified = longRunningStart + 60_000L)
 
-        val result = sweeper().sweep(rule(DisposableDataClass.DOWNLOADS))
+        val result = DisposableFileSweeper(longRunningStart, nowMillis = { now })
+            .sweep(rule(DisposableDataClass.DOWNLOADS))
 
         assertTrue(live.exists())
         assertEquals(0, result.filesDeleted)
         assertEquals(1, result.filesRetained)
+    }
+
+    @Test fun aFileThisProcessWroteBeforeAForwardClockStepIsStillItsOwn() {
+        // A panel with no real-time clock starts in an old epoch and NTP later jumps it forward. The
+        // start is captured once, in the old epoch, so files written before the jump still postdate it.
+        val bootEpochStart = 1_000_000L
+        val writtenBeforeJump = file(cacheDir, "hapaneld-prepared-1.apk", modified = bootEpochStart + 60_000L)
+
+        DisposableFileSweeper(bootEpochStart, nowMillis = { now }).sweep(rule(DisposableDataClass.DOWNLOADS))
+
+        assertTrue(writtenBeforeJump.exists())
     }
 
     @Test fun anOrphanYoungerThanTheMinimumAgeIsKept() {

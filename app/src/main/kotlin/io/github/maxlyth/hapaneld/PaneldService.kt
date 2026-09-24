@@ -159,6 +159,7 @@ import io.github.maxlyth.hapaneld.panelassistant.panelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.sensors.KtorHaExactEntityStreamTransport
 import io.github.maxlyth.hapaneld.storage.DisposableFileSweeper
 import io.github.maxlyth.hapaneld.storage.DisposableSweepResult
+import io.github.maxlyth.hapaneld.storage.ProcessStartWallClock
 import io.github.maxlyth.hapaneld.storage.RetentionResult
 import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
 import io.github.maxlyth.hapaneld.storage.StorageMaintenancePlan
@@ -4272,9 +4273,9 @@ class PaneldService : Service() {
 
     private fun storageRemediationOperations(signal: CancellationSignal) = object : StorageRemediationOperations {
         override fun sweepDisposableFiles(): List<DisposableSweepResult> {
-            // Wall-clock process start: only files written before this process existed can be orphans.
-            val processStart = System.currentTimeMillis() -
-                (android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime())
+            // Only files written before this process existed can be orphans. With no captured start
+            // nothing is provably orphaned, so nothing is swept.
+            val processStart = ProcessStartWallClock.millis() ?: return emptyList()
             val sweeper = DisposableFileSweeper(processStart)
             return appOwnedDisposableFileRules(cacheDir, filesDir).map(sweeper::sweep)
         }

@@ -154,6 +154,24 @@ private fun retainedScreenshots(directory: File, candidates: List<File>): Set<St
     return setOfNotNull(current?.let { "$it.png" }, previous)
 }
 
+/**
+ * The wall-clock time this process started, captured once as early as the process runs. It must be
+ * a constant: recomputing it later from uptime would move it into a newer clock epoch after a forward
+ * step (a panel with no real-time clock booting before NTP), and every file this process wrote before
+ * the step would then look older than the process and be swept while still in use.
+ */
+object ProcessStartWallClock {
+    @Volatile
+    private var captured: Long? = null
+
+    fun capture(startWallMillis: Long) {
+        if (captured == null) captured = startWallMillis
+    }
+
+    /** Null until captured; with no known start, nothing is provably orphaned. */
+    fun millis(): Long? = captured
+}
+
 internal const val SCREENSHOT_DIRECTORY = "panel-screenshots"
 internal const val DISPOSABLE_ORPHAN_MINIMUM_AGE_MS = 60L * 60L * 1000L
 
@@ -365,6 +383,11 @@ enum class VacuumResult {
 data class VacuumOutcome(
     val result: VacuumResult,
     val refusal: VacuumRefusal? = null,
+    /**
+     * The truncating checkpoint that follows a completed rebuild. Until it completes, the new image
+     * is still in the WAL and the rebuild has returned nothing, so a deferred one defers the run.
+     */
+    val checkpoint: WalCheckpointResult = WalCheckpointResult.NOT_RUN,
 )
 
 /** What the retention step did. */
@@ -446,7 +469,7 @@ internal interface StorageRemediationOperations {
 /**
  * The fail-safe remediation ladder, ordered by what each step costs before it returns anything:
  *
- * 1. Orphaned app-owned files. Deleting a file returns its bytes at once, so this is the only step
+ * 1. Orphaned app-owned files, unless another owner holds the data directory. Deleting a file returns its bytes at once, so this is the only step
  *    that helps at critical pressure.
  * 2. Existing retention limits, at warning only. Deleting rows writes WAL frames before the freed
  *    pages come back through bounded incremental reclamation, so it is refused at critical.
@@ -470,12 +493,14 @@ internal class StorageRemediationLadder(
         val databaseFailed = initial.severity == StorageHealthSeverity.DATABASE_FAILURE
         val critical = initial.pressureSeverity == StorageHealthSeverity.CRITICAL
 
-        val swept = operations.sweepDisposableFiles()
+        // A companion data backup or restore owns the data directory while it runs; so does shutdown.
+        val ownedAtStart = operations.lifecycleOwned()
+        val swept = if (ownedAtStart) operations.sweepDisposableFiles() else emptyList()
 
         val retention = when {
             databaseFailed -> RetentionResult.SKIPPED_DATABASE_FAILURE
             critical -> RetentionResult.SKIPPED_CRITICAL_PRESSURE
-            !operations.lifecycleOwned() -> RetentionResult.SKIPPED_LIFECYCLE
+            !ownedAtStart || !operations.lifecycleOwned() -> RetentionResult.SKIPPED_LIFECYCLE
             else -> operations.enforceRetention()
         }
 
@@ -515,8 +540,13 @@ internal class StorageRemediationLadder(
             val after = storageRemediationSaturatingAdd(it.mainDatabaseBytes, it.walBytes)
             (before - after).coerceAtLeast(0L)
         } ?: 0L
-        val deferred = checkpoint.result == WalCheckpointResult.DEFERRED_BUSY ||
-            vacuum.result == VacuumResult.DEFERRED_BUSY
+        // Contention and a busy owner are not exhaustion: a later run can still do more.
+        val deferred = !ownedAtStart ||
+            retention == RetentionResult.SKIPPED_LIFECYCLE ||
+            checkpoint.result == WalCheckpointResult.DEFERRED_BUSY ||
+            vacuum.result == VacuumResult.DEFERRED_BUSY ||
+            vacuum.refusal == VacuumRefusal.LIFECYCLE ||
+            (vacuum.result == VacuumResult.COMPLETED && vacuum.checkpoint == WalCheckpointResult.DEFERRED_BUSY)
         val verdict = when {
             final == null -> StorageRemediationVerdict.UNVERIFIED
             final.pressureSeverity == StorageHealthSeverity.HEALTHY -> StorageRemediationVerdict.RELIEVED

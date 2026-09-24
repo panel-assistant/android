@@ -48,7 +48,14 @@ class StorageRemediationWiringContractTest {
             "runStorageHealthObservation(signal)" in operations)
         assertTrue("a companion data backup or restore withholds lifecycle ownership",
             "companionDataOperationState.isPending()" in operations)
-        assertTrue("only files older than this process can be orphans",
-            "android.os.Process.getStartElapsedRealtime()" in operations)
+        assertTrue("only files older than this process can be orphans, against a start captured once",
+            "ProcessStartWallClock.millis() ?: return emptyList()" in operations)
+        val app = listOf(
+            File("src/main/kotlin/io/github/maxlyth/hapaneld/HaPaneldApp.kt"),
+            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/HaPaneldApp.kt"),
+        ).first(File::isFile).readText()
+        val attach = app.substring(app.indexOf("override fun attachBaseContext"), app.indexOf("override fun onCreate"))
+        assertTrue("the start is captured at the earliest point the process runs",
+            "ProcessStartWallClock.capture(" in attach && "getStartElapsedRealtime()" in attach)
     }
 }
