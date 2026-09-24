@@ -751,7 +751,6 @@ class MqttWireGoldenTest {
             hasHumidity = true,
             hasButtonBacklight = true,
             hasMicrophone = true,
-            buttonsEnabled = true,
             relays = 2,
             buttonLeds = 1,
             canInstallVerifiedApps = true,
