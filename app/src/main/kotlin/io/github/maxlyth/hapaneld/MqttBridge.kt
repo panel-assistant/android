@@ -1880,7 +1880,9 @@ internal class MqttBridge(
         "humidity" -> hasHumidity
         "proximity", "proximity_level" -> learnedProximity
         SoftwareUpdateEntities.stateChannelKey(SoftwareComponent.COMPANION) ->
-            softwareUpdateInputs(SoftwareComponent.COMPANION)?.let { !SoftwareUpdateEntities.companionAbsent(it) }
+            softwareUpdateInputs(SoftwareComponent.COMPANION)
+                ?.takeUnless { it.presenceUnknown }
+                ?.let { !SoftwareUpdateEntities.companionAbsent(it) }
         else -> null
     }
 

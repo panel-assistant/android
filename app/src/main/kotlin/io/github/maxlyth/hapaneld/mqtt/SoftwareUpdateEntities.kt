@@ -54,6 +54,8 @@ internal data class SoftwareUpdateInputs(
     val installing: Boolean,
     /** A Panel Assistant config entry owns the ha-paneld update entity, so MQTT withholds its own. */
     val suppressed: Boolean = false,
+    /** Whether the app is installed could not be read, so a null [installedVersion] is not a settled absence. */
+    val presenceUnknown: Boolean = false,
 )
 
 /**
@@ -74,6 +76,8 @@ internal data class SoftwareUpdateSources(
     /** The InstallProgress component label while the shared lane is running, otherwise null. */
     val runningOperation: String?,
     val panelAssistantOwnsPaneldUpdate: Boolean,
+    /** A Companion package lookup failed for a reason other than the package being absent. */
+    val companionPresenceUnknown: Boolean = false,
 ) {
     fun inputs(component: SoftwareComponent, canInstall: Boolean): SoftwareUpdateInputs = when (component) {
         SoftwareComponent.PANELD -> SoftwareUpdateInputs(
@@ -95,6 +99,7 @@ internal data class SoftwareUpdateSources(
             cap = companionCap,
             canInstall = canInstall,
             installing = runningOperation == component.progressLabel,
+            presenceUnknown = companionPresenceUnknown,
         )
     }
 }

@@ -82,12 +82,15 @@ class SensorReporterLightActivationTest {
         assertEquals(false, reporter.learnedProximityState())
     }
 
-    @Test fun `learned proximity is unsettled until the calibration loads and again once it closes`() {
+    @Test fun `learned proximity is unsettled until the calibration loads, when it cannot be read, and once closed`() {
         val (reporter, _) = reporter(activates = true, hasProximity = true)
         // A false here would be stated to Home Assistant as a panel without the sensor, removing its entities.
         assertEquals(null, reporter.learnedProximityState())
         reporter.prepare()
-        assertEquals(false, reporter.learnedProximityState())
+        // The JVM has no working SQLite, so the stored calibration read fails here: the profile baseline
+        // stands in, the signal reads not learned, and the settled answer must stay unknown.
+        assertFalse(reporter.hasLearnedProximity())
+        assertEquals(null, reporter.learnedProximityState())
         reporter.stop().get()
         assertEquals(null, reporter.learnedProximityState())
     }

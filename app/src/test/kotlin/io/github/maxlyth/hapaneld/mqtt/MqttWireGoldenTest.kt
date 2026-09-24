@@ -546,6 +546,13 @@ class MqttWireGoldenTest {
             ))
             rig.updateSources.set(updateSources().copy(companionMinimalVersion = null, companionFullVersion = null))
             assertEquals("only the Companion's settled absence is stated", listOf("update_companion"), native.offer().unsupported)
+            // A failed package lookup is not an absence: the update channel stays described and is never stated.
+            rig.updateSources.set(updateSources().copy(
+                companionMinimalVersion = null, companionFullVersion = null, companionPresenceUnknown = true,
+            ))
+            val unknown = native.offer()
+            assertEquals(emptyList<String>(), unknown.unsupported)
+            assertTrue("update_companion" in unknown.descriptors.map { it.channel })
         } finally {
             rig.close()
         }
