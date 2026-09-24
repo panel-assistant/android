@@ -496,9 +496,8 @@ APP_LAUNCH_PROBE_SECONDS="${APP_LAUNCH_PROBE_SECONDS:-20}"
 APP_HEALTH_TIMEOUT_SECONDS="${APP_HEALTH_TIMEOUT_SECONDS:-180}"
 STORAGE_HEALTH_VERIFY_ATTEMPTS="${STORAGE_HEALTH_VERIFY_ATTEMPTS:-6}"
 STORAGE_HEALTH_VERIFY_POLL_SECONDS="${STORAGE_HEALTH_VERIFY_POLL_SECONDS:-2}"
-# Deadline for the two package queries taken while classifying an unreachable status endpoint. Kept
-# separate from the general adb deadline: this runs before anything is installed, so a wedged package
-# manager still refuses promptly. Older panels can need about nine seconds to return both answers.
+# Floor for the two package queries taken while classifying an unreachable status endpoint. The
+# budget itself is measured from the panel (budget_package_probe); this is only the least it is given.
 STORAGE_HEALTH_PACKAGE_QUERY_SECONDS="${STORAGE_HEALTH_PACKAGE_QUERY_SECONDS:-15}"
 # Deadline for the package re-check taken immediately before an erasure, after a confirmation that
 # may have been held open indefinitely. Slightly longer than the pre-install probe because the panel
@@ -761,11 +760,16 @@ STORAGE_HEALTH_STATE=""
 STORAGE_HEALTH_SCHEMA_VERSION=""
 STORAGE_HEALTH_QUICK_CHECK=""
 STORAGE_HEALTH_OBSERVATION_NONCE=""
+STORAGE_HEALTH_REFRESH_FAULT=""
 POWER_SAFETY_RESULT=""
 POWER_SAFETY_STATE=""
 # Never read before classify_package_presence sets it; initialised so an unclassified read is the
 # fail-closed value rather than an unbound-variable abort.
 PACKAGE_PRESENCE="unknown"
+PACKAGE_PRESENCE_FAULT=""
+PACKAGE_PROBE_BUDGET_SECONDS=""
+PACKAGE_PROBE_CALIBRATION_SECONDS=""
+PACKAGE_PROBE_CALIBRATION_TIMED_OUT=0
 PACKAGE_DATA_RECORD="unknown"
 
 # Read the small status contract without adding jq as a fleet-host dependency. A successful response
@@ -808,26 +812,40 @@ read_storage_health() {
 # Compatibility admission needs one uncached observation from the current app. Keeping this distinct
 # from routine status rendering makes the freshness requirement visible at both the call site and in
 # the HTTP trace used by the cross-entry-point tests.
+#
+# STORAGE_HEALTH_REFRESH_FAULT names what made a non-valid result, so the gate can refuse on the fact
+# it observed rather than on the nonce comparison every fault used to fall through to.
 read_storage_health_refresh() {
-  local requested_nonce="$1" status flat_status nonce_count schema_count quick_count
+  local requested_nonce="$1" status flat_status key count
   STORAGE_HEALTH_RESULT="transport"
+  STORAGE_HEALTH_REFRESH_FAULT="the status request did not complete"
   STORAGE_HEALTH_STATE=""
   STORAGE_HEALTH_SCHEMA_VERSION=""
   STORAGE_HEALTH_QUICK_CHECK=""
   STORAGE_HEALTH_OBSERVATION_NONCE=""
   if ! status="$(curl -fsS --max-time 15 "$URL/api/v1/status?database_observation_nonce=$requested_nonce" 2>/dev/null)"; then return 0; fi
   flat_status="$(printf '%s' "$status" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-  [ "$(printf '%s' "$flat_status" | grep -o '"storage_health"[[:space:]]*:' | wc -l | tr -d ' ')" = 1 ] || { STORAGE_HEALTH_RESULT="malformed"; return 0; }
-  nonce_count="$(printf '%s' "$flat_status" | grep -o '"database_observation_nonce"[[:space:]]*:' | wc -l | tr -d ' ')"
-  [ "$nonce_count" = 1 ] || { STORAGE_HEALTH_RESULT="malformed"; return 0; }
-  schema_count="$(printf '%s' "$flat_status" | grep -o '"schema_version"[[:space:]]*:' | wc -l | tr -d ' ')"
-  quick_count="$(printf '%s' "$flat_status" | grep -o '"quick_check"[[:space:]]*:' | wc -l | tr -d ' ')"
-  [ "$schema_count" = 1 ] && [ "$quick_count" = 1 ] || { STORAGE_HEALTH_RESULT="malformed"; return 0; }
+  STORAGE_HEALTH_RESULT="malformed"
+  # Each field must appear exactly once. `grep -o` exits 1 when a field is absent, which under
+  # pipefail made the assignment itself abort the run with no refusal at all; count with awk, which
+  # answers 0 for an absent field instead of failing.
+  for key in storage_health database_observation_nonce schema_version quick_check; do
+    count="$(printf '%s\n' "$flat_status" | awk -v k="\"$key\"" '{
+      n = 0; s = $0
+      while ((i = index(s, k)) > 0) { s = substr(s, i + length(k)); if (s ~ /^[[:space:]]*:/) n++ }
+      print n }')"
+    case "$count" in
+      1) ;;
+      0) STORAGE_HEALTH_REFRESH_FAULT="the $key field is absent"; return 0 ;;
+      *) STORAGE_HEALTH_REFRESH_FAULT="the $key field appears $count times"; return 0 ;;
+    esac
+  done
   STORAGE_HEALTH_STATE="$(printf '%s' "$flat_status" | sed -n 's/.*"storage_health"[[:space:]]*:[[:space:]]*{[^}]*"state"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
   STORAGE_HEALTH_SCHEMA_VERSION="$(printf '%s' "$flat_status" | sed -n 's/.*"storage_health"[[:space:]]*:[[:space:]]*{[^}]*"schema_version"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')"
   STORAGE_HEALTH_QUICK_CHECK="$(printf '%s' "$flat_status" | sed -n 's/.*"storage_health"[[:space:]]*:[[:space:]]*{[^}]*"quick_check"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
   STORAGE_HEALTH_OBSERVATION_NONCE="$(printf '%s' "$flat_status" | sed -n 's/.*"database_observation_nonce"[[:space:]]*:[[:space:]]*"\([0-9a-f]*\)".*/\1/p')"
   STORAGE_HEALTH_RESULT="valid"
+  STORAGE_HEALTH_REFRESH_FAULT=""
 }
 
 # Package replacement and process startup are asynchronous. Poll incomplete results after mutation,
@@ -917,16 +935,24 @@ PACKAGE_MANAGER_LIVENESS_PKG="android"
 # completed normally before its silence is read as absence.
 #
 # Sets PACKAGE_PRESENCE to exactly one of: present, absent, unknown. Callers fail closed on unknown.
+# PACKAGE_PRESENCE_FAULT says why a verdict is unknown — `deadline` when the observation was still
+# running when its budget ran out, which is a fact about time rather than about the package — and is
+# empty when the panel answered. It is detail for a refusal to print; it never changes the verdict.
 classify_package_presence() {
   local seconds="$1" pkg="${2:-$PKG}" nonce out verdict status=0
   PACKAGE_PRESENCE="unknown"
+  PACKAGE_PRESENCE_FAULT="no run nonce could be created"
   nonce="$(host_transaction_id)" || return 0
   # `\$?` is escaped so the PANEL's shell expands each child's status, not this one.
   out="$(run_with_deadline "$seconds" adb_exec -s "$TARGET" shell \
     "echo HAPANELD_PKG_BEGIN:$nonce; pm path $pkg; echo HAPANELD_PKG_TARGET:$nonce:\$?; \
      pm path $PACKAGE_MANAGER_LIVENESS_PKG; echo HAPANELD_PKG_LIVE:$nonce:\$?; \
      echo HAPANELD_PKG_END:$nonce" 2>/dev/null)" || status=$?
-  [ "$status" -eq 0 ] || return 0
+  case "$status" in
+    0) PACKAGE_PRESENCE_FAULT="a reply that did not complete the probe or name a usable path" ;;
+    124) PACKAGE_PRESENCE_FAULT="deadline"; return 0 ;;
+    *) PACKAGE_PRESENCE_FAULT="adb exiting with status $status"; return 0 ;;
+  esac
   # A path counts only if it is absolute and free of whitespace. A bare `package:`, a relative
   # fragment or a truncated line proves neither that the package is installed nor that the package
   # manager is answering.
@@ -957,9 +983,38 @@ classify_package_presence() {
       print (trc + 0 == 0 || trc + 0 == 1) ? "absent" : "unknown"
     }')"
   case "$verdict" in
-    present|absent) PACKAGE_PRESENCE="$verdict" ;;
+    present|absent) PACKAGE_PRESENCE="$verdict"; PACKAGE_PRESENCE_FAULT="" ;;
   esac
   return 0
+}
+
+# Budget the pre-install package probe from this panel rather than from a constant. One framework
+# query is timed on its own, under the general adb deadline, and the two-query probe is then given
+# four times that — twice its expected cost — capped at ADB_COMMAND_TIMEOUT_SECONDS and never less than
+# STORAGE_HEALTH_PACKAGE_QUERY_SECONDS, which wins if an operator sets it above the cap. A fixed 15 seconds was measured against a slower
+# panel's 9.2 and lost often enough to refuse installs as "could not determine". The timing only sets
+# the budget; it decides nothing about presence, so a query that fails leaves the floor in place and
+# the probe itself reaches the verdict.
+#
+# Sets PACKAGE_PROBE_BUDGET_SECONDS, PACKAGE_PROBE_CALIBRATION_SECONDS (empty when not measured) and
+# PACKAGE_PROBE_CALIBRATION_TIMED_OUT (1 when even the single query outlived the adb deadline).
+budget_package_probe() {
+  local started elapsed out status=0 budget
+  PACKAGE_PROBE_BUDGET_SECONDS="$STORAGE_HEALTH_PACKAGE_QUERY_SECONDS"
+  PACKAGE_PROBE_CALIBRATION_SECONDS=""
+  PACKAGE_PROBE_CALIBRATION_TIMED_OUT=0
+  started=$SECONDS
+  out="$(run_with_deadline "$ADB_COMMAND_TIMEOUT_SECONDS" adb_exec -s "$TARGET" shell \
+    "pm path $PACKAGE_MANAGER_LIVENESS_PKG" 2>/dev/null)" || status=$?
+  elapsed=$(( SECONDS - started ))
+  if [ "$status" -eq 124 ]; then PACKAGE_PROBE_CALIBRATION_TIMED_OUT=1; return 0; fi
+  printf '%s\n' "$out" | tr -d '\r' | grep -Eq '^package:/[^[:space:]]+$' || return 0
+  PACKAGE_PROBE_CALIBRATION_SECONDS="$elapsed"
+  # SECONDS counts whole seconds, so the true cost is below elapsed + 1.
+  budget=$(( 4 * (elapsed + 1) ))
+  [ "$budget" -le "$ADB_COMMAND_TIMEOUT_SECONDS" ] || budget="$ADB_COMMAND_TIMEOUT_SECONDS"
+  [ "$budget" -ge "$PACKAGE_PROBE_BUDGET_SECONDS" ] || budget="$PACKAGE_PROBE_BUDGET_SECONDS"
+  PACKAGE_PROBE_BUDGET_SECONDS="$budget"
 }
 
 # Which installed package holds this panel's ha-paneld data? Both identities may be installed during
@@ -1072,7 +1127,20 @@ preflight_storage_health() {
       # apart from an app that is installed but not answering needs Android's package manager — and
       # an unanswered package query is not a health result, so it remains strict, because nothing
       # after this line can run without adb either. Normal package absence is not such a failure.
-      classify_package_presence "$STORAGE_HEALTH_PACKAGE_QUERY_SECONDS"
+      budget_package_probe
+      if [ "$PACKAGE_PROBE_CALIBRATION_TIMED_OUT" = 1 ]; then
+        fail "the package manager did not answer within ${ADB_COMMAND_TIMEOUT_SECONDS}s" \
+          "This is a deadline, not an answer: whether ha-paneld is installed was not decided either way." \
+          "The app's status endpoint did not answer, and one package-manager query was still running when its time ran out." \
+          "Nothing was installed or changed. Let the panel finish what it is doing, then re-run the same command."
+      fi
+      classify_package_presence "$PACKAGE_PROBE_BUDGET_SECONDS"
+      if [ "$PACKAGE_PRESENCE_FAULT" = deadline ]; then
+        fail "the package-presence probe did not finish within ${PACKAGE_PROBE_BUDGET_SECONDS}s" \
+          "This is a deadline, not an answer: whether ha-paneld is installed was not decided either way." \
+          "The budget came from this panel: one package-manager query took ${PACKAGE_PROBE_CALIBRATION_SECONDS:-an unmeasured time}${PACKAGE_PROBE_CALIBRATION_SECONDS:+s}, and the probe asks two." \
+          "Nothing was installed or changed. Let the panel finish what it is doing, then re-run the same command."
+      fi
       case "$PACKAGE_PRESENCE" in
         present)
           warn "storage health: the installed app's status endpoint could not be reached — advisory for this in-place recovery attempt; an unreachable app is a reason to replace it, not to refuse"
@@ -1083,6 +1151,7 @@ preflight_storage_health() {
         *)
           fail "could not determine whether ha-paneld is already installed" \
             "The app's status endpoint did not answer, and Android's package manager did not return a usable reply either, so mutation safety could not be established." \
+            "The package probe finished within its ${PACKAGE_PROBE_BUDGET_SECONDS}s budget and ended with ${PACKAGE_PRESENCE_FAULT:-an unreadable reply}." \
             "Nothing was installed or changed. Restore adb/package-manager responsiveness, then retry."
           ;;
       esac
@@ -1600,6 +1669,16 @@ run_root() {
   esac | tr -d '\r'
 }
 
+# What an unrecognised probe actually returned, for a refusal that must name its evidence: at most
+# three non-empty lines, stripped of terminal control bytes, or a statement that it returned nothing.
+probe_capture_excerpt() {
+  local excerpt
+  # awk stops after three lines, which can end the pipeline early under pipefail; a short excerpt is
+  # still an excerpt, so that is not a failure.
+  excerpt="$(printf '%s\n' "$1" | sanitize_terminal | awk 'NF { print; if (++n == 3) exit }')" || true
+  if [ -n "$excerpt" ]; then printf '%s\n' "$excerpt"; else printf '(no output)\n'; fi
+}
+
 # Tuya panels (TPA10) ship a closed vendor stack (launcher, system UI, Tuya IoT, hardware, diagnostics)
 # that does nothing for an HA panel and uses CPU/RAM. Offer to disable it — but ONLY once the panel can
 # run without it. Reversible: re-enable any package with `adb shell pm enable <pkg>`.
@@ -2012,7 +2091,7 @@ download_latest() {
     printf '%s\n' "$urls" | grep -Fxq "$expected_url" && curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$expected_url" -o "$dir/$asset" || true
   fi
   [ -n "${asset:-}" ] && [ -s "$dir/$asset" ] && APK="$dir/$asset" || APK=""
-  [ -n "$APK" ] || { echo "${RED}could not fetch the latest release APK from the expected GitHub release path${X}" >&2; exit 1; }
+  [ -n "$APK" ] || fail "could not fetch the latest release APK from the expected GitHub release path"
   APK_RELEASE_TAG="$tag"
   TOINSTALL_VER="${tag#v}"
   step "⬇️  downloaded" "${D}$(basename "$APK")${X} ${B}${tag:-latest}${X}"
@@ -2025,7 +2104,7 @@ resolve_apk() {
   elif [ "$LATEST" = 1 ]; then download_latest
   elif [ -f "$LOCAL_APK" ]; then APK="$LOCAL_APK"; step "📂 using local build" "${D}$APK${X}"
   else download_latest; fi
-  [ -f "$APK" ] || { echo "${RED}APK not found: $APK${X}" >&2; exit 1; }
+  [ -f "$APK" ] || fail "APK not found: $APK"
   # Every subsequent verifier and Android install opens one owner-only snapshot, not a mutable
   # caller/download path. Digest assertions remain mandatory around meaningful reads so even an
   # accidental in-process replacement of this snapshot fails closed.
@@ -3154,7 +3233,8 @@ install_root_helper() {
   local legacy_rc_file="" legacy_rc_supervised_file="" legacy_hybrid_rc_file="" legacy_hybrid_rc_supervised_file="" legacy_service_file="" legacy_service_supervised_file=""
   local bin_sha256 rc_sha256 hybrid_rc_sha256 service_sha256 transaction_sha256 transaction_ready="" expected_build_id="" staged_build_id="" out out2 root_ready=0 install_kind=""
   local legacy_rc_sha256 legacy_rc_supervised_sha256 legacy_hybrid_rc_sha256 legacy_hybrid_rc_supervised_sha256 legacy_service_sha256 legacy_service_supervised_sha256
-  local system_avail_kb="" system_need_kb="" vendor_probe=""
+  local system_avail_kb="" system_need_kb="" vendor_probe="" vendor_status=0 layout_status=0 layout_line vendor_line
+  local -a layout_excerpt=() vendor_excerpt=()
   local access_timeout="${PRIVILEGE_INSPECTION_TIMEOUT_SECONDS:-45}" access_status
 
   case "$access_timeout" in ''|*[!0-9]*|0) access_timeout=45 ;; esac
@@ -5879,6 +5959,7 @@ EOF
   # A managed hybrid boot vector makes the layout sticky: updates keep using /vendor + /data instead
   # of attempting an implicit migration back to /system. Unknown content at the reserved vendor path
   # is never overwritten. Capacity must be an unambiguous numeric value before selecting /system.
+  layout_status=0
   out="$(run_root '
     expected='"$hybrid_rc_sha256"'
     legacy='"$legacy_hybrid_rc_sha256"'
@@ -5952,7 +6033,7 @@ EOF
         echo NO_SYSTEMLESS_RUNNER
       fi
     fi
-  ' 2>&1)" || true
+  ' 2>&1)" || layout_status=$?
 
   if printf '%s\n' "$out" | grep -qx VENDOR_RC_UNEXPECTED; then
     [ -z "$helper_dir" ] || rm -rf "$helper_dir"
@@ -5982,6 +6063,20 @@ EOF
     fi
   elif printf '%s\n' "$out" | grep -qx SYSTEMLESS_RUNNER; then
     install_kind=systemless
+  elif ! printf '%s\n' "$out" | grep -qx SYSTEM_RO || ! printf '%s\n' "$out" | grep -qx NO_SYSTEMLESS_RUNNER; then
+    # The probe prints SYSTEM_RO and NO_SYSTEMLESS_RUNNER only once it has tried the partition and
+    # looked for a runner. Anything short of that — an empty capture from a dropped link, a shell that
+    # never ran the script, a reply cut off mid-stream — is not evidence about the partition, so it
+    # must never reach the read-only diagnosis below, whose remediation reboots the panel.
+    [ -z "$helper_dir" ] || rm -rf "$helper_dir"
+    rm -f "$rc_file" "$hybrid_rc_file" "$service_file" "$transaction_file"
+    layout_excerpt=()
+    while IFS= read -r layout_line; do layout_excerpt+=("  $layout_line"); done < <(probe_capture_excerpt "$out")
+    fail "the /system layout probe returned no recognisable answer" \
+      "The helper was not installed and the previous APK was left in place. Nothing about the panel's partitions was concluded." \
+      "The root shell exited with status $layout_status and returned:" \
+      ${layout_excerpt[@]+"${layout_excerpt[@]}"} \
+      "This usually means the adb connection dropped or the root shell did not run the probe. Check the connection, then re-run the same command."
   else
     [ -z "$helper_dir" ] || rm -rf "$helper_dir"
     rm -f "$rc_file" "$hybrid_rc_file" "$service_file" "$transaction_file"
@@ -6001,6 +6096,7 @@ EOF
   fi
 
   if [ "$install_kind" = hybrid ]; then
+    vendor_status=0
     vendor_probe="$(run_root '
       mount -o rw,remount /vendor 2>/dev/null
       probe=/vendor/etc/init/.hapaneld-rw-probe-'"$ROOT_HELPER_TRANSACTION_ID"'
@@ -6009,13 +6105,24 @@ EOF
         echo VENDOR_INIT_RW
       else
         rm -f $probe 2>/dev/null
+        echo VENDOR_INIT_RO
       fi
-    ' 2>&1)" || true
+    ' 2>&1)" || vendor_status=$?
+    # Only an explicit VENDOR_INIT_RO is the partition refusing the write; silence is an unanswered probe.
     if ! printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_RW; then
       [ -z "$helper_dir" ] || rm -rf "$helper_dir"
       rm -f "$rc_file" "$hybrid_rc_file" "$service_file" "$transaction_file"
-      fail "/vendor/etc/init is not writable for the hybrid root helper" \
-        "The helper and APK were left unchanged. Restore vendor-partition writability, then re-run."
+      if printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_RO; then
+        fail "/vendor/etc/init is not writable for the hybrid root helper" \
+          "The helper and APK were left unchanged. Restore vendor-partition writability, then re-run."
+      fi
+      vendor_excerpt=()
+      while IFS= read -r vendor_line; do vendor_excerpt+=("  $vendor_line"); done < <(probe_capture_excerpt "$vendor_probe")
+      fail "the /vendor/etc/init write probe returned no recognisable answer" \
+        "The helper and APK were left unchanged. Nothing about the vendor partition was concluded." \
+        "The root shell exited with status $vendor_status and returned:" \
+        ${vendor_excerpt[@]+"${vendor_excerpt[@]}"} \
+        "Check the adb connection, then re-run the same command."
     fi
     if [ -n "$system_avail_kb" ]; then
       echo "   ${YEL}ℹ${X} /system has ${system_avail_kb}KB free; ${system_need_kb}KB is required for a transactional helper upgrade"
@@ -7042,6 +7149,17 @@ host_database_compatibility_decision() {
       # Recovery files are app-private and therefore cannot be proven from this route.
       observation_nonce="$(host_transaction_id)" || host_database_gate_refuse "a fresh rootless observation nonce could not be created"
       read_storage_health_refresh "$observation_nonce"
+      # A status that could not be read, or that lacks a field, is refused on that fact. Falling through
+      # to the nonce comparison reported every such reply as a stale or foreign observation.
+      case "$STORAGE_HEALTH_RESULT" in
+        valid) ;;
+        transport) host_database_gate_refuse "rootless status did not answer the database observation request" ;;
+        *) case "$STORAGE_HEALTH_REFRESH_FAULT" in
+             *database_observation_nonce*)
+               host_database_gate_refuse "rootless status did not echo this run's database observation nonce: $STORAGE_HEALTH_REFRESH_FAULT" ;;
+             *) host_database_gate_refuse "rootless status is malformed: $STORAGE_HEALTH_REFRESH_FAULT" ;;
+           esac ;;
+      esac
       [ "$STORAGE_HEALTH_OBSERVATION_NONCE" = "$observation_nonce" ] || \
         host_database_gate_refuse "rootless status did not echo this run's database observation nonce"
       case "$STORAGE_HEALTH_SCHEMA_VERSION" in ""|*[!0-9]*) host_database_gate_refuse "rootless status did not report a concrete schema" ;; esac
