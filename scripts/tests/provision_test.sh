@@ -331,7 +331,7 @@ reset_per_run_state() {
     "$TMP/plan-attempts" "$TMP/storage-status-attempts" "$TMP/health-probes" \
     "$TMP/upgrade-release-attempts" "$TMP/installed-apk-signer-reads" \
     "$TMP/pm-probe-count" "$TMP/candidate-contract-read-count" \
-    "$TMP/host-db-observation-count" "$TMP/installer-db-observation-count" \
+    "$TMP/host-db-observation-count" \
     "$TMP/host-db-observation-count.LEGACY" "$TMP/host-db-observation-count.SUCCESSOR" \
     "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
   # Package and helper lifecycle markers.
