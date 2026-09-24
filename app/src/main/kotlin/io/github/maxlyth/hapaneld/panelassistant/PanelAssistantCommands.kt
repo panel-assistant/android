@@ -56,9 +56,7 @@ internal object PanelAssistantCommandTranslation {
     fun payload(descriptor: PanelAssistantChannelDescriptor, value: Any?): String? = when (descriptor.kind) {
         PanelAssistantValueKind.BOOLEAN -> (value as? Boolean)?.let(::onOff)
         PanelAssistantValueKind.NUMBER -> number(descriptor, value)
-        PanelAssistantValueKind.OPTION -> (value as? String)
-            ?.takeIf { code -> descriptor.options?.contains(code) == true }
-            ?.let { code -> PanelAssistantChannelCatalog.optionLabel(descriptor.channel, code) }
+        PanelAssistantValueKind.OPTION -> (value as? String)?.let(descriptor::label)
         PanelAssistantValueKind.TEXT -> (value as? String)
             ?.takeIf { it.length <= MAX_TEXT_CHARS && !CONTROL.containsMatchIn(it) }
         PanelAssistantValueKind.LIGHT -> light(descriptor, value)

@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.config
 
+import io.github.maxlyth.hapaneld.assist.VoiceState
 import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.parseKioskCompanionPackages
 import io.github.maxlyth.hapaneld.i18n.AppLocale
@@ -147,6 +148,23 @@ object SettingsRegistry {
         return Validation.Ok(normalized.toString())
     }
 
+    // Closed value sets: the stable wire code beside the label MQTT and the stored setting have always
+    // used. Declared ahead of SPECS, which reads them during initialisation.
+    val NAVBAR_OPTIONS = listOf(
+        ChannelOption("off", "Off"),
+        ChannelOption("always_on", "Always on"),
+        ChannelOption("swipe_reveal", "Swipe reveal"),
+        ChannelOption("native", "Native"),
+    )
+    val CPU_GOVERNOR_OPTIONS = listOf(
+        ChannelOption("performance", "Performance"),
+        ChannelOption("efficiency", "Efficiency"),
+        ChannelOption("auto", "Auto"),
+    )
+
+    /** Release channels: the stored setting holds the code, MQTT shows the label. */
+    val RELEASE_CHANNEL_OPTIONS = listOf(ChannelOption("stable", "Stable"), ChannelOption("prerelease", "Pre-release"))
+
     val SPECS: List<SettingSpec> = listOf(
         // ---- Identity ----------------------------------------------------------------------------
         SettingSpec(
@@ -248,16 +266,18 @@ object SettingsRegistry {
             label = "Auto sleep", default = "false", tier = Tier.BASIC, scope = Scope.DEVICE,
             liveApply = true,
             help = "Automatically wake the panel when activity is detected and switch the screen off after the learned delay. Manual screen control remains separate.",
-            ha = HaEntity(
-                "switch", "auto_sleep", "Auto sleep",
-                """"command_topic":"ha-paneld/{panel}/auto_sleep/set","state_topic":"ha-paneld/{panel}/auto_sleep/state","icon":"mdi:sleep","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "auto_sleep", "Auto sleep") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:sleep")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "navbar_mode", type = SettingType.ENUM, group = "Behaviour",
             label = "Navbar mode", default = "Off",
             liveApply = true,
-            options = listOf("Off", "Always on", "Swipe reveal", "Native"),
+            options = NAVBAR_OPTIONS.map { it.label },
             // Native is offered only where the firmware draws its own bar. Everywhere else it would be
             // a way to end up with no navigation at all, so it is withheld rather than merely discouraged.
             optionRequires = mapOf("Native" to { caps: Capabilities -> caps.hasNativeNavbar }),
@@ -266,10 +286,13 @@ object SettingsRegistry {
                 "navigation to the panel's own Android bar and draws nothing. Note that hiding the " +
                 "Android system bars, from the built-in renderer's fullscreen setting or the Android " +
                 "dashboard lock, still hides a native bar.",
-            ha = HaEntity(
-                "select", "navbar", "Navbar",
-                """"command_topic":"ha-paneld/{panel}/navbar/set","state_topic":"ha-paneld/{panel}/navbar/state","options":{options},"icon":"mdi:gesture-tap-button","entity_category":"config"""",
-            ),
+            ha = haEntity("select", "navbar", "Navbar") {
+                commandTopic()
+                stateTopic()
+                capabilityOptions(NAVBAR_OPTIONS)
+                icon("mdi:gesture-tap-button")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "wake_on_wave", type = SettingType.BOOL, group = "Behaviour",
@@ -277,10 +300,12 @@ object SettingsRegistry {
             liveApply = true,
             help = "Wake after a calibrated clear-to-near-to-clear wave. Set up proximity on the panel; touch-to-wake remains available.",
             availableWhen = { it.hasProximity },
-            ha = HaEntity(
-                "switch", "wake_on_wave", "Wake on wave",
-                """"command_topic":"ha-paneld/{panel}/wake_on_wave/set","state_topic":"ha-paneld/{panel}/wake_on_wave/state","icon":"mdi:gesture-tap","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "wake_on_wave", "Wake on wave") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:gesture-tap")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "kiosk_lock", type = SettingType.BOOL, group = "Behaviour",
@@ -290,10 +315,12 @@ object SettingsRegistry {
                 "within about 3 seconds when another app or Recents opens. It does not hide Home Assistant " +
                 "navigation. Release it here, from Home Assistant, through adb, with 7 rapid top-left taps, " +
                 "or during the 60-second unlocked window after reboot.",
-            ha = HaEntity(
-                "switch", "kiosk_lock", "Android dashboard lock",
-                """"command_topic":"ha-paneld/{panel}/kiosk_lock/set","state_topic":"ha-paneld/{panel}/kiosk_lock/state","icon":"mdi:lock","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "kiosk_lock", "Android dashboard lock") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:lock")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "watchdog_enabled", type = SettingType.BOOL, group = "Behaviour",
@@ -321,10 +348,12 @@ object SettingsRegistry {
             label = "Touch sound", default = "true", scope = Scope.PORTABLE,
             liveApply = true,
             help = "Audible tap feedback (system touch sounds).",
-            ha = HaEntity(
-                "switch", "touch_sound", "Touch sound",
-                """"command_topic":"ha-paneld/{panel}/touch_sound/set","state_topic":"ha-paneld/{panel}/touch_sound/state","icon":"mdi:volume-high","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "touch_sound", "Touch sound") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:volume-high")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "silence_boot_chime", type = SettingType.BOOL, group = "Behaviour",
@@ -362,10 +391,12 @@ object SettingsRegistry {
             label = "Auto-brightness", default = "false", scope = Scope.PORTABLE,
             liveApply = true,
             help = "On-panel engine maps a lux stream to the backlight (off = HA drives the screen).",
-            ha = HaEntity(
-                "switch", "auto_brightness", "Auto-brightness",
-                """"command_topic":"ha-paneld/{panel}/auto_brightness/set","state_topic":"ha-paneld/{panel}/auto_brightness/state","icon":"mdi:brightness-auto","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "auto_brightness", "Auto-brightness") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:brightness-auto")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "auto_brightness_minimum_percent", type = SettingType.INT, group = "Display",
@@ -393,14 +424,17 @@ object SettingsRegistry {
             label = "CPU profile", default = "Auto", scope = Scope.DEVICE,
             liveApply = true,
             // Mirrors CpuController.TIERS (kept literal — this package is pure/Android-free).
-            options = listOf("Performance", "Efficiency", "Auto"),
+            options = CPU_GOVERNOR_OPTIONS.map { it.label },
             help = "Live CPU scaling profile until reboot; Auto = the SoC's dynamic governor.",
             transient = true,
             availableWhen = { it.cpuGovernors },
-            ha = HaEntity(
-                "select", "cpu_governor", "CPU profile",
-                """"command_topic":"ha-paneld/{panel}/cpu_governor/set","state_topic":"ha-paneld/{panel}/cpu_governor/state","options":["Performance","Efficiency","Auto"],"icon":"mdi:speedometer","entity_category":"config"""",
-            ),
+            ha = haEntity("select", "cpu_governor", "CPU profile") {
+                commandTopic()
+                stateTopic()
+                options(CPU_GOVERNOR_OPTIONS)
+                icon("mdi:speedometer")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "zigbee_router", type = SettingType.BOOL, group = "System",
@@ -433,10 +467,12 @@ object SettingsRegistry {
                 "snapshot for Home Assistant to pull; no frames leave the panel unless a client is " +
                 "connected, and the panel shows a red light whenever the camera is open.",
             availableWhen = { it.hasCamera },
-            ha = HaEntity(
-                "switch", "camera_enabled", "Camera (experimental)",
-                """"command_topic":"ha-paneld/{panel}/camera_enabled/set","state_topic":"ha-paneld/{panel}/camera_enabled/state","icon":"mdi:cctv","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "camera_enabled", "Camera (experimental)") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:cctv")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "camera_resolution", type = SettingType.ENUM, group = "Camera",
@@ -644,7 +680,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "update_channel", type = SettingType.ENUM, group = "System",
-            label = "ha-paneld auto-update channel", default = "stable", options = listOf("stable", "prerelease"),
+            label = "ha-paneld auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
             liveApply = true,
             scope = Scope.DEVICE,
             help = "Release channel the self-updater follows.",
@@ -656,21 +692,26 @@ object SettingsRegistry {
             liveApply = true,
             help = "Install/update the minimal HA Companion over root when missing or out of date.",
             availableWhen = { it.companionInstalled },
-            ha = HaEntity(
-                "switch", "companion_auto_update", "Companion auto-update",
-                """"command_topic":"ha-paneld/{panel}/companion_auto_update/set","state_topic":"ha-paneld/{panel}/companion_auto_update/state","icon":"mdi:cellphone-arrow-down","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "companion_auto_update", "Companion auto-update") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:cellphone-arrow-down")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "companion_update_channel", type = SettingType.ENUM, group = "System",
-            label = "Companion auto-update channel", default = "stable", options = listOf("stable", "prerelease"),
+            label = "Companion auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
             liveApply = true,
             scope = Scope.DEVICE,
             help = "Release channel the Companion auto-updater follows.",
-            ha = HaEntity(
-                "select", "companion_update_channel", "Companion auto-update channel",
-                """"command_topic":"ha-paneld/{panel}/companion_update_channel/set","state_topic":"ha-paneld/{panel}/companion_update_channel/state","options":["Stable","Pre-release"],"icon":"mdi:source-branch","entity_category":"config"""",
-            ),
+            ha = haEntity("select", "companion_update_channel", "Companion auto-update channel") {
+                commandTopic()
+                stateTopic()
+                options(RELEASE_CHANNEL_OPTIONS)
+                icon("mdi:source-branch")
+                entityCategory("config")
+            },
             availableWhen = { it.companionInstalled },
         ),
         SettingSpec(
@@ -679,10 +720,12 @@ object SettingsRegistry {
             liveApply = true,
             help = "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check. Off by default — a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
             availableWhen = { it.webViewManaged },
-            ha = HaEntity(
-                "switch", "webview_auto_update", "WebView auto-update",
-                """"command_topic":"ha-paneld/{panel}/webview_auto_update/set","state_topic":"ha-paneld/{panel}/webview_auto_update/state","icon":"mdi:web-sync","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "webview_auto_update", "WebView auto-update") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:web-sync")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "launcher_package", type = SettingType.STRING, group = "System",
@@ -703,10 +746,12 @@ object SettingsRegistry {
             liveApply = true,
             help = "Security risk: keeps classic ADB listening on TCP port 5555 across boots and reconnects. Enable only during active maintenance on a trusted network. If ADB was enabled outside ha-paneld, it must also be disabled there.",
             availableWhen = { it.networkAdb },
-            ha = HaEntity(
-                "switch", "network_adb", "Network ADB",
-                """"command_topic":"ha-paneld/{panel}/network_adb/set","state_topic":"ha-paneld/{panel}/network_adb/state","icon":"mdi:adb","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "network_adb", "Network ADB") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:adb")
+                entityCategory("config")
+            },
         ),
         // ---- Voice -------------------------------------------------------------------------------
         // Local wake-word listening + Home Assistant Assist pipeline selection.
@@ -739,10 +784,12 @@ object SettingsRegistry {
             help = "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
             availableWhen = { it.hasMicrophone }, hidden = true,
             haExposedByDefault = false,
-            ha = HaEntity(
-                "switch", "voice_assistant", "Voice assistant",
-                """"command_topic":"ha-paneld/{panel}/voice_enabled/set","state_topic":"ha-paneld/{panel}/voice_enabled/state","icon":"mdi:microphone-message","entity_category":"config"""",
-            ),
+            ha = haEntity("switch", "voice_assistant", "Voice assistant", channel = "voice_enabled") {
+                commandTopic()
+                stateTopic()
+                icon("mdi:microphone-message")
+                entityCategory("config")
+            },
         ),
         SettingSpec(
             key = "voice_wake_words", type = SettingType.STRING, group = "Voice",
@@ -799,11 +846,12 @@ object SettingsRegistry {
             help = "Current voice-assistant phase: off, idle, listening, processing, responding or error.",
             haExposedByDefault = false,
             availableWhen = { it.hasMicrophone }, hidden = true,
-            ha = HaEntity(
-                "sensor", "voice_state", "Voice assistant state",
-                """"state_topic":"ha-paneld/{panel}/voice_state/state","icon":"mdi:microphone-message","entity_category":"diagnostic"""",
-                readOnly = true,
-            ),
+            ha = haEntity("sensor", "voice_state", "Voice assistant state", readOnly = true) {
+                stateTopic()
+                icon("mdi:microphone-message")
+                entityCategory("diagnostic")
+                sensorOptions(VoiceState.entries.map { ChannelOption(it.wireValue, it.wireValue) })
+            },
         ),
         // ---- Logging -----------------------------------------------------------------------------
         SettingSpec(
@@ -845,22 +893,25 @@ object SettingsRegistry {
             label = "Screen brightness", default = "",
             help = "Current screen state and brightness. Home Assistant presents the light's native 0–255 brightness as a percentage.",
             haExposedByDefault = true,
-            ha = HaEntity(
-                "light", "screen", "Screen",
-                """"schema":"json","brightness":true,"supported_color_modes":["brightness"],"command_topic":"ha-paneld/{panel}/screen/set","state_topic":"ha-paneld/{panel}/screen/state"""",
-                readOnly = true,
-            ),
+            ha = haEntity("light", "screen", "Screen", readOnly = true) {
+                raw(""""schema":"json","brightness":true,"supported_color_modes":["brightness"]""")
+                commandTopic()
+                stateTopic()
+            },
         ),
         SettingSpec(
             key = "volume", type = SettingType.INT, group = "Sensors",
             label = "Panel volume", default = "",
             help = "Current panel media volume reported on its native 0–100 percent scale.",
             haExposedByDefault = true,
-            ha = HaEntity(
-                "number", "volume", "Volume",
-                """"command_topic":"ha-paneld/{panel}/volume/set","state_topic":"ha-paneld/{panel}/volume/state","min":0,"max":100,"step":1,"mode":"slider","unit_of_measurement":"%","icon":"mdi:volume-high"""",
-                readOnly = true,
-            ),
+            ha = haEntity("number", "volume", "Volume", readOnly = true) {
+                commandTopic()
+                stateTopic()
+                range(0, 100, 1)
+                raw(""""mode":"slider"""")
+                unit("%")
+                icon("mdi:volume-high")
+            },
         ),
         SettingSpec(
             key = "illuminance", type = SettingType.INT, group = "Sensors",
@@ -868,11 +919,12 @@ object SettingsRegistry {
             help = "Ambient illuminance measured by the panel light sensor.",
             haExposedByDefault = true,
             availableWhen = { it.hasLight },
-            ha = HaEntity(
-                "sensor", "illuminance", "Illuminance",
-                """"state_topic":"ha-paneld/{panel}/illuminance/state","device_class":"illuminance","unit_of_measurement":"lx","state_class":"measurement"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "illuminance", "Illuminance", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                deviceClass("illuminance")
+                unit("lx")
+                stateClass("measurement")
+            },
         ),
         SettingSpec(
             key = "proximity", type = SettingType.BOOL, group = "Sensors",
@@ -880,11 +932,11 @@ object SettingsRegistry {
             help = "Learned near/far occupancy from a supported proximity source.",
             haExposedByDefault = true,
             availableWhen = { it.hasLearnedProximity },
-            ha = HaEntity(
-                "binary_sensor", "proximity", "Proximity",
-                """"state_topic":"ha-paneld/{panel}/proximity/state","device_class":"occupancy","payload_on":"ON","payload_off":"OFF"""",
-                readOnly = true,
-            ),
+            ha = haEntity("binary_sensor", "proximity", "Proximity", readOnly = true) {
+                stateTopic()
+                deviceClass("occupancy")
+                raw(""""payload_on":"ON","payload_off":"OFF"""")
+            },
         ),
         SettingSpec(
             key = "proximity_level", type = SettingType.INT, group = "Sensors",
@@ -892,22 +944,24 @@ object SettingsRegistry {
             help = "Normalized learned proximity level from 0 to 100 percent; binary sources report 0 or 100.",
             haExposedByDefault = true,
             availableWhen = { it.hasLearnedProximity },
-            ha = HaEntity(
-                "sensor", "proximity_level", "Proximity level",
-                """"state_topic":"ha-paneld/{panel}/proximity_level/state","unit_of_measurement":"%","state_class":"measurement","icon":"mdi:hand-wave"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "proximity_level", "Proximity level", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                unit("%")
+                stateClass("measurement")
+                icon("mdi:hand-wave")
+            },
         ),
         SettingSpec(
             key = "auto_sleep_activity", type = SettingType.BOOL, group = "Sensors",
             label = "Auto-sleep activity", default = "",
             help = "Whether the auto-sleep policy is currently holding the panel awake. The Home Assistant entity provides the activity history timeline.",
             haExposedByDefault = false,
-            ha = HaEntity(
-                "binary_sensor", "auto_sleep_activity", "Auto-sleep activity",
-                """"state_topic":"ha-paneld/{panel}/auto_sleep_activity/state","payload_on":"ON","payload_off":"OFF","json_attributes_topic":"ha-paneld/{panel}/auto_sleep_activity/attributes","icon":"mdi:motion-sensor"""",
-                readOnly = true,
-            ),
+            ha = haEntity("binary_sensor", "auto_sleep_activity", "Auto-sleep activity", readOnly = true) {
+                stateTopic()
+                raw(""""payload_on":"ON","payload_off":"OFF"""")
+                attributesTopic()
+                icon("mdi:motion-sensor")
+            },
         ),
         SettingSpec(
             key = "temperature", type = SettingType.FLOAT, group = "Sensors",
@@ -915,11 +969,12 @@ object SettingsRegistry {
             help = "Environmental temperature reported by Android's panel sensor.",
             haExposedByDefault = true,
             availableWhen = { it.hasTemperature },
-            ha = HaEntity(
-                "sensor", "temperature", "Temperature",
-                """"state_topic":"ha-paneld/{panel}/temperature/state","device_class":"temperature","unit_of_measurement":"°C","state_class":"measurement"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "temperature", "Temperature", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                deviceClass("temperature")
+                unit("°C")
+                stateClass("measurement")
+            },
         ),
         SettingSpec(
             key = "humidity", type = SettingType.FLOAT, group = "Sensors",
@@ -927,11 +982,12 @@ object SettingsRegistry {
             help = "Relative humidity reported by Android's panel sensor.",
             haExposedByDefault = true,
             availableWhen = { it.hasHumidity },
-            ha = HaEntity(
-                "sensor", "humidity", "Humidity",
-                """"state_topic":"ha-paneld/{panel}/humidity/state","device_class":"humidity","unit_of_measurement":"%","state_class":"measurement"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "humidity", "Humidity", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                deviceClass("humidity")
+                unit("%")
+                stateClass("measurement")
+            },
         ),
 
         // ---- Diagnostics -------------------------------------------------------------------------
@@ -943,55 +999,64 @@ object SettingsRegistry {
             label = "IP address", default = "",
             help = "This panel's LAN IPv4 address as a sensor.",
             haExposedByDefault = false,
-            ha = HaEntity(
-                "sensor", "diag_ip", "IP address",
-                """"state_topic":"ha-paneld/{panel}/diag_ip/state","icon":"mdi:ip-network","entity_category":"diagnostic"""",
-                readOnly = true,
-            ),
+            ha = haEntity("sensor", "diag_ip", "IP address", readOnly = true) {
+                stateTopic()
+                icon("mdi:ip-network")
+                textValue()
+                entityCategory("diagnostic")
+            },
         ),
         SettingSpec(
             key = "diag_cpu", type = SettingType.INT, group = "Diagnostics",
             label = "CPU usage", default = "",
             help = "Overall CPU busy percentage (root/su panels; unavailable on sandbox-walled panels).",
             haExposedByDefault = false,
-            ha = HaEntity(
-                "sensor", "diag_cpu", "CPU usage",
-                """"state_topic":"ha-paneld/{panel}/diag_cpu/state","unit_of_measurement":"%","state_class":"measurement","icon":"mdi:cpu-64-bit","entity_category":"diagnostic"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "diag_cpu", "CPU usage", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                unit("%")
+                stateClass("measurement")
+                icon("mdi:cpu-64-bit")
+                entityCategory("diagnostic")
+            },
         ),
         SettingSpec(
             key = "diag_memory", type = SettingType.INT, group = "Diagnostics",
             label = "Memory usage", default = "",
             help = "Used RAM as a percentage.",
             haExposedByDefault = false,
-            ha = HaEntity(
-                "sensor", "diag_memory", "Memory usage",
-                """"state_topic":"ha-paneld/{panel}/diag_memory/state","unit_of_measurement":"%","state_class":"measurement","icon":"mdi:memory","entity_category":"diagnostic"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "diag_memory", "Memory usage", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                unit("%")
+                stateClass("measurement")
+                icon("mdi:memory")
+                entityCategory("diagnostic")
+            },
         ),
         SettingSpec(
             key = "diag_soc_temp", type = SettingType.FLOAT, group = "Diagnostics",
             label = "SoC temperature", default = "",
             help = "System-on-chip temperature (root/su panels; unavailable on sandbox-walled panels).",
             haExposedByDefault = false,
-            ha = HaEntity(
-                "sensor", "diag_soc_temp", "SoC temperature",
-                """"state_topic":"ha-paneld/{panel}/diag_soc_temp/state","device_class":"temperature","unit_of_measurement":"°C","state_class":"measurement","entity_category":"diagnostic"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "diag_soc_temp", "SoC temperature", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                deviceClass("temperature")
+                unit("°C")
+                stateClass("measurement")
+                entityCategory("diagnostic")
+            },
         ),
         SettingSpec(
             key = "diag_boot", type = SettingType.STRING, group = "Diagnostics",
             label = "Last boot time", default = "",
             help = "When the panel last booted (a timestamp — HA shows the elapsed uptime).",
             haExposedByDefault = false,
-            ha = HaEntity(
-                "sensor", "diag_boot", "Last boot time",
-                """"state_topic":"ha-paneld/{panel}/diag_boot/state","device_class":"timestamp","icon":"mdi:clock-start","entity_category":"diagnostic"""",
-                readOnly = true,
-            ),
+            ha = haEntity("sensor", "diag_boot", "Last boot time", readOnly = true) {
+                stateTopic()
+                deviceClass("timestamp")
+                icon("mdi:clock-start")
+                textValue()
+                entityCategory("diagnostic")
+            },
         ),
         SettingSpec(
             key = "diag_wifi_ssid", type = SettingType.STRING, group = "Diagnostics",
@@ -999,11 +1064,12 @@ object SettingsRegistry {
             help = "Current Wi-Fi network name while Wi-Fi is the active connection. This can identify a location and enters HA history when exposed; Android may hide it unless network-information permission is available.",
             haExposedByDefault = false,
             availableWhen = { it.hasWifiSsid },
-            ha = HaEntity(
-                "sensor", "diag_wifi_ssid", "Wi-Fi network",
-                """"state_topic":"ha-paneld/{panel}/diag_wifi_ssid/state","icon":"mdi:wifi","entity_category":"diagnostic"""",
-                readOnly = true,
-            ),
+            ha = haEntity("sensor", "diag_wifi_ssid", "Wi-Fi network", readOnly = true) {
+                stateTopic()
+                textValue()
+                icon("mdi:wifi")
+                entityCategory("diagnostic")
+            },
         ),
         SettingSpec(
             key = "diag_wifi_rssi", type = SettingType.INT, group = "Diagnostics",
@@ -1011,11 +1077,19 @@ object SettingsRegistry {
             help = "Current Wi-Fi received signal strength in dBm while Wi-Fi is the active connection.",
             haExposedByDefault = false,
             availableWhen = { it.hasWifi },
-            ha = HaEntity(
-                "sensor", "diag_wifi_rssi", "Wi-Fi signal strength",
-                """"state_topic":"ha-paneld/{panel}/diag_wifi_rssi/state","device_class":"signal_strength","unit_of_measurement":"dBm","state_class":"measurement","icon":"mdi:wifi","entity_category":"diagnostic"""",
+            ha = haEntity(
+                "sensor",
+                "diag_wifi_rssi",
+                "Wi-Fi signal strength",
                 readOnly = true, periodicRefresh = true,
-            ),
+            ) {
+                stateTopic()
+                deviceClass("signal_strength")
+                unit("dBm")
+                stateClass("measurement")
+                icon("mdi:wifi")
+                entityCategory("diagnostic")
+            },
         ),
         // Rolling Wi-Fi outage counts — actual loss of the panel's Wi-Fi default network, observed
         // through ConnectivityManager. Never derived from the Home Assistant socket or the MQTT
@@ -1026,11 +1100,18 @@ object SettingsRegistry {
             help = "Short Wi-Fi dropouts in the rolling last 24 hours. Counts loss of the panel's active Wi-Fi connection only — Home Assistant or broker outages are never counted. If the panel had to cap what it stores, the sensor's is_lower_bound attribute says the value is a floor.",
             haExposedByDefault = false,
             availableWhen = { it.hasWifi },
-            ha = HaEntity(
-                "sensor", "diag_wifi_outages_24h", "Wi-Fi outages (24 h)",
-                """"state_topic":"ha-paneld/{panel}/diag_wifi_outages_24h/state","json_attributes_topic":"ha-paneld/{panel}/diag_wifi_outages_24h/attributes","state_class":"measurement","icon":"mdi:wifi-alert","entity_category":"diagnostic"""",
+            ha = haEntity(
+                "sensor",
+                "diag_wifi_outages_24h",
+                "Wi-Fi outages (24 h)",
                 readOnly = true, periodicRefresh = true,
-            ),
+            ) {
+                stateTopic()
+                attributesTopic()
+                stateClass("measurement")
+                icon("mdi:wifi-alert")
+                entityCategory("diagnostic")
+            },
         ),
 
         // ---- Room climate (exact authenticated input layouts only) ----------------------------------
@@ -1042,22 +1123,24 @@ object SettingsRegistry {
             label = "Room temperature", default = "",
             help = "Room air temperature from the panel's supported climate sensor (calibration offset applied).",
             haExposedByDefault = true, availableWhen = { it.hasCht8305 },
-            ha = HaEntity(
-                "sensor", "room_temp", "Room temperature",
-                """"state_topic":"ha-paneld/{panel}/room_temp/state","device_class":"temperature","unit_of_measurement":"°C","state_class":"measurement"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "room_temp", "Room temperature", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                deviceClass("temperature")
+                unit("°C")
+                stateClass("measurement")
+            },
         ),
         SettingSpec(
             key = "room_humidity", type = SettingType.INT, group = "Sensors",
             label = "Room humidity", default = "",
             help = "Relative humidity from the panel's supported climate sensor.",
             haExposedByDefault = true, availableWhen = { it.hasCht8305 },
-            ha = HaEntity(
-                "sensor", "room_humidity", "Room humidity",
-                """"state_topic":"ha-paneld/{panel}/room_humidity/state","device_class":"humidity","unit_of_measurement":"%","state_class":"measurement"""",
-                readOnly = true, periodicRefresh = true,
-            ),
+            ha = haEntity("sensor", "room_humidity", "Room humidity", readOnly = true, periodicRefresh = true) {
+                stateTopic()
+                deviceClass("humidity")
+                unit("%")
+                stateClass("measurement")
+            },
         ),
         // Self-heat calibration trim (°C) added to the reported room temperature. Advanced + local-only
         // (no HA entity); the profile carries a baseline and this is an additional user trim. API-settable.

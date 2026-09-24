@@ -1,6 +1,10 @@
 package io.github.maxlyth.hapaneld.panelassistant
 
+import io.github.maxlyth.hapaneld.config.ChannelOption
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.mqtt.StateConverger
 import io.github.maxlyth.hapaneld.testsupport.TestSources
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -53,8 +57,9 @@ class PanelAssistantChannelCatalogTest {
             assertEquals("$wire min", config.opt("min"), descriptor.min)
             assertEquals("$wire max", config.opt("max"), descriptor.max)
             config.optJSONArray("options")?.let { labels ->
-                val codes = (0 until labels.length()).map { PanelAssistantChannelCatalog.optionCode(labels.getString(it)) }
-                assertTrue("$wire options $codes not in ${descriptor.options}", descriptor.options.orEmpty().containsAll(codes))
+                val announced = (0 until labels.length()).map(labels::getString)
+                val declared = descriptor.choices.orEmpty().map { it.label }
+                assertTrue("$wire options $announced not in $declared", declared.containsAll(announced))
             }
             config.optJSONArray("effect_list")?.let { effects ->
                 assertEquals("$wire effects", (0 until effects.length()).map(effects::getString), descriptor.options)
@@ -67,6 +72,59 @@ class PanelAssistantChannelCatalogTest {
             "update_companion", "voice_enabled", "navbar", "relay1", "button_led1", "watchdog", "update_channel",
             "zigbee_router", "cpu_governor", "network_adb", "room_temp", "diag_wifi_outages_24h", "volume",
         )))
+    }
+
+    @Test fun everyRegistryEntitysFactsAreExactlyTheFieldsItsDiscoveryCarries() {
+        val specs = SettingsRegistry.haCapable()
+        assertTrue("only ${specs.size} registry entities", specs.size >= 30)
+        for (spec in specs) {
+            val entity = spec.ha!!
+            val facts = entity.facts
+            val labels = facts.options?.map { it.label }
+            // Parsing is test-only: production reads the facts and never the rendered body.
+            val body = JSONObject(
+                entity.buildDiscoveryJson("p", "\"availability_topic\":\"a\"", "\"device\":{}", optionsJson = labels?.let { JSONArray(it).toString() }),
+            )
+            val key = spec.key
+            assertEquals("$key device_class", body.optString("device_class").ifEmpty { null }, facts.deviceClass)
+            assertEquals("$key unit", body.optString("unit_of_measurement").ifEmpty { null }, facts.unit)
+            assertEquals("$key state_class", body.optString("state_class").ifEmpty { null }, facts.stateClass)
+            assertEquals("$key entity_category", body.optString("entity_category").ifEmpty { null }, facts.entityCategory)
+            assertEquals("$key min", body.opt("min"), facts.min)
+            assertEquals("$key max", body.opt("max"), facts.max)
+            assertEquals("$key step", body.opt("step"), facts.step)
+            body.optJSONArray("options")?.let { announced ->
+                assertEquals("$key options", (0 until announced.length()).map(announced::getString), labels)
+            }
+            if (!body.has("options") && labels != null) {
+                assertEquals("$key: only a sensor may keep options out of discovery", "sensor", entity.component)
+            }
+            for (field in listOf("state_topic", "command_topic")) {
+                body.optString(field).ifEmpty { null }?.let { topic ->
+                    assertEquals("$key $field channel", entity.channel, topic.split('/')[2])
+                }
+            }
+        }
+    }
+
+    @Test fun renamingADisplayLabelChangesNoWireCode() {
+        val renamedSelects = SettingsRegistry.haCapable().filter { it.ha!!.facts.options != null }
+        assertTrue(renamedSelects.map { it.key }.containsAll(listOf("navbar_mode", "cpu_governor", "companion_update_channel", "voice_state")))
+        for (spec in renamedSelects) {
+            val entity = spec.ha!!
+            val renamed = entity.facts.options!!.map { ChannelOption(it.code, "${it.label} (renamed)") }
+            val before = PanelAssistantChannelCatalog.describe(spec)
+            val after = PanelAssistantChannelCatalog.describe(spec.copy(ha = entity.copy(facts = entity.facts.copy(options = renamed))))
+            assertEquals("${spec.key} wire codes", before.options, after.options)
+            assertEquals("${spec.key} descriptor json", before.toJson().toString(), after.toJson().toString())
+            for (option in renamed) {
+                assertEquals("${spec.key} ${option.code} state", PanelAssistantWireValue.Known(option.code),
+                    PanelAssistantValueTranslation.translate(after, StateConverger.Observation.Known(option.label)))
+                if (after.platform == "select") {
+                    assertEquals("${spec.key} ${option.code} command", option.label, PanelAssistantCommandTranslation.payload(after, option.code))
+                }
+            }
+        }
     }
 
     @Test fun uniqueSuffixIsTheMqttUniqueIdAfterThePanelPrefix() {
