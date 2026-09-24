@@ -446,7 +446,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         val hello = JSONObject(first.sent.first())
         assertEquals(listOf("relay1", "temperature"), hello.getJSONArray("channels").let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } })
-        assertEquals(listOf("humidity"), hello.getJSONArray("unsupported").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("humidity"), hello.optJSONArray("unsupported")?.let { (0 until it.length()).map(it::getString) })
 
         shadow.keys -= "temperature"
         shadow.unsupported += "temperature"
@@ -457,7 +457,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
         val again = JSONObject(second.sent.first())
         assertEquals(listOf("relay1"), again.getJSONArray("channels").let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } })
-        assertEquals(listOf("humidity", "temperature"), again.getJSONArray("unsupported").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("humidity", "temperature"), again.optJSONArray("unsupported")?.let { (0 until it.length()).map(it::getString) })
         harness.owner.close()
     }
 
