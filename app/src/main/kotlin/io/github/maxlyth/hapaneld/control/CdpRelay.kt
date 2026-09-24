@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.RendererResolver
 import io.github.maxlyth.hapaneld.util.AndroidInput
 import java.io.File
 import java.net.ConnectException
@@ -83,9 +84,7 @@ object CdpRelay {
     /** Resolve only the configured renderer's WebView socket. Picking the first global socket can
      * expose another app's DevTools endpoint when multiple debuggable WebViews are running. */
     private fun socketName(ctx: Context): String? {
-        val configured = Config(ctx).dashboardPackage
-        val pkg = if (configured == SystemController.BUILTIN_DASHBOARD) ctx.packageName else configured
-        if (!AndroidInput.isPackage(pkg)) return null
+        val pkg = relayRendererPackage(Config(ctx).dashboardPackage, ctx.packageName) ?: return null
         val pids = Su.runOutput("pidof $pkg")
             ?.trim()
             ?.split(Regex("\\s+"))
@@ -243,6 +242,13 @@ object CdpRelay {
         "rm -rf $ROOT_DIR && mkdir -m 700 $ROOT_DIR && chown 0:0 $ROOT_DIR && " +
             "cp $source $BIN.new && chown 0:0 $BIN.new && chmod 755 $BIN.new && mv -f $BIN.new $BIN && " +
             "( $BIN $PORT $socketName >/dev/null 2>&1 & ) && sleep 1"
+
+    /** The package whose WebView the relay exposes. Auto (blank) and the built-in sentinel are this app's
+     * own renderer; anything else must be a well-formed package name. */
+    internal fun relayRendererPackage(configured: String, ownPackage: String): String? {
+        val pkg = if (RendererResolver.isBuiltinSelection(configured, ownPackage)) ownPackage else configured
+        return pkg.takeIf(AndroidInput::isPackage)
+    }
 
     internal fun selectDevToolsSocket(unixSockets: String, rendererPids: Set<Int>): String? =
         Regex("(?:^|[^A-Za-z0-9_])(webview_devtools_remote_([0-9]+))(?:$|[^0-9])")
