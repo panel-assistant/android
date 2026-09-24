@@ -193,7 +193,7 @@ class CameraSessionOwner(
             }
             if (enc == null) return
             runCatching { enc.close() }
-            if (retract) transport.onEncoderStopped()
+            if (retract) transport.onEncoderStopped(id)
         }
 
         fun release() {
@@ -237,7 +237,7 @@ class CameraSessionOwner(
     }
 
     /** A subscriber's claim on the open session. Close exactly once; closing the last one closes the device. */
-    inner class Lease internal constructor(private val id: Long) : AutoCloseable {
+    inner class Lease internal constructor(private val id: Long, val generation: Long) : AutoCloseable {
         private var open = true
         override fun close() {
             val release: Release
@@ -323,7 +323,7 @@ class CameraSessionOwner(
             if (live?.encoder != null && params != null) CompletableFuture.completedFuture<StreamOutcome>(StreamOutcome.Ready(params)) else streamReady
         }
         return when (val outcome = runCatching { ready.get(ENCODER_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()) {
-            is StreamOutcome.Ready -> StreamAdmission.Granted(lease, outcome.params)
+            is StreamOutcome.Ready -> StreamAdmission.Granted(lease, outcome.params, lease.generation)
             is StreamOutcome.Refused -> {
                 lease.close()
                 StreamAdmission.Refused(outcome.reason)
@@ -424,6 +424,7 @@ class CameraSessionOwner(
 
     private fun acquireLease(requested: CameraResolution?, kind: LeaseKind, binding: StreamBinding?): Lease? {
         val leaseId: Long
+        val leaseGeneration: Long
         val pending: CompletableFuture<CameraRefusal?>?
         var startEncoderFor: Long? = null
         // Read outside the lock, like the presentation's: the capability may enumerate Android's
@@ -456,11 +457,13 @@ class CameraSessionOwner(
                 }
                 is Admission.Open -> {
                     leaseId = admission.lease
+                    leaseGeneration = state.generation
                     beginOpenLocked(admission.attempt, requested, binding?.fps)
                     pending = state.awaitOpen()
                 }
                 is Admission.Join -> {
                     leaseId = admission.lease
+                    leaseGeneration = state.generation
                     // A first stream lease on a live session: the attempt is current by construction
                     // (only openSucceeded reaches LIVE, and every LIVE exit nulls it under this lock), and
                     // streamReady is an unsettled future (every encoder ending replaces a done one).
@@ -489,7 +492,7 @@ class CameraSessionOwner(
             }
             return null
         }
-        return Lease(leaseId)
+        return Lease(leaseId, leaseGeneration)
     }
 
     // The capability is read before the lock is taken, never under it: the presence probe may enumerate,
@@ -733,14 +736,14 @@ class CameraSessionOwner(
             }
             // The transport learns the new sets BEFORE any waiter is woken, so a DESCRIBE that wakes on
             // this encoder can never be answered with the previous encoder's retained SPS/PPS.
-            transport.onParameterSets(sets)
+            transport.onParameterSets(sets, attempt.id)
             ready.complete(StreamOutcome.Ready(params))
         }
 
         override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long, bytes: Int) {
             if (synchronized(lock) { !state.isCurrent(attempt.id) }) return
             stats.onFrame(nowMs(), bytes)
-            transport.onAccessUnit(nals, keyFrame, ptsUs)
+            transport.onAccessUnit(nals, keyFrame, ptsUs, attempt.id)
         }
 
         override fun onEncoderError(detail: String) {
@@ -765,7 +768,7 @@ class CameraSessionOwner(
                 state.encoderFailed(nowMs())
             }
             settleStreamWaiters(CameraRefusal.STREAM_ENCODER)
-            transport.onStreamEnded()
+            transport.onStreamEnded(synchronized(lock) { state.generation })
         }
     }
 
@@ -820,7 +823,7 @@ class CameraSessionOwner(
             state.encoderFailed(nowMs())
         }
         settleStreamWaiters(CameraRefusal.STREAM_ENCODER)
-        transport.onStreamEnded()
+        transport.onStreamEnded(synchronized(lock) { state.generation })
         Log.w(TAG, "stream refused: no usable encoder ($detail); snapshots are unaffected")
     }
 
@@ -888,7 +891,7 @@ class CameraSessionOwner(
         )
         if (!owns) return
         settleStreamWaiters(refusal)
-        transport.onStreamEnded()
+        transport.onStreamEnded(endedGeneration)
     }
 
     // ---- frames -------------------------------------------------------------------------------------
