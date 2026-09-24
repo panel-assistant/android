@@ -120,10 +120,15 @@ class StorageRemediationTest {
     }
 
     @Test fun aSmallFreelistIsNotWorthARebuild() {
-        // 24% free: below the fraction.
+        // 24% free, though ~19 MiB of it: the fraction alone refuses.
         assertEquals(
             VacuumRefusal.NOT_WORTHWHILE,
-            fullVacuumAdmission(candidate(freelistCount = 1_200L, usableBytes = Long.MAX_VALUE), true, true),
+            fullVacuumAdmission(
+                candidate(pageCount = 20_000L, freelistCount = 4_800L, usableBytes = Long.MAX_VALUE),
+                lifecycleOwned = true,
+                backupVerified = true,
+                policy = FullVacuumPolicy(maximumLiveBytes = Long.MAX_VALUE),
+            ),
         )
         // Half free, but only 4 MiB of it: below the absolute floor.
         assertEquals(
