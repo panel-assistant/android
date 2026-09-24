@@ -9,6 +9,7 @@ import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import io.github.maxlyth.hapaneld.util.RetirableMutationGate
 import io.github.maxlyth.hapaneld.util.interruptAndJoin
 import io.github.maxlyth.hapaneld.util.localIpv4
+import io.github.maxlyth.hapaneld.util.localIpv6
 import io.github.maxlyth.hapaneld.util.shutdownNowAndAwait
 import io.github.maxlyth.hapaneld.util.submit
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
@@ -61,6 +62,12 @@ class MdnsAdvertiser(
     // this topology; process-wide interface enumeration is never authoritative on multi-homed panels.
     private val topology = MdnsTopology()
     @Volatile private var advertisedInstanceName: String? = null
+    // A dual-stack panel's IPv6 responder. JmDNS answers only its bound address's family, so this second
+    // instance carries the AAAA record. It only answers: the primary alone browses peers and carries the
+    // liveness probe, so a dual-stack panel's IPv4 advertisement behaves exactly as an IPv4-only one.
+    private var secondaryDns: JmDNS? = null
+    @Volatile private var secondaryBoundIp: String? = null
+    private var advertisedProps: Map<String, String>? = null
     private val liveness = MdnsLivenessPolicy()
     private data class RecoveryRequest(
         val dns: JmDNS?,
@@ -143,8 +150,8 @@ class MdnsAdvertiser(
      * changed LAN address is rebound. Silent responder stalls are handled separately by the bounded
      * liveness supervisor; network changes still reset that circuit because they start a fresh topology.
      */
-    fun start(lanIp: String?) {
-        val request = topology.request(lanIp)
+    fun start(lanIp: String?, secondaryIp: String? = null) {
+        val request = topology.request(lanIp, secondaryIp)
         if (request.changed) {
             cancelRecovery()
             liveness.onStarted(true)
@@ -155,7 +162,7 @@ class MdnsAdvertiser(
     /** Bootstrap before ConnectivityManager has delivered the first authoritative default-network address. */
     fun start() {
         val current = topology.snapshot()
-        if (current.lanIp == null) start(localIpv4()) else ensureStarted()
+        if (current.lanIp == null) start(localIpv4() ?: localIpv6()) else ensureStarted()
     }
 
     /** Retry creation for the already-authoritative topology without enumerating another interface. */
@@ -170,16 +177,18 @@ class MdnsAdvertiser(
             // generated for itself; it restarts from the restored configuration and advertises then.
             if (io.github.maxlyth.hapaneld.migration.IdentityMigrationGate.holdsNetworkIdentity()) return@start false
             if (!topology.matches(expectedEpoch, lanIp)) return@start false
+            val secondaryIp = topology.snapshot().secondaryIp
             if (lanIp == null) {
                 // ha-paneld can start before DHCP completes. Advertising loopback is worse than waiting:
                 // peers cannot reach it and JmDNS joins multicast on `lo`, not the LAN interface.
                 if (jmdns != null || lock != null) stopResources(MonotonicDeadline(OWNER_STOP_MS))
-                Log.i(TAG, "mDNS advertise deferred — no LAN IPv4 yet")
+                Log.i(TAG, "mDNS advertise deferred — no LAN address yet")
                 return@start false
             }
             if (jmdns != null || lock != null) {
                 if (!mdnsRebindRequired(boundIp, lanIp, browsing)) {
                     if (resetLivenessBudget) liveness.onStarted(true)
+                    reconcileSecondary(secondaryIp)
                     return@start true
                 }
                 Log.i(TAG, "mDNS address changed or advertiser stopped (bound=$boundIp lan=$lanIp); rebinding")
@@ -232,6 +241,8 @@ class MdnsAdvertiser(
                 dns.registerService(info)
                 // JmDNS may rename a colliding instance during registration; monitor the actual name.
                 advertisedInstanceName = info.name ?: runtimePanelId
+                advertisedProps = props
+                reconcileSecondary(secondaryIp)
                 // Start the persistent peer browse (powers the header switcher) — begins querying immediately
                 // and feeds a cached roster, so UI reads are instant. Completeness is eventual and can take
                 // longer after a whole-fleet restart.
@@ -293,6 +304,49 @@ class MdnsAdvertiser(
                 false
             }
         }
+
+    /**
+     * Bind the dual-stack IPv6 responder to [wanted], or remove it. Runs under [ownerGate] after the
+     * primary is registered, and advertises the primary's instance name and TXT record, so both families
+     * describe one panel. A failure leaves the primary alone; the next network callback retries.
+     */
+    private fun reconcileSecondary(wanted: String?) {
+        if (secondaryBoundIp == wanted) return
+        if (!stopSecondary() || wanted == null) return
+        val props = advertisedProps ?: return
+        try {
+            val dns = JmDNS.create(InetAddress.getByName(wanted), runtimePanelId)
+            secondaryDns = dns
+            dns.setDelegate { _, _ -> Log.w(TAG, "mDNS responder at $wanted could not recover its multicast socket") }
+            dns.registerService(
+                ServiceInfo.create(
+                    Config.MDNS_SERVICE_TYPE,
+                    advertisedInstanceName ?: runtimePanelId,
+                    runtimeHttpPort,
+                    0,
+                    0,
+                    props,
+                ),
+            )
+            secondaryBoundIp = wanted
+            Log.i(TAG, "also advertising ${Config.MDNS_SERVICE_TYPE} @ $wanted:$runtimeHttpPort")
+        } catch (e: Exception) {
+            Log.w(TAG, "mDNS advertise at $wanted failed", e)
+            stopSecondary()
+        }
+    }
+
+    private fun stopSecondary(): Boolean {
+        val dns = secondaryDns
+        if (dns != null) {
+            runCatching { dns.setDelegate(null) }
+            runCatching { dns.unregisterAllServices() }
+            if (runCatching { dns.close() }.isFailure) return false
+        }
+        secondaryDns = null
+        secondaryBoundIp = null
+        return true
+    }
 
     /** Queue recovery off JmDNS and refresh threads; neither may tear down a responder it owns. */
     private fun requestRecovery(
@@ -399,7 +453,8 @@ class MdnsAdvertiser(
     fun health(): MdnsHealth = MdnsHealth(
         advertising = jmdns != null && browsing,
         boundIp = boundIp,
-        lanIp = localIpv4(),
+        // An IPv6-only panel has no IPv4 to compare with; its authoritative address is the one requested.
+        lanIp = localIpv4() ?: topology.snapshot().lanIp,
         liveness = liveness.snapshot(),
     )
 
@@ -450,6 +505,7 @@ class MdnsAdvertiser(
         // Do not dismantle JmDNS underneath an admitted list/resolve call. The terminal retirement fence
         // is already installed; a failed drain selects the process boundary instead of a successor.
         if (!complete || deadline.remainingMs() <= 0L) return false
+        if (!stopSecondary()) return false
         val activeDns = jmdns
         runCatching { activeDns?.setDelegate(null) }
         runCatching { activeDns?.removeServiceListener(Config.MDNS_SERVICE_TYPE, peerListener) }
@@ -460,6 +516,7 @@ class MdnsAdvertiser(
         jmdns = null
         boundIp = null
         advertisedInstanceName = null
+        advertisedProps = null
         peerMap.clear()
         val activeLock = lock
         if (activeLock != null && runCatching { activeLock.release() }.isFailure) {
@@ -872,29 +929,41 @@ internal fun saturatingAdd(left: Long, right: Long): Long =
 
 internal fun monotonicMs(): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime())
 
-internal data class MdnsTopologySnapshot(val epoch: Long, val lanIp: String?, val changed: Boolean = false)
+internal data class MdnsTopologySnapshot(
+    val epoch: Long,
+    val lanIp: String?,
+    val changed: Boolean = false,
+    val secondaryIp: String? = null,
+)
 
-/** Default-network authority. Duplicate callbacks preserve the current recovery generation and budget. */
+/**
+ * Default-network authority. Duplicate callbacks preserve the current recovery generation and budget.
+ * Only the primary address defines the epoch: the dual-stack IPv6 responder is outside the liveness
+ * supervisor, so a change to it alone must not cancel recovery or reset the budget.
+ */
 internal class MdnsTopology {
     private var epoch = 0L
     private var lanIp: String? = null
+    private var secondaryIp: String? = null
 
-    @Synchronized fun request(requestedIp: String?): MdnsTopologySnapshot {
+    @Synchronized fun request(requestedIp: String?, requestedSecondaryIp: String? = null): MdnsTopologySnapshot {
         val changed = requestedIp != lanIp
         if (changed) {
             epoch++
             lanIp = requestedIp
         }
-        return MdnsTopologySnapshot(epoch, lanIp, changed)
+        secondaryIp = requestedSecondaryIp.takeIf { requestedIp != null }
+        return MdnsTopologySnapshot(epoch, lanIp, changed, secondaryIp)
     }
 
     @Synchronized fun stop(): MdnsTopologySnapshot {
         epoch++
         lanIp = null
+        secondaryIp = null
         return MdnsTopologySnapshot(epoch, null, true)
     }
 
-    @Synchronized fun snapshot(): MdnsTopologySnapshot = MdnsTopologySnapshot(epoch, lanIp)
+    @Synchronized fun snapshot(): MdnsTopologySnapshot = MdnsTopologySnapshot(epoch, lanIp, secondaryIp = secondaryIp)
 
     @Synchronized fun matches(expectedEpoch: Long, expectedIp: String?): Boolean =
         epoch == expectedEpoch && lanIp == expectedIp

@@ -81,18 +81,23 @@ class MdnsHealthTest {
             service.indexOf("} catch (e: InterruptedException)"),
         )
 
-        assertTrue(available.contains("mdnsRuntimeReconciler.networkChanged("))
-        assertTrue(available.contains("cm.getLinkProperties(network)?.linkAddresses.orEmpty().map { it.address }"))
-        assertTrue(available.indexOf("mdnsRuntimeReconciler.networkChanged(") < available.indexOf("runtime.observe() ?: return"))
+        assertTrue(available.contains("mdnsNetworkChanged(cm.getLinkProperties(network)?.linkAddresses.orEmpty())"))
+        assertTrue(available.indexOf("mdnsNetworkChanged(") < available.indexOf("runtime.observe() ?: return"))
         assertTrue(linkChange.contains("if (network != defaultNetwork) return"))
-        assertTrue(linkChange.contains("mdnsRuntimeReconciler.networkChanged("))
-        assertTrue(linkChange.contains("linkProperties.linkAddresses.map { it.address }"))
-        assertTrue(linkChange.indexOf("mdnsRuntimeReconciler.networkChanged(") < linkChange.indexOf("runtime.observe() ?: return"))
+        assertTrue(linkChange.contains("mdnsNetworkChanged(linkProperties.linkAddresses)"))
+        assertTrue(linkChange.indexOf("mdnsNetworkChanged(") < linkChange.indexOf("runtime.observe() ?: return"))
+        val feed = service.substring(
+            service.indexOf("private fun mdnsNetworkChanged("),
+            service.indexOf("private fun registerNetworkCallback()"),
+        )
+        assertTrue(feed.contains("mdnsRuntimeReconciler.networkChanged("))
+        assertTrue(feed.contains("linkAddresses.map { it.address }"))
+        assertTrue(feed.contains("it.flags and android.system.OsConstants.IFA_F_TEMPORARY != 0"))
         assertTrue(lost.contains("mdnsRuntimeReconciler.networkLost()"))
         assertTrue(running.contains("mdnsRuntimeReconciler.runtimeRunning()"))
         assertTrue(replacementComplete.contains("mdnsRuntimeReconciler.runtimeRunning()"))
         assertTrue(service.contains("mdnsRuntimeReconciler = MdnsRuntimeReconciler(runtime, ::revalidateMdns)"))
-        assertTrue(service.contains("current.value.mdns.start(request.lanIp)"))
+        assertTrue(service.contains("current.value.mdns.start(request.addresses?.primary, request.addresses?.secondary)"))
         assertTrue(service.contains("LatestDispatcher.singleSlot<MdnsRevalidation>"))
         assertFalse(service.contains("it.mdns.start()\n                            it.mqtt.reconnect()"))
     }
