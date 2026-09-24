@@ -821,7 +821,10 @@ private class HttpLogSink(
 /** The dashboard console source runs only while log shipping is configured, and never in Hardened
  * mode, which refuses the CDP relay it reads through. */
 internal fun webViewConsoleEnabled(config: Config): Boolean =
-    config.logShipEnabled && config.logShipHost.isNotBlank() && !config.hardenedSecurityEnabled
+    webViewConsoleEnabled(config.logShipEnabled, config.logShipHost, config.hardenedSecurityEnabled)
+
+internal fun webViewConsoleEnabled(shippingEnabled: Boolean, shippingHost: String, hardened: Boolean): Boolean =
+    shippingEnabled && shippingHost.isNotBlank() && !hardened
 
 /** One subscription over several captures; closing it detaches every one. */
 internal fun subscribeAll(vararg captures: LogCapture): ((String) -> Unit) -> AutoCloseable = { listener ->
