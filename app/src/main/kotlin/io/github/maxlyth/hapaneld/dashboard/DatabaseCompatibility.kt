@@ -262,6 +262,12 @@ private fun inspectSqlite(file: File): DatabaseFileInspection? = runCatching {
     }
 }.getOrNull()
 
+/** The isolated inspection's scratch directory, `<prefix><digits>` directly inside the cache directory. */
+internal const val RECOVERY_INSPECTION_DIRECTORY_PREFIX = "database-compatibility-"
+
+/** The one copy inside it; SQLite may add only its own `-wal`, `-shm` or `-journal` beside it. */
+internal const val RECOVERY_INSPECTION_COPY = "recovery.db"
+
 internal data class IsolatedRecoveryInspection(
     val inspection: DatabaseFileInspection,
     val sourceSha256: String,
@@ -282,9 +288,9 @@ internal fun inspectRecoveryDatabaseIsolated(
     val sourceBytesBefore = source.length()
     val sourceDigestBefore = sha256(source) ?: return null
     if (!scratchParent.isDirectory && !scratchParent.mkdirs()) return null
-    val scratch = Files.createTempDirectory(scratchParent.toPath(), "database-compatibility-").toFile()
+    val scratch = Files.createTempDirectory(scratchParent.toPath(), RECOVERY_INSPECTION_DIRECTORY_PREFIX).toFile()
     try {
-        val isolated = File(scratch, "recovery.db")
+        val isolated = File(scratch, RECOVERY_INSPECTION_COPY)
         Files.copy(source.toPath(), isolated.toPath(), LinkOption.NOFOLLOW_LINKS)
         if (sha256(isolated) != sourceDigestBefore) return null
         val inspected = inspectCopy(isolated) ?: return null

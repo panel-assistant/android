@@ -16,6 +16,13 @@ internal object CompanionHelperProtocol {
     const val MAX_BACKUP_STREAM_BYTES =
         CompanionRestore.MAX_AGGREGATE_BYTES + MAX_WAL_BYTES + MAX_SHM_BYTES
 
+    /** Every capture directory is `<prefix><nanoTime>-<attempt>` directly inside the cache directory. */
+    const val CAPTURE_DIRECTORY_PREFIX = "companion-capture-"
+    const val CAPTURE_DIRECTORY_ATTEMPTS = 8
+
+    /** The only relative paths a capture directory holds; storage remediation proves ownership by them. */
+    val capturePaths: List<String> get() = backupOrder
+
     private val backupOrder = listOf(
         CompanionRestore.DATABASE_FILE,
         DATABASE_WAL_FILE,
@@ -187,8 +194,8 @@ internal object CompanionHelperProtocol {
     }
 
     private fun createCaptureDirectory(cacheDir: File): File? {
-        repeat(8) {
-            val directory = File(cacheDir, "companion-capture-${System.nanoTime()}-$it")
+        repeat(CAPTURE_DIRECTORY_ATTEMPTS) {
+            val directory = File(cacheDir, "$CAPTURE_DIRECTORY_PREFIX${System.nanoTime()}-$it")
             if (directory.mkdir()) return directory
         }
         return null

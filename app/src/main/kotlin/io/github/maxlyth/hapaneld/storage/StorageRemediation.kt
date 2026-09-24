@@ -1,5 +1,10 @@
 package io.github.maxlyth.hapaneld.storage
 
+import io.github.maxlyth.hapaneld.dashboard.RECOVERY_INSPECTION_COPY
+import io.github.maxlyth.hapaneld.dashboard.RECOVERY_INSPECTION_DIRECTORY_PREFIX
+import io.github.maxlyth.hapaneld.util.CompanionHelperProtocol
+import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceProtocol
+import io.github.maxlyth.hapaneld.util.guardDbCandidatePendingName
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -14,6 +19,10 @@ enum class DisposableDataClass {
     DOWNLOADS,
     SCREENSHOTS,
     CACHES,
+    /** Scratch directories a companion capture or an isolated recovery inspection left behind. */
+    TEMPORARY_DIRECTORIES,
+    /** A Guard DB candidate claim's temporary copy, never the staged candidate itself. */
+    GUARD_DB_CANDIDATES,
 }
 
 /**
@@ -23,12 +32,31 @@ enum class DisposableDataClass {
  *
  * [retain] names files that must survive even when they match, such as the screenshot the panel is
  * currently serving. It sees only the matching candidates and returns the names to keep.
+ *
+ * [ownedFile] is any further proof the writer itself applies to its file, such as the Guard DB
+ * staging's exact owner, mode and link count; a file it refuses, or cannot judge, is kept.
  */
 internal class DisposableFileRule(
     val dataClass: DisposableDataClass,
     val directory: File,
     val ownedName: Regex,
     val retain: (List<File>) -> Set<String> = { emptySet() },
+    val ownedFile: (File) -> Boolean = { true },
+)
+
+/**
+ * One class of app-owned temporary directories: each a direct child of [parent] named exactly as its
+ * writer names it, holding only the relative paths ([ownedEntry], `/`-separated, directories
+ * included) that writer creates. The directory and every entry must pass the same orphan proof as a
+ * file, so a tree any live operation could still be writing is kept whole. A link, a special file,
+ * an entry no writer creates or a tree deeper or larger than any writer makes keeps the tree whole;
+ * nothing is ever followed out of it.
+ */
+internal class DisposableDirectoryRule(
+    val dataClass: DisposableDataClass,
+    val parent: File,
+    val ownedName: Regex,
+    val ownedEntry: Regex,
 )
 
 /** What one rule actually did, measured from the filesystem rather than inferred. */
@@ -41,11 +69,12 @@ data class DisposableSweepResult(
 )
 
 /**
- * Whether a matching file is provably orphaned: written before this process started, so no live
+ * Whether a matching file is provably orphaned: modified before this process started, so no live
  * in-process owner (a download, an upload, a prepared install, a backup stream) can still hold it,
- * and at least [minimumAgeMs] old, which keeps a small backwards wall-clock step from turning a file
- * this process has just created into a candidate. A zero or future modification time is unknown and
- * keeps the file.
+ * and at least [minimumAgeMs] old, which leaves a margin for a process that has only just died.
+ * [processStartMillis] is [ProcessStartWallClock.orphanBoundary], which already stands in the oldest
+ * wall-clock epoch this process has run in, so a backwards clock step cannot make a file this process
+ * wrote look older than the process. A zero or future modification time is unknown and keeps the file.
  */
 internal fun disposableFileOrphaned(
     lastModifiedMillis: Long,
@@ -73,7 +102,8 @@ internal class DisposableFileSweeper(
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) return empty
         val candidates = (rule.directory.listFiles() ?: return empty).filter { file ->
             rule.ownedName.matches(file.name) &&
-                Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
+                Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                runCatching { rule.ownedFile(file) }.getOrDefault(false)
         }
         val retained = runCatching { rule.retain(candidates) }.getOrNull()
             // A retention rule that cannot decide keeps everything rather than guessing.
@@ -101,16 +131,103 @@ internal class DisposableFileSweeper(
         }
         return DisposableSweepResult(rule.dataClass, deleted, freed, kept, failures)
     }
+
+    /**
+     * Removes whole directory trees that [DisposableDirectoryRule] proves are this app's and every
+     * entry of which [disposableFileOrphaned] proves no live operation holds. Counts are regular
+     * files; bytes are counted only for files that are gone afterwards.
+     */
+    fun sweep(rule: DisposableDirectoryRule): DisposableSweepResult {
+        val empty = DisposableSweepResult(rule.dataClass, 0, 0L, 0, 0)
+        if (!Files.isDirectory(rule.parent.toPath(), LinkOption.NOFOLLOW_LINKS)) return empty
+        val tops = (rule.parent.listFiles() ?: return empty).filter { top ->
+            rule.ownedName.matches(top.name) && Files.isDirectory(top.toPath(), LinkOption.NOFOLLOW_LINKS)
+        }
+        val now = nowMillis()
+        var deleted = 0
+        var freed = 0L
+        var kept = 0
+        var failures = 0
+        tops.forEach { top ->
+            val tree = disposableTree(top)
+            val provable = tree.complete &&
+                tree.entries.all { rule.ownedEntry.matches(it.relative) } &&
+                (tree.entries.map { it.file } + top).all { entry ->
+                    disposableFileOrphaned(entry.lastModified(), processStartMillis, now, minimumAgeMs)
+                }
+            if (!provable) {
+                kept += tree.entries.count { !it.directory }
+                return@forEach
+            }
+            tree.entries.filterNot { it.directory }.forEach { entry ->
+                val bytes = entry.file.length().coerceAtLeast(0L)
+                val removed = runCatching { Files.deleteIfExists(entry.file.toPath()) }.getOrDefault(false)
+                if (removed && !Files.exists(entry.file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    deleted++
+                    freed = storageRemediationSaturatingAdd(freed, bytes)
+                } else {
+                    failures++
+                }
+            }
+            // Deepest first, then the tree itself; a directory still holding anything stays.
+            (tree.entries.filter { it.directory }.sortedByDescending { it.relative.count { c -> c == '/' } }
+                .map { it.file } + top).forEach { directory ->
+                if (!runCatching { Files.deleteIfExists(directory.toPath()) }.getOrDefault(false)) failures++
+            }
+        }
+        return DisposableSweepResult(rule.dataClass, deleted, freed, kept, failures)
+    }
+}
+
+private class DisposableTreeEntry(val file: File, val relative: String, val directory: Boolean)
+
+private class DisposableTree(val entries: List<DisposableTreeEntry>, val complete: Boolean)
+
+/**
+ * Every entry under [top], listed without following links. The listing is incomplete, and the tree
+ * therefore unprovable, when an entry is neither a plain file nor a directory, a directory cannot be
+ * listed, or the tree is deeper or larger than any writer makes one.
+ */
+private fun disposableTree(top: File): DisposableTree {
+    val entries = mutableListOf<DisposableTreeEntry>()
+    fun visit(directory: File, prefix: String, depth: Int): Boolean {
+        val children = directory.listFiles() ?: return false
+        children.forEach { child ->
+            if (entries.size >= DISPOSABLE_TREE_MAXIMUM_ENTRIES) return false
+            val relative = prefix + child.name
+            val path = child.toPath()
+            when {
+                Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> {
+                    entries += DisposableTreeEntry(child, relative, directory = true)
+                    if (depth >= DISPOSABLE_TREE_MAXIMUM_DEPTH || !visit(child, "$relative/", depth + 1)) return false
+                }
+                Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) ->
+                    entries += DisposableTreeEntry(child, relative, directory = false)
+                else -> return false
+            }
+        }
+        return true
+    }
+    val complete = runCatching { visit(top, "", 1) }.getOrDefault(false)
+    return DisposableTree(entries, complete)
 }
 
 /**
  * Every disposable file class the app writes, each confined to one app-private directory and to the
  * exact names its writer produces (`File.createTempFile` adds only decimal digits). Configuration,
  * the config vault, revisions, imported profiles, database files and their restore or superseded
- * copies, guard-database candidates and the platform-owned WebView store are absent by construction:
+ * copies, staged Guard DB candidates and the platform-owned WebView store are absent by construction:
  * no rule names their directory or their names.
+ *
+ * A Guard DB claim's temporary is admitted only through [guardDbFileOwned], the staging's own file
+ * proof. The staged `guard-db-candidate-<role>.apk` pair is process-independent by design, so no
+ * process-start proof can show it abandoned; it stays until the operator discards it.
  */
-internal fun appOwnedDisposableFileRules(cacheDir: File, filesDir: File): List<DisposableFileRule> = listOf(
+internal fun appOwnedDisposableFileRules(
+    cacheDir: File,
+    filesDir: File,
+    guardDbFileOwned: (File) -> Boolean,
+): List<DisposableFileRule> = listOf(
     DisposableFileRule(
         DisposableDataClass.DOWNLOADS,
         cacheDir,
@@ -135,7 +252,45 @@ internal fun appOwnedDisposableFileRules(cacheDir: File, filesDir: File): List<D
         Regex("""[0-9a-f]{64}\.png(\.new)?|current\.new"""),
         retain = { candidates -> retainedScreenshots(File(filesDir, SCREENSHOT_DIRECTORY), candidates) },
     ),
+    DisposableFileRule(
+        DisposableDataClass.GUARD_DB_CANDIDATES,
+        filesDir,
+        exactNames(GuardDbMaintenanceProtocol.Role.values().map(::guardDbCandidatePendingName)),
+        ownedFile = guardDbFileOwned,
+    ),
 )
+
+/**
+ * The temporary directories app writers create and remove themselves, left behind only when the
+ * process dies mid-operation: a companion data capture (`companion-capture-<nanoTime>-<attempt>`,
+ * holding exactly the capture's paths) and an isolated recovery inspection
+ * (`database-compatibility-<digits>`, holding one copy and SQLite's own companions of it).
+ *
+ * `profile-restore-plan-<nanoTime>` is deliberately absent: the bundled-only registry that names it
+ * plans without writing, so no writer ever creates it
+ * (`ProfileCatalogMigrationRestoreTest` "the bundled-only planner writes nothing").
+ */
+internal fun appOwnedDisposableDirectoryRules(cacheDir: File): List<DisposableDirectoryRule> = listOf(
+    DisposableDirectoryRule(
+        DisposableDataClass.TEMPORARY_DIRECTORIES,
+        cacheDir,
+        Regex(Regex.escape(CompanionHelperProtocol.CAPTURE_DIRECTORY_PREFIX) +
+            "[0-9]+-[0-${CompanionHelperProtocol.CAPTURE_DIRECTORY_ATTEMPTS - 1}]"),
+        exactNames(
+            CompanionHelperProtocol.capturePaths.flatMap { path ->
+                path.split('/').runningReduce { parent, child -> "$parent/$child" }
+            }.distinct(),
+        ),
+    ),
+    DisposableDirectoryRule(
+        DisposableDataClass.TEMPORARY_DIRECTORIES,
+        cacheDir,
+        Regex(Regex.escape(RECOVERY_INSPECTION_DIRECTORY_PREFIX) + "[0-9]+"),
+        exactNames(listOf("", "-wal", "-shm", "-journal").map { RECOVERY_INSPECTION_COPY + it }),
+    ),
+)
+
+private fun exactNames(names: List<String>): Regex = Regex(names.joinToString("|") { Regex.escape(it) })
 
 /**
  * The screenshot the panel serves (named by the `current` pointer) and the newest other image, which
@@ -155,25 +310,50 @@ private fun retainedScreenshots(directory: File, candidates: List<File>): Set<St
 }
 
 /**
- * The wall-clock time this process started, captured once as early as the process runs. It must be
- * a constant: recomputing it later from uptime would move it into a newer clock epoch after a forward
- * step (a panel with no real-time clock booting before NTP), and every file this process wrote before
- * the step would then look older than the process and be swept while still in use.
+ * The wall-clock time this process started, in the oldest clock epoch the process has run in.
+ *
+ * Every observation recomputes the start from monotonic uptime ([nowWallMillis] minus the elapsed
+ * time since start) and keeps the lowest value seen. A forward step (a panel with no real-time clock
+ * booting before NTP) raises the recomputed start, so the captured one stays: files this process
+ * wrote before the step still postdate it. A backward step of any size lowers it by exactly the
+ * step, so files this process writes afterwards still postdate it too. A step that is undone again
+ * before any observation sees it is the one case left, which is why the app also observes on every
+ * `ACTION_TIME_CHANGED`.
  */
+internal class ProcessStartBoundary(startWallMillis: Long, private val startElapsedMillis: Long) {
+    private var lowest = startWallMillis
+
+    @Synchronized
+    fun observe(nowWallMillis: Long, nowElapsedMillis: Long): Long {
+        lowest = minOf(lowest, nowWallMillis - (nowElapsedMillis - startElapsedMillis))
+        return lowest
+    }
+}
+
+/** The process's [ProcessStartBoundary], captured once as early as the process runs. */
 object ProcessStartWallClock {
     @Volatile
-    private var captured: Long? = null
+    private var boundary: ProcessStartBoundary? = null
 
-    fun capture(startWallMillis: Long) {
-        if (captured == null) captured = startWallMillis
+    @Synchronized
+    fun capture(startWallMillis: Long, startElapsedMillis: Long) {
+        if (boundary == null) boundary = ProcessStartBoundary(startWallMillis, startElapsedMillis)
+    }
+
+    /** Records the clock as it is now, so a backward step is remembered even after it is undone. */
+    fun observe(nowWallMillis: Long, nowElapsedMillis: Long) {
+        boundary?.observe(nowWallMillis, nowElapsedMillis)
     }
 
     /** Null until captured; with no known start, nothing is provably orphaned. */
-    fun millis(): Long? = captured
+    fun orphanBoundary(nowWallMillis: Long, nowElapsedMillis: Long): Long? =
+        boundary?.observe(nowWallMillis, nowElapsedMillis)
 }
 
 internal const val SCREENSHOT_DIRECTORY = "panel-screenshots"
 internal const val DISPOSABLE_ORPHAN_MINIMUM_AGE_MS = 60L * 60L * 1000L
+private const val DISPOSABLE_TREE_MAXIMUM_DEPTH = 4
+private const val DISPOSABLE_TREE_MAXIMUM_ENTRIES = 64
 
 /** A WAL checkpoint's outcome, as it happened. */
 enum class WalCheckpointResult {
