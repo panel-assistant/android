@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "a2951a1a3db623d02d75484363143d3d29b1563c",
+  "sourceRevision": "53a19b4dfeb4f114f0196793c921cb06c2fcea2c",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -152,6 +152,10 @@
             "max": null,
             "step": null
           }
+        ],
+        "unsupported": [
+          "humidity",
+          "temperature"
         ]
       }
     },

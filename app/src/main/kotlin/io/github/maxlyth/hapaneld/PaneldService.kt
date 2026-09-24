@@ -1887,13 +1887,14 @@ class PaneldService : Service() {
             wifiDiagnostics = wifiDiagnostics::snapshot,
             wifiOutages = { wifiOutageTracker.counts() },
             learnedProximityEligibility = sensors::hasLearnedProximity,
+            learnedProximityState = sensors::learnedProximityState,
             onAutoSleepConfigChanged = {
                 acceptCommittedAutoSleepSetting(liveSettingAuthority) { refreshAutoSleepPresence() }
             },
             // This bridge generation's lease, registered with the runtime as the live broker channel
             // just below. A bridge that outlives its service OR its own replacement cannot report.
             haLifecycleLease = lease,
-        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bind(bridge::stateChannelKeys)) }
+        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape)) }
     }
 
     private fun buildMdns(identity: NetworkRuntimeIdentity): MdnsAdvertiser = MdnsAdvertiser(
@@ -3325,16 +3326,26 @@ class PaneldService : Service() {
         val companionChannel = config.companionUpdateChannel
         val cap = profile.companionMaxVersion
         val progress = InstallProgress.presentationSnapshot()
-        fun installed(pkg: String): String? =
-            runCatching { packageManager.getPackageInfo(pkg, 0).versionName ?: "" }.getOrNull()
+        // Only "not installed" is an answer; any other failure leaves presence unknown rather than absent.
+        var lookupFailed = false
+        fun installed(pkg: String): String? = try {
+            packageManager.getPackageInfo(pkg, 0).versionName ?: ""
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+            null
+        } catch (_: Exception) {
+            lookupFailed = true
+            null
+        }
+        val companionMinimal = installed(CompanionInstaller.MINIMAL_PKG)
+        val companionFull = installed(CompanionInstaller.FULL_PKG)
         return SoftwareUpdateSources(
             paneldVersion = BuildConfig.VERSION_NAME,
             paneldChannel = paneldChannel,
             paneldTarget = UpdateChecker.paneldTarget(paneldChannel)?.let {
                 SoftwareTarget(it.version, it.tag, it.releaseUrl)
             },
-            companionMinimalVersion = installed(CompanionInstaller.MINIMAL_PKG),
-            companionFullVersion = installed(CompanionInstaller.FULL_PKG),
+            companionMinimalVersion = companionMinimal,
+            companionFullVersion = companionFull,
             companionChannel = companionChannel,
             companionCap = cap,
             companionTarget = UpdateChecker.companionTarget(companionChannel, cap)?.let {
@@ -3342,6 +3353,7 @@ class PaneldService : Service() {
             },
             runningOperation = progress.component.takeIf { progress.running },
             panelAssistantOwnsPaneldUpdate = panelAssistantUpdateLease.active(),
+            companionPresenceUnknown = lookupFailed,
         )
     }
 

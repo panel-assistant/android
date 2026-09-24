@@ -494,6 +494,70 @@ class MqttWireGoldenTest {
 
     // ---- rig ----
 
+    @Test fun nativeHelloStatesTheChannelsThePanelCannotFillAndDescribesNone() {
+        val rig = rig(hasTemperature = false, hasHumidity = false, learnedProximityState = { false })
+        rig.updateSources.set(updateSources().copy(companionMinimalVersion = null, companionFullVersion = null))
+        try {
+            val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+            rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
+            val offer = native.offer()
+            val absent = listOf("humidity", "proximity", "proximity_level", "temperature", "update_companion")
+            assertEquals(absent, offer.unsupported)
+            val described = offer.descriptors.map { it.channel }
+            absent.forEach { assertFalse("$it must not be described", it in described) }
+            assertTrue("a channel the panel fills stays described", "screen" in described && "update_paneld" in described)
+            assertEquals("the plain descriptor list agrees with the offer", described, native.descriptors().map { it.channel })
+        } finally {
+            rig.close()
+        }
+    }
+
+    @Test fun nativeDescribesAChannelAgainOnceThePanelGainsIt() {
+        val learned = java.util.concurrent.atomic.AtomicReference<Boolean?>(false)
+        val rig = rig(learnedProximityState = learned::get)
+        try {
+            val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+            rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
+            val before = native.offer()
+            assertEquals(listOf("proximity", "proximity_level"), before.unsupported)
+            native.open(before.descriptors)
+            assertFalse(native.descriptorsChanged())
+            learned.set(true)
+            assertTrue("gaining the reading ends the session so it is described again", native.descriptorsChanged())
+            val after = native.offer()
+            assertEquals(emptyList<String>(), after.unsupported)
+            assertTrue(after.descriptors.map { it.channel }.containsAll(listOf("proximity", "proximity_level")))
+        } finally {
+            rig.close()
+        }
+    }
+
+    @Test fun nativeNeverStatesAnUnsettledOrPresentChannelUnsupported() {
+        // Proximity not yet loaded (or closed), temperature and humidity present, a Companion installed: every
+        // one is described as before and nothing is stated unsupported, so no entity can be removed.
+        val rig = rig(learnedProximityState = { null })
+        try {
+            val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+            rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
+            val offer = native.offer()
+            assertEquals(emptyList<String>(), offer.unsupported)
+            assertTrue(offer.descriptors.map { it.channel }.containsAll(
+                listOf("humidity", "proximity", "proximity_level", "temperature", "update_companion"),
+            ))
+            rig.updateSources.set(updateSources().copy(companionMinimalVersion = null, companionFullVersion = null))
+            assertEquals("only the Companion's settled absence is stated", listOf("update_companion"), native.offer().unsupported)
+            // A failed package lookup is not an absence: the update channel stays described and is never stated.
+            rig.updateSources.set(updateSources().copy(
+                companionMinimalVersion = null, companionFullVersion = null, companionPresenceUnknown = true,
+            ))
+            val unknown = native.offer()
+            assertEquals(emptyList<String>(), unknown.unsupported)
+            assertTrue("update_companion" in unknown.descriptors.map { it.channel })
+        } finally {
+            rig.close()
+        }
+    }
+
     @Test fun watchdogObservesNativeChangesWithoutMqttConnection() {
         val rig = rig(runtimeBroker = "unsupported://broker")
         val owner = ServiceRuntimeOwner(rig.bridge, "native-observation-test")
@@ -625,7 +689,13 @@ class MqttWireGoldenTest {
         }
     }
 
-    private fun rig(runtimeBroker: String = "tcp://127.0.0.1:1883", configure: (Config) -> Unit = {}): Rig {
+    private fun rig(
+        runtimeBroker: String = "tcp://127.0.0.1:1883",
+        hasTemperature: Boolean = true,
+        hasHumidity: Boolean = true,
+        learnedProximityState: () -> Boolean? = { null },
+        configure: (Config) -> Unit = {},
+    ): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
         val prefs = MemoryPreferences()
         val context = FakeContext(tmp, prefs)
@@ -720,8 +790,8 @@ class MqttWireGoldenTest {
             hasEvdevButtons = false,
             capabilities = { capabilities },
             hasProximity = true,
-            hasTemperature = true,
-            hasHumidity = true,
+            hasTemperature = hasTemperature,
+            hasHumidity = hasHumidity,
             hasCht8305 = false,
             hasButtonBacklight = true,
             hasMicrophone = true,
@@ -735,6 +805,7 @@ class MqttWireGoldenTest {
             storageHealth = { storageReads.incrementAndGet(); storage.get() },
             wifiOutages = { WifiOutageCounts(last24h = 3) },
             learnedProximityEligibility = { true },
+            learnedProximityState = learnedProximityState,
             onAutoSleepConfigChanged = { autoSleepConfigChanges.incrementAndGet() },
             runtimePanelId = PANEL,
             runtimeFriendlyName = "Golden panel",

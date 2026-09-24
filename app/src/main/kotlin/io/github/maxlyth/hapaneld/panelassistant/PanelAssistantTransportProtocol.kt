@@ -188,6 +188,7 @@ internal object PanelAssistantTransportProtocol {
         identity: PanelAssistantHelloIdentity,
         capabilities: List<String> = emptyList(),
         channels: List<PanelAssistantChannelDescriptor> = emptyList(),
+        unsupported: List<String> = emptyList(),
     ): String = JSONObject()
         .put("id", id)
         .put("type", COMMAND_HELLO)
@@ -200,6 +201,9 @@ internal object PanelAssistantTransportProtocol {
         .put("contract_digest", CONTRACT_DIGEST)
         .put("capabilities", JSONArray(capabilities))
         .put("channels", JSONArray(channels.map { it.toJson() }))
+        // An explicit statement that these channels cannot be served here, so the integration removes their
+        // entities; a channel merely absent from both lists changes nothing. Omitted when empty.
+        .apply { if (unsupported.isNotEmpty()) put("unsupported", JSONArray(unsupported)) }
         .toString()
 
     fun reportState(id: Long, session: String, sync: String, observations: JSONArray): String = JSONObject()

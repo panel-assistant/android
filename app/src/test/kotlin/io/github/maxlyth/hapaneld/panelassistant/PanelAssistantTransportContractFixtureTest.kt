@@ -23,6 +23,7 @@ class PanelAssistantTransportContractFixtureTest {
                     PanelAssistantHelloIdentity("d".repeat(64), "0.9.8-rc2", 801),
                     PanelAssistantTransportProtocol.CAPABILITIES,
                     listOf(descriptor!!),
+                    listOf("humidity", "temperature"),
                 ),
             ),
             JSONObject(

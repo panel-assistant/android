@@ -105,6 +105,24 @@ class ProximityCalibrationRuntimeTest {
         }
     }
 
+    @Test fun learnedSignalIsUnknownWhenTheStoredCalibrationCannotBeRead() {
+        // A read failure falls back to the profile baseline, so isLearnedSignal() reads false for a panel that is
+        // trained. The settled answer must be unknown: a false is stated to Home Assistant as a missing sensor.
+        val read = ProximityCalibrationRuntime(SOURCE, PROFILE, null, Store(Backing(row(presenceOnly()))),
+            elapsed = { 1_000L }, wall = { 1_800_000_000_000L })
+        assertEquals(true, read.learnedSignalState())
+        val failed = ProximityCalibrationRuntime(SOURCE, PROFILE, null,
+            Store(Backing(row(presenceOnly())).apply { failRead = true }),
+            elapsed = { 1_000L }, wall = { 1_800_000_000_000L })
+        assertFalse(failed.isLearnedSignal())
+        assertEquals(null, failed.learnedSignalState())
+        val untrained = ProximityCalibrationRuntime(SOURCE, PROFILE, null, Store(Backing()),
+            elapsed = { 1_000L }, wall = { 1_800_000_000_000L })
+        assertEquals(false, untrained.learnedSignalState())
+        read.close()
+        assertEquals(null, read.learnedSignalState())
+    }
+
     @Test fun resetWithoutProfileDefaultPreservesUserCalibration() {
         val previous = row(binaryLegacy())
         val backing = Backing(previous)
@@ -542,11 +560,12 @@ class ProximityCalibrationRuntimeTest {
     }
 
     private class Backing(var row: EntityCatalogStore.ProximityModelRow? = null) {
-        var writes = 0; var clears = 0; var closes = 0; var failWrite = false
+        var writes = 0; var clears = 0; var closes = 0; var failWrite = false; var failRead = false
     }
     private class Store(private val backing: Backing) : ProximityModelStore {
         // Deliberately return mismatched rows too: the runtime must validate their fingerprint.
-        override fun readProximityModel(fingerprint: String) = backing.row
+        override fun readProximityModel(fingerprint: String) =
+            if (backing.failRead) throw IllegalStateException("database locked") else backing.row
         override fun writeProximityBatch(model: EntityCatalogStore.ProximityModelRow,
             rollups: List<EntityCatalogStore.ProximityRollupRow>, episodes: List<EntityCatalogStore.ProximityEpisodeRow>, now: Long) {
             backing.writes++
