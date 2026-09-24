@@ -217,15 +217,18 @@ class StorageRemediationTest {
         var backup: Boolean = true,
         var vacuumOutcome: VacuumOutcome = VacuumOutcome(VacuumResult.COMPLETED),
         var owned: Boolean = true,
+        var duringRetention: Recorder.() -> Unit = {},
     ) : StorageRemediationOperations {
         val calls = mutableListOf<String>()
         override fun sweepDisposableFiles() = sweep.also { calls += "sweep" }
-        override fun enforceRetention() = retention.also { calls += "retention" }
+        override fun enforceRetention() = retention.also { calls += "retention"; duringRetention() }
         override fun checkpointWal() = checkpoint.also { calls += "checkpoint" }
         override fun writeVerifiedBackup() = backup.also { calls += "backup" }
         override fun vacuum() = vacuumOutcome.also { calls += "vacuum" }
         override fun lifecycleOwned() = owned
-        override suspend fun observe(): StorageHealthSnapshot? = observations.removeFirstOrNull().also { calls += "observe" }
+        /** The last queued observation repeats, so a test names only the states that change. */
+        override suspend fun observe(): StorageHealthSnapshot? =
+            (if (observations.size > 1) observations.removeFirst() else observations.firstOrNull()).also { calls += "observe" }
     }
 
     private fun run(operations: Recorder, initial: StorageHealthSnapshot) =
@@ -241,14 +244,14 @@ class StorageRemediationTest {
         val warning = snapshot(StorageHealthSeverity.WARNING)
         val relieved = snapshot(StorageHealthSeverity.HEALTHY, mainBytes = 15L * mib, walBytes = 0L)
         val operations = Recorder(
-            ArrayDeque(listOf(relieved)),
+            ArrayDeque(listOf(warning, relieved)),
             sweep = listOf(DisposableSweepResult(DisposableDataClass.DOWNLOADS, 2, 3L * mib, 0, 0)),
             retention = RetentionResult.PRUNED,
         )
 
         val summary = run(operations, warning)!!
 
-        assertEquals(listOf("sweep", "retention", "checkpoint", "observe"), operations.calls)
+        assertEquals(listOf("sweep", "retention", "observe", "checkpoint", "observe"), operations.calls)
         assertEquals(StorageRemediationVerdict.RELIEVED, summary.verdict)
         assertEquals(3L * mib, summary.fileBytesFreed)
         assertEquals("measured from the observations, not inferred", 7L * mib, summary.databaseBytesFreed)
@@ -365,7 +368,7 @@ class StorageRemediationTest {
         val stillPressured = none.copy(walBytes = 2_000L * (pageSize + 24L), freelistCount = 0L,
             autoVacuumMode = StorageAutoVacuumMode.INCREMENTAL)
         val operations = Recorder(
-            ArrayDeque(listOf(none, stillPressured)),
+            ArrayDeque(listOf(none, none, stillPressured)),
             vacuumOutcome = VacuumOutcome(VacuumResult.COMPLETED, checkpoint = WalCheckpointResult.DEFERRED_BUSY),
         )
 
@@ -373,6 +376,49 @@ class StorageRemediationTest {
 
         assertEquals(VacuumResult.COMPLETED, summary.vacuum.result)
         assertEquals(StorageRemediationVerdict.DEFERRED, summary.verdict)
+    }
+
+    @Test fun aCheckpointIsNotStartedWhenOwnershipIsLostDuringRetention() {
+        val warning = snapshot(StorageHealthSeverity.WARNING)
+        val operations = Recorder(ArrayDeque(listOf(warning)), duringRetention = { owned = false })
+
+        val summary = run(operations, warning)!!
+
+        assertFalse("shutdown or a data backup began during retention", "checkpoint" in operations.calls)
+        assertEquals(WalCheckpointResult.SKIPPED_LIFECYCLE, summary.walCheckpoint)
+        assertEquals(StorageRemediationVerdict.DEFERRED, summary.verdict)
+    }
+
+    @Test fun aCheckpointIsAdmittedOnHeadroomObservedAfterRetentionNotBefore() {
+        val ample = snapshot(StorageHealthSeverity.WARNING, usableBytes = 400L * mib, walBytes = 60L * mib)
+        val shrunk = snapshot(StorageHealthSeverity.WARNING, usableBytes = 70L * mib, walBytes = 60L * mib)
+        val operations = Recorder(ArrayDeque(listOf(shrunk)))
+
+        val summary = run(operations, ample)!!
+
+        assertEquals(listOf("sweep", "retention", "observe", "observe"), operations.calls)
+        assertEquals(WalCheckpointResult.REFUSED_HEADROOM, summary.walCheckpoint)
+    }
+
+    @Test fun aDatabaseFailureLatchedDuringRetentionStopsTheCheckpoint() {
+        val warning = snapshot(StorageHealthSeverity.WARNING)
+        val latched = snapshot(StorageHealthSeverity.WARNING, severity = StorageHealthSeverity.DATABASE_FAILURE)
+        val operations = Recorder(ArrayDeque(listOf(latched)), retention = RetentionResult.FAILED)
+
+        val summary = run(operations, warning)!!
+
+        assertFalse("checkpoint" in operations.calls)
+        assertEquals(WalCheckpointResult.SKIPPED_DATABASE_FAILURE, summary.walCheckpoint)
+    }
+
+    @Test fun aCheckpointWithNoObservationAfterRetentionIsNotGuessed() {
+        val warning = snapshot(StorageHealthSeverity.WARNING)
+        val operations = Recorder(ArrayDeque(listOf(null)))
+
+        val summary = run(operations, warning)!!
+
+        assertFalse("checkpoint" in operations.calls)
+        assertEquals(WalCheckpointResult.SKIPPED_UNOBSERVED, summary.walCheckpoint)
     }
 
     @Test fun aCheckpointWithoutRoomForTheBackfillIsRefusedNotRun() {
@@ -402,11 +448,11 @@ class StorageRemediationTest {
             walBytes = 0L, pageCount = 5_000L, freelist = 3_000L, autoVacuum = StorageAutoVacuumMode.NONE)
         val rebuilt = snapshot(StorageHealthSeverity.HEALTHY, mainBytes = 2_000L * pageSize, walBytes = 0L,
             pageCount = 2_000L, freelist = 0L)
-        val operations = Recorder(ArrayDeque(listOf(none, rebuilt)))
+        val operations = Recorder(ArrayDeque(listOf(none, none, rebuilt)))
 
         val summary = run(operations, none)!!
 
-        assertEquals(listOf("sweep", "retention", "observe", "backup", "vacuum", "observe"), operations.calls)
+        assertEquals(listOf("sweep", "retention", "observe", "observe", "backup", "vacuum", "observe"), operations.calls)
         assertEquals(VacuumResult.COMPLETED, summary.vacuum.result)
         assertEquals(StorageRemediationVerdict.RELIEVED, summary.verdict)
         assertEquals(3_000L * pageSize, summary.databaseBytesFreed)

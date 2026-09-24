@@ -185,6 +185,10 @@ enum class WalCheckpointResult {
     SKIPPED_DATABASE_FAILURE,
     /** The filesystem could not absorb the backfill before the WAL is truncated. */
     REFUSED_HEADROOM,
+    /** Shutdown or another owner of the data directory began before the checkpoint could run. */
+    SKIPPED_LIFECYCLE,
+    /** No completed observation after retention, so its admission facts were unknown. */
+    SKIPPED_UNOBSERVED,
     /** Every frame was backfilled and the WAL file measurably shrank. */
     COMPLETED,
     /** A reader or writer held the WAL; nothing is wrong, and a later pass retries. */
@@ -473,7 +477,8 @@ internal interface StorageRemediationOperations {
  *    that helps at critical pressure.
  * 2. Existing retention limits, at warning only. Deleting rows writes WAL frames before the freed
  *    pages come back through bounded incremental reclamation, so it is refused at critical.
- * 3. A truncating WAL checkpoint, when the filesystem can absorb the backfill.
+ * 3. A truncating WAL checkpoint, admitted on a fresh observation after retention and a lifecycle
+ *    read immediately before it, when the filesystem can absorb the backfill.
  * 4. A full `VACUUM`, only through [fullVacuumAdmission]: never at critical pressure, never without
  *    measured headroom, a worthwhile freelist that no bounded path can reach, a verified backup and
  *    lifecycle ownership.
@@ -504,15 +509,28 @@ internal class StorageRemediationLadder(
             else -> operations.enforceRetention()
         }
 
-        val walBytes = initial.walBytes.coerceAtLeast(0L)
+        // The checkpoint is admitted on current facts. Retention writes WAL frames, can shrink
+        // headroom and can latch a database failure, so a run in which it ran re-observes first, and
+        // an unobservable state refuses rather than reusing the facts retention may have changed.
+        val retentionRan = retention == RetentionResult.PRUNED ||
+            retention == RetentionResult.CONVERGED ||
+            retention == RetentionResult.FAILED
+        val facts = if (retentionRan) operations.observe() else initial
+        val walBytes = (facts ?: initial).walBytes.coerceAtLeast(0L)
         val checkpoint = when {
-            databaseFailed -> WalCheckpointOutcome(WalCheckpointResult.SKIPPED_DATABASE_FAILURE, walBytes, walBytes)
+            facts == null -> WalCheckpointOutcome(WalCheckpointResult.SKIPPED_UNOBSERVED, walBytes, walBytes)
+            facts.severity == StorageHealthSeverity.DATABASE_FAILURE ->
+                WalCheckpointOutcome(WalCheckpointResult.SKIPPED_DATABASE_FAILURE, walBytes, walBytes)
             walBytes == 0L -> WalCheckpointOutcome(WalCheckpointResult.NOT_NEEDED, 0L, 0L)
             !walCheckpointAdmitted(
-                initial.usableBytes.takeIf { initial.totalBytes > 0L },
+                facts.usableBytes.takeIf { facts.totalBytes > 0L },
                 walBytes,
                 walCheckpointMarginBytes,
             ) -> WalCheckpointOutcome(WalCheckpointResult.REFUSED_HEADROOM, walBytes, walBytes)
+            // Read again immediately before the write: shutdown or a companion data operation may
+            // have begun while retention ran.
+            !operations.lifecycleOwned() ->
+                WalCheckpointOutcome(WalCheckpointResult.SKIPPED_LIFECYCLE, walBytes, walBytes)
             else -> operations.checkpointWal()
         }
 
@@ -550,6 +568,8 @@ internal class StorageRemediationLadder(
         val deferred = !ownedAtStart || reclamationPending ||
             retention == RetentionResult.SKIPPED_LIFECYCLE ||
             checkpoint.result == WalCheckpointResult.DEFERRED_BUSY ||
+            checkpoint.result == WalCheckpointResult.SKIPPED_LIFECYCLE ||
+            checkpoint.result == WalCheckpointResult.SKIPPED_UNOBSERVED ||
             vacuum.result == VacuumResult.DEFERRED_BUSY ||
             vacuum.refusal == VacuumRefusal.LIFECYCLE ||
             (vacuum.result == VacuumResult.COMPLETED && vacuum.checkpoint == WalCheckpointResult.DEFERRED_BUSY)
