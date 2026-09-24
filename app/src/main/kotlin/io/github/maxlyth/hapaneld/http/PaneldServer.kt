@@ -1797,16 +1797,15 @@ class PaneldServer internal constructor(
     // address (e.g. the LAN IPv4, or a ULA v6) has no external use, so it stays visible.
     private val ADDRESS_FIELDS = setOf("Local IP", "Local IPv6")
 
-    /** Appends physical dimensions only when the device profile supplies independently verified PPI.
+    /** Appends physical dimensions only when profile evidence selects this panel's physical geometry.
      *  Logical density is a layout setting and must never be used to infer the panel's physical size. */
     private fun displayCell(v: String): String {
-        val resolution = Regex("^(\\d+)×(\\d+) px\\b").find(v) ?: return esc(v)
-        val widthPx = resolution.groupValues[1].toIntOrNull() ?: return esc(v)
-        val heightPx = resolution.groupValues[2].toIntOrNull() ?: return esc(v)
-        val size = PanelInfo.physicalDisplaySize(widthPx, heightPx, profile.physicalPpi) ?: return esc(v)
+        val observation = DisplayGeometryReport.observe(appContext) ?: return esc(v)
+        val size = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)?.physical
+            ?: return esc(v)
         val inchS = "%.1f".format(size.diagonalInches)
         val cmS = "%.1f".format(size.diagonalInches * 2.54)
-        val title = "W %.1f × H %.1f cm".format(size.widthCm, size.heightCm)
+        val title = "W %.1f × H %.1f cm".format(size.widthMm / 10, size.heightMm / 10)
         return """${esc(v)} · <span class="diag" data-in="$inchS″" data-cm="$cmS cm" """ +
             """title="${esc(title)}" onclick="diagToggle(this)">$inchS″</span>"""
     }
@@ -3811,6 +3810,24 @@ class PaneldServer internal constructor(
                             """<form method="post" action="${localizedHref("api/v1/tame", strings)}" style="margin:0 0 12px"><input type="hidden" name="action" value="recommended"><button type="submit"${hardenedApprovalA11yAttrs(strings = strings)} style="background:#2e6b3f;border-color:#2e6b3f">✓ ${esc(strings.get("install.tame.suggest.all_recommended"))}</button> <span class="note" style="font-size:.8em">${esc(strings.get("install.tame.suggest.recommended_hint"))}</span></form>"""
                             else ""
                         call.respondText(recBtn + frag, ContentType.Text.Html)
+                    }
+                    get("/display") {
+                        // The factory base is the `wm density` reset reference the sizing control restores;
+                        // the framework's stable density stands in only where that read is unavailable.
+                        val observation = withContext(Dispatchers.IO) {
+                            DisplayGeometryReport.observe(appContext)?.let { framework ->
+                                framework.copy(factoryBaseDpi = densityCache.get().base ?: framework.factoryBaseDpi)
+                            }
+                        }
+                        if (observation == null) {
+                            call.respondText("""{"error":"display-unavailable"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                            return@get
+                        }
+                        val profiled = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)
+                        call.respondText(
+                            DisplayGeometryReport.json(observation, profiled, recommendedDensity).toString(),
+                            ContentType.Application.Json,
+                        )
                     }
                     post("/display/density") {
                         val strings = requestStrings(call)

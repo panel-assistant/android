@@ -28,23 +28,6 @@ import java.util.concurrent.atomic.AtomicReference
  * objects. Returns an ordered map rendered verbatim as a key/value table.
  */
 object PanelInfo {
-    internal data class PhysicalDisplaySize(
-        val diagonalInches: Double,
-        val widthCm: Double,
-        val heightCm: Double,
-    )
-
-    /** Physical dimensions are valid only when the profile supplies independently verified PPI.
-     *  Android's current/base logical density must never be used to infer panel dimensions. */
-    internal fun physicalDisplaySize(widthPx: Int, heightPx: Int, physicalPpi: Int?): PhysicalDisplaySize? {
-        if (widthPx <= 0 || heightPx <= 0 || physicalPpi == null || physicalPpi <= 0) return null
-        return PhysicalDisplaySize(
-            diagonalInches = Math.hypot(widthPx.toDouble(), heightPx.toDouble()) / physicalPpi,
-            widthCm = widthPx * 2.54 / physicalPpi,
-            heightCm = heightPx * 2.54 / physicalPpi,
-        )
-    }
-
     fun collect(
         context: Context,
         extras: Map<String, String>,
@@ -67,7 +50,7 @@ object PanelInfo {
         m["CPU"] = cpu()
         m["RAM"] = ram(context)
         m["Storage"] = storage()
-        m["Display"] = display(context, profile.physicalPpi)
+        m["Display"] = display(context, profile)
         m["System WebView"] = webViewStatus(context).display
         m["HA Companion"] = companion(context)
         m.putAll(extras)
@@ -139,14 +122,15 @@ object PanelInfo {
     private fun gb(bytes: Long): String = "%.1f GB".format(bytes / 1e9)
 
     /** Physical resolution, current logical density, and independently profiled physical PPI when known. */
-    private fun display(context: Context, physicalPpi: Int?): String = try {
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-        val dm = android.util.DisplayMetrics()
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getRealMetrics(dm)
-        displaySummary(dm.widthPixels, dm.heightPixels, dm.densityDpi, physicalPpi)
-    } catch (e: Throwable) {
-        "?"
+    private fun display(context: Context, profile: DeviceProfile): String {
+        val observation = DisplayGeometryReport.observe(context) ?: return "?"
+        val physical = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)?.physical
+        return displaySummary(
+            observation.viewportWidthPx,
+            observation.viewportHeightPx,
+            observation.currentDpi ?: 0,
+            physical?.ppi?.let { Math.round(it).toInt() },
+        )
     }
 
     /** Pure formatter so a base logical density can never regress into being labelled physical/native. */
