@@ -1523,6 +1523,12 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
      * A BUSY-classified throw is the same thing. Any other throw is IO or corruption, and latches.
      */
     fun truncateWal(): WalCheckpointOutcome {
+        // A closing owner must not start a write it cannot finish; the ladder also re-reads
+        // lifecycle ownership immediately before calling this.
+        if (isBusyRetryAbandoned()) {
+            val wal = storageKnownFileBytes(File(databaseTarget.path + "-wal"))
+            return WalCheckpointOutcome(WalCheckpointResult.SKIPPED_LIFECYCLE, wal, wal)
+        }
         val db = writableDatabase
         val wal = File(db.path + "-wal")
         val before = storageKnownFileBytes(wal)

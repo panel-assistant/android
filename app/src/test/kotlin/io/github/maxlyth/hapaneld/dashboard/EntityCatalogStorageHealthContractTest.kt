@@ -353,6 +353,9 @@ class EntityCatalogStorageHealthContractTest {
     @Test fun remediationDatabaseStepsReportWhatHappenedAndLatchOnlyRealFaults() {
         val truncate = functionBody("truncateWal")
         assertTrue("only TRUNCATE shrinks the WAL file", "PRAGMA wal_checkpoint(TRUNCATE)" in truncate)
+        assertTrue("a closing owner is refused before the checkpoint opens the database",
+            truncate.indexOf("isBusyRetryAbandoned()") in 0 until truncate.indexOf("writableDatabase") &&
+                "WalCheckpointResult.SKIPPED_LIFECYCLE" in truncate)
         assertTrue("the result row and the measured WAL decide the outcome",
             "interpretWalCheckpoint(" in truncate && "storageKnownFileBytes(wal)" in truncate)
         assertTrue("a BUSY throw is this app's own contention and is deferred",
