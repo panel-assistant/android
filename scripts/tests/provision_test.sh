@@ -6820,7 +6820,7 @@ MOCK_APK_INSTALL=block MOCK_APK_INSTALL_PID_FILE="$FLEET_BLOCKED_PID_FILE" \
   bash "$UPDATE_FLEET" --apk "$APK" --allow-unsigned-helper --no-tame -- "$MOCK_TARGET" > "$FLEET_BLOCKED_OUTPUT" 2>&1 &
 fleet_owner_pid=$!
 fleet_blocked_ready=0
-for _ in {1..100}; do
+for _ in {1..300}; do
   if [ -s "$FLEET_BLOCKED_PID_FILE" ]; then fleet_blocked_ready=1; break; fi
   /bin/sleep 0.05
 done
