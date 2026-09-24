@@ -205,6 +205,7 @@
     <string name="entity_scan_auth_rejected">面板询问要显示哪些实体时，Home Assistant 拒绝了此面板的登录。仪表盘尚未打开。“设置”会打开此面板的设置，其中的“Home Assistant 连接”保存着登录信息；登录成功后仪表盘会自行恢复。</string>
     <string name="entity_scan_failed_detail">实体扫描未完成，因此仪表盘尚未打开。请检查 Home Assistant 是否正在运行，以及面板是否已连接网络，然后重试。</string>
     <string name="entity_scan_preparing_detail">第一个筛选实体集准备就绪后，Home Assistant 将会打开。</string>
+    <string name="entity_learning_reload_notice">Home Assistant 打开后，在面板学习期间可能会重新加载几次，这是正常的。</string>
     <string name="entity_scan_taking_longer">所需时间比平常更长——面板仍在处理。如果无法完成，可在面板设置中关闭实体筛选器。</string>
     <string name="ignore_flagged_entities">忽略标记的实体并继续</string>
     <string name="preparing_dashboard">正在准备仪表盘…</string>
