@@ -436,6 +436,31 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun theHelloStatesTheChannelsTheBridgeCannotFillAndAChannelThatBecomesUnsupportedHelloesAgain() = runTest {
+        val shadow = Shadow(listOf("relay1", "temperature"))
+        shadow.unsupported += "humidity"
+        val first = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state")))
+        val second = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state")))
+        val harness = harness(first, second, shadow = shadow.reporter)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        val hello = JSONObject(first.sent.first())
+        assertEquals(listOf("relay1", "temperature"), hello.getJSONArray("channels").let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } })
+        assertEquals(listOf("humidity"), hello.optJSONArray("unsupported")?.let { (0 until it.length()).map(it::getString) })
+
+        shadow.keys -= "temperature"
+        shadow.unsupported += "temperature"
+        shadow.sink("relay1", "ON")
+        runCurrent()
+        assertTrue(first.closed)
+        advanceTimeBy(1_000L)
+        runCurrent()
+        val again = JSONObject(second.sent.first())
+        assertEquals(listOf("relay1"), again.getJSONArray("channels").let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } })
+        assertEquals(listOf("humidity", "temperature"), again.optJSONArray("unsupported")?.let { (0 until it.length()).map(it::getString) })
+        harness.owner.close()
+    }
+
     @Test fun anMqttAuthorityOrAnUngrantedStateCapabilityReportsNothing() = runTest {
         for ((authority, capabilities) in listOf("mqtt" to listOf("state"), "shadow" to emptyList())) {
             val shadow = Shadow(listOf("relay1"))
@@ -921,8 +946,9 @@ class PanelAssistantTransportOwnerTest {
 
     private class Shadow(initial: List<String>) {
         val keys = initial.toMutableList()
+        val unsupported = mutableListOf<String>()
         val reporter = PanelAssistantShadowReporter(log = {})
-        private val bound = reporter.bind { keys.toList() }
+        private val bound = reporter.bindShape { PanelAssistantChannelShape(keys.toList(), unsupported.toList()) }
 
         fun sink(channel: String, payload: String) = bound(channel, io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Known(payload)) {}
     }

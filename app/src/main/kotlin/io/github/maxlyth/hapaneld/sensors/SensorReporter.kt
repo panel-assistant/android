@@ -341,6 +341,18 @@ class SensorReporter(
     }
     fun hasProximity() = proximityAcquisition != ProximityAcquisition.ABSENT
     fun hasLearnedProximity() = proximityRuntime?.isLearnedSignal() == true
+
+    /**
+     * [hasLearnedProximity] once it is settled: null before [prepare] has loaded the calibration, when the stored
+     * calibration could not be read, and after the runtime has closed, when a false would only mean "not known".
+     */
+    @Synchronized
+    fun learnedProximityState(): Boolean? {
+        if (!proximityPrepared) return null
+        if (!hasProximity()) return false
+        val runtime = proximityRuntime ?: return null
+        return runtime.learnedSignalState()
+    }
     fun hasTemperature() = environmentalSensorPublishes(tempUse)
     fun hasHumidity() = environmentalSensorPublishes(humidityUse)
 

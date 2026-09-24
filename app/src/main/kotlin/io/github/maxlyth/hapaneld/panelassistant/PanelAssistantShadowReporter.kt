@@ -32,7 +32,7 @@ internal class PanelAssistantShadowReporter(
 
     private val lock = Any()
     private var generation = 0L
-    private var source: () -> Collection<String> = { emptyList() }
+    private var source: () -> PanelAssistantChannelShape = { PanelAssistantChannelShape(emptyList()) }
     private val entries = HashMap<String, Entry>()
     private val outstanding = LinkedHashMap<Long, Batch>()
     private var phase = Phase.IDLE
@@ -64,10 +64,13 @@ internal class PanelAssistantShadowReporter(
 
     private enum class Phase { IDLE, FULL_BEGIN, BEGIN_SENT, FULL_END, END_SENT, DELTA }
 
+    /** [bindShape] for a bridge that states nothing unsupported. */
+    fun bind(channels: () -> Collection<String>): StateSink = bindShape { PanelAssistantChannelShape(channels()) }
+
     /** Points reporting at a new bridge generation; observations from any earlier generation are ignored. */
-    fun bind(channels: () -> Collection<String>): StateSink {
+    fun bindShape(shape: () -> PanelAssistantChannelShape): StateSink {
         val bound = synchronized(lock) {
-            source = channels
+            source = shape
             ++generation
         }
         wake.trySend(Unit)
@@ -105,15 +108,26 @@ internal class PanelAssistantShadowReporter(
     }
 
     /** The wire channels the bound bridge currently serves and this build can describe. */
-    private fun describable(): Map<String, PanelAssistantChannelDescriptor> {
-        val keys = synchronized(lock) { source }.invoke()
-        return keys.mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
+    private fun describable(): Map<String, PanelAssistantChannelDescriptor> =
+        describable(synchronized(lock) { source }.invoke().served)
+
+    private fun describable(keys: Collection<String>): Map<String, PanelAssistantChannelDescriptor> =
+        keys.mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
             .mapNotNull { wire -> describe(wire)?.let { wire to it } }
             .toMap()
-    }
 
     /** Descriptors for a `hello`; [open] later receives the same set. */
     fun descriptors(): List<PanelAssistantChannelDescriptor> = describable().values.toList()
+
+    /**
+     * The `hello` offer, read from one shape: the descriptors, and the describable wire channels the bridge
+     * states it cannot serve. A channel in neither list is merely omitted, which changes nothing.
+     */
+    fun offer(): PanelAssistantHelloOffer {
+        val shape = synchronized(lock) { source }.invoke()
+        val descriptors = describable(shape.served)
+        return PanelAssistantHelloOffer(descriptors.values.toList(), describable(shape.unsupported).keys.toList())
+    }
 
     /** Start reporting on an accepted shadow session described by [channels]. */
     fun open(channels: Collection<PanelAssistantChannelDescriptor>) = synchronized(lock) {
@@ -323,3 +337,18 @@ internal class PanelAssistantShadowReporter(
         private const val MAX_DELTA = 64
     }
 }
+
+/**
+ * The bridge's converger channels, split by whether the panel can fill them. [served] is described;
+ * [unsupported] holds only channels the panel has settled it cannot fill, never one it is still unsure of.
+ */
+internal data class PanelAssistantChannelShape(
+    val served: Collection<String>,
+    val unsupported: Collection<String> = emptyList(),
+)
+
+/** What a `hello` offers: descriptors, and the wire channels stated unsupported. */
+internal data class PanelAssistantHelloOffer(
+    val descriptors: List<PanelAssistantChannelDescriptor>,
+    val unsupported: List<String>,
+)
