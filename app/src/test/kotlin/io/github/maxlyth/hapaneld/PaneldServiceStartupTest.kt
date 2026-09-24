@@ -471,17 +471,6 @@ class PaneldServiceStartupTest {
         assertFalse(notified)
     }
 
-    @Test fun unchangedRuntimeReplaysDeferredLiveSettingBeforeRefresh() {
-        val events = mutableListOf<String>()
-
-        replayThenRefreshLiveConfiguration(
-            replay = { events += "replay" },
-            refresh = { events += "refresh" },
-        )
-
-        assertEquals(listOf("replay", "refresh"), events)
-    }
-
     @Test fun networkReturnRetriesBlankBrokerDiscoveryButNotTerminalOrAuthStates() {
         assertEquals(
             NetworkAvailableAction.RETRY_DISCOVERY,
@@ -495,39 +484,6 @@ class PaneldServiceStartupTest {
         assertEquals(NetworkAvailableAction.NONE, networkAvailableAction("disabled", ""))
         assertEquals(NetworkAvailableAction.NONE, networkAvailableAction("config-error", "wss://ha:1883"))
         assertEquals(NetworkAvailableAction.NONE, networkAvailableAction("auth-retrying", "tcp://ha:1883"))
-    }
-
-    @Test fun learnerStoreClosesOnlyAfterIngressRendererAndJobsDrain() {
-        val events = mutableListOf<String>()
-
-        val result = shutdownEntityLearningAfterIngress(
-            stopIngress = { events += "http-stop"; true },
-            closeRendererAdmission = { events += "renderer-drain"; true },
-            detachRuntime = { events += "runtime-detach" },
-            cancelAndDrainScope = { events += "scope-drain"; true },
-            closeStore = { events += "store-close" },
-        )
-
-        assertTrue(result.storeClosed)
-        assertEquals(
-            listOf("http-stop", "renderer-drain", "runtime-detach", "scope-drain", "store-close"),
-            events,
-        )
-    }
-
-    @Test fun undrainedProducerLeavesLearnerStoreOpenForProcessTeardown() {
-        val events = mutableListOf<String>()
-
-        val result = shutdownEntityLearningAfterIngress(
-            stopIngress = { events += "http-stop"; true },
-            closeRendererAdmission = { events += "renderer-timeout"; false },
-            detachRuntime = { events += "runtime-detach" },
-            cancelAndDrainScope = { events += "scope-drain"; true },
-            closeStore = { events += "store-close" },
-        )
-
-        assertFalse(result.storeClosed)
-        assertEquals(listOf("http-stop", "renderer-timeout", "runtime-detach", "scope-drain"), events)
     }
 
     @Test fun pendingKioskRecoveryRetriesAfterEscapeWindowBeforeEnabling() {

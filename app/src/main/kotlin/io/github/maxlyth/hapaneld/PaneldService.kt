@@ -590,14 +590,6 @@ internal fun commitBorrowedRendererTarget(
     return committed
 }
 
-internal fun replayThenRefreshLiveConfiguration(
-    replay: () -> Unit,
-    refresh: () -> Unit,
-) {
-    replay()
-    refresh()
-}
-
 internal fun adaptiveHaSource(enabled: Boolean, configuredEntity: String): String? =
     configuredEntity.trim().takeIf { enabled && it.isNotEmpty() }
 
@@ -675,31 +667,6 @@ internal fun networkAvailableAction(state: String, configuredBroker: String): Ne
         isAuthRecoveryState(state) -> NetworkAvailableAction.NONE
     state == "discovering" && configuredBroker.isBlank() -> NetworkAvailableAction.RETRY_DISCOVERY
     else -> NetworkAvailableAction.RECONNECT
-}
-
-internal data class EntityLearningShutdownResult(
-    val ingressStopped: Boolean,
-    val rendererDrained: Boolean,
-    val scopeDrained: Boolean,
-    val storeClosed: Boolean,
-)
-
-/** Close every producer before the SQLite-backed learner. A timeout deliberately leaks the store until
- * process death rather than letting a late HTTP/renderer/scope callback use a closed database. */
-internal fun shutdownEntityLearningAfterIngress(
-    stopIngress: () -> Boolean,
-    closeRendererAdmission: () -> Boolean,
-    detachRuntime: () -> Unit,
-    cancelAndDrainScope: () -> Boolean,
-    closeStore: () -> Unit,
-): EntityLearningShutdownResult {
-    val ingressStopped = stopIngress()
-    val rendererDrained = closeRendererAdmission()
-    detachRuntime()
-    val scopeDrained = cancelAndDrainScope()
-    val storeClosed = ingressStopped && rendererDrained && scopeDrained
-    if (storeClosed) closeStore()
-    return EntityLearningShutdownResult(ingressStopped, rendererDrained, scopeDrained, storeClosed)
 }
 
 /** Values whose change requires replacing the concrete MQTT/mDNS runtime rather than reannouncing it. */
