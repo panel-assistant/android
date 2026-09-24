@@ -100,6 +100,16 @@ class MdnsAdvertisedAddressRecordsTest {
         assertEquals("ff02::fb", mdnsGroupFor(InetAddress.getByName("fd00:5041::10")))
     }
 
+    @Test fun ipv6ProbeCountsAReplyFromAnyAddressOfItsOwnInterface() {
+        val bound = "fd00:5041:0:0:0:0:0:10"
+        val temporarySibling = "fd00:5041:0:0:0:0:0:bad"
+        val own = setOf(bound, temporarySibling)
+        assertEquals(temporarySibling, mdnsProbeExpectedSource(temporarySibling, own, bound))
+        assertEquals(temporarySibling, mdnsProbeExpectedSource("$temporarySibling%wlan0", own, bound).substringBefore('%'))
+        assertEquals("a reply from another host is never this panel's", bound, mdnsProbeExpectedSource("fd00:5041:0:0:0:0:0:99", own, bound))
+        assertEquals("IPv4 keeps its exact-source rule", "192.0.2.10", mdnsProbeExpectedSource("192.0.2.11", emptySet(), "192.0.2.10"))
+    }
+
     private fun advertisedAddressRecords(selected: MdnsLanAddresses?): Set<String> =
         listOfNotNull(selected?.primary, selected?.secondary).flatMap { bound ->
             HostInfo.newHostInfo(InetAddress.getByName(bound), null, "panel")

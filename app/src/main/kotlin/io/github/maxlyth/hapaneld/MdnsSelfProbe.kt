@@ -67,7 +67,7 @@ internal fun probeMdnsService(
                 when (classifyMdnsProbeResponse(
                     packet.data, packet.length, queryId, queryName,
                     packet.address?.hostAddress, packet.port,
-                    packet.address?.hostAddress?.takeIf { it.substringBefore('%') in ownSources } ?: localIp,
+                    mdnsProbeExpectedSource(packet.address?.hostAddress, ownSources, localIp),
                     probeToken,
                 )) {
                     MdnsProbeResult.VISIBLE -> return@use MdnsProbeResult.VISIBLE
@@ -228,6 +228,13 @@ private fun decodeDnsName(packet: ByteArray, length: Int, start: Int): DecodedDn
         }
     }
 }
+
+/**
+ * The source a reply must come from to count as this panel's own: [localIp], or for an IPv6 responder
+ * any address of its interface ([ownSources]), because the kernel chooses the unicast reply's source.
+ */
+internal fun mdnsProbeExpectedSource(sourceIp: String?, ownSources: Set<String>, localIp: String): String =
+    sourceIp?.takeIf { it.substringBefore('%') in ownSources } ?: localIp
 
 /** The mDNS group for the responder's address family: 224.0.0.251, or ff02::fb for IPv6. */
 internal fun mdnsGroupFor(local: InetAddress): String =
