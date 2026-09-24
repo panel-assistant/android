@@ -285,6 +285,8 @@ export HAPANELD_HELPER_DIST_DIR="$MOCK_HELPER_DIST"
 
 passes=0
 failures=0
+# One ordinal for every result, so a failure takes its place in the plan instead of printing beside it.
+tests=0
 LAST_OUTPUT=""
 LAST_STATUS=0
 
@@ -557,19 +559,21 @@ run_provision() {
 
 pass() {
   passes=$((passes + 1))
-  printf 'ok %d - %s\n' "$passes" "$1"
+  tests=$((tests + 1))
+  printf 'ok %d - %s\n' "$tests" "$1"
 }
 
 fail_test() {
   failures=$((failures + 1))
-  printf 'not ok - %s\n' "$1" >&2
+  tests=$((tests + 1))
+  printf 'not ok %d - %s\n' "$tests" "$1" >&2
   if [ -f "$LAST_OUTPUT" ]; then
     sed 's/^/  | /' "$LAST_OUTPUT" >&2
   fi
 }
 
 finish_provision_test() {
-  printf '1..%d\n' "$((passes + failures))"
+  printf '1..%d\n' "$tests"
   if [ "$failures" -ne 0 ]; then
     printf '%d assertion(s) failed\n' "$failures" >&2
     exit 1
@@ -7036,20 +7040,27 @@ MOCK_TARGETS='panel-a.test:5555 panel-b.test:5555' MOCK_APK_INSTALL=block \
   bash "$UPDATE_FLEET" --jobs 1 --apk "$APK" --allow-unsigned-helper --no-tame -- \
     panel-a.test panel-b.test > "$FLEET_JOBS_OUTPUT" 2>&1 &
 fleet_jobs_owner_pid=$!
-fleet_jobs_ready=0
-for _ in {1..100}; do
-  if [ -s "$FLEET_JOBS_PID_FILE" ]; then fleet_jobs_ready=1; break; fi
+# Wait for the worker's blocked install or for the wrapper to exit, whichever comes first. The ceiling
+# is sized for a loaded CI runner, where a five-second poll was once exceeded, and stays far below the
+# provisioner's own 300-second install deadline, which would otherwise let panel-b run next.
+fleet_jobs_deadline=$(($(/bin/date +%s) + 60))
+while [ ! -s "$FLEET_JOBS_PID_FILE" ] && kill -0 "$fleet_jobs_owner_pid" 2>/dev/null &&
+      [ "$(/bin/date +%s)" -lt "$fleet_jobs_deadline" ]; do
   /bin/sleep 0.05
 done
-if [ "$fleet_jobs_ready" -eq 1 ]; then
+if [ -s "$FLEET_JOBS_PID_FILE" ]; then
   pass "fleet jobs test reaches the occupied worker slot"
 else
   LAST_OUTPUT="$FLEET_JOBS_OUTPUT"
   fail_test "fleet jobs test reaches the occupied worker slot"
 fi
-assert_not_contains 'adb -s panel-b\.test:5555' "$MOCK_CALL_LOG" "--jobs 1 keeps the second panel queued"
 kill -TERM "$fleet_jobs_owner_pid" 2>/dev/null || true
 wait "$fleet_jobs_owner_pid" 2>/dev/null || true
+# The absence below means something only if the first worker really occupied the only slot. Without
+# this count, a worker that never started leaves an empty call log that satisfies it by zero.
+assert_count "$(grep -Ec '^adb -s panel-a\.test:5555 install ' "$MOCK_CALL_LOG" || true)" 1 \
+  "--jobs 1 starts exactly one install on the first panel"
+assert_not_contains 'adb -s panel-b\.test:5555' "$MOCK_CALL_LOG" "--jobs 1 keeps the second panel queued"
 
 LAST_OUTPUT="$TMP/fleet-invalid-jobs-output.txt"
 bash "$UPDATE_FLEET" --jobs 0 --apk "$APK" -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
