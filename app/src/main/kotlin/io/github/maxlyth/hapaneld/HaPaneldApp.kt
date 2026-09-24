@@ -1,7 +1,10 @@
 package io.github.maxlyth.hapaneld
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import io.github.maxlyth.hapaneld.storage.ProcessStartWallClock
 import androidx.appcompat.app.AppCompatDelegate
@@ -22,9 +25,10 @@ class HaPaneldApp : Application() {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
         // The earliest point this process runs; storage remediation proves files orphaned against it.
+        val startElapsed = android.os.Process.getStartElapsedRealtime()
         ProcessStartWallClock.capture(
-            System.currentTimeMillis() -
-                (android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime()),
+            System.currentTimeMillis() - (android.os.SystemClock.elapsedRealtime() - startElapsed),
+            startElapsed,
         )
         // Installed before providers/components: every security/debug mutation publishes a durable
         // TRANSITION epoch, and maintenance successors can authenticate HARDENED without opening DB.
@@ -36,6 +40,7 @@ class HaPaneldApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        observeWallClockSteps()
         // Guard DB recovery returns before Config may open the protected database. Its UI and foreground
         // notification still need the last selected language, so restore it from Config's read-only 0.9.x
         // compatibility mirror before taking that early return.
@@ -74,6 +79,28 @@ class HaPaneldApp : Application() {
             AppCompatDelegate.setDefaultNightMode(
                 if (darkModeBeforeDatabase(this)) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO,
             )
+        }
+    }
+
+    /**
+     * A backward clock step that is undone again (a manual set, then NTP) leaves no trace for the
+     * next remediation run to see, so every step is observed as it happens. ACTION_TIME_CHANGED is a
+     * protected system broadcast, still delivered to a NOT_EXPORTED receiver.
+     */
+    private fun observeWallClockSteps() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                ProcessStartWallClock.observe(System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime())
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_TIME_CHANGED)
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(receiver, filter)
+            }
         }
     }
 }

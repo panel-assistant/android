@@ -48,14 +48,26 @@ class StorageRemediationWiringContractTest {
             "runStorageHealthObservation(signal)" in operations)
         assertTrue("a companion data backup or restore withholds lifecycle ownership",
             "companionDataOperationState.isPending()" in operations)
-        assertTrue("only files older than this process can be orphans, against a start captured once",
-            "ProcessStartWallClock.millis() ?: return emptyList()" in operations)
+        assertTrue("only files older than this process can be orphans, against its start in the oldest clock epoch",
+            "ProcessStartWallClock.orphanBoundary(" in operations && "SystemClock.elapsedRealtime()" in operations &&
+                ") ?: return emptyList()" in operations)
+        assertTrue("a Guard DB claim temporary needs the staging's own file proof",
+            "appOwnedDisposableFileRules(cacheDir, filesDir, ::validGuardDbAppFile)" in operations)
+        assertTrue("orphaned temporary directories are swept with the same proof",
+            "appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)" in operations)
         val app = listOf(
             File("src/main/kotlin/io/github/maxlyth/hapaneld/HaPaneldApp.kt"),
             File("app/src/main/kotlin/io/github/maxlyth/hapaneld/HaPaneldApp.kt"),
         ).first(File::isFile).readText()
         val attach = app.substring(app.indexOf("override fun attachBaseContext"), app.indexOf("override fun onCreate"))
-        assertTrue("the start is captured at the earliest point the process runs",
-            "ProcessStartWallClock.capture(" in attach && "getStartElapsedRealtime()" in attach)
+        assertTrue("the start is captured at the earliest point the process runs, with its uptime anchor",
+            "ProcessStartWallClock.capture(" in attach && "getStartElapsedRealtime()" in attach &&
+                "startElapsed,\n" in attach)
+        val create = app.substring(app.indexOf("override fun onCreate"))
+        assertTrue("every clock step is observed from the start of onCreate, before any early return",
+            create.indexOf("observeWallClockSteps()") in 0 until create.indexOf("return"))
+        assertTrue("the observer records the step against uptime",
+            "Intent.ACTION_TIME_CHANGED" in app &&
+                "ProcessStartWallClock.observe(System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime())" in app)
     }
 }
