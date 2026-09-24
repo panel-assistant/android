@@ -18,10 +18,11 @@ class SettingsCatalogueContractTest {
         SettingsRegistry.SPECS.forEach { spec ->
             expected[spec.labelKey] = spec.label
             if (spec.help.isNotEmpty()) expected[spec.helpKey] = spec.help
+            if (spec.promotedHelp.isNotEmpty()) expected[spec.promotedHelpKey] = spec.promotedHelp
         }
 
         assertEquals(89, SettingsRegistry.SPECS.size)
-        assertEquals(177, expected.size)
+        assertEquals(178, expected.size)
         val settings = catalogue.strings.filterKeys { it.startsWith("settings.") }
         assertEquals("Settings must remain an exact independently-owned subset", expected.keys, settings.keys)
         expected.forEach { (key, text) ->
@@ -33,10 +34,11 @@ class SettingsCatalogueContractTest {
 
     @Test fun `setting-derived catalogue keys are unique and durable`() {
         val keys = SettingsRegistry.SPECS.flatMap { spec ->
-            listOf(spec.labelKey) + if (spec.help.isEmpty()) emptyList() else listOf(spec.helpKey)
+            listOf(spec.labelKey) + (if (spec.help.isEmpty()) emptyList() else listOf(spec.helpKey)) +
+                if (spec.promotedHelp.isEmpty()) emptyList() else listOf(spec.promotedHelpKey)
         }
         assertEquals(keys.size, keys.toSet().size)
-        assertTrue(keys.all { it.matches(Regex("settings\\.[a-z0-9_]+\\.(label|help)")) })
+        assertTrue(keys.all { it.matches(Regex("settings\\.[a-z0-9_]+\\.(label|help|promoted_help)")) })
     }
 
     @Test fun `every release target has a current reviewed Settings translation`() {
