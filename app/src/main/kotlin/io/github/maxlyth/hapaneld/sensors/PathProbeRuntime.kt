@@ -4,25 +4,36 @@ package io.github.maxlyth.hapaneld.sensors
  * The process-global read side of the layer-3 probe, in the [HaNetworkPathRuntime] shape.
  *
  * Identity-gated install and uninstall so a superseded service can never clear its successor's
- * monitor, and one atomic [snapshot] so no surface can assemble a reading from two moments.
+ * monitor, and one atomic [snapshot] so no surface can assemble a reading from two moments. The
+ * monitor and the clock it is read against are one [Installation], published and retired together.
  */
 internal object PathProbeRuntime {
-    @Volatile private var monitor: PathProbeMonitor? = null
-    @Volatile private var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
+    private class Installation(val monitor: PathProbeMonitor, val nowMs: () -> Long)
+
+    private val lock = Any()
+    private var installed: Installation? = null
 
     fun install(next: PathProbeMonitor, nowMs: () -> Long = { android.os.SystemClock.elapsedRealtime() }) {
-        monitor = next
-        clock = nowMs
+        synchronized(lock) { installed = Installation(next, nowMs) }
     }
 
     /** Clear only if [owner] is still the installed monitor. Returns whether it actually cleared. */
-    fun uninstall(owner: PathProbeMonitor): Boolean {
-        if (monitor !== owner) return false
-        monitor = null
-        return true
+    fun uninstall(owner: PathProbeMonitor): Boolean = synchronized(lock) {
+        if (installed?.monitor !== owner) return false
+        installed = null
+        true
     }
 
-    fun snapshot(): PathProbeMonitor.Snapshot? = monitor?.snapshot(clock())
+    /**
+     * Null when no service owns the probe, or when the owner this read began under was replaced before
+     * it finished: a retired owner's reading is never returned. The monitor is read outside the lock
+     * because it serialises itself and the clock is the caller's code.
+     */
+    fun snapshot(): PathProbeMonitor.Snapshot? {
+        val owner = synchronized(lock) { installed } ?: return null
+        val snap = owner.monitor.snapshot(owner.nowMs())
+        return synchronized(lock) { if (installed === owner) snap else null }
+    }
 
     /**
      * One `/diag` line. Always present so an absent line cannot be read as health, and terse: counts,
