@@ -132,7 +132,12 @@ class CameraForegroundWiringContractTest {
             3,
             Regex("state\\.isCurrent\\(attempt\\.id\\)").findAll(listener).count(),
         )
-        assertTrue("a superseded codec failing late closes only itself", "attempt.closeEncoder()\n                return" in listener)
+        val failure = body(listener, "override fun onEncoderError(detail: String)")
+        val closed = failure.indexOf("attempt.closeEncoder()")
+        assertTrue(
+            "a failing codec closes itself before anything asks whose session it is, so a superseded one closes only itself",
+            closed >= 0 && closed < failure.indexOf("if (!state.isCurrent(attempt.id)) return"),
+        )
     }
 
     /**
