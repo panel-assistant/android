@@ -35,12 +35,13 @@ class SensorReporterLightActivationTest {
         override fun getContentResolver(): ContentResolver = resolver
         override fun getNoBackupFilesDir(): File = files
         override fun getFilesDir(): File = files
+        override fun getDatabasePath(name: String): File = File(files, name)
         override fun getSharedPreferences(name: String?, mode: Int): SharedPreferences = prefs
         override fun getPackageName(): String = "io.github.maxlyth.hapaneld"
     }
 
-    private fun reporter(activates: Boolean): Pair<SensorReporter, FakeSensorManager> {
-        val sensors = FakeSensorManager(activates)
+    private fun reporter(activates: Boolean, hasProximity: Boolean = false): Pair<SensorReporter, FakeSensorManager> {
+        val sensors = FakeSensorManager(activates, hasProximity)
         val prefs = proxyPreferences()
         val files = Files.createTempDirectory("sensor-reporter").toFile().also { it.deleteOnExit() }
         val context = FakeContext(files, prefs, sensors)
@@ -74,6 +75,21 @@ class SensorReporterLightActivationTest {
         assertEquals(1, sensors.lightRegistrations)
         assertTrue(reporter.lightAvailable())
         reporter.stop()
+    }
+
+    @Test fun `learned proximity is settled at once on a panel with no proximity source`() {
+        val (reporter, _) = reporter(activates = true)
+        assertEquals(false, reporter.learnedProximityState())
+    }
+
+    @Test fun `learned proximity is unsettled until the calibration loads and again once it closes`() {
+        val (reporter, _) = reporter(activates = true, hasProximity = true)
+        // A false here would be stated to Home Assistant as a panel without the sensor, removing its entities.
+        assertEquals(null, reporter.learnedProximityState())
+        reporter.prepare()
+        assertEquals(false, reporter.learnedProximityState())
+        reporter.stop().get()
+        assertEquals(null, reporter.learnedProximityState())
     }
 
     private companion object {
