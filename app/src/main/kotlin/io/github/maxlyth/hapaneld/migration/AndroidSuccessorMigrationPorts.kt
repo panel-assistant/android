@@ -7,11 +7,13 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
+import io.github.maxlyth.hapaneld.device.profile.RuntimeProfileRegistry
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Environment
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.util.AppInstaller
+import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.HelperClient
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,25 @@ import java.net.Socket
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+
+/**
+ * Why the restore endpoint refused a migration restore, from its status and body. The body's
+ * presentation code and error are what the successor would otherwise never show: a refused restore
+ * leaves the panel on defaults, and "restore did not complete" does not say what to put right.
+ */
+internal fun restoreRefusal(status: Int, body: ByteArray?): String {
+    val json = body?.let { runCatching { org.json.JSONObject(String(it, Charsets.UTF_8)) }.getOrNull() }
+    val code = json?.optJSONObject("presentation")?.optString("code").orEmpty()
+    val error = json?.optString("error").orEmpty()
+    val errors = json?.optJSONArray("errors")?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
+    return buildString {
+        append("restore refused (HTTP ").append(status)
+        if (code.isNotEmpty()) append(", ").append(code)
+        append(")")
+        if (error.isNotEmpty()) append(": ").append(error)
+        if (errors.isNotEmpty()) append(" — ").append(errors.joinToString("; "))
+    }.take(600)
+}
 
 /**
  * The successor's real [SuccessorMigration.Ports]. Everything it asks of the legacy app goes over
@@ -88,8 +109,12 @@ internal class AndroidSuccessorMigrationPorts(
         }
     }
 
+    // The profile catalog is planned here, before the release, against this build's bundled catalog: a
+    // successor that has not restored has nothing else, so this is the plan its restore will make.
     override fun receiptRefusal(): String? =
-        ReceiptVerifier.refusal(state.receipt, panelAssistantDiscoveryId(androidId))
+        ReceiptVerifier.migrationRefusal(state.receipt, panelAssistantDiscoveryId(androidId)) {
+            RuntimeProfileRegistry.bundledOnly(context).planBackupRestore(it)
+        }
 
     override suspend fun legacyRetired(): Boolean = MigrationTokenReceiver.legacyRetired(context)
 
@@ -117,18 +142,28 @@ internal class AndroidSuccessorMigrationPorts(
         false
     }.getOrDefault(true)
 
-    override suspend fun restoreReceipt(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun restoreReceipt(): String? = withContext(Dispatchers.IO) {
         val outcome = beginRestore()
-        val accepted = runCatching {
+        val refusal = runCatching {
             val connection = open("/api/v1/restore?mode=migration", "POST").apply {
                 doOutput = true
                 setFixedLengthStreamingMode(state.receipt.length())
                 setRequestProperty("Content-Type", "application/octet-stream")
                 state.receipt.inputStream().use { input -> outputStream.use { input.copyTo(it) } }
             }
-            try { connection.responseCode == 200 } finally { connection.disconnect() }
-        }.getOrDefault(false)
-        accepted && withTimeoutOrNull(RESTORE_WAIT_MS) { outcome.await() } == true
+            try {
+                val code = connection.responseCode
+                if (code == 200) null
+                else restoreRefusal(code, runCatching { connection.errorStream?.use { BoundedStreams.readBytes(it, MAX_REFUSAL_BYTES) } }.getOrNull())
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrElse { "restore request failed: ${it.javaClass.simpleName}" }
+        refusal ?: when (withTimeoutOrNull(RESTORE_WAIT_MS) { outcome.await() }) {
+            true -> null
+            false -> "restore did not complete"
+            null -> "restore did not become durable within ${RESTORE_WAIT_MS / 60_000} minutes"
+        }
     }
 
     override fun missingGrants(): Set<String> = GRANTS.filterTo(linkedSetOf()) { grant ->
@@ -208,6 +243,7 @@ internal class AndroidSuccessorMigrationPorts(
         const val HELPER_TIMEOUT_MS = 60_000L
         const val RETIREMENT_WAIT_MS = 60_000L
         const val RESTORE_WAIT_MS = 5 * 60_000L
+        const val MAX_REFUSAL_BYTES = 64L * 1024L
 
         /** The helper's fixed `GRANT` capability table. */
         val GRANTS = listOf("NOTIFICATIONS", "MICROPHONE", "WRITESETTINGS", "OVERLAY", "BATTERY", "ACCESSIBILITY")
