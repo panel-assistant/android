@@ -6818,6 +6818,16 @@
    "sourceHash": "f74d2182c66a5b84c7bfb6d61a1a87b50aafacf82d60f7b9d8df62239008a259",
    "state": "machine-draft"
   },
+  "logs.source.webview": {
+   "text": "Консоль браузера",
+   "sourceHash": "6fd4e6a13f23312fb198b6fb47a5013687d31f5c9a8b389bce479772da5a14d6",
+   "state": "machine-draft"
+  },
+  "logs.source.webview_hint": {
+   "text": "Консоль JavaScript панелі приладів; потребує налаштованої доставки журналів і запущеного релею DevTools",
+   "sourceHash": "5e04aff148bc43faa3aef257af4b79aae5c01fe4e902c4faa5c3399caac59908",
+   "state": "machine-draft"
+  },
   "logs.state.app_live": {
    "text": "додаток · наживо",
    "sourceHash": "30f051b05d0ec7e9b1931b2d8f036f92ba4b3d8987408e6b778a36aeea0a1f73",
@@ -6851,6 +6861,16 @@
   "logs.state.system_paused": {
    "text": "система · призупинено",
    "sourceHash": "c12ac7b68e0bd60dd136296827ac6fc6e67e3c6a121c57d7e27c8ed39c9eb74d",
+   "state": "machine-draft"
+  },
+  "logs.state.webview_live": {
+   "text": "браузер · наживо",
+   "sourceHash": "0892a17cf3398b2c81d85b1822f633ce9c2bc65894f2167eb5f2c23f4a386e98",
+   "state": "machine-draft"
+  },
+  "logs.state.webview_paused": {
+   "text": "браузер · на паузі",
+   "sourceHash": "784bfaddb8a895cca3c82ed554dd6ba636d45067f4ce072aa700d4100a7e084c",
    "state": "machine-draft"
   },
   "logs.title": {

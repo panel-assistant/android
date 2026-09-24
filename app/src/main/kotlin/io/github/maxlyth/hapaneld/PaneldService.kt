@@ -110,6 +110,7 @@ import io.github.maxlyth.hapaneld.http.AutoSleepHttpApi
 import io.github.maxlyth.hapaneld.http.retainCompanionLeaseUntilHelperIdle
 import io.github.maxlyth.hapaneld.logship.LogCapture
 import io.github.maxlyth.hapaneld.logship.LogShipper
+import io.github.maxlyth.hapaneld.logship.webViewConsoleEnabled
 import io.github.maxlyth.hapaneld.media.AudioPlaybackCoordinator
 import io.github.maxlyth.hapaneld.migration.AndroidIdentityMigration
 import io.github.maxlyth.hapaneld.migration.AndroidSuccessorHandoffPorts
@@ -979,6 +980,7 @@ class PaneldService : Service() {
     private lateinit var logShipper: LogShipper
     private lateinit var logCaptureApp: LogCapture
     private lateinit var logCaptureSystem: LogCapture
+    private lateinit var logCaptureWebView: LogCapture
 
     // Controllers are fields so the MQTT bridge can be rebuilt on a panel_id change.
     private lateinit var brightness: BrightnessController
@@ -1230,9 +1232,12 @@ class PaneldService : Service() {
         // only the viewer. Idle-stopped — no subprocess runs until something subscribes.
         logCaptureApp = LogCapture.app(scope)
         logCaptureSystem = LogCapture.system(scope)
+        // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
+        // shipping is configured, and never in Hardened mode, where the relay itself is refused.
+        logCaptureWebView = LogCapture.webView(scope) { webViewConsoleEnabled(config) }
         // Optional remote log shipping (off + inert unless a sink host is configured). Started in
         // onStartCommand alongside the other network subsystems; restarted on a /config change.
-        logShipper = LogShipper(config, scope, logCaptureApp)
+        logShipper = LogShipper(config, scope, logCaptureApp, logCaptureWebView)
 
         brightness = BrightnessController(this)
         screen = ScreenController(
@@ -1657,7 +1662,8 @@ class PaneldService : Service() {
             // Vendor taming: the controller and this panel's curated recommendations (picker group 1).
             tame = tame, tameProfileCandidates = profile.tameVendorCandidates,
             // Live log viewer sources (Logs tab). System is gated on Su.available() per request.
-            logApp = logCaptureApp, logSystem = logCaptureSystem,
+            logApp = logCaptureApp, logSystem = logCaptureSystem, logWebView = logCaptureWebView,
+            webViewConsoleEnabled = { webViewConsoleEnabled(config) },
             logShipStatus = logShipper::status,
             effectiveBrightness = { brightness.getBrightness() },
             onRepairCompanionUrl = { repairCompanionUrl() },
@@ -4742,6 +4748,7 @@ class PaneldService : Service() {
             closeOwner("performance reader") { io.github.maxlyth.hapaneld.http.PerfReader.stop() }
             closeOwner("app log capture") { logCaptureApp.close() }
             closeOwner("system log capture") { logCaptureSystem.close() }
+            closeOwner("webview console capture") { logCaptureWebView.close() }
         }
         if (!stopped) Log.w(TAG, "runtime teardown exceeded the service deadline; cleanup continues on its owner thread")
         if (!httpOwnersStopped.get()) Log.w(TAG, "HTTP owners did not stop cleanly before learner teardown")

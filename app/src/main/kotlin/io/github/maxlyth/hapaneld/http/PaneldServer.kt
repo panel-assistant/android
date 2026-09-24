@@ -1609,6 +1609,9 @@ class PaneldServer internal constructor(
     // full logcat via su, gated on Su.available() at request time. Null → the viewer 404s.
     private val logApp: LogCapture? = null,
     private val logSystem: LogCapture? = null,
+    // Dashboard WebView console over the CDP relay; served only while log shipping is configured.
+    private val logWebView: LogCapture? = null,
+    private val webViewConsoleEnabled: () -> Boolean = { false },
     // Dedicated synchronized shipper state. Never route this through the broad management cache:
     // callers and the Dashboard projection need connection failure and recovery as they happen.
     private val logShipStatus: () -> LogShipStatusProjection = {
@@ -3055,7 +3058,7 @@ class PaneldServer internal constructor(
                             ContentType.Text.Plain,
                         )
                     }
-                    // Live log tail as Server-Sent Events (?source=app|system). Feeds the Logs tab;
+                    // Live log tail as Server-Sent Events (?source=app|system|webview). Feeds the Logs tab;
                     // also curl-able (`curl -N .../api/v1/logs/stream`). Lines are pre-redacted.
                     get("/logs/stream") {
                         if (admitActiveRead(call)) handleLogStream(call)
@@ -4066,8 +4069,15 @@ class PaneldServer internal constructor(
                 call.respondText("system log needs root\n", status = HttpStatusCode.ServiceUnavailable)
                 return
             }
+            "webview" -> if (webViewConsoleEnabled()) logWebView else {
+                call.respondText(
+                    "webview console needs log shipping configured\n",
+                    status = HttpStatusCode.ServiceUnavailable,
+                )
+                return
+            }
             else -> {
-                call.respondText("unknown source '$src' (app|system)\n", status = HttpStatusCode.BadRequest)
+                call.respondText("unknown source '$src' (app|system|webview)\n", status = HttpStatusCode.BadRequest)
                 return
             }
         }
@@ -5019,7 +5029,7 @@ ${if (installer) """<button class="pbtn cinstall"${hardenedApprovalA11yAttrs(str
         return """
 <div class="card"><h2>${esc(strings.get("logs.title"))} <small id="lg-state" class="muted">· ${esc(strings.get("logs.state.connecting"))}</small></h2>
 <div class="log-toolbar">
- <span class="log-source"><button id="lg-src-app" class="pbtn on" onclick="lgSource('app')">${esc(strings.get("logs.source.app"))}</button><button id="lg-src-system" class="pbtn" onclick="lgSource('system')" title="${esc(strings.get("logs.source.system_root_check"))}">${esc(strings.get("logs.source.system"))}</button></span>
+ <span class="log-source"><button id="lg-src-app" class="pbtn on" onclick="lgSource('app')">${esc(strings.get("logs.source.app"))}</button><button id="lg-src-system" class="pbtn" onclick="lgSource('system')" title="${esc(strings.get("logs.source.system_root_check"))}">${esc(strings.get("logs.source.system"))}</button><button id="lg-src-webview" class="pbtn" onclick="lgSource('webview')" title="${esc(strings.get("logs.source.webview_hint"))}">${esc(strings.get("logs.source.webview"))}</button></span>
  <select id="lg-level" onchange="lgRender()" title="${esc(strings.get("logs.level.minimum"))}">
   <option value="V" selected>${esc(strings.get("logs.level.verbose"))}</option><option value="D">${esc(strings.get("logs.level.debug"))}</option><option value="I">${esc(strings.get("logs.level.info"))}</option>
   <option value="W">${esc(strings.get("logs.level.warning"))}</option><option value="E">${esc(strings.get("logs.level.error"))}</option>

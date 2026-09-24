@@ -33,6 +33,8 @@ class LogsFleetI18nContractTest {
             "logs.source.app",
             "logs.source.system",
             "logs.source.system_root_check",
+            "logs.source.webview",
+            "logs.source.webview_hint",
             "logs.state.app_live",
             "logs.state.app_paused",
             "logs.state.connecting",
@@ -40,6 +42,8 @@ class LogsFleetI18nContractTest {
             "logs.state.reconnecting",
             "logs.state.system_live",
             "logs.state.system_paused",
+            "logs.state.webview_live",
+            "logs.state.webview_paused",
             "logs.title",
         ),
         "fleet" to setOf(
@@ -112,6 +116,7 @@ class LogsFleetI18nContractTest {
         val expectedBindings = listOf(
             "id=\"lg-src-app\"" to "logs.source.app",
             "id=\"lg-src-system\"" to "logs.source.system",
+            "id=\"lg-src-webview\"" to "logs.source.webview",
             "value=\"V\"" to "logs.level.verbose",
             "value=\"D\"" to "logs.level.debug",
             "value=\"I\"" to "logs.level.info",
