@@ -77,6 +77,24 @@ class MdnsAdvertisedAddressRecordsTest {
         assertNull("no secondary without a primary", topology.request(null, "fd00:5041::11").secondaryIp)
     }
 
+    @Test fun staleAddressWarningComparesEachFamilyWithItsOwnAuthority() {
+        assertEquals(
+            "an IPv4 binding still compares with the interface's live IPv4",
+            "192.0.2.11",
+            mdnsHealthLanIp("192.0.2.10", "192.0.2.10") { "192.0.2.11" },
+        )
+        assertEquals(
+            "an IPv6 binding is not called stale because some interface has IPv4",
+            "fd00:5041::10",
+            mdnsHealthLanIp("fd00:5041::10", "fd00:5041::10") { "192.0.2.11" },
+        )
+        assertEquals(
+            "an IPv6-only panel that is not advertising still reports its address",
+            "fd00:5041::10",
+            mdnsHealthLanIp(null, "fd00:5041::10") { null },
+        )
+    }
+
     @Test fun ipv6ProbeQueriesTheIpv6Group() {
         assertEquals("224.0.0.251", mdnsGroupFor(InetAddress.getByName("192.0.2.10")))
         assertEquals("ff02::fb", mdnsGroupFor(InetAddress.getByName("fd00:5041::10")))

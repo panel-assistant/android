@@ -452,8 +452,7 @@ class MdnsAdvertiser(
     fun health(): MdnsHealth = MdnsHealth(
         advertising = jmdns != null && browsing,
         boundIp = boundIp,
-        // An IPv6-only panel has no IPv4 to compare with; its authoritative address is the one requested.
-        lanIp = localIpv4() ?: topology.snapshot().lanIp,
+        lanIp = mdnsHealthLanIp(boundIp, topology.snapshot().lanIp, ::localIpv4),
         liveness = liveness.snapshot(),
     )
 
@@ -504,7 +503,13 @@ class MdnsAdvertiser(
         // Do not dismantle JmDNS underneath an admitted list/resolve call. The terminal retirement fence
         // is already installed; a failed drain selects the process boundary instead of a successor.
         if (!complete || deadline.remainingMs() <= 0L) return false
-        if (!stopSecondary()) return false
+        // Best effort: the IPv6 responder is outside the liveness supervisor and must never make the
+        // primary's teardown, and so its recovery, report failure.
+        if (!stopSecondary()) {
+            Log.w(TAG, "mDNS responder at $secondaryBoundIp did not close; abandoning it")
+            secondaryDns = null
+            secondaryBoundIp = null
+        }
         val activeDns = jmdns
         runCatching { activeDns?.setDelegate(null) }
         runCatching { activeDns?.removeServiceListener(Config.MDNS_SERVICE_TYPE, peerListener) }
@@ -1065,6 +1070,15 @@ internal class LatestScheduledTask(threadName: String) {
         return executor.awaitTermination(timeoutMs.coerceAtLeast(0L), TimeUnit.MILLISECONDS)
     }
 }
+
+/**
+ * The address the advertiser should be bound to, for the stale-address warning. An IPv4 panel keeps
+ * comparing against the interface's live IPv4, which also catches a DHCP change no callback reported.
+ * A responder bound to IPv6 compares against the default network's requested address instead: on a
+ * host with IPv4 on some other interface, the live IPv4 would call a correct IPv6 binding stale.
+ */
+internal fun mdnsHealthLanIp(boundIp: String?, requestedIp: String?, liveIpv4: () -> String?): String? =
+    if (boundIp?.contains(':') == true) requestedIp else liveIpv4() ?: requestedIp
 
 /** True when an existing JmDNS instance must be replaced for the current LAN address. */
 internal fun mdnsRebindRequired(boundIp: String?, lanIp: String, browsing: Boolean): Boolean =
