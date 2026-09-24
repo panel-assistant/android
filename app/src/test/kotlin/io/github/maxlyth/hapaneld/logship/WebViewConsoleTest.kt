@@ -117,10 +117,12 @@ class WebViewConsoleTest {
         )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
+            val launches = java.util.concurrent.atomic.AtomicInteger()
             val capture = LogCapture(
                 scope,
                 streamCmd = emptyList(),
                 dumpCmd = { emptyList() },
+                processStarter = { launches.incrementAndGet(); error("a stream source runs no process") },
                 lineStream = { emit ->
                     emit(raw)
                     awaitCancellation()
@@ -141,6 +143,7 @@ class WebViewConsoleTest {
             assertTrue(shipped, shipped.contains(" E webview/console: auth failed"))
             // The console source never runs a dump subprocess; backlog is the ring alone.
             assertEquals(emptyList<String>(), capture.dump(10))
+            assertEquals(0, launches.get())
         } finally {
             scope.cancel()
         }
@@ -263,6 +266,30 @@ class WebViewConsoleTest {
         assertEquals(1, coalescer.offer(event("retry token=aaa")).size)
         clock.ms += 10
         assertEquals(emptyList<String>(), coalescer.offer(event("retry token=bbb")))
+    }
+
+    @Test
+    fun consoleSourceRunsOnlyWhileShippingIsConfiguredOutsideHardened() {
+        assertTrue(webViewConsoleEnabled(shippingEnabled = true, shippingHost = "sink.lan", hardened = false))
+        assertFalse(webViewConsoleEnabled(shippingEnabled = false, shippingHost = "sink.lan", hardened = false))
+        assertFalse(webViewConsoleEnabled(shippingEnabled = true, shippingHost = " ", hardened = false))
+        assertFalse(webViewConsoleEnabled(shippingEnabled = true, shippingHost = "sink.lan", hardened = true))
+    }
+
+    @Test
+    fun reattachmentDropsReplayedEventsAndANewPageStartsAfresh() {
+        val replay = ReplayHighWater()
+        replay.attach("P1")
+        assertTrue(replay.admit(100.0))
+        assertTrue(replay.admit(200.0))
+        // Relay idle timeout, reconnect, Runtime.enable replays the buffer.
+        replay.attach("P1")
+        assertFalse(replay.admit(100.0))
+        assertFalse(replay.admit(200.0))
+        assertTrue(replay.admit(201.0))
+        assertTrue(replay.admit(0.0))
+        replay.attach("P2")
+        assertTrue(replay.admit(150.0))
     }
 
     @Test

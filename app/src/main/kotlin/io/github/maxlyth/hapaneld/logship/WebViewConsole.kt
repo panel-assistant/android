@@ -196,6 +196,30 @@ internal class ConsoleCoalescer(
 }
 
 /**
+ * High-water mark across reattachments to one page. `Runtime.enable` replays the page's buffered
+ * console: useful on the first attach, a duplicate after the relay's idle timeout forces a reconnect.
+ * A different page target starts afresh.
+ */
+internal class ReplayHighWater {
+    private var targetId: String? = null
+    private var lastTimestampMs = 0.0
+
+    fun attach(target: String) {
+        if (target == targetId) return
+        targetId = target
+        lastTimestampMs = 0.0
+    }
+
+    /** False for an event already delivered before a reattachment. Untimed events always pass. */
+    fun admit(timestampMs: Double): Boolean {
+        if (timestampMs <= 0.0) return true
+        if (timestampMs <= lastTimestampMs) return false
+        lastTimestampMs = timestampMs
+        return true
+    }
+}
+
+/**
  * The producer behind [LogCapture.webView]. It never starts the CDP relay: it attaches only while the
  * relay the user started from `/inspect` is listening on loopback, and backs off cheaply otherwise.
  * It stays idle unless [enabled] (log shipping configured) holds. It reads events and never evaluates
@@ -205,10 +229,7 @@ internal class WebViewConsoleStream(
     private val enabled: () -> Boolean,
     private val port: Int = CdpRelay.PORT,
 ) {
-    // High-water mark across reattachments: Runtime.enable replays the page's buffered console, which
-    // is useful on first attach and a duplicate after the relay's idle timeout forces a reconnect.
-    private var targetId: String? = null
-    private var lastTimestampMs = 0.0
+    private val replay = ReplayHighWater()
 
     suspend fun run(emit: (String) -> Unit) {
         if (!enabled()) {
@@ -220,10 +241,7 @@ internal class WebViewConsoleStream(
             delay(ABSENT_POLL_MS)
             return
         }
-        if (target.first != targetId) {
-            targetId = target.first
-            lastTimestampMs = 0.0
-        }
+        replay.attach(target.first)
         val client = HttpClient(OkHttp) {
             install(WebSockets)
             engine {
@@ -250,8 +268,7 @@ internal class WebViewConsoleStream(
                     val frame = received.getOrNull() ?: break
                     if (frame !is Frame.Text) continue
                     val event = CdpConsoleMapper.map(frame.readText()) ?: continue
-                    if (event.timestampMs > 0.0 && event.timestampMs <= lastTimestampMs) continue
-                    if (event.timestampMs > lastTimestampMs) lastTimestampMs = event.timestampMs
+                    if (!replay.admit(event.timestampMs)) continue
                     coalescer.offer(event).forEach(emit)
                 }
             } finally {
