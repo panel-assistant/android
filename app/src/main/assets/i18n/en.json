@@ -31503,6 +31503,20 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.dashboard_zoom.promoted_help": {
+      "text": "How you size the dashboard on this panel, which cannot change its display density. Lower it to fit more on screen; raise it to enlarge.",
+      "sourceHash": "60fde4ecb0300f4e39d073c0ed282652965ca6e4803dbbe47e5a08917352afdd",
+      "surface": "settings",
+      "context": "Configure > Built-in renderer > Zoom (%): help shown instead of settings.dashboard_zoom.help on a panel without root or Shizuku, where display density cannot be changed and zoom is the only way to size the dashboard.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_zoom.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 160,
+      "hardMaxChars": 160
+    },
     "settings.diag_boot.help": {
       "text": "When the panel last booted (a timestamp — HA shows the elapsed uptime).",
       "sourceHash": "c2def446a0798101bd52a56491c2a741ee0e71ada93bc7c42212f294b5911289",

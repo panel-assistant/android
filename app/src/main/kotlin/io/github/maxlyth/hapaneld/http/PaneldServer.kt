@@ -8213,7 +8213,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         val displaySizingAvailable = caps.canSetDisplay
         // Include the settable settings PLUS the read-only HA sensors (diagnostics): the latter carry
         // no editable value but still render an expose pip, so the user can opt them into HA.
-        val schemaSpecs = SettingsRegistry.schemaVisibleSpecs()
+        val schemaSpecs = SettingsRegistry.schemaVisibleSpecs(caps)
         val items = schemaSpecs.joinToString(",") { spec ->
             val opts = spec.optionsFor(caps).joinToString(",") { s(it) }
             val isHa = spec.ha != null
@@ -8244,8 +8244,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             val exposed = if (isHa) config.haExposed(spec.key, spec.haExposedByDefault) else false
             val placeholderJson = placeholder?.let { s(it) } ?: nullJson
             val label = strings.resolve(spec.labelKey)
-            val help = if (spec.help.isEmpty()) null else strings.resolve(spec.helpKey)
-            val helpKeyJson = if (spec.help.isEmpty()) nullJson else s(spec.helpKey)
+            val helpKey = spec.helpKeyFor(caps)
+            val help = helpKey?.let(strings::resolve)
+            val helpKeyJson = helpKey?.let(::s) ?: nullJson
             val helpLanguageJson = help?.language?.let(::s) ?: nullJson
             "{" +
                 "\"key\":${s(spec.key)}," +
@@ -8258,7 +8259,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 "\"help\":${s(help?.text.orEmpty())}," +
                 "\"helpLanguage\":$helpLanguageJson," +
                 "\"default\":${s(spec.default)}," +
-                "\"tier\":${s(spec.tier.name)}," +
+                "\"tier\":${s(spec.tierFor(caps).name)}," +
                 "\"scope\":${s(spec.scope.name)}," +
                 "\"secret\":${spec.secret}," +
                 "\"readOnly\":${spec.readOnly}," +
