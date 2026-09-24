@@ -417,6 +417,7 @@ run_provision() {
   MOCK_PM_LIVENESS="${MOCK_PM_LIVENESS:-ok}" \
   MOCK_PM_LIVENESS_PID_FILE="${MOCK_PM_LIVENESS_PID_FILE:-}" \
   MOCK_PM_PROBE="${MOCK_PM_PROBE:-ok}" \
+  MOCK_PM_QUERY_SECONDS="${MOCK_PM_QUERY_SECONDS:-}" \
   MOCK_PM_VANISH_AFTER="${MOCK_PM_VANISH_AFTER:-}" \
   MOCK_PM_TARGET_RC="${MOCK_PM_TARGET_RC:-}" \
   MOCK_PM_LIVE_RC="${MOCK_PM_LIVE_RC:-}" \
@@ -480,6 +481,7 @@ run_provision() {
   MOCK_ROOT="${MOCK_ROOT:-1}" \
   MOCK_ABI="${MOCK_ABI:-arm64-v8a}" \
   MOCK_SYSTEM_WRITABLE="${MOCK_SYSTEM_WRITABLE:-1}" \
+  MOCK_SYSTEM_LAYOUT_PROBE="${MOCK_SYSTEM_LAYOUT_PROBE:-ok}" \
   MOCK_SYSTEM_CAPACITY="${MOCK_SYSTEM_CAPACITY:-valid}" \
   MOCK_SYSTEM_AVAIL_KB="${MOCK_SYSTEM_AVAIL_KB:-1048576}" \
   MOCK_DEVICE_AWK="${MOCK_DEVICE_AWK:-present}" \
@@ -605,16 +607,15 @@ last_refusal_headline() {
 
 # Refusals that mean the harness or the host broke rather than the condition under test.
 #
-# Each one is a fallthrough in provision.sh reached when an `adb shell` probe whose exit status is
-# discarded with `|| true` returns nothing the classifier recognises. An empty or garbled probe is
-# indistinguishable there from a genuine panel answer, so provision.sh reports it as a partition
-# state - and a test that merely required a non-zero exit records a green pass for a run that never
-# reached the behaviour it names. That is not hypothetical: on the CI runner, `late primary
-# unreadable` refused at the read-only-/system fallthrough, `assert_failure` passed, and only the
-# two content assertions after it failed.
+# The first two name a root-shell probe that returned nothing recognisable; provision.sh reports
+# those as unanswered rather than as a partition state. The rest are partition or storage verdicts no
+# ordinary case sets up, so a case reaching one without asking for it did not reach the behaviour it
+# names. That is not hypothetical: on the CI runner, `late primary unreadable` refused at the
+# read-only-/system fallthrough (then also reached by an empty capture), `assert_failure` passed, and
+# only the two content assertions after it failed.
 #
 # A case that MEANS to assert one of these passes it as assert_failure's second argument.
-UNRELATED_REFUSALS='the panel has read-only /system and no verified systemless boot-service runner|/vendor/etc/init is not writable for the hybrid root helper|the root-helper transaction could not be promoted into protected storage'
+UNRELATED_REFUSALS='the /system layout probe returned no recognisable answer|the /vendor/etc/init write probe returned no recognisable answer|the panel has read-only /system and no verified systemless boot-service runner|/vendor/etc/init is not writable for the hybrid root helper|the root-helper transaction could not be promoted into protected storage'
 
 # assert_failure "<description>" ["<expected refusal pattern>"]
 #
@@ -635,7 +636,19 @@ assert_failure() {
     else fail_test "$description (refused for the wrong reason: wanted /$expected_refusal/, got '${refusal_headline:-no refusal line at all}')"; fi
     return
   fi
-  if [ -n "$refusal_headline" ] && printf '%s\n' "$refusal_headline" | grep -Eq -- "$UNRELATED_REFUSALS"; then
+  # Once provision.sh has printed its banner, every deliberate refusal goes through `fail` or the ERR
+  # trap, both of which print a headline. A run past the banner that exits non-zero without one aborted
+  # rather than refused; a bare assertion passing on that is how a silent abort stayed green. The
+  # installer and fleet wrappers refuse in their own formats, so they are not held to this.
+  if [ -z "$refusal_headline" ]; then
+    if grep -Fq 'ha-paneld provisioning' "$LAST_OUTPUT" 2>/dev/null; then
+      fail_test "$description (no refusal line at all: the provisioner aborted without saying why)"
+    else
+      pass "$description"
+    fi
+    return
+  fi
+  if printf '%s\n' "$refusal_headline" | grep -Eq -- "$UNRELATED_REFUSALS"; then
     fail_test "$description (refused from an unrelated path: '$refusal_headline'; if this case means to assert that, pass it as assert_failure's second argument)"
     return
   fi
@@ -1286,8 +1299,11 @@ assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/
 
 for rootless_nonce_mode in missing wrong malformed duplicate; do
   case "$rootless_nonce_mode" in
-    missing) rootless_nonce_refusal="" ;;
-    *) rootless_nonce_refusal="rootless status did not echo this run.s database observation nonce" ;;
+    # An absent or repeated field is named, so the refusal says what the reply lacked rather than
+    # reporting it as someone else's observation. `missing` used to abort with no refusal line at all.
+    missing) rootless_nonce_refusal="rootless status did not echo this run.s database observation nonce: the database_observation_nonce field is absent" ;;
+    duplicate) rootless_nonce_refusal="rootless status did not echo this run.s database observation nonce: the database_observation_nonce field appears 2 times" ;;
+    *) rootless_nonce_refusal="rootless status did not echo this run.s database observation nonce$" ;;
   esac
   MOCK_ROOT=0 MOCK_STATUS_DB_SCHEMA=14 MOCK_STATUS_DB_QUICK_CHECK=ok \
   MOCK_STATUS_DB_NONCE="$rootless_nonce_mode" \
@@ -1305,7 +1321,7 @@ for rootless_field_mode in duplicate_schema duplicate_quick; do
   MOCK_DB_CANDIDATE_CONTRACT='hapaneld-db:v1:ha-paneld.db:11:14' \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_failure "rootless $rootless_field_mode observation is refused" \
-    "rootless status did not echo this run.s database observation nonce"
+    "rootless status is malformed: the ${rootless_field_mode#duplicate_}[a-z_]* field appears 2 times"
   assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android|/api/v1/config($|[? /])' \
     "$MOCK_CALL_LOG" "rootless $rootless_field_mode refusal has zero tracked mutations"
 done
@@ -2076,11 +2092,13 @@ assert_log_contains '^adb .* pm clear io.panelassistant.android$' "database fail
 
 # A panel whose health cannot be read or understood is a candidate for replacement, not a panel to
 # refuse. Standalone verification above still reports both states as failures.
-if grep -Fq 'STORAGE_HEALTH_PACKAGE_QUERY_SECONDS="${STORAGE_HEALTH_PACKAGE_QUERY_SECONDS:-15}"' "$PROVISION"; then
-  pass "the shipped package-presence proof allows both bounded queries on slower panels"
-else
-  fail_test "the shipped package-presence proof allows both bounded queries on slower panels"
-fi
+# The package probe's budget comes from the panel, not from the floor. Each `pm` here costs 2s, so the
+# two-query probe needs 4s against a 2s floor: a constant budget refuses this panel as undecidable,
+# and a budget measured from its own package manager lets the replacement proceed.
+MOCK_STORAGE_HEALTH=transport-fail MOCK_PM_QUERY_SECONDS=2 STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=2 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "a slow package manager is given a budget measured from the panel"
+assert_log_contains '^adb .* install' "the slow panel's measured probe reaches the APK install"
 
 MOCK_STORAGE_HEALTH=missing-state run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a malformed installed-app storage contract admits an ordinary replacement"
@@ -2144,8 +2162,8 @@ done
 # The fail-closed gate is unchanged, and is now held by the COMPLETENESS of the observation rather
 # than by a list of exit statuses. The first four cases each break the proof that the run finished;
 # an earlier design that enumerated statuses instead classified an interrupted query as absence and
-# installed onto it. The last two break what the package manager actually resolved.
-#   hang         : the run never answers, so the deadline expires
+# installed onto it. The last two break what the package manager actually resolved. A run that never
+# answers is a deadline, not an unknown answer, and is pinned to its own refusal after this loop.
 #   truncated    : the run is cut off before its END marker, as when it is killed mid-stream
 #   stale_nonce  : a complete sequence that belongs to some other run (replayed or buffered output)
 #   out_of_order : the markers do not arrive in the order the probe emits them
@@ -2161,7 +2179,7 @@ done
 #   child_error                      : the target query fails for a reason that is not absence
 #   child_live_killed                : the framework query dies, so nothing proves the pm answered
 #   malformed_path / relative_path   : a `package:` line that is not an absolute, unbroken path
-for unknown_case in "probe hang" "probe truncated" "probe stale_nonce" "probe out_of_order" \
+for unknown_case in "probe truncated" "probe stale_nonce" "probe out_of_order" \
                     "probe complete_then_fail" "resolve dead_pm" "resolve empty_path" \
                     "child killed" "child interrupted" "child error" "child live_killed" \
                     "resolve relative_path" "resolve contradictory"; do
@@ -2187,9 +2205,10 @@ for unknown_case in "probe hang" "probe truncated" "probe stale_nonce" "probe ou
     MOCK_PM_LIVENESS="$live_mode" MOCK_PM_TARGET_RC="$target_rc" MOCK_PM_LIVE_RC="$live_rc" \
     MOCK_NO_INSTALLED_PACKAGE="$no_pkg" \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "an untrustworthy classification ($label) refuses before any mutation"
-  assert_contains 'could not determine whether ha-paneld is already installed' \
-    "the refusal ($label) names the undecided classification"
+  assert_failure "an untrustworthy classification ($label) refuses before any mutation" \
+    '^could not determine whether ha-paneld is already installed$'
+  assert_not_contains 'did not finish within' "$LAST_OUTPUT" \
+    "an answered but untrustworthy classification ($label) is not reported as a deadline"
   assert_contains 'Nothing was installed or changed' "the refusal ($label) states what did not happen"
   assert_not_contains 'ha-paneld is not installed on this panel yet' "$LAST_OUTPUT" \
     "an undecided classification ($label) never claims a fresh install"
@@ -2202,6 +2221,28 @@ for unknown_case in "probe hang" "probe truncated" "probe stale_nonce" "probe ou
     "$MOCK_CALL_LOG" "no panel mutation is attempted ($label)"
 done
 unset kind mode label probe_mode pm_mode live_mode target_rc live_rc no_pkg
+
+# A probe still running when its budget expires has not answered. It still refuses — nothing about the
+# package was established — but on the deadline, not as an unknown package state.
+MOCK_STORAGE_HEALTH=transport-fail MOCK_PM_PROBE=hang MOCK_NO_INSTALLED_PACKAGE=1 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a package probe that outlives its budget refuses on the deadline" \
+  '^the package-presence probe did not finish within [0-9]+s$'
+assert_contains 'This is a deadline, not an answer' "the deadline refusal says nothing was decided"
+assert_contains 'one package-manager query took [0-9]+s, and the probe asks two' \
+  "the deadline refusal names the budget it measured from the panel"
+assert_not_contains 'could not determine whether ha-paneld is already installed|ha-paneld is not installed on this panel yet' "$LAST_OUTPUT" \
+  "a probe deadline is reported neither as an unknown package nor as a fresh install"
+assert_not_contains '^adb .*( install | push |pm grant|pm clear|appops |settings put|am start)' \
+  "$MOCK_CALL_LOG" "no panel mutation is attempted after a probe deadline"
+
+# The single timed query can itself outlive the adb deadline; that too is a deadline, never a verdict.
+ADB_COMMAND_TIMEOUT_SECONDS=3 MOCK_STORAGE_HEALTH=transport-fail MOCK_PM_LIVENESS=hang MOCK_NO_INSTALLED_PACKAGE=1 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "a package manager that does not answer the timed query refuses on the deadline" \
+  '^the package manager did not answer within 3s$'
+assert_not_contains '^adb .*( install | push |pm grant|pm clear|appops |settings put|am start)' \
+  "$MOCK_CALL_LOG" "no panel mutation is attempted after a package-manager deadline"
 
 # Every site that asks "is ha-paneld installed?" was changed, so each is covered directly here rather
 # than only through the one that happened to be reported. Leaving storage health healthy means the
@@ -2668,6 +2709,31 @@ assert_not_contains 'disable-verity.*remount' "$LAST_OUTPUT" "the post-reboot re
 assert_contains 'unlock any PIN-protected panel' "the remount advice names the Direct Boot unlock step"
 assert_not_contains '/data/adb/service\.d/hapaneld-helper\.sh\.new|^adb .* install( |$)' "$MOCK_CALL_LOG" "unverified service.d path never installs a helper or replaces the APK"
 
+# A probe that did not answer is not a read-only partition. The genuine read-only case above must keep
+# its remediation, and these must never print it: one of its steps reboots the panel, and a dropped
+# link or a shell that never ran the probe says nothing about the partition or its bootloader.
+for layout_probe_mode in empty truncated garbled flood; do
+  MOCK_SYSTEM_WRITABLE=0 MOCK_SYSTEMLESS_RUNNER=0 MOCK_SYSTEM_LAYOUT_PROBE="$layout_probe_mode" \
+    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_failure "an unanswered /system layout probe ($layout_probe_mode) refuses on its own reason" \
+    "the /system layout probe returned no recognisable answer"
+  assert_not_contains 'disable-verity|remount|reboot|read-only /system' "$LAST_OUTPUT" \
+    "an unanswered /system layout probe ($layout_probe_mode) prints no partition diagnosis or rebooting remediation"
+  assert_contains 'root shell exited with status [0-9]+ and returned' \
+    "the unanswered /system layout probe ($layout_probe_mode) names what the capture held"
+  assert_not_contains '/data/adb/service\.d/hapaneld-helper\.sh\.new|helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
+    "an unanswered /system layout probe ($layout_probe_mode) installs no helper and replaces no APK"
+  case "$layout_probe_mode" in
+    empty) layout_probe_evidence='^ +\(no output\)$' ;;
+    truncated) layout_probe_evidence='^ +SYSTEM_RO$' ;;
+    garbled) layout_probe_evidence='^ +/system/bin/sh: syntax error' ;;
+    flood) layout_probe_evidence='^ +adb: error: flood line 2$' ;;
+  esac
+  assert_contains "$layout_probe_evidence" \
+    "the unanswered /system layout probe ($layout_probe_mode) quotes its own capture"
+done
+unset layout_probe_mode layout_probe_evidence
+
 # Stock NSPanel Pro firmware can have a writable but full /system. The zero-byte writability probe
 # is not enough: capacity must be established before choosing a transactional install authority.
 MOCK_SYSTEM_AVAIL_KB=12 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
@@ -2724,6 +2790,15 @@ assert_failure "full /system without writable vendor init authority fails closed
 assert_contains '/vendor/etc/init.*not writable|writable.*vendor.*init' "vendor-blocked hybrid names the unavailable boot authority"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
   "unwritable vendor init stops before a helper transaction or APK replacement"
+
+# The vendor write probe now answers VENDOR_INIT_RO when the partition refuses; silence is unanswered.
+MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=unreadable run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "an unanswered vendor init probe refuses on its own reason" \
+  "the /vendor/etc/init write probe returned no recognisable answer"
+assert_not_contains 'Restore vendor-partition writability' "$LAST_OUTPUT" \
+  "an unanswered vendor init probe does not tell the operator to change the partition"
+assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
+  "an unanswered vendor init probe stops before a helper transaction or APK replacement"
 
 MOCK_SYSTEM_AVAIL_KB=1048576 MOCK_VENDOR_RC_STATE=managed MOCK_VENDOR_INIT_RW=0 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame

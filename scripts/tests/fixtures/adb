@@ -265,6 +265,10 @@ pm_marked_probe_reply() {
     while :; do /bin/sleep 1; done
   fi
   [ "$other" != stale_nonce ] || nonce="0123456789abcdef0123456789abcdef"
+  # Two `pm` invocations, each at the slow package manager's cost.
+  if [ -n "${MOCK_PM_QUERY_SECONDS:-}" ]; then
+    /bin/sleep "$MOCK_PM_QUERY_SECONDS"; /bin/sleep "$MOCK_PM_QUERY_SECONDS"
+  fi
   # A real `pm path` exits 0 when it names a path and non-zero when the package is simply absent.
   case "${MOCK_PM_PATH:-ok}" in
     ok) trc=0 ;;
@@ -386,6 +390,8 @@ pm_marked_paths() {
 
 pm_query_reply() {
   local mode="$1" path="$2" pid_file="${3:-}"
+  # MOCK_PM_QUERY_SECONDS models a slow package manager: every `pm` invocation costs this long.
+  [ -z "${MOCK_PM_QUERY_SECONDS:-}" ] || /bin/sleep "$MOCK_PM_QUERY_SECONDS"
   case "$mode" in
     ok) printf '%s\n' "$path"; exit 0 ;;
     absent) exit 0 ;;
@@ -514,7 +520,27 @@ mark_hapaneld_stopped() {
   fi
 }
 
+# MOCK_SYSTEM_LAYOUT_PROBE models the probe itself failing rather than the partition answering:
+#   empty      the link drops before the root shell prints anything (adb reports 255)
+#   truncated  the reply is cut off after SYSTEM_RO, before the runner check reports either way
+#   garbled    the shell answers, but with nothing the probe emits
+#   flood      a large unrecognised reply, larger than one pipe buffer
+# MOCK_VENDOR_INIT_RW: 1 writable, 0 the partition refuses the write, unreadable no answer at all.
+emit_vendor_init_probe() {
+  case "${MOCK_VENDOR_INIT_RW:-1}" in
+    1) printf 'VENDOR_INIT_RW\n' ;;
+    unreadable) exit 255 ;;
+    *) printf 'VENDOR_INIT_RO\n' ;;
+  esac
+}
+
 emit_system_layout_probe() {
+  case "${MOCK_SYSTEM_LAYOUT_PROBE:-ok}" in
+    empty) exit 255 ;;
+    truncated) printf 'SYSTEM_RO\n'; exit 255 ;;
+    garbled) printf '/system/bin/sh: syntax error: unexpected end of file\n'; exit 2 ;;
+    flood) i=0; while [ "$i" -lt 20000 ]; do printf 'adb: error: flood line %s\n' "$i"; i=$((i + 1)); done; exit 1 ;;
+  esac
   if [ "${MOCK_SYSTEM_WRITABLE:-1}" = 1 ]; then
     printf 'SYSTEM_RW\n'
     if [ "${MOCK_DEVICE_AWK:-present}" = missing ] &&
@@ -1370,7 +1396,7 @@ case "${1:-}" in
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'touch /system/.rw_probe'; then
           emit_system_layout_probe
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-rw-probe-'; then
-          [ "${MOCK_VENDOR_INIT_RW:-1}" = 1 ] && printf 'VENDOR_INIT_RW\n'
+          emit_vendor_init_probe
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo TRANSACTION_READY'; then
           [ "${MOCK_TRANSACTION_TAMPER:-0}" != 1 ] && printf 'TRANSACTION_READY\n'
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo PROBE_READY'; then
@@ -1484,7 +1510,7 @@ case "${1:-}" in
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'touch /system/.rw_probe'; then
           emit_system_layout_probe
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-rw-probe-'; then
-          [ "${MOCK_VENDOR_INIT_RW:-1}" = 1 ] && printf 'VENDOR_INIT_RW\n'
+          emit_vendor_init_probe
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo TRANSACTION_READY'; then
           [ "${MOCK_TRANSACTION_TAMPER:-0}" != 1 ] && printf 'TRANSACTION_READY\n'
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo PROBE_READY'; then
@@ -1589,7 +1615,7 @@ case "${1:-}" in
         elif adb_root_active && printf '%s' "$command_text" 2>/dev/null | grep -Fq 'touch /system/.rw_probe'; then
           emit_system_layout_probe
         elif adb_root_active && printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-rw-probe-'; then
-          [ "${MOCK_VENDOR_INIT_RW:-1}" = 1 ] && printf 'VENDOR_INIT_RW\n'
+          emit_vendor_init_probe
         elif adb_root_active && printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo TRANSACTION_READY'; then
           [ "${MOCK_TRANSACTION_TAMPER:-0}" != 1 ] && printf 'TRANSACTION_READY\n'
         elif adb_root_active && printf '%s' "$command_text" 2>/dev/null | grep -Fq 'echo PROBE_READY'; then
