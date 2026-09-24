@@ -5,6 +5,7 @@ import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +32,8 @@ import kotlin.math.min
  *    own-uid, so readable with no `READ_LOGS` permission and no root.
  *  - [system]: the full system logcat via `su -c logcat` — root panels only; callers gate on
  *    `Su.available()`.
+ *  - [webView]: the dashboard WebView's JavaScript console, read over the CDP relay by an in-process
+ *    [lineStream] instead of a subprocess (see [WebViewConsoleStream]).
  *
  * Every line is [redact]ed for tokens / passwords / URL secrets as it is captured, so both the
  * remote sink AND the local browser view only ever see scrubbed lines.
@@ -48,6 +51,12 @@ class LogCapture(
         ProcessBuilder(command).redirectErrorStream(true).start()
     },
     private val featureCosts: FeatureCostRegistry = FeatureCosts.registry,
+    /**
+     * In-process producer used instead of [streamCmd] when set. It runs while the capture has
+     * subscribers and hands each raw line to its callback; the line is then redacted and fanned out
+     * exactly like a logcat line. There is no dump for such a source: backlog is the ring alone.
+     */
+    private val lineStream: (suspend (emit: (String) -> Unit) -> Unit)? = null,
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
@@ -163,7 +172,7 @@ class LogCapture(
     /** One-shot dump of the last [lines] log lines (redacted). A single flight is shared by all
      * callers, output is capped before decoding, and a wedged command is forcibly terminated. */
     fun dump(lines: Int = DUMP_LINES): List<String> {
-        if (lines <= 0) return emptyList()
+        if (lines <= 0 || lineStream != null) return emptyList()
         val (flight, owner) = synchronized(this) {
             if (closed) return emptyList()
             val current = dumpFlight
@@ -283,6 +292,22 @@ class LogCapture(
     private fun start() {
         val r = Run()
         run = r
+        val producer = lineStream
+        if (producer != null) {
+            r.job = scope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    try {
+                        producer { line -> emit(r, redact(line)) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "stream restart: ${e.message}")
+                    }
+                    if (isActive) delay(BACKOFF_MS)
+                }
+            }
+            return
+        }
         r.job = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
@@ -400,6 +425,15 @@ class LogCapture(
             { n -> listOf("su", "-c", "logcat -v threadtime -d -t $n '*:V'") },
         )
 
+        /** Dashboard WebView console over the CDP relay. [enabled] keeps it idle unless log shipping is
+         *  configured; it never starts the relay itself. */
+        fun webView(scope: CoroutineScope, enabled: () -> Boolean) = LogCapture(
+            scope,
+            streamCmd = emptyList(),
+            dumpCmd = { emptyList() },
+            lineStream = WebViewConsoleStream(enabled)::run,
+        )
+
         // Conservative redaction — strip the obvious secret shapes before a line reaches ANY consumer
         // (remote sink or browser view).
         private val REDACTIONS: List<Pair<Regex, String>> = listOf(
@@ -412,6 +446,8 @@ class LogCapture(
             Regex("""\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{6,}""") to "***jwt***",
             // Secrets carried in URL query strings.
             Regex("""(?i)([?&](?:token|auth|access_token|api_key|key|password)=)[^&\s"]+""") to "$1***",
+            // Credentials embedded in a URL's authority (`scheme://user:pass@host`).
+            Regex("""(?i)\b([a-z][a-z0-9+.\-]*://)[^/\s:@]+:[^/\s@]+@""") to "$1***@",
         )
 
         /** Apply [REDACTIONS] in sequence. Public for unit testing. */
