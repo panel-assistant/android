@@ -2431,15 +2431,29 @@ fetch_release_helper_build_id() {
   printf '%s\n' "$build_id"
 }
 
+# Every host digest goes through here, into HOST_SHA256. A missing digest tool is a fact about this
+# computer, so it is refused the same way wherever it is met, naming what the caller was hashing
+# ($2). The function runs in the caller's shell, not a command substitution, so that refusal stops
+# the run instead of dying unseen in a subshell. A digest command that runs and fails returns 1, and
+# what that means is the caller's own policy; its own error stays on stderr, because at the callers
+# that abort on it that error is the only explanation the run prints.
+HOST_SHA256=""
 host_sha256() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
-  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
-  else fail "cannot authenticate helper staging" "Install sha256sum (or shasum), then re-run."
+  local file="$1" subject="$2"
+  HOST_SHA256=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    HOST_SHA256="$(sha256sum "$file" | awk '{print $1}')" || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    HOST_SHA256="$(shasum -a 256 "$file" | awk '{print $1}')" || return 1
+  else
+    fail "this computer cannot hash $subject: neither sha256sum nor shasum is installed" \
+      "Install sha256sum (coreutils) or shasum, then re-run."
   fi
 }
 
 bind_candidate_apk_bytes() {
-  TARGET_APK_SHA256="$(host_sha256 "$APK" 2>/dev/null || true)"
+  host_sha256 "$APK" "the candidate APK" || true
+  TARGET_APK_SHA256="$HOST_SHA256"
   printf '%s\n' "$TARGET_APK_SHA256" | grep -Eq '^[0-9a-f]{64}$' || fail "could not bind the authenticated candidate APK bytes" \
     "No panel mutation was started. Check that the APK is a readable regular file, then retry."
 }
@@ -2448,7 +2462,8 @@ assert_candidate_apk_unchanged() {
   local observed
   [ -n "$TARGET_APK_SHA256" ] || fail "the candidate APK has no authenticated byte binding" \
     "No panel mutation was started. Re-run the same provisioning command."
-  observed="$(host_sha256 "$APK" 2>/dev/null || true)"
+  host_sha256 "$APK" "the candidate APK" || true
+  observed="$HOST_SHA256"
   if [ "$observed" != "$TARGET_APK_SHA256" ]; then
     if { [ "${DB_GATE_PHASE:-}" = consume ] || [ "${DB_GATE_PHASE:-}" = package ]; } && \
        type host_database_gate_refuse >/dev/null 2>&1; then
@@ -3007,7 +3022,8 @@ installed_apk_matches_hash() {
     rm -rf "$dir"
     return 2
   fi
-  actual="$(host_sha256 "$pulled" 2>/dev/null || true)"
+  host_sha256 "$pulled" "the installed ha-paneld APK" || true
+  actual="$HOST_SHA256"
   rm -rf "$dir"
   [ "$actual" = "$expected" ]
 }
@@ -3387,12 +3403,12 @@ while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 3; done
 /system/bin/pkill -x hapaneld-ledd 2>/dev/null
 /data/adb/hapaneld/hapaneld-helper --supervise >/dev/null 2>&1 &
 EOF
-  legacy_rc_sha256="$(host_sha256 "$legacy_rc_file")"
-  legacy_rc_supervised_sha256="$(host_sha256 "$legacy_rc_supervised_file")"
-  legacy_hybrid_rc_sha256="$(host_sha256 "$legacy_hybrid_rc_file")"
-  legacy_hybrid_rc_supervised_sha256="$(host_sha256 "$legacy_hybrid_rc_supervised_file")"
-  legacy_service_sha256="$(host_sha256 "$legacy_service_file")"
-  legacy_service_supervised_sha256="$(host_sha256 "$legacy_service_supervised_file")"
+  host_sha256 "$legacy_rc_file" "the root-helper staging"; legacy_rc_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_rc_supervised_file" "the root-helper staging"; legacy_rc_supervised_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_hybrid_rc_file" "the root-helper staging"; legacy_hybrid_rc_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_hybrid_rc_supervised_file" "the root-helper staging"; legacy_hybrid_rc_supervised_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_service_file" "the root-helper staging"; legacy_service_sha256="$HOST_SHA256"
+  host_sha256 "$legacy_service_supervised_file" "the root-helper staging"; legacy_service_supervised_sha256="$HOST_SHA256"
   rm -f "$legacy_rc_file" "$legacy_rc_supervised_file" \
     "$legacy_hybrid_rc_file" "$legacy_hybrid_rc_supervised_file" \
     "$legacy_service_file" "$legacy_service_supervised_file"
@@ -5819,10 +5835,10 @@ case "${1:-}" in
   *) exit 2 ;;
 esac
 EOF
-  bin_sha256="$(host_sha256 "$helper")"
-  rc_sha256="$(host_sha256 "$rc_file")"
-  hybrid_rc_sha256="$(host_sha256 "$hybrid_rc_file")"
-  service_sha256="$(host_sha256 "$service_file")"
+  host_sha256 "$helper" "the root-helper staging"; bin_sha256="$HOST_SHA256"
+  host_sha256 "$rc_file" "the root-helper staging"; rc_sha256="$HOST_SHA256"
+  host_sha256 "$hybrid_rc_file" "the root-helper staging"; hybrid_rc_sha256="$HOST_SHA256"
+  host_sha256 "$service_file" "the root-helper staging"; service_sha256="$HOST_SHA256"
   sed -e "s/@BIN_SHA256@/$bin_sha256/g" \
       -e "s/@RC_SHA256@/$rc_sha256/g" \
       -e "s/@HYBRID_RC_SHA256@/$hybrid_rc_sha256/g" \
@@ -5842,7 +5858,7 @@ EOF
       -e "s|@STAGED_SERVICE@|$ROOT_HELPER_STAGED_SERVICE|g" \
       "$transaction_file" > "$transaction_file.ready"
   mv "$transaction_file.ready" "$transaction_file"
-  transaction_sha256="$(host_sha256 "$transaction_file")"
+  host_sha256 "$transaction_file" "the root-helper staging"; transaction_sha256="$HOST_SHA256"
   ROOT_HELPER_TARGET_SHA256="$bin_sha256"
   ROOT_HELPER_TRANSACTION_SHA256="$transaction_sha256"
   ROOT_HELPER_TRANSACTION_PATH="/data/adb/hapaneld/.helper-transaction-$ROOT_HELPER_TRANSACTION_ID-$transaction_sha256"
@@ -6668,10 +6684,11 @@ echo HOSTDB_END:@NONCE@
     cleanup_root_database_observer
     return 1
   fi
-  script_sha="$(host_sha256 "$script_file" 2>/dev/null)" || {
+  host_sha256 "$script_file" "the database observer script" || {
     cleanup_root_database_observer
     return 1
   }
+  script_sha="$HOST_SHA256"
   if ! run_root "[ ! -e $observer_script ] && [ ! -L $observer_script ] && [ ! -e $observer_stage ] && [ ! -L $observer_stage ]" >/dev/null 2>&1; then
     cleanup_root_database_observer
     return 1
@@ -7580,10 +7597,11 @@ snapshot_prepared_database() {
     snapshot_txn_refuse "the direct copy size could not be read on this host" "Check the backup filesystem, then re-run."
     return 0
   fi
-  if ! host_sha="$(host_sha256 "$host_db" 2>/dev/null)"; then
-    snapshot_txn_refuse "the direct copy could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+  if ! host_sha256 "$host_db" "the database copy"; then
+    snapshot_txn_refuse "the direct copy could not be hashed on this host" "The host digest command failed on it; re-run, and check the host's sha256sum or shasum if it fails again."
     return 0
   fi
+  host_sha="$HOST_SHA256"
   if [ "$host_bytes" != "$UPGRADE_RECEIPT_DATABASE_BYTES" ] || [ "$host_sha" != "$UPGRADE_RECEIPT_DATABASE_SHA256" ]; then
     snapshot_txn_reject_unsafe "the direct copy did not match the app's clean-shutdown receipt" "The rejected copy was removed; re-run against the same panel."
     return 0
@@ -7843,7 +7861,8 @@ EOF
     snapshot_txn_refuse "the capture script could not be finalized on this host" "Check TMPDIR and sed, then re-run."
     return 0
   fi
-  script_sha="$(host_sha256 "$script_file")" || { rm -f "$script_file" 2>/dev/null || true; snapshot_txn_refuse "could not hash the capture script" "Check host sha256 tooling."; return 0; }
+  host_sha256 "$script_file" "the database capture script" || { rm -f "$script_file" 2>/dev/null || true; snapshot_txn_refuse "could not hash the capture script" "The host digest command failed on it; re-run, and check the host's sha256sum or shasum if it fails again."; return 0; }
+  script_sha="$HOST_SHA256"
   if ! adb -s "$TARGET" push "$script_file" "${stage}-script" >/dev/null 2>&1; then
     rm -f "$script_file" 2>/dev/null || true
     snapshot_txn_refuse "the capture script could not be pushed to the panel" "Check adb connectivity to $TARGET."
@@ -7979,18 +7998,19 @@ EOF2
   # The host digest is mandatory because the host copy is the artifact an operator may later use.
   # A panel without digest tooling may report `none`; byte count still binds that transfer, while a
   # panel digest, when present, must match the mandatory host digest.
-  if ! host_sha="$(host_sha256 "$base.db" 2>/dev/null)"; then
-    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+  if ! host_sha256 "$base.db" "the database backup"; then
+    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "The host digest command failed on it; re-run, and check the host's sha256sum or shasum if it fails again."
     return 0
   fi
+  host_sha="$HOST_SHA256"
   case "$host_sha" in
     *[!0-9a-f]*|'')
-      snapshot_txn_refuse "the published snapshot could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+      snapshot_txn_refuse "the published snapshot could not be hashed on this host" "The host digest command gave no usable digest; check the host's sha256sum or shasum, then re-run."
       return 0
       ;;
   esac
   if [ "${#host_sha}" -ne 64 ]; then
-    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "Install sha256sum (or shasum), then re-run."
+    snapshot_txn_refuse "the published snapshot could not be hashed on this host" "The host digest command gave no usable digest; check the host's sha256sum or shasum, then re-run."
     return 0
   fi
   if [ "$mf_sha" != none ] && [ "$host_sha" != "$mf_sha" ]; then
@@ -8372,13 +8392,8 @@ if [ "$SHIZUKU" = 1 ]; then
     SHIZUKU_CURRENT_APK="$SHIZUKU_DIR/installed-shizuku.apk"
     if run_with_deadline "$SHIZUKU_INSPECT_TIMEOUT_SECONDS" \
         adb_exec -s "$TARGET" pull "$SHIZUKU_CURRENT_PATH" "$SHIZUKU_CURRENT_APK" >/dev/null 2>&1; then
-      if command -v sha256sum >/dev/null 2>&1; then
-        SHIZUKU_CURRENT_SHA="$(sha256sum "$SHIZUKU_CURRENT_APK" | awk '{print $1}')"
-      elif command -v shasum >/dev/null 2>&1; then
-        SHIZUKU_CURRENT_SHA="$(shasum -a 256 "$SHIZUKU_CURRENT_APK" | awk '{print $1}')"
-      else
-        SHIZUKU_CURRENT_SHA=""
-      fi
+      host_sha256 "$SHIZUKU_CURRENT_APK" "the installed Shizuku manager"
+      SHIZUKU_CURRENT_SHA="$HOST_SHA256"
       [ "$SHIZUKU_CURRENT_SHA" = "$SHIZUKU_SHA256" ] && SHIZUKU_CURRENT_TRUSTED=1
       if [ "$SHIZUKU_CURRENT_TRUSTED" = 0 ]; then
         APKSIGNER="$(find_android_build_tool apksigner || true)"
@@ -8408,13 +8423,8 @@ if [ "$SHIZUKU" = 1 ]; then
     curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 \
       "$SHIZUKU_URL" -o "$SHIZUKU_APK" || fail "Shizuku download failed" \
       "Check internet access to github.com, then re-run. ha-paneld was not replaced or stopped."
-    if command -v sha256sum >/dev/null 2>&1; then
-      SHIZUKU_GOT="$(sha256sum "$SHIZUKU_APK" | awk '{print $1}')"
-    elif command -v shasum >/dev/null 2>&1; then
-      SHIZUKU_GOT="$(shasum -a 256 "$SHIZUKU_APK" | awk '{print $1}')"
-    else
-      fail "cannot verify the Shizuku download" "Install sha256sum (or shasum) and re-run."
-    fi
+    host_sha256 "$SHIZUKU_APK" "the Shizuku download"
+    SHIZUKU_GOT="$HOST_SHA256"
     [ "$SHIZUKU_GOT" = "$SHIZUKU_SHA256" ] || fail "Shizuku download checksum mismatch" \
       "Expected $SHIZUKU_SHA256" "Got      $SHIZUKU_GOT" "Nothing was installed."
     SHIZUKU_INSTALL_TIMEOUT_SECONDS="${SHIZUKU_INSTALL_TIMEOUT_SECONDS:-180}"
