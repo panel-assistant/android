@@ -122,6 +122,80 @@ class ConfigPostProductionRouteTest {
     }
 
     /**
+     * These settings have no typed setter on the direct route: the registry writer is their only owner.
+     * Each once shipped reported saved and silently discarded, so the whole production route must commit
+     * them to SQLite, report them applied only from read-back, and hand them to a reopened owner.
+     */
+    @Test fun `production config POST persists registry-only settings through SQLite`() {
+        val directory = Files.createTempDirectory("config-post-registry-only").toFile()
+        val database = File(directory, "ha-paneld.db")
+        val writer = Executors.newSingleThreadExecutor()
+        val reopenedWriter = Executors.newSingleThreadExecutor()
+        try {
+            val config = Config(SqliteStatePreferences(JdbcStatePersistence(database), writer))
+            assertTrue(config.applyBatch {
+                config.setPanelId("contract-panel")
+                config.setFriendlyName("Contract panel")
+                config.setHardware("Contract manufacturer", "Contract model")
+            })
+            val posted = linkedMapOf(
+                "dashboard_idle_return_min" to "15",
+                "voice_wake_words" to "[\"hey_jarvis\"]",
+                "voice_pipelines" to "{\"hey_jarvis\":\"contract-pipeline\"}",
+                "voice_audio_source" to "mic",
+                "voice_sensitivity" to "high",
+                "voice_mic_gain_db" to "6",
+                "camera_enabled" to "true",
+                "camera_resolution" to "1080p",
+                "camera_fps" to "30",
+                "camera_kbps" to "4000",
+                "camera_exposure" to "1.5",
+            )
+            val specs = posted.keys.map { requireNotNull(SettingsRegistry.spec(it)) }
+            specs.forEach { spec ->
+                assertTrue(!spec.liveApply, "${spec.key} must stay on the ordinary registry lane")
+                assertTrue(config.getRaw(spec) != posted[spec.key], "${spec.key} sample must be a real change")
+            }
+            val server = routeServer(config) { key, _ -> error("$key must not reach the live-setting lane") }
+
+            testApplication {
+                application {
+                    routing {
+                        route("/api/v1") {
+                            with(server) {
+                                installDirectConfigPostRoute { Capabilities() }
+                            }
+                        }
+                    }
+                }
+
+                val response = client.submitForm(
+                    url = "/api/v1/config",
+                    formParameters = Parameters.build { posted.forEach { (key, value) -> append(key, value) } },
+                ) { accept(ContentType.Application.Json) }
+
+                val responseText = response.bodyAsText()
+                assertEquals(HttpStatusCode.OK, response.status, responseText)
+                val body = JSONObject(responseText)
+                assertEquals("saved", body.getString("status"), responseText)
+                assertEquals(posted.keys, body.getJSONArray("applied").let { array ->
+                    List(array.length()) { array.getString(it) }
+                }.toSet(), responseText)
+            }
+
+            val reopened = Config(SqliteStatePreferences(JdbcStatePersistence(database), reopenedWriter))
+            specs.forEach { spec ->
+                assertEquals(posted[spec.key], config.getRaw(spec), "${spec.key} read-back")
+                assertEquals(posted[spec.key], reopened.getRaw(spec), "${spec.key} SQLite read-back")
+            }
+        } finally {
+            writer.shutdownNow()
+            reopenedWriter.shutdownNow()
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
      * Build the smallest genuine production effect owner needed by this route case. The bridge's
      * home-dashboard handler owns both the durable Config write and the entity-learning target refresh; an empty
      * converger is sufficient because publication is deliberately a no-op without a registered channel.
