@@ -72,10 +72,10 @@ class CameraStreamContractTest {
         // never the previous encoder's retained pair; so the publication precedes the wake-up.
         val body = owner.substringAfter("override fun onParameterSets(sets: ParameterSets) {").substringBefore("override fun onAccessUnit(")
         val published = body.indexOf("transport.onParameterSets(sets, attempt.id)")
-        val woken = body.indexOf("ready.complete(StreamOutcome.Ready(params))")
+        val woken = body.indexOf("streamReady.complete(StreamOutcome.Ready(params))")
         assertTrue("both the publication and the wake-up exist", published >= 0 && woken >= 0)
         assertTrue("the transport learns the sets before the waiters wake", published < woken)
-        assertTrue("the transport forgets them when the encoder stops", TestSources.kotlin("camera/CameraRtspServer.kt").readText().substringAfter("override fun onEncoderStopped(attempt: Long)").substringBefore("}").contains("sets = null"))
+        assertTrue("the transport forgets them when the encoder stops", TestSources.kotlin("camera/CameraRtspServer.kt").readText().substringAfter("override fun onEncoderStopped(attempt: Long)").substringBefore("}").contains("advertised.updateAndGet { current -> current?.takeUnless { it.attempt == attempt"))
     }
 
     @Test fun aClientsWriterIsRunningBeforeItsReaderCanFinishARequest() {

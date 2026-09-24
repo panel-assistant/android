@@ -4,6 +4,8 @@ import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.Socket
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -33,10 +35,19 @@ class CameraRtspServerTest {
         val requests = ArrayList<StreamRequest>()
         /** What the camera does on a sync-frame request: a real owner may deliver one synchronously. */
         var onKeyFrame: (() -> Unit)? = null
+        /** The session generation the next grant belongs to; a test moves it to stand for a replacement session. */
+        @Volatile var session = 1L
+        /** When set, an acquire signals [entered] and waits here before it is answered: a client still being admitted. */
+        @Volatile var admitting: CountDownLatch? = null
+        val entered = CountDownLatch(1)
 
         override fun acquireStream(request: StreamRequest): StreamAdmission {
             synchronized(requests) { requests += request }
             refusal?.let { return StreamAdmission.Refused(it) }
+            admitting?.let {
+                entered.countDown()
+                check(it.await(5, TimeUnit.SECONDS)) { "the test never released the admission" }
+            }
             acquired.incrementAndGet()
             var open = true
             val lease = AutoCloseable {
@@ -45,7 +56,7 @@ class CameraRtspServerTest {
                     released.incrementAndGet()
                 }
             }
-            return StreamAdmission.Granted(lease, StreamParams(640, 480, 15, 1_000, "fake.encoder", sets), session = 1L)
+            return StreamAdmission.Granted(lease, StreamParams(640, 480, 15, 1_000, "fake.encoder", sets), session)
         }
 
         override fun requestKeyFrame() {
@@ -466,5 +477,113 @@ class CameraRtspServerTest {
             Thread.getAllStackTraces().keys.none { it.isAlive && it.name.startsWith("camera-rtsp-") }
         }
         assertFalse(source.released.get() > source.acquired.get())
+    }
+
+    // ---- a replacement between a check and its effect ---------------------------------------------------
+    //
+    // The camera decides whose an effect is under its own lock and then applies it outside, because
+    // dropping a client closes that client's lease and re-enters the camera. So each of these effects can
+    // reach the transport after a newer session or attempt has taken over, and each one names what it
+    // belongs to; the transport applies it only to that.
+
+    private val slice = byteArrayOf(0x41, 0x11, 0x22, 0x33)
+    private val laterSlice = byteArrayOf(0x41, 0x44, 0x55, 0x66)
+    private val laterSets = ParameterSets(byteArrayOf(0x67, 0x64, 0x00, 0x1F, 0x01), pps)
+
+    @Test fun aStreamEndDropsOnlyTheClientsOfTheGenerationThatEnded() {
+        val source = FakeSource()
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { ended ->
+            Client(server.boundPort!!).use { replacement ->
+                ended.play(url)
+                // The first session ends at generation 2 and a replacement starts at 3 before the first
+                // session's ending reaches the transport.
+                source.session = 3L
+                replacement.play(url)
+                // Media is enabled just after the 200 PLAY is queued; the sync-frame request follows it.
+                await("both clients are playing") { source.keyFrames.get() == 2 }
+                assertEquals(2, server.facts().clients)
+                server.onStreamEnded(through = 2L)
+                assertTrue("the ended session's client is dropped", ended.ended())
+                await("its lease is given back") { source.released.get() == 1 }
+                assertEquals("the replacement's client keeps its place", 1, server.facts().clients)
+                server.onAccessUnit(listOf(slice), keyFrame = false, ptsUs = 0L, attempt = 1L)
+                assertArrayEqualsPayload(slice, replacement.readFrame().second)
+                assertEquals("and its lease", 1, source.released.get())
+            }
+        }
+    }
+
+    @Test fun aStreamEndLeavesAClientThatAReplacementSessionIsStillAdmitting() {
+        val source = FakeSource()
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { ended ->
+            ended.play(url)
+            val admitting = CountDownLatch(1)
+            source.admitting = admitting
+            source.session = 3L
+            Client(server.boundPort!!).use { replacement ->
+                assertEquals(200, replacement.request("OPTIONS", url).status)
+                replacement.send("DESCRIBE", url, "Accept: application/sdp")
+                assertTrue("the DESCRIBE is inside the camera's admission", source.entered.await(5, TimeUnit.SECONDS))
+                server.onStreamEnded(through = 2L)
+                assertTrue("the ended session's client is dropped", ended.ended())
+                admitting.countDown()
+                assertEquals("the replacement's client is admitted, not dropped by the older ending", 200, replacement.statusOrEnd())
+                assertEquals(1, server.facts().clients)
+            }
+        }
+    }
+
+    @Test fun aStreamEndStillDropsAClientItsOwnSessionGrantsDuringTheEnd() {
+        val source = FakeSource()
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        val admitting = CountDownLatch(1)
+        source.admitting = admitting
+        Client(server.boundPort!!).use { client ->
+            client.send("DESCRIBE", url, "Accept: application/sdp")
+            assertTrue("the DESCRIBE is inside the camera's admission", source.entered.await(5, TimeUnit.SECONDS))
+            // The session this client is joining ends before the camera answers it, and the answer is
+            // still a grant from that session: the client is the ended session's, and goes with it.
+            server.onStreamEnded(through = 2L)
+            admitting.countDown()
+            val status = client.statusOrEnd()
+            assertTrue("refused or dropped, never described: $status", status == null || status == 503)
+            assertTrue("the connection ends as it did before the end was scoped", client.ended())
+            await("the lease it was granted is given back") { source.released.get() == 1 }
+            assertEquals(0, server.facts().clients)
+        }
+    }
+
+    @Test fun aSupersededAttemptsAccessUnitReachesNoClient() {
+        val source = FakeSource()
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { client ->
+            client.play(url)
+            await("the client is playing") { source.keyFrames.get() == 1 }
+            // A reopen: attempt 2's encoder has published, and a unit attempt 1 produced before its
+            // teardown arrives after that.
+            server.onParameterSets(laterSets, attempt = 2L)
+            server.onAccessUnit(listOf(slice), keyFrame = false, ptsUs = 0L, attempt = 1L)
+            server.onAccessUnit(listOf(laterSlice), keyFrame = false, ptsUs = 66_000L, attempt = 2L)
+            assertArrayEqualsPayload(laterSlice, client.readFrame().second)
+        }
+    }
+
+    @Test fun aSupersededAttemptsRetractionLeavesTheNewerAttemptsSetsAdvertised() {
+        val source = FakeSource()
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { client ->
+            server.onParameterSets(laterSets, attempt = 2L)
+            server.onEncoderStopped(attempt = 1L)
+            val describe = client.request("DESCRIBE", url, "Accept: application/sdp")
+            assertEquals("the newer attempt's sets are still advertised", 200, describe.status)
+            assertTrue(describe.body.contains(laterSets.spropParameterSets()))
+        }
     }
 }
