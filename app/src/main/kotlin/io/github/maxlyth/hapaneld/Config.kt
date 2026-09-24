@@ -1269,36 +1269,20 @@ class Config private constructor(
     /** Durably record the touch-sound intent. Persist-before-actuation, like every other live setting. */
     fun commitTouchSound(on: Boolean): Boolean = commitRaw(specOf("touch_sound"), on.toString())
 
-    // Camera trial: the master switch and the hard caps that clamp every stream/snapshot request.
-    // Every one of these needs a setter. An earlier comment here claimed the caps reached the owner
-    // "through the ordinary reconfigure path" and so needed none — there is no ordinary path. The HTTP
-    // config route persists a non-live setting only if it has an explicit line in the direct-mutation
-    // batch, so a registry key with neither a live-apply handler nor a setter called from that batch is
-    // reported saved and silently discarded. That is what happened to all four of these.
+    // Camera trial: the master switch and the hard caps that clamp every stream/snapshot request. The
+    // HTTP config route persists all five through the registry writer; only the MQTT master switch
+    // needs a typed setter.
     val cameraEnabled: Boolean get() = boolPref("camera_enabled")
     fun setCameraEnabled(on: Boolean) {
         edit { putBoolean("camera_enabled", on) }
     }
     val cameraResolution: CameraResolution
         get() = CameraResolution.parse(stringPref("camera_resolution")) ?: CameraResolution.P720
-    fun setCameraResolution(value: String) {
-        edit { putString("camera_resolution", value) }
-    }
     val cameraFps: Int get() = intPref("camera_fps").coerceIn(1, 30)
-    fun setCameraFps(fps: Int) {
-        edit { putInt("camera_fps", fps.coerceIn(1, 30)) }
-    }
     val cameraKbps: Int get() = intPref("camera_kbps").coerceIn(250, 8000)
 
     /** Exposure bias in stops; the owner clamps it to whatever range the sensor advertises. */
     val cameraExposureEv: Float get() = floatPref("camera_exposure").coerceIn(-2f, 2f)
-    fun setCameraExposureEv(raw: String) {
-        val value = raw.trim().toFloatOrNull() ?: return
-        edit { putFloat("camera_exposure", value.coerceIn(-2f, 2f)) }
-    }
-    fun setCameraKbps(kbps: Int) {
-        edit { putInt("camera_kbps", kbps.coerceIn(250, 8000)) }
-    }
 
     // Experimental Android dashboard lock: hide system bars and return from other apps/Recents so a casual
     // user does not remain away from the dashboard. Persisted, off by default, with recovery routes and a
@@ -1325,31 +1309,16 @@ class Config private constructor(
     /** JSON array of configured wake-word model ids — SettingsRegistry validates and canonicalizes it
      *  before it is ever committed here, so a stored value is always well-formed. */
     val voiceWakeWords: String get() = stringPref("voice_wake_words")
-    fun setVoiceWakeWords(json: String) {
-        edit { putString("voice_wake_words", json) }
-    }
 
     /** JSON object of wake-word model id to Home Assistant Assist pipeline id (blank = preferred). */
     val voicePipelines: String get() = stringPref("voice_pipelines")
-    fun setVoicePipelines(json: String) {
-        edit { putString("voice_pipelines", json) }
-    }
 
     val voiceAudioSource: String get() = stringPref("voice_audio_source")
-    fun setVoiceAudioSource(source: String) {
-        edit { putString("voice_audio_source", source) }
-    }
 
     val voiceSensitivity: String get() = stringPref("voice_sensitivity")
-    fun setVoiceSensitivity(sensitivity: String) {
-        edit { putString("voice_sensitivity", sensitivity) }
-    }
 
     val voiceMicGainDb: Int get() =
         intPref("voice_mic_gain_db").coerceIn(MicrophoneGain.MIN_DB, MicrophoneGain.MAX_DB)
-    fun setVoiceMicGainDb(db: Int) {
-        edit { putInt("voice_mic_gain_db", db.coerceIn(MicrophoneGain.MIN_DB, MicrophoneGain.MAX_DB)) }
-    }
 
     /** Device-local acknowledgement of the built-in launch screen for one exact app version. This is
      * outside SettingsRegistry, so config export/import cannot suppress an intro on another panel. */
@@ -1558,7 +1527,6 @@ class Config private constructor(
      *  Swipe-from-edge still transiently reveals them, so an admin is never locked out. */
     val dashboardFullscreen: Boolean get() = boolPref("dashboard_fullscreen")
     fun setDashboardFullscreen(on: Boolean) { edit { putBoolean("dashboard_fullscreen", on) } }
-    fun setDashboardIdleReturnMin(min: Int) { edit { putInt("dashboard_idle_return_min", min) } }
 
     /** Ask Home Assistant's own frontend to enter its native kiosk mode. This is independent of
      * Android fullscreen/dashboard lock and does not inject CSS into the dashboard. */
