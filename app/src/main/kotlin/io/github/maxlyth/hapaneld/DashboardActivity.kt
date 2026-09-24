@@ -411,6 +411,11 @@ class DashboardActivity : AppCompatActivity() {
      * the distinction is the point. A full-rebuild overlay was tried and rejected on
      * hardware — it vanished with the container the moment the rebuild swapped views and its
      * full-bleed layout read no better than the toast.
+     *
+     * First entity-filter learning is a burst of restarts, not one, and a toast per rebuild read on
+     * hardware as a crashing dashboard. [BuiltinDashboard.restartAnnouncements] says the burst once (the
+     * native bootstrap hold, or the first learning toast) and keeps the rest quiet; see
+     * [io.github.maxlyth.hapaneld.control.DeliberateRestartAnnouncements].
      */
     private fun announceDeliberateRestart(
         reason: String,
@@ -570,6 +575,8 @@ class DashboardActivity : AppCompatActivity() {
                 }
                 // Live milestone tick — the count climbing is the trust signal a spinner never was.
                 entityBootstrapMilestoneView?.takeIf { it.isAttachedToWindow }?.let {
+                    // Still on screen: the learning notice counts from when it was last seen, not first.
+                    BuiltinDashboard.restartAnnouncements.learningNoticeShown(now)
                     val milestone = localizedBootstrapMilestone()
                     if (milestone.isNotBlank() && it.text != milestone) it.text = milestone
                 }
@@ -1366,6 +1373,7 @@ class DashboardActivity : AppCompatActivity() {
         // page forever. Tear it down and build the real renderer instead.
         if (signInShownForUrl != null && !haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)) {
             Log.i(TAG, "credentials present — leaving the on-panel sign-in for the dashboard")
+            BuiltinDashboard.consumeSupersededReload()
             activityConfig = config
             unlatchAuth("credentials arrived during sign-in")
             retryPolicy.reset()
@@ -1377,6 +1385,7 @@ class DashboardActivity : AppCompatActivity() {
         }
         if (compatibilityReadyUrl != null && compatibilityReadyUrl != normalizedUrl) {
             Log.i(TAG, "Home Assistant endpoint changed — rebuilding and rechecking the V2 renderer")
+            BuiltinDashboard.consumeSupersededReload()
             activityConfig = config
             compatibilityJob?.cancel()
             compatibilityCheckingOwner = null
@@ -1393,6 +1402,7 @@ class DashboardActivity : AppCompatActivity() {
         val activeHomeDashboardOwner = homeDashboardResolution?.owner ?: homeDashboardCheckingOwner
         if (activeHomeDashboardOwner != null && activeHomeDashboardOwner != homeDashboardOwner(config)) {
             Log.i(TAG, "dashboard authority changed — resolving the authenticated dashboard list again")
+            BuiltinDashboard.consumeSupersededReload()
             invalidateHomeDashboardResolution()
             unlatchAuth("dashboard authority change")
             retryPolicy.reset()
@@ -1408,7 +1418,12 @@ class DashboardActivity : AppCompatActivity() {
         val nextFilterSignature = entityFilterSignature(config)
         if (nextFilterSignature != entityFilterSignature) {
             Log.i(TAG, "entity instrumentation changed — rebuilding dashboard WebView")
-            announceDeliberateRestart(getString(R.string.optimizing_entities_restart))
+            // The learner's reload lands here with its reason pending. Only it is a learning restart;
+            // a hand edit of the filter or a settings change announces as a lone restart.
+            announceDeliberateRestart(
+                getString(R.string.optimizing_entities_restart),
+                learning = BuiltinDashboard.consumeSupersededReload() == BuiltinDashboard.LEARNING_RELOAD_REASON,
+            )
             unlatchAuth("entity-filter change")
             retryPolicy.reset()
             interstitialShown = false
@@ -1424,6 +1439,7 @@ class DashboardActivity : AppCompatActivity() {
         val nextThemeSignature = config.dashboardTheme
         if (nextThemeSignature != dashboardThemeSignature) {
             Log.i(TAG, "dashboard theme policy changed — rebuilding dashboard WebView")
+            BuiltinDashboard.consumeSupersededReload()
             announceDeliberateRestart(getString(R.string.applying_dashboard_theme))
             unlatchAuth("theme policy change")
             retryPolicy.reset()
@@ -3300,6 +3316,9 @@ class DashboardActivity : AppCompatActivity() {
         val rows = mutableListOf<View>()
         run {
             if (blockingIssues == 0 && filterHold == null && bootstrapProblem == null) {
+                // This screen says, before the burst starts, that the dashboard may reload while the panel
+                // learns; the reloads that follow it stay quiet rather than each announcing a restart.
+                BuiltinDashboard.restartAnnouncements.learningNoticeShown(SystemClock.elapsedRealtime())
                 // Deterministic milestones, not a spinner: nobody trusts the circle (hardware review),
                 // and this text updates with the live scan count on every bootstrap poll tick.
                 entityBootstrapMilestoneView = surface.detail(
@@ -3342,6 +3361,8 @@ class DashboardActivity : AppCompatActivity() {
             )
             rows += bootstrapHint
             if (blockingIssues == 0 && filterHold == null && bootstrapProblem == null) {
+                // Its own row, so the honesty rung below that replaces the hint cannot take it away.
+                rows += surface.detail(getString(R.string.entity_learning_reload_notice))
                 // The happy wait needs an honesty rung of its own: watched live, a stuck first scan held
                 // this screen for many minutes with no acknowledgement, indistinguishable from a hang.
                 // The sync rerun-latch fixes the known cause; this line is the promise kept if another

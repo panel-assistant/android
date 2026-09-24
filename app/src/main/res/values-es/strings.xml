@@ -205,6 +205,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant rechazó el inicio de sesión de este panel cuando el panel consultó qué entidades debía mostrar. El panel de control no se ha abierto. Configurar abre la configuración de este panel, donde Conexión con Home Assistant contiene el inicio de sesión; el panel de control volverá automáticamente cuando funcione.</string>
     <string name="entity_scan_failed_detail">El análisis de tus entidades no terminó, por lo que el panel de control no se ha abierto. Comprueba que Home Assistant esté en ejecución y que el panel esté conectado a la red y vuelve a intentarlo.</string>
     <string name="entity_scan_preparing_detail">Home Assistant se abrirá cuando esté listo el primer conjunto filtrado de entidades.</string>
+    <string name="entity_learning_reload_notice">Una vez abierto, Home Assistant puede recargarse varias veces mientras el panel aprende. Es normal.</string>
     <string name="entity_scan_taking_longer">Está tardando más de lo habitual; el panel sigue trabajando. Si no termina, puedes desactivar el filtro de entidades desde la configuración del panel.</string>
     <string name="ignore_flagged_entities">Ignorar las entidades marcadas y continuar</string>
     <string name="preparing_dashboard">Preparando el panel de control…</string>

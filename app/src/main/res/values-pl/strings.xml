@@ -200,6 +200,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant Odrzucono logowanie do tego panelu, gdy panel zapytał, które elementy mają być wyświetlane. Pulpit nawigacyjny nie został otwarty. Opcja „Konfiguruj” otwiera ustawienia tego panelu, gdzie Home Assistant Połączenie utrzymuje sesję logowania; pulpit nawigacyjny wraca samoczynnie, gdy tylko wszystko zacznie działać.</string>
     <string name="entity_scan_failed_detail">Skanowanie twoich elementów nie zostało zakończone, więc pulpit nawigacyjny nie został otwarty. Sprawdź, czy Home Assistant jeśli aplikacja działa, a panel jest podłączony do sieci, spróbuj ponownie.</string>
     <string name="entity_scan_preparing_detail">Home Assistant otworzy się, gdy pierwszy przefiltrowany zestaw elementów będzie gotowy.</string>
+    <string name="entity_learning_reload_notice">Po otwarciu Home Assistant może kilka razy się przeładować, gdy panel się uczy. To normalne.</string>
     <string name="entity_scan_taking_longer">Trwa to dłużej niż zwykle — panel wciąż nad tym pracuje. Jeśli proces się nie zakończy, filtr podmiotów można wyłączyć w ustawieniach panelu.</string>
     <string name="ignore_flagged_entities">Zignoruj oznaczone elementy i kontynuuj</string>
     <string name="preparing_dashboard">Przygotowywanie pulpitu…</string>

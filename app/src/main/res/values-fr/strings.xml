@@ -205,6 +205,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant a refusé la connexion de ce panneau lorsque celui-ci a demandé quelles entités afficher. Le tableau de bord ne s’est pas ouvert. Configurer ouvre les paramètres de ce panneau, où la connexion à Home Assistant contient l’identifiant ; le tableau de bord revient automatiquement dès qu’il fonctionne.</string>
     <string name="entity_scan_failed_detail">L’analyse de vos entités n’a pas abouti ; le tableau de bord ne s’est donc pas ouvert. Vérifiez que Home Assistant fonctionne et que le panneau est connecté au réseau, puis réessayez.</string>
     <string name="entity_scan_preparing_detail">Home Assistant s’ouvrira lorsque le premier ensemble filtré d’entités sera prêt.</string>
+    <string name="entity_learning_reload_notice">Une fois ouvert, Home Assistant peut se recharger plusieurs fois pendant que le panneau apprend. C’est normal.</string>
     <string name="entity_scan_taking_longer">Cela prend plus de temps que d’habitude — le panneau y travaille encore. Si l’opération n’aboutit pas, le filtre d’entités peut être désactivé dans les paramètres du panneau.</string>
     <string name="ignore_flagged_entities">Ignorer les entités signalées et continuer</string>
     <string name="preparing_dashboard">Préparation du tableau de bord…</string>

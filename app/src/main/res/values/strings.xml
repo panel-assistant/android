@@ -207,6 +207,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant rejected this panel’s sign-in when the panel asked which entities to show. The dashboard has not been opened. Configure opens this panel’s settings, where Home Assistant connection holds the sign-in; the dashboard returns on its own once it works.</string>
     <string name="entity_scan_failed_detail">The scan of your entities did not finish, so the dashboard has not been opened. Check that Home Assistant is running and that the panel is on the network, then try again.</string>
     <string name="entity_scan_preparing_detail">Home Assistant will open when the first filtered entity set is ready.</string>
+    <string name="entity_learning_reload_notice">Once Home Assistant opens, it may reload a few times while the panel learns. That is expected.</string>
     <string name="entity_scan_taking_longer">Taking longer than usual — the panel is still working on it. If this doesn’t finish, the entity filter can be turned off from panel settings.</string>
     <string name="ignore_flagged_entities">Ignore flagged entities and continue</string>
     <string name="preparing_dashboard">Preparing dashboard…</string>
