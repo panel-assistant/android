@@ -135,6 +135,12 @@ interface DeviceProfile {
     val ledTransfer: io.github.maxlyth.hapaneld.hardware.LedTransfer
         get() = io.github.maxlyth.hapaneld.hardware.LedTransfer.Identity
 
+    /** Transfer curve from Home Assistant's 0..255 brightness to the backlight node, with its inverse for
+     *  the effective read-back. Applied only where ha-paneld drives the node itself; the Android setting
+     *  stays on the Home Assistant scale. Default = the historic linear scaling. */
+    val backlightTransfer: io.github.maxlyth.hapaneld.hardware.TransferCurve
+        get() = io.github.maxlyth.hapaneld.hardware.TransferCurve.Identity
+
     /** Preferred true-screen-off path (runtime tiering still falls back as needed). */
     val screenOff: ScreenOff
 

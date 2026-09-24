@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
+
 /**
  * Parsed form of the version-2 profile format. It contains data and named, core-owned strategies only:
  * imported profiles cannot execute code, name arbitrary classes, use regular expressions, or add drivers.
@@ -135,7 +137,24 @@ data class ProfileHardware(
      * Null means unmeasured; the indicator then falls back to its own default rather than refusing.
      */
     val cameraLensOffsetPx: Int? = null,
+    /** Backlight transfer curve; null (the key absent) is the identity passthrough. */
+    val backlight: ProfileBacklight? = null,
 )
+
+/**
+ * `hardware.backlight`: the transfer curve from Home Assistant's 0..255 brightness to the backlight node.
+ * [transfer] is `identity`, `perceptual`, `gamma` (with [gamma]) or `points` (with [points], `[request,
+ * hardware]` pairs on 0..255 from `[0, 0]` to `[255, 255]`); [floor] (0..255) is the hardware level the
+ * lowest non-zero request lands on. Built by [toTransferCurve]; the validator reports its refusal.
+ */
+data class ProfileBacklight(
+    val transfer: String = "identity",
+    val gamma: Double? = null,
+    val points: List<Pair<Int, Int>>? = null,
+    val floor: Int? = null,
+) {
+    fun toTransferCurve(): TransferCurve = TransferCurve.from(transfer, gamma, points, floor)
+}
 
 data class ProfileLed(
     val mechanism: String,
