@@ -10,6 +10,8 @@ import java.time.Instant
 import java.net.URLEncoder
 
 class HaPresenceProtocolTest {
+    private val clonedAndroidId = "9f86d081884c7d65"
+
     @Test fun `panel Area projection needs only device and Area registries`() {
         val devices = response(JSONArray().put(device("panel-device", "office", "ha-paneld-uid-abc")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "office").put("name", "Office")))
@@ -82,6 +84,38 @@ class HaPresenceProtocolTest {
         assertTrue(subscriptions.all { batch ->
             batch.sumOf { it.toByteArray(Charsets.UTF_8).size + 3 } <= 1024 * 1024
         })
+    }
+
+    @Test fun `the cloned Android id identifier does not resolve the panel device`() {
+        // A merged device a cloned fleet already has still carries this identifier. Matching it is what
+        // resolved several panels to one row, so the panel device lookup must ignore it.
+        val devices = response(JSONArray().put(device("merged-device", "kitchen", "ha-paneld-aid-$clonedAndroidId")))
+        val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
+
+        val failure = runCatching {
+            HaPresenceProtocol.projectPanelArea(devices, areas, clonedAndroidId, "panel_one")
+        }.exceptionOrNull()
+
+        assertTrue("the retired identifier must not resolve a device", failure is HaProtocolException)
+        assertTrue(failure?.message.orEmpty().contains("missing"))
+    }
+
+    @Test fun `a device carrying only the cloned Android id identifier is not owned by the panel`() {
+        val devices = response(JSONArray()
+            .put(device("panel-device", "kitchen", "ha-paneld-uid-$clonedAndroidId"))
+            .put(device("merged-device", "kitchen", "ha-paneld-aid-$clonedAndroidId")))
+        val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
+        val entities = JSONObject().put("result", JSONObject().put("entities", JSONArray()
+            .put(JSONObject().put("ei", "binary_sensor.merged_motion").put("di", "merged-device").put("pl", "mqtt"))))
+        val states = JSONArray().put(state("binary_sensor.merged_motion", "off", "motion"))
+
+        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, clonedAndroidId, "panel_one")
+
+        assertEquals(
+            "the merged device is not this panel, so its entities remain external Area motion",
+            listOf("binary_sensor.merged_motion"),
+            projection.candidates.map { it.entityId },
+        )
     }
 
     @Test fun `panel-owned occupancy is excluded while external Area motion remains`() {
