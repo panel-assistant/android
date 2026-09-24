@@ -1109,7 +1109,7 @@ class RuntimeProfileRegistryTest {
         assertNull(profile.cpuGovernors)
         assertNull(profile.recommendedDensity)
         assertNull(profile.recommendedFontScale)
-        assertNull(profile.physicalPpi)
+        assertNull(profile.displayGeometry(480, 480))
         assertNull(profile.recommendedWebView)
         assertNull(profile.companionMaxVersion)
         assertTrue(profile.tameVendorCandidates.isEmpty())

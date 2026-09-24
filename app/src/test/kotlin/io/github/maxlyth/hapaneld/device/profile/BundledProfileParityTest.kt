@@ -290,7 +290,7 @@ class BundledProfileParityTest {
         featureBearing.forEach { source ->
             assertEquals(
                 "${source.document.id} uses schema fields introduced in rc1",
-                "0.9.5-rc1",
+                if (source.document.display.geometry.isEmpty()) "0.9.5-rc1" else "0.9.8-rc2",
                 source.document.requires.minCoreVersion,
             )
         }
@@ -872,7 +872,7 @@ class BundledProfileParityTest {
         )
         val EXPECTED_BUNDLED_SHA256 = mapOf(
             "generic.yaml" to "16088624128aa375bc28fb747e535f93aa43c65881b5041a6fedc3ce4de056d2",
-            "nspanel-pro.yaml" to "894f3e0f03b12a7afe9364571f35b6244fc89b4296a9d623c7506976c9955279",
+            "nspanel-pro.yaml" to "61ccfc554ff11e7a381bf393550e5fdfe056687201efbfaeb42424fd87f98d92",
             "s9e.yaml" to "23874b2a79cb674d77c8b0ad0703ad1ee2cf4db925414e3e12b38354169f7a3f",
             "shelly-wall-display-v2.yaml" to "0b3141fc867e55905090d41773698c1638308bd78892a6487e04f0b07747dac9",
             "shelly-wall-display-x2i.yaml" to "58b24f7f4f06921113f0c264ca83699d9882fbf02301c2688bc1567e699ab59b",

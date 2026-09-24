@@ -8603,6 +8603,11 @@
       "state": "machine-cross-checked",
       "text": "La densidad debe estar entre 80 y 640 dpi."
     },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "La geometría de la pantalla está incompleta, es ambigua o está fuera de rango.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "state": "machine-cross-checked"
+    },
     "profiles.issue.dotted-release-version-required": {
       "sourceHash": "922627d4dc899617b9dbc8ecb2344e94cdf89b479a9d485e6b6bdcef6bd89205",
       "state": "machine-cross-checked",

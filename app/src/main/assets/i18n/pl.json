@@ -7378,6 +7378,11 @@
    "sourceHash": "1625bf8ef923d238548f956c43c57a920741ee682be625ff2fc9bfe6b0bfe990",
    "state": "machine-draft"
   },
+  "profiles.issue.display-geometry-invalid": {
+   "text": "Geometria wyświetlacza jest niekompletna, niejednoznaczna lub poza zakresem.",
+   "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+   "state": "machine-draft"
+  },
   "profiles.issue.dotted-release-version-required": {
    "text": "Spodziewałem się wersji z kropką w nazwie i ograniczonym zakresem.",
    "sourceHash": "922627d4dc899617b9dbc8ecb2344e94cdf89b479a9d485e6b6bdcef6bd89205",

@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 class ProfilePresentationContractTest {
     @Test fun `every admitted code has an exact constructible parameter contract`() {
-        assertEquals(208, ProfilePresentation.SUPPORTED_CODES.size)
+        assertEquals(209, ProfilePresentation.SUPPORTED_CODES.size)
         ProfilePresentation.SUPPORTED_CODES.forEach { code ->
             val names = requireNotNull(ProfilePresentation.expectedParams(code))
             assertTrue("$code has too many parameters", names.size <= 8)
