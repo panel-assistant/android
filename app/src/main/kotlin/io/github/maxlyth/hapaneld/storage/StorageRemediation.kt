@@ -213,7 +213,6 @@ internal fun interpretWalCheckpoint(
     val result = when {
         busy == null || logFrames == null || checkpointedFrames == null -> WalCheckpointResult.FAILED
         busy != 0L -> WalCheckpointResult.DEFERRED_BUSY
-        checkpointedFrames < logFrames -> WalCheckpointResult.DEFERRED_BUSY
         walBytesAfter == 0L -> WalCheckpointResult.COMPLETED
         else -> WalCheckpointResult.DEFERRED_BUSY
     }
