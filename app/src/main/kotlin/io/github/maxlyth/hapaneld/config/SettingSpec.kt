@@ -60,7 +60,6 @@ data class Capabilities(
     val hasButtonBacklight: Boolean = false,
     val hasCamera: Boolean = false,
     val hasMicrophone: Boolean = false,
-    val buttonsEnabled: Boolean = false,
     val hasEvdevButtons: Boolean = false,
     val appCanSu: Boolean = false,
     val hasRecents: Boolean = false,
