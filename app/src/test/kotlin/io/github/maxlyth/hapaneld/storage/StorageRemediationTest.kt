@@ -152,7 +152,12 @@ class StorageRemediationTest {
     @Test fun aBusyCheckpointIsDeferredNotSuccess() {
         assertEquals(WalCheckpointResult.DEFERRED_BUSY, interpretWalCheckpoint(1L, 10L, 4L, 4L * mib, 4L * mib).result)
         assertEquals(
-            "busy clear but frames left behind is still incomplete",
+            "SQLite's own busy report is believed even when the file happens to read empty",
+            WalCheckpointResult.DEFERRED_BUSY,
+            interpretWalCheckpoint(1L, 0L, 0L, 4L * mib, 0L).result,
+        )
+        assertEquals(
+            "busy clear but a WAL still holding frames is not complete",
             WalCheckpointResult.DEFERRED_BUSY,
             interpretWalCheckpoint(0L, 10L, 4L, 4L * mib, 4L * mib).result,
         )
