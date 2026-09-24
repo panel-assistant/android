@@ -1,8 +1,14 @@
 package io.github.maxlyth.hapaneld.migration
 
 import io.github.maxlyth.hapaneld.backup.PanelBackup
+import io.github.maxlyth.hapaneld.device.profile.ProfileBackup
+import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestorePlan
+import io.github.maxlyth.hapaneld.device.profile.ProfileIssue
+import io.github.maxlyth.hapaneld.device.profile.ProfileIssueSeverity
+import io.github.maxlyth.hapaneld.http.PaneldServer
 import io.github.maxlyth.hapaneld.persistence.BackupIdentity
 import io.github.maxlyth.hapaneld.persistence.StateArchiveSection
+import io.github.maxlyth.hapaneld.util.BoundedStreams
 import org.json.JSONObject
 import java.io.File
 import java.util.zip.ZipFile
@@ -21,6 +27,7 @@ import java.util.zip.ZipInputStream
  */
 internal object ReceiptVerifier {
     private const val MAX_MANIFEST_BYTES = 1L * 1024L * 1024L
+    private const val MAX_REASON_CHARS = 400
 
     /** Null when the receipt is acceptable, otherwise the first reason it is not. */
     fun refusal(archive: File, ownDiscoveryId: String?): String? {
@@ -50,6 +57,49 @@ internal object ReceiptVerifier {
         declared.firstOrNull { it !in entries }?.let { return "receipt is missing $it" }
         return null
     }
+
+    /** Everything VERIFY asks of a receipt: a whole backup of this device, then one this build can restore. */
+    fun migrationRefusal(archive: File, ownDiscoveryId: String?, plan: (ProfileBackup) -> ProfileBackupRestorePlan): String? =
+        refusal(archive, ownDiscoveryId) ?: profileRefusal(archive, plan)
+
+    /**
+     * Why the receipt's profile catalog would be refused by the restore, or null when it would restore.
+     *
+     * The restore runs after the legacy app has retired and handed over HOME, so a catalog it refuses
+     * leaves the panel serving defaults with no automatic way back. [plan] is the plan the restore will
+     * make, asked here while a refusal still costs nothing: the legacy app keeps the panel, and the next
+     * pass pulls a fresh receipt, so a catalog put right on the legacy app clears the refusal by itself.
+     */
+    fun profileRefusal(archive: File, plan: (ProfileBackup) -> ProfileBackupRestorePlan): String? {
+        val manifest = PanelBackup.readManifest(archive, MAX_MANIFEST_BYTES)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?: return "receipt has no manifest"
+        if (!manifest.has("profiles")) return null
+        val decoded = runCatching {
+            val profiles = manifest.getJSONObject("profiles")
+            if (profiles.has("entry")) ProfileBackup.fromJson(JSONObject(profileEntry(archive, profiles.getString("entry"))))
+            else ProfileBackup.fromJson(profiles)
+        }.getOrNull() ?: return "receipt's profile catalog could not be read"
+        val payload = decoded.payload
+            ?: return "receipt's profile catalog is invalid: ${errors(decoded.issues)}"
+        val restore = plan(payload)
+        return if (restore.valid) null else "receipt's profile catalog is not restorable: ${errors(restore.issues)}"
+    }
+
+    private fun profileEntry(archive: File, name: String): String {
+        require(name == PaneldServer.PROFILE_BACKUP_ENTRY) { "unexpected profile entry" }
+        return ZipFile(archive).use { zip ->
+            val entry = requireNotNull(zip.getEntry(name))
+            require(entry.size in 1..PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES)
+            val bytes = zip.getInputStream(entry).use { BoundedStreams.readBytes(it, PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES) }
+            String(bytes, Charsets.UTF_8)
+        }
+    }
+
+    private fun errors(issues: List<ProfileIssue>): String =
+        issues.filter { it.severity == ProfileIssueSeverity.ERROR }
+            .joinToString("; ") { "${it.path}: ${it.message}" }
+            .take(MAX_REASON_CHARS)
 
     /** Whether the verified receipt records that the legacy app was connected to MQTT when it wrote it. */
     fun legacyMqttConnected(archive: File): Boolean = runCatching {

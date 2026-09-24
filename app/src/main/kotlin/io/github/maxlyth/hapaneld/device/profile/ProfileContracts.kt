@@ -614,6 +614,12 @@ data class ProfileBackupRestorePlan(
     val alreadyPresent: List<ProfileRef>,
     val issues: List<ProfileIssue>,
     val restartRequired: Boolean,
+    /**
+     * The selection a valid plan stages: the backup's own, or the current bundled revision of a pinned
+     * bundled profile whose revision this release does not ship (reported as a `pinned-revision-retired`
+     * warning). Null when the plan is invalid.
+     */
+    val selection: ProfileSelection? = null,
 )
 
 enum class ProfileBackupRestoreOutcome { SUCCEEDED, PARTIAL, REJECTED }
