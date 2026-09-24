@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import io.github.maxlyth.hapaneld.storage.ProcessStartWallClock
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.control.RemoteDebugSecurityTransitionGate
@@ -20,6 +21,11 @@ import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
 class HaPaneldApp : Application() {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        // The earliest point this process runs; storage remediation proves files orphaned against it.
+        ProcessStartWallClock.capture(
+            System.currentTimeMillis() -
+                (android.os.SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime()),
+        )
         // Installed before providers/components: every security/debug mutation publishes a durable
         // TRANSITION epoch, and maintenance successors can authenticate HARDENED without opening DB.
         RemoteDebugSecurityTransitionGate.install(base.noBackupFilesDir)

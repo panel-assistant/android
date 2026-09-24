@@ -1582,8 +1582,7 @@ class EntityCatalogStore(context: Context) : SQLiteOpenHelper(context, DATABASE_
             if (mode == AUTO_VACUUM_NONE) db.execSQL("PRAGMA auto_vacuum=INCREMENTAL")
             db.execSQL("VACUUM")
             StorageHealthRuntime.recordDatabaseWriteSuccess()
-            truncateWal()
-            VacuumOutcome(VacuumResult.COMPLETED)
+            VacuumOutcome(VacuumResult.COMPLETED, checkpoint = truncateWal().result)
         } catch (failure: SQLException) {
             if (classifyDatabaseFailure(failure) == StorageDatabaseFailureKind.BUSY) {
                 VacuumOutcome(VacuumResult.DEFERRED_BUSY)
