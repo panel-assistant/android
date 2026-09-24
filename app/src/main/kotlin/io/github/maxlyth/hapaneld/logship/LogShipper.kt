@@ -206,7 +206,8 @@ class LogShipper internal constructor(
     private val sinkFactory: LogSinkFactory,
     private val featureCosts: FeatureCostRegistry = FeatureCosts.registry,
 ) {
-    constructor(config: Config, scope: CoroutineScope, capture: LogCapture) : this(
+    /** Ships [capture] and, when given, the dashboard [console] source through the same run. */
+    constructor(config: Config, scope: CoroutineScope, capture: LogCapture, console: LogCapture? = null) : this(
         configSnapshot = {
             LogShipConfigSnapshot(
                 enabled = config.logShipEnabled,
@@ -217,7 +218,7 @@ class LogShipper internal constructor(
             )
         },
         scope = scope,
-        subscribeCapture = capture::subscribe,
+        subscribeCapture = if (console == null) capture::subscribe else subscribeAll(capture, console),
         sinkFactory = NetworkLogSinkFactory,
     )
 
@@ -815,4 +816,21 @@ private class HttpLogSink(
         }
         runCatching { active?.close() }
     }
+}
+
+/** The dashboard console source runs only while log shipping is configured, and never in Hardened
+ * mode, which refuses the CDP relay it reads through. */
+internal fun webViewConsoleEnabled(config: Config): Boolean =
+    config.logShipEnabled && config.logShipHost.isNotBlank() && !config.hardenedSecurityEnabled
+
+/** One subscription over several captures; closing it detaches every one. */
+internal fun subscribeAll(vararg captures: LogCapture): ((String) -> Unit) -> AutoCloseable = { listener ->
+    val subscriptions = ArrayList<AutoCloseable>(captures.size)
+    try {
+        for (capture in captures) subscriptions.add(capture.subscribe(listener))
+    } catch (failure: Exception) {
+        subscriptions.forEach { runCatching { it.close() } }
+        throw failure
+    }
+    AutoCloseable { subscriptions.forEach { runCatching { it.close() } } }
 }
