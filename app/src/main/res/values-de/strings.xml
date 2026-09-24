@@ -205,6 +205,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant hat die Anmeldung dieses Panels abgelehnt, als das Panel die anzuzeigenden Entitäten abgefragt hat. Das Dashboard wurde nicht geöffnet. „Konfigurieren“ öffnet die Einstellungen dieses Panels; unter „Home Assistant-Verbindung“ befindet sich die Anmeldung. Das Dashboard kehrt automatisch zurück, sobald sie funktioniert.</string>
     <string name="entity_scan_failed_detail">Die Suche nach deinen Entitäten wurde nicht abgeschlossen, daher wurde das Dashboard nicht geöffnet. Prüfe, ob Home Assistant läuft und das Panel mit dem Netzwerk verbunden ist, und versuche es dann erneut.</string>
     <string name="entity_scan_preparing_detail">Home Assistant wird geöffnet, sobald die erste gefilterte Entitätsauswahl bereit ist.</string>
+    <string name="entity_learning_reload_notice">Nach dem Öffnen kann Home Assistant einige Male neu laden, während das Panel dazulernt. Das ist normal.</string>
     <string name="entity_scan_taking_longer">Dies dauert länger als üblich – das Panel arbeitet noch daran. Falls der Vorgang nicht abgeschlossen wird, kann der Entitätsfilter in den Panel-Einstellungen deaktiviert werden.</string>
     <string name="ignore_flagged_entities">Markierte Entitäten ignorieren und fortfahren</string>
     <string name="preparing_dashboard">Dashboard wird vorbereitet…</string>

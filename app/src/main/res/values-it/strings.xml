@@ -205,6 +205,7 @@
     <string name="entity_scan_auth_rejected">Home Assistant ha rifiutato l’accesso del pannello quando il pannello ha richiesto quali entità mostrare. La dashboard non è stata aperta. Configura apre le impostazioni di questo pannello, dove Connessione Home Assistant contiene l’accesso; la dashboard tornerà automaticamente non appena funzionerà.</string>
     <string name="entity_scan_failed_detail">La scansione delle entità non è terminata, quindi la dashboard non è stata aperta. Verifica che Home Assistant sia in esecuzione e che il pannello sia connesso alla rete, quindi riprova.</string>
     <string name="entity_scan_preparing_detail">Home Assistant si aprirà quando il primo set di entità filtrate sarà pronto.</string>
+    <string name="entity_learning_reload_notice">Una volta aperto, Home Assistant potrebbe ricaricarsi alcune volte mentre il pannello apprende. È normale.</string>
     <string name="entity_scan_taking_longer">Sta richiedendo più tempo del solito: il pannello sta ancora lavorando. Se l’operazione non termina, puoi disattivare il filtro delle entità dalle impostazioni del pannello.</string>
     <string name="ignore_flagged_entities">Ignora entità contrassegnate e continua</string>
     <string name="preparing_dashboard">Preparazione della dashboard…</string>
