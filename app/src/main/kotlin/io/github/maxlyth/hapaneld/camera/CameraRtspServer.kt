@@ -135,11 +135,11 @@ class CameraRtspServer(
         }
     }
 
-    override fun onParameterSets(sets: ParameterSets) {
+    override fun onParameterSets(sets: ParameterSets, attempt: Long) {
         this.sets = sets
     }
 
-    override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long) {
+    override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long, attempt: Long) {
         val wire = accessUnitForTransport(nals, sets)
         if (wire.isEmpty()) return
         val timestamp = RtpH264Packetizer.rtpTimestamp(ptsUs)
@@ -148,14 +148,14 @@ class CameraRtspServer(
         playing.forEach { it.send(wire, timestamp) }
     }
 
-    override fun onEncoderStopped() {
+    override fun onEncoderStopped(attempt: Long) {
         // A bounded reopen: the clients keep their place and receive fresh parameter sets with the next
         // IDR. Until then nothing is advertised: a DESCRIBE in the gap is refused rather than answered
         // with the previous encoder's sets.
         sets = null
     }
 
-    override fun onStreamEnded() {
+    override fun onStreamEnded(through: Long) {
         val open = synchronized(lock) { clients.toList() }
         open.forEach { it.close() }
     }

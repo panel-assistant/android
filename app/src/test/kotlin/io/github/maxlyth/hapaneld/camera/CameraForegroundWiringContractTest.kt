@@ -116,7 +116,7 @@ class CameraForegroundWiringContractTest {
 
         val close = body(attempt, "fun closeEncoder()")
         assertTrue("closing retracts only this attempt's own advertisement", "retract = advertisedBy == id" in close)
-        assertTrue("if (retract) transport.onEncoderStopped()" in close)
+        assertTrue("if (retract) transport.onEncoderStopped(id)" in close)
         val release = body(attempt, "fun release()")
         assertTrue("the attempt's release closes its codec before the capture beneath it", release.indexOf("closeEncoder()") in 0 until release.indexOf("session = null"))
 

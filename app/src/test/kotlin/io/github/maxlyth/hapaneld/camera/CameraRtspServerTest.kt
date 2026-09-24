@@ -45,7 +45,7 @@ class CameraRtspServerTest {
                     released.incrementAndGet()
                 }
             }
-            return StreamAdmission.Granted(lease, StreamParams(640, 480, 15, 1_000, "fake.encoder", sets))
+            return StreamAdmission.Granted(lease, StreamParams(640, 480, 15, 1_000, "fake.encoder", sets), session = 1L)
         }
 
         override fun requestKeyFrame() {
@@ -73,7 +73,7 @@ class CameraRtspServerTest {
         assertNotNull("bound", s.boundPort)
         // The camera publishes its encoder's parameter sets before any client can be granted a stream;
         // without them a DESCRIBE is refused rather than answered with nothing to decode from.
-        s.onParameterSets(sets)
+        s.onParameterSets(sets, attempt = 1L)
         return s
     }
 
@@ -211,7 +211,7 @@ class CameraRtspServerTest {
         val server = server(source)
         val url = "rtsp://127.0.0.1:${server.boundPort}/live?res=480p&fps=5"
         Client(server.boundPort!!).use { client ->
-            server.onParameterSets(sets)
+            server.onParameterSets(sets, attempt = 1L)
             val session = client.play(url)
             assertEquals(1, source.acquired.get())
             assertEquals(listOf(StreamRequest(resolution = CameraResolution.P480, fps = 5)), source.requests)
@@ -219,7 +219,7 @@ class CameraRtspServerTest {
             await("PLAY asks for a sync frame") { source.keyFrames.get() == 1 }
             assertEquals(StreamTransportFacts(port = server.boundPort, clients = 1), server.facts())
 
-            server.onAccessUnit(listOf(idr), keyFrame = true, ptsUs = 1_000_000L)
+            server.onAccessUnit(listOf(idr), keyFrame = true, ptsUs = 1_000_000L, attempt = 1L)
             val first = client.readFrame()
             assertEquals(0, first.first)
             assertArrayEqualsPayload(sps, first.second)
@@ -303,7 +303,7 @@ class CameraRtspServerTest {
         val server = server(source)
         // A camera that answers the sync-frame request synchronously, on the requesting thread: the
         // most demanding case for ordering on the one byte stream.
-        source.onKeyFrame = { server.onAccessUnit(listOf(idr), keyFrame = true, ptsUs = 0L) }
+        source.onKeyFrame = { server.onAccessUnit(listOf(idr), keyFrame = true, ptsUs = 0L, attempt = 1L) }
         val url = "rtsp://127.0.0.1:${server.boundPort}/live"
         Client(server.boundPort!!).use { client ->
             client.request("OPTIONS", url)
@@ -325,15 +325,15 @@ class CameraRtspServerTest {
         val server = server(source)
         val url = "rtsp://127.0.0.1:${server.boundPort}/live"
         Client(server.boundPort!!).use { client ->
-            server.onParameterSets(sets)
+            server.onParameterSets(sets, attempt = 1L)
             client.play(url)
             // A reopen: the encoder stops, and nothing is advertised until the new one publishes.
-            server.onEncoderStopped()
+            server.onEncoderStopped(attempt = 1L)
             val stale = client.request("DESCRIBE", url, "Accept: application/sdp")
             assertEquals(503, stale.status)
             assertEquals("camera-starved", stale.headers["X-Camera"])
             val fresh = ParameterSets(byteArrayOf(0x67, 0x64, 0x00, 0x1F, 0x01), pps)
-            server.onParameterSets(fresh)
+            server.onParameterSets(fresh, attempt = 2L)
             val again = client.request("DESCRIBE", url, "Accept: application/sdp")
             assertEquals(200, again.status)
             assertTrue("the new encoder's sets, never the old", again.body.contains(fresh.spropParameterSets()))
@@ -377,7 +377,7 @@ class CameraRtspServerTest {
                 a.play(url)
                 b.play(url)
                 assertEquals(2, server.facts().clients)
-                server.onStreamEnded()
+                server.onStreamEnded(through = 1L)
                 assertEquals("the client sees end of stream", -1, a.readOrTimeout())
                 assertEquals(-1, b.readOrTimeout())
                 await("both leases released") { source.released.get() == 2 }
@@ -394,13 +394,13 @@ class CameraRtspServerTest {
         val url = "rtsp://127.0.0.1:${server.boundPort}/live"
         Client(server.boundPort!!).use { client ->
             client.play(url)
-            server.onParameterSets(sets)
+            server.onParameterSets(sets, attempt = 1L)
             val big = byteArrayOf(0x65) + ByteArray(200_000)
             var slowestCallMs = 0L
             var frames = 0
             await("the slow client is dropped", timeoutMs = 20_000) {
                 val started = System.nanoTime()
-                server.onAccessUnit(listOf(big), keyFrame = true, ptsUs = frames * 66_000L)
+                server.onAccessUnit(listOf(big), keyFrame = true, ptsUs = frames * 66_000L, attempt = 1L)
                 frames++
                 slowestCallMs = maxOf(slowestCallMs, (System.nanoTime() - started) / 1_000_000)
                 server.facts().clients == 0
