@@ -325,6 +325,20 @@ class StorageRemediationTest {
         assertFalse("a later run can still do more", summary.escalated)
     }
 
+    @Test fun anOwnerHoldingTheDataDirectoryDefersEvenAtCriticalPressure() {
+        // At critical the retention and rebuild steps report their critical refusals, not the owner, so
+        // only the withheld sweep itself can say that a later run may still free something.
+        val critical = snapshot(StorageHealthSeverity.CRITICAL, usableBytes = 10L * mib)
+        val operations = Recorder(ArrayDeque(listOf(critical)), owned = false)
+
+        val summary = run(operations, critical)!!
+
+        assertFalse("sweep" in operations.calls)
+        assertEquals(RetentionResult.SKIPPED_CRITICAL_PRESSURE, summary.retention)
+        assertEquals(VacuumRefusal.CRITICAL_PRESSURE, summary.vacuum.refusal)
+        assertEquals(StorageRemediationVerdict.DEFERRED, summary.verdict)
+    }
+
     @Test fun aRebuildWhoseImageIsStillInABusyWalDefersRatherThanEscalating() {
         val none = snapshot(StorageHealthSeverity.WARNING, usableBytes = 400L * mib, mainBytes = 5_000L * pageSize,
             walBytes = 0L, pageCount = 5_000L, freelist = 3_000L, autoVacuum = StorageAutoVacuumMode.NONE)
