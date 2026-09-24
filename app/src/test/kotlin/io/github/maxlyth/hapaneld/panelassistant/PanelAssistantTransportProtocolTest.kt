@@ -29,6 +29,14 @@ class PanelAssistantTransportProtocolTest {
         assertEquals(listOf("relay3", "switch", "relay", "relay3", "relay", "3"), listOf("channel", "platform", "translation_key", "unique_suffix", "family", "index").map { relay.get(it).toString() })
     }
 
+    @Test fun `hello states unsupported channels explicitly and says nothing when there are none`() {
+        assertFalse(JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY)).has("unsupported"))
+        val hello = JSONObject(
+            PanelAssistantTransportProtocol.hello(1L, IDENTITY, unsupported = listOf("humidity", "temperature")),
+        )
+        assertEquals(listOf("humidity", "temperature"), hello.getJSONArray("unsupported").let { (0 until it.length()).map(it::getString) })
+    }
+
     @Test fun `the contract digest is pinned to the canonical handshake text`() {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.

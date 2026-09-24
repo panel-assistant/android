@@ -93,6 +93,7 @@ internal class ProximityCalibrationRuntime(
     fun isPresenceNear(): Boolean = isPresenceReady() && view.near == true
     fun isWaveReady(): Boolean = !closed && sourceProven && !saving && view.wakeReady
     fun isLearnedSignal(): Boolean = !closed && view.calibration?.presenceSupported == true
+    fun isOpen(): Boolean = !closed
     fun generation(): Long = view.generation
     fun gestureToken(): Long = gestureToken
 
