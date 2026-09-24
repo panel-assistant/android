@@ -46,6 +46,8 @@
 
 - **An update held up by a busy database now says that, rather than calling the database unreadable.** A database being written to while it was read reported itself as unreadable or not a file at all, which pointed at the stored data instead of at the app that was still writing to it.
 
+- **A computer without sha256sum is now told so, instead of the installer stopping without a reason.** The installer checks every file it works with by its SHA-256 digest. On a computer with neither `sha256sum` nor `shasum` it used to stop right after the time zone check without printing why. It now says that neither tool is installed, names what it was hashing, and says which one to install.
+
 ## v0.9.8-rc1 - 2026-09-15
 
 This release candidate lets Panel Assistant 0.3.0 show each panel's own web interface inside the Home Assistant sidebar, and adds the panel side of Panel Assistant's optional native transport. Documentation has moved to panel-assistant.io. The changes below are since v0.9.7.

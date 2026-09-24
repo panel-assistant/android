@@ -28,3 +28,21 @@ case "${1:-}" in
     printf '%064d  %s\n' 0 "${1:-mock.apk}"
     ;;
 esac
+digest_status=$?
+
+# MOCK_HOST_DIGEST_VANISH=<glob>:<n> takes this host's digest tool away mid-run, so each host digest
+# can be reached with no tool: once the n-th file matching <glob> has been hashed, the link this call
+# came through is removed and the NEXT digest finds none. Only a link in a test-built host is ever
+# removed, never this fixture itself.
+if [ -n "${MOCK_HOST_DIGEST_VANISH:-}" ] && [ -L "$0" ]; then
+  vanish_glob="${MOCK_HOST_DIGEST_VANISH%:*}"
+  vanish_count_file="${MOCK_STATE_DIR:?MOCK_STATE_DIR is required}/host-digest-vanish-count"
+  # shellcheck disable=SC2254
+  case "${1:-}" in
+    $vanish_glob)
+      printf x >> "$vanish_count_file"
+      [ "$(wc -c < "$vanish_count_file")" -lt "${MOCK_HOST_DIGEST_VANISH##*:}" ] || rm -f "$0"
+      ;;
+  esac
+fi
+exit "$digest_status"

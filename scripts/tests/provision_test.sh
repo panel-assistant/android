@@ -333,7 +333,7 @@ reset_per_run_state() {
     "$TMP/pm-probe-count" "$TMP/candidate-contract-read-count" \
     "$TMP/host-db-observation-count" \
     "$TMP/host-db-observation-count.LEGACY" "$TMP/host-db-observation-count.SUCCESSOR" \
-    "$TMP/helper-lease-observation-count" "$TMP/bare-id-count"
+    "$TMP/helper-lease-observation-count" "$TMP/bare-id-count" "$TMP/host-digest-vanish-count"
   # Package and helper lifecycle markers.
   rm -rf "$TMP/stale-helper-transaction" "$TMP/active-helper-transaction" \
     "$TMP/manual-helper-transaction" "$TMP/package-stopped" "$TMP/apk-install-attempted" \
@@ -6090,6 +6090,45 @@ assert_contains 'direct copy could not be hashed on this host' "direct digest pr
 assert_log_contains '^adb .* install' "direct digest process failure still reaches APK install"
 unset -f sha256sum
 unset PROVISION_TEST_SHA256_FIXTURE
+reset_db_txn_state
+
+# Every host digest goes through one function, and a host with neither sha256sum nor shasum is refused
+# wherever it is met, naming what was being hashed. A real host lacks the tool from the start, so it
+# meets only the first digest; MOCK_HOST_DIGEST_VANISH takes the tool away after a chosen digest so
+# that every later caller is reached too. Each case names the digest just before its target, so an
+# added or removed digest earlier in the run fails here by naming the wrong subject, never silently.
+digest_absent_host="$TMP/host-without-digest"
+make_host_without "$digest_absent_host" sha256sum shasum
+digest_vanish_host="$TMP/host-losing-digest"
+make_host_without "$digest_vanish_host" shasum
+for digest_case in \
+  'none||the candidate APK' \
+  '*/ha-paneld.apk:8||the database observer script' \
+  '*/ha-paneld.apk:9||the database capture script' \
+  '*.db-txn-script:1||the database backup' \
+  '*/ha-paneld.apk:9|MOCK_UPGRADE_PREPARE=ready|the database copy' \
+  '*/ha-paneld.apk:15||the root-helper staging' \
+  '*/tmp.??????????:10|MOCK_STALE_TRANSACTION=1|the installed ha-paneld APK' \
+  '*/tmp.??????????:10|MOCK_SHIZUKU_VERSION_CODE=1 SHIZUKU=1|the installed Shizuku manager' \
+  '*/tmp.??????????:10|SHIZUKU=1|the Shizuku download'; do
+  digest_vanish="${digest_case%%|*}"; digest_rest="${digest_case#*|}"
+  digest_env="${digest_rest%%|*}"; digest_subject="${digest_rest#*|}"
+  digest_args=()
+  case " $digest_env " in *' SHIZUKU=1 '*) digest_args=(--shizuku); digest_env="${digest_env/SHIZUKU=1/}" ;; esac
+  reset_db_txn_state
+  if [ "$digest_vanish" = none ]; then
+    digest_path="$digest_absent_host"; digest_vanish=""
+  else
+    ln -sfn "$FIXTURES/sha256sum" "$digest_vanish_host/sha256sum"
+    digest_path="$digest_vanish_host"
+  fi
+  eval "$digest_env PATH=\"\$digest_path\" MOCK_HOST_DIGEST_VANISH=\"\$digest_vanish\" \
+    run_provision \"\$MOCK_TARGET\" --apk \"\$APK\" \"\${digest_args[@]}\" --no-tame"
+  assert_failure "a host without a digest tool is refused at $digest_subject" \
+    "this computer cannot hash $digest_subject: neither sha256sum nor shasum is installed"
+done
+assert_not_contains '^adb .* install .*shizuku\.apk' "$MOCK_CALL_LOG" \
+  "a host that loses its digest tool before the Shizuku download never installs it"
 reset_db_txn_state
 
 # An install racing the capture changes the provenance answer between the transaction's two reads,
