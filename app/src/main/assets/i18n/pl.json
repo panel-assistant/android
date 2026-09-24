@@ -9,9 +9,9 @@
    "state": "machine-draft"
   },
   "api.approval.conditional": {
-   "text": "Niektóre wartości żądań wymagają fizycznego zatwierdzenia na panelu, gdy włączony jest tryb wzmocniony; inne wartości mogą być standardowe lub niedostępne.",
+   "text": "Some request values require physical on-panel approval when Hardened mode is enabled; other values may be ordinary or unavailable.",
    "sourceHash": "2916fbdbb0372eb477cc499739145c72bd292b53044ea30adc345777c4be1bf9",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "api.error.load_spec": {
    "text": "Nie udało się załadować {path}: {error}",
@@ -39,9 +39,9 @@
    "state": "machine-draft"
   },
   "api.intro.network": {
-   "text": "Brak uwierzytelnienia; LAN tylko.",
+   "text": "No auth; LAN only.",
    "sourceHash": "e7668612168c85895e82396278494d86417ce8ea9a061693d39cdc18638abff6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "api.request.body": {
    "text": "treść żądania ({type})",
@@ -54,14 +54,14 @@
    "state": "machine-draft"
   },
   "configure.action.failed": {
-   "text": "Operacja się nie powiodła ({error}).",
+   "text": "Action failed ({error}).",
    "sourceHash": "4acca2deec62ac51cb2dd452216e9edf6e7b8b46625982f24c6c9395c1e57443",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.action.save": {
-   "text": "Zapisz zmiany",
+   "text": "Save changes",
    "sourceHash": "dd0ae7a5cbcf233968657563dce34639e681861e2df6d3f845c08d49981c0999",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.action.updated": {
    "text": "Zaktualizowano.",
@@ -74,9 +74,9 @@
    "state": "machine-draft"
   },
   "configure.approval.retry": {
-   "text": "Zatwierdź tę prośbę na panelu, a potem spróbuj jeszcze raz.",
+   "text": "Approve this request on the panel, then retry it.",
    "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.area.local_override": {
    "text": "Tylko lokalne nadpisanie",
@@ -124,9 +124,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.area_check_failed": {
-   "text": "Nie udało się sprawdzić tego panelu Home Assistant Obszar. Sprawdź Home Assistant połączenie.",
+   "text": "Could not check this panel’s Home Assistant Area. Check the Home Assistant connection.",
    "sourceHash": "be69ffdff660dfd52e999025c0f26a340af7f967539482671fcba90848ccde35",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.area_checking": {
    "text": "Sprawdź ten panel Home Assistant Obszar…",
@@ -144,9 +144,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.auth_failed": {
-   "text": "Home Assistant Uwierzytelnienie nie powiodło się. Spróbuj ponownie Home Assistant do obliczenia historii aktywności.",
+   "text": "Home Assistant authentication failed. Reconnect Home Assistant to calculate activity history.",
    "sourceHash": "746451f8bf3962b1115f1de750f26e6429c352f9f14d26555fcc55c3ffab69fc",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.calculated": {
    "text": "obliczone",
@@ -209,9 +209,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.discovery_failed": {
-   "text": "Nie udało się wykryć źródła trybu automatycznego uśpienia. Sprawdź Home Assistant połączenie.",
+   "text": "Auto-sleep source discovery failed. Check the Home Assistant connection.",
    "sourceHash": "9066469a0ddc43c8cdc410748859602153c4579f0e155dc085e733b9444ded5c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.ha_history_retrying": {
    "text": "Home Assistant Historia jest chwilowo niedostępna. Próbuję ponownie automatycznie…",
@@ -234,9 +234,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.history_rejected": {
-   "text": "Home Assistant Odrzucono żądanie historii. Spróbuj ponownie Home Assistant.",
+   "text": "Home Assistant rejected the history request. Reconnect Home Assistant.",
    "sourceHash": "b2a3fcb3faeecce1fc30bddb99ffd46031898b6b709515235d9eb234f8f98d14",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.history_replaying": {
    "text": "Odtwarzanie historii aktywności.",
@@ -244,9 +244,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.history_request_failed": {
-   "text": "Nie udało się pobrać historii (HTTP {status}).",
+   "text": "History request failed (HTTP {status}).",
    "sourceHash": "77117c80b224f003219d4e592f4e03764d450b347dcde20f7bd0f619a902b136",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.history_requires_area": {
    "text": "Przypisz ten panel do Home Assistant Obszar, dla którego ma się obliczyć historię aktywności.",
@@ -269,9 +269,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.history_unavailable": {
-   "text": "Historia aktywności trybu automatycznego uśpienia jest niedostępna.",
+   "text": "Auto-sleep activity history is unavailable.",
    "sourceHash": "5aaf10839ba6548520e231457a3d610731375f0c03eb5fb668a82656ff0949de",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.history_unreadable": {
    "text": "Home Assistant zwrócono historię aktywności, której ta kompilacja nie mogła odczytać.",
@@ -374,14 +374,14 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.source_update_failed": {
-   "text": "Nie udało się zaktualizować tego źródła aktywności.",
+   "text": "Could not update this activity source.",
    "sourceHash": "20f147602e00214857ab0183b98da66b0977d11a22395d2052ac093f796c6050",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.source_update_failed_http": {
-   "text": "Nie udało się zaktualizować tego źródła aktywności (HTTP {status}).",
+   "text": "Could not update this activity source (HTTP {status}).",
    "sourceHash": "87894782371124039cce663036e1b44b83600b868ef273e6ef61cd2bc1918fd7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.sources_changed": {
    "text": "Źródła aktywności uległy zmianie. Odświeżam historię…",
@@ -389,9 +389,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.status_failed": {
-   "text": "Nie udało się sprawdzić stanu automatycznego uśpienia (HTTP {status}).",
+   "text": "Auto-sleep status request failed (HTTP {status}).",
    "sourceHash": "8a9ff905ec7f7ef37e8dc061324da0890e5a41dbec04a19f2a360953f8e5de1f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.status_waiting": {
    "text": "Czekam na stan automatycznego uśpienia…",
@@ -424,14 +424,14 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.value.all_sources_unavailable": {
-   "text": "Wszystkie źródła niedostępne",
+   "text": "All sources unavailable",
    "sourceHash": "7a138f856e5faa0bd526cf4ca81162c680dfea49010eaee4961fa273cd7c8adb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.value.auth_failed": {
-   "text": "Uwierzytelnianie nie powiodło się",
+   "text": "Authentication failed",
    "sourceHash": "93821eb7ce8c659285207dd34f7e29a79088e218a1d7bb373b54fbeddbbef6fd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.value.authenticating": {
    "text": "Uwierzytelnianie",
@@ -454,9 +454,9 @@
    "state": "machine-draft"
   },
   "configure.auto_sleep.value.discovery_failed": {
-   "text": "Wykrywanie nie powiodło się",
+   "text": "Discovery failed",
    "sourceHash": "a95eb4511f7e574a2484be17992e4f0d31f03465689a9a9168c05b7ad460c486",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.auto_sleep.value.learning": {
    "text": "Nauka",
@@ -594,9 +594,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.load_failed": {
-   "text": "Nie udało się załadować funkcji adaptacyjnej jasności.",
+   "text": "Could not load adaptive brightness.",
    "sourceHash": "b1e87568fb548ca650b2b0550fa00a27d487b3a44d4588f51fb8b9cc01b6eacd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.loading": {
    "text": "Ładowanie adaptacyjnej jasności…",
@@ -634,9 +634,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.reset_confirm": {
-   "text": "Usunąć siedmiodniową historię oświetlenia otoczenia i zrestartować proces uczenia?",
+   "text": "Delete the seven-day ambient-light history and restart learning?",
    "sourceHash": "11d44cad9fa4477eac43068a01928799cbdc4fbc707a91bf099d4317843b0607",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.reset_history": {
    "text": "Wyczyść zapamiętane ustawienia",
@@ -649,9 +649,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.runtime_unavailable": {
-   "text": "Funkcja adaptacyjnej jasności nie jest dostępna.",
+   "text": "Adaptive brightness runtime is unavailable.",
    "sourceHash": "ff261271c47217afa1f2616da075c1c72d5551b8750ffbd17ce8acdaabf041d5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.samples_none": {
    "text": "Jeszcze nie ma próbek",
@@ -679,9 +679,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.selected_source_failed": {
-   "text": "Nie udało się załadować wybranego źródła; próba zostanie powtórzona przy następnej aktualizacji.",
+   "text": "The selected source could not be loaded; it will retry on the normal refresh.",
    "sourceHash": "62b265c191f452f772e6a2accd686bc29f6bf99e84aae2b4878e11ba6862d4b8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.selected_source_loading": {
    "text": "Wybrane źródło wciąż się ładuje…",
@@ -709,9 +709,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.sources_load_failed": {
-   "text": "Nie udało się załadować Home Assistant źródła; nadal można wpisać dokładny identyfikator czujnika.",
+   "text": "Could not load Home Assistant sources; an exact sensor entity id can still be entered.",
    "sourceHash": "c7968b3a9d9a13e3abc244c1404692d1359fed376b56f61f5a53005127b7bd29",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.sources_loading": {
    "text": "Ładowanie Home Assistant czujniki natężenia oświetlenia…",
@@ -724,9 +724,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.sources_unavailable": {
-   "text": "Home Assistant źródła są niedostępne; nadal można wprowadzić dokładny identyfikator czujnika.",
+   "text": "Home Assistant sources are unavailable; an exact sensor entity id can still be entered.",
    "sourceHash": "cb57d539905851c5c9c7144ab04547cfb584b02d55edbf16424b168726eded68",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.state_disabled": {
    "text": "wyłączone",
@@ -754,9 +754,9 @@
    "state": "machine-draft"
   },
   "configure.brightness.status_unavailable": {
-   "text": "Funkcja adaptacyjnej regulacji jasności jest niedostępna.",
+   "text": "Adaptive brightness status is unavailable.",
    "sourceHash": "9b0d196bc84e8c0a0d11d181657e5615eec79106378321e87728a0e48a545520",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.brightness.waiting": {
    "text": "Czekam na światło otoczenia… · Źródło: {source}",
@@ -774,9 +774,9 @@
    "state": "machine-draft"
   },
   "configure.dashboard.auto_list_unavailable": {
-   "text": "Auto — lista desek rozdzielczych niedostępna",
+   "text": "Auto — dashboard list unavailable",
    "sourceHash": "b8950035556b06dd31f443be97d7c771e32d031b44fbfe548e3cd54c4f668efc",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.dashboard.auto_no_default": {
    "text": "Auto — dla tego konta nie ma ustawienia domyślnego",
@@ -789,9 +789,9 @@
    "state": "machine-draft"
   },
   "configure.dashboard.fetch_failed": {
-   "text": "Nie udało się pobrać listy pulpitów nawigacyjnych tego konta z Home Assistant Jeszcze nie. Spróbuj ponownie, gdy połączenie się przywróci.",
+   "text": "Couldn’t fetch this account’s dashboard list from Home Assistant yet. Try again after the connection recovers.",
    "sourceHash": "34f5a5ab707babb51ca05d6f7504708ce34846cfe9f4ec3c45ba2d2c27c7238c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.dashboard.group_ha": {
    "text": "Home Assistant deski rozdzielcze",
@@ -819,9 +819,9 @@
    "state": "machine-draft"
   },
   "configure.dashboard.path_invalid": {
-   "text": "Wpisz ścieżkę do pulpitu, np. /dashboard-name/tab-name.",
+   "text": "Enter a dashboard path such as /dashboard-name/tab-name.",
    "sourceHash": "44e97a76f2ba646917a08ea5e9b8ea2a25029bb30b73d0d9094d201f49d8afdc",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.dashboard.path_label": {
    "text": "Ścieżka do pulpitu nawigacyjnego",
@@ -864,14 +864,14 @@
    "state": "machine-draft"
   },
   "configure.error.http": {
-   "text": "Nie udało się (HTTP {status})",
+   "text": "Failed (HTTP {status})",
    "sourceHash": "0b638daf70a6ba80fcd9b50cd3327832e0aea06ac8468a918ebe019140e937ac",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.error.network": {
-   "text": "Nie udało się (sieć)",
+   "text": "Failed (network)",
    "sourceHash": "9556f262b2a69e7e8150850a01cc520a268fbde7b022fad59e0850df2b355d6f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.exposure.expose_title": {
    "text": "Ukryte przed Home Assistant — kliknij, aby wyświetlić",
@@ -959,14 +959,14 @@
    "state": "machine-draft"
   },
   "configure.hardened.action_approval": {
-   "text": "Jeśli włączony jest tryb wzmocniony, ta akcja wymaga fizycznego zatwierdzenia na panelu.",
+   "text": "Requires physical on-panel approval for this action when Hardened mode is enabled.",
    "sourceHash": "767aa74fd80b54cf8f98cff7e097ab3c8344984f69e496be02fefc7fe4cb51aa",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.hardened.setting_approval": {
-   "text": "Zmiana tego ustawienia może wymagać fizycznego zatwierdzenia na panelu, gdy włączony jest tryb wzmocniony.",
+   "text": "Changing this setting may require physical on-panel approval when Hardened mode is enabled.",
    "sourceHash": "945c00063ff9caeec6ab547988a7285b401de138fdd0090be0531f103d74f5f9",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.language.automatic": {
    "text": "Automatycznie",
@@ -974,9 +974,9 @@
    "state": "machine-draft"
   },
   "configure.load_failed": {
-   "text": "Nie udało się załadować ustawień ({error}).",
+   "text": "Could not load settings ({error}).",
    "sourceHash": "c2f0b0f12e2b21748d5a23f46604652f1dce8c71799052d73de2533abfa63f81",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.loading": {
    "text": "Ładowanie…",
@@ -1014,9 +1014,9 @@
    "state": "machine-draft"
   },
   "configure.oauth.copy_failed": {
-   "text": "Nie udało się skopiować linku.",
+   "text": "Could not copy the link.",
    "sourceHash": "f5e805d39112ad2ea889fb17a7fca8949d356f58e427ed807f8a27e5d3be3060",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.oauth.copy_link": {
    "text": "Skopiuj link",
@@ -1069,9 +1069,9 @@
    "state": "machine-draft"
   },
   "configure.oauth.rejected": {
-   "text": "Logowanie odrzucone — połącz się ponownie z Home Assistant",
+   "text": "Sign-in rejected — reconnect to Home Assistant",
    "sourceHash": "5c0f79bb1a6969fa6c1381b5d93fe5e65d64a67861291a34d108ff459c79ae0e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.oauth.sign_in_help": {
    "text": "Zaloguj się z tego komputera. Żeby zalogować się jako inny użytkownik, skopiuj link do prywatnego okna.",
@@ -1079,9 +1079,9 @@
    "state": "machine-draft"
   },
   "configure.oauth.start_failed": {
-   "text": "Nie udało się rozpocząć logowania.",
+   "text": "Could not start sign-in.",
    "sourceHash": "1b939793efe69babdad069463d47dcc05702bc4842503f4b125eb61b656deaf0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.oauth.starting": {
    "text": "Rozpoczynam logowanie…",
@@ -1089,9 +1089,9 @@
    "state": "machine-draft"
   },
   "configure.oauth.status_unavailable": {
-   "text": "{method} · status niedostępny",
+   "text": "{method} · status unavailable",
    "sourceHash": "ab0e35c6fb00cb0480abe12c1a0e0e07d50d15612f847984dd64e6d960474474",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.oauth.valid_url_first": {
    "text": "Wpisz prawidłowy Home Assistant Najpierw adres URL.",
@@ -1144,9 +1144,9 @@
    "state": "machine-draft"
   },
   "configure.proximity.confirm.forget": {
-   "text": "Odsuń się od panelu, a potem usuń historię zapamiętanych odległości dla tego czujnika? Funkcja „dotknij, by obudzić” działa dalej, dopóki czujnik się ponownie uczy.",
+   "text": "Move clear of the panel, then delete learned proximity history for this sensor? Touch-to-wake remains available while it relearns.",
    "sourceHash": "e4ed73da8434174e02d6aa4413c24c088aad8fc6b39f214146bc5f74813288e5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.detail.local": {
    "text": "Uczenie się odbywa się lokalnie. Funkcja „dotknij, by wybudzić” działa normalnie podczas uczenia się.",
@@ -1224,24 +1224,24 @@
    "state": "machine-draft"
   },
   "configure.proximity.message.clear_failed": {
-   "text": "Nie udało się wyczyścić historii zbliżeń; istniejący model pozostaje bez zmian.",
+   "text": "Could not clear proximity history; the existing model is unchanged.",
    "sourceHash": "2473034f5750212d7d622823322d1ce10a6e8451550f6e39d49a990f15a34b0b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.message.clear_safely_failed": {
-   "text": "Nie udało się bezpiecznie wyczyścić historii zbliżeń; istniejący model pozostaje bez zmian.",
+   "text": "Could not safely clear proximity history; the existing model is unchanged.",
    "sourceHash": "51c2e6b636842da7c9ca7763425f174d767bd02d82cdb7ae74542abd16c6612f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.message.cleared": {
-   "text": "Historia zapamiętanych odległości została wyczyszczona. Uczenie się rozpoczęło się od nowa.",
+   "text": "Learned proximity history cleared. Learning has restarted.",
    "sourceHash": "ae0015059a409e4fc04f8f92d73307645ef268433c4a495c24e720b7732b37dd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.message.learning_clear_baseline": {
-   "text": "Nie trzeba niczego ustawiać. Na chwilę zwolnij miejsce, żeby panel mógł nauczyć się swojego punktu odniesienia.",
+   "text": "No setup is required. Keep the area clear briefly so the panel can learn its baseline.",
    "sourceHash": "f14cf2497d96832b03c9b3442247990bf8e72648d8802d9c50cdb4d375a08455",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.message.movement_not_armed": {
    "text": "Zauważono ruch, ale nie było to celowe machnięcie ręką. Odsuń się na dwie sekundy, a potem spróbuj jeszcze raz.",
@@ -1264,9 +1264,9 @@
    "state": "machine-draft"
   },
   "configure.proximity.message.safety_reset_failed": {
-   "text": "Gesty wybudzania są wyłączone, bo nie udało się zapisać ich resetowania bezpieczeństwa.",
+   "text": "Wake gestures are disabled because their safety reset could not be saved.",
    "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.message.signal_changed_paused": {
    "text": "Sygnał się zmienił. HA Funkcje raportowania i Wave Wake są wstrzymane na czas uczenia się nowego bezpiecznego zasięgu.",
@@ -1479,14 +1479,14 @@
    "state": "machine-draft"
   },
   "configure.save.failed": {
-   "text": "Zapisanie nie powiodło się.",
+   "text": "Save failed.",
    "sourceHash": "19b9455ce71a631f52e74d6fc358e95b9f35ab9a933aaf2fb159d97f1246983c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.save.hardware_pending": {
-   "text": "Zapisano żądaną wartość; aplikacja sprzętowa czeka na zatwierdzenie.",
+   "text": "Saved desired value; hardware application is pending.",
    "sourceHash": "9bd2748bda208a2e6c2bac42067692436f2f9189a3f7e197e5b338bdba1c44ef",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.save.now_applied": {
    "text": "Zapisane ustawienia zostały właśnie zastosowane.",
@@ -1499,9 +1499,9 @@
    "state": "machine-draft"
   },
   "configure.save.reload_failed": {
-   "text": "Zapisano (nie udało się ponownie załadować — odśwież stronę).",
+   "text": "Saved (reload failed — refresh the page).",
    "sourceHash": "a2dd4f224888a496a50ea48da45bb9db08515fa0c2c4d962760aa3d83fd089e6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.save.saved": {
    "text": "Zapisano.",
@@ -1579,14 +1579,14 @@
    "state": "machine-draft"
   },
   "configure.state.unavailable": {
-   "text": "Niedostępne",
+   "text": "Unavailable",
    "sourceHash": "ca184496974204a0bd3fd4925e0540bc4b0df6fcc232994d29754272b7183812",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.state.unavailable_lower": {
-   "text": "niedostępne",
+   "text": "unavailable",
    "sourceHash": "ba691ba042bcedd9a61a36f5969026bc95859dccdc7e47f24e6bce35673baf2f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.status.loading": {
    "text": "Ładowanie ustawień…",
@@ -1634,9 +1634,9 @@
    "state": "machine-draft"
   },
   "configure.validation.invalid": {
-   "text": "{label} ma nieprawidłową wartość.",
+   "text": "{label} has an invalid value.",
    "sourceHash": "0777a1e67635c2883095675c05a9cbc18ff3d9649867f6105e9e77a580cd7655",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.validation.range": {
    "text": "{label} musi mieścić się w przedziale {min} oraz {max}.",
@@ -1654,9 +1654,9 @@
    "state": "machine-draft"
   },
   "configure.voice.pipeline_unavailable": {
-   "text": "Lista potoków niedostępna — edytuj jako JSON.",
+   "text": "Pipeline list unavailable — edit as JSON.",
    "sourceHash": "286405ce6216743cba4d977faa5d8c49ff9f98f965ae330bb5dd1a5b33d16e1a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.voice.preferred_pipeline": {
    "text": "Preferowany proces",
@@ -1674,14 +1674,14 @@
    "state": "machine-draft"
   },
   "configure.zigbee.join_confirm": {
-   "text": "Włącz opcję „Zezwól na dołączanie” w Zigbee2MQTT lub ZHA najpierw.\n\nSpowoduje to uruchomienie trybu Repeater i rozpoczęcie nowego 15-minutowego okresu dołączania. Nie spowoduje to ponownego uruchomienia ani restartu panelu.\n\nZezwolenie na dołączenie jest włączone — chcesz dołączyć?",
+   "text": "Enable Permit join in Zigbee2MQTT or ZHA first.\n\nThis will request Repeater mode and begin a new 15-minute joining period. It will not reboot or restart the panel.\n\nPermit join is enabled — request join?",
    "sourceHash": "76f333e7b54f36296e81bbeee30b8bdb7a789136c4cf968df78cc7905e5e5d91",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.zigbee.join_failed": {
-   "text": "Nie udało się dołączyć do żądania ({error}).",
+   "text": "Join request failed ({error}).",
    "sourceHash": "aed9a2e33685d3085c2f032eaad81b8c833fdc8d6c2267cbe4e0c5d159bfa52d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.zigbee.join_help": {
    "text": "Włącz opcję „permit-join” na swoim koordynatorze, a następnie poproś o tryb Repeater.",
@@ -1709,9 +1709,9 @@
    "state": "machine-draft"
   },
   "dashboard.action.enable": {
-   "text": "Włącz",
+   "text": "Enable",
    "sourceHash": "5342e09f2729fbc6514528e727aeb9857afb31719d43568e6b18661ace7d1014",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.action.refresh": {
    "text": "Odśwież",
@@ -1726,307 +1726,307 @@
   "dashboard.action.stop": {
    "text": "Stop",
    "sourceHash": "cae7d57bc067a514b8e34c9589631a95c7dc051638ddd2a190773269279a99df",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.actions.approve_on_panel": {
-   "text": "Zatwierdź tę prośbę na panelu, a potem spróbuj jeszcze raz.",
+   "text": "Approve this request on the panel, then retry it.",
    "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.actions.confirm_reboot": {
-   "text": "Chcesz teraz zrestartować ten panel?",
+   "text": "Reboot this panel now?",
    "sourceHash": "1005666f1c1eb74e930eede648c7fbab791726a9211b7a9aee33d912b79a31a3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.actions.failed_http": {
-   "text": "Operacja nie powiodła się (HTTP {status}).",
+   "text": "Action failed (HTTP {status}).",
    "sourceHash": "94ed1dd9dd4565ff3e5427a953b37e8c3ea3cdeab817a8864ecf7f5639d9a6d0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.actions.failed_network": {
-   "text": "Operacja nie powiodła się (problem z siecią).",
+   "text": "Action failed (network).",
    "sourceHash": "2b0dade9b2c0baf781c16069035169f50760e7c1fc1dd275c5b3b034a6e00cd0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.actions.hardened_approval": {
-   "text": "Tryb wzmocniony wymaga fizycznego zatwierdzenia na tym panelu; nie można go zatwierdzić zdalnie.",
+   "text": "Hardened mode requires physical approval on this panel; it cannot be approved remotely.",
    "sourceHash": "7cebbbb063c4ee4afd81e5f244967f8c1c8d281e01b51785e00b8e97f7618d4e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.actions.remote_input_disabled": {
-   "text": "Zdalne wprowadzanie danych za pomocą dotknięcia jest wyłączone dla klientów sieciowych w trybie wzmocnionym.",
+   "text": "Remote tap input is disabled for network clients in Hardened mode.",
    "sourceHash": "3aaa115bb156e96c5f3b2f9a1daa5d19806a92e5f1a47f6cd80066b36cc9e209",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.auth_rejected.action": {
-   "text": "Konfiguracja → Home Assistant połączenie",
+   "text": "Configure → Home Assistant connection",
    "sourceHash": "521df20fbc23f0d26403dd8d82708d66019af14cc2081330ea88e5f3854d719a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.auth_rejected.explanation": {
-   "text": "zapisane ustawienia logowania zostały odrzucone, więc pulpit przestał ponawiać próbę (na panelu wyświetlają się instrukcje naprawy). Użyj logowania przez przeglądarkę na",
+   "text": "the saved login settings were rejected, so the dashboard stopped retrying (it shows fix instructions on the panel). Use Browser sign-in on",
    "sourceHash": "e414f00aea1c8c8d9ac8a59a1fa6902c8fca809a1ad9990d1bed61898c4d8e96",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.auth_rejected.reload_suffix": {
-   "text": "Pulpit nawigacyjny odświeża się automatycznie po zmianie danych logowania.",
+   "text": "the dashboard reloads automatically when the credentials change.",
    "sourceHash": "ac2f4f87a33bda1c9d97387ce8d5ba0f27926025bd37ca5ce0a7d396fc5008c0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.auth_rejected.title": {
-   "text": "Wbudowany moduł renderujący: Home Assistant logowanie odrzucone",
+   "text": "Built-in renderer: Home Assistant sign-in rejected",
    "sourceHash": "9fb8291c15b7f5ed04e8c99d9c63419c732ec377adf5f7bdad4ea59f85170b78",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_probe_failed.explanation": {
-   "text": "ha-paneld zachowa ostatni znany wynik i automatycznie spróbuje ponownie.",
+   "text": "ha-paneld will retain any last-known result and retry automatically.",
    "sourceHash": "0fb05a33392aa3fc02b14f0a78ba2bd459b43bc4b54e5ba7cd9162443175b1ee",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_probe_failed.title": {
-   "text": "Home Assistant Nie udało się sprawdzić ustawień towarzyszących",
+   "text": "Home Assistant Companion settings could not be inspected",
    "sourceHash": "899526133e9731be0d344d64ff4e7deff296d562694991aa95aa965fec43c354",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_url.explanation": {
-   "text": "Naprawa ustawia wewnętrzny adres URL na adres zewnętrzny.",
+   "text": "Repair sets the internal URL to the external URL.",
    "sourceHash": "1fc0536e933993621bd1b791bad1196de804ee4c31783a6fade2011d34bd0c73",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_url.install_action": {
-   "text": "Napraw w zakładce „Instalacja” →",
+   "text": "Repair on the Install tab →",
    "sourceHash": "d36d81e74fe3a959a745f091134741be7a6fdf8eaaa9a09835c19cd8c219b6d3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_url.repair": {
-   "text": "Napraw wewnętrzny adres URL",
+   "text": "Repair internal URL",
    "sourceHash": "8192fbd2559223b9ded4b9199b6c9f54622863f4151afb5c292fe902fe350c25",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_url.summary_many": {
-   "text": "({count} serwery) — pulpit nawigacyjny może się nie załadować z",
+   "text": "({count} servers) — the dashboard can fail to load with",
    "sourceHash": "aa53e84cf786b06f13cee6812a280e46bae647fd0290b0849b9a20237e899afe",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_url.summary_one": {
-   "text": "({count} serwer) — pulpit nawigacyjny może się nie załadować z",
+   "text": "({count} server) — the dashboard can fail to load with",
    "sourceHash": "56203c170dac72c1625b265579265ec88a750300873d2accad41690efe1e0a0f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.companion_url.title": {
-   "text": "Home Assistant Companion nie ma wewnętrznego adresu URL",
+   "text": "Home Assistant Companion has no internal URL",
    "sourceHash": "c919755118a3442bc3fed461d142cd7e575a4289d3a5c9f8a044e7a679044c86",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.ha_sign_in.action": {
-   "text": "połącz ten panel z przeglądarki",
+   "text": "connect this panel from a browser",
    "sourceHash": "b9ce2f85fea6f8548721dc2e95170eb6501d1cb71444f211656d9aa22f968553",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.ha_sign_in.explanation": {
-   "text": "ha-paneldwybrano wbudowany moduł renderujący. Zakończ logowanie pokazane na panelu lub",
+   "text": "ha-paneld's built-in renderer is selected. Complete the sign-in shown on the panel, or",
    "sourceHash": "845b28bc13330df790a1259e165e79ee6d56841495cad3c325bee32c17d49459",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.ha_sign_in.title": {
-   "text": "MQTT jest skonfigurowane. Dalej: Home Assistant zaloguj się.",
+   "text": "MQTT is configured. Next: Home Assistant sign-in.",
    "sourceHash": "180528809c42cbabe179f0f91a557e3d77b0cd39027113ed90ab02554fb44a8c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.manage_install": {
-   "text": "Zarządzaj w zakładce „Instalacja” →",
+   "text": "Manage on the Install tab →",
    "sourceHash": "3a44b8764e7cc637360c1249abf2574724b61a152b99714fd55f09cdccd6999a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.no_renderer.configure_prefix": {
-   "text": "Wybierz ha-paneldwbudowany renderer w",
+   "text": "Select ha-paneld's built-in renderer on",
    "sourceHash": "1f845c25c53535c6a532ad2f042e006fab10260d70bc16df7b7590cc6c1b17ae",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.no_renderer.explanation": {
-   "text": "lub skonfiguruj inny pakiet pulpitu nawigacyjnego. Do tego czasu ten panel nie będzie wyświetlał pulpitu nawigacyjnego.",
+   "text": "or configure another dashboard package. Until then, this panel won't display a dashboard.",
    "sourceHash": "5aee351360d4e2deffde50f405e582262d7ac56d4909d5a35be51c8a96123bc3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.no_renderer.note": {
-   "text": "(ha-paneld sam w sobie działa dobrze bez tego.)",
+   "text": "(ha-paneld itself runs fine without one.)",
    "sourceHash": "41a82e1a4b2967a3593b4a29619b743402b8885d9d67e2b4474a86ea71880142",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.no_renderer.title": {
-   "text": "MQTT jest skonfigurowane. Dalej: wybierz moduł renderujący pulpit nawigacyjny.",
+   "text": "MQTT is configured. Next: choose a dashboard renderer.",
    "sourceHash": "92a39c3ea0af40d258a4b3cf84fc30e00d5b0432fc9ac43c3eca809119cd18a6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.proximity_learning.action": {
-   "text": "Zobacz postępy lub naucz się nowej fali",
+   "text": "Open proximity setup",
    "sourceHash": "f9d5be8cab3ce30fbc94c115eb102ec4df35d57cb57e2f8d3b070f303e79de2f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.proximity_learning.title": {
-   "text": "Wake on wave się uczy",
+   "text": "Wake on wave is unavailable",
    "sourceHash": "13fee9fb24fd087f47f147bc51dec39d5c598dd73006d3c8417b837a5128ca7f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.proximity_learning.touch_available": {
-   "text": "Funkcja „Dotknij, by wybudzić” nadal działa.",
+   "text": "Touch-to-wake remains available.",
    "sourceHash": "903915dd8ee56238ac39ddd50edf407ff66796e29173afbeb3da700f6838c234",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.schema_rollback.configure_action": {
-   "text": "Sprawdź Konfiguracja →",
+   "text": "Check Configure →",
    "sourceHash": "d8ec542d4afb557de9d173fa65c10ad47c3b9357a741084ceb548c815c8df1af",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.schema_rollback.explanation": {
-   "text": "Ta kompilacja otworzyła nowy magazyn stanów, bo jej schemat jest starszy; niektóre ustawienia mogły się zresetować. Poprzednia baza danych została zachowana na panelu na wypadek przywracania.",
+   "text": "this build opened a fresh state store because its schema is older; some settings may have reset. The previous database is preserved on the panel for recovery.",
    "sourceHash": "046030ae07aa906959b9ee562f63453ce1906dfa2607da9e06d030d1dfa5fb94",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.schema_rollback.or_restore": {
-   "text": "lub przywróć kopię zapasową na",
+   "text": "or restore a backup on the",
    "sourceHash": "c4ae614553a2b22db8a4953db19a3b0d4cc99abc6914d1162d7cef90af4befc7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.schema_rollback.title": {
-   "text": "Nowsza baza danych zachowana po przejściu na starszą wersję",
+   "text": "Newer database preserved after a version downgrade",
    "sourceHash": "c6b434eb6d5f96ee9185ae968a89e7a1039ba9b2aad65bde00e6555a02b7fc78",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.joiner": {
-   "text": "oraz",
+   "text": "and",
    "sourceHash": "6201111b83a0cb5b0922cb37cc442b9a40e24e3b1ce100a4bb204f4c63fd2ac0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.mqtt_configuration": {
-   "text": "MQTT konfiguracja",
+   "text": "MQTT configuration",
    "sourceHash": "dc67038dbc78f5ac4acaf201ff99b74d567c4a570b11c78fbef59a586da566f4",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.prefix": {
-   "text": "Ten panel wymaga",
+   "text": "This panel needs",
    "sourceHash": "2d9faa88e40af4265de7e9424e308724b1e7b96e30c1ea1f586704a10235225a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.reachable_broker": {
-   "text": "dostępny MQTT broker",
+   "text": "a reachable MQTT broker",
    "sourceHash": "045ac1f4b721cd39b484c8273ebd33c7756cdb487214f63888ac86f9490f698f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.rejected_credentials": {
-   "text": "prawidłowe MQTT dane uwierzytelniające (broker je odrzucił)",
+   "text": "valid MQTT credentials (the broker rejected them)",
    "sourceHash": "e3bec86a375b717aa06b9ef49db160cda580cfdebfe9a77fc35a6e1bc79d120d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.suffix": {
-   "text": "— ustaw w zakładce „Konfiguracja”.",
+   "text": "— set on the Configure tab.",
    "sourceHash": "a623aa42d2f1f53aa662a6afe155e3e0c1e47b2b888d5b843985025ef198d430",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.valid_broker_url": {
-   "text": "prawidłowy MQTT adres URL brokera",
+   "text": "a valid MQTT broker URL",
    "sourceHash": "ee8fc48bc75378fd7cad15208047034017bceaff1864019a22416e40b281a734",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.setup_needs.valid_credentials": {
-   "text": "prawidłowy MQTT dane uwierzytelniające",
+   "text": "valid MQTT credentials",
    "sourceHash": "c3a2944f7904354478c69932bda9ef2ee929ef06cb1728669fc31f31e0524fb3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.update.available": {
-   "text": "{latest} jest dostępny (zainstalowany: {current})",
+   "text": "{latest} is available (installed: {current})",
    "sourceHash": "e726d7045129a6d908ceb5f9d5ad758e78268c09aca52d104d2e9158709a4b45",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.update.ignore": {
-   "text": "Zignoruj tę wersję",
+   "text": "Ignore this version",
    "sourceHash": "72d0f08eee13ed1268875490b1f5cdc24e103edcb2a16d55862ace2c9223aa63",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.webview_old.engine_note": {
-   "text": "Sprawdzono w oparciu o rzeczywistą wersję silnika (z WebView UA), a nie tylko wersję pakietu z etykietą — więc Cromite/LineageOS SystemWebView to nie uruchomi tego.",
+   "text": "Checked against the real engine version (from the WebView UA), not just the stamped package version — so a Cromite/LineageOS SystemWebView won't trip this.",
    "sourceHash": "03639d66ebce5ea8cce72dd876874ae458b40ddd0eccf06217a459eab4a5134a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.webview_old.explanation": {
-   "text": "the Home Assistant Pulpit nawigacyjny może wyświetlać się pusty lub nieprawidłowo.",
+   "text": "the Home Assistant dashboard may render blank or broken.",
    "sourceHash": "ff191e5d689ffb361fc76cbffb902c16185f7355b227ddccb705d42aed4b54f1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.webview_old.target": {
-   "text": "(cel: Chromium {version}+)",
+   "text": "(target: Chromium {version}+)",
    "sourceHash": "d145b2299c214056f667aaa46ed712ccad5275e9e75eb57223bde1ff2ca7b21d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.webview_old.title": {
-   "text": "System WebView jest zbyt stary",
+   "text": "System WebView is too old",
    "sourceHash": "32f9602603cf386e8accd721782721ab0c29ff77a86e739370a819d2c2ae5d59",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.webview_old.update_action": {
-   "text": "Jak i dlaczego warto zaktualizować",
+   "text": "How & why to update",
    "sourceHash": "e47c274a443c3dfb22bfdfa0a49f6908e720d8b1518a6ba71e5d5014f52daea8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.zoom.action_suffix": {
-   "text": "co pozwala na płynne skalowanie całego panelu; ustaw to, a potem zresetuj powiększenie tutaj.",
+   "text": "which scales the whole panel crisply; set that, then reset the zoom here.",
    "sourceHash": "7220acdb7b7548881a3939db495a9a5117cc8975f49c21d5c5f447c802508074",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.zoom.display_density": {
-   "text": "gęstość wyświetlania",
+   "text": "display density",
    "sourceHash": "8ed65550c9c872be049e78dc7c88aeca0b7a035c05b7fa79496c17ab127ebb6f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.zoom.explanation": {
-   "text": "(nie w 100%) — zazwyczaj przenoszone z funkcji powiększania strony w aplikacji Companion. Lepszym sposobem na zmianę rozmiaru pulpitu nawigacyjnego jest panel",
+   "text": "(not 100%) — usually carried over from the Companion app's Page zoom. The cleaner way to size a dashboard is the panel's",
    "sourceHash": "9b8b90e77b2c5fe92483b1773920fc2568273ca3117badb474db74ac7642b72a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.zoom.reset": {
-   "text": "Przywróć powiększenie do 100%",
+   "text": "Reset zoom to 100%",
    "sourceHash": "39cdc8918f48e707c7dcbee5f5d331d7ef1c1265c875ac17181073e46ca7d135",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.banner.zoom.title": {
-   "text": "Powiększenie pulpitu to {zoom}%",
+   "text": "Dashboard zoom is {zoom}%",
    "sourceHash": "7c420345226ec705034cdbc69b791fd059d1bfea7736e944fa5bbe605667795a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.check_hardware": {
-   "text": "sprawdź sprzęt kamery; nowy klient po zawieszeniu lub zmianie ustawień ponowi próbę",
+   "text": "check the camera hardware; a new client after the hold retries",
    "sourceHash": "090d1ef719dc1159410c638eac487771bb3151e5dfe1deebeaa9b19e0d6ce11f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.check_indicator": {
-   "text": "Nie udało się wyświetlić lampki „kamera w użyciu”; sprawdź uprawnienia do nakładania obrazu i diodę LED",
+   "text": "the camera-in-use light could not be shown; check overlay permission and the LED",
    "sourceHash": "f215faa3267178604f1d4d8c8fa70f5d6e4ab132f7942ffa677d64eb1726e37c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.enable": {
-   "text": "włącz opcję kamery, żeby udostępniać migawki i strumień",
+   "text": "turn on the camera setting to serve snapshots and a stream",
    "sourceHash": "b5ba02397f9882f0957226dffeb565fed6081c3851f010523f56a31b0c5608f0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.encoder_unavailable": {
-   "text": "brak sprzętu H.264 Koder mieści się w limicie przepływności kamery; migawki nadal działają, a strumieniowanie nie",
+   "text": "no hardware H.264 encoder fits the camera bitrate cap; snapshots still work, streaming does not",
    "sourceHash": "62374b18e506772270e18c91afafca04ccb240b69e763ad83de6b8350a21f082",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.grant_permission": {
-   "text": "udziel kamerze uprawnień na panelu, gdy pojawi się monit",
+   "text": "grant the camera permission on the panel when prompted",
    "sourceHash": "b8021f57862db8b3de847ed071a7d422746cc592947888bb9f369fff7668c4e0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.report_encode_failure": {
-   "text": "kamera dostarcza klatki, ale nie udało się ich zakodować; zgłoś to w diagnostyce panelu",
+   "text": "the camera delivers frames but they could not be encoded; report this with the panel's diagnostics",
    "sourceHash": "e357e35fdd3e41b26dfcd530e77a10a34b239a0b525a735f9ed401554bf40eb6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.action.wake_panel": {
-   "text": "wybudź panel: sesja kamery może się rozpocząć tylko wtedy, gdy pulpit nawigacyjny jest widoczny",
+   "text": "wake the panel: a camera session can only start while the dashboard is visible",
    "sourceHash": "e88ad0895ee4cc2d7f5cd28e848d4c0aedc45e90ae7958a5517605497a6fd85f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.camera.bitrate.cap": {
    "text": "· limit {cap} kbps",
@@ -2884,9 +2884,9 @@
    "state": "machine-draft"
   },
   "dashboard.controls.reboot": {
-   "text": "Uruchom ponownie",
+   "text": "Reboot",
    "sourceHash": "fba023ca78ebb022146bbfe95e638d252b0727075bff6b4661f26dbe1e1a8fd0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.controls.recents": {
    "text": "Ostatnio używane",
@@ -3394,9 +3394,9 @@
    "state": "machine-draft"
   },
   "dashboard.remote_webview.hardened_unavailable": {
-   "text": "Niedostępne, gdy Hardened tryb jest włączony",
+   "text": "Unavailable while Hardened mode is enabled",
    "sourceHash": "c033a99023a02ded9ca4812bb3edd59772517da8470986440a9fd03cebf32722",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.renderer.core_percent": {
    "text": "{percent}% jednego rdzenia",
@@ -3964,19 +3964,19 @@
    "state": "machine-draft"
   },
   "dashboard.screenshot.outcome_unknown_capturing": {
-   "text": "Nieznany wynik dotknięcia; przechwytuję aktualny panel…",
+   "text": "Tap outcome unknown; capturing the current panel…",
    "sourceHash": "8a1001c74f3fad950f73b7722ab479b287241bfc9a21e7d0664cd637e1a0a47f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.outcome_unknown_refreshed": {
-   "text": "Reakcja na dotknięcie nieznana; aktualny zrzut ekranu odświeżony.",
+   "text": "Tap outcome unknown; current screenshot refreshed.",
    "sourceHash": "68460677644442f623eb295699778d16b0d26c48ac03daec2b0017fe85e1cfce",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.outcome_unknown_update_failed": {
-   "text": "Wynik dotknięcia nieznany; nie udało się zaktualizować zrzutu ekranu.",
+   "text": "Tap outcome unknown; the screenshot could not be updated.",
    "sourceHash": "c363b9fdf8b38dca2adf9a9b62aee33a355abb8b1e2f247c429918eb7db0e931",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.refresh": {
    "text": "Odśwież",
@@ -3989,9 +3989,9 @@
    "state": "machine-draft"
   },
   "dashboard.screenshot.remote_input_disabled": {
-   "text": "W trybie wzmocnionym zdalne wprowadzanie danych jest wyłączone.",
+   "text": "Remote input is disabled in Hardened mode.",
    "sourceHash": "5d609daee3c51423c9b0ebb999e71eed684b12917155d781cab803d35bfefda9",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.sending_tap": {
    "text": "Wysyłanie tap…",
@@ -3999,19 +3999,19 @@
    "state": "machine-draft"
   },
   "dashboard.screenshot.tap_completed_capturing": {
-   "text": "Dotknięcie zakończone; robimy nowy zrzut ekranu…",
+   "text": "Tap completed; capturing a fresh screenshot…",
    "sourceHash": "08b636edf865023b936211d78b6f3ac24e1910c899049181c150e2e364291e88",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.tap_completed_update_failed": {
-   "text": "Dotknięcie zakończyło się powodzeniem, ale nie udało się zaktualizować zrzutu ekranu.",
+   "text": "The tap completed, but the screenshot could not be updated.",
    "sourceHash": "9f8839beda97ba714d5e68159fd1c769ac8bfb6679c30d382ab68b89942a535d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.tap_rejected": {
-   "text": "Dotknięcie nie zostało zaakceptowane.",
+   "text": "Tap was not accepted.",
    "sourceHash": "5c7e8af4e7b00f46d59a5ee8143592c6ea3c3d0cd3eced0ca8cbf0031a5b8596",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "dashboard.screenshot.updated": {
    "text": "Zrzut ekranu zaktualizowany.",
@@ -4309,14 +4309,14 @@
    "state": "machine-draft"
   },
   "entities.apply.changed": {
-   "text": "Zastosowano. Subskrypcja na żywo przed: {previous}; po: {current}. Dodano: {added}; usunięto: {removed}. Żądano odświeżenia pulpitu nawigacyjnego.",
+   "text": "Applied. Live subscription before: {previous}; after: {current}. Added: {added}; removed: {removed}. Dashboard reload requested.",
    "sourceHash": "e6663a78ebc94de30783b44a3bbc39da17c8f70ac0d46f813b2d4e4176874fe8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.apply.enable_confirm": {
-   "text": "Zachowaj bieżący strumień (liczba encji: {current}) i włączyć przyszłe automatyczne aktualizacje zasad?",
+   "text": "Keep the current stream (entity count: {current}) and enable future automatic policy updates?",
    "sourceHash": "bac6011889095102b94474f07be420771d6019f85ae6145be6e969f509525ecc",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.apply.failed": {
    "text": "Zastosowanie nie powiodło się.",
@@ -4324,9 +4324,9 @@
    "state": "machine-draft"
   },
   "entities.apply.replace_confirm": {
-   "text": "Zastąp bieżący strumień (liczba encji: {current}) z zestawem wybranym na podstawie zasad (liczba podmiotów: {desired})? Dodano: {added}; usunięto: {removed}. Spowoduje to ponowne załadowanie pulpitu nawigacyjnego.",
+   "text": "Replace the current stream (entity count: {current}) with the policy-selected set (entity count: {desired})? Added: {added}; removed: {removed}. This reloads the dashboard.",
    "sourceHash": "770343d8562dc49d471c9d0759a998a6c18ca3f79c9d7d27c24c430ce99e6834",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.apply.unchanged": {
    "text": "Włączono automatyczne aktualizacje. Liczba transmisji na żywo bez zmian: {count}.",
@@ -4339,29 +4339,29 @@
    "state": "machine-draft"
   },
   "entities.bulk.exclude_all_confirm.one": {
-   "text": "Wyklucz {count} Sugerowana encja? To może zepsuć działanie kart na pulpicie nawigacyjnym.",
+   "text": "Exclude {count} suggested entity? This can break dashboard cards.",
    "sourceHash": "4ee7872151dc628a5534388bc708bbdaaa3854e51513b745e69be6ce297f1447",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.exclude_all_confirm.other": {
-   "text": "Wyklucz wszystko {count} Sugerowane encje? Może to spowodować nieprawidłowe działanie kart na pulpicie nawigacyjnym.",
+   "text": "Exclude all {count} suggested entities? This can break dashboard cards.",
    "sourceHash": "f71967c93e9b393036ab0e5c4e0d5189d27764b34014e3998bd9d529ca305ae5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.exclude_selected": {
-   "text": "Wyklucz wybrane",
+   "text": "Exclude selected",
    "sourceHash": "2748363ffa4124f831a4e5f7b381251e76cec4593ac9864f1bd53f501e56c932",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.exclude_selected_confirm.one": {
-   "text": "Wyklucz {count} Wybrany obiekt? To może zepsuć działanie kart na pulpicie nawigacyjnym.",
+   "text": "Exclude {count} selected entity? This can break dashboard cards.",
    "sourceHash": "227268d87fbedc2dfd3681cdb64ea4aa08966e03db558c156671e14d22f4e357",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.exclude_selected_confirm.other": {
-   "text": "Wyklucz {count} wybrane encje? To może zepsuć działanie kart na pulpicie nawigacyjnym.",
+   "text": "Exclude {count} selected entities? This can break dashboard cards.",
    "sourceHash": "a4d9e3e4433232a4693d7b385710a5641b8b1352ea5e80a956edce2e14bd0bba",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.failed": {
    "text": "Nie udało się zbiorczo nadpisać",
@@ -4369,19 +4369,19 @@
    "state": "machine-draft"
   },
   "entities.bulk.pin_all_confirm.one": {
-   "text": "Przypnij {count} Sugerowana jednostka?",
+   "text": "Pin {count} suggested entity?",
    "sourceHash": "1d741b9dda2c5645cb6f05b3f56409acf87abee8b61d5c6b955ec13e7ae25c24",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.pin_all_confirm.other": {
-   "text": "Przypnij wszystko {count} sugerowane encje?",
+   "text": "Pin all {count} suggested entities?",
    "sourceHash": "9ca6f7bc0cc669c9a4df740064cdbbf4a00b7e2c9224a26dc64f17b5f9a919a5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.pin_all_suggested": {
-   "text": "Przypnij wszystkie sugestie",
+   "text": "Pin all suggested",
    "sourceHash": "a065b473d105e06ffe8a8f0ea34c19753f14452c09493e24901c6b1073aeaa50",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.pin_selected": {
    "text": "Przypnij zaznaczone",
@@ -4389,14 +4389,14 @@
    "state": "machine-draft"
   },
   "entities.bulk.pin_selected_confirm.one": {
-   "text": "Przypnij {count} wybrany obiekt?",
+   "text": "Pin {count} selected entity?",
    "sourceHash": "1bbe3e3f4f495e4157d82fcd04a62ed0cf81ac548b75434d8ba9a841d1233ead",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.pin_selected_confirm.other": {
-   "text": "Przypnij {count} wybrane encje?",
+   "text": "Pin {count} selected entities?",
    "sourceHash": "14bec6aa4ecbb15d7e6e772a1a3482d38a7c2d6e7421f08064c189c53de1fbec",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.bulk.select_first": {
    "text": "Najpierw wybierz co najmniej jedną encję.",
@@ -4404,9 +4404,9 @@
    "state": "machine-draft"
   },
   "entities.control.apply_policy": {
-   "text": "Zastosuj zestaw zasad ({current} → {desired})",
+   "text": "Apply policy set ({current} → {desired})",
    "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.control.applying": {
    "text": "Stosowanie…",
@@ -4424,9 +4424,9 @@
    "state": "machine-draft"
   },
   "entities.control.reset": {
-   "text": "Zresetuj zapamiętane dane",
+   "text": "Reset learned data",
    "sourceHash": "49dc6d157094fdc2b69f4b58c47990183681beb8c38407c89d5f8b055cfe21e8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.control.reset_after_scan": {
    "text": "Reset dostępny po skanowaniu",
@@ -4439,9 +4439,9 @@
    "state": "machine-draft"
   },
   "entities.control.resetting": {
-   "text": "Resetowanie…",
+   "text": "Resetting…",
    "sourceHash": "1505f40de62c4f2620f934141fe63916300b6d82ca8701e1f1be53ea22eba6b1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.control.scan": {
    "text": "Przeskanuj pulpit nawigacyjny teraz",
@@ -4544,9 +4544,9 @@
    "state": "machine-draft"
   },
   "entities.filter.reset": {
-   "text": "Zresetuj dane wyuczone",
+   "text": "Reset learned data",
    "sourceHash": "49dc6d157094fdc2b69f4b58c47990183681beb8c38407c89d5f8b055cfe21e8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.filter.scan": {
    "text": "Przeskanuj pulpit nawigacyjny teraz",
@@ -4559,9 +4559,9 @@
    "state": "machine-draft"
   },
   "entities.issue.allow_note": {
-   "text": "Zezwolenie na tę kontrolę nigdy nie dodaje żadnych elementów. Pozwala jedynie na kontynuowanie automatycznych aktualizacji bez nich. Żeby subskrybować jedną z nich, znajdź ją za pomocą wyszukiwarki katalogowej u góry tej strony i ustaw ją na {pinned}; ręczne przypięcie pozostaje aktywne, dopóki go nie usuniesz.",
+   "text": "Allowing this check never adds entities. It only lets automatic updates continue without them. To subscribe to one, find it with the catalogue search at the top of this page and set it to {pinned}; a manual pin is kept until you remove it.",
    "sourceHash": "d3c4b6d2399ff0b190f6ccafb3bb888b75db62d7a682cd5a5c06dbe91a24df72",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.area-broad.summary": {
    "text": "Karta obszaru przekracza limit bezpieczeństwa subskrypcji na selektor",
@@ -4669,14 +4669,14 @@
    "state": "machine-draft"
   },
   "entities.issue.default-broad.reason": {
-   "text": "Zbiór kandydatów strukturalnych przekracza bezpieczny limit subskrypcji na selektor. Filtry dynamiczne, sortowanie i ograniczenia wyświetlania nie są w stanie bezpiecznie go zmniejszyć.",
+   "text": "The structural candidate set exceeds the per-selector subscription safety limit. Dynamic filters, sorting, and display limits cannot safely reduce it.",
    "sourceHash": "09254a3ff2f9fc0d2023d14ba0326bf5a9837be72fd87261b842cd2ec6cfb154",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.default-broad.recommendation": {
-   "text": "Ogranicz selektor, używając obszaru, poziomu, etykiety, wzorca encji lub wyraźnej listy encji.",
+   "text": "Narrow the selector with an area, floor, label, entity pattern, or explicit entity list.",
    "sourceHash": "ee01905364ebf98329a8c55c886e5437838273b6eb78f464b5320cc42501932a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.default-unbounded.reason": {
    "text": "Selektor nie ma żadnych ograniczeń strukturalnych, które można by przekształcić w bezpieczny zestaw subskrypcji.",
@@ -4694,29 +4694,29 @@
    "state": "machine-draft"
   },
   "entities.issue.diagnostic-limit.reason": {
-   "text": "Więcej niż 64 Znaleziono oddzielne kontrole blokujące.",
+   "text": "More than 64 distinct blocking checks were found.",
    "sourceHash": "1b01bdd7d4f02af1d7fa0fe94827e071c0e0a55fb746b409c65b173155c5616d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.diagnostic-limit.recommendation": {
-   "text": "Uprość pulpit nawigacyjny lub podziel go na mniejsze pulpity, zanim włączysz automatyczne filtrowanie podmiotów.",
+   "text": "Simplify the dashboard or split it into smaller dashboards before enabling automatic entity filtering.",
    "sourceHash": "51d9424df4f4bdc068b69d11f6f19e3cd8eaf42bd62d4acba954daf8568d156e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.diagnostic-limit.summary": {
-   "text": "Pulpit nawigacyjny ma więcej kontroli bezpieczeństwa, niż da się sprawdzić",
+   "text": "Dashboard has more safety checks than can be reviewed",
    "sourceHash": "9389720c884f9e7cc15417daa3c982e8083f3ad18bd02b8fb89d06a19fb198dd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.ignore": {
-   "text": "Zignoruj potencjalne encje i kontynuuj",
+   "text": "Ignore potential entities and continue",
    "sourceHash": "ce23f81f852dcb0da169baedd751ff559b6aa05f9f40ff83b5e431d389361844",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.ignore_confirm": {
-   "text": "Chcesz kontynuować, pomijając wszystkie potencjalne encje z tej konfiguracji? Spowoduje to, że żadne encje nie zostaną dodane do subskrypcji. Karty, które od nich zależą, mogą być wyświetlane jako niedostępne, dopóki nie przypięjesz tych encji ręcznie, nie zawężysz widoku pulpitu nawigacyjnego lub nie włączysz ponownie kontroli bezpieczeństwa.",
+   "text": "Continue while omitting every potential entity from this configuration? This adds no entities to the subscription. Cards which depend on them may show unavailable until you pin those entities by hand, the dashboard is narrowed, or the safety check is re-enabled.",
    "sourceHash": "67413638e256350b1b2523684e53c746d79e9ca69729a04598065bc78e18d4ce",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.kiosk-mode-dynamic-javascript.reason": {
    "text": "Te wyrażenia po stronie klienta mogą opierać się na encjach, których nie ma w statycznie wykrytym zestawie subskrypcji.",
@@ -4724,9 +4724,9 @@
    "state": "machine-draft"
   },
   "entities.issue.kiosk-mode-dynamic-javascript.recommendation": {
-   "text": "Aby włączyć automatyczne filtrowanie encji, usuń kod po stronie klienta JavaScript lub przypiąć każdą zależność; to nie ma wpływu na HACS prezentacja lub Home Assistantnatywne polecenie kiosku.",
+   "text": "For automatic entity filtering, remove client-side JavaScript or pin every dependency; this does not affect HACS presentation or Home Assistant's native kiosk command.",
    "sourceHash": "16bfc9f542e706bd0fb6dffd6cbda316c8c1e2de53fbca3309e06eb4a72c0070",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.kiosk-mode-dynamic-javascript.summary": {
    "text": "HACS Kiosk Mode działa po stronie klienta JavaScript z nieznanymi zależnościami od podmiotów",
@@ -4739,9 +4739,9 @@
    "state": "machine-draft"
   },
   "entities.issue.kiosk-mode-limited-support.recommendation": {
-   "text": "Aby automatycznie filtrować encje, użyj encji dosłownej IDs w HACS Kiosk Mode JavaScript i unikaj wyliczeń; renderowane po stronie serwera Jinja Ustawienia te nie wymagają żadnych popularnych bibliotek.",
+   "text": "For automatic entity filtering, use literal entity IDs in HACS Kiosk Mode JavaScript and avoid enumeration; server-rendered Jinja settings do not require main-stream dependencies.",
    "sourceHash": "6722add1f9e7bd22036c91f7c5cdb90df36db9da4f5c444dd3db697dc862c2a7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.kiosk-mode-limited-support.summary": {
    "text": "HACS Kiosk Mode JavaScript ma ograniczoną obsługę wyszukiwania encji",
@@ -4814,19 +4814,19 @@
    "state": "machine-draft"
   },
   "entities.issue.selector-total-budget.reason": {
-   "text": "Łączna liczba selektorów ograniczonych przekracza limit bezpieczeństwa subskrypcji pulpitu nawigacyjnego.",
+   "text": "The combined bounded selectors exceed the dashboard subscription safety limit.",
    "sourceHash": "8aed88e4dcadaf16d7cdaf424cf672f49063a2514bfdbfb2efdc24da5f914bb6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.selector-total-budget.recommendation": {
-   "text": "Ogranicz selektory na pulpicie nawigacyjnym, żeby ich łączny zestaw encji nie przekroczył limitu.",
+   "text": "Narrow the dashboard selectors so their combined entity set stays within the limit.",
    "sourceHash": "6d361987a0367d900941e123f4c0dba8d970f90f042d6cb79d77367364f5ba44",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.selector-total-budget.summary": {
-   "text": "Selektory z ograniczeniami łącznie pasują do {candidate_count} entities",
+   "text": "Bounded selectors collectively match {candidate_count} entities",
    "sourceHash": "b9b9031818790fa57e332221654ebb7128f3110f15825ee9040bdd50153d8446",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.selector-unbounded-or-dynamic.summary": {
    "text": "Nieograniczony lub dynamiczny selektor encji",
@@ -4874,19 +4874,19 @@
    "state": "machine-draft"
   },
   "entities.issue.template-selector.reason": {
-   "text": "ha-paneld nie analizuje szablonów, więc nie wie, które encje zwraca ten filtr. Encje, które tylko odczytuje, to Home AssistantTo są własne elementy, dostarczane poza tym filtrem, więc ich brak tutaj jest prawidłowy i nie wymagają żadnych zmian.",
+   "text": "ha-paneld does not evaluate templates, so it cannot tell which entities this filter returns. Entities it only reads are Home Assistant's own, delivered outside this filter, so their absence here is correct and they need nothing.",
    "sourceHash": "78fbab96e9baabf4059991f1fa21fbc8cf624e3e409e7b90aa241a026c397837",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.template-selector.recommendation": {
-   "text": "Zwiąż filtr strukturalnie albo przypiąć tylko te encje, które zwraca szablon.",
+   "text": "Bound the filter structurally, or pin only the entities the template returns.",
    "sourceHash": "2698ccb1ebcabb0e1a92b42b0bf165eba907a2cef2922162d496b0786bfa0b5c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.template-selector.summary": {
-   "text": "Selektor encji szablonu bez ograniczeń",
+   "text": "Unbounded template entity selector",
    "sourceHash": "77922d0110ae843152f8e1cdc92a41f6c88e478f06bbc0f0468702219af5efd7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.issue.view.untitled": {
    "text": "Wyświetl {index}",
@@ -4954,9 +4954,9 @@
    "state": "machine-draft"
   },
   "entities.override.exclude_confirm": {
-   "text": "Wyklucz {entity_id} nawet jeśli pulpit nawigacyjny jest od tego zależny?",
+   "text": "Exclude {entity_id} even if the dashboard depends on it?",
    "sourceHash": "d0ab4e63729c4a23af1b6d0645a61fa9b04070790957b396dea1c56e451ec94b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.override.failed": {
    "text": "Nie udało się nadpisać encji",
@@ -5029,19 +5029,19 @@
    "state": "machine-draft"
   },
   "entities.reset.complete_no_scan": {
-   "text": "Reset zakończony. Usunięto zgromadzone dowody, ręczne nadpisania i decyzje o pominięciu ze względów bezpieczeństwa. Bieżąca subskrypcja na żywo została zachowana, ale skanowanie zastępcze się nie rozpoczęło; użyj {scan_action} żeby spróbować jeszcze raz.",
+   "text": "Reset complete. Learned evidence, manual overrides, and safety ignore decisions were removed. The current live subscription was retained, but the replacement scan did not start; use {scan_action} to retry.",
    "sourceHash": "f0198d70c226424f7a78ff65f1545e155230fd732de12e08ed4474cbaf7451c6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.reset.complete_scanning": {
-   "text": "Reset zakończony. Usunięto zebrane dowody, ręczne nadpisania i decyzje o pominięciu ze względów bezpieczeństwa. Trwa skanowanie zastępcze; obecna subskrypcja na żywo pozostaje aktywna, dopóki skanowanie nie zakończy się powodzeniem.",
+   "text": "Reset complete. Learned evidence, manual overrides, and safety ignore decisions were removed. A replacement scan is running; the current live subscription remains in place until that scan succeeds.",
    "sourceHash": "0c9fed9e1b5fcde6591508c956e73fb8249ada0f34305d203ebe0298b074dfdf",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.reset.confirm": {
-   "text": "Chcesz zresetować wszystkie zapisane dowody dotyczące encji, ręczne nadpisania (przypinanie/wykluczanie) oraz decyzje o pominięciu z powodów bezpieczeństwa podczas wykrywania encji? Nie da się tego cofnąć. Bieżąca subskrypcja na żywo zostanie zachowana, podczas gdy skan zastępczy odbuduje dowody.",
+   "text": "Reset all learned entity evidence, manual pin/exclude overrides, and entity-discovery safety ignore decisions? This cannot be undone. The current live subscription will be kept while a replacement scan rebuilds the evidence.",
    "sourceHash": "af56ee112e5d4353209106117b9426c18de16a6c7cfc2c2e2db39526d56a1db6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.reset.failed": {
    "text": "Resetowanie nie powiodło się.",
@@ -5049,9 +5049,9 @@
    "state": "machine-draft"
   },
   "entities.reset.resetting": {
-   "text": "Resetowanie zapamiętanych danych o jednostkach przy zachowaniu bieżącej subskrypcji na żywo…",
+   "text": "Resetting learned entity data while retaining the current live subscription…",
    "sourceHash": "4245bf2a7c7d1dfb95da35ba88bc5e7dcb1ae69ca3754477666697d1597eca3d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.row.list_unavailable": {
    "text": "Lista obiektów niedostępna",
@@ -5084,14 +5084,14 @@
    "state": "machine-draft"
   },
   "entities.scan.blocked.one": {
-   "text": "Skanowanie zakończone: {blocking} Kontrola bezpieczeństwa wykrywania encji wymaga wyboru. Home Assistant a pulpit nawigacyjny jest nadal dostępny; poprzednia subskrypcja na żywo została zachowana (liczba obiektów: {stream_count}).",
+   "text": "Scan complete: {blocking} entity-discovery safety check needs a choice. Home Assistant and the dashboard are still available; the previous live subscription was retained (entity count: {stream_count}).",
    "sourceHash": "03419581172c169e5d109b2d8d4a2c95e69c824ee077ae4a678703cad540ef24",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.scan.blocked.other": {
-   "text": "Skanowanie zakończone: {blocking} Kontrole bezpieczeństwa podczas wyszukiwania obiektów wymagają wyboru. Home Assistant a pulpit nawigacyjny jest nadal dostępny; poprzednia subskrypcja na żywo została zachowana (liczba obiektów: {stream_count}).",
+   "text": "Scan complete: {blocking} entity-discovery safety checks need a choice. Home Assistant and the dashboard are still available; the previous live subscription was retained (entity count: {stream_count}).",
    "sourceHash": "c7d400c1aba614c65e828a9c8b803646f29cf74f2475a1258f70874d6f387891",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "entities.scan.complete_changed": {
    "text": "Skanowanie zakończone. Skatalogowano: {catalogued}; sugerowane: {suggested}. Subskrypcja na żywo wcześniej: {previous}; po: {current}.",
@@ -5589,9 +5589,9 @@
    "state": "machine-draft"
   },
   "install.apk_status.fetch_failed": {
-   "text": "panel nie mógł pobrać tego linku",
+   "text": "the panel could not download that link",
    "sourceHash": "f42498880844fec60487847c9df29ce4b684942fef96f3f8a925cfd39ae30ccd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk_status.fetch_timeout": {
    "text": "pobieranie się zawiesiło lub trwało zbyt długo",
@@ -5609,14 +5609,14 @@
    "state": "machine-draft"
   },
   "install.apk_status.invalid_request": {
-   "text": "panel odrzucił ten identyfikator żądania",
+   "text": "the panel rejected this request identifier",
    "sourceHash": "cb02224edc3532d5ea6d2e153b58680eab7ebbac49bef09f76ea50682774307e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk_status.invalid_url": {
-   "text": "to nie jest poprawny link do strony https://",
+   "text": "that is not a valid https:// link",
    "sourceHash": "5eb237ea5f1be950341465cf5f0c7314d0464884c3b95bdafb75124d48949a51",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk_status.no_root": {
    "text": "Ten panel nie ma demona root ani pomocniczego",
@@ -5649,9 +5649,9 @@
    "state": "machine-draft"
   },
   "install.apk_status.upload_staging_failed": {
-   "text": "panel nie mógł otworzyć pliku tymczasowego",
+   "text": "the panel could not open a staging file",
    "sourceHash": "8a4ea06166f3cb0dcbf9309b3cf9646c9e030f1f472326e2257d88227c5eb2e0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk_status.upload_timeout": {
    "text": "przesyłanie trwało zbyt długo",
@@ -5719,9 +5719,9 @@
    "state": "machine-draft"
   },
   "install.backup.dynamic.form_applying": {
-   "text": "W trakcie stosowania…",
+   "text": "Applying…",
    "sourceHash": "3329a9bb48b9c8d4a5e6182042ea9737427233c72b853b93d0a6365050ae476d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.form_failed": {
    "text": "Nie udało się wprowadzić tej zmiany.",
@@ -5789,34 +5789,34 @@
    "state": "machine-draft"
   },
   "install.backup.dynamic.restore_confirm": {
-   "text": "Przywrócenie nadpisze konfigurację tego panelu i dane logowania do aplikacji Companion. Kontynuować?",
+   "text": "Restore overwrites this panel's config and Companion login. Continue?",
    "sourceHash": "45131b43ed2624f4dac0513d95c29edae28819f5ac6f090403b48ee5befa8927",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.restore_now": {
-   "text": "Przywróć ten pakiet teraz",
+   "text": "Restore this bundle now",
    "sourceHash": "983de6dbc369f41533a600215dd40dee2eaf2504071f7a7e9653650213ee4aa4",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.restore_reading": {
-   "text": "Odczytuję podgląd…",
+   "text": "Reading preview…",
    "sourceHash": "3093c9a02caea7f5069c829a24f15ed3d74c906fbee986dbf7f4c95d1de106b5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.restore_result": {
-   "text": "Przywracanie: {result}",
+   "text": "Restore: {result}",
    "sourceHash": "8a69ab0a626be15ce1407d1cf12c93c23d136ac4f7edd60d58d695e42f254fe9",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.restore_start_failed": {
-   "text": "Nie udało się uruchomić przywracania.",
+   "text": "Restore failed to start.",
    "sourceHash": "d4a3fc81ca2d38a5e54bd5775b77cfc85b11a8749f42befac9de38c9e68f9bd6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.restore_unreadable": {
-   "text": "nie udało się odczytać pakietu",
+   "text": "could not read bundle",
    "sourceHash": "23e1af7a9c50f5f0a0af66bf21f67abcc1ea651606abe83db9f7ae30314effb6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.dynamic.restoring": {
    "text": "Przywracanie…",
@@ -5844,9 +5844,9 @@
    "state": "machine-draft"
   },
   "install.companion.error.marker_failed": {
-   "text": "Nie udało się zapisać znacznika bezpieczeństwa operacji towarzyszącej",
+   "text": "Companion operation safety marker could not be persisted",
    "sourceHash": "bcf33daf2b195cd0bf26848ff1e14f60bc1cd537f618bd3eaa1e09d924d4b855",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.companion.urls_repaired.one": {
    "text": "naprawiono {count} serwer — wewnętrzny URL ustaw na zewnętrzny URL; Aplikacja Companion została ponownie uruchomiona",
@@ -5879,9 +5879,9 @@
    "state": "machine-draft"
   },
   "install.component_status.downgrade_refused": {
-   "text": "odmowa przejścia na starszą wersję",
+   "text": "downgrade refused",
    "sourceHash": "a754df63eaa7f7814ff5e348e8bb16435ff438309235a3fbf3ea4759122738d0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.component_status.started": {
    "text": "rozpoczęto",
@@ -5914,9 +5914,9 @@
    "state": "machine-draft"
   },
   "install.config_import_status.database_compatibility_refused": {
-   "text": "Sprawdzenie zgodności bazy danych zablokowało import",
+   "text": "database compatibility check refused the import",
    "sourceHash": "20a539acc8bf064780369707ca97f27d6c613a8f87503bbdc4dca72a55d3379a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.config_import_status.dry_run": {
    "text": "podgląd",
@@ -5939,14 +5939,14 @@
    "state": "machine-draft"
   },
   "install.config_import_status.rejected": {
-   "text": "odrzucone",
+   "text": "rejected",
    "sourceHash": "20cd938a2ea64f612b3523bc9219130c6fc66cd09b394ea38437488c0b8898b2",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.config_import_status.restored": {
-   "text": "przywrócono",
+   "text": "restored",
    "sourceHash": "eb00bf0aba491c620ddf47bf68068be4cc52c39bf3b8b554e2c51ff74e5e915e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.config_import_status.stale_preview": {
    "text": "podgląd jest nieaktualny",
@@ -5969,9 +5969,9 @@
    "state": "machine-draft"
   },
   "install.import.apply_question": {
-   "text": "Zastosować teraz?",
+   "text": "Apply now?",
    "sourceHash": "3681133a75776a670ae87e94396cd9789687fd91aab68352223285603b6cdf3e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.import.changed.one": {
    "text": "Import ulegnie zmianie {count} ustawienie:",
@@ -6004,9 +6004,9 @@
    "state": "machine-draft"
   },
   "install.presentation.backup_import_selection_stage_failed": {
-   "text": "Zmiany w profilu zostały zaimportowane poprawnie, ale nie udało się przygotować wyboru do wdrożenia.",
+   "text": "Profile revisions were imported inertly, but selection could not be staged.",
    "sourceHash": "f14487fd769331c313b786fc7750c13494039dc58f0f0fc7c5c8b0b6ba46b735",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.backup_ready": {
    "text": "kopia zapasowa gotowa",
@@ -6014,29 +6014,29 @@
    "state": "machine-draft"
   },
   "install.presentation.backup_restore_rejected_before_mutation": {
-   "text": "Przywrócenie katalogu profili zostało odrzucone przed modyfikacją.",
+   "text": "Profile catalog restore was rejected before mutation.",
    "sourceHash": "b80876accead761400633dffbe6c55e0dbe94e01678dabf741467ad8b18c7f3d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.backup_restored_selection_staged": {
-   "text": "Katalog profili przywrócony; wybór przygotowany do ponownego uruchomienia z kontrolą stanu.",
+   "text": "Profile catalog restored; selection staged for a health-gated restart.",
    "sourceHash": "71d179990d3bdbab24c8dc55c8ab5a9cd6af24ed3707703477c00ea94c59c9f7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.backup_restored_selection_unchanged": {
-   "text": "Katalog profili został przywrócony; wybór pozostał bez zmian.",
+   "text": "Profile catalog restored; selection is unchanged.",
    "sourceHash": "785d68796453312b3f246617dd55d45a7cafb201ade8aa0eb89657a2b5b4a270",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.backup_selection_restore_failed": {
-   "text": "Nie udało się przywrócić wyboru profilu.",
+   "text": "Profile selection could not be restored.",
    "sourceHash": "da5f008eb582e2ffe71c82bd960c0b56ddae151f9cdc697f7a864798f4390c15",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.backup_staging_retained": {
-   "text": "Nie udało się usunąć wrażliwych tymczasowych danych kopii zapasowej. Sprawdź miejsce na panelu, a potem spróbuj ponownie; nie pobrano żadnej kopii zapasowej.",
+   "text": "Sensitive temporary backup data could not be removed. Check panel storage, then retry; no backup was downloaded.",
    "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.companion_helper_busy": {
    "text": "Pomocnik towarzyszący jest zajęty",
@@ -6054,19 +6054,19 @@
    "state": "machine-draft"
   },
   "install.presentation.companion_marker_failed": {
-   "text": "Nie udało się zapisać znacznika bezpieczeństwa operacji towarzyszącej",
+   "text": "Companion operation safety marker could not be persisted",
    "sourceHash": "bcf33daf2b195cd0bf26848ff1e14f60bc1cd537f618bd3eaa1e09d924d4b855",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.companion_owner_restored": {
-   "text": "właściciel/kontekst przywrócony",
+   "text": "owner/context restored",
    "sourceHash": "dd290669fb84a7635003840fd45c717b4690214efdca0cd936c089ee4bb43167",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.companion_payload_invalid": {
-   "text": "Weryfikacja danych towarzyszących nie powiodła się",
+   "text": "Companion payload validation failed",
    "sourceHash": "e921cb252399b43f1034764e7813cd35f2021189756bb024424571971c4795ee",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.companion_prior_files_retained": {
    "text": "przywracanie nie powiodło się; poprzednie pliki Companion zostały zachowane",
@@ -6074,9 +6074,9 @@
    "state": "machine-draft"
   },
   "install.presentation.companion_rejected_before_commit": {
-   "text": "przywrócenie odrzucone przed zatwierdzeniem",
+   "text": "restore rejected before commit",
    "sourceHash": "d5a6ebcb9867def3e5afd89d8d608f6690e7e298c6c89490a1f5139e9ec93d7e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.companion_relaunch_unconfirmed": {
    "text": "Pliki zostały przywrócone, ale ponowne uruchomienie aplikacji Companion nie zostało potwierdzone",
@@ -6084,9 +6084,9 @@
    "state": "machine-draft"
   },
   "install.presentation.companion_rollback_failed": {
-   "text": "przywracanie i cofanie nie powiodło się; stan Companion może być niepełny",
+   "text": "restore and rollback failed; Companion state may be partial",
    "sourceHash": "186bdcdc3b12e49ed3dfee4d0de307d39e938bb6956fe4c994be65d273082b56",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.companion_unsupported_package": {
    "text": "Pakiet towarzyszący nie jest obsługiwanym pakietem zainstalowanym",
@@ -6099,24 +6099,24 @@
    "state": "machine-draft"
   },
   "install.presentation.guard_db_arm_not_started": {
-   "text": "Guard DB ARM nie uruchomił się",
+   "text": "Guard DB ARM did not start",
    "sourceHash": "a291427c80abacc4b3f1eb8c4c4b1477597b45979461dc6d91e741dd9f45fe25",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.guard_db_candidate_discard_finished": {
-   "text": "Zakończono odrzucanie kandydatów z bazy Guard DB",
+   "text": "Guard DB candidate discard finished",
    "sourceHash": "a5135e9bfba5fb1aabde5e25cbf51d8ae93fab7998c95e6243ee6f2a6bdc10e1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.guard_db_candidate_staging_finished": {
-   "text": "Przygotowanie bazy danych Guard DB zakończone",
+   "text": "Guard DB candidate staging finished",
    "sourceHash": "a45137aa2884b762272a1f6b3e176e53fbed31567ad34626b78549307e79ba69",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.guard_db_retirement_settled": {
-   "text": "Wycofanie Guard DB zakończone",
+   "text": "Guard DB retirement settled",
    "sourceHash": "09ab0bf09da7c61e6c34a98873d977a6cfe4489189b47bfde7d3988968f3d9d3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.install_deferred_saving_state": {
    "text": "The {component} Instalacja została odroczona na czas zapisywania stanu panelu.",
@@ -6124,9 +6124,9 @@
    "state": "machine-draft"
   },
   "install.presentation.install_download_failed": {
-   "text": "Nie udało się pobrać panelu {component}.",
+   "text": "The panel could not download {component}.",
    "sourceHash": "cb932d29dd04d858898bf01ab1cb53a43030b941b2a3ddc39cc0497b0c2cdc92",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.install_download_too_large": {
    "text": "The {component} Plik do pobrania jest większy niż dopuszcza panel.",
@@ -6139,9 +6139,9 @@
    "state": "machine-draft"
   },
   "install.presentation.install_guard_db_owned": {
-   "text": "The {component} Instalacja jest zablokowana, bo Guard DB ma w posiadaniu ścieżkę aktualizacji.",
+   "text": "The {component} install is blocked while Guard DB owns the update path.",
    "sourceHash": "e3c6a60060e2c3e9defd463280b50063329de1fb528dc2cec6ec257e99556b6a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.install_insufficient_storage": {
    "text": "Nie ma wystarczającej ilości miejsca na panelu, żeby zainstalować {component}.",
@@ -6154,14 +6154,14 @@
    "state": "machine-draft"
   },
   "install.presentation.install_retryable_failure": {
-   "text": "The {component} Instalacja nie powiodła się, ale można spróbować ponownie.",
+   "text": "The {component} install failed and can be retried.",
    "sourceHash": "5985a879d82b24f59582a258f4ecb2ee3d198b07e01972d4479098da336e1c49",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.install_staging_failed": {
-   "text": "Panel nie mógł przygotować {component} pakiet.",
+   "text": "The panel could not stage the {component} package.",
    "sourceHash": "8e4e3db918995f4ac0f5cdfc19ef4d9f3b8a63a68979105b432f89e9d47dd85c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.managed_apk_missing": {
    "text": "The {component} {version} wersja nie zawiera elementów do zainstalowania APK.",
@@ -6174,9 +6174,9 @@
    "state": "machine-draft"
   },
   "install.presentation.managed_downgrade_committed": {
-   "text": "Obniżono wersję {component} do {version}.",
+   "text": "Downgraded {component} to {version}.",
    "sourceHash": "8ddf713c3cd4968cf1aa1e57607cd5fd4304e1f3d53a58f2b0673bb72a57bf95",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.managed_install_committed": {
    "text": "Zainstalowano {component} {version}.",
@@ -6184,9 +6184,9 @@
    "state": "machine-draft"
   },
   "install.presentation.managed_manual_downgrade_required": {
-   "text": "{component} {current} przekracza limit bezpieczeństwa {cap}; ręcznie przywróć poprzednią wersję.",
+   "text": "{component} {current} exceeds safety cap {cap}; downgrade it manually.",
    "sourceHash": "f126e8ba3cafc78828fb66b1497115f75fe472895f3386f6f15393d4c20cf3f3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.managed_no_newer": {
    "text": "Brak nowszych {component} wersja jest dostępna niż {current}.",
@@ -6214,9 +6214,9 @@
    "state": "machine-draft"
   },
   "install.presentation.managed_safety_cap_refused": {
-   "text": "Odmowa {component} {version}: przekracza limit bezpieczeństwa {cap}.",
+   "text": "Refused {component} {version}: it exceeds safety cap {cap}.",
    "sourceHash": "518954f003781646821416208b463d905318b789f4a35dd793550505847830e7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.managed_up_to_date": {
    "text": "{component} {current} jest już aktualna.",
@@ -6239,149 +6239,149 @@
    "state": "machine-draft"
   },
   "install.presentation.package_uninstall_failed": {
-   "text": "Odinstalowanie nie powiodło się: {package}",
+   "text": "uninstall failed: {package}",
    "sourceHash": "50f8872b441716c5d1cee3fdd6eaad56c75c0509cdf18f1da16110795a15f1ae",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.package_uninstalled": {
-   "text": "odinstalowano {package}",
+   "text": "uninstalled {package}",
    "sourceHash": "764b9132371477aefbe7b9f4dce1c5b9cb9116c1dae3d541623b4ea9069636a8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.profile_catalog_restore_unavailable": {
-   "text": "Przywracanie katalogu profili jest niedostępne.",
+   "text": "Profile catalog restore is unavailable.",
    "sourceHash": "2539623e45bed0f96a08c068a4e9c2788015eb68c8c746e303ad2d7adc580c62",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_app_state_invalid": {
-   "text": "nieprawidłowa treść app_state",
+   "text": "invalid app_state payload",
    "sourceHash": "ebe236ea5430ffd9de73f7ff34091f03da5ab8502f86ff15c5a8ef97b82d1b1f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_archive_entries_invalid": {
-   "text": "Archiwum kopii zapasowej zawiera brakujące lub nieoczekiwane pliki",
+   "text": "backup archive contains missing or unexpected files",
    "sourceHash": "05160b8fa6ac6f7af161dc55f176491aae6c19ec889c921e906f10882782e671",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_archive_metadata_invalid": {
-   "text": "nieprawidłowe metadane archiwum kopii zapasowej",
+   "text": "invalid backup archive metadata",
    "sourceHash": "6ffe50cd9f252c5ebcd3e6fa40b1e28cffed6aa320fb0c86d2a9a71ea914abbd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_companion_helper_required": {
-   "text": "Przywracanie z kopii zapasowej wymaga aktualnego ha-paneld helper",
+   "text": "Companion restore needs the current ha-paneld helper",
    "sourceHash": "ae7af3902c71c032bdb03fb0bb6e76424a7a9c29bc377a28c275fed1ebccf702",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_companion_section_invalid": {
-   "text": "Nieprawidłowa sekcja przywracania aplikacji towarzyszącej",
+   "text": "Invalid Companion restore section",
    "sourceHash": "92ffed6f90cd1201a409dab6021ac415ef2910d8d9760e68e9c27597483b472a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_completed": {
-   "text": "Przywracanie zakończone",
+   "text": "Restore completed",
    "sourceHash": "d054b6105189ae7b6f3f87b3a6ce564bc8c3d3c2ebe6a441b23c46f071ce4030",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_config_invalid": {
-   "text": "nieprawidłowa konfiguracja kopii zap.",
+   "text": "invalid backup config",
    "sourceHash": "dcd891bdf459f53bf7457d82777ce818c15000e0a4b0e3cce1be201fc5e0484c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_config_missing": {
-   "text": "kopia zapasowa nie zawiera obiektu konfiguracyjnego",
+   "text": "backup contains no config object",
    "sourceHash": "962d91f91c159609946bea90a455438cb41c4f84438b0d3236d20b83fc83a74d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_entity_object_invalid": {
-   "text": "nieprawidłowy obiekt `entity_state`",
+   "text": "invalid entity_state object",
    "sourceHash": "77e8c96b9b8843a8d9dbcbda9e8422437bef98c7b05d1ee8074d6ad9b61423d9",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_entity_owner_missing": {
-   "text": "w stanie encji brakuje przestrzeni nazw właściciela",
+   "text": "entity state is missing its owner namespace",
    "sourceHash": "096f93b1f5118c353e29476ce665665086492a82560caf94b3cfeeedd10f9886",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_entity_state_invalid": {
-   "text": "nieprawidłowy stan encji w zakresie właściciela",
+   "text": "invalid owner-scoped entity state",
    "sourceHash": "d37884f1c791f1128fdbe31f512a5d10e331e465210528177c89a65440e23fa9",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_failed": {
-   "text": "Przywracanie nie powiodło się",
+   "text": "Restore failed",
    "sourceHash": "b8476ceedfdd95b004d8b76a5a5d72c71686fe7e232d1b595bc0dc6941fe093b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_legacy_too_large": {
-   "text": "stara kopia zapasowa jest za duża; przed przywróceniem utwórz nową kopię zapasową",
+   "text": "legacy backup is too large; create a new backup before restoring",
    "sourceHash": "ebf134ca6c3afdbecf848bbce058c27770f8f3a4513ddd22f6f5d4652b52e72b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_not_panel_backup": {
-   "text": "nie jest to ha-paneld kopia zapasowa",
+   "text": "not a ha-paneld backup",
    "sourceHash": "15c0f21ad749e2da90a94c485eb9fc8e11d8bc60b1338784eb687caed026901c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_partial": {
-   "text": "Przywracanie zakończone częściowo",
+   "text": "Restore partially completed",
    "sourceHash": "010d07c111632fb5a6625202ca7f1606c3e0d4070fd5e8003893d1cac9bb6339",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_passphrase_or_bundle_invalid": {
-   "text": "błędne hasło lub uszkodzony pakiet",
+   "text": "wrong passphrase or corrupt bundle",
    "sourceHash": "f5e093d1a2d72e397d77e02e1264afc864939df6842fd0c26a616c3d02f71fe5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_passphrase_required": {
-   "text": "ten pakiet jest zaszyfrowany — wpisz hasło",
+   "text": "this bundle is encrypted — enter its passphrase",
    "sourceHash": "65e1c3cbcb8bae55b95b030ed102d523f4fc2a4ae008f701101eaf2790e3952a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_preview_complete": {
-   "text": "Podgląd przywracania zakończony",
+   "text": "Restore preview complete",
    "sourceHash": "2ad8296900534435c3f354df4c2e22e90d06c3488000a061c13dd92995b53d6c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_profile_archive_invalid": {
-   "text": "nieprawidłowy wpis w archiwum profilu",
+   "text": "invalid profile archive entry",
    "sourceHash": "10cab69571e1de516046ca2faeb84bf84f3fb1e2f2340b3e6e7fe5b9d94a747f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_profile_catalog_invalid": {
-   "text": "nieprawidłowy katalog profili",
+   "text": "invalid profile catalog",
    "sourceHash": "2479d8b3ef477da64a34f23ab4ede579ca5528d651738b2380681a0542ae7d83",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_profile_catalog_not_restorable": {
-   "text": "katalogu profilów nie da się przywrócić",
+   "text": "profile catalog is not restorable",
    "sourceHash": "f272d4d8cc71526b31360136440db1e9bbe7628fb0290d9e96e536920bbc8bbe",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_profile_restore_unavailable": {
-   "text": "Przywracanie katalogu profilów jest niedostępne",
+   "text": "profile catalog restore is unavailable",
    "sourceHash": "f33793bc261a630ee064e9732add72ea1615005739d81224186cf9307d633c9f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_profiles_object_invalid": {
-   "text": "nieprawidłowy obiekt profili",
+   "text": "invalid profiles object",
    "sourceHash": "d78738aebcd5ea1dfc4defcd4d0993450538457477490c07f5b2bad23b8ffe5f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_request_rejected": {
-   "text": "Odrzucono żądanie przywrócenia",
+   "text": "Restore request rejected",
    "sourceHash": "64ddbd6fc50543ab1864168d8cc4d9b31651a7398a21b69e5bb35c4edf0ae07f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_schema_missing": {
-   "text": "kopia zapasowa nie zawiera prawidłowego schematu",
+   "text": "backup contains no valid schema",
    "sourceHash": "8e0d25c2cf57c5e07a14e064064dffda3a3ea6259565727744cf1fb42fe78086",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_state_object_invalid": {
-   "text": "nieprawidłowy obiekt stanu",
+   "text": "invalid state object",
    "sourceHash": "4d8d22f9fa4bd06a614b3f860d8b2bf582cefb5f80aafa2ede6e0344c45478a0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_builtin_renderer_retries_stopped": {
    "text": "⛔ Wbudowany moduł renderujący przestał ponawiać próby po wielokrotnych WebView błędy. Zaktualizuj lub napraw System WebView, a potem użyj opcji „Odśwież pulpit nawigacyjny” z paska nawigacyjnego panelu lub z zakładki „Pulpit nawigacyjny”.",
@@ -6389,9 +6389,9 @@
    "state": "machine-draft"
   },
   "install.presentation.status_companion_probe_failed": {
-   "text": "⚠ Home Assistant Nie udało się sprawdzić powiązanych ustawień; ha-paneld zachowa ostatni znany wynik i automatycznie spróbuje ponownie.",
+   "text": "⚠ Home Assistant Companion settings could not be inspected; ha-paneld will retain the last-known result and retry automatically.",
    "sourceHash": "83c7c52039d25735ee5aeee671408b86ec8086c5373cb90639510e03eb1f5c9e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_external_renderer_crash_loop": {
    "text": "⛔ Aplikacja Dashboard ciągle się zawiesza — mechanizm nadzorujący przestał ją ponownie uruchamiać, żeby uniknąć lawiny restartów. Zainstaluj ponownie lub przywróć starszą wersję aplikacji Dashboard/Companion albo zrestartuj panel.",
@@ -6404,9 +6404,9 @@
    "state": "machine-draft"
   },
   "install.presentation.status_power_at_risk": {
-   "text": "⛔ Bezpieczeństwo zasilania panelu: zagrożone — panel może zawiesić działanie lub przejść w tryb Doze po wyłączeniu ekranu, co powoduje, że HTTP, MQTT, a zadania działające w tle są niedostępne.",
+   "text": "⛔ Panel power safety: at risk — the panel can suspend or enter Doze after screen-off, making HTTP, MQTT, and background work unreachable.",
    "sourceHash": "a74da057925352acddd3dd33fbb3024de2c565cbcb5410079024512fbe9ad1ab",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_power_caution": {
    "text": "⚠ Bezpieczeństwo zasilania panelu: uwaga — dostępność panelu zależy obecnie tylko od jednego wykrytego zabezpieczenia zasilania.",
@@ -6419,19 +6419,19 @@
    "state": "machine-draft"
   },
   "install.presentation.status_schema_rollback": {
-   "text": "⚠ Nowsza baza danych zostaje zachowana po przejściu na starszą wersję ({from_schema} → {to_schema}) — ta kompilacja otworzyła nowy magazyn stanów, bo jej schemat jest starszy; niektóre ustawienia mogły się zresetować. Poprzednia baza danych została zachowana na panelu na wypadek przywrócenia. Sprawdź sekcję „Konfiguruj lub przywróć kopię zapasową”.",
+   "text": "⚠ Newer database preserved after a version downgrade ({from_schema} → {to_schema}) — this build opened a fresh state store because its schema is older; some settings may have reset. The previous database is preserved on the panel for recovery. Check Configure or restore a backup.",
    "sourceHash": "ff545e82f7b3e9d88e6e9660d1be124df64ff521098d5cbfe7290f766b84be88",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_storage_critical": {
-   "text": "⛔ Obciążenie pamięci masowej: krytyczne — obciążenie pamięci masowej lub plików bazy danych jest krytyczne. Odzyskaj wolne miejsce na dysku lub zajmij się wzrostem pliku WAL już teraz i unikaj aktualizacji lub zmian ustawień, dopóki stan nie wróci do normy.",
+   "text": "⛔ Storage pressure: critical — storage or database-file pressure is critical. Recover storage headroom or address WAL growth now, and avoid updates or settings changes until health recovers.",
    "sourceHash": "295fe783455c31f34bc6b768f65d3186ddd758063b80d481ff37778dcf1b096d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_storage_database_failure": {
-   "text": "⛔ Błąd przechowywania bazy danych — baza danych {failure} wystąpił błąd podczas {operation}; przywrócenie nie zostało jeszcze zweryfikowane. Zabezpiecz bazę danych, usuń usterkę pamięci masowej i poczekaj na pozytywny wynik kontroli stanu przed ponowną próbą.",
+   "text": "⛔ Database storage failure — a database {failure} failure occurred during {operation}; recovery is not yet verified. Preserve the database, resolve the storage fault, and wait for a clean health check before retrying.",
    "sourceHash": "083234acb19d795bc53258a435bc2da8d7461c6cae434d8c50439f545a26eca8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_storage_warning": {
    "text": "⚠ Obciążenie przestrzeni dyskowej: ostrzeżenie — obciążenie przestrzeni dyskowej lub plików bazy danych jest podwyższone. Sprawdź ilość wolnego miejsca oraz tempo wzrostu plików WAL/bazy danych przed kolejną aktualizacją lub zmianą ustawień.",
@@ -6454,9 +6454,9 @@
    "state": "machine-draft"
   },
   "install.presentation.status_zigbee_containment_incomplete": {
-   "text": "⛔ Zigbee Ograniczenie bramy nie zostało zakończone — respawner został zatrzymany tam, gdzie to możliwe, a pozostałe zadania zostały zdegradowane. Sprawdź diagnostykę przed ponowną próbą.",
+   "text": "⛔ Zigbee gateway containment was incomplete — the respawner was stopped where possible and surviving work was demoted. Review diagnostics before retrying.",
    "sourceHash": "d905a90accb9cb4861e2e1d676e0f0865201e2a7f15272754ddd9d2044347e38",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.status_zigbee_high_cpu": {
    "text": "⚠ Dołączono Zigbee brama utrzymuje wysoki poziom CPU — nadal działa, bo podłączone routery mają status tylko ostrzegawczy.",
@@ -6479,9 +6479,9 @@
    "state": "machine-draft"
   },
   "install.presentation.version_downgrade": {
-   "text": "Powrót do poprzedniej wersji",
+   "text": "Downgrade",
    "sourceHash": "d955b7e8fdb14a071c0eebd39f710dd252254d0966eee5ce6addcde4b294063d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.version_install": {
    "text": "Instalacja",
@@ -6599,9 +6599,9 @@
    "state": "machine-draft"
   },
   "install.radio_state.containment_failed": {
-   "text": "nie udało się zawrzeć",
+   "text": "containment failed",
    "sourceHash": "4c2cf2f68277a6118288743110b3037146bc0cc1c54c95b96c2fc30ac3669e91",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.radio_state.degraded_high_cpu": {
    "text": "wysoki CPU użyj",
@@ -6639,44 +6639,44 @@
    "state": "machine-draft"
   },
   "install.restore.state_values.one": {
-   "text": "Przywracanie zakończone ({count} (przywrócono wartość stanu panelu)",
+   "text": "Restore completed ({count} panel-state value restored)",
    "sourceHash": "706097a0c28ba85557497af9ba9f404cf40d5f38c7e2511c977c0ff3c9e6bf53",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore.state_values.other": {
-   "text": "Przywracanie zakończone ({count} (przywrócono wartości stanu panelu)",
+   "text": "Restore completed ({count} panel-state values restored)",
    "sourceHash": "882f5a25b20ebede1a5e18886df93e4d9568aa19ab67e4d21b8e5cc443aa6070",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore_outcome.failed": {
-   "text": "nie powiodło się",
+   "text": "failed",
    "sourceHash": "5d28a90f4498a81461efbaf6f628a19d9778390bb5c81a393dd936181cc3d826",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore_outcome.partial": {
-   "text": "częściowo ukończone",
+   "text": "partially completed",
    "sourceHash": "acebff93c35f899bbdf85fa7803de8bd87d2c48e53a4bcfcd513cf0c1de6cd3f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore_outcome.rollback_failed": {
-   "text": "Cofnięcie nie powiodło się",
+   "text": "rollback failed",
    "sourceHash": "67a01f103707765d98805b52ae1f65d91466f93d89bf4b6b23045a724de4ef4e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore_outcome.rolled_back": {
-   "text": "cofnięto",
+   "text": "rolled back",
    "sourceHash": "d17977b7ecfc6018ea268ad1988199c54e59239386430f2b90c258a2f90a260a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore_outcome.skipped": {
-   "text": "pominięto",
+   "text": "skipped",
    "sourceHash": "389595a44dc9dce7dee673f243e805244bae603d6a65a536ad493340ec99ced3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.restore_outcome.succeeded": {
-   "text": "udało się",
+   "text": "succeeded",
    "sourceHash": "5dceaeceb6d8a49d3665594710ace68dfbc1800e2d663d7febb302b4dbee3d27",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.shared.loading": {
    "text": "ładowanie…",
@@ -6689,9 +6689,9 @@
    "state": "machine-draft"
   },
   "install.shared.operation_busy": {
-   "text": "Trwa inna operacja.",
+   "text": "Another operation is running.",
    "sourceHash": "2f3ade1aef148c86c17bce8fa9a7ef17a6f1faa35db5cea5966f69dd03544349",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.shared.version": {
    "text": "Wersja",
@@ -6709,29 +6709,29 @@
    "state": "machine-draft"
   },
   "install.uninstall.dynamic.confirm": {
-   "text": "Odinstaluj {package}? To usunie aplikację i jej dane.",
+   "text": "Uninstall {package}? This removes the app and its data.",
    "sourceHash": "7a0a791ef3c4ca2a78a7daadfbc80fb864e90f34ddd590d076f7100f6f122e77",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.uninstall.dynamic.load_failed": {
-   "text": "nie udało się załadować",
+   "text": "load failed",
    "sourceHash": "f318eb3d47fba6e3eb24eed98dcd21023cd2e9a67e25563666aa55611dde0c2f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.uninstall.dynamic.none": {
-   "text": "brak aplikacji, które można usunąć",
+   "text": "no removable apps",
    "sourceHash": "857e324e486859a8fb02806020847f3d341f0f40d2c0732f0912947f19a064ce",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.uninstall.dynamic.request_failed": {
-   "text": "Nie udało się.",
+   "text": "Failed.",
    "sourceHash": "794548f29d319b9d3ed5f813f3af7385c7844e8226ff9db9f440fa992a21f08f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.uninstall.dynamic.working": {
-   "text": "Odinstalowywanie {package}…",
+   "text": "Uninstalling {package}…",
    "sourceHash": "d90138c373e0ee5a8b1249c57bcc66f76217a346e162667b8751646c6ea16a3c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "logs.action.clear": {
    "text": "Wyczyść",
@@ -6789,9 +6789,9 @@
    "state": "machine-draft"
   },
   "logs.note.privacy": {
-   "text": "Tokeny/hasła są zamazywane przed wyświetleniem; strumień jest LAN- działa tylko wtedy i zatrzymuje się po zamknięciu tej strony.",
+   "text": "Tokens/passwords are redacted before display; the stream is LAN-only and stops when this page closes.",
    "sourceHash": "17998dd43d953a451f90eb220c1f9575589f7e9c9eb7916357833d75fd9f548a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "logs.note.raw_stream": {
    "text": "Strumień surowy:",
@@ -6799,8 +6799,8 @@
    "state": "machine-draft"
   },
   "logs.note.sources": {
-   "text": "App = ha-paneldwłasnego dziennika procesu (bez root (wymagane). System = całe urządzenie logcat (root).",
-   "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
+   "text": "Aplikacja = dziennik procesu ha-paneld (root nie jest wymagany). System = pełny logcat urządzenia (root). Konsola przeglądarki = konsola JavaScript panelu (wymaga skonfigurowanej wysyłki dzienników).",
+   "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
    "state": "machine-draft"
   },
   "logs.source.app": {
@@ -6949,14 +6949,14 @@
    "state": "machine-draft"
   },
   "profiles.action.activate": {
-   "text": "Aktywuj",
+   "text": "Activate",
    "sourceHash": "24433c70eba5b15368fe2e1dda94fe3d61db2357aa144363b9ab487e60235ab2",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.cancel": {
-   "text": "Anuluj",
+   "text": "Cancel",
    "sourceHash": "19766ed6ccb2f4a32778eed80d1928d2c87a18d7c275ccb163ec6709d3eb2e27",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.compare": {
    "text": "Porównaj",
@@ -6964,19 +6964,19 @@
    "state": "machine-draft"
   },
   "profiles.action.confirm": {
-   "text": "Potwierdź",
+   "text": "Confirm",
    "sourceHash": "eebdd24a77d9ad32222660c07777163bf5f6732df2b172351f3f8d5783e4f529",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.confirm_restart": {
-   "text": "Potwierdź i uruchom ponownie",
+   "text": "Confirm and restart",
    "sourceHash": "acaaded18333f207fd4295f1fc8f5258236341051e2d2b542ec3e62d01fc5d1d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.confirm_rollback": {
-   "text": "Potwierdź cofnięcie",
+   "text": "Confirm rollback",
    "sourceHash": "294bceb0244a2f4aedefc8213cfddb6647f09493c58308ff2481fd3ee1ddf2b1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.copy_draft": {
    "text": "Skopiuj wersję roboczą do edycji",
@@ -6984,14 +6984,14 @@
    "state": "machine-draft"
   },
   "profiles.action.delete": {
-   "text": "Usuń",
+   "text": "Delete",
    "sourceHash": "e2d0a54968ead24efc0dffa6ac78fc606dceec34a0f586177a74a54cc2272cf8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.delete_revision": {
-   "text": "Usuń wersję",
+   "text": "Delete revision",
    "sourceHash": "e5adf5d185178d413602a82dac83850d755b5bbb2ed59330a2968dbf78716be0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.edit": {
    "text": "Edytuj",
@@ -7024,19 +7024,19 @@
    "state": "machine-draft"
   },
   "profiles.action.rollback": {
-   "text": "Cofnięcie",
+   "text": "Rollback",
    "sourceHash": "c591f5574995c7403a2883c4d68c74b4d1e1b12e0a3689d0383ff28887bc0efe",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.save_revision": {
-   "text": "Zapisz wersję",
+   "text": "Save revision",
    "sourceHash": "eb074fcae339a541f74c2d85c18a4720e883249aa98c215df93ac2c29412f97a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.use_automatic": {
-   "text": "Użyj automatycznego",
+   "text": "Use automatic",
    "sourceHash": "539ca38b10265667d2ecca6424e6bec15d47aaed08577648ad463be14c6b75b2",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.action.validate_yaml": {
    "text": "Sprawdź poprawność YAML",
@@ -7044,19 +7044,19 @@
    "state": "machine-draft"
   },
   "profiles.activation.applying": {
-   "text": "stosowanie",
+   "text": "applying",
    "sourceHash": "61c1c8cded1d1a291011fa526f8332d7b515decf6398f0a31953862c661c88ad",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.activation.pending": {
-   "text": "oczekujące",
+   "text": "pending",
    "sourceHash": "62a2fed3d6e08c44835fce71f02210b1ddabfb066e39edf1e6c261988f824dd3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.approval.retry": {
-   "text": "Zatwierdź to żądanie na panelu, a potem spróbuj ponownie.",
+   "text": "Approve this request on the panel, then retry it.",
    "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.catalog.healthy": {
    "text": "Katalog i aktywne środowisko uruchomieniowe działają poprawnie.",
@@ -7079,9 +7079,9 @@
    "state": "machine-draft"
   },
   "profiles.catalog.option.bundled_incompatible": {
-   "text": "{name} · W pakiecie · {revision} · niezgodność",
+   "text": "{name} · Bundled · {revision} · incompatible",
    "sourceHash": "5af211d221e803b4d5accebc92cace6ab7887f82ee1dc6d9db9ef8b34f34fb6f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.catalog.option.bundled_selected": {
    "text": "{name} · W pakiecie · {revision} · wybrane",
@@ -7099,9 +7099,9 @@
    "state": "machine-draft"
   },
   "profiles.catalog.option.local_incompatible": {
-   "text": "{name} · Lokalne · {revision} · niezgodność",
+   "text": "{name} · Local · {revision} · incompatible",
    "sourceHash": "23af9d85eb19b94121c5487cdd1f3981a47aaefa4331e47ed5b169354f5d1c16",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.catalog.option.local_selected": {
    "text": "{name} · Lokalne · {revision} · wybrane",
@@ -7129,9 +7129,9 @@
    "state": "machine-draft"
   },
   "profiles.confirm.discard": {
-   "text": "Chcesz odrzucić tę niezapisaną zmianę w profilu?",
+   "text": "Discard this unsaved profile edit?",
    "sourceHash": "26f8182f9cb49c87468e93b8b9828b23c83786eb94a55eb41303c5decc55b6a5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.editor.none_selected": {
    "text": "Nie wybrano profilu",
@@ -7149,24 +7149,24 @@
    "state": "machine-draft"
   },
   "profiles.error.activation_catalog_changed": {
-   "text": "Katalog profili zmienił się w innej zakładce. Odśwież stronę i potwierdź jeszcze raz.",
+   "text": "The profile catalog changed in another tab. Reload and confirm again.",
    "sourceHash": "0716bcb535cf64b7517b71031ec1f8f8215f117f32d17aa9d6c88cd15d646e95",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.activation_failed": {
-   "text": "Aktywacja nie powiodła się: {error}",
+   "text": "Activation failed: {error}",
    "sourceHash": "5a21d4f81c0f4e6d08025ce49dafc5d5eb287eac47c088a21b113dfe30a50e9d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.activation_wrong_device": {
-   "text": "Aktywacja zablokowana: ten zaimportowany profil nie pasuje do niezmiennej tożsamości kompilacji tego urządzenia.",
+   "text": "Activation blocked: this imported profile does not match this device's immutable build identity.",
    "sourceHash": "4b7e21806ed40bcf34f0604610805002d92144677fe4fc49d8b46bb6dc750428",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.auto_rollback": {
-   "text": "Kandydat nie osiągnął stanu prawidłowego; ha-paneld automatycznie przywrócono ostatni znany poprawny profil.",
+   "text": "The candidate did not become healthy; ha-paneld automatically restored the last-known-good profile.",
    "sourceHash": "9351181f754e82d7edb3b3c89c24d2e7f67fd4688e1c17983f4bc1a79818e666",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.build_draft": {
    "text": "Nie udało się utworzyć pasywnego szkicu: {error}",
@@ -7179,14 +7179,14 @@
    "state": "machine-draft"
   },
   "profiles.error.delete_catalog_changed": {
-   "text": "Katalog uległ zmianie; odśwież przed usunięciem.",
+   "text": "The catalog changed; reload before deleting.",
    "sourceHash": "cfee6dc954ee34e78c4d4dfbe7ed6f2bb368181c4d2acc7b41a0ad92ab9bbf9d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.delete_failed": {
-   "text": "Usunięcie nie powiodło się: {error}",
+   "text": "Delete failed: {error}",
    "sourceHash": "04bd5a33edf887482af19bada696d6d470991b8a900b867f64faba49192bc16e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.http": {
    "text": "HTTP {status}",
@@ -7204,9 +7204,9 @@
    "state": "machine-draft"
   },
   "profiles.error.must_validate": {
-   "text": "Profil musi przejść walidację, zanim będzie można go zapisać",
+   "text": "Profile must validate before it can be saved",
    "sourceHash": "481d9b91ba9125d86b9a808e0d35c0d90638d50c0aa5e1dbd5aff39f18485c2a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.read_file": {
    "text": "Nie udało się odczytać profilu: {error}",
@@ -7214,19 +7214,19 @@
    "state": "machine-draft"
   },
   "profiles.error.restart_slow": {
-   "text": "Ponowne uruchomienie trwa dłużej niż się spodziewałeś. Odśwież stronę, żeby sprawdzić aktywny profil.",
+   "text": "The restart is taking longer than expected. Reload to check the active profile.",
    "sourceHash": "27fc3e61492dee6b8a0d3b60c126eae440ed79b51f9910a1b48fcf4811f46be4",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.save_failed": {
-   "text": "Zapisanie nie powiodło się: {error} Rozwiąż problem, a potem sprawdź poprawność jeszcze raz.",
+   "text": "Save failed: {error} Resolve the issue, then Validate again.",
    "sourceHash": "d3527caef1b39a8d11c6345604d18ee58a3accefb05973f04c2c0d929ccaa6ef",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.stale_preview": {
-   "text": "Ta wersja podglądu lub aktualizacja katalogu jest nieaktualna. Sprawdź to jeszcze raz przed zapisaniem.",
+   "text": "This preview or catalog revision is stale. Validate again before saving.",
    "sourceHash": "02b3cad9f516301a115486d9012f28059a0598771d521459b584c3571a458f02",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.error.too_large": {
    "text": "Profil jest za duży. Limit wynosi {bytes} bajtów.",
@@ -7904,9 +7904,9 @@
    "state": "machine-draft"
   },
   "profiles.modal.activate_title": {
-   "text": "Aktywować profil?",
+   "text": "Activate profile?",
    "sourceHash": "ac56d653cda06155eab8c306c769cd96cd766ca06a0e0b21f819cf2e74b97030",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.compare_title": {
    "text": "Porównaj z aktywnym profilem",
@@ -7914,69 +7914,69 @@
    "state": "machine-draft"
   },
   "profiles.modal.default_title": {
-   "text": "Potwierdź",
+   "text": "Confirm",
    "sourceHash": "eebdd24a77d9ad32222660c07777163bf5f6732df2b172351f3f8d5783e4f529",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.delete_detail": {
-   "text": "{profile}\nsha256:{sha256}\n\nNie da się tego cofnąć. Nie można usunąć wersji aktywnych, zaznaczonych, w pakiecie ani ostatnio znanych jako poprawne.",
+   "text": "{profile}\nsha256:{sha256}\n\nThis cannot be undone. Active, selected, bundled, and last-known-good revisions cannot be deleted.",
    "sourceHash": "4797115e10e60a6830bb0342e65763855f48f834d5e096571fa37a0fc392043d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.delete_title": {
-   "text": "Usunąć nieaktywną wersję profilu?",
+   "text": "Delete inactive profile revision?",
    "sourceHash": "795b8e62bdfa34949363beec88f202c706bb44d841c8b027264d5720134e7405",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.hardened_body": {
-   "text": "Działanie chronione: gdy Hardened tryb jest włączony, zatwierdź to żądanie na panelu fizycznym.",
+   "text": "Shielded action: when Hardened mode is enabled, approve this request on the physical panel.",
    "sourceHash": "d7a635498b39f7becc2aeedb410c1f6903cc6cc9206021ed223f22c500009274",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.hardened_title": {
-   "text": "Ta czynność wymaga fizycznego zatwierdzenia na panelu, gdy Hardened tryb jest włączony.",
+   "text": "Requires physical on-panel approval for this action when Hardened mode is enabled.",
    "sourceHash": "767aa74fd80b54cf8f98cff7e097ab3c8344984f69e496be02fefc7fe4cb51aa",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.no_risks_line": {
-   "text": "Flagi uprawnień/ryzyka: żadne nie zostały zadeklarowane",
+   "text": "Privileged/risk flags: none declared",
    "sourceHash": "058a077a112bcaf6030b110fcaf3f2dec2df3d44093026b3b2f5fd48b07eeead",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.profile_auto_line": {
-   "text": "Profil: automatyczne dopasowywanie urządzeń",
+   "text": "Profile: automatic device matching",
    "sourceHash": "ff5123bf9104a7dd83004fec2b2731da4ee50af00fac9a3832f31702da62d4a6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.profile_line": {
-   "text": "Profil: {profile}",
+   "text": "Profile: {profile}",
    "sourceHash": "d55d35ec5b3e8f7adaa02ab9dcb9f7b53697fdaa5f7d7c2e706f1b7f37ce36ba",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.restart_warning": {
-   "text": "Usługa panelu uruchomi się ponownie. Jeśli wersja nie osiągnie stanu prawidłowego, ha-paneld powróci do ostatniego znanego poprawnego profilu.",
+   "text": "The panel service will restart. If the revision does not become healthy, ha-paneld will return to the last-known-good profile.",
    "sourceHash": "fe3149830ccece16addc3efceb6139b7a5982b1735829871567c1bff519f544b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.revision_auto_line": {
-   "text": "Wersja: najlepszy zgodny profil wybrany przy ponownym uruchomieniu",
+   "text": "Revision: the best compatible profile selected at restart",
    "sourceHash": "6b0bbe1c04809906049a2a7ee0be7e25513a77b63f482220f338e57e52b47f06",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.revision_line": {
-   "text": "Wersja: sha256:{sha256}",
+   "text": "Revision: sha256:{sha256}",
    "sourceHash": "ac2bf07cc8f5be2bce6a7cc7c8af8eae01c3e904f8fad5b0e7e9206b60054466",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.risks_line": {
-   "text": "Flagi uprawnień/ryzyka: {risks}",
+   "text": "Privileged/risk flags: {risks}",
    "sourceHash": "debc03c985ce26a22f5f17e5a5e311b19a64693760cc24489b7aa9a68026ee90",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.modal.rollback_title": {
-   "text": "Cofnąć profil?",
+   "text": "Roll back profile?",
    "sourceHash": "3cc17c41ff0e2a2c29ab8d6beb9949c17924c6e96c2bc8109b8fb654bf310a49",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.observed.note": {
    "text": "Tylko obserwacje z okresu działania — to nie są YAML pola. Użyj ich, żeby wybrać predykaty dopasowania i obsługiwane pola profilu.",
@@ -8109,69 +8109,69 @@
    "state": "machine-draft"
   },
   "profiles.result.activation-applying-auto-update": {
-   "text": "Stosowanie zaktualizowanego, automatycznie dopasowanego profilu.",
+   "text": "Applying updated automatically matched profile.",
    "sourceHash": "8f5f796f0c1b6cd06c9c83c3640bc7953244eea023c681ad923670609c9f5002",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-applying-bundled-revision": {
-   "text": "Stosowanie aktualnej wersji przypiętego profilu zawartej w pakiecie.",
+   "text": "Applying the current bundled revision of the pinned profile.",
    "sourceHash": "cc3b187fb09c3bb44833709609bce8d279a5893b632651c2908b152f0db67ce2",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-applying-selected": {
-   "text": "Stosowanie wybranego profilu.",
+   "text": "Applying selected profile.",
    "sourceHash": "edc3825161fc54bedb25b66d600ef9a128d9e89418e5a18baa26c2161e1acae0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-in-progress": {
-   "text": "Aktywacja profilu już trwa.",
+   "text": "A profile activation is already in progress.",
    "sourceHash": "c6009e0cb472fa68a6daf65053045463f9ea6bf00abc4ab2c83ebdc759ef5504",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-pending": {
-   "text": "Wybór został zaplanowany; konieczne jest ponowne uruchomienie.",
+   "text": "Selection staged; restart required.",
    "sourceHash": "037cb7a9c3e6805d5ad99fcd7ade3efa0c27082e4b09bd0811cd6927d5821455",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-rolled-back-incompatible": {
-   "text": "Aktywny profil stał się niekompatybilny po zmianie w rdzeniu; przywrócono ostatni znany poprawny wybór.",
+   "text": "Active profile became incompatible after a core change; restored the last known good selection.",
    "sourceHash": "f693f5afa79729e2869e2eba6e2bc2ef5745b7602b47d89becba4dd10a7257cc",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-rolled-back-unhealthy-auto": {
-   "text": "Poprzednia aktywacja nie wykazała prawidłowego działania; przywrócono automatyczne dopasowywanie.",
+   "text": "Previous activation did not report healthy; rolled back to automatic matching.",
    "sourceHash": "5ce98d100de2c6f69c59ec8254a4f99dfcbdaf70b7fb7146c2a50b3d17156831",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-rolled-back-unhealthy-pinned": {
-   "text": "Poprzednia aktywacja nie wykazała prawidłowego działania; przywrócono stan poprzedni {id}@{revision}.",
+   "text": "Previous activation did not report healthy; rolled back to {id}@{revision}.",
    "sourceHash": "bc731fb23c29c28dee9fee3be8917414dfbc75e2050abb1f86a5f24e71b33637",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.activation-rolled-back-unresolved": {
-   "text": "Nie udało się rozpoznać wybranego profilu; operacja została cofnięta.",
+   "text": "Selected profile could not be resolved; rolled back.",
    "sourceHash": "8b837640804bd7c728bc2b49109329b4df4b4aba221a92fbfe05b9c5713925bf",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.bundled-profile-delete-forbidden": {
-   "text": "Zbiorczych zmian w profilu nie da się usunąć.",
+   "text": "Bundled profile revisions cannot be deleted.",
    "sourceHash": "a2a525256aa742328bfdea814bed6f58165e7fd0faf2eac86d9276975b72400b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.catalog-reservation-failed": {
-   "text": "Nie udało się zarezerwować zmiany w katalogu.",
+   "text": "Could not reserve the catalog change.",
    "sourceHash": "1a574d2b2c6fb9e2b3aa648016eedbcf010a439bed51db9dc8fc977b5bcdf90e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.catalog-stale": {
-   "text": "Katalog uległ zmianie; odśwież stronę i spróbuj ponownie z aktualną wersją.",
+   "text": "Catalog changed; reload and retry with the current revision.",
    "sourceHash": "014eafc6e3523ed2ff1319e0f26b1c01ffdab9c5b9f8d5805a3ca4149dd47735",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.destructive-operation-in-progress": {
-   "text": "Trwa operacja instalacji lub przywracania, która może spowodować utratę danych. Spróbuj ponownie aktywować profil po jej zakończeniu.",
+   "text": "A destructive install or restore operation is in progress. Try profile activation again when it finishes.",
    "sourceHash": "358ffb5e6d4003b76ec8953d1f30de939ef8a81ccea330528e7e20265b5fe53b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.expected-catalog-revision-required": {
    "text": "Wymagana jest oczekiwana wersja katalogu.",
@@ -8179,9 +8179,9 @@
    "state": "machine-draft"
   },
   "profiles.result.explicit-confirmation-required": {
-   "text": "Wymagane jest wyraźne potwierdzenie.",
+   "text": "Explicit confirmation is required.",
    "sourceHash": "d08001ebe74461eb2338e4faacb6a014bb4b1e36a96bf707a6a6eac3be03b309",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.imported-catalog-byte-limit": {
    "text": "Zaimportowany katalog jest ograniczony do {max} bajtów.",
@@ -8199,9 +8199,9 @@
    "state": "machine-draft"
   },
   "profiles.result.invalid-delete-request": {
-   "text": "Żądanie usunięcia profilu jest nieprawidłowe.",
+   "text": "The profile deletion request is invalid.",
    "sourceHash": "3ffdbbe949ba796adc9360df1f68492da694745d9310124d1da9e01d65de4413",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.invalid-json": {
    "text": "Żądanie jest nieprawidłowe JSON.",
@@ -8249,9 +8249,9 @@
    "state": "machine-draft"
   },
   "profiles.result.profile-activation-abort-persist-failed": {
-   "text": "Nie udało się zaplanować ponownego uruchomienia profilu, a jego oczekującej aktywacji nie dało się trwale cofnąć. Aktywacja pozostaje w toku i może zostać zastosowana przy następnym ponownym uruchomieniu procesu.",
+   "text": "The profile restart could not be scheduled, and its pending activation could not be rolled back durably. The activation remains pending and may apply on the next process restart.",
    "sourceHash": "51736e644ada8cf2e4e04884ea7c92562af09e5bb2046703c8d36ae76af7a45d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-administration-unavailable": {
    "text": "Zarządzanie profilami jest niedostępne.",
@@ -8264,9 +8264,9 @@
    "state": "machine-draft"
   },
   "profiles.result.profile-delete-failed": {
-   "text": "Nie udało się trwale usunąć zaimportowanej wersji.",
+   "text": "Could not durably delete the imported revision.",
    "sourceHash": "79f7b8fa7103fcd76f34d3299a11555d0dc4c8d225bc96e30e75c1048423763c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-imported": {
    "text": "Zaimportowano {display_name} {version}.",
@@ -8274,9 +8274,9 @@
    "state": "machine-draft"
   },
   "profiles.result.profile-incompatible": {
-   "text": "Wersja profilu jest niekompatybilna z tym rdzeniem.",
+   "text": "Profile revision is incompatible with this core.",
    "sourceHash": "9699ce8f86c496618c872c877ca3419ebc8b7f0a9889e7e656b52e3c835eb872",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-ref-both-forms-supplied": {
    "text": "W żądaniu podano zarówno odwołanie do profilu płaskiego, jak i zagnieżdżonego. Należy użyć tylko jednego z nich.",
@@ -8284,14 +8284,14 @@
    "state": "machine-draft"
   },
   "profiles.result.profile-restart-unavailable": {
-   "text": "Nie udało się zaplanować ponownego uruchomienia profilu. Spróbuj jeszcze raz.",
+   "text": "The profile restart could not be scheduled. Try again.",
    "sourceHash": "c99af13857c3c56eaf384f110113a0ac5e393e44b6d9197b209412f089d1b339",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-revision-deleted": {
-   "text": "Usunięto zaimportowaną wersję profilu.",
+   "text": "Deleted imported profile revision.",
    "sourceHash": "00fe4be455bbfae4189cfbcd80a51be90c0a8bd77b1bd4c4c03ab86bb5c116fb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-revision-not-found": {
    "text": "Nie ma takiej wersji profilu.",
@@ -8299,9 +8299,9 @@
    "state": "machine-draft"
   },
   "profiles.result.profile-selection-staged": {
-   "text": "Wybór profilu przygotowany do ponownego uruchomienia.",
+   "text": "Profile selection staged for restart.",
    "sourceHash": "e4e2d554b6a9538c26a629a24ad6d6b8f4b7a16f79073cc43e2afba7a1e03b99",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-selection-unchanged": {
    "text": "Wybór profilu pozostaje bez zmian.",
@@ -8309,9 +8309,9 @@
    "state": "machine-draft"
   },
   "profiles.result.profile-store-failed": {
-   "text": "Nie udało się zapisać niezmiennej wersji profilu.",
+   "text": "Could not store the immutable profile revision.",
    "sourceHash": "e8011df250f2deae98f4f975467064e90fa3dfe83d101e5783b7c8ffe158daf8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.profile-template-unavailable": {
    "text": "Szablon profilu niedostępny.",
@@ -8324,19 +8324,19 @@
    "state": "machine-draft"
   },
   "profiles.result.referenced-profile-delete-forbidden": {
-   "text": "Wybranych, aktywnych lub cofniętych wersji profilu nie da się usunąć.",
+   "text": "Selected, active, or rollback profile revisions cannot be deleted.",
    "sourceHash": "b1261534b587db1852f88d1af30acc7af141b8b0824beb1366fca81fc7ae6039",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.rollback-unavailable": {
-   "text": "Nie ma dostępnych wcześniejszych sprawdzonych wyborów.",
+   "text": "No previous proven selection is available.",
    "sourceHash": "e0fc7f6179d43a7cf66abf0dfc38b909ae49f187452d1d66aa18ada69e18eb1e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.selection-persist-failed": {
-   "text": "Nie udało się zapisać zaznaczonego wyboru.",
+   "text": "Could not persist the staged selection.",
    "sourceHash": "1f32848586368c7199e89c4447d78102a7651b5da1aa4c4851af3d93090c8b15",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.result.yaml-content-type-required": {
    "text": "A YAML Typ zawartości jest wymagany.",
@@ -8399,9 +8399,9 @@
    "state": "machine-draft"
   },
   "profiles.schema.description.metadata_maturity": {
-   "text": "Dojrzałość dowodów zadeklarowana przez autora; nie jest to sygnał pochodzenia ani zaufania.",
+   "text": "Author-declared evidence maturity; not a provenance or trust signal.",
    "sourceHash": "6be5e22f5f65b1526cdb9bc41d2cdbf3bd32c46a1e4eb48700bdedf95736c4eb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.schema.description.model_label_strategy": {
    "text": "Strategia etykiet lokalnych należących do rdzenia.",
@@ -8409,19 +8409,19 @@
    "state": "machine-draft"
   },
   "profiles.schema.description.package_desired_state": {
-   "text": "Pożądany stan pakietu; nigdy nie wyrażaj domniemanej zgody.",
+   "text": "Desired package state; never implicit consent.",
    "sourceHash": "b79f5d18c9b084a444ec1972767a095bb8e90ada19a2b9a27ec79eadf8ab425e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.schema.description.package_importance": {
-   "text": "Tylko priorytet prezentacji.",
+   "text": "Presentation priority only.",
    "sourceHash": "acdfda276090176ecc062b4f51c891d6221f87944f1b4a1678b62e9c09a062a8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.schema.description.recipe_id": {
-   "text": "Identyfikator receptury provisioningu należącej do Core; bez argumentów ani poleceń.",
+   "text": "Core-owned provisioning recipe id; no arguments or commands.",
    "sourceHash": "c9dacf1be7b297f1cf8c67a170111e44e2839741f5e08c1de01342445fb77380",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.schema.description.screen_off": {
    "text": "Preferowana ścieżka przy wyłączonym ekranie.",
@@ -8429,9 +8429,9 @@
    "state": "machine-draft"
   },
   "profiles.schema.description.shizuku_recommendation": {
-   "text": "Tylko zalecenia autora, nigdy gotowość do wdrożenia ani zgoda.",
+   "text": "Author recommendation only, never live readiness or consent.",
    "sourceHash": "d9923d81100c264134d703555a7a7ea41e81f3f01f348ff52207de7d24032aed",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.schema.description.su_form": {
    "text": "Obsługiwane su konwencja wywoływania.",
@@ -8439,9 +8439,9 @@
    "state": "machine-draft"
   },
   "profiles.schema.description.webview_artifact": {
-   "text": "Należy do Core APK artefakt i korzeń zaufania podpisującego.",
+   "text": "Core-owned APK artifact and signer trust root.",
    "sourceHash": "139ebdeeda56385d56e264d1551ba06f4a507eb4ffefba9056b927362fc7d1a1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.section.catalog_runtime": {
    "text": "Katalog i środowisko uruchomieniowe",
@@ -8504,14 +8504,14 @@
    "state": "machine-draft"
   },
   "profiles.state.does_not_match": {
-   "text": "Nie pasuje do tego urządzenia",
+   "text": "Does not match this device",
    "sourceHash": "deaea6df3b48541ef017ec6c6c19c97065bf2b29163bf56def023e0854f05d67",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.state.incompatible": {
-   "text": "Niezgodne",
+   "text": "Incompatible",
    "sourceHash": "8777e3a9e3ec54a016500ed03f79cdcbebe135d6505cca8fa5dc6c4d6767d72a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.state.label": {
    "text": "Stan profilu",
@@ -8519,9 +8519,9 @@
    "state": "machine-draft"
   },
   "profiles.state.last_known_good": {
-   "text": "Ostatni znany poprawny stan",
+   "text": "Last known good",
    "sourceHash": "f352aca110ce966b98af6211665ab16a127210a9b397d9cb50d4f009cf2537ea",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.state.no_profiles": {
    "text": "Nie ma dostępnych profili.",
@@ -8534,24 +8534,24 @@
    "state": "machine-draft"
   },
   "profiles.status.activating": {
-   "text": "Aktywowanie profilu…",
+   "text": "Activating profile…",
    "sourceHash": "32e115cfe78b0d2eeb09595c07b0954643a91bc484f26d2135bb29200c85ffa6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.active_healthy": {
-   "text": "Profil jest aktywny i działa poprawnie.",
+   "text": "Profile is active and healthy.",
    "sourceHash": "d096359d35956b7ee6fa95e303fb32ec41f4ca116a5dee0333b61917c5ffd393",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.deleted": {
-   "text": "Profil usunięty.",
+   "text": "Profile deleted.",
    "sourceHash": "b9a52154180b4282c4b65837593c33c8dd0c2c5b552b5ef36ab2367d1882888c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.draft_copied": {
-   "text": "Szkic skopiowano do nowego, niezapisanego profilu. Rozwiąż wszystkie TODO przed aktywacją.",
+   "text": "Draft copied into a new unsaved profile. Resolve every TODO before activation.",
    "sourceHash": "3d89421ede096b727ad03473c4ac0deaef1dc26580778dd03eab72d11c0c323b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.editing_fork": {
    "text": "Edytowanie samodzielnej lokalnej gałęzi. Dołączona wersja nie ulegnie zmianie.",
@@ -8564,14 +8564,14 @@
    "state": "machine-draft"
   },
   "profiles.status.imported_preview": {
-   "text": "Zaimportowano lokalnie w celu podglądu; nic nie zostało zapisane ani aktywowane.",
+   "text": "Imported locally for preview; nothing has been saved or activated.",
    "sourceHash": "4bcfcb23ed3ebe2a3ec35c36fc8d4bd5d264521e1d9c426256511822c7df2e76",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.incompatible": {
-   "text": "Profil nie jest zgodny; napraw zgłoszone problemy.",
+   "text": "Profile is not compatible; fix the reported issues.",
    "sourceHash": "1f1966898c27b3db2d4b64795097ae2403379e3c49ebc90c9d073d3ab35ea662",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.loading_catalog": {
    "text": "Ładowanie profili…",
@@ -8594,24 +8594,24 @@
    "state": "machine-draft"
   },
   "profiles.status.rollback_starting": {
-   "text": "Rozpoczynam cofanie zmian…",
+   "text": "Starting rollback…",
    "sourceHash": "eae5ea3e45366eab4999c68790d0a1eaf14bdb42234f20b2efceed47b40adf03",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.saved": {
-   "text": "Zmiany w profilu zapisane.",
+   "text": "Profile revision saved.",
    "sourceHash": "2f3e54b7b64e95df6f4fb4180a1b245c4f137b22441b3e5c1d76ce7d29fe7bae",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.saving": {
-   "text": "Zapisuję niezmienną wersję…",
+   "text": "Saving immutable revision…",
    "sourceHash": "8f24c49de2a7a8e15cb0e529555b2e87d2c33f97b0436901e55742571918b348",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.selection_saved": {
-   "text": "Wybór zapisany; czekam na ponowne uruchomienie usługi panelu.",
+   "text": "Selection saved; waiting for the panel service to restart.",
    "sourceHash": "199716428c521ddcaff134cb1c9249987690802e8ce6ad48e1915fc57b684514",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.valid_hash": {
    "text": "Prawidłowy profil · sha256:{sha256}",
@@ -8619,9 +8619,9 @@
    "state": "machine-draft"
   },
   "profiles.status.valid_wrong_hardware": {
-   "text": "Profil jest poprawny, ale przeznaczony dla innego sprzętu. Możesz go tutaj zapisać, ale nie da się go aktywować na tym panelu.",
+   "text": "Valid profile, but it is intended for different hardware. You can save it here, but you cannot activate it on this panel.",
    "sourceHash": "377c183d8f8a14a8d76e33d1175cf610b15ec82779e21a55d46e23c1ff3679fc",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.validating": {
    "text": "Sprawdzanie poprawności YAML…",
@@ -8634,9 +8634,9 @@
    "state": "machine-draft"
   },
   "profiles.status.yaml_changed": {
-   "text": "YAML zmieniono. Sprawdź poprawność przed zapisaniem lub aktywacją.",
+   "text": "YAML changed. Validate before saving or activating.",
    "sourceHash": "88bd5abcac4bc306872e83a3487eee8b6669c4a875640419bd4819f48b659a66",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.status.yaml_changed_issue": {
    "text": "YAML zmieniono; zweryfikuj to, żeby odświeżyć zgłoszenia i porównanie.",
@@ -8649,9 +8649,9 @@
    "state": "machine-draft"
   },
   "profiles.toolbar.activation_label": {
-   "text": "Aktywacja profilu",
+   "text": "Profile activation",
    "sourceHash": "ecdfb510d18095e2d0f2545cc150dd0ec8c78f66f95826b60a797ce217d186b2",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.toolbar.editing_label": {
    "text": "Edycja profilu",
@@ -8679,9 +8679,9 @@
    "state": "machine-draft"
   },
   "profiles.validation.invalid_profile": {
-   "text": "Nieprawidłowy profil",
+   "text": "Invalid profile",
    "sourceHash": "f48e372cc3ae5e58783e229ba563e2edbbeb13af014134f9e26ca685e9f82288",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "profiles.validation.none": {
    "text": "Brak problemów z walidacją.",
@@ -8729,9 +8729,9 @@
    "state": "machine-draft"
   },
   "runtime.power_safety.ack.not_hidden": {
-   "text": "Ostrzeżenie nie zostało ukryte.",
+   "text": "The caution was not hidden.",
    "sourceHash": "22efebad2c925ed794bc9f7c1e8a8b7153b125aa6d3e4386dfa0cbdf4b50d4d6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.ack.saving": {
    "text": "Potwierdzam zapisywanie…",
@@ -8739,39 +8739,39 @@
    "state": "machine-draft"
   },
   "runtime.power_safety.action.acknowledgeable": {
-   "text": "Aplikacja CPU/Wi-Fi blokady i nieskończony limit czasu są aktywne, ale Android stay-awake oraz Doze Nie da się tego zmienić w obecnej ścieżce tego panelu. Możesz ukryć właśnie to ostrzeżenie; pojawi się ponownie, jeśli zmienią się dane lub możliwości.",
+   "text": "The app CPU/Wi-Fi locks and infinite timeout are active, but Android stay-awake and Doze cannot be changed through this panel's current route. You may hide this exact caution; it returns if the evidence or capability changes.",
    "sourceHash": "54602ea6c3a55fe72a8109d82bb47beaad03647a29f9a4e04449c1d2b8e223fa",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.action.acknowledged": {
-   "text": "To niezmienione ostrzeżenie jest widoczne na stronach internetowych panelu; API, a diagnostyka i sprawdzanie instalatora nadal to zgłaszają.",
+   "text": "This unchanged caution is acknowledged in panel web pages; API, diagnostics, and installer checks continue to report it.",
    "sourceHash": "4f5c25820fd583ab50f8057662be99abef99e2a3ed6af5e21cc96a817e31316f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.action.manual": {
-   "text": "Automatyczna naprawa nie jest dostępna w obecnej ścieżce tego panelu. Sprawdź zgłoszone sondy ręcznie; tego ostrzeżenia nie da się ukryć, dopóki ryzyko jest nieznane lub podwyższone.",
+   "text": "Automatic repair is unavailable through this panel's current route. Review the reported probes manually; this warning cannot be hidden while risk is unknown or elevated.",
    "sourceHash": "003bbaf7c91e43da61ab521f3a42f52c8decd91ff9d4e49ac20216be0f8ad91b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.action.repair_degraded": {
-   "text": "Użyj opcji „Napraw bezpieczeństwo zasilania”, żeby sprawdzić zabezpieczenia aplikacji i ponownie użyć obecnie uszkodzonej ścieżki bezpośredniego dostępu do głównego katalogu panelu. Naprawa nigdy nie restartuje panelu.",
+   "text": "Use Repair power safety to verify the app guards and retry this panel's currently degraded direct-root route. The repair never reboots the panel.",
    "sourceHash": "acb7d2bc475d897202962a44cc3c84ebffcdb1e55369edeadd13ab130dbf0735",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.action.repair_direct": {
-   "text": "Użyj funkcji „Napraw bezpieczeństwo zasilania”, żeby włączyć i zweryfikować aplikację oraz Android zabezpieczenia zasilania. Naprawa nigdy nie powoduje ponownego uruchomienia panelu.",
+   "text": "Use Repair power safety to enable and verify the app and Android power guards. The repair never reboots the panel.",
    "sourceHash": "859f3c8f143b1312e483dad2877843a088142206381cb2164b6027605c0d7ff0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.action.repair_limited": {
-   "text": "Użyj funkcji „Napraw bezpieczeństwo zasilania”, żeby włączyć i zweryfikować aplikację CPU/Wi-Fi blokady i nieskończony limit czasu. Android stay-awake oraz Doze Zmiany nie są dostępne w obecnej ścieżce tego panelu.",
+   "text": "Use Repair power safety to enable and verify the app CPU/Wi-Fi locks and infinite timeout. Android stay-awake and Doze changes are unavailable through this panel's current route.",
    "sourceHash": "4524b3525e8bddcd709de253886b1737e2e5afd6d19c89b90d3b0fddd7dd842a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.action.review": {
-   "text": "Sprawdź zaobserwowane zabezpieczenia zasilania. Android stay-awake oraz Doze Zmiany wymagają bezpośrednich uprawnień administratora; działania związane z bezpieczeństwem zasilania nigdy nie powodują ponownego uruchomienia panelu.",
+   "text": "Review the observed power guards. Android stay-awake and Doze changes require direct root; power-safety actions never reboot the panel.",
    "sourceHash": "a449f72ec34777c6f2723e91a028c388bdfb91e3b06585275c0d95ad37139dbb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.button.hide": {
    "text": "Ukryj to ostrzeżenie",
@@ -8784,39 +8784,39 @@
    "state": "machine-draft"
   },
   "runtime.power_safety.button.repair": {
-   "text": "Naprawa zabezpieczeń zasilania",
+   "text": "Repair power safety",
    "sourceHash": "78117082fe884a581b10c60db104c3165410016e0970ffad2e7ea68bd0ed29c8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.button.repair_title": {
-   "text": "Naprawa jest jawna, zweryfikowana poprzez odczyt wyników i nigdy nie powoduje ponownego uruchomienia panelu",
+   "text": "Repair is explicit, read-back verified, and never reboots the panel",
    "sourceHash": "e8af7e6d7a717d25be060e60abb34f970a5534d9836423a0972de0690e5ecb34",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.level.at_risk": {
-   "text": "Bezpieczeństwo zasilania panelu: zagrożone",
+   "text": "Panel power safety: at risk",
    "sourceHash": "842fd08f4027cba9a129fea89e2be31a821bf016a5d307c35bd20212bb9cca2b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.level.caution": {
-   "text": "Bezpieczeństwo zasilania panelu: uwaga",
+   "text": "Panel power safety: caution",
    "sourceHash": "1b4a977ac895145657b74b05e3d7b4be0f28479237055bcf2abd21e047ffd802",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.level.unknown": {
-   "text": "Zabezpieczenia zasilania panelu: nieznane",
+   "text": "Panel power safety: unknown",
    "sourceHash": "67ee8951bafa1e1eac7dfc24b25a8700a3f0d9124472cf3d84a7fa167a1e2519",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.repair.applying": {
-   "text": "Stosowanie i weryfikacja…",
+   "text": "Applying and verifying…",
    "sourceHash": "0a4d00786291e3748e44cb8c56ceb349eda167603ba5e2bc79779a6c46ee8447",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.repair.approval": {
-   "text": "Zatwierdź tę prośbę fizycznie na panelu, a potem ponownie dotknij opcji „Napraw zabezpieczenie zasilania”.",
+   "text": "Approve this request physically on the panel, then tap Repair power safety again.",
    "sourceHash": "9854df3fa47cffaa031f533eca3ae94ef3a434487c78482f5810ca91afbbac8b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.repair.endpoint_failed": {
    "text": "Nie udało się połączyć z punktem końcowym naprawy; nie potwierdzono żadnej naprawy.",
@@ -8824,14 +8824,14 @@
    "state": "machine-draft"
   },
   "runtime.power_safety.repair.failed_no_reboot": {
-   "text": "Naprawa zabezpieczeń zasilania nie powiodła się; nie podjęto próby ponownego uruchomienia.",
+   "text": "Power safety repair failed; no reboot was attempted.",
    "sourceHash": "4f9550b9a3f819c26ddf0f94f0c843cc6f752c35deec4dba4831c46ade784a16",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.repair.partial": {
-   "text": "Naprawa zabezpieczeń zasilania była częściowa. Nie podjęto próby ponownego uruchomienia.",
+   "text": "Power safety repair was partial. No reboot was attempted.",
    "sourceHash": "bb01ca3de49cb0c0aaa0b86eda7c04f16fe98dddeceaefaea5934fe75b07d374",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.repair.refreshing": {
    "text": "Odświeżam…",
@@ -8839,34 +8839,34 @@
    "state": "machine-draft"
   },
   "runtime.power_safety.repair.repaired": {
-   "text": "Zabezpieczenie zasilania naprawione i sprawdzone.",
+   "text": "Power safety repaired and verified.",
    "sourceHash": "e96151cbf938def9ee3a9b159eb38a398799e3eb0291c17382549d06407373c1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.summary.at_risk": {
-   "text": "Panel może zawiesić działanie lub przejść do Doze po wyłączeniu ekranu, co powoduje, że HTTP, MQTToraz zadania w tle są niedostępne.",
+   "text": "The panel can suspend or enter Doze after screen-off, making HTTP, MQTT, and background work unreachable.",
    "sourceHash": "c3985d94deae2c90693d7b57b50bd842fa613cf16e2c8d34ca8a9aad579d9c13",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.summary.caution": {
-   "text": "Dostępność panelu zależy obecnie tylko od jednego obserwowanego zabezpieczenia zasilania.",
+   "text": "Panel reachability currently depends on only one observed power guard.",
    "sourceHash": "f542740e25ab3bcbc4d751bf69c2afc0a98ba6522b8e62b8890e3a077f4d1640",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.power_safety.summary.unknown": {
-   "text": "Nie udało się zapewnić bezpieczeństwa zasilania, bo jedno lub więcej Android dane o zużyciu energii były niedostępne lub niejednoznaczne.",
+   "text": "Power safety could not be established because one or more Android power probes were unavailable or ambiguous.",
    "sourceHash": "482ba8367efe4f0a16e888518f0570245fb2ef01f6ef68415d3c6e315b3e76be",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.renderer_recovery.builtin": {
-   "text": "Wbudowany renderer przestał ponawiać próby po wielokrotnych WebView błędy. Zaktualizuj lub napraw System WebView, a potem użyj opcji „Odśwież pulpit nawigacyjny” z paska nawigacyjnego panelu lub z zakładki „Pulpit nawigacyjny”.",
+   "text": "Built-in renderer stopped retrying after repeated WebView failures. Update or repair System WebView, then use Reload dashboard from the panel navbar or Dashboard tab.",
    "sourceHash": "20f93e06aeff7310a8f77b8fa3242cd484ebedb2b1a6242e5aaba65209c4b428",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.renderer_recovery.external": {
-   "text": "Aplikacja Dashboard ciągle się zawiesza — mechanizm watchdog przestał ją ponownie uruchamiać, żeby uniknąć lawiny restartów. Zainstaluj ją od nowa albo przywróć starszą wersję dashboard/Companion app lub zrestartuj panel.",
+   "text": "Dashboard app is crash-looping — the watchdog stopped relaunching it to avoid a restart storm. Reinstall or downgrade the dashboard/Companion app, or reboot the panel.",
    "sourceHash": "065bba7b903c3f1072e1c3d3008b809f3147884454fd6a7cfc657adf334d3f0e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "runtime.zigbee.warning.contained": {
    "text": "Zigbee Udało się opanować awarię bramy — przełącznik routera został wyłączony OFF po długotrwałym, nieprzerwanym wysokim poziomie CPU lub ciągłe restartowanie.",
@@ -9014,14 +9014,14 @@
    "state": "machine-draft"
   },
   "settings.companion_auto_update.help": {
-   "text": "Zainstaluj/zaktualizuj wersję minimalną HA Companion nad ustawieniami głównymi, jeśli brakuje ich lub są nieaktualne.",
+   "text": "Install/update the minimal HA Companion over root when missing or out of date.",
    "sourceHash": "fc52865ccfdacefd48405d55bf867dd77a99eb0b2aaf0ac7b44e888abd5c0de7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.companion_auto_update.label": {
-   "text": "Companion automatyczna aktualizacja",
+   "text": "Companion auto-update",
    "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.companion_update_channel.help": {
    "text": "Kanał wydania: Companion Poniżej znajduje się automatyczna aktualizacja.",
@@ -9289,34 +9289,34 @@
    "state": "machine-draft"
   },
   "settings.ha_refresh_token.help": {
-   "text": "Stan tokenu wewnętrznego zachowany dla API/kompatybilność importu pliku config. Zapożyczone Companion oraz ha-paneld-opublikowano OAuth Loginy zarządzają tym automatycznie.",
+   "text": "Internal token state retained for API/config import compatibility. Borrowed Companion and ha-paneld-issued OAuth logins manage it automatically.",
    "sourceHash": "6366b03a354de30d09782192cf07b058b689b63e893c4b6d2c6ca6178ed23795",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.ha_refresh_token.label": {
-   "text": "HA token odświeżający",
+   "text": "HA refresh token",
    "sourceHash": "9807017e2526d55ffd3ea99555ab867dcfdc6ab59dc56de7d1be68600ea75cc2",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.ha_token.help": {
-   "text": "Jeśli to możliwe, korzystaj z logowania przez przeglądarkę. To rozwiązanie awaryjne możesz skonfigurować w swoim Home Assistant profil użytkownika.",
+   "text": "Use browser sign-in when possible. This fallback can be created in your Home Assistant user profile.",
    "sourceHash": "2a751871e7f1239703cb7b4c6b11ec965ebcff7f5b208e61824d91d3fd7be35f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.ha_token.label": {
-   "text": "Token dostępu o długim okresie ważności",
+   "text": "Long-lived access token",
    "sourceHash": "764baf10051fe1cd66c024f9ae090ad0eb54f33b4880951fb0df0fb56fc31c41",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.ha_token_expiry.help": {
-   "text": "Wewnętrzne OAuth Ważność tokenu dostępu jest zachowywana wraz z pasującymi tokenami dostępu i odświeżania podczas prywatnej kopii zapasowej i przywracania danych.",
+   "text": "Internal OAuth access-token expiry retained with its matching access and refresh tokens during private backup and restore.",
    "sourceHash": "8ef8a848b4d7ee74a9472f0570994f379f5a7ac2f43e9b3e93201169c94a583e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.ha_token_expiry.label": {
-   "text": "HA Wygasanie tokenu dostępu",
+   "text": "HA access-token expiry",
    "sourceHash": "873f79f400642bcc3862b26b5dc49745b29ba3a3f1d77c3af9ccacfeae7efef6",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.ha_url.help": {
    "text": "Wbudowany renderer: Home Assistant podstawa URL, np. http://homeassistant.local:8123. Puste pole wyłącza tę opcję.",
@@ -9474,14 +9474,14 @@
    "state": "machine-draft"
   },
   "settings.mqtt_password.help": {
-   "text": "Puste pole przy zapisywaniu zachowuje aktualne hasło.",
+   "text": "Blank on save keeps the current password.",
    "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.mqtt_password.label": {
-   "text": "Hasło",
+   "text": "Password",
    "sourceHash": "e7cf3ef4f17c3999a94f2c6f612e8a888e5b1026878e4e19398b23bd38ec221a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.mqtt_user.help": {
    "text": "Dane uwierzytelniające dla tego panelu.",
@@ -9504,9 +9504,9 @@
    "state": "machine-draft"
   },
   "settings.network_adb.help": {
-   "text": "Zagrożenie bezpieczeństwa: zachowuje klasyczny wygląd ADB nasłuchuje na TCP port 5555 podczas uruchamiania i ponownego łączenia. Włączaj tylko podczas aktywnych prac konserwacyjnych w zaufanej sieci. Jeśli ADB zostało włączone poza ha-paneld, trzeba to tam też wyłączyć.",
+   "text": "Security risk: keeps classic ADB listening on TCP port 5555 across boots and reconnects. Enable only during active maintenance on a trusted network. If ADB was enabled outside ha-paneld, it must also be disabled there.",
    "sourceHash": "09613eac91f1ca4d5abdc8ac3c450d38c097a1050bf088881b34ca7b0a17e97e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.network_adb.label": {
    "text": "Sieć ADB",
@@ -9594,14 +9594,14 @@
    "state": "machine-draft"
   },
   "settings.self_update.help": {
-   "text": "ha-paneld aktualizuje się z GitHub wersje na wybranym kanale. Wyświetlane tylko tam, gdzie dostępna jest zweryfikowana instalacja aplikacji.",
+   "text": "ha-paneld updates itself from GitHub releases on the selected channel. Only shown where verified app install is available.",
    "sourceHash": "97ae88f8b39157c43fe24ab26c47ceaa5d57769b0fdfce270f4eb1456c3919ec",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.self_update.label": {
    "text": "ha-paneld auto-update",
    "sourceHash": "60970f1d12342ad3487ecf8b0ea233cde2e58a13d677e8e52007dbdc52aed108",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.silence_boot_chime.help": {
    "text": "Wycisz sygnał dźwiękowy uruchamiania oprogramowania układowego.",
@@ -9614,14 +9614,14 @@
    "state": "machine-draft"
   },
   "settings.tame_vendor_packages.help": {
-   "text": "Pamięć przeznaczona wyłącznie do tworzenia kopii zapasowych dla pakietów wybranych za pomocą karty „Pakiety dostawców”.",
+   "text": "Backup-only storage for package selections managed by the Vendor packages card.",
    "sourceHash": "9e5114f2319b4a394da900d05306035a7d83aba15ac1d66dcd705004814ced95",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.tame_vendor_packages.label": {
-   "text": "Wybór pakietów dostawców",
+   "text": "Vendor package selections",
    "sourceHash": "456cfdbba7347a8ee69662a573af218198e6a6d7cf3362bee5c6b4c8043b60cb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.temperature.help": {
    "text": "Temperatura otoczenia zgłaszana przez Androidczujnik panelowy.",
@@ -9764,14 +9764,14 @@
    "state": "machine-draft"
   },
   "settings.webview_auto_update.help": {
-   "text": "Zachowaj system WebView w zalecanej kompilacji tego panelu (z ha-paneld (kopia lustrzana), instalując nowszą wersję nadpisując plik root podczas sprawdzania aktualizacji. Domyślnie wyłączone — a WebView Aby zmiany w opcji swap zaczęły obowiązywać, trzeba zrestartować urządzenie. Wyświetla się tylko wtedy, gdy dostępna jest zalecana wersja (nie na panelach aktualizowanych przez Play).",
+   "text": "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check. Off by default — a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
    "sourceHash": "c213f4530d508c6c3ae53fc24f3ab6654dd3e1618bd68609031c298bf8e903ee",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.webview_auto_update.label": {
    "text": "WebView auto-update",
    "sourceHash": "20c3526cc6dbf1a8fc781ed1e7594a2c71d88903a33862fac77aa849984e2e1d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "settings.zigbee_router.help": {
    "text": "Uruchom wbudowaną Zigbee brama jako router/repeater (NSPanel Pro).",
@@ -9789,9 +9789,9 @@
    "state": "machine-draft"
   },
   "setup.action.save_continue": {
-   "text": "Zapisz i kontynuuj",
+   "text": "Save and continue",
    "sourceHash": "6880daf172a2e6c51f2de1720698f696b73bac86b4b73f3c281f63d1113dc869",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.area.admin_help": {
    "text": "Gdzie znajduje się ten panel. Home Assistant wykorzystuje obszary do automatycznego tworzenia pulpitów nawigacyjnych.",
@@ -9854,14 +9854,14 @@
    "state": "machine-draft"
   },
   "setup.dashboard.error.choose_first": {
-   "text": "Najpierw wybierz pulpit nawigacyjny.",
+   "text": "Pick a dashboard first.",
    "sourceHash": "f96d635d9ea8cdd2ed22f3eb6d2a265459c97fe3d3a08e5df971d119f1205958",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.dashboard.error.path_required": {
-   "text": "Wpisz ścieżkę do pulpitu, na przykład /dashboard-name/tab-name.",
+   "text": "Enter a dashboard path, for example /dashboard-name/tab-name.",
    "sourceHash": "c0ae666863efc9c5ed525ca0de61951df35d2da243668d71cc3a42a90a71bbe8",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.dashboard.fetch_failed.continue": {
    "text": "Kontynuuj, korzystając z poniższych ustawień domyślnych konta.",
@@ -10049,29 +10049,29 @@
    "state": "machine-draft"
   },
   "setup.error.approval_required": {
-   "text": "Zatwierdź tę prośbę w panelu, a potem zapisz jeszcze raz.",
+   "text": "Approve this request on the panel, then save again.",
    "sourceHash": "f13edc21eed9b6db17aafc75e5fdd3e20121e23c18732d4ececf3bc3a40d3f99",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.error.http_refused": {
-   "text": "Komisja to odrzuciła (HTTP {status}).",
+   "text": "The panel refused this (HTTP {status}).",
    "sourceHash": "d643704f298cf69c67b9220ee7cc8736b29796a7ad39cffb95b424da6dc3842e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.error.panel_unreachable": {
-   "text": "Nie udało się połączyć z panelem — sprawdź połączenie i spróbuj ponownie.",
+   "text": "Couldn’t reach the panel — check the connection and try again.",
    "sourceHash": "2be3f1e8e9d75bdb27791e7cee16ede79bd5a9937932171579180c443e4d8f15",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.filter.action.disable": {
-   "text": "Załaduj pulpit nawigacyjny bez filtrowania",
+   "text": "Load the dashboard unfiltered",
    "sourceHash": "104b78f4c5f5a5e6078e2d76d7dd8f8f55d30190ce2c5d2fc827c403a28305b3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.filter.action.enable": {
-   "text": "Włącz filtrowanie i załaduj pulpit nawigacyjny",
+   "text": "Turn on filtering and load the dashboard",
    "sourceHash": "971afbafc8f8aa4d42da3bd871a938fb56376601e0685d462133c1abbd925608",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.filter.action.enabling": {
    "text": "Włączam filtrowanie…",
@@ -10249,9 +10249,9 @@
    "state": "machine-draft"
   },
   "setup.ha_url.error.scheme": {
-   "text": "The URL musi zaczynać się od http:// lub https://.",
+   "text": "The URL needs to start with http:// or https://.",
    "sourceHash": "3ee6ebecdcd3c42228a623102aed95334a9d75ee98d8b8658c99aedfba9752a0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.ha_url.help": {
    "text": "Adres, który otwierasz Home Assistant np. http://homeassistant.local:8123.",
@@ -10319,9 +10319,9 @@
    "state": "machine-draft"
   },
   "setup.identity.error.name_required": {
-   "text": "Panel musi mieć nazwę — litery i cyfry.",
+   "text": "The panel needs a name — letters and digits.",
    "sourceHash": "626d6142a57e7fd8de4f4d915ff55619113d6da54ed097c94b7fa64e7bb6f76c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.identity.friendly_name.help": {
    "text": "Tylko etykieta w Home Assistant. Możesz to zmienić w dowolnym momencie.",
@@ -10364,9 +10364,9 @@
    "state": "machine-draft"
   },
   "setup.mqtt.action.cancel_edit": {
-   "text": "Anuluj i edytuj te szczegóły",
+   "text": "Cancel and edit these details",
    "sourceHash": "f23b12931ce871291c67ed2055c72e93362c6ca6b40ea9478c1b3a5d0e39e23e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.action.checking_address": {
    "text": "Sprawdzanie adresu…",
@@ -10379,9 +10379,9 @@
    "state": "machine-draft"
   },
   "setup.mqtt.action.save_anyway": {
-   "text": "Zapisz mimo to",
+   "text": "Save anyway",
    "sourceHash": "ef4c87b5083fbe4867b0bfb4e2575ecb106bdd4612160ef40f8f022c415cbdac",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.broker.help": {
    "text": "Zazwyczaj tcp:// wtedy twój Home Assistantadres i :1883.",
@@ -10394,69 +10394,69 @@
    "state": "machine-draft"
   },
   "setup.mqtt.error.invalid_address": {
-   "text": "Ten adres nie jest brokerem URL panel może z tego korzystać — potrzebuje tcp:// (lub ssl://) oraz host.",
+   "text": "That address isn’t a broker URL the panel can use — it needs tcp:// (or ssl://) and a host.",
    "sourceHash": "b9add1e3ccf51bf66889b0971c892221981c071133811735c8f221fbd798ee27",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.error.nothing_listening": {
-   "text": "Nic nie nasłuchuje na {host}:{port} — sprawdź adres i port. Naciśnij jeszcze raz, żeby zapisać mimo to.",
+   "text": "Nothing is listening at {host}:{port} — check the address and port. Press again to save anyway.",
    "sourceHash": "1033c7bfa571cbb694463132fd61755a77712535237c1d9263a51eec29295cfe",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.error.scheme": {
-   "text": "Broker URL musi zaczynać się od tcp://, mqtt://, ssl://, mqtts:// lub tls:// — na przykład tcp://192.168.1.10:1883.",
+   "text": "The broker URL needs to start with tcp://, mqtt://, ssl://, mqtts:// or tls:// — for example tcp://192.168.1.10:1883.",
    "sourceHash": "6b4f430225e310e979907a561eecf28a5269e3c109fe670b681f592d535af389",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.error.unresolvable": {
-   "text": "”{host}„” nie działa w sieci panelu — sprawdź adres. Naciśnij jeszcze raz, żeby i tak zapisać.",
+   "text": "“{host}” doesn’t resolve on the panel’s network — check the address. Press again to save anyway.",
    "sourceHash": "36c1caa17d21b6c26c66cd820898b653f791775c1a79a23f8806c03a5491d8b0",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.auth.address_ok": {
-   "text": "Dobra wiadomość: adres jest poprawny. Dane logowania są nieprawidłowe.",
+   "text": "Good news: the address is right. The credentials aren’t.",
    "sourceHash": "3c129ef68b4305b718118c35214716154f0b36739abb6fdc601de84080329c3f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.auth.retype": {
-   "text": "Hasło nie jest wyświetlane, więc nie możesz go sprawdzić wzrokiem — wpisz je jeszcze raz. Nazwa użytkownika to Home Assistant konto użytkownika, a nie nazwa dodatku.",
+   "text": "The password isn’t shown back to you, so it can’t be checked by eye — please type it again. The username is a Home Assistant user account, not the add-on’s name.",
    "sourceHash": "adf19d688956cedb6b8339461eff10dba0d8c8f57b7278e62331223ad7f9bd0a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.auth.title": {
-   "text": "Broker istnieje, ale odrzucił tę nazwę użytkownika i hasło.",
+   "text": "The broker is there, but it rejected this username and password.",
    "sourceHash": "c513587c0fd73976bf9bc5100afb177486b5cafaea549ce1cc35060868f14213",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.config.explanation": {
-   "text": "Trzeba zacząć od tcp://, mqtt://, ssl://, mqtts:// lub tls:// — na przykład tcp://192.168.1.10:1883.",
+   "text": "It needs to start with tcp://, mqtt://, ssl://, mqtts:// or tls:// — for example tcp://192.168.1.10:1883.",
    "sourceHash": "6e83b26eb6fab768d9b4ab0bb65aa4217d4a67bf661f593265033dc44269d8d7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.config.title": {
-   "text": "Ten adres nie jest brokerem URL z którego może korzystać panel.",
+   "text": "That address isn’t a broker URL the panel can use.",
    "sourceHash": "00e6ecde54d76d867f4e99f5d949a17166bcf2b6f31a911b08bd1d6e765df8cb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.unreachable.confirmed_body": {
-   "text": "Panel połączył się z siecią, ale nie znalazł żadnego MQTT broker tam. Warto sprawdzić: broker IP adres, port (1883 dla zwykłego, 8883 dla TLS), oraz że Mosquitto Dodatek działa.",
+   "text": "The panel reached the network but found no MQTT broker there. Worth checking: the broker’s IP address, the port (1883 for plain, 8883 for TLS), and that the Mosquitto add-on is running.",
    "sourceHash": "c440a30ca8175a84108e62fc8e5639ce768b79ad94e52af2f7a45dcf77a80d43",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.unreachable.confirmed_title": {
-   "text": "Nie ma odpowiedzi na {host}.",
+   "text": "Nothing answered at {host}.",
    "sourceHash": "a431b7be909e09256dd9b36c8362ca1bdc1de91b7acacccb3bf36fa59167ca0e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.unreachable.presumed_body": {
-   "text": "Panel wciąż próbuje w tle, ale zazwyczaj oznacza to, że adres lub port są nieprawidłowe. Warto sprawdzić: broker IP adres, port (1883 dla zwykłego, 8883 dla TLS), oraz że Mosquitto Dodatek działa.",
+   "text": "The panel is still trying in the background, but this usually means the address or port is wrong. Worth checking: the broker’s IP address, the port (1883 for plain, 8883 for TLS), and that the Mosquitto add-on is running.",
    "sourceHash": "d823f63cb15926469341671ed7b82153de68ba03ce26c4ca440310105c32de4c",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.failure.unreachable.presumed_title": {
-   "text": "Nie możemy się połączyć {host} jeszcze.",
+   "text": "We can’t reach {host} yet.",
    "sourceHash": "efec83f6283200c9e00e63f00cc2b7c283b1540801fe38c55d945ddfa98ffddd",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.mqtt.help.body": {
    "text": "W Home Assistant: Ustawienia → Dodatki → Mosquitto pośrednik. Adres to zazwyczaj tcp:// a po tym twoje Home Assistant IP oraz:1883. Nazwa użytkownika i hasło to Home Assistant użytkownik — Ustawienia → Ludzie → Dodaj osobę z włączoną opcją „Zezwól na logowanie”.",
@@ -10659,29 +10659,29 @@
    "state": "machine-draft"
   },
   "setup.renderer.action.open_dashboard_setting": {
-   "text": "Otwórz ustawienia pulpitu nawigacyjnego",
+   "text": "Open the Dashboard setting",
    "sourceHash": "c5d268cd415c70ca4aea5846a37468004b27384beabc5f9ca171e7ed1ecb484d",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.renderer.failure.explanation": {
-   "text": "Wybierz ha-paneldWybierz wbudowany renderer (lub inną zainstalowaną aplikację) na karcie Pulpit nawigacyjny w sekcji Wszystkie ustawienia, a potem wróć tutaj.",
+   "text": "Pick ha-paneld’s built-in renderer (or another installed app) in the Dashboard card of All settings, then return here.",
    "sourceHash": "7231ee927e2894750e5b28a26096bb451b8dbaf5e9a3b0bb87a7929cdb7b1fbf",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.renderer.failure.package_missing": {
-   "text": "”{package}” jest ustawiony jako aplikacja pulpitu nawigacyjnego, ale nie jest zainstalowany na tym panelu.",
+   "text": "“{package}” is set as the dashboard app but isn’t installed on this panel.",
    "sourceHash": "70b629f6057b064596a9a4cb7b121cbb963a31ce656d180885977d33164934a1",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.renderer.failure.title": {
-   "text": "Wybrana aplikacja pulpitu nawigacyjnego jest niedostępna.",
+   "text": "The selected dashboard app isn’t available.",
    "sourceHash": "f124b11bac29595c963cc2bec57abe03fe65161d516c1286e2b3f30659aebfa5",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.renderer.failure.unresolved": {
-   "text": "Nie udało się znaleźć żadnej aplikacji pulpitu nawigacyjnego dla tego panelu.",
+   "text": "No dashboard app could be resolved for this panel.",
    "sourceHash": "7ad3852774eb0101f6c42c6d1e007d4bc14470995d3c423ee636462f1f138429",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.renderer.title": {
    "text": "Wybierz, co ma się wyświetlać na tym ekranie",
@@ -10689,14 +10689,14 @@
    "state": "machine-draft"
   },
   "setup.repair.explanation": {
-   "text": "Ustawienia nadal tu są — nic nie zostało zresetowane. Poniżej jest jedna rzecz, na którą warto zwrócić uwagę.",
+   "text": "Its settings are still here — nothing has been reset. One thing needs attention below.",
    "sourceHash": "c4ab1bbb196d9f326a880ca9ccae6bb7379404d0dc3a3b093419128d3e366684",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.repair.title": {
-   "text": "Ten panel przestał w pełni działać.",
+   "text": "This panel has stopped working fully.",
    "sourceHash": "9bdb93d664d81388f48ec5691545733067f9c97140a7d065d57e9eaf51d1b175",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.revisit.continue": {
    "text": "Kontynuuj konfigurację →",
@@ -10769,9 +10769,9 @@
    "state": "machine-draft"
   },
   "setup.webview.action.update": {
-   "text": "Zaktualizuj silnik przeglądarki panelu",
+   "text": "Update the panel’s browser engine",
    "sourceHash": "314e0cd759cc66a9ddbb26e2b1eab85935143c012e8d2f309bdf0c80f757d131",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "setup.webview.companion_does_not_help": {
    "text": "Wybór Home Assistant Aplikacja nie pomoże – rysuje pulpit nawigacyjny przy użyciu tego samego silnika.",
@@ -10819,19 +10819,19 @@
    "state": "machine-draft"
   },
   "shell.hardened.key": {
-   "text": "Działania chronione wymagają fizycznego zatwierdzenia na tym panelu w Hardened tryb; nie można ich zatwierdzić zdalnie.",
+   "text": "Shielded actions need physical approval on this panel in Hardened mode; they cannot be approved remotely.",
    "sourceHash": "1cad2d18d4f0144e285115b035fa35f596fd66292288a07b1e25dd45b569f51a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "shell.hardened.section": {
-   "text": "Czynności opisane w tej sekcji wymagają fizycznego zatwierdzenia na panelu, gdy Hardened Tryb jest włączony.",
+   "text": "Actions in this section require physical on-panel approval when Hardened mode is enabled.",
    "sourceHash": "7d68d1ace31daad34bfbf4b938bf1533316b87dd4c607a7e2a62db4fa5569085",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "shell.hardened.section_conditional": {
-   "text": "Niektóre czynności w tej sekcji wymagają fizycznego zatwierdzenia na panelu, gdy Hardened Tryb jest włączony.",
+   "text": "Some actions in this section require physical on-panel approval when Hardened mode is enabled.",
    "sourceHash": "d1dfc54a70bcb22ca82d3019290ef1a41372f7e12c9ac81e97948543baa0e1f7",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "shell.menu.label": {
    "text": "Menu",
@@ -11124,9 +11124,9 @@
    "state": "machine-draft"
   },
   "configure.save.hardware_unavailable": {
-   "text": "Zapisano. W tym panelu nie ma jeszcze możliwości zastosowania tej zmiany; zostanie ona zastosowana, jeśli sytuacja się zmieni.",
+   "text": "Saved. This panel has no way to apply it yet; it will be applied if that changes.",
    "sourceHash": "67b5afeafe3ae46c4d5fe55a308ba88d39ff45f61c663e5fae47d17317334f3b",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.save.unavailable_to_apply": {
    "text": "Zapisano, ale ten panel nie ma jeszcze możliwości ich zastosowania: {settings}.",
@@ -11199,24 +11199,24 @@
    "state": "machine-draft"
   },
   "install.apk.root_unavailable": {
-   "text": "Instalowanie dowolnego APK potrzebuje root lub demon pomocniczy — niedostępny w tym panelu.",
+   "text": "Installing an arbitrary APK needs root or the helper daemon — unavailable on this panel.",
    "sourceHash": "12253abdd5c23f5aa5f4fab0e662da4ee9d6ac2716392c0e7e95b205a51a5f04",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk.security_future_auth": {
-   "text": "Dostęp do panelu jest LAN– tylko dzisiaj; dostęp po uwierzytelnieniu planujemy wprowadzić w kolejnej wersji.",
+   "text": "Panel access is LAN-only today; authenticated access is planned for a later release.",
    "sourceHash": "56e615ce71344c71a91105c99eb7f66925d8af8316ec1938f60eba17238be309",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk.security_title": {
-   "text": "Bezpieczeństwo:",
+   "text": "Security:",
    "sourceHash": "a1ac876477c082d29fe65395e2b030bc26158edf67a218cb4bc5e95e911fb92f",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk.security_warning": {
-   "text": "To root-instaluje dowolne APK wybierasz zamiast opcji panelu dla użytkowników nieautoryzowanych LAN Interfejs użytkownika. Zainstaluj tylko APKktórym ufasz.",
+   "text": "This root-installs any APK you choose over the panel's unauthenticated LAN web UI. Only install APKs you trust.",
    "sourceHash": "80705f000b7eea37fd3ac7d2a71bd56b067ab318ecef4b6eeff8af9f6b8bfdb3",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.apk.title": {
    "text": "Zainstaluj APK",
@@ -11299,9 +11299,9 @@
    "state": "machine-draft"
   },
   "install.backup.dynamic.preview_state_unavailable": {
-   "text": "Ta kopia zapasowa nie zawiera stanu panelu: panel, z którego pochodzi, nie mógł odczytać własnej bazy danych. Przywrócenie tej kopii nie przywróci stanu panelu.",
+   "text": "This backup carries no panel state: the panel it came from could not read its own database. Restoring it will not bring panel state back.",
    "sourceHash": "c557f33105dc8983e12e29fa0d11c15c0544145fa3e3808a48dd379b31fed10e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.passphrase.placeholder": {
    "text": "Hasło (wymagane do utworzenia zaszyfrowanej kopii zapasowej)",
@@ -11309,9 +11309,9 @@
    "state": "machine-draft"
   },
   "install.backup.plaintext_zip": {
-   "text": "Utwórz niezaszyfrowany tekst jawny ZIP zamiast tego (zawiera dane logowania)",
+   "text": "Create an unencrypted plaintext ZIP instead (contains credentials)",
    "sourceHash": "10683becdcd51177371bbb7dc6e59d3867fe28461c903e261c4258d7db617b34",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.restore.choose": {
    "text": "Wybierz kopię zapasową (.hpb lub .zip)…",
@@ -11319,14 +11319,14 @@
    "state": "machine-draft"
   },
   "install.backup.restore.description.config_only": {
-   "text": "nadpisuje konfigurację tego panelu — przed zastosowaniem zmian zobaczysz podgląd zawartości pakietu.",
+   "text": "overwrites this panel's config — you'll see a preview of the bundle's contents before it applies.",
    "sourceHash": "179a9889a2016aaba29633013b5b7209063b1891b1614fee38ae14a28e916d1e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.restore.description.with_companion": {
-   "text": "nadpisuje konfigurację tego panelu i przepisuje plik HA Companion zaloguj się (to go przymusowo zatrzyma) — zobaczysz podgląd zawartości pakietu, zanim zostanie on zastosowany.",
+   "text": "overwrites this panel's config and rewrites the HA Companion login (force-stops it) — you'll see a preview of the bundle's contents before it applies.",
    "sourceHash": "1dce4528d79e5fdae184cdef165a48dc161d5db5c0a3ec153bb70ac51e9df771",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.backup.restore.passphrase_placeholder": {
    "text": "Hasło pakietu",
@@ -11434,9 +11434,9 @@
    "state": "machine-draft"
   },
   "install.display.approval": {
-   "text": "Zmiana stałej gęstości wyświetlania lub rozmiaru tekstu",
+   "text": "Change persistent display density or text size",
    "sourceHash": "815c1f48a68f28f90917791a55c702e08b9b4acf37701d75caaa925a6a29ae73",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.display.badge.experimental": {
    "text": "eksperymentalne",
@@ -11474,19 +11474,19 @@
    "state": "machine-draft"
   },
   "install.display.reset": {
-   "text": "Resetuj",
+   "text": "Reset",
    "sourceHash": "daee7606b339f3c339076fe2c9f372a3ff40c8ee896005d829c7481b64ca5303",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.display.reset_default": {
-   "text": "Przywróć ustawienia domyślne oprogramowania układowego",
+   "text": "Reset to firmware default",
    "sourceHash": "bdc8427cd16cd5932c90aff5d95b8e465317301a54f61f708ebdda27e4a4b983",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.display.reset_default_with_dpi": {
-   "text": "Przywróć ustawienia domyślne oprogramowania ({value} dpi)",
+   "text": "Reset to firmware default ({value} dpi)",
    "sourceHash": "9136f210c5e7bf3807712f1a8b94b0ad6d79df441d1df63a2e3de6d0b9e91565",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.display.result.applied": {
    "text": "Zastosowano dostosowanie rozmiaru wyświetlania.",
@@ -11494,9 +11494,9 @@
    "state": "machine-draft"
   },
   "install.display.result.failed": {
-   "text": "Nie zastosowano zmiany rozmiaru wyświetlacza; polecenie uprawnione dotyczące wyświetlacza nie powiodło się lub nie zgłoszono żadnej prawidłowej zmiany.",
+   "text": "Display sizing was not applied; the privileged display command failed or no valid change was requested.",
    "sourceHash": "9085a4a51781ac21a82a34b13505d3e35804e0f4f70796c3f7a3dac6db41224a",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.display.return": {
    "text": "Powrót do rozmiarów wyświetlacza",
@@ -11529,14 +11529,14 @@
    "state": "machine-draft"
   },
   "install.presentation.backup_ready_state_unavailable": {
-   "text": "kopia zapasowa gotowa bez stanu panelu",
+   "text": "backup ready without panel state",
    "sourceHash": "df783634b6ab429676f0459ad7279d1a349b3ba3c6b7857b34df5e2fcc443119",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.presentation.restore_completed_state_unavailable": {
-   "text": "Przywracanie zakończone; ta kopia zapasowa nie zawierała stanu panelu",
+   "text": "Restore completed; this backup carried no panel state",
    "sourceHash": "634e79faec27e14712a5c81b756955e808723baecd2c66159561ef8722a138fb",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.radio.configure_join": {
    "text": "Konfiguruj → Dołącz Zigbee sieć",
@@ -11594,14 +11594,14 @@
    "state": "machine-draft"
   },
   "install.tame.approval.package": {
-   "text": "{action} pakiet dostawcy {package}",
+   "text": "{action} vendor package {package}",
    "sourceHash": "699fa472f4a1b392599fc62e2cbbd912a7658ef16b5276c0d156da5090153d15",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.tame.approval.recommended": {
-   "text": "Dostosuj zalecane przez profil pakiety dostawców",
+   "text": "Tame the profile's recommended vendor packages",
    "sourceHash": "3a77da60cbcfc809f72b7fd8d18d38f88119734d8ec517da65b2653c1bdcc833",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.tame.badge.recommended": {
    "text": "zalecane",
@@ -11794,9 +11794,9 @@
    "state": "machine-draft"
   },
   "install.uninstall.root_unavailable": {
-   "text": "Aby odinstalować aplikację, musisz root — niedostępne w tym panelu.",
+   "text": "Uninstalling an app needs root — unavailable on this panel.",
    "sourceHash": "7137e48e950d350e4fa1f3662dbc28ae2eeae9cdcfeb44667641d13fc08ea053",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "install.uninstall.tame_link": {
    "text": "okiełznaj",
@@ -12029,9 +12029,9 @@
    "state": "machine-draft"
   },
   "dashboard.camera.action.misdeclared_profile": {
-   "text": "profil deklaruje kamerę, której ta płyta nie udostępnia; popraw hardware.camera w profilu",
+   "text": "the profile declares a camera this board does not expose; correct hardware.camera in the profile",
    "sourceHash": "a21c61954e1a191d0d9a3e4864a132a68878650930555cc74a9e99653099bd48",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.setup.required": {
    "text": "Konfiguracja czujnika zbliżeniowego jest dostępna na panelu",
@@ -12084,9 +12084,9 @@
    "state": "machine-draft"
   },
   "configure.camera.suppressed": {
-   "text": "Profil urządzenia tego panelu ustawia hardware.camera na false, więc kamera nie jest udostępniana. Zmień profil, aby ją udostępnić.",
+   "text": "This panel's device profile sets hardware.camera to false, so the camera is not offered. Edit the profile to offer it.",
    "sourceHash": "7d9630a0bbdfc2c972fd1a2b6febfabdf62ce5e8e00a0b9bc98660a725a7460e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.setup.calibrating": {
    "text": "Konfiguracja trwa na panelu",
@@ -12114,9 +12114,9 @@
    "state": "machine-draft"
   },
   "configure.camera.not_enumerated": {
-   "text": "Ten panel nie zgłasza kamery. Jeśli ją ma, zadeklaruj hardware.camera w profilu urządzenia, wraz z diodą LED, którą panel może zapalić, gdy kamera jest aktywna.",
+   "text": "This panel reports no camera. If it has one, declare hardware.camera in its device profile, alongside an LED the panel can light while the camera is open.",
    "sourceHash": "331f1ddebf379a9351bf10e42bf20b13e6cb055eca836a67be47d20c0dd65c5e",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.setup.stage.clear": {
    "text": "Pomiar obserwacji wolnej przestrzeni",
@@ -12199,9 +12199,9 @@
    "state": "machine-draft"
   },
   "configure.camera.undetermined": {
-   "text": "Panel wciąż sprawdza, czy ma kamerę. To jeszcze nie jest odpowiedź dotycząca sprzętu.",
+   "text": "The panel is still checking whether it has a camera. This is not yet an answer about the hardware.",
    "sourceHash": "49b599f864427b27005cc385b12d1452365117ad90a6b4d51a335bfae6165520",
-   "state": "machine-draft"
+   "state": "english-fallback"
   },
   "configure.proximity.setup.ready_both": {
    "text": "Obecność i machnięcie są gotowe",

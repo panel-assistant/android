@@ -22782,16 +22782,17 @@
       "hardMaxChars": 32
     },
     "logs.note.sources": {
-      "text": "App = ha-paneld's own process log (no root needed). System = the full device logcat (root).",
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
+      "text": "App = ha-paneld's own process log (no root needed). System = the full device logcat (root). Browser console = the dashboard's JavaScript console (needs log shipping).",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
       "surface": "logs",
-      "context": "Explanation of the two selectable live-log sources.",
+      "context": "Explanation of the three selectable live-log sources.",
       "risk": "ordinary",
       "siblings": [
         "logs.note.privacy",
         "logs.note.raw_stream",
         "logs.source.app",
-        "logs.source.system"
+        "logs.source.system",
+        "logs.source.webview"
       ],
       "placeholders": [],
       "frozen": [
@@ -22799,8 +22800,8 @@
         "logcat",
         "root"
       ],
-      "softMaxChars": 126,
-      "hardMaxChars": 172
+      "softMaxChars": 190,
+      "hardMaxChars": 260
     },
     "logs.source.app": {
       "text": "App",

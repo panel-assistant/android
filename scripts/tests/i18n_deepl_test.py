@@ -189,6 +189,29 @@ class DeepLAdapterTest(unittest.TestCase):
             DEEPL._source_digest(self.target_dir / "de.json"),
         )
 
+    def test_plan_does_not_regenerate_consequential_strings_held_for_review(self):
+        for key in ("settings.alpha.label", "settings.beta.help"):
+            self.source["strings"][key]["risk"] = "consequential"
+        write_json(self.source_path, self.source)
+
+        def fallback(key):
+            record = self.source["strings"][key]
+            return {"text": record["text"], "sourceHash": record["sourceHash"], "state": "english-fallback"}
+
+        keys = ("settings.alpha.label", "settings.beta.help", "settings.gamma.label")
+        for locale in ("nl", "de"):
+            self.target(locale, {key: fallback(key) for key in keys}, source_revision="3" * 40)
+
+        def planned(locale, reconsider=frozenset()):
+            plan = DEEPL.build_plan(
+                self.source_path, self.target_dir, self.context_path, [locale], REVISION, set(reconsider),
+            )
+            return [item["key"] for item in plan["batches"][0]["records"]]
+
+        self.assertEqual(planned("nl"), ["settings.gamma.label"])
+        self.assertEqual(planned("nl", {"settings.beta.help"}), ["settings.beta.help", "settings.gamma.label"])
+        self.assertEqual(planned("de"), list(keys))
+
     def test_plan_admits_web_surface_records(self):
         self.source["strings"]["settings.gamma.label"]["surface"] = "dashboard"
         write_json(self.source_path, self.source)

@@ -105,7 +105,10 @@ class LogsFleetI18nContractTest {
                     translated.state == TranslationState.MACHINE_CROSS_CHECKED ||
                         translated.state == TranslationState.COMMUNITY_CORRECTED ||
                         (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT),
+                            translated.state == TranslationState.MACHINE_DRAFT) ||
+                        (locale in AppLocale.EARLY_ACCESS_LOCALES &&
+                            translated.state == TranslationState.ENGLISH_FALLBACK &&
+                            sourceRecords.getJSONObject(key).getString("risk") == "consequential"),
                 )
             }
         }
