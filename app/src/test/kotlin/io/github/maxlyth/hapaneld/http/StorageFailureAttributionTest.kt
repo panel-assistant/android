@@ -149,8 +149,25 @@ class StorageFailureAttributionTest {
             .getJSONObject("components").getJSONObject("schemas").getJSONObject("StorageHealth")
         val documented = schema.getJSONObject("properties").keys().asSequence().toSet()
 
-        // A failed snapshot emits every optional field, so its key set is the widest the API produces.
-        val emitted = JSONObject(HealthAudit.storage(snapshot()).statusJson()).keys().asSequence().toSet()
+        // A failed snapshot after a refused rebuild emits every optional field, so its key set is the
+        // widest the API produces.
+        val remediated = snapshot().copy(
+            remediation = io.github.maxlyth.hapaneld.storage.StorageRemediationSummary(
+                ranAtMillis = 1L,
+                verdict = io.github.maxlyth.hapaneld.storage.StorageRemediationVerdict.EXHAUSTED,
+                filesDeleted = 0,
+                fileBytesFreed = 0L,
+                databaseBytesFreed = 0L,
+                retention = io.github.maxlyth.hapaneld.storage.RetentionResult.SKIPPED_DATABASE_FAILURE,
+                walCheckpoint = io.github.maxlyth.hapaneld.storage.WalCheckpointResult.SKIPPED_DATABASE_FAILURE,
+                vacuum = io.github.maxlyth.hapaneld.storage.VacuumOutcome(
+                    io.github.maxlyth.hapaneld.storage.VacuumResult.REFUSED,
+                    io.github.maxlyth.hapaneld.storage.VacuumRefusal.DATABASE_FAILURE,
+                ),
+                finalPressure = StorageHealthSeverity.CRITICAL,
+            ),
+        )
+        val emitted = JSONObject(HealthAudit.storage(remediated).statusJson()).keys().asSequence().toSet()
         assertTrue("undocumented status fields: ${emitted - documented}", (emitted - documented).isEmpty())
         assertTrue("documented but never emitted: ${documented - emitted}", (documented - emitted).isEmpty())
 
@@ -168,6 +185,10 @@ class StorageFailureAttributionTest {
         assertFalse(
             "failure_operation is present only alongside a failure, so it must not be required",
             required.contains("failure_operation"),
+        )
+        assertTrue(
+            "remediation fields are present only after a run, so none may be required",
+            required.none { it.startsWith("remediation") },
         )
     }
 

@@ -1,6 +1,13 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.storage.RetentionResult
 import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
+import io.github.maxlyth.hapaneld.storage.StorageRemediationSummary
+import io.github.maxlyth.hapaneld.storage.StorageRemediationVerdict
+import io.github.maxlyth.hapaneld.storage.VacuumOutcome
+import io.github.maxlyth.hapaneld.storage.VacuumRefusal
+import io.github.maxlyth.hapaneld.storage.VacuumResult
+import io.github.maxlyth.hapaneld.storage.WalCheckpointResult
 import io.github.maxlyth.hapaneld.storage.StorageHealthSeverity
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
 import io.github.maxlyth.hapaneld.storage.StorageQuickCheck
@@ -106,6 +113,76 @@ class StorageHealthHttpProjectionTest {
         assertTrue(projection.bannerHtml().startsWith("<div class=\"setup\">"))
         assertTrue(projection.bannerHtml().contains("Storage pressure: warning"))
         assertFalse(projection.bannerHtml().contains(" crit"))
+    }
+
+    private fun remediation(verdict: StorageRemediationVerdict) = StorageRemediationSummary(
+        ranAtMillis = 1_700_000_100_000L,
+        verdict = verdict,
+        filesDeleted = 3,
+        fileBytesFreed = 5L * MIB,
+        databaseBytesFreed = MIB,
+        retention = RetentionResult.PRUNED,
+        walCheckpoint = WalCheckpointResult.DEFERRED_BUSY,
+        vacuum = VacuumOutcome(VacuumResult.REFUSED, VacuumRefusal.INCREMENTAL_AVAILABLE),
+        finalPressure = StorageHealthSeverity.WARNING,
+    )
+
+    @Test fun noRemediationFieldsUntilARunHappened() {
+        val projection = HealthAudit.storage(snapshot(StorageHealthSeverity.WARNING))
+        val json = JSONObject(projection.statusJson())
+        assertFalse(json.has("remediation"))
+        assertFalse(json.has("remediation_freed_bytes"))
+        assertTrue(projection.diagnosticLine().contains(" remediation=not_run"))
+        assertFalse(projection.diagnosticLine().contains("remediation_at"))
+    }
+
+    @Test fun anExhaustedRemediationIsReportedAsItHappenedAndEscalatesToTheOperator() {
+        val projection = HealthAudit.storage(
+            snapshot(StorageHealthSeverity.WARNING).copy(remediation = remediation(StorageRemediationVerdict.EXHAUSTED)),
+        )
+        val json = JSONObject(projection.statusJson())
+
+        assertEquals("exhausted", json.getString("remediation"))
+        assertEquals(1_700_000_100_000L, json.getLong("remediation_at"))
+        assertEquals(6L * MIB, json.getLong("remediation_freed_bytes"))
+        assertEquals("pruned", json.getString("remediation_retention"))
+        assertEquals("deferred_busy", json.getString("remediation_wal_checkpoint"))
+        assertEquals("refused", json.getString("remediation_vacuum"))
+        assertEquals("incremental_available", json.getString("remediation_vacuum_refusal"))
+        assertEquals("warning", json.getString("state"))
+        assertTrue(
+            "the operator is told automatic cleanup is spent",
+            json.getString("action").startsWith("Automatic cleanup has already removed everything it can safely remove"),
+        )
+        assertTrue(projection.bannerHtml().contains("Automatic cleanup has already removed everything"))
+        assertTrue(projection.diagnosticLine().contains(
+            "remediation=exhausted remediation_at=1700000100000 remediation_freed_bytes=6291456 " +
+                "remediation_retention=pruned remediation_wal_checkpoint=deferred_busy " +
+                "remediation_vacuum=refused remediation_vacuum_refusal=incremental_available",
+        ))
+    }
+
+    @Test fun aRemediationThatIsNotExhaustedDoesNotEscalate() {
+        listOf(StorageRemediationVerdict.DEFERRED, StorageRemediationVerdict.UNVERIFIED, StorageRemediationVerdict.RELIEVED)
+            .forEach { verdict ->
+                val json = JSONObject(
+                    HealthAudit.storage(
+                        snapshot(StorageHealthSeverity.WARNING).copy(remediation = remediation(verdict)),
+                    ).statusJson(),
+                )
+                assertEquals(verdict.name.lowercase(), json.getString("remediation"))
+                assertTrue(json.getString("action").startsWith("Review free space and WAL/database-file growth"))
+            }
+    }
+
+    @Test fun anOldExhaustedRunDoesNotEscalateOnceStorageIsHealthy() {
+        val json = JSONObject(
+            HealthAudit.storage(
+                snapshot(StorageHealthSeverity.HEALTHY).copy(remediation = remediation(StorageRemediationVerdict.EXHAUSTED)),
+            ).statusJson(),
+        )
+        assertEquals("exhausted", json.getString("remediation"))
+        assertEquals("No action needed.", json.getString("action"))
     }
 
     @Test fun criticalAndDatabaseFailureUsePersistentSeverityCopyWithoutRawFailureText() {
