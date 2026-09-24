@@ -1316,6 +1316,9 @@ internal class MqttBridge(
     private val wifiDiagnostics: (WifiDiagnosticDemand) -> WifiDiagnosticSnapshot = { WifiDiagnosticSnapshot() },
     private val wifiOutages: () -> WifiOutageCounts? = { null },
     private val learnedProximityEligibility: () -> Boolean = { false },
+    // Learned proximity once it is settled; null while the calibration is still loading or has closed, so a
+    // transient false is never stated to Home Assistant as a panel without the sensor.
+    private val learnedProximityState: () -> Boolean? = { null },
     private val onAutoSleepConfigChanged: (Boolean) -> Unit = {},
     // This bridge generation's right to report lifecycle observations, issued at construction by the
     // service. A bridge can outlive both the service that configured it AND its own replacement on
@@ -1854,6 +1857,32 @@ internal class MqttBridge(
 
     /** The converger's registered channels, which grow as hardware capabilities are confirmed. */
     internal fun stateChannelKeys(): Set<String> = stateConverger.keys()
+
+    /**
+     * The native describe's view of [stateChannelKeys]: a channel whose [hardwareAvailability] is settled
+     * false is stated unsupported instead of described. An unsettled channel stays described, as before.
+     */
+    internal fun nativeChannelShape(): io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape {
+        val learned = runCatching(learnedProximityState).getOrNull()
+        val (unsupported, served) = stateConverger.keys().partition { hardwareAvailability(it, learned) == false }
+        return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape(served, unsupported)
+    }
+
+    /**
+     * Whether this panel can fill a hardware-gated entity: the one definition MQTT discovery (its
+     * availability override, which publishes an empty config when false) and the native describe (which
+     * states the channel unsupported when false) share. Null when [key] is not hardware-gated here, or when
+     * its answer is not settled; MQTT passes learned proximity from its announcement snapshot, the native
+     * describe from the live, settled source.
+     */
+    private fun hardwareAvailability(key: String, learnedProximity: Boolean?): Boolean? = when (key) {
+        "temperature" -> hasTemperature
+        "humidity" -> hasHumidity
+        "proximity", "proximity_level" -> learnedProximity
+        SoftwareUpdateEntities.stateChannelKey(SoftwareComponent.COMPANION) ->
+            softwareUpdateInputs(SoftwareComponent.COMPANION)?.let { !SoftwareUpdateEntities.companionAbsent(it) }
+        else -> null
+    }
 
     /** The primary state sink: derives the topic, retain flag and payload bytes from the channel. */
     private fun publishStateObservation(
@@ -4069,10 +4098,10 @@ internal class MqttBridge(
             stateConverger.reconcile("illuminance", force = true)
         }
         val learnedProximity = capabilitySnapshot?.hasLearnedProximity == true
-        registryExposable("proximity", proximityAvail, learnedProximity) {
+        registryExposable("proximity", proximityAvail, hardwareAvailability("proximity", learnedProximity)) {
             stateConverger.reconcile("proximity", force = true)
         }
-        registryExposable("proximity_level", proximityAvail, learnedProximity) {
+        registryExposable("proximity_level", proximityAvail, hardwareAvailability("proximity_level", learnedProximity)) {
             stateConverger.reconcile("proximity_level", force = true)
         }
         registryExposable("auto_sleep_activity", autoSleepAvail, availableOverride = config.autoSleep) {
@@ -4083,10 +4112,10 @@ internal class MqttBridge(
         // skipping — a panel upgrading from a version that DID expose them then sheds the now-duplicate,
         // stale entity from HA (SensorManager never streams a value on that chip). Empty on a panel that
         // never had the sensor is a harmless no-op.
-        registryExposable("temperature", availableOverride = hasTemperature) {
+        registryExposable("temperature", availableOverride = hardwareAvailability("temperature", null)) {
             stateConverger.reconcile("temperature", force = true)
         }
-        registryExposable("humidity", availableOverride = hasHumidity) {
+        registryExposable("humidity", availableOverride = hardwareAvailability("humidity", null)) {
             stateConverger.reconcile("humidity", force = true)
         }
         if (hasButtonBacklight) {

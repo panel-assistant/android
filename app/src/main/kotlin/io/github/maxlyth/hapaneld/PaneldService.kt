@@ -1881,13 +1881,14 @@ class PaneldService : Service() {
             wifiDiagnostics = wifiDiagnostics::snapshot,
             wifiOutages = { wifiOutageTracker.counts() },
             learnedProximityEligibility = sensors::hasLearnedProximity,
+            learnedProximityState = sensors::learnedProximityState,
             onAutoSleepConfigChanged = {
                 acceptCommittedAutoSleepSetting(liveSettingAuthority) { refreshAutoSleepPresence() }
             },
             // This bridge generation's lease, registered with the runtime as the live broker channel
             // just below. A bridge that outlives its service OR its own replacement cannot report.
             haLifecycleLease = lease,
-        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bind(bridge::stateChannelKeys)) }
+        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape)) }
     }
 
     private fun buildMdns(identity: NetworkRuntimeIdentity): MdnsAdvertiser = MdnsAdvertiser(
