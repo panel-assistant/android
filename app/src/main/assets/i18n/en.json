@@ -22809,7 +22809,8 @@
       "context": "Source-selector button for the ha-paneld application process log.",
       "risk": "ordinary",
       "siblings": [
-        "logs.source.system"
+        "logs.source.system",
+        "logs.source.webview"
       ],
       "placeholders": [],
       "frozen": [],
@@ -22823,7 +22824,8 @@
       "context": "Source-selector button for the full device logcat stream.",
       "risk": "ordinary",
       "siblings": [
-        "logs.source.app"
+        "logs.source.app",
+        "logs.source.webview"
       ],
       "placeholders": [],
       "frozen": [],
@@ -22846,6 +22848,35 @@
       "softMaxChars": 78,
       "hardMaxChars": 112
     },
+    "logs.source.webview": {
+      "text": "Browser console",
+      "sourceHash": "6fd4e6a13f23312fb198b6fb47a5013687d31f5c9a8b389bce479772da5a14d6",
+      "surface": "logs",
+      "context": "Source-selector button for the dashboard WebView's JavaScript console, captured over the DevTools relay.",
+      "risk": "ordinary",
+      "siblings": [
+        "logs.source.app",
+        "logs.source.system"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 30,
+      "hardMaxChars": 50
+    },
+    "logs.source.webview_hint": {
+      "text": "Dashboard JavaScript console; needs log shipping configured and the DevTools relay running",
+      "sourceHash": "5e04aff148bc43faa3aef257af4b79aae5c01fe4e902c4faa5c3399caac59908",
+      "surface": "logs",
+      "context": "Tooltip on the Browser console source button explaining its prerequisites.",
+      "risk": "ordinary",
+      "siblings": [
+        "logs.source.webview"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 130,
+      "hardMaxChars": 180
+    },
     "logs.state.app_live": {
       "text": "app · live",
       "sourceHash": "30f051b05d0ec7e9b1931b2d8f036f92ba4b3d8987408e6b778a36aeea0a1f73",
@@ -22855,7 +22886,9 @@
       "siblings": [
         "logs.state.app_paused",
         "logs.state.system_live",
-        "logs.state.system_paused"
+        "logs.state.system_paused",
+        "logs.state.webview_live",
+        "logs.state.webview_paused"
       ],
       "placeholders": [],
       "frozen": [],
@@ -22871,7 +22904,9 @@
       "siblings": [
         "logs.state.app_live",
         "logs.state.system_live",
-        "logs.state.system_paused"
+        "logs.state.system_paused",
+        "logs.state.webview_live",
+        "logs.state.webview_paused"
       ],
       "placeholders": [],
       "frozen": [],
@@ -22930,7 +22965,9 @@
       "siblings": [
         "logs.state.app_live",
         "logs.state.app_paused",
-        "logs.state.system_paused"
+        "logs.state.system_paused",
+        "logs.state.webview_live",
+        "logs.state.webview_paused"
       ],
       "placeholders": [],
       "frozen": [],
@@ -22946,12 +22983,50 @@
       "siblings": [
         "logs.state.app_live",
         "logs.state.app_paused",
-        "logs.state.system_live"
+        "logs.state.system_live",
+        "logs.state.webview_live",
+        "logs.state.webview_paused"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 24,
       "hardMaxChars": 44
+    },
+    "logs.state.webview_live": {
+      "text": "browser · live",
+      "sourceHash": "0892a17cf3398b2c81d85b1822f633ce9c2bc65894f2167eb5f2c23f4a386e98",
+      "surface": "logs",
+      "context": "Live connection state for the WebView browser-console log source.",
+      "risk": "ordinary",
+      "siblings": [
+        "logs.state.app_live",
+        "logs.state.app_paused",
+        "logs.state.system_live",
+        "logs.state.system_paused",
+        "logs.state.webview_paused"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 42
+    },
+    "logs.state.webview_paused": {
+      "text": "browser · paused",
+      "sourceHash": "784bfaddb8a895cca3c82ed554dd6ba636d45067f4ce072aa700d4100a7e084c",
+      "surface": "logs",
+      "context": "Paused rendering state for the WebView browser-console log source.",
+      "risk": "ordinary",
+      "siblings": [
+        "logs.state.app_live",
+        "logs.state.app_paused",
+        "logs.state.system_live",
+        "logs.state.system_paused",
+        "logs.state.webview_live"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 26,
+      "hardMaxChars": 46
     },
     "logs.title": {
       "text": "Live logs",

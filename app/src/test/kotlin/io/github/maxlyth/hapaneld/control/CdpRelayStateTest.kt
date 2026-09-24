@@ -252,4 +252,17 @@ class CdpRelayStateTest {
             relayStatusExposure(RelayExposureState.UNKNOWN, LocalRelayListenerState.UNKNOWN),
         )
     }
+
+    @Test
+    fun autoAndBuiltinSelectionsExposeThisAppsOwnRenderer() {
+        val own = "io.panelassistant.android"
+        assertEquals(own, CdpRelay.relayRendererPackage("", own))
+        assertEquals(own, CdpRelay.relayRendererPackage("builtin", own))
+        assertEquals(own, CdpRelay.relayRendererPackage(own, own))
+        assertEquals(
+            "io.homeassistant.companion.android",
+            CdpRelay.relayRendererPackage("io.homeassistant.companion.android", own),
+        )
+        assertNull(CdpRelay.relayRendererPackage("not a package; rm -rf /", own))
+    }
 }
