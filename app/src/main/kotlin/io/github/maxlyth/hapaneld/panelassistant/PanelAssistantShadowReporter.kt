@@ -126,8 +126,7 @@ internal class PanelAssistantShadowReporter(
     fun offer(): PanelAssistantHelloOffer {
         val shape = synchronized(lock) { source }.invoke()
         val descriptors = describable(shape.served)
-        val unsupported = describable(shape.unsupported).keys.filterNot(descriptors::containsKey)
-        return PanelAssistantHelloOffer(descriptors.values.toList(), unsupported)
+        return PanelAssistantHelloOffer(descriptors.values.toList(), describable(shape.unsupported).keys.toList())
     }
 
     /** Start reporting on an accepted shadow session described by [channels]. */
