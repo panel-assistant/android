@@ -12,6 +12,8 @@
 
 ### Changed
 
+- **The app asks for notification permission at most once per version, and never in front of your dashboard.** On Android 13 and later the app asked for it every time it opened without it, and waited for an answer before showing anything. Whatever installs the app is meant to grant it, so the request is now only a fallback: the app starts and chooses its screen first, asks only over its own start screen when nothing is about to take you back to the dashboard, and does not ask again for the same version, whatever you answered.
+
 - **Display details now separate physical size from rendering density.** NSPanel Pro profiles identify the display's active size by model and pixel dimensions, while `/api/v1/display` reports that physical size alongside the current logical density and viewport. Changing the display scaling no longer changes the reported physical size. Older profiles that specify only an approximate pixel density still load.
 
 - **A panel on an IPv6-only network can now be discovered.** The panel announced itself on the local network only at an IPv4 address, so on a network with no IPv4 it announced nothing Home Assistant could find. It now announces the addresses it actually has: its IPv4 address as before, plus its IPv6 address when the network has both, or its IPv6 address alone when that is all there is. It prefers a stable IPv6 address to a temporary one, so Home Assistant is not left holding an address that changes within a day. A panel with only IPv4 announces exactly what it did before. Panel Assistant 0.5.1 is needed to set up a panel found at an IPv6 address.
