@@ -77,13 +77,24 @@ class HandshakeEscalationWiringContractTest {
             "reloadTarget must decide from the committed document",
             reload.contains("retryNeedsFreshLoad(committedPageUrl, config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)"),
         )
-        val started = body("override fun onPageStarted(")
-        val recorded = started.indexOf("committedPageUrl = url")
-        assertTrue("onPageStarted must record every commit", recorded >= 0)
-        assertTrue(
-            "the reconnecting page's commit must be recorded before its early return",
-            recorded < started.indexOf("if (!dashboardNavigationAllowed(config.haUrl, url))"),
+        // Only the page actually on screen counts. onPageStarted marks a load STARTING, and a hung load
+        // leaves the previous page drawn, so recording there let a retry reload() the reconnecting page.
+        val visible = body("override fun onPageCommitVisible(")
+        assertTrue("onPageCommitVisible must record the page on screen", visible.contains("committedPageUrl = url"))
+        val started = dashboard.substring(
+            dashboard.indexOf("override fun onPageStarted("),
+            dashboard.indexOf("override fun onPageCommitVisible("),
         )
+        assertFalse("a load that has only started must not count as shown", started.contains("committedPageUrl = url"))
+        assertTrue(
+            "only one site may record the shown page",
+            Regex("""committedPageUrl = url""").findAll(dashboard).count() == 1,
+        )
+        // Drawing the reconnecting page forgets any earlier Home Assistant page before the load is issued.
+        val reconnecting = body("private fun showReconnecting(")
+        val forgotten = reconnecting.indexOf("committedPageUrl = null")
+        assertTrue("the reconnecting page must forget the shown page", forgotten >= 0)
+        assertTrue(forgotten < reconnecting.indexOf("loadDataWithBaseURL("))
         // Every renderer replacement forgets the old commit, so a new WebView starts with nothing committed.
         assertTrue(body("private fun teardownWeb(").contains("committedPageUrl = null"))
         val build = body("private fun buildCompatibleAndLoad(")
