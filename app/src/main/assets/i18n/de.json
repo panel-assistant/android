@@ -928,6 +928,11 @@
       "sourceHash": "442aded87a55aa8c8f7d5ff0c30228150d4b1cb8756e4be138d615ca4708fc26",
       "state": "machine-cross-checked"
     },
+    "configure.enum.dashboard_theme.ambient": {
+      "text": "Umgebungslicht",
+      "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
+      "state": "machine-cross-checked"
+    },
     "configure.enum.dashboard_theme.dark": {
       "text": "Dunkel",
       "sourceHash": "60acc53f13a5d1bf115878c4a785e9a43e8286c4139a8402a6ac7d23966f9153",
@@ -10389,9 +10394,9 @@
       "text": "Dashboard-App"
     },
     "settings.dashboard_theme.help": {
-      "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
-      "state": "machine-cross-checked",
-      "text": "Nur integrierter Renderer. „Home Assistant folgen“ überlässt Home Assistant die Hell-/Dunkel-Auswahl des Dashboards; dafür liefert die Einstellung „Dunkelmodus“ den Standard. „Dunkel“ und „Hell“ legen die Auswahl auf diesem Panel fest, wenn Home Assistant auf „Automatisch“ steht – gedacht für ein Kiosk-Dashboard ohne Seitenleiste, über die sich die Profilseite von Home Assistant erreichen ließe. Eine ausdrückliche Auswahl von „Hell“ oder „Dunkel“ in Home Assistant hat weiterhin Vorrang; verwende „Automatisch“ oder einen separaten Panel-Benutzer. Die Rückkehr zu „Home Assistant folgen“ gibt die Auswahl genau so zurück, wie sie vorgefunden wurde."
+      "text": "Nur integrierter Renderer. „Home Assistant folgen“ überlässt Home Assistant die Hell-/Dunkel-Auswahl des Dashboards; dafür liefert die Einstellung „Dunkelmodus“ den Standard. „Dunkel“ und „Hell“ legen die Auswahl auf diesem Panel fest, wenn Home Assistant auf „Automatisch“ steht – gedacht für ein Kiosk-Dashboard ohne Seitenleiste, über die sich die Profilseite von Home Assistant erreichen ließe. „Umgebungslicht“ wählt je nach vom Modell „Automatische Helligkeit“ erfasstem Raumlicht „Dunkel“ oder „Hell“ und wechselt erst nach einer Minute konstanter Helligkeit; „Automatische Helligkeit“ muss aktiviert sein, und es folgt „Home Assistant“, bis ein Messwert vorliegt. Eine ausdrückliche Auswahl von „Hell“ oder „Dunkel“ in Home Assistant hat weiterhin Vorrang; verwende „Automatisch“ oder einen separaten Panel-Benutzer. Die Rückkehr zu „Home Assistant folgen“ gibt die Auswahl genau so zurück, wie sie vorgefunden wurde.",
+      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
       "sourceHash": "bf3c175b44e9bb6505851bf08a6a0c9f30320a493a6cdff8af55e3cdb85c1e44",

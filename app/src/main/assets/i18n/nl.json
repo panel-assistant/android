@@ -9154,8 +9154,8 @@
    "state": "machine-draft"
   },
   "settings.dashboard_theme.help": {
-   "text": "Alleen ingebouwde renderer. Volg Home Assistant laat de keuze tussen licht en donker op het dashboard over aan Home Assistant, waarvoor de instelling ‘Donkere modus’ een standaardwaarde biedt. Je kunt in dit paneel kiezen tussen ‘Donker’ en ‘Licht’ wanneer Home Assistant is ingesteld op Auto, voor een kiosk-dashboard zonder zijbalk om bij de Home Assistant profielpagina van. Een expliciete keuze voor Licht of Donker in Home Assistant wint nog steeds; gebruik Auto of een aparte paneelgebruiker. Terug naar Volgen Home Assistant geeft de keuze precies terug zoals die werd aangetroffen.",
-   "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
+   "text": "Alleen ingebouwde renderer. Volg Home Assistant laat de keuze tussen licht en donker op het dashboard over aan Home Assistant, waarvoor de instelling ‘Donkere modus’ een standaardwaarde biedt. Je kunt in dit paneel kiezen tussen ‘Donker’ en ‘Licht’ wanneer Home Assistant is ingesteld op Auto, voor een kiosk-dashboard zonder zijbalk om bij de Home Assistant profielpagina van. ‘Ambient’ kiest ‘Donker’ of ‘Licht’ op basis van het licht in de kamer zoals het ‘auto-brightness’-model dat waarneemt, en verandert pas nadat de kamer een minuut lang donkerder of lichter is gebleven; hiervoor moet ‘Auto-helderheid’ aanstaan en volgt het ‘Home Assistant’ totdat er een meting is. Een expliciete keuze voor Licht of Donker in Home Assistant wint nog steeds; gebruik Auto of een aparte paneelgebruiker. Terug naar Volgen Home Assistant geeft de keuze precies terug zoals die werd aangetroffen.",
+   "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
    "state": "machine-draft"
   },
   "settings.dashboard_theme.label": {
@@ -11016,6 +11016,11 @@
   "configure.enum.cpu_governor.performance": {
    "text": "Prestaties",
    "sourceHash": "442aded87a55aa8c8f7d5ff0c30228150d4b1cb8756e4be138d615ca4708fc26",
+   "state": "machine-draft"
+  },
+  "configure.enum.dashboard_theme.ambient": {
+   "text": "Omgevingslicht",
+   "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
    "state": "machine-draft"
   },
   "configure.enum.dashboard_theme.dark": {
