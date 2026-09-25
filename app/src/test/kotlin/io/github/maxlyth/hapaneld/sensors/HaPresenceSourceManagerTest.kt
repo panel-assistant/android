@@ -86,6 +86,10 @@ class HaPresenceSourceManagerTest {
         manager.configure(request(discoveryId = DID))
         runCurrent()
 
+        assertTrue(
+            "never went live; last=${aggregates.lastOrNull()?.phase}/${aggregates.lastOrNull()?.detail}",
+            aggregates.any { it.phase == HaPresencePhase.LIVE },
+        )
         val live = aggregates.last { it.phase == HaPresencePhase.LIVE }
         assertEquals("Room", live.areaName)
         assertEquals(setOf(ENTITY), live.selectedEntityIds)
@@ -123,10 +127,11 @@ class HaPresenceSourceManagerTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val connection = FakeExactConnection()
         val resubscribed = FakeExactConnection()
+        val released = FakeExactConnection()
         val discovery = FakePresenceTransport().apply { registryFailure = true }
         val aggregates = mutableListOf<HaPresenceAggregate>()
         val (manager, owner) = manager(
-            dispatcher, discovery, FakeExactTransport(connection, resubscribed), aggregates,
+            dispatcher, discovery, FakeExactTransport(connection, resubscribed, released), aggregates,
         )
         manager.configure(request())
         runCurrent()
@@ -164,6 +169,22 @@ class HaPresenceSourceManagerTest {
         advanceTimeBy(2_000L)
         runCurrent()
         assertEquals(4, discovery.registryCount)
+
+        // It also resets the count: the next failure opens a one-minute window again, not four.
+        discovery.registryFailure = true
+        resubscribed.messages.send(HaExactSocketMessage.RegistryChanged)
+        runCurrent()
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(5, discovery.registryCount)
+        listOf(resubscribed, released).forEach { it.messages.trySend(HaExactSocketMessage.RegistryChanged) }
+        runCurrent()
+        advanceTimeBy(61_999L)
+        runCurrent()
+        assertEquals(5, discovery.registryCount)
+        advanceTimeBy(1L)
+        runCurrent()
+        assertEquals(6, discovery.registryCount)
         manager.close()
         owner.close()
     }

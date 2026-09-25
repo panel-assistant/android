@@ -176,7 +176,7 @@ class HaPanelDeviceMatcherTest {
             .put(state("binary_sensor.den_proximity", "on", "occupancy"))
             .put(state("binary_sensor.study_motion", "off", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", setOf(entry))
+        val projection = project(devices, areas, entities, states)
 
         assertEquals("study", projection.panelAreaId)
         assertEquals(
@@ -202,7 +202,7 @@ class HaPanelDeviceMatcherTest {
             .put(state("binary_sensor.native_proximity", "on", "occupancy"))
             .put(state("binary_sensor.yard_motion", "off", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", setOf(entry))
+        val projection = project(devices, areas, entities, states)
 
         assertEquals(listOf("binary_sensor.yard_motion"), projection.candidates.map { it.entityId })
     }
@@ -236,9 +236,17 @@ class HaPanelDeviceMatcherTest {
         assertTrue(manager.contains("panelAssistantEntryIds(snapshot.panelAssistantProbe, discoveryId)"))
     }
 
-    private fun found(devices: List<JSONObject>, entries: Set<String>, uid: String = "abc"): String =
-        (HaPanelDeviceMatcher.preferred(devices, uid, "panel", entries) as HaPanelDeviceMatcher.Match.Found)
-            .device.getString("id")
+    private fun found(devices: List<JSONObject>, entries: Set<String>, uid: String = "abc"): String {
+        val match = HaPanelDeviceMatcher.preferred(devices, uid, "panel", entries)
+        assertTrue("expected exactly one device, got $match", match is HaPanelDeviceMatcher.Match.Found)
+        return (match as HaPanelDeviceMatcher.Match.Found).device.getString("id")
+    }
+
+    /** Asserts the projection succeeds, so a lost device match fails as an assertion, not an exception. */
+    private fun project(devices: JSONObject, areas: JSONObject, entities: JSONObject, states: JSONArray) =
+        runCatching { HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", setOf(entry)) }
+            .also { assertTrue("projection failed: ${it.exceptionOrNull()?.message}", it.isSuccess) }
+            .getOrThrow()
 
     /** A `get_entries` answer for two Panel Assistant panels, as Core returns it. */
     private fun probe() = JSONObject().put("result", JSONObject()
