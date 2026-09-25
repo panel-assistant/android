@@ -1603,6 +1603,9 @@ class DashboardActivity : AppCompatActivity() {
         wakeMediaRecovery.invalidate()
         resolved?.let { homeDashboardResolution = it.copy(confirmed = false) }
         if (recreate) {
+            // As at every other rebuild site: a surviving flag would make the new WebView's first load
+            // error skip the reconnecting page and leave Chromium's own error page on the panel.
+            interstitialShown = false
             teardownWeb()
             buildAndLoad(config)
         } else {
