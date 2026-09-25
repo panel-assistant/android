@@ -98,7 +98,7 @@ class AmbientThemeTest {
     @Test fun `a reading inside the gap abandons a pending change`() {
         val decider = AmbientThemeDecider(initialDark = false)
         decider.observe(0L, dark)
-        decider.observe(30_000L, 0.2)
+        decider.observe(30_000L, 0.5)
         assertNull(decider.pendingDeadlineMs())
         assertFalse(decider.observe(60_000L, dark))
         assertEquals(false, decider.dark)
