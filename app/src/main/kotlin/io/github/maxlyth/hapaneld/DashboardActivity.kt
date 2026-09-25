@@ -1536,8 +1536,11 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun onWatchdogTimeout() {
-        // Never retry on a dead activity, while frozen (screen off), or latched — all runaway loops.
-        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || frontendConnected || !screenAwake || authLatched) return
+        // Never retry on a dead activity or latched — both runaway loops. While frozen (screen off) the
+        // policy answers NONE: a paused page cannot complete the handshake, so that fire is not a miss.
+        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || frontendConnected || authLatched) return
+        val step = retryPolicy.onWatchdogFired(screenAwake)
+        if (step == HandshakeRecoveryStep.NONE) return
         val session = externalBusSession
         if (session != null && v2Handshake.onTimeout(session)) {
             showBlockedAdmissionScreen(
@@ -1545,6 +1548,10 @@ class DashboardActivity : AppCompatActivity() {
                 getString(R.string.home_assistant_unresponsive_detail),
                 AdmissionOutcome.BRIDGE_HANDSHAKE_MISSED,
             )
+            return
+        }
+        if (step != HandshakeRecoveryStep.RELOAD) {
+            escalateHandshakeRecovery(step)
             return
         }
         Log.w(TAG, "frontend handshake watchdog fired (no connection-status:connected) — reloading")
@@ -1557,6 +1564,57 @@ class DashboardActivity : AppCompatActivity() {
         BuiltinDashboard.recordLoadStart(lastFullLoadAt)      // warm TTI origin for the recovery load
         clearedThisLoad = false
         armWatchdog(retryPolicy.afterRetry())
+    }
+
+    /**
+     * A reload has already failed [DashboardRetryPolicy.consecutiveMisses] times in a row, so do more
+     * than reload. [HandshakeRecoveryStep.FRESH_LOAD] loads the dashboard target afresh into the held
+     * WebView (a new bus and auth document, never `reload()`) and re-runs the authenticated dashboard
+     * resolution behind it, which corrects the page if the answer changed. [HandshakeRecoveryStep.RECREATE_WEBVIEW]
+     * replaces the WebView as well, through the same teardown and build a settings change uses. Neither
+     * touches the crash budget or relaunches anything: the renderer crash path stays the only owner of
+     * both.
+     */
+    private fun escalateHandshakeRecovery(step: HandshakeRecoveryStep) {
+        val misses = retryPolicy.consecutiveMisses
+        if (step == HandshakeRecoveryStep.FRESH_LOAD) {
+            Log.w(
+                TAG,
+                "frontend handshake missed $misses times in a row — escalating: fresh dashboard resolution " +
+                    "and load, then WebView recreation, with backoff",
+            )
+        }
+        val config = Config(this)
+        // The resolution the page is showing, if it still belongs to the current credential and path. It
+        // goes back to provisional, so the resolution below refreshes it live instead of reusing it.
+        val resolved = homeDashboardResolution
+            ?.takeIf { it.owner == homeDashboardOwner(config) && it.resolution.path != null }
+        val recreate = step == HandshakeRecoveryStep.RECREATE_WEBVIEW || resolved == null || web == null
+        Log.w(
+            TAG,
+            "frontend handshake watchdog fired (miss $misses) — " +
+                if (recreate) "recreating the dashboard WebView" else "fresh dashboard load",
+        )
+        // Same reason as the reload: this load now owns recovery.
+        wakeMediaRecovery.invalidate()
+        resolved?.let { homeDashboardResolution = it.copy(confirmed = false) }
+        if (recreate) {
+            teardownWeb()
+            buildAndLoad(config)
+        } else {
+            loadCorrectedHomeDashboard()
+            // A failed bus rotation already replaced the page with a blocked screen; resolving now would
+            // build a renderer over it.
+            if (web != null) {
+                provisionalHomeDashboardEpoch = dashboardNavigationEpoch
+                resolveHomeDashboardAndLoad(config)
+            }
+        }
+        // No renderer means a native screen took over and owns its own recovery.
+        if (web == null) return
+        BuiltinDashboard.recordRendererReload(SystemClock.elapsedRealtime()) // involuntary: handshake stalled
+        // The new load armed the cold-start window; keep it no shorter than the reload it replaced.
+        armWatchdog(maxOf(INITIAL_HANDSHAKE_MS, retryPolicy.afterRetry()))
     }
 
     /** Fired from the external-bus `connection-status` message: the frontend telling us it connected or
@@ -1580,6 +1638,13 @@ class DashboardActivity : AppCompatActivity() {
             interstitialShown = false // real page demonstrably loaded
             unlatchAuth("frontend connected") // auth demonstrably works — clear any stale latch + counters
             main.removeCallbacks(watchdog)
+            retryPolicy.escalatedTo?.let { reached ->
+                Log.i(
+                    TAG,
+                    "frontend handshake recovered after ${retryPolicy.consecutiveMisses} consecutive misses " +
+                        "(escalated to ${reached.name.lowercase()})",
+                )
+            }
             retryPolicy.reset()
             wakeMediaRecovery.activateDeferred(generation)?.let { ticket ->
                 web?.let { w -> armWakeMediaRecovery(w, generation, ticket) }

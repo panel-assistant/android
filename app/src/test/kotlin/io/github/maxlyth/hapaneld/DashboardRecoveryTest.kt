@@ -43,6 +43,64 @@ class DashboardRecoveryTest {
         assertEquals(90_000L, policy.connectionFailureDelay(wasConnected = true))
     }
 
+    /** Fire [count] awake misses and return the 1-based miss numbers that did something other than reload. */
+    private fun escalationsWithin(policy: DashboardRetryPolicy, count: Int): List<Pair<Int, HandshakeRecoveryStep>> =
+        (1..count).mapNotNull { miss ->
+            val step = policy.onWatchdogFired(screenAwake = true)
+            if (step == HandshakeRecoveryStep.RELOAD) null else miss to step
+        }
+
+    @Test fun `a single missed handshake reloads on the existing cadence`() {
+        val policy = DashboardRetryPolicy()
+        assertEquals(HandshakeRecoveryStep.RELOAD, policy.onWatchdogFired(screenAwake = true))
+        assertEquals(1, policy.consecutiveMisses)
+        assertNull(policy.escalatedTo)
+        assertEquals(10_000L, policy.afterRetry())
+        assertEquals(HandshakeRecoveryStep.RELOAD, policy.onWatchdogFired(screenAwake = true))
+        assertNull(policy.escalatedTo)
+    }
+
+    @Test fun `consecutive misses escalate to a fresh load then WebView recreation with backoff`() {
+        val policy = DashboardRetryPolicy()
+        val escalations = escalationsWithin(policy, 300)
+        assertEquals(
+            listOf(
+                3 to HandshakeRecoveryStep.FRESH_LOAD,
+                6 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                12 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                24 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                48 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                96 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                // Capped: never sparser than one recreation per 60 misses.
+                156 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                216 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                276 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+            ),
+            escalations,
+        )
+        assertEquals(300, policy.consecutiveMisses)
+        assertEquals(HandshakeRecoveryStep.RECREATE_WEBVIEW, policy.escalatedTo)
+    }
+
+    @Test fun `a completed handshake resets the miss count and the escalation ladder`() {
+        val policy = DashboardRetryPolicy()
+        escalationsWithin(policy, 7)
+        assertEquals(HandshakeRecoveryStep.RECREATE_WEBVIEW, policy.escalatedTo)
+        policy.reset()
+        assertEquals(0, policy.consecutiveMisses)
+        assertNull(policy.escalatedTo)
+        assertEquals(listOf(3 to HandshakeRecoveryStep.FRESH_LOAD, 6 to HandshakeRecoveryStep.RECREATE_WEBVIEW), escalationsWithin(policy, 6))
+    }
+
+    @Test fun `a screen-off fire is not a miss and does not reset the count`() {
+        val policy = DashboardRetryPolicy()
+        escalationsWithin(policy, 2)
+        repeat(50) { assertEquals(HandshakeRecoveryStep.NONE, policy.onWatchdogFired(screenAwake = false)) }
+        assertEquals(2, policy.consecutiveMisses)
+        assertNull(policy.escalatedTo)
+        assertEquals(HandshakeRecoveryStep.FRESH_LOAD, policy.onWatchdogFired(screenAwake = true))
+    }
+
     @Test fun `successful connection resets startup backoff`() {
         val policy = DashboardRetryPolicy()
         policy.afterRetry()
