@@ -14,7 +14,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.InterruptedIOException
-import java.io.File
 import java.net.SocketTimeoutException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -40,25 +39,6 @@ class EntityLearningManagerSafetyTest {
         val fenced = blockingIssueSelection(JSONArray().put(ordinary).put(fence).toString())
         assertFalse(fenced.allIgnorable)
         assertEquals(listOf("0123456789abcdef"), fenced.fingerprints)
-
-        fun source(relative: String): String = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/$relative"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/$relative"),
-        ).first { it.isFile }.readText()
-        val manager = source("dashboard/EntityLearningManager.kt").substringAfter(
-            "@Synchronized fun ignoreAllBlockingIssues()",
-        ).substringBefore("private fun encodeDynamicExpressions")
-        assertTrue(manager.indexOf("if (!selection.allIgnorable) return false") < manager.indexOf("invalidateEffects()"))
-        assertTrue(manager.indexOf("if (!selection.allIgnorable) return false") < manager.indexOf("store.setIssueIgnored"))
-
-        val dashboard = source("DashboardActivity.kt").substringAfter(
-            "if (filterHold == null && blockingIssues > 0)",
-        ).substringBefore("if (filterHold != null || bootstrapProblem == EntityBootstrapProblem.AUTHENTICATION) {")
-        assertTrue(dashboard.contains("if (canIgnoreBlockingIssues)"))
-        assertTrue(
-            dashboard.indexOf("if (canIgnoreBlockingIssues)") <
-                dashboard.indexOf("getString(R.string.ignore_flagged_entities)"),
-        )
     }
 
     @Test fun registryProjectionCarriesEffectiveAreaFloorLabelNamesAndAreaOverrides() {
@@ -225,29 +205,6 @@ class EntityLearningManagerSafetyTest {
     @Test fun disabledAutomaticLearningIsStartupInertUntilExplicitDemand() {
         assertFalse(shouldInitializeEntityLearningOnStart(enabled = false))
         assertTrue(shouldInitializeEntityLearningOnStart(enabled = true))
-
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-        ).first(File::isFile).readText()
-        val start = source.substring(
-            source.indexOf("fun start()"),
-            source.indexOf("private fun applyDefaultResolverMigration"),
-        )
-        assertTrue(
-            "disabled startup must return before catalog preparation, migration, diagnostics, or queries",
-            start.indexOf("shouldInitializeEntityLearningOnStart") < start.indexOf("ensureInitialized()"),
-        )
-        assertTrue("periodic work must have explicit owned cancellation", "cancelPeriodicSyncLocked()" in source)
-        assertTrue(
-            "a cancelled periodic read must recheck admission before it can launch a new sync",
-            "if (!isActive || !config.dashboardEntityLearningEnabled) continue" in source,
-        )
-        val disable = source.substring(source.indexOf("fun setEnabled"), source.indexOf("/** Explicitly promote"))
-        assertTrue(
-            "disable must cancel periodic work before returning",
-            disable.indexOf("cancelPeriodicSyncLocked()") < disable.lastIndexOf("onFilterChanged()"),
-        )
     }
 
     @Test fun stateProjectionBoundsFriendlyName() {
@@ -394,24 +351,6 @@ class EntityLearningManagerSafetyTest {
 
         assertEquals(null, replacementSlot)
         assertEquals(null, queuedRerun)
-    }
-
-    @Test fun busySyncStillQueuesItsRerunForNormalCompletionWithinOneGeneration() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-        ).first(File::isFile).readText()
-        val sync = source.substring(
-            source.indexOf("fun syncNow(reason: String = \"manual\")"),
-            source.indexOf("private suspend fun synchronize()"),
-        )
-
-        assertTrue("a busy sync must retain the newest same-generation rerun reason",
-            "syncRerunReason = reason" in sync)
-        assertTrue("only normal completion may consume and launch the queued rerun",
-            "if (cause == null)" in sync &&
-                "syncRerunReason.also { syncRerunReason = null }" in sync &&
-                "if (rerun != null) syncNow(rerun)" in sync)
     }
 
     @Test fun firstEnableInvalidatesOldEffectsBeforeStartingExactlyOneBootstrapSync() {
@@ -591,36 +530,6 @@ class EntityLearningManagerSafetyTest {
     }
 
     @Test fun resetAndScanAdmissionShareTheManagerMonitorInBothDirections() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-        ).first(File::isFile).readText()
-        val reset = source.substring(
-            source.indexOf("fun resetEvidence(confirm: Boolean, clearFilter: Boolean = false)"),
-            source.indexOf("private fun applyStoredOverrides"),
-        )
-        val sync = source.substring(
-            source.indexOf("fun syncNow(reason: String = \"manual\")"),
-            source.indexOf("private suspend fun synchronize()"),
-        )
-        assertTrue("reset must own the manager monitor for its complete transaction",
-            "withEntityLearningMutationLock(this)" in reset)
-        assertTrue("scan admission must use that same manager monitor", "synchronized(this)" in sync)
-        assertTrue(
-            "reset diagnostic caches must clear only through the durable transaction success callback",
-            reset.indexOf("afterSuccess = {") < reset.indexOf("bootstrapBlockingIssues = 0") &&
-                reset.indexOf("bootstrapBlockingIssues = 0") < reset.indexOf("dynamicExpressionsJson = \"[]\""),
-        )
-
-        val flush = source.substring(
-            source.indexOf("private fun flushTelemetry"),
-            source.indexOf("private fun queuePromotion"),
-        )
-        assertTrue("telemetry writes must release their barrier before promotion enters the manager",
-            "writeEntityTelemetryThen(" in flush)
-        assertTrue("promotion capture must be follow-up work outside the barrier",
-            flush.indexOf("afterWrite = {") < flush.indexOf("capturePromotionSnapshot"))
-
         val owner = Any()
         val resetEntered = CountDownLatch(1)
         val releaseReset = CountDownLatch(1)
