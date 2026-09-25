@@ -99,7 +99,12 @@ async function themeRow(p) {
       labels: [...select.options].map((o) => o.textContent),
       selected: select.value,
       help: help.textContent,
-      rowOverflow: el.scrollWidth > el.clientWidth + 1,
+      // Measured from the laid-out boxes, not scrollWidth: WebKit counts a select's own clipped
+      // label as scrollable overflow of its container even though the control stays inside the row.
+      rowOverflow: [...el.querySelectorAll('*')].some((child) => {
+        const b = child.getBoundingClientRect();
+        return b.width > 0 && (b.left < box.left - 1 || b.right > box.right + 1);
+      }),
       helpInside: helpBox.left >= box.left - 1 && helpBox.right <= box.right + 1,
       selectInside: selectBox.left >= box.left - 1 && selectBox.right <= box.right + 1,
       pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,

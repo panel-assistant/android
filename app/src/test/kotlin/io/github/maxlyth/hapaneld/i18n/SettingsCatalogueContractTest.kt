@@ -153,7 +153,7 @@ class SettingsCatalogueContractTest {
             assertEquals(english, checkNotNull(source.strings[key]).text)
         }
         val uniqueBindings = expected.values.flatMap { it.values }.toSet()
-        assertEquals(27, uniqueBindings.size)
+        assertEquals(28, uniqueBindings.size)
         uniqueBindings.forEach { (key, english) ->
             assertTrue("missing exact JS binding for $key", configure.contains("[\"$key\", \"$english\"]"))
             val record = checkNotNull(source.strings[key]) { "English catalogue is missing $key" }
