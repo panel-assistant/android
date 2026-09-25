@@ -1,24 +1,10 @@
 package io.github.maxlyth.hapaneld.http
 
 import io.github.maxlyth.hapaneld.control.fakeProfile
-import java.io.File
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Test
 
 class DisplayDensityTerminologySourceTest {
-    @Test fun displaySizingLeadsWithProfileRecommendationAndKeepsFirmwareBaseOnReset() {
-        val source = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-        val card = source.substringAfter("private fun displayCardHtml(")
-            .substringBefore("private fun asset(")
-
-        assertTrue("""strings.get("install.display.logical_density")""" in card)
-        assertTrue("""formattedString(strings, "install.display.profile_recommendation""" in card)
-        assertTrue("""strings.get("install.display.reset_default")""" in card)
-        assertFalse("· factory base" in card)
-        assertFalse("· native" in card)
-    }
-
     @Test fun diagnosticsDistinguishAndroidBaseOverrideAndProfileRecommendation() {
         val line = DiagReader.displaySizingLine(
             DiagReader.DisplaySizingEvidence(

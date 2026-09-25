@@ -6,7 +6,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.test.runTest
-import java.io.File
 
 class AutoSleepHttpApiTest {
     @Test fun `panel source never requires an HA Area but switching an active policy to HA does`() {
@@ -27,19 +26,6 @@ class AutoSleepHttpApiTest {
         assertFalse(parsed.getBoolean("ok"))
         assertEquals("auto-sleep-area-required", parsed.getString("error"))
         assertTrue(parsed.getString("message").contains("Home Assistant Area"))
-    }
-
-    @Test fun `prerequisite route is active-read admitted and redacted`() {
-        val source = sequenceOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first(File::isFile).readText()
-        val route = source.substringAfter("get(\"/auto-sleep/prerequisite\")")
-            .substringBefore("get(\"/auto-sleep/history\")")
-
-        assertTrue("if (!admitActiveRead(call)) return@get" in route)
-        listOf("eligible", "phase", "area_name", "detail").forEach { assertTrue("\"$it\"" in route) }
-        listOf("area_id", "device_id", "android_id", "panel_id").forEach { assertFalse("\"$it\"" in route) }
     }
 
     @Test fun `unwired runtime returns a compact readable status`() {

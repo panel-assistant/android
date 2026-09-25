@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.dashboard
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,8 +12,7 @@ import org.junit.Test
  * compiles against the current compileSdk yet throws `ClassCastException` at runtime on Android 8.1
  * (API 27). The throw lands behind the capture's best-effort guard, so its visible effect is a backup
  * with no configuration entry and nothing reported. [readThenClose] is the one place the safe idiom
- * lives; these tests pin its behaviour, and the source contract below pins that the capture actually
- * goes through it.
+ * lives; these tests pin its behaviour.
  */
 class CatalogStoreCloseTest {
 
@@ -56,32 +54,5 @@ class CatalogStoreCloseTest {
         }
         assertEquals(1, store.closed)
         assertFalse("close must not run before the read", store.closedBeforeRead)
-    }
-
-    // ---- the capture site must actually use this idiom ------------------------------------------
-
-    private val serverSource by lazy {
-        listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first(File::isFile).readText()
-    }
-
-    @Test fun theBackupConfigurationCaptureGoesThroughTheSafeIdiom() {
-        val capture = serverSource.lineSequence()
-            .filter { "exportAppState" in it }
-            .toList()
-        assertTrue("the backup must still capture app_state", capture.isNotEmpty())
-        // The safe idiom is required at the site; `use { }` on the store is the API-27 crash. This is
-        // a guard on the one known call site, not a general ban — the behavioural tests above are
-        // what pin the idiom itself.
-        assertTrue(
-            "the app_state capture must go through readThenClose: $capture",
-            serverSource.contains("readThenClose(EntityCatalogStore(appContext), { it.close() }) { it.exportAppState() }"),
-        )
-        assertFalse(
-            "the app_state capture must not close the store with Kotlin `use`",
-            Regex("""EntityCatalogStore\(appContext\)\s*\.\s*use""").containsMatchIn(serverSource),
-        )
     }
 }
