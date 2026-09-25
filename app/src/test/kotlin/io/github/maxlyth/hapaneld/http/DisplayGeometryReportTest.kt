@@ -89,6 +89,7 @@ class DisplayGeometryReportTest {
     }
 
     @Test fun reportMatchesTheOpenApiSchema() {
+        // Source-text reason: the shipped OpenAPI schema is the public API wire format.
         val root = listOf(File("src/main/assets/openapi.json"), File("app/src/main/assets/openapi.json")).first { it.isFile }
         val schema = JSONObject(root.readText()).getJSONObject("components").getJSONObject("schemas").getJSONObject("DisplayGeometry")
         val path = JSONObject(root.readText()).getJSONObject("paths").getJSONObject("/api/v1/display").getJSONObject("get")

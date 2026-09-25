@@ -25,6 +25,7 @@ class EntityFilterAdviceTest {
         // Every profile that declares an `soc` block must tier from it, or the panels we actually support
         // would silently fall back to platform guessing. Read from the shipped YAML so adding a profile with
         // a core we do not recognise fails here rather than degrading quietly in front of a user.
+        // Source-text reason: loads the shipped device profiles as input data.
         val dir = listOf(File("src/main/assets/device-profiles"), File("app/src/main/assets/device-profiles"))
             .first { it.isDirectory }
         val declaring = dir.listFiles { f: File -> f.extension == "yaml" }.orEmpty()

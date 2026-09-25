@@ -21,6 +21,7 @@ import org.junit.Test
  * commands, including while a newer command's write is still in progress.
  */
 class CommandReadbackGateTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
 
     private class ManualPump {
         private val tasks = ConcurrentLinkedQueue<() -> Unit>()

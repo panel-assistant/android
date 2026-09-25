@@ -945,7 +945,7 @@ class PinnedBundledRevisionUpgradeTest {
     private fun rollbackFile(ref: ProfileRef) = File(directory, "device-profiles/rollback/${ref.id}/${ref.revision}.yaml")
 
     private companion object {
-        /** SHA-256 of `app/src/main/assets/device-profiles/tpa10.yaml` as released in v0.9.7-rc2. */
+        /** SHA-256 of the shipped `device-profiles/tpa10.yaml` asset as released in v0.9.7-rc2. */
         const val RC2_TPA10_REVISION = "1aef00dc9ecde07bd2770a09dc40c48f19b6a6a303c5516202a889f005ce0653"
     }
 }

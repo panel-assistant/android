@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RoomClimateExposureDefaultContractTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private val bridge = File("src/main/kotlin/io/github/maxlyth/hapaneld/MqttBridge.kt").readText()
 
     @Test fun diagnosticAndRoomClimateRuntimeUsesRegistryExposureDefaults() {

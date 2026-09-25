@@ -13,6 +13,7 @@ import java.io.File
 import java.util.Base64
 
 class EmbedProofTest {
+    // Source-text reason: loads the shipped embed test vectors as input data.
     private val vectors = JSONObject(File("src/main/assets/panel_assistant_embed_v1.json").readText())
     private val proof = vectors.getJSONObject("proof")
     private val keyJson = proof.getJSONObject("key")
