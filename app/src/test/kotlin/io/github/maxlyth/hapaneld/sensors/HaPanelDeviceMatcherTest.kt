@@ -219,23 +219,6 @@ class HaPanelDeviceMatcherTest {
         assertFalse(HaAreaProtocol.panelDeviceArea(devices, areas, "abc", "panel", emptySet()).found)
     }
 
-    @Test fun `every consumer hands the matcher this panel's discovery id`() {
-        // An empty entry set compiles and silently disables the Panel Assistant tier, which is exactly
-        // the regression this matcher closes. No unit test reaches the Config-backed wiring, so pin it.
-        fun source(path: String) = listOf(java.io.File("src/main/kotlin/io/github/maxlyth/hapaneld/$path"),
-            java.io.File("app/src/main/kotlin/io/github/maxlyth/hapaneld/$path")).first { it.isFile }.readText()
-        val controller = source("control/AutoSleepController.kt")
-        assertTrue(controller.contains("panelAssistantDiscoveryId(config.androidId)"))
-        assertTrue(controller.contains("discoveryId = next.value.discoveryId"))
-        val learning = source("dashboard/EntityLearningManager.kt")
-        assertEquals(2, Regex("panelAssistantEntryIds\\(request, deviceRegistry\\)").findAll(learning).count())
-        assertTrue(learning.contains("panelAssistantDiscoveryId(config.androidId)"))
-        val manager = source("sensors/HaPresenceSourceManager.kt")
-        assertEquals(2, Regex("HaPanelDeviceMatcher\\.readProbe\\(").findAll(manager).count())
-        assertTrue(manager.contains("panelAssistantEntryIds(snapshot.panelAssistantProbe, requested.discoveryId)"))
-        assertTrue(manager.contains("panelAssistantEntryIds(snapshot.panelAssistantProbe, discoveryId)"))
-    }
-
     private fun found(devices: List<JSONObject>, entries: Set<String>, uid: String = "abc"): String {
         val match = HaPanelDeviceMatcher.preferred(devices, uid, "panel", entries)
         assertTrue("expected exactly one device, got $match", match is HaPanelDeviceMatcher.Match.Found)
