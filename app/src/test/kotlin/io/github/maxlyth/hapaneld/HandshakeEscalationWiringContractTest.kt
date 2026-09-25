@@ -41,9 +41,13 @@ class HandshakeEscalationWiringContractTest {
     }
 
     @Test fun aPlainMissReloadsExactlyAsBefore() {
-        val reload = watchdog.substring(watchdog.indexOf("if (step != HandshakeRecoveryStep.RELOAD)"))
+        val branch = watchdog.indexOf("if (step != HandshakeRecoveryStep.RELOAD)")
+        assertTrue("the watchdog has no escalation branch", branch >= 0)
+        val reload = watchdog.substring(branch)
         assertTrue(reload.contains("escalateHandshakeRecovery(step)"))
-        val plain = reload.substring(reload.indexOf("return\n        }"))
+        val branchEnd = reload.indexOf("return\n        }")
+        assertTrue("the escalation branch does not return before the plain reload", branchEnd >= 0)
+        val plain = reload.substring(branchEnd)
         assertTrue(plain.contains("frontend handshake watchdog fired (no connection-status:connected) — reloading"))
         assertTrue(plain.contains("if (!reloadTarget()) return"))
         assertTrue(plain.contains("armWatchdog(retryPolicy.afterRetry())"))
@@ -52,11 +56,33 @@ class HandshakeEscalationWiringContractTest {
     @Test fun escalationNeverReloadsTheCommittedDocumentAndNeverRunsFasterThanAReload() {
         assertFalse("an escalated fire must load afresh, not reload()", escalation.contains(".reload()"))
         assertFalse(escalation.contains("reloadTarget("))
-        assertTrue(escalation.contains("loadCorrectedHomeDashboard()"))
+        assertTrue("the fresh step must load the target afresh", escalation.contains("loadCorrectedHomeDashboard()"))
         val teardown = escalation.indexOf("teardownWeb()")
-        assertTrue(teardown >= 0)
-        assertTrue(escalation.indexOf("buildAndLoad(config)") > teardown)
-        assertTrue(escalation.contains("armWatchdog(maxOf(INITIAL_HANDSHAKE_MS, retryPolicy.afterRetry()))"))
+        assertTrue("the recreation step must tear the WebView down", teardown >= 0)
+        assertTrue("the recreation step must rebuild after teardown", escalation.indexOf("buildAndLoad(config)") > teardown)
+        assertTrue(
+            "an escalated window must be no shorter than the reload it replaces",
+            escalation.contains("armWatchdog(maxOf(INITIAL_HANDSHAKE_MS, retryPolicy.afterRetry()))"),
+        )
+    }
+
+    @Test fun aRetryDecidesFromTheCommittedDocument() {
+        val reload = body("private fun reloadTarget(")
+        assertTrue(
+            "reloadTarget must decide from the committed document",
+            reload.contains("retryNeedsFreshLoad(committedPageUrl, config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)"),
+        )
+        val started = body("override fun onPageStarted(")
+        val recorded = started.indexOf("committedPageUrl = url")
+        assertTrue("onPageStarted must record every commit", recorded >= 0)
+        assertTrue(
+            "the reconnecting page's commit must be recorded before its early return",
+            recorded < started.indexOf("if (!dashboardNavigationAllowed(config.haUrl, url))"),
+        )
+        // Every renderer replacement forgets the old commit, so a new WebView starts with nothing committed.
+        assertTrue(body("private fun teardownWeb(").contains("committedPageUrl = null"))
+        val build = body("private fun buildCompatibleAndLoad(")
+        assertTrue(build.indexOf("committedPageUrl = null") > build.indexOf("web = w"))
     }
 
     @Test fun escalationTakesNoCrashBudgetAndRelaunchesNothing() {

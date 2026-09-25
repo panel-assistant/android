@@ -203,6 +203,26 @@ internal fun dashboardNavigationAllowed(configuredUrl: String, candidateUrl: Str
 }.getOrDefault(false)
 
 /**
+ * Whether a dashboard retry must load the target afresh instead of `reload()`.
+ *
+ * `reload()` repeats the COMMITTED document. The reconnecting page is a `data:` document, so while it is
+ * committed a reload shows it again and never reaches Home Assistant, and before anything has committed
+ * there is nothing to reload. The reconnecting-page flag cannot answer this on its own: it is cleared when
+ * the replacing load is issued, and a load that hangs — Home Assistant accepting connections while it
+ * starts — leaves the reconnecting page committed. Nor can `WebView.getUrl()`, which reports a pending
+ * browser-initiated load. Reproduced on hardware on 2026-09-25: with Home Assistant serving again, the
+ * page stayed on `data:` and reloaded it every 60 seconds. [dashboardRenderer] is false for the on-panel
+ * sign-in view, which has no dashboard target to load.
+ */
+internal fun retryNeedsFreshLoad(
+    committedUrl: String?,
+    configuredUrl: String,
+    interstitialShown: Boolean,
+    dashboardRenderer: Boolean,
+): Boolean = interstitialShown ||
+    (dashboardRenderer && (committedUrl.isNullOrBlank() || !dashboardNavigationAllowed(configuredUrl, committedUrl)))
+
+/**
  * A Home Assistant URL is configured but no credential is: the built-in renderer cannot render yet, but
  * it CAN run the on-panel sign-in that produces the missing credential.
  *

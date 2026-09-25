@@ -43,6 +43,22 @@ class DashboardRecoveryTest {
         assertEquals(90_000L, policy.connectionFailureDelay(wasConnected = true))
     }
 
+    @Test fun `a retry over the committed reconnecting page loads the dashboard afresh`() {
+        val ha = "http://192.0.2.10:8123"
+        // The committed document DevTools reported on the trapped panel (2026-09-25), with HA serving.
+        assertTrue(retryNeedsFreshLoad("data:text/html;charset=utf-8;base64,", ha, interstitialShown = false, dashboardRenderer = true))
+        assertTrue(retryNeedsFreshLoad("about:blank", ha, interstitialShown = false, dashboardRenderer = true))
+        assertTrue(retryNeedsFreshLoad(null, ha, interstitialShown = false, dashboardRenderer = true))
+        assertTrue(retryNeedsFreshLoad("$ha/lovelace/0?external_auth=1", ha, interstitialShown = true, dashboardRenderer = true))
+    }
+
+    @Test fun `a retry over a committed dashboard page reloads it as before`() {
+        val ha = "http://192.0.2.10:8123"
+        assertFalse(retryNeedsFreshLoad("$ha/lovelace/0?external_auth=1", ha, interstitialShown = false, dashboardRenderer = true))
+        // The on-panel sign-in view has no dashboard target; it keeps reload().
+        assertFalse(retryNeedsFreshLoad(null, ha, interstitialShown = false, dashboardRenderer = false))
+    }
+
     /** Fire [count] awake misses and return the 1-based miss numbers that did something other than reload. */
     private fun escalationsWithin(policy: DashboardRetryPolicy, count: Int): List<Pair<Int, HandshakeRecoveryStep>> =
         (1..count).mapNotNull { miss ->
