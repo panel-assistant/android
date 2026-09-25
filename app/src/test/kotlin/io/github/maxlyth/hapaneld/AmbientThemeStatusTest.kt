@@ -49,6 +49,7 @@ class AmbientThemeStatusTest {
 
     @Test fun aDarkRoomReportsAmbientResolvedDarkWithItsReasonAndLevel() {
         val p = present(DashboardTheme.DARK, AmbientThemeReason.ROOM_DARK, level = 0.04321, effectiveDark = true)
+        assertEquals("the resolved scheme comes from the effective policy", "dark", p.themeAmbient)
         val j = json(p)
         assertEquals("ambient", j.getString("theme_policy"))
         assertEquals("dark", j.getString("theme_ambient"))

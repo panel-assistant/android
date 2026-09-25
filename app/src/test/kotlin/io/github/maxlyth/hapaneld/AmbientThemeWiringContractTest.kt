@@ -29,6 +29,35 @@ class AmbientThemeWiringContractTest {
         assertFalse(ambientThemeNeedsRebuild(DashboardTheme.DARK, null, builtinRenderer = true, foreground = true))
     }
 
+    @Test fun `one rebuild is requested per resolution so a relaunch that cannot rebuild does not loop`() {
+        assertFalse(
+            ambientThemeNeedsRebuild(
+                DashboardTheme.DARK, DashboardTheme.LIGHT, builtinRenderer = true, foreground = true,
+                alreadyRequested = DashboardTheme.DARK,
+            ),
+        )
+        assertTrue(
+            "a new resolution is requested even after an earlier one",
+            ambientThemeNeedsRebuild(
+                DashboardTheme.LIGHT, DashboardTheme.DARK, builtinRenderer = true, foreground = true,
+                alreadyRequested = DashboardTheme.DARK,
+            ),
+        )
+    }
+
+    @Test fun `a dashboard returning to the front is checked again`() {
+        val service = source("PaneldService.kt")
+        val registration = service.substringAfter("BuiltinDashboard.setForegroundGainedListener {")
+            .substringBefore("\n            }\n")
+        assertTrue(registration.contains("reconcileAmbientTheme()"))
+        assertTrue("teardown must clear it", service.contains("BuiltinDashboard.setForegroundGainedListener(null)"))
+        val reconcile = service.substringAfter("private fun reconcileAmbientTheme()").substringBefore("\n    }\n")
+        assertTrue(reconcile.contains("if (applied == effective) ambientRebuildRequestedFor = null"))
+        assertTrue(reconcile.contains("alreadyRequested = ambientRebuildRequestedFor"))
+        val dashboard = source("control/BuiltinDashboard.kt")
+        assertTrue(dashboard.contains("if (changed && value) foregroundGainedListener?.invoke()"))
+    }
+
     // --- source wiring ------------------------------------------------------------------------------
 
     @Test fun `the controller judges the model's own output on the room's own scale`() {
@@ -51,9 +80,11 @@ class AmbientThemeWiringContractTest {
         assertTrue(publish.contains("scheduler.execute { if (!closed) onAmbientThemeChanged() }"))
         val service = source("PaneldService.kt")
         assertTrue(service.contains("onAmbientThemeChanged = ::reconcileAmbientTheme"))
-        val reconcile = service.substringAfter("private fun reconcileAmbientTheme() {").substringBefore("\n    }\n")
+        assertTrue(service.contains("private fun reconcileAmbientTheme(): Unit = synchronized(ambientRebuildLock) {"))
+        val reconcile = service.substringAfter("private fun reconcileAmbientTheme()").substringBefore("\n    }\n")
         assertTrue(reconcile.contains("system.reloadDashboard(SystemController.BUILTIN_DASHBOARD"))
-        assertTrue(reconcile.contains("appliedSignature = BuiltinDashboard.appliedThemeSignature"))
+        assertTrue(reconcile.contains("val applied = BuiltinDashboard.appliedThemeSignature"))
+        assertTrue(reconcile.contains("appliedSignature = applied,"))
     }
 
     @Test fun `native screens follow the effective theme too`() {

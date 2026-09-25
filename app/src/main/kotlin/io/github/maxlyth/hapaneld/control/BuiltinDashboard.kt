@@ -81,7 +81,16 @@ object BuiltinDashboard {
             val changed = field != value
             field = value
             if (changed) foregroundListener?.invoke(value)
+            if (changed && value) foregroundGainedListener?.invoke()
         }
+
+    // A second, independent subscriber: the Ambient theme re-checks the page's baked scheme each time
+    // the dashboard returns to the front, because a verdict reached while it was paused (screen off,
+    // another app on top) had nothing in front to rebuild. Kept apart from [foregroundListener] so
+    // neither owner can displace the other.
+    @Volatile private var foregroundGainedListener: (() -> Unit)? = null
+
+    fun setForegroundGainedListener(l: (() -> Unit)?) { foregroundGainedListener = l }
 
     // --- navbar swipe-reveal handoff ---
     //
