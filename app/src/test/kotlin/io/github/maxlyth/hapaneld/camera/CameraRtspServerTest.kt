@@ -43,11 +43,11 @@ class CameraRtspServerTest {
 
         override fun acquireStream(request: StreamRequest): StreamAdmission {
             synchronized(requests) { requests += request }
-            refusal?.let { return StreamAdmission.Refused(it) }
             admitting?.let {
                 entered.countDown()
                 check(it.await(5, TimeUnit.SECONDS)) { "the test never released the admission" }
             }
+            refusal?.let { return StreamAdmission.Refused(it) }
             acquired.incrementAndGet()
             var open = true
             val lease = AutoCloseable {
@@ -74,10 +74,12 @@ class CameraRtspServerTest {
         readTimeoutMs: Int = 10_000,
         maxConnections: Int = 8,
         maxBodyBytes: Int = 16 * 1024,
+        afterAdoption: () -> Unit = {},
     ): CameraRtspServer {
         val s = CameraRtspServer(
             port = 0, source = { source }, maxClients = maxClients, queuePackets = queuePackets,
             readTimeoutMs = readTimeoutMs, maxConnections = maxConnections, maxBodyBytes = maxBodyBytes,
+            afterAdoption = afterAdoption,
         )
         servers += s
         s.setListening(true)
@@ -555,6 +557,50 @@ class CameraRtspServerTest {
             assertTrue("the connection ends as it did before the end was scoped", client.ended())
             await("the lease it was granted is given back") { source.released.get() == 1 }
             assertEquals(0, server.facts().clients)
+        }
+    }
+
+    @Test fun aStreamEndAfterTheGrantIsAdoptedButBeforeTheDescribeReturnsStillDropsTheClient() {
+        val source = FakeSource()
+        val adopted = CountDownLatch(1)
+        val resume = CountDownLatch(1)
+        val server = server(source, afterAdoption = {
+            adopted.countDown()
+            check(resume.await(5, TimeUnit.SECONDS)) { "the test never resumed the DESCRIBE" }
+        })
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { client ->
+            client.send("DESCRIBE", url, "Accept: application/sdp")
+            assertTrue("the grant has been adopted", adopted.await(5, TimeUnit.SECONDS))
+            // Session 1 ends, and a replacement's encoder publishes, while this DESCRIBE is still between
+            // adopting its session-1 grant and returning.
+            server.onStreamEnded(through = 2L)
+            server.onParameterSets(laterSets, attempt = 2L)
+            resume.countDown()
+            await("the lease it adopted is given back") { source.released.get() == 1 }
+            assertEquals("the ended session's client is not left attached", 0, server.facts().clients)
+            assertNull("and never gets as far as PLAY", runCatching { client.play(url) }.getOrNull())
+            server.onAccessUnit(listOf(laterSlice), keyFrame = false, ptsUs = 0L, attempt = 2L)
+            assertEquals("so no replacement media reaches it", 1, source.acquired.get())
+        }
+    }
+
+    @Test fun aStreamEndDuringADescribeTheCameraThenRefusesStillDropsTheConnection() {
+        val source = FakeSource(refusal = CameraRefusal.STOPPING)
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        val admitting = CountDownLatch(1)
+        source.admitting = admitting
+        Client(server.boundPort!!).use { client ->
+            client.send("DESCRIBE", url, "Accept: application/sdp")
+            assertTrue("the DESCRIBE is inside the camera's admission", source.entered.await(5, TimeUnit.SECONDS))
+            // The session this DESCRIBE would have joined ends, and the camera then refuses it: the
+            // connection belonged to the ending, and goes with it as a stream end always took it.
+            server.onStreamEnded(through = 2L)
+            admitting.countDown()
+            val status = client.statusOrEnd()
+            assertTrue("refused or dropped, never described: $status", status == null || status == 503)
+            assertTrue("the connection ends", client.ended())
         }
     }
 

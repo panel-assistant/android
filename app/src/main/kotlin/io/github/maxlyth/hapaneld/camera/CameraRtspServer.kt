@@ -37,6 +37,11 @@ class CameraRtspServer(
     /** Accepted connections of any state, attached or not; enforced before a connection owns a thread. */
     private val maxConnections: Int = MAX_CONNECTIONS,
     private val maxBodyBytes: Int = MAX_BODY_BYTES,
+    /**
+     * Runs on a client's reader thread just after a DESCRIBE has adopted its grant and before the
+     * DESCRIBE returns; a seam for tests that place a stream end exactly there. Production passes nothing.
+     */
+    private val afterAdoption: () -> Unit = {},
 ) : CameraStreamTransport {
 
     private val lock = Any()
@@ -211,7 +216,11 @@ class CameraRtspServer(
         private var closed = false
         /** The camera session generation that granted [lease]; null while the client holds none. */
         private var grantedIn: Long? = null
-        /** True from the capacity check until the camera's answer is adopted or refused. */
+        /**
+         * True from the capacity check until the camera's answer is adopted or refused, and cleared in the
+         * critical section that decides that answer: from then on the client is judged by its grant, so a
+         * stream end that arrives before the DESCRIBE returns cannot be recorded and then forgotten.
+         */
         private var describing = false
         /**
          * The latest stream end that arrived while this client was describing. Whose client it is cannot
@@ -230,6 +239,12 @@ class CameraRtspServer(
                 return false
             }
             return grantedIn.let { it == null || it <= through }
+        }
+
+        /** Under [lock]: the camera has answered; stop recording ends and hand back the latest one recorded. */
+        private fun answeredLocked(): Long? {
+            describing = false
+            return endedWhileDescribing.also { endedWhileDescribing = null }
         }
 
         @Volatile var playing = false
@@ -258,12 +273,12 @@ class CameraRtspServer(
             try {
                 return when (val admission = source().acquireStream(request)) {
                     is StreamAdmission.Refused -> {
-                        if (synchronized(lock) { endedWhileDescribing != null }) close()
+                        if (synchronized(lock) { answeredLocked() } != null) close()
                         Described.Refused(admission.reason)
                     }
                     is StreamAdmission.Granted -> {
                         val adopted = synchronized(lock) {
-                            val ended = endedWhileDescribing
+                            val ended = answeredLocked()
                             if (closed || (ended != null && admission.session <= ended)) {
                                 false
                             } else {
@@ -278,6 +293,7 @@ class CameraRtspServer(
                             close()
                             Described.Refused(CameraRefusal.STOPPING)
                         } else {
+                            afterAdoption()
                             sdpOrRefusal(admission.params)
                         }
                     }
