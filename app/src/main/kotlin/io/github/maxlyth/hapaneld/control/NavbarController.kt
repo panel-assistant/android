@@ -365,7 +365,9 @@ class NavbarController(
                 unregisterVolumeReceiverLocked()
                 return
             }
-            if (volReceiver != null) return
+            // closeAdmission unregistered it synchronously from onDestroy; a mode apply still in flight
+            // must not register it again, or it outlives the service's teardown.
+            if (volReceiver != null || closed) return
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(ctx: Context, intent: Intent) {
                     main.post { if (!isClosed()) updateVolLabel() }
