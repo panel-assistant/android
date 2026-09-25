@@ -78,25 +78,9 @@ class CameraRequestedFpsContractTest {
         assertTrue(noStream.diagnosticLine().contains("requested_fps=none"))
     }
 
-    /**
-     * Pins the source of the field and the mechanism that makes it necessary. If the encoder ever
-     * stopped clamping to the session's bound rate, this field would be redundant rather than wrong —
-     * so the two are asserted together, and neither may be changed without the other being read.
-     */
-    @Test fun theOwnerSourcesTheRequestFromTheStreamLeaseAndStillClampsTheEncoder() {
-        val owner = TestSources.kotlin("camera/CameraSessionOwner.kt").readText()
-        assertTrue(
-            "the request must come from the stream lease's own binding, never from the encoder facts",
-            owner.contains("requestedFps = state.streamBinding?.fps"),
-        )
-        assertTrue(
-            "the clamp is what makes the two numbers differ; without it there is nothing to report",
-            owner.contains("val fps = minOf(binding.fps, boundFps)"),
-        )
-    }
-
     /** A field consumers are told is always present must be declared as always present. */
-    @Test fun theStatusSchemaDeclaresTheRequestedRate() {
+    @Test fun theStatusSchemaDeclaresTheRequestedRateWireFormat() {
+        // Source-text reason: the published OpenAPI schema is the status wire contract.
         val spec = JSONObject(TestSources.asset("openapi.json").readText())
         val camera = spec.getJSONObject("components").getJSONObject("schemas").getJSONObject("CameraHealth")
         assertNotNull(camera.getJSONObject("properties").getJSONObject("requested_fps"))

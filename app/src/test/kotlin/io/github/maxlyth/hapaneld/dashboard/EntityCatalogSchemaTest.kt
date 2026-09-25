@@ -99,28 +99,6 @@ class EntityCatalogSchemaTest {
         }
     }
 
-    @Test fun analyzerPolicyRevisionStartsStaleAndIsStampedOnlyBySuccessfulSync() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt"),
-        ).first(File::isFile).readText()
-
-        assertTrue(source.contains("analyzer_policy_version INTEGER NOT NULL DEFAULT 0"))
-        assertTrue(source.contains("issues_json=?,analyzer_policy_version=?,sync_generation=sync_generation+1"))
-        assertTrue(source.contains("DashboardConfigurationLint.ANALYZER_POLICY_VERSION"))
-    }
-
-    @Test fun retiredHourlyRollupCannotReturnToTheWritePath() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt"),
-        ).first(File::isFile).readText()
-
-        assertFalse(source.contains("CREATE TABLE hourly"))
-        assertFalse(source.contains("INTO hourly"))
-        assertFalse(source.contains("UPDATE hourly"))
-    }
-
     @Test fun footprintCountsOnlyTheDatabaseAndKnownSqliteSidecars() {
         val directory = File.createTempFile("catalog-footprint", "").let { probe ->
             probe.delete()

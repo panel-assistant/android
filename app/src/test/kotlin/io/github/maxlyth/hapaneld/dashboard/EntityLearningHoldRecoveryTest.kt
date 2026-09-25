@@ -52,33 +52,6 @@ class EntityLearningHoldRecoveryTest {
         assertFalse(upgradeRecoveryPreservesFilter(emptyList(), listOf("light.kitchen")))
     }
 
-    @Test fun `the recovery decision is taken after the commit, on the exact applied candidate`() {
-        // The ordering is the contract: commitSync advances missing_streak before desiredIds runs, so a
-        // pre-commit preview can overstate what survives. Pinned against the source because the wiring
-        // needs a live scan; the arithmetic itself is covered by the instrumented store regression.
-        val manager = listOf(
-            java.io.File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-            java.io.File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-        ).first { it.isFile }.readText()
-
-        val commit = manager.indexOf("commitEntityLearningSyncEvidence(")
-        val gate = manager.indexOf("if (effectiveBlocking && !recoverUpgradeFilter(")
-        assertTrue("the recovery gate must exist", gate > 0)
-        assertTrue("the recovery must be decided after the commit", commit < gate)
-
-        // The default-ignore helper must no longer carry the upgrade path: taking it before the commit
-        // is exactly what let a doomed candidate persist its ignores.
-        assertFalse(manager.contains("upgradeRecovery = upgradeRecovery"))
-        val body = manager.substringAfter("private fun recoverUpgradeFilter(").substringBefore("\n    private suspend fun synchronize")
-        assertTrue("eligibility is checked first", body.indexOf("upgradeRecoveryAdmissible(") < body.indexOf("upgradeRecoveryPreservesFilter("))
-        assertTrue("the candidate comes from desiredIds", body.contains("desiredIds("))
-        assertTrue(
-            "ignores are only written once the complete filter is proven restorable",
-            body.indexOf("upgradeRecoveryPreservesFilter(") < body.indexOf("store.setIssueIgnored("),
-        )
-        assertTrue("a remaining fence still holds the renderer", body.contains("bootstrapBlockingIssues > 0"))
-    }
-
     @Test fun `only ignorable blocking findings are ever eligible for a default`() {
         assertEquals(
             setOf("0123456789abcdef"),

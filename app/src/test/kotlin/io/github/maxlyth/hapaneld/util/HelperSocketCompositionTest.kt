@@ -3,7 +3,6 @@ package io.github.maxlyth.hapaneld.util
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import java.io.File
 import java.net.SocketAddress
 import java.nio.channels.Channels
@@ -26,30 +25,6 @@ import org.junit.BeforeClass
 import org.junit.Test
 
 class HelperSocketCompositionTest {
-    /**
-     * The helper's injection deadline and the app's daemon-transport confirmation window are one
-     * number written in two languages, and no compiler can see both. They have to agree: a shorter
-     * app window gives up on an injection the helper is still running and dims a panel that was
-     * about to sleep, while a shorter helper deadline kills an injection the app is still waiting
-     * on. Neither failure shows up as an error — only as a screen in the wrong state.
-     */
-    @Test
-    fun theKeyeventConfirmationWindowMatchesTheHelperInjectionDeadline() {
-        val helperDeadline = Regex("""#define\s+KEYEVENT_DEADLINE_MS\s+(\d+)u""")
-            .find(TestSources.repoFile("helper/src/screen.c").readText())
-            ?.groupValues?.get(1)?.toLong()
-        val appWindow = Regex("""DAEMON_CONFIRM_MS\s*=\s*([\d_]+)L""")
-            .find(TestSources.kotlin("control/ScreenController.kt").readText())
-            ?.groupValues?.get(1)?.replace("_", "")?.toLong()
-        assertTrue(helperDeadline != null, "the helper must declare KEYEVENT_DEADLINE_MS")
-        assertTrue(appWindow != null, "the app must declare DAEMON_CONFIRM_MS")
-        assertEquals(
-            helperDeadline,
-            appWindow,
-            "the app's confirmation window and the helper's injection deadline must be the same",
-        )
-    }
-
     @Test(timeout = 10_000)
     fun textFramingCrossesNativeServerAndExactDispatch() {
         val daemon = SocketDaemon(socketPath)

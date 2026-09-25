@@ -9,41 +9,6 @@ class StateBackupPolicyTest {
     private fun row(namespace: String, key: String = "k") =
         ConfigVault.StateRow(namespace, key, "string", "v", 1L)
 
-    /**
-     * The point of the policy. The old backup derived config from a whitelist of declared settings, so a
-     * namespace nobody declared was silently absent; this test makes the same omission a build failure by
-     * requiring every namespace the app actually persists to have a stated disposition.
-     */
-    @Test fun everyNamespaceTheAppPersistsIsClassified() {
-        val sources = listOf(File("src/main/kotlin"), File("app/src/main/kotlin")).first(File::isDirectory)
-        // Namespaces are opened through AppState.preferences in two shapes — positional and with the
-        // argument named — and missing either shape would make this test quietly weaker than it looks.
-        val positional = Regex("""AppState\.preferences\(\s*[^,()]+,\s*"([a-z0-9-]+)"""", RegexOption.DOT_MATCHES_ALL)
-        val named = Regex(
-            """AppState\.preferences\(\s*[^)]*?namespace\s*=\s*"([a-z0-9-]+)"""",
-            RegexOption.DOT_MATCHES_ALL,
-        )
-        val namespaces = sources.walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .flatMap { file ->
-                val text = file.readText()
-                (positional.findAll(text) + named.findAll(text)).map { it.groupValues[1] }
-            }
-            .toSortedSet()
-
-        // Guards the scan itself: on the tree that shipped this test there were ten.
-        assertTrue("the scan found only $namespaces — the patterns have drifted", namespaces.size >= 10)
-        assertTrue("the positional shape must still be found", "config" in namespaces)
-        assertTrue("the named-argument shape must still be found", "auto-brightness-runtime" in namespaces)
-        val unclassified = namespaces.filter { StateBackupPolicy.disposition(it) == null }
-        assertEquals(
-            "every app_state namespace needs a StateBackupPolicy disposition — add one, do not let a " +
-                "new namespace default to being withheld from restore silently",
-            emptyList<String>(),
-            unclassified,
-        )
-    }
-
     @Test fun manifestOwnedNamespacesAreNeverWrittenRawByAStateRestore() {
         val rows = listOf(row("config"), row("device-profiles"))
         // Even on the origin panel: the settings registry and profile catalog own these keys, and a raw
@@ -91,6 +56,38 @@ class StateBackupPolicyTest {
         assertEquals(
             rows.map { it.namespace }.toSortedSet(),
             decoded?.rows?.map { it.namespace }?.toSortedSet(),
+        )
+    }
+
+    // Source-text reason: a whole-tree scan, not a pin on one file: a namespace opened anywhere without a
+    // backup disposition would be silently withheld from restore, which loses user data.
+    @Test fun everyNamespaceTheAppPersistsIsClassified() {
+        val sources = listOf(File("src/main/kotlin"), File("app/src/main/kotlin")).first(File::isDirectory)
+        // Namespaces are opened through AppState.preferences in two shapes — positional and with the
+        // argument named — and missing either shape would make this test quietly weaker than it looks.
+        val positional = Regex("""AppState\.preferences\(\s*[^,()]+,\s*"([a-z0-9-]+)"""", RegexOption.DOT_MATCHES_ALL)
+        val named = Regex(
+            """AppState\.preferences\(\s*[^)]*?namespace\s*=\s*"([a-z0-9-]+)"""",
+            RegexOption.DOT_MATCHES_ALL,
+        )
+        val namespaces = sources.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .flatMap { file ->
+                val text = file.readText()
+                (positional.findAll(text) + named.findAll(text)).map { it.groupValues[1] }
+            }
+            .toSortedSet()
+
+        // Guards the scan itself: on the tree that shipped this test there were ten.
+        assertTrue("the scan found only $namespaces — the patterns have drifted", namespaces.size >= 10)
+        assertTrue("the positional shape must still be found", "config" in namespaces)
+        assertTrue("the named-argument shape must still be found", "auto-brightness-runtime" in namespaces)
+        val unclassified = namespaces.filter { StateBackupPolicy.disposition(it) == null }
+        assertEquals(
+            "every app_state namespace needs a StateBackupPolicy disposition — add one, do not let a " +
+                "new namespace default to being withheld from restore silently",
+            emptyList<String>(),
+            unclassified,
         )
     }
 }

@@ -34,6 +34,7 @@ import org.junit.Test
  * directory, or write them in one of the recognised shapes.
  */
 class RuntimeReadInputsContractTest {
+    // Source-text reason: scans test sources and the build script to keep Gradle Test inputs complete; pins no app code.
     private val declaredDirectories = declared("hapaneld.test.runtimeReadDirectories")
     private val declaredFiles = declared("hapaneld.test.runtimeReadFiles")
     // File-name globs inside the assets directory, not paths, so they bypass the path normalization.

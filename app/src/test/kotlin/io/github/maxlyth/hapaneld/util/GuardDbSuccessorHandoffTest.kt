@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.util
 
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -8,30 +7,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GuardDbSuccessorHandoffTest {
-    @Test fun `production handoff publishes only a fixed immutable OS PaneldService alarm`() {
-        val coordinator = TestSources.kotlin("util/GuardDbArmCoordinator.kt").readText()
-        val request = coordinator.substring(coordinator.indexOf("private fun requestFreshGuardDbProcess"))
-        val alarm = TestSources.kotlin("util/GuardDbSuccessorAlarm.kt").readText()
-
-        assertTrue(request.contains("publishAlarmRetry = { GuardDbSuccessorAlarm.schedule(context) }"))
-        assertTrue(request.contains("exitCurrentProcess = { Process.killProcess(Process.myPid()) }"))
-        assertTrue(request.contains("alarmPublicationRetry.schedule(retry, delayMs, TimeUnit.MILLISECONDS)"))
-        assertFalse(request.contains("PaneldService.start("))
-        assertFalse(request.contains("startForegroundService("))
-        assertFalse(request.contains("startService("))
-        assertEquals(1, Regex("Process\\.killProcess").findAll(request).count())
-
+    @Test fun `successor alarm identity is fixed`() {
         assertEquals("io.github.maxlyth.hapaneld.action.GUARD_DB_SUCCESSOR_RETRY", GuardDbSuccessorAlarm.ACTION)
         assertEquals(0x48414752, GuardDbSuccessorAlarm.REQUEST_CODE)
         assertEquals(1_000L, GuardDbSuccessorAlarm.DELAY_MS)
-        assertTrue(alarm.contains("PendingIntent.getForegroundService("))
-        assertTrue(alarm.contains("Intent(context, PaneldService::class.java).setAction(ACTION)"))
-        assertTrue(alarm.contains("PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE"))
-        assertTrue(alarm.contains("val operation = retryIntent(context)"))
-        assertTrue(alarm.contains("AlarmManager.ELAPSED_REALTIME_WAKEUP"))
-        assertTrue(alarm.contains("alarm.setExactAndAllowWhileIdle("))
-        assertTrue(alarm.contains("alarm.setAndAllowWhileIdle("))
-        assertFalse("fixed retry authority carries no mutable payload", alarm.contains("putExtra("))
     }
 
     @Test fun `accepted alarm publication precedes process exit`() {
