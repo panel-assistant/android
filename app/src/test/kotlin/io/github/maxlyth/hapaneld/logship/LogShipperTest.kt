@@ -129,8 +129,8 @@ class LogShipperTest {
 
     @Test fun ndjsonEventCarriesTheBuildAsTwoKeys() {
         val event = JSONObject(encodedFrames("http", "hello").first())
-        assertEquals(BuildConfig.VERSION_CODE, event.getInt("versionCode"))
-        assertEquals(BuildConfig.APPLICATION_ID, event.getString("package"))
+        assertEquals(BuildConfig.VERSION_CODE, event.optInt("versionCode", -1))
+        assertEquals(BuildConfig.APPLICATION_ID, event.optString("package", "<absent>"))
         assertEquals("hello", event.getString("message"))
         assertEquals("ha-paneld", event.getString("app"))
     }
