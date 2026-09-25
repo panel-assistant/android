@@ -484,8 +484,8 @@ class DashboardActivity : AppCompatActivity() {
     // path must then loadUrl() the real dashboard rather than reload() (which would reload the
     // interstitial itself). Cleared on any real load or connect.
     private var interstitialShown = false
-    // The main-frame document the dashboard WebView last committed (onPageStarted), or null before its
-    // first commit. A retry decides reload() versus a fresh load from this; see retryNeedsFreshLoad.
+    // The main-frame document the dashboard WebView is actually showing (onPageCommitVisible), or null
+    // before its first. A retry decides reload() versus a fresh load from this; see retryNeedsFreshLoad.
     private var committedPageUrl: String? = null
     private var waitingStatus: TextView? = null
     private var waitingStage: TextView? = null
@@ -2147,6 +2147,9 @@ class DashboardActivity : AppCompatActivity() {
         val reconnecting = android.text.TextUtils.htmlEncode(getString(R.string.dashboard_reconnecting))
         val retrying = android.text.TextUtils.htmlEncode(getString(R.string.dashboard_unreachable_retry))
         web?.let(::suspendBusDocument)
+        // Whatever was on screen is being replaced by a page that is not Home Assistant; until this one is
+        // drawn and reported, a retry must not trust an earlier Home Assistant page as the one showing.
+        committedPageUrl = null
         web?.loadDataWithBaseURL(
             null,
             """<!doctype html><html><body style="background:${palette.background};color:${palette.body};
@@ -3746,7 +3749,6 @@ class DashboardActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
-                committedPageUrl = url
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
                 if (!dashboardNavigationAllowed(config.haUrl, url)) {
                     // Native recovery/auth-latch documents are intentionally bridge-free. Their
@@ -3773,6 +3775,14 @@ class DashboardActivity : AppCompatActivity() {
                             AdmissionOutcome.BRIDGE_ATTACH_FAILED,
                         )
                     }
+            }
+
+            // The page now on screen. onPageStarted is documented as a load STARTING, and a load that hangs
+            // leaves the previous page drawn; this callback fires only once that previous page will no
+            // longer be drawn, so a hung load can never make a retry believe Home Assistant is showing.
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                if (!rendererCurrent(generation, view)) return
+                committedPageUrl = url
             }
 
             // Real navigation inside Home Assistant's own frontend — a tapped link, a back gesture,
