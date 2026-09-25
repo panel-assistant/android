@@ -38,9 +38,22 @@ object BuiltinDashboard {
         if (activityOwner == owner) authLatched = value
     }
 
+    /**
+     * The effective dashboard theme policy baked into the live WebView, or null when no renderer
+     * generation holds one. The Ambient theme compares its resolved policy against this, so a new
+     * verdict rebuilds the dashboard only when the page on screen does not already carry it.
+     */
+    @Volatile var appliedThemeSignature: String? = null
+        private set
+
+    @Synchronized fun setAppliedThemeSignature(owner: Long, signature: String) {
+        if (activityOwner == owner) appliedThemeSignature = signature
+    }
+
     @Synchronized fun releaseActivityOwner(owner: Long) {
         if (activityOwner != owner) return
         activityOwner = 0L
+        appliedThemeSignature = null
         authLatched = false
         foreground = false
         // Settlement is CURRENT-generation truth, not a process-lifetime latch: the renderer that

@@ -1540,6 +1540,20 @@ class Config private constructor(
     val dashboardTheme: String get() = DashboardTheme.policy(prefs.getString("dashboard_theme", null))
     fun setDashboardTheme(v: String) { edit { putString("dashboard_theme", DashboardTheme.policy(v)) } }
 
+    /** The policy the renderer and every themed screen act on: [dashboardTheme] with Ambient resolved
+     *  to the room's verdict, and to Follow while auto-brightness (the model that produces it) is off.
+     *  See [DashboardTheme.effective]. */
+    val dashboardThemeEffective: String
+        get() = DashboardTheme.effective(dashboardTheme, dashboardAmbientDark, ambientModelRunning = autoBrightness)
+
+    /** The Ambient theme's last verdict from the room's light (runtime state, not a setting: it
+     *  describes this room, so it never travels in an export). Null until the model has given one. */
+    val dashboardAmbientDark: Boolean?
+        get() = if (prefs.contains("dashboard_theme_ambient_dark")) prefs.getBoolean("dashboard_theme_ambient_dark", true) else null
+    fun setDashboardAmbientDark(dark: Boolean) {
+        prefs.edit().putBoolean("dashboard_theme_ambient_dark", dark).apply()
+    }
+
     /** Built-in renderer: allow Android's overscroll stretch/glow past the top or bottom of the page.
      *  Off by default (a wall panel rarely scrolls; the bounce looks out of place). API-only setting. */
     val dashboardOverscroll: Boolean get() = boolPref("dashboard_overscroll")

@@ -103,6 +103,7 @@ class SettingsCatalogueContractTest {
                 "Follow Home Assistant" to ("configure.enum.dashboard_theme.follow_home_assistant" to "Follow Home Assistant"),
                 "Dark" to ("configure.enum.dashboard_theme.dark" to "Dark"),
                 "Light" to ("configure.enum.dashboard_theme.light" to "Light"),
+                "Ambient" to ("configure.enum.dashboard_theme.ambient" to "Ambient"),
             ),
             "update_channel" to linkedMapOf(
                 "stable" to ("configure.enum.update_channel.stable" to "Stable"),
