@@ -10,7 +10,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -62,22 +61,6 @@ class PerfLifecycleTest {
         } finally {
             PerfReader.stop(); teardown()
         }
-    }
-
-    @Test fun perfReaderHoldsNoContextPackageManagerOrServiceCapture() {
-        val src = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-        ).first(File::exists).readText()
-        // The renderer identity is a pre-resolved immutable value, resolved service-side — PerfReader must
-        // not reach for a PackageManager on the sampling path, nor capture the service via a lambda.
-        // (Actual-usage tokens, so the explanatory comments that mention these terms don't trip the check.)
-        for (forbidden in listOf("packageManager.", "getPackageInfo(", "android.content.Context", "PaneldService", "-> DashboardIdentity")) {
-            assertTrue("PerfReader must not reference $forbidden", forbidden !in src)
-        }
-        assertTrue("renderer identity is one immutable snapshot", "rendererIdentity = RendererIdentity()" in src)
-        assertTrue("target must not remain a second volatile mirror", "@Volatile private var rendererTarget" !in src)
-        assertTrue("own package must not remain a second volatile mirror", "@Volatile private var ownPackage" !in src)
     }
 
     @Test fun rootCapabilityProbeWaitsForAnActivePerfWindow() {

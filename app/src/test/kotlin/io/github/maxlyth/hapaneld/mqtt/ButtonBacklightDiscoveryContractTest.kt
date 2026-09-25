@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ButtonBacklightDiscoveryContractTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private val mqtt = listOf(
         File("src/main/kotlin/io/github/maxlyth/hapaneld/MqttBridge.kt"),
         File("app/src/main/kotlin/io/github/maxlyth/hapaneld/MqttBridge.kt"),

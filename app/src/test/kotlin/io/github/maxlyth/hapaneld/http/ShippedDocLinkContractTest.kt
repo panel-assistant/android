@@ -24,6 +24,7 @@ class ShippedDocLinkContractTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "app/src/main").isDirectory }
 
+    // Source-text reason: shipped doc URLs are user-visible links; a deleted doc page broke one (Shizuku guide).
     private fun shippedSources(): List<File> =
         listOf("app/src/main/kotlin", "app/src/main/assets")
             .map { File(repoRoot, it) }

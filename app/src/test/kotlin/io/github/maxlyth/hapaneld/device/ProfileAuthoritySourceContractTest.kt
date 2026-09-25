@@ -8,6 +8,8 @@ import org.junit.Test
 
 /** Locks out a second, compiled device catalog after YAML became the runtime authority. */
 class ProfileAuthoritySourceContractTest {
+    // Source-text reason: architecture rule scanned over the whole production tree (profile authority
+    // types are built only at the registry and parser boundaries); no single file or name is pinned.
     private val mainKotlin = BundledProfileFixtures.mainKotlinDirectory
     private val mainSource = requireNotNull(mainKotlin.parentFile)
     private val productionKotlinSources by lazy {

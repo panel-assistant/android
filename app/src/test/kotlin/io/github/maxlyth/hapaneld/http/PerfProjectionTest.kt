@@ -6,7 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class PerfProjectionTest {
     private fun snapshot(
@@ -57,41 +56,5 @@ class PerfProjectionTest {
         assertFalse(PerfReader.withinActiveWindow(now = 10_000, lastAccess = 0))
         assertTrue(PerfReader.withinActiveWindow(now = 10_500, lastAccess = 10_000))
         assertFalse(PerfReader.withinActiveWindow(now = 9_000, lastAccess = 10_000))
-    }
-
-    @Test fun performanceProbesUseTheIsolatedBoundedRootLane() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-        ).first(File::isFile).readText()
-        assertTrue(source.contains("Su.runOutputIsolatedBounded"))
-        assertFalse(source.contains("Su.runOutput("))
-    }
-
-    @Test fun regularlyPolledPerformanceProjectionDoesNotBuildFeatureCosts() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-        ).first(File::isFile).readText()
-        val jsonFunction = source.indexOf("fun json(): String")
-        val sampledReturn = source.indexOf("return sampled", jsonFunction)
-
-        assertTrue(jsonFunction >= 0)
-        assertTrue(sampledReturn > jsonFunction)
-        assertFalse(source.substring(jsonFunction, source.indexOf("private fun dashboardJson", jsonFunction))
-            .contains("FeatureCosts.json()"))
-    }
-
-    @Test fun performanceProjectionAddsDashboardDiagnosticsWithoutRemovingLegacyFields() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PerfReader.kt"),
-        ).first(File::isFile).readText()
-        listOf("\"render\"", "\"builtin\"", "\"entityFilter\"", "\"dashboard\"").forEach {
-            assertTrue("missing /perf field $it", source.contains(it))
-        }
-        assertFalse(source.contains("\"featureCosts\":"))
-        assertTrue(source.contains("DashboardTelemetry.json("))
-        assertTrue(source.contains("EntityLearningRuntime.performanceSummaryJson()"))
     }
 }
