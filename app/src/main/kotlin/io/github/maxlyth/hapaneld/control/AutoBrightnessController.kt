@@ -12,9 +12,11 @@ import io.github.maxlyth.hapaneld.sensors.SensorTrace
 import io.github.maxlyth.hapaneld.sensors.HaAmbientHistorySeed
 import java.security.MessageDigest
 import java.util.TimeZone
-import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.ln1p
 
@@ -55,21 +57,24 @@ internal class AutoBrightnessController(
         elapsedRealtimeMs = elapsedRealtimeMs,
         bootCount = { AndroidManualBrightnessPreferenceStore.bootCount(context) },
     ),
+    private val baselineCache: AdaptiveBaselineCache = AdaptiveBaselineCache(),
+    private val canWriteBrightness: () -> Boolean = brightness::canWrite,
 ) : AutoCloseable {
-    private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
+    // One thread, as before. Queued work is dropped at shutdown, and the running tick is never
+    // interrupted: it may be inside a root command, and Su treats an interrupt as a dead shared shell.
+    private val scheduler = ScheduledThreadPoolExecutor(1) { runnable ->
         Thread(runnable, "ha-paneld-auto-brightness").apply { isDaemon = true }
-    }
+    }.apply { executeExistingDelayedTasksAfterShutdownPolicy = false }
     private var persistenceFuture: ScheduledFuture<*>? = null
     private var evaluationFuture: ScheduledFuture<*>? = null
     private var evaluationDeadlineElapsed = Long.MAX_VALUE
     private var forceNextEvaluation = false
     private var policy = AdaptiveBrightnessPolicy()
-    private val baselineCache = AdaptiveBaselineCache()
     private var latestPanelLux = Double.NaN
     private var latestHaLux = Double.NaN
     private var latestPanelChangeElapsed = Long.MIN_VALUE
     private var latestHaChangeElapsed = Long.MIN_VALUE
-    private var haAvailable = false
+    @Volatile private var haAvailable = false
     private var enabledLastTick = false
     private var lastTickElapsed = Long.MIN_VALUE
     private var lastWallMs = Long.MIN_VALUE
@@ -89,6 +94,14 @@ internal class AutoBrightnessController(
     private var chartLocation: SolarLocation? = null
     private var chartLookup: AdaptiveChartBaselineLookup? = null
     @Volatile private var closed = false
+
+    /**
+     * Advanced under the monitor whenever state an in-flight evaluation was computed from stops being
+     * current: policy reset, source or context change, new history, a manual preference, close. The
+     * baseline fit and the backlight write run outside the monitor, and a result whose generation has
+     * moved on is discarded rather than applied.
+     */
+    private val evaluationGeneration = AtomicLong()
 
     /** Activate only after the service-generation lease has admitted active owners. */
     @Synchronized fun activate() {
@@ -129,9 +142,19 @@ internal class AutoBrightnessController(
         }
     }
 
-    @Synchronized fun setHaSourceAvailable(available: Boolean) {
+    /**
+     * Reached on the main thread (source rebinding, and stream callbacks drained by whichever thread
+     * enqueued first), so it never takes the monitor: it records the flag and hands the follow-up
+     * evaluation to the controller's own thread.
+     */
+    fun setHaSourceAvailable(available: Boolean) {
         haAvailable = available
-        if (available && config.autoBrightness) requestEvaluationLocked(0L)
+        if (!available) return
+        try {
+            scheduler.execute { synchronized(this) { requestEvaluationLocked(0L) } }
+        } catch (_: RejectedExecutionException) {
+            // Closed: a stopped controller has nothing left to evaluate.
+        }
     }
 
     /** Rounded HA site metadata; a material context change starts a separate learned partition. */
@@ -185,6 +208,7 @@ internal class AutoBrightnessController(
             persist = false,
         )
         if (captured) {
+            evaluationGeneration.incrementAndGet()
             persistenceFuture?.cancel(false)
             persistenceFuture = scheduler.schedule(preference::persistCurrent, COMMAND_SETTLE_MS, TimeUnit.MILLISECONDS)
             lastAppliedTarget = level.coerceIn(BrightnessController.MIN_VISIBLE, 255)
@@ -195,6 +219,7 @@ internal class AutoBrightnessController(
 
     @Synchronized fun resumeFullAuto() {
         preference.clear()
+        evaluationGeneration.incrementAndGet()
         requestEvaluationLocked(0L, force = true)
     }
 
@@ -233,6 +258,7 @@ internal class AutoBrightnessController(
             synchronized(this) {
                 if (!closed && locationContext == contextSnapshot && activeSourceId() == sourceSnapshot) {
                     baselineCache.invalidate()
+                    evaluationGeneration.incrementAndGet()
                     chartLookup = null
                     chartRowsIdentity = null
                     requestEvaluationLocked(0L, force = true)
@@ -322,13 +348,26 @@ internal class AutoBrightnessController(
         val started = FeatureCosts.registry.beginSynchronous(FeatureCostOperation.AUTO_BRIGHTNESS_APPLY)
         var outcome = FeatureCostOutcome.SUCCESS
         try {
-            synchronized(this) {
+            val inputs = synchronized(this) {
                 evaluationFuture = null
                 evaluationDeadlineElapsed = Long.MAX_VALUE
                 val force = forceNextEvaluation
                 forceNextEvaluation = false
-                tick(force)?.let(::requestEvaluationLocked)
+                prepareEvaluation(force)
+            } ?: return
+            // The seven-day fit and the root backlight write run outside the monitor, so callers on the
+            // main thread (HA availability, the brightness observer) never wait behind either.
+            val baseline = inputs.cachedBaseline
+                ?: baselineCache.compute(inputs.nowWall, inputs.rows, inputs.zone, inputs.location, ln1p(inputs.lux))
+            val write = synchronized(this) { applyEvaluation(inputs, baseline) } ?: return
+            var applied: Int? = null
+            val admitted = canWriteBrightness() && actuationGate {
+                if (evaluationGeneration.get() == write.generation) {
+                    brightness.setBrightness(write.target)
+                    applied = write.target
+                }
             }
+            synchronized(this) { finishWrite(write, applied.takeIf { admitted }) }
         } catch (error: Throwable) {
             outcome = FeatureCostOutcome.FAILURE
             Log.w(TAG, "adaptive brightness tick failed", error)
@@ -345,7 +384,31 @@ internal class AutoBrightnessController(
         }
     }
 
-    private fun tick(force: Boolean): Long? {
+    /** What one evaluation read under the monitor; everything after this may run unlocked. */
+    private class EvaluationInputs(
+        val generation: Long,
+        val force: Boolean,
+        val nowElapsed: Long,
+        val nowWall: Long,
+        val elapsed: Long,
+        val lux: Double,
+        val rows: List<AmbientHistoryMinute>,
+        val zone: TimeZone,
+        val location: SolarLocation?,
+        val cachedBaseline: BaselineEstimate?,
+    )
+
+    private class BrightnessWrite(
+        val target: Int,
+        val generation: Long,
+        val nextDelayMs: Long,
+        val lux: Double,
+        val effectiveLux: Double,
+        val automaticTarget: Int,
+    )
+
+    /** Monitor held. Bookkeeping and an input snapshot; null when there is nothing to evaluate now. */
+    private fun prepareEvaluation(force: Boolean): EvaluationInputs? {
         if (closed) return null
         val enabled = config.autoBrightness
         if (!enabled) {
@@ -366,7 +429,8 @@ internal class AutoBrightnessController(
             else -> (nowElapsed - lastTickElapsed).coerceIn(1L, MAX_TICK_GAP_MS)
         }
         if (!force && lastTickElapsed != Long.MIN_VALUE && nowElapsed - lastTickElapsed < MIN_EVALUATION_INTERVAL_MS) {
-            return MIN_EVALUATION_INTERVAL_MS - (nowElapsed - lastTickElapsed)
+            requestEvaluationLocked(MIN_EVALUATION_INTERVAL_MS - (nowElapsed - lastTickElapsed))
+            return null
         }
         lastTickElapsed = nowElapsed
         reconcileHistorySource()
@@ -374,7 +438,35 @@ internal class AutoBrightnessController(
         val lux = activeLux()
         if (!available || !lux.isFinite()) return null
         val rows = history.history()
-        val estimate = baselineCache.estimate(nowWall, rows, zone, location, ln1p(lux))
+        return EvaluationInputs(
+            generation = evaluationGeneration.get(),
+            force = force,
+            nowElapsed = nowElapsed,
+            nowWall = nowWall,
+            elapsed = elapsed,
+            lux = lux,
+            rows = rows,
+            zone = zone,
+            location = location,
+            cachedBaseline = baselineCache.current(nowWall, rows, zone, location),
+        )
+    }
+
+    /** Monitor held. Applies a still-current evaluation; returns the write it calls for, or null. */
+    private fun applyEvaluation(inputs: EvaluationInputs, estimate: BaselineEstimate): BrightnessWrite? {
+        if (inputs.generation != evaluationGeneration.get()) {
+            // Superseded while the fit ran (close and disable advance the generation too): policy,
+            // history and cache stay as they were, and the evaluation is repeated from current state.
+            requestEvaluationLocked(0L, force = inputs.force)
+            return null
+        }
+        if (inputs.cachedBaseline == null) {
+            baselineCache.store(inputs.nowWall, inputs.rows, inputs.zone, inputs.location, estimate)
+        }
+        val nowElapsed = inputs.nowElapsed
+        val nowWall = inputs.nowWall
+        val elapsed = inputs.elapsed
+        val lux = inputs.lux
         val changedAt = if (activeSourceKind == AmbientLuxSourceKind.HOME_ASSISTANT) {
             latestHaChangeElapsed
         } else latestPanelChangeElapsed
@@ -388,7 +480,10 @@ internal class AutoBrightnessController(
             sensitivity = config.autoBrightnessResponsePercent,
             conditionElapsedMs = conditionElapsed,
             minimumBrightness = AdaptiveLuxCurve.percentToBrightness(config.autoBrightnessMinimumPercent),
-        ) ?: return CALM_EVALUATION_MS
+        ) ?: run {
+            requestEvaluationLocked(CALM_EVALUATION_MS)
+            return null
+        }
         lastResult = result
         lastEvaluatedLux = lux
         lastAutomaticTarget = result.brightness
@@ -406,25 +501,42 @@ internal class AutoBrightnessController(
             )
         }
         lastWallMs = nowWall
-        val shouldWrite = force || lastAppliedTarget < 0 || abs(finalTarget - lastAppliedTarget) >= MOVEMENT_DEADBAND
-        var applied: Int? = null
-        if (shouldWrite && brightness.canWrite()) {
-            val admitted = actuationGate {
-                brightness.setBrightness(finalTarget)
-                applied = finalTarget
+        val write = BrightnessWrite(
+            target = finalTarget,
+            generation = inputs.generation,
+            nextDelayMs = if (policy.needsFastFollowUp()) FAST_EVALUATION_MS else CALM_EVALUATION_MS,
+            lux = lux,
+            effectiveLux = result.effectiveLux,
+            automaticTarget = result.brightness,
+        )
+        val shouldWrite = inputs.force || lastAppliedTarget < 0 || abs(finalTarget - lastAppliedTarget) >= MOVEMENT_DEADBAND
+        if (shouldWrite) return write
+        finishWrite(write, applied = null)
+        return null
+    }
+
+    /** Monitor held. Records a write only if nothing superseded its evaluation while it ran. */
+    private fun finishWrite(write: BrightnessWrite, applied: Int?) {
+        if (applied != null) {
+            if (write.generation != evaluationGeneration.get()) {
+                // The write landed after its basis moved on (a manual level, a reset): re-assert
+                // current state rather than recording the superseded target as applied.
+                requestEvaluationLocked(0L, force = true)
+                return
             }
-            if (admitted && applied != null) lastAppliedTarget = finalTarget
+            lastAppliedTarget = applied
         }
         SensorTrace.recordLux(
-            lux.toFloat(),
-            result.effectiveLux.toFloat(),
-            result.brightness,
+            write.lux.toFloat(),
+            write.effectiveLux.toFloat(),
+            write.automaticTarget,
             lastAppliedTarget.takeIf { it >= 0 },
         )
-        return if (policy.needsFastFollowUp()) FAST_EVALUATION_MS else CALM_EVALUATION_MS
+        requestEvaluationLocked(write.nextDelayMs)
     }
 
     private fun resetTransientPolicy(clearPreference: Boolean) {
+        evaluationGeneration.incrementAndGet()
         policy = AdaptiveBrightnessPolicy()
         lastResult = null
         lastAutomaticTarget = -1
@@ -494,10 +606,11 @@ internal class AutoBrightnessController(
         synchronized(this) {
             if (closed) return scheduler.isTerminated
             closed = true
+            evaluationGeneration.incrementAndGet()
             persistenceFuture?.cancel(false)
             evaluationFuture?.cancel(false)
             preference.persistCurrent()
-            scheduler.shutdownNow()
+            scheduler.shutdown()
         }
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0L))
         val schedulerDrained = runCatching {
