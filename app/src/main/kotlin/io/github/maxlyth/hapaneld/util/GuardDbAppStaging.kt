@@ -84,7 +84,7 @@ internal class GuardDbAppStaging(
         token: String,
         expected: GuardDbCandidateInspection? = null,
     ): GuardDbMaintenanceProtocol.Candidate? {
-        val temporary = File(directory, ".guard-db-candidate-${role.name.lowercase()}.pending")
+        val temporary = File(directory, guardDbCandidatePendingName(role))
         val destination = candidateFile(role)
         var candidate: GuardDbMaintenanceProtocol.Candidate? = null
         val claimed = pendingUploads.claimAfter(token) { entry ->
@@ -132,7 +132,7 @@ internal class GuardDbAppStaging(
     fun clear(role: GuardDbMaintenanceProtocol.Role): Boolean {
         val candidate = candidateFile(role)
         if (candidate.exists() && !candidate.delete()) return false
-        File(directory, ".guard-db-candidate-${role.name.lowercase()}.pending").delete()
+        File(directory, guardDbCandidatePendingName(role)).delete()
         return !directory.exists() || syncDirectory(directory)
     }
 
@@ -142,7 +142,7 @@ internal class GuardDbAppStaging(
         GuardDbMaintenanceProtocol.Role.values().forEach { role ->
             val file = candidateFile(role)
             if (file.exists() && !file.delete()) cleared = false
-            File(directory, ".guard-db-candidate-${role.name.lowercase()}.pending").delete()
+            File(directory, guardDbCandidatePendingName(role)).delete()
         }
         return cleared && (!directory.exists() || syncDirectory(directory))
     }
@@ -167,6 +167,15 @@ internal class GuardDbAppStaging(
         settingsAuthoritySha256 = settingsAuthoritySha256,
     )
 }
+
+/**
+ * The temporary a claim copies into before its atomic move. It exists only inside one synchronized
+ * [GuardDbAppStaging.claim], which deletes it on every exit, so one left behind by an earlier process
+ * is a dead claim. The final `guard-db-candidate-<role>.apk` is different: it is process-independent
+ * by design and stays until the operator discards it.
+ */
+internal fun guardDbCandidatePendingName(role: GuardDbMaintenanceProtocol.Role): String =
+    ".guard-db-candidate-${role.name.lowercase()}.pending"
 
 internal fun guardDbAppStaging(context: Context): GuardDbAppStaging = GuardDbAppStaging(
     // filesDir is a Package Manager-created durable directory. Fixed files directly underneath it
@@ -194,7 +203,7 @@ private fun copyAndSync(source: File, destination: File): Boolean = runCatching 
     true
 }.getOrDefault(false)
 
-private fun validGuardDbAppFile(file: File): Boolean = runCatching {
+internal fun validGuardDbAppFile(file: File): Boolean = runCatching {
     val stat = Os.lstat(file.absolutePath)
     (stat.st_mode and OsConstants.S_IFMT) == OsConstants.S_IFREG && stat.st_nlink == 1L &&
         stat.st_uid == Process.myUid() && stat.st_gid == Process.myUid() &&

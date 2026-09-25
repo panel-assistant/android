@@ -60,7 +60,6 @@ data class Capabilities(
     val hasButtonBacklight: Boolean = false,
     val hasCamera: Boolean = false,
     val hasMicrophone: Boolean = false,
-    val buttonsEnabled: Boolean = false,
     val hasEvdevButtons: Boolean = false,
     val appCanSu: Boolean = false,
     val hasRecents: Boolean = false,
@@ -322,11 +321,19 @@ data class SettingSpec(
     // never replaces [default], which remains the durable, capability-independent string sealed into
     // the guard-database settings authority (`authoritativeGuardDbSettingDefaults`).
     val derivedDefault: ((Capabilities) -> String)? = null,
+    // Capability-derived prominence, the presentation sibling of [derivedDefault]: true where this
+    // setting is the unprivileged substitute for a control the panel cannot offer, so it must take that
+    // control's place instead of staying where it sits when the preferred control exists. A promoted
+    // setting renders first in its group on the basic view, with [promotedHelp] in place of [help].
+    // Presentation only: key, range, scope and every stored value are untouched.
+    val promoteWhen: (Capabilities) -> Boolean = { false },
+    val promotedHelp: String = "",
     val validate: (String) -> Validation = { Validation.Ok(it) },
 ) {
     /** Stable catalogue ids derived from the durable setting key, never from editable English copy. */
     val labelKey: String get() = "settings.$key.label"
     val helpKey: String get() = "settings.$key.help"
+    val promotedHelpKey: String get() = "settings.$key.promoted_help"
 
     /** True for publish-only sensor entities that have no settable value. */
     val readOnly: Boolean get() = ha?.readOnly == true
@@ -344,6 +351,16 @@ data class SettingSpec(
      * static [default], so a spec that declares no [derivedDefault] is unaffected.
      */
     fun defaultFor(caps: Capabilities): String = derivedDefault?.invoke(caps) ?: default
+
+    /** Presentation tier on this panel: a promoted setting is always on the basic view. */
+    fun tierFor(caps: Capabilities): Tier = if (promoteWhen(caps)) Tier.BASIC else tier
+
+    /** Catalogue key of the help this panel shows, or null when the setting carries no help. */
+    fun helpKeyFor(caps: Capabilities): String? = when {
+        promotedHelp.isNotEmpty() && promoteWhen(caps) -> promotedHelpKey
+        help.isNotEmpty() -> helpKey
+        else -> null
+    }
 
     /**
      * The `{options}` substitution for this spec's HA select, or null when it declares no per-choice

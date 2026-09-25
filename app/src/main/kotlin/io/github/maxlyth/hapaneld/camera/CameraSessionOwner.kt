@@ -193,7 +193,9 @@ class CameraSessionOwner(
             }
             if (enc == null) return
             runCatching { enc.close() }
-            if (retract) transport.onEncoderStopped()
+            // Outside the lock, so a newer encoder may publish between the decision and this call; the
+            // transport retracts only this attempt's sets.
+            if (retract) transport.onEncoderStopped(id)
         }
 
         fun release() {
@@ -237,7 +239,7 @@ class CameraSessionOwner(
     }
 
     /** A subscriber's claim on the open session. Close exactly once; closing the last one closes the device. */
-    inner class Lease internal constructor(private val id: Long) : AutoCloseable {
+    inner class Lease internal constructor(private val id: Long, val generation: Long) : AutoCloseable {
         private var open = true
         override fun close() {
             val release: Release
@@ -323,7 +325,7 @@ class CameraSessionOwner(
             if (live?.encoder != null && params != null) CompletableFuture.completedFuture<StreamOutcome>(StreamOutcome.Ready(params)) else streamReady
         }
         return when (val outcome = runCatching { ready.get(ENCODER_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()) {
-            is StreamOutcome.Ready -> StreamAdmission.Granted(lease, outcome.params)
+            is StreamOutcome.Ready -> StreamAdmission.Granted(lease, outcome.params, lease.generation)
             is StreamOutcome.Refused -> {
                 lease.close()
                 StreamAdmission.Refused(outcome.reason)
@@ -424,6 +426,7 @@ class CameraSessionOwner(
 
     private fun acquireLease(requested: CameraResolution?, kind: LeaseKind, binding: StreamBinding?): Lease? {
         val leaseId: Long
+        val leaseGeneration: Long
         val pending: CompletableFuture<CameraRefusal?>?
         var startEncoderFor: Long? = null
         // Read outside the lock, like the presentation's: the capability may enumerate Android's
@@ -456,11 +459,13 @@ class CameraSessionOwner(
                 }
                 is Admission.Open -> {
                     leaseId = admission.lease
+                    leaseGeneration = state.generation
                     beginOpenLocked(admission.attempt, requested, binding?.fps)
                     pending = state.awaitOpen()
                 }
                 is Admission.Join -> {
                     leaseId = admission.lease
+                    leaseGeneration = state.generation
                     // A first stream lease on a live session: the attempt is current by construction
                     // (only openSucceeded reaches LIVE, and every LIVE exit nulls it under this lock), and
                     // streamReady is an unsettled future (every encoder ending replaces a done one).
@@ -489,7 +494,7 @@ class CameraSessionOwner(
             }
             return null
         }
-        return Lease(leaseId)
+        return Lease(leaseId, leaseGeneration)
     }
 
     // The capability is read before the lock is taken, never under it: the presence probe may enumerate,
@@ -689,7 +694,7 @@ class CameraSessionOwner(
                     else "next open retries after ${state.retryNotBeforeMs - nowMs()}ms"
                 }
                 quitThread()
-                endStreamIfStillEnded(refusal, generation)
+                endStream(refusal, generation)
             }
             is Failure.Reopen -> {
                 attempt.releaseStanding()
@@ -717,55 +722,67 @@ class CameraSessionOwner(
      * superseded attempt's codec keeps running until its teardown closes it, and its late parameter
      * sets, access units or failure belong to nobody — they must not complete the newer session's
      * readiness, reach its clients, or end its stream.
+     *
+     * A check is only worth its effect if nothing can replace the attempt between the two. Where the
+     * effect cannot call back into the owner it happens inside the check's critical section; where it
+     * can — the transport dropping a client closes that client's lease — it happens outside, and the
+     * transport is told whose effect it is and applies it to nothing else.
      */
     private fun encoderListener(attempt: Attempt) = object : VideoEncoder.Listener {
         override fun onParameterSets(sets: ParameterSets) {
-            val params: StreamParams
-            val ready: CompletableFuture<StreamOutcome>
+            // One critical section for the check and both effects. Split, a replacement session admitted
+            // between them kept this still-pending readiness as its own, and its first joiner was granted
+            // this superseded codec's sets. Neither call can re-enter the owner: the transport only records
+            // the sets, by its contract, and the readiness has blocking waiters, never dependent stages.
             synchronized(lock) {
                 if (!state.isCurrent(attempt.id)) return
                 val enc = attempt.encoder ?: return
                 val facts = enc.facts
-                params = StreamParams(facts.width, facts.height, facts.fps, facts.kbps, facts.name, sets)
+                val params = StreamParams(facts.width, facts.height, facts.fps, facts.kbps, facts.name, sets)
                 attempt.streamParams = params
                 advertisedBy = attempt.id
-                ready = streamReady
+                // The transport learns the new sets BEFORE any waiter is woken, so a DESCRIBE that wakes on
+                // this encoder can never be answered with the previous encoder's retained SPS/PPS.
+                transport.onParameterSets(sets, attempt.id)
+                streamReady.complete(StreamOutcome.Ready(params))
             }
-            // The transport learns the new sets BEFORE any waiter is woken, so a DESCRIBE that wakes on
-            // this encoder can never be answered with the previous encoder's retained SPS/PPS.
-            transport.onParameterSets(sets)
-            ready.complete(StreamOutcome.Ready(params))
         }
 
         override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long, bytes: Int) {
             if (synchronized(lock) { !state.isCurrent(attempt.id) }) return
             stats.onFrame(nowMs(), bytes)
-            transport.onAccessUnit(nals, keyFrame, ptsUs)
+            // Outside the lock: shedding a slow client closes its lease. A newer attempt may publish
+            // after the check above, so the unit names its attempt and the transport delivers it only
+            // while that attempt's sets are the advertised ones.
+            transport.onAccessUnit(nals, keyFrame, ptsUs, attempt.id)
         }
 
         override fun onEncoderError(detail: String) {
             // The encoder failed, not the camera: stop the encoder alone, hold stream leases off for
             // the policy's backoff so a reconnecting client cannot set the retry rate, and drop the
             // stream clients so they reconnect after it. Snapshot subscribers never notice.
-            val live = synchronized(lock) {
-                if (attempt.encoder == null) return
-                state.isCurrent(attempt.id)
-            }
-            if (!live) {
-                // A superseded attempt's codec failing late: only its own codec is touched.
-                attempt.closeEncoder()
-                return
-            }
-            Log.w(TAG, "encoder failed while streaming ($detail); stopping the stream, snapshots unaffected")
-            stopEncoder(attempt, ownsSession = true)
+            if (synchronized(lock) { attempt.encoder == null }) return
+            // The codec is this attempt's own and comes down whoever is live now, so a superseded
+            // attempt's codec failing late touches nothing else.
+            attempt.closeEncoder()
+            // Whether the session is still this attempt's is decided in the critical section that records
+            // the fault and detaches the waiters, and the clients dropped are the generation read there:
+            // a session that replaced this one meanwhile keeps its waiters, its clients and its outcome.
+            val settled: CompletableFuture<StreamOutcome>
+            val generation: Long
             synchronized(lock) {
+                if (!state.isCurrent(attempt.id)) return
                 fault = CameraFault.STREAM_ENCODER
                 faultDetail = HaTransportFault.sanitize(detail)
                 outcome = CameraRefusal.STREAM_ENCODER.token
                 state.encoderFailed(nowMs())
+                settled = detachStreamReadyLocked()
+                generation = state.generation
             }
-            settleStreamWaiters(CameraRefusal.STREAM_ENCODER)
-            transport.onStreamEnded()
+            Log.w(TAG, "encoder failed while streaming ($detail); stopping the stream, snapshots unaffected")
+            stats.reset()
+            settled.complete(StreamOutcome.Refused(CameraRefusal.STREAM_ENCODER))
+            transport.onStreamEnded(generation)
         }
     }
 
@@ -787,19 +804,27 @@ class CameraSessionOwner(
             size = attempt.size
             binding = state.streamBinding
         }
-        if (size == null || binding == null) return refuseEncoder("no_capture_size")
+        if (size == null || binding == null) return refuseEncoder(attemptId, "no_capture_size")
         // Never faster than the feed: the session's pace is fixed when it opens, so an encoder started
         // by a stream that joined an already-open session must not be configured above what it will be
         // fed. This is a physical bound, not a policy one — the configured values are defaults now.
         val fps = minOf(binding.fps, boundFps)
         when (val opened = encoderFactory.open(size.width, size.height, fps, binding.kbps, h, encoderListener(attempt))) {
-            is EncoderOpen.Refused -> refuseEncoder(opened.detail)
+            is EncoderOpen.Refused -> refuseEncoder(attemptId, opened.detail)
             is EncoderOpen.Ready -> {
-                synchronized(lock) {
+                // Re-checked where the codec is installed: the open ran outside the lock, and a codec
+                // installed into an attempt whose teardown has already run would never be closed.
+                val installed = synchronized(lock) {
+                    if (!state.isCurrent(attemptId)) return@synchronized false
                     attempt.encoder = opened.encoder
                     attempt.encoderPacer = if (fps < boundFps) FramePacer(fps) else null
                     attempt.streamParams = null
                     stats.reset()
+                    true
+                }
+                if (!installed) {
+                    runCatching { opened.encoder.close() }
+                    return
                 }
                 // A stream is now being served: drop to the cheap pipeline for every frame.
                 refreshProcessing(attemptId)
@@ -812,15 +837,23 @@ class CameraSessionOwner(
      * otherwise hold the camera open behind a lit light with nothing ever restarting the encoder.
      * They are dropped like any other stream ending; the hold keeps their reconnects off the codec.
      */
-    private fun refuseEncoder(detail: String) {
+    private fun refuseEncoder(attemptId: Long, detail: String) {
+        val settled: CompletableFuture<StreamOutcome>
+        val generation: Long
         synchronized(lock) {
+            // Decided with its effects, not before the open: the open ran outside the lock, and a
+            // session or attempt that replaced this one meanwhile starts its own encoder for its own
+            // clients, which this refusal must neither hold off nor drop.
+            if (!state.isCurrent(attemptId)) return
             fault = CameraFault.STREAM_ENCODER
             faultDetail = HaTransportFault.sanitize(detail)
             outcome = CameraRefusal.STREAM_ENCODER.token
             state.encoderFailed(nowMs())
+            settled = detachStreamReadyLocked()
+            generation = state.generation
         }
-        settleStreamWaiters(CameraRefusal.STREAM_ENCODER)
-        transport.onStreamEnded()
+        settled.complete(StreamOutcome.Refused(CameraRefusal.STREAM_ENCODER))
+        transport.onStreamEnded(generation)
         Log.w(TAG, "stream refused: no usable encoder ($detail); snapshots are unaffected")
     }
 
@@ -864,31 +897,34 @@ class CameraSessionOwner(
         stats.reset()
     }
 
-    /** Everyone waiting for parameter sets learns [refusal]; the next encoder attempt gets a fresh future. */
-    private fun settleStreamWaiters(refusal: CameraRefusal) {
-        val settled: CompletableFuture<StreamOutcome>
-        synchronized(lock) {
-            settled = streamReady
-            streamReady = CompletableFuture()
-        }
-        settled.complete(StreamOutcome.Refused(refusal))
-    }
+    /** Under [lock]: hand back the readiness its waiters hold, and give the next encoder a fresh one. */
+    private fun detachStreamReadyLocked(): CompletableFuture<StreamOutcome> =
+        streamReady.also { streamReady = CompletableFuture() }
 
     /**
-     * The stream side of a session ending, applied only if that session is still the one that ended:
-     * the ending is posted, and a new session may have started — with its own stream clients and
-     * waiters — before it runs. Those belong to the new session and must not be dropped by the old one.
+     * The stream side of the session that ended as [endedGeneration]. The ending is posted, and a new
+     * session may have started — with its own stream clients and waiters — before it runs. Those belong
+     * to the new session and must not be dropped by the old one.
+     *
+     * The waiters are the live session's, so they are settled only while the ended session is still the
+     * live one, decided in the critical section that detaches them: split, a replacement admitted between
+     * the check and the swap had its own waiters refused. The clients are dropped outside the lock,
+     * because dropping one closes its lease and re-enters the owner, so the guard travels with the call:
+     * the transport drops only clients granted at [endedGeneration] or earlier. A replacement's clients
+     * are granted later and stay; the ended session's are dropped even when a replacement has started.
      */
-    private fun endStreamIfStillEnded(refusal: CameraRefusal, endedGeneration: Long) {
-        // The same rule the rest of the teardown follows: the stream belongs to the live session.
-        val owns = CameraTeardown.ownsSessionGlobals(
-            stopping = false,
-            endedGeneration = endedGeneration,
-            currentGeneration = synchronized(lock) { state.generation },
-        )
-        if (!owns) return
-        settleStreamWaiters(refusal)
-        transport.onStreamEnded()
+    private fun endStream(refusal: CameraRefusal, endedGeneration: Long) {
+        // The same rule the rest of the teardown follows: the waiters belong to the live session.
+        val settled = synchronized(lock) {
+            val owns = CameraTeardown.ownsSessionGlobals(
+                stopping = false,
+                endedGeneration = endedGeneration,
+                currentGeneration = state.generation,
+            )
+            if (owns) detachStreamReadyLocked() else null
+        }
+        settled?.complete(StreamOutcome.Refused(refusal))
+        transport.onStreamEnded(endedGeneration)
     }
 
     // ---- frames -------------------------------------------------------------------------------------
@@ -1107,7 +1143,7 @@ class CameraSessionOwner(
                 attempt.releaseStanding()
                 indicator.hide()
                 quitThread()
-                endStreamIfStillEnded(CameraRefusal.FAILED, action.generation)
+                endStream(CameraRefusal.FAILED, action.generation)
                 Log.w(TAG, "camera session degraded after ${action.attempt} failures: ${action.fault.wire}")
             }
         }
@@ -1143,7 +1179,7 @@ class CameraSessionOwner(
             generation = state.generation
         }
         quitThread()
-        endStreamIfStillEnded(CameraRefusal.FAILED, generation)
+        endStream(CameraRefusal.FAILED, generation)
         Log.w(TAG, "camera session degraded after $count failures: ${f.wire}")
     }
 
@@ -1179,7 +1215,7 @@ class CameraSessionOwner(
             if (stopping) indicator.forceHide() else indicator.hide()
         }
         quitThread()
-        endStreamIfStillEnded(if (stopping) CameraRefusal.STOPPING else lastRefusal(), endedGeneration)
+        endStream(if (stopping) CameraRefusal.STOPPING else lastRefusal(), endedGeneration)
     }
 
     private fun quitThread() {

@@ -18,6 +18,59 @@
           "message": { "type": "string" }
         }
       },
+      "DisplayGeometry": {
+        "description": "The panel's physical display and its logical rendering density, kept separate. Logical DPI is a rendering setting, never measured pixel density; physical_size is omitted whenever no trustworthy profile evidence selects this panel.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["physical_pixels", "logical_dpi"],
+        "properties": {
+          "physical_pixels": {
+            "description": "The physical display mode, unaffected by any wm size or wm density override.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["width", "height"],
+            "properties": { "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 } }
+          },
+          "physical_size": {
+            "description": "Active display area from the profile variant matching this panel's product identity and physical pixels. A legacy profile physical_ppi value appears here with evidence approximate.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["diagonal_in", "width_mm", "height_mm", "ppi", "evidence", "approximate"],
+            "properties": {
+              "diagonal_in": { "type": "number" },
+              "width_mm": { "type": "number" },
+              "height_mm": { "type": "number" },
+              "ppi": { "type": "number", "description": "Physical pixel density derived from physical pixels and the active size." },
+              "evidence": { "type": "string", "enum": ["measured", "module", "specification", "approximate"], "description": "measured: direct measurement; module: identified LCD module data; specification: manufacturer specification; approximate: not to be read as a measurement." },
+              "approximate": { "type": "boolean" },
+              "variant": { "type": "string", "maxLength": 40 },
+              "evidence_note": { "type": "string", "maxLength": 200 }
+            }
+          },
+          "logical_dpi": {
+            "description": "Android rendering densities. None of these is physical pixel density.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "factory_base": { "type": "integer", "description": "Android's factory reset logical DPI: the wm density reset reference (labelled Physical density) that display sizing restores, or the framework's stable density where the panel has no privilege to read it." },
+              "profile_factory_base": { "type": "integer", "description": "The factory-base logical DPI the matched profile variant declares." },
+              "current": { "type": "integer", "description": "The logical DPI rendering now, after any override." },
+              "recommended": { "type": "integer", "description": "The profile's dashboard-sizing preset; a preference, not a measurement." }
+            }
+          },
+          "viewport_dp": {
+            "description": "The rendered screen in density-independent pixels at the current logical DPI. Omitted when the current DPI is unreadable.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["width", "height", "density_scale"],
+            "properties": {
+              "width": { "type": "number" },
+              "height": { "type": "number" },
+              "density_scale": { "type": "number", "description": "current logical DPI / 160." }
+            }
+          }
+        }
+      },
       "ProfileRef": {
         "description": "Identifies one exact profile revision, as returned by every read route's `ref` field.",
         "type": "object",
@@ -149,10 +202,17 @@
           "freelist_count": { "type": "integer", "format": "int64", "nullable": true, "description": "Pages the database holds but is not using. A large value is not itself a fault — read it together with auto_vacuum, which says whether those pages can be returned to the filesystem at all." },
           "schema_version": { "type": "integer", "nullable": true },
           "quick_check": { "type": "string", "enum": ["not_run", "ok", "failed"] },
-          "auto_vacuum": { "type": "string", "enum": ["unknown", "none", "full", "incremental"], "description": "SQLite's auto-vacuum mode for this database, which decides whether bounded freelist reclamation can run. Only incremental reclaims in slices. none is not a fault and is never converted implicitly, because enabling auto-vacuum needs a full VACUUM whose temporary-space demand can worsen a low-space incident — but it does mean freelist pages will never return to the filesystem." },
+          "auto_vacuum": { "type": "string", "enum": ["unknown", "none", "full", "incremental"], "description": "SQLite's auto-vacuum mode for this database, which decides whether bounded freelist reclamation can run. Only incremental reclaims in slices. none is not a fault and is never converted implicitly, because enabling auto-vacuum needs a full VACUUM whose temporary-space demand can worsen a low-space incident. Until then its freelist pages cannot return to the filesystem; the only conversion is inside a full VACUUM that storage remediation admits under warning pressure (see remediation_vacuum)." },
           "checked_at": { "type": "integer", "format": "int64", "nullable": true, "description": "Unix epoch milliseconds for the underlying storage/SQLite check." },
           "failure": { "type": "string", "enum": ["storage_full", "io", "corruption", "busy", "unknown"], "description": "Optional controlled failure kind; never raw exception text." },
           "failure_operation": { "type": "string", "description": "Optional controlled name of the operation that failed, drawn from a fixed internal vocabulary — for example catalog-maintenance, app-state-write or database-checkpoint. Anything outside that vocabulary is reported as the generic database, so no SQL, filesystem path, entity id or other user data can appear here. Present only alongside failure, and the field most likely to make an unknown failure reproducible." },
+          "remediation": { "type": "string", "enum": ["relieved", "deferred", "exhausted", "unverified"], "description": "Present only after this process has run automatic storage remediation. Judged from a fresh observation taken after the run: relieved means pressure cleared; deferred means a step met contention and a later run retries; exhausted means every safe step ran or was refused for a stated reason and pressure remains, so the operator must act; unverified means no completed observation followed the run. Remediation deletes only orphaned app-owned temporary files and expired history rows, never configuration or the database." },
+          "remediation_at": { "type": "integer", "format": "int64", "description": "Unix epoch milliseconds when the last remediation run finished. Present with remediation." },
+          "remediation_freed_bytes": { "type": "integer", "format": "int64", "minimum": 0, "description": "Bytes the last run measurably returned: deleted file sizes plus the measured shrink of the database and WAL files. Present with remediation." },
+          "remediation_retention": { "type": "string", "enum": ["not_run", "converged", "pruned", "skipped_critical_pressure", "skipped_database_failure", "skipped_lifecycle", "failed"], "description": "Expired-history pruning in the last run. Refused at critical pressure, because deleting rows costs WAL space before any is returned. Present with remediation." },
+          "remediation_wal_checkpoint": { "type": "string", "enum": ["not_run", "not_needed", "skipped_database_failure", "refused_headroom", "skipped_lifecycle", "skipped_unobserved", "completed", "deferred_busy", "failed"], "description": "Truncating WAL checkpoint in the last run, admitted on a fresh observation taken after history pruning and an ownership check immediately before it. deferred_busy is contention, not a fault; skipped_lifecycle means shutdown or a data backup or restore began first; skipped_unobserved means no completed observation followed pruning; failed is also latched as a database failure. Present with remediation." },
+          "remediation_vacuum": { "type": "string", "enum": ["not_run", "refused", "completed", "deferred_busy", "failed"], "description": "Full VACUUM in the last run. It is admitted only below critical pressure, with measured headroom, a worthwhile freelist that bounded reclamation cannot reach, a verified configuration backup and lifecycle ownership. Present with remediation." },
+          "remediation_vacuum_refusal": { "type": "string", "enum": ["not_needed", "critical_pressure", "database_failure", "lifecycle", "incremental_available", "auto_vacuum_unknown", "not_worthwhile", "too_large", "capacity_unknown", "insufficient_headroom", "no_verified_backup"], "description": "Why the full VACUUM was refused. Present only when remediation_vacuum is refused." },
           "summary": { "type": "string" },
           "action": { "type": "string" }
         }
@@ -688,7 +748,7 @@
     "/api/v1/voice/pipelines": { "get": { "summary": "Home Assistant Assist pipelines available for the configured wake words", "tags": ["voice"], "responses": { "200": { "description": "{pipelines:[{id,name}],preferred}" }, "503": { "description": "{error:\"not-configured\"|\"unavailable\",reason} — no Home Assistant connection, no microphone capability, or the pipeline catalogue could not be fetched" } } } },
     "/api/v1/voice/test": { "post": { "summary": "Trigger a one-shot voice-assistant test run", "tags": ["voice"], "responses": { "202": { "description": "{accepted:true}" }, "409": { "description": "{reason} — no microphone capability, voice assistant disabled, or refused by the pipeline runtime" }, "503": { "description": "{reason} — the voice test trigger is not available" } } } },
     "/api/v1/diag": { "get": { "summary": "Terse plain-text diagnostics dump (hardware, firmware, boot security, renderer/Home Assistant admission, camera session health, app database and privilege/node probes)", "tags": ["status"], "responses": { "200": { "description": "Redacted text/plain report that omits configured identifiers and secrets; review before posting publicly. A [camera] line is present whenever a camera presentation was supplied, rendered identically to the camera object in GET /api/v1/status. The [power-safety] line's screen_off= reports only the profile's declared route; screen_off_selected= and screen_off_reason= report what the runtime actually used on the last screen-off and why, matching the power_safety.screen_off_selected/screen_off_reason fields in GET /api/v1/status." } } } },
-    "/api/v1/info": { "get": { "summary": "Dashboard hydration payload — the probe-backed facts/value/capability fragments as ready-to-inject HTML (cached snapshot, single-flight)", "tags": ["status"], "responses": { "200": { "description": "{banners, shot, controls, cards} JSON" } } } },
+    "/api/v1/info": { "get": { "summary": "Dashboard hydration payload — the probe-backed facts/value/capability fragments as ready-to-inject HTML (cached snapshot, single-flight)", "tags": ["status"], "responses": { "200": { "description": "{banners, shot, shotCached, versionCode, package, controls, cards} JSON", "content": { "application/json": { "schema": { "type": "object", "properties": { "banners": { "type": "string" }, "shot": { "type": "boolean" }, "shotCached": { "type": "string" }, "versionCode": { "type": "integer", "description": "versionCode of the running build" }, "package": { "type": "string", "description": "Android package name of the running build" }, "controls": { "type": "string" }, "cards": { "type": "object", "additionalProperties": { "type": "string" } } }, "required": ["versionCode", "package"] } } } } } } },
     "/api/v1/logs/stream": {
       "get": { "summary": "Live log tail as Server-Sent Events (redacted logcat lines; capture stops when the last client disconnects)", "tags": ["status"],
         "parameters": [{ "name": "source", "in": "query", "schema": { "type": "string", "enum": ["app", "system", "webview"], "default": "app" }, "description": "app = ha-paneld's own process log (no root); system = full device logcat (root panels only); webview = the dashboard WebView's JavaScript console, captured over the DevTools relay" }],
@@ -1090,6 +1150,7 @@
     },
     "/api/v1/tame/record": { "post": { "summary": "Record that a package was disabled outside the app, so it can be handed back", "tags": ["install"], "requestBody": { "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object", "required": ["pkg"], "properties": { "pkg": { "type": "string" } } } } } }, "responses": { "200": { "description": "recorded" }, "202": { "$ref": "#/components/responses/ApprovalRequired" }, "400": { "description": "bad package" }, "409": { "description": "the package is not disabled by a user action" }, "503": { "description": "package state unreadable, or the record could not be persisted" } } } },
     "/api/v1/tame/suggest": { "get": { "summary": "Grouped package-picker suggestions (recommended / other / top-CPU)", "tags": ["control"], "responses": { "200": { "description": "HTML fragment; browsers must pass same-origin Fetch Metadata admission" }, "403": { "description": "Cross-origin or unverifiable browser request refused; headerless LAN automation remains supported" } } } },
+    "/api/v1/display": { "get": { "summary": "Physical display geometry and logical rendering density as separate facts", "tags": ["status"], "description": "Physical values come only from profile evidence selected by product identity and the live physical display mode; they are never inferred from Android's logical density, and a density change cannot move them. Logical DPI decides the dp viewport only and is not a measured density.", "responses": { "200": { "description": "Display geometry", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DisplayGeometry" } } } }, "503": { "description": "The display could not be read" } } } },
     "/api/v1/display/density": {
       "post": { "summary": "Display sizing: density (dpi) + text scale (su panels)", "tags": ["control"],
         "requestBody": { "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object", "properties": { "density": { "type": "integer" }, "font": { "type": "number" }, "action": { "type": "string", "enum": ["reset", "rec"] } } } } } },

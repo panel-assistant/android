@@ -293,8 +293,9 @@ internal class PanelAssistantTransportOwner(
                                 else -> commands != null
                             }
                         }
-                        val described = shadow?.descriptors().orEmpty()
-                        when (val outcome = handshake(opened, demand.identity, offered, described)) {
+                        val offer = shadow?.offer()
+                        val described = offer?.descriptors.orEmpty()
+                        when (val outcome = handshake(opened, demand.identity, offered, described, offer?.unsupported.orEmpty())) {
                             is PanelAssistantHelloOutcome.Accepted -> {
                                 attempt = 0
                                 authRefreshed = false
@@ -429,8 +430,9 @@ internal class PanelAssistantTransportOwner(
         identity: PanelAssistantHelloIdentity,
         offered: List<String>,
         described: List<PanelAssistantChannelDescriptor>,
+        unsupported: List<String>,
     ): PanelAssistantHelloOutcome {
-        connection.send(PanelAssistantTransportProtocol.hello(HELLO_ID, identity, offered, described))
+        connection.send(PanelAssistantTransportProtocol.hello(HELLO_ID, identity, offered, described, unsupported))
         val deadline = monotonicMillis() + helloTimeoutMs
         while (true) {
             val remaining = deadline - monotonicMillis()

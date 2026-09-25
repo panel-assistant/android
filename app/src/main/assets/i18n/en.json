@@ -22782,16 +22782,17 @@
       "hardMaxChars": 32
     },
     "logs.note.sources": {
-      "text": "App = ha-paneld's own process log (no root needed). System = the full device logcat (root).",
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
+      "text": "App = ha-paneld's own process log (no root needed). System = the full device logcat (root). Browser console = the dashboard's JavaScript console (needs log shipping).",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
       "surface": "logs",
-      "context": "Explanation of the two selectable live-log sources.",
+      "context": "Explanation of the three selectable live-log sources.",
       "risk": "ordinary",
       "siblings": [
         "logs.note.privacy",
         "logs.note.raw_stream",
         "logs.source.app",
-        "logs.source.system"
+        "logs.source.system",
+        "logs.source.webview"
       ],
       "placeholders": [],
       "frozen": [
@@ -22799,8 +22800,8 @@
         "logcat",
         "root"
       ],
-      "softMaxChars": 126,
-      "hardMaxChars": 172
+      "softMaxChars": 190,
+      "hardMaxChars": 260
     },
     "logs.source.app": {
       "text": "App",
@@ -25177,6 +25178,18 @@
       "frozen": [
         "dpi"
       ],
+      "softMaxChars": 180,
+      "hardMaxChars": 360
+    },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "The display geometry is incomplete, ambiguous or out of range.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "surface": "profiles",
+      "context": "profile API presentation fallback",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
       "softMaxChars": 180,
       "hardMaxChars": 360
     },
@@ -31502,6 +31515,20 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.dashboard_zoom.promoted_help": {
+      "text": "How you size the dashboard on this panel, which cannot change its display density. Lower it to fit more on screen; raise it to enlarge.",
+      "sourceHash": "60fde4ecb0300f4e39d073c0ed282652965ca6e4803dbbe47e5a08917352afdd",
+      "surface": "settings",
+      "context": "Configure > Built-in renderer > Zoom (%): help shown instead of settings.dashboard_zoom.help on a panel without root or Shizuku, where display density cannot be changed and zoom is the only way to size the dashboard.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_zoom.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 160,
+      "hardMaxChars": 160
     },
     "settings.diag_boot.help": {
       "text": "When the panel last booted (a timestamp — HA shows the elapsed uptime).",

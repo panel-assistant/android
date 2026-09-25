@@ -236,6 +236,7 @@
     "density-range": "profiles.issue.density-range",
     "font-scale-range": "profiles.issue.font-scale-range",
     "physical-ppi-range": "profiles.issue.physical-ppi-range",
+    "display-geometry-invalid": "profiles.issue.display-geometry-invalid",
     "touch-click-gain-range": "profiles.issue.touch-click-gain-range",
     "evdev-mapping-count-limit": "profiles.issue.evdev-mapping-count-limit",
     "evdev-device-node-invalid": "profiles.issue.evdev-device-node-invalid",

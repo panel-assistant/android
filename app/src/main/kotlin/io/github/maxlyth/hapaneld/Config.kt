@@ -1334,6 +1334,19 @@ class Config private constructor(
         durableCommit { putLong(LAST_LAUNCH_SCREEN_VERSION_PREF, versionCode) }
     }
 
+    /** The version code that last showed Android's notification-permission dialog, or null if none has. */
+    val lastNotificationConsentVersionCode: Long?
+        get() = if (prefs.contains(LAST_NOTIFICATION_CONSENT_VERSION_PREF)) {
+            prefs.getLong(LAST_NOTIFICATION_CONSENT_VERSION_PREF, Long.MIN_VALUE)
+        } else {
+            null
+        }
+
+    /** Commit before the dialog is shown: a version whose ask cannot be recorded never asks. */
+    fun commitNotificationConsentAsked(versionCode: Long): Boolean = synchronized(CONFIG_LOCK) {
+        durableCommit { putLong(LAST_NOTIFICATION_CONSENT_VERSION_PREF, versionCode) }
+    }
+
     /** Device-local suppression for one exact healthy manual-only power caution. This deliberately sits
      * outside SettingsRegistry, so exports/imports cannot transfer a hardware acknowledgement. */
     val powerSafetyAcknowledgementFingerprint: String
@@ -2726,6 +2739,8 @@ class Config private constructor(
         private const val MAX_AUTO_SLEEP_EXCLUSIONS_BYTES = 256 * 1024
         private const val LAST_LAUNCH_SCREEN_VERSION_PREF =
             "device_local_last_launch_screen_version"
+        private const val LAST_NOTIFICATION_CONSENT_VERSION_PREF =
+            "device_local_last_notification_consent_version"
         private const val POWER_SAFETY_ACKNOWLEDGEMENT_PREF =
             "device_local_power_safety_acknowledgement_v1"
         private const val POWER_SAFETY_ACKNOWLEDGEMENT_PREFS =

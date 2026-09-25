@@ -7894,9 +7894,9 @@
       "text": "Flusso grezzo:"
     },
     "logs.note.sources": {
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
-      "state": "machine-cross-checked",
-      "text": "App = registro del processo di ha-paneld (root non necessario). Sistema = logcat completo del dispositivo (root)."
+      "text": "App = registro del processo di ha-paneld (root non necessario). Sistema = logcat completo del dispositivo (root). Console del browser = console JavaScript della plancia (richiede l'invio dei log configurato).",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
+      "state": "machine-cross-checked"
     },
     "logs.source.app": {
       "sourceHash": "0d04bfeb7d64b71c74fc925cca93d683154e8cc7e6e5838faced498e34c9984d",
@@ -8602,6 +8602,11 @@
       "sourceHash": "1625bf8ef923d238548f956c43c57a920741ee682be625ff2fc9bfe6b0bfe990",
       "state": "machine-cross-checked",
       "text": "La densità deve essere compresa tra 80 e 640 dpi."
+    },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "La geometria del display è incompleta, ambigua o fuori intervallo.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
+      "state": "machine-cross-checked"
     },
     "profiles.issue.dotted-release-version-required": {
       "sourceHash": "922627d4dc899617b9dbc8ecb2344e94cdf89b479a9d485e6b6bdcef6bd89205",
@@ -10402,6 +10407,11 @@
       "sourceHash": "90f1077218a92f9695c9ee536c9d305ce4904146b19582386ac3b828cafd3a2b",
       "state": "machine-cross-checked",
       "text": "Zoom (%)"
+    },
+    "settings.dashboard_zoom.promoted_help": {
+      "text": "Come ridimensioni il dashboard su questo pannello a densità di visualizzazione fissa. Riduci per vederne di più; aumenta per ingrandire.",
+      "sourceHash": "60fde4ecb0300f4e39d073c0ed282652965ca6e4803dbbe47e5a08917352afdd",
+      "state": "machine-cross-checked"
     },
     "settings.diag_boot.help": {
       "sourceHash": "c2def446a0798101bd52a56491c2a741ee0e71ada93bc7c42212f294b5911289",

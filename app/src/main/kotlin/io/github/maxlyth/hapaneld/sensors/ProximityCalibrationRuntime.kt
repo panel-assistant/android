@@ -93,6 +93,13 @@ internal class ProximityCalibrationRuntime(
     fun isPresenceNear(): Boolean = isPresenceReady() && view.near == true
     fun isWaveReady(): Boolean = !closed && sourceProven && !saving && view.wakeReady
     fun isLearnedSignal(): Boolean = !closed && view.calibration?.presenceSupported == true
+
+    /**
+     * [isLearnedSignal] only when it is known: null once closed, and after the stored calibration could not
+     * be read, when the profile baseline stands in and a false would say nothing about the panel's training.
+     */
+    @Synchronized
+    fun learnedSignalState(): Boolean? = if (closed || readFailed) null else isLearnedSignal()
     fun generation(): Long = view.generation
     fun gestureToken(): Long = gestureToken
 
