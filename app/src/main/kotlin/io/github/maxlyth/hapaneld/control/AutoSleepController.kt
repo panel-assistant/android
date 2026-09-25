@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import io.github.maxlyth.hapaneld.AutoSleepActivitySnapshot
 import io.github.maxlyth.hapaneld.sensors.HaPresenceAggregate
 import io.github.maxlyth.hapaneld.sensors.HaPanelAreaPrerequisite
@@ -45,7 +46,7 @@ internal data class AutoSleepManagerHandle(
     val setSourceIncluded: (String, String, Boolean) -> HaPresenceSourceUpdate = { _, _, _ ->
         HaPresenceSourceUpdate.UNAVAILABLE
     },
-    val prerequisite: suspend (String, String, String) -> HaPanelAreaPrerequisite = { _, _, _ ->
+    val prerequisite: suspend (String, String, String, String?) -> HaPanelAreaPrerequisite = { _, _, _, _ ->
         HaPanelAreaPrerequisite(
             HaPanelAreaPrerequisitePhase.UNAVAILABLE,
             detail = "Auto-sleep Area discovery is unavailable",
@@ -61,6 +62,8 @@ internal data class AutoSleepRuntimeConfig(
     /** Locally configured area name (`ha_area`); presence sources come from here when it is set. */
     val haArea: String = "",
     val source: String = "home_assistant",
+    /** Panel Assistant discovery id; it proves which `panel_assistant` device is this panel. */
+    val discoveryId: String? = null,
 )
 
 internal interface AutoSleepLearning {
@@ -124,7 +127,10 @@ internal class AutoSleepController private constructor(
         scope = scope,
         screen = screen,
         configuration = {
-            AutoSleepRuntimeConfig(config.autoSleep, config.deviceUid, config.panelId, config.haUrl, config.haArea, config.autoSleepSource)
+            AutoSleepRuntimeConfig(
+                config.autoSleep, config.deviceUid, config.panelId, config.haUrl, config.haArea, config.autoSleepSource,
+                panelAssistantDiscoveryId(config.androidId),
+            )
         },
         learning = StoredAutoSleepLearning(context),
         subscribeToTouches = { callback -> PanelTouchObserver.shared(context).subscribeWithActivityFallback(callback) },
@@ -227,7 +233,7 @@ internal class AutoSleepController private constructor(
 
     suspend fun prerequisite(): HaPanelAreaPrerequisite {
         val current = configuration()
-        return manager.prerequisite(current.deviceUid, current.panelId, current.haArea)
+        return manager.prerequisite(current.deviceUid, current.panelId, current.haArea, current.discoveryId)
     }
 
     /** Counterfactual history using today's policy/lease and HA Area-source history only. */
@@ -581,6 +587,7 @@ internal class AutoSleepController private constructor(
             panelId = next.value.panelId,
             controllerEpoch = next.epoch,
             preferredAreaName = next.value.haArea,
+            discoveryId = next.value.discoveryId,
         ))
         if (next.value.enabled && usesPanelPresence) {
             partition = "panel_proximity|v1"

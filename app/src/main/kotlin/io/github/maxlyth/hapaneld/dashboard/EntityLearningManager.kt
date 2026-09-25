@@ -1711,11 +1711,13 @@ class EntityLearningManager(
                 val areas = io.github.maxlyth.hapaneld.http.HaAreaProtocol.areas(
                     request(JSONObject().put("type", "config/area_registry/list")),
                 )
+                val deviceRegistry = request(JSONObject().put("type", "config/device_registry/list"))
                 val device = io.github.maxlyth.hapaneld.http.HaAreaProtocol.panelDeviceArea(
-                    request(JSONObject().put("type", "config/device_registry/list")),
+                    deviceRegistry,
                     areas,
                     deviceUid,
                     panelId,
+                    panelAssistantEntryIds(request, deviceRegistry),
                 )
                 // Login shortname, best-effort: only config/auth/list carries it and only admins may
                 // call it (verified against core source — auth/current_user has display name only).
@@ -1736,6 +1738,15 @@ class EntityLearningManager(
             catalog
         }.getOrDefault(HaAreaCatalog(ownerKey = ownerKey))
     }
+
+    /** The Panel Assistant entries proven to be this panel, read over the same registry socket. */
+    private suspend fun panelAssistantEntryIds(
+        request: suspend (JSONObject) -> JSONObject,
+        deviceRegistry: JSONObject,
+    ): Set<String> = io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.panelAssistantEntryIds(
+        io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.readProbe(request, deviceRegistry),
+        io.github.maxlyth.hapaneld.panelAssistantDiscoveryId(config.androidId),
+    )
 
     /** Non-secret digest identifying the HA endpoint and credential generation used by area operations. */
     fun haAreaOwnerKey(): String = credentialFingerprint()
@@ -1768,11 +1779,13 @@ class EntityLearningManager(
                     val areas = io.github.maxlyth.hapaneld.http.HaAreaProtocol.areas(
                         request(JSONObject().put("type", "config/area_registry/list")),
                     )
+                    val deviceRegistry = request(JSONObject().put("type", "config/device_registry/list"))
                     val device = io.github.maxlyth.hapaneld.http.HaAreaProtocol.panelDeviceArea(
-                        request(JSONObject().put("type", "config/device_registry/list")),
+                        deviceRegistry,
                         areas,
                         deviceUid,
                         panelId,
+                        panelAssistantEntryIds(request, deviceRegistry),
                     )
                     if (!device.found || device.deviceId.isBlank()) return@withHaSocket
                     if (device.areaName.equals(requested, ignoreCase = true)) { moved = true; return@withHaSocket }
