@@ -2062,6 +2062,22 @@ class Config private constructor(
         editor.remove("ha_device_url").remove("ha_link_target").remove("ha_link_at")
     }
 
+    // The HA brightness level ha-paneld last wrote through a profile's setting-route backlight curve, with
+    // the setting value it produced ("level:setting"). The setting alone cannot say which of the levels the
+    // curve collapses together Home Assistant asked for, so this is what makes the read-back exact.
+    internal val ownedBacklightLevel = object : io.github.maxlyth.hapaneld.control.BacklightScale.OwnedLevelStore {
+        override fun load(): io.github.maxlyth.hapaneld.control.BacklightScale.OwnedLevel? =
+            prefs.getString("owned_backlight_level", null)?.split(':')?.takeIf { it.size == 2 }?.let { (level, setting) ->
+                val l = level.toIntOrNull() ?: return null
+                val s = setting.toIntOrNull() ?: return null
+                io.github.maxlyth.hapaneld.control.BacklightScale.OwnedLevel(l, s)
+            }
+
+        override fun save(owned: io.github.maxlyth.hapaneld.control.BacklightScale.OwnedLevel) {
+            prefs.edit().putString("owned_backlight_level", "${owned.level}:${owned.setting}").apply()
+        }
+    }
+
     // The screen-off timeout (ms) seen before we first raised it, so disabling preventIdleDim can restore
     // the firmware default. -1 = not yet captured.
     var savedScreenOffTimeout: Int

@@ -136,10 +136,16 @@ interface DeviceProfile {
     val ledTransfer: io.github.maxlyth.hapaneld.hardware.LedTransfer
         get() = io.github.maxlyth.hapaneld.hardware.LedTransfer.Identity
 
-    /** Transfer curve from Home Assistant's 0..255 brightness to the backlight node, with its inverse for
-     *  the effective read-back. Applied only where ha-paneld drives the node itself; the Android setting
-     *  stays on the Home Assistant scale. Default = the historic linear scaling. */
+    /** Transfer curve from Home Assistant's 0..255 brightness to the backlight, with its inverse for the
+     *  effective read-back; [backlightRoute] says where it is applied. Default = the historic linear scaling. */
     val backlightTransfer: io.github.maxlyth.hapaneld.hardware.TransferCurve
+        get() = io.github.maxlyth.hapaneld.hardware.TransferCurve.Identity
+
+    /** Where [backlightTransfer] is applied. Irrelevant for the identity curve. */
+    val backlightRoute: BacklightRoute get() = BacklightRoute.NODE
+
+    /** Key-backlight transfer curve (the helper's `BTN` level). Default = passthrough. */
+    val buttonBacklightTransfer: io.github.maxlyth.hapaneld.hardware.TransferCurve
         get() = io.github.maxlyth.hapaneld.hardware.TransferCurve.Identity
 
     /** Preferred true-screen-off path (runtime tiering still falls back as needed). */
@@ -347,3 +353,12 @@ data class TameCandidate(
     val note: String = "",
     val defaultTame: Boolean = false,
 )
+
+/**
+ * Where a backlight transfer curve is applied. [SETTING]: into Android's brightness setting, for firmware
+ * that pushes that setting to the node itself (it would overwrite a curved node write within seconds);
+ * ha-paneld then keeps an owned record of the Home Assistant level it set so the read-back is exact.
+ * [NODE]: into the node, with the setting left on the Home Assistant scale, for panels where ha-paneld is
+ * the node's only writer.
+ */
+enum class BacklightRoute { SETTING, NODE }

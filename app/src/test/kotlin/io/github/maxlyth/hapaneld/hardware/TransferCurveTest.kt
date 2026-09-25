@@ -15,7 +15,7 @@ class TransferCurveTest {
         TransferCurve.Gamma(2.2, floor = 12 / 255.0),
         TransferCurve.Gamma(0.5, floor = 0.1),
         TransferCurve.Points(listOf(0 to 0, 1 to 10, 64 to 20, 128 to 70, 255 to 255)),
-        TransferCurve.Points(listOf(0 to 0, 128 to 30, 255 to 255), floor = 8 / 255.0),
+        TransferCurve.Points(listOf(0 to 0, 1 to 8, 128 to 30, 255 to 255)),
     )
 
     @Test fun identityIsByteIdenticalToTheHistoricLinearScaling() {
@@ -77,6 +77,15 @@ class TransferCurveTest {
                 if (run.size == 1) assertEquals("$curve v=$v", v, back)
             }
         }
+    }
+
+    @Test fun inverseOfACollapsedRunIsItsMiddle() {
+        val curve = TransferCurve.Gamma(2.2, floor = 10 / 255.0)
+        val run = (1..255).filter { curve.toHardware(it) == 10 }
+        assertTrue("the low end collapses several requests onto the floor", run.size > 3)
+        assertEquals((run.first() + run.last()) / 2, curve.toLevel(10))
+        val flat = TransferCurve.Points(listOf(0 to 0, 1 to 50, 100 to 50, 255 to 255))
+        assertEquals(50, flat.toLevel(50))   // requests 1..100 all drive 50
     }
 
     @Test fun inverseOfAnUnreachableValuePicksTheNearerNeighbour() {
@@ -147,6 +156,7 @@ class TransferCurveTest {
             { TransferCurve.from("points", points = listOf(0 to 0, 100 to 50, 100 to 60, 255 to 255)) },
             { TransferCurve.from("points", points = listOf(0 to 0, 100 to 80, 150 to 60, 255 to 255)) },
             { TransferCurve.from("points", points = listOf(0 to 0, 100 to 300, 255 to 255)) },
+            { TransferCurve.from("points", points = listOf(0 to 0, 64 to 10, 255 to 255), floor = 4) },
         )
         bad.forEachIndexed { index, build ->
             try {

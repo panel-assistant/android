@@ -1189,6 +1189,26 @@ internal fun stageSelfUpdateChannelChange(
     if (!requestAdmittedInstall(requested, current)) publishCurrent()
 }
 
+/**
+ * The helper `BTN` command for a key-backlight [level] on the Home Assistant scale. The node takes the level
+ * raw, so the profile [curve] is applied here; the state published back stays [level] itself.
+ */
+internal fun buttonBacklightCommand(level: Int, curve: io.github.maxlyth.hapaneld.hardware.TransferCurve): String =
+    "BTN ${curve.toHardware(level.coerceIn(0, 255))}"
+
+/**
+ * The Home Assistant level to publish when the effective backlight moved from [baseline] to [effective]
+ * without a command. A profile curve's reads are already on the Home Assistant scale ([curved]), so they are
+ * published as read; otherwise the node may sit on a framework curve's scale and is back-mapped in proportion
+ * to the last published [commanded] level.
+ */
+internal fun reportedBacklightDrift(curved: Boolean, commanded: Int, effective: Int, baseline: Int): Int =
+    if (curved) {
+        effective.coerceIn(1, 255)
+    } else {
+        (commanded.toLong() * effective / baseline.coerceAtLeast(1)).toInt().coerceIn(1, 255)
+    }
+
 internal class MqttBridge(
     private val config: Config,
     private val brightness: BrightnessController,
@@ -1227,6 +1247,9 @@ internal class MqttBridge(
     // Panel carries a CHT8305 room temp/humidity chip (daemon-read) — gates the opt-in Room sensors.
     private val hasCht8305: Boolean,
     private val hasButtonBacklight: Boolean,
+    /** The profile's key-backlight curve; the reported state stays the Home Assistant level. */
+    private val buttonBacklightTransfer: io.github.maxlyth.hapaneld.hardware.TransferCurve =
+        io.github.maxlyth.hapaneld.hardware.TransferCurve.Identity,
     // The profile-authoritative microphone capability (Capabilities.hasMicrophone, itself sourced from
     // the active device profile), captured per bridge generation exactly like hasCht8305/
     // hasButtonBacklight — a profile switch already forces a fresh bridge (profileIdentity), so this is
@@ -2692,7 +2715,7 @@ internal class MqttBridge(
         // LED: re-apply the last colour to the hardware (reset on reboot) and publish it.
         reapplyStoredLed()
         if (hasButtonBacklight) {
-            config.lastButtonBacklight.takeIf { it >= 0 }?.let { HelperClient.send("BTN $it") }
+            config.lastButtonBacklight.takeIf { it >= 0 }?.let { HelperClient.send(buttonBacklightCommand(it, buttonBacklightTransfer)) }
         }
     }
 
@@ -3405,7 +3428,7 @@ internal class MqttBridge(
         val json = JSONObject(payload)
         val on = json.optString("state", "ON").equals("ON", ignoreCase = true)
         val level = if (!on) 0 else if (json.has("brightness")) json.getInt("brightness") else 255
-        if (HelperClient.send("BTN $level") == "OK") {
+        if (HelperClient.send(buttonBacklightCommand(level, buttonBacklightTransfer)) == "OK") {
             config.lastButtonBacklight = level
             stateConverger.reconcile("buttons", force = true)
         }
@@ -4505,9 +4528,9 @@ internal class MqttBridge(
             prevTickBrightness = cur
 
             // Channel: effective backlight vs its post-command baseline — ONLY when the commanded
-            // setting hasn't moved (else the channel above owns it). Catches firmware node-dims. The
-            // node scale differs from the setting scale on curve-mapped panels, so drift is reported
-            // back-mapped proportionally into the commanded scale.
+            // setting hasn't moved (else the channel above owns it). Catches firmware node-dims. On a
+            // panel whose framework maps the setting through its own curve the node scale differs, so
+            // drift is back-mapped proportionally; a profile curve already reads back on the HA scale.
             if (cur == lastScreenBrightness || kotlin.math.abs(cur - lastScreenBrightness) <= 3) {
                 val eff = brightness.getBrightness()
                 if (eff >= 0) {
@@ -4515,8 +4538,7 @@ internal class MqttBridge(
                     if (base < 0) {
                         screenEffectiveBaseline = eff   // command settled — remember its hardware level
                     } else if (kotlin.math.abs(eff - base) > SCREEN_DRIFT) {
-                        val reported = (lastScreenBrightness.toLong() * eff / base.coerceAtLeast(1))
-                            .toInt().coerceIn(1, 255)
+                        val reported = reportedBacklightDrift(brightness.curved, lastScreenBrightness, eff, base)
                         Log.i(TAG, "screen backlight moved externally: baseline $base -> $eff — reporting $reported")
                         syncLog.record(SystemClock.elapsedRealtime(), "backlight →$reported (firmware dim)")
                         publishScreenBrightness(reported)

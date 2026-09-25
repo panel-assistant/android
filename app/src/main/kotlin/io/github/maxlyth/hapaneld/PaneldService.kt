@@ -1254,7 +1254,14 @@ class PaneldService : Service() {
         // onStartCommand alongside the other network subsystems; restarted on a /config change.
         logShipper = LogShipper(config, scope, logCaptureApp, logCaptureWebView)
 
-        brightness = BrightnessController(this, transfer = profile.backlightTransfer)
+        brightness = BrightnessController(
+            this,
+            scale = io.github.maxlyth.hapaneld.control.BacklightScale(
+                profile.backlightTransfer,
+                profile.backlightRoute,
+                config.ownedBacklightLevel,
+            ),
+        )
         screen = ScreenController(
             brightness,
             AndroidScreenPower(this),
@@ -1841,6 +1848,7 @@ class PaneldService : Service() {
             // Button backlight is a distinct profiled node (TPA10), not a property of the RGB backend:
             // SMT1019 also uses SocketLedController for RGB but has no button-backlight node.
             profile.hasButtonBacklight,
+            buttonBacklightTransfer = profile.buttonBacklightTransfer,
             hasMicrophone = profile.hasMicrophone,
             hasCamera = { cameraPresent() },
             autoBright = autoBright,
@@ -2073,12 +2081,14 @@ class PaneldService : Service() {
         lastObservedCommandedBrightness = brightness.getCommanded()
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                val level = runCatching {
+                val setting = runCatching {
                     Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
                 }.getOrNull() ?: return
+                // Attribution matches the raw setting ha-paneld wrote; preferences are on the HA scale.
+                val level = brightness.levelFromSetting(setting)
                 val prior = lastObservedCommandedBrightness
                 lastObservedCommandedBrightness = level
-                if (brightness.consumeOwnedSettingChange(level) || screen.observedDark() == true) return
+                if (brightness.consumeOwnedSettingChange(setting) || screen.observedDark() == true) return
                 autoBright.noteExternalBrightness(level, BrightnessPreferenceOrigin.ANDROID_SYSTEM, prior)
             }
         }
