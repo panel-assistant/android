@@ -153,7 +153,7 @@ class StorageHealthRuntimeSurfaceTest {
         assertEquals(1_700_000_000L, json.getLong("checked_at_epoch_seconds"))
     }
 
-    @Test fun discoveryAndLifecycleWiringUseTheSharedAuthority() {
+    @Test fun discoveryUsesTheSharedAuthority() {
         val panel = "test"
         val topic = "homeassistant/sensor/${panel}_storage_health/config"
         assertTrue(topic in mqttKnownConfigTopics(panel))
@@ -165,104 +165,9 @@ class StorageHealthRuntimeSurfaceTest {
         )
 
         val mqtt = source("MqttBridge.kt")
-        val service = source("PaneldService.kt")
         assertTrue(mqtt.contains("\"sensor\", \"\${panel}_storage_health\""))
         assertTrue(mqtt.contains("\"entity_category\":\"diagnostic\""))
         assertTrue(mqtt.contains("stateConverger.reconcile(\"storage_health\", force = true)"))
-        assertTrue(service.contains("storageHealth = StorageHealthRuntime::snapshot"))
-        assertTrue(service.contains("StorageHealthRuntime.subscribe(::onStorageHealthSnapshot)"))
-        assertTrue(service.contains("StorageHealthRuntime::subscribeDatabaseFailures"))
-        assertTrue(service.contains("StorageHealthRecoveryLifecycle("))
-        assertTrue(service.contains("delaysMs = STORAGE_HEALTH_RECOVERY_DELAYS_MS"))
-        assertTrue(service.contains("longArrayOf(5_000L, 15_000L, 30_000L)"))
-        val serviceStart = service.substring(
-            service.indexOf("override fun onStartCommand"),
-            service.indexOf("private fun startStorageHealthChecks"),
-        )
-        assertTrue(serviceStart.contains("startStorageHealthChecks()"))
-        val recoverySetup = service.substring(
-            service.indexOf("private fun startStorageHealthChecks"),
-            service.indexOf("/** One bounded observation attempt"),
-        )
-        assertEquals(2, Regex("runQueuedStorageHealthObservation\\(\\)").findAll(recoverySetup).count())
-        assertTrue(
-            recoverySetup.contains(
-                "storageHealthRecoveryAttemptComplete(runQueuedStorageHealthObservation())",
-            ),
-        )
-        assertTrue(service.contains("intervalMs = STORAGE_HEALTH_CHECK_MS"))
-        assertTrue(service.contains("initialDelayMs = 0L"))
-        assertTrue(service.contains("repeat(STORAGE_HEALTH_CHECK_ATTEMPTS)"))
-        assertTrue(service.contains("private const val STORAGE_HEALTH_CHECK_ATTEMPTS = 3"))
-        assertTrue(service.contains("private const val STORAGE_HEALTH_RETRY_MS = 5_000L"))
-        assertTrue(service.contains("kotlinx.coroutines.delay(STORAGE_HEALTH_RETRY_MS)"))
-        val observationTokenAt = service.indexOf("val observationToken = StorageHealthRuntime.beginObservation()")
-        val observationReadAt = service.indexOf("entityLearning.storageHealthObservation(cancellationSignal)")
-        assertTrue(observationTokenAt >= 0)
-        assertTrue(observationReadAt >= 0)
-        assertTrue(observationTokenAt < observationReadAt)
-        assertTrue(service.contains("StorageHealthRuntime.refresh(observation, observationToken)"))
-        assertTrue(service.contains("storage health check failed (\${error.javaClass.simpleName})"))
-        assertFalse(service.contains("Log.w(TAG, \"storage health check failed\", error)"))
-        assertFalse(service.contains("failure.message"))
-        assertFalse(service.contains("Log.w(TAG, \"storage health check failed\", failure)"))
-        assertFalse(service.contains("nightly", ignoreCase = true))
-        val storageSubscriptionCloseAt = service.indexOf("storageHealthSubscription?.close()")
-        val scopeCancelAt = service.indexOf("scope.cancel()")
-        assertTrue(storageSubscriptionCloseAt >= 0)
-        assertTrue(scopeCancelAt >= 0)
-        assertTrue(storageSubscriptionCloseAt < scopeCancelAt)
-        assertTrue(service.indexOf("recoveryLifecycle?.close()") < scopeCancelAt)
-        assertTrue(service.contains("synchronized(storageHealthLifecycleLock)"))
-        val recoveryCloseAt = service.indexOf("recoveryLifecycle?.close()")
-        val activeCheckCancelAt = service.indexOf("storageHealthObservationQueue.close()")
-        assertTrue(recoveryCloseAt >= 0)
-        assertTrue(activeCheckCancelAt >= 0)
-        assertTrue(recoveryCloseAt < activeCheckCancelAt)
-        val storageRuntime = source("storage/StorageHealth.kt")
-        val runtimeStart = storageRuntime.indexOf("object StorageHealthRuntime")
-        val failureRecorderStart = storageRuntime.indexOf(
-            "fun recordDatabaseFailure(operation: String, throwable: Throwable)",
-            runtimeStart,
-        )
-        val failureRecorder = storageRuntime.substring(
-            failureRecorderStart,
-            storageRuntime.indexOf("fun recordDatabaseWriteSuccess()", failureRecorderStart),
-        )
-        assertTrue(failureRecorder.contains("failureHub.recordDatabaseFailure"))
-        assertTrue(activeCheckCancelAt < scopeCancelAt)
-        assertTrue(service.contains("NotificationManager.IMPORTANCE_HIGH"))
-        assertTrue(service.contains(".setOnlyAlertOnce(true)"))
-        assertTrue(service.contains(".setSilent(true)"))
-        val storageHealthNotification = service.substring(
-            service.indexOf("private fun updateStorageHealthNotification"),
-            service.indexOf("private fun notificationChannel"),
-        )
-        assertTrue(
-            storageHealthNotification.contains(
-                "storageHealthDestination.setClass(this, ConfigActivity::class.java)",
-            ),
-        )
-        assertTrue(storageHealthNotification.contains("PendingIntent.FLAG_IMMUTABLE"))
-        assertTrue(storageHealthNotification.contains("storageHealthDestination,"))
-        assertTrue(service.contains("NotificationChannel(channelId, \"ha-paneld\", NotificationManager.IMPORTANCE_MIN)"))
-        assertTrue(service.contains("private const val NOTIF_ID = 1"))
-        assertTrue(service.contains("private const val STORAGE_HEALTH_NOTIF_ID = 2"))
-
-        val server = source("http/PaneldServer.kt")
-        val invalidatorStart = server.indexOf("internal fun invalidateStorageHealthDiagnostics()")
-        assertTrue(invalidatorStart >= 0)
-        val invalidatorEnd = server.indexOf("\n    }", invalidatorStart)
-        val invalidator = server.substring(invalidatorStart, invalidatorEnd)
-        assertTrue(invalidator.contains("diagCache.invalidate()"))
-        assertFalse(invalidator.contains("snapCache.invalidate()"))
-        assertFalse(invalidator.contains("densityCache.invalidate()"))
-        val callbackStart = service.indexOf("private fun onStorageHealthSnapshot")
-        val invalidateAt = service.indexOf("server.invalidateStorageHealthDiagnostics()", callbackStart)
-        val notificationAt = service.indexOf("updateStorageHealthNotification(snapshot)", callbackStart)
-        val mqttAt = service.indexOf("publishStorageHealth()", callbackStart)
-        assertTrue(invalidateAt in (callbackStart + 1) until notificationAt)
-        assertTrue(notificationAt < mqttAt)
     }
 
     @Test fun theMqttPayloadNamesTheFailingOperationAndTheReclamationMode() {
@@ -352,6 +257,7 @@ class StorageHealthRuntimeSurfaceTest {
         quickCheck = StorageQuickCheck.OK,
     )
 
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private fun source(name: String): String {
         val working = File(requireNotNull(System.getProperty("user.dir")))
         return listOf(

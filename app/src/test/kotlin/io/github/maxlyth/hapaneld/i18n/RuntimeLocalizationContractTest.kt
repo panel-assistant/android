@@ -7,7 +7,7 @@ import org.junit.Test
 
 class RuntimeLocalizationContractTest {
     private val assets = File("src/main/assets")
-    private val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
+    // Source-text reason: loads the shipped i18n catalogues as input data.
     private val source = SourceCatalogue.parse(File(assets, "i18n/en.json").readText())
     private val newRuntimeKeys = setOf(
         "runtime.power_safety.ack.not_hidden",
@@ -42,6 +42,7 @@ class RuntimeLocalizationContractTest {
     )
 
     @Test fun `every literal runtime call site has a current promoted catalogue record`() {
+        // Source-text reason: runtime.* catalogue keys used anywhere in the app are a translation catalogue contract.
         val consumers = listOf(File("src/main/kotlin"), assets)
             .flatMap { root -> root.walkTopDown().filter { it.isFile && it.extension in setOf("kt", "js") }.toList() }
             .flatMapTo(sortedSetOf()) { literalRuntimeKeys(it.readText()) }
@@ -70,14 +71,6 @@ class RuntimeLocalizationContractTest {
                 )
             }
         }
-    }
-
-    @Test fun `every shared page projects runtime strings with provenance`() {
-        val kotlin = server.readText()
-        assertTrue(functionBody(kotlin, "browserI18nPayload").contains("\"runtime.\" in prefixes"))
-        assertTrue(functionBody(kotlin, "page").contains("setOf(\"shell.\", \"\$active.\", \"runtime.\")"))
-        assertTrue(functionBody(kotlin, "infoHtml").contains("setOf(\"shell.\", \"dashboard.\", \"runtime.\")"))
-        assertTrue(routeBody(kotlin, "setup").contains("setOf(\"shell.\", \"setup.\", \"runtime.\")"))
     }
 
     @Test fun `Italian and French power safety use the established risk terminology`() {
@@ -115,18 +108,4 @@ class RuntimeLocalizationContractTest {
         Regex("[\\\"'](runtime(?:\\.[a-z0-9_-]+)+)[\\\"']")
             .findAll(text)
             .mapTo(sortedSetOf()) { it.groupValues[1] }
-
-    private fun functionBody(text: String, name: String): String {
-        val start = text.indexOf("fun $name(").also { require(it >= 0) { "missing function $name" } }
-        val next = text.indexOf("\n    private fun ", start + 1).takeIf { it >= 0 } ?: text.length
-        return text.substring(start, next)
-    }
-
-    private fun routeBody(text: String, path: String): String {
-        val marker = "get(\"/$path\")"
-        val start = text.indexOf(marker).also { require(it >= 0) { "missing /$path route" } }
-        val next = text.indexOf("\n                get(\"/", start + marker.length)
-            .takeIf { it >= 0 } ?: text.length
-        return text.substring(start, next)
-    }
 }

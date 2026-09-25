@@ -3,12 +3,12 @@ package io.github.maxlyth.hapaneld.i18n
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LogsFleetI18nContractTest {
     private val assets = File("src/main/assets")
+    // Source-text reason: whole-file scan for literal logs./fleet. catalogue keys (translation catalogue contract).
     private val serverSource = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
     private val sourceRecords = JSONObject(File(assets, "i18n/en.json").readText()).getJSONObject("strings")
     private val sourceCatalogue = SourceCatalogue.parse(File(assets, "i18n/en.json").readText())
@@ -56,33 +56,12 @@ class LogsFleetI18nContractTest {
         ),
     )
 
-    @Test fun `Logs and Fleet finite browser copy is catalogue backed without former hard coded English`() {
-        val formerVisibleEnglish = mapOf(
-            "logs" to listOf(
-                "Live logs",
-                "connecting…",
-                "Root availability is checked when the stream opens",
-                "Minimum level",
-                "filter text…",
-                "Tokens/passwords are redacted before display",
-            ),
-            "fleet" to listOf(
-                "Fleet overview",
-                "coming soon",
-                "A multi-panel roster",
-                "For now, open another panel directly",
-            ),
-        )
-
+    @Test fun `Logs and Fleet catalogue contract matches the literal consumer keys`() {
         expectedKeys.forEach { (surface, expected) ->
-            val body = functionBody("${surface}Body")
             val browserScript = if (surface == "logs") File(assets, "logs.js").readText() else ""
-            val consumed = literalKeys(body, surface, "strings\\.get") +
+            val consumed = literalKeys(serverSource, surface, "strings\\.get") +
                 literalKeys(browserScript, surface, "i18nText")
             assertEquals("$surface must consume its complete bounded catalogue slice", expected, consumed)
-            formerVisibleEnglish.getValue(surface).forEach { literal ->
-                assertFalse("$surface still hard-codes visible English: $literal", body.contains(literal))
-            }
             expected.forEach { key ->
                 val entry = sourceCatalogue.strings[key]
                 assertTrue("English catalogue is missing $key", entry != null)
@@ -112,60 +91,6 @@ class LogsFleetI18nContractTest {
         }
     }
 
-    @Test fun `Logs server controls retain their intended catalogue key mappings`() {
-        val body = functionBody("logsBody")
-        val expectedBindings = listOf(
-            "id=\"lg-src-app\"" to "logs.source.app",
-            "id=\"lg-src-system\"" to "logs.source.system",
-            "id=\"lg-src-webview\"" to "logs.source.webview",
-            "value=\"V\"" to "logs.level.verbose",
-            "value=\"D\"" to "logs.level.debug",
-            "value=\"I\"" to "logs.level.info",
-            "value=\"W\"" to "logs.level.warning",
-            "value=\"E\"" to "logs.level.error",
-            "id=\"lg-follow\"" to "logs.action.follow",
-            "id=\"lg-pause\"" to "logs.action.pause",
-            "onclick=\"lgClear()\"" to "logs.action.clear",
-        )
-        expectedBindings.forEachIndexed { index, (control, key) ->
-            val start = body.indexOf(control)
-            val end = expectedBindings.getOrNull(index + 1)?.first?.let { body.indexOf(it, start + control.length) }
-                ?.takeIf { it >= 0 } ?: body.length
-            assertTrue("logsBody is missing control $control", start >= 0)
-            assertTrue(
-                "$control must consume $key before the next control",
-                body.substring(start, end).contains("strings.get(\"$key\")"),
-            )
-        }
-    }
-
-    @Test fun `Logs and Fleet routes report body languages and project their active prefixes through page`() {
-        listOf("logs", "fleet").forEach { route ->
-            val routeSource = routeBody(route)
-            assertTrue("/$route must vary on the requested language", routeSource.contains("HttpHeaders.AcceptLanguage"))
-            assertTrue("/$route must emit Content-Language", routeSource.contains("HttpHeaders.ContentLanguage"))
-            assertTrue(
-                "/$route Content-Language must account for shell, shared hardened descriptions and the $route body catalogue",
-                Regex("strings\\.languages\\(setOf\\(\\s*\"shell\\.\"\\s*,\\s*\"configure\\.hardened\\.\"\\s*,\\s*\"$route\\.\"\\s*\\)\\)")
-                    .containsMatchIn(routeSource),
-            )
-            assertFalse(
-                "/$route must not report unconditional English once its complete target catalogue is active",
-                routeSource.contains("+ AppLocale.ENGLISH"),
-            )
-            assertTrue(
-                "/$route must pass its request-localized Strings through page()",
-                Regex("page\\(\"$route\"[\\s\\S]*?,\\s*strings,\\s*call\\.embedMode\\(\\)\\)").containsMatchIn(routeSource),
-            )
-        }
-
-        val page = functionBody("page")
-        assertTrue(
-            "page() must project the active body prefix for browser-side translations",
-            page.contains("translationPrefixes = setOf(\"shell.\", \"${'$'}active.\", \"runtime.\")"),
-        )
-    }
-
     @Test fun `Logs and Fleet language accounting exposes shared per-key English fallback`() {
         val targetJson = JSONObject(File(assets, "i18n/de.json").readText())
         targetJson.getJSONObject("strings")
@@ -183,43 +108,8 @@ class LogsFleetI18nContractTest {
         }
     }
 
-    @Test fun `Logs and Fleet leave opaque evidence and machine addresses outside translated prose`() {
-        val logs = functionBody("logsBody")
-        val fleet = functionBody("fleetBody")
-
-        assertTrue("raw log endpoint must remain a copyable machine address", logs.contains("/api/v1/logs/stream"))
-        assertTrue("raw log endpoint must retain the configured machine port", logs.contains("${'$'}{esc(config.httpPort.toString())}"))
-        assertTrue("Fleet mDNS service token must remain verbatim", fleet.contains("${'$'}{esc(Config.MDNS_SERVICE_TYPE)}"))
-        assertTrue("Fleet direct URL must remain a copyable machine address", fleet.contains("http://&lt;its-ip&gt;:${'$'}{esc(config.httpPort.toString())}/"))
-        val discoveryPrefix = fleet.indexOf("strings.get(\"fleet.note.discovery_prefix\")")
-        val serviceToken = fleet.indexOf("<code>${'$'}{esc(Config.MDNS_SERVICE_TYPE)}</code>")
-        val discoverySuffix = fleet.indexOf("strings.get(\"fleet.note.discovery_suffix\")")
-        assertTrue(
-            "Fleet mDNS token must remain a separately escaped code boundary between translatable grammar",
-            discoveryPrefix >= 0 && discoveryPrefix < serviceToken && serviceToken < discoverySuffix,
-        )
-
-        listOf(logs, fleet).forEach { body ->
-            assertFalse("machine addresses must not be inserted into translated text", Regex("strings\\.get\\([^)]*http").containsMatchIn(body))
-        }
-    }
-
     private fun literalKeys(source: String, prefix: String, function: String): Set<String> =
         Regex("$function\\(\\s*[\\\"'](($prefix)\\.[a-z0-9._-]+)[\\\"']")
             .findAll(source)
             .mapTo(sortedSetOf()) { it.groupValues[1] }
-
-    private fun functionBody(name: String): String {
-        val start = serverSource.indexOf("fun $name(").also { require(it >= 0) { "missing function $name" } }
-        val next = serverSource.indexOf("\n    private fun ", start + 1).takeIf { it >= 0 } ?: serverSource.length
-        return serverSource.substring(start, next)
-    }
-
-    private fun routeBody(path: String): String {
-        val marker = "get(\"/$path\")"
-        val start = serverSource.indexOf(marker).also { require(it >= 0) { "missing /$path route" } }
-        val next = serverSource.indexOf("\n                get(\"/", start + marker.length)
-            .takeIf { it >= 0 } ?: serverSource.length
-        return serverSource.substring(start, next)
-    }
 }

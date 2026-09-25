@@ -37,17 +37,8 @@ class PanelAssistantDiscoveryIdentityTest {
         assertFalse(healthToken.contains(androidId))
     }
 
-    @Test fun bothHealthRoutesAndMdnsAdvertisementUseTheSameToken() {
-        val server = TestSources.kotlin("http/PaneldServer.kt").readText()
-        val advertiser = TestSources.kotlin("MdnsAdvertiser.kt").readText()
-
-        assertEquals(2, Regex("panelAssistantDiscoveryHealthToken\\(config\\.androidId\\)").findAll(server).count())
-        // The advertiser's production discovery id is this token; the TXT record carries whatever it yields.
-        assertTrue(advertiser.contains("private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.androidId) },"))
-        assertTrue(advertiser.contains("discoveryId()?.let { put(\"did\", it) }"))
-    }
-
-    @Test fun healthOpenApiDocumentsTheIdentityGrammarAndOmissionRule() {
+    @Test fun healthOpenApiContractDocumentsTheIdentityGrammarAndOmissionRule() {
+        // Source-text reason: the shipped OpenAPI document is the public API contract.
         val description = JSONObject(TestSources.asset("openapi.json").readText())
             .getJSONObject("paths")
             .getJSONObject("/api/v1/health")
