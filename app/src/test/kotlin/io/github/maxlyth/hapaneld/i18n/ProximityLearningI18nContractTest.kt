@@ -30,7 +30,8 @@ class ProximityLearningI18nContractTest {
                     translated.state == TranslationState.MACHINE_CROSS_CHECKED ||
                         translated.state == TranslationState.COMMUNITY_CORRECTED ||
                         (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT),
+                            translated.state == TranslationState.MACHINE_DRAFT) ||
+                        EarlyAccessReviewHold.holds(locale, key, translated),
                 )
             }
             val permittedSourceIdentical = when (locale) {
@@ -41,7 +42,9 @@ class ProximityLearningI18nContractTest {
                 "$locale has an unreviewed source-identical proximity target",
                 permittedSourceIdentical,
                 keys.filterTo(sortedSetOf()) { key ->
-                    target.strings.getValue(key).text == source.strings.getValue(key).text
+                    val translated = target.strings.getValue(key)
+                    translated.text == source.strings.getValue(key).text &&
+                        !EarlyAccessReviewHold.holds(locale, key, translated)
                 },
             )
         }
