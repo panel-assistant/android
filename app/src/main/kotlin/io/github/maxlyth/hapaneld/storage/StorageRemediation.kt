@@ -4,6 +4,7 @@ import io.github.maxlyth.hapaneld.dashboard.RECOVERY_INSPECTION_COPY
 import io.github.maxlyth.hapaneld.dashboard.RECOVERY_INSPECTION_DIRECTORY_PREFIX
 import io.github.maxlyth.hapaneld.util.CompanionHelperProtocol
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceProtocol
+import io.github.maxlyth.hapaneld.util.guardDbCandidateName
 import io.github.maxlyth.hapaneld.util.guardDbCandidatePendingName
 import java.io.File
 import java.nio.file.Files
@@ -21,7 +22,7 @@ enum class DisposableDataClass {
     CACHES,
     /** Scratch directories a companion capture or an isolated recovery inspection left behind. */
     TEMPORARY_DIRECTORIES,
-    /** A Guard DB candidate claim's temporary copy, never the staged candidate itself. */
+    /** A Guard DB candidate claim's temporary copy, and a staged candidate pair no ARM can use. */
     GUARD_DB_CANDIDATES,
 }
 
@@ -216,16 +217,19 @@ private fun disposableTree(top: File): DisposableTree {
  * Every disposable file class the app writes, each confined to one app-private directory and to the
  * exact names its writer produces (`File.createTempFile` adds only decimal digits). Configuration,
  * the config vault, revisions, imported profiles, database files and their restore or superseded
- * copies, staged Guard DB candidates and the platform-owned WebView store are absent by construction:
- * no rule names their directory or their names.
+ * copies and the platform-owned WebView store are absent by construction: no rule names their
+ * directory or their names.
  *
- * A Guard DB claim's temporary is admitted only through [guardDbFileOwned], the staging's own file
- * proof. The staged `guard-db-candidate-<role>.apk` pair is process-independent by design, so no
- * process-start proof can show it abandoned; it stays until the operator discards it.
+ * Every Guard DB file is admitted only through [guardDbFileOwned], the staging's own file proof. The
+ * staged `guard-db-candidate-<role>.apk` pair is process-independent by design, so a process-start
+ * proof alone cannot show it abandoned; it is admitted only once [guardDbPairUnarmable]
+ * ([GuardDbAppStaging.unarmable]) proves no ARM can use it, evaluated at most once per sweep. The
+ * default admits no pair.
  */
 internal fun appOwnedDisposableFileRules(
     cacheDir: File,
     filesDir: File,
+    guardDbPairUnarmable: () -> Boolean = { false },
     guardDbFileOwned: (File) -> Boolean,
 ): List<DisposableFileRule> = listOf(
     DisposableFileRule(
@@ -257,6 +261,12 @@ internal fun appOwnedDisposableFileRules(
         filesDir,
         exactNames(GuardDbMaintenanceProtocol.Role.values().map(::guardDbCandidatePendingName)),
         ownedFile = guardDbFileOwned,
+    ),
+    DisposableFileRule(
+        DisposableDataClass.GUARD_DB_CANDIDATES,
+        filesDir,
+        exactNames(GuardDbMaintenanceProtocol.Role.values().map(::guardDbCandidateName)),
+        ownedFile = lazy(guardDbPairUnarmable).let { unarmable -> { file -> guardDbFileOwned(file) && unarmable.value } },
     ),
 )
 

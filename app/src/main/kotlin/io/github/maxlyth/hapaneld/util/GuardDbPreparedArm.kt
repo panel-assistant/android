@@ -177,6 +177,12 @@ internal class GuardDbPreparedArmStore(
     private val record = File(directory, "guard-db-prepared-arm.v1")
     private val temporary = File(directory, ".guard-db-prepared-arm.v1.pending")
 
+    /**
+     * Whether the record or its pending write exists at all, read without reconciling either. The
+     * pending write is looked at first: a publish moves it onto the record, never the other way.
+     */
+    fun present(): Boolean = listOf(temporary, record).any { !Files.notExists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+
     @Synchronized
     fun load(): GuardDbPreparedArmLoad {
         if (!reconcilePending()) return GuardDbPreparedArmLoad.Corrupt

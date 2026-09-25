@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.http
 
+import android.util.Log
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.control.RemoteDebugAuthorityResult
 import io.github.maxlyth.hapaneld.control.RemoteDebugSecurityTransitionGate
@@ -129,7 +130,7 @@ internal fun Route.guardDbBootstrapRoutes(dependencies: GuardDbBootstrapRouteDep
                 ?: return@get call.guardDbError(HttpStatusCode.ServiceUnavailable, "evidence-unavailable")
             call.respondText(evidence.toString(Charsets.US_ASCII), ContentType.Text.Plain)
         }
-        dependencies.terminalRetirement?.let { guardDbTerminalRetirementRoute(it) }
+        dependencies.terminalRetirement?.let { guardDbTerminalRetirementRoute(it, dependencies.staging) }
         post("/stage") { stageGuardDbCandidate(call, dependencies) }
         post("/discard") { discardGuardDbCandidate(call, dependencies) }
         post("/arm") { armGuardDbCanary(call, dependencies) }
@@ -138,8 +139,9 @@ internal fun Route.guardDbBootstrapRoutes(dependencies: GuardDbBootstrapRouteDep
 
 internal fun Route.guardDbTerminalRetirementRoute(
     dependencies: GuardDbTerminalRetirementRouteDependencies,
+    staging: GuardDbAppStaging,
 ) {
-    post("/evidence/retire") { retireGuardDbTerminalEvidence(call, dependencies) }
+    post("/evidence/retire") { retireGuardDbTerminalEvidence(call, dependencies, staging) }
 }
 
 private data class GuardDbTerminalRetirementRequest(
@@ -206,6 +208,7 @@ private object GuardDbTerminalRetirementOperationLane {
 private suspend fun retireGuardDbTerminalEvidence(
     call: ApplicationCall,
     dependencies: GuardDbTerminalRetirementRouteDependencies,
+    staging: GuardDbAppStaging,
 ) {
     if (!guardDbDirectLanPeer(call.request.origin.remoteAddress)) {
         return call.guardDbError(HttpStatusCode.Forbidden, "direct-lan-required")
@@ -252,6 +255,7 @@ private suspend fun retireGuardDbTerminalEvidence(
                     }
                     val settlement = reconcileTerminalRetirementIntent(
                         dependencies,
+                        staging,
                         durable.retirement,
                         securityEpoch,
                     )
@@ -278,7 +282,7 @@ private suspend fun retireGuardDbTerminalEvidence(
     val preview = observeTerminalRetirement(dependencies.client, request)
     if (preview is GuardDbTerminalObservationResult.Refused) {
         unresolvedIntent?.let { intent ->
-            val settlement = reconcileTerminalRetirementIntent(dependencies, intent, securityEpoch)
+            val settlement = reconcileTerminalRetirementIntent(dependencies, staging, intent, securityEpoch)
             if (settlement !is GuardDbTerminalRetirementSettlement.RequiresReapproval) {
                 if (!settlement.holdsLane) {
                     GuardDbTerminalRetirementOperationLane.release(
@@ -323,6 +327,7 @@ private suspend fun retireGuardDbTerminalEvidence(
             unresolvedIntent?.let { intent ->
                 val settlement = settleTerminalRetirementProbe(
                     dependencies.store,
+                    staging,
                     intent,
                     dependencies.client.statusProbe(),
                 )
@@ -360,6 +365,7 @@ private suspend fun retireGuardDbTerminalEvidence(
                         }
                         val settlement = settleTerminalRetirementProbe(
                             dependencies.store,
+                            staging,
                             durable.retirement,
                             dependencies.client.statusProbe(),
                         )
@@ -386,25 +392,15 @@ private suspend fun retireGuardDbTerminalEvidence(
             request.generation,
             request.evidenceSha256,
         )) {
-            is GuardDbMaintenanceProtocol.TerminalRetireResult.Accepted -> {
-                if (dependencies.store.markComplete(intent)) {
-                    GuardDbProcessAdmission.updateTerminalRetirement(dependencies.store.load())
-                    GuardDbTerminalRetirementSettlement.Complete(result.retirementGeneration)
-                } else {
-                    GuardDbProcessAdmission.updateTerminalRetirement(dependencies.store.load())
-                    GuardDbTerminalRetirementSettlement.Refused(
-                        HttpStatusCode.ServiceUnavailable,
-                        "retirement-completion-not-durable",
-                        holdLane = true,
-                    )
-                }
-            }
+            is GuardDbMaintenanceProtocol.TerminalRetireResult.Accepted ->
+                completeTerminalRetirement(dependencies.store, staging, intent)
             GuardDbMaintenanceProtocol.TerminalRetireResult.Indeterminate ->
-                settleTerminalRetirementProbe(dependencies.store, intent, dependencies.client.statusProbe())
+                settleTerminalRetirementProbe(dependencies.store, staging, intent, dependencies.client.statusProbe())
             GuardDbMaintenanceProtocol.TerminalRetireResult.NotSubmitted ->
                 if (unresolvedIntent != null) {
                     settleTerminalRetirementProbe(
                         dependencies.store,
+                        staging,
                         intent,
                         dependencies.client.statusProbe(),
                     )
@@ -420,6 +416,7 @@ private suspend fun retireGuardDbTerminalEvidence(
                 if (unresolvedIntent != null) {
                     settleTerminalRetirementProbe(
                         dependencies.store,
+                        staging,
                         intent,
                         dependencies.client.statusProbe(),
                     )
@@ -449,6 +446,7 @@ private suspend fun retireGuardDbTerminalEvidence(
 
 private suspend fun reconcileTerminalRetirementIntent(
     dependencies: GuardDbTerminalRetirementRouteDependencies,
+    staging: GuardDbAppStaging,
     intent: GuardDbTerminalRetirement,
     securityEpoch: Long,
 ): GuardDbTerminalRetirementSettlement {
@@ -460,7 +458,7 @@ private suspend fun reconcileTerminalRetirementIntent(
                 holdLane = true,
             )
         }
-        settleTerminalRetirementProbe(dependencies.store, intent, dependencies.client.statusProbe())
+        settleTerminalRetirementProbe(dependencies.store, staging, intent, dependencies.client.statusProbe())
     }
     return when (gated) {
         RemoteDebugAuthorityResult.Changed -> GuardDbTerminalRetirementSettlement.Refused(
@@ -474,6 +472,7 @@ private suspend fun reconcileTerminalRetirementIntent(
 
 private fun settleTerminalRetirementProbe(
     store: GuardDbTerminalRetirementStore,
+    staging: GuardDbAppStaging,
     intent: GuardDbTerminalRetirement,
     probe: GuardDbMaintenanceClient.StatusProbe,
 ): GuardDbTerminalRetirementSettlement {
@@ -484,17 +483,7 @@ private fun settleTerminalRetirementProbe(
             holdLane = true,
         )
     if (status.phase == GuardDbMaintenanceProtocol.Phase.EMPTY) {
-        return if (store.markComplete(intent)) {
-            GuardDbProcessAdmission.updateTerminalRetirement(store.load())
-            GuardDbTerminalRetirementSettlement.Complete(intent.finalGeneration + 1L)
-        } else {
-            GuardDbProcessAdmission.updateTerminalRetirement(store.load())
-            GuardDbTerminalRetirementSettlement.Refused(
-                HttpStatusCode.ServiceUnavailable,
-                "retirement-completion-not-durable",
-                holdLane = true,
-            )
-        }
+        return completeTerminalRetirement(store, staging, intent)
     }
     if (intent.matchesRetiring(status)) {
         return GuardDbTerminalRetirementSettlement.Pending("retiring")
@@ -507,6 +496,31 @@ private fun settleTerminalRetirementProbe(
         "retirement-status-held",
         holdLane = true,
     )
+}
+
+/**
+ * The helper has retired its custody, so this canary is over: clear its staged pair, then record
+ * COMPLETE, so no crash leaves a durable completion beside a pair nothing will clear. A pair that
+ * cannot be cleared, or that a session record references, is kept and never holds completion back.
+ * Replaying a durable completion clears nothing: the staging may by then hold a new run's pair.
+ */
+private fun completeTerminalRetirement(
+    store: GuardDbTerminalRetirementStore,
+    staging: GuardDbAppStaging,
+    intent: GuardDbTerminalRetirement,
+): GuardDbTerminalRetirementSettlement {
+    if (!staging.clear()) Log.w("ha-paneld/guard-db-http", "Guard DB terminal retirement kept its staged candidate pair")
+    return if (store.markComplete(intent)) {
+        GuardDbProcessAdmission.updateTerminalRetirement(store.load())
+        GuardDbTerminalRetirementSettlement.Complete(intent.finalGeneration + 1L)
+    } else {
+        GuardDbProcessAdmission.updateTerminalRetirement(store.load())
+        GuardDbTerminalRetirementSettlement.Refused(
+            HttpStatusCode.ServiceUnavailable,
+            "retirement-completion-not-durable",
+            holdLane = true,
+        )
+    }
 }
 
 private fun settleDurableTerminalRetirementCompletion(
