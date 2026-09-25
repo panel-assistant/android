@@ -72,6 +72,141 @@ class HaPresenceSourceManagerTest {
         owner.close()
     }
 
+    @Test fun `a panel registered only by Panel Assistant goes live with its own entities excluded`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply {
+            panelAssistantOnly = true
+            includePanelActivity = true
+        }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(FakeExactConnection()), aggregates,
+        )
+
+        manager.configure(request(discoveryId = DID))
+        runCurrent()
+
+        assertTrue(
+            "never went live; last=${aggregates.lastOrNull()?.phase}/${aggregates.lastOrNull()?.detail}",
+            aggregates.any { it.phase == HaPresencePhase.LIVE },
+        )
+        val live = aggregates.last { it.phase == HaPresencePhase.LIVE }
+        assertEquals("Room", live.areaName)
+        assertEquals(setOf(ENTITY), live.selectedEntityIds)
+        assertEquals("the panel's own proximity never reaches history", setOf(setOf(ENTITY)), discovery.historyEntitySets.toSet())
+        assertEquals(
+            HaPanelAreaPrerequisitePhase.ASSIGNED,
+            manager.prerequisite("device-uid", "panel", discoveryId = DID).phase,
+        )
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `a Panel Assistant device is not this panel without its discovery id`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply { panelAssistantOnly = true }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(FakeExactConnection()), aggregates,
+        )
+
+        manager.configure(request(discoveryId = null))
+        runCurrent()
+
+        assertEquals(HaPresencePhase.DISCOVERY_FAILED, aggregates.last().phase)
+        assertEquals("registry_projection", aggregates.last().detail)
+        assertEquals(
+            HaPanelAreaPrerequisitePhase.UNAVAILABLE,
+            manager.prerequisite("device-uid", "panel", discoveryId = null).phase,
+        )
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `registry changes after failed discoveries wait out a doubling backoff`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val connection = FakeExactConnection()
+        val resubscribed = FakeExactConnection()
+        val released = FakeExactConnection()
+        val discovery = FakePresenceTransport().apply { registryFailure = true }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(connection, resubscribed, released), aggregates,
+        )
+        manager.configure(request())
+        runCurrent()
+        assertEquals(1, discovery.registryCount)
+        assertEquals(HaPresencePhase.DISCOVERY_FAILED, aggregates.last().phase)
+
+        // First failure: one minute, then the ordinary two-second coalesce.
+        repeat(3) { connection.messages.send(HaExactSocketMessage.RegistryChanged) }
+        runCurrent()
+        advanceTimeBy(61_999L)
+        runCurrent()
+        assertEquals(1, discovery.registryCount)
+        advanceTimeBy(1L)
+        runCurrent()
+        assertEquals(2, discovery.registryCount)
+
+        // Second failure: two minutes. A later event does not push the window back.
+        connection.messages.send(HaExactSocketMessage.RegistryChanged)
+        runCurrent()
+        advanceTimeBy(100_000L)
+        connection.messages.send(HaExactSocketMessage.RegistryChanged)
+        runCurrent()
+        advanceTimeBy(21_999L)
+        runCurrent()
+        assertEquals(2, discovery.registryCount)
+        discovery.registryFailure = false
+        advanceTimeBy(1L)
+        runCurrent()
+        assertEquals(3, discovery.registryCount)
+        assertTrue(aggregates.any { it.phase == HaPresencePhase.LIVE })
+
+        // A success clears the backoff. The stream re-subscribed for the selected source.
+        resubscribed.messages.send(HaExactSocketMessage.RegistryChanged)
+        runCurrent()
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(4, discovery.registryCount)
+
+        // It also resets the count: the next failure opens a one-minute window again, not four.
+        discovery.registryFailure = true
+        resubscribed.messages.send(HaExactSocketMessage.RegistryChanged)
+        runCurrent()
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(5, discovery.registryCount)
+        listOf(resubscribed, released).forEach { it.messages.trySend(HaExactSocketMessage.RegistryChanged) }
+        runCurrent()
+        advanceTimeBy(61_999L)
+        runCurrent()
+        assertEquals(5, discovery.registryCount)
+        advanceTimeBy(1L)
+        runCurrent()
+        assertEquals(6, discovery.registryCount)
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `an explicit refresh is never held by the registry backoff`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply { registryFailure = true }
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(FakeExactConnection()), mutableListOf(),
+        )
+        manager.configure(request())
+        runCurrent()
+        assertEquals(1, discovery.registryCount)
+
+        manager.refresh()
+        runCurrent()
+
+        assertEquals(2, discovery.registryCount)
+        manager.close()
+        owner.close()
+    }
+
     @Test fun `prerequisite reads only device and Area registries`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val discovery = FakePresenceTransport()
@@ -640,11 +775,16 @@ class HaPresenceSourceManagerTest {
 
     private fun auth() = HaApiSessionProvider { HaApiSession("https://ha.example", "token", owner = OWNER) }
 
-    private fun request(enabled: Boolean = true, controllerEpoch: Long = 1L) = HaPresenceRequest(
+    private fun request(
+        enabled: Boolean = true,
+        controllerEpoch: Long = 1L,
+        discoveryId: String? = null,
+    ) = HaPresenceRequest(
         enabled = enabled,
         deviceUid = "device-uid",
         panelId = "panel",
         controllerEpoch = controllerEpoch,
+        discoveryId = discoveryId,
     )
 
     private fun feed(
@@ -694,6 +834,7 @@ class HaPresenceSourceManagerTest {
         var areaId = "room"
         var areaName = "Room"
         var registryFailure = false
+        var panelAssistantOnly = false
         var registryAuthFailures = 0
         var includePanelActivity = false
         var includeSupportingActivity = false
@@ -711,7 +852,7 @@ class HaPresenceSourceManagerTest {
             registryCount++
             if (registryAuthFailures-- > 0) throw HaAuthenticationException("rejected")
             if (registryFailure) error("registry unavailable")
-            val devices = JSONArray().put(device("panel-device", "ha-paneld-uid-device-uid"))
+            val devices = JSONArray().put(panelDevice())
             val entities = JSONArray()
             val states = JSONArray()
             if (includePanelActivity) {
@@ -737,6 +878,7 @@ class HaPresenceSourceManagerTest {
                 if (malformedEntityRegistry) JSONObject().put("result", JSONObject())
                 else JSONObject().put("result", JSONObject().put("entities", entities)),
                 states,
+                panelAssistantProbe(),
             )
         }
 
@@ -747,13 +889,11 @@ class HaPresenceSourceManagerTest {
             panelAreaRegistryCount++
             val area = if (panelAreaAssigned) areaId else ""
             return HaPanelAreaRegistrySnapshot(
-                JSONObject().put("result", JSONArray().put(
-                    JSONObject().put("id", "panel-device").put("area_id", area)
-                        .put("identifiers", JSONArray().put(JSONArray().put("mqtt").put("ha-paneld-uid-device-uid"))),
-                )),
+                JSONObject().put("result", JSONArray().put(panelDevice().put("area_id", area))),
                 JSONObject().put("result", JSONArray().put(
                     JSONObject().put("area_id", areaId).put("name", areaName),
                 )),
+                panelAssistantProbe(),
             )
         }
 
@@ -783,6 +923,19 @@ class HaPresenceSourceManagerTest {
             }
         }
 
+        /** The panel's own device: MQTT-registered, or (like every migrated panel) Panel Assistant only. */
+        private fun panelDevice() = if (panelAssistantOnly) JSONObject()
+            .put("id", "panel-device").put("area_id", areaId)
+            .put("identifiers", JSONArray().put(JSONArray().put("panel_assistant").put(PA_ENTRY)))
+        else device("panel-device", "ha-paneld-uid-device-uid")
+
+        /** Core's `get_entries` answer for the panel's native proximity entity. */
+        private fun panelAssistantProbe(): JSONObject? = if (!panelAssistantOnly) null else JSONObject()
+            .put("result", JSONObject().put(SELF, JSONObject()
+                .put("platform", "panel_assistant")
+                .put("unique_id", "${DID}_proximity")
+                .put("config_entry_id", PA_ENTRY)))
+
         private fun device(id: String, identifier: String) = JSONObject()
             .put("id", id).put("area_id", areaId)
             .put("identifiers", JSONArray().put(JSONArray().put("mqtt").put(identifier)))
@@ -795,6 +948,8 @@ class HaPresenceSourceManagerTest {
     private companion object {
         const val ENTITY = "binary_sensor.room_motion"
         const val SELF = "binary_sensor.panel_proximity"
+        const val DID = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+        const val PA_ENTRY = "01J00000000000000000000CCC"
         const val SUPPORTING = "binary_sensor.room_is_deserted"
         val OWNER = HaAuthSnapshot("https://ha.example", "access", "refresh", 1L, "client").stableOwner()
 
