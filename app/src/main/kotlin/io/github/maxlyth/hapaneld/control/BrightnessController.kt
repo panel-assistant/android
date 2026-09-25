@@ -134,14 +134,17 @@ class BrightnessController internal constructor(
 
     private fun applyBrightnessUnserialized(level: Int): Boolean {
         val v = scale.settingFor(level)
-        scale.recordOwned(level, v)
         val settingWritten = try {
             setting.write(v).also { written -> if (written) Log.d(TAG, "brightness setting -> $v (level $level)") }
         } catch (e: SecurityException) {
             Log.w(TAG, "WRITE_SETTINGS not granted — cannot set brightness", e)
             false
         }
-        if (settingWritten) writeAttribution.record(v, SystemClock.elapsedRealtime())
+        if (settingWritten) {
+            // Only a write Android accepted may claim the setting; a failed one leaves the last owner.
+            scale.recordOwned(level, v)
+            writeAttribution.record(v, SystemClock.elapsedRealtime())
+        }
         // Also drive the real hardware node. A discovered su path is only a candidate: its write must
         // succeed, otherwise the helper gets the same operation rather than being masked by stale metadata.
         val hardwareRoute = hardwareWriter.write(v, backlight.get())

@@ -13,7 +13,14 @@ class BrightnessControllerCurveTest {
 
     private class MemorySetting : BrightnessSetting {
         var value: Int? = null
-        override fun write(value: Int): Boolean { this.value = value; return true }
+        var refuse: Throwable? = null
+        var reject = false
+        override fun write(value: Int): Boolean {
+            refuse?.let { throw it }
+            if (reject) return false
+            this.value = value
+            return true
+        }
         override fun read(): Int? = value
     }
 
@@ -90,6 +97,22 @@ class BrightnessControllerCurveTest {
             assertEquals(route.name, "echo 0 > ${node}brightness", nodeWrites(root).last())
             assertEquals(route.name, 0, brightness.getCommanded())
         }
+    }
+
+    @Test fun aFailedSettingWriteKeepsTheLastLevelHomeAssistantSet() {
+        val setting = MemorySetting()
+        val store = MemoryStore()
+        val brightness = controller(perceptual, BacklightRoute.SETTING, setting, root(), store)
+        brightness.setBrightness(15)   // collapses onto the floor with its neighbours
+        assertEquals(15, brightness.getCommanded())
+        setting.reject = true
+        brightness.setBrightness(200)
+        assertEquals("a rejected write does not claim the setting", 15, brightness.getCommanded())
+        setting.reject = false
+        setting.refuse = SecurityException("WRITE_SETTINGS not granted")
+        brightness.setBrightness(200)
+        assertEquals("a refused write does not claim the setting", 15, brightness.getCommanded())
+        assertEquals(15, store.owned?.level)
     }
 
     @Test fun anUnsetSettingReadsAsUnknown() {
