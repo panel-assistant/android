@@ -315,14 +315,38 @@ internal class NetworkRecoveryGate(initiallyAvailable: Boolean) {
     }
 }
 
+/** What one handshake-watchdog fire does. [NONE] is a fire that is not a miss at all. */
+internal enum class HandshakeRecoveryStep { NONE, RELOAD, FRESH_LOAD, RECREATE_WEBVIEW }
+
 /** Retry cadence for a frontend that has not connected yet. A live dashboard gets a longer grace
- * period so HA can heal a brief websocket flap without a disruptive full-page reload. */
+ * period so HA can heal a brief websocket flap without a disruptive full-page reload.
+ *
+ * It also counts consecutive handshake misses, because a reload can fail forever the same way: after
+ * the 2026-09-21 outage one panel reloaded every 60 seconds for almost four hours and recovered only
+ * when its process restarted. From [escalateAfterMisses] on, a fire escalates instead of reloading:
+ * first to a fresh dashboard resolution and load, then to a new WebView. Escalations are spaced by a
+ * doubling number of misses, capped at [maxEscalationGapMisses], and plain reloads fill the gaps, so
+ * every fire still takes exactly one watchdog window. [reset] clears the count with the cadence. */
 internal class DashboardRetryPolicy(
     private val initialRetryMs: Long = 5_000L,
     private val maxRetryMs: Long = 60_000L,
     private val connectedGraceMs: Long = 90_000L,
+    private val escalateAfterMisses: Int = 3,
+    private val maxEscalationGapMisses: Int = 60,
 ) {
+    init { require(escalateAfterMisses > 1 && maxEscalationGapMisses >= escalateAfterMisses) }
+
     private var retryMs = initialRetryMs
+    private var escalations = 0
+    private var nextEscalationAt = escalateAfterMisses
+
+    /** Watchdog fires with no completed handshake since the last [reset]. */
+    var consecutiveMisses = 0
+        private set
+
+    /** The strongest step taken since the last [reset], or null while none has escalated. */
+    var escalatedTo: HandshakeRecoveryStep? = null
+        private set
 
     fun connectionFailureDelay(wasConnected: Boolean): Long =
         if (wasConnected) connectedGraceMs else retryMs
@@ -333,8 +357,27 @@ internal class DashboardRetryPolicy(
         return retryMs
     }
 
+    /** Decide one watchdog fire. A dark panel's timers are paused, so it cannot complete the
+     *  handshake and its fire is not a miss: it neither counts nor resets the count. */
+    fun onWatchdogFired(screenAwake: Boolean): HandshakeRecoveryStep {
+        if (!screenAwake) return HandshakeRecoveryStep.NONE
+        consecutiveMisses++
+        if (consecutiveMisses < nextEscalationAt) return HandshakeRecoveryStep.RELOAD
+        val step = if (escalations == 0) HandshakeRecoveryStep.FRESH_LOAD else HandshakeRecoveryStep.RECREATE_WEBVIEW
+        val gap = (escalateAfterMisses.toLong() shl escalations.coerceAtMost(20))
+            .coerceAtMost(maxEscalationGapMisses.toLong()).toInt()
+        escalations++
+        nextEscalationAt = consecutiveMisses + gap
+        escalatedTo = step
+        return step
+    }
+
     fun reset() {
         retryMs = initialRetryMs
+        consecutiveMisses = 0
+        escalations = 0
+        nextEscalationAt = escalateAfterMisses
+        escalatedTo = null
     }
 }
 
