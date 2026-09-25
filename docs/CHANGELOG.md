@@ -12,6 +12,8 @@
 
 ### Changed
 
+- **Shipped log records now say which build wrote them.** When several panels send logs to one collector, a log line could not be tied to the app version that produced it. Every syslog record now carries a structured-data element, `[hapaneld@32473 versionCode="…" package="…"]`, and every HTTP (NDJSON) record carries `versionCode` and `package` keys. The message text is unchanged, so a collector that ignores structured data sees the same line as before; Vector's syslog parser exposes the two values as the fields `hapaneld@32473.versionCode` and `hapaneld@32473.package`. `/api/v1/info` also reports `versionCode` and `package`.
+
 - **Display details now separate physical size from rendering density.** NSPanel Pro profiles identify the display's active size by model and pixel dimensions, while `/api/v1/display` reports that physical size alongside the current logical density and viewport. Changing the display scaling no longer changes the reported physical size. Older profiles that specify only an approximate pixel density still load.
 
 - **A panel on an IPv6-only network can now be discovered.** The panel announced itself on the local network only at an IPv4 address, so on a network with no IPv4 it announced nothing Home Assistant could find. It now announces the addresses it actually has: its IPv4 address as before, plus its IPv6 address when the network has both, or its IPv6 address alone when that is all there is. It prefers a stable IPv6 address to a temporary one, so Home Assistant is not left holding an address that changes within a day. A panel with only IPv4 announces exactly what it did before. Panel Assistant 0.5.1 is needed to set up a panel found at an IPv6 address.
