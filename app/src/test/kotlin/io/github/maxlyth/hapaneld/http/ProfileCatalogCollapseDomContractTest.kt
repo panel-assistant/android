@@ -15,6 +15,7 @@ class ProfileCatalogCollapseDomContractTest {
     @Test
     fun repeatedRevisionsOfOneProfileCollapseToOneOfferedEntryWithoutLosingTheSelection() {
         assumeTrue("Node.js is required for the executable profiles.js DOM contract", nodeAvailable())
+        // Source-text reason: executes the shipped profiles.js; asserts DOM behaviour.
         val asset = File("src/main/assets/profiles.js").absolutePath
         val script = """
             const fs = require("fs");

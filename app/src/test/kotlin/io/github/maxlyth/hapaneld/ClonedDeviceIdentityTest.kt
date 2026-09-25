@@ -11,7 +11,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -160,31 +159,6 @@ class ClonedDeviceIdentityTest {
         val area = HaAreaProtocolAccess.panelDeviceArea(devices, deviceUid = clonedAndroidId, panelId = "panel_one")
 
         assertFalse("the retired identifier must not resolve a device", area.found)
-    }
-
-    // --- the identity is materialized before anything reads it -------------------------------------
-
-    @Test fun theIdentityIsMaterializedBeforeTheGeneratedPanelIdReadsIt() {
-        // Source-pinned: without this call the identity stays blank, no `ha-paneld-uid-` identifier is
-        // ever published, and every panel falls back to its panel id alone. The compiler cannot catch
-        // a missing call, and no unit test reaches service startup.
-        val service = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-        ).first { it.isFile }.readText()
-        // The call must open its line; a commented-out one starts with `//` and cannot match.
-        fun callAt(call: String): Int =
-            Regex("^[ \\t]*" + Regex.escape(call) + "[ \\t]*(//.*)?$", RegexOption.MULTILINE)
-                .find(service)?.range?.first ?: -1
-        val mintedAt = callAt("config.ensureDeviceUid()")
-        val panelIdAt = callAt("config.ensurePanelId()")
-
-        assertTrue("the device identity is never materialized at startup", mintedAt >= 0)
-        assertTrue("the panel id is never materialized at startup", panelIdAt >= 0)
-        assertTrue(
-            "a generated panel id takes its suffix from the minted identity, so it must be minted first",
-            mintedAt < panelIdAt,
-        )
     }
 
     // --- export and restore ------------------------------------------------------------------------

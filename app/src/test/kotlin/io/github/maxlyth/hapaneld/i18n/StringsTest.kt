@@ -154,6 +154,7 @@ class StringsTest {
     }
 
     @Test fun `page locale changes only when the complete Settings surface is promoted`() {
+        // Source-text reason: loads the shipped i18n catalogues as input data.
         val source = SourceCatalogue.parse(File("src/main/assets/i18n/en.json").readText())
         val promotedJson = File("src/main/assets/i18n/de.json").readText()
         val draftJson = promotedJson.replace("\"state\": \"machine-cross-checked\"", "\"state\": \"machine-draft\"")

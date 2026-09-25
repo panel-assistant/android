@@ -9,6 +9,7 @@ import org.w3c.dom.Document
 class ProfileBackupPolicyTest {
     @Test
     fun `implicit android backup is disabled`() {
+        // Source-text reason: the shipped manifest and backup rules are the Android backup privacy contract.
         val manifest = document("src/main/AndroidManifest.xml")
         val applications = manifest.getElementsByTagName("application")
 
@@ -18,6 +19,7 @@ class ProfileBackupPolicyTest {
 
     @Test
     fun `android backup rules never migrate credentials or panel-local state`() {
+        // Source-text reason: the shipped backup rules are the Android backup privacy contract.
         val legacy = exclusions("src/main/res/xml/backup_rules.xml")
         val modern = exclusions("src/main/res/xml/data_extraction_rules.xml")
 

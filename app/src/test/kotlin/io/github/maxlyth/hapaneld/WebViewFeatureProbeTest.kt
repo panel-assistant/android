@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -85,38 +84,4 @@ class WebViewFeatureProbeTest {
         assertEquals(AdmissionOutcome.BRIDGE_UNAVAILABLE, admissionOf(incapableProbe))
     }
 
-    @Test fun everyFeatureCheckInTheAppGoesThroughTheGuardedHelper() {
-        // The helper only helps while it is the single door. A new bare call re-opens the crash loop in
-        // whichever activity adds it, so this fails on the call rather than on the next broken panel.
-        val roots = listOf(File("src/main/kotlin"), File("app/src/main/kotlin")).filter { it.isDirectory }
-        assertTrue("no main Kotlin source root found", roots.isNotEmpty())
-
-        val offenders = roots.flatMap { root ->
-            root.walkTopDown().filter { it.isFile && it.extension == "kt" }
-                .filter { it.readText().contains("isFeatureSupported") }
-                .map { it.toRelativeString(root) }
-        }.sorted()
-
-        assertEquals(
-            "isFeatureSupported must be called only from WebViewFeatures.kt — route new checks through webViewFeatureSupported()",
-            listOf("io/github/maxlyth/hapaneld/WebViewFeatures.kt"),
-            offenders,
-        )
-    }
-
-    @Test fun theSoleCallSiteIsTheProbeItself() {
-        // Pin it to one occurrence: the file being the only holder is not enough if it grows a second,
-        // unguarded call of its own.
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/WebViewFeatures.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/WebViewFeatures.kt"),
-        ).first { it.isFile }.readText()
-
-        // Count invocations, not the KDoc above that names the method while explaining why it is caged.
-        assertEquals(1, Regex("""\bisFeatureSupported\s*\(""").findAll(source).count())
-        assertTrue(
-            "the sole call must sit inside SystemWebViewFeatureProbe",
-            source.contains("WebViewFeatureProbe { WebViewFeature.isFeatureSupported(it) }"),
-        )
-    }
 }

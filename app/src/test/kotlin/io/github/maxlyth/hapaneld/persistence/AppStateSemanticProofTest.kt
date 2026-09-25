@@ -90,6 +90,7 @@ class AppStateSemanticProofTest {
 
     @Test fun `checked in settings authority exactly matches registered effective defaults`() {
         val expected = canonicalGuardDbSettingsAuthority()
+        // Source-text reason: the shipped settings authority file is a data contract read by the guard.
         val checkedIn = File("src/main/assets/guard-db-settings-authority-v2").readBytes()
         assertArrayEquals(expected, checkedIn)
     }

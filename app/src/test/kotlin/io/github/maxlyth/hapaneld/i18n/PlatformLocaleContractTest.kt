@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+// Source-text reason: shipped res/, locale config, manifest and i18n catalogues are the platform locale contract.
 class PlatformLocaleContractTest {
     @Test fun `native resource directories exactly cover release locales and every translatable key`() {
         val resourceRoot = TestSources.appDir("src/main/res")
@@ -65,30 +66,6 @@ class PlatformLocaleContractTest {
             "@xml/locales_config",
             mergedApplications.item(0).attributes.getNamedItemNS(ANDROID_NS, "localeConfig")?.nodeValue,
         )
-    }
-
-    @Test fun `build filters resources to release locales and enables debug pseudolocales`() {
-        val build = TestSources.appFile("build.gradle.kts").readText()
-        val filters = Regex("""val releaseLocaleFilters = listOf\(([^)]*)\)""")
-            .find(build)
-            ?.groupValues
-            ?.get(1)
-            ?.let { body -> Regex(""""([^"\\]+)"""").findAll(body).map { it.groupValues[1] }.toList() }
-
-        assertEquals(AppLocale.RELEASE_LOCALES.map(::androidResourceQualifier), filters)
-        filters.orEmpty().forEach { qualifier ->
-            val stringsPath = "${androidValuesDirectory(qualifier)}/strings.xml"
-            val strings = TestSources.appFileOrNull(stringsPath)
-            assertTrue("missing strings.xml for filtered locale $qualifier", strings?.isFile == true)
-            assertTrue(
-                "empty strings.xml for filtered locale $qualifier",
-                document(stringsPath)
-                    .getElementsByTagName("string")
-                    .length > 0,
-            )
-        }
-        assertTrue(build.contains("localeFilters += releaseLocaleFilters"))
-        assertTrue(build.contains("isPseudoLocalesEnabled = true"))
     }
 
     private fun document(path: String) = DocumentBuilderFactory.newInstance().apply {

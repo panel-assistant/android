@@ -21,6 +21,7 @@ import org.junit.Test
 import java.io.File
 
 class EmbedModeTest {
+    // Source-text reason: loads the shipped embed test vectors as input data.
     private val vectors = JSONObject(File("src/main/assets/panel_assistant_embed_v1.json").readText())
     private val embed = vectors.getJSONObject("embed")
 

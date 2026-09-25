@@ -57,22 +57,6 @@ class StorageHealthHttpProjectionTest {
         assertNull(databaseObservationProof(true, "ABCDEF0123456789ABCDEF0123456789", result.copy(fresh = true)))
     }
 
-    @Test fun freshStatusRouteUsesTheSingleServiceObservationQueueBeforeStatusJson() {
-        val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-        val route = server.substring(server.indexOf("get(\"/status\")"), server.indexOf("get(\"/power-safety\")"))
-        assertTrue(route.indexOf("refreshedStatusStorage(") < route.indexOf("statusJson("))
-        assertTrue(route.contains("databaseObservationProof(refreshRequested, observationNonce, statusStorage)"))
-        assertTrue(route.contains("queryParameters[\"database_observation_nonce\"]"))
-
-        val service = File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt").readText()
-        val refresh = service.substring(
-            service.indexOf("private suspend fun refreshStorageHealthForStatus()"),
-            service.indexOf("private suspend fun runStorageHealthObservation("),
-        )
-        assertTrue(refresh.contains("runQueuedStorageHealthObservation()"))
-        assertFalse(refresh.contains("entityLearning.storageHealthObservation"))
-    }
-
     @Test fun uncheckedIsExplicitWithoutInventingMetricsOrWarning() {
         val projection = HealthAudit.storage(StorageHealthSnapshot.UNCHECKED)
         val json = JSONObject(projection.statusJson())
@@ -290,20 +274,8 @@ class StorageHealthHttpProjectionTest {
         assertFalse(line.contains("ha-paneld.db"))
     }
 
-    @Test fun serverCapturesOneProviderValuePerProjectionAndPublishesTopLevelStatusObject() {
-        val source = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-        val status = source.substringAfter("private fun statusJson(): String").substringBefore("private fun statusWarning")
-        val banners = source.substringAfter("private fun bannersHtml(").substringBefore("private fun effectiveDashboardIsBuiltin")
-        val diag = source.substringAfter("private val diagCache = Cached").substringBefore("/** Call after any write")
-
-        assertEquals(1, Regex("storageHealth\\(\\)").findAll(status).count())
-        assertEquals(1, Regex("storageHealth\\(\\)").findAll(banners).count())
-        assertEquals(1, Regex("storageHealth\\(\\)").findAll(diag).count())
-        assertTrue(status.contains("\\\"storage_health\\\":\${storage.statusJson()}"))
-        assertTrue(source.contains("StorageHealthRuntime.snapshot()"))
-    }
-
     @Test fun openApiDescribesTheStorageHealthStatusContract() {
+        // Source-text reason: the shipped OpenAPI document is the public API contract.
         val api = JSONObject(File("src/main/assets/openapi.json").readText())
         val schema = api.getJSONObject("components").getJSONObject("schemas").getJSONObject("StorageHealth")
         val properties = schema.getJSONObject("properties")

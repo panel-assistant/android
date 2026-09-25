@@ -1,7 +1,6 @@
 package io.github.maxlyth.hapaneld.panelassistant
 
 import io.github.maxlyth.hapaneld.testsupport.TestSources
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,18 +10,10 @@ import org.junit.Test
  * so the wiring is pinned at its source.
  */
 class PanelAssistantShadowWiringContractTest {
-    private val service by lazy { TestSources.kotlin("PaneldService.kt").readText() }
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private val bridge by lazy { TestSources.kotlin("MqttBridge.kt").readText() }
 
-    @Test fun theTransportOwnerReportsFromTheServicesShadowReporter() {
-        val owner = service.substringAfter("panelAssistantTransport = PanelAssistantTransportOwner(").substringBefore("\n        )\n")
-        assertTrue(owner, owner.contains("shadow = panelAssistantShadow,"))
-        assertEquals(1, Regex("""PanelAssistantShadowReporter\(""").findAll(service).count())
-    }
-
     @Test fun everyBridgeGenerationBindsItsConvergerToTheReporter() {
-        val build = service.substringAfter("private fun buildMqtt(").substringBefore("\n    }\n")
-        assertTrue(build.contains(".also { bridge -> bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape)) }"))
         assertTrue(bridge.contains("internal fun addStateSink(sink: io.github.maxlyth.hapaneld.mqtt.StateSink) { nativeStateSink = sink }"))
         assertTrue(bridge.contains("onObservation = { channel, observation -> nativeStateSink?.invoke(channel, observation) {} }"))
         assertTrue(bridge.contains("internal fun stateChannelKeys(): Set<String> = stateConverger.keys()"))

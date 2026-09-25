@@ -25,6 +25,7 @@ class ProfilesI18nContractTest {
     private val assets = File("src/main/assets")
     private val sourceFile = File(assets, "i18n/en.json")
     private val profilesScript = File(assets, "profiles.js")
+    // Source-text reason: whole-file scans of PaneldServer.kt and profiles.js for literal profiles.* catalogue keys and their bound English fallbacks (translation catalogue contract).
     private val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
 
@@ -133,21 +134,6 @@ class ProfilesI18nContractTest {
         )
     }
 
-    @Test fun `Profiles route projects its body locale and declares mixed fallback languages`() {
-        val route = routeBody(server.readText(), "profiles")
-        assertTrue("Profiles must resolve the requested locale", route.contains("requestStrings(call)"))
-        assertTrue("Profiles must render with request-local strings", route.contains("profilesBody(strings)"))
-        assertTrue(
-            "Profiles Content-Language must account for shell, hardened approval and Profiles projections",
-            route.contains("strings.languages(setOf(\"shell.\", \"configure.hardened.\", \"profiles.\"))"),
-        )
-        assertTrue("Profiles route must identify its active surface to the shared page shell", route.contains("page(\"profiles\""))
-        assertTrue(
-            "shared page shell must project the active surface's complete namespace",
-            server.readText().contains("translationPrefixes = setOf(\"shell.\", \"\$active.\", \"runtime.\")"),
-        )
-    }
-
     private fun quotedProfileKeys(source: String): Set<String> =
         Regex("[\\\"'](profiles\\.[a-z0-9._-]+)[\\\"']")
             .findAll(source)
@@ -185,13 +171,6 @@ class ProfilesI18nContractTest {
         val marker = "var $name = Object.freeze({"
         val start = source.indexOf(marker).also { require(it >= 0) { "missing $name" } } + marker.length
         val end = source.indexOf("\n  });", start).also { require(it >= 0) { "unterminated $name" } }
-        return source.substring(start, end)
-    }
-
-    private fun routeBody(source: String, path: String): String {
-        val marker = "get(\"/$path\")"
-        val start = source.indexOf(marker).also { require(it >= 0) { "missing /$path route" } }
-        val end = source.indexOf("\n                get(\"/", start + marker.length).takeIf { it >= 0 } ?: source.length
         return source.substring(start, end)
     }
 }

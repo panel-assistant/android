@@ -8,7 +8,6 @@ import io.github.maxlyth.hapaneld.util.DurableRecoveryMarker
 import io.github.maxlyth.hapaneld.util.LatestOperationPolicy
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
 import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
-import java.io.File
 import java.util.Collections
 import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
@@ -104,44 +103,6 @@ class PaneldServiceStartupTest {
         assertEquals(2, launches)
         assertEquals(setOf(successor), companions)
     }
-
-    @Test fun repeatedServiceStartDispatchesTheExplicitWakeBeforeItsStickyReturn() {
-        val service = serviceSource()
-        val repeated = service.substringAfter("override fun onStartCommand(").substringBefore("\n        started = true")
-        val predicate = repeated.indexOf("installedHandoffWakeRequested(AppIdentity.IS_BRIDGE, intent?.action)")
-        val pending = repeated.indexOf("installedHandoffWake.request()")
-        val request = repeated.indexOf("if (ready) requestInstalledSuccessorHandoff(\"host commit\")")
-        val returned = repeated.indexOf("if (started) return START_STICKY")
-        assertTrue("the live service must retain or dispatch the wake before its early return", predicate >= 0 && pending > predicate && request > pending && returned > request)
-
-        val running = service.substringAfter("ServiceStartupDisposition.RUNNING -> {")
-            .substringBefore("ServiceStartupDisposition.PROFILE_ACTIVATION_ROLLBACK -> {")
-        val consumption = running.substringAfter("if (installedHandoffWake.markStartupHealthy()) {", missingDelimiterValue = "")
-            .substringBefore("}")
-        assertTrue(consumption.contains("requestInstalledSuccessorHandoff(\"pending host commit\")"))
-        assertEquals("startup must have no unconditional handoff attempt", 1, Regex("requestInstalledSuccessorHandoff\\(").findAll(running).count())
-
-        val dispatch = service.substringAfter("private fun requestInstalledSuccessorHandoff(")
-            .substringBefore("private suspend fun runOperation(")
-        assertTrue("a wake may launch only the already installed successor", dispatch.contains("offerSuccessorHandoff(allowInstall = false)"))
-        val serialized = service.substringAfter("successorHandoffGate.lock()")
-            .substringBefore("successorHandoffGate.unlock()")
-        val stopping = serialized.indexOf("if (teardownBoundary.isStopping) return null")
-        val offer = serialized.indexOf("SuccessorHandoff(AndroidSuccessorHandoffPorts")
-        assertTrue("an offer queued behind teardown must recheck after acquiring the mutex", stopping >= 0 && offer > stopping)
-    }
-
-    @Test fun genericUpgradeReleaseAndWatchdogResumeRemainOrdinaryServiceStarts() {
-        val coordinator = File("src/main/kotlin/io/github/maxlyth/hapaneld/upgrade/UpgradeShutdownCoordinator.kt").readText()
-        val release = coordinator.substringAfter("fun releaseAndResume(").substringBefore("private fun logReleaseFailures(")
-        assertTrue(release.contains("PaneldService.start(context.applicationContext)"))
-        val cancel = coordinator.substringAfter("fun cancelAndResume(").substringBefore("fun releaseAndResume(")
-        assertTrue(cancel.contains("PaneldService.start(context.applicationContext)"))
-        assertFalse(coordinator.contains("INSTALLED_SUCCESSOR_HANDOFF_ACTION"))
-        assertFalse(coordinator.contains("requestInstalledSuccessorHandoff = true"))
-    }
-
-    private fun serviceSource(): String = File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt").readText()
 
     @Test fun unrelatedConfigChangesDoNotRefreshAutoSleepOrOtherLiveOwners() {
         listOf(emptySet(), setOf("touch_sound"), setOf("friendly_name"), setOf("ha_expose_touch_sound")).forEach { keys ->

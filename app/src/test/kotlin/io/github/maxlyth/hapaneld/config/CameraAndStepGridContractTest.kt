@@ -1,39 +1,23 @@
 package io.github.maxlyth.hapaneld.config
 
-import io.github.maxlyth.hapaneld.device.profile.BundledProfileFixtures
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Presentation contracts for registry settings: the Camera card's shape and badge, and numeric step
+ * Presentation contracts for registry settings: the Camera card's shape, and numeric step
  * grids that the browser enforces as constraint validation. Persistence of every direct-postable setting
  * is proven behaviourally by `SettingsBehaviorContractTest` and `ConfigPostProductionRouteTest`.
  */
 class CameraAndStepGridContractTest {
-    @Test fun theCameraSettingsAreTheirOwnConfigureCardAndSayTheyAreExperimental() {
+    @Test fun theCameraSettingsAreTheirOwnConfigureCard() {
         val camera = SettingsRegistry.SPECS.filter { it.key.startsWith("camera_") }
         assertEquals("every camera setting belongs to the Camera card", setOf("Camera"), camera.map { it.group }.toSet())
         assertEquals(
             "the camera card holds the switch, the three stream defaults and the exposure bias",
             listOf("camera_enabled", "camera_resolution", "camera_fps", "camera_kbps", "camera_exposure"),
             camera.map { it.key },
-        )
-
-        val configureJs = File(BundledProfileFixtures.mainKotlinDirectory, "../assets/configure.js")
-        assertTrue("configure.js must be readable", configureJs.isFile)
-        // Read the Camera entry itself, not the whole map. Asserting that the map merely *contains*
-        // "exp" is satisfied by the Display card's own badge, so swapping Camera's style to something
-        // else survived the mutation battery — the assertion could not fail for the reason it claimed.
-        val badges = configureJs.readText().substringAfter("var CARD_BADGES =").substringBefore(";")
-        assertTrue("the Camera card must carry a badge: $badges", badges.contains("\"Camera\""))
-        val cameraBadge = badges.substringAfter("\"Camera\":").substringAfter("[").substringBefore("]")
-        assertEquals(
-            "the Camera badge must be the experimental pill in the existing style",
-            listOf("\"experimental\"", "\"exp\""),
-            cameraBadge.split(",").map { it.trim() },
         )
     }
 

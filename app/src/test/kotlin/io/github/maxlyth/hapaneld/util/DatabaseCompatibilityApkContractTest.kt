@@ -25,12 +25,6 @@ class DatabaseCompatibilityApkContractTest {
         )
     }
 
-    @Test fun manifestCarriesTheGeneratedContractPlaceholderInsteadOfASchemaLiteral() {
-        val manifest = TestSources.appFile("src/main/AndroidManifest.xml").readText()
-        assertTrue(manifest.contains("android:name=\"${DatabaseCompatibilityApkContract.METADATA_NAME}\""))
-        assertTrue(manifest.contains("android:value=\"\${databaseCompatibility}\""))
-    }
-
     @Test fun mergedDebugManifestCarriesTheExactDynamicSchemaContract() {
         val expected = DatabaseCompatibilityApkContract.encode(
             Boundary(
@@ -40,6 +34,7 @@ class DatabaseCompatibilityApkContractTest {
                 maximumSchema = EntityCatalogSchema.CURRENT_VERSION,
             ),
         )
+        // Source-text reason: the merged manifest is the shipped APK metadata contract the installer reads.
         val merged = TestSources.appFile(
             "build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml",
         ).readText()

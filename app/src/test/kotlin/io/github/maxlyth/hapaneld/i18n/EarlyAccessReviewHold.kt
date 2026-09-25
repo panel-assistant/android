@@ -8,6 +8,7 @@ import org.json.JSONObject
  * string in English until it has been reviewed, so its record is an exact `english-fallback` of the source.
  */
 internal object EarlyAccessReviewHold {
+    // Source-text reason: loads the shipped English catalogue as input data.
     private val source = JSONObject(File("src/main/assets/i18n/en.json").readText()).getJSONObject("strings")
 
     fun holds(locale: String, key: String, translated: TargetString): Boolean =

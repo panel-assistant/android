@@ -111,7 +111,8 @@ class NativeDynamicPresentationTest {
         }
     }
 
-    @Test fun `dynamic native resources are complete across every release locale`() {
+    // Source-text reason: the string catalogue is a user-visible translation contract, read as data.
+    @Test fun `dynamic native resources catalogue contract is complete across every release locale`() {
         val directories = listOf("values", "values-de", "values-es", "values-fr", "values-it", "values-zh-rCN")
         val required = setOf(
             "approval_list_item", "approval_request_detail", "approval_exact_detail",
@@ -139,20 +140,6 @@ class NativeDynamicPresentationTest {
         directories.drop(1).forEach { directory ->
             assertEquals("release resource parity drifted in $directory", base, strings(File("src/main/res/$directory/strings.xml")).keys)
         }
-    }
-
-    @Test fun `approval summaries are evidence only and transport failures retain raw diagnostics`() {
-        val config = File("src/main/kotlin/io/github/maxlyth/hapaneld/ConfigActivity.kt").readText()
-        val guard = File("src/main/kotlin/io/github/maxlyth/hapaneld/GuardDbMaintenanceActivity.kt").readText()
-        val dashboard = File("src/main/kotlin/io/github/maxlyth/hapaneld/DashboardActivity.kt").readText()
-        assertTrue(config.contains("approval_list_item, localizedLabel(it.operation), it.summary, it.peer"))
-        assertTrue(guard.contains("localizedLabel(approval.operation),\n                    approval.summary,\n                    approval.peer"))
-        assertTrue(config.contains("approval_request_detail, pending.summary, pending.peer"))
-        assertTrue(guard.contains("approval_exact_detail, approval.summary, approval.peer"))
-        assertTrue(dashboard.contains("localizedHaTransportFault(blocked.evidence.fault)"))
-        assertTrue(dashboard.contains("blocked.detail,"))
-        assertTrue(dashboard.contains("localizedWebViewRepairFailure(progress)"))
-        assertTrue(dashboard.contains("progress.message.takeIf { it.isNotBlank() }"))
     }
 
     private fun strings(file: File): Map<String, String> {

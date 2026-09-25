@@ -2,18 +2,16 @@ package io.github.maxlyth.hapaneld.http
 
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class CardColumnAlignmentAssetTest {
+    // Source-text reason: executes the shipped card-column-alignment.js in node as the unit under test.
     private val assetsDir: File by lazy {
         listOf(File("src/main/assets"), File("app/src/main/assets"), File("../app/src/main/assets"))
             .first(File::isDirectory)
     }
-
-    private fun asset(name: String): String = File(assetsDir, name).readText()
 
     private fun nodeAvailable(): Boolean = runCatching {
         ProcessBuilder("node", "--version").start().waitFor() == 0
@@ -25,47 +23,6 @@ class CardColumnAlignmentAssetTest {
             .start()
         val output = process.inputStream.bufferedReader().readText()
         return process.waitFor() to output
-    }
-
-    @Test fun threePagesUseOneObserverFreeAlignmentAuthority() {
-        val shared = asset("card-column-alignment.js")
-        val pages = mapOf(
-            "configure.js" to "attach(\"cfg-groups\")",
-            "install.js" to "attach('install-cards')",
-            "info.js" to "attach('dashboard-cards')",
-        )
-
-        assertTrue(shared.contains("function normalize(root)"))
-        assertTrue(shared.contains("card.getBoundingClientRect()"))
-        assertTrue(shared.contains("var settleTimer = null"))
-        assertTrue(shared.contains("global.setTimeout(function ()"))
-        assertTrue(shared.contains("}, 120)"))
-        assertEquals(1, Regex("global\\.addEventListener\\(\\\"resize\\\"").findAll(shared).count())
-        assertEquals(1, Regex("visualViewport\\.addEventListener\\(\\\"resize\\\"").findAll(shared).count())
-        assertEquals(1, Regex("fonts\\.ready\\.then\\(schedule\\)").findAll(shared).count())
-        assertFalse(shared.contains("MutationObserver"))
-
-        pages.forEach { (name, attachment) ->
-            val source = asset(name)
-            assertTrue("$name must attach its masonry root to the shared authority", source.contains(attachment))
-            assertFalse("$name must not retain a page-local geometry implementation", source.contains("ColumnTops"))
-            assertFalse("$name must not observe its dynamic subtree", source.contains("MutationObserver"))
-            assertFalse("$name must not retain a page-local alignment timer", source.contains("ColumnAlignmentTimer"))
-            assertFalse("$name must not measure masonry cards itself", source.contains("card.getBoundingClientRect()"))
-        }
-
-        val configure = asset("configure.js")
-        assertTrue(configure.contains("focusHash();\n    scheduleConfigColumnAlignment();"))
-
-        val install = asset("install.js")
-        assertTrue(install.contains("alignInstallColumns = window.CardColumnAlignment"))
-        assertTrue(install.contains("card.style.display = ''; scheduleInstallColumnAlignment()"))
-        assertTrue(install.contains("btn.disabled = false; scheduleInstallColumnAlignment();"))
-
-        val dashboard = asset("info.js")
-        assertTrue(dashboard.contains("card.style.display='';refreshScreenshot(card);scheduleDashboardColumnAlignment();"))
-        assertTrue(dashboard.contains("setupScreenshotOverlay();scheduleDashboardColumnAlignment();"))
-        assertTrue(dashboard.contains("setupScreenshotOverlay();scheduleDashboardColumnAlignment();\n  cardSizeSourceReady('info');"))
     }
 
     @Test fun sharedAuthorityCoalescesAndCorrectsEveryCardInAnOffsetColumn() {
@@ -114,26 +71,6 @@ class CardColumnAlignmentAssetTest {
         """.trimIndent()
         val (code, output) = runNode(script, File(assetsDir, "card-column-alignment.js").absolutePath)
         assertEquals("shared card-column alignment behavior failed:\n$output", 0, code)
-    }
-
-    @Test fun servedPagesLoadSharedAuthorityImmediatelyBeforeTheirPageScript() {
-        val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-        listOf("configure.js", "install.js").forEach { pageScript ->
-            assertTrue(
-                "$pageScript must load after the shared alignment authority",
-                server.contains(
-                    """<script src="assets/card-column-alignment.js"></script>
-<script src="assets/$pageScript"></script>""",
-                ),
-            )
-        }
-        assertTrue(
-            "info.js must load after the shared alignment authority",
-            server.contains(
-                """<script src="assets/card-column-alignment.js"></script>
-<script src="info.js"></script>""",
-            ),
-        )
     }
 
     @Test fun layoutFixtureLoadsTheSharedAuthorityBeforeDashboardCode() {

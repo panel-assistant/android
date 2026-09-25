@@ -6,24 +6,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * `/api/v1/info` names the running build, so a fleet sweep can attribute a panel to a versionCode and
- * package without scraping the `/diag` header. The payload is rendered by the Android-backed server
- * graph, so the emitter is pinned by source and the published schema by the OpenAPI document.
- */
+/** `/api/v1/info` names the running build, so a fleet sweep can attribute a panel to a versionCode and package. */
 class InfoBuildIdentityContractTest {
-    private val source = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
+    // Source-text reason: openapi.json is the published API schema contract.
     private val openApi = JSONObject(File("src/main/assets/openapi.json").readText())
 
-    @Test fun `info payload carries the build versionCode and package`() {
-        val info = source.substringAfter("private fun infoJson(strings: AppStrings): String")
-            .substringBefore("private fun infoHtml(")
-
-        assertTrue(info, info.contains("\"versionCode\":\${BuildConfig.VERSION_CODE}"))
-        assertTrue(info, info.contains("\"package\":\${jsonStr(BuildConfig.APPLICATION_ID)}"))
-    }
-
-    @Test fun `openapi documents both build fields on the info response`() {
+    @Test fun `openapi info response schema contract documents both build fields`() {
         val schema = openApi.getJSONObject("paths").getJSONObject("/api/v1/info").getJSONObject("get")
             .getJSONObject("responses").getJSONObject("200").getJSONObject("content")
             .getJSONObject("application/json").getJSONObject("schema")

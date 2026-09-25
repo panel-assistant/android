@@ -23,6 +23,7 @@ internal object BundledProfileFixtures {
             )
     }
 
+    // Source-text reason: loads the shipped device profiles as input data.
     val assetsDirectory: File by lazy {
         requiredDirectory(
             "src/main/assets/device-profiles",
@@ -38,6 +39,7 @@ internal object BundledProfileFixtures {
         )
     }
 
+    // Source-text reason: other test files still resolve paths from here; drop once they no longer do.
     val mainKotlinDirectory: File by lazy {
         requiredDirectory(
             "src/main/kotlin",

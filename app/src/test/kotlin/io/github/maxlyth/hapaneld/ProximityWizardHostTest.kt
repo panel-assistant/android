@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld
 
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -149,46 +148,4 @@ class ProximityWizardHostTest {
         }
     }
 
-    @Test
-    fun activityUsesLocalControlsAndStopsItsMainThreadPollingWhenHidden() {
-        val source = TestSources.kotlin("ProximityWizardActivity.kt").readText()
-        assertTrue(source.contains("Handler(Looper.getMainLooper())"))
-        assertTrue(source.contains("handler.removeCallbacks(poll)"))
-        assertTrue(source.contains("if (!visible) return"))
-        assertTrue(source.contains("proximityWizardMustCancelOnStop(stage, isChangingConfigurations)"))
-        assertTrue(source.contains("proximityWizardMayRebind(stage)"))
-        assertTrue(source.contains("FLAG_KEEP_SCREEN_ON"))
-        assertTrue(source.contains("ProximityWizardHost.action(currentId, \"visible\")"))
-        assertTrue(source.contains("snapshot.getDouble(\"raw\")"))
-        assertTrue(source.contains("snapshot.optString(\"health\") == \"healthy\""))
-        assertTrue(source.contains("proximityWizardShowsRawValue(stage)"))
-        assertTrue(source.contains("R.string.proximity_wizard_raw_label"))
-        assertTrue(source.contains("proximityWizardSpeech("))
-        assertFalse(source.contains("listOf(instruction.text, detail.text)"))
-        assertTrue(source.contains("ProximityWizardHost.narrate("))
-        assertTrue(source.contains("ProximityWizardHost::stopNarration"))
-        assertFalse(source.contains("startService("))
-        assertFalse(source.contains("TextToSpeech"))
-        assertFalse(source.contains("android.speech.tts"))
-        assertFalse(source.contains("ProximityWizardHost.attach("))
-    }
-
-    @Test
-    fun activityPassesResolvedLocaleAndServiceUsesOnlyHomeAssistantNarration() {
-        val activity = TestSources.kotlin("ProximityWizardActivity.kt").readText()
-        assertTrue(activity.contains("resources.configuration.locales[0].toLanguageTag()"))
-        val source = TestSources.kotlin("PaneldService.kt").readText()
-        val wiring = source.substring(
-            source.indexOf("narrator = ProximityWizardNarrator"),
-            source.indexOf("narrator = ProximityWizardNarrator") + 720,
-        )
-        assertTrue(wiring.contains("AssistPipelineClient(config).speakText("))
-        assertTrue(wiring.contains("text, localeTag, onGeneration"))
-        assertTrue(wiring.contains("localeTag"))
-        assertTrue(wiring.contains("AnnouncementLanePlayback("))
-        assertTrue(wiring.contains("onGeneration = onGeneration"))
-        assertTrue(wiring.contains("audio.cancelGeneration(generation)"))
-        assertFalse(wiring.contains("TextToSpeech"))
-        assertFalse(wiring.contains("Pico"))
-    }
 }

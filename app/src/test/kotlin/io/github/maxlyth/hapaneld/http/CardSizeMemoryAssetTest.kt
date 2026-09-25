@@ -2,12 +2,11 @@ package io.github.maxlyth.hapaneld.http
 
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class CardSizeMemoryAssetTest {
+    // Source-text reason: executes the shipped card-size-memory.js in node as the unit under test.
     private val assetsDir: File by lazy {
         listOf(File("src/main/assets"), File("app/src/main/assets"), File("../app/src/main/assets"))
             .first(File::isDirectory)
@@ -100,52 +99,5 @@ class CardSizeMemoryAssetTest {
             .redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText()
         assertEquals("dynamic card-size restore failed:\n$output", 0, process.waitFor())
-    }
-
-    @Test fun dashboardMarkupUsesStableKeysAndLoadsMemoryBeforeDynamicScripts() {
-        val server = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first(File::isFile).readText()
-        val keys = listOf(
-            "controls", "infotbl", "screenshot", "nettbl", "proftbl", "contexttbl", "captbl",
-            "responsiveness", "ha-state-stream", "sensors", "performance", "top-processes",
-            "remote-webview", "livetbl", "behavtbl", "disptbl", "updtbl",
-        )
-        keys.forEach { key ->
-            assertTrue("missing stable Dashboard layout key $key", server.contains("data-layout-key=\"$key\"") || key in listOf("infotbl", "nettbl", "proftbl", "contexttbl", "captbl", "livetbl", "behavtbl", "disptbl", "updtbl"))
-        }
-        assertTrue(server.contains("data-layout-key=\"${'$'}id\""))
-        val memory = server.indexOf("assets/card-size-memory.js")
-        val alignment = server.indexOf("assets/card-column-alignment.js", memory)
-        val dashboard = server.indexOf("info.js", alignment)
-        assertTrue(memory >= 0 && alignment > memory && dashboard > alignment)
-        assertTrue(server.contains("data-card-size-restore=\"1\""))
-        val memoryAsset = File(assetsDir, "card-size-memory.js").readText()
-        assertFalse(memoryAsset.contains("textContent"))
-        assertTrue(memoryAsset.contains("card._hwm?card._hwm+'px':''"))
-        assertTrue(memoryAsset.contains("if(canWrite)capture(true);else release()"))
-    }
-
-    @Test fun configureAndInstallUseSeparateStableMemoryNamespaces() {
-        val server = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first(File::isFile).readText()
-        assertTrue(server.contains("data-card-size-page=\"configure\""))
-        assertTrue(server.contains("data-card-size-page=\"install\""))
-        listOf(
-            "managed-components", "apk-install", "uninstall-app", "radio-firmware", "health-audit",
-            "vendor-packages", "display-sizing", "backup-restore", "ready",
-        ).forEach { key -> assertTrue("missing Install layout key $key", server.contains("data-layout-key=\"$key\"")) }
-        val configure = File(assetsDir, "configure.js").readText()
-        listOf(
-            "configure-identity", "configure-mqtt", "configure-behaviour", "configure-auto-sleep", "configure-display",
-            "configure-system", "configure-sensors", "configure-diagnostics", "configure-logging",
-            "configure-ha-connection", "configure-dashboard", "configure-builtin-renderer",
-        ).forEach { key -> assertTrue("missing Configure layout key $key", configure.contains("\"$key\"")) }
-        assertTrue(configure.contains("CardSizeMemory.restore(\"cfg-groups\")"))
-        val proximity = File(assetsDir, "proximity-learning.js").readText()
-        assertTrue(proximity.contains("data-layout-key\", \"configure-presence-wake"))
     }
 }

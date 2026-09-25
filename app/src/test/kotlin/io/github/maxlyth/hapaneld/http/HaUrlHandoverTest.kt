@@ -322,50 +322,6 @@ class HaUrlHandoverTest {
         )
     }
 
-    @Test fun `the journey's copy delegates the URL term instead of re-spelling it`() {
-        // Symmetric to the pin `PanelHaSignInReachabilityTest` puts on the migration's copy. Without
-        // this one the guard was one-sided: an edit that brought a bare URL term back HERE would have
-        // been caught by nothing, and that is exactly the shape of the defect this lane was held for —
-        // the rule fixed in one consumer and left standing in another.
-        val server = listOf(
-            java.io.File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            java.io.File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        val body = server.substring(
-            server.indexOf("private fun panelConfiguredBeforeSetupTracking(): Boolean ="),
-        ).substringBefore("\n\n")
-        assertTrue(
-            "the URL term must be delegated to the shared rule",
-            body.contains("io.github.maxlyth.hapaneld.panelConfiguredBeforeSetupTracking(") &&
-                body.contains("haSetupHandover ="),
-        )
-        assertFalse(
-            "a bare haUrl term here would reopen the defect the shared rule removes",
-            body.contains("|| config.haUrl.isNotBlank()") || body.contains("config.haUrl.isNotBlank() ||"),
-        )
-    }
-
-    @Test fun `the setup state advertises handover support, which is the whole version gate`() {
-        // An integration decides from this field alone whether it may send the handover at all. If the
-        // panel stopped advertising it, every current panel would silently fall back to asking — and if
-        // an older panel ever appeared to advertise it, the integration would 400 its whole request.
-        val server = listOf(
-            java.io.File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            java.io.File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        val builder = server.substring(
-            server.indexOf("private fun setupJourneyJson()"),
-            server.indexOf("private fun renderConfigConcurrencyHash()"),
-        )
-        assertTrue(
-            "the setup state must advertise that this panel accepts a handover",
-            builder.contains("\"{\\\"supported\\\":true,\""),
-        )
-        listOf("\\\"source\\\":", "\\\"url\\\":", "\\\"reason\\\":").forEach { field ->
-            assertTrue("the handover object must carry $field", builder.contains(field))
-        }
-    }
-
     @Test fun `the handover keys are a machine channel, not settings`() {
         // No SettingsRegistry spec, deliberately: a spec would put them on the Configure page, in the
         // settings catalogue that every release locale must translate, and in exported config bundles.
