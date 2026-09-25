@@ -78,6 +78,7 @@ class BrightnessController internal constructor(
     private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
     private val scale: BacklightScale = BacklightScale.IDENTITY,
+    private val setting: BrightnessSetting = SystemBrightnessSetting(context),
 ) : Backlight {
     constructor(context: Context) : this(context, Su, HelperClient, BacklightScale.IDENTITY)
 
@@ -135,16 +136,7 @@ class BrightnessController internal constructor(
         val v = scale.settingFor(level)
         scale.recordOwned(level, v)
         val settingWritten = try {
-            Settings.System.putInt(
-                context.contentResolver,
-                Settings.System.SCREEN_BRIGHTNESS_MODE,
-                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
-            )
-            Settings.System.putInt(
-                context.contentResolver,
-                Settings.System.SCREEN_BRIGHTNESS,
-                v,
-            ).also { written -> if (written) Log.d(TAG, "brightness setting -> $v") }
+            setting.write(v).also { written -> if (written) Log.d(TAG, "brightness setting -> $v (level $level)") }
         } catch (e: SecurityException) {
             Log.w(TAG, "WRITE_SETTINGS not granted — cannot set brightness", e)
             false
@@ -209,11 +201,7 @@ class BrightnessController internal constructor(
      *  Distinct from [getBrightness]: the framework maps the setting through a per-device brightness
      *  curve before driving the hardware node, so the effective (node) value is a DIFFERENT scale on
      *  curved panels (NSPanel Pro: setting 241 → node ~102). State publishes must use this scale. */
-    fun getCommanded(): Int = try {
-        levelFromSetting(Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS))
-    } catch (e: Settings.SettingNotFoundException) {
-        -1
-    }
+    fun getCommanded(): Int = setting.read()?.let(::levelFromSetting) ?: -1
 
     /** The HA level a raw `SCREEN_BRIGHTNESS` value stands for (the profile's setting route curves it). */
     fun levelFromSetting(setting: Int): Int = scale.levelFromSetting(setting)
@@ -231,11 +219,7 @@ class BrightnessController internal constructor(
     override fun getBrightness(): Int {
         val eff = effective.get()
         if (eff >= 0) return eff
-        return try {
-            levelFromSetting(Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS))
-        } catch (e: Settings.SettingNotFoundException) {
-            -1
-        }
+        return setting.read()?.let(::levelFromSetting) ?: -1
     }
 
     /**
@@ -306,4 +290,30 @@ internal class BacklightWriteTracker {
 
     fun record(elapsedRealtimeMs: Long) = lastWriteElapsed.set(elapsedRealtimeMs)
     fun snapshot(): Long = lastWriteElapsed.get()
+}
+
+/** Android's `SCREEN_BRIGHTNESS` setting, as the one seam [BrightnessController] reads and writes it through. */
+internal interface BrightnessSetting {
+    /** Select manual mode and write [value]; true when Android accepted it. May throw [SecurityException]. */
+    fun write(value: Int): Boolean
+
+    /** The raw setting, or null when it has never been set. */
+    fun read(): Int?
+}
+
+internal class SystemBrightnessSetting(private val context: Context) : BrightnessSetting {
+    override fun write(value: Int): Boolean {
+        Settings.System.putInt(
+            context.contentResolver,
+            Settings.System.SCREEN_BRIGHTNESS_MODE,
+            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
+        )
+        return Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, value)
+    }
+
+    override fun read(): Int? = try {
+        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+    } catch (e: Settings.SettingNotFoundException) {
+        null
+    }
 }

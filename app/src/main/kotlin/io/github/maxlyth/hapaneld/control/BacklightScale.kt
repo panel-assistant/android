@@ -70,7 +70,9 @@ internal class BacklightScale(
     /** The Home Assistant level an observed node reading ([actual] of [maximum]) stands for. */
     fun levelFromNode(actual: Int, maximum: Int): Int =
         if (throughSetting) {
-            curve.toLevel(TransferCurve.Identity.toLevel(actual, maximum), SETTING_MAX)
+            // Undo the linear push to the nearest setting value; truncating back would lose one step.
+            val setting = if (maximum <= 0) 0 else ((actual.toLong() * SETTING_MAX + maximum / 2) / maximum).toInt()
+            curve.toLevel(setting.coerceIn(0, SETTING_MAX), SETTING_MAX)
         } else {
             curve.toLevel(actual, maximum)
         }
