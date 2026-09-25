@@ -4550,9 +4550,18 @@ $proximityScript"""
             return power + resume + """<div class="setup">🏠 <b>${esc(strings.get("configure.setup.ha_signin.title"))}</b> ${esc(strings.get("configure.setup.ha_signin.body"))}</div>"""
         }
         val noRenderer = healthFindings(healthInputs(), "", emptyList()).any { it.kind == HealthAudit.Kind.NO_RENDERER }
-        if (!noRenderer) return power + resume
+        // Only a panel past setup runs a filtered dashboard, so only this path can carry the strategy note.
+        if (!noRenderer) return power + resume + strategySelectorAllowedBanner(strings)
         return power + resume + """<div class="setup">ℹ <b>${esc(strings.get("configure.setup.renderer.title"))}</b> ${esc(strings.get("configure.setup.renderer.body"))} <small>${esc(strings.get("configure.setup.renderer.note"))}</small></div>"""
     }
+
+    // Issue #133 follow-up. With a strategy dashboard's check allowed, cards for entities outside the
+    // subscription never appear and nothing on the panel can list them, so say so where settings are
+    // changed and send the reader to the Entities page, which explains what to pin. A failed read of the
+    // entity store must not take the Configure page down with it.
+    private fun strategySelectorAllowedBanner(strings: AppStrings): String =
+        if (!runCatching { entityLearning.strategySelectorAllowed() }.getOrDefault(false)) "" else
+            """<div class="setup info">ℹ <b>${esc(strings.get("configure.setup.strategy_allowed.title"))}</b> ${esc(strings.get("configure.setup.strategy_allowed.body"))} <a href="${localizedHref("entities", strings)}">${esc(strings.get("configure.setup.strategy_allowed.link"))}</a>.</div>"""
 
     /** Runtime profile authoring. All content is hydrated through the guarded /api/v1/profile routes. */
     private fun profilesBody(strings: AppStrings): String = """
