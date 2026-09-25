@@ -518,6 +518,11 @@
    "sourceHash": "93f2b55eedc32def17bde4d6e631e57bd3406c63aec017be0327130d7fd57cc6",
    "state": "machine-cross-checked"
   },
+  "configure.auto_sleep.value.source_loss_wake": {
+   "text": "Gewekt na verlies van bronnen",
+   "sourceHash": "cf758982533e3c7806e0014c6358f33c16c79ed9f8a4018162729c3380958936",
+   "state": "machine-cross-checked"
+  },
   "configure.auto_sleep.value.stopped": {
    "text": "Gestopt",
    "sourceHash": "1a4f630ac1b69fd00728fa8a672ded71d0eae8516cb23e78f94529113399b79b",

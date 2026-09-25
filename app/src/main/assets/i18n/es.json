@@ -538,6 +538,11 @@
       "state": "machine-cross-checked",
       "text": "Concesión de actividad de la fuente"
     },
+    "configure.auto_sleep.value.source_loss_wake": {
+      "text": "Activado por pérdida de fuentes",
+      "sourceHash": "cf758982533e3c7806e0014c6358f33c16c79ed9f8a4018162729c3380958936",
+      "state": "machine-cross-checked"
+    },
     "configure.auto_sleep.value.stopped": {
       "sourceHash": "1a4f630ac1b69fd00728fa8a672ded71d0eae8516cb23e78f94529113399b79b",
       "state": "machine-cross-checked",
