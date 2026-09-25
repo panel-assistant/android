@@ -163,13 +163,24 @@ internal class HomeDashboardResolutionAttemptGate {
     @Synchronized fun invalidate() { current = null }
 }
 
-private data class OwnedHomeDashboardResolution(
+internal data class OwnedHomeDashboardResolution(
     val owner: HomeDashboardResolutionOwner,
     val resolution: EntityLearningProtocol.HomeDashboardResolution,
     /** False while the value is the persisted launch cache — already rendering, awaiting the live
      *  answer that confirms, corrects or (on a confirmed empty list) replaces it. */
     val confirmed: Boolean = true,
 )
+
+/**
+ * The home dashboard path [resolution] holds for [owner], or null while there is none yet: nothing
+ * resolved, resolution invalidated for a re-admission, a setting or credential change that has not
+ * reached the activity's rebuild, or a confirmed list with no legal dashboard. Null means "not yet",
+ * never an error; each caller decides what waiting looks like.
+ */
+internal fun ownedHomeDashboardPath(
+    resolution: OwnedHomeDashboardResolution?,
+    owner: HomeDashboardResolutionOwner,
+): String? = resolution?.takeIf { it.owner == owner }?.resolution?.path
 
 internal class EntityFilterRetryPolicy(
     private val delaysMs: LongArray = longArrayOf(30_000L, 120_000L, 600_000L),
@@ -466,6 +477,7 @@ class DashboardActivity : AppCompatActivity() {
     // navigation, and snaps a wandering kiosk back where it belongs.
     private var lastTouchAt = 0L
     private val idleCheck = Runnable { onIdleCheck() }
+    private val idleUnresolvedNotice = DashboardIdleReturnPolicy.UnresolvedNotice()
     // Last light pull-to-refresh — a second pull inside the window escalates to a full hard reload.
     private var lastLightRefreshAt = 0L
     // True while the branded "Reconnecting…" page has replaced a failed main-frame load. Every reload
@@ -1477,6 +1489,7 @@ class DashboardActivity : AppCompatActivity() {
         // so the reloaded frontend boots straight into the new scheme.
         applyForceDark(w)
         val targetPath = nav ?: resolvedHomeDashboard(config)
+            ?: return readmitForHomeDashboard(if (reload) "reload" else "relaunch")
         val url = ExternalAuthProtocol.dashboardUrl(config.haUrl, targetPath)
         noteDeliberateDashboardNavigation()
         noteAppNavigationTarget(targetPath)
@@ -1748,7 +1761,13 @@ class DashboardActivity : AppCompatActivity() {
         }
         lastLightRefreshAt = now
         val path = runCatching { android.net.Uri.parse(w.url).path }.getOrNull().orEmpty()
-            .ifBlank { resolvedHomeDashboard(Config(this)) }
+            .ifBlank {
+                resolvedHomeDashboard(Config(this)) ?: run {
+                    Log.i(TAG, "pull-to-refresh ignored — no page route and the home dashboard is not resolved yet")
+                    swipe?.isRefreshing = false
+                    return
+                }
+            }
         Log.i(TAG, "pull-to-refresh -> light navigate ($path)")
         sendBusNavigate(path)
         // No page-load events fire for a bus navigate — clear the spinner after a short beat.
@@ -1876,18 +1895,25 @@ class DashboardActivity : AppCompatActivity() {
         if (!screenAwake || !frontendConnected || authLatched) return
         val config = Config(this)
         val minutes = config.dashboardIdleReturnMin
-        val home = resolvedHomeDashboard(config).trim().trim('/')
-        if (minutes <= 0) return
-        if (SystemClock.elapsedRealtime() - lastTouchAt < minutes * 60_000L) return
-        val current = runCatching { android.net.Uri.parse(web?.url) }.getOrNull()
-        val target = DashboardIdleReturnPolicy.target(
-            currentPath = current?.path.orEmpty(),
-            currentQuery = current?.encodedQuery,
-            currentFragment = current?.fragment,
-            homeDashboard = home,
-        ) ?: return
-        Log.i(TAG, "idle ${minutes}min — returning to home dashboard (/$target)")
-        sendBusNavigate(target)
+        val tick = DashboardIdleReturnPolicy.tick(
+            minutes = minutes,
+            idleMs = SystemClock.elapsedRealtime() - lastTouchAt,
+            homeDashboard = { resolvedHomeDashboard(config) },
+        ) { home ->
+            val current = runCatching { android.net.Uri.parse(web?.url) }.getOrNull()
+            DashboardIdleReturnPolicy.target(
+                currentPath = current?.path.orEmpty(),
+                currentQuery = current?.encodedQuery,
+                currentFragment = current?.fragment,
+                homeDashboard = home,
+            )
+        }
+        if (idleUnresolvedNotice.shouldLog(tick)) {
+            Log.w(TAG, "idle ${minutes}min — home dashboard not resolved yet; idle return waits for it")
+        }
+        if (tick !is DashboardIdleReturnPolicy.Tick.Return) return
+        Log.i(TAG, "idle ${minutes}min — returning to home dashboard (/${tick.target})")
+        sendBusNavigate(tick.target)
     }
 
     /** Register once and return whether Android already has a default network. When false, onCreate
@@ -1991,10 +2017,18 @@ class DashboardActivity : AppCompatActivity() {
      *  re-show the interstitial forever). */
     private fun reloadTarget(): Boolean {
         val w = web ?: return false
-        if (!rotateBusDocument(w, Config(this), rendererGeneration)) return false
-        if (interstitialShown) {
+        val config = Config(this)
+        // Only the interstitial branch loads the home dashboard; unresolved, admission loads it instead.
+        val home = if (interstitialShown) {
+            resolvedHomeDashboard(config) ?: run {
+                readmitForHomeDashboard("reload over the reconnecting page")
+                return false
+            }
+        } else null
+        if (!rotateBusDocument(w, config, rendererGeneration)) return false
+        if (home != null) {
             interstitialShown = false
-            val target = currentUrl(Config(this))
+            val target = currentUrl(config, home)
             expectPageStart(target)
             w.loadUrl(target)
         } else {
@@ -2057,18 +2091,23 @@ class DashboardActivity : AppCompatActivity() {
 
     /** The URL to show: a pending navigate path (consumed — one-shot, so crash rebuilds and
      *  interstitial recoveries return to home rather than replaying a stale navigate), else the
-     *  configured home dashboard. */
-    private fun currentUrl(config: Config): String = ExternalAuthProtocol.dashboardUrl(
+     *  resolved [home] dashboard. */
+    private fun currentUrl(config: Config, home: String): String = ExternalAuthProtocol.dashboardUrl(
         config.haUrl,
-        BuiltinDashboard.consumeNavPath() ?: resolvedHomeDashboard(config),
+        BuiltinDashboard.consumeNavPath() ?: home,
     )
 
-    private fun resolvedHomeDashboard(config: Config): String =
-        homeDashboardResolution
-            ?.takeIf { it.owner == homeDashboardOwner(config) }
-            ?.resolution
-            ?.path
-            ?: error("home dashboard used before authenticated resolution")
+    private fun resolvedHomeDashboard(config: Config): String? =
+        ownedHomeDashboardPath(homeDashboardResolution, homeDashboardOwner(config))
+
+    /** A load of the home dashboard was asked for while none is resolved for the current owner: hand the
+     *  panel back to admission, which resolves it (launch cache first, then live) and loads home itself.
+     *  The same teardown-and-rebuild an authority change takes. */
+    private fun readmitForHomeDashboard(why: String) {
+        Log.i(TAG, "$why before the home dashboard resolved — re-entering admission")
+        teardownWeb()
+        buildAndLoad(Config(this))
+    }
 
     // Publish foreground state so SystemController.dashboardState can drive the watchdog + kiosk
     // return-loop from an in-process signal instead of a root pidof/dumpsys probe.
@@ -2895,14 +2934,15 @@ class DashboardActivity : AppCompatActivity() {
         val owner = homeDashboardOwner(config)
         val owned = homeDashboardResolution?.takeIf { it.owner == owner }
         if (owned != null && owned.confirmed) {
-            if (owned.resolution.path == null) {
+            val path = owned.resolution.path
+            if (path == null) {
                 showBlockedAdmissionScreen(
                     getString(R.string.no_dashboard_title),
                     getString(R.string.no_dashboard_detail),
                     AdmissionOutcome.NO_LEGAL_DASHBOARD,
                 )
             } else {
-                buildCompatibleAndLoad(config)
+                buildCompatibleAndLoad(config, path)
             }
             return
         }
@@ -2929,7 +2969,7 @@ class DashboardActivity : AppCompatActivity() {
                     "home dashboard cache-accelerated launch path=$path renderer=none " +
                         "(cold start or rebuild) — the authenticated resolution refreshes behind it",
                 )
-                buildCompatibleAndLoad(config)
+                buildCompatibleAndLoad(config, path)
                 provisionalHomeDashboardEpoch = dashboardNavigationEpoch
             }
         }
@@ -2965,7 +3005,7 @@ class DashboardActivity : AppCompatActivity() {
                         "(relaunch over the renderer this activity still holds) — " +
                         "the authenticated resolution refreshes behind it",
                 )
-                buildCompatibleAndLoad(config)
+                buildCompatibleAndLoad(config, cached)
                 provisionalHomeDashboardEpoch = dashboardNavigationEpoch
             }
         }
@@ -3050,7 +3090,7 @@ class DashboardActivity : AppCompatActivity() {
             val provisionalEpoch = provisionalHomeDashboardEpoch
             provisionalHomeDashboardEpoch = null
             when {
-                shownPath == null || web == null -> buildCompatibleAndLoad(currentConfig)
+                shownPath == null || web == null -> buildCompatibleAndLoad(currentConfig, resolution.path)
                 HomeDashboardLaunchCache.refreshOutcome(shownPath, resolution) ==
                     HomeDashboardLaunchCache.RefreshOutcome.CORRECTED -> {
                     // A navigation chosen AFTER the provisional page (MQTT navigate, idle return,
@@ -3108,10 +3148,13 @@ class DashboardActivity : AppCompatActivity() {
      *  navigation uses, reading the corrected target through [currentUrl]. */
     private fun loadCorrectedHomeDashboard() {
         val w = web ?: return
-        if (!rotateBusDocument(w, Config(this), rendererGeneration)) return
+        val config = Config(this)
+        // Unresolved here means the owner moved after the correction; its rebuild loads the new home.
+        val home = resolvedHomeDashboard(config) ?: return
+        if (!rotateBusDocument(w, config, rendererGeneration)) return
         interstitialShown = false
         noteDeliberateDashboardNavigation()
-        val target = currentUrl(Config(this))
+        val target = currentUrl(config, home)
         noteAppNavigationTarget(android.net.Uri.parse(target).path.orEmpty())
         expectPageStart(target)
         w.loadUrl(target)
@@ -3119,7 +3162,7 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun buildCompatibleAndLoad(config: Config) {
+    private fun buildCompatibleAndLoad(config: Config, homePath: String) {
         if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
         if (compatibilityReadyUrl != config.haUrl.trim().trimEnd('/')) return
         if (holdForEntityBootstrap(config) || entityFilterNativeHold != null) {
@@ -3213,7 +3256,7 @@ class DashboardActivity : AppCompatActivity() {
         lifecycleBar = HaLifecycleBar.attach(this, container)
         networkChip = HaNetworkChip.attach(this, container)
         redrawLifecycleBar()
-        val target = currentUrl(config)
+        val target = currentUrl(config, homePath)
         noteAppNavigationTarget(android.net.Uri.parse(target).path.orEmpty())
         expectPageStart(target)
         w.loadUrl(target)
@@ -3919,30 +3962,6 @@ private class BottomSwipeFrame(
         super.requestDisallowInterceptTouchEvent(disallowIntercept)
     }
 }
-
-/** Pure idle-return decision shared by the Android lifecycle path and deterministic JVM tests. */
-internal object DashboardIdleReturnPolicy {
-    /** Return the fragment-free home target when idle navigation is needed; null means already home. */
-    fun target(
-        currentPath: String,
-        currentFragment: String?,
-        homeDashboard: String,
-        currentQuery: String? = null,
-    ): String? {
-        if (homeDashboard.trim().isEmpty()) return null
-        val home = normalizeDashboardTarget(homeDashboard.substringBefore('#'))
-        val homeRoute = home.substringBefore('?').ifEmpty { "/" }
-        val homeQuery = home.substringAfter('?', missingDelimiterValue = "").takeIf { '?' in home }
-        val samePath = normalizeDashboardEntityPath(currentPath) == normalizeDashboardEntityPath(homeRoute)
-        val sameQuery = comparableDashboardQuery(currentQuery) == comparableDashboardQuery(homeQuery)
-        val target = if (home == "") "/" else home
-        return target.takeUnless { samePath && sameQuery && currentFragment.isNullOrEmpty() }
-    }
-}
-
-private fun comparableDashboardQuery(query: String?): String = query.orEmpty().split('&')
-    .filter { it.substringBefore('=') != "external_auth" }
-    .joinToString("&")
 
 /** Normalize only the route portion; query values and fragments are opaque navigation state. */
 internal fun normalizeDashboardTarget(rawTarget: String): String {
