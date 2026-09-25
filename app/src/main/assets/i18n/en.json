@@ -5038,6 +5038,53 @@
       "softMaxChars": 82,
       "hardMaxChars": 164
     },
+    "configure.setup.strategy_allowed.body": {
+      "text": "Home Assistant builds this panel's dashboard from a strategy, and its entity-discovery check is allowed, so cards appear only for entities in the subscription.",
+      "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
+      "surface": "configure",
+      "context": "Configure page banner body: the dashboard comes from a Home Assistant strategy and its entity-discovery safety check was allowed, so cards for unsubscribed entities never appear",
+      "risk": "setup",
+      "siblings": [
+        "configure.setup.strategy_allowed.link",
+        "configure.setup.strategy_allowed.title"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 215,
+      "hardMaxChars": 430
+    },
+    "configure.setup.strategy_allowed.link": {
+      "text": "Review it on the Entities page",
+      "sourceHash": "c3629676fb6496523dd491e6e5f55ab7984b33f995b74d33e023007d17c4ba53",
+      "surface": "configure",
+      "context": "Configure page banner link that opens the Entities page, where the allowed strategy check is explained",
+      "risk": "setup",
+      "siblings": [
+        "configure.setup.strategy_allowed.body",
+        "configure.setup.strategy_allowed.title"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 41,
+      "hardMaxChars": 82
+    },
+    "configure.setup.strategy_allowed.title": {
+      "text": "Some dashboard cards may be missing.",
+      "sourceHash": "4eb6bbaee2e66e0cb133be770b21c244e29992602a99e52c62c4848f66dfc315",
+      "surface": "configure",
+      "context": "Configure page banner heading shown while a strategy dashboard runs under an allowed entity-discovery check",
+      "risk": "setup",
+      "siblings": [
+        "configure.setup.strategy_allowed.body",
+        "configure.setup.strategy_allowed.link"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 49,
+      "hardMaxChars": 98
+    },
     "configure.state.active": {
       "text": "active",
       "sourceHash": "96879611650f80a81392a52e0db9b0237669087c4518e1c130e541a505e0eeef",
@@ -15295,6 +15342,24 @@
       "surface": "entities",
       "text": "Source"
     },
+    "entities.issue.strategy_allowed_note": {
+      "context": "entities.js.loadIssues: visible Entities page copy.",
+      "frozen": [
+        "Home Assistant"
+      ],
+      "hardMaxChars": 1008,
+      "placeholders": [],
+      "risk": "consequential",
+      "siblings": [
+        "entities.issue.allow_note",
+        "entities.issue.dashboard-strategy.summary",
+        "entities.issue.search"
+      ],
+      "softMaxChars": 504,
+      "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
+      "surface": "entities",
+      "text": "Home Assistant builds this dashboard from a strategy, and a strategy only makes cards for entities it can see. With this check allowed, any entity outside the subscription gets no card here and is never learned, so this page cannot list what is missing. Open the same dashboard in Home Assistant on another device, and pin the entity behind every card that is missing here."
+    },
     "entities.issue.streamline-runtime-coverage.reason": {
       "context": "DashboardConfigurationLint.analyzeLimitedSupportCard: localized presentation for issue code streamline-runtime-coverage.",
       "frozen": [
@@ -16762,6 +16827,21 @@
       "sourceHash": "644b72e97de001b8a0e917dde5dc058c35ccf9657b728560604cbcca6ab4f2b4",
       "surface": "entities",
       "text": "synchronizing"
+    },
+    "entities.status.strategy_allowed": {
+      "context": "entities.js.loadStatus: live entity-learning status; unknown wire values remain exact fallbacks.",
+      "frozen": [],
+      "hardMaxChars": 182,
+      "placeholders": [],
+      "risk": "setup",
+      "siblings": [
+        "entities.status.ignored.one",
+        "entities.status.ignored.other"
+      ],
+      "softMaxChars": 91,
+      "sourceHash": "7dd9184b9ea1dd56153da981907ac50a2a063e2cec62c51674c3a25fd465a1f4",
+      "surface": "entities",
+      "text": "strategy dashboard: entities outside the subscription have no cards"
     },
     "entities.status.stream.one": {
       "context": "entities.js.loadStatus: live entity-learning status; unknown wire values remain exact fallbacks.",

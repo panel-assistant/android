@@ -46,32 +46,23 @@ object PanelAssistantDevice {
     internal fun hardwareModel(advertised: String?): String? =
         field(advertised?.trimEnd()?.removeSuffix(APP_MODEL_SUFFIX))
 
-    /** Matches the MQTT bridge's `hw_version` so both device cards read identically. */
-    internal fun hardwareVersion(androidRelease: String?, buildDisplay: String?): String? {
-        val release = field(androidRelease) ?: return null
-        val display = field(buildDisplay)
-        return field(if (display == null) "Android $release" else "Android $release · $display")
-    }
-
     /**
      * The additive `panel_assistant_device` status object. Always a JSON object, possibly empty;
      * a field the panel cannot state safely is left out instead of being sent blank.
+     *
+     * No `hw_version`: the Android release and build string told a user nothing they could act on,
+     * and no panel reports a hardware revision that would. Older integrations accept its absence.
      */
     fun json(
         friendlyName: String?,
         manufacturer: String?,
         model: String?,
-        androidRelease: String?,
-        buildDisplay: String?,
         area: String?,
     ): String {
         val entries = buildList {
             field(friendlyName)?.let { add("\"name\":${JSONObject.quote(it)}") }
             field(manufacturer)?.let { add("\"manufacturer\":${JSONObject.quote(it)}") }
             hardwareModel(model)?.let { add("\"model\":${JSONObject.quote(it)}") }
-            hardwareVersion(androidRelease, buildDisplay)?.let {
-                add("\"hw_version\":${JSONObject.quote(it)}")
-            }
             field(area)?.let { add("\"area\":${JSONObject.quote(it)}") }
         }
         return "{${entries.joinToString(",")}}"

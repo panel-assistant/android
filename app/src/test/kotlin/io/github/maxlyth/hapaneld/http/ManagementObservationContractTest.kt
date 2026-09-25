@@ -222,7 +222,7 @@ class ManagementObservationContractTest {
         val warning = companionDb.substring(companionDb.indexOf("internal fun warning("))
         assertTrue(warning.contains("if (!warningApplies(dashboardPackage)) return null"))
         assertTrue(warning.contains("status.needsRepair -> Warning.NeedsRepair(status.affected)"))
-        assertTrue(warning.contains("!observation.probeSucceeded && directSuReady -> Warning.ProbeFailed"))
+        assertTrue(warning.contains("observation.probe == Probe.FAILED && directSuReady -> Warning.ProbeFailed"))
     }
 
     @Test fun passivePageRenderingNeverStartsColdHardwareProbes() {

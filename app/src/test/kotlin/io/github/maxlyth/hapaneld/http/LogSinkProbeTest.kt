@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.BuildConfig
+import io.github.maxlyth.hapaneld.logship.LogShipRecord
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -65,7 +67,7 @@ class LogSinkProbeTest {
 
             val frame = requireNotNull(received.poll(3, TimeUnit.SECONDS)) { "nothing was written" }
             assertTrue(frame, frame.startsWith("<14>1 "))
-            assertTrue(frame, " test-panel ha-paneld - - - " in frame)
+            assertTrue(frame, " test-panel ha-paneld - - ${LogShipRecord.structuredData(LogShipRecord.Build.CURRENT)} " in frame)
             assertTrue(frame, frame.trimEnd('\n').endsWith(result.getString("marker")))
             assertTrue("stream framing needs the delimiter", frame.endsWith("\n"))
         }
@@ -85,6 +87,8 @@ class LogSinkProbeTest {
             val event = JSONObject(request.substringAfter("\r\n\r\n").trim())
             assertEquals("ha-paneld", event.getString("app"))
             assertEquals(result.getString("marker"), event.getString("message"))
+            assertEquals(BuildConfig.VERSION_CODE, event.getInt("versionCode"))
+            assertEquals(BuildConfig.APPLICATION_ID, event.getString("package"))
         }
     }
 
@@ -187,7 +191,7 @@ class LogSinkProbeTest {
             // A well-formed RFC5424 frame, so a real collector accepts the probe rather than dropping
             // it — a probe its own collector discards would be worse than no probe at all.
             assertTrue(frame, frame.startsWith("<14>1 "))
-            assertTrue(frame, " test-panel ha-paneld - - - " in frame)
+            assertTrue(frame, " test-panel ha-paneld - - ${LogShipRecord.structuredData(LogShipRecord.Build.CURRENT)} " in frame)
             assertTrue(frame, frame.endsWith(marker))
         }
     }

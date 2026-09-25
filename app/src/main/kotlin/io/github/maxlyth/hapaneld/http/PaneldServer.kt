@@ -109,6 +109,7 @@ import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestorePlan
 import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestoreResult
 import io.github.maxlyth.hapaneld.logship.LOG_SHIP_STATUS_OFF
 import io.github.maxlyth.hapaneld.logship.LogCapture
+import io.github.maxlyth.hapaneld.logship.LogShipRecord
 import io.github.maxlyth.hapaneld.logship.LogShipStatusProjection
 import io.github.maxlyth.hapaneld.logship.LogShipTarget
 import io.github.maxlyth.hapaneld.logship.NetworkLogSinkFactory
@@ -136,6 +137,7 @@ import io.github.maxlyth.hapaneld.sensors.HaCurrentUserClient
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
+import io.github.maxlyth.hapaneld.util.AccessDenialMemo
 import io.github.maxlyth.hapaneld.util.DashboardPath
 import io.github.maxlyth.hapaneld.util.DashboardTheme
 import io.github.maxlyth.hapaneld.util.Cached
@@ -675,6 +677,9 @@ internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
 
 /** Which installed identity answered: during the application-id migration a panel can hold both. */
 internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"
+
+/** The build number beside the version name, so a reader can tell two builds of one release apart. */
+internal fun versionCodeHealthToken(versionCode: Int): String = " vc=$versionCode"
 
 internal fun autoSleepHistoryHours(hours: String?): Int {
     val parsed = hours?.toIntOrNull() ?: if (hours == null) 6 else null
@@ -2454,7 +2459,7 @@ class PaneldServer internal constructor(
                     call.respondText(html, ContentType.Text.Html)
                 }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -2491,7 +2496,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                     }
                     configReadRoutes(
                         currentConfigJson = ::configJson,
@@ -3980,7 +3985,7 @@ class PaneldServer internal constructor(
                 companionSucceeded = runCatching {
                     val observed = companionServerCache.get()
                     observed.preferredUrl?.let { config.setHaBaseUrl(it) }
-                    check(observed.probeSucceeded) { "Companion servers table is unreadable" }
+                    check(observed.probe != CompanionDb.Probe.FAILED) { "Companion servers table is unreadable" }
                 }.onFailure { Log.w(TAG, "Companion server observation prewarm failed", it) }
                     .isSuccess
             },
@@ -4549,9 +4554,18 @@ $proximityScript"""
             return power + resume + """<div class="setup">🏠 <b>${esc(strings.get("configure.setup.ha_signin.title"))}</b> ${esc(strings.get("configure.setup.ha_signin.body"))}</div>"""
         }
         val noRenderer = healthFindings(healthInputs(), "", emptyList()).any { it.kind == HealthAudit.Kind.NO_RENDERER }
-        if (!noRenderer) return power + resume
+        // Only a panel past setup runs a filtered dashboard, so only this path can carry the strategy note.
+        if (!noRenderer) return power + resume + strategySelectorAllowedBanner(strings)
         return power + resume + """<div class="setup">ℹ <b>${esc(strings.get("configure.setup.renderer.title"))}</b> ${esc(strings.get("configure.setup.renderer.body"))} <small>${esc(strings.get("configure.setup.renderer.note"))}</small></div>"""
     }
+
+    // Issue #133 follow-up. With a strategy dashboard's check allowed, cards for entities outside the
+    // subscription never appear and nothing on the panel can list them, so say so where settings are
+    // changed and send the reader to the Entities page, which explains what to pin. A failed read of the
+    // entity store must not take the Configure page down with it.
+    private fun strategySelectorAllowedBanner(strings: AppStrings): String =
+        if (!runCatching { entityLearning.strategySelectorAllowed() }.getOrDefault(false)) "" else
+            """<div class="setup info">ℹ <b>${esc(strings.get("configure.setup.strategy_allowed.title"))}</b> ${esc(strings.get("configure.setup.strategy_allowed.body"))} <a href="${localizedHref("entities", strings)}">${esc(strings.get("configure.setup.strategy_allowed.link"))}</a>.</div>"""
 
     /** Runtime profile authoring. All content is hydrated through the guarded /api/v1/profile routes. */
     private fun profilesBody(strings: AppStrings): String = """
@@ -5186,8 +5200,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
                     config.friendlyName,
                     config.manufacturer,
                     config.model,
-                    android.os.Build.VERSION.RELEASE,
-                    android.os.Build.DISPLAY,
                     config.haArea,
                 )
             }," +
@@ -5405,7 +5417,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         directSuProbe = { Su.availableCachedIsolated() },
         helperRootProbe = HelperClient::available,
         shizukuSnapshot = ShizukuBridge::snapshot,
-    )
+    ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady, it.shizuku.ready)) }
 
     private val snapCache = Cached(SNAP_TTL_MS) {
         val privilege = privilegeObservation()
@@ -6699,7 +6711,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             "contexttbl" to contextRowsHtml(s, h, strings),
             "captbl" to capRowsHtml(s.capabilityRows, strings),
         ).joinToString(",") { (k, v) -> "\"$k\":${jsonStr(v)}" }
-        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
+        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
     }
 
     private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
@@ -8559,11 +8571,11 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         val marker = "ha-paneld-sink-probe-${System.currentTimeMillis().toString(36)}"
         val name = panelId.ifBlank { "panel" }
         val timestamp = probeTimestamp()
+        val build = LogShipRecord.Build.CURRENT
         val payload = when (ep.protocol) {
-            LogShipEndpoint.HTTP -> "{\"timestamp\":\"$timestamp\",\"host\":${jsonStr(name)}," +
-                "\"app\":\"ha-paneld\",\"message\":${jsonStr(marker)}}"
-            LogShipEndpoint.SYSLOG_UDP -> "<14>1 $timestamp $name ha-paneld - - - $marker"
-            else -> "<14>1 $timestamp $name ha-paneld - - - $marker\n"
+            LogShipEndpoint.HTTP -> LogShipRecord.jsonEvent(timestamp, name, build, marker)
+            LogShipEndpoint.SYSLOG_UDP -> LogShipRecord.syslogFrame(14, timestamp, name, build, marker).trimEnd('\n')
+            else -> LogShipRecord.syslogFrame(14, timestamp, name, build, marker)
         }.toByteArray(Charsets.UTF_8)
         val result = NetworkLogSinkFactory.probe(
             LogShipTarget(ep.host, ep.port, ep.protocol, panelId),

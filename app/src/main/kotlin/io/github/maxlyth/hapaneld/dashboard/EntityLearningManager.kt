@@ -1318,6 +1318,7 @@ class EntityLearningManager(
                 includeRuntime = autoRuntime,
             )
             val preview = previewEntitySubscription(filtered, filterIds, s.catalogCount, desired)
+            val streamMode = entityStreamMode(held, filtered)
             span.work(units = (s.catalogCount + suggestions.size).toLong())
             return JSONObject()
                 .put("requested_enabled", learningEnabled)
@@ -1343,7 +1344,8 @@ class EntityLearningManager(
                 .put("blocking_issue_count", visibleIssueCounts.second)
                 .put("ignored_issue_count", EntityCatalogIssuePersistence.ignoredCount(visibleIssueJson))
                 .put("automatic_activation_blocked", s.blockingIssueCount > 0)
-                .put("stream_mode", when { held -> "held"; filtered -> "filtered"; else -> "unfiltered" })
+                .put("stream_mode", streamMode)
+                .put("strategy_selector_ignored", strategySelectorAllowed(streamMode, visibleIssues))
                 .put("hold_reason", holdReason?.wireName ?: JSONObject.NULL)
                 .put("resync_suspended", holdReason == EntityBootstrapHoldReason.DECISION)
                 .put("stream_entity_count", when { held -> 0; filtered -> filterIds.size; else -> s.catalogCount })
@@ -1357,6 +1359,20 @@ class EntityLearningManager(
         } finally {
             span.close()
         }
+    }
+
+    /**
+     * Whether a dashboard strategy runs under an allowed entity-discovery check on the live filtered
+     * stream, for the Configure page banner. Same inputs as [statusJson], without its catalogue work.
+     */
+    fun strategySelectorAllowed(): Boolean {
+        ensureInitialized()
+        val filtered = config.dashboardEntityFilterEnabled
+        val held = shouldHoldRendererForEntityBootstrap(config.dashboardEntityLearningEnabled, filtered)
+        return strategySelectorAllowed(
+            entityStreamMode(held, filtered),
+            visibleDashboardIssues(store.issuesJson(instance(), dashboardPath()), showAdvisories = false),
+        )
     }
 
     fun issuesJson(): String {
@@ -2170,6 +2186,22 @@ internal fun visibleDashboardIssuesJson(
         .put("dynamic_expressions", JSONArray(dynamicExpressionsJson))
         .toString()
 }
+
+internal fun entityStreamMode(held: Boolean, filtered: Boolean): String =
+    when { held -> "held"; filtered -> "filtered"; else -> "unfiltered" }
+
+/**
+ * An allowed dashboard-strategy finding on a filtered stream (issue #133 follow-up). Home Assistant
+ * builds a strategy's cards from the entities it receives, so with the check allowed an entity outside
+ * the subscription gets no card and never reaches runtime learning; nothing the panel observes can
+ * list it, so the configure pages say so instead. Visibility only: the filter is never changed here.
+ */
+internal fun strategySelectorAllowed(streamMode: String, visibleIssues: JSONArray): Boolean =
+    streamMode == "filtered" && (0 until visibleIssues.length()).any { index ->
+        val issue = visibleIssues.optJSONObject(index) ?: return@any false
+        issue.optBoolean("ignored") && issue.optString("presentation_code") ==
+            DashboardConfigurationLint.PresentationCode.DASHBOARD_STRATEGY.wireName
+    }
 
 internal fun visibleDashboardIssues(storedIssuesJson: String, showAdvisories: Boolean): JSONArray {
     val stored = JSONArray(EntityCatalogIssuePersistence.boundExistingJson(storedIssuesJson))
