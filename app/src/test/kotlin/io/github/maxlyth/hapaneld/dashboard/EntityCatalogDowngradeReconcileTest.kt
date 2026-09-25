@@ -532,7 +532,7 @@ class EntityCatalogDowngradeReconcileTest {
         assertEquals(SchemaReconcileAction.RESTORED, first.action)
         assertEquals("schema14-original-snapshot", markerOf(target))
         assertEquals("schema15-first-cycle", markerOf(superseded(15)))
-        (assertTrue(DatabaseRestoreTransaction(target).settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold))
+        assertTrue(DatabaseRestoreTransaction(target).settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold)
 
         // Pre-open prepares the rollback snapshot; SQLiteOpenHelper performs the actual upgrade afterward.
         val upgrade = reconcilePreOpen(target, currentVersion = 15, onDiskVersion = 14)
@@ -550,7 +550,7 @@ class EntityCatalogDowngradeReconcileTest {
             listOf(superseded(15).name),
             dir.listFiles()!!.filter { it.name.contains(".superseded") }.map { it.name },
         )
-        (assertTrue(DatabaseRestoreTransaction(target).settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold))
+        assertTrue(DatabaseRestoreTransaction(target).settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold)
     }
 
     @Test fun recoveryWithWalVisibleSchemaRefusesBeforeAnyRuntimeMutation() {
