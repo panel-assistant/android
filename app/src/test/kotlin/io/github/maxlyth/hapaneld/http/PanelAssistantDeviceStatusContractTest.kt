@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.http
 
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -10,61 +9,11 @@ import org.junit.Test
 
 /** Binds the device projection to its sole status surface and its public grammar. */
 class PanelAssistantDeviceStatusContractTest {
-    private val server by lazy { TestSources.kotlin("http/PaneldServer.kt").readText() }
-    private val projection by lazy { TestSources.kotlin("util/PanelAssistantDevice.kt").readText() }
+    // Source-text reason: the shipped OpenAPI document is the public API contract.
     private val openApi by lazy { JSONObject(File("src/main/assets/openapi.json").readText()) }
 
-    @Test fun statusProjectsDeviceFactsItAlreadyHoldsWithoutReachingForNewState() {
-        val status = server.substring(
-            server.indexOf("private fun statusJson():"),
-            server.indexOf("/** A health finding"),
-        )
-        assertTrue(status.contains("\\\"panel_assistant_device\\\":\${"))
-        assertTrue(status.contains("PanelAssistantDevice.json("))
-        for (source in listOf(
-            "config.friendlyName,",
-            "config.manufacturer,",
-            "config.model,",
-            "config.haArea,",
-        )) {
-            assertTrue(source, status.contains(source))
-        }
-        // The Android release and build string no longer reaches the card as its Hardware line.
-        val call = status.substring(status.indexOf("PanelAssistantDevice.json("))
-            .substringBefore("},")
-        assertFalse(call, call.contains("Build."))
-    }
-
-    /** The build number rides the health line on every route that answers it, after `pkg`. */
-    @Test fun healthCarriesTheVersionCodeBesideThePackage() {
+    @Test fun healthCarriesTheVersionCodeToken() {
         assertEquals(" vc=909", versionCodeHealthToken(909))
-        assertEquals(
-            2,
-            Regex(
-                Regex.escape("\${packageHealthToken(appContext.packageName)}" +
-                    "\${versionCodeHealthToken(BuildConfig.VERSION_CODE)}"),
-            ).findAll(server).count(),
-        )
-    }
-
-    /** Prose explains what the code must not do, so only the code may be searched for it. */
-    private val projectionCode by lazy {
-        projection
-            .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
-            .lines()
-            .joinToString("\n") { it.substringBefore("//") }
-    }
-
-    @Test fun theProjectionReadsAndNeverWritesOrResolves() {
-        for (forbidden in listOf("save", "publish", "commit", "check(", "http", "Socket")) {
-            assertFalse(forbidden, projectionCode.contains(forbidden))
-        }
-    }
-
-    @Test fun theProjectionRefusesToCarryAHardwareIdentifier() {
-        for (forbidden in listOf("androidId", "serial", "macAddress", "SERIAL")) {
-            assertFalse(forbidden, projectionCode.contains(forbidden))
-        }
     }
 
     @Test fun openApiKeepsTheProjectionAdditiveAndStrictlyBounded() {

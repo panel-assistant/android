@@ -8,7 +8,6 @@ import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisoryPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyAssessment
 import io.github.maxlyth.hapaneld.control.PowerSafetyObservation
 import io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult
-import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -138,58 +137,6 @@ class PowerSafetyPresentationTest {
         assertEquals("unavailable", steps.getString("doze_exemption"))
     }
 
-    @Test fun allRequestedSurfacesConsumeTheSameAssessmentPresentation() {
-        val server = source("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
-        val diagnostic = source("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/DiagReader.kt")
-        val controller = source("app/src/main/kotlin/io/github/maxlyth/hapaneld/control/PowerSafetyController.kt")
-        val interaction = source("app/src/main/assets/power-safety.js")
-        val provisioner = source("scripts/provision.sh")
-
-        assertTrue(server.contains("PowerSafetyPresentation.bannerHtml("))
-        assertTrue(server.contains("PowerSafetyPresentation.statusWarningHtml(powerAdvisory)"))
-        assertTrue(server.contains("PowerSafetyPresentation.json(powerAdvisory)"))
-        assertTrue(server.contains("!powerAdvisory.assessment.warning"))
-        assertTrue(server.contains("post(\"/power-safety/acknowledge\")"))
-        assertTrue(server.contains("PowerSafetyAdvisoryPolicy.admitAcknowledgement"))
-        assertTrue(server.contains("exactHttpApprovalPayload(call, parameters.canonicalDigest())"))
-        assertTrue(diagnostic.contains("PowerSafetyPresentation.diagnosticLine(it)"))
-        assertTrue(server.contains("assets/power-safety.js"))
-        assertTrue(interaction.contains("form[data-power-safety-repair]"))
-        assertTrue(interaction.contains("form[data-power-safety-acknowledge]"))
-        assertTrue(interaction.contains("body.error === 'approval-required'"))
-        assertTrue(interaction.contains("method: 'POST'"))
-        assertTrue(interaction.contains("'Accept': 'application/json'"))
-        assertTrue(controller.contains("fun repairCapabilityFresh()"))
-        assertTrue(controller.contains("root.runSingleAttempt(\"settings put global"))
-        assertTrue(controller.contains("Settings.Global.getInt"))
-        assertTrue(controller.contains("stayBaseline == null -> PowerRepairStepStatus.UNAVAILABLE"))
-        assertFalse(controller.contains("before.stayOnWhilePluggedIn ?: 0"))
-        assertTrue(controller.contains("PowerSafetyRepairPolicy.dozeMutationCommand"))
-        assertFalse(controller.contains("cmd deviceidle whitelist +${'$'}packageName ||"))
-        assertTrue(controller.contains("powerManager.isIgnoringBatteryOptimizations(packageName)"))
-        assertTrue(controller.contains("readKeepAwakeConfigured()"))
-        assertTrue(controller.contains("readPreventIdleDimConfigured()"))
-        assertFalse(controller.contains("runSingleAttempt(\"reboot"))
-        assertFalse(controller.contains("root.run(\"reboot"))
-        assertFalse(controller.contains("fireAndForget"))
-        assertTrue(provisioner.contains("Read the app-owned power classification"))
-        assertFalse(provisioner.contains("settings get global stay_on_while_plugged_in"))
-        assertFalse(provisioner.contains("deviceidle whitelist"))
-
-        val acknowledgeRoute = server.substringAfter("post(\"/power-safety/acknowledge\")")
-            .substringBefore("post(\"/updates/ignore\")")
-        assertTrue(acknowledgeRoute.contains("commitPowerSafetyAcknowledgement"))
-        assertTrue(acknowledgeRoute.contains("freshPowerSafetyRepairCapability()"))
-        assertFalse(acknowledgeRoute.contains("powerSafetyAdvisory(snapStaleOk()"))
-        assertTrue(acknowledgeRoute.indexOf("authorizeSensitive(") < acknowledgeRoute.indexOf("freshPowerSafetyRepairCapability()"))
-        assertTrue(acknowledgeRoute.indexOf("freshPowerSafetyRepairCapability()") < acknowledgeRoute.indexOf("commitPowerSafetyAcknowledgement"))
-        assertFalse(acknowledgeRoute.contains("onRepairPowerSafety"))
-        assertFalse(acknowledgeRoute.contains("settings put"))
-        assertFalse(acknowledgeRoute.contains("deviceidle"))
-        assertFalse(acknowledgeRoute.contains("reboot"))
-        assertTrue(server.contains("?: PowerRepairCapability.DEGRADED"))
-    }
-
     private fun advisory(
         assessment: PowerSafetyAssessment,
         capability: PowerRepairCapability = PowerRepairCapability.APP_ONLY,
@@ -220,8 +167,4 @@ class PowerSafetyPresentationTest {
         summary = "bounded summary",
         action = "bounded action",
     )
-
-    private fun source(path: String): String = listOf(File(path), File("../$path"))
-        .first { it.isFile }
-        .readText()
 }

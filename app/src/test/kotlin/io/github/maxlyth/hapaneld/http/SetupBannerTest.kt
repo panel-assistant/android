@@ -156,27 +156,4 @@ class SetupBannerTest {
             SetupBanner.progress("host · connected, announcing…", brokerConfigured = true),
         )
     }
-
-    @Test fun bothBannerSurfacesDeriveThePromiseFromTheJourneyNotFromTheRawSetting() {
-        // One helper feeds the Dashboard tab and the Configure tab so they cannot drift, and it reads the
-        // journey's RENDERER stage — a blocked renderer (uninstalled foreign app, or an engine too old to
-        // render) is genuinely still outstanding and must keep the promise.
-        val server = java.io.File(
-            listOf(
-                "src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt",
-                "app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt",
-            ).first { java.io.File(it).isFile },
-        ).readText()
-        assertEquals(
-            "both banner surfaces must pass the journey-derived flag AND the live state that clears a finished transition",
-            2,
-            Regex("""SetupBanner\.progress\(mqtt, config\.mqttBroker\.isNotBlank\(\), dashboardSetupStepPending\(\), mqttState\(\)\)""")
-                .findAll(server).count(),
-        )
-        assertTrue(
-            server.contains(
-                "SetupJourney.evaluate(setupJourneyInputs()).step(SetupJourney.Stage.RENDERER).status !=",
-            ),
-        )
-    }
 }

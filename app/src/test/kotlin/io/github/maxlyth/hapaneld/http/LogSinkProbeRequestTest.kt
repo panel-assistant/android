@@ -19,14 +19,8 @@ class LogSinkProbeRequestTest {
     }
 
     @Test
-    fun `route uses strict explicit-port selection`() {
-        val source = sourceFile("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-        assertTrue(source.contains("selectLogSinkProbePort(params[\"port\"], config.logShipPort)"))
-        assertTrue(source.contains("\"\"\"{\"ok\":false,\"error\":\"invalid-port\"}\"\"\""))
-    }
-
-    @Test
     fun `OpenAPI publishes strict port range and syslog acknowledgement semantics`() {
+        // Source-text reason: the shipped OpenAPI document is the public API contract.
         val document = JSONObject(sourceFile("src/main/assets/openapi.json").readText())
         val operation = document.getJSONObject("paths")
             .getJSONObject("/api/v1/config/probe-log-sink")
