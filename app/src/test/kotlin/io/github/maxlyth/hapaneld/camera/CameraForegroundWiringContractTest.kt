@@ -116,7 +116,7 @@ class CameraForegroundWiringContractTest {
 
         val close = body(attempt, "fun closeEncoder()")
         assertTrue("closing retracts only this attempt's own advertisement", "retract = advertisedBy == id" in close)
-        assertTrue("if (retract) transport.onEncoderStopped()" in close)
+        assertTrue("if (retract) transport.onEncoderStopped(id)" in close)
         val release = body(attempt, "fun release()")
         assertTrue("the attempt's release closes its codec before the capture beneath it", release.indexOf("closeEncoder()") in 0 until release.indexOf("session = null"))
 
@@ -132,7 +132,12 @@ class CameraForegroundWiringContractTest {
             3,
             Regex("state\\.isCurrent\\(attempt\\.id\\)").findAll(listener).count(),
         )
-        assertTrue("a superseded codec failing late closes only itself", "attempt.closeEncoder()\n                return" in listener)
+        val failure = body(listener, "override fun onEncoderError(detail: String)")
+        val closed = failure.indexOf("attempt.closeEncoder()")
+        assertTrue(
+            "a failing codec closes itself before anything asks whose session it is, so a superseded one closes only itself",
+            closed >= 0 && closed < failure.indexOf("if (!state.isCurrent(attempt.id)) return"),
+        )
     }
 
     /**

@@ -62,7 +62,7 @@ class RtspFfmpegInteropTest {
             var pts = 0L
             var index = 0
             while (running) {
-                server?.onAccessUnit(units[index], AnnexB.isKeyFrame(units[index]), pts)
+                server?.onAccessUnit(units[index], AnnexB.isKeyFrame(units[index]), pts, attempt = 1L)
                 index = (index + 1) % units.size
                 pts += 1_000_000L / 15
                 Thread.sleep(1_000L / 15)
@@ -71,7 +71,7 @@ class RtspFfmpegInteropTest {
 
         fun start(server: CameraRtspServer) {
             this.server = server
-            server.onParameterSets(sets)
+            server.onParameterSets(sets, attempt = 1L)
             feeder.isDaemon = true
             feeder.start()
         }
@@ -82,7 +82,7 @@ class RtspFfmpegInteropTest {
         }
 
         override fun acquireStream(request: StreamRequest): StreamAdmission =
-            StreamAdmission.Granted(AutoCloseable {}, StreamParams(320, 240, 15, 500, "libx264-sample", sets))
+            StreamAdmission.Granted(AutoCloseable {}, StreamParams(320, 240, 15, 500, "libx264-sample", sets), session = 1L)
 
         override fun requestKeyFrame() = Unit
     }

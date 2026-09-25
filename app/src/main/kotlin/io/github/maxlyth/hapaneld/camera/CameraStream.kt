@@ -14,8 +14,11 @@ data class StreamParams(
 )
 
 sealed interface StreamAdmission {
-    /** Close [lease] exactly once when the client is gone; closing the last one stops the encoder or the camera. */
-    class Granted(val lease: AutoCloseable, val params: StreamParams) : StreamAdmission
+    /**
+     * Close [lease] exactly once when the client is gone; closing the last one stops the encoder or the
+     * camera. [session] is the camera session generation the lease belongs to, which a stream end names.
+     */
+    class Granted(val lease: AutoCloseable, val params: StreamParams, val session: Long) : StreamAdmission
     data class Refused(val reason: CameraRefusal) : StreamAdmission
 }
 
@@ -39,6 +42,11 @@ data class StreamTransportFacts(
  * The transport as the camera owner drives it. Listening follows the master switch; frames arrive on
  * the owner's camera thread and must never block it — a slow client is the transport's problem to
  * shed: the stream yields, the dashboard does not.
+ *
+ * The owner decides whose each effect is under its own lock, but calls the ones that can drop a client
+ * outside it, because a dropped client closes its lease and that re-enters the owner. A newer session
+ * or encoder attempt can therefore take over between the decision and the call, so each such effect
+ * names its session or attempt, and the transport applies it to that and to nothing newer.
  */
 interface CameraStreamTransport {
     fun setListening(on: Boolean)
@@ -48,20 +56,32 @@ interface CameraStreamTransport {
 
     fun facts(): StreamTransportFacts
 
-    /** The encoder (re)started and produced its parameter sets. */
-    fun onParameterSets(sets: ParameterSets)
-
-    /** One encoded access unit as Annex-B NAL units without start codes. */
-    fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long)
-
-    /** The encoder stopped but the session may come back (a bounded reopen): clients keep their place. */
-    fun onEncoderStopped()
+    /**
+     * Encoder [attempt] (re)started and produced its parameter sets; they are advertised until that
+     * attempt stops or a newer one publishes. The owner calls this under its own lock, in the critical
+     * section that checks the attempt, so it must neither block nor call back into the camera.
+     */
+    fun onParameterSets(sets: ParameterSets, attempt: Long)
 
     /**
-     * The encode is over for every stream client — the session closed, degraded, or the encoder itself
-     * failed: drop them so they reconnect and pay the open cost, after any hold the camera imposes.
+     * One encoded access unit from encoder [attempt], as Annex-B NAL units without start codes. Delivered
+     * only while [attempt]'s parameter sets are the advertised ones: any other is a superseded codec's.
      */
-    fun onStreamEnded()
+    fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long, attempt: Long)
+
+    /**
+     * Encoder [attempt] stopped but the session may come back (a bounded reopen): clients keep their
+     * place. Retracts [attempt]'s parameter sets, never a newer attempt's.
+     */
+    fun onEncoderStopped(attempt: Long)
+
+    /**
+     * The encode is over for every stream client granted at session generation [through] or earlier —
+     * the session closed, degraded, or the encoder itself failed: drop them so they reconnect and pay
+     * the open cost, after any hold the camera imposes. A client granted by a newer session, or one whose
+     * admission is still in progress, belongs to whichever session admits it and stays.
+     */
+    fun onStreamEnded(through: Long)
 }
 
 /** A transport for a board with no camera: never listens, never has clients. */
@@ -69,10 +89,10 @@ object AbsentStreamTransport : CameraStreamTransport {
     override fun setListening(on: Boolean) = Unit
     override fun stop() = Unit
     override fun facts(): StreamTransportFacts = StreamTransportFacts(port = null, clients = 0)
-    override fun onParameterSets(sets: ParameterSets) = Unit
-    override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long) = Unit
-    override fun onEncoderStopped() = Unit
-    override fun onStreamEnded() = Unit
+    override fun onParameterSets(sets: ParameterSets, attempt: Long) = Unit
+    override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long, attempt: Long) = Unit
+    override fun onEncoderStopped(attempt: Long) = Unit
+    override fun onStreamEnded(through: Long) = Unit
 }
 
 /**
