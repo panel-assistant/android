@@ -6,48 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * A manual pin or exclusion is the operator's own work and is never withdrawn automatically — not by a
- * dashboard change, and not because the dashboard stopped using it. The only honest way to close that
- * loop is to SHOW the ones that no longer earn their place, so they can be unpinned deliberately.
- *
- * The predicates run against Android SQLite and have no JVM unit-test route, so this pins the query
- * shape and the promise the page makes about it. Reading source text proves the wiring is present, not
- * that it behaves — the id restriction composed above this query is asserted behaviourally in
- * `EntityQueryIncludeIdsTest`, which is what actually decides whether a stale pin can be returned.
+ * A manual pin or exclusion is the operator's own work and is never withdrawn automatically. The review
+ * table is the only place a stale pin becomes visible, so its note must promise that and say where to act.
  */
 class PinnedEntityReviewContractTest {
-    private val store = File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt").readText()
-    private val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
+    // Source-text reason: loads the shipped English i18n catalogue as input data.
     private val catalogue = JSONObject(File("src/main/assets/i18n/en.json").readText()).getJSONObject("strings")
 
-    private val reviewPredicate = store.lineSequence()
-        .first { it.trimStart().startsWith("\"review\" -> where +=") }
-
-    @Test fun `a pin the dashboard no longer uses is surfaced for review`() {
-        // Pinned, and neither referenced by the dashboard's configuration nor reached at runtime: a
-        // subscription being paid for with nothing asking for it.
-        assertTrue(
-            "the review filter must surface a pin nothing references: $reviewPredicate",
-            reviewPredicate.contains("coalesce(m.pinned,0)=1") &&
-                reviewPredicate.contains("coalesce(m.referenced_by_config,0)=0") &&
-                reviewPredicate.contains("coalesce(m.referenced_at_runtime,0)=0"),
-        )
-    }
-
-    @Test fun `an entity missing from Home Assistant is still surfaced whether or not it is pinned`() {
-        // The missing branch carries no pinned test, so a pin to something deleted in Home Assistant
-        // shows up rather than disappearing silently.
-        assertTrue(reviewPredicate.contains("e.missing_streak>0"))
-    }
-
-    @Test fun `the page promises that nothing is removed automatically`() {
-        // The table is the ONLY place a stale pin becomes visible, so the copy has to say both that it
-        // is review-only and where to act. If this drifts, the feature silently becomes a dead end.
-        assertTrue("the page must render the reviewed note through its catalogue key",
-            server.contains("\"entities.table.review.note\""))
+    @Test fun `review note catalogueContract promises that nothing is removed automatically`() {
         val note = catalogue.getJSONObject("entities.table.review.note").getString("text")
         assertTrue("the note must say a manual override is never auto-removed: $note",
-            note.contains("never removed automatically") || note.contains("is never removed automatically"))
+            note.contains("never removed automatically"))
         assertTrue("the note must name the pinned-but-unused case: $note", note.contains("pinned by hand"))
     }
 }

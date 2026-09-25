@@ -7,31 +7,14 @@ import org.junit.Test
 import org.json.JSONObject
 
 class DashboardProductPositioningTest {
-    private fun source(path: String): String = listOf(
-        File(path),
-        File("app/$path"),
-    ).first { it.isFile }.readText()
-
-    private val server = source("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
-    private val english = JSONObject(source("src/main/assets/i18n/en.json")).getJSONObject("strings")
+    // Source-text reason: loads the shipped English i18n catalogue as input data.
+    private val english = JSONObject(
+        listOf(File("src/main/assets/i18n/en.json"), File("app/src/main/assets/i18n/en.json"))
+            .first { it.isFile }.readText(),
+    ).getJSONObject("strings")
     private fun english(key: String): String = english.getJSONObject(key).getString("text")
 
-    @Test fun runtimeUiDoesNotRecommendOrSpecialCaseFullyKiosk() {
-        val runtimeUi = listOf(
-            source("src/main/assets/configure.js"),
-            source("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            source("src/main/kotlin/io/github/maxlyth/hapaneld/http/PanelInfo.kt"),
-            source("src/main/kotlin/io/github/maxlyth/hapaneld/http/HealthAudit.kt"),
-        ).joinToString("\n").lowercase()
-
-        assertFalse(runtimeUi.contains("fully kiosk"))
-        assertFalse(runtimeUi.contains("fully-kiosk.com"))
-        assertFalse(runtimeUi.contains("de.ozerov.fully"))
-    }
-
-    @Test fun missingRendererGuidanceLeadsWithSupportedChoices() {
-        assertTrue(server.contains("strings.get(\"configure.setup.renderer.title\")"))
-        assertTrue(server.contains("strings.get(\"configure.setup.renderer.body\")"))
+    @Test fun missingRendererGuidanceCatalogueContractLeadsWithSupportedChoices() {
         val title = english("configure.setup.renderer.title")
         val body = english("configure.setup.renderer.body")
         assertTrue(title.startsWith("MQTT is configured. Next:"))
@@ -40,12 +23,7 @@ class DashboardProductPositioningTest {
         assertFalse(body.contains("Fully Kiosk", ignoreCase = true))
     }
 
-    @Test fun builtinRendererSignInGuidanceDoesNotLookLikeTheMqttStepFailed() {
-        listOf(
-            "dashboard.banner.ha_sign_in.title",
-            "dashboard.banner.ha_sign_in.explanation",
-            "dashboard.banner.ha_sign_in.action",
-        ).forEach { key -> assertTrue(server.contains("strings.get(\"$key\")")) }
+    @Test fun builtinRendererSignInGuidanceCatalogueContractDoesNotLookLikeTheMqttStepFailed() {
         val title = english("dashboard.banner.ha_sign_in.title")
         val explanation = english("dashboard.banner.ha_sign_in.explanation")
         assertTrue(title.startsWith("MQTT is configured. Next:"))

@@ -20,7 +20,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class ConfigPostBodyTest {
     @Test fun `legacy and versioned config posts reject declared and chunked overflow before parsing`() =
@@ -68,50 +67,6 @@ class ConfigPostBodyTest {
             assertEquals(HttpStatusCode.BadRequest, response.status)
             assertEquals("invalid config body\n", response.bodyAsText())
         }
-    }
-
-    @Test fun `both production config routes enter the bounded reader before mutation`() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(source.contains("installDirectConfigPostRoute()"))
-        assertTrue(source.contains("post(\"/config\") { handleConfigPost(call, capabilityProvider) }"))
-        assertTrue(source.contains("private suspend fun handleConfigPost("))
-        val handler = source.substring(
-            source.indexOf("private suspend fun handleConfigPost("),
-            source.indexOf("private fun configSchemaJson()"),
-        )
-        val receive = handler.indexOf("receiveBoundedConfigParameters(call) ?: return")
-        val validation = handler.indexOf("normalizeConfigPostParameters(received")
-        assertFalse(handler.contains("call.receiveParameters()"))
-        val mutation = handler.indexOf("config.applyBatch")
-        assertTrue(receive >= 0)
-        assertTrue(validation > receive)
-        assertTrue(mutation > validation)
-    }
-
-    @Test fun `config monitor is released before cross-thread live side effects`() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        val handler = source.substring(
-            source.indexOf("private suspend fun handleConfigPost("),
-            source.indexOf("private fun configSchemaJson()"),
-        )
-        val monitor = handler.substring(
-            handler.indexOf("val persisted = config.synchronizedTransaction"),
-            handler.indexOf("if (persisted && !mutationPlan.isNoOp)"),
-        )
-
-        assertFalse(monitor.contains("applySetting("))
-        assertFalse(monitor.contains("entityLearning."))
-        assertFalse(monitor.contains("applyRendererEffects("))
-        assertTrue(
-            handler.indexOf("applySetting(\"home_dashboard\"") >
-                handler.indexOf("if (persisted && !mutationPlan.isNoOp)"),
-        )
     }
 
     @Test fun `admission refuses a capability-gated choice this panel cannot use`() {

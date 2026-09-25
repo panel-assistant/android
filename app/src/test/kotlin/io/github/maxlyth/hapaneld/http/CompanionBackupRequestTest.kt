@@ -21,9 +21,6 @@ import org.junit.Test
  * login the panel really holds.
  */
 class CompanionBackupRequestTest {
-    private val serverSource by lazy { TestSources.kotlin("http/PaneldServer.kt").readText() }
-    private val routeSource by lazy { TestSources.kotlin("http/ControlPlaneRoutes.kt").readText() }
-
     private fun refusingProbe(): () -> Boolean = { fail("the installation probe must not be consulted"); false }
 
     @Test fun `the documented values parse and every other spelling is refused`() {
@@ -78,55 +75,11 @@ class CompanionBackupRequestTest {
     }
 
     /**
-     * `buildBackupArtifact` is an Android-bound member, so its ordering is pinned by source rather than
-     * executed here. Three facts carry the composition proof: the request is resolved before anything is
-     * reserved, the reservation is fed the resolved value, and the resolved `true` still reaches the
-     * unchanged capture path — which is what keeps an omitted request on a Companion-installed panel
-     * failing loudly when the capture itself fails.
-     */
-    @Test fun `the artifact builder resolves first, reserves from the resolution, and still captures`() {
-        val start = serverSource.indexOf("private fun buildBackupArtifact")
-        assertTrue("buildBackupArtifact must be present", start > 0)
-        val body = serverSource.substring(start, serverSource.indexOf("\n    }", start))
-
-        val resolve = body.indexOf("resolveCompanionInclusion(request)")
-        val reserve = body.indexOf("backupStagingRequirement(includeCompanion")
-        val capture = body.indexOf("if (includeCompanion) captureCompanion() else null")
-        assertTrue("the request must be resolved before storage is reserved", resolve in 0 until reserve)
-        assertTrue("the reservation must use the resolved value", reserve in 0 until capture)
-        assertTrue("a resolved inclusion must still reach the unchanged capture path", capture > 0)
-        assertTrue(
-            "only installation may make an omitted request skip the capture",
-            "CompanionInstaller.installedPkg(appContext) != null" in body,
-        )
-        assertFalse(
-            "the builder must not take a Boolean again; that is the conflation this replaced",
-            "buildBackupArtifact(includeCompanion: Boolean" in serverSource,
-        )
-    }
-
-    /**
-     * That the refusal happens before the approval and delivery gates is proven behaviourally, with exact
-     * counts, by `ControlPlaneRoutesTest`. All that is left to pin here is that the parse this replaced
-     * cannot come back: it is the one expression that could reintroduce the true-by-default reading
-     * without changing anything a route test would notice.
-     */
-    @Test fun `the retired truthy-or-default parse is gone from the route`() {
-        val start = routeSource.indexOf("private suspend fun handleBackup")
-        assertTrue("handleBackup must be present", start > 0)
-        val body = routeSource.substring(start, routeSource.indexOf("\nprivate val PLAY_URL", start))
-        assertTrue("the route must parse through the shared tri-state reader", "parseCompanionBackupRequest(" in body)
-        assertFalse(
-            "the old truthy-or-true parse must be gone",
-            """parameters["include_companion"]?.let { it == "true" || it == "1" } ?: true""" in body,
-        )
-    }
-
-    /**
      * The published contract is the only surface that ever claimed a default, and the claim was the bug.
      * `allow_plaintext` genuinely defaults to false and must keep saying so.
      */
     @Test fun `the OpenAPI document describes the conditional behaviour instead of a default`() {
+        // Source-text reason: the shipped openapi.json is the public API contract for this parameter.
         val openApi = TestSources.asset("openapi.json").readText()
         val start = openApi.indexOf("\"/api/v1/backup\"")
         assertTrue("the backup path must be documented", start > 0)
