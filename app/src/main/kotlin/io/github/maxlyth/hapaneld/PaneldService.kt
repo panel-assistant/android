@@ -226,6 +226,7 @@ import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
+import io.github.maxlyth.hapaneld.util.guardDbAppStaging
 import io.github.maxlyth.hapaneld.util.validGuardDbAppFile
 import io.github.maxlyth.hapaneld.util.HelperInstallReconciler
 import io.github.maxlyth.hapaneld.util.HelperInstallTransaction
@@ -4372,7 +4373,8 @@ class PaneldService : Service() {
                 android.os.SystemClock.elapsedRealtime(),
             ) ?: return emptyList()
             val sweeper = DisposableFileSweeper(processStart)
-            return appOwnedDisposableFileRules(cacheDir, filesDir, ::validGuardDbAppFile).map(sweeper::sweep) +
+            val pairUnarmable = { guardDbAppStaging(this@PaneldService).unarmable(File(applicationInfo.sourceDir)) }
+            return appOwnedDisposableFileRules(cacheDir, filesDir, pairUnarmable, ::validGuardDbAppFile).map(sweeper::sweep) +
                 appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)
         }
 

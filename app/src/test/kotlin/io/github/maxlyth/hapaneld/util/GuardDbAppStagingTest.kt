@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.util
 
+import android.content.ContextWrapper
 import io.github.maxlyth.hapaneld.http.PendingUploadStore
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -54,6 +55,34 @@ class GuardDbAppStagingTest {
         assertTrue(source.exists())
         assertNotNull(store.peek("replacement-token"))
         assertTrue(File(directory, "guard-db-candidate-a.apk").readText() == "existing")
+    }
+
+    @Test fun `the real staging never clears a pair a sentinel or prepared-arm record references`() {
+        val files = temporary.newFolder("files")
+        val noBackup = temporary.newFolder("no_backup")
+        val context = object : ContextWrapper(null) {
+            override fun getFilesDir() = files
+            override fun getNoBackupFilesDir() = noBackup
+        }
+        fun stagePair() = listOf("a", "b").map { File(files, "guard-db-candidate-$it.apk").apply { writeText(it) } }
+        val sessionRecords = listOf(
+            "guard-db-maintenance.v1",
+            ".guard-db-maintenance.v1.pending",
+            "guard-db-prepared-arm.v1",
+            ".guard-db-prepared-arm.v1.pending",
+        )
+
+        sessionRecords.forEach { name ->
+            val record = File(noBackup, name).apply { writeText("unparseable") }
+            val pair = stagePair()
+            assertFalse(guardDbAppStaging(context).clear())
+            pair.forEach { assertTrue("$name references ${it.name}", it.exists()) }
+            record.delete()
+        }
+
+        val pair = stagePair()
+        guardDbAppStaging(context).clear()
+        pair.forEach { assertFalse("nothing references ${it.name}", it.exists()) }
     }
 
     private fun assertFailurePreservesPending(

@@ -51,8 +51,8 @@ class StorageRemediationWiringContractTest {
         assertTrue("only files older than this process can be orphans, against its start in the oldest clock epoch",
             "ProcessStartWallClock.orphanBoundary(" in operations && "SystemClock.elapsedRealtime()" in operations &&
                 ") ?: return emptyList()" in operations)
-        assertTrue("a Guard DB claim temporary needs the staging's own file proof",
-            "appOwnedDisposableFileRules(cacheDir, filesDir, ::validGuardDbAppFile)" in operations)
+        assertTrue("a Guard DB file needs the staging's own file proof, and a staged pair its unarmable proof",
+            "appOwnedDisposableFileRules(cacheDir, filesDir, pairUnarmable, ::validGuardDbAppFile)" in operations)
         assertTrue("orphaned temporary directories are swept with the same proof",
             "appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)" in operations)
         val app = listOf(

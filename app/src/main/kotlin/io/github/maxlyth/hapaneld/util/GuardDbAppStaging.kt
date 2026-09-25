@@ -68,6 +68,10 @@ private fun readGuardDbSettingsAuthorityAsset(apk: File): ByteArray? = runCatchi
  * Process-independent app-side holding area between the existing one-slot upload store and ARM.
  * Paths are fixed by role and never cross the helper protocol. These copies are inspection evidence;
  * root-owned helper custody becomes the only mutation authority once ARM completes.
+ *
+ * [sessionRecordPresent] says whether a startup sentinel or prepared-arm record exists in any state,
+ * pending or corrupt included. Either one means a live or prepared session may still read the pair,
+ * so the pair is then never removed. The default assumes one exists.
  */
 internal class GuardDbAppStaging(
     private val directory: File,
@@ -76,6 +80,7 @@ internal class GuardDbAppStaging(
     private val copyAndSync: (File, File) -> Boolean = ::copyAndSync,
     private val atomicMove: (File, File) -> Boolean = ::atomicMoveWithoutReplacement,
     private val validateFile: (File) -> Boolean = ::validGuardDbAppFile,
+    private val sessionRecordPresent: () -> Boolean = { true },
 ) {
     @Synchronized
     fun claim(
@@ -136,8 +141,10 @@ internal class GuardDbAppStaging(
         return !directory.exists() || syncDirectory(directory)
     }
 
+    /** Removes the whole pair once its canary is over; refused while a session record references it. */
     @Synchronized
     fun clear(): Boolean {
+        if (sessionRecordPresent()) return false
         var cleared = true
         GuardDbMaintenanceProtocol.Role.values().forEach { role ->
             val file = candidateFile(role)
@@ -147,8 +154,19 @@ internal class GuardDbAppStaging(
         return cleared && (!directory.exists() || syncDirectory(directory))
     }
 
-    private fun candidateFile(role: GuardDbMaintenanceProtocol.Role): File =
-        File(directory, "guard-db-candidate-${role.name.lowercase()}.apk")
+    /**
+     * Whether the staged pair can never be armed. ARM requires the staged A to be the installed APK
+     * byte for byte, so once they differ, and no session record references the pair, nothing can use
+     * it. No clock is involved. An A that is missing or cannot be hashed, or one equal to the installed
+     * APK, proves nothing: a lone B may still be waiting for its A.
+     */
+    @Synchronized
+    fun unarmable(installedApk: File): Boolean = runCatching {
+        val a = candidateFile(GuardDbMaintenanceProtocol.Role.A)
+        !sessionRecordPresent() && AppInstaller.sha256(a) != AppInstaller.sha256(installedApk)
+    }.getOrDefault(false)
+
+    private fun candidateFile(role: GuardDbMaintenanceProtocol.Role): File = File(directory, guardDbCandidateName(role))
 
     private fun GuardDbCandidateInspection.toCandidate(
         role: GuardDbMaintenanceProtocol.Role,
@@ -169,10 +187,16 @@ internal class GuardDbAppStaging(
 }
 
 /**
+ * A staged candidate. It is process-independent by design: terminal retirement clears the pair when
+ * it completes, and the storage sweep removes a pair [GuardDbAppStaging.unarmable] proves no ARM can use.
+ */
+internal fun guardDbCandidateName(role: GuardDbMaintenanceProtocol.Role): String =
+    "guard-db-candidate-${role.name.lowercase()}.apk"
+
+/**
  * The temporary a claim copies into before its atomic move. It exists only inside one synchronized
  * [GuardDbAppStaging.claim], which deletes it on every exit, so one left behind by an earlier process
- * is a dead claim. The final `guard-db-candidate-<role>.apk` is different: it is process-independent
- * by design and stays until the operator discards it.
+ * is a dead claim.
  */
 internal fun guardDbCandidatePendingName(role: GuardDbMaintenanceProtocol.Role): String =
     ".guard-db-candidate-${role.name.lowercase()}.pending"
@@ -182,6 +206,7 @@ internal fun guardDbAppStaging(context: Context): GuardDbAppStaging = GuardDbApp
     // avoid a crash seam in which a newly-created child directory was never fsynced into its parent.
     directory = context.filesDir,
     inspect = { inspectGuardDbCandidate(context, it) },
+    sessionRecordPresent = { guardDbSentinelStore(context).present() || guardDbPreparedArmStore(context).present() },
 )
 
 private fun fsyncDirectory(directory: File): Boolean = runCatching {

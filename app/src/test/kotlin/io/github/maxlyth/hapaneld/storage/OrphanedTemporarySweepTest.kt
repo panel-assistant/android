@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.storage
 
+import io.github.maxlyth.hapaneld.util.GuardDbAppStaging
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
@@ -42,7 +43,8 @@ class OrphanedTemporarySweepTest {
         appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)
 
     private fun guardRule(owned: (File) -> Boolean = { true }) =
-        appOwnedDisposableFileRules(cacheDir, filesDir, owned).single { it.dataClass == DisposableDataClass.GUARD_DB_CANDIDATES }
+        appOwnedDisposableFileRules(cacheDir, filesDir, guardDbFileOwned = owned)
+            .single { it.ownedName.matches(".guard-db-candidate-a.pending") }
 
     private fun file(directory: File, name: String, modified: Long = old, bytes: Int = 100): File =
         File(directory, name).apply {
@@ -213,8 +215,9 @@ class OrphanedTemporarySweepTest {
         assertEquals(1, result.filesRetained)
     }
 
-    @Test fun aStagedGuardDbCandidatePairIsKeptHoweverOld() {
-        // Staging is process-independent by design: a pair claimed days ago awaits the operator's ARM.
+    @Test fun aStagedPairIsNeverAdmittedWithoutItsUnarmableProofHoweverOld() {
+        // Staging is process-independent by design: age alone never proves a pair abandoned, and a rule
+        // set given no proof admits no pair.
         val staged = listOf(
             file(filesDir, "guard-db-candidate-a.apk", modified = old - 72L * hour),
             file(filesDir, "guard-db-candidate-b.apk", modified = old - 72L * hour),
@@ -239,6 +242,88 @@ class OrphanedTemporarySweepTest {
 
         assertTrue("wrong owner, mode or link count", foreign.exists())
         assertTrue("a proof that cannot decide keeps the file", unjudged.exists())
+    }
+
+    // ---- Guard DB staged pair: removed only once no ARM can use it ----
+
+    private val stagedA = ByteArray(8_000) { 1 }
+    private val stagedB = ByteArray(9_000) { 2 }
+
+    private fun stage(name: String, bytes: ByteArray, modified: Long = old) =
+        File(filesDir, name).apply { writeBytes(bytes); setLastModified(modified) }
+
+    private fun installed(bytes: ByteArray) = File(root, "base.apk").apply { writeBytes(bytes) }
+
+    /** The production rule set, admitting the pair through the staging's own [GuardDbAppStaging.unarmable]. */
+    private fun rulesWithPairProof(
+        installedApk: File,
+        sessionRecord: Boolean = false,
+        owned: (File) -> Boolean = { it.isFile },
+    ): List<DisposableFileRule> {
+        val staging = GuardDbAppStaging(
+            filesDir,
+            inspect = { null },
+            validateFile = { it.isFile },
+            sessionRecordPresent = { sessionRecord },
+        )
+        return appOwnedDisposableFileRules(cacheDir, filesDir, { staging.unarmable(installedApk) }, owned)
+    }
+
+    @Test fun anUnarmablePairIsRemovedAndReachesTheRemediationSummary() {
+        val pair = listOf(stage("guard-db-candidate-a.apk", stagedA), stage("guard-db-candidate-b.apk", stagedB))
+        val rules = rulesWithPairProof(installed(ByteArray(3_000) { 3 }))
+        val sweeper = sweeper()
+
+        val summary = runBlocking { ladder { rules.map(sweeper::sweep) }.run(pressured) }!!
+
+        pair.forEach { assertFalse("${it.name} can never be armed", it.exists()) }
+        assertEquals(2, summary.filesDeleted)
+        assertEquals(17_000L, summary.fileBytesFreed)
+    }
+
+    @Test fun aPairWhoseAIsStillTheInstalledApkIsKept() {
+        val pair = listOf(stage("guard-db-candidate-a.apk", stagedA), stage("guard-db-candidate-b.apk", stagedB))
+
+        rulesWithPairProof(installed(stagedA.copyOf())).forEach { sweeper().sweep(it) }
+
+        pair.forEach { assertTrue("${it.name} may still be armed", it.exists()) }
+    }
+
+    @Test fun aPairASessionRecordReferencesIsKeptWhileBIsInstalled() {
+        // Mid-canary B is the installed APK, so A differs from it; only the session record protects the pair.
+        val pair = listOf(stage("guard-db-candidate-a.apk", stagedA), stage("guard-db-candidate-b.apk", stagedB))
+
+        rulesWithPairProof(installed(stagedB.copyOf()), sessionRecord = true).forEach { sweeper().sweep(it) }
+
+        pair.forEach { assertTrue("a live canary lost ${it.name}", it.exists()) }
+    }
+
+    @Test fun anUnarmablePairTheStagingsOwnFileProofRefusesIsKept() {
+        val foreign = stage("guard-db-candidate-a.apk", stagedA)
+        val b = stage("guard-db-candidate-b.apk", stagedB)
+
+        rulesWithPairProof(installed(ByteArray(3_000) { 3 }), owned = { it != foreign })
+            .forEach { sweeper().sweep(it) }
+
+        assertTrue("wrong owner, mode or link count", foreign.exists())
+        assertFalse(b.exists())
+    }
+
+    @Test fun aLoneBIsKeptBecauseItMayStillAwaitItsA() {
+        val lone = stage("guard-db-candidate-b.apk", stagedB)
+
+        rulesWithPairProof(installed(ByteArray(3_000) { 3 })).forEach { sweeper().sweep(it) }
+
+        assertTrue(lone.exists())
+    }
+
+    @Test fun aCandidateStagedByThisProcessIsKeptEvenBesideAnUnarmableA() {
+        val restaged = stage("guard-db-candidate-a.apk", stagedA, modified = processStart + 1_000L)
+        stage("guard-db-candidate-b.apk", stagedB)
+
+        rulesWithPairProof(installed(ByteArray(3_000) { 3 })).forEach { sweeper(at = processStart + 3L * hour).sweep(it) }
+
+        assertTrue("a claim this process made may be mid-restaging", restaged.exists())
     }
 
     // ---- the clock ----
@@ -283,32 +368,40 @@ class OrphanedTemporarySweepTest {
 
     // ---- reporting ----
 
-    @Test fun theRemediationSummaryReportsExactlyWhatTheSweepRemoved() {
-        companionCapture()
-        file(filesDir, ".guard-db-candidate-a.pending", bytes = 5_000)
-        val live = companionCapture("companion-capture-99-1", modified = processStart + 1_000L)
-        val staged = file(filesDir, "guard-db-candidate-a.apk", bytes = 8_000)
-        val sweeper = sweeper()
-        val pressured = StorageHealthSnapshot.UNCHECKED.copy(
-            severity = StorageHealthSeverity.CRITICAL,
-            pressureSeverity = StorageHealthSeverity.CRITICAL,
-            checkedAtMillis = 1L,
-            usableBytes = 1L,
-            totalBytes = 1L shl 33,
-        )
-        val operations = object : StorageRemediationOperations {
-            override fun sweepDisposableFiles() =
-                appOwnedDisposableFileRules(cacheDir, filesDir) { true }.map(sweeper::sweep) +
-                    appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)
+    private val pressured = StorageHealthSnapshot.UNCHECKED.copy(
+        severity = StorageHealthSeverity.CRITICAL,
+        pressureSeverity = StorageHealthSeverity.CRITICAL,
+        checkedAtMillis = 1L,
+        usableBytes = 1L,
+        totalBytes = 1L shl 33,
+    )
+
+    private fun ladder(sweep: () -> List<DisposableSweepResult>) = StorageRemediationLadder(
+        object : StorageRemediationOperations {
+            override fun sweepDisposableFiles() = sweep()
             override fun enforceRetention() = RetentionResult.NOT_RUN
             override fun checkpointWal() = WalCheckpointOutcome(WalCheckpointResult.NOT_NEEDED, 0L, 0L)
             override fun writeVerifiedBackup() = false
             override fun vacuum() = VacuumOutcome(VacuumResult.NOT_RUN)
             override fun lifecycleOwned() = true
             override suspend fun observe(): StorageHealthSnapshot? = pressured
-        }
+        },
+        nowMillis = { now },
+    )
 
-        val summary = runBlocking { StorageRemediationLadder(operations, nowMillis = { now }).run(pressured) }!!
+    @Test fun theRemediationSummaryReportsExactlyWhatTheSweepRemoved() {
+        companionCapture()
+        file(filesDir, ".guard-db-candidate-a.pending", bytes = 5_000)
+        val live = companionCapture("companion-capture-99-1", modified = processStart + 1_000L)
+        val staged = file(filesDir, "guard-db-candidate-a.apk", bytes = 8_000)
+        val sweeper = sweeper()
+
+        val summary = runBlocking {
+            ladder {
+                appOwnedDisposableFileRules(cacheDir, filesDir) { true }.map(sweeper::sweep) +
+                    appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)
+            }.run(pressured)
+        }!!
 
         assertEquals("five capture files and one dead claim", 6, summary.filesDeleted)
         assertEquals(1_320L + 5_000L, summary.fileBytesFreed)
