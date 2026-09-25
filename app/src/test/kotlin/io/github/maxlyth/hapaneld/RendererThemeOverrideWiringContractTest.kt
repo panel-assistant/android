@@ -70,5 +70,9 @@ class RendererThemeOverrideWiringContractTest {
             "without the policy the projection defaults to Follow and can never report an override",
             call.contains("themePolicy = config.dashboardTheme"),
         )
+        assertTrue(
+            "the projection must judge overrides against the policy the renderer actually baked",
+            call.contains("themeEffectivePolicy = config.dashboardThemeEffective"),
+        )
     }
 }

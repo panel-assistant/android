@@ -391,18 +391,30 @@ internal object AdaptiveLuxCurve {
         minimumBrightness: Int = BrightnessController.MIN_VISIBLE,
     ): Int {
         val minimum = minimumBrightness.coerceIn(BrightnessController.MIN_VISIBLE, 255)
-        val fixedNative = fixedBrightness(lux)
-        val fixedFraction = (fixedNative - BrightnessController.MIN_VISIBLE).toDouble() /
-            (255 - BrightnessController.MIN_VISIBLE)
-        val fixed = (minimum + fixedFraction * (255 - minimum)).roundToInt()
+        val fixed = (minimum + fixedFraction(lux) * (255 - minimum)).roundToInt()
         if (range.learnedWeight <= 0.0) return fixed
-        val logLux = ln1p(lux.coerceAtLeast(0.0))
-        val learnedFraction = ((logLux - range.lowLogLux) /
-            (range.highLogLux - range.lowLogLux)).coerceIn(0.0, 1.0)
-        val learned = (minimum + learnedFraction * (255 - minimum)).roundToInt()
+        val learned = (minimum + learnedFraction(lux, range) * (255 - minimum)).roundToInt()
         return (fixed + range.learnedWeight * (learned - fixed)).roundToInt()
             .coerceIn(minimum, 255)
     }
+
+    /**
+     * How bright [lux] is for this room, 0 (its dark end) to 1 (its bright end): the same fixed and
+     * learned fractions [rawBrightness] maps onto the backlight, blended by the same learned weight,
+     * but before the configured automatic minimum rescales them. That floor is a backlight preference,
+     * so it must not move anything else that reads the room's light, such as the Ambient theme.
+     */
+    fun normalizedLevel(lux: Double, range: AdaptiveBrightnessRange = AdaptiveBrightnessRange.FIXED): Double {
+        val fixed = fixedFraction(lux)
+        if (range.learnedWeight <= 0.0) return fixed
+        return (fixed + range.learnedWeight * (learnedFraction(lux, range) - fixed)).coerceIn(0.0, 1.0)
+    }
+
+    private fun fixedFraction(lux: Double): Double =
+        (fixedBrightness(lux) - BrightnessController.MIN_VISIBLE).toDouble() / (255 - BrightnessController.MIN_VISIBLE)
+
+    private fun learnedFraction(lux: Double, range: AdaptiveBrightnessRange): Double =
+        ((ln1p(lux.coerceAtLeast(0.0)) - range.lowLogLux) / (range.highLogLux - range.lowLogLux)).coerceIn(0.0, 1.0)
 
     fun percentToBrightness(percent: Int): Int = (percent.coerceIn(0, 100) * 255 / 100.0)
         .roundToInt()

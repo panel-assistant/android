@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -331,14 +332,29 @@ class StatusSurfaceWiringContractTest {
     fun theThemePolicySignatureIsRecordedWhereTheWebViewIsBuilt() {
         assertTrue(
             "the rebuild branch must compare the live signature against config",
-            dashboard.contains("val nextThemeSignature = config.dashboardTheme") &&
+            dashboard.contains("val nextThemeSignature = config.dashboardThemeEffective") &&
                 dashboard.contains("if (nextThemeSignature != dashboardThemeSignature)"),
         )
-        val build = dashboard.substringAfter("val forcedThemeDark = DashboardTheme.forcedDark(config.dashboardTheme)")
+        // Effective, not stored: Ambient must reach the WebView as the Dark, Light or Follow it
+        // resolves to, and a stored-policy signature would never notice the room changing.
+        val build = dashboard.substringAfter("val themeSignature = config.dashboardThemeEffective")
             .substringBefore("addDocumentStartJavaScript")
         assertTrue(
+            "the script must be chosen from the effective policy",
+            build.contains("val forcedThemeDark = DashboardTheme.forcedDark(themeSignature)"),
+        )
+        assertTrue(
             "the signature must be assigned beside the script it describes",
-            build.contains("dashboardThemeSignature = config.dashboardTheme"),
+            build.contains("dashboardThemeSignature = themeSignature"),
+        )
+        assertTrue(
+            "and published so an ambient verdict can tell whether it still has to reach this page",
+            build.contains("BuiltinDashboard.setAppliedThemeSignature(activityOwner, themeSignature)"),
+        )
+        assertFalse(
+            "no renderer decision may read the stored policy, or Ambient would render as Follow",
+            dashboard.contains("DashboardTheme.forcedDark(config.dashboardTheme)") ||
+                dashboard.contains("DashboardTheme.forces(config.dashboardTheme)"),
         )
         assertTrue(
             "and the policy script must actually be registered from it",

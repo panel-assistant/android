@@ -33,6 +33,7 @@ internal data class AutoBrightnessRuntimeStatus(
     val brighterThanExpected: Boolean,
     val manualPreference: ManualBrightnessPreferenceSnapshot,
     val sourceRevision: String,
+    val ambientTheme: AmbientThemeSnapshot,
 )
 
 internal data class AutoBrightnessChartSnapshot(
@@ -55,6 +56,12 @@ internal class AutoBrightnessController(
         elapsedRealtimeMs = elapsedRealtimeMs,
         bootCount = { AndroidManualBrightnessPreferenceStore.bootCount(context) },
     ),
+    /**
+     * Called, off this controller's lock, after the Ambient theme verdict changes and has been
+     * persisted. The receiver decides whether the renderer has to follow it; this controller only
+     * owns the verdict.
+     */
+    private val onAmbientThemeChanged: () -> Unit = {},
 ) : AutoCloseable {
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "ha-paneld-auto-brightness").apply { isDaemon = true }
@@ -88,6 +95,10 @@ internal class AutoBrightnessController(
     private var chartZoneId = ""
     private var chartLocation: SolarLocation? = null
     private var chartLookup: AdaptiveChartBaselineLookup? = null
+    // Seeded from the persisted verdict, so a restart keeps the room's last answer instead of
+    // falling back to Home Assistant for a dwell and then rebuilding the dashboard to get it back.
+    private val ambientTheme = AmbientThemeDecider(config.dashboardAmbientDark)
+    private var lastAmbientLevel = Double.NaN
     @Volatile private var closed = false
 
     /** Activate only after the service-generation lease has admitted active owners. */
@@ -281,6 +292,12 @@ internal class AutoBrightnessController(
             brighterThanExpected = lastResult?.brighterThanExpected == true,
             manualPreference = manual,
             sourceRevision = activeSourceRevision(),
+            ambientTheme = AmbientThemeSnapshot(
+                verdictDark = ambientTheme.dark,
+                level = lastAmbientLevel.takeIf(Double::isFinite),
+                pendingDark = ambientTheme.pendingDark(),
+                sourceAvailable = activeSourceAvailable(),
+            ),
         )
     }
 
@@ -392,6 +409,10 @@ internal class AutoBrightnessController(
         lastResult = result
         lastEvaluatedLux = lux
         lastAutomaticTarget = result.brightness
+        // The theme reads the model's own output on the room's own scale: the effective lux the
+        // backlight follows, through the same learned range, before the backlight's minimum floor.
+        lastAmbientLevel = AdaptiveLuxCurve.normalizedLevel(result.effectiveLux, result.estimate.brightnessRange)
+        if (ambientTheme.observe(nowElapsed, lastAmbientLevel)) publishAmbientVerdict()
         val manual = preference.evaluate(result.brightness, locationContext, activeSourceKey)
         val finalTarget = manual.finalTarget ?: result.brightness
         val lastBacklightWriteElapsed = brightness.lastSuccessfulWriteElapsed()
@@ -421,11 +442,25 @@ internal class AutoBrightnessController(
             result.brightness,
             lastAppliedTarget.takeIf { it >= 0 },
         )
-        return if (policy.needsFastFollowUp()) FAST_EVALUATION_MS else CALM_EVALUATION_MS
+        val next = if (policy.needsFastFollowUp()) FAST_EVALUATION_MS else CALM_EVALUATION_MS
+        // A pending theme change is judged when its dwell ends, not at the next calm tick: a room that
+        // went dark and then stayed perfectly still would otherwise wait up to a further minute.
+        val dwellRemaining = ambientTheme.pendingDeadlineMs()?.let { (it - nowElapsed).coerceAtLeast(0L) }
+        return if (dwellRemaining != null) minOf(next, dwellRemaining) else next
+    }
+
+    private fun publishAmbientVerdict() {
+        val dark = ambientTheme.dark ?: return
+        config.setDashboardAmbientDark(dark)
+        Log.i(TAG, "ambient theme verdict: ${if (dark) "dark" else "light"} (level ${String.format(java.util.Locale.ROOT, "%.2f", lastAmbientLevel)})")
+        scheduler.execute { if (!closed) onAmbientThemeChanged() }
     }
 
     private fun resetTransientPolicy(clearPreference: Boolean) {
         policy = AdaptiveBrightnessPolicy()
+        // A new evaluation session restarts any wait; the verdict itself stands until the room changes.
+        ambientTheme.restartDwell()
+        lastAmbientLevel = Double.NaN
         lastResult = null
         lastAutomaticTarget = -1
         lastTickElapsed = Long.MIN_VALUE

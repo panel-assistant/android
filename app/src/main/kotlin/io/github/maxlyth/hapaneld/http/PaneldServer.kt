@@ -56,6 +56,7 @@ import io.github.maxlyth.hapaneld.camera.CameraResolution
 import io.github.maxlyth.hapaneld.camera.CameraState
 import io.github.maxlyth.hapaneld.camera.CameraSurface
 import io.github.maxlyth.hapaneld.camera.SnapshotResult
+import io.github.maxlyth.hapaneld.control.AmbientThemeReport
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.CdpRelay
 import io.github.maxlyth.hapaneld.control.AdbController
@@ -567,6 +568,9 @@ internal interface AutoBrightnessHttpApi {
     suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction
     fun resetHistory(): AutoBrightnessHttpAction
     fun resumeFullAuto(): AutoBrightnessHttpAction
+
+    /** Why the Ambient dashboard theme resolves as it does, or null when the runtime cannot say. */
+    fun ambientTheme(): AmbientThemeReport? = null
 
     companion object {
         val UNAVAILABLE: AutoBrightnessHttpApi = object : AutoBrightnessHttpApi {
@@ -5457,6 +5461,8 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
      */
     private fun rendererAdmission(): RendererAdmissionPresentation {
         val pkg = config.dashboardPackage
+        // Only an Ambient panel pays for the runtime read; every other policy reports nothing from it.
+        val ambient = if (config.dashboardTheme == DashboardTheme.AMBIENT) autoBrightnessHttpApi.ambientTheme() else null
         val mode = when {
             SystemController.isBuiltinSelection(pkg, appContext.packageName) -> RendererMode.BUILTIN
             pkg.isBlank() -> RendererMode.NONE
@@ -5472,6 +5478,9 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             packageUpdatedAtMs = packageUpdatedAtMs(),
             nowWallMs = System.currentTimeMillis(),
             themePolicy = config.dashboardTheme,
+            themeEffectivePolicy = config.dashboardThemeEffective,
+            ambientReason = ambient?.reason,
+            ambientLevel = ambient?.level,
         )
     }
 

@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld
 
 import io.github.maxlyth.hapaneld.util.DashboardTheme
+import io.github.maxlyth.hapaneld.control.AmbientThemeReason
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.util.HaTransportEvidence
 import io.github.maxlyth.hapaneld.util.HaTransportFault
@@ -244,7 +245,7 @@ internal data class RendererAdmissionPresentation(
     val packageUpdatedAgeMs: Long?,
     val summary: String,
     val action: String,
-    /** The configured `dashboard_theme` policy as a wire token: `follow`, `dark` or `light`. */
+    /** The configured `dashboard_theme` policy as a wire token: `follow`, `dark`, `light` or `ambient`. */
     val themePolicy: String,
     /** `dark` or `light` as the frontend reports it is rendering now; null when not observed. */
     val themeEffective: String?,
@@ -255,6 +256,15 @@ internal data class RendererAdmissionPresentation(
      * preference. The boundary is allowed; being silent about it is not.
      */
     val themeOverridden: Boolean,
+    /**
+     * Under `ambient` only: `dark` or `light` as the room's verdict resolves the policy now, or null
+     * while it resolves to Follow Home Assistant. Null for every other policy.
+     */
+    val themeAmbient: String? = null,
+    /** Under `ambient` only: why it resolves that way ([AmbientThemeReason.wire]). */
+    val themeAmbientReason: String? = null,
+    /** Under `ambient` only: the room's last normalised light level, 0 to 1, or null before one. */
+    val themeAmbientLevel: Double? = null,
 ) {
 
     /** Stable flat JSON for `GET /api/v1/status`; `mode` and `state` stay first for shell clients. */
@@ -285,6 +295,9 @@ internal data class RendererAdmissionPresentation(
         field("theme_policy", themePolicy)
         field("theme_effective", themeEffective)
         field("theme_overridden", themeOverridden)
+        field("theme_ambient", themeAmbient)
+        field("theme_ambient_reason", themeAmbientReason)
+        field("theme_ambient_level", themeAmbientLevel)
         field("summary", summary)
         field("action", action)
         append('}')
@@ -306,6 +319,11 @@ internal data class RendererAdmissionPresentation(
         append(" theme=").append(themePolicy)
         append('/').append(themeEffective ?: "unobserved")
         if (themeOverridden) append(" theme_overridden=true")
+        themeAmbientReason?.let { reason ->
+            append(" ambient=").append(themeAmbient ?: "follow")
+            append(" ambient_reason=").append(reason)
+            append(" ambient_level=").append(themeAmbientLevel?.toString() ?: "none")
+        }
     }
 
     /** The Runtime diagnostics card row, or null when there is nothing worth a permanent row. */
@@ -359,14 +377,42 @@ internal data class RendererAdmissionPresentation(
             nowWallMs: Long,
             /** The configured `dashboard_theme`; defaults to Follow so an older caller reports honestly. */
             themePolicy: String = DashboardTheme.DEFAULT,
+            /**
+             * What the renderer acts on (`Config.dashboardThemeEffective`); the same as [themePolicy]
+             * except under Ambient, where it is the Dark, Light or Follow the room resolves to.
+             */
+            themeEffectivePolicy: String = themePolicy,
+            /** Under Ambient, why it resolves as it does; ignored for every other policy. */
+            ambientReason: AmbientThemeReason? = null,
+            /** Under Ambient, the room's last normalised light level. */
+            ambientLevel: Double? = null,
         ): RendererAdmissionPresentation {
             val record = live?.record
             val connected = live?.frontendConnected == true
-            val forcedDark = DashboardTheme.forcedDark(themePolicy)
-            val policyWire = when (forcedDark) {
+            val ambient = DashboardTheme.policy(themePolicy) == DashboardTheme.AMBIENT
+            val forcedDark = DashboardTheme.forcedDark(themeEffectivePolicy)
+            val policyWire = if (ambient) "ambient" else when (forcedDark) {
                 true -> "dark"
                 false -> "light"
                 null -> "follow"
+            }
+            val ambientWire = forcedDark?.let { if (it) "dark" else "light" }.takeIf { ambient }
+            val ambientReasonWire = ambientReason?.wire?.takeIf { ambient }
+            val ambientLevelWire = ambientLevel?.takeIf { ambient && it.isFinite() }
+                ?.let { kotlin.math.round(it * 100.0) / 100.0 }
+            // Falling back to Home Assistant is allowed; doing it silently is not. The two reasons the
+            // owner can fix earn the action slot when nothing more urgent holds it.
+            val ambientFallback = ambient && forcedDark == null &&
+                (ambientReason == AmbientThemeReason.AUTO_BRIGHTNESS_OFF || ambientReason == AmbientThemeReason.NO_LIGHT_SOURCE)
+            val ambientSuffix = if (!ambient || forcedDark != null) "" else when (ambientReason) {
+                AmbientThemeReason.NO_LIGHT_SOURCE -> AMBIENT_NO_LIGHT_SOURCE_SUFFIX
+                AmbientThemeReason.AUTO_BRIGHTNESS_OFF -> AMBIENT_AUTO_BRIGHTNESS_OFF_SUFFIX
+                else -> AMBIENT_WAITING_SUFFIX
+            }
+            val ambientAction = when {
+                !ambientFallback -> ""
+                ambientReason == AmbientThemeReason.NO_LIGHT_SOURCE -> AMBIENT_NO_LIGHT_SOURCE_ACTION
+                else -> AMBIENT_AUTO_BRIGHTNESS_OFF_ACTION
             }
             // The theme is a fact about the built-in renderer's page. For any other mode there is no
             // page to observe, so the policy is reported and the observation is honestly null.
@@ -411,6 +457,9 @@ internal data class RendererAdmissionPresentation(
                     themePolicy = policyWire,
                     themeEffective = null,
                     themeOverridden = false,
+                    themeAmbient = ambientWire,
+                    themeAmbientReason = ambientReasonWire,
+                    themeAmbientLevel = ambientLevelWire,
                 )
             }
             // A live frontend connection outranks the admission verdict, and only upgrades an
@@ -447,20 +496,41 @@ internal data class RendererAdmissionPresentation(
                 processAgeMs = processAgeMs,
                 packageUpdatedAgeMs = packageUpdatedAgeMs,
                 summary = summaryOf(state, record, evidence.fault) +
-                    if (overridden) OVERRIDDEN_SUMMARY_SUFFIX else "",
+                    (if (overridden) OVERRIDDEN_SUMMARY_SUFFIX else "") + ambientSuffix,
                 // An override is not a blocked state, but it is the one case where a healthy-looking
                 // panel is not doing what its owner configured, and the fix is on the Home Assistant
                 // side, so it earns the action slot that is otherwise reserved for a block.
-                action = actionOf(state, record?.outcome).ifBlank { if (overridden) OVERRIDDEN_ACTION else "" },
+                action = actionOf(state, record?.outcome).ifBlank { if (overridden) OVERRIDDEN_ACTION else ambientAction },
                 themePolicy = policyWire,
                 themeEffective = effectiveWire,
                 themeOverridden = overridden,
+                themeAmbient = ambientWire,
+                themeAmbientReason = ambientReasonWire,
+                themeAmbientLevel = ambientLevelWire,
             )
         }
 
         /** Appended to the summary when an explicit Home Assistant theme is overriding the policy. */
         const val OVERRIDDEN_SUMMARY_SUFFIX =
             "; an explicit Home Assistant theme is overriding this panel's Dashboard theme"
+
+        /** Appended while Ambient follows Home Assistant because there is no light to judge by. */
+        const val AMBIENT_NO_LIGHT_SOURCE_SUFFIX =
+            "; Ambient theme is following Home Assistant because this panel has no light sensor"
+
+        /** Appended while Ambient follows Home Assistant because the ambient model is not running. */
+        const val AMBIENT_AUTO_BRIGHTNESS_OFF_SUFFIX =
+            "; Ambient theme is following Home Assistant because auto-brightness is off"
+
+        /** Appended while Ambient follows Home Assistant until the room's light first holds for a dwell. */
+        const val AMBIENT_WAITING_SUFFIX =
+            "; Ambient theme is following Home Assistant until the room's light has been judged"
+
+        const val AMBIENT_NO_LIGHT_SOURCE_ACTION =
+            "Select a Home Assistant illuminance sensor for auto-brightness, or choose another Dashboard theme."
+
+        const val AMBIENT_AUTO_BRIGHTNESS_OFF_ACTION =
+            "Turn on auto-brightness so the Ambient theme can follow the room's light."
 
         /** The one fix is on the Home Assistant side, so the action names it rather than the panel. */
         const val OVERRIDDEN_ACTION =
