@@ -59,6 +59,27 @@ class DashboardRecoveryTest {
         assertFalse(retryNeedsFreshLoad(null, ha, interstitialShown = false, dashboardRenderer = false))
     }
 
+    @Test fun `a load that started but never drew does not make the retry reload the reconnecting page`() {
+        val ha = "http://192.0.2.10:8123"
+        val page = ShownPageTracker()
+        page.onCommitVisible("data:text/html;charset=utf-8;base64,")
+        // The retry's load of Home Assistant starts, then stalls before anything is drawn.
+        page.onLoadStarted("$ha/lovelace/0?external_auth=1")
+        assertTrue(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
+        // Home Assistant is back: the next plain retry still loads it afresh, and once drawn a retry reloads it.
+        page.onCommitVisible("$ha/lovelace/0?external_auth=1")
+        assertFalse(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
+    }
+
+    @Test fun `showing the reconnecting page forgets the Home Assistant page that was drawn`() {
+        val ha = "http://192.0.2.10:8123"
+        val page = ShownPageTracker()
+        page.onCommitVisible("$ha/lovelace/0?external_auth=1")
+        page.forget()
+        assertNull(page.shown)
+        assertTrue(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
+    }
+
     /** Fire [count] awake misses and return the 1-based miss numbers that did something other than reload. */
     private fun escalationsWithin(policy: DashboardRetryPolicy, count: Int): List<Pair<Int, HandshakeRecoveryStep>> =
         (1..count).mapNotNull { miss ->

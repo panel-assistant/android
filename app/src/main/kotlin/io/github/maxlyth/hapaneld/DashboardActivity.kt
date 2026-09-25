@@ -486,7 +486,7 @@ class DashboardActivity : AppCompatActivity() {
     private var interstitialShown = false
     // The main-frame document the dashboard WebView is actually showing (onPageCommitVisible), or null
     // before its first. A retry decides reload() versus a fresh load from this; see retryNeedsFreshLoad.
-    private var committedPageUrl: String? = null
+    private val shownPage = ShownPageTracker()
     private var waitingStatus: TextView? = null
     private var waitingStage: TextView? = null
     private var waitingProgress: ProgressBar? = null
@@ -781,7 +781,7 @@ class DashboardActivity : AppCompatActivity() {
             runCatching { w.destroy() }
         }
         web = null
-        committedPageUrl = null
+        shownPage.forget()
         swipe = null
         frontendConnected = false
     }
@@ -2090,7 +2090,7 @@ class DashboardActivity : AppCompatActivity() {
     private fun reloadTarget(): Boolean {
         val w = web ?: return false
         val config = Config(this)
-        val fresh = retryNeedsFreshLoad(committedPageUrl, config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)
+        val fresh = shownPage.needsFreshLoad(config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)
         // Only a fresh load needs the home dashboard; unresolved, admission loads it instead.
         val home = if (fresh) {
             resolvedHomeDashboard(config) ?: run {
@@ -2149,7 +2149,7 @@ class DashboardActivity : AppCompatActivity() {
         web?.let(::suspendBusDocument)
         // Whatever was on screen is being replaced by a page that is not Home Assistant; until this one is
         // drawn and reported, a retry must not trust an earlier Home Assistant page as the one showing.
-        committedPageUrl = null
+        shownPage.forget()
         web?.loadDataWithBaseURL(
             null,
             """<!doctype html><html><body style="background:${palette.background};color:${palette.body};
@@ -3300,7 +3300,7 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         web = w
-        committedPageUrl = null
+        shownPage.forget()
         // Wrap in a pull-to-refresh layout: a drag that starts at the very top edge of the screen and
         // pulls down does a light reload of the current page (no app relaunch). The gesture is gated on
         // its ORIGIN (see EdgePullRefreshLayout) — a downward drag that begins inside the dashboard
@@ -3711,7 +3711,7 @@ class DashboardActivity : AppCompatActivity() {
                     v2Handshake.reset()
                     clearBusTimeouts()
                     web = null
-                    committedPageUrl = null
+                    shownPage.forget()
                     main.removeCallbacks(watchdog)
                     main.removeCallbacks(darkSettle)
                     runCatching { customViewCallback?.onCustomViewHidden() }
@@ -3749,6 +3749,8 @@ class DashboardActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
+                shownPage.onLoadStarted(url)
+                Log.d(TAG, "page load started (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
                 if (!dashboardNavigationAllowed(config.haUrl, url)) {
                     // Native recovery/auth-latch documents are intentionally bridge-free. Their
@@ -3782,7 +3784,8 @@ class DashboardActivity : AppCompatActivity() {
             // longer be drawn, so a hung load can never make a retry believe Home Assistant is showing.
             override fun onPageCommitVisible(view: WebView, url: String) {
                 if (!rendererCurrent(generation, view)) return
-                committedPageUrl = url
+                shownPage.onCommitVisible(url)
+                Log.d(TAG, "page shown (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
             }
 
             // Real navigation inside Home Assistant's own frontend — a tapped link, a back gesture,

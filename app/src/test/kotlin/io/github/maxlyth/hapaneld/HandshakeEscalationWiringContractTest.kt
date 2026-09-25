@@ -72,33 +72,21 @@ class HandshakeEscalationWiringContractTest {
     }
 
     @Test fun aRetryDecidesFromTheCommittedDocument() {
-        val reload = body("private fun reloadTarget(")
+        // The tracker's behaviour is executed in DashboardRecoveryTest; here only that the activity feeds it.
         assertTrue(
-            "reloadTarget must decide from the committed document",
-            reload.contains("retryNeedsFreshLoad(committedPageUrl, config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)"),
+            "reloadTarget must decide from the shown page",
+            body("private fun reloadTarget(").contains("shownPage.needsFreshLoad(config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)"),
         )
-        // Only the page actually on screen counts. onPageStarted marks a load STARTING, and a hung load
-        // leaves the previous page drawn, so recording there let a retry reload() the reconnecting page.
-        val visible = body("override fun onPageCommitVisible(")
-        assertTrue("onPageCommitVisible must record the page on screen", visible.contains("committedPageUrl = url"))
-        val started = dashboard.substring(
-            dashboard.indexOf("override fun onPageStarted("),
-            dashboard.indexOf("override fun onPageCommitVisible("),
-        )
-        assertFalse("a load that has only started must not count as shown", started.contains("committedPageUrl = url"))
-        assertTrue(
-            "only one site may record the shown page",
-            Regex("""committedPageUrl = url""").findAll(dashboard).count() == 1,
-        )
-        // Drawing the reconnecting page forgets any earlier Home Assistant page before the load is issued.
+        assertTrue("onPageStarted must report a start, not a shown page", body("override fun onPageStarted(").contains("shownPage.onLoadStarted(url)"))
+        assertTrue("onPageCommitVisible must report the shown page", body("override fun onPageCommitVisible(").contains("shownPage.onCommitVisible(url)"))
+        assertTrue(Regex("""shownPage\.onCommitVisible\(""").findAll(dashboard).count() == 1)
         val reconnecting = body("private fun showReconnecting(")
-        val forgotten = reconnecting.indexOf("committedPageUrl = null")
+        val forgotten = reconnecting.indexOf("shownPage.forget()")
         assertTrue("the reconnecting page must forget the shown page", forgotten >= 0)
         assertTrue(forgotten < reconnecting.indexOf("loadDataWithBaseURL("))
-        // Every renderer replacement forgets the old commit, so a new WebView starts with nothing committed.
-        assertTrue(body("private fun teardownWeb(").contains("committedPageUrl = null"))
+        assertTrue(body("private fun teardownWeb(").contains("shownPage.forget()"))
         val build = body("private fun buildCompatibleAndLoad(")
-        assertTrue(build.indexOf("committedPageUrl = null") > build.indexOf("web = w"))
+        assertTrue(build.indexOf("shownPage.forget()") > build.indexOf("web = w"))
     }
 
     @Test fun escalationTakesNoCrashBudgetAndRelaunchesNothing() {
