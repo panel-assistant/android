@@ -163,13 +163,24 @@ internal class HomeDashboardResolutionAttemptGate {
     @Synchronized fun invalidate() { current = null }
 }
 
-private data class OwnedHomeDashboardResolution(
+internal data class OwnedHomeDashboardResolution(
     val owner: HomeDashboardResolutionOwner,
     val resolution: EntityLearningProtocol.HomeDashboardResolution,
     /** False while the value is the persisted launch cache — already rendering, awaiting the live
      *  answer that confirms, corrects or (on a confirmed empty list) replaces it. */
     val confirmed: Boolean = true,
 )
+
+/** The home dashboard path [resolution] holds for [owner]. */
+internal fun ownedHomeDashboardPath(
+    resolution: OwnedHomeDashboardResolution?,
+    owner: HomeDashboardResolutionOwner,
+): String =
+    resolution
+        ?.takeIf { it.owner == owner }
+        ?.resolution
+        ?.path
+        ?: error("home dashboard used before authenticated resolution")
 
 internal class EntityFilterRetryPolicy(
     private val delaysMs: LongArray = longArrayOf(30_000L, 120_000L, 600_000L),
@@ -1876,18 +1887,22 @@ class DashboardActivity : AppCompatActivity() {
         if (!screenAwake || !frontendConnected || authLatched) return
         val config = Config(this)
         val minutes = config.dashboardIdleReturnMin
-        val home = resolvedHomeDashboard(config).trim().trim('/')
-        if (minutes <= 0) return
-        if (SystemClock.elapsedRealtime() - lastTouchAt < minutes * 60_000L) return
-        val current = runCatching { android.net.Uri.parse(web?.url) }.getOrNull()
-        val target = DashboardIdleReturnPolicy.target(
-            currentPath = current?.path.orEmpty(),
-            currentQuery = current?.encodedQuery,
-            currentFragment = current?.fragment,
-            homeDashboard = home,
-        ) ?: return
-        Log.i(TAG, "idle ${minutes}min — returning to home dashboard (/$target)")
-        sendBusNavigate(target)
+        val tick = DashboardIdleReturnPolicy.tick(
+            minutes = minutes,
+            idleMs = SystemClock.elapsedRealtime() - lastTouchAt,
+            homeDashboard = { resolvedHomeDashboard(config) },
+        ) { home ->
+            val current = runCatching { android.net.Uri.parse(web?.url) }.getOrNull()
+            DashboardIdleReturnPolicy.target(
+                currentPath = current?.path.orEmpty(),
+                currentQuery = current?.encodedQuery,
+                currentFragment = current?.fragment,
+                homeDashboard = home,
+            )
+        }
+        if (tick !is DashboardIdleReturnPolicy.Tick.Return) return
+        Log.i(TAG, "idle ${minutes}min — returning to home dashboard (/${tick.target})")
+        sendBusNavigate(tick.target)
     }
 
     /** Register once and return whether Android already has a default network. When false, onCreate
@@ -2064,11 +2079,7 @@ class DashboardActivity : AppCompatActivity() {
     )
 
     private fun resolvedHomeDashboard(config: Config): String =
-        homeDashboardResolution
-            ?.takeIf { it.owner == homeDashboardOwner(config) }
-            ?.resolution
-            ?.path
-            ?: error("home dashboard used before authenticated resolution")
+        ownedHomeDashboardPath(homeDashboardResolution, homeDashboardOwner(config))
 
     // Publish foreground state so SystemController.dashboardState can drive the watchdog + kiosk
     // return-loop from an in-process signal instead of a root pidof/dumpsys probe.
@@ -3922,6 +3933,26 @@ private class BottomSwipeFrame(
 
 /** Pure idle-return decision shared by the Android lifecycle path and deterministic JVM tests. */
 internal object DashboardIdleReturnPolicy {
+    sealed interface Tick {
+        data object Off : Tick
+        data object NotIdle : Tick
+        data object AtHome : Tick
+        data class Return(val target: String) : Tick
+    }
+
+    /** One idle-return tick; [targetFor] maps the normalised home dashboard to [target]'s answer. */
+    fun tick(
+        minutes: Int,
+        idleMs: Long,
+        homeDashboard: () -> String,
+        targetFor: (home: String) -> String?,
+    ): Tick {
+        val home = homeDashboard().trim().trim('/')
+        if (minutes <= 0) return Tick.Off
+        if (idleMs < minutes * 60_000L) return Tick.NotIdle
+        return targetFor(home)?.let(Tick::Return) ?: Tick.AtHome
+    }
+
     /** Return the fragment-free home target when idle navigation is needed; null means already home. */
     fun target(
         currentPath: String,
