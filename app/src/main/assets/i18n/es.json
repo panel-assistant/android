@@ -1913,6 +1913,21 @@
       "state": "machine-cross-checked",
       "text": "MQTT está configurado. Siguiente paso: elegir un renderizador de panel de control."
     },
+    "configure.setup.strategy_allowed.body": {
+      "text": "Home Assistant genera el panel de control de este panel a partir de una estrategia, y la comprobación de detección de entidades está permitida, por lo que solo aparecen tarjetas para las entidades incluidas en la suscripción.",
+      "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
+      "state": "machine-cross-checked"
+    },
+    "configure.setup.strategy_allowed.link": {
+      "text": "Consulta la página «Entidades»",
+      "sourceHash": "c3629676fb6496523dd491e6e5f55ab7984b33f995b74d33e023007d17c4ba53",
+      "state": "machine-cross-checked"
+    },
+    "configure.setup.strategy_allowed.title": {
+      "text": "Puede que falten algunas tarjetas del panel de control.",
+      "sourceHash": "4eb6bbaee2e66e0cb133be770b21c244e29992602a99e52c62c4848f66dfc315",
+      "state": "machine-cross-checked"
+    },
     "configure.state.active": {
       "sourceHash": "96879611650f80a81392a52e0db9b0237669087c4518e1c130e541a505e0eeef",
       "state": "machine-cross-checked",
@@ -5253,6 +5268,11 @@
       "sourceHash": "0e570ca6fabe24f94e52c1833f3ffd25567022beb826fa16891f3322051bc221",
       "state": "machine-cross-checked"
     },
+    "entities.issue.strategy_allowed_note": {
+      "text": "Home Assistant genera este panel de control a partir de una estrategia, y una estrategia solo crea tarjetas para las entidades que puede ver. Si esta comprobación está permitida, cualquier entidad fuera de la suscripción no tendrá aquí una tarjeta y nunca se aprenderá, por lo que esta página no puede mostrar lo que falta. Abre el mismo panel de control en Home Assistant en otro dispositivo y ancla la entidad que hay detrás de cada tarjeta que falte aquí.",
+      "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
+      "state": "machine-cross-checked"
+    },
     "entities.issue.streamline-runtime-coverage.reason": {
       "text": "Los IDs de entidad estáticos se detectan inmediatamente. Otras dependencias directas de hass.states se aprenden automáticamente al ejecutarse las plantillas de Streamline, por lo que la lista de entidades detectadas puede seguir incompleta hasta que se hayan ejercitado todas las vistas, estados condicionales, ventanas emergentes e interacciones pertinentes.",
       "sourceHash": "10f83b2d9703e2cee1267ce449bf860a18a6439897fff3d8039cc65516de5f5b",
@@ -5671,6 +5691,11 @@
     "entities.status.state.synchronizing": {
       "text": "sincronizando",
       "sourceHash": "644b72e97de001b8a0e917dde5dc058c35ccf9657b728560604cbcca6ab4f2b4",
+      "state": "machine-cross-checked"
+    },
+    "entities.status.strategy_allowed": {
+      "text": "Panel de control de estrategia: las entidades fuera de la suscripción no tienen tarjetas",
+      "sourceHash": "7dd9184b9ea1dd56153da981907ac50a2a063e2cec62c51674c3a25fd465a1f4",
       "state": "machine-cross-checked"
     },
     "entities.status.stream.one": {

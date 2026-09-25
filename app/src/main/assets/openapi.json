@@ -698,7 +698,7 @@
         ], "responses": { "200": { "description": "{items,limit,offset}" } } }
     },
     "/api/v1/dashboard/entities/sync": {
-      "get": { "summary": "Automatic entity-learning status and last synchronization", "tags": ["performance"], "responses": { "200": { "description": "Learning status including dashboard_issue_count, blocking_issue_count, automatic_activation_blocked, hold_reason (null, synchronizing, synchronization, authentication or decision) and resync_suspended, true while a flagged rule awaiting a decision is the only thing holding the renderer" } } },
+      "get": { "summary": "Automatic entity-learning status and last synchronization", "tags": ["performance"], "responses": { "200": { "description": "Learning status including dashboard_issue_count, blocking_issue_count, automatic_activation_blocked, hold_reason (null, synchronizing, synchronization, authentication or decision) and resync_suspended, true while a flagged rule awaiting a decision is the only thing holding the renderer, and strategy_selector_ignored, true while a dashboard strategy runs on the filtered stream with its entity-discovery check allowed, so entities outside the subscription have no cards" } } },
       "post": { "summary": "Start an immediate catalog and dashboard synchronization", "tags": ["performance"], "responses": { "202": { "description": "Started" }, "409": { "description": "Already running" } } }
     },
     "/api/v1/dashboard/entities/issues": {

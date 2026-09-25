@@ -1568,6 +1568,21 @@
    "sourceHash": "92a39c3ea0af40d258a4b3cf84fc30e00d5b0432fc9ac43c3eca809119cd18a6",
    "state": "machine-draft"
   },
+  "configure.setup.strategy_allowed.body": {
+   "text": "Home Assistant створює інформаційну панель цієї панелі на основі стратегії, і перевірка виявлення сутностей дозволена, тому картки відображаються лише для сутностей, що входять до підписки.",
+   "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
+   "state": "machine-draft"
+  },
+  "configure.setup.strategy_allowed.link": {
+   "text": "Перегляньте це на сторінці «Об’єкти»",
+   "sourceHash": "c3629676fb6496523dd491e6e5f55ab7984b33f995b74d33e023007d17c4ba53",
+   "state": "machine-draft"
+  },
+  "configure.setup.strategy_allowed.title": {
+   "text": "Деякі картки інформаційної панелі можуть бути відсутні.",
+   "sourceHash": "4eb6bbaee2e66e0cb133be770b21c244e29992602a99e52c62c4848f66dfc315",
+   "state": "machine-draft"
+  },
   "configure.state.active": {
    "text": "активний",
    "sourceHash": "96879611650f80a81392a52e0db9b0237669087c4518e1c130e541a505e0eeef",
@@ -4858,6 +4873,11 @@
    "sourceHash": "0e570ca6fabe24f94e52c1833f3ffd25567022beb826fa16891f3322051bc221",
    "state": "machine-draft"
   },
+  "entities.issue.strategy_allowed_note": {
+   "text": "Home Assistant builds this dashboard from a strategy, and a strategy only makes cards for entities it can see. With this check allowed, any entity outside the subscription gets no card here and is never learned, so this page cannot list what is missing. Open the same dashboard in Home Assistant on another device, and pin the entity behind every card that is missing here.",
+   "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
+   "state": "english-fallback"
+  },
   "entities.issue.streamline-runtime-coverage.reason": {
    "text": "Статичні ID сутностей виявляються негайно. Інші прямі залежності hass.states вивчаються автоматично під час виконання шаблонів Streamline, тому виявлений список сутностей може залишатися неповним, доки не буде перевірено кожен відповідний екран, умовний стан, спливаюче вікно та взаємодію.",
    "sourceHash": "10f83b2d9703e2cee1267ce449bf860a18a6439897fff3d8039cc65516de5f5b",
@@ -5276,6 +5296,11 @@
   "entities.status.state.synchronizing": {
    "text": "синхронізація",
    "sourceHash": "644b72e97de001b8a0e917dde5dc058c35ccf9657b728560604cbcca6ab4f2b4",
+   "state": "machine-draft"
+  },
+  "entities.status.strategy_allowed": {
+   "text": "панель стратегії: сутності поза межами підписки не мають карток",
+   "sourceHash": "7dd9184b9ea1dd56153da981907ac50a2a063e2cec62c51674c3a25fd465a1f4",
    "state": "machine-draft"
   },
   "entities.status.stream.one": {

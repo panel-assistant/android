@@ -30,6 +30,22 @@ class EntityLearningIssueVisibilityTest {
         assertEquals(1, manual.getInt("ignored_issue_count"))
     }
 
+    @Test fun anAllowedStrategyCheckIsReportedOnlyUnderAFilteredStream() {
+        fun issue(code: String, ignored: Boolean) = JSONObject().put("type", "unbounded_selector")
+            .put("presentation_code", code).put("would_block", true).put("blocking", !ignored).put("ignored", ignored)
+        val allowedStrategy = JSONArray().put(issue("selector-broad", ignored = true)).put(issue("dashboard-strategy", ignored = true))
+
+        assertEquals(true, strategySelectorAllowed("filtered", allowedStrategy))
+        // An unfiltered or held stream drops nothing, so there is nothing to warn about.
+        assertEquals(false, strategySelectorAllowed("unfiltered", allowedStrategy))
+        assertEquals(false, strategySelectorAllowed("held", allowedStrategy))
+        // The same strategy check still awaiting a choice has not dropped anything yet.
+        assertEquals(false, strategySelectorAllowed("filtered", JSONArray().put(issue("dashboard-strategy", ignored = false))))
+        // Any other allowed check is not a strategy.
+        assertEquals(false, strategySelectorAllowed("filtered", JSONArray().put(issue("selector-unbounded-or-dynamic", ignored = true))))
+        assertEquals(false, strategySelectorAllowed("filtered", JSONArray()))
+    }
+
     private fun JSONObject.types(): List<String> = getJSONArray("items").let { items ->
         List(items.length()) { index -> items.getJSONObject(index).getString("type") }
     }
