@@ -612,12 +612,15 @@ internal class AutoBrightnessController(
             preference.persistCurrent()
             scheduler.shutdown()
         }
+        // History closes first: the generation advanced above, so a tick still inside a root write can
+        // never record again, and a write that outlasts the deadline must not cost the pending history.
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0L))
-        val schedulerDrained = runCatching {
-            scheduler.awaitTermination(timeoutMs.coerceAtLeast(0L), TimeUnit.MILLISECONDS)
-        }.getOrDefault(false)
+        val historyClosed = history.closeAndJoin(timeoutMs.coerceAtLeast(0L))
         val remainingMs = TimeUnit.NANOSECONDS.toMillis((deadline - System.nanoTime()).coerceAtLeast(0L))
-        return schedulerDrained && history.closeAndJoin(remainingMs)
+        val schedulerDrained = runCatching {
+            scheduler.awaitTermination(remainingMs, TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+        return historyClosed && schedulerDrained
     }
 
     override fun close() { closeAndJoin() }
