@@ -110,7 +110,7 @@ class ProfilesI18nContractTest {
                 assertEquals("$locale has stale source text for $key", english.sourceHash, translated.sourceHash)
                 val fallback = locale to key
                 if (translated.state == TranslationState.ENGLISH_FALLBACK) {
-                    observedFallbacks += fallback
+                    if (!EarlyAccessReviewHold.holds(locale, key, translated)) observedFallbacks += fallback
                     assertEquals("$locale English fallback must equal the authoritative source for $key", english.text, translated.text)
                 }
                 assertTrue(
@@ -120,7 +120,8 @@ class ProfilesI18nContractTest {
                         (translated.state == TranslationState.ENGLISH_FALLBACK &&
                             fallback in APPROVED_PROFILES_ENGLISH_FALLBACKS) ||
                         (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT),
+                            translated.state == TranslationState.MACHINE_DRAFT) ||
+                        EarlyAccessReviewHold.holds(locale, key, translated),
                 )
             }
         }

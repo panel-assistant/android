@@ -7894,9 +7894,9 @@
       "text": "Flujo en bruto:"
     },
     "logs.note.sources": {
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
-      "state": "machine-cross-checked",
-      "text": "Aplicación = registro del proceso de ha-paneld (no necesita root). Sistema = logcat completo del dispositivo (root)."
+      "text": "Aplicación = registro del proceso de ha-paneld (no necesita root). Sistema = logcat completo del dispositivo (root). Consola del navegador = consola JavaScript del panel de control (requiere el envío de registros configurado).",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
+      "state": "machine-cross-checked"
     },
     "logs.source.app": {
       "sourceHash": "0d04bfeb7d64b71c74fc925cca93d683154e8cc7e6e5838faced498e34c9984d",

@@ -86,7 +86,8 @@ class HtmlUiCatalogueContractTest {
                         (translated.state == TranslationState.ENGLISH_FALLBACK &&
                             locale to key in APPROVED_PROFILES_ENGLISH_FALLBACKS) ||
                         (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT),
+                            translated.state == TranslationState.MACHINE_DRAFT) ||
+                        EarlyAccessReviewHold.holds(locale, key, translated),
                 )
             }
         }
@@ -150,9 +151,12 @@ class HtmlUiCatalogueContractTest {
             internalReferences.forEach { (labelKey, referenceKeys) ->
                 val englishLabel = checkNotNull(source.strings[labelKey]) { "English catalogue is missing $labelKey" }.text
                 val localizedLabel = targetText(locale, labelKey)
+                // A label held at English cannot be named exactly by guidance that is still translated.
+                if (EarlyAccessReviewHold.holdsText(locale, labelKey, localizedLabel)) return@forEach
 
                 referenceKeys.forEach { referenceKey ->
                     val guidance = targetText(locale, referenceKey)
+                    if (EarlyAccessReviewHold.holdsText(locale, referenceKey, guidance)) return@forEach
                     val guidanceWithoutLongerLabel = if (labelKey == "dashboard.controls.launcher") {
                         guidance.replace(targetText(locale, "dashboard.controls.admin_launcher"), "")
                     } else {
