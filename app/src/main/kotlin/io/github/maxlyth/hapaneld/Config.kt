@@ -88,7 +88,10 @@ internal data class HaAuthOwner(
     val refreshToken: String,
     val clientId: String,
     val staticAccessToken: String,
-)
+) {
+    /** Carried inside snapshots that may be printed; the credential never is. */
+    override fun toString(): String = "HaAuthOwner(redacted)"
+}
 
 /** Process-local authority for one administrator-browser Home Assistant login. The epoch makes a
  * newer Connect request supersede an older callback even when that callback already consumed state. */

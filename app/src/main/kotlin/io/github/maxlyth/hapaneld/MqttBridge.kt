@@ -2640,15 +2640,8 @@ internal class MqttBridge(
                             lifecycle.isOpen() &&
                                 config.haUrl.trim().trimEnd('/') == nativeBase && config.panelId == panel
                         }
-                        val token = DashboardAuth.forConfig(
-                            config,
-                            stillCurrent = stillCurrent,
-                            persistRefresh = { snapshot, access, expiry ->
-                                lifecycle.runIfOpen(false) {
-                                    stillCurrent() && config.setHaRefreshedTokenIfOwned(snapshot, access, expiry)
-                                }
-                            },
-                        ).session?.accessToken ?: return@Thread
+                        val token = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
+                            .session?.accessToken ?: return@Thread
                         val familyPolicy = MqttAddressFamilyPolicy.fromConfig(config.mqttAddressFamily)
                         val link = HaLink.resolveWithAccessToken(
                             nativeBase, token, listOf(panel, runtimeFriendlyName),

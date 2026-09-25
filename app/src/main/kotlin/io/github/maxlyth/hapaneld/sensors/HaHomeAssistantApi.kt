@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.sensors
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.DashboardAuth
 import io.github.maxlyth.hapaneld.HaAuthOwner
+import io.github.maxlyth.hapaneld.HaCredentialManager
 import io.github.maxlyth.hapaneld.stableOwner
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.HaTransportEvidence
@@ -34,14 +35,14 @@ internal fun interface HaApiSessionProvider {
     fun resolve(force: Boolean): HaApiSession
 }
 
-/** Reuses the renderer's refresh-safe credential owner instead of maintaining another token cache. */
+/** Takes its credentials from [HaCredentialManager], the one owner every Home Assistant consumer shares. */
 internal class DashboardHaApiSessionProvider(
     private val config: Config,
     private val stillCurrent: () -> Boolean = { true },
 ) : HaApiSessionProvider {
     override fun resolve(force: Boolean): HaApiSession {
         val expectedUrl = config.haUrl.trim().trimEnd('/')
-        val result = DashboardAuth.forConfig(
+        val result = HaCredentialManager.resolve(
             config = config,
             force = force,
             stillCurrent = { stillCurrent() && config.haUrl.trim().trimEnd('/') == expectedUrl },

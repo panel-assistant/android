@@ -723,21 +723,6 @@ internal data class MqttProjectionIdentity(
     val exposures: List<Pair<String, Boolean>>,
 )
 
-internal class HaLinkIdentity(
-    private val url: String,
-    private val accessToken: String,
-    private val refreshToken: String,
-    private val tokenExpiry: Long,
-    private val clientId: String,
-) {
-    override fun equals(other: Any?): Boolean = other is HaLinkIdentity && url == other.url &&
-        accessToken == other.accessToken && refreshToken == other.refreshToken &&
-        tokenExpiry == other.tokenExpiry && clientId == other.clientId
-
-    override fun hashCode(): Int = listOf(url, accessToken, refreshToken, tokenExpiry, clientId).hashCode()
-    override fun toString(): String = "HaLinkIdentity(redacted)"
-}
-
 internal data class ConfigRefreshEffects(val reannounceMqtt: Boolean, val resolveHaLink: Boolean)
 
 internal data class ConfigOwnerRefreshPlan(
@@ -800,14 +785,15 @@ internal fun nextLiveSettingRetryAttempt(currentAttempt: Int, maximumAttempts: I
 internal data class NetworkConfigurationSnapshot(
     val runtime: NetworkRuntimeIdentity,
     val projection: MqttProjectionIdentity,
-    val haLink: HaLinkIdentity,
+    /** The credential generation, not the derived access token: a refresh must not look like a change. */
+    val haLink: HaAuthOwner,
 )
 
 internal fun configRefreshEffects(
     activeProjection: MqttProjectionIdentity,
     nextProjection: MqttProjectionIdentity,
-    activeHaLink: HaLinkIdentity,
-    nextHaLink: HaLinkIdentity,
+    activeHaLink: HaAuthOwner,
+    nextHaLink: HaAuthOwner,
 ): ConfigRefreshEffects = ConfigRefreshEffects(
     reannounceMqtt = activeProjection != nextProjection,
     resolveHaLink = activeHaLink != nextHaLink,
@@ -2562,13 +2548,7 @@ class PaneldService : Service() {
             .toList(),
     )
 
-    private fun currentHaLinkIdentity(): HaLinkIdentity = HaLinkIdentity(
-        config.haUrl.trim().trimEnd('/'),
-        config.haToken,
-        config.haRefreshToken,
-        config.haTokenExpiry,
-        config.haClientId,
-    )
+    private fun currentHaLinkIdentity(): HaAuthOwner = config.haAuthSnapshot().stableOwner()
 
     private fun refreshLiveConfiguration(
         bridge: MqttBridge,

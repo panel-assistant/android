@@ -934,7 +934,7 @@ class DashboardActivity : AppCompatActivity() {
             try {
                 val result = try {
                     withContext(Dispatchers.IO) {
-                        DashboardAuth.forConfig(
+                        HaCredentialManager.resolve(
                             request.config,
                             force = request.force,
                             stillCurrent = { bridgeCurrent(request.generation, request.session) },
@@ -1766,6 +1766,9 @@ class DashboardActivity : AppCompatActivity() {
         authInvalids = 0; refreshRejects = 0
         if (!authLatched) return
         authLatched = false
+        // A latched page runs no automatic retry, so reaching here is a deliberate reload or change:
+        // that consent also lets the shared credential authority ask Home Assistant once more.
+        HaCredentialManager.forgetRefusal()
         BuiltinDashboard.setActivityAuthLatched(activityOwner, false)
         Log.i(TAG, "auth latch cleared ($why)")
     }

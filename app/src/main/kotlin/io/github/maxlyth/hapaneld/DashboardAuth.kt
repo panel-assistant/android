@@ -15,18 +15,11 @@ import io.github.maxlyth.hapaneld.util.HaTransportEvidence
  *    on the panel and the credential is revocable by removing the refresh token in HA.
  *
  * [resolve] is pure and fully unit-testable: it takes the current clock and a `refresher` and returns
- * the session to reply with plus an optional (access, expiry) pair the caller must persist. The Android
- * glue (reading [Config], persisting, calling [HaLink]) lives in [forConfig].
+ * the session to reply with plus an optional (access, expiry) pair to persist. Reading [Config],
+ * persisting and the one shared refresh request belong to [HaCredentialManager], which every consumer
+ * goes through.
  */
 object DashboardAuth {
-
-    internal data class CredentialOwner(
-        val url: String,
-        val accessToken: String,
-        val refreshToken: String,
-        val expiryEpochSec: Long,
-        val clientId: String,
-    )
 
     /** The reply material for one external-auth handshake. */
     data class Session(val accessToken: String, val expiresInSec: Long)
@@ -52,17 +45,6 @@ object DashboardAuth {
          *  refusal, and the panel parks on a credential screen for a credential HA never rejected. */
         val notAttempted: Boolean = false,
     )
-
-    internal fun retainIfOwned(
-        expected: CredentialOwner,
-        current: CredentialOwner,
-        stillCurrent: Boolean,
-        result: Result,
-    ): Result =
-        if (stillCurrent && current == expected) result else Result(null, notAttempted = true)
-
-    internal fun retainAfterRefreshPersistence(result: Result, persisted: Boolean): Result =
-        if (persisted) result else Result(null, notAttempted = true)
 
     /** Comfortable life a cached access token must have left to be reused rather than refreshed. */
     const val REFRESH_SKEW_SEC = 60L
@@ -125,45 +107,5 @@ object DashboardAuth {
                     transientEvidence = fresh.evidence.orUnclassified(),
                 )
         }
-    }
-
-    /** Android glue: resolve against [config], persist a refreshed token, and return the full result
-     *  (the caller reads `.session` for the reply and `.rejected` for the latch signal). */
-    internal fun forConfig(
-        config: Config,
-        nowSec: Long = System.currentTimeMillis() / 1000,
-        force: Boolean = false,
-        stillCurrent: () -> Boolean = { true },
-        persistRefresh: (HaAuthSnapshot, String, Long) -> Boolean = config::setHaRefreshedTokenIfOwned,
-    ): Result {
-        if (!stillCurrent()) return Result(null, notAttempted = true)
-        val snapshot = config.haAuthSnapshot()
-        val owner = CredentialOwner(
-            snapshot.url,
-            snapshot.accessToken,
-            snapshot.refreshToken,
-            snapshot.tokenExpiry,
-            snapshot.clientId,
-        )
-        val r = resolve(
-            owner.url, owner.accessToken, owner.refreshToken, owner.expiryEpochSec, nowSec, force,
-            { url, refresh -> HaLink.refreshAccessToken(url, refresh, owner.clientId) },
-        )
-        // A refresh is blocking. If this renderer was replaced or any credential changed while the HTTP
-        // request was in flight, neither return nor persist the old result into the new configuration.
-        val currentSnapshot = config.haAuthSnapshot()
-        val current = CredentialOwner(
-            currentSnapshot.url,
-            currentSnapshot.accessToken,
-            currentSnapshot.refreshToken,
-            currentSnapshot.tokenExpiry,
-            currentSnapshot.clientId,
-        )
-        val owned = retainIfOwned(owner, current, stillCurrent(), r)
-        val refresh = owned.persist ?: return owned
-        return retainAfterRefreshPersistence(
-            owned,
-            persistRefresh(snapshot, refresh.first, refresh.second),
-        )
     }
 }
