@@ -484,6 +484,9 @@ class DashboardActivity : AppCompatActivity() {
     // path must then loadUrl() the real dashboard rather than reload() (which would reload the
     // interstitial itself). Cleared on any real load or connect.
     private var interstitialShown = false
+    // The main-frame document the dashboard WebView last committed (onPageStarted), or null before its
+    // first commit. A retry decides reload() versus a fresh load from this; see retryNeedsFreshLoad.
+    private var committedPageUrl: String? = null
     private var waitingStatus: TextView? = null
     private var waitingStage: TextView? = null
     private var waitingProgress: ProgressBar? = null
@@ -778,6 +781,7 @@ class DashboardActivity : AppCompatActivity() {
             runCatching { w.destroy() }
         }
         web = null
+        committedPageUrl = null
         swipe = null
         frontendConnected = false
     }
@@ -2083,8 +2087,9 @@ class DashboardActivity : AppCompatActivity() {
     private fun reloadTarget(): Boolean {
         val w = web ?: return false
         val config = Config(this)
-        // Only the interstitial branch loads the home dashboard; unresolved, admission loads it instead.
-        val home = if (interstitialShown) {
+        val fresh = retryNeedsFreshLoad(committedPageUrl, config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)
+        // Only a fresh load needs the home dashboard; unresolved, admission loads it instead.
+        val home = if (fresh) {
             resolvedHomeDashboard(config) ?: run {
                 readmitForHomeDashboard("reload over the reconnecting page")
                 return false
@@ -3289,6 +3294,7 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         web = w
+        committedPageUrl = null
         // Wrap in a pull-to-refresh layout: a drag that starts at the very top edge of the screen and
         // pulls down does a light reload of the current page (no app relaunch). The gesture is gated on
         // its ORIGIN (see EdgePullRefreshLayout) — a downward drag that begins inside the dashboard
@@ -3699,6 +3705,7 @@ class DashboardActivity : AppCompatActivity() {
                     v2Handshake.reset()
                     clearBusTimeouts()
                     web = null
+                    committedPageUrl = null
                     main.removeCallbacks(watchdog)
                     main.removeCallbacks(darkSettle)
                     runCatching { customViewCallback?.onCustomViewHidden() }
@@ -3736,6 +3743,7 @@ class DashboardActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
+                committedPageUrl = url
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
                 if (!dashboardNavigationAllowed(config.haUrl, url)) {
                     // Native recovery/auth-latch documents are intentionally bridge-free. Their
