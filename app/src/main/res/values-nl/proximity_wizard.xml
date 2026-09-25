@@ -4,11 +4,9 @@
     <string name="proximity_wizard_wave_twice_hint">Twee snelle zwaaien, ga dan weg.</string>
     <string name="proximity_wizard_normal_position">Keer terug naar je normale positie</string>
     <string name="proximity_wizard_hands_down">Houd je handen omlaag.</string>
-    <string name="proximity_wizard_review_wave_only">Aanwezigheid niet beschikbaar.
-Zwaai geverifieerd.</string>
+    <string name="proximity_wizard_review_wave_only">Aanwezigheid niet beschikbaar.\nZwaai geverifieerd.</string>
     <string name="proximity_wizard_review_neither">Noch aanwezigheid, noch zwaai kon worden geverifieerd. Je vorige instellingen blijven behouden.</string>
-    <string name="proximity_wizard_saved_wave_only">Zwaai-instellingen opgeslagen.
-Aanwezigheidsdetectie is niet beschikbaar.</string>
+    <string name="proximity_wizard_saved_wave_only">Zwaai-instellingen opgeslagen.\nAanwezigheidsdetectie is niet beschikbaar.</string>
     <string name="proximity_wizard_prepare">Maak je klaar</string>
     <string name="proximity_wizard_prepare_hint">De volgende stap start automatisch.</string>
     <string name="proximity_wizard_approach">Loop naar het paneel toe</string>
@@ -28,19 +26,14 @@ Aanwezigheidsdetectie is niet beschikbaar.</string>
     <string name="proximity_wizard_wave_window">Hand dichterbij</string>
     <string name="proximity_wizard_observing">Wachten</string>
     <string name="proximity_wizard_waiting_symbol">…</string>
-    <string name="proximity_wizard_review_verified">Aanwezigheid geverifieerd.
-Zwaai geverifieerd.</string>
-    <string name="proximity_wizard_review_presence_only">Aanwezigheid geverifieerd.
-Zwaai niet beschikbaar.</string>
-    <string name="proximity_wizard_saved_presence_only">Aanwezigheidsinstellingen opgeslagen.
-Zwaai-wake is niet beschikbaar.</string>
-    <string name="proximity_wizard_waiting_reading">Breng je hand dichtbij,
-dan weg</string>
+    <string name="proximity_wizard_review_verified">Aanwezigheid geverifieerd.\nZwaai geverifieerd.</string>
+    <string name="proximity_wizard_review_presence_only">Aanwezigheid geverifieerd.\nZwaai niet beschikbaar.</string>
+    <string name="proximity_wizard_saved_presence_only">Aanwezigheidsinstellingen opgeslagen.\nWekken door zwaaien is niet beschikbaar.</string>
+    <string name="proximity_wizard_waiting_reading">Breng je hand dichtbij,\ndan weer weg</string>
     <string name="proximity_wizard_waiting_reading_hint">Wachten tot de sensor reageert.</string>
     <string name="proximity_wizard_title">Nabijheid instellen</string>
     <string name="proximity_wizard_intro">Aanwezigheid en zwaai instellen</string>
-    <string name="proximity_wizard_intro_hint">Volg de stappen op dit paneel.
-Tik op Start als je klaar bent.</string>
+    <string name="proximity_wizard_intro_hint">Volg de stappen op dit paneel.\nTik op Start als je klaar bent.</string>
     <string name="proximity_wizard_clear">Beweeg je hand weg</string>
     <string name="proximity_wizard_clear_hint">Laat je hand zakken. Blijf stilstaan voor de volgende controle.</string>
     <string name="proximity_wizard_near">Breng je hand dichtbij de sensor</string>
@@ -48,13 +41,13 @@ Tik op Start als je klaar bent.</string>
     <string name="proximity_wizard_return_clear">Beweeg je hand opnieuw weg</string>
     <string name="proximity_wizard_return_clear_hint">Ga weg voor de volgende controle. Wacht tot je gevraagd wordt weer te naderen.</string>
     <string name="proximity_wizard_waves">Breng je hand dichterbij</string>
-    <string name="proximity_wizard_waves_hint">Nader snel, alsof je gaat tikken. Beweeg weg wanneer om de volgende controle wordt gevraagd.</string>
+    <string name="proximity_wizard_waves_hint">Nader snel, alsof je gaat tikken. Ga weg wanneer daarom wordt gevraagd voor de volgende controle.</string>
     <string name="proximity_wizard_review">Instelling controleren</string>
     <string name="proximity_wizard_review_hint">Sla op om deze instellingen te gebruiken. Annuleren behoudt je vorige instellingen.</string>
     <string name="proximity_wizard_saved">Nabijheidsinstellingen opgeslagen</string>
     <string name="proximity_wizard_saving">Kalibratie opslaan…</string>
     <string name="proximity_wizard_saving_hint">Even geduld terwijl je instellingen worden opgeslagen.</string>
-    <string name="proximity_wizard_saved_hint">Wake on wave gebruikt deze instellingen indien ingeschakeld. Touch to wake blijft beschikbaar.</string>
+    <string name="proximity_wizard_saved_hint">Wekken door zwaaien gebruikt deze instellingen als het is ingeschakeld. Aanraken om te wekken blijft beschikbaar.</string>
     <string name="proximity_wizard_cancelled">Instellen geannuleerd</string>
     <string name="proximity_wizard_unchanged">Je vorige nabijheidsinstellingen zijn behouden.</string>
     <string name="proximity_wizard_timed_out">Time-out bij instellen</string>
@@ -85,11 +78,11 @@ Tik op Start als je klaar bent.</string>
     <string name="proximity_wizard_speech_review_presence">Aanwezigheid is geverifieerd, maar een apart wek-gebaar niet. Kies Opslaan om aanwezigheidsdetectie te gebruiken, of Annuleren om je vorige instellingen te behouden.</string>
     <string name="proximity_wizard_speech_review_wave">Het wek-gebaar is geverifieerd, maar normale aanwezigheid niet. Kies Opslaan om wake on wave te gebruiken, of Annuleren om je vorige instellingen te behouden.</string>
     <string name="proximity_wizard_speech_review_neither">Ik kon geen betrouwbare aanwezigheid of wek-gebaren verifiëren. Je vorige instellingen blijven behouden.</string>
-    <string name="proximity_wizard_speech_saved_both">Je nabijheidsinstellingen zijn opgeslagen. Aanwezigheid en wake on wave kunnen nu deze metingen gebruiken. Touch to wake blijft beschikbaar.</string>
-    <string name="proximity_wizard_speech_saved_presence">Je aanwezigheidsinstellingen zijn opgeslagen. Een apart wek-gebaar was niet beschikbaar. Touch to wake blijft beschikbaar.</string>
-    <string name="proximity_wizard_speech_saved_wave">Je wek-gebaarinstellingen zijn opgeslagen. Normale aanwezigheidsdetectie was niet beschikbaar. Touch to wake blijft beschikbaar.</string>
+    <string name="proximity_wizard_speech_saved_both">Je nabijheidsinstellingen zijn opgeslagen. Aanwezigheid en wekken door zwaaien kunnen nu deze metingen gebruiken. Aanraken om te wekken blijft beschikbaar.</string>
+    <string name="proximity_wizard_speech_saved_presence">Je aanwezigheidsinstellingen zijn opgeslagen. Een apart wek-gebaar was niet beschikbaar. Aanraken om te wekken blijft beschikbaar.</string>
+    <string name="proximity_wizard_speech_saved_wave">Je wek-gebaarinstellingen zijn opgeslagen. Normale aanwezigheidsdetectie was niet beschikbaar. Aanraken om te wekken blijft beschikbaar.</string>
     <string name="proximity_wizard_speech_cancelled">Instellen is geannuleerd. Je vorige nabijheidsinstellingen zijn ongewijzigd.</string>
-    <string name="proximity_wizard_speech_timed_out">Instellen liep vast voordat de sensor kon worden geverifieerd. Je vorige nabijheidsinstellingen zijn ongewijzigd.</string>
+    <string name="proximity_wizard_speech_timed_out">Er trad een time-out op bij het instellen voordat de sensor kon worden geverifieerd. Je vorige nabijheidsinstellingen zijn ongewijzigd.</string>
     <string name="proximity_wizard_speech_failed">Ik kon de sensor niet betrouwbaar verifiëren. Je vorige nabijheidsinstellingen zijn ongewijzigd.</string>
     <string name="proximity_wizard_raw_label">Live ruwe waarde</string>
     <string name="proximity_wizard_raw_waiting">wachten op een meting</string>

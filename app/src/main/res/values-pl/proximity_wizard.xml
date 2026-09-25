@@ -4,16 +4,14 @@
     <string name="proximity_wizard_wave_twice_hint">Dwa szybkie machnięcia, a potem odsuń rękę.</string>
     <string name="proximity_wizard_normal_position">Wróć do swojej zwykłej pozycji</string>
     <string name="proximity_wizard_hands_down">Trzymaj ręce opuszczone.</string>
-    <string name="proximity_wizard_review_wave_only">Obecność niedostępna.
-Machnięcie zweryfikowane.</string>
+    <string name="proximity_wizard_review_wave_only">Obecność niedostępna.\nMachnięcie zweryfikowane.</string>
     <string name="proximity_wizard_review_neither">Nie zweryfikowano ani obecności, ani machnięcia. Twoje poprzednie ustawienia zostaną zachowane.</string>
-    <string name="proximity_wizard_saved_wave_only">Ustawienia machnięcia zapisane.
-Wykrywanie obecności jest niedostępne.</string>
+    <string name="proximity_wizard_saved_wave_only">Ustawienia machnięcia zapisane.\nWykrywanie obecności jest niedostępne.</string>
     <string name="proximity_wizard_prepare">Przygotuj się</string>
     <string name="proximity_wizard_prepare_hint">Kolejny krok rozpocznie się automatycznie.</string>
     <string name="proximity_wizard_approach">Podejdź do panelu</string>
     <string name="proximity_wizard_approach_hint">Zatrzymaj się tam, gdzie zwykle stoisz.</string>
-    <string name="proximity_wizard_hold">Zatrzymaj się</string>
+    <string name="proximity_wizard_hold">Nie ruszaj się</string>
     <string name="proximity_wizard_hold_hint">Sprawdzanie czujnika.</string>
     <string name="proximity_wizard_step_away">Odsuń się</string>
     <string name="proximity_wizard_step_away_hint">Pozostaw przestrzeń wolną.</string>
@@ -28,19 +26,14 @@ Wykrywanie obecności jest niedostępne.</string>
     <string name="proximity_wizard_wave_window">Ręka bliżej</string>
     <string name="proximity_wizard_observing">Oczekiwanie</string>
     <string name="proximity_wizard_waiting_symbol">…</string>
-    <string name="proximity_wizard_review_verified">Obecność zweryfikowana.
-Machnięcie zweryfikowane.</string>
-    <string name="proximity_wizard_review_presence_only">Obecność zweryfikowana.
-Machnięcie niedostępne.</string>
-    <string name="proximity_wizard_saved_presence_only">Ustawienia obecności zapisane.
-Wybudzanie machnięciem jest niedostępne.</string>
-    <string name="proximity_wizard_waiting_reading">Zbliż rękę,
-a potem odsuń</string>
+    <string name="proximity_wizard_review_verified">Obecność zweryfikowana.\nMachnięcie zweryfikowane.</string>
+    <string name="proximity_wizard_review_presence_only">Obecność zweryfikowana.\nMachnięcie niedostępne.</string>
+    <string name="proximity_wizard_saved_presence_only">Ustawienia obecności zapisane.\nWybudzanie machnięciem jest niedostępne.</string>
+    <string name="proximity_wizard_waiting_reading">Zbliż rękę,\na potem odsuń</string>
     <string name="proximity_wizard_waiting_reading_hint">Oczekiwanie na reakcję czujnika.</string>
     <string name="proximity_wizard_title">Konfiguracja czujnika zbliżeniowego</string>
     <string name="proximity_wizard_intro">Skonfiguruj obecność i machnięcie</string>
-    <string name="proximity_wizard_intro_hint">Postępuj zgodnie z krokami na tym panelu.
-Dotknij Start, gdy będziesz gotowy.</string>
+    <string name="proximity_wizard_intro_hint">Postępuj zgodnie z krokami na tym panelu.\nDotknij Start, gdy będziesz gotowy.</string>
     <string name="proximity_wizard_clear">Odsuń rękę</string>
     <string name="proximity_wizard_clear_hint">Opuść rękę. Pozostań nieruchomo do kolejnej kontroli.</string>
     <string name="proximity_wizard_near">Zbliż rękę do czujnika</string>
@@ -48,13 +41,13 @@ Dotknij Start, gdy będziesz gotowy.</string>
     <string name="proximity_wizard_return_clear">Ponownie odsuń rękę</string>
     <string name="proximity_wizard_return_clear_hint">Odsuń się do kolejnej kontroli. Poczekaj, aż zostaniesz poproszony o ponowne zbliżenie.</string>
     <string name="proximity_wizard_waves">Przybliż rękę</string>
-    <string name="proximity_wizard_waves_hint">Zbliż się szybko, jakbyś miał zaraz dotknąć. Odsuń się, gdy poproszą o kolejną kontrolę.</string>
+    <string name="proximity_wizard_waves_hint">Zbliż się szybko, jakbyś miał zaraz dotknąć. Odsuń się, gdy zostaniesz poproszony o kolejną kontrolę.</string>
     <string name="proximity_wizard_review">Przejrzyj konfigurację</string>
     <string name="proximity_wizard_review_hint">Zapisz, aby użyć tych ustawień. Anuluj zachowuje poprzednie ustawienia.</string>
     <string name="proximity_wizard_saved">Ustawienia czujnika zbliżeniowego zapisane</string>
     <string name="proximity_wizard_saving">Zapisywanie kalibracji…</string>
     <string name="proximity_wizard_saving_hint">Poczekaj, aż ustawienia zostaną zapisane.</string>
-    <string name="proximity_wizard_saved_hint">Wake on wave używa tych ustawień, gdy jest włączone. Touch to wake pozostaje dostępne.</string>
+    <string name="proximity_wizard_saved_hint">Wybudzanie machnięciem używa tych ustawień, gdy jest włączone. Funkcja „Dotknij, by wybudzić” pozostaje dostępna.</string>
     <string name="proximity_wizard_cancelled">Konfiguracja anulowana</string>
     <string name="proximity_wizard_unchanged">Twoje poprzednie ustawienia czujnika zbliżeniowego zostały zachowane.</string>
     <string name="proximity_wizard_timed_out">Przekroczono czas konfiguracji</string>
@@ -83,11 +76,11 @@ Dotknij Start, gdy będziesz gotowy.</string>
     <string name="proximity_wizard_speech_wave_count">Dobrze. Wykryłem kontrolę %1$d z %2$d. Odsuń rękę i powtórz.</string>
     <string name="proximity_wizard_speech_review_both">Obecność i gest wybudzania zostały zweryfikowane. Wybierz Zapisz, aby użyć tych pomiarów, lub Anuluj, aby zachować poprzednie ustawienia.</string>
     <string name="proximity_wizard_speech_review_presence">Obecność została zweryfikowana, ale osobny gest wybudzania nie. Wybierz Zapisz, aby użyć wykrywania obecności, lub Anuluj, aby zachować poprzednie ustawienia.</string>
-    <string name="proximity_wizard_speech_review_wave">Gest wybudzania został zweryfikowany, ale zwykła obecność nie. Wybierz Zapisz, aby użyć wake on wave, lub Anuluj, aby zachować poprzednie ustawienia.</string>
+    <string name="proximity_wizard_speech_review_wave">Gest wybudzania został zweryfikowany, ale zwykła obecność nie. Wybierz Zapisz, aby użyć wybudzania machnięciem, lub Anuluj, aby zachować poprzednie ustawienia.</string>
     <string name="proximity_wizard_speech_review_neither">Nie udało się zweryfikować wiarygodnej obecności ani gestów wybudzania. Twoje poprzednie ustawienia zostaną zachowane.</string>
-    <string name="proximity_wizard_speech_saved_both">Twoje ustawienia czujnika zbliżeniowego zostały zapisane. Obecność i wake on wave mogą teraz korzystać z tych pomiarów. Touch to wake pozostaje dostępne.</string>
-    <string name="proximity_wizard_speech_saved_presence">Twoje ustawienia obecności zostały zapisane. Osobny gest wybudzania był niedostępny. Touch to wake pozostaje dostępne.</string>
-    <string name="proximity_wizard_speech_saved_wave">Twoje ustawienia gestu wybudzania zostały zapisane. Zwykłe wykrywanie obecności było niedostępne. Touch to wake pozostaje dostępne.</string>
+    <string name="proximity_wizard_speech_saved_both">Twoje ustawienia czujnika zbliżeniowego zostały zapisane. Obecność i wybudzanie machnięciem mogą teraz korzystać z tych pomiarów. Funkcja „Dotknij, by wybudzić” pozostaje dostępna.</string>
+    <string name="proximity_wizard_speech_saved_presence">Twoje ustawienia obecności zostały zapisane. Osobny gest wybudzania był niedostępny. Funkcja „Dotknij, by wybudzić” pozostaje dostępna.</string>
+    <string name="proximity_wizard_speech_saved_wave">Twoje ustawienia gestu wybudzania zostały zapisane. Zwykłe wykrywanie obecności było niedostępne. Funkcja „Dotknij, by wybudzić” pozostaje dostępna.</string>
     <string name="proximity_wizard_speech_cancelled">Konfiguracja została anulowana. Twoje poprzednie ustawienia czujnika zbliżeniowego są niezmienione.</string>
     <string name="proximity_wizard_speech_timed_out">Przekroczono czas konfiguracji, zanim czujnik mógł zostać zweryfikowany. Twoje poprzednie ustawienia czujnika zbliżeniowego są niezmienione.</string>
     <string name="proximity_wizard_speech_failed">Nie udało się wiarygodnie zweryfikować czujnika. Twoje poprzednie ustawienia czujnika zbliżeniowego są niezmienione.</string>
