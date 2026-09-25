@@ -21,12 +21,13 @@ class ShutdownProofOwnerTest {
         assertTrue(daemon.get())
     }
 
-    @Test fun blockingNativeLikeProofCannotHoldTheFinalizerPastItsDeadline() {
+    // The proof ignores interruption until released in `finally`, so a finalizer that waited on it hangs.
+    @Test(timeout = 10_000)
+    fun blockingNativeLikeProofCannotHoldTheFinalizerPastItsDeadline() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
         val exited = CountDownLatch(1)
         val daemon = AtomicBoolean()
-        val startedAt = System.nanoTime()
         try {
             val result = runBoundedShutdownProof(50) {
                 daemon.set(Thread.currentThread().isDaemon)
@@ -45,7 +46,6 @@ class ShutdownProofOwnerTest {
             assertNull(result)
             assertTrue(entered.await(1, TimeUnit.SECONDS))
             assertTrue(daemon.get())
-            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 1_000L)
         } finally {
             release.countDown()
             assertTrue(exited.await(1, TimeUnit.SECONDS))

@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.hardware
 import io.github.maxlyth.hapaneld.control.FakeDaemon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,6 +16,23 @@ class LedControllerTest {
         assertTrue(led.setRgb(-1, 128, 999))
         assertFalse(led.off())
         assertEquals(listOf("LEDPROBE", "RGB 0 128 255", "OFF"), daemon.sent)
+    }
+
+    @Test fun socketBackendAppliesTheProfileTransfer() {
+        val daemon = FakeDaemon(mapOf("RGB 56 0 255" to "OK"))
+        assertTrue(SocketLedController(daemon, LedTransfer.curved(TransferCurve.Gamma(2.2))).setRgb(128, 0, 255))
+        assertEquals(listOf("RGB 56 0 255"), daemon.sent)
+    }
+
+    @Test fun ioctlFallbackKeepsADeclaredCurveAndDropsOnlyTheStub() {
+        val curve = LedTransfer.curved(TransferCurve.Gamma(2.2))
+        assertSame(curve, LedFactory.fallbackTransfer(curve))
+        assertSame(LedTransfer.Identity, LedFactory.fallbackTransfer(LedTransfer.Rk3576FourBit))
+        assertSame(LedTransfer.Identity, LedFactory.fallbackTransfer(LedTransfer.Identity))
+    }
+
+    @Test fun theIdentityCurveIsThePassthrough() {
+        assertSame(LedTransfer.Identity, LedTransfer.curved(TransferCurve.Identity))
     }
 
     @Test fun socketProbeDistinguishesAbsentAndLegacyHelpers() {

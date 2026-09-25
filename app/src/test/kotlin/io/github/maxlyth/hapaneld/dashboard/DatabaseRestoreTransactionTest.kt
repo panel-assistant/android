@@ -142,7 +142,7 @@ class DatabaseRestoreTransactionTest {
             // SQLiteOpenHelper's second open may recreate the same inert topology before onOpen.
             File(target.path + "-wal").writeBytes(byteArrayOf())
             File(target.path + "-shm").writeText("owned-second-open-shm")
-            assertTrue(restarted.consumeOrdinaryRestored())
+            assertTrue(restarted.settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold)
             assertFalse(File(directory, ".ha-paneld.db.restore.v1").exists())
         }
 
@@ -184,7 +184,7 @@ class DatabaseRestoreTransactionTest {
                             assertTrue(releaseFirst.await(5, TimeUnit.SECONDS))
                             assertTrue(
                                 DatabaseRestoreTransaction(target, guard = null, ownedStableSidecar = owned)
-                                    .consumeOrdinaryRestored(),
+                                    .settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold,
                             )
                             null
                         },
@@ -300,7 +300,7 @@ class DatabaseRestoreTransactionTest {
                         )
                     }
                     assertEquals("database restore admission already in progress", held.message)
-                    assertTrue(transaction.consumeOrdinaryRestored())
+                    assertTrue(transaction.settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold)
                     null
                 },
             )
@@ -582,7 +582,7 @@ class DatabaseRestoreTransactionTest {
         File(target.path + "-wal").writeBytes(byteArrayOf())
         File(target.path + "-shm").writeText("owned-open-shm")
 
-        assertTrue(transaction.consumeOrdinaryRestored())
+        assertTrue(transaction.settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold)
         assertEquals(
             listOf("${target.name}-wal" to true, "${target.name}-shm" to false),
             sidecarChecks,
@@ -600,7 +600,7 @@ class DatabaseRestoreTransactionTest {
         assertTrue(transaction.restore(staged, 15, 14, checkpoint = { true }) is DatabaseRestoreResult.Restored)
         val wal = File(target.path + "-wal").apply { writeText("live-frame") }
 
-        assertFalse(transaction.consumeOrdinaryRestored())
+        assertTrue(transaction.settleRestoredAfterOpen() is DatabaseRestoreOpenedReceipt.Hold)
         assertEquals("live-frame", wal.readText())
         assertTrue(File(directory, ".ha-paneld.db.restore.v1").isFile)
         assertEquals("schema14", target.readText())
@@ -616,7 +616,7 @@ class DatabaseRestoreTransactionTest {
         assertTrue(transaction.restore(staged, 15, 14, checkpoint = { true }) is DatabaseRestoreResult.Restored)
         val wal = File(target.path + "-wal").apply { writeBytes(byteArrayOf()) }
 
-        assertFalse(transaction.consumeOrdinaryRestored())
+        assertTrue(transaction.settleRestoredAfterOpen() is DatabaseRestoreOpenedReceipt.Hold)
         assertTrue(wal.exists())
         assertTrue(File(directory, ".ha-paneld.db.restore.v1").isFile)
     }
@@ -626,7 +626,7 @@ class DatabaseRestoreTransactionTest {
         assertTrue(transaction.restore(staged, 15, 14, checkpoint = { true }) is DatabaseRestoreResult.Restored)
         target.writeText("changed-after-open")
 
-        assertFalse(transaction.consumeOrdinaryRestored())
+        assertTrue(transaction.settleRestoredAfterOpen() is DatabaseRestoreOpenedReceipt.Hold)
         assertEquals("changed-after-open", target.readText())
         assertTrue(File(directory, ".ha-paneld.db.restore.v1").isFile)
         assertEquals("schema15", supersededFile(target, 15).readText())
@@ -642,7 +642,7 @@ class DatabaseRestoreTransactionTest {
         File(target.path + "-wal").writeBytes(byteArrayOf())
         File(target.path + "-shm").writeText("owned-open-shm")
 
-        assertTrue(transaction.consumeOrdinaryRestored())
+        assertTrue(transaction.settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold)
         assertTrue(File(directory, ".ha-paneld.db.restore.v1").isFile)
         assertTrue(transaction.reconcile() is DatabaseRestoreResult.Restored)
         assertFalse(File(target.path + "-wal").exists())

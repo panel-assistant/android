@@ -53,20 +53,20 @@ class HaLifecycleTest {
     @Test fun theRecoveryNoticeReportsItsRemainingLifetimeNotAFreshWindow() {
         val ha = lifecycle()
         ha.event(HaLifecycleEvent.STARTED, 1_000)
-        assertEquals(8_000L, ha.remainingBackOnlineMs(1_000))
-        assertEquals("half spent", 4_000L, ha.remainingBackOnlineMs(5_000))
-        assertEquals("nearly done", 1L, ha.remainingBackOnlineMs(8_999))
+        assertEquals(8_000L, ha.snapshot(1_000).backOnlineRemainingMs)
+        assertEquals("half spent", 4_000L, ha.snapshot(5_000).backOnlineRemainingMs)
+        assertEquals("nearly done", 1L, ha.snapshot(8_999).backOnlineRemainingMs)
     }
 
     @Test fun thereIsNoRemainingLifetimeWhenNoNoticeIsShowing() {
         val ha = lifecycle()
-        assertEquals("nothing showing", 0L, ha.remainingBackOnlineMs(1_000))
+        assertEquals("nothing showing", 0L, ha.snapshot(1_000).backOnlineRemainingMs)
 
         ha.event(HaLifecycleEvent.STARTED, 1_000)
-        assertEquals("expired", 0L, ha.remainingBackOnlineMs(9_000))
+        assertEquals("expired", 0L, ha.snapshot(9_000).backOnlineRemainingMs)
 
         ha.event(HaLifecycleEvent.STOP, 20_000)
-        assertEquals("an outage is not a recovery notice", 0L, ha.remainingBackOnlineMs(20_000))
+        assertEquals("an outage is not a recovery notice", 0L, ha.snapshot(20_000).backOnlineRemainingMs)
     }
 
     @Test fun aBackwardsClockReportsNoRemainingLifetimeBecauseTheNoticeHasExpired() {
@@ -74,7 +74,7 @@ class HaLifecycleTest {
         ha.event(HaLifecycleEvent.STARTED, 50_000)
         // The state expires first, so there is no notice left to measure — which is also why no clamp
         // is needed on the arithmetic.
-        assertEquals(0L, ha.remainingBackOnlineMs(10))
+        assertEquals(0L, ha.snapshot(10).backOnlineRemainingMs)
     }
 
     @Test fun backOnlineExpiresRatherThanExtendsWhenTheClockMovesBackwards() {
@@ -641,10 +641,6 @@ class HaLifecycleTest {
         assertEquals(
             "Home Assistant has gone offline — controls may be temporarily unavailable.",
             HaLifecycleMessage.text(HaLifecycleState.SHUTTING_DOWN, null),
-        )
-        assertEquals(
-            "Home Assistant is offline",
-            HaLifecycleMessage.panelText(HaLifecycleState.SHUTTING_DOWN, null),
         )
     }
 

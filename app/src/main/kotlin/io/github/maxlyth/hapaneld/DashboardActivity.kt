@@ -111,16 +111,6 @@ internal fun deferReadyEntityBootstrapUntilWake(screenAwake: Boolean): Boolean =
 
 internal fun shouldKeepBuiltInRendererScreenOn(preventIdleDim: Boolean): Boolean = preventIdleDim
 
-internal fun entityFilterAttentionDetail(blockingIssues: Int, entitiesAddress: String? = null): String {
-    require(blockingIssues > 0) { "blocking issue count must be positive" }
-    val remote = entitiesAddress?.takeIf(String::isNotBlank)
-        ?.let { " The same choices are available from another device at $it." }
-        .orEmpty()
-    return "Nothing is wrong with Home Assistant. The panel needs an answer about safety checks " +
-        "found while reading your entities before it can open the dashboard. " +
-        "Number requiring review: $blockingIssues.$remote"
-}
-
 private data class EntityFilterNativeHold(val error: String, val detail: String)
 
 private class EntityFilterInterceptorUnavailable(cause: Throwable) : RuntimeException(cause)
@@ -488,6 +478,9 @@ class DashboardActivity : AppCompatActivity() {
     // path must then loadUrl() the real dashboard rather than reload() (which would reload the
     // interstitial itself). Cleared on any real load or connect.
     private var interstitialShown = false
+    // The main-frame document the dashboard WebView is actually showing (onPageCommitVisible), or null
+    // before its first. A retry decides reload() versus a fresh load from this; see retryNeedsFreshLoad.
+    private val shownPage = ShownPageTracker()
     private var waitingStatus: TextView? = null
     private var waitingStage: TextView? = null
     private var waitingProgress: ProgressBar? = null
@@ -782,6 +775,7 @@ class DashboardActivity : AppCompatActivity() {
             runCatching { w.destroy() }
         }
         web = null
+        shownPage.forget()
         swipe = null
         frontendConnected = false
     }
@@ -1540,8 +1534,11 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun onWatchdogTimeout() {
-        // Never retry on a dead activity, while frozen (screen off), or latched — all runaway loops.
-        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || frontendConnected || !screenAwake || authLatched) return
+        // Never retry on a dead activity or latched — both runaway loops. While frozen (screen off) the
+        // policy answers NONE: a paused page cannot complete the handshake, so that fire is not a miss.
+        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || frontendConnected || authLatched) return
+        val step = retryPolicy.onWatchdogFired(screenAwake)
+        if (step == HandshakeRecoveryStep.NONE) return
         val session = externalBusSession
         if (session != null && v2Handshake.onTimeout(session)) {
             showBlockedAdmissionScreen(
@@ -1549,6 +1546,10 @@ class DashboardActivity : AppCompatActivity() {
                 getString(R.string.home_assistant_unresponsive_detail),
                 AdmissionOutcome.BRIDGE_HANDSHAKE_MISSED,
             )
+            return
+        }
+        if (step != HandshakeRecoveryStep.RELOAD) {
+            escalateHandshakeRecovery(step)
             return
         }
         Log.w(TAG, "frontend handshake watchdog fired (no connection-status:connected) — reloading")
@@ -1561,6 +1562,60 @@ class DashboardActivity : AppCompatActivity() {
         BuiltinDashboard.recordLoadStart(lastFullLoadAt)      // warm TTI origin for the recovery load
         clearedThisLoad = false
         armWatchdog(retryPolicy.afterRetry())
+    }
+
+    /**
+     * A reload has already failed [DashboardRetryPolicy.consecutiveMisses] times in a row, so do more
+     * than reload. [HandshakeRecoveryStep.FRESH_LOAD] loads the dashboard target afresh into the held
+     * WebView (a new bus and auth document, never `reload()`) and re-runs the authenticated dashboard
+     * resolution behind it, which corrects the page if the answer changed. [HandshakeRecoveryStep.RECREATE_WEBVIEW]
+     * replaces the WebView as well, through the same teardown and build a settings change uses. Neither
+     * touches the crash budget or relaunches anything: the renderer crash path stays the only owner of
+     * both.
+     */
+    private fun escalateHandshakeRecovery(step: HandshakeRecoveryStep) {
+        val misses = retryPolicy.consecutiveMisses
+        if (step == HandshakeRecoveryStep.FRESH_LOAD) {
+            Log.w(
+                TAG,
+                "frontend handshake missed $misses times in a row — escalating: fresh dashboard resolution " +
+                    "and load, then WebView recreation, with backoff",
+            )
+        }
+        val config = Config(this)
+        // The resolution the page is showing, if it still belongs to the current credential and path. It
+        // goes back to provisional, so the resolution below refreshes it live instead of reusing it.
+        val resolved = homeDashboardResolution
+            ?.takeIf { it.owner == homeDashboardOwner(config) && it.resolution.path != null }
+        val recreate = step == HandshakeRecoveryStep.RECREATE_WEBVIEW || resolved == null || web == null
+        Log.w(
+            TAG,
+            "frontend handshake watchdog fired (miss $misses) — " +
+                if (recreate) "recreating the dashboard WebView" else "fresh dashboard load",
+        )
+        // Same reason as the reload: this load now owns recovery.
+        wakeMediaRecovery.invalidate()
+        resolved?.let { homeDashboardResolution = it.copy(confirmed = false) }
+        if (recreate) {
+            // As at every other rebuild site: a surviving flag would make the new WebView's first load
+            // error skip the reconnecting page and leave Chromium's own error page on the panel.
+            interstitialShown = false
+            teardownWeb()
+            buildAndLoad(config)
+        } else {
+            loadCorrectedHomeDashboard()
+            // A failed bus rotation already replaced the page with a blocked screen; resolving now would
+            // build a renderer over it.
+            if (web != null) {
+                provisionalHomeDashboardEpoch = dashboardNavigationEpoch
+                resolveHomeDashboardAndLoad(config)
+            }
+        }
+        // No renderer means a native screen took over and owns its own recovery.
+        if (web == null) return
+        BuiltinDashboard.recordRendererReload(SystemClock.elapsedRealtime()) // involuntary: handshake stalled
+        // The new load armed the cold-start window; keep it no shorter than the reload it replaced.
+        armWatchdog(maxOf(INITIAL_HANDSHAKE_MS, retryPolicy.afterRetry()))
     }
 
     /** Fired from the external-bus `connection-status` message: the frontend telling us it connected or
@@ -1584,6 +1639,13 @@ class DashboardActivity : AppCompatActivity() {
             interstitialShown = false // real page demonstrably loaded
             unlatchAuth("frontend connected") // auth demonstrably works — clear any stale latch + counters
             main.removeCallbacks(watchdog)
+            retryPolicy.escalatedTo?.let { reached ->
+                Log.i(
+                    TAG,
+                    "frontend handshake recovered after ${retryPolicy.consecutiveMisses} consecutive misses " +
+                        "(escalated to ${reached.name.lowercase()})",
+                )
+            }
             retryPolicy.reset()
             wakeMediaRecovery.activateDeferred(generation)?.let { ticket ->
                 web?.let { w -> armWakeMediaRecovery(w, generation, ticket) }
@@ -2022,8 +2084,9 @@ class DashboardActivity : AppCompatActivity() {
     private fun reloadTarget(): Boolean {
         val w = web ?: return false
         val config = Config(this)
-        // Only the interstitial branch loads the home dashboard; unresolved, admission loads it instead.
-        val home = if (interstitialShown) {
+        val fresh = shownPage.needsFreshLoad(config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)
+        // Only a fresh load needs the home dashboard; unresolved, admission loads it instead.
+        val home = if (fresh) {
             resolvedHomeDashboard(config) ?: run {
                 readmitForHomeDashboard("reload over the reconnecting page")
                 return false
@@ -2078,6 +2141,9 @@ class DashboardActivity : AppCompatActivity() {
         val reconnecting = android.text.TextUtils.htmlEncode(getString(R.string.dashboard_reconnecting))
         val retrying = android.text.TextUtils.htmlEncode(getString(R.string.dashboard_unreachable_retry))
         web?.let(::suspendBusDocument)
+        // Whatever was on screen is being replaced by a page that is not Home Assistant; until this one is
+        // drawn and reported, a retry must not trust an earlier Home Assistant page as the one showing.
+        shownPage.forget()
         web?.loadDataWithBaseURL(
             null,
             """<!doctype html><html><body style="background:${palette.background};color:${palette.body};
@@ -3228,6 +3294,7 @@ class DashboardActivity : AppCompatActivity() {
             return
         }
         web = w
+        shownPage.forget()
         // Wrap in a pull-to-refresh layout: a drag that starts at the very top edge of the screen and
         // pulls down does a light reload of the current page (no app relaunch). The gesture is gated on
         // its ORIGIN (see EdgePullRefreshLayout) — a downward drag that begins inside the dashboard
@@ -3643,6 +3710,7 @@ class DashboardActivity : AppCompatActivity() {
                     v2Handshake.reset()
                     clearBusTimeouts()
                     web = null
+                    shownPage.forget()
                     main.removeCallbacks(watchdog)
                     main.removeCallbacks(darkSettle)
                     runCatching { customViewCallback?.onCustomViewHidden() }
@@ -3680,6 +3748,8 @@ class DashboardActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
+                shownPage.onLoadStarted(url)
+                Log.d(TAG, "page load started (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
                 if (!dashboardNavigationAllowed(config.haUrl, url)) {
                     // Native recovery/auth-latch documents are intentionally bridge-free. Their
@@ -3706,6 +3776,15 @@ class DashboardActivity : AppCompatActivity() {
                             AdmissionOutcome.BRIDGE_ATTACH_FAILED,
                         )
                     }
+            }
+
+            // The page now on screen. onPageStarted is documented as a load STARTING, and a load that hangs
+            // leaves the previous page drawn; this callback fires only once that previous page will no
+            // longer be drawn, so a hung load can never make a retry believe Home Assistant is showing.
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                if (!rendererCurrent(generation, view)) return
+                shownPage.onCommitVisible(url)
+                Log.d(TAG, "page shown (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
             }
 
             // Real navigation inside Home Assistant's own frontend — a tapped link, a back gesture,

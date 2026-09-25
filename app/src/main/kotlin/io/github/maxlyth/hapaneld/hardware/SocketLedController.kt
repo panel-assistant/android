@@ -16,7 +16,10 @@ import io.github.maxlyth.hapaneld.util.HelperClient
  * when a *reachable* LED node exists — not merely because a daemon is running. Calls are blocking
  * socket I/O — the bridge invokes them off the main thread.
  */
-class SocketLedController(private val daemon: Daemon = HelperClient) : LedController {
+class SocketLedController(
+    private val daemon: Daemon = HelperClient,
+    private val transfer: LedTransfer = LedTransfer.Identity,
+) : LedController {
 
     // Gate on a reachable LED node, not just "daemon up". An OLD daemon doesn't know LEDPROBE and
     // replies "ERR" → fall back to PING so already-deployed panels keep their LED (backward-compatible);
@@ -30,7 +33,7 @@ class SocketLedController(private val daemon: Daemon = HelperClient) : LedContro
     override fun colorCapable(): Boolean = true
 
     override fun setRgb(r: Int, g: Int, b: Int): Boolean {
-        val ok = daemon.send("RGB ${clamp(r)} ${clamp(g)} ${clamp(b)}") == "OK"
+        val ok = daemon.send("RGB ${clamp(transfer.red(r))} ${clamp(transfer.green(g))} ${clamp(transfer.blue(b))}") == "OK"
         if (!ok) Log.w(TAG, "setRgb failed")
         return ok
     }
