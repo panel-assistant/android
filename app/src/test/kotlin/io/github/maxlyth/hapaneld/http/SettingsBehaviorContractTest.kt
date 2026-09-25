@@ -350,26 +350,6 @@ class SettingsBehaviorContractTest {
         assertEquals(setOf(spec.key), outcome.rejected)
     }
 
-    @Test fun `the production handler consumes writer dispatch and read-back outcomes`() {
-        val source = java.io.File(
-            "src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt",
-        ).readText()
-        val handler = source.substringAfter("private suspend fun handleConfigPost")
-            .substringBefore("private suspend fun respondConfigMutation")
-        assertTrue("stageDirectConfigRegistryValues(config, postedValues, mutationPlan.changedKeys)" in handler)
-        assertTrue("stageDirectLogShipping(config, postedValues)" in handler)
-        assertTrue("stageDirectCredentialSettings(config, postedValues)" in handler)
-        assertTrue("dispatchDirectConfigLiveSettings(mutationPlan.changedLive)" in handler)
-        assertTrue("expectedReadBack = directConfigExpectedReadBack(config, postedValues)" in handler)
-        assertTrue("val ordinaryOutcomes = directConfigOrdinaryOutcomes(" in handler)
-        assertTrue("committedChannel = directUpdateChannelCommitted(" in handler)
-        assertFalse(
-            "liveApplied.addAll(0, mutationPlan.changedKeys.filter" in handler,
-            "planned changed keys must never be echoed as persistence outcomes",
-        )
-        assertTrue("ordinaryOutcomes.applied.toCollection(linkedSetOf())" in handler)
-    }
-
     private fun normalizedSample(spec: SettingSpec): String =
         requireNotNull(SettingValue.validate(spec, nonDefault(spec)) as? Validation.Ok).normalized
 

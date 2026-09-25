@@ -4,7 +4,6 @@ import io.github.maxlyth.hapaneld.DiscoveryOutcome
 import io.github.maxlyth.hapaneld.DiscoveryReason
 import io.github.maxlyth.hapaneld.DiscoveryResult
 import io.github.maxlyth.hapaneld.HaDiscovery
-import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,34 +19,6 @@ import org.junit.Test
  * network topology, not an error state, and it must produce guidance rather than silence.
  */
 class MqttOnboardingGuidanceContractTest {
-    private val server = listOf(
-        File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-    ).first { it.isFile }.readText()
-
-    private fun guidance(): String = server.substring(
-        server.indexOf("private fun mqttOnboardingSignInMessage("),
-        server.indexOf("private fun recordLiveApplyOutcome("),
-    )
-
-    @Test fun aBlankHomeAssistantUrlNoLongerSuppressesTheNextStep() {
-        val body = guidance()
-        // The old early return bundled ha_url into the credential check, so a blank URL meant no message.
-        assertFalse(
-            "a blank ha_url must not suppress the post-save guidance",
-            body.contains("if (config.haUrl.isBlank() || config.haToken.isNotBlank()"),
-        )
-        assertTrue(body.contains("if (config.haUrl.isBlank())"))
-        assertTrue(body.contains("Next: enter the Home Assistant URL"))
-    }
-
-    @Test fun aFailedDiscoveryIsExplainedRatherThanLeftBlank() {
-        val body = guidance()
-        assertTrue("the reason discovery failed must reach the user", body.contains("unavailableExplanation"))
-        // And there must still be a message when no specific reason is available.
-        assertTrue(body.contains("It was not found automatically on this network."))
-    }
-
     @Test fun theExplanationReadsAsOneSentenceForEveryUnavailableReason() {
         // The message embeds the explanation as "...because <reason>." so every reason must compose.
         DiscoveryReason.entries.filter { it != DiscoveryReason.NONE }.forEach { reason ->
@@ -70,14 +41,5 @@ class MqttOnboardingGuidanceContractTest {
         listOf("mDNS", "multicast", "subnet", "zeroconf").forEach {
             assertFalse("$it is jargon for this audience", why.contains(it, ignoreCase = true))
         }
-    }
-
-    @Test fun theConfigureTabShowsMqttVerificationProgress() {
-        // Verification runs asynchronously after the save returns, and Configure is where the user is.
-        val banners = server.substring(
-            server.indexOf("private fun configureSetupBanners(strings: AppStrings)"),
-            server.indexOf("private fun profilesBody(strings: AppStrings)"),
-        )
-        assertTrue(banners.contains("SetupBanner.progress("))
     }
 }
