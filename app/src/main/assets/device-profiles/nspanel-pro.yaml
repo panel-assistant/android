@@ -23,7 +23,8 @@ metadata:
   limitations:
     - The NSPanel Pro Gen2 relay layout is not represented by this profile.
 requires:
-  min_core_version: 0.9.5-rc1
+  # display.geometry needs the 0.9.8-rc2 parser; older cores reject the field.
+  min_core_version: 0.9.8-rc2
   drivers:
     - access.toolbox-su
     - radio.siliconlabs-host
@@ -95,7 +96,29 @@ cpu:
     Performance: performance
     Efficiency: powersave
     Auto: interactive
-display: {}
+display:
+  # One profile covers two panels with very different physical density; each variant applies only when
+  # the product identity and the live physical pixels both match, otherwise geometry stays unknown.
+  geometry:
+    - variant: 86P
+      product_version_prefixes:
+        - NSPanel86
+        - s6_android_
+      width_px: 480
+      height_px: 480
+      active_diagonal_in: 3.95
+      factory_base_dpi: 160
+      evidence: specification
+      evidence_note: SONOFF NSPanel Pro 86P specification, 3.95-inch 480x480.
+    - variant: 120P
+      product_version_prefixes:
+        - NSPanel120
+      width_px: 750
+      height_px: 1334
+      active_diagonal_in: 4.7
+      factory_base_dpi: 240
+      evidence: specification
+      evidence_note: SONOFF NSPanel Pro 120P specification, 4.7-inch 750x1334.
 provisioning:
   software:
     webview:

@@ -108,6 +108,7 @@ import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestorePlan
 import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestoreResult
 import io.github.maxlyth.hapaneld.logship.LOG_SHIP_STATUS_OFF
 import io.github.maxlyth.hapaneld.logship.LogCapture
+import io.github.maxlyth.hapaneld.logship.LogShipRecord
 import io.github.maxlyth.hapaneld.logship.LogShipStatusProjection
 import io.github.maxlyth.hapaneld.logship.LogShipTarget
 import io.github.maxlyth.hapaneld.logship.NetworkLogSinkFactory
@@ -1797,16 +1798,15 @@ class PaneldServer internal constructor(
     // address (e.g. the LAN IPv4, or a ULA v6) has no external use, so it stays visible.
     private val ADDRESS_FIELDS = setOf("Local IP", "Local IPv6")
 
-    /** Appends physical dimensions only when the device profile supplies independently verified PPI.
+    /** Appends physical dimensions only when profile evidence selects this panel's physical geometry.
      *  Logical density is a layout setting and must never be used to infer the panel's physical size. */
     private fun displayCell(v: String): String {
-        val resolution = Regex("^(\\d+)×(\\d+) px\\b").find(v) ?: return esc(v)
-        val widthPx = resolution.groupValues[1].toIntOrNull() ?: return esc(v)
-        val heightPx = resolution.groupValues[2].toIntOrNull() ?: return esc(v)
-        val size = PanelInfo.physicalDisplaySize(widthPx, heightPx, profile.physicalPpi) ?: return esc(v)
+        val observation = DisplayGeometryReport.observe(appContext) ?: return esc(v)
+        val size = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)?.physical
+            ?: return esc(v)
         val inchS = "%.1f".format(size.diagonalInches)
         val cmS = "%.1f".format(size.diagonalInches * 2.54)
-        val title = "W %.1f × H %.1f cm".format(size.widthCm, size.heightCm)
+        val title = "W %.1f × H %.1f cm".format(size.widthMm / 10, size.heightMm / 10)
         return """${esc(v)} · <span class="diag" data-in="$inchS″" data-cm="$cmS cm" """ +
             """title="${esc(title)}" onclick="diagToggle(this)">$inchS″</span>"""
     }
@@ -3811,6 +3811,24 @@ class PaneldServer internal constructor(
                             """<form method="post" action="${localizedHref("api/v1/tame", strings)}" style="margin:0 0 12px"><input type="hidden" name="action" value="recommended"><button type="submit"${hardenedApprovalA11yAttrs(strings = strings)} style="background:#2e6b3f;border-color:#2e6b3f">✓ ${esc(strings.get("install.tame.suggest.all_recommended"))}</button> <span class="note" style="font-size:.8em">${esc(strings.get("install.tame.suggest.recommended_hint"))}</span></form>"""
                             else ""
                         call.respondText(recBtn + frag, ContentType.Text.Html)
+                    }
+                    get("/display") {
+                        // The factory base is the `wm density` reset reference the sizing control restores;
+                        // the framework's stable density stands in only where that read is unavailable.
+                        val observation = withContext(Dispatchers.IO) {
+                            DisplayGeometryReport.observe(appContext)?.let { framework ->
+                                framework.copy(factoryBaseDpi = densityCache.get().base ?: framework.factoryBaseDpi)
+                            }
+                        }
+                        if (observation == null) {
+                            call.respondText("""{"error":"display-unavailable"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                            return@get
+                        }
+                        val profiled = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)
+                        call.respondText(
+                            DisplayGeometryReport.json(observation, profiled, recommendedDensity).toString(),
+                            ContentType.Application.Json,
+                        )
                     }
                     post("/display/density") {
                         val strings = requestStrings(call)
@@ -6673,7 +6691,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             "contexttbl" to contextRowsHtml(s, h, strings),
             "captbl" to capRowsHtml(s.capabilityRows, strings),
         ).joinToString(",") { (k, v) -> "\"$k\":${jsonStr(v)}" }
-        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
+        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
     }
 
     private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
@@ -8213,7 +8231,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         val displaySizingAvailable = caps.canSetDisplay
         // Include the settable settings PLUS the read-only HA sensors (diagnostics): the latter carry
         // no editable value but still render an expose pip, so the user can opt them into HA.
-        val schemaSpecs = SettingsRegistry.schemaVisibleSpecs()
+        val schemaSpecs = SettingsRegistry.schemaVisibleSpecs(caps)
         val items = schemaSpecs.joinToString(",") { spec ->
             val opts = spec.optionsFor(caps).joinToString(",") { s(it) }
             val isHa = spec.ha != null
@@ -8244,8 +8262,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             val exposed = if (isHa) config.haExposed(spec.key, spec.haExposedByDefault) else false
             val placeholderJson = placeholder?.let { s(it) } ?: nullJson
             val label = strings.resolve(spec.labelKey)
-            val help = if (spec.help.isEmpty()) null else strings.resolve(spec.helpKey)
-            val helpKeyJson = if (spec.help.isEmpty()) nullJson else s(spec.helpKey)
+            val helpKey = spec.helpKeyFor(caps)
+            val help = helpKey?.let(strings::resolve)
+            val helpKeyJson = helpKey?.let(::s) ?: nullJson
             val helpLanguageJson = help?.language?.let(::s) ?: nullJson
             "{" +
                 "\"key\":${s(spec.key)}," +
@@ -8258,7 +8277,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 "\"help\":${s(help?.text.orEmpty())}," +
                 "\"helpLanguage\":$helpLanguageJson," +
                 "\"default\":${s(spec.default)}," +
-                "\"tier\":${s(spec.tier.name)}," +
+                "\"tier\":${s(spec.tierFor(caps).name)}," +
                 "\"scope\":${s(spec.scope.name)}," +
                 "\"secret\":${spec.secret}," +
                 "\"readOnly\":${spec.readOnly}," +
@@ -8532,11 +8551,11 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         val marker = "ha-paneld-sink-probe-${System.currentTimeMillis().toString(36)}"
         val name = panelId.ifBlank { "panel" }
         val timestamp = probeTimestamp()
+        val build = LogShipRecord.Build.CURRENT
         val payload = when (ep.protocol) {
-            LogShipEndpoint.HTTP -> "{\"timestamp\":\"$timestamp\",\"host\":${jsonStr(name)}," +
-                "\"app\":\"ha-paneld\",\"message\":${jsonStr(marker)}}"
-            LogShipEndpoint.SYSLOG_UDP -> "<14>1 $timestamp $name ha-paneld - - - $marker"
-            else -> "<14>1 $timestamp $name ha-paneld - - - $marker\n"
+            LogShipEndpoint.HTTP -> LogShipRecord.jsonEvent(timestamp, name, build, marker)
+            LogShipEndpoint.SYSLOG_UDP -> LogShipRecord.syslogFrame(14, timestamp, name, build, marker).trimEnd('\n')
+            else -> LogShipRecord.syslogFrame(14, timestamp, name, build, marker)
         }.toByteArray(Charsets.UTF_8)
         val result = NetworkLogSinkFactory.probe(
             LogShipTarget(ep.host, ep.port, ep.protocol, panelId),

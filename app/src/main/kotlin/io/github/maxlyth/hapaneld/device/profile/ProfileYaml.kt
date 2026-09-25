@@ -207,7 +207,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val identity = map(root["identity"], "identity", setOf("manufacturer", "model", "model_label_strategy")).orEmpty()
         val input = map(root["input"], "input", setOf("evdev_buttons")).orEmpty()
         val cpu = map(root["cpu"], "cpu", setOf("governors")).orEmpty()
-        val display = map(root["display"], "display", setOf("physical_ppi")).orEmpty()
+        val display = map(root["display"], "display", setOf("physical_ppi", "geometry")).orEmpty()
         val provisioning = map(
             root["provisioning"],
             "provisioning",
@@ -319,7 +319,10 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             ),
             input = ProfileInput(evdevButtons(input["evdev_buttons"])),
             cpu = ProfileCpu(governors(cpu["governors"])),
-            display = ProfileDisplay(physicalPpi = integer(display, "physical_ppi", "display")),
+            display = ProfileDisplay(
+                physicalPpi = integer(display, "physical_ppi", "display"),
+                geometry = displayGeometry(display["geometry"]),
+            ),
             provisioning = ProfileProvisioning(
                 access = ProfileProvisioningAccess(
                     shizuku = enum(
@@ -443,6 +446,40 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             note = string(map, "note", path) ?: "",
         )
     }
+
+    private fun displayGeometry(value: Any?): List<ProfileDisplayGeometry> =
+        list(value, "display.geometry").mapIndexed { index, item ->
+            val path = "display.geometry[$index]"
+            val map = map(
+                item,
+                path,
+                setOf(
+                    "variant", "product_version_prefixes", "width_px", "height_px", "active_diagonal_in",
+                    "active_width_mm", "active_height_mm", "factory_base_dpi", "evidence", "evidence_note",
+                ),
+                required = true,
+            ).orEmpty()
+            if (!map.containsKey("evidence")) issues += error("$path.evidence", "Required string is missing.", "required-string")
+            ProfileDisplayGeometry(
+                variant = string(map, "variant", path),
+                productVersionPrefixes = stringList(map["product_version_prefixes"], "$path.product_version_prefixes"),
+                widthPx = integer(map, "width_px", path, required = true) ?: 0,
+                heightPx = integer(map, "height_px", path, required = true) ?: 0,
+                activeDiagonalIn = float(map, "active_diagonal_in", path),
+                activeWidthMm = float(map, "active_width_mm", path),
+                activeHeightMm = float(map, "active_height_mm", path),
+                factoryBaseDpi = integer(map, "factory_base_dpi", path),
+                evidence = enum(
+                    map,
+                    "evidence",
+                    path,
+                    DisplayGeometryEvidence.entries,
+                    null,
+                    DisplayGeometryEvidence::yamlName,
+                ) ?: DisplayGeometryEvidence.APPROXIMATE,
+                evidenceNote = string(map, "evidence_note", path),
+            )
+        }
 
     private fun recipeSelections(value: Any?): List<ProfileRecipeSelection> =
         list(value, "provisioning.recipes").mapIndexed { index, item ->
@@ -768,7 +805,23 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         linkedMapOf("node" to it.node, "code" to it.code, "grab" to it.grab, "event_type" to it.eventType, "sw" to it.sw)
     }),
     "cpu" to linkedMapOf("governors" to cpu.governors).withoutNullValues(),
-    "display" to linkedMapOf("physical_ppi" to display.physicalPpi).withoutNullValues(),
+    "display" to linkedMapOf(
+        "physical_ppi" to display.physicalPpi,
+        "geometry" to display.geometry.takeIf { it.isNotEmpty() }?.map {
+            linkedMapOf(
+                "variant" to it.variant,
+                "product_version_prefixes" to it.productVersionPrefixes.takeIf { prefixes -> prefixes.isNotEmpty() },
+                "width_px" to it.widthPx,
+                "height_px" to it.heightPx,
+                "active_diagonal_in" to it.activeDiagonalIn,
+                "active_width_mm" to it.activeWidthMm,
+                "active_height_mm" to it.activeHeightMm,
+                "factory_base_dpi" to it.factoryBaseDpi,
+                "evidence" to it.evidence.yamlName,
+                "evidence_note" to it.evidenceNote,
+            ).withoutNullValues()
+        },
+    ).withoutNullValues(),
     "provisioning" to linkedMapOf(
         "access" to provisioning.access.shizuku
             .takeUnless { it == ShizukuRecommendation.NONE }

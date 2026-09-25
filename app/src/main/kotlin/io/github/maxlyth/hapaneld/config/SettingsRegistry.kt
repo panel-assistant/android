@@ -40,6 +40,25 @@ object SettingsRegistry {
     fun schemaVisibleSpecs(): List<SettingSpec> =
         SPECS.filter { (!it.readOnly || it.ha != null) && !it.hidden }
 
+    /**
+     * [schemaVisibleSpecs] in presentation order for this panel: each spec whose
+     * [SettingSpec.promoteWhen] holds moves to the front of its group, ahead of the specs it would
+     * otherwise follow; every other spec keeps its declared position.
+     */
+    fun schemaVisibleSpecs(caps: Capabilities): List<SettingSpec> {
+        val specs = schemaVisibleSpecs()
+        val promoted = specs.filter { it.promoteWhen(caps) }
+        if (promoted.isEmpty()) return specs
+        val out = ArrayList<SettingSpec>(specs.size)
+        specs.forEach { spec ->
+            if (spec in promoted) return@forEach
+            promoted.filter { it.group == spec.group && it !in out }.forEach(out::add)
+            out.add(spec)
+        }
+        promoted.filter { it !in out }.forEach(out::add)
+        return out
+    }
+
     /** Bump whenever the persisted shape changes; drives bundle migration. */
     const val SCHEMA = 10
     const val MAX_PANEL_ID_CHARS = 63
@@ -652,13 +671,18 @@ object SettingsRegistry {
             label = "Auto-subscribe runtime accesses", default = "true", scope = Scope.PORTABLE, hidden = true,
             help = "Missing entities read through hass.states may be added automatically. Evidence remains visible when disabled.",
         ),
-        // Last in the group on purpose: the display-density control is the preferred way to size a
-        // dashboard, so this app-level zoom sits below the connection settings users should actually set.
+        // Last in the group on purpose where display sizing exists: the display-density control is the
+        // preferred way to size a dashboard, so this app-level zoom sits below the connection settings
+        // users should actually set. Without root or Shizuku there is no density control, and zoom is
+        // the only sizing lever, so it is promoted into that place with help that says so.
         SettingSpec(
             key = "dashboard_zoom", type = SettingType.INT, group = "Dashboard",
             label = "Zoom (%)", default = "100", min = 50.0, max = 300.0, step = 10.0,
             scope = Scope.DEVICE,
             help = "Browser zoom.",
+            promoteWhen = { !it.canSetDisplay },
+            promotedHelp = "How you size the dashboard on this panel, which cannot change its display density. " +
+                "Lower it to fit more on screen; raise it to enlarge.",
         ),
 
         // ---- System ------------------------------------------------------------------------------

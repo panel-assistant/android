@@ -10,12 +10,17 @@ import android.os.Handler
  * project has no Robolectric, and `ShadowSensorManager.setForceListenersToFail` would be global to
  * every sensor rather than the light one.
  */
-class FakeSensorManager(private val activates: Boolean) : SensorManager() {
+class FakeSensorManager(private val activates: Boolean, hasProximity: Boolean = false) : SensorManager() {
     val light: Sensor = allocate(Sensor::class.java)
+    private val proximity: Sensor? = if (hasProximity) allocate(Sensor::class.java) else null
     var lightRegistrations = 0
         private set
 
-    override fun getDefaultSensor(type: Int): Sensor? = if (type == Sensor.TYPE_LIGHT) light else null
+    override fun getDefaultSensor(type: Int): Sensor? = when (type) {
+        Sensor.TYPE_LIGHT -> light
+        Sensor.TYPE_PROXIMITY -> proximity
+        else -> null
+    }
 
     override fun registerListener(
         listener: SensorEventListener?,

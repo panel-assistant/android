@@ -162,8 +162,9 @@ class AdaptiveProximitySurfaceContractTest {
     private fun mqttTombstonesAllPresenceSurfaces(): Boolean {
         val mqtt = source("MqttBridge.kt")
         return mqtt.contains("capabilitySnapshot?.hasLearnedProximity == true") &&
-            mqtt.contains("registryExposable(\"proximity\", proximityAvail, learnedProximity)") &&
-            mqtt.contains("registryExposable(\"proximity_level\", proximityAvail, learnedProximity)") &&
+            mqtt.contains("registryExposable(\"proximity\", proximityAvail, hardwareAvailability(\"proximity\", learnedProximity))") &&
+            mqtt.contains("registryExposable(\"proximity_level\", proximityAvail, hardwareAvailability(\"proximity_level\", learnedProximity))") &&
+            mqtt.contains("\"proximity\", \"proximity_level\" -> learnedProximity") &&
             mqtt.contains("if (hasProximity) known(if (config.wakeOnWave)")
     }
 

@@ -230,9 +230,41 @@ data class ProfileEvdevButton(
 
 data class ProfileCpu(val governors: Map<String, String>? = null)
 
+/** Physical display facts. Nothing here is a rendering density: Android's logical DPI is observed live,
+ *  and the recommendation lives under `provisioning.display`. */
 data class ProfileDisplay(
+    /** Legacy single approximate density. Kept verbatim so existing revisions keep their content hash;
+     *  it resolves as `approximate` geometry and may not be combined with [geometry]. */
     val physicalPpi: Int? = null,
+    val geometry: List<ProfileDisplayGeometry> = emptyList(),
 )
+
+/**
+ * One panel variant's physical geometry. It applies only when the live physical mode has exactly these
+ * pixels (either orientation) and, when prefixes are listed, the product version starts with one of them.
+ * The active size is either a diagonal or width and height, never both.
+ */
+data class ProfileDisplayGeometry(
+    val variant: String? = null,
+    val productVersionPrefixes: List<String> = emptyList(),
+    val widthPx: Int,
+    val heightPx: Int,
+    val activeDiagonalIn: Float? = null,
+    val activeWidthMm: Float? = null,
+    val activeHeightMm: Float? = null,
+    /** The firmware's factory reset logical DPI for this variant; a rendering fact, never a physical one. */
+    val factoryBaseDpi: Int? = null,
+    val evidence: DisplayGeometryEvidence,
+    val evidenceNote: String? = null,
+)
+
+/** Where a physical size came from. `approximate` marks values that must not be read as a measurement. */
+enum class DisplayGeometryEvidence(val yamlName: String) {
+    MEASURED("measured"),
+    MODULE("module"),
+    SPECIFICATION("specification"),
+    APPROXIMATE("approximate"),
+}
 
 sealed interface ProfileDensity {
     data class Fixed(val value: Int) : ProfileDensity

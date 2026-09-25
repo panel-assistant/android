@@ -60,6 +60,9 @@ class EntityCatalogStorageHealthContractTest {
                 "migrateRouteKeyedRowsToRoot",
                 "setIssueIgnored",
                 "maintainSoftLimit",
+                "pruneExpiredHistory",
+                "truncateWal",
+                "vacuumDatabase",
                 "writeProximityBatch",
                 "clearProximityLearning",
                 "openRestoredDatabaseOwner",
@@ -83,6 +86,7 @@ class EntityCatalogStorageHealthContractTest {
             "catalog-access-history",
             "catalog-metric-history",
             "catalog-maintenance",
+            "catalog-retention",
             "dashboard-performance-history",
             "ambient-history",
             "ambient-history-seed",
@@ -203,8 +207,13 @@ class EntityCatalogStorageHealthContractTest {
             "beginTransaction()" in ensure)
         assertTrue("NONE must be left alone — enabling auto-vacuum needs a full VACUUM",
             "else -> false" in ensure)
-        assertFalse("a full VACUUM must never run implicitly — its temp-space demand can worsen a low-space incident",
-            "execSQL(\"VACUUM" in source)
+        // A full VACUUM must never run implicitly — its space demand can worsen a low-space incident.
+        // Its one site is the remediation step, which nothing in the store calls: only the service's
+        // remediation ladder reaches it, after fullVacuumAdmission (StorageRemediationTest).
+        assertEquals("exactly one full VACUUM site", 1, Regex("execSQL\\(\"VACUUM").findAll(source).count())
+        assertTrue("the full VACUUM lives only in the remediation step",
+            "execSQL(\"VACUUM\")" in functionBody("vacuumDatabase"))
+        assertEquals("nothing in the store invokes the rebuild", 1, Regex("vacuumDatabase\\(").findAll(source).count())
         val vacuum = functionBody("incrementalVacuumStep")
         assertTrue("reclamation must be sliced and capped per pass",
             "MAX_VACUUM_PAGES_PER_PASS" in vacuum && "PRAGMA incremental_vacuum(\$slice)" in vacuum)
@@ -339,6 +348,44 @@ class EntityCatalogStorageHealthContractTest {
         assertTrue("CancellationSignal?" in forwarder)
         assertTrue("store.storageHealthObservation(cancellationSignal)" in forwarder)
         assertFalse("PRAGMA" in forwarder)
+    }
+
+    @Test fun remediationDatabaseStepsReportWhatHappenedAndLatchOnlyRealFaults() {
+        val truncate = functionBody("truncateWal")
+        assertTrue("only TRUNCATE shrinks the WAL file", "PRAGMA wal_checkpoint(TRUNCATE)" in truncate)
+        assertTrue("a closing owner is refused before the checkpoint opens the database",
+            truncate.indexOf("isBusyRetryAbandoned()") in 0 until truncate.indexOf("writableDatabase") &&
+                "WalCheckpointResult.SKIPPED_LIFECYCLE" in truncate)
+        assertTrue("the result row and the measured WAL decide the outcome",
+            "interpretWalCheckpoint(" in truncate && "storageKnownFileBytes(wal)" in truncate)
+        assertTrue("a BUSY throw is this app's own contention and is deferred",
+            "StorageDatabaseFailureKind.BUSY" in truncate && "WalCheckpointResult.DEFERRED_BUSY" in truncate)
+        assertTrue("any other checkpoint throw latches under its own operation",
+            "recordDatabaseFailure(\"database-wal-truncate\", failure)" in truncate &&
+                "WalCheckpointResult.FAILED" in truncate)
+
+        val vacuum = functionBody("vacuumDatabase")
+        assertTrue("a closing owner is refused before any rebuild", "isBusyRetryAbandoned()" in vacuum &&
+            vacuum.indexOf("isBusyRetryAbandoned()") < vacuum.indexOf("VACUUM\")"))
+        assertTrue("NONE converts to INCREMENTAL inside the rebuild, and only then",
+            vacuum.indexOf("PRAGMA auto_vacuum=INCREMENTAL") in 0 until vacuum.indexOf("db.execSQL(\"VACUUM\")"))
+        assertTrue("a rebuild failure latches under its own operation",
+            "recordDatabaseFailure(\"database-vacuum\", failure)" in vacuum)
+        assertFalse("the store never deletes or recreates the database file",
+            listOf("deleteDatabase", ".delete()", "renameTo").any { it in vacuum || it in truncate })
+
+        val retention = functionBody("pruneExpiredHistory")
+        assertTrue("retention runs exactly the shared bounded statements",
+            "historyRetentionStatements(now, MAINTENANCE_CHUNK_ROWS)" in retention && "chunkedWrite(" in retention)
+        assertTrue("retention runs inside its observed boundary and then bounded reclamation",
+            "observedWrite(\"catalog-retention\"" in functionBody("enforceRetention") &&
+                "observedMaintenance(now)" in functionBody("enforceRetention"))
+
+        val backup = functionBody("writeVerifiedConfigurationBackup")
+        assertTrue("the backup is read back from the file just written",
+            "ConfigVault.decode(written.readText())" in backup &&
+                "configurationBackupVerified(rows, readBack?.rows)" in backup &&
+                "readBack?.profiles == profiles" in backup)
     }
 
     private fun functionBody(name: String): String {

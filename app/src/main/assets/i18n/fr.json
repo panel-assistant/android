@@ -7894,8 +7894,8 @@
       "state": "machine-cross-checked"
     },
     "logs.note.sources": {
-      "text": "Application = journal du processus ha-paneld (root non requis). Système = logcat complet de l’appareil (root).",
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
+      "text": "Application = journal du processus ha-paneld (root non requis). Système = logcat complet de l’appareil (root). Console du navigateur = console JavaScript du tableau de bord (nécessite le transfert des journaux configuré).",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
       "state": "machine-cross-checked"
     },
     "logs.source.app": {
@@ -8601,6 +8601,11 @@
     "profiles.issue.density-range": {
       "text": "La densité doit être comprise entre 80 et 640 dpi.",
       "sourceHash": "1625bf8ef923d238548f956c43c57a920741ee682be625ff2fc9bfe6b0bfe990",
+      "state": "machine-cross-checked"
+    },
+    "profiles.issue.display-geometry-invalid": {
+      "text": "La géométrie de l’écran est incomplète, ambiguë ou hors limites.",
+      "sourceHash": "4074c8da827e4f24999e53f7e74e8c1c6390163a1c7684248a3969ea14b9d76d",
       "state": "machine-cross-checked"
     },
     "profiles.issue.dotted-release-version-required": {
@@ -10402,6 +10407,11 @@
       "sourceHash": "90f1077218a92f9695c9ee536c9d305ce4904146b19582386ac3b828cafd3a2b",
       "state": "machine-cross-checked",
       "text": "Zoom (%)"
+    },
+    "settings.dashboard_zoom.promoted_help": {
+      "text": "Permet de dimensionner le tableau de bord sur ce panneau, dont la densité d'affichage est fixe. Réduisez pour en afficher plus ; augmentez pour agrandir.",
+      "sourceHash": "60fde4ecb0300f4e39d073c0ed282652965ca6e4803dbbe47e5a08917352afdd",
+      "state": "machine-cross-checked"
     },
     "settings.diag_boot.help": {
       "sourceHash": "c2def446a0798101bd52a56491c2a741ee0e71ada93bc7c42212f294b5911289",

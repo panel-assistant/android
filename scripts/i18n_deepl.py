@@ -229,7 +229,11 @@ def build_plan(
         for key, source_record in source["strings"].items():
             current = target.get(key)
             stale = current is None or current["sourceHash"] != source_record["sourceHash"]
-            fallback = current is not None and current["state"] == "english-fallback"
+            fallback = (
+                current is not None
+                and current["state"] == "english-fallback"
+                and not catalogue.held_for_review(locale, current, source_record)
+            )
             explicit = key in reconsider
             if not (stale or fallback or explicit):
                 continue

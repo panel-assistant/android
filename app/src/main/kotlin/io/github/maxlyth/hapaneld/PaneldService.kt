@@ -158,7 +158,21 @@ import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportOwner
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.panelassistant.panelAssistantTransportDemand
 import io.github.maxlyth.hapaneld.sensors.KtorHaExactEntityStreamTransport
+import io.github.maxlyth.hapaneld.storage.DisposableFileSweeper
+import io.github.maxlyth.hapaneld.storage.DisposableSweepResult
+import io.github.maxlyth.hapaneld.storage.ProcessStartWallClock
+import io.github.maxlyth.hapaneld.storage.RetentionResult
 import io.github.maxlyth.hapaneld.storage.StorageDatabaseFailureKind
+import io.github.maxlyth.hapaneld.storage.StorageMaintenancePlan
+import io.github.maxlyth.hapaneld.storage.StorageRemediationLadder
+import io.github.maxlyth.hapaneld.storage.StorageRemediationOperations
+import io.github.maxlyth.hapaneld.storage.VacuumOutcome
+import io.github.maxlyth.hapaneld.storage.VacuumResult
+import io.github.maxlyth.hapaneld.storage.WalCheckpointOutcome
+import io.github.maxlyth.hapaneld.storage.WalCheckpointResult
+import io.github.maxlyth.hapaneld.storage.appOwnedDisposableDirectoryRules
+import io.github.maxlyth.hapaneld.storage.appOwnedDisposableFileRules
+import io.github.maxlyth.hapaneld.storage.storageMaintenancePlan
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservation
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservationQueue
 import io.github.maxlyth.hapaneld.storage.StorageHealthRecoveryLifecycle
@@ -209,6 +223,7 @@ import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
+import io.github.maxlyth.hapaneld.util.validGuardDbAppFile
 import io.github.maxlyth.hapaneld.util.HelperInstallReconciler
 import io.github.maxlyth.hapaneld.util.HelperInstallTransaction
 import io.github.maxlyth.hapaneld.util.SelfUpdater
@@ -928,7 +943,7 @@ class PaneldService : Service() {
     private var netCallback: ConnectivityManager.NetworkCallback? = null
     private data class MdnsRevalidation(
         val observed: ServiceRuntimeOwner.Observation<NetworkRuntime>,
-        val lanIp: String?,
+        val addresses: MdnsLanAddresses?,
     )
     private val mdnsRevalidation = LatestDispatcher.singleSlot<MdnsRevalidation>(
         threadName = "ha-paneld-mdns-revalidation",
@@ -937,7 +952,7 @@ class PaneldService : Service() {
             if (current.generation != request.observed.generation || current.value !== request.observed.value) {
                 return@singleSlot
             }
-            current.value.mdns.start(request.lanIp)
+            current.value.mdns.start(request.addresses?.primary, request.addresses?.secondary)
         },
         onFailure = { failure -> Log.w(TAG, "mDNS revalidation failed", failure) },
     )
@@ -1887,13 +1902,14 @@ class PaneldService : Service() {
             wifiDiagnostics = wifiDiagnostics::snapshot,
             wifiOutages = { wifiOutageTracker.counts() },
             learnedProximityEligibility = sensors::hasLearnedProximity,
+            learnedProximityState = sensors::learnedProximityState,
             onAutoSleepConfigChanged = {
                 acceptCommittedAutoSleepSetting(liveSettingAuthority) { refreshAutoSleepPresence() }
             },
             // This bridge generation's lease, registered with the runtime as the live broker channel
             // just below. A bridge that outlives its service OR its own replacement cannot report.
             haLifecycleLease = lease,
-        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bind(bridge::stateChannelKeys)) }
+        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape)) }
     }
 
     private fun buildMdns(identity: NetworkRuntimeIdentity): MdnsAdvertiser = MdnsAdvertiser(
@@ -3325,16 +3341,26 @@ class PaneldService : Service() {
         val companionChannel = config.companionUpdateChannel
         val cap = profile.companionMaxVersion
         val progress = InstallProgress.presentationSnapshot()
-        fun installed(pkg: String): String? =
-            runCatching { packageManager.getPackageInfo(pkg, 0).versionName ?: "" }.getOrNull()
+        // Only "not installed" is an answer; any other failure leaves presence unknown rather than absent.
+        var lookupFailed = false
+        fun installed(pkg: String): String? = try {
+            packageManager.getPackageInfo(pkg, 0).versionName ?: ""
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+            null
+        } catch (_: Exception) {
+            lookupFailed = true
+            null
+        }
+        val companionMinimal = installed(CompanionInstaller.MINIMAL_PKG)
+        val companionFull = installed(CompanionInstaller.FULL_PKG)
         return SoftwareUpdateSources(
             paneldVersion = BuildConfig.VERSION_NAME,
             paneldChannel = paneldChannel,
             paneldTarget = UpdateChecker.paneldTarget(paneldChannel)?.let {
                 SoftwareTarget(it.version, it.tag, it.releaseUrl)
             },
-            companionMinimalVersion = installed(CompanionInstaller.MINIMAL_PKG),
-            companionFullVersion = installed(CompanionInstaller.FULL_PKG),
+            companionMinimalVersion = companionMinimal,
+            companionFullVersion = companionFull,
             companionChannel = companionChannel,
             companionCap = cap,
             companionTarget = UpdateChecker.companionTarget(companionChannel, cap)?.let {
@@ -3342,6 +3368,7 @@ class PaneldService : Service() {
             },
             runningOperation = progress.component.takeIf { progress.running },
             panelAssistantOwnsPaneldUpdate = panelAssistantUpdateLease.active(),
+            companionPresenceUnknown = lookupFailed,
         )
     }
 
@@ -4094,11 +4121,20 @@ class PaneldService : Service() {
      */
     private fun revalidateMdns(
         observed: ServiceRuntimeOwner.Observation<NetworkRuntime>,
-        lanIp: String?,
+        addresses: MdnsLanAddresses?,
     ) {
         // Discovery can fail while MQTT remains connected, so it cannot share MQTT's state gate.
         // One dedicated latest-value slot prevents callback bursts from saturating MQTT recovery workers.
-        mdnsRevalidation.submit(MdnsRevalidation(observed, lanIp))
+        mdnsRevalidation.submit(MdnsRevalidation(observed, addresses))
+    }
+
+    /** Temporary (privacy) IPv6 addresses are marked so the advertiser can prefer a stable one. */
+    private fun mdnsNetworkChanged(linkAddresses: List<android.net.LinkAddress>) {
+        mdnsRuntimeReconciler.networkChanged(
+            linkAddresses.map { it.address },
+            linkAddresses.filter { it.flags and android.system.OsConstants.IFA_F_TEMPORARY != 0 }
+                .mapTo(mutableSetOf()) { it.address },
+        )
     }
 
     private fun registerNetworkCallback() {
@@ -4126,9 +4162,7 @@ class PaneldService : Service() {
                 wifiOutageTracker.onDefaultAvailable(network.hashCode().toLong())
                 if (::panelAssistantTransport.isInitialized) panelAssistantTransport.nudge()
                 observeTransport(network, capabilities)
-                mdnsRuntimeReconciler.networkChanged(
-                    cm.getLinkProperties(network)?.linkAddresses.orEmpty().map { it.address },
-                )
+                mdnsNetworkChanged(cm.getLinkProperties(network)?.linkAddresses.orEmpty())
                 val observed = runtime.observe() ?: return
                 val target = observed.value.mqtt
                 target.refreshDiscoveryAddress()
@@ -4149,9 +4183,7 @@ class PaneldService : Service() {
 
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 if (network != defaultNetwork) return
-                mdnsRuntimeReconciler.networkChanged(
-                    linkProperties.linkAddresses.map { it.address },
-                )
+                mdnsNetworkChanged(linkProperties.linkAddresses)
                 val observed = runtime.observe() ?: return
                 observed.value.mqtt.refreshDiscoveryAddress()
             }
@@ -4215,7 +4247,10 @@ class PaneldService : Service() {
                 if (teardownBoundary.isStopping) return@periodic
                 val attempt = index + 1
                 when (runQueuedStorageHealthObservation()) {
-                    StorageHealthObservationAttempt.Complete,
+                    StorageHealthObservationAttempt.Complete -> {
+                        runStorageMaintenance()
+                        return@periodic
+                    }
                     StorageHealthObservationAttempt.Stopped -> return@periodic
                     StorageHealthObservationAttempt.Retry -> Unit
                 }
@@ -4227,6 +4262,76 @@ class PaneldService : Service() {
                 kotlinx.coroutines.delay(STORAGE_HEALTH_RETRY_MS)
             }
         }
+    }
+
+    /**
+     * Daily storage maintenance after a completed observation, serialized with every observation so
+     * no SQLite work overlaps a health read. A healthy panel converges its existing retention limits;
+     * elevated pressure runs the fail-safe remediation ladder, whose measured result is published on
+     * every storage-health surface. Prompt recovery and HTTP refreshes never start remediation.
+     */
+    private suspend fun runStorageMaintenance() {
+        storageHealthObservationQueue.run { signal ->
+            if (teardownBoundary.isStopping) return@run Unit
+            val snapshot = StorageHealthRuntime.snapshot()
+            when (storageMaintenancePlan(snapshot)) {
+                StorageMaintenancePlan.NONE -> Unit
+                StorageMaintenancePlan.RETENTION -> runCatching { entityLearning.enforceHistoryRetention() }
+                    .onFailure { Log.w(TAG, "history retention failed (${it.javaClass.simpleName})") }
+                StorageMaintenancePlan.REMEDIATE ->
+                    StorageRemediationLadder(storageRemediationOperations(signal)).run(snapshot)?.let { summary ->
+                        StorageHealthRuntime.recordRemediation(summary)
+                        Log.w(
+                            TAG,
+                            "storage remediation ${summary.verdict.name.lowercase(Locale.ROOT)}: " +
+                                "freed ${summary.bytesFreed} bytes (${summary.filesDeleted} files), " +
+                                "retention=${summary.retention.name.lowercase(Locale.ROOT)} " +
+                                "wal=${summary.walCheckpoint.name.lowercase(Locale.ROOT)} " +
+                                "vacuum=${summary.vacuum.result.name.lowercase(Locale.ROOT)}" +
+                                (summary.vacuum.refusal?.let { "/${it.name.lowercase(Locale.ROOT)}" } ?: ""),
+                        )
+                    }
+            }
+            Unit
+        }
+    }
+
+    private fun storageRemediationOperations(signal: CancellationSignal) = object : StorageRemediationOperations {
+        override fun sweepDisposableFiles(): List<DisposableSweepResult> {
+            // Only files written before this process existed can be orphans, judged against its start
+            // in the oldest clock epoch it has run in. With no captured start nothing is provably
+            // orphaned, so nothing is swept.
+            val processStart = ProcessStartWallClock.orphanBoundary(
+                System.currentTimeMillis(),
+                android.os.SystemClock.elapsedRealtime(),
+            ) ?: return emptyList()
+            val sweeper = DisposableFileSweeper(processStart)
+            return appOwnedDisposableFileRules(cacheDir, filesDir, ::validGuardDbAppFile).map(sweeper::sweep) +
+                appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)
+        }
+
+        override fun enforceRetention(): RetentionResult = runCatching {
+            if (entityLearning.enforceHistoryRetention()) RetentionResult.PRUNED else RetentionResult.CONVERGED
+        }.getOrElse { RetentionResult.FAILED }
+
+        override fun checkpointWal(): WalCheckpointOutcome = runCatching { entityLearning.truncateDatabaseWal() }
+            .getOrElse { WalCheckpointOutcome(WalCheckpointResult.FAILED, 0L, 0L) }
+
+        override fun writeVerifiedBackup(): Boolean = entityLearning.writeVerifiedConfigurationBackup()
+
+        override fun vacuum(): VacuumOutcome = runCatching { entityLearning.vacuumDatabase() }
+            .getOrElse { VacuumOutcome(VacuumResult.FAILED) }
+
+        // A companion data backup or restore owns the data directory until its marker clears.
+        override fun lifecycleOwned(): Boolean = !teardownBoundary.isStopping && !signal.isCanceled &&
+            !(::companionDataOperationState.isInitialized && companionDataOperationState.isPending())
+
+        override suspend fun observe(): StorageHealthSnapshot? =
+            when (runStorageHealthObservation(signal)) {
+                StorageHealthObservationAttempt.Complete -> StorageHealthRuntime.snapshot()
+                StorageHealthObservationAttempt.Retry,
+                StorageHealthObservationAttempt.Stopped -> null
+            }
     }
 
     /** One bounded observation attempt shared by prompt recovery and the independent daily loop. */
