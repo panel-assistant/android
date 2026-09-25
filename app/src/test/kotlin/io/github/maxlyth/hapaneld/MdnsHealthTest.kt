@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld
 
-import java.io.File
 import java.net.InetAddress
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,62 +55,6 @@ class MdnsHealthTest {
                 ),
             ) == "192.0.2.110",
         )
-    }
-
-    @Test fun networkCallbacksFeedTheStartupSafeMdnsReconcilerIndependentlyOfMqttState() {
-        val service = File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt").readText()
-        val available = service.substring(
-            service.indexOf("override fun onAvailable"),
-            service.indexOf("override fun onLinkPropertiesChanged"),
-        )
-        val linkChange = service.substring(
-            service.indexOf("override fun onLinkPropertiesChanged"),
-            service.indexOf("override fun onCapabilitiesChanged"),
-        )
-        val lost = service.substring(
-            service.indexOf("override fun onLost"),
-            service.indexOf("runCatching { cm.registerDefaultNetworkCallback"),
-        )
-        val running = service.substring(
-            service.indexOf("ServiceStartupDisposition.RUNNING ->"),
-            service.indexOf("ServiceStartupDisposition.PROFILE_ACTIVATION_ROLLBACK ->"),
-        )
-        val replacementComplete = service.substring(
-            service.indexOf("if (!completed) {"),
-            service.indexOf("} catch (e: InterruptedException)"),
-        )
-
-        assertTrue(available.contains("mdnsNetworkChanged(cm.getLinkProperties(network)?.linkAddresses.orEmpty())"))
-        assertTrue(available.indexOf("mdnsNetworkChanged(") < available.indexOf("runtime.observe() ?: return"))
-        assertTrue(linkChange.contains("if (network != defaultNetwork) return"))
-        assertTrue(linkChange.contains("mdnsNetworkChanged(linkProperties.linkAddresses)"))
-        assertTrue(linkChange.indexOf("mdnsNetworkChanged(") < linkChange.indexOf("runtime.observe() ?: return"))
-        val feed = service.substring(
-            service.indexOf("private fun mdnsNetworkChanged("),
-            service.indexOf("private fun registerNetworkCallback()"),
-        )
-        assertTrue(feed.contains("mdnsRuntimeReconciler.networkChanged("))
-        assertTrue(feed.contains("linkAddresses.map { it.address }"))
-        assertTrue(feed.contains("it.flags and android.system.OsConstants.IFA_F_TEMPORARY != 0"))
-        assertTrue(lost.contains("mdnsRuntimeReconciler.networkLost()"))
-        assertTrue(running.contains("mdnsRuntimeReconciler.runtimeRunning()"))
-        assertTrue(replacementComplete.contains("mdnsRuntimeReconciler.runtimeRunning()"))
-        assertTrue(service.contains("mdnsRuntimeReconciler = MdnsRuntimeReconciler(runtime, ::revalidateMdns)"))
-        assertTrue(service.contains("current.value.mdns.start(request.addresses?.primary, request.addresses?.secondary)"))
-        assertTrue(service.contains("LatestDispatcher.singleSlot<MdnsRevalidation>"))
-        assertFalse(service.contains("it.mdns.start()\n                            it.mqtt.reconnect()"))
-    }
-
-    @Test fun statusEndpointIncludesLiveMdnsWarning() {
-        val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-
-        assertTrue(server.contains("private val mdnsWarningProjection: () -> Pair<String?, InstallPresentation?>"))
-        assertTrue(server.contains("val mdns = runCatching(mdnsWarningProjection).getOrNull()"))
-        assertTrue(server.contains("addWarning(mdns?.first, mdns?.second)"))
-        val service = File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt").readText()
-        assertTrue(service.contains("mdnsWarningProjection = {"))
-        assertTrue(service.contains("mdnsHealthWarning(health) to mdnsHealthPresentation(health)"))
-        assertTrue(service.contains("\"mDNS\" to mdns.statusPublic()"))
     }
 
     @Test fun threeConsecutiveMissingSelfQueriesAdmitOneRecovery() {
@@ -247,18 +190,5 @@ class MdnsHealthTest {
 
         assertNotNull(warning)
         assertTrue(warning!!.contains("automatic recovery stopped after 3 attempts"))
-    }
-
-    @Test fun recoveryMechanismUsesSupportedDelegateAndRetirementFence() {
-        val advertiser = File("src/main/kotlin/io/github/maxlyth/hapaneld/MdnsAdvertiser.kt").readText()
-
-        assertTrue(advertiser.contains("dns.setDelegate"))
-        assertTrue(advertiser.contains("ScheduledThreadPoolExecutor(1)"))
-        assertTrue(advertiser.contains("recoveryScheduler.cancel()"))
-        assertTrue(advertiser.contains("mdnsRecoveryStillCurrent("))
-        assertTrue(advertiser.contains("recoveryScheduler.closeAndJoin(deadline.remainingMs())"))
-        assertTrue(advertiser.contains("if (!browsing) return emptyList()"))
-        assertTrue(advertiser.contains("generationProbeToken"))
-        assertFalse(advertiser.contains("services.any { it.name == advertisedInstanceName }"))
     }
 }

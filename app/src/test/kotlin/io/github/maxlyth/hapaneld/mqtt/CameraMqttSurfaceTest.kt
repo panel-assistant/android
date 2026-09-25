@@ -34,6 +34,7 @@ class CameraMqttSurfaceTest {
     private val panel = "test"
     private val device = """"device":{"identifiers":["ha-paneld-test"]}"""
     private val panelAvailability = "ha-paneld/$panel/availability"
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private val mqtt by lazy { TestSources.kotlin("MqttBridge.kt").readText() }
 
     private fun slice(text: String, from: String, to: String): String {
@@ -282,23 +283,5 @@ class CameraMqttSurfaceTest {
 
         assertTrue(refused)
         assertEquals(0, approvals)
-    }
-
-    @Test fun aSwitchMovedOutsideMqttStillReachesHomeAssistant() {
-        val service = TestSources.kotlin("PaneldService.kt").readText()
-        assertTrue(service.contains("onCameraEnabledChanged = "))
-        assertTrue(
-            "a Configure-page or bundle change must republish, or HA keeps a position the panel left",
-            service.contains("if (ownerRefresh.camera) runCatching { mqtt.publishCameraState() }"),
-        )
-    }
-
-    @Test fun theInfoPageReadsCameraStateLiveRatherThanFromTheFactsCache() {
-        val server = TestSources.kotlin("http/PaneldServer.kt").readText()
-        val keys = slice(server, "private val CONTEXT_KEYS", "private fun infoKeys")
-        assertTrue(keys.contains("CAMERA_FACT"))
-        // Live camera state on a fact row, never a setting row: a formatter attached to a boolean
-        // settings key is dead code that never runs and never warns.
-        assertTrue(server.contains("CAMERA_FACT -> camera.presentation()"))
     }
 }

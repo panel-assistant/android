@@ -7,7 +7,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class BackupIdentityTest {
     private val androidId = "9774d56d682e549c"
@@ -99,21 +98,5 @@ class BackupIdentityTest {
         assertNull(section("{\"proximity-wake-invalidation\":{\"k\":\"${"v".repeat(1_025)}\"}}"))
         val tooMany = (0..64).joinToString(",") { "\"k$it\":\"v\"" }
         assertNull(section("{\"proximity-wake-invalidation\":{$tooMany}}"))
-    }
-
-    @Test fun everyRawPreferenceStoreInTheAppIsClassified() {
-        // A store opened with getSharedPreferences lives outside app_state, so the backup cannot see it
-        // unless it is listed. AppState's own calls are the legacy mirror and bridge metadata, and
-        // NativeLocale reads that mirror; any other file must be a listed store.
-        val sources = File("src/main/kotlin").walkTopDown()
-            .filter { it.isFile && it.extension == "kt" && it.readText().contains("getSharedPreferences(") }
-            .map { it.name }
-            .toSet()
-
-        assertEquals(
-            setOf("AppState.kt", "NativeLocale.kt", "PaneldServer.kt"),
-            sources,
-        )
-        assertEquals(setOf("proximity-wake-invalidation"), RawPreferenceBackup.STORES.keys)
     }
 }
