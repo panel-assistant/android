@@ -4,6 +4,7 @@ import io.github.maxlyth.hapaneld.control.RemoteDebugSecurityTransitionGate
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult
 import io.github.maxlyth.hapaneld.security.ApprovalBroker
+import io.github.maxlyth.hapaneld.util.GuardDbAppStaging
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceClient
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceProtocol
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceTransport
@@ -74,6 +75,58 @@ class GuardDbTerminalRetirementRoutesTest {
             assertEquals("durable completion never resubmits", 1, fixture.transport.longCommands.size)
             assertTrue(fixture.broker.pending().isEmpty())
         }
+
+    @Test fun `completed retirement clears its staged candidate pair and a replay never clears a new one`() =
+        testApplication {
+            val fixture = fixture()
+            val pair = fixture.stagePair()
+            install(fixture)
+            assertEquals(HttpStatusCode.Accepted, postRetirement(fixture.body, DIRECT_PEER).status)
+            pair.forEach { assertTrue("an unapproved retirement touches nothing", it.exists()) }
+            assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+
+            assertEquals(HttpStatusCode.OK, postRetirement(fixture.body, DIRECT_PEER).status)
+            pair.forEach { assertFalse("${it.name} outlived its finished canary", it.exists()) }
+
+            val next = fixture.stagePair()
+            assertEquals(HttpStatusCode.OK, postRetirement(fixture.body, DIRECT_PEER).status)
+            next.forEach { assertTrue("an unapproved replay cleared ${it.name}", it.exists()) }
+        }
+
+    @Test fun `staged pair survives a retirement still RETIRING and is cleared when EMPTY completes it`() =
+        testApplication {
+            val fixture = fixture().apply {
+                transport.longResult = DaemonLongResult.Indeterminate
+                transport.onRetire = { transport.statusReply = retiringStatus }
+            }
+            val pair = fixture.stagePair()
+            install(fixture)
+            assertEquals(HttpStatusCode.Accepted, postRetirement(fixture.body, DIRECT_PEER).status)
+            assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+
+            assertEquals(HttpStatusCode.Accepted, postRetirement(fixture.body, DIRECT_PEER).status)
+            pair.forEach { assertTrue("${it.name} cleared before the helper finished retiring", it.exists()) }
+
+            fixture.transport.statusReply = fixture.emptyStatus
+            assertEquals(HttpStatusCode.OK, postRetirement(fixture.body, DIRECT_PEER).status)
+            pair.forEach { assertFalse("${it.name} outlived its finished canary", it.exists()) }
+        }
+
+    @Test fun `a session record keeps the staged pair without holding completion back`() = testApplication {
+        val fixture = fixture().apply { sessionRecord = true }
+        val pair = fixture.stagePair()
+        install(fixture)
+        assertEquals(HttpStatusCode.Accepted, postRetirement(fixture.body, DIRECT_PEER).status)
+        assertTrue(fixture.broker.approve(fixture.broker.pending().single().id))
+
+        assertEquals(HttpStatusCode.OK, postRetirement(fixture.body, DIRECT_PEER).status)
+
+        assertEquals(
+            GuardDbTerminalRetirementState.COMPLETE,
+            (fixture.store.load() as GuardDbTerminalRetirementLoad.Valid).retirement.state,
+        )
+        pair.forEach { assertTrue("a referenced ${it.name} was removed", it.exists()) }
+    }
 
     @Test fun `peer Hardened and exact body gates run before approval or native send`() = testApplication {
         val fixture = fixture()
@@ -442,7 +495,7 @@ class GuardDbTerminalRetirementRoutesTest {
             }
             routing {
                 route("/api/v1/guard-db") {
-                    guardDbTerminalRetirementRoute(fixture.dependencies())
+                    guardDbTerminalRetirementRoute(fixture.dependencies(), fixture.staging)
                 }
             }
         }
@@ -466,13 +519,28 @@ class GuardDbTerminalRetirementRoutesTest {
                 validateFile = { it.isFile },
             ),
             securityEpoch = RemoteDebugSecurityTransitionGate.authorityEpoch(),
+            stagingDirectory = temporary.newFolder("staging-${System.nanoTime()}"),
         )
     }
 
     private class Fixture(
         val store: GuardDbTerminalRetirementStore,
         val securityEpoch: Long,
+        private val stagingDirectory: File,
     ) {
+        var sessionRecord = false
+        val staging = GuardDbAppStaging(
+            stagingDirectory,
+            inspect = { null },
+            syncDirectory = { true },
+            validateFile = { it.isFile },
+            sessionRecordPresent = { sessionRecord },
+        )
+
+        fun stagePair(): List<File> = listOf("a", "b").map { role ->
+            File(stagingDirectory, "guard-db-candidate-$role.apk").apply { writeText("candidate $role") }
+        }
+
         val session = "1".repeat(64)
         private val boot = "2".repeat(64)
         private val aSha = "a".repeat(64)
