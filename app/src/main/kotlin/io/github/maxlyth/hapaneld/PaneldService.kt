@@ -969,8 +969,11 @@ class PaneldService : Service() {
     // idempotent and generation-guarded, so a dropped duplicate costs nothing.
     private var proximityWizard: ProximityWizardCoordinator? = null
     private val screenWakeWorker = SingleFlightExecutor("ha-paneld-screen-reconcile")
-    @Volatile private var screenOnReceiver: BroadcastReceiver? = null
-    @Volatile private var webViewRebindReceiver: BroadcastReceiver? = null
+    // Guards both receiver fields, so a startup registering on the runtime lane and onDestroy releasing
+    // on the main thread cannot interleave (see releaseServiceReceivers).
+    private val receiverLock = Any()
+    private var screenOnReceiver: BroadcastReceiver? = null
+    private var webViewRebindReceiver: BroadcastReceiver? = null
 
     /**
      * Whether this panel could repair its own Android System WebView, computed away from the screen.
@@ -4691,6 +4694,7 @@ class PaneldService : Service() {
             runCatching { contentResolver.unregisterContentObserver(observer) }
             brightnessObserver = null
         }
+        releaseServiceReceivers()
         closeServiceAdmissions()
         // A deliberately dark panel is the only external state that becomes unrecoverable if Android
         // kills this process after onDestroy returns (the touch-wake overlay dies with it). Give its
@@ -4749,11 +4753,9 @@ class PaneldService : Service() {
                     .getOrDefault(false),
             )
             // The physical-wake reconciliation publishes INTO the MQTT runtime, so it must be provably
-            // terminal before that runtime is retired: unregister first so no new work can be posted,
-            // then join the worker so a reconciliation already in flight cannot publish through a
-            // retired client. Ordered before the retirement fence below for exactly that reason.
-            closeOwner("screen-on reconciliation") { stopScreenOnReconciliation() }
-            closeOwner("WebView rebind watch") { stopWebViewRebindWatch() }
+            // terminal before that runtime is retired. Its receiver is already unregistered, so no new
+            // work can be posted; join the worker so a reconciliation already in flight cannot publish
+            // through a retired client. Ordered before the retirement fence below for exactly that reason.
             closeOwner("WebView repair offer") { WebViewRepairRuntime.detach() }
             closeOwner("update entity observers") { detachSoftwareUpdateObservers() }
             closeOwnerResult("screen reconcile worker") {
@@ -5083,7 +5085,6 @@ class PaneldService : Service() {
      * the bl_power routes, which must not happen on the main thread.
      */
     private fun startScreenOnReconciliation() {
-        if (screenOnReceiver != null) return
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action != Intent.ACTION_SCREEN_ON || teardownBoundary.isStopping) return
@@ -5101,20 +5102,33 @@ class PaneldService : Service() {
         val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
         // ACTION_SCREEN_ON is a protected system broadcast, so unlike the navbar's @hide volume action
         // this one is still delivered to a NOT_EXPORTED receiver — the tighter of the two flags.
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                registerReceiver(receiver, filter)
-            }
-        }.onSuccess { screenOnReceiver = receiver }
-            .onFailure { Log.w(TAG, "screen-on reconciliation could not be registered", it) }
+        synchronized(receiverLock) {
+            if (screenOnReceiver != null || teardownBoundary.isStopping) return
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                    registerReceiver(receiver, filter)
+                }
+            }.onSuccess { screenOnReceiver = receiver }
+                .onFailure { Log.w(TAG, "screen-on reconciliation could not be registered", it) }
+        }
     }
 
-    private fun stopScreenOnReconciliation() {
-        screenOnReceiver?.let { runCatching { unregisterReceiver(it) } }
+    /**
+     * Unregister every receiver this service registered, on the calling thread. Android sweeps a destroyed
+     * service's receivers as soon as onDestroy returns and reports each one still registered as leaked,
+     * so this cannot wait for the runtime lane, whose queued teardown may overrun the service deadline.
+     * The start functions take the same lock and register nothing once teardown has begun, so a startup
+     * still in flight either registers before this runs or not at all.
+     */
+    private fun releaseServiceReceivers() = synchronized(receiverLock) {
+        for (receiver in listOfNotNull(screenOnReceiver, webViewRebindReceiver)) {
+            runCatching { unregisterReceiver(receiver) }
+        }
         screenOnReceiver = null
+        webViewRebindReceiver = null
     }
 
     /**
@@ -5215,7 +5229,6 @@ class PaneldService : Service() {
     }
 
     private fun startWebViewRebindWatch() {
-        if (webViewRebindReceiver != null) return
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (teardownBoundary.isStopping) return
@@ -5269,20 +5282,18 @@ class PaneldService : Service() {
         }
         // Both are protected system broadcasts, so — as with the screen-on receiver — the tighter
         // NOT_EXPORTED flag still receives them.
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                registerReceiver(receiver, filter)
-            }
-        }.onSuccess { webViewRebindReceiver = receiver }
-            .onFailure { Log.w(TAG, "WebView rebind watch could not be registered", it) }
-    }
-
-    private fun stopWebViewRebindWatch() {
-        webViewRebindReceiver?.let { runCatching { unregisterReceiver(it) } }
-        webViewRebindReceiver = null
+        synchronized(receiverLock) {
+            if (webViewRebindReceiver != null || teardownBoundary.isStopping) return
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                    registerReceiver(receiver, filter)
+                }
+            }.onSuccess { webViewRebindReceiver = receiver }
+                .onFailure { Log.w(TAG, "WebView rebind watch could not be registered", it) }
+        }
     }
 
     private fun runFinalizerStep(deadline: MonotonicDeadline, block: () -> Unit): Boolean {
