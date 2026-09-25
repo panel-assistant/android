@@ -1086,7 +1086,7 @@
     "configure.group.dashboard": {
       "sourceHash": "67b696468610b879ed7f224dbf6b0861f27e39d20454cb9d7af1ec52d3e5eeaa",
       "state": "machine-cross-checked",
-      "text": "仪表板"
+      "text": "仪表盘"
     },
     "configure.group.diagnostics": {
       "sourceHash": "268f14bbfe119c1e92150583af960a086d7db9619a097f8aa72ff6779842f610",
