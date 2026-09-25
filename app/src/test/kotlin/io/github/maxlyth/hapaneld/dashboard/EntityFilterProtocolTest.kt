@@ -10,6 +10,62 @@ import org.junit.Test
 class EntityFilterProtocolTest {
     private val ids = listOf("light.alpha", "sensor.temperature")
 
+    @Test fun unfilteredEntitySubscriptionGetsExactAllowList() {
+        val result = EntityFilterProtocol.injectSubscription(
+            """{"id":7,"type":"subscribe_entities"}""", ids,
+        )
+
+        assertTrue(result.modified)
+        val json = JSONObject(result.text)
+        assertEquals(7, json.getInt("id"))
+        assertEquals(ids, (0 until json.getJSONArray("entity_ids").length()).map {
+            json.getJSONArray("entity_ids").getString(it)
+        })
+    }
+
+    @Test fun intentionallyEmptyAllowListStillFiltersTheSubscription() {
+        val result = EntityFilterProtocol.injectSubscription(
+            """{"id":7,"type":"subscribe_entities"}""", emptyList(),
+        )
+
+        assertTrue(result.modified)
+        val encoded = JSONObject(result.text).getJSONArray("entity_ids")
+        assertEquals(1, encoded.length())
+        assertEquals(EntityFilterProtocol.EMPTY_SUBSCRIPTION_ENTITY_ID, encoded.getString(0))
+        // Mirror HA core's `set(msg.get("entity_ids", [])) or None`: this must stay non-null so
+        // both initial hydration and subsequent updates use the filtered path.
+        val homeAssistantEntityIds = (0 until encoded.length()).map(encoded::getString).toSet().ifEmpty { null }
+        assertTrue(homeAssistantEntityIds != null)
+        assertFalse(homeAssistantEntityIds!!.contains("light.any_real_entity"))
+    }
+
+    @Test fun authAndUnrelatedMessagesRemainByteIdentical() {
+        val auth = """{ "type": "auth", "access_token": "do-not-reencode" }"""
+        val ping = """{"id":8,"type":"ping"}"""
+
+        assertEquals(EntityFilterProtocol.Mutation(auth, false), EntityFilterProtocol.injectSubscription(auth, ids))
+        assertEquals(EntityFilterProtocol.Mutation(ping, false), EntityFilterProtocol.injectSubscription(ping, ids))
+    }
+
+    @Test fun anExistingNarrowFilterIsNeverWidenedOrReencoded() {
+        val existing = """{ "id": 9, "type": "subscribe_entities", "entity_ids": ["light.one"] }"""
+        assertEquals(
+            EntityFilterProtocol.Mutation(existing, false),
+            EntityFilterProtocol.injectSubscription(existing, ids),
+        )
+        val nested = """{ "id": 10, "type": "subscribe_entities", "exclude": {"entity_globs":["sensor.*"]} }"""
+        assertEquals(
+            EntityFilterProtocol.Mutation(nested, false),
+            EntityFilterProtocol.injectSubscription(nested, ids),
+        )
+    }
+
+    @Test fun malformedAndOversizedFramesPassThrough() {
+        assertFalse(EntityFilterProtocol.injectSubscription("not-json", ids).modified)
+        val huge = "x".repeat(EntityFilterProtocol.MAX_TEXT_FRAME_CHARS + 1)
+        assertEquals(huge, EntityFilterProtocol.injectSubscription(huge, ids).text)
+    }
+
     @Test fun entityIdsAreSortedDeduplicatedAndValidated() {
         assertEquals(
             listOf("light.a", "sensor.b"),
