@@ -65,7 +65,8 @@ class RuntimeLocalizationContractTest {
                     translated.state == TranslationState.MACHINE_CROSS_CHECKED ||
                         translated.state == TranslationState.COMMUNITY_CORRECTED ||
                         (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT),
+                            translated.state == TranslationState.MACHINE_DRAFT) ||
+                        EarlyAccessReviewHold.holds(locale, key, translated),
                 )
             }
         }
