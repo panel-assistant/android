@@ -13,6 +13,8 @@ import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -200,6 +202,19 @@ class AutoBrightnessControllerLockTest {
         assertFalse("a root command is never interrupted by teardown", h.root.interrupted.get())
     }
 
+    @Test(timeout = 30_000)
+    fun `close closes ambient history even while a write outlasts the close bound`() {
+        val historyExecutor = Executors.newSingleThreadScheduledExecutor()
+        val h = harness(historyExecutor = historyExecutor)
+        h.controller.submitPanelLux(LUX)
+        assertTrue(h.root.entered.await(5, TimeUnit.SECONDS))
+
+        h.controller.closeAndJoin(timeoutMs = 200L)
+
+        assertTrue("history is flushed and closed although su is still blocked", historyExecutor.isShutdown)
+        assertEquals("the write is still inside su", 1L, h.root.exited.count)
+    }
+
     private class Harness(val controller: AutoBrightnessController, val root: BlockingRootShell)
 
     /** Blocks the first actuation before its action runs; counts completed actuations. */
@@ -301,6 +316,7 @@ class AutoBrightnessControllerLockTest {
         baselineCache: AdaptiveBaselineCache = AdaptiveBaselineCache(),
         haEntity: String = "",
         wallClockMs: () -> Long = System::currentTimeMillis,
+        historyExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor(),
     ): Harness {
         val files = Files.createTempDirectory("auto-brightness-lock").toFile().also { it.deleteOnExit() }
         val prefs = proxyPreferences()
@@ -318,7 +334,7 @@ class AutoBrightnessControllerLockTest {
             actuationGate = actuationGate,
             wallClockMs = wallClockMs,
             elapsedRealtimeMs = clock,
-            history = AmbientHistoryRuntime(context),
+            history = AmbientHistoryRuntime(context, executor = historyExecutor),
             preference = ManualBrightnessAuthority(
                 MemoryPreferenceStore(),
                 wallClockMs = System::currentTimeMillis,
