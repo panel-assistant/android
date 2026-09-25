@@ -70,6 +70,35 @@ class HaPanelDeviceMatcherTest {
         assertTrue(HaPanelDeviceMatcher.hasPanelAssistantDevice(response(mqttDevice("m", "x"), paDevice("p", entry))))
     }
 
+    @Test fun `the probe read asks only what it needs over the registry socket`() = kotlinx.coroutines.runBlocking {
+        val display = JSONObject().put("result", JSONObject().put("entities", JSONArray()
+            .put(display("binary_sensor.study_proximity", "pa-device", "panel_assistant"))))
+        val sent = mutableListOf<JSONObject>()
+        val request: suspend (JSONObject) -> JSONObject = { command ->
+            sent += command
+            if (command.getString("type") == "config/entity_registry/list_for_display") display else probe()
+        }
+
+        assertEquals(null, HaPanelDeviceMatcher.readProbe(request, response(mqttDevice("m", "ha-paneld-uid-abc"))))
+        assertEquals("an MQTT-only registry costs no extra reads", 0, sent.size)
+
+        val paOnly = response(paDevice("pa-device", entry))
+        assertEquals(setOf(entry), HaPanelDeviceMatcher.panelAssistantEntryIds(
+            HaPanelDeviceMatcher.readProbe(request, paOnly, display), did,
+        ))
+        assertEquals(listOf("config/entity_registry/get_entries"), sent.map { it.getString("type") })
+        assertEquals("binary_sensor.study_proximity", sent.single().getJSONArray("entity_ids").getString(0))
+
+        sent.clear()
+        assertEquals(setOf(entry), HaPanelDeviceMatcher.panelAssistantEntryIds(
+            HaPanelDeviceMatcher.readProbe(request, paOnly), did,
+        ))
+        assertEquals(
+            listOf("config/entity_registry/list_for_display", "config/entity_registry/get_entries"),
+            sent.map { it.getString("type") },
+        )
+    }
+
     // --- the three registry shapes ------------------------------------------------------------
 
     @Test fun `mqtt only resolves by the minted identity and then by the panel id`() {
