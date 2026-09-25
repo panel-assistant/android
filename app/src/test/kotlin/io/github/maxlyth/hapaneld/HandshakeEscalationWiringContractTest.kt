@@ -59,6 +59,11 @@ class HandshakeEscalationWiringContractTest {
         assertTrue("the fresh step must load the target afresh", escalation.contains("loadCorrectedHomeDashboard()"))
         val teardown = escalation.indexOf("teardownWeb()")
         assertTrue("the recreation step must tear the WebView down", teardown >= 0)
+        val cleared = escalation.indexOf("interstitialShown = false")
+        assertTrue(
+            "the recreation step must clear the reconnecting-page flag before the rebuild",
+            cleared in 0 until teardown,
+        )
         assertTrue("the recreation step must rebuild after teardown", escalation.indexOf("buildAndLoad(config)") > teardown)
         assertTrue(
             "an escalated window must be no shorter than the reload it replaces",
