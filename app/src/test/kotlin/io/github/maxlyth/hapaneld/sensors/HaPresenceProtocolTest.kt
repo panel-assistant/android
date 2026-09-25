@@ -109,7 +109,11 @@ class HaPresenceProtocolTest {
             .put(JSONObject().put("ei", "binary_sensor.merged_motion").put("di", "merged-device").put("pl", "mqtt"))))
         val states = JSONArray().put(state("binary_sensor.merged_motion", "off", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, clonedAndroidId, "panel_one", emptySet())
+        val result = runCatching {
+            HaPresenceProtocol.projectArea(devices, areas, entities, states, clonedAndroidId, "panel_one", emptySet())
+        }
+        assertTrue("projection failed: ${result.exceptionOrNull()?.message}", result.isSuccess)
+        val projection = result.getOrThrow()
 
         assertEquals(
             "the merged device is not this panel, so its entities remain external Area motion",
