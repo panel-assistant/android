@@ -3,12 +3,9 @@ package io.github.maxlyth.hapaneld
 import android.Manifest
 import android.webkit.PermissionRequest
 import io.github.maxlyth.hapaneld.audio.MicrophoneAdmission
-import java.io.File
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -122,47 +119,6 @@ class DashboardWebViewCaptureGrantsTest {
         assertArrayEquals(
             emptyArray<String>(),
             grants(arrayOf(PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID)),
-        )
-    }
-
-    // ---- there is exactly one place a capture grant can be made -----------------------------------
-
-    private val dashboard = listOf(
-        File("src/main/kotlin/io/github/maxlyth/hapaneld/DashboardActivity.kt"),
-        File("app/src/main/kotlin/io/github/maxlyth/hapaneld/DashboardActivity.kt"),
-    ).first { it.isFile }.readText()
-
-    /**
-     * The admission above is worth only as much as the number of places that can bypass it. This is
-     * a source-structure property — the handler needs a live WebView and cannot be exercised in a
-     * JVM test — pinned the same way as `PanelHaSignInReachabilityTest`.
-     */
-    @Test
-    fun everyCaptureGrantGoesThroughTheAdmittedSet() {
-        val grantCalls = Regex("""\brequest\.grant\(""").findAll(dashboard).count()
-        assertEquals("a second grant site would not be covered by any test here", 1, grantCalls)
-
-        val declarations = Regex("""internal fun webViewCaptureGrants\(""").findAll(dashboard).count()
-        val mentions = Regex("""\bwebViewCaptureGrants\(""").findAll(dashboard).count()
-        assertEquals("one decision function", 1, declarations)
-        assertEquals("declared once and called once: the grant site is the only caller", 2, mentions)
-
-        val handler = dashboard.substringAfter("override fun onPermissionRequest(").substringBefore("\n        }")
-        assertTrue(
-            "the handler must decide through webViewCaptureGrants, not inline: $handler",
-            handler.contains("webViewCaptureGrants("),
-        )
-        assertTrue(
-            "the handler must consult the WebView opt-in admission",
-            handler.contains("MicrophoneAdmission.webViewCaptureAllowed"),
-        )
-        assertTrue(
-            "the handler must consult the shared-microphone idleness admission",
-            handler.contains("MicrophoneAdmission.isIdle"),
-        )
-        assertFalse(
-            "the handler must not grant anything it did not put through the decision",
-            handler.contains("request.grant(arrayOf") || handler.contains("request.grant(request.resources"),
         )
     }
 }

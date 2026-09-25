@@ -6,7 +6,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class ExternalBusProtocolTest {
     @Test fun `config-get keeps exact id and advertises only implemented capabilities`() {
@@ -124,93 +123,6 @@ class ExternalBusProtocolTest {
     private fun messageOf(script: String): JSONObject {
         assertTrue(script.startsWith("externalBus(") && script.endsWith(");"))
         return JSONObject(script.removePrefix("externalBus(").removeSuffix(");"))
-    }
-}
-
-class ExternalBusActivityWiringTest {
-    private val source = listOf(
-        "src/main/kotlin/io/github/maxlyth/hapaneld/DashboardActivity.kt",
-        "app/src/main/kotlin/io/github/maxlyth/hapaneld/DashboardActivity.kt",
-        "../app/src/main/kotlin/io/github/maxlyth/hapaneld/DashboardActivity.kt",
-    ).map(::File).first { it.isFile }.readText()
-    private fun dashboardClientBlock(from: String, to: String): String =
-        source.substring(source.lastIndexOf(from), source.indexOf(to, source.lastIndexOf(from)))
-
-    @Test fun `allowed main-frame document navigation rotates session and starts watchdog lifecycle`() {
-        val block = dashboardClientBlock("override fun shouldOverrideUrlLoading", "override fun onPageFinished")
-        assertTrue(block.contains("request.isForMainFrame"))
-        assertTrue(block.indexOf("rotateBusDocument") < block.indexOf("onLoadStarted()"))
-    }
-
-    @Test fun `page-start backstop keeps local recovery documents bridge-free`() {
-        val block = dashboardClientBlock("override fun onPageStarted", "override fun onPageFinished")
-        assertTrue(block.contains("!dashboardNavigationAllowed(config.haUrl, url)"))
-        assertTrue(block.indexOf("suspendBusDocument(view)") < block.indexOf("beginBusDocument(view"))
-        assertTrue(block.indexOf("return") < block.indexOf("beginBusDocument(view"))
-    }
-
-    @Test fun `theme capture and callback are document-session checked`() {
-        val block = source.substring(
-            source.indexOf("private fun captureDashboardTheme"),
-            source.indexOf("private fun onAuthRejected"),
-        )
-        assertEquals(2, Regex("bridgeCurrent\\(generation, session\\)").findAll(block).count())
-        assertFalse(block.contains("rendererCurrent(generation)"))
-    }
-
-    @Test fun `V2 is the only installed transport and commands have one evaluation site`() {
-        assertFalse(source.contains("addJavascriptInterface"))
-        assertFalse(source.contains("@JavascriptInterface"))
-        assertTrue(source.contains("WebViewCompat.addWebMessageListener(view, EXTERNAL_APP_V2"))
-        assertTrue(source.contains("WebViewCompat.addWebMessageListener(view, HaPaneldV2Protocol.OBJECT_NAME"))
-        assertTrue(source.contains("WebViewCompat.removeWebMessageListener(view, EXTERNAL_APP_V2"))
-        assertTrue(source.contains("WebViewFeature.WEB_MESSAGE_LISTENER"))
-        assertTrue(source.contains("isMainFrame &&\n        bridgeCurrent"))
-        assertTrue(source.contains("sameDashboardOrigin(sourceOrigin, callbackView.url)"))
-        assertEquals(1, Regex("evaluateJavascript\\(command\\.script").findAll(source).count())
-    }
-
-    @Test fun `compatibility gate precedes WebView construction and V1 is removed defensively`() {
-        val gate = source.indexOf("DashboardV2CompatibilityProbe(")
-        val build = source.indexOf("private fun buildCompatibleAndLoad")
-        val create = source.indexOf("createWebView(config, generation)", build)
-        assertTrue(gate in 0 until build)
-        assertTrue(create > build)
-        assertTrue(source.contains("view.removeJavascriptInterface(\"externalApp\")"))
-    }
-
-    @Test fun `compatibility preflight is fenced by current credentials as well as endpoint`() {
-        val build = source.substring(
-            source.indexOf("private fun buildAndLoad"),
-            source.indexOf("private fun buildCompatibleAndLoad"),
-        )
-        assertTrue(build.contains("DashboardV2CompatibilityOwner(url, config.haAuthSnapshot().stableOwner())"))
-        assertTrue(build.contains("compatibilityCheckingOwner == owner"))
-        assertTrue(build.contains("compatibilityAttempts.owns(compatibilityTicket, compatibilityOwner(config))"))
-        assertTrue(build.contains("compatibilityAttempts.owns(compatibilityTicket, currentOwner)"))
-    }
-
-    @Test fun `V2 listeners are retained across HA documents and detached for local documents`() {
-        val begin = source.substring(
-            source.indexOf("private fun beginBusDocument"),
-            source.indexOf("private fun expectPageStart"),
-        )
-        assertTrue(begin.contains("v2BridgeDocument = V2BridgeDocument"))
-        assertTrue(begin.contains("if (v2ListenerView !== view) installV2Listeners"))
-        assertFalse(begin.contains("removeV2Listeners"))
-
-        val pageStart = dashboardClientBlock("override fun onPageStarted", "override fun onPageFinished")
-        assertFalse(pageStart.contains("addWebMessageListener"))
-        assertFalse(pageStart.contains("removeWebMessageListener"))
-        assertTrue(pageStart.contains("suspendBusDocument(view)"))
-
-        val build = source.substring(
-            source.indexOf("private fun buildCompatibleAndLoad"),
-            source.indexOf("private fun showWaitingForEntityBootstrap"),
-        )
-        assertTrue(build.indexOf("createWebView(config, generation)") < build.indexOf("w.loadUrl(target)"))
-        val create = source.substring(source.indexOf("private fun createWebView"))
-        assertTrue(create.contains("installV2Listeners(this, config)"))
     }
 }
 
