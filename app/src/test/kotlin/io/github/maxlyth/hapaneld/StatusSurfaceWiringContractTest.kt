@@ -337,6 +337,10 @@ class StatusSurfaceWiringContractTest {
         )
         // Effective, not stored: Ambient must reach the WebView as the Dark, Light or Follow it
         // resolves to, and a stored-policy signature would never notice the room changing.
+        assertTrue(
+            "the WebView must be built from the effective policy",
+            dashboard.contains("val themeSignature = config.dashboardThemeEffective"),
+        )
         val build = dashboard.substringAfter("val themeSignature = config.dashboardThemeEffective")
             .substringBefore("addDocumentStartJavaScript")
         assertTrue(
