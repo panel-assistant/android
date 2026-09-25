@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.device.BacklightRoute
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.device.EvdevButton
 import io.github.maxlyth.hapaneld.device.LedMechanism
@@ -10,6 +11,7 @@ import io.github.maxlyth.hapaneld.device.ProvisioningIntent
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.hardware.LedTransfer
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
 
 /** DeviceProfile adapter for a validated declarative document. */
 class DataDeviceProfile internal constructor(
@@ -42,10 +44,16 @@ class DataDeviceProfile internal constructor(
         "autodetect" -> LedMechanism.AUTODETECT
         else -> LedMechanism.NONE
     }
-    override val ledTransfer: LedTransfer = when (document.hardware.led.transfer) {
-        "rk3576-four-bit" -> LedTransfer.Rk3576FourBit
-        else -> LedTransfer.Identity
-    }
+    override val ledTransfer: LedTransfer =
+        if (document.hardware.led.transfer == LedTransfer.RK3576_FOUR_BIT) {
+            LedTransfer.Rk3576FourBit
+        } else {
+            LedTransfer.curved(validCurve(document.hardware.led.curve))
+        }
+    override val backlightTransfer: TransferCurve = validCurve(document.hardware.backlight?.curve)
+    override val backlightRoute: BacklightRoute =
+        if (document.hardware.backlight?.route == "setting") BacklightRoute.SETTING else BacklightRoute.NODE
+    override val buttonBacklightTransfer: TransferCurve = validCurve(document.hardware.buttonBacklight)
     override val screenOff = when (document.hardware.screenOff) {
         "su-blpower" -> ScreenOff.SU_BLPOWER
         "daemon-blpower" -> ScreenOff.DAEMON_BLPOWER
@@ -161,3 +169,7 @@ internal fun ProfileDocument.matchedGroupPriority(rawFacts: DeviceFacts): Int? {
 }
 
 internal fun ProfileDocument.matches(rawFacts: DeviceFacts): Boolean = matchedGroupPriority(rawFacts) != null
+
+/** The validator refuses an invalid curve before a profile is activated; this only keeps the fallback explicit. */
+private fun validCurve(curve: ProfileLightCurve?): TransferCurve =
+    curve?.let { runCatching { it.toTransferCurve() }.getOrNull() } ?: TransferCurve.Identity

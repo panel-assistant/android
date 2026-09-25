@@ -37,4 +37,22 @@ interface LedTransfer {
         override fun green(v: Int) = safe(v)
         override fun blue(v: Int) = safe(v)
     }
+
+    /** One [TransferCurve] on every channel, on the 0..255 scale the LED backends take. A floor applies
+     *  per channel, so it lifts a mixed colour's weak channel and tints it; keep an LED floor small. */
+    class Curved(private val curve: TransferCurve) : LedTransfer {
+        override fun red(v: Int) = curve.toHardware(v)
+        override fun green(v: Int) = curve.toHardware(v)
+        override fun blue(v: Int) = curve.toHardware(v)
+    }
+
+    companion object {
+        const val RK3576_FOUR_BIT = "rk3576-four-bit"
+
+        /** The `hardware.led.transfer` names a profile may declare: the curve names plus the ioctl stub. */
+        val NAMES = linkedSetOf("identity", RK3576_FOUR_BIT, "perceptual", "gamma", "points")
+
+        /** The LED transfer for a curve; the identity curve is the clamped passthrough. */
+        fun curved(curve: TransferCurve): LedTransfer = if (curve == TransferCurve.Identity) Identity else Curved(curve)
+    }
 }
