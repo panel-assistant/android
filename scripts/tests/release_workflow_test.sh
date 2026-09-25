@@ -525,14 +525,31 @@ if grep -Fq '/usr/bin/install -d -m 0755 dist' <<<"$asset_step" && \
 else
   fail_test "both signed APKs and their bounded V4 sidecars remain in the exact readable release set"
 fi
-if [ "$(grep -Fc 'if [ "${#RELEASE_TAG}" -gt 64 ] || [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc[1-9][0-9]*)?$ ]]' "$WORKFLOW")" -eq 2 ] && \
-   ! grep -Eq '^[[:space:]]*if:[[:space:]]*(\$\{\{[[:space:]]*)?false' <<<"$descriptor_step_yaml$proof_step_yaml$final_step_yaml" && \
+# Both tag gates in the workflow run, as written, over the shared release corpus: stable and rc
+# tags pass, every other kind is refused.
+tag_gates="$(grep -E '^[[:space:]]*if .*=~ .*RELEASE_TAG|^[[:space:]]*if .*RELEASE_TAG.*=~' "$WORKFLOW" | sed 's/^[[:space:]]*//')"
+tag_gate_disagreements="$(
+  while IFS= read -r gate; do
+    while IFS=$'\t' read -r kind tag; do
+      verdict="$(RELEASE_TAG="$tag" bash -c "$gate echo refused; else echo accepted; fi")"
+      case "$kind:$verdict" in stable:accepted|rc:accepted|build:refused|refused:refused) ;; *) echo "$kind $tag -> $verdict" ;; esac
+    done < <(python3 -c 'import json, sys
+for t in json.load(open(sys.argv[1]))["tags"]: print(t["kind"] + "\t" + t["tag"])' "$ROOT/scripts/tests/fixtures/release-identity-corpus.json")
+  done <<<"$tag_gates"
+)"
+if [ "$(grep -c . <<<"$tag_gates")" -eq 2 ] && [ -z "$tag_gate_disagreements" ]; then
+  pass "both release tag gates agree with the shared release corpus"
+else
+  printf '# %s\n' "$tag_gate_disagreements"
+  fail_test "both release tag gates agree with the shared release corpus"
+fi
+if ! grep -Eq '^[[:space:]]*if:[[:space:]]*(\$\{\{[[:space:]]*)?false' <<<"$descriptor_step_yaml$proof_step_yaml$final_step_yaml" && \
    ! grep -Eq '^[[:space:]]*continue-on-error:[[:space:]]*true' <<<"$descriptor_step_yaml$proof_step_yaml$final_step_yaml" && \
    ! grep -Eq '^[[:space:]]*if[[:space:]]+false([[:space:];]|$)' <<<"$descriptor_step" && \
    grep -Fq 'scripts/tests/release_workflow_test.sh' "$ROOT/.github/workflows/ci.yml"; then
-  pass "release tag grammar, active descriptor step, and regular host-CI coverage are explicit"
+  pass "active descriptor step and regular host-CI coverage are explicit"
 else
-  fail_test "release tag grammar, active descriptor step, and regular host-CI coverage are explicit"
+  fail_test "active descriptor step and regular host-CI coverage are explicit"
 fi
 
 for shell_step in "$descriptor_step" "$proof_step" "$final_step"; do
