@@ -25,7 +25,7 @@
 
 - **A panel without the Home Assistant Companion app no longer offers a Companion update.** The MQTT "Companion app" update entity exists only while a Companion app is installed on the panel. Panels without one used to list a permanent "not installed" update under Settings, Updates in Home Assistant; a first Companion install stays on the panel's Install page.
 
-- **Text that decides whether something risky happens now appears in English in Dutch, Polish and Ukrainian until it has been reviewed.** These three languages are early access and their text is machine translated. Approvals, permissions, security settings, destructive actions and recovery steps were part of that, and a wrong reading of one of them can cost someone their data or their access. Those 440 strings per language now show the English original, and the rest of the interface stays translated. German, French, Italian, Spanish and Simplified Chinese are unchanged.
+- **Dutch, Polish and Ukrainian text for risky actions and for setup has been checked against the English.** These three languages are early access and machine translated. Every approval, permission, security setting, destructive action and recovery step (441 strings per language), and every setup and install string (366 per language), was read against the English source and corrected where the meaning had changed; several drafts had reversed an instruction or named the wrong thing. The rest of the interface in these languages is still unreviewed machine translation, English remains authoritative, and no text has been reviewed by a speaker of the language. German, French, Italian, Spanish and Simplified Chinese are unchanged.
 
 ### Fixed
 
