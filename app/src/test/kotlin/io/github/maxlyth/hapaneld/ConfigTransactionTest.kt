@@ -247,6 +247,24 @@ class ConfigTransactionTest {
         assertNull(config.lastLaunchScreenVersionCode)
     }
 
+    @Test fun notificationConsentAskIsRecordedPerVersionAndDurable() {
+        val prefs = fakePreferences()
+        val config = Config(prefs.instance)
+
+        assertNull(config.lastNotificationConsentVersionCode)
+        assertTrue(config.commitNotificationConsentAsked(900L))
+        assertEquals(900L, Config(prefs.instance).lastNotificationConsentVersionCode)
+        assertNull("Consent and the launch screen are recorded apart", Config(prefs.instance).lastLaunchScreenVersionCode)
+    }
+
+    @Test fun failedNotificationConsentRecordLeavesNoAsk() {
+        val prefs = fakePreferences(commitSucceeds = false)
+        val config = Config(prefs.instance)
+
+        assertFalse(config.commitNotificationConsentAsked(900L))
+        assertNull(config.lastNotificationConsentVersionCode)
+    }
+
     @Test fun powerSafetyAcknowledgementIsExactReplaceableAndDurable() {
         val prefs = fakePreferences()
         val config = Config(prefs.instance)
