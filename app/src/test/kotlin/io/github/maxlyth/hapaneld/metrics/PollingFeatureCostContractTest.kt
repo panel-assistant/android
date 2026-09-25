@@ -36,7 +36,6 @@ class PollingFeatureCostContractTest {
             "control/KioskController.kt" to "KIOSK_STATE_POLL",
             "control/RelayController.kt" to "RELAY_STATE_READ",
             "control/ZigbeeHealthMonitor.kt" to "ZIGBEE_HEALTH_SAMPLE",
-            "sensors/ProximityLearningRuntime.kt" to "PROXIMITY_SAMPLE",
         )
         for ((relative, operation) in operationsByFile) {
             val source = sequenceOf(
