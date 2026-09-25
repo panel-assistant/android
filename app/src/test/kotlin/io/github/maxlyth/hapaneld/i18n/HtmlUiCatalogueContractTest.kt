@@ -142,8 +142,12 @@ class HtmlUiCatalogueContractTest {
             "dashboard.controls.reboot" to setOf(
                 "dashboard.controls.root_required_note",
             ),
-            "dashboard.controls.dashboard" to setOf(
+            "configure.group.dashboard" to setOf(
                 "configure.setup.renderer.body",
+                "setup.renderer.failure.explanation",
+            ),
+            "shell.nav.dashboard" to setOf(
+                "setup.proof.dashboard_help",
             ),
         )
 
