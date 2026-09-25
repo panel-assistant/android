@@ -15,6 +15,7 @@ import org.junit.Test
 import java.util.Base64
 
 class PanelAssistantChannelCatalogTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
 
     @Test fun everyConvergerChannelIsDescribedOrFolded() {
         val keys = convergerChannels()

@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MqttNavigationSurfaceTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     @Test fun `navigation actions remain tombstoned but are not MQTT controls`() {
         val source = listOf(
             File("src/main/kotlin/io/github/maxlyth/hapaneld/MqttBridge.kt"),

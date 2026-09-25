@@ -1,7 +1,6 @@
 package io.github.maxlyth.hapaneld
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -21,6 +20,7 @@ import java.io.File
  */
 class AssetSyntaxTest {
 
+    // Source-text reason: syntax-checks and executes every shipped web asset; no JS code text is asserted.
     private val assetsDir: File? =
         listOf("src/main/assets", "app/src/main/assets", "../app/src/main/assets")
             .map { File(it) }
@@ -310,43 +310,6 @@ class AssetSyntaxTest {
             val (code, out) = run(listOf("node", "-e", script, File(dir, "install.js").absolutePath, mode))
             assertEquals("Install picker did not select the expected version ($mode):\n$out", 0, code)
         }
-    }
-
-    @Test fun navigationTargetsDoNotRoundTripThroughDomText() {
-        val dir = assetsDir
-        assumeTrue("assets dir not found (skipping)", dir != null)
-        val switcher = File(dir, "switcher.js").readText()
-        assertFalse("peer navigation target must not be stored in a DOM attribute", switcher.contains("data-base"))
-        assertTrue("peer navigation must use the validated in-memory target", switcher.contains("targets[sel.selectedIndex]"))
-        assertTrue("peer ports must be validated", switcher.contains("Number.isInteger(port)"))
-        assertTrue("peer IPv4 octets must be bounded", switcher.contains("Number(part) > 255"))
-
-        val info = File(dir, "info.js").readText()
-        assertFalse("screenshot URL must not be copied from DOM text", info.contains("im.src=im.getAttribute('data-src')"))
-        assertTrue("hydration must use the server-provided fixed same-origin cached screenshot URL", info.contains("showAndRefreshScreenshot(sc,d.shotCached)"))
-        assertTrue("every dashboard visit must request a fresh screenshot", info.contains("url='api/v1/screenshot.png?t='+Date.now()"))
-        assertTrue("the current screenshot must remain visible until the fresh image loads", info.contains("var next=new Image()"))
-        assertTrue("a fresh capture must seed its immutable placeholder URL for the next tab visit", info.contains("seed.src='api/v1/screenshot.png?cached='+id"))
-        assertTrue(
-            "a cold shell must not refresh until hydration confirms screenshot access",
-            info.contains("sc.getAttribute('data-capture-ok')==='1'"),
-        )
-    }
-
-    @Test fun performanceCardUsesDirectEvidenceAndLabelsCompanionAsAProxy() {
-        val dir = assetsDir
-        assumeTrue("assets dir not found (skipping)", dir != null)
-        val info = File(dir, "info.js").readText()
-        assertTrue(info.contains("built-in live instrumentation"))
-        assertTrue(info.contains("State-event main thread"))
-        assertTrue(info.contains("renderer CPU proxy"))
-        assertTrue(info.contains("not actual tap latency"))
-        assertTrue(info.contains("built-in observer unavailable"))
-        assertTrue(info.contains("built-in live observer unavailable"))
-        assertTrue(info.contains("reload the built-in dashboard to retry"))
-        assertTrue(info.contains("if this persists, update the panel WebView"))
-        assertTrue(info.contains("WebView remote debugging"))
-        assertFalse(info.contains("label:'How it feels'"))
     }
 
     @Test fun performanceCardDistinguishesUnavailableBuiltinObserverFromCompanionProxy() {

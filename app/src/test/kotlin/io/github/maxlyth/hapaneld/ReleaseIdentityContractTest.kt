@@ -11,6 +11,7 @@ class ReleaseIdentityContractTest {
     // meant every version allocation had to edit this test, and a forgotten edit failed CI on the release
     // commit twice. The contract is that the build carries exactly what that file declares.
     @Test fun buildConfigCarriesTheDeclaredReleaseIdentity() {
+        // Source-text reason: loads version.properties as input data.
         val declared = Properties().apply { TestSources.appFile("version.properties").inputStream().use { load(it) } }
         val versionName = requireNotNull(declared.getProperty("versionName"))
         val versionCode = requireNotNull(declared.getProperty("versionCode")).toInt()

@@ -6,6 +6,7 @@ import org.junit.Test
 import java.io.File
 
 class LiveSettingHandlerBindingTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private data class Invocation(val handler: String, val arguments: List<Any?>)
 
     private class RecordingHandlers(private val invocations: MutableList<Invocation>) : LiveSettingHandlers {

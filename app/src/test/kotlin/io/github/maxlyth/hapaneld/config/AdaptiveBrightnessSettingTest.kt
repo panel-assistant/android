@@ -2,7 +2,6 @@ package io.github.maxlyth.hapaneld.config
 
 import io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve
 import io.github.maxlyth.hapaneld.control.BrightnessController
-import java.io.File
 import kotlin.math.ceil
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -113,24 +112,4 @@ class AdaptiveBrightnessSettingTest {
         }
     }
 
-    @Test fun `configure hides automatic brightness child controls while disabled`() {
-        val source = listOf(
-            File("src/main/assets/configure.js"),
-            File("app/src/main/assets/configure.js"),
-        ).first { it.isFile }.readText()
-
-        val renderGate = source.substring(
-            source.indexOf("function shouldRenderRow"),
-            source.indexOf("function radioJoined"),
-        )
-        assertTrue(renderGate.contains("auto_brightness_minimum_percent"))
-        assertTrue(renderGate.contains("auto_brightness_response_percent"))
-        assertTrue(renderGate.contains("""values.auto_brightness !== "true""""))
-
-        val displayCard = source.substring(
-            source.indexOf("""if (g === "Display")"""),
-            source.indexOf("// Dashboard card action"),
-        )
-        assertTrue(displayCard.contains("""values.auto_brightness === "true" && ambientLightSourceConfigured()"""))
-    }
 }

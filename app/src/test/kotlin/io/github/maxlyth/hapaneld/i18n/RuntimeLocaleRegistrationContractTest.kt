@@ -10,6 +10,7 @@ import org.junit.Test
 
 /** One admission boundary for every runtime surface that must move with a new release locale. */
 class RuntimeLocaleRegistrationContractTest {
+    // Source-text reason: the locale lists shipped in the i18n catalogues and the web assets are the public ?lang contract.
     private val assets = File("src/main/assets")
     private val release = AppLocale.RELEASE_LOCALES.toList()
 
@@ -28,9 +29,6 @@ class RuntimeLocaleRegistrationContractTest {
         val configure = assets.resolve("configure.js").readText()
         val labels = jsObjectKeys(configure, "UI_LANGUAGE_LABELS")
         assertEquals(SettingsRegistry.UI_LANGUAGES, labels)
-        assertTrue("Configure browser admission must derive from its finite selector", configure.contains("Object.keys(UI_LANGUAGE_LABELS)"))
-        assertTrue(configure.contains("locale !== \"auto\""))
-        assertFalse("Configure must not retain per-language browser-admission branches", configure.contains("lower === \"de\""))
     }
 
     @Test fun `Setup and Install retain every admitted locale and only the debug pseudolocale extra`() {

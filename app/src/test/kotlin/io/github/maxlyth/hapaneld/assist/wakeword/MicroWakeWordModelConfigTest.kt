@@ -7,6 +7,7 @@ import org.junit.Test
 import java.io.File
 
 class MicroWakeWordModelConfigTest {
+    // Source-text reason: loads the shipped wake word manifests as input data.
     private val assets = File("src/main/assets/wakeword")
 
     @Test

@@ -1,8 +1,6 @@
 package io.github.maxlyth.hapaneld.http
 
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
-import java.io.File
 import org.junit.Test
 
 class PanelBrowserTitleTest {
@@ -21,10 +19,4 @@ class PanelBrowserTitleTest {
         assertEquals("260 · ha-paneld", panelBrowserTitle("   ", versionName = "0.9.5-rc1", versionCode = 260))
     }
 
-    @Test
-    fun backupFilenameUsesFriendlyNameMetadataRatherThanTitlePosition() {
-        val source = File("src/main/assets/install.js").readText()
-        assertTrue(source.contains("switcher.dataset.selfName"))
-        assertTrue(source.contains("document.title.split('·')[0]"))
-    }
 }

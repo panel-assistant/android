@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.storage
 
+import io.github.maxlyth.hapaneld.testsupport.TestSources
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -342,5 +343,16 @@ class StorageHealthTest {
         assertEquals("app-state-write", sanitizeDatabaseOperation("app_state:renderer"))
         assertEquals("app-state-write", sanitizeDatabaseOperation("app_state"))
         assertEquals("app-state-write", sanitizeDatabaseOperation(sanitizeDatabaseOperation("app_state:mqtt")))
+    }
+
+    // Source-text reason: reads the installer's published operation enum from the shipped install.js as
+    // input; a label the installer can render must never collapse to the generic "database".
+    @Test fun everyOperationTheInstallerRendersSurvivesSanitizing() {
+        val installer = TestSources.asset("install.js").readText()
+        val enum = Regex("""operation:\[([^\]]*)\]""").find(installer)?.groupValues?.get(1)
+        val labels = Regex(""""([a-z0-9_-]+)"""").findAll(requireNotNull(enum) { "install.js has no operation enum" })
+            .map { it.groupValues[1] }.filterNot { it == "database" }.toList()
+        assertTrue("the enum scan must find the labels, found $labels", labels.size >= 20)
+        assertEquals(emptyList<String>(), labels.filterNot { sanitizeDatabaseOperation(it) == it })
     }
 }

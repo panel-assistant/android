@@ -36,6 +36,7 @@ class VendorStripProfileContainmentTest {
         return requireNotNull(assignment).groupValues[1].split(Regex("\\s+")).filter { it.isNotBlank() }
     }
 
+    // Source-text reason: loads the shipped TPA10 profile as input data (provisioner/profile contract).
     private fun profilePackages(): List<String> {
         val profile = File(repoRoot(), "app/src/main/assets/device-profiles/tpa10.yaml").readText()
         return Regex("""^\s*-\s*package:\s*(\S+)""", RegexOption.MULTILINE)

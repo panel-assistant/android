@@ -92,6 +92,7 @@ class DashboardThemeTest {
     fun `the public api documents the same three choices the registry declares`() {
         // OpenAPI is hand-maintained here, so nothing but a test keeps it from drifting away from the
         // registry. Follows the navbar_mode precedent, which pins its enum the same way.
+        // Source-text reason: the shipped OpenAPI schema is the public API wire format.
         val openApi = listOf("src/main/assets/openapi.json", "app/src/main/assets/openapi.json")
             .map { File(it) }
             .firstOrNull { it.isFile }

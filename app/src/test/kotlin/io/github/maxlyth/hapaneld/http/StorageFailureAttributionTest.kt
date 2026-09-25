@@ -142,6 +142,7 @@ class StorageFailureAttributionTest {
         // the `failure` description claimed no operation detail was ever exposed long after the
         // operation was being captured. A green suite proves nothing here unless something compares
         // the two, so this does.
+        // Source-text reason: the shipped OpenAPI schema is the public API wire format.
         val assets = listOf("src/main/assets", "app/src/main/assets", "../app/src/main/assets")
             .map { File(it) }.firstOrNull { it.isDirectory }
         assumeTrue("assets dir not found (skipping)", assets != null)

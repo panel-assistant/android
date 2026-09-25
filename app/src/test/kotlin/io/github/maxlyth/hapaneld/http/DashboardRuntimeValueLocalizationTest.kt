@@ -13,6 +13,7 @@ import org.junit.Test
 import sun.misc.Unsafe
 
 class DashboardRuntimeValueLocalizationTest {
+    // Source-text reason: loads the shipped i18n catalogues as input data.
     private val loader = CatalogueLoader { path -> File("src/main/assets", path).readText() }
     private val zh = loader.strings("zh-Hans")
     private val en = loader.strings("en")
