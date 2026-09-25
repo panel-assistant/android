@@ -53,7 +53,7 @@ class EntitiesI18nPresentationContractTest {
             "entities.table.review", "entities.table.suggested",
         )
 
-        assertEquals("the reviewed presentation contract is exactly 227 finite keys", 227, (literals - computedPrefixes).size)
+        assertEquals("the reviewed presentation contract is exactly 229 finite keys", 229, (literals - computedPrefixes).size)
         assertTrue(literals.containsAll(setOf(
             "entities.status.state.learning", "entities.status.state.observing",
             "entities.issue.view.untitled", "entities.issue.card.kiosk_mode_configuration",
