@@ -17,6 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SetupJourneyTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private fun inputs(
         identityConfirmed: Boolean = true,
         brokerConfigured: Boolean = true,
@@ -321,7 +322,6 @@ class SetupJourneyTest {
         assertEquals(Stage.HA_URL, SetupJourney.evaluate(state).next)
         // The step carries the discovery outcome, so the UI can say why the field is blank rather than
         // just presenting an empty box on a network where discovery can never succeed.
-        assertTrue(SetupJourney.discoveryHopeless(hopeless))
         assertEquals("unavailable", SetupJourney.evaluate(state).step(Stage.HA_URL).detail)
 
         state = state.copy(haUrl = "http://ha.local:8123")

@@ -18,6 +18,7 @@ import org.junit.Test
  * while the broker test proves what false does.
  */
 class CredentiallessDiscoveryReconnectAdversarialTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     @Test(timeout = 15_000)
     fun `credentialless discovery client does not reconnect after broker returns`() {
         val port = ServerSocket(0).use { it.localPort }

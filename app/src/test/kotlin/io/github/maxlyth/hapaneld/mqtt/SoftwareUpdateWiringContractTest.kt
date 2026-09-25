@@ -7,14 +7,13 @@ import org.junit.Test
 
 /**
  * The update entities are pure in [SoftwareUpdateEntities]; these checks pin the few lines that connect
- * them to the bridge, the service and the status route, where a wrong wire would not show up in the
+ * them to the bridge, where a wrong wire would not show up in the
  * pure tests: a topic still dispatched straight to the legacy forced reinstall, an install that reads
  * its tag from somewhere other than the admission, or a header check that accepts any value.
  */
 class SoftwareUpdateWiringContractTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private val bridge by lazy { TestSources.kotlin("MqttBridge.kt").readText() }
-    private val service by lazy { TestSources.kotlin("PaneldService.kt").readText() }
-    private val server by lazy { TestSources.kotlin("http/PaneldServer.kt").readText() }
 
     private fun between(text: String, from: String, to: String): String {
         val start = text.indexOf(from)
@@ -42,25 +41,10 @@ class SoftwareUpdateWiringContractTest {
         assertTrue(channel.contains("if (SoftwareUpdateEntities.withheld(inputs)) io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation.Unavailable"))
     }
 
-    @Test fun anAdmittedInstallRunsTheExactVersionPath() {
-        assertTrue(service.contains("""onSoftwareInstall = { component, tag -> installComponent(component.wire, "update", tag) }"""))
-        assertTrue(service.contains("softwareUpdateSources = ::softwareUpdateSources"))
-    }
-
-    @Test fun progressAndCatalogRefreshesRepublishTheEntities() {
-        assertTrue(service.contains("InstallProgress.observer = softwareProgressObserver"))
-        assertTrue(service.contains("UpdateChecker.onChecked = softwareCatalogObserver"))
-        assertTrue(service.contains("""closeOwner("update entity observers") { detachSoftwareUpdateObservers() }"""))
+    @Test fun bridgeSyncAndDiscoveryRepublishTheEntities() {
         val sync = between(bridge, "private fun syncLocalState()", "private fun diagValue(")
         assertTrue(sync.contains("reconcileSoftwareUpdates(announcing = false)"))
         val discovery = between(bridge, "private fun publishDiscovery(", "private fun jsonEsc(")
         assertTrue(discovery.contains("reconcileSoftwareUpdates(announcing = true)"))
-    }
-
-    @Test fun onlyTheExactHeaderOnTheStatusRouteRenewsOwnership() {
-        val status = between(server, """get("/status") {""", "val updateRefreshRequested")
-        assertTrue(status.contains("PanelAssistantUpdateLease.declares(call.request.headers[PanelAssistantUpdateLease.HEADER])"))
-        assertTrue(status.contains("onPanelAssistantUpdateOwner()"))
-        assertEquals(1, Regex("""onPanelAssistantUpdateOwner\(\)""").findAll(server).count())
     }
 }

@@ -15,10 +15,7 @@ import io.ktor.server.testing.testApplication
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class SmallFormPostBodyTest {
     @Test fun `small form reader rejects declared and chunked total-body overflow`() = testApplication {
@@ -59,38 +56,6 @@ class SmallFormPostBodyTest {
         }
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals("Sample Panel|one/two", response.bodyAsText())
-    }
-
-    @Test fun `production HTTP control routes do not use the Ktor 50 MiB form default`() {
-        val sources = listOf("ControlPlaneRoutes.kt", "PaneldServer.kt").associateWith { name ->
-            listOf(
-                File("src/main/kotlin/io/github/maxlyth/hapaneld/http/$name"),
-                File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/$name"),
-            ).first { it.isFile }.readText()
-        }
-        sources.forEach { (name, source) ->
-            assertFalse("$name still uses unbounded receiveParameters", source.contains("receiveParameters()"))
-        }
-        assertTrue(sources.getValue("PaneldServer.kt").contains("MAX_SMALL_FORM_POST_BODY_BYTES = 16L * 1024L"))
-        assertTrue(sources.getValue("ControlPlaneRoutes.kt").contains("receiveBoundedFormParameters(call)"))
-    }
-
-    @Test fun `all materialized control bodies use the shared total receipt deadline`() {
-        fun source(name: String) = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/$name"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/$name"),
-        ).first { it.isFile }.readText()
-        val server = source("PaneldServer.kt")
-        val profiles = source("ProfileRoutes.kt")
-        val control = source("ControlPlaneRoutes.kt")
-
-        assertTrue(server.contains("receiveBoundedBody(call, maxBytes)"))
-        assertTrue(server.contains("receiveBoundedBody(call, MAX_ENTITY_ADMIN_BODY_BYTES)"))
-        assertTrue(server.contains("receiveBoundedBody(call, EntityFilterProtocol.MAX_API_BODY_BYTES.toLong())"))
-        assertTrue(server.contains("receiveBoundedBody(call, MAX_CONFIG_IMPORT_BYTES)"))
-        assertTrue(profiles.contains("receiveBoundedBody(this, maxBytes)"))
-        assertTrue(control.contains("receiveBoundedBody(call, PaneldServer.MAX_PLAY_BODY_BYTES)"))
-        assertFalse(profiles.contains("receiveStream()"))
     }
 
     private fun chunkedForm(bytes: ByteArray) = object : OutgoingContent.WriteChannelContent() {

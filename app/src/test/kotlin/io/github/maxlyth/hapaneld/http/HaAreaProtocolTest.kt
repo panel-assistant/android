@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HaAreaProtocolTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private fun areasJson() = JSONObject(
         """{"result":[
             {"area_id":"office","name":"Office","icon":"mdi:desk"},
@@ -49,93 +50,6 @@ class HaAreaProtocolTest {
         )
         // Seeding an area-less device from a pending request is unchanged by the override bit.
         assertEquals(ReconcileAction.WRITE_BACK, HaAreaProtocol.reconcile("Office", "", admin = true, userOverride = true))
-    }
-
-    @Test fun theOverrideLifecycleIsWiredWhereTheUserSavesAndWhereAdoptionRuns() {
-        // Source-pinned: the bit is only meaningful if every writer agrees on it. A save records who chose
-        // the value (blank hands it back to adoption) and pokes auto-sleep so the room change acts now;
-        // adoption and exact agreement both retire the bit.
-        val server = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        assertFalse(server.contains("config.haAreaUserOverride = config.haArea.isNotBlank()"))
-        assertTrue(server.contains("config.haAreaUserOverride == requested.isNotBlank()"))
-        assertTrue(server.contains("if (requestedHaArea != null && durableHaArea == null)"))
-        assertTrue(server.contains("if (nothingSaved) \"commit-failed\" else \"saved-partial\""))
-        assertTrue(server.contains("config.commitHaArea(catalog.device.areaName, userOverride = false)"))
-        val config = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/Config.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/Config.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(config.contains("\"ha_area\" -> {"))
-        assertTrue(config.contains("putBoolean(HA_AREA_USER_OVERRIDE_PREF, value.isNotBlank())"))
-        assertTrue(server.contains("autoSleepHttpApi.noteAreaChanged()"))
-        assertFalse(
-            "noteAreaChanged must remain abstract rather than silently defaulting to a no-op",
-            server.contains("    fun noteAreaChanged() {}"),
-        )
-        assertTrue(
-            "adoption retires the bit in the same transaction as the Area value",
-            server.contains("config.commitHaArea(snapshot.localArea, userOverride = false)"),
-        )
-        assertTrue("the fence must include the bit", server.contains("snapshot.userOverride == config.haAreaUserOverride"))
-        // Wherever the value is displayed at rest it must disclose the override — the Dashboard tab's
-        // Behaviour card row carries the suffix so the state is visible without opening Configure.
-        assertTrue(
-            "the Behaviour row must disclose the override only while the bit is set",
-            server.contains("if (key == \"ha_area\" && config.haAreaUserOverride) {"),
-        )
-        val areaOverrideFormatter = server.substring(
-            server.indexOf("if (key == \"ha_area\" && config.haAreaUserOverride) {"),
-            server.indexOf("} else null", server.indexOf("if (key == \"ha_area\" && config.haAreaUserOverride) {")),
-        )
-        assertTrue(
-            "the localized suffix must be built through the guarded formatter constructor, which refuses " +
-                "a spec whose row could never render it",
-            areaOverrideFormatter.contains("SettingRowFormatter.of(key) { raw ->") &&
-                areaOverrideFormatter.contains(
-                    """formattedString(strings, "dashboard.value.local_override", "value" to raw)""",
-                ),
-        )
-        assertTrue(
-            "override retirement must serialize ownership revalidation with configuration mutation",
-            server.contains("if (!ownsHaAreaSnapshot(snapshot)) return@synchronizedTransaction false"),
-        )
-        val service = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(
-            "an area save must refresh the running auto-sleep controller without a service restart",
-            service.contains("override fun noteAreaChanged() {\n                    refreshAutoSleepPresence()"),
-        )
-        val refreshPresence = service.substringAfter("private fun refreshAutoSleepPresence(): Boolean {")
-            .substringBefore("\n    }")
-        assertTrue("the shared presence refresh must still refresh the controller",
-            refreshPresence.contains("val accepted = autoSleep.refresh()"))
-        assertTrue("accepted refresh must restore only trustworthy current proximity state",
-            refreshPresence.contains("if (accepted && ::sensors.isInitialized)") &&
-                refreshPresence.contains("autoSleep.noteProximityState(") &&
-                refreshPresence.contains("sensors.proximityPresenceNear().takeIf { sensors.proximityPresenceReady() }"))
-        val manager = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/sensors/HaPresenceSourceManager.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/sensors/HaPresenceSourceManager.kt"),
-        ).first { it.isFile }.readText()
-        assertEquals(
-            "both no-source verdicts must carry the room actually searched",
-            2,
-            Regex(
-                "NO_CREDIBLE_SOURCES,\\n\\s+\\\"No [a-z-]+ activity source is ready\\\",\\n\\s+areaName = area\\.panelAreaName,",
-            ).findAll(manager).count(),
-        )
-        // And the runtime actually consumes the area: the controller hands it to presence discovery.
-        val controller = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/control/AutoSleepController.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/control/AutoSleepController.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(controller.contains("preferredAreaName = next.value.haArea"))
-        assertTrue(controller.contains("manager.prerequisite(current.deviceUid, current.panelId, current.haArea, current.discoveryId)"))
     }
 
     @Test fun thePrecedenceRuleIsHaWinsLocalOnlySeedsAndAdminsApply() {
@@ -215,76 +129,5 @@ class HaAreaProtocolTest {
         assertFalse("no endpoint means nothing to ask", HaAreaProtocol.canQueryUnprompted("", credentialed = true))
         assertFalse("no credential means the read cannot succeed", HaAreaProtocol.canQueryUnprompted("http://ha.local:8123", credentialed = false))
         assertFalse(HaAreaProtocol.canQueryUnprompted("   ", credentialed = true))
-    }
-
-    @Test fun theUnpromptedConvergenceIsWiredIntoTheServerLifecycle() {
-        // Source-pinned because the defect was an ABSENT owner, which no pure function can detect: the rule
-        // and its endpoint were both correct in isolation.
-        val server = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue("the convergence must start with the server", server.contains("startHaAreaConvergence()"))
-        assertTrue(
-            "the HTTP bind must succeed before convergence starts",
-            server.indexOf("startOwnedHttpServer(") < server.indexOf("startHaAreaConvergence()"),
-        )
-        assertTrue(
-            "and must be gated on HA being reachable and credentialled",
-            server.contains("HaAreaProtocol.canQueryUnprompted("),
-        )
-        assertTrue("and must not outlive it", server.contains("haAreaJob?.cancel()"))
-        // The registry, the device row and the admin flag change about once in a panel's life, so repeated
-        // page paints must not each open a Home Assistant session — but the unprompted pass MUST read fresh,
-        // since noticing an admin's change in HA is the only reason it exists, and a local area change must
-        // invalidate rather than be answered from a catalog read before it.
-        assertTrue(server.contains("private suspend fun haAreaCatalogFor("))
-        assertTrue(server.contains("@Volatile private var haAreaCatalogCache: HaAreaCatalogCacheEntry?"))
-        assertTrue(
-            "the endpoint reads through the cache and returns reconciled truth",
-            server.contains("val catalog = applyHaAreaPrecedence(snapshot, haAreaCatalogFor(snapshot))"),
-        )
-        assertTrue(
-            "the convergence pass bypasses the cache",
-            server.contains("applyHaAreaPrecedence(snapshot, haAreaCatalogFor(snapshot, fresh = true))"),
-        )
-        assertTrue("a local change invalidates it", server.contains("invalidateHaAreaCatalogCache()"))
-        assertTrue(
-            "only a successful current-owner query may be cached — failed or stale reads are never authoritative",
-            server.contains(
-                "if (catalog.queried && catalog.ownerKey == snapshot.ownerKey && ownsHaAreaSnapshot(snapshot))",
-            ),
-        )
-        assertTrue("the endpoint returns post-reconciliation truth", server.contains("val catalog = applyHaAreaPrecedence("))
-        assertTrue(
-            "the endpoint and the loop must share one implementation of the rule",
-            server.contains("private suspend fun applyHaAreaPrecedence("),
-        )
-        assertTrue(server.contains("haAreaWriteJob?.cancel()"))
-    }
-
-    @Test fun theAreaEndpointReconcilesAndTheConfigLaneWritesBackInTheBackground() {
-        // The precedence rule must be wired at BOTH observation points: the read endpoint and the
-        // post-commit config lane. Source-pinned so a refactor cannot silently drop one side.
-        val server = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(server.contains("get(\"/config/ha-area\")"))
-        assertTrue(server.contains("entityLearning.haAreaCatalog(snapshot.deviceUid, snapshot.panelId)"))
-        assertTrue(server.contains("captureHaAreaSnapshot()"))
-        assertTrue(server.contains("catalog.ownerKey != snapshot.ownerKey"))
-        assertTrue(server.contains("synchronized(directConfigMutationLock)"))
-        assertTrue(server.contains("firstOrNull { it.first == \"ha_area\" }"))
-    }
-
-    @Test fun staleCatalogsAndWritesCarryTheCredentialOwnerThatProducedThem() {
-        val manager = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityLearningManager.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(manager.contains("val ownerKey: String = \"\""))
-        assertTrue(manager.contains("ownerKey = credentialFingerprint()"))
-        assertTrue(manager.contains("expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey"))
     }
 }

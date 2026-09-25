@@ -17,6 +17,7 @@ import java.io.File
  * that tolerate absence.
  */
 object TestSources {
+    // Source-text reason: the one locator for reads that state their own reason; it asserts nothing.
     private const val PKG = "io/github/maxlyth/hapaneld"
 
     /** A production `.kt` under the app package root, e.g. `kotlin("http/PaneldServer.kt")`. Required. */

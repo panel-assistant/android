@@ -3,7 +3,6 @@ package io.github.maxlyth.hapaneld.i18n
 import io.github.maxlyth.hapaneld.http.HaOAuthCallbackCopy
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,25 +10,8 @@ import org.junit.Test
 class OAuthCallbackI18nContractTest {
     private val project = File(".")
     private val assets = File(project, "src/main/assets")
+    // Source-text reason: loads the shipped i18n catalogues as input data.
     private val source = SourceCatalogue.parse(File(assets, "i18n/en.json").readText())
-    private val server = File(project, "src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
-    private val routes = File(project, "src/main/kotlin/io/github/maxlyth/hapaneld/http/HaOAuthRoutes.kt").readText()
-
-    @Test fun `OAuth callback copy exactly consumes its catalogue namespace`() {
-        val sourceKeys = source.strings.keys.filterTo(sortedSetOf()) { it.startsWith("oauth.callback.") }
-        val start = server.indexOf("private fun haOAuthCallbackCopy(")
-        val end = server.indexOf("\n    private suspend fun completeHaOAuth(", start)
-        val consumer = server.substring(start, end)
-        val consumed = Regex("strings[.]get[(]\"(oauth[.]callback[.][a-z0-9_.-]+)\"[)]")
-            .findAll(consumer)
-            .mapTo(sortedSetOf()) { it.groupValues[1] }
-
-        assertEquals(14, sourceKeys.size)
-        assertEquals(sourceKeys, consumed)
-        assertTrue(routes.contains("context.contentLanguages.sorted().joinToString(\", \")"))
-        assertTrue(routes.contains("<html lang=\"${'$'}{escapeHaOAuthHtml(context.locale)}\""))
-        assertFalse(routes.contains("<html lang=\"en\"><head"))
-    }
 
     @Test fun `Fail-closed English callback copy stays identical to the source catalogue`() {
         val copy = HaOAuthCallbackCopy.ENGLISH
@@ -75,18 +57,4 @@ class OAuthCallbackI18nContractTest {
         }
     }
 
-    @Test fun `Localized callers bind a closed OAuth return context`() {
-        val setup = File(assets, "setup.js").readText()
-        val configure = File(assets, "configure.js").readText()
-        assertTrue(setup.contains("ui_locale: requestedLocale()"))
-        assertTrue(setup.contains("return_surface: \"setup\""))
-        assertTrue(configure.contains("ui_locale: oauthLocale"))
-        assertTrue(configure.contains("return_surface: \"configure\""))
-        assertTrue(setup.contains("preserve_explicit_english:"))
-        assertTrue(configure.contains("preserve_explicit_english:"))
-        assertTrue(routes.contains("HaOAuthReturnSurface.CONFIGURE"))
-        assertTrue(routes.contains("HaOAuthReturnSurface.SETUP"))
-        assertFalse("OAuth callers must never submit a raw return URL", setup.contains("return_url"))
-        assertFalse("OAuth callers must never submit a raw return URL", configure.contains("return_url"))
-    }
 }

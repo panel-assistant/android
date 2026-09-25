@@ -1148,6 +1148,7 @@ class MqttWireGoldenTest {
 
         fun jsonEscaped(value: String): String = io.github.maxlyth.hapaneld.util.Json.esc(value)
 
+        // Source-text reason: locates this suite's own golden fixtures under src/test/resources, not app code.
         fun sourceFixture(): File = TestSources.appDir("src").resolve("test").resolve("resources")
             .resolve("mqtt-wire-golden").resolve("bridge.txt")
 

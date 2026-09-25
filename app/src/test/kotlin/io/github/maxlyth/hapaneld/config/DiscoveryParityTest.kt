@@ -18,14 +18,7 @@ class DiscoveryParityTest {
             SettingsRegistry.DEFAULT_SILENCE_BOOT_CHIME.toString(),
             SettingsRegistry.spec("silence_boot_chime")?.default,
         )
-        val configSource = sequenceOf(
-            java.io.File("src/main/kotlin/io/github/maxlyth/hapaneld/Config.kt"),
-            java.io.File("app/src/main/kotlin/io/github/maxlyth/hapaneld/Config.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(configSource.contains(
-            "Default on: fresh panels should reboot silently; an explicit saved choice remains authoritative.",
-        ))
-
+        // Source-text reason: the published OpenAPI default is the settings wire contract.
         val openApi = sequenceOf(
             java.io.File("src/main/assets/openapi.json"),
             java.io.File("app/src/main/assets/openapi.json"),

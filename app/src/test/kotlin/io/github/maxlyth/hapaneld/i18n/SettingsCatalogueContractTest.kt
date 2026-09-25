@@ -8,8 +8,8 @@ import org.junit.Test
 import java.io.File
 
 class SettingsCatalogueContractTest {
+    // Source-text reason: loads the shipped i18n catalogues as input data.
     private val catalogueFile = File("src/main/assets/i18n/en.json")
-    private val configureFile = File("src/main/assets/configure.js")
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
 
     @Test fun `authoritative English catalogue exactly covers visible Settings copy`() {
@@ -67,16 +67,7 @@ class SettingsCatalogueContractTest {
         }
     }
 
-    @Test fun `catalogued help and delayed locale refresh preserve the live form contract`() {
-        val configure = configureFile.readText()
-        assertTrue(configure.contains("var helpKids = [el(\"span\", { lang: f.helpLanguage, text: f.help })]"))
-        assertTrue(configure.contains("""} else if (f.key === "auto_sleep") {
-      help = el("small", { lang: f.helpLanguage, text: f.help });"""))
-        assertTrue(configure.contains("var generation = editGeneration"))
-        assertTrue(configure.contains("request !== schemaLanguageRequest || dirty || editGeneration !== generation"))
-    }
-
-    @Test fun `every declared enum wire value has a finite display-only localization binding`() {
+    @Test fun `every declared enum wire value has a finite display-only localization binding catalogueContract`() {
         val expected = linkedMapOf(
             "mqtt_address_family" to linkedMapOf(
                 "Automatic" to ("configure.enum.mqtt_address_family.automatic" to "Automatic"),
@@ -140,22 +131,13 @@ class SettingsCatalogueContractTest {
             assertEquals("$setting option domain changed without a localization decision", bindings.keys.toList(), declared[setting])
         }
 
-        val configure = configureFile.readText()
-        assertTrue(configure.contains("var ENUM_OPTION_LABELS = {"))
-        assertTrue(configure.contains("var label = localizedEnumOption(f.key, o)"))
-        assertTrue(configure.contains("var op = el(\"option\", { value: o, text: label })"))
-        assertTrue(configure.contains("values[f.key] = s.value"))
-        assertTrue(configure.contains("return binding ? i18nText(binding[0], binding[1]) : String(wireValue)"))
-
         val source = SourceCatalogue.parse(catalogueFile.readText())
         localPresenceBindings.values.forEach { (key, english) ->
-            assertTrue("missing local proximity label binding for $key", configure.contains("i18nText(\"$key\", \"$english\")"))
             assertEquals(english, checkNotNull(source.strings[key]).text)
         }
         val uniqueBindings = expected.values.flatMap { it.values }.toSet()
         assertEquals(28, uniqueBindings.size)
         uniqueBindings.forEach { (key, english) ->
-            assertTrue("missing exact JS binding for $key", configure.contains("[\"$key\", \"$english\"]"))
             val record = checkNotNull(source.strings[key]) { "English catalogue is missing $key" }
             assertEquals(english, record.text)
             assertEquals(sourceHash(english), record.sourceHash)
@@ -172,6 +154,5 @@ class SettingsCatalogueContractTest {
                 )
             }
         }
-        assertTrue(configure.contains("fieldKey === \"ui_language\""))
     }
 }

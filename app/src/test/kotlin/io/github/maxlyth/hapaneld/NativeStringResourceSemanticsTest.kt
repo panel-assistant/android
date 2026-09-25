@@ -70,6 +70,7 @@ class NativeStringResourceSemanticsTest {
         try {
             val resources = root.resolve("res").createDirectories()
             expected.forEach { (directory, strings) ->
+                // Source-text reason: compiles the shipped strings.xml resources as input data.
                 writeSelectedStrings(
                     source = File("src/main/res/$directory/strings.xml"),
                     destination = resources.resolve(directory).createDirectories().resolve("strings.xml").toFile(),

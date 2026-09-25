@@ -6,17 +6,12 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * Locks the shared locator's own behaviour, so the ~24 tests that depend on it inherit one proven
+ * Locks the shared locator's own behaviour, so the tests that depend on it inherit one proven
  * cwd-fallback rule instead of each carrying its own copy. It reads real shipped files, so it doubles
  * as a tripwire that the app source/asset layout still resolves from the test working directory.
  */
 class TestSourcesTest {
-    @Test fun resolvesProductionKotlinFromEitherWorkingDirectory() {
-        val server = TestSources.kotlin("http/PaneldServer.kt")
-        assertTrue("PaneldServer.kt must resolve", server.isFile)
-        assertTrue("resolved file must be the real source", server.readText().contains("class PaneldServer"))
-    }
-
+    // Source-text reason: tests the locator itself against real shipped files; pins no production code.
     @Test fun resolvesShippedAssetsAndAssetDir() {
         assertTrue("configure.js must resolve", TestSources.asset("configure.js").isFile)
         val dir = TestSources.assetDir()

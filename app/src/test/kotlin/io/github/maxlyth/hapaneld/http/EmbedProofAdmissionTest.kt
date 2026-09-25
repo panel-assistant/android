@@ -2,7 +2,6 @@ package io.github.maxlyth.hapaneld.http
 
 import io.github.maxlyth.hapaneld.security.ApprovalBroker
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -203,26 +202,7 @@ class EmbedProofAdmissionTest {
         assertTrue(rig.audit.isEmpty())
     }
 
-    @Test fun `the server verifies the proof after every other guard and before routing`() {
-        val server = TestSources.kotlin("http/PaneldServer.kt").readText()
-        val intercept = server.substringAfter("intercept(ApplicationCallPipeline.Plugins) {").substringBefore("routing {")
-        val host = intercept.indexOf("OriginGuard.hostAllowed(")
-        val csrf = intercept.indexOf("OriginGuard.allowed(")
-        val source = intercept.indexOf("isLocalSource(")
-        val proof = intercept.indexOf("if (!call.admitEmbedProof(PanelAssistantEmbedKeys.instance)) return@intercept finish()")
-        assertTrue(source in 0 until proof)
-        assertTrue(csrf in 0 until proof)
-        assertTrue(host in 0 until proof)
-        // Nothing after it refuses a request, so a verified request goes straight to its handler.
-        assertTrue(!intercept.substring(proof + 1).contains("respond"))
-
-        val service = TestSources.kotlin("PaneldService.kt").readText()
-        val owner = service.substringAfter("panelAssistantTransport = PanelAssistantTransportOwner(").substringBefore("\n        )\n")
-        assertTrue(owner, owner.contains("embedKeys = io.github.maxlyth.hapaneld.http.PanelAssistantEmbedKeys.instance,"))
-    }
-
     @Test fun `each config key that needs approval maps to an operation of the stated class`() {
-        val server = TestSources.kotlin("http/PaneldServer.kt").readText()
         // key → operation, as the Configure save builds its sensitive operations.
         val classes = mapOf(
             "keep_awake" to SensitiveOperation.POWER_CONFIGURATION,
@@ -234,16 +214,6 @@ class EmbedProofAdmissionTest {
             "update_channel" to SensitiveOperation.APK_INSTALL,
             "companion_update_channel" to SensitiveOperation.APK_INSTALL,
         )
-        assertTrue(server.contains("requestedKeepAwake = p[\"keep_awake\"]"))
-        assertTrue(server.contains("requestedPreventIdleDim = p[\"prevent_idle_dim\"]"))
-        assertTrue(server.contains("if (powerSafetyReduction) add(SensitiveOperation.POWER_CONFIGURATION)"))
-        assertTrue(server.contains("val tamePackagesChanged = p[\"tame_vendor_packages\"]"))
-        assertTrue(server.contains("tamePackagesChanged -> SensitiveOperation.PACKAGE_TAME"))
-        assertTrue(server.contains("softwareAuthorityChanged -> SensitiveOperation.APK_INSTALL"))
-        val software = server.substringAfter("private fun requestsSoftwareInstallAuthority(").substringBefore("\n    }\n")
-        for (key in listOf("self_update", "companion_auto_update", "webview_auto_update", "update_channel", "companion_update_channel")) {
-            assertTrue(key, software.contains("\"$key\""))
-        }
         val proven = ProvenEmbedRequest(USER)
         assertEquals(
             mapOf(

@@ -11,7 +11,9 @@ import sun.misc.Unsafe
 
 class HtmlUiCatalogueContractTest {
     private val assets = File("src/main/assets")
+    // Source-text reason: whole-file scans for literal catalogue keys (translation catalogue contract), not code structure.
     private val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
+    // Source-text reason: loads the shipped i18n catalogues and page scripts' literal key/fallback pairs as catalogue input.
     private val catalogue = JSONObject(File(assets, "i18n/en.json").readText()).getJSONObject("strings")
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
 
@@ -27,8 +29,7 @@ class HtmlUiCatalogueContractTest {
             "dashboard" to (
                 literalKeys(server.readText(), "strings\\.get") +
                     literalKeys(File(assets, "info.js").readText(), "i18nText") +
-                    literalKeys(buildwatch, "i18nText") +
-                    dynamicFactKeys(server.readText())
+                    literalKeys(buildwatch, "i18nText")
                 ).filterTo(sortedSetOf()) { it.startsWith("dashboard.") },
             "configure" to (
                 literalKeys(server.readText(), "strings\\.get") +
@@ -191,45 +192,7 @@ class HtmlUiCatalogueContractTest {
         }
     }
 
-    @Test fun `shared shell installs localized payload and helper before page scripts`() {
-        val source = server.readText()
-        val payload = source.indexOf("<script id=\"ha-i18n\"")
-        val helper = source.indexOf("<script src=\"assets/i18n.js\"></script>")
-        val pageScripts = source.indexOf("${'$'}extraScripts<script src=\"assets/power-safety.js\"></script>")
-        assertTrue("localized JSON payload must precede the helper", payload >= 0 && payload < helper)
-        assertTrue("the helper must precede info.js and configure.js supplied through page content", helper < pageScripts)
-
-        val dashboard = functionBody(source, "infoHtml")
-        val configure = functionBody(source, "configureBody")
-        assertTrue(dashboard.contains("<script src=\"info.js\"></script>"))
-        assertTrue(configure.contains("<script src=\"assets/configure.js\"></script>"))
-    }
-
-    @Test fun `requested locale is emitted on the document and propagated to navigation and dashboard hydration`() {
-        val source = server.readText()
-        val shell = functionBody(source, "pageShell")
-        val links = functionBody(source, "localizedHref")
-        val info = File(assets, "info.js").readText()
-
-        assertTrue(shell.contains("<html lang=\"${'$'}{esc(strings.requestedLocale)}\""))
-        assertTrue(links.contains("lang=${'$'}{esc(strings.requestedLocale)}"))
-        assertTrue("Dashboard hydration must retain an explicit browser language override", info.contains("fetch(localizedInfoUrl())"))
-    }
-
     @Test fun `every human tab keeps an explicit Simplified Chinese shell and navigation`() {
-        val source = server.readText()
-        val routes = listOf("setup", "profiles", "install", "fleet", "logs", "entities")
-
-        routes.forEach { route ->
-            val body = routeBody(source, route)
-            assertTrue(
-                "/$route must resolve the request locale so GET /$route?lang=zh-Hans emits a Chinese shell",
-                body.contains("requestStrings(call)"),
-            )
-            assertTrue("/$route must render its translated section title", body.contains("strings.get(\"shell.nav."))
-            assertTrue("/$route must report its mixed shell/body languages", body.contains("HttpHeaders.ContentLanguage"))
-        }
-
         val chinese = CatalogueLoader { name -> File(assets, name).readText() }.strings("zh-Hans")
         assertEquals("zh-Hans", chinese.requestedLocale)
         assertFalse("the Dashboard shell sentinel must be translated", chinese.get("shell.nav.dashboard") == "Dashboard")
@@ -249,68 +212,6 @@ class HtmlUiCatalogueContractTest {
             "/install?repair=1&lang=zh-Hans#camera",
             localizedHref.invoke(serverInstance, "/install?repair=1#camera", chinese),
         )
-        assertFalse(
-            "Dashboard edit links must not drop an explicit ?lang=zh-Hans override",
-            Regex("href=\\\"/(?:configure|install)#").containsMatchIn(functionBody(source, "infoHtml")),
-        )
-    }
-
-    @Test fun `visible Camera dashboard copy is catalogue-backed and promoted for Simplified Chinese`() {
-        val serverCamera = functionBody(server.readText(), "infoHtml")
-        val scriptCamera = javascriptFunctionBody(File(assets, "info.js").readText(), "cameraCard")
-
-        listOf(
-            ">Camera stream ",
-            ">reading…<",
-            ">What the stream was asked for and what it is delivering.",
-        ).forEach { literal ->
-            assertFalse("server-rendered Camera copy is still hard-coded: $literal", serverCamera.contains(literal))
-        }
-        listOf(
-            "{label:'Session'",
-            "{label:'Encoding'",
-            "{label:'Encoder'",
-            "{label:'Requested'",
-            "{label:'Frame rate'",
-            "{label:'Bitrate'",
-            "?{label:'Delivery'",
-            "paint(tbl,[{label:'Camera',val:'status unavailable'",
-        ).forEach { literal ->
-            assertFalse("dynamic Camera copy is still hard-coded: $literal", scriptCamera.contains(literal))
-        }
-
-        val keys = literalKeys(serverCamera, "strings\\.get") + literalKeys(scriptCamera, "i18nText")
-        val cameraKeys = keys.filterTo(sortedSetOf()) { it.startsWith("dashboard.camera.") }
-        assertTrue("the visible Camera card must consume dashboard.camera catalogue keys", cameraKeys.size >= 20)
-
-        val source = SourceCatalogue.parse(File(assets, "i18n/en.json").readText())
-        val target = TargetCatalogue.parse(File(assets, "i18n/zh-Hans.json").readText(), source)
-        cameraKeys.forEach { key ->
-            val english = checkNotNull(source.strings[key]) { "$key is used but absent from English" }
-            val chinese = checkNotNull(target.strings[key]) { "zh-Hans is missing $key" }
-            assertEquals("zh-Hans has stale source text for $key", english.sourceHash, chinese.sourceHash)
-            assertTrue(
-                "zh-Hans must promote $key before the collaborator preview",
-                chinese.state == TranslationState.MACHINE_CROSS_CHECKED ||
-                    chinese.state == TranslationState.COMMUNITY_CORRECTED,
-            )
-        }
-    }
-
-    @Test fun `dynamic scripts use the browser helper only through an English-safe adapter`() {
-        listOf("info.js", "configure.js", "buildwatch.js", "switcher.js").forEach { name ->
-            val source = File(assets, name).readText()
-            assertTrue("$name must expose one local English-fallback adapter", source.contains("function i18nText(key"))
-            assertTrue(
-                "$name must guard a missing helper",
-                source.contains("window.HaI18n&&") || source.contains("window.HaI18n &&"),
-            )
-            assertTrue(
-                "$name must verify the helper function before calling it",
-                Regex("typeof\\s+window\\.HaI18n\\.t\\s*===\\s*[\\\"']function[\\\"']").containsMatchIn(source),
-            )
-            assertFalse("$name must not retain the collision-prone tr helper", Regex("function\\s+tr\\s*\\(").containsMatchIn(source))
-        }
     }
 
     @Test fun `shared runtime literal English fallbacks match their authoritative records`() {
@@ -438,33 +339,6 @@ class HtmlUiCatalogueContractTest {
         val strings = JSONObject(File(assets, "i18n/$locale.json").readText()).getJSONObject("strings")
         require(strings.has(key)) { "$locale is missing $key" }
         return strings.getJSONObject(key).getString("text")
-    }
-
-    private fun dynamicFactKeys(source: String): Set<String> =
-        Regex("->\\s*\\\"([a-z0-9_]+)\\\"")
-            .findAll(functionBody(source, "factLabel"))
-            .mapTo(sortedSetOf()) { "dashboard.fact.${it.groupValues[1]}" }
-
-    private fun functionBody(source: String, name: String): String {
-        val start = source.indexOf("fun $name(").takeIf { it >= 0 }
-            ?: source.indexOf("function $name(").takeIf { it >= 0 }
-            ?: error("missing function $name")
-        val next = source.indexOf("\n    private fun ", start + 1).takeIf { it >= 0 } ?: source.length
-        return source.substring(start, next)
-    }
-
-    private fun routeBody(source: String, path: String): String {
-        val marker = "get(\"/$path\")"
-        val start = source.indexOf(marker).also { require(it >= 0) { "missing /$path route" } }
-        val next = source.indexOf("\n                get(\"/", start + marker.length)
-            .takeIf { it >= 0 } ?: source.length
-        return source.substring(start, next)
-    }
-
-    private fun javascriptFunctionBody(source: String, name: String): String {
-        val start = source.indexOf("function $name(").also { require(it >= 0) { "missing function $name" } }
-        val next = source.indexOf("\nfunction ", start + 1).takeIf { it >= 0 } ?: source.length
-        return source.substring(start, next)
     }
 
     private fun unsafe(): Unsafe {

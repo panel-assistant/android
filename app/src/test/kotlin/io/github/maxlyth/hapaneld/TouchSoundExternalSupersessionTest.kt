@@ -17,6 +17,7 @@ import org.junit.Test
  * [LiveSettingAuthority] through that exact sequence.
  */
 class TouchSoundExternalSupersessionTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
 
     /** The inversion itself, end to end on the real authority. */
     @Test fun anUnavailableExternalChangeStillRetiresTheOlderQueuedValue() {

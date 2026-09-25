@@ -7,18 +7,17 @@ import org.junit.Test
 /**
  * The provisioner refuses to snapshot a database whose `user_version` is above its own ceiling, so a
  * schema bump that forgets the provisioner turns that fail-closed gate against every panel upgraded to
- * the new release. Both values are read from source so a drift names the two files to change together.
+ * the new release. The script ceiling and the app constant are compared so a drift names the two files to change together.
  */
 class ProvisionerSchemaCeilingContractTest {
     @Test fun provisionerCeilingMatchesTheAppSchemaVersion() {
         val provisioner = "scripts/provision.sh"
-        val schema = "app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt"
         val ceiling = soleInteger(provisioner, Regex("""(?m)^DB_SUPPORTED_USER_VERSION_MAX=(\d+)$"""))
-        val current = soleInteger(schema, Regex("""const\s+val\s+CURRENT_VERSION\s*=\s*(\d+)"""))
+        val current = EntityCatalogSchema.CURRENT_VERSION
 
         assertEquals(
             "DB_SUPPORTED_USER_VERSION_MAX in $provisioner ($ceiling) must equal " +
-                "EntityCatalogSchema.CURRENT_VERSION in $schema ($current); bump them together",
+                "EntityCatalogSchema.CURRENT_VERSION ($current); bump them together",
             current,
             ceiling,
         )

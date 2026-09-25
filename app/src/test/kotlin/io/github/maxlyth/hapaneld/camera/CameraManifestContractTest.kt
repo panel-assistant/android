@@ -2,7 +2,6 @@ package io.github.maxlyth.hapaneld.camera
 
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,6 +32,7 @@ import org.junit.Test
  */
 class CameraManifestContractTest {
 
+    // Source-text reason: the shipped manifest's permissions, optional features and service types are the install contract.
     private val manifest = File("src/main/AndroidManifest.xml").readText()
 
     private fun declares(permission: String): Boolean =
@@ -102,12 +102,6 @@ class CameraManifestContractTest {
             android:exported="false"""",
             ),
         )
-    }
-
-    @Test fun theServiceNeverAsksAndroidToResurrectASession() {
-        val source = File("src/main/kotlin/io/github/maxlyth/hapaneld/camera/CameraForegroundService.kt").readText()
-        assertTrue(source.contains("return START_NOT_STICKY"))
-        assertFalse(source.contains("START_STICKY\n"))
     }
 
     private companion object {

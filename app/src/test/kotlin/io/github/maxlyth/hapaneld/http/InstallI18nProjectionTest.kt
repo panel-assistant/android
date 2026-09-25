@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstallI18nProjectionTest {
+    // Source-text reason: loads the shipped i18n catalogues as input data.
     private val loader = CatalogueLoader { path -> TestSources.asset(path).readText() }
 
     @Test fun `Install projection carries real German text and provenance for closed wire tokens`() {

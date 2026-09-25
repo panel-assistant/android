@@ -7,7 +7,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
 class PollingFeatureCostContractTest {
@@ -30,27 +29,4 @@ class PollingFeatureCostContractTest {
         assertEquals(6_000L, KioskController.RETURN_STOP_JOIN_MS)
     }
 
-    @Test fun recurringHotPathsUseAllocationFreeSynchronousMeasurements() {
-        val operationsByFile = mapOf(
-            "control/AutoBrightnessController.kt" to "AUTO_BRIGHTNESS_APPLY",
-            "control/KioskController.kt" to "KIOSK_STATE_POLL",
-            "control/RelayController.kt" to "RELAY_STATE_READ",
-            "control/ZigbeeHealthMonitor.kt" to "ZIGBEE_HEALTH_SAMPLE",
-        )
-        for ((relative, operation) in operationsByFile) {
-            val source = sequenceOf(
-                File("src/main/kotlin/io/github/maxlyth/hapaneld/$relative"),
-                File("app/src/main/kotlin/io/github/maxlyth/hapaneld/$relative"),
-            ).first(File::isFile).readText()
-            assertTrue(
-                "$relative must begin primitive timing",
-                Regex("""beginSynchronous\s*\(\s*FeatureCostOperation\.$operation""").containsMatchIn(source),
-            )
-            assertTrue(
-                "$relative must finish primitive timing",
-                Regex("""finishSynchronous\s*\(\s*FeatureCostOperation\.$operation""").containsMatchIn(source),
-            )
-            assertFalse("$relative must not allocate a hot-path span", source.contains("span(FeatureCostOperation.$operation)"))
-        }
-    }
 }

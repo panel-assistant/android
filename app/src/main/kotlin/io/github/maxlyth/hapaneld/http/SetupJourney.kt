@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.http
 
-import io.github.maxlyth.hapaneld.DiscoveryOutcome
 import io.github.maxlyth.hapaneld.DiscoveryResult
 
 /**
@@ -491,8 +490,4 @@ object SetupJourney {
             else -> Step(Stage.RENDER_PROOF, Status.IN_FLIGHT, blocking = true, detail = "awaiting_frontend")
         }
     }
-
-    /** True when discovery cannot succeed here, so setup should ask for typing rather than retrying. */
-    fun discoveryHopeless(discovery: DiscoveryResult): Boolean =
-        discovery.outcome == DiscoveryOutcome.UNAVAILABLE
 }

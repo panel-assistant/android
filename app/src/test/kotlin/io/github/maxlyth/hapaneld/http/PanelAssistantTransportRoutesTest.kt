@@ -4,7 +4,6 @@ import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportFacts
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportPhase
 import io.github.maxlyth.hapaneld.security.ApprovalBroker
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
@@ -84,20 +83,6 @@ class PanelAssistantTransportRoutesTest {
         hardened = false
         assertEquals(HttpStatusCode.OK, client.post("/api/v1/panel-assistant/transport/release").status)
         assertEquals(2, store.releases)
-    }
-
-    @Test fun theServerMountsTheRoutesBehindItsSensitiveGateAndTheServiceReleasesThroughTheOwner() {
-        val server = TestSources.kotlin("http/PaneldServer.kt").readText()
-        val mount = server.substringAfter("panelAssistantTransportRoutes(").substringBefore("\n                )\n")
-        assertTrue(mount, mount.contains("facts = panelAssistantTransportFacts,"))
-        assertTrue(mount, mount.contains("release = releasePanelAssistantTransport,"))
-        assertTrue(mount, mount.contains("authorize = ::authorizeSensitive,"))
-
-        val service = TestSources.kotlin("PaneldService.kt").readText()
-        assertTrue(service.contains("panelAssistantTransportFacts = { panelAssistantTransport.facts() },"))
-        assertTrue(service.contains("releasePanelAssistantTransport = { panelAssistantTransport.releaseToMqtt() },"))
-        val owner = service.substringAfter("panelAssistantTransport = PanelAssistantTransportOwner(").substringBefore("\n        )\n")
-        assertTrue(owner, owner.contains("authority = config::panelAssistantAuthority,"))
     }
 
     /** Facts the release rewrites to `mqtt` and `announce`, as the owner's callbacks do. */

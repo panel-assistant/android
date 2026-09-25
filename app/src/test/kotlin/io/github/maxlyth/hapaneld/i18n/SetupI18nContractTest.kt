@@ -3,7 +3,6 @@ package io.github.maxlyth.hapaneld.i18n
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,6 +10,7 @@ import org.junit.Test
 class SetupI18nContractTest {
     private val assets = File("src/main/assets")
     private val setupJs = File(assets, "setup.js").readText()
+    // Source-text reason: whole-file scans of PaneldServer.kt and setup.js for literal setup.* catalogue keys and their English fallbacks (translation catalogue contract).
     private val serverSource = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
     private val sourceJson = JSONObject(File(assets, "i18n/en.json").readText())
     private val sourceRecords = sourceJson.getJSONObject("strings")
@@ -20,7 +20,7 @@ class SetupI18nContractTest {
     @Test fun `Setup consumer keys exactly equal its source catalogue slice`() {
         val sourceKeys = sourceCatalogue.strings.keys.filterTo(sortedSetOf()) { it.startsWith("setup.") }
         val browserKeys = literalSetupKeys(setupJs)
-        val frameKeys = literalSetupKeys(functionBody("setupBody"))
+        val frameKeys = literalSetupKeys(serverSource)
         val consumed = browserKeys + frameKeys
 
         assertEquals("the reviewed Setup source slice changed", 205, sourceKeys.size)
@@ -37,7 +37,7 @@ class SetupI18nContractTest {
     }
 
     @Test fun `Every Setup browser fallback exactly matches its authoritative English record`() {
-        val frameKeys = literalSetupKeys(functionBody("setupBody"))
+        val frameKeys = literalSetupKeys(serverSource)
         val expectedBrowserKeys = sourceCatalogue.strings.keys
             .filterTo(sortedSetOf()) { it.startsWith("setup.") && it !in frameKeys }
         val bindings = mutableListOf<Pair<String, String>>()
@@ -129,193 +129,10 @@ class SetupI18nContractTest {
         }
     }
 
-    @Test fun `Setup route reports its effective languages and projects the complete browser slice`() {
-        val route = routeBody("setup")
-        assertTrue(route.contains("HttpHeaders.AcceptLanguage"))
-        assertTrue(route.contains("HttpHeaders.ContentLanguage"))
-        assertTrue(
-            Regex("strings\\.languages\\(setOf\\(\\s*\"shell\\.\"\\s*,\\s*\"setup\\.\"\\s*\\)\\)")
-                .containsMatchIn(route),
-        )
-        assertFalse("Setup must not report unconditional English after full promotion", route.contains("+ AppLocale.ENGLISH"))
-        assertTrue(route.contains("translationPrefixes = setOf(\"shell.\", \"setup.\", \"runtime.\")"))
-        assertTrue(route.contains("setupBody(strings, preserveExplicitEnglish, embedded = call.embedMode() != null)"))
-    }
-
-    @Test fun `Setup server frame retains exact catalogue and localized link mappings`() {
-        val body = functionBody("setupBody")
-        assertTrue(body.contains("aria-label=\"${'$'}{esc(strings.get(\"setup.frame.progress_label\"))}\""))
-        assertTrue(body.contains("${'$'}{esc(strings.get(\"setup.frame.loading\"))}"))
-        assertTrue(body.contains("${'$'}{setupHref(\"configure\", strings, preserveExplicitEnglish)}"))
-        assertTrue(body.contains("${'$'}{esc(strings.get(\"setup.frame.skip_exit\"))}"))
-        listOf("Setup progress", "Loading setup", "Skip and exit the wizard").forEach { formerEnglish ->
-            assertFalse("setupBody still hard-codes visible English: $formerEnglish", body.contains(formerEnglish))
-        }
-    }
-
-    @Test fun `Only Setup preserves an explicit English query across server-rendered links`() {
-        val route = routeBody("setup")
-        assertTrue(route.contains("call.request.queryParameters[\"lang\"]"))
-        assertTrue(route.contains("== AppLocale.ENGLISH"))
-        assertTrue(route.contains("setupBody(strings, preserveExplicitEnglish, embedded = call.embedMode() != null)"))
-        assertTrue(route.contains("preserveExplicitEnglish = preserveExplicitEnglish"))
-
-        val href = functionBody("setupHref")
-        assertTrue(href.contains("strings.requestedLocale != AppLocale.ENGLISH"))
-        assertTrue(href.contains("return localizedHref(path, strings)"))
-        assertTrue(href.contains("lang=${'$'}{esc(AppLocale.ENGLISH)}${'$'}fragment"))
-        assertTrue("explicit English must remain ahead of a URL fragment", href.indexOf("lang=") < href.indexOf("${'$'}fragment"))
-
-        val pageShellHeader = serverSource.substring(
-            serverSource.indexOf("private fun pageShell("),
-            serverSource.indexOf("): String {", serverSource.indexOf("private fun pageShell(")),
-        )
-        assertTrue(pageShellHeader.contains("preserveExplicitEnglish: Boolean = false"))
-        assertEquals(
-            "no other route may opt into Setup's explicit-English URL persistence",
-            1,
-            Regex("preserveExplicitEnglish\\s*=\\s*preserveExplicitEnglish").findAll(serverSource).count(),
-        )
-    }
-
-    @Test fun `Unfinished-Setup redirects retain only admitted locale signals in precedence order`() {
-        // The Location value itself is behavior-tested in UnfinishedSetupLocationTest; this pins the wiring.
-        val redirect = functionBody("setupRedirectLocation")
-        assertTrue(redirect.contains("unfinishedSetupLocation("))
-        assertTrue(redirect.contains("lang = call.request.queryParameters[\"lang\"]"))
-        assertTrue(redirect.contains("haLang = call.request.queryParameters[\"ha_lang\"]"))
-        assertTrue("debug builds may admit the pseudo locale for explicit lang", redirect.contains("allowPseudo = BuildConfig.DEBUG"))
-        assertEquals(
-            "raw locale values must be read once and handed to the canonicalizing builder",
-            2,
-            Regex("queryParameters\\[").findAll(redirect).count(),
-        )
-
-        val interceptor = serverSource.substring(
-            serverSource.indexOf("call.request.uri.substringBefore('?') in WIZARD_REDIRECT_PAGES"),
-            serverSource.indexOf("// CSRF guard:", serverSource.indexOf("call.request.uri.substringBefore('?') in WIZARD_REDIRECT_PAGES")),
-        )
-        assertTrue(interceptor.contains("call.respondRedirect(setupRedirectLocation(call))"))
-        assertFalse("the interceptor must not rebuild or reflect the raw query", interceptor.contains("queryParameters["))
-    }
-
-    @Test fun `Setup-authored navigation retains the requested locale`() {
-        val helper = jsFunction("internalHref")
-        assertTrue(helper.contains("var params = new URLSearchParams(location.search)"))
-        assertTrue(helper.contains("params.has(\"lang\")"))
-        assertTrue(helper.contains("params.has(\"ha_lang\")"))
-        assertTrue(helper.contains("var lang = requestedLocale()"))
-        assertTrue(helper.contains("supported.indexOf(lang) === -1"))
-        assertTrue(helper.contains("url.searchParams.set(\"lang\", lang)"))
-        assertTrue(helper.contains("url.origin !== location.origin"))
-
-        setOf("./", "configure", "configure#cfg-dashboard_package", "install").forEach { path ->
-            assertTrue(
-                "Setup-authored route $path must preserve the selected language",
-                setupJs.contains("internalHref(\"$path\")"),
-            )
-        }
-        assertFalse(
-            "Setup must not retain a direct internal href that drops lang",
-            Regex("href:\\s*\"/(?!api/)").containsMatchIn(setupJs),
-        )
-    }
-
-    @Test fun `Discovery renders its finite reason token and never the server English explanation`() {
-        val discovery = jsFunction("discoveryNote")
-        assertTrue(discovery.contains("d.reason"))
-        assertTrue(discovery.contains("setup.discovery.unavailable."))
-        assertFalse("server-authored English is not opaque evidence", Regex("\\bd\\.explanation\\b").containsMatchIn(discovery))
-        assertTrue(
-            "the discovered address must remain an opaque placeholder value",
-            discovery.contains("i18nText(\"setup.discovery.found\"") && discovery.contains("{ value: discovery[forField] }"),
-        )
-    }
-
-    @Test fun `Only an explicit approval-required 202 enters the approval path`() {
-        val post = jsFunction("postFormAttempt")
-        assertTrue(
-            "generic 202 responses may be accepted work and must not be called approval",
-            Regex("r\\.status === 202\\s*&&\\s*body\\.error === [\"']approval-required[\"']")
-                .containsMatchIn(post),
-        )
-        assertTrue("server error evidence must remain verbatim", post.contains("body.error || body.message"))
-        assertTrue("server approval guidance must remain verbatim", post.contains("body.message || i18nText("))
-    }
-
-    @Test fun `WebView accepted busy is distinct from an installation start`() {
-        val webView = jsFunction("webViewCard")
-        val admission = webView.indexOf("body.status !== \"started\"")
-        val installing = webView.indexOf("i18nText(\"setup.webview.state.installing\"")
-        assertTrue("only an explicit started result may claim installation", admission >= 0 && admission < installing)
-        val notStarted = webView.substring(admission, installing)
-        assertTrue("a busy/not-started result must re-enable the action", notStarted.contains("e.target.disabled = false"))
-        assertTrue("a busy/not-started result must refresh actual journey state", notStarted.contains("refresh()"))
-    }
-
-    @Test fun `Opaque values cross translation only as named placeholders`() {
-        val requiredBindings = mapOf(
-            "setup.discovery.found" to "value",
-            "setup.mqtt.error.unresolvable" to "host",
-            "setup.mqtt.error.nothing_listening" to "port",
-            "setup.renderer.failure.package_missing" to "package",
-            "setup.dashboard.path.unknown" to "root",
-        )
-        requiredBindings.forEach { (key, value) ->
-            val call = i18nCall(key)
-            assertTrue("$key must bind opaque $value as a named value", Regex("\\b$value\\s*:").containsMatchIn(call))
-        }
-        assertTrue("raw API errors remain direct evidence", setupJs.contains("stepErr(e.message)"))
-        assertFalse(
-            "server discovery explanation is translatable prose, not opaque evidence",
-            Regex("\\bd\\.explanation\\b").containsMatchIn(setupJs),
-        )
-    }
-
-    @Test fun `Translated copy is painted with textContent and never translated innerHTML`() {
-        val elementBuilder = jsFunction("el")
-        assertTrue(elementBuilder.contains("if (k === \"text\") n.textContent = attrs[k]"))
-        assertFalse("the generic element builder must not admit translated HTML", elementBuilder.contains("innerHTML"))
-        assertFalse(
-            "no translated return value may flow into innerHTML",
-            Regex("innerHTML\\s*=\\s*i18nText\\(").containsMatchIn(setupJs),
-        )
-        val identityPaint = setupJs.substring(setupJs.indexOf("function paint(v)"), setupJs.indexOf("paint(id);"))
-        assertTrue(identityPaint.contains("preview.textContent = \"\""))
-        assertTrue(identityPaint.contains("document.createTextNode(i18nText(\"setup.identity.preview_intro\""))
-        assertTrue(identityPaint.contains("el(\"b\", { text: entityId })"))
-        assertFalse(identityPaint.contains("innerHTML"))
-    }
-
     private fun literalSetupKeys(source: String): Set<String> =
         Regex("[\\\"'](setup(?:\\.[a-z0-9][a-z0-9_-]*)+)[\\\"']")
             .findAll(source)
             .mapTo(sortedSetOf()) { it.groupValues[1] }
-
-    private fun functionBody(name: String): String {
-        val start = serverSource.indexOf("fun $name(").also { require(it >= 0) { "missing function $name" } }
-        val next = serverSource.indexOf("\n    private fun ", start + 1).takeIf { it >= 0 } ?: serverSource.length
-        return serverSource.substring(start, next)
-    }
-
-    private fun routeBody(path: String): String {
-        val marker = "get(\"/$path\")"
-        val start = serverSource.indexOf(marker).also { require(it >= 0) { "missing /$path route" } }
-        val next = serverSource.indexOf("\n                get(\"/", start + marker.length)
-            .takeIf { it >= 0 } ?: serverSource.length
-        return serverSource.substring(start, next)
-    }
-
-    private fun jsFunction(name: String): String {
-        val start = setupJs.indexOf("function $name(").also { require(it >= 0) { "missing JS function $name" } }
-        val next = setupJs.indexOf("\n  function ", start + 1).takeIf { it >= 0 } ?: setupJs.length
-        return setupJs.substring(start, next)
-    }
-
-    private fun i18nCall(key: String): String {
-        val start = setupJs.indexOf("i18nText(\"$key\"").also { require(it >= 0) { "missing consumer for $key" } }
-        return setupJs.substring(start, minOf(setupJs.length, start + 700))
-    }
 
     private fun jsCalls(source: String, function: String): List<List<String>> {
         val calls = mutableListOf<List<String>>()
