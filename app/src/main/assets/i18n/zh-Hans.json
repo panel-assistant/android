@@ -7894,9 +7894,9 @@
       "text": "原始日志流："
     },
     "logs.note.sources": {
-      "sourceHash": "ec021900e6169b9a82e2d3aacfd2142bd80c0d7c6207659ed43694aa72d6185d",
-      "state": "machine-cross-checked",
-      "text": "应用 = ha-paneld 自身的进程日志（无需 root）。系统 = 完整的设备 logcat（需要 root）。"
+      "text": "应用 = ha-paneld 自身的进程日志（无需 root）。系统 = 完整的设备 logcat（需要 root）。浏览器控制台 = 仪表盘的 JavaScript 控制台（需要配置日志传输）。",
+      "sourceHash": "d6a51774b399c1f36458838d21519b2eae7c45c04bb2ef804d6c2fef4855f3d2",
+      "state": "machine-cross-checked"
     },
     "logs.source.app": {
       "sourceHash": "0d04bfeb7d64b71c74fc925cca93d683154e8cc7e6e5838faced498e34c9984d",

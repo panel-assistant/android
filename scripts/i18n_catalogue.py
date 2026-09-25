@@ -71,6 +71,16 @@ RENDERABLE_STATES = {"machine-cross-checked", "community-corrected"}
 # Mirrors Kotlin AppLocale.EARLY_ACCESS_LOCALES: for exactly these locales, Strings.resolve()
 # also renders a current machine-draft record instead of falling back to English.
 EARLY_ACCESS_LOCALES = {"nl", "pl", "uk"}
+
+
+def held_for_review(locale: str, record: dict[str, Any], source_record: dict[str, Any]) -> bool:
+    """Early-access locales hold a consequential string at English until it has been reviewed."""
+    return (
+        locale in EARLY_ACCESS_LOCALES
+        and source_record["risk"] == "consequential"
+        and record["state"] == "english-fallback"
+    )
+
 MAX_TARGET_TEXT_CHARS = 16_384
 MAX_TARGET_TEXT_BYTES = MAX_TARGET_TEXT_CHARS * 4
 MAX_REPLACEMENT_FILE_BYTES = MAX_TARGET_TEXT_BYTES + 2
@@ -292,6 +302,8 @@ TARGET_LITERAL_EXCEPTIONS = {
     ("pl", "install.presentation.status_no_renderer"): ("ℹ",),
     ("uk", "logs.source.webview_hint"): ("JavaScript", "DevTools"),
     ("zh-Hans", "logs.source.webview_hint"): ("JavaScript", "DevTools"),
+    ("uk", "logs.note.sources"): ("JavaScript",),
+    ("zh-Hans", "logs.note.sources"): ("JavaScript",),
     ("uk", "settings.kiosk_companion_packages.help"): ("root",),
     ("uk", "install.apk.dynamic.paste_url"): ("https://",),
     ("uk", "install.apk_status.invalid_url"): ("https://",),
