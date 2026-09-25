@@ -38,6 +38,8 @@ internal data class HaPresenceRequest(
     val controllerEpoch: Long = 0L,
     /** The panel's locally configured area name; when set it names the room presence sources come from. */
     val preferredAreaName: String = "",
+    /** The Panel Assistant discovery id, which proves this panel's `panel_assistant` device; null without one. */
+    val discoveryId: String? = null,
 )
 
 internal enum class HaPresencePhase {
@@ -157,11 +159,14 @@ internal data class HaPresenceRegistrySnapshot(
     val areas: JSONObject,
     val entities: JSONObject,
     val states: JSONArray,
+    /** [HaPanelDeviceMatcher.readProbe]'s response; null when no Panel Assistant device was probed. */
+    val panelAssistantProbe: JSONObject? = null,
 )
 
 internal data class HaPanelAreaRegistrySnapshot(
     val devices: JSONObject,
     val areas: JSONObject,
+    val panelAssistantProbe: JSONObject? = null,
 )
 
 internal enum class HaPanelAreaPrerequisitePhase { ASSIGNED, UNASSIGNED, AUTH_FAILED, UNAVAILABLE }
@@ -179,7 +184,7 @@ internal interface HaPresenceTransport {
     suspend fun registry(baseUrl: String, accessToken: String): HaPresenceRegistrySnapshot
     suspend fun panelAreaRegistry(baseUrl: String, accessToken: String): HaPanelAreaRegistrySnapshot {
         val snapshot = registry(baseUrl, accessToken)
-        return HaPanelAreaRegistrySnapshot(snapshot.devices, snapshot.areas)
+        return HaPanelAreaRegistrySnapshot(snapshot.devices, snapshot.areas, snapshot.panelAssistantProbe)
     }
     suspend fun history(
         baseUrl: String,
@@ -263,11 +268,23 @@ internal class HaPresenceSourceManager(
 
     private var registryRefreshJob: Job? = null
 
+    /**
+     * Consecutive failed discoveries, and the window after the latest one in which a registry change may
+     * not start another. Home Assistant emits registry events for the whole installation, so a panel whose
+     * discovery fails deterministically would otherwise retry on every one. The change is delayed, never
+     * dropped: it may be the one that fixes the failure, such as an Area being assigned. Explicit
+     * configuration and refresh are not gated. Both fields are guarded by [lock].
+     */
+    private var discoveryFailures = 0
+    private var failureBackoff: Job? = null
+
     private fun registryChanged() {
         synchronized(lock) {
             if (closed || !request.enabled) return
             registryRefreshJob?.cancel()
+            val backoff = failureBackoff
             registryRefreshJob = scope.launch(workerDispatcher) {
+                backoff?.join()
                 kotlinx.coroutines.delay(REGISTRY_REFRESH_COALESCE_MS)
                 runCatching(::refresh).onFailure {
                     Log.w(TAG, "presence registry refresh admission failed: ${it.javaClass.simpleName}")
@@ -276,7 +293,12 @@ internal class HaPresenceSourceManager(
         }
     }
 
-    suspend fun prerequisite(deviceUid: String, panelId: String, preferredAreaName: String = ""): HaPanelAreaPrerequisite {
+    suspend fun prerequisite(
+        deviceUid: String,
+        panelId: String,
+        preferredAreaName: String = "",
+        discoveryId: String? = null,
+    ): HaPanelAreaPrerequisite {
         return try {
             suspend fun resolveAndRead(force: Boolean): Pair<HaApiSession, HaPanelAreaRegistrySnapshot> {
                 val session = resolveSession(force)
@@ -290,7 +312,14 @@ internal class HaPresenceSourceManager(
             } catch (rejected: HaAuthenticationException) {
                 resolveAndRead(force = true)
             }
-            val area = HaPresenceProtocol.projectPanelArea(snapshot.devices, snapshot.areas, deviceUid, panelId, preferredAreaName)
+            val area = HaPresenceProtocol.projectPanelArea(
+                snapshot.devices,
+                snapshot.areas,
+                deviceUid,
+                panelId,
+                HaPanelDeviceMatcher.panelAssistantEntryIds(snapshot.panelAssistantProbe, discoveryId),
+                preferredAreaName,
+            )
             HaPanelAreaPrerequisite(
                 HaPanelAreaPrerequisitePhase.ASSIGNED,
                 areaName = area.name,
@@ -401,7 +430,10 @@ internal class HaPresenceSourceManager(
             ) return
             val replacesTarget = !force && normalized != request
             request = normalized
-            if (replacesTarget) lastResolution = null
+            if (replacesTarget) {
+                lastResolution = null
+                clearFailuresLocked()
+            }
             discoveryJob?.cancel()
             discoveryJob = null
             run = generation.incrementAndGet()
@@ -432,6 +464,7 @@ internal class HaPresenceSourceManager(
             discoveryJob?.cancel()
             registryRefreshJob?.cancel()
             registryRefreshJob = null
+            clearFailuresLocked()
             discoveryJob = null
             selection = null
             lastResolution = null
@@ -456,6 +489,7 @@ internal class HaPresenceSourceManager(
                 session = resolveSession(force = true)
                 bootstrap(run, requested, session)
             }
+            synchronized(lock) { if (current(run, requested)) clearFailuresLocked() }
             if (found == null) {
                 synchronized(lock) { if (current(run, requested)) lastResolution = null }
                 reconcileStreamSources()
@@ -480,6 +514,7 @@ internal class HaPresenceSourceManager(
             throw cancelled
         } catch (rejected: HaAuthenticationException) {
             retireLastResolution(run, requested)
+            noteFailure(run, requested)
             reconcileStreamSources()
             publish(run, HaPresenceAggregate(
                 HaPresencePhase.AUTH_FAILED,
@@ -487,11 +522,14 @@ internal class HaPresenceSourceManager(
             ))
         } catch (error: Exception) {
             retireLastResolution(run, requested)
+            val backoffMs = noteFailure(run, requested)
             reconcileStreamSources()
             val failure = error as? DiscoveryFailure
             val code = failure?.code ?: "discovery_failed"
-            val causeType = failure?.cause?.javaClass?.simpleName ?: error.javaClass.simpleName
-            Log.w(TAG, "presence discovery failed code=$code cause=$causeType")
+            val cause = failure?.cause ?: error
+            val detail = cause.message.orEmpty().filterNot(Char::isISOControl).take(MAX_DETAIL_CHARS)
+            Log.w(TAG, "presence discovery failed code=$code cause=${cause.javaClass.simpleName} " +
+                "detail=\"$detail\" registry_backoff_s=${backoffMs / 1_000L}")
             val phase = if (code == "no_area") HaPresencePhase.NO_AREA
                 else HaPresencePhase.DISCOVERY_FAILED
             publish(run, HaPresenceAggregate(phase, code, areaName = failure?.areaName.orEmpty()))
@@ -514,6 +552,8 @@ internal class HaPresenceSourceManager(
             if (error is HaAuthenticationException) throw error
             throw DiscoveryFailure("registry_transport", error)
         }
+        val panelAssistantEntryIds =
+            HaPanelDeviceMatcher.panelAssistantEntryIds(snapshot.panelAssistantProbe, requested.discoveryId)
         // Preserve the independently resolvable panel Area in a projection failure. This keeps the
         // status coherent with the prerequisite endpoint and lets clients distinguish a terminal
         // failure from a stale result for a previously selected Area.
@@ -523,6 +563,7 @@ internal class HaPresenceSourceManager(
                 snapshot.areas,
                 requested.deviceUid,
                 requested.panelId,
+                panelAssistantEntryIds,
                 requested.preferredAreaName,
             ).name
         }.getOrDefault("")
@@ -534,6 +575,7 @@ internal class HaPresenceSourceManager(
                 snapshot.states,
                 requested.deviceUid,
                 requested.panelId,
+                panelAssistantEntryIds,
                 requested.preferredAreaName,
             )
         } catch (cancelled: CancellationException) {
@@ -760,6 +802,22 @@ internal class HaPresenceSourceManager(
         if (current(run, expected)) lastResolution = null
     }
 
+    /** Counts a failed discovery and opens its registry-change backoff window; returns the window. */
+    private fun noteFailure(run: Long, expected: HaPresenceRequest): Long = synchronized(lock) {
+        if (!current(run, expected)) return 0L
+        discoveryFailures++
+        val backoffMs = registryBackoffMs(discoveryFailures)
+        failureBackoff?.cancel()
+        failureBackoff = scope.launch(workerDispatcher) { kotlinx.coroutines.delay(backoffMs) }
+        backoffMs
+    }
+
+    private fun clearFailuresLocked() {
+        discoveryFailures = 0
+        failureBackoff?.cancel()
+        failureBackoff = null
+    }
+
     /** Applies only the latest admitted demand without holding the manager lock across owner calls. */
     private fun reconcileStreamSources() {
         while (true) {
@@ -789,6 +847,12 @@ internal class HaPresenceSourceManager(
         const val HISTORY_WINDOW_MS = 7L * 24L * 60L * MINUTE_MS
         const val HISTORY_CHUNK_MS = 12L * 60L * MINUTE_MS
         const val REGISTRY_REFRESH_COALESCE_MS = 2_000L
+        const val REGISTRY_BACKOFF_BASE_MS = 60_000L
+        const val REGISTRY_BACKOFF_MAX_MS = 30L * MINUTE_MS
+
+        /** One minute after the first failure, doubling to a 30-minute ceiling. */
+        fun registryBackoffMs(failures: Int): Long =
+            (REGISTRY_BACKOFF_BASE_MS shl (failures - 1).coerceIn(0, 5)).coerceAtMost(REGISTRY_BACKOFF_MAX_MS)
 
         fun disabledRequest() = HaPresenceRequest(
             false, "", "",
@@ -804,27 +868,32 @@ internal class KtorHaPresenceTransport(
         var devices: JSONObject? = null
         var areas: JSONObject? = null
         var entities: JSONObject? = null
+        var probe: JSONObject? = null
         withCommandSocket(baseUrl, accessToken) { request ->
             devices = request(JSONObject().put("type", "config/device_registry/list"))
             areas = request(JSONObject().put("type", "config/area_registry/list"))
             entities = request(JSONObject().put("type", "config/entity_registry/list_for_display"))
+            probe = HaPanelDeviceMatcher.readProbe(request, devices, entities)
         }
         return HaPresenceRegistrySnapshot(
             checkNotNull(devices),
             checkNotNull(areas),
             checkNotNull(entities),
             states(baseUrl, accessToken),
+            probe,
         )
     }
 
     override suspend fun panelAreaRegistry(baseUrl: String, accessToken: String): HaPanelAreaRegistrySnapshot {
         var devices: JSONObject? = null
         var areas: JSONObject? = null
+        var probe: JSONObject? = null
         withCommandSocket(baseUrl, accessToken) { request ->
             devices = request(JSONObject().put("type", "config/device_registry/list"))
             areas = request(JSONObject().put("type", "config/area_registry/list"))
+            probe = HaPanelDeviceMatcher.readProbe(request, devices)
         }
-        return HaPanelAreaRegistrySnapshot(checkNotNull(devices), checkNotNull(areas))
+        return HaPanelAreaRegistrySnapshot(checkNotNull(devices), checkNotNull(areas), probe)
     }
 
     override suspend fun history(

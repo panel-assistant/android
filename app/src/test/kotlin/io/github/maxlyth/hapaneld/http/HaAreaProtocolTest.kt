@@ -135,7 +135,7 @@ class HaAreaProtocolTest {
             File("app/src/main/kotlin/io/github/maxlyth/hapaneld/control/AutoSleepController.kt"),
         ).first { it.isFile }.readText()
         assertTrue(controller.contains("preferredAreaName = next.value.haArea"))
-        assertTrue(controller.contains("manager.prerequisite(current.deviceUid, current.panelId, current.haArea)"))
+        assertTrue(controller.contains("manager.prerequisite(current.deviceUid, current.panelId, current.haArea, current.discoveryId)"))
     }
 
     @Test fun thePrecedenceRuleIsHaWinsLocalOnlySeedsAndAdminsApply() {
@@ -171,21 +171,21 @@ class HaAreaProtocolTest {
 
     @Test fun thePanelDeviceIsFoundByItsOwnMqttIdentifiersAndJoinedToItsArea() {
         val areas = HaAreaProtocol.areas(areasJson())
-        val found = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "abc123", "alpha")
+        val found = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "abc123", "alpha", emptySet())
         assertTrue(found.found)
         assertEquals("dev1", found.deviceId)
         assertEquals("Office", found.areaName)
         // Legacy panel-id identifier is the fallback when the immutable one is absent.
-        val legacyOnly = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "", "alpha")
+        val legacyOnly = HaAreaProtocol.panelDeviceArea(devicesJson(), areas, "", "alpha", emptySet())
         assertTrue(legacyOnly.found)
         // No area on the device reads as blank, never as a guess.
-        val bare = HaAreaProtocol.panelDeviceArea(devicesJson(areaId = ""), areas, "abc123", "alpha")
+        val bare = HaAreaProtocol.panelDeviceArea(devicesJson(areaId = ""), areas, "abc123", "alpha", emptySet())
         assertTrue(bare.found)
         assertEquals("", bare.areaName)
         // Unlike the presence path this never throws — setup must be able to say "not found" calmly.
-        val missing = HaAreaProtocol.panelDeviceArea(JSONObject("""{"result":[]}"""), areas, "abc123", "x")
+        val missing = HaAreaProtocol.panelDeviceArea(JSONObject("""{"result":[]}"""), areas, "abc123", "x", emptySet())
         assertFalse(missing.found)
-        assertFalse(HaAreaProtocol.panelDeviceArea(null, areas, "abc123", "x").found)
+        assertFalse(HaAreaProtocol.panelDeviceArea(null, areas, "abc123", "x", emptySet()).found)
     }
 
     @Test fun areaNamesResolveCaseInsensitively() {
