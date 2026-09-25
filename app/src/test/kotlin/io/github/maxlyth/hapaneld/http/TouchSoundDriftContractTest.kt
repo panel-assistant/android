@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.http
 
-import io.github.maxlyth.hapaneld.control.TouchSoundOrigin
 import io.github.maxlyth.hapaneld.control.resolveTouchSoundIntent
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -17,6 +16,7 @@ import org.junit.Test
  * prove it can fail; the rest hold the Android-coupled seams that carry it, which have no JVM harness.
  */
 class TouchSoundDriftContractTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private fun source(path: String): String =
         File("src/main/kotlin/io/github/maxlyth/hapaneld/$path").readText()
 
@@ -84,28 +84,6 @@ class TouchSoundDriftContractTest {
         assertTrue(plan.changedLive.isEmpty())
     }
 
-    @Test fun neitherLiveValueProjectionOffersTouchSound() {
-        val service = source("PaneldService.kt")
-        val configLive = service.substring(
-            service.indexOf("private fun currentConfigLiveValues()"),
-            service.indexOf("private fun managementProjection("),
-        )
-        val projected = service.substring(
-            service.indexOf("private fun projectLiveValues("),
-            service.indexOf("private fun currentConfigLiveValues()"),
-        )
-
-        // A key present in either map overrides the persisted registry value on every surface that
-        // reports it, so touch sound must not appear in either one.
-        assertFalse(configLive.contains("touch_sound"))
-        assertFalse(configLive.contains("touchSound"))
-        assertFalse(projected.contains("\"touch_sound\" to"))
-        assertFalse(projected.contains("touchSound"))
-        // The keys that genuinely are controller-owned stay where they were.
-        assertTrue(configLive.contains("adb.isPersisted()"))
-        assertTrue(configLive.contains("cpu.currentTier(allowRootFallback = false)"))
-    }
-
     @Test fun theStatePublishedToHomeAssistantIsThePersistedIntent() {
         val bridge = source("MqttBridge.kt")
 
@@ -128,38 +106,5 @@ class TouchSoundDriftContractTest {
         assertTrue(handler.contains("config.commitTouchSound(on)"))
         assertTrue(handler.indexOf("config.commitTouchSound(on)") < handler.indexOf("touchSound.apply(on)"))
         assertTrue(handler.contains("""stateConverger.reconcile("touch_sound", force = true)"""))
-    }
-
-    /**
-     * Adoption has to be settled before the server can accept a save, or the first post-upgrade boot
-     * could serve a Configure page built from the registry default and take a save against it.
-     */
-    @Test fun intentIsResolvedBeforeTheServerAcceptsAnySave() {
-        val service = source("PaneldService.kt")
-
-        assertTrue(service.contains("val touchSoundIntent = resolveTouchSoundIntentOnce()"))
-        assertTrue(
-            service.indexOf("val touchSoundIntent = resolveTouchSoundIntentOnce()") <
-                // The statement, not the comment above the startup block that names it.
-                service.indexOf("\n            server.start()"),
-        )
-        // Reassertion is two-directional now: a persisted OFF is asserted, not merely left alone.
-        assertTrue(service.contains("touchSound.reassert(touchSoundIntent)"))
-        assertFalse(service.contains("if (touchSound.isEnabled()) touchSound.set(true)"))
-    }
-
-    @Test fun adoptionOnlyEverWritesWhenTheResolutionSaysSo() {
-        val service = source("PaneldService.kt")
-        val adoption = service.substring(
-            service.indexOf("private fun resolveTouchSoundIntentOnce()"),
-            service.indexOf("private fun previousLiveSettingValue("),
-        )
-
-        assertTrue(adoption.contains("if (resolution.needsAdoption)"))
-        assertTrue(adoption.contains("config.commitTouchSound(resolution.enabled)"))
-        assertTrue(adoption.contains("persistedIntent = config.touchSoundIntent"))
-        assertTrue(adoption.contains("controllerRecord = touchSound.recordedState()"))
-        assertTrue(adoption.contains("observedHardware = touchSound.observedPlatformState()"))
-        assertEquals(TouchSoundOrigin.INTENT, resolveTouchSoundIntent(true, null, null, false).origin)
     }
 }

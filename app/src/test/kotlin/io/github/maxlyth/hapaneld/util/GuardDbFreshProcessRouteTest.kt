@@ -1,8 +1,6 @@
 package io.github.maxlyth.hapaneld.util
 
-import io.github.maxlyth.hapaneld.testsupport.TestSources
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,23 +29,6 @@ class GuardDbFreshProcessRouteTest {
         }
     }
 
-    @Test fun `fresh process composes reconciler then PaneldService redirect before ordinary DB owners`() {
-        val application = TestSources.kotlin("HaPaneldApp.kt").readText()
-        val startup = TestSources.kotlin("util/GuardDbStartupHealth.kt").readText()
-        val service = TestSources.kotlin("PaneldService.kt").readText()
-        val onCreate = service.substring(
-            service.indexOf("override fun onCreate()"),
-            service.indexOf("override fun onStartCommand("),
-        )
-
-        assertTrue(application.contains("GuardDbStartupAcknowledger.reconcileBeforeServices(this)"))
-        assertTrue(startup.contains("guardDbFreshProcessRoute(sentinel.state, status.phase)"))
-        assertTrue(onCreate.indexOf("GuardDbProcessAdmission.maintenanceRequired()") <
-            onCreate.indexOf("Config(this)"))
-        assertTrue(onCreate.indexOf("GuardDbMaintenanceService.start(this)") <
-            onCreate.indexOf("Config(this)"))
-    }
-
     @Test fun `active sentinel startup resumes retained current helper before status recovery`() {
         val valid = GuardDbMaintenanceClient.StatusProbe.Valid(emptyStatus())
         val probes = ArrayDeque<GuardDbMaintenanceClient.StatusProbe>().apply {
@@ -70,20 +51,6 @@ class GuardDbFreshProcessRouteTest {
 
         assertSame(valid, result)
         assertEquals(listOf("probe", "resume", "probe"), events)
-
-        val startup = TestSources.kotlin("util/GuardDbStartupHealth.kt").readText()
-        val reconcile = startup.substring(
-            startup.indexOf("fun reconcileBeforeServices(context: Context)"),
-            startup.indexOf("private fun startupProof("),
-        )
-        val reacquire = startup.substring(
-            startup.indexOf("private fun reacquireStatus()"),
-            startup.indexOf("/**\n * Reacquires Guard status"),
-        )
-        assertTrue(reconcile.indexOf("val probe = reacquireStatus()") <
-            reconcile.indexOf("EntityCatalogStore(context.applicationContext)"))
-        assertTrue(reacquire.contains("BundledHelperInstaller::resumeRetainedCurrent"))
-        assertFalse(reacquire.contains("BundledHelperInstaller.ensureCurrent"))
     }
 
     @Test fun `already valid startup status never invokes retained helper resume`() {

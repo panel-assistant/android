@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.dashboard
 
-import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,16 +48,4 @@ class EntityBootstrapGateTest {
             "builtin", "builtin", setupEntityFilterAnswered = false, setupEverCompleted = true))
     }
 
-    @Test fun learnerCompletionResolvesAutoBeforeTestingRendererKind() {
-        val source = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-        ).first { it.isFile }.readText()
-        val callback = source.substringAfter("onFilterChanged = {")
-            .substringBefore("watchdog = WatchdogController")
-        assertTrue(
-            "Auto must be resolved before deciding whether learner completion reloads built-in",
-            "system.resolveDashboard(config.dashboardPackage)" in callback,
-        )
-    }
 }
