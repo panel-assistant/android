@@ -263,21 +263,20 @@ class ServiceRuntimeOwnerTest {
         }
     }
 
-    @Test fun expiredShutdownReturnsPromptlyThenCleansUpBehindBlockedStartup() {
+    // Startup stays blocked (30 s) until after shutdown returns, so a shutdown that waited on it hangs.
+    @Test(timeout = 10_000)
+    fun expiredShutdownReturnsPromptlyThenCleansUpBehindBlockedStartup() {
         val owner = ServiceRuntimeOwner("runtime", "expired-shutdown-test")
         val startupEntered = CountDownLatch(1)
         val releaseStartup = CountDownLatch(1)
         val cleanupRan = CountDownLatch(1)
         val startup = owner.start {
             startupEntered.countDown()
-            assertTrue(releaseStartup.await(2, TimeUnit.SECONDS))
+            assertTrue(releaseStartup.await(30, TimeUnit.SECONDS))
         }
         assertTrue(startupEntered.await(2, TimeUnit.SECONDS))
 
-        val startedAt = System.nanoTime()
         assertFalse(owner.shutdown(0L) { cleanupRan.countDown() })
-        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
-        assertTrue("expired shutdown blocked for ${elapsedMs}ms", elapsedMs < 500L)
         assertFalse(owner.isStopped())
         assertFalse(cycle(owner) { error("late transition ran") }.get(2, TimeUnit.SECONDS))
         assertEquals(1L, cleanupRan.count)
@@ -885,7 +884,9 @@ class ServiceRuntimeOwnerTest {
         }
     }
 
-    @Test fun zeroBudgetShutdownDropsPendingLatestWorkAndStopsBeforeBuild() {
+    // Retirement stays blocked (30 s) until after shutdown returns, so a shutdown that waited on it hangs.
+    @Test(timeout = 10_000)
+    fun zeroBudgetShutdownDropsPendingLatestWorkAndStopsBeforeBuild() {
         val events = Collections.synchronizedList(mutableListOf<String>())
         val retireEntered = CountDownLatch(1)
         val releaseRetire = CountDownLatch(1)
@@ -899,7 +900,7 @@ class ServiceRuntimeOwnerTest {
                     retire = {
                         events += "retire"
                         retireEntered.countDown()
-                        assertTrue(releaseRetire.await(2, TimeUnit.SECONDS))
+                        assertTrue(releaseRetire.await(30, TimeUnit.SECONDS))
                     },
                     build = { events += "build"; "replacement" },
                     start = { events += "start" },
@@ -912,13 +913,11 @@ class ServiceRuntimeOwnerTest {
         assertTrue(retireEntered.await(2, TimeUnit.SECONDS))
         assertEquals(ServiceRuntimeOwner.LatestAdmission.ACCEPTED, owner.requestLatest())
 
-        val startedAt = System.nanoTime()
         assertFalse(owner.shutdown(0L) {
             cleaned.set(it)
             events += "cleanup"
             cleanupRan.countDown()
         })
-        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 500L)
         assertEquals(ServiceRuntimeOwner.LatestAdmission.CLOSED, owner.requestLatest())
         assertEquals(0, owner.pendingLatestCount())
 

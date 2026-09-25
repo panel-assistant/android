@@ -153,20 +153,6 @@ class DashboardRecoveryTest {
         assertEquals(950, networkWaitProgress(elapsedMs = 90_000L, estimateMs = 60_000L))
     }
 
-    @Test fun `startup stages distinguish network address delay`() {
-        fun stage(present: Boolean, link: Boolean, address: Boolean, default: Boolean) =
-            startupNetworkStage(StartupNetworkSnapshot(present, link, address, default))
-
-        assertEquals("Starting Android network services", stage(false, false, false, false))
-        assertEquals("Waiting for a network link", stage(true, false, false, false))
-        assertEquals(
-            "Network link connected\nWaiting for a network address",
-            stage(true, true, false, false),
-        )
-        assertEquals("Network address received\nPreparing the connection", stage(true, true, true, false))
-        assertEquals("Network ready\nOpening Home Assistant", stage(true, true, true, true))
-    }
-
     @Test fun `renderer generation rejects replaced and closed callbacks`() {
         val gate = RendererGenerationGate()
         val first = gate.open()

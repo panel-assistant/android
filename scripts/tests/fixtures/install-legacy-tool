@@ -38,7 +38,7 @@ emit_package_observation() {
   nonce="$(printf '%s\n' "$command" | sed -n 's/.*HAPANELD_INSTALLER_PKG_BEGIN:\([0-9a-f]\{32\}\).*/\1/p')"
   [ -n "$nonce" ] || exit 2
   probe_pkg="$(printf '%s\n' "$command" | sed -n 's/^[^;]*; *pm path \([^;]*\);.*/\1/p' | head -1)"
-  if [ "$probe_pkg" != "${MOCK_INSTALL_PROBE_PKG:-io.panelassistant.android}" ]; then
+  if [ "$probe_pkg" != "io.panelassistant.android" ]; then
     printf 'HAPANELD_INSTALLER_PKG_BEGIN:%s\n' "$nonce"
     printf 'HAPANELD_INSTALLER_PKG_TARGET:%s:1\n' "$nonce"
     printf 'HAPANELD_INSTALLER_DATA:%s:0\n' "$nonce"
@@ -231,7 +231,7 @@ emit_provisioner() {
 set -u
 printf 'provisioner-executed\n' >> "$INSTALL_LEGACY_STATE_DIR/events.log"
 printf '%s\n' "$*" >> "$INSTALL_LEGACY_STATE_DIR/provisioner-args.log"
-exit "${MOCK_INSTALL_PROVISION_STATUS:-0}"
+exit 0
 EOF
 }
 

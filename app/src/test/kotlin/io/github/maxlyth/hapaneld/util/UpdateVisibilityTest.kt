@@ -30,19 +30,19 @@ class UpdateVisibilityTest {
         assertEquals(listOf(companion), out)
     }
 
-    // --- filterAbsent: the hourly cache must not outlive a Companion uninstall (GitHub issue #24:
+    // --- filterCurrent: the hourly cache must not outlive a Companion uninstall (GitHub issue #24:
     // a /diag showed "HA Companion: … → …" under [updates] while [packages] said not installed) ---
 
     @Test fun companionEntryDroppedWhenNoCompanionInstalled() {
-        assertEquals(listOf(paneld), UpdateChecker.filterAbsent(all, companionInstalled = false))
+        assertEquals(listOf(paneld), UpdateChecker.filterCurrent(all, companionVersion = null))
     }
 
     @Test fun companionEntryKeptWhileInstalled() {
-        assertEquals(all, UpdateChecker.filterAbsent(all, companionInstalled = true))
+        assertEquals(all, UpdateChecker.filterCurrent(all, companionVersion = "2026.5.4"))
     }
 
     @Test fun paneldEntryNeverDropped() {
         // ha-paneld itself is always installed (we are running) — absence filtering never touches it.
-        assertEquals(listOf(paneld), UpdateChecker.filterAbsent(listOf(paneld), companionInstalled = false))
+        assertEquals(listOf(paneld), UpdateChecker.filterCurrent(listOf(paneld), companionVersion = null))
     }
 }

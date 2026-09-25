@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -393,7 +394,8 @@ class AutoSleepControllerTest {
         assertEquals(32, h.status().getInt("source_count"))
     }
 
-    @Test fun staleControllerManagerAndFeedInputsCannotReplaceAcceptedState() = Harness().use { h ->
+    @Test fun staleControllerManagerAndFeedInputsCannotReplaceAcceptedState() = runTest {
+        val h = virtualHarness()
         val request = h.start()
         h.offer(aggregate(request, 2L, HaPresenceValue.ON, manager = 4L,
             marker = HaPresenceActivityMarker(2L, SOURCE, 0L)))
@@ -404,8 +406,9 @@ class AutoSleepControllerTest {
         h.offer(aggregate(request, 3L, HaPresenceValue.OFF, manager = 3L))
         h.offer(aggregate(request, 1L, HaPresenceValue.OFF, manager = 4L))
 
-        Thread.sleep(50L)
+        h.settle()
         assertEquals("source_active", h.status().getString("reason"))
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     @Test fun sameMarkerAcrossManagerRefreshDoesNotReplayActivity() = Harness().use { h ->
@@ -424,7 +427,8 @@ class AutoSleepControllerTest {
         h.await { h.screen.isIntendedOff() }
     }
 
-    @Test fun advancedFinalOffMarkerDuringDiscoveryExtendsFromItsOwnTime() = Harness().use { h ->
+    @Test fun advancedFinalOffMarkerDuringDiscoveryExtendsFromItsOwnTime() = runTest {
+        val h = virtualHarness()
         val first = h.start()
         h.offer(aggregate(first, 0L, HaPresenceValue.OFF,
             marker = HaPresenceActivityMarker(1L, SOURCE, 0L)))
@@ -440,11 +444,12 @@ class AutoSleepControllerTest {
 
         h.now.set(15 * MINUTE)
         h.controller.advanceToForTest(h.now.get())
-        Thread.sleep(30L)
+        h.settle()
         assertFalse("advanced marker must retain its full lease", h.screen.isIntendedOff())
         h.now.set(23 * MINUTE)
         h.controller.advanceToForTest(h.now.get())
         h.await { h.screen.isIntendedOff() }
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     @Test fun aNewFeedGenerationAcceptsRevisionZero() = Harness().use { h ->
@@ -467,14 +472,16 @@ class AutoSleepControllerTest {
         assertEquals(1, h.learning.corrections.size)
     }
 
-    @Test fun tapCallbackBeforeQueuedRawTouchTrainsExactlyOnce() = Harness().use { h ->
+    @Test fun tapCallbackBeforeQueuedRawTouchTrainsExactlyOnce() = runTest {
+        val h = virtualHarness()
         val epoch = h.sleepAutomatically()
         h.wakeTap.fireTap()
         h.controller.noteTouchForTest(h.now.get(), epoch.generation)
 
         h.await { h.learning.corrections.size == 1 }
-        Thread.sleep(30L)
+        h.settle()
         assertEquals(1, h.learning.corrections.size)
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     @Test fun rawTouchCanCausallyWakeTheVisibleNoOverlayFallback() {
@@ -487,7 +494,8 @@ class AutoSleepControllerTest {
         }
     }
 
-    @Test fun sourceWakeThenTouchNeverManufacturesTapProof() = Harness().use { h ->
+    @Test fun sourceWakeThenTouchNeverManufacturesTapProof() = runTest {
+        val h = virtualHarness()
         val request = h.prepareAutomaticSleep()
         h.now.incrementAndGet()
         h.offer(aggregate(request, 1L, HaPresenceValue.ON,
@@ -495,8 +503,9 @@ class AutoSleepControllerTest {
         h.await { !h.screen.isIntendedOff() }
 
         h.controller.noteTouchForTest(h.now.incrementAndGet(), null)
-        Thread.sleep(30L)
+        h.settle()
         assertTrue(h.learning.corrections.isEmpty())
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     @Test fun proximityCannotWakeAutomaticOrManualOffEvenWhenQueuedBeforeOff() = runTest {
@@ -549,25 +558,29 @@ class AutoSleepControllerTest {
         h.closeWithVirtualTime { runCurrent() }
     }
 
-    @Test fun genericScreenWakeThenTouchNeverManufacturesTapProof() = Harness().use { h ->
+    @Test fun genericScreenWakeThenTouchNeverManufacturesTapProof() = runTest {
+        val h = virtualHarness()
         h.prepareAutomaticSleep()
         h.screen.wake()
         h.await { !h.screen.isIntendedOff() }
 
         h.controller.noteTouchForTest(h.now.incrementAndGet(), null)
-        Thread.sleep(30L)
+        h.settle()
         assertTrue(h.learning.corrections.isEmpty())
+        h.closeWithVirtualTime(::runCurrent)
     }
 
-    @Test fun reconnectWakeThenTouchNeverManufacturesTapProof() = Harness().use { h ->
+    @Test fun reconnectWakeThenTouchNeverManufacturesTapProof() = runTest {
+        val h = virtualHarness()
         val request = h.prepareAutomaticSleep()
         h.offer(aggregate(request, 1L, HaPresenceValue.OFF,
             phase = HaPresencePhase.RECONNECTING, hydrated = false))
         h.await { !h.screen.isIntendedOff() }
 
         h.controller.noteTouchForTest(h.now.incrementAndGet(), null)
-        Thread.sleep(30L)
+        h.settle()
         assertTrue(h.learning.corrections.isEmpty())
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     @Test fun staleDeadlineCannotActuateAcrossRefresh() = runTest {
@@ -596,11 +609,15 @@ class AutoSleepControllerTest {
         h.closeWithVirtualTime(::runCurrent)
     }
 
-    @Test fun disabledConfigurationOwnsNoPeriodicRefresh() = Harness(enabled = false).use { h ->
+    @Test fun disabledConfigurationOwnsNoPeriodicRefresh() = runTest {
+        val h = virtualHarness(enabled = false)
         h.start()
-        Thread.sleep(100L)
+        advanceTimeBy(2 * DAY) // past the 24 h rediscovery interval an enabled controller schedules
+        h.settle()
         assertEquals(1, h.requests.size)
         assertFalse(h.requests.single().enabled)
+        assertEquals(0L, h.managerRefreshes.get())
+        h.closeWithVirtualTime(::runCurrent)
     }
 
     @Test fun enabledControllerRediscoveryRunsExactlyOncePerDayAndReschedules() = runTest {
@@ -718,15 +735,14 @@ class AutoSleepControllerTest {
         refresher.join(1_000L)
         val settledRequests = h.requests.size
         repeat(100) { assertFalse(h.controller.refresh()) }
-        Thread.sleep(20L)
         assertEquals(settledRequests, h.requests.size)
         assertFalse(h.offer(HaPresenceAggregate()))
         h.scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
 
-    @Test fun `confirmed missing Area wakes owned screen and requests fail off once`() {
+    @Test fun `confirmed missing Area wakes owned screen and requests fail off once`() = runTest {
         val failOffs = AtomicLong()
-        Harness(onNoArea = { failOffs.incrementAndGet() }).use { h ->
+        virtualHarness(onNoArea = { failOffs.incrementAndGet() }).let { h ->
             val request = h.prepareAutomaticSleep()
             assertTrue(h.screen.isIntendedOff())
 
@@ -749,10 +765,16 @@ class AutoSleepControllerTest {
                 hydrated = false,
                 sources = emptySet(),
             ))
-            Thread.sleep(20L)
+            h.settle()
             assertEquals(1L, failOffs.get())
+            h.closeWithVirtualTime(::runCurrent)
         }
     }
+
+    private fun TestScope.virtualHarness(
+        enabled: Boolean = true,
+        onNoArea: (Long) -> Unit = {},
+    ) = Harness(this, StandardTestDispatcher(testScheduler), enabled = enabled, onNoArea = onNoArea, drive = { runCurrent() })
 
     private class Harness(
         scopeOverride: CoroutineScope? = null,
@@ -765,6 +787,7 @@ class AutoSleepControllerTest {
             error("history unavailable")
         },
         onNoArea: (Long) -> Unit = {},
+        private val drive: (() -> Unit)? = null,
     ) : AutoCloseable {
         val now = AtomicLong()
         val wallNow = AtomicLong()
@@ -840,7 +863,15 @@ class AutoSleepControllerTest {
             return requests[count - 1]
         }
 
+        /** Runs everything queued on the virtual scheduler; the settle point before a negative assertion. */
+        fun settle() = checkNotNull(drive) { "settle() needs a virtual-time harness" }()
+
         fun await(condition: () -> Boolean) {
+            drive?.let {
+                it()
+                check(condition()) { "condition did not settle; status=${controller.statusJson()}" }
+                return
+            }
             val deadline = System.nanoTime() + 2_000_000_000L
             while (!condition()) {
                 if (System.nanoTime() >= deadline) error("condition did not settle; status=${controller.statusJson()}")

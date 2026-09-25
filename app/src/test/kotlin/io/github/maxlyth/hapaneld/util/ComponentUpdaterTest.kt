@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * Pins the consolidated resolve -> compare -> decide pipeline. Absorbs the decision assertions that were
- * previously hand-rolled inside SelfUpdater.checkAndUpdate, UpdateChecker.check (paneld + companion branches),
+ * previously hand-rolled inside SelfUpdater, UpdateChecker.check (paneld + companion branches),
  * CompanionInstaller.shouldInstallTarget and UpdateChecker.filterCurrent, so those callers can route through
  * one pipeline without changing behaviour.
  */

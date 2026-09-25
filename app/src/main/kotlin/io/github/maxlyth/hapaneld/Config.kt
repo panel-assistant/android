@@ -1789,12 +1789,6 @@ class Config private constructor(
         get() = boolPref("dashboard_entity_auto_static")
     val dashboardEntityAutoRuntime: Boolean
         get() = boolPref("dashboard_entity_auto_runtime")
-    fun setDashboardEntityAutoPolicy(staticRefs: Boolean, runtimeRefs: Boolean): Boolean = applyBatch {
-        edit {
-            putBoolean("dashboard_entity_auto_static", staticRefs)
-            putBoolean("dashboard_entity_auto_runtime", runtimeRefs)
-        }
-    }
     fun commitDashboardEntityLearningEnabled(enabled: Boolean): Boolean = applyBatch {
         setDashboardEntityLearningEnabled(enabled)
         if (!enabled) setDashboardEntityLearningApplied(false)
