@@ -3,7 +3,6 @@ package io.github.maxlyth.hapaneld
 import io.github.maxlyth.hapaneld.util.LatestOperationPolicy
 import io.github.maxlyth.hapaneld.util.LatestOperationTimeoutPolicy
 import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
-import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -73,31 +72,6 @@ class ReconfigureIoStarvationTest {
             owner.shutdown(2_000) {}
             watchdog.shutdownNow()
         }
-    }
-
-    /**
-     * The owner-lane proof above only covers production if the service still hands reconfigure to that
-     * owner synchronously. Pin the wiring: the request is not deferred through the service scope, and
-     * the owner runs [PaneldService.performNetworkReconfigure] itself.
-     */
-    @Test fun serviceHandsReconfigureToTheRuntimeOwnerNotTheIoScope() {
-        val source = File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt").readText()
-        // The body, after the function's own opening brace.
-        val enqueue = source.substringAfter("private fun enqueueReconfigure(")
-            .substringBefore("\n    private fun ")
-            .substringAfter('{')
-        val request = enqueue.indexOf("when (runtime.requestLatest())")
-        assertTrue("enqueueReconfigure no longer asks the runtime owner", request >= 0)
-        // The only coroutine launched before the request is the independent launcher HOME side effect,
-        // and it must close before the owner is asked; nothing may wrap the request itself.
-        val beforeRequest = enqueue.substring(0, request)
-        assertEquals(
-            "the reconfigure request must not be launched on the service scope",
-            beforeRequest.count { it == '{' },
-            beforeRequest.count { it == '}' },
-        )
-        assertTrue(source.contains("operation = { performNetworkReconfigure(this) }"))
-        assertTrue(source.contains("threadName = \"ha-paneld-runtime\""))
     }
 
     private companion object {

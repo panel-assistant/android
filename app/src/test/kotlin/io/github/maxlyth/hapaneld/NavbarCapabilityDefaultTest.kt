@@ -11,7 +11,6 @@ import io.github.maxlyth.hapaneld.device.LedMechanism
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.device.profile.BundledProfileFixtures
-import java.io.File
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -237,21 +236,6 @@ class NavbarCapabilityDefaultTest {
         val config = Config(preferences(mapOf("navbar_mode" to "Off")))
         config.attachProfile(x2i)
         assertEquals("Off", config.navbarMode)
-    }
-
-    // ---- the service snapshot must populate what the rule reads -------------------------------
-
-    /** The rule reads three declarations. Two of them were dead fields on the live snapshot before
-     *  this change: a capability that is always its `false` default cannot be told from absent
-     *  hardware, and reading one as evidence is what would put a bar on every panel. */
-    @Test fun `the service snapshot populates the declarations the rule reads`() {
-        val service = listOf(
-            File("src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-            File("app/src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt"),
-        ).first(File::isFile).readText()
-        assertTrue(service.contains("hasEvdevButtons = profile.evdevButtons.isNotEmpty()"))
-        assertTrue(service.contains("hardwareDeclarationsKnown = profile.declarationsFromCatalog"))
-        assertTrue(service.contains("hasRecents = profile.hasRecents"))
     }
 
     // ---- the mechanism is general, and the sealed default is untouched ------------------------

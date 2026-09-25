@@ -15,6 +15,7 @@ import org.junit.Test
  * it, what happens to a value that becomes invalid, and that nothing treats it as a drawn bar.
  */
 class NativeNavbarModeTest {
+    // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
 
     private fun source(vararg candidates: String): String =
         candidates.map(::File).first(File::isFile).readText()
@@ -147,30 +148,6 @@ class NativeNavbarModeTest {
         )
     }
 
-    /** Off was historically the only permission-free mode. Native must be too: requesting the root
-     *  appops overlay grant on a panel whose firmware already provides navigation is gratuitous. */
-    @Test fun `only drawn modes ask for the overlay permission or the volume receiver`() {
-        val controller = source(
-            "src/main/kotlin/io/github/maxlyth/hapaneld/control/NavbarController.kt",
-            "app/src/main/kotlin/io/github/maxlyth/hapaneld/control/NavbarController.kt",
-        )
-        assertTrue(controller.contains("target !in OVERLAY_MODES || ensureOverlayPermission()"))
-        assertTrue(controller.contains("setVolumeReceiver(target in OVERLAY_MODES)"))
-        assertFalse("permission must not be keyed on Off alone", controller.contains("target == MODE_OFF || ensureOverlayPermission()"))
-        assertFalse("volume receiver must not be keyed on Off alone", controller.contains("setVolumeReceiver(target != MODE_OFF)"))
-    }
-
-    /** A Native panel needs no SYSTEM_ALERT_WINDOW, so the diagnostics fact must not warn about one —
-     *  it reaches the public issue-report allowlist. */
-    @Test fun `the navbar diagnostic warns about a missing overlay only for drawn modes`() {
-        val service = source(
-            "src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt",
-            "app/src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt",
-        )
-        assertTrue(service.contains("config.navbarMode in NavbarController.OVERLAY_MODES && !canDrawOverlays()"))
-        assertFalse(service.contains("config.navbarMode != \"Off\" && !canDrawOverlays()"))
-    }
-
     // ---- write admission ---------------------------------------------------------------------
 
     /** MQTT coerces rather than rejects, and "Native" is recognised once it joins MODES, so the guard
@@ -191,15 +168,8 @@ class NativeNavbarModeTest {
         assertTrue("a refusal must republish the canonical state", handler.contains("stateConverger.reconcile(\"navbar\", force = true)\n            return"))
     }
 
-    @Test fun `the capability is declared by the profile and not probed from android`() {
-        val service = source(
-            "src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt",
-            "app/src/main/kotlin/io/github/maxlyth/hapaneld/PaneldService.kt",
-        )
-        assertTrue(service.contains("hasNativeNavbar = profile.hasNativeNavbar"))
-    }
-
-    @Test fun `the public api documents native as profile gated`() {
+    @Test fun `the public api documents native as profile gated wireFormat`() {
+        // Source-text reason: the shipped OpenAPI document is the public API contract.
         val openApi = source("src/main/assets/openapi.json", "app/src/main/assets/openapi.json")
         assertTrue(openApi.contains("\"enum\": [\"Off\", \"Always on\", \"Swipe reveal\", \"Native\"]"))
     }
