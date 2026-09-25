@@ -10,6 +10,10 @@ package io.github.maxlyth.hapaneld.util
  * This policy answers the different question the default cannot: "whatever Home Assistant has stored,
  * show the dashboard dark (or light)". [FOLLOW] is the default and means exactly today's behaviour —
  * ha-paneld does not decide, and never writes a value it did not already write itself.
+ *
+ * [AMBIENT] is not a fourth mechanism. The room's light picks Dark or Light, and [effective] resolves
+ * it to that choice before anything acts on it, so every consumer that follows Dark and Light follows
+ * Ambient through exactly the same path. Until the room has given a verdict it resolves to [FOLLOW].
  */
 object DashboardTheme {
     /** Home Assistant owns the dashboard's scheme; ha-paneld only supplies the `dark_mode` default. */
@@ -17,9 +21,12 @@ object DashboardTheme {
     const val DARK = "Dark"
     const val LIGHT = "Light"
 
+    /** Dark or Light, chosen by the room's light through the auto-brightness ambient model. */
+    const val AMBIENT = "Ambient"
+
     const val DEFAULT = FOLLOW
 
-    val OPTIONS = listOf(FOLLOW, DARK, LIGHT)
+    val OPTIONS = listOf(FOLLOW, DARK, LIGHT, AMBIENT)
 
     /**
      * Spellings accepted in place of the declared options. The ENUM matcher is already
@@ -49,6 +56,23 @@ object DashboardTheme {
         if (v.isEmpty()) return DEFAULT
         return OPTIONS.firstOrNull { it.equals(v, ignoreCase = true) } ?: DEFAULT
     }
+
+    /**
+     * The policy the renderer acts on: [AMBIENT] becomes [DARK] or [LIGHT] from the room's verdict
+     * ([ambientDark]), or [FOLLOW] while there is none or while the model that produces it is not
+     * running ([ambientModelRunning] false: auto-brightness is off, which it also is on a panel with no
+     * light source). Every other policy is itself. Only this value may reach [forcedDark], [forces] or
+     * a renderer signature; the stored policy is for the settings surfaces alone.
+     */
+    fun effective(policy: String?, ambientDark: Boolean?, ambientModelRunning: Boolean): String =
+        when (val p = policy(policy)) {
+            AMBIENT -> when (ambientDark.takeIf { ambientModelRunning }) {
+                true -> DARK
+                false -> LIGHT
+                null -> FOLLOW
+            }
+            else -> p
+        }
 
     /**
      * The scheme this policy forces, or null when Home Assistant keeps ownership. Null is the whole

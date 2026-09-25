@@ -928,6 +928,11 @@
       "sourceHash": "442aded87a55aa8c8f7d5ff0c30228150d4b1cb8756e4be138d615ca4708fc26",
       "state": "machine-cross-checked"
     },
+    "configure.enum.dashboard_theme.ambient": {
+      "text": "Ambiente",
+      "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
+      "state": "machine-cross-checked"
+    },
     "configure.enum.dashboard_theme.dark": {
       "text": "Oscuro",
       "sourceHash": "60acc53f13a5d1bf115878c4a785e9a43e8286c4139a8402a6ac7d23966f9153",
@@ -10414,9 +10419,9 @@
       "text": "Aplicación del panel de control"
     },
     "settings.dashboard_theme.help": {
-      "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
-      "state": "machine-cross-checked",
-      "text": "Solo para el renderizador integrado. Seguir Home Assistant deja que Home Assistant elija el modo claro u oscuro del panel de control; el ajuste Modo oscuro proporciona el valor predeterminado de esa elección. Oscuro y Claro fijan el modo en este panel cuando Home Assistant está configurado como Automático, para un panel de control en modo quiosco sin barra lateral desde la que acceder a la página de perfil de Home Assistant. Una elección explícita de Claro u Oscuro en Home Assistant sigue teniendo prioridad; use Automático o un usuario independiente para el panel. Al volver a Seguir Home Assistant, la elección se devuelve exactamente tal como se encontró."
+      "text": "Solo para el renderizador integrado. Seguir Home Assistant deja que Home Assistant elija el modo claro u oscuro del panel de control; el ajuste Modo oscuro proporciona el valor predeterminado de esa elección. Oscuro y Claro fijan el modo en este panel cuando Home Assistant está configurado como Automático, para un panel de control en modo quiosco sin barra lateral desde la que acceder a la página de perfil de Home Assistant. Ambiente elige Oscuro o Claro según la luz de la habitación medida por el modelo de brillo automático y solo cambia después de que la habitación se haya mantenido más oscura o más clara durante un minuto; requiere que Brillo automático esté activado y sigue Home Assistant hasta obtener una lectura. Una elección explícita de Claro u Oscuro en Home Assistant sigue teniendo prioridad; use Automático o un usuario independiente para el panel. Al volver a Seguir Home Assistant, la elección se devuelve exactamente tal como se encontró.",
+      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
       "sourceHash": "bf3c175b44e9bb6505851bf08a6a0c9f30320a493a6cdff8af55e3cdb85c1e44",

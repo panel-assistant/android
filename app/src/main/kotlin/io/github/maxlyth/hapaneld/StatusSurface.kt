@@ -514,7 +514,8 @@ internal class StatusSurface(
         /** The single theme decision, so no screen re-derives one of its own. */
         fun darkFor(activity: Activity, config: Config): Boolean = statusSurfaceDark(
             // Resolved, never the raw package: blank means Auto, which is the built-in renderer too.
-            forcedDark = DashboardTheme.forcedDark(config.dashboardTheme).takeIf {
+            // Effective, so an Ambient panel's native screens follow the room exactly as its dashboard does.
+            forcedDark = DashboardTheme.forcedDark(config.dashboardThemeEffective).takeIf {
                 RendererResolver.isBuiltinSelection(config.dashboardPackage, activity.packageName)
             },
             configuredDark = config.dashboardThemeDark,

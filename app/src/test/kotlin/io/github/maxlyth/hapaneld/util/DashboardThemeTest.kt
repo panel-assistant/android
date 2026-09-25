@@ -85,7 +85,7 @@ class DashboardThemeTest {
         assertEquals(Validation.Ok(DashboardTheme.DARK), SettingValue.validate(spec, "dark"))
         val bad = SettingValue.validate(spec, "Sepia")
         assertTrue(bad is Validation.Bad, "expected a refusal, got $bad")
-        assertEquals("dashboard_theme: must be one of Follow Home Assistant, Dark, Light", bad.reason)
+        assertEquals("dashboard_theme: must be one of Follow Home Assistant, Dark, Light, Ambient", bad.reason)
     }
 
     @Test
@@ -98,7 +98,7 @@ class DashboardThemeTest {
             ?.readText()
         assertTrue(openApi != null, "openapi.json not found")
         assertTrue(
-            openApi!!.contains("\"enum\": [\"Follow Home Assistant\", \"Dark\", \"Light\"]"),
+            openApi!!.contains("\"enum\": [\"Follow Home Assistant\", \"Dark\", \"Light\", \"Ambient\"]"),
             "openapi.json must declare the dashboard_theme choices",
         )
         assertTrue(
@@ -108,10 +108,41 @@ class DashboardThemeTest {
     }
 
     @Test
+    fun `the existing three choices resolve to themselves whatever the room says`() {
+        for (policy in listOf(DashboardTheme.FOLLOW, DashboardTheme.DARK, DashboardTheme.LIGHT)) {
+            for (verdict in listOf(true, false, null)) for (running in listOf(true, false)) {
+                assertEquals(policy, DashboardTheme.effective(policy, verdict, running))
+            }
+        }
+    }
+
+    @Test
+    fun `ambient resolves to the room's verdict and to follow without one`() {
+        assertEquals(DashboardTheme.DARK, DashboardTheme.effective(DashboardTheme.AMBIENT, true, ambientModelRunning = true))
+        assertEquals(DashboardTheme.LIGHT, DashboardTheme.effective(DashboardTheme.AMBIENT, false, ambientModelRunning = true))
+        assertEquals(DashboardTheme.FOLLOW, DashboardTheme.effective(DashboardTheme.AMBIENT, null, ambientModelRunning = true))
+        assertEquals(DashboardTheme.DARK, DashboardTheme.effective("ambient", true, ambientModelRunning = true))
+    }
+
+    @Test
+    fun `ambient follows home assistant while auto-brightness is off, however the room was last judged`() {
+        // Also the no-light-sensor case: the service turns auto-brightness off on a panel with no source.
+        for (verdict in listOf(true, false, null)) {
+            assertEquals(DashboardTheme.FOLLOW, DashboardTheme.effective(DashboardTheme.AMBIENT, verdict, ambientModelRunning = false))
+        }
+    }
+
+    @Test
+    fun `ambient itself never forces anything, so a consumer that skips effective cannot force the wrong scheme`() {
+        assertNull(DashboardTheme.forcedDark(DashboardTheme.AMBIENT))
+        assertEquals(false, DashboardTheme.forces(DashboardTheme.AMBIENT))
+    }
+
+    @Test
     fun `no option is ever renamed, because one unknown value fails a whole restore`() {
         // A restore is all-or-nothing: a single unrecognised enum member takes the entire archive down
         // with a 422. Widening or respelling this set later therefore breaks newer-to-older restore for
         // any panel holding the new value. Pinning the exact set makes that a deliberate decision.
-        assertEquals(listOf("Follow Home Assistant", "Dark", "Light"), DashboardTheme.OPTIONS)
+        assertEquals(listOf("Follow Home Assistant", "Dark", "Light", "Ambient"), DashboardTheme.OPTIONS)
     }
 }

@@ -281,7 +281,11 @@ class DashboardActivity : AppCompatActivity() {
         // settings left an installed compatibility or recovery screen on the old palette and artwork —
         // and the two WebView-drawn pages bake their colours into static HTML, so they stayed stale
         // even where the system change did redraw the native ones.
-        if (key == "dashboard_theme_dark" || key == "dark_mode" || key == "dashboard_theme") {
+        // The Ambient verdict and auto-brightness both move the effective theme without touching
+        // `dashboard_theme` itself, so they redraw the same surfaces.
+        if (key == "dashboard_theme_dark" || key == "dark_mode" || key == "dashboard_theme" ||
+            key == "dashboard_theme_ambient_dark" || key == "auto_brightness"
+        ) {
             runOnUiThread { if (!destroyed) convergeStatusTheme() }
         }
         // Camera trial: the runtime permission is requested only once the setting is on,
@@ -1442,7 +1446,7 @@ class DashboardActivity : AppCompatActivity() {
         // which the WebView fixes at creation. Rebuilding is also what makes the change reversible —
         // the fresh script runs the hand-back transaction before Home Assistant's own bootstrap reads
         // the store, so the restored value is the one the frontend boots with.
-        val nextThemeSignature = config.dashboardTheme
+        val nextThemeSignature = config.dashboardThemeEffective
         if (nextThemeSignature != dashboardThemeSignature) {
             Log.i(TAG, "dashboard theme policy changed — rebuilding dashboard WebView")
             BuiltinDashboard.consumeSupersededReload()
@@ -1491,7 +1495,7 @@ class DashboardActivity : AppCompatActivity() {
         // Same suppression as the seed in createWebView: while Dark/Light owns the `dark` field, a
         // dark_mode toggle must not write it as well. The policy's own document-start script re-applies
         // on the load this reload is about to start, so nothing is lost by staying out of the way.
-        if (android.os.Build.VERSION.SDK_INT < 29 && !DashboardTheme.forces(config.dashboardTheme)) {
+        if (android.os.Build.VERSION.SDK_INT < 29 && !DashboardTheme.forces(config.dashboardThemeEffective)) {
             // The theme write must COMPLETE before the navigation — evaluateJavascript is async (queued
             // to the JS thread), and a loadUrl issued right after can tear the page down first, losing
             // the write. The result callback runs after evaluation, on the UI thread.
@@ -3574,8 +3578,13 @@ class DashboardActivity : AppCompatActivity() {
         // The colour-scheme policy runs on every panel and every Android version, and the signature is
         // recorded HERE rather than at the call site because this is the WebView it is baked into:
         // onNewIntent compares that signature against config to decide whether to rebuild.
-        val forcedThemeDark = DashboardTheme.forcedDark(config.dashboardTheme)
-        dashboardThemeSignature = config.dashboardTheme
+        // The EFFECTIVE policy, so Ambient arrives here as the Dark, Light or Follow it currently
+        // resolves to and bakes exactly the script that choice always has. Published so the service
+        // can tell whether a new ambient verdict still has to reach this WebView.
+        val themeSignature = config.dashboardThemeEffective
+        val forcedThemeDark = DashboardTheme.forcedDark(themeSignature)
+        dashboardThemeSignature = themeSignature
+        BuiltinDashboard.setAppliedThemeSignature(activityOwner, themeSignature)
         runCatching {
             if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
