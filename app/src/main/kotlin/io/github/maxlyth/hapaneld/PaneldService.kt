@@ -41,6 +41,8 @@ import io.github.maxlyth.hapaneld.persistence.StateQuiescence
 import io.github.maxlyth.hapaneld.upgrade.UpgradeShutdownCoordinator
 import io.github.maxlyth.hapaneld.upgrade.UpgradeShutdownClaim
 import io.github.maxlyth.hapaneld.input.EvdevButtonClient
+import io.github.maxlyth.hapaneld.control.AmbientThemeReason
+import io.github.maxlyth.hapaneld.control.AmbientThemeReport
 import io.github.maxlyth.hapaneld.control.AutoBrightnessController
 import io.github.maxlyth.hapaneld.control.AutoSleepController
 import io.github.maxlyth.hapaneld.control.BootChimeController
@@ -180,6 +182,7 @@ import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSeverity
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
 import io.github.maxlyth.hapaneld.storage.StorageQuickCheck
+import io.github.maxlyth.hapaneld.util.DashboardTheme
 import io.github.maxlyth.hapaneld.util.localIpv4
 import io.github.maxlyth.hapaneld.util.localIpv6
 import kotlinx.coroutines.CancellationException
@@ -608,6 +611,25 @@ internal fun commitBorrowedRendererTarget(
 
 internal fun adaptiveHaSource(enabled: Boolean, configuredEntity: String): String? =
     configuredEntity.trim().takeIf { enabled && it.isNotEmpty() }
+
+/**
+ * Whether the built-in dashboard must be rebuilt for the Ambient theme: only when it is the renderer,
+ * it is in front, and the WebView there carries a different effective policy from the one Ambient
+ * resolves to now. A renderer that is not in front is left alone rather than pulled forward; it is
+ * checked again when it returns to the front, and its next launch compares the same signature.
+ *
+ * [alreadyRequested] is the resolution a rebuild was last requested for. One request per resolution:
+ * a relaunch that could not rebuild (an on-panel sign-in, say) pauses and resumes the dashboard, and
+ * asking again on that resume would relaunch it forever.
+ */
+internal fun ambientThemeNeedsRebuild(
+    effectivePolicy: String,
+    appliedSignature: String?,
+    builtinRenderer: Boolean,
+    foreground: Boolean,
+    alreadyRequested: String? = null,
+): Boolean = builtinRenderer && foreground && appliedSignature != null && appliedSignature != effectivePolicy &&
+    alreadyRequested != effectivePolicy
 
 /** Prefer the hostname advertised by Home Assistant for the MQTT suggestion; retain an IP fallback
  * when the advertisement is absent or malformed. Hostnames avoid pinning a panel to one IPv4 address
@@ -1257,7 +1279,10 @@ class PaneldService : Service() {
             wakeTap = OverlayWakeTap(this),
             route = profile.screenOff,
         )
-        autoBright = AutoBrightnessController(this, brightness, config, screen::actuateBrightnessIfOn)
+        autoBright = AutoBrightnessController(
+            this, brightness, config, screen::actuateBrightnessIfOn,
+            onAmbientThemeChanged = ::reconcileAmbientTheme,
+        )
         haSiteMetadata = HaSiteMetadataClient(config)
         val haSessionAuthority = DashboardHaApiSessionProvider(config)
         val haApi = KtorHaAmbientTransport()
@@ -2134,9 +2159,53 @@ class PaneldService : Service() {
             }
         }
         autoBright.reapplyLatest()
+        // Turning auto-brightness on or off moves an Ambient panel's effective theme too.
+        reconcileAmbientTheme()
+    }
+
+    // The resolution the last Ambient rebuild was requested for; see [ambientThemeNeedsRebuild].
+    private var ambientRebuildRequestedFor: String? = null
+    private val ambientRebuildLock = Any()
+
+    /**
+     * Take an Ambient panel's dashboard to the theme its room now resolves to, through the same
+     * rebuild a Dashboard theme change uses: the renderer compares signatures on the relaunch and
+     * bakes the matching document-start script.
+     */
+    private fun reconcileAmbientTheme(): Unit = synchronized(ambientRebuildLock) {
+        if (teardownBoundary.isStopping || !::system.isInitialized) return
+        if (config.dashboardTheme != DashboardTheme.AMBIENT) return
+        val effective = config.dashboardThemeEffective
+        val applied = BuiltinDashboard.appliedThemeSignature
+        if (applied == effective) ambientRebuildRequestedFor = null
+        if (!ambientThemeNeedsRebuild(
+                effectivePolicy = effective,
+                appliedSignature = applied,
+                builtinRenderer = system.resolveDashboard(config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD,
+                foreground = BuiltinDashboard.foreground,
+                alreadyRequested = ambientRebuildRequestedFor,
+            )
+        ) return
+        ambientRebuildRequestedFor = effective
+        Log.i(TAG, "Ambient theme now resolves to $effective — rebuilding the dashboard")
+        runCatching { system.reloadDashboard(SystemController.BUILTIN_DASHBOARD, reason = "applying your settings") }
+            .onFailure { Log.w(TAG, "Ambient theme rebuild failed", it) }
     }
 
     private fun adaptiveBrightnessHttpApi(): AutoBrightnessHttpApi = object : AutoBrightnessHttpApi {
+        override fun ambientTheme(): AmbientThemeReport {
+            val runtime = autoBright.status().ambientTheme
+            return AmbientThemeReport(
+                reason = AmbientThemeReason.of(
+                    autoBrightness = config.autoBrightness,
+                    hasLightSource = sensors.hasLight() || config.autoBrightnessHaEntity.isNotBlank(),
+                    verdictDark = config.dashboardAmbientDark,
+                    sourceAvailable = runtime.sourceAvailable,
+                ),
+                level = runtime.level,
+            )
+        }
+
         override fun statusJson(): String {
             val runtime = autoBright.status()
             val haStatus = haAmbientLux.latestStatus()
@@ -3512,6 +3581,10 @@ class PaneldService : Service() {
             registerBrightnessPreferenceObserver()
             refreshAdaptiveBrightnessInputs(restartSource = false)
             autoBright.activate()
+            // A verdict reached while the dashboard was paused is applied when it returns to the front.
+            BuiltinDashboard.setForegroundGainedListener {
+                scope.launch(Dispatchers.Default) { reconcileAmbientTheme() }
+            }
             brightness.applyPreventIdleDim(config.preventIdleDim, config)
             EntityLearningRuntime.attach(entityLearning)
             attachSoftwareUpdateObservers()
@@ -4819,6 +4892,7 @@ class PaneldService : Service() {
                 BuiltinDashboard.clearRendererSettledListener(rendererSettledForLifecycle)
             }
             closeOwner("sensors") { sensorPersistenceClosed.set(sensors.stop()) }
+            BuiltinDashboard.setForegroundGainedListener(null)
             if (::autoBright.isInitialized) {
                 closeOwnerResult("adaptive brightness") {
                     autoBright.closeAndJoin(asyncTeardownDeadline.remainingMs())

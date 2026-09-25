@@ -583,7 +583,10 @@ object SettingsRegistry {
             help = "Built-in renderer only. Follow Home Assistant leaves the dashboard's light/dark " +
                 "choice to Home Assistant, which is what the Dark mode setting supplies a default for. " +
                 "Dark and Light choose it on this panel when Home Assistant is set to Auto, for a kiosk " +
-                "dashboard with no sidebar to reach the Home Assistant profile page from. An explicit " +
+                "dashboard with no sidebar to reach the Home Assistant profile page from. Ambient chooses " +
+                "Dark or Light from the room's light as the auto-brightness model sees it, and changes only " +
+                "after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and " +
+                "follows Home Assistant until it has a reading. An explicit " +
                 "Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. " +
                 "Returning to Follow Home Assistant hands the choice back exactly as it was found.",
         ),

@@ -928,6 +928,11 @@
       "sourceHash": "442aded87a55aa8c8f7d5ff0c30228150d4b1cb8756e4be138d615ca4708fc26",
       "state": "machine-cross-checked"
     },
+    "configure.enum.dashboard_theme.ambient": {
+      "text": "环境",
+      "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
+      "state": "machine-cross-checked"
+    },
     "configure.enum.dashboard_theme.dark": {
       "text": "深色",
       "sourceHash": "60acc53f13a5d1bf115878c4a785e9a43e8286c4139a8402a6ac7d23966f9153",
@@ -10414,9 +10419,9 @@
       "text": "仪表盘应用"
     },
     "settings.dashboard_theme.help": {
-      "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
-      "state": "machine-cross-checked",
-      "text": "仅限内置渲染器。“跟随 Home Assistant”会将仪表盘的明暗选择交给 Home Assistant，“深色模式”设置则为该选择提供默认值。当 Home Assistant 设为“自动”时，可用“深色”或“浅色”在此面板上指定主题；这适用于没有侧边栏、无法从中进入 Home Assistant 个人资料页的信息亭仪表盘。Home Assistant 中明确选择的“浅色”或“深色”仍然优先；请使用“自动”或单独的面板用户。恢复为“跟随 Home Assistant”后，选择权会按原样交还。"
+      "text": "仅限内置渲染器。“跟随 Home Assistant”会将仪表盘的明暗选择交给 Home Assistant，“深色模式”设置则为该选择提供默认值。当 Home Assistant 设为“自动”时，可用“深色”或“浅色”在此面板上指定主题；这适用于没有侧边栏、无法从中进入 Home Assistant 个人资料页的信息亭仪表盘。“环境”会根据自动亮度模型所感知的室内光线在“深色”和“浅色”之间选择，且只有当房间保持较暗或较亮的状态一分钟后才切换；需开启“自动亮度”，且在获得读数之前会跟随 Home Assistant。Home Assistant 中明确选择的“浅色”或“深色”仍然优先；请使用“自动”或单独的面板用户。恢复为“跟随 Home Assistant”后，选择权会按原样交还。",
+      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
       "sourceHash": "bf3c175b44e9bb6505851bf08a6a0c9f30320a493a6cdff8af55e3cdb85c1e44",

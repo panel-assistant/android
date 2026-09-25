@@ -2477,6 +2477,22 @@
       "softMaxChars": 44,
       "hardMaxChars": 72
     },
+    "configure.enum.dashboard_theme.ambient": {
+      "text": "Ambient",
+      "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
+      "surface": "configure",
+      "context": "Visible label for the exact dashboard_theme setting wire option; translate display text only and preserve the submitted/stored wire value. Ambient picks dark or light from the room's measured light level.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.enum.dashboard_theme.follow_home_assistant",
+        "configure.enum.dashboard_theme.dark",
+        "configure.enum.dashboard_theme.light"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 44,
+      "hardMaxChars": 72
+    },
     "configure.enum.dashboard_theme.dark": {
       "text": "Dark",
       "sourceHash": "60acc53f13a5d1bf115878c4a785e9a43e8286c4139a8402a6ac7d23966f9153",
@@ -2485,7 +2501,8 @@
       "risk": "ordinary",
       "siblings": [
         "configure.enum.dashboard_theme.follow_home_assistant",
-        "configure.enum.dashboard_theme.light"
+        "configure.enum.dashboard_theme.light",
+        "configure.enum.dashboard_theme.ambient"
       ],
       "placeholders": [],
       "frozen": [],
@@ -2500,7 +2517,8 @@
       "risk": "ordinary",
       "siblings": [
         "configure.enum.dashboard_theme.dark",
-        "configure.enum.dashboard_theme.light"
+        "configure.enum.dashboard_theme.light",
+        "configure.enum.dashboard_theme.ambient"
       ],
       "placeholders": [],
       "frozen": [
@@ -2517,7 +2535,8 @@
       "risk": "ordinary",
       "siblings": [
         "configure.enum.dashboard_theme.follow_home_assistant",
-        "configure.enum.dashboard_theme.dark"
+        "configure.enum.dashboard_theme.dark",
+        "configure.enum.dashboard_theme.ambient"
       ],
       "placeholders": [],
       "frozen": [],
@@ -31537,8 +31556,8 @@
       "hardMaxChars": 32
     },
     "settings.dashboard_theme.help": {
-      "text": "Built-in renderer only. Follow Home Assistant leaves the dashboard's light/dark choice to Home Assistant, which is what the Dark mode setting supplies a default for. Dark and Light choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from. An explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
-      "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
+      "text": "Built-in renderer only. Follow Home Assistant leaves the dashboard's light/dark choice to Home Assistant, which is what the Dark mode setting supplies a default for. Dark and Light choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from. Ambient chooses Dark or Light from the room's light as the auto-brightness model sees it, and changes only after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and follows Home Assistant until it has a reading. An explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
+      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
       "surface": "settings",
       "context": "Configure > Dashboard > Dashboard theme: supporting help for the dashboard_theme setting.",
       "risk": "ordinary",
@@ -31549,8 +31568,8 @@
       "frozen": [
         "Home Assistant"
       ],
-      "softMaxChars": 682,
-      "hardMaxChars": 909
+      "softMaxChars": 1013,
+      "hardMaxChars": 1350
     },
     "settings.dashboard_theme.label": {
       "text": "Dashboard theme",

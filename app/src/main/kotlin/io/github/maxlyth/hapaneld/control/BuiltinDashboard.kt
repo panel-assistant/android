@@ -38,9 +38,22 @@ object BuiltinDashboard {
         if (activityOwner == owner) authLatched = value
     }
 
+    /**
+     * The effective dashboard theme policy baked into the live WebView, or null when no renderer
+     * generation holds one. The Ambient theme compares its resolved policy against this, so a new
+     * verdict rebuilds the dashboard only when the page on screen does not already carry it.
+     */
+    @Volatile var appliedThemeSignature: String? = null
+        private set
+
+    @Synchronized fun setAppliedThemeSignature(owner: Long, signature: String) {
+        if (activityOwner == owner) appliedThemeSignature = signature
+    }
+
     @Synchronized fun releaseActivityOwner(owner: Long) {
         if (activityOwner != owner) return
         activityOwner = 0L
+        appliedThemeSignature = null
         authLatched = false
         foreground = false
         // Settlement is CURRENT-generation truth, not a process-lifetime latch: the renderer that
@@ -68,7 +81,16 @@ object BuiltinDashboard {
             val changed = field != value
             field = value
             if (changed) foregroundListener?.invoke(value)
+            if (changed && value) foregroundGainedListener?.invoke()
         }
+
+    // A second, independent subscriber: the Ambient theme re-checks the page's baked scheme each time
+    // the dashboard returns to the front, because a verdict reached while it was paused (screen off,
+    // another app on top) had nothing in front to rebuild. Kept apart from [foregroundListener] so
+    // neither owner can displace the other.
+    @Volatile private var foregroundGainedListener: (() -> Unit)? = null
+
+    fun setForegroundGainedListener(l: (() -> Unit)?) { foregroundGainedListener = l }
 
     // --- navbar swipe-reveal handoff ---
     //

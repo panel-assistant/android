@@ -35,6 +35,7 @@ internal data class AutoBrightnessRuntimeStatus(
     val brighterThanExpected: Boolean,
     val manualPreference: ManualBrightnessPreferenceSnapshot,
     val sourceRevision: String,
+    val ambientTheme: AmbientThemeSnapshot,
 )
 
 internal data class AutoBrightnessChartSnapshot(
@@ -59,6 +60,12 @@ internal class AutoBrightnessController(
     ),
     private val baselineCache: AdaptiveBaselineCache = AdaptiveBaselineCache(),
     private val canWriteBrightness: () -> Boolean = brightness::canWrite,
+    /**
+     * Called, off this controller's lock, after the Ambient theme verdict changes and has been
+     * persisted. The receiver decides whether the renderer has to follow it; this controller only
+     * owns the verdict.
+     */
+    private val onAmbientThemeChanged: () -> Unit = {},
 ) : AutoCloseable {
     // One thread, as before. Queued work is dropped at shutdown, and the running tick is never
     // interrupted: it may be inside a root command, and Su treats an interrupt as a dead shared shell.
@@ -93,6 +100,10 @@ internal class AutoBrightnessController(
     private var chartZoneId = ""
     private var chartLocation: SolarLocation? = null
     private var chartLookup: AdaptiveChartBaselineLookup? = null
+    // Seeded from the persisted verdict, so a restart keeps the room's last answer instead of
+    // falling back to Home Assistant for a dwell and then rebuilding the dashboard to get it back.
+    private val ambientTheme = AmbientThemeDecider(config.dashboardAmbientDark)
+    private var lastAmbientLevel = Double.NaN
     @Volatile private var closed = false
 
     /**
@@ -307,6 +318,12 @@ internal class AutoBrightnessController(
             brighterThanExpected = lastResult?.brighterThanExpected == true,
             manualPreference = manual,
             sourceRevision = activeSourceRevision(),
+            ambientTheme = AmbientThemeSnapshot(
+                verdictDark = ambientTheme.dark,
+                level = lastAmbientLevel.takeIf(Double::isFinite),
+                pendingDark = ambientTheme.pendingDark(),
+                sourceAvailable = activeSourceAvailable(),
+            ),
         )
     }
 
@@ -487,6 +504,10 @@ internal class AutoBrightnessController(
         lastResult = result
         lastEvaluatedLux = lux
         lastAutomaticTarget = result.brightness
+        // The theme reads the model's own output on the room's own scale: the effective lux the
+        // backlight follows, through the same learned range, before the backlight's minimum floor.
+        lastAmbientLevel = AdaptiveLuxCurve.normalizedLevel(result.effectiveLux, result.estimate.brightnessRange)
+        if (ambientTheme.observe(nowElapsed, lastAmbientLevel)) publishAmbientVerdict()
         val manual = preference.evaluate(result.brightness, locationContext, activeSourceKey)
         val finalTarget = manual.finalTarget ?: result.brightness
         val lastBacklightWriteElapsed = brightness.lastSuccessfulWriteElapsed()
@@ -504,7 +525,7 @@ internal class AutoBrightnessController(
         val write = BrightnessWrite(
             target = finalTarget,
             generation = inputs.generation,
-            nextDelayMs = if (policy.needsFastFollowUp()) FAST_EVALUATION_MS else CALM_EVALUATION_MS,
+            nextDelayMs = ambientAwareDelay(if (policy.needsFastFollowUp()) FAST_EVALUATION_MS else CALM_EVALUATION_MS, nowElapsed),
             lux = lux,
             effectiveLux = result.effectiveLux,
             automaticTarget = result.brightness,
@@ -513,6 +534,15 @@ internal class AutoBrightnessController(
         if (shouldWrite) return write
         finishWrite(write, applied = null)
         return null
+    }
+
+    /**
+     * A pending theme change is judged when its dwell ends, not at the next calm tick: a room that
+     * went dark and then stayed perfectly still would otherwise wait up to a further minute.
+     */
+    private fun ambientAwareDelay(next: Long, nowElapsed: Long): Long {
+        val dwellRemaining = ambientTheme.pendingDeadlineMs()?.let { (it - nowElapsed).coerceAtLeast(0L) }
+        return if (dwellRemaining != null) minOf(next, dwellRemaining) else next
     }
 
     /** Monitor held. Records a write only if nothing superseded its evaluation while it ran. */
@@ -535,9 +565,19 @@ internal class AutoBrightnessController(
         requestEvaluationLocked(write.nextDelayMs)
     }
 
+    private fun publishAmbientVerdict() {
+        val dark = ambientTheme.dark ?: return
+        config.setDashboardAmbientDark(dark)
+        Log.i(TAG, "ambient theme verdict: ${if (dark) "dark" else "light"} (level ${String.format(java.util.Locale.ROOT, "%.2f", lastAmbientLevel)})")
+        scheduler.execute { if (!closed) onAmbientThemeChanged() }
+    }
+
     private fun resetTransientPolicy(clearPreference: Boolean) {
         evaluationGeneration.incrementAndGet()
         policy = AdaptiveBrightnessPolicy()
+        // A new evaluation session restarts any wait; the verdict itself stands until the room changes.
+        ambientTheme.restartDwell()
+        lastAmbientLevel = Double.NaN
         lastResult = null
         lastAutomaticTarget = -1
         lastTickElapsed = Long.MIN_VALUE

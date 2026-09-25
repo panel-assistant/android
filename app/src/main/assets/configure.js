@@ -99,7 +99,8 @@
     dashboard_theme: {
       "Follow Home Assistant": ["configure.enum.dashboard_theme.follow_home_assistant", "Follow Home Assistant"],
       "Dark": ["configure.enum.dashboard_theme.dark", "Dark"],
-      "Light": ["configure.enum.dashboard_theme.light", "Light"]
+      "Light": ["configure.enum.dashboard_theme.light", "Light"],
+      "Ambient": ["configure.enum.dashboard_theme.ambient", "Ambient"]
     },
     update_channel: {
       "stable": ["configure.enum.update_channel.stable", "Stable"],
