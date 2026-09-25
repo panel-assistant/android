@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.control
 
 import io.github.maxlyth.hapaneld.MqttCommandDispatcher
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
 import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import io.github.maxlyth.hapaneld.util.SuccessStickyProbe
 import org.junit.Assert.assertEquals
@@ -42,6 +43,27 @@ class BrightnessHardwareWriterTest {
 
         assertEquals(BrightnessWriteRoute.HELPER, route)
         assertEquals(listOf("BLREAD", "BLSET 80"), daemon.sent)
+    }
+
+    @Test fun defaultWriterKeepsTheHistoricLinearNodeValue() {
+        for (level in intArrayOf(0, 1, 10, 64, 128, 200, 255)) {
+            val root = FakeRootShell(runResult = true)
+            BrightnessHardwareWriter(root, FakeDaemon()).write(level, BacklightNode("/sys/bl/", 1023))
+            assertEquals(listOf("echo ${level * 1023 / 255} > /sys/bl/brightness"), root.ran)
+        }
+    }
+
+    @Test fun profileCurveShapesTheNodeValueOnBothLegs() {
+        val curve = TransferCurve.Gamma(2.2, floor = 12 / 255.0)
+        val root = FakeRootShell(runResult = true)
+        BrightnessHardwareWriter(root, FakeDaemon(), curve).write(128, BacklightNode("/sys/bl/", 255))
+        assertEquals(listOf("echo 65 > /sys/bl/brightness"), root.ran)   // 12 + 243 · 0.502^2.2 = 65.4
+
+        val daemon = FakeDaemon(mapOf("BLREAD" to "0 255", "BLSET 12" to "OK", "BLSET 0" to "OK"))
+        val writer = BrightnessHardwareWriter(FakeRootShell(), daemon, curve)
+        assertEquals(BrightnessWriteRoute.HELPER, writer.write(1, null))
+        assertEquals(BrightnessWriteRoute.HELPER, writer.write(0, null))
+        assertEquals(listOf("BLREAD", "BLSET 12", "BLREAD", "BLSET 0"), daemon.sent)
     }
 
     @Test fun malformedReadOrFailedSetHasNoSuccessfulRoute() {

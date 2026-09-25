@@ -72,14 +72,19 @@ internal fun preventIdleDimDiagnostic(enabled: Boolean, timeoutMs: Int): String 
  * (`switch.<panel>_auto_brightness`, default off), which runs an on-device curve off the panel's light
  * sensor (or HA-fed lux) — see its docs for why that's worth a local loop.
  *
- * HA brightness is 0–255; Android `SCREEN_BRIGHTNESS` is also 0–255, so it maps 1:1.
+ * HA brightness is 0–255, and so is Android `SCREEN_BRIGHTNESS`. Without a profile curve they map 1:1.
+ * With one, [scale] decides which actuator carries the curve and maps every read back to the HA scale.
  */
-class BrightnessController(
+class BrightnessController internal constructor(
     private val context: Context,
     private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
+    private val scale: BacklightScale = BacklightScale.IDENTITY,
+    private val setting: BrightnessSetting = SystemBrightnessSetting(context),
 ) : Backlight {
-    private val hardwareWriter = BrightnessHardwareWriter(root, daemon)
+    constructor(context: Context) : this(context, Su, HelperClient, BacklightScale.IDENTITY)
+
+    private val hardwareWriter = BrightnessHardwareWriter(root, daemon, scale.nodeCurve)
     private val successfulWrites = BacklightWriteTracker()
     private val writeSequencer = BrightnessWriteSequencer(
         actuator = BrightnessWriteSequencer.Actuator(::applyBrightnessUnserialized),
@@ -129,23 +134,19 @@ class BrightnessController(
      *  only — every other caller must use [setBrightness] to preserve the never-blank guarantee. */
     override fun setBrightnessRaw(level: Int) = writeSequencer.write(level.coerceIn(0, 255))
 
-    private fun applyBrightnessUnserialized(v: Int): Boolean {
+    private fun applyBrightnessUnserialized(level: Int): Boolean {
+        val v = scale.settingFor(level)
         val settingWritten = try {
-            Settings.System.putInt(
-                context.contentResolver,
-                Settings.System.SCREEN_BRIGHTNESS_MODE,
-                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
-            )
-            Settings.System.putInt(
-                context.contentResolver,
-                Settings.System.SCREEN_BRIGHTNESS,
-                v,
-            ).also { written -> if (written) Log.d(TAG, "brightness setting -> $v") }
+            setting.write(v).also { written -> if (written) Log.d(TAG, "brightness setting -> $v (level $level)") }
         } catch (e: SecurityException) {
             Log.w(TAG, "WRITE_SETTINGS not granted — cannot set brightness", e)
             false
         }
-        if (settingWritten) writeAttribution.record(v, SystemClock.elapsedRealtime())
+        if (settingWritten) {
+            // Only a write Android accepted may claim the setting; a failed one leaves the last owner.
+            scale.recordOwned(level, v)
+            writeAttribution.record(v, SystemClock.elapsedRealtime())
+        }
         // Also drive the real hardware node. A discovered su path is only a candidate: its write must
         // succeed, otherwise the helper gets the same operation rather than being masked by stale metadata.
         val hardwareRoute = hardwareWriter.write(v, backlight.get())
@@ -185,20 +186,21 @@ class BrightnessController(
     // include per-tick reconciles and UI polls — cache briefly; writes invalidate so a fresh set reads back.
     private val effective = Cached(EFFECTIVE_TTL_MS) { readEffective() }
 
-    /** Sysfs actual_brightness scaled to 0–255 (plain file read, else su), or -1 when unavailable. */
+    /** Sysfs actual_brightness mapped back to the HA scale through [scale] (plain file read, else the
+     *  helper, else su), or -1 when unavailable. */
     private fun readEffective(): Int {
         readNode.get()?.let { (f, max) ->
             runCatching { f.readText().trim().toIntOrNull() }.getOrNull()?.let {
-                return (it.toLong() * 255 / max).toInt().coerceIn(0, 255)
+                return scale.levelFromNode(it, max)
             }
         }
         // Daemon leg (TPA10-class panels: the app is SELinux-denied on the node and has no su).
         parseBacklightReading(daemon.send("BLREAD"))?.let {
-            return (it.actual.toLong() * 255 / it.maximum).toInt().coerceIn(0, 255)
+            return scale.levelFromNode(it.actual, it.maximum)
         }
         backlight.get()?.let { node ->
             root.runOutput("cat ${node.directory}actual_brightness 2>/dev/null")?.trim()?.toIntOrNull()?.let {
-                return (it.toLong() * 255 / node.maximum).toInt().coerceIn(0, 255)
+                return scale.levelFromNode(it, node.maximum)
             }
         }
         return -1
@@ -208,26 +210,25 @@ class BrightnessController(
      *  Distinct from [getBrightness]: the framework maps the setting through a per-device brightness
      *  curve before driving the hardware node, so the effective (node) value is a DIFFERENT scale on
      *  curved panels (NSPanel Pro: setting 241 → node ~102). State publishes must use this scale. */
-    fun getCommanded(): Int = try {
-        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-    } catch (e: Settings.SettingNotFoundException) {
-        -1
-    }
+    fun getCommanded(): Int = setting.read()?.let(::levelFromSetting) ?: -1
 
-    /** Consume a recent successful write to SCREEN_BRIGHTNESS performed by this controller. */
-    fun consumeOwnedSettingChange(level: Int, nowMs: Long = SystemClock.elapsedRealtime()): Boolean =
-        writeAttribution.consume(level.coerceIn(0, 255), nowMs)
+    /** The HA level a raw `SCREEN_BRIGHTNESS` value stands for (the profile's setting route curves it). */
+    fun levelFromSetting(setting: Int): Int = scale.levelFromSetting(setting)
+
+    /** Whether reads are already on the HA scale, so observers must not apply the framework ratio again. */
+    val curved: Boolean get() = scale.curved
+
+    /** Consume a recent successful write to SCREEN_BRIGHTNESS performed by this controller. [setting] is
+     *  the raw setting value, which the attribution journal records. */
+    fun consumeOwnedSettingChange(setting: Int, nowMs: Long = SystemClock.elapsedRealtime()): Boolean =
+        writeAttribution.consume(setting.coerceIn(0, 255), nowMs)
 
     /** Reports the EFFECTIVE backlight (sysfs actual_brightness, scaled to 0–255) so HA reflects external /
      *  firmware dimming that bypasses SCREEN_BRIGHTNESS; falls back to the Android setting. */
     override fun getBrightness(): Int {
         val eff = effective.get()
         if (eff >= 0) return eff
-        return try {
-            Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-        } catch (e: Settings.SettingNotFoundException) {
-            -1
-        }
+        return setting.read()?.let(::levelFromSetting) ?: -1
     }
 
     /**
@@ -298,4 +299,30 @@ internal class BacklightWriteTracker {
 
     fun record(elapsedRealtimeMs: Long) = lastWriteElapsed.set(elapsedRealtimeMs)
     fun snapshot(): Long = lastWriteElapsed.get()
+}
+
+/** Android's `SCREEN_BRIGHTNESS` setting, as the one seam [BrightnessController] reads and writes it through. */
+internal interface BrightnessSetting {
+    /** Select manual mode and write [value]; true when Android accepted it. May throw [SecurityException]. */
+    fun write(value: Int): Boolean
+
+    /** The raw setting, or null when it has never been set. */
+    fun read(): Int?
+}
+
+internal class SystemBrightnessSetting(private val context: Context) : BrightnessSetting {
+    override fun write(value: Int): Boolean {
+        Settings.System.putInt(
+            context.contentResolver,
+            Settings.System.SCREEN_BRIGHTNESS_MODE,
+            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
+        )
+        return Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, value)
+    }
+
+    override fun read(): Int? = try {
+        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+    } catch (e: Settings.SettingNotFoundException) {
+        null
+    }
 }

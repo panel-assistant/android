@@ -1,6 +1,6 @@
 schema: 2
 id: nspanel-pro
-version: 2.0.2
+version: 2.0.3
 display_name: Sonoff NSPanel Pro
 soc_class: PX30 / rk3326
 soc:
@@ -69,6 +69,12 @@ hardware:
     mechanism: none
     transfer: identity
   screen_off: su-blpower
+  # Perceptual backlight curve. The firmware pushes Android's brightness setting to the node itself
+  # (measured 2026-09-25), so the curve rides on the setting.
+  backlight:
+    transfer: perceptual
+    floor: 10
+    route: setting
   # Verified by capture on three panels — two 86P and one 120P. The microphone is a PDM part on
   # ALSA card 0 device 1, and it is the only path that carries it: the analog codec device reports
   # `Capture MIC Path: Main Mic` and returns exact zeros. The PDM DAI accepts two to eight channels

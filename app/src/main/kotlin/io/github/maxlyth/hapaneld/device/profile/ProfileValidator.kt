@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.hardware.LedTransfer
+import io.github.maxlyth.hapaneld.hardware.TransferCurve
 import java.net.URI
 
 internal object ProfileValidator {
@@ -147,7 +149,35 @@ internal object ProfileValidator {
         if (document.hardware.led.mechanism !in setOf("none", "autodetect", "rk3576-ioctl", "rk3576-ioctl-daemon", "sysfs-daemon")) {
             reject("hardware.led.mechanism", "Unknown LED mechanism '${document.hardware.led.mechanism}'.", "unknown-led-mechanism", mapOf("value" to document.hardware.led.mechanism))
         }
-        if (document.hardware.led.transfer !in setOf("identity", "rk3576-four-bit")) reject("hardware.led.transfer", "Unknown core transfer '${document.hardware.led.transfer}'.", "unknown-core-transfer", mapOf("value" to document.hardware.led.transfer))
+        document.hardware.backlight?.let { backlight ->
+            val curve = runCatching { backlight.curve.toTransferCurve() }.onFailure {
+                reject("hardware.backlight", "Invalid backlight transfer: ${it.message}.")
+            }.getOrNull()
+            if (backlight.route != null && backlight.route !in BACKLIGHT_ROUTES) {
+                reject("hardware.backlight.route", "Unknown backlight route '${backlight.route}'; expected setting or node.")
+            } else if (backlight.route == null && curve != null && curve != TransferCurve.Identity) {
+                reject("hardware.backlight.route", "A backlight curve must name its route: setting or node.")
+            }
+        }
+        document.hardware.buttonBacklight?.let { curve ->
+            if (!document.hardware.hasButtonBacklight) {
+                reject("hardware.button_backlight", "A key-backlight curve needs has_button_backlight: true.")
+            }
+            runCatching { curve.toTransferCurve() }.onFailure {
+                reject("hardware.button_backlight", "Invalid key-backlight transfer: ${it.message}.")
+            }
+        }
+        val led = document.hardware.led
+        if (led.transfer == LedTransfer.RK3576_FOUR_BIT) {
+            if (led.gamma != null || led.points != null || led.floor != null) {
+                reject("hardware.led", "The rk3576-four-bit stub takes no gamma, points or floor.")
+            }
+        } else if (led.transfer in LedTransfer.NAMES) {
+            runCatching { led.curve.toTransferCurve() }.onFailure {
+                reject("hardware.led", "Invalid LED transfer: ${it.message}.")
+            }
+        }
+        if (document.hardware.led.transfer !in LedTransfer.NAMES) reject("hardware.led.transfer", "Unknown core transfer '${document.hardware.led.transfer}'.", "unknown-core-transfer", mapOf("value" to document.hardware.led.transfer))
         if (document.hardware.screenOff !in setOf("brightness-zero", "su-blpower", "daemon-blpower", "keyevent")) reject("hardware.screen_off", "Unknown screen-off route '${document.hardware.screenOff}'.", "unknown-screen-off-route", mapOf("value" to document.hardware.screenOff))
         if (document.hardware.screenOff == "su-blpower" && !document.platform.appCanSu) reject("hardware.screen_off", "su-blpower requires app_can_su: true.", "su-blpower-needs-app-su")
         if (document.hardware.screenOff == "daemon-blpower" && document.platform.appCanSu) reject("hardware.screen_off", "daemon-blpower is reserved for sandbox-walled profiles.", "daemon-blpower-sandbox-only")
@@ -457,3 +487,5 @@ internal object ProfileValidator {
         }
     }
 }
+
+internal val BACKLIGHT_ROUTES = setOf("setting", "node")
