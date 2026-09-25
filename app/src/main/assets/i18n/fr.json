@@ -928,6 +928,11 @@
       "sourceHash": "442aded87a55aa8c8f7d5ff0c30228150d4b1cb8756e4be138d615ca4708fc26",
       "state": "machine-cross-checked"
     },
+    "configure.enum.dashboard_theme.ambient": {
+      "text": "Lumière ambiante",
+      "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
+      "state": "machine-cross-checked"
+    },
     "configure.enum.dashboard_theme.dark": {
       "text": "Sombre",
       "sourceHash": "60acc53f13a5d1bf115878c4a785e9a43e8286c4139a8402a6ac7d23966f9153",
@@ -10389,9 +10394,9 @@
       "text": "Application du tableau de bord"
     },
     "settings.dashboard_theme.help": {
-      "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
-      "state": "machine-cross-checked",
-      "text": "Moteur de rendu intégré uniquement. Suivre Home Assistant laisse Home Assistant choisir le mode clair ou sombre du tableau de bord, pour lequel le réglage Mode sombre fournit la valeur par défaut. Sombre et Clair imposent le mode sur ce panneau lorsque Home Assistant est réglé sur Automatique, pour un tableau de bord kiosque sans barre latérale permettant d’accéder à la page de profil Home Assistant. Un choix explicite Clair ou Sombre dans Home Assistant reste prioritaire ; utilisez Automatique ou un utilisateur distinct pour le panneau. Revenir à Suivre Home Assistant lui restitue exactement le choix trouvé initialement."
+      "text": "Moteur de rendu intégré uniquement. « Comme dans Home Assistant » laisse Home Assistant choisir le mode clair ou sombre du tableau de bord, pour lequel le réglage Mode sombre fournit la valeur par défaut. Sombre et Clair imposent le mode sur ce panneau lorsque Home Assistant est réglé sur Automatique, pour un tableau de bord kiosque sans barre latérale permettant d’accéder à la page de profil Home Assistant. L’option « Lumière ambiante » choisit « Sombre » ou « Clair » selon la luminosité de la pièce telle que perçue par le modèle de luminosité automatique, et ne change qu’après une minute durant laquelle la pièce est restée plus sombre ou plus claire ; elle nécessite que l’option « Luminosité automatique » soit activée et suit « Home Assistant » jusqu’à ce qu’elle dispose d’une mesure. Un choix explicite Clair ou Sombre dans Home Assistant reste prioritaire ; utilisez Automatique ou un utilisateur distinct pour le panneau. Revenir à « Comme dans Home Assistant » restitue exactement le choix trouvé initialement.",
+      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
       "sourceHash": "bf3c175b44e9bb6505851bf08a6a0c9f30320a493a6cdff8af55e3cdb85c1e44",

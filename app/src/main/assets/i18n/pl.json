@@ -9154,8 +9154,8 @@
    "state": "machine-draft"
   },
   "settings.dashboard_theme.help": {
-   "text": "Tylko wbudowany renderer. Postępuj zgodnie z instrukcjami Home Assistant pozostawia wybór jasnego/ciemnego trybu pulpitu na Home Assistant, co stanowi domyślną wartość ustawienia trybu ciemnego. Tryb ciemny i jasny wybierasz na tym panelu, gdy Home Assistant jest ustawione na Auto, w przypadku pulpitu kiosku bez paska bocznego, aby uzyskać dostęp do Home Assistant strona profilu z. Wyraźny wybór między jasnym a ciemnym w Home Assistant nadal wygrywa; użyj opcji Auto albo oddzielnego użytkownika panelu. Powrót do śledzenia Home Assistant zwraca wybór dokładnie w takim stanie, w jakim został znaleziony.",
-   "sourceHash": "31a8245d79c9706f0327dc95c8dfb798bdc7d6b75cf8841670a8102552635258",
+   "text": "Tylko wbudowany renderer. Postępuj zgodnie z instrukcjami Home Assistant pozostawia wybór jasnego/ciemnego trybu pulpitu na Home Assistant, co stanowi domyślną wartość ustawienia trybu ciemnego. Tryb ciemny i jasny wybierasz na tym panelu, gdy Home Assistant jest ustawione na Auto, w przypadku pulpitu kiosku bez paska bocznego, aby uzyskać dostęp do Home Assistant strona profilu z. Opcja „Ambient” wybiera tryb „Ciemny” lub „Jasny” na podstawie natężenia światła w pomieszczeniu, zgodnie z odczytem modułu automatycznej regulacji jasności, i zmienia ustawienie dopiero po upływie minuty, w której w pomieszczeniu panowały ciemniejsze lub jaśniejsze warunki; wymaga włączenia funkcji „Auto-brightness” i monitoruje wartość „Home Assistant”, dopóki nie uzyska odczytu. Wyraźny wybór między jasnym a ciemnym w Home Assistant nadal wygrywa; użyj opcji Auto albo oddzielnego użytkownika panelu. Powrót do śledzenia Home Assistant zwraca wybór dokładnie w takim stanie, w jakim został znaleziony.",
+   "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
    "state": "machine-draft"
   },
   "settings.dashboard_theme.label": {
@@ -11016,6 +11016,11 @@
   "configure.enum.cpu_governor.performance": {
    "text": "Wydajność",
    "sourceHash": "442aded87a55aa8c8f7d5ff0c30228150d4b1cb8756e4be138d615ca4708fc26",
+   "state": "machine-draft"
+  },
+  "configure.enum.dashboard_theme.ambient": {
+   "text": "Światło otoczenia",
+   "sourceHash": "44bb0e5fb3702293c83edb7bdaefd20b9521497b1648f0db735696698e8950de",
    "state": "machine-draft"
   },
   "configure.enum.dashboard_theme.dark": {
