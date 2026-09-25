@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -235,6 +236,8 @@ internal class HaPresenceSourceManager(
         val areaName: String = "",
     ) : Exception(code, cause)
 
+    private class NoCredibleSources(val detail: String, val areaName: String) : Exception(detail)
+
     constructor(
         scope: CoroutineScope,
         config: Config,
@@ -256,7 +259,6 @@ internal class HaPresenceSourceManager(
     @Volatile private var request = disabledRequest()
     @Volatile private var aggregate = HaPresenceAggregate()
     @Volatile private var selection: HaPresenceResolution? = null
-    @Volatile private var lastResolution: HaPresenceResolution? = null
     @Volatile private var discoveryJob: Job? = null
     @Volatile private var closed = false
     private val feedObserver = HaPresenceFeedObserver(::acceptFeed)
@@ -391,9 +393,7 @@ internal class HaPresenceSourceManager(
     fun setSourceIncluded(areaKey: String, sourceKey: String, included: Boolean): HaPresenceSourceUpdate {
         val target = synchronized(lock) {
             if (closed || !request.enabled) return HaPresenceSourceUpdate.UNAVAILABLE
-            // A forced rediscovery clears the active selection while it revalidates HA. The last fully
-            // accepted opaque-key map keeps absolute retries idempotent without exposing entity ids.
-            val current = selection ?: lastResolution ?: return HaPresenceSourceUpdate.UNAVAILABLE
+            val current = selection ?: return HaPresenceSourceUpdate.UNAVAILABLE
             if (current.controllerEpoch != request.controllerEpoch) return HaPresenceSourceUpdate.STALE
             if (areaKey != current.areaKey) return HaPresenceSourceUpdate.STALE
             val entityId = current.sourceKeys.entries.firstOrNull { it.value == sourceKey }?.key
@@ -421,37 +421,35 @@ internal class HaPresenceSourceManager(
     private fun configure(next: HaPresenceRequest, force: Boolean) {
         val normalized = next
         var run = 0L
-        var disabled = false
+        var kept: HaPresenceResolution? = null
         var pendingDiscovery: Job? = null
         synchronized(lock) {
             check(!closed) { "presence source manager is closed" }
             if (!force && normalized == request &&
                 (discoveryJob?.isActive == true || selection != null)
             ) return
-            val replacesTarget = !force && normalized != request
+            // A refresh of the unchanged request keeps the selection, generation and live feed while
+            // discovery revalidates it; [discover] publishes only an outcome that differs.
+            kept = selection?.takeIf { force && normalized == request }
+            if (!force && normalized != request) clearFailuresLocked()
             request = normalized
-            if (replacesTarget) {
-                lastResolution = null
-                clearFailuresLocked()
-            }
             discoveryJob?.cancel()
             discoveryJob = null
-            run = generation.incrementAndGet()
-            if (!normalized.enabled) {
-                disabled = true
+            if (kept == null) {
+                run = generation.incrementAndGet()
                 selection = null
-                lastResolution = null
-            } else {
-                selection = null
-                pendingDiscovery = scope.launch(start = CoroutineStart.LAZY) { discover(run, normalized) }
+            } else run = generation.get()
+            if (normalized.enabled) {
+                val revalidating = kept
+                pendingDiscovery = scope.launch(start = CoroutineStart.LAZY) { discover(run, normalized, revalidating) }
                 discoveryJob = pendingDiscovery
             }
         }
-        if (disabled) {
+        if (!normalized.enabled) {
             reconcileStreamSources()
             publish(run, HaPresenceAggregate(HaPresencePhase.DISABLED))
         } else {
-            publish(run, HaPresenceAggregate(HaPresencePhase.AUTHENTICATING))
+            if (kept == null) publish(run, HaPresenceAggregate(HaPresencePhase.AUTHENTICATING))
             pendingDiscovery?.start()
         }
     }
@@ -467,7 +465,6 @@ internal class HaPresenceSourceManager(
             clearFailuresLocked()
             discoveryJob = null
             selection = null
-            lastResolution = null
             emitLocked(HaPresenceAggregate(
                 controllerEpoch = request.controllerEpoch,
                 managerGeneration = run,
@@ -479,26 +476,40 @@ internal class HaPresenceSourceManager(
         streamOwner.unbindPresence(feedObserver)
     }
 
-    private suspend fun discover(run: Long, requested: HaPresenceRequest) {
+    /**
+     * With [kept], this revalidates a live selection silently: an unchanged result only replaces the
+     * stored selection (labels, lease), while a changed selection or any failure first takes a new
+     * generation and then publishes exactly as a fresh discovery would.
+     */
+    private suspend fun discover(initialRun: Long, requested: HaPresenceRequest, kept: HaPresenceResolution?) {
+        var run = initialRun
+        val job = currentCoroutineContext()[Job]
+        fun diverged(): Boolean = kept == null || synchronized(lock) {
+            if (!current(run, requested) || discoveryJob !== job) return@synchronized false
+            selection = null
+            run = generation.incrementAndGet()
+            true
+        }
         try {
             var session: HaApiSession
             val found = try {
                 session = resolveSession(force = false)
-                bootstrap(run, requested, session)
+                bootstrap(run, requested, session, quiet = kept != null)
             } catch (rejected: HaAuthenticationException) {
                 session = resolveSession(force = true)
-                bootstrap(run, requested, session)
+                bootstrap(run, requested, session, quiet = kept != null)
             }
             synchronized(lock) { if (current(run, requested)) clearFailuresLocked() }
-            if (found == null) {
-                synchronized(lock) { if (current(run, requested)) lastResolution = null }
-                reconcileStreamSources()
+            if (kept != null && found.selectedEntityIds == kept.selectedEntityIds &&
+                found.discoveredEntityIds == kept.discoveredEntityIds && found.areaKey == kept.areaKey
+            ) {
+                synchronized(lock) { if (current(run, requested) && discoveryJob === job) selection = found }
                 return
             }
+            if (!diverged()) return
             synchronized(lock) {
                 if (!current(run, requested)) return
                 selection = found
-                lastResolution = found
             }
             if (found.selectedEntityIds.isEmpty()) {
                 reconcileStreamSources()
@@ -512,8 +523,13 @@ internal class HaPresenceSourceManager(
             reconcileStreamSources()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (none: NoCredibleSources) {
+            synchronized(lock) { if (current(run, requested)) clearFailuresLocked() }
+            if (!diverged()) return
+            reconcileStreamSources()
+            publish(run, HaPresenceAggregate(HaPresencePhase.NO_CREDIBLE_SOURCES, none.detail, areaName = none.areaName))
         } catch (rejected: HaAuthenticationException) {
-            retireLastResolution(run, requested)
+            if (!diverged()) return
             noteFailure(run, requested)
             reconcileStreamSources()
             publish(run, HaPresenceAggregate(
@@ -521,7 +537,7 @@ internal class HaPresenceSourceManager(
                 "Home Assistant rejected the panel sign-in",
             ))
         } catch (error: Exception) {
-            retireLastResolution(run, requested)
+            if (!diverged()) return
             val backoffMs = noteFailure(run, requested)
             reconcileStreamSources()
             val failure = error as? DiscoveryFailure
@@ -540,8 +556,9 @@ internal class HaPresenceSourceManager(
         run: Long,
         requested: HaPresenceRequest,
         session: HaApiSession,
-    ): HaPresenceResolution? {
-        publish(run, HaPresenceAggregate(HaPresencePhase.DISCOVERING))
+        quiet: Boolean,
+    ): HaPresenceResolution {
+        if (!quiet) publish(run, HaPresenceAggregate(HaPresencePhase.DISCOVERING))
         val snapshot = try {
             withContext(workerDispatcher) {
                 transport.registry(session.baseUrl, checkNotNull(session.accessToken))
@@ -592,15 +609,10 @@ internal class HaPresenceSourceManager(
         Log.i(TAG, "presence authority candidates=${area.candidates.size} " +
             "asserting=${assertingCandidates.size} supporting=${area.candidates.size - assertingCandidates.size}")
         if (assertingCandidates.isEmpty()) {
-            publish(run, HaPresenceAggregate(
-                HaPresencePhase.NO_CREDIBLE_SOURCES,
-                "No device-backed activity source is ready",
-                areaName = area.panelAreaName,
-            ))
-            return null
+            throw NoCredibleSources("No device-backed activity source is ready", area.panelAreaName)
         }
         val historyIds = assertingCandidates.mapTo(linkedSetOf()) { it.entityId }
-        publish(run, HaPresenceAggregate(HaPresencePhase.LEARNING))
+        if (!quiet) publish(run, HaPresenceAggregate(HaPresencePhase.LEARNING))
         val transitions = try {
             val end = epochMillis() / MINUTE_MS * MINUTE_MS
             loadHistory(session, historyIds, end - HISTORY_WINDOW_MS, end)
@@ -619,12 +631,7 @@ internal class HaPresenceSourceManager(
             .map(HaPresenceCandidate::entityId)
             .toCollection(linkedSetOf())
         if (credible.isEmpty()) {
-            publish(run, HaPresenceAggregate(
-                HaPresencePhase.NO_CREDIBLE_SOURCES,
-                "No credible activity source is ready",
-                areaName = area.panelAreaName,
-            ))
-            return null
+            throw NoCredibleSources("No credible activity source is ready", area.panelAreaName)
         }
         val excluded = exclusions.excluded(area.panelAreaId)
         val selected = credible.filterTo(linkedSetOf()) { it !in excluded }
@@ -797,10 +804,6 @@ internal class HaPresenceSourceManager(
 
     private fun current(run: Long, expected: HaPresenceRequest): Boolean =
         !closed && generation.get() == run && request == expected
-
-    private fun retireLastResolution(run: Long, expected: HaPresenceRequest) = synchronized(lock) {
-        if (current(run, expected)) lastResolution = null
-    }
 
     /** Counts a failed discovery and opens its registry-change backoff window; returns the window. */
     private fun noteFailure(run: Long, expected: HaPresenceRequest): Long = synchronized(lock) {
