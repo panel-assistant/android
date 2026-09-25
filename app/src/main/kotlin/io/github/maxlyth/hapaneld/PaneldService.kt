@@ -170,6 +170,7 @@ import io.github.maxlyth.hapaneld.storage.VacuumOutcome
 import io.github.maxlyth.hapaneld.storage.VacuumResult
 import io.github.maxlyth.hapaneld.storage.WalCheckpointOutcome
 import io.github.maxlyth.hapaneld.storage.WalCheckpointResult
+import io.github.maxlyth.hapaneld.storage.appOwnedDisposableDirectoryRules
 import io.github.maxlyth.hapaneld.storage.appOwnedDisposableFileRules
 import io.github.maxlyth.hapaneld.storage.storageMaintenancePlan
 import io.github.maxlyth.hapaneld.storage.StorageHealthObservation
@@ -222,6 +223,7 @@ import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
+import io.github.maxlyth.hapaneld.util.validGuardDbAppFile
 import io.github.maxlyth.hapaneld.util.HelperInstallReconciler
 import io.github.maxlyth.hapaneld.util.HelperInstallTransaction
 import io.github.maxlyth.hapaneld.util.SelfUpdater
@@ -4296,11 +4298,16 @@ class PaneldService : Service() {
 
     private fun storageRemediationOperations(signal: CancellationSignal) = object : StorageRemediationOperations {
         override fun sweepDisposableFiles(): List<DisposableSweepResult> {
-            // Only files written before this process existed can be orphans. With no captured start
-            // nothing is provably orphaned, so nothing is swept.
-            val processStart = ProcessStartWallClock.millis() ?: return emptyList()
+            // Only files written before this process existed can be orphans, judged against its start
+            // in the oldest clock epoch it has run in. With no captured start nothing is provably
+            // orphaned, so nothing is swept.
+            val processStart = ProcessStartWallClock.orphanBoundary(
+                System.currentTimeMillis(),
+                android.os.SystemClock.elapsedRealtime(),
+            ) ?: return emptyList()
             val sweeper = DisposableFileSweeper(processStart)
-            return appOwnedDisposableFileRules(cacheDir, filesDir).map(sweeper::sweep)
+            return appOwnedDisposableFileRules(cacheDir, filesDir, ::validGuardDbAppFile).map(sweeper::sweep) +
+                appOwnedDisposableDirectoryRules(cacheDir).map(sweeper::sweep)
         }
 
         override fun enforceRetention(): RetentionResult = runCatching {

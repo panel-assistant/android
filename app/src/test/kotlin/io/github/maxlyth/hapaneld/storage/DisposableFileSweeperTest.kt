@@ -36,7 +36,7 @@ class DisposableFileSweeperTest {
     private fun sweeper() = DisposableFileSweeper(processStart, nowMillis = { now })
 
     private fun rule(dataClass: DisposableDataClass) =
-        appOwnedDisposableFileRules(cacheDir, filesDir).single { it.dataClass == dataClass }
+        appOwnedDisposableFileRules(cacheDir, filesDir) { true }.single { it.dataClass == dataClass }
 
     private fun file(directory: File, name: String, modified: Long = old, bytes: Int = 100): File =
         File(directory, name).apply {
@@ -115,7 +115,7 @@ class DisposableFileSweeperTest {
             "config-1.vault",
         ).map { file(cacheDir, it) }
 
-        appOwnedDisposableFileRules(cacheDir, filesDir).forEach { sweeper().sweep(it) }
+        appOwnedDisposableFileRules(cacheDir, filesDir) { true }.forEach { sweeper().sweep(it) }
 
         strangers.forEach { assertTrue("${it.name} is not provably this app's disposable file", it.exists()) }
     }
@@ -149,8 +149,9 @@ class DisposableFileSweeperTest {
             file(filesDir, "config-vault/config-1.vault"),
             file(filesDir, "config-revisions/1700000000000.json"),
             file(filesDir, "device-profiles/imported/panel.yaml"),
+            // A staged candidate is process-independent; only a dead claim's temporary is disposable
+            // (OrphanedTemporarySweepTest).
             file(filesDir, "guard-db-candidate-a.apk"),
-            file(filesDir, ".guard-db-candidate-a.pending"),
             file(filesDir, "hapaneld-dl-1.apk"),
             file(root, "databases/ha-paneld.db"),
             file(root, "databases/ha-paneld.db.v11.superseded"),
@@ -159,7 +160,7 @@ class DisposableFileSweeperTest {
             file(cacheDir, "nested/hapaneld-dl-1.apk"),
         )
 
-        appOwnedDisposableFileRules(cacheDir, filesDir).forEach { sweeper().sweep(it) }
+        appOwnedDisposableFileRules(cacheDir, filesDir) { true }.forEach { sweeper().sweep(it) }
 
         protected.forEach { assertTrue("${it.path} must never be swept", it.exists()) }
     }
@@ -182,7 +183,7 @@ class DisposableFileSweeperTest {
         val linkedCache = File(root, "linked-cache")
         Files.createSymbolicLink(linkedCache.toPath(), elsewhere.toPath())
 
-        val linkedRule = appOwnedDisposableFileRules(linkedCache, filesDir)
+        val linkedRule = appOwnedDisposableFileRules(linkedCache, filesDir) { true }
             .single { it.dataClass == DisposableDataClass.DOWNLOADS }
         sweeper().sweep(linkedRule)
 
