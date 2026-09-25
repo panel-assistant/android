@@ -34,6 +34,7 @@ import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.config.Validation
 import io.github.maxlyth.hapaneld.hardware.LedController
+import io.github.maxlyth.hapaneld.hardware.NoOpLedController
 import io.github.maxlyth.hapaneld.input.ButtonBus
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
@@ -1902,6 +1903,9 @@ internal class MqttBridge(
         "temperature" -> hasTemperature
         "humidity" -> hasHumidity
         "proximity", "proximity_level" -> learnedProximity
+        // LedFactory returns the no-op controller only for a profile declaring no LED. A declared LED stays
+        // described even when its probe fails: a daemon-driven one reads false until the helper answers.
+        "led" -> if (led is NoOpLedController) false else null
         SoftwareUpdateEntities.stateChannelKey(SoftwareComponent.COMPANION) ->
             softwareUpdateInputs(SoftwareComponent.COMPANION)
                 ?.takeUnless { it.presenceUnknown }

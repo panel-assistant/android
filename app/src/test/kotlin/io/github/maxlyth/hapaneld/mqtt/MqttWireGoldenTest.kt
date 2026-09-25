@@ -495,18 +495,43 @@ class MqttWireGoldenTest {
     // ---- rig ----
 
     @Test fun nativeHelloStatesTheChannelsThePanelCannotFillAndDescribesNone() {
-        val rig = rig(hasTemperature = false, hasHumidity = false, learnedProximityState = { false })
+        // A profile declaring no LED (the Shelly X2i; fakeProfile declares none) gets LedFactory's no-op controller.
+        val rig = rig(
+            hasTemperature = false, hasHumidity = false, learnedProximityState = { false },
+            led = io.github.maxlyth.hapaneld.hardware.LedFactory.detect(fakeProfile()),
+        )
         rig.updateSources.set(updateSources().copy(companionMinimalVersion = null, companionFullVersion = null))
         try {
             val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val offer = native.offer()
-            val absent = listOf("humidity", "proximity", "proximity_level", "temperature", "update_companion")
+            val absent = listOf("humidity", "led", "proximity", "proximity_level", "temperature", "update_companion")
             assertEquals(absent, offer.unsupported)
             val described = offer.descriptors.map { it.channel }
             absent.forEach { assertFalse("$it must not be described", it in described) }
             assertTrue("a channel the panel fills stays described", "screen" in described && "update_paneld" in described)
             assertEquals("the plain descriptor list agrees with the offer", described, native.descriptors().map { it.channel })
+        } finally {
+            rig.close()
+        }
+    }
+
+    @Test fun nativeKeepsTheLedDescribedWhenAProfileWithAnLedCannotReachItYet() {
+        // A daemon-driven LED (TPA10, SMT1019) whose helper is not answering at hello probes false. The
+        // profile still declares the LED, so the light stays described and its entity is never removed.
+        val unreachable = object : LedController {
+            override fun available() = false
+            override fun colorCapable() = true
+            override fun setRgb(r: Int, g: Int, b: Int) = false
+            override fun off() = false
+        }
+        val rig = rig(led = unreachable)
+        try {
+            val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+            rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
+            val offer = native.offer()
+            assertFalse("led" in offer.unsupported)
+            assertTrue("led" in offer.descriptors.map { it.channel })
         } finally {
             rig.close()
         }
@@ -542,7 +567,7 @@ class MqttWireGoldenTest {
             val offer = native.offer()
             assertEquals(emptyList<String>(), offer.unsupported)
             assertTrue(offer.descriptors.map { it.channel }.containsAll(
-                listOf("humidity", "proximity", "proximity_level", "temperature", "update_companion"),
+                listOf("humidity", "led", "proximity", "proximity_level", "temperature", "update_companion"),
             ))
             rig.updateSources.set(updateSources().copy(companionMinimalVersion = null, companionFullVersion = null))
             assertEquals("only the Companion's settled absence is stated", listOf("update_companion"), native.offer().unsupported)
@@ -694,6 +719,12 @@ class MqttWireGoldenTest {
         hasTemperature: Boolean = true,
         hasHumidity: Boolean = true,
         learnedProximityState: () -> Boolean? = { null },
+        led: LedController = object : LedController {
+            override fun available() = true
+            override fun colorCapable() = true
+            override fun setRgb(r: Int, g: Int, b: Int) = true
+            override fun off() = true
+        },
         configure: (Config) -> Unit = {},
     ): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
@@ -723,12 +754,6 @@ class MqttWireGoldenTest {
             ScreenOff.BRIGHTNESS_ZERO, nap = {},
         )
         val system = SystemController(FakeSystemEnv(), FakeRootShell(), FakeDaemon(), builtinForeground = { false })
-        val led = object : LedController {
-            override fun available() = true
-            override fun colorCapable() = true
-            override fun setRgb(r: Int, g: Int, b: Int) = true
-            override fun off() = true
-        }
         val bootChime = BootChimeController(
             configured = { false },
             setConfigured = {},
