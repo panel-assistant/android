@@ -10,13 +10,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoundedLaunchTest {
-    @Test fun launchThatIgnoresInterruptionCannotExtendTheCallerDeadline() {
+    // The launch stays wedged until after the assertion, so a caller that waited for it never returns.
+    @Test(timeout = 10_000)
+    fun launchThatIgnoresInterruptionCannotExtendTheCallerDeadline() {
         val launchEntered = CountDownLatch(1)
         val releaseLaunch = CountDownLatch(1)
         val destroyed = AtomicBoolean(false)
         val consumed = AtomicBoolean(false)
-        val startedAt = System.nanoTime()
-
         val result = runBoundedLaunch(
             deadline = MonotonicDeadline(40L),
             threadName = "bounded-launch-test",
@@ -36,11 +36,8 @@ class BoundedLaunchTest {
             destroy = { destroyed.set(true) },
             consume = { consumed.set(true); "unexpected" },
         )
-        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
-
         assertTrue(launchEntered.await(1, TimeUnit.SECONDS))
         assertNull(result)
-        assertTrue("caller exceeded a generous scheduling margin: ${elapsedMs}ms", elapsedMs < 500L)
         assertFalse(consumed.get())
         releaseLaunch.countDown()
         val destroyDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1)

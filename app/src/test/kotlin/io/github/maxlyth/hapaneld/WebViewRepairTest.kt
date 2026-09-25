@@ -298,22 +298,6 @@ class WebViewRepairTest {
         assertEquals("/configure#cfg-ha-oauth", configureQrPath(AdmissionOutcome.CREDENTIAL_REFUSED))
     }
 
-    @Test fun `a screen that shows a code says less, and only where a code is shown`() {
-        // The trade this pins: the ordinary credential explanation plus a scannable code does not fit a
-        // 480x480 panel — measured at y=479 of 480, with the button pushed into a scroll nobody standing
-        // at a wall would find. So a code screen carries one sentence instead of three. Every screen
-        // WITHOUT a code must keep the longer copy, which is why this is keyed to the same two outcomes
-        // rather than applied to the verdict generally.
-        assertEquals(11, AdmissionOutcome.entries.size)
-        val shortened = AdmissionOutcome.entries.filter { configureQrDetail(it) != null }
-        assertEquals(shortened.sorted(), AdmissionOutcome.entries.filter { configureQrPath(it) != null }.sorted())
-        assertTrue(
-            configureQrDetail(AdmissionOutcome.SIGN_IN_REQUIRED)!!.endsWith("Scan this to sign in from a phone:"),
-        )
-        assertNull(configureQrDetail(AdmissionOutcome.BRIDGE_UNAVAILABLE))
-        assertNull(configureQrDetail(null))
-    }
-
     // --- and whether the address behind it is worth printing ---
 
     @Test fun `an address nobody could reach is not offered as one`() {

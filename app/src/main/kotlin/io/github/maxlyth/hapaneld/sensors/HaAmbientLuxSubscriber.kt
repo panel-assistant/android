@@ -426,14 +426,6 @@ class HaAmbientLuxSubscriber internal constructor(
 internal object HaAmbientLuxProtocol {
     private val LUX_UNITS = setOf("lx", "lux")
 
-    fun subscribeEntities(entityId: String, id: Int = 1): JSONObject {
-        validateEntityId(entityId)
-        return JSONObject()
-            .put("id", id)
-            .put("type", "subscribe_entities")
-            .put("entity_ids", JSONArray().put(entityId))
-    }
-
     fun candidates(states: JSONArray): List<HaAmbientLuxCandidate> {
         val projected = ArrayList<HaAmbientLuxCandidate>()
         val limit = states.length().coerceAtMost(MAX_CANDIDATE_ROWS)

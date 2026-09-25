@@ -109,19 +109,6 @@ internal enum class LiveSettingRequestOutcome {
     val durablyAccepted: Boolean get() = this != REJECTED
 }
 
-/** Keep the desired value immediately durable/readable while preserving the previous value for handlers
- * whose side effects depend on detecting a transition. */
-internal fun durableLiveSettingApply(
-    previousValue: String,
-    transient: Boolean,
-    actuationOwnsPersistence: Boolean = false,
-    persist: () -> Boolean,
-    apply: (String?) -> LiveSettingApplyResult,
-): LiveSettingApplyResult {
-    if (!transient && !actuationOwnsPersistence && !persist()) return LiveSettingApplyResult.FAILED
-    return apply(previousValue.takeUnless { transient })
-}
-
 /**
  * Keeps HTTP-originated live settings authoritative while the replaceable MQTT runtime is draining.
  *
