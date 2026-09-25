@@ -310,6 +310,7 @@ private object HaAreaProtocolAccess {
         areas = emptyList(),
         deviceUid = deviceUid,
         panelId = panelId,
+        panelAssistantEntryIds = emptySet(),
     )
 }
 

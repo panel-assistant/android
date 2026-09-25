@@ -16,7 +16,7 @@ class HaPresenceProtocolTest {
         val devices = response(JSONArray().put(device("panel-device", "office", "ha-paneld-uid-abc")))
         val areas = response(JSONArray().put(JSONObject().put("area_id", "office").put("name", "Office")))
 
-        val area = HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy")
+        val area = HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", emptySet())
 
         assertEquals(HaPanelArea("office", "Office"), area)
     }
@@ -32,23 +32,23 @@ class HaPresenceProtocolTest {
 
         assertEquals(
             HaPanelArea("office", "Office"),
-            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", preferredAreaName = " office "),
+            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", emptySet(), preferredAreaName = " office "),
         )
         // Blank preference keeps the device's own registry area — the overwhelmingly common case.
         assertEquals(
             HaPanelArea("hall", "Hall"),
-            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", preferredAreaName = ""),
+            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", emptySet(), preferredAreaName = ""),
         )
         // An unknown name (a renamed or deleted area) degrades to the registry area instead of failing.
         assertEquals(
             HaPanelArea("hall", "Hall"),
-            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", preferredAreaName = "Snug"),
+            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", emptySet(), preferredAreaName = "Snug"),
         )
         // And a resolvable preference works even for a device HA has not put in any area yet.
         val bareDevice = response(JSONArray().put(device("panel-device", "", "ha-paneld-uid-abc")))
         assertEquals(
             HaPanelArea("office", "Office"),
-            HaPresenceProtocol.projectPanelArea(bareDevice, areas, "abc", "legacy", preferredAreaName = "Office"),
+            HaPresenceProtocol.projectPanelArea(bareDevice, areas, "abc", "legacy", emptySet(), preferredAreaName = "Office"),
         )
     }
 
@@ -57,7 +57,7 @@ class HaPresenceProtocolTest {
         val areas = response(JSONArray())
 
         val failure = runCatching {
-            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy")
+            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", emptySet())
         }.exceptionOrNull()
 
         assertTrue(failure is HaProtocolException)
@@ -93,7 +93,7 @@ class HaPresenceProtocolTest {
         val areas = response(JSONArray().put(JSONObject().put("area_id", "kitchen").put("name", "Kitchen")))
 
         val failure = runCatching {
-            HaPresenceProtocol.projectPanelArea(devices, areas, clonedAndroidId, "panel_one")
+            HaPresenceProtocol.projectPanelArea(devices, areas, clonedAndroidId, "panel_one", emptySet())
         }.exceptionOrNull()
 
         assertTrue("the retired identifier must not resolve a device", failure is HaProtocolException)
@@ -109,7 +109,7 @@ class HaPresenceProtocolTest {
             .put(JSONObject().put("ei", "binary_sensor.merged_motion").put("di", "merged-device").put("pl", "mqtt"))))
         val states = JSONArray().put(state("binary_sensor.merged_motion", "off", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, clonedAndroidId, "panel_one")
+        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, clonedAndroidId, "panel_one", emptySet())
 
         assertEquals(
             "the merged device is not this panel, so its entities remain external Area motion",
@@ -130,7 +130,7 @@ class HaPresenceProtocolTest {
             .put(state("binary_sensor.panel_proximity", "on", "occupancy"))
             .put(state("binary_sensor.kitchen_motion", "off", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel")
+        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", emptySet())
 
         assertEquals(listOf("binary_sensor.kitchen_motion"), projection.candidates.map { it.entityId })
     }
@@ -147,7 +147,7 @@ class HaPresenceProtocolTest {
             .put("state", "off")
             .put("attributes", JSONObject().put("device_class", "occupancy").put("friendly_name", "Kitchen motion")))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel")
+        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", emptySet())
 
         assertEquals("kitchen", projection.panelAreaId)
         assertEquals("Kitchen", projection.panelAreaName)
@@ -171,12 +171,12 @@ class HaPresenceProtocolTest {
             .put(state("binary_sensor.office_motion", "off", "motion"))
 
         val projection = HaPresenceProtocol.projectArea(
-            devices, areas, entities, states, "abc", "panel", preferredAreaName = "Office",
+            devices, areas, entities, states, "abc", "panel", emptySet(), preferredAreaName = "Office",
         )
 
         assertEquals(listOf("binary_sensor.office_motion"), projection.candidates.map { it.entityId })
         val fallbackFailure = runCatching {
-            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "panel")
+            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "panel", emptySet())
         }.exceptionOrNull()
         assertTrue(fallbackFailure is HaProtocolException)
         assertTrue(fallbackFailure?.message.orEmpty().contains("ambiguous"))
@@ -193,7 +193,7 @@ class HaPresenceProtocolTest {
             .put(JSONObject().put("ei", "binary_sensor.kitchen_motion").put("di", "motion-device").put("pl", "mqtt"))))
         val states = JSONArray().put(state("binary_sensor.kitchen_motion", "off", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel")
+        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", emptySet())
 
         assertEquals(listOf("binary_sensor.kitchen_motion"), projection.candidates.map { it.entityId })
         assertEquals(HaPresenceAuthority.ASSERT_PRESENCE, projection.candidates.single().authority)
@@ -209,7 +209,7 @@ class HaPresenceProtocolTest {
                 .put("di", "missing-device").put("ai", "kitchen").put("pl", "mqtt"))))
         val states = JSONArray().put(state("binary_sensor.unprojectable_motion", "on", "motion"))
 
-        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel")
+        val projection = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", emptySet())
 
         assertEquals(listOf("binary_sensor.unprojectable_motion"), projection.candidates.map { it.entityId })
         assertEquals(HaPresenceAuthority.SUPPORTING_ONLY, projection.candidates.single().authority)
@@ -229,7 +229,7 @@ class HaPresenceProtocolTest {
             .put(JSONObject().put("ei", "binary_sensor.motion").put("di", "motion-device").put("ai", "hall").put("pl", "mqtt"))))
         val states = JSONArray().put(state("binary_sensor.motion", "on", "motion"))
 
-        assertTrue(HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel").candidates.isEmpty())
+        assertTrue(HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", emptySet()).candidates.isEmpty())
     }
 
     @Test fun `unrelated binary device classes are excluded`() {
@@ -241,7 +241,7 @@ class HaPresenceProtocolTest {
             .put(JSONObject().put("ei", "binary_sensor.door").put("di", "door-device").put("pl", "mqtt"))))
 
         val projected = HaPresenceProtocol.projectArea(
-            devices, areas, entities, JSONArray().put(state("binary_sensor.door", "on", "door")), "abc", "panel",
+            devices, areas, entities, JSONArray().put(state("binary_sensor.door", "on", "door")), "abc", "panel", emptySet(),
         )
         assertTrue(projected.candidates.isEmpty())
     }
@@ -272,7 +272,7 @@ class HaPresenceProtocolTest {
             .put(state("binary_sensor.unlabelled_presence", "on", "occupancy"))
             .put(state("binary_sensor.future_physical_presence", "on", "occupancy"))
 
-        val candidates = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel")
+        val candidates = HaPresenceProtocol.projectArea(devices, areas, entities, states, "abc", "panel", emptySet())
             .candidates.associateBy(HaPresenceCandidate::entityId)
 
         assertEquals(HaPresenceAuthority.ASSERT_PRESENCE,
