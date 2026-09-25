@@ -136,6 +136,7 @@ import io.github.maxlyth.hapaneld.sensors.HaCurrentUserClient
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
+import io.github.maxlyth.hapaneld.util.AccessDenialMemo
 import io.github.maxlyth.hapaneld.util.DashboardPath
 import io.github.maxlyth.hapaneld.util.DashboardTheme
 import io.github.maxlyth.hapaneld.util.Cached
@@ -672,6 +673,9 @@ internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
 
 /** Which installed identity answered: during the application-id migration a panel can hold both. */
 internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"
+
+/** The build number beside the version name, so a reader can tell two builds of one release apart. */
+internal fun versionCodeHealthToken(versionCode: Int): String = " vc=$versionCode"
 
 internal fun autoSleepHistoryHours(hours: String?): Int {
     val parsed = hours?.toIntOrNull() ?: if (hours == null) 6 else null
@@ -2451,7 +2455,7 @@ class PaneldServer internal constructor(
                     call.respondText(html, ContentType.Text.Html)
                 }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -2488,7 +2492,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
                     }
                     configReadRoutes(
                         currentConfigJson = ::configJson,
@@ -3977,7 +3981,7 @@ class PaneldServer internal constructor(
                 companionSucceeded = runCatching {
                     val observed = companionServerCache.get()
                     observed.preferredUrl?.let { config.setHaBaseUrl(it) }
-                    check(observed.probeSucceeded) { "Companion servers table is unreadable" }
+                    check(observed.probe != CompanionDb.Probe.FAILED) { "Companion servers table is unreadable" }
                 }.onFailure { Log.w(TAG, "Companion server observation prewarm failed", it) }
                     .isSuccess
             },
@@ -5183,8 +5187,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
                     config.friendlyName,
                     config.manufacturer,
                     config.model,
-                    android.os.Build.VERSION.RELEASE,
-                    android.os.Build.DISPLAY,
                     config.haArea,
                 )
             }," +
@@ -5402,7 +5404,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         directSuProbe = { Su.availableCachedIsolated() },
         helperRootProbe = HelperClient::available,
         shizukuSnapshot = ShizukuBridge::snapshot,
-    )
+    ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady, it.shizuku.ready)) }
 
     private val snapCache = Cached(SNAP_TTL_MS) {
         val privilege = privilegeObservation()

@@ -7,6 +7,7 @@ import android.util.Log
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.RootShell
+import io.github.maxlyth.hapaneld.util.AccessDenialMemo
 import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.SuccessStickyProbe
@@ -15,6 +16,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 internal const val NEVER_SCREEN_TIMEOUT_MS = Int.MAX_VALUE
 private const val DEFAULT_SCREEN_TIMEOUT_MS = 60_000
+private const val SYS_BACKLIGHT = "/sys/class/backlight"
 
 internal data class ScreenTimeoutApplyResult(
     val enabled: Boolean,
@@ -166,7 +168,11 @@ class BrightnessController(
     // (canRead() only checks DAC; SELinux denials surface as the read throwing).
     private val readNode = SuccessStickyProbe(probe = {
         runCatching {
-            File("/sys/class/backlight").listFiles()?.sortedBy { it.name }?.firstNotNullOfOrNull { d ->
+            AccessDenialMemo.app.read(
+                key = "dir:$SYS_BACKLIGHT",
+                what = "Backlight class $SYS_BACKLIGHT",
+                probeDenied = { AccessDenialMemo.listDenied(SYS_BACKLIGHT) },
+            ) { File(SYS_BACKLIGHT).listFiles() }?.sortedBy { it.name }?.firstNotNullOfOrNull { d ->
                 val max = runCatching { File(d, "max_brightness").readText().trim().toIntOrNull() }.getOrNull()
                 val f = File(d, "actual_brightness")
                 val probe = runCatching { f.readText().trim().toIntOrNull() }.getOrNull()
