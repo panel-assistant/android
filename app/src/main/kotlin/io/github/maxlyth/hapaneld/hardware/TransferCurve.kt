@@ -16,11 +16,13 @@ import kotlin.math.roundToInt
  * [Identity] is byte-identical to the historic linear scaling (`v · max / 255` truncated forward,
  * `h · 255 / max` truncated back), so an unprofiled panel is unchanged.
  *
- * Round trip: [toHardware] is non-decreasing, so a steep-low-end curve maps several requests onto one
- * hardware value. [toLevel] therefore returns the smallest request that reaches a hardware value (the node
- * maximum always reads as 255), which guarantees `toHardware(toLevel(h)) == h` for every reachable `h` on a
- * shaped curve ([Identity] keeps the historic truncation instead); an exact read-back of the requested
- * level is the commanded path's job (the Android setting stays on the HA scale).
+ * Round trip: [toHardware] is non-decreasing, so a steep-low-end curve maps a run of requests onto one
+ * hardware value and no inverse can say which of them was asked for. [toLevel] answers the middle of that
+ * run, the least-biased estimate of an observation it did not command; any member of the run satisfies
+ * `toHardware(toLevel(h)) == h`, which is what keeps a save-and-restore of an observed level from drifting.
+ * An unreachable value takes the nearer neighbour, and the node maximum always reads as 255. [Identity]
+ * keeps the historic truncation instead. Reading back exactly the level Home Assistant set is not the
+ * inverse's job: the commanded path keeps an owned record of it.
  */
 sealed class TransferCurve {
     /** Hardware floor for any non-zero request, as a fraction of the node maximum (0.0 = none). */
@@ -41,15 +43,22 @@ sealed class TransferCurve {
         if (maximum <= 0 || hardware <= 0) return 0
         if (hardware >= maximum) return 255
         val h = hardware
-        // Smallest request whose hardware value reaches h (monotone forward map, so a binary search).
+        val lo = firstReaching(h, maximum)
+        val reached = toHardware(lo, maximum)
+        if (reached == h) return (lo + firstReaching(h + 1, maximum) - 1) ushr 1
+        // h between two reachable values: take whichever neighbour is nearer in hardware units.
+        if (lo > 1 && h - toHardware(lo - 1, maximum) < reached - h) return lo - 1
+        return lo
+    }
+
+    /** Smallest request whose hardware value reaches [h], or 256 when none does (monotone, so a binary search). */
+    private fun firstReaching(h: Int, maximum: Int): Int {
         var lo = 1
-        var hi = 255
+        var hi = 256
         while (lo < hi) {
             val mid = (lo + hi) ushr 1
             if (toHardware(mid, maximum) >= h) hi = mid else lo = mid + 1
         }
-        // h between two reachable values: take whichever neighbour is nearer in hardware units.
-        if (lo > 1 && h - toHardware(lo - 1, maximum) < toHardware(lo, maximum) - h) return lo - 1
         return lo
     }
 
@@ -79,9 +88,12 @@ sealed class TransferCurve {
     /**
      * Piecewise-linear through measured control points `(request, hardware)`, both on the 0..255 scale.
      * The first point is `(0, 0)`, the last `(255, 255)`; requests strictly increase and hardware never
-     * decreases, so the curve is monotone by construction.
+     * decreases, so the curve is monotone by construction. A measured curve already encodes its visibility
+     * threshold (the `(1, n)` point), so it takes no separate floor, which would move every measured point.
      */
-    data class Points(val points: List<Pair<Int, Int>>, override val floor: Double = 0.0) : TransferCurve() {
+    data class Points(val points: List<Pair<Int, Int>>) : TransferCurve() {
+        override val floor get() = 0.0
+
         init {
             require(points.size >= 2) { "at least two control points are required" }
             require(points.first() == (0 to 0)) { "the first control point must be [0, 0]" }
@@ -89,7 +101,6 @@ sealed class TransferCurve {
             require(points.zipWithNext().all { (a, b) -> b.first > a.first }) { "control-point requests must strictly increase" }
             require(points.zipWithNext().all { (a, b) -> b.second >= a.second }) { "control-point hardware values must not decrease" }
             require(points.all { (i, o) -> i in 0..255 && o in 0..255 }) { "control points must lie within 0..255" }
-            require(floor in 0.0..MAX_FLOOR) { "floor must be within 0..${MAX_FLOOR}" }
         }
 
         override fun shape(x: Double): Double {
@@ -126,7 +137,10 @@ sealed class TransferCurve {
                 }
                 "perceptual" -> Gamma(PERCEPTUAL_GAMMA, f)
                 "gamma" -> Gamma(requireNotNull(gamma) { "transfer: gamma needs a gamma exponent" }, f)
-                "points" -> Points(requireNotNull(points) { "transfer: points needs control points" }, f)
+                "points" -> {
+                    require(floor == null) { "control points encode their own floor; declare it as the [1, n] point" }
+                    Points(requireNotNull(points) { "transfer: points needs control points" })
+                }
                 else -> throw IllegalArgumentException("unknown transfer '$name'")
             }
         }

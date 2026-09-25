@@ -194,9 +194,9 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val hardware = map(root["hardware"], "hardware", setOf(
             "led", "screen_off", "has_button_backlight", "zigbee_gateway_dir", "relay_base",
             "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone",
-            "camera_lens_offset_px", "backlight",
+            "camera_lens_offset_px", "backlight", "button_backlight",
         ), required = true).orEmpty()
-        val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer"), required = true).orEmpty()
+        val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor"), required = true).orEmpty()
         val sensors = map(
             root["sensors"],
             "sensors",
@@ -287,10 +287,15 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 hasNativeNavbar = boolean(platform, "has_native_navbar", "platform") ?: false,
             ),
             hardware = ProfileHardware(
-                led = ProfileLed(
-                    mechanism = string(led, "mechanism", "hardware.led", required = true).orEmpty(),
-                    transfer = string(led, "transfer", "hardware.led") ?: "identity",
-                ),
+                led = lightCurve(led, "hardware.led", transferRequired = false).let { curve ->
+                    ProfileLed(
+                        mechanism = string(led, "mechanism", "hardware.led", required = true).orEmpty(),
+                        transfer = curve.transfer,
+                        gamma = curve.gamma,
+                        points = curve.points,
+                        floor = curve.floor,
+                    )
+                },
                 screenOff = string(hardware, "screen_off", "hardware", required = true).orEmpty(),
                 hasButtonBacklight = boolean(hardware, "has_button_backlight", "hardware") ?: false,
                 zigbeeGatewayDir = string(hardware, "zigbee_gateway_dir", "hardware"),
@@ -302,6 +307,8 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 hasMicrophone = boolean(hardware, "microphone", "hardware") ?: false,
                 cameraLensOffsetPx = integer(hardware, "camera_lens_offset_px", "hardware"),
                 backlight = backlight(hardware["backlight"]),
+                buttonBacklight = map(hardware["button_backlight"], "hardware.button_backlight", CURVE_KEYS)
+                    ?.let { lightCurve(it, "hardware.button_backlight", transferRequired = true) },
             ),
             sensors = ProfileSensors(
                 proximityTechnology = string(sensors, "proximity_technology", "sensors"),
@@ -571,14 +578,21 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
 
     private fun backlight(value: Any?): ProfileBacklight? {
         val path = "hardware.backlight"
-        val fields = map(value, path, setOf("transfer", "gamma", "points", "floor")) ?: return null
+        val fields = map(value, path, CURVE_KEYS + "route") ?: return null
         return ProfileBacklight(
-            transfer = string(fields, "transfer", path, required = true).orEmpty(),
+            curve = lightCurve(fields, path, transferRequired = true),
+            route = string(fields, "route", path),
+        )
+    }
+
+    /** The curve fields every light shares; shape rules belong to [ProfileLightCurve.toTransferCurve]. */
+    private fun lightCurve(fields: Map<String, Any?>, path: String, transferRequired: Boolean): ProfileLightCurve =
+        ProfileLightCurve(
+            transfer = string(fields, "transfer", path, required = transferRequired) ?: "identity",
             gamma = float(fields, "gamma", path)?.let { (fields["gamma"] as Number).toDouble() },
             points = if (fields["points"] != null) controlPoints(fields["points"], "$path.points") else null,
             floor = integer(fields, "floor", path),
         )
-    }
 
     /** `[[request, hardware], ...]` integer pairs; shape rules (ends, monotonicity) belong to the curve. */
     private fun controlPoints(value: Any?, path: String): List<Pair<Int, Int>> =
@@ -746,7 +760,8 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "has_native_navbar" to platform.hasNativeNavbar,
     ),
     "hardware" to linkedMapOf(
-        "led" to linkedMapOf("mechanism" to hardware.led.mechanism, "transfer" to hardware.led.transfer),
+        "led" to linkedMapOf<String, Any?>("mechanism" to hardware.led.mechanism)
+            .apply { putAll(hardware.led.curve.toYamlFields()) }.withoutNullValues(),
         "screen_off" to hardware.screenOff,
         "has_button_backlight" to hardware.hasButtonBacklight,
         "zigbee_gateway_dir" to hardware.zigbeeGatewayDir,
@@ -758,13 +773,9 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "microphone" to hardware.hasMicrophone,
         "camera_lens_offset_px" to hardware.cameraLensOffsetPx,
         "backlight" to hardware.backlight?.let { backlight ->
-            linkedMapOf(
-                "transfer" to backlight.transfer,
-                "gamma" to backlight.gamma,
-                "points" to backlight.points?.map { (request, level) -> listOf(request, level) },
-                "floor" to backlight.floor,
-            ).withoutNullValues()
+            backlight.curve.toYamlFields().apply { put("route", backlight.route) }.withoutNullValues()
         },
+        "button_backlight" to hardware.buttonBacklight?.toYamlFields()?.withoutNullValues(),
     ).withoutNullValues(),
     "sensors" to linkedMapOf(
         "proximity_technology" to sensors.proximityTechnology,
@@ -871,4 +882,13 @@ private fun error(
     path.removePrefix("$."),
     message,
     presentationCode?.let { runCatching { ProfilePresentation(it, presentationParams) }.getOrNull() },
+)
+
+private val CURVE_KEYS = setOf("transfer", "gamma", "points", "floor")
+
+private fun ProfileLightCurve.toYamlFields(): LinkedHashMap<String, Any?> = linkedMapOf(
+    "transfer" to transfer,
+    "gamma" to gamma,
+    "points" to points?.map { (request, level) -> listOf(request, level) },
+    "floor" to floor,
 )

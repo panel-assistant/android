@@ -52,12 +52,20 @@ object LedFactory {
         LedMechanism.NONE -> NoOpLedController()
         LedMechanism.SYSFS_DAEMON -> socket(profile)
         LedMechanism.RK3576_IOCTL_DAEMON -> socket(profile)
-        // A fallback from the ioctl reaches whatever LED the daemon finds, which the ioctl transfer (the
-        // rk3576 four-bit stub on these profiles) does not describe, so it stays a passthrough.
-        LedMechanism.RK3576_IOCTL -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: SocketLedController()
-        LedMechanism.AUTODETECT -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: SocketLedController()
+        LedMechanism.RK3576_IOCTL -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: fallback(profile)
+        LedMechanism.AUTODETECT -> Rk3576LedController(profile.ledTransfer).takeIf { it.available() } ?: fallback(profile)
     }
 
     /** A declared daemon route gets the profile's transfer, as the app-direct ioctl route does. */
     private fun socket(profile: DeviceProfile) = SocketLedController(transfer = profile.ledTransfer)
+
+    private fun fallback(profile: DeviceProfile) = SocketLedController(transfer = fallbackTransfer(profile.ledTransfer))
+
+    /**
+     * The transfer for the daemon fallback of an ioctl route. A declared curve describes the light and is kept;
+     * only the four-bit stub is dropped, because it describes the ioctl's safe drive region, not whatever LED
+     * the daemon finds.
+     */
+    internal fun fallbackTransfer(transfer: LedTransfer): LedTransfer =
+        if (transfer === LedTransfer.Rk3576FourBit) LedTransfer.Identity else transfer
 }

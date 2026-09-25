@@ -139,15 +139,18 @@ data class ProfileHardware(
     val cameraLensOffsetPx: Int? = null,
     /** Backlight transfer curve; null (the key absent) is the identity passthrough. */
     val backlight: ProfileBacklight? = null,
+    /** Key-backlight transfer curve (`hardware.button_backlight`); null is the identity passthrough. */
+    val buttonBacklight: ProfileLightCurve? = null,
 )
 
 /**
- * `hardware.backlight`: the transfer curve from Home Assistant's 0..255 brightness to the backlight node.
+ * One light's transfer curve declaration, shared by the backlight, the LED and the key backlight.
  * [transfer] is `identity`, `perceptual`, `gamma` (with [gamma]) or `points` (with [points], `[request,
  * hardware]` pairs on 0..255 from `[0, 0]` to `[255, 255]`); [floor] (0..255) is the hardware level the
- * lowest non-zero request lands on. Built by [toTransferCurve]; the validator reports its refusal.
+ * lowest non-zero request lands on, and is refused with `points`, which encode their own. Built by
+ * [toTransferCurve]; the validator reports its refusal.
  */
-data class ProfileBacklight(
+data class ProfileLightCurve(
     val transfer: String = "identity",
     val gamma: Double? = null,
     val points: List<Pair<Int, Int>>? = null,
@@ -156,10 +159,28 @@ data class ProfileBacklight(
     fun toTransferCurve(): TransferCurve = TransferCurve.from(transfer, gamma, points, floor)
 }
 
+/**
+ * `hardware.backlight`: the backlight's [curve] and the [route] it is applied through. `setting` writes the
+ * curved value into Android's brightness setting, for firmware that pushes that setting to the node itself
+ * (NSPanel 86); `node` writes it to the node, for panels where ha-paneld is the node's only writer (the
+ * TPA10 helper route). A declared curve must name its route; the identity curve needs none.
+ */
+data class ProfileBacklight(
+    val curve: ProfileLightCurve,
+    val route: String? = null,
+)
+
+/** `hardware.led`: the LED [mechanism] and its curve. [transfer] also accepts the ioctl-only
+ *  `rk3576-four-bit` stub, which takes no [gamma], [points] or [floor]. */
 data class ProfileLed(
     val mechanism: String,
     val transfer: String = "identity",
-)
+    val gamma: Double? = null,
+    val points: List<Pair<Int, Int>>? = null,
+    val floor: Int? = null,
+) {
+    val curve: ProfileLightCurve get() = ProfileLightCurve(transfer, gamma, points, floor)
+}
 
 data class ProfileSensors(
     val proximityTechnology: String? = null,
