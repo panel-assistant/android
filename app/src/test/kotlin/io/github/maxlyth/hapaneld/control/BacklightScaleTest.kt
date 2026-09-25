@@ -98,6 +98,12 @@ class BacklightScaleTest {
             val observed = scale.levelFromNode(node, 255)
             assertEquals("a save and restore of level $level does not drift", node, scale.settingFor(observed))
         }
+        for (level in 0..255) {
+            // A 10-bit node: the push is linear from the 0..255 setting, so the read undoes that first.
+            val setting = scale.settingFor(level)
+            val observed = scale.levelFromNode(TransferCurve.Identity.toHardware(setting, 1023), 1023)
+            assertEquals("level $level on a 10-bit node", setting, scale.settingFor(observed))
+        }
         assertEquals(255, scale.levelFromNode(1023, 1023))
         assertEquals(0, scale.levelFromNode(0, 1023))
     }
