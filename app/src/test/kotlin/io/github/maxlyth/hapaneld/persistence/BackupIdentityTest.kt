@@ -111,7 +111,7 @@ class BackupIdentityTest {
             .toSet()
 
         assertEquals(
-            setOf("AppState.kt", "NativeLocale.kt", "ProximityLearningRuntime.kt", "PaneldServer.kt"),
+            setOf("AppState.kt", "NativeLocale.kt", "PaneldServer.kt"),
             sources,
         )
         assertEquals(setOf("proximity-wake-invalidation"), RawPreferenceBackup.STORES.keys)
