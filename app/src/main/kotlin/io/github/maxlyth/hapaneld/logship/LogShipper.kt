@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.logship
 
 import android.util.Log
+import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
@@ -205,6 +206,7 @@ class LogShipper internal constructor(
     private val subscribeCapture: ((String) -> Unit) -> AutoCloseable,
     private val sinkFactory: LogSinkFactory,
     private val featureCosts: FeatureCostRegistry = FeatureCosts.registry,
+    private val build: LogShipRecord.Build = LogShipRecord.Build.CURRENT,
 ) {
     /** Ships [capture] and, when given, the dashboard [console] source through the same run. */
     constructor(config: Config, scope: CoroutineScope, capture: LogCapture, console: LogCapture? = null) : this(
@@ -434,16 +436,11 @@ class LogShipper internal constructor(
 
     private fun timestamp(): String = synchronized(rfc3339) { rfc3339.format(Date()) }
 
-    /** RFC5424 frame: `<PRI>1 TIMESTAMP HOSTNAME APP-NAME PROCID MSGID SD MSG`. */
-    private fun syslogFrame(line: String, panelId: String): String {
-        val pri = FACILITY_USER * 8 + severityOf(line)
-        val host = panelId.ifBlank { "panel" }.replace(' ', '_')
-        return "<$pri>1 ${timestamp()} $host $APP - - - $line\n"
-    }
+    private fun syslogFrame(line: String, panelId: String): String =
+        LogShipRecord.syslogFrame(FACILITY_USER * 8 + severityOf(line), timestamp(), panelId, build, line)
 
     private fun jsonEvent(line: String, panelId: String): String =
-        "{\"timestamp\":\"${timestamp()}\",\"host\":${jsonStr(panelId.ifBlank { "panel" })}," +
-            "\"app\":\"$APP\",\"message\":${jsonStr(line)}}"
+        LogShipRecord.jsonEvent(timestamp(), panelId, build, line)
 
     private fun severityOf(line: String): Int {
         val level = LEVEL_RE.find(line)?.groupValues?.get(1) ?: return SEV_INFO
@@ -458,8 +455,7 @@ class LogShipper internal constructor(
 
     companion object {
         private const val TAG = "ha-paneld/logship"
-        private const val APP = "ha-paneld"
-        private const val QUEUE_CAP = 4000
+                private const val QUEUE_CAP = 4000
         private const val BATCH_MAX = 200
         private const val SHIP_WORK_BYTES_MAX = 4L * 1024 * 1024
         private const val POLL_SECONDS = 5L
@@ -484,8 +480,54 @@ class LogShipper internal constructor(
         private val LEVEL_RE =
             Regex("""^\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}\s+\d+\s+\d+\s+([VDIWEF])\s""")
 
-        private fun jsonStr(value: String): String = Json.str(value)
     }
+}
+
+/**
+ * The one definition of a shipped record's wire shape, shared by [LogShipper] and the sink probe.
+ *
+ * Every record names the build that wrote it, because panels sharing one collector can run different
+ * builds and package names, and a log line is otherwise unattributable to a build. Syslog carries it as an RFC5424
+ * STRUCTURED-DATA element, so a collector that ignores structured data sees the same MSG as before;
+ * NDJSON carries it as two more keys.
+ */
+internal object LogShipRecord {
+    const val APP = "ha-paneld"
+
+    /**
+     * RFC5424 SD-ID. A private SD-ID must be `name@<IANA enterprise number>`; the project has none, so
+     * this uses 32473, the number RFC5612 reserves for documentation and examples. Vector's syslog
+     * parser surfaces the params as `hapaneld@32473.versionCode` and `hapaneld@32473.package`.
+     */
+    const val SD_ID = "hapaneld@32473"
+
+    data class Build(val versionCode: Int, val packageName: String) {
+        companion object {
+            val CURRENT = Build(BuildConfig.VERSION_CODE, BuildConfig.APPLICATION_ID)
+        }
+    }
+
+    /** RFC5424 frame: `<PRI>1 TIMESTAMP HOSTNAME APP-NAME PROCID MSGID SD MSG`, newline-terminated. */
+    fun syslogFrame(pri: Int, timestamp: String, panelId: String, build: Build, msg: String): String =
+        "<$pri>1 $timestamp ${hostname(panelId)} $APP - - ${structuredData(build)} $msg\n"
+
+    fun jsonEvent(timestamp: String, panelId: String, build: Build, msg: String): String =
+        "{\"timestamp\":\"$timestamp\",\"host\":${Json.str(panelId.ifBlank { "panel" })}," +
+            "\"app\":\"$APP\",\"versionCode\":${build.versionCode},\"package\":${Json.str(build.packageName)}," +
+            "\"message\":${Json.str(msg)}}"
+
+    fun structuredData(build: Build): String =
+        "[$SD_ID versionCode=\"${build.versionCode}\" package=\"${paramValue(build.packageName)}\"]"
+
+    /** RFC5424 §6.3.3: inside PARAM-VALUE, `"`, `\` and `]` MUST be escaped with a backslash. */
+    fun paramValue(value: String): String = buildString(value.length) {
+        for (c in value) {
+            if (c == '"' || c == '\\' || c == ']') append('\\')
+            append(c)
+        }
+    }
+
+    private fun hostname(panelId: String): String = panelId.ifBlank { "panel" }.replace(' ', '_')
 }
 
 /**

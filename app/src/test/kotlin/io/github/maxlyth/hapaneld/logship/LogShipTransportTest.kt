@@ -242,10 +242,11 @@ class LogShipTransportTest {
 
                 assertEquals(listOf("ha-paneld", "ha-paneld"), frames.map { it.appName })
                 assertEquals(listOf("panel-a", "panel-a"), frames.map { it.hostname })
-                // PROCID / MSGID / STRUCTURED-DATA are all the RFC's explicit nil value.
+                // PROCID / MSGID are the RFC's explicit nil value; STRUCTURED-DATA names the build.
                 assertEquals(listOf("-", "-"), frames.map { it.procId })
                 assertEquals(listOf("-", "-"), frames.map { it.msgId })
-                assertEquals(listOf("-", "-"), frames.map { it.structuredData })
+                val sd = LogShipRecord.structuredData(LogShipRecord.Build.CURRENT)
+                assertEquals(listOf(sd, sd), frames.map { it.structuredData })
                 assertTrue(frames[0].message.endsWith("first"))
                 assertTrue(frames[1].message.endsWith("second"))
             }
@@ -462,7 +463,8 @@ class LogShipTransportTest {
 
     private companion object {
         val RFC5424 = Regex(
-            """^<(\d+)>1 (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) (.*)$""",
+            // SD is the nil value or SD-ELEMENTs whose quoted PARAM-VALUEs may hold spaces and escapes.
+            """^<(\d+)>1 (\S+) (\S+) (\S+) (\S+) (\S+) (-|(?:\[(?:[^"\]]|"(?:[^"\\]|\\.)*")*\])+) (.*)$""",
             RegexOption.DOT_MATCHES_ALL,
         )
 

@@ -108,6 +108,7 @@ import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestorePlan
 import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestoreResult
 import io.github.maxlyth.hapaneld.logship.LOG_SHIP_STATUS_OFF
 import io.github.maxlyth.hapaneld.logship.LogCapture
+import io.github.maxlyth.hapaneld.logship.LogShipRecord
 import io.github.maxlyth.hapaneld.logship.LogShipStatusProjection
 import io.github.maxlyth.hapaneld.logship.LogShipTarget
 import io.github.maxlyth.hapaneld.logship.NetworkLogSinkFactory
@@ -6690,7 +6691,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             "contexttbl" to contextRowsHtml(s, h, strings),
             "captbl" to capRowsHtml(s.capabilityRows, strings),
         ).joinToString(",") { (k, v) -> "\"$k\":${jsonStr(v)}" }
-        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
+        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
     }
 
     private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
@@ -8550,11 +8551,11 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         val marker = "ha-paneld-sink-probe-${System.currentTimeMillis().toString(36)}"
         val name = panelId.ifBlank { "panel" }
         val timestamp = probeTimestamp()
+        val build = LogShipRecord.Build.CURRENT
         val payload = when (ep.protocol) {
-            LogShipEndpoint.HTTP -> "{\"timestamp\":\"$timestamp\",\"host\":${jsonStr(name)}," +
-                "\"app\":\"ha-paneld\",\"message\":${jsonStr(marker)}}"
-            LogShipEndpoint.SYSLOG_UDP -> "<14>1 $timestamp $name ha-paneld - - - $marker"
-            else -> "<14>1 $timestamp $name ha-paneld - - - $marker\n"
+            LogShipEndpoint.HTTP -> LogShipRecord.jsonEvent(timestamp, name, build, marker)
+            LogShipEndpoint.SYSLOG_UDP -> LogShipRecord.syslogFrame(14, timestamp, name, build, marker).trimEnd('\n')
+            else -> LogShipRecord.syslogFrame(14, timestamp, name, build, marker)
         }.toByteArray(Charsets.UTF_8)
         val result = NetworkLogSinkFactory.probe(
             LogShipTarget(ep.host, ep.port, ep.protocol, panelId),
