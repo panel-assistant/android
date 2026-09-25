@@ -55,26 +55,35 @@ object CompanionDb {
         val presentation: InstallPresentation? = null,
     )
 
+    /** What the last servers-table read found. [TOOL_ABSENT] is a device property (the firmware ships
+     *  no `sqlite3`), not a failed check: the table cannot be inspected, so its state stays unknown. */
+    internal enum class Probe { SUCCEEDED, FAILED, TOOL_ABSENT }
+
     /** One servers-table read projected for both header fallback and repair health. */
     internal data class ServerObservation(
-        val probeSucceeded: Boolean,
+        val probe: Probe,
         val preferredUrl: String?,
         val status: UrlStatus,
     ) {
+        val probeSucceeded: Boolean get() = probe == Probe.SUCCEEDED
+
         companion object {
             /** Companion is absent, or its servers table was read successfully and has no rows. */
             val EMPTY = ServerObservation(
-                probeSucceeded = true,
+                probe = Probe.SUCCEEDED,
                 preferredUrl = null,
                 status = UrlStatus(needsRepair = false, affected = 0),
             )
 
             /** Companion is installed but its servers table could not be read. */
             val UNKNOWN = ServerObservation(
-                probeSucceeded = false,
+                probe = Probe.FAILED,
                 preferredUrl = null,
                 status = UrlStatus(needsRepair = false, affected = 0),
             )
+
+            /** Companion is installed but the device has no `sqlite3` to read its servers table with. */
+            val TOOL_ABSENT = UNKNOWN.copy(probe = Probe.TOOL_ABSENT)
         }
     }
 
@@ -97,7 +106,8 @@ object CompanionDb {
         /** [affected] rows have a blank internal URL — offer the repair. */
         data class NeedsRepair(val affected: Int) : Warning
 
-        /** The servers table couldn't be inspected but a privileged retry exists. */
+        /** The servers table couldn't be read but a privileged retry exists. Not raised when the device
+         *  has no `sqlite3`: a retry cannot succeed, and that is not a failed check. */
         object ProbeFailed : Warning
     }
 
@@ -113,7 +123,7 @@ object CompanionDb {
         val status = observation?.status ?: return null
         return when {
             status.needsRepair -> Warning.NeedsRepair(status.affected)
-            !observation.probeSucceeded && directSuReady -> Warning.ProbeFailed
+            observation.probe == Probe.FAILED && directSuReady -> Warning.ProbeFailed
             else -> null
         }
     }
@@ -208,10 +218,37 @@ object CompanionDb {
         return readServers(pkg, root)
     }
 
-    private fun readServers(pkg: String, root: RootShell): List<ServerRow>? {
+    private fun readServers(pkg: String, root: RootShell): List<ServerRow>? =
+        readServersOutput(pkg, root)?.takeUnless { it.trim() == SQLITE3_ABSENT }?.let(::parseServers)
+
+    // Printed instead of rows when `sqlite3` is not on the root PATH, so a missing tool (exit 127) is not
+    // confused with a read that ran and failed (non-zero, runOutput null). `echo` is a shell builtin; the
+    // toybox `printf` is not, and must not be what reports a missing binary.
+    internal const val SQLITE3_ABSENT = "ha-paneld:sqlite3-absent"
+
+    // Same root read as before, guarded in the same shell. No `exit`: this runs in Su's persistent shell.
+    private fun readServersOutput(pkg: String, root: RootShell): String? {
         val db = dbPath(pkg)
-        val out = root.runOutput("""sqlite3 "file:$db?immutable=1" "$DUMP_SQL" 2>/dev/null""") ?: return null
-        return parseServers(out)
+        return root.runOutput(
+            """if command -v sqlite3 >/dev/null 2>&1; then sqlite3 "file:$db?immutable=1" "$DUMP_SQL" 2>/dev/null; """ +
+                """else echo $SQLITE3_ABSENT; fi""",
+        )
+    }
+
+    @Volatile private var toolAbsentLogged = false
+
+    /** Observe [pkg]'s servers table through [root]. Tool absence is reported as its own state. */
+    internal fun observeServers(pkg: String, root: RootShell): ServerObservation {
+        val out = readServersOutput(pkg, root)
+        if (out?.trim() == SQLITE3_ABSENT) {
+            if (!toolAbsentLogged) {
+                toolAbsentLogged = true
+                Log.i(TAG, "no sqlite3 on this device; Companion servers table cannot be checked")
+            }
+            return ServerObservation.TOOL_ABSENT
+        }
+        if (out == null) Log.w(TAG, "Companion servers table read failed")
+        return observeServers(out?.let(::parseServers))
     }
 
     internal fun observeServers(rows: List<ServerRow>?): ServerObservation {
@@ -222,7 +259,7 @@ object CompanionDb {
         }
         val affected = rows.count(::needsRepair)
         return ServerObservation(
-            probeSucceeded = true,
+            probe = Probe.SUCCEEDED,
             preferredUrl = preferredUrl,
             status = UrlStatus(needsRepair = affected > 0, affected = affected),
         )
@@ -235,16 +272,17 @@ object CompanionDb {
     ): ServerObservation = when {
         observed.probeSucceeded -> observed
         previous == null -> observed
-        else -> previous.copy(probeSucceeded = false)
+        else -> previous.copy(probe = observed.probe)
     }
 
     /**
      * One root SQLite read for every read-only servers-table projection. Call off the main thread.
-     * Absence is confirmed empty; an installed Companion whose table is unreadable remains unknown.
+     * Absence is confirmed empty; an installed Companion whose table is unreadable remains unknown, and
+     * one on a device without `sqlite3` is [Probe.TOOL_ABSENT].
      */
     internal fun observeServers(context: Context, root: RootShell): ServerObservation {
         val pkg = CompanionInstaller.installedPkg(context) ?: return ServerObservation.EMPTY
-        return observeServers(readServers(pkg, root))
+        return observeServers(pkg, root)
     }
 
     /**
