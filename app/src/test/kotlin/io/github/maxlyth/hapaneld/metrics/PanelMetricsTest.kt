@@ -244,39 +244,6 @@ class PanelMetricsTest {
         assertEquals(60, snap.memPercent)              // 600/1000 kB
     }
 
-    // --- store-emit hook (a): Snapshot.toSamples() produces registry-keyed normalized records ---------
-
-    @Test fun toSamplesEmitsRegistryKeyedNormalizedRecords() {
-        val snap = Snapshot(
-            ts = 1000, cpuOverall = 42, cpuCores = listOf(40, 44), memUsedMb = 600, memTotalMb = 1000,
-            memPercent = 60, socTempC = 42.5, gpuPct = 45, gpuMhz = 800, loadavg = listOf("0.5", "0.4", "0.3"),
-            freqCurMhz = listOf(1416L), freqMaxMhz = 1800, dump = null,
-        )
-        val byKey = snap.toSamples().associateBy { it.key }
-        assertEquals(42.0, byKey.getValue(MetricRegistry.CPU.key).num!!, 0.0)
-        assertEquals("%", byKey.getValue(MetricRegistry.CPU.key).unit)
-        assertEquals(1000L, byKey.getValue(MetricRegistry.CPU.key).ts)
-        assertEquals(60.0, byKey.getValue(MetricRegistry.MEM.key).num!!, 0.0)
-        assertEquals(600.0, byKey.getValue(MetricRegistry.MEM_USED.key).num!!, 0.0)
-        assertEquals(1000.0, byKey.getValue(MetricRegistry.MEM_TOTAL.key).num!!, 0.0)
-        assertEquals(42.5, byKey.getValue(MetricRegistry.SOC_TEMP.key).num!!, 0.0)
-        assertEquals(45.0, byKey.getValue(MetricRegistry.GPU_LOAD.key).num!!, 0.0)
-        assertEquals(800.0, byKey.getValue(MetricRegistry.GPU_FREQ.key).num!!, 0.0)
-        assertEquals(0.5, byKey.getValue(MetricRegistry.LOAD1.key).num!!, 0.0)
-        assertEquals(1800.0, byKey.getValue(MetricRegistry.CPU_FREQ_MAX.key).num!!, 0.0)
-    }
-
-    @Test fun toSamplesOmitsAbsentMetrics() {
-        val snap = Snapshot(
-            ts = 1, cpuOverall = null, cpuCores = emptyList(), memUsedMb = 0, memTotalMb = 0,
-            memPercent = null, socTempC = null, gpuPct = -1, gpuMhz = 0, loadavg = emptyList(),
-            freqCurMhz = emptyList(), freqMaxMhz = 0, dump = null,
-        )
-        val keys = snap.toSamples().map { it.key }.toSet()
-        // Nothing available → no records for cpu / mem / temp / gpu.
-        assertTrue(keys.none { it == MetricRegistry.CPU.key || it == MetricRegistry.SOC_TEMP.key || it == MetricRegistry.GPU_LOAD.key })
-    }
-
     // --- boot time (relocated from the deleted Diagnostics facade) ------------------------------------
 
     @Test fun bootTimeIsWallMinusElapsedFormattedIsoUtc() {

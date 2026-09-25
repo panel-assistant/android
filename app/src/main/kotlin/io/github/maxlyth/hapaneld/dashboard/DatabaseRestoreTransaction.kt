@@ -282,9 +282,6 @@ internal class DatabaseRestoreTransaction(
         else DatabaseRestoreOpenedReceipt.Hold
     }
 
-    /** Compatibility wrapper for ordinary owners and direct transaction tests. */
-    fun consumeOrdinaryRestored(): Boolean = settleRestoredAfterOpen() !is DatabaseRestoreOpenedReceipt.Hold
-
     /** A live in-process Guard owner accepts its exact receipt or its legitimate terminal removal. */
     fun establishedGuardReceipt(expected: DatabaseRestoreRecord): DatabaseRestoreEstablishedReceipt {
         if (expected.state != DatabaseRestoreState.RESTORED || expected.guard == null ||

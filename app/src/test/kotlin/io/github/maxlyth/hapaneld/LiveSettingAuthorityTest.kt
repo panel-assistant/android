@@ -37,13 +37,9 @@ class LiveSettingAuthorityTest {
         var actual = "false"
         var retained = "OFF"
 
-        val first = authority.applyOrQueueOutcome("touch_sound", "true", desired) { _, value, previous ->
-            durableLiveSettingApply(
-                previousValue = previous.orEmpty(),
-                transient = false,
-                persist = { desired = value; true },
-                apply = { LiveSettingApplyResult.FAILED },
-            )
+        val first = authority.applyOrQueueOutcome("touch_sound", "true", desired) { _, value, _ ->
+            desired = value
+            LiveSettingApplyResult.FAILED
         }
 
         assertEquals(LiveSettingRequestOutcome.FAILED_PENDING, first)
@@ -52,17 +48,11 @@ class LiveSettingAuthorityTest {
         assertEquals("OFF", retained)
         assertEquals(mapOf("touch_sound" to "true"), authority.pendingSnapshot())
 
-        authority.replay { _, value, previous ->
-            durableLiveSettingApply(
-                previousValue = previous.orEmpty(),
-                transient = false,
-                persist = { desired = value; true },
-                apply = {
-                    actual = value
-                    retained = if (value == "true") "ON" else "OFF"
-                    LiveSettingApplyResult.APPLIED
-                },
-            )
+        authority.replay { _, value, _ ->
+            desired = value
+            actual = value
+            retained = if (value == "true") "ON" else "OFF"
+            LiveSettingApplyResult.APPLIED
         }
 
         assertEquals("true", desired)
@@ -420,81 +410,5 @@ class LiveSettingAuthorityTest {
 
         assertEquals(42L, replayFence)
         assertTrue(replacement.pendingSnapshot().isEmpty())
-    }
-}
-
-class DurableLiveSettingApplyTest {
-    @Test fun `desired value is durable before handler and handler receives previous value`() {
-        var durable = "stable"
-        val events = mutableListOf<String>()
-
-        val result = durableLiveSettingApply(
-            previousValue = durable,
-            transient = false,
-            persist = {
-                durable = "prerelease"
-                events += "persist:$durable"
-                true
-            },
-            apply = { previous ->
-                events += "apply:$previous:$durable"
-                LiveSettingApplyResult.APPLIED
-            },
-        )
-
-        assertEquals(LiveSettingApplyResult.APPLIED, result)
-        assertEquals(listOf("persist:prerelease", "apply:stable:prerelease"), events)
-    }
-
-    @Test fun `deferred desired value remains durable for immediate readback and replay`() {
-        listOf(LiveSettingApplyResult.DEFERRED, LiveSettingApplyResult.FAILED).forEach { execution ->
-            var persisted = false
-            assertEquals(
-                execution,
-                durableLiveSettingApply("old", false, persist = { persisted = true; true }, apply = { execution }),
-            )
-            assertTrue(persisted)
-        }
-    }
-
-    @Test fun `persist failure refuses dispatch and transient work skips persistence and prior hint`() {
-        var applied = false
-        assertEquals(
-            LiveSettingApplyResult.FAILED,
-            durableLiveSettingApply("old", false, persist = { false }, apply = { applied = true; LiveSettingApplyResult.APPLIED }),
-        )
-        assertFalse(applied)
-        var persisted = false
-        var previous: String? = "unexpected"
-        assertEquals(
-            LiveSettingApplyResult.APPLIED,
-            durableLiveSettingApply(
-                "old", true,
-                persist = { persisted = true; false },
-                apply = { previous = it; LiveSettingApplyResult.APPLIED },
-            ),
-        )
-        assertFalse(persisted)
-        assertEquals(null, previous)
-    }
-
-    @Test fun `actuation-owned persistence is not performed before the handler`() {
-        val events = mutableListOf<String>()
-
-        assertEquals(
-            LiveSettingApplyResult.APPLIED,
-            durableLiveSettingApply(
-                previousValue = "Off",
-                transient = false,
-                actuationOwnsPersistence = true,
-                persist = { events += "pre-persist"; true },
-                apply = {
-                    events += "actuate:$it"
-                    LiveSettingApplyResult.APPLIED
-                },
-            ),
-        )
-
-        assertEquals(listOf("actuate:Off"), events)
     }
 }

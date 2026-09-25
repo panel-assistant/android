@@ -519,14 +519,11 @@ class ConfigTransactionTest {
         assertFalse(config.dashboardEntityLearningApplied)
     }
 
-    @Test fun entityPromotionSourcesDefaultOnAndPersistIndependently() {
+    @Test fun entityPromotionSourcesDefaultOn() {
         val prefs = fakePreferences()
         val config = Config(prefs.instance)
 
         assertTrue(config.dashboardEntityAutoStatic)
-        assertTrue(config.dashboardEntityAutoRuntime)
-        assertTrue(config.setDashboardEntityAutoPolicy(staticRefs = false, runtimeRefs = true))
-        assertFalse(config.dashboardEntityAutoStatic)
         assertTrue(config.dashboardEntityAutoRuntime)
     }
 

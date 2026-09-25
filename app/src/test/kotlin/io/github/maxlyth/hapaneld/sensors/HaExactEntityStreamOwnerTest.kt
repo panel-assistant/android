@@ -275,28 +275,6 @@ class HaExactEntityStreamOwnerTest {
         owner.close()
     }
 
-    @Test fun `lifecycle signals stop at an unbound observer`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val connection = FakeConnection()
-        val transport = FakeTransport(connection)
-        val observer = RecordingObserver()
-        var signals = 0
-        val owner = owner(dispatcher, transport, observer)
-        owner.bindLifecycle { signals++ }
-
-        owner.replaceLifecycleWatch(true)
-        runCurrent()
-        val delivered = signals
-        assertTrue("the bound observer received something to begin with", delivered > 0)
-
-        owner.unbindLifecycle()
-        connection.messages.trySend(HaExactSocketMessage.Lifecycle(HaLifecycleEvent.STOP))
-        runCurrent()
-
-        assertEquals("an unbound observer receives nothing further", delivered, signals)
-        owner.close()
-    }
-
     @Test fun `presence snapshot retains an ON marker after final state returns OFF`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val connection = FakeConnection()

@@ -111,16 +111,6 @@ internal fun deferReadyEntityBootstrapUntilWake(screenAwake: Boolean): Boolean =
 
 internal fun shouldKeepBuiltInRendererScreenOn(preventIdleDim: Boolean): Boolean = preventIdleDim
 
-internal fun entityFilterAttentionDetail(blockingIssues: Int, entitiesAddress: String? = null): String {
-    require(blockingIssues > 0) { "blocking issue count must be positive" }
-    val remote = entitiesAddress?.takeIf(String::isNotBlank)
-        ?.let { " The same choices are available from another device at $it." }
-        .orEmpty()
-    return "Nothing is wrong with Home Assistant. The panel needs an answer about safety checks " +
-        "found while reading your entities before it can open the dashboard. " +
-        "Number requiring review: $blockingIssues.$remote"
-}
-
 private data class EntityFilterNativeHold(val error: String, val detail: String)
 
 private class EntityFilterInterceptorUnavailable(cause: Throwable) : RuntimeException(cause)

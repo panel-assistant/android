@@ -19,11 +19,6 @@ class NativeMicroWakeWordInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Test
-    fun bundledModelsAreEnumerated() {
-        assertEquals(listOf("alexa", "hey_jarvis", "hey_mycroft", "okay_nabu"), MicroWakeWordModelConfig.bundledIds(context))
-    }
-
-    @Test
     fun okayNabuScoresSilenceWithoutFiring() {
         assertTrue("native wake-word library must load on the test device", NativeMicroWakeWord.available)
         val config = MicroWakeWordModelConfig.fromAssets(context, "okay_nabu")

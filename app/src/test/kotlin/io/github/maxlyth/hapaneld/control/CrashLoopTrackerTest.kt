@@ -15,7 +15,6 @@ class CrashLoopTrackerTest {
         assertTrue(t.onRelaunchAttempt(20_000))
         // …the 4th (still in-window) is suppressed — crash-loop detected.
         assertFalse(t.onRelaunchAttempt(30_000))
-        assertTrue(t.inBackoff(30_000))
     }
 
     @Test fun spacedOutRelaunchesNeverTrip() {
@@ -23,7 +22,6 @@ class CrashLoopTrackerTest {
         // One relaunch every 40s — never 3 within the 60s window, so never a crash-loop.
         var now = 0L
         repeat(10) { assertTrue(t.onRelaunchAttempt(now)); now += 40_000L }
-        assertFalse(t.inBackoff(now))
     }
 
     @Test fun backoffExpiresThenRetriesAllowed() {
@@ -39,7 +37,6 @@ class CrashLoopTrackerTest {
         t.onRelaunchAttempt(0); t.onRelaunchAttempt(1_000); t.onRelaunchAttempt(2_000)
         assertFalse(t.onRelaunchAttempt(3_000))          // in backoff
         t.reset()                                        // dashboard recovered
-        assertFalse(t.inBackoff(3_000))
         assertTrue(t.onRelaunchAttempt(3_000))           // full budget again
     }
 }

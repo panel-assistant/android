@@ -26,10 +26,6 @@ object PanelHealth {
     fun engineVersionFromUa(ua: String): String? =
         Regex("""Chrome/(\d+\.\d+\.\d+\.\d+)""").find(ua)?.groupValues?.get(1)
 
-    /** Chromium major from a WebView UA, or null. */
-    fun engineMajorFromUa(ua: String): Int? =
-        engineVersionFromUa(ua)?.substringBefore('.')?.toIntOrNull()
-
     /** True when the WebView is below [MIN_CHROMIUM]. [engineMajor] — the real version read from the
      *  WebView UA — is authoritative when known; otherwise fall back to the package version. Both
      *  unknown → false: don't cry wolf (a Cromite swap reports the stale OEM version yet renders fine,
