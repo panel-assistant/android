@@ -25,12 +25,26 @@ class PanelAssistantDeviceStatusContractTest {
             "config.friendlyName,",
             "config.manufacturer,",
             "config.model,",
-            "android.os.Build.VERSION.RELEASE,",
-            "android.os.Build.DISPLAY,",
             "config.haArea,",
         )) {
             assertTrue(source, status.contains(source))
         }
+        // The Android release and build string no longer reaches the card as its Hardware line.
+        val call = status.substring(status.indexOf("PanelAssistantDevice.json("))
+            .substringBefore("},")
+        assertFalse(call, call.contains("Build."))
+    }
+
+    /** The build number rides the health line on every route that answers it, after `pkg`. */
+    @Test fun healthCarriesTheVersionCodeBesideThePackage() {
+        assertEquals(" vc=909", versionCodeHealthToken(909))
+        assertEquals(
+            2,
+            Regex(
+                Regex.escape("\${packageHealthToken(appContext.packageName)}" +
+                    "\${versionCodeHealthToken(BuildConfig.VERSION_CODE)}"),
+            ).findAll(server).count(),
+        )
     }
 
     /** Prose explains what the code must not do, so only the code may be searched for it. */
@@ -71,12 +85,13 @@ class PanelAssistantDeviceStatusContractTest {
         assertFalse(device.getBoolean("additionalProperties"))
         assertFalse(device.has("required"))
         val properties = device.getJSONObject("properties")
-        for (name in listOf("name", "manufacturer", "model", "hw_version", "area")) {
+        assertFalse(properties.has("hw_version"))
+        for (name in listOf("name", "manufacturer", "model", "area")) {
             val field = properties.getJSONObject(name)
             assertEquals(name, "string", field.getString("type"))
             assertEquals(name, 1, field.getInt("minLength"))
             assertEquals(name, 128, field.getInt("maxLength"))
         }
-        assertEquals(5, properties.length())
+        assertEquals(4, properties.length())
     }
 }

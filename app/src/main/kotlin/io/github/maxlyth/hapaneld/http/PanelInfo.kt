@@ -15,6 +15,7 @@ import io.github.maxlyth.hapaneld.device.DeviceProfile
 import android.webkit.WebView
 import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
+import io.github.maxlyth.hapaneld.util.AccessDenialMemo
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
 import java.io.File
 import java.util.Locale
@@ -28,6 +29,8 @@ import java.util.concurrent.atomic.AtomicReference
  * objects. Returns an ordered map rendered verbatim as a key/value table.
  */
 object PanelInfo {
+    private const val SYS_BLOCK = "/sys/block"
+
     fun collect(
         context: Context,
         extras: Map<String, String>,
@@ -90,7 +93,11 @@ object PanelInfo {
      *  `/dev/block/by-name/userdata`) an app can't traverse. Matches whole eMMC/SD devices only — the
      *  full-string regex excludes partitions and eMMC boot/rpmb areas (`mmcblk1boot0`, `mmcblk1p20`). */
     private fun emmcTotalBytes(): Long? = try {
-        File("/sys/block").listFiles { f -> f.name.matches(Regex("mmcblk\\d+|sd[a-z]")) }
+        AccessDenialMemo.app.read(
+            key = "dir:$SYS_BLOCK",
+            what = "Block device list $SYS_BLOCK",
+            probeDenied = { AccessDenialMemo.listDenied(SYS_BLOCK) },
+        ) { File(SYS_BLOCK).listFiles { f -> f.name.matches(Regex("mmcblk\\d+|sd[a-z]")) } }
             ?.mapNotNull { runCatching { File(it, "size").readText().trim().toLong() }.getOrNull() }
             ?.maxOrNull()
             ?.let { it * 512L }

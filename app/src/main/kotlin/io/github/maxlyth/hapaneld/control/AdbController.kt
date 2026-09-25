@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import android.webkit.WebView
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.util.AccessDenialMemo
 import io.github.maxlyth.hapaneld.util.DurableRecoveryMarker
 import java.io.File
 import java.io.InputStream
@@ -492,10 +493,27 @@ internal fun parseTcpListenerInventory(raw: String?): Boolean? {
     return false
 }
 
+/** A property SELinux hides from the app reads as empty, exactly like an unset one; only the denied
+ *  case is remembered, so an unset property is still read on every poll and a later value is seen. */
 private fun readSystemPropertyDirect(name: String): String? {
     val fixedName = NETWORK_ADB_PROPERTIES.firstOrNull { it.name == name }?.name ?: return null
-    return runCatching {
-        val process = ProcessBuilder(SYSTEM_GETPROP, fixedName)
+    return AccessDenialMemo.app.read(
+        key = "property:$fixedName",
+        what = "Android property $fixedName",
+        suspect = { it.isNullOrEmpty() },
+        probeDenied = { systemPropertyAreaDenied(fixedName) },
+    ) { runGetprop(fixedName) }
+}
+
+/** The app opens `/dev/__properties__/<context>` to read a property; EACCES there is the denial. */
+private fun systemPropertyAreaDenied(fixedName: String): Boolean {
+    val context = runGetprop("-Z", fixedName)?.takeIf { PROPERTY_CONTEXT.matches(it) } ?: return false
+    return AccessDenialMemo.openDenied("$PROPERTY_AREA_DIR/$context")
+}
+
+private fun runGetprop(vararg fixedArguments: String): String? =
+    runCatching {
+        val process = ProcessBuilder(SYSTEM_GETPROP, *fixedArguments)
             .redirectErrorStream(true)
             .start()
         try {
@@ -514,7 +532,6 @@ private fun readSystemPropertyDirect(name: String): String? {
             runCatching { process.outputStream.close() }
         }
     }.getOrNull()
-}
 
 private fun readSystemPropertyRoot(name: String): String? {
     val command = networkAdbRootReadCommand(name) ?: return null
@@ -525,10 +542,14 @@ private fun readSystemPropertyRoot(name: String): String? {
     )?.trim()
 }
 
-private fun readTcpListenerInventoryDirect(path: String): String? = readFixedCommand(
-    fixedArgument = NETWORK_ADB_TCP_INVENTORIES.firstOrNull { it == path } ?: return null,
-    maxBytes = MAX_TCP_INVENTORY_BYTES,
-)
+private fun readTcpListenerInventoryDirect(path: String): String? {
+    val fixedPath = NETWORK_ADB_TCP_INVENTORIES.firstOrNull { it == path } ?: return null
+    return AccessDenialMemo.app.read(
+        key = "file:$fixedPath",
+        what = "Kernel socket table $fixedPath",
+        probeDenied = { AccessDenialMemo.openDenied(fixedPath) },
+    ) { readFixedCommand(fixedArgument = fixedPath, maxBytes = MAX_TCP_INVENTORY_BYTES) }
+}
 
 private fun readTcpListenerInventoryRoot(path: String): String? {
     val command = networkAdbRootListenerReadCommand(path) ?: return null
@@ -573,6 +594,8 @@ private fun readBounded(input: InputStream, maxBytes: Int): String? {
 
 private const val SYSTEM_GETPROP = "/system/bin/getprop"
 private const val SYSTEM_CAT = "/system/bin/cat"
+private const val PROPERTY_AREA_DIR = "/dev/__properties__"
+private val PROPERTY_CONTEXT = Regex("u:object_r:[a-z0-9_]+:s0")
 private const val PROPERTY_READ_TIMEOUT_MS = 1_000L
 private const val PROPERTY_DESTROY_GRACE_MS = 100L
 private const val NETWORK_ADB_DISABLE_MARKER_FILE = "network-adb-disable.v1"

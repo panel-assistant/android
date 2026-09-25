@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.util
 
+import io.github.maxlyth.hapaneld.device.profile.BundledProfileFixtures
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,23 +13,38 @@ class PanelAssistantDeviceTest {
         friendlyName: String? = "Test Panel",
         manufacturer: String? = "Electron",
         model: String? = "WF1589T (ha-paneld)",
-        androidRelease: String? = "14",
-        buildDisplay: String? = "TQ3A.230805.001",
         area: String? = "Test Area",
-    ) = JSONObject(
-        PanelAssistantDevice.json(
-            friendlyName, manufacturer, model, androidRelease, buildDisplay, area,
-        ),
-    )
+    ) = JSONObject(PanelAssistantDevice.json(friendlyName, manufacturer, model, area))
 
     @Test fun completeHardwareFactsProjectEveryCardField() {
         val device = project()
         assertEquals("Test Panel", device.getString("name"))
         assertEquals("Electron", device.getString("manufacturer"))
         assertEquals("WF1589T", device.getString("model"))
-        assertEquals("Android 14 · TQ3A.230805.001", device.getString("hw_version"))
         assertEquals("Test Area", device.getString("area"))
-        assertEquals(5, device.length())
+        assertEquals(4, device.length())
+    }
+
+    /** The Android release and build string was the card's Hardware line and told a user nothing. */
+    @Test fun theCardCarriesNoAndroidReleaseAsItsHardwareLine() {
+        val device = project()
+        assertFalse(device.has("hw_version"))
+        assertFalse(device.toString().contains("Android"))
+    }
+
+    /**
+     * The X2i reports the Android codename `Jenna` as its model, device and product, so the card
+     * names the product only because the bundled profile does. This is the value `Config.model`
+     * takes, application marker and all, when nobody has overridden it.
+     */
+    @Test fun theBundledX2iProfileNamesTheProductRatherThanTheAndroidCodename() {
+        val x2i = BundledProfileFixtures.profile("shelly-wall-display-x2i", "shelly_x2_1.0.0")
+        val device = project(
+            manufacturer = x2i.manufacturer,
+            model = x2i.model + PanelAssistantDevice.APP_MODEL_SUFFIX,
+        )
+        assertEquals("Shelly", device.optString("manufacturer", null))
+        assertEquals("Wall Display X2i", device.optString("model", null))
     }
 
     @Test fun theApplicationMarkerNeverReachesTheHardwareModel() {
@@ -55,19 +71,11 @@ class PanelAssistantDeviceTest {
         assertEquals("Rocket \uD83D\uDE80", project(friendlyName = "Rocket \uD83D\uDE80").getString("name"))
     }
 
-    @Test fun oneMissingHardwareFactNeverInventsTheOther() {
-        assertEquals("Android 14", project(buildDisplay = null).getString("hw_version"))
-        assertFalse(project(androidRelease = null).has("hw_version"))
-        assertFalse(project(androidRelease = "", buildDisplay = "TQ3A").has("hw_version"))
-    }
-
     @Test fun anUnusablePanelStillProducesAValidEmptyObject() {
         val device = project(
             friendlyName = null,
             manufacturer = null,
             model = null,
-            androidRelease = null,
-            buildDisplay = null,
             area = null,
         )
         assertEquals(0, device.length())
@@ -75,7 +83,7 @@ class PanelAssistantDeviceTest {
 
     @Test fun theProjectionNeverCarriesAHardwareIdentifier() {
         val raw = PanelAssistantDevice.json(
-            "Test Panel", "Electron", "WF1589T (ha-paneld)", "14", "TQ3A.230805.001", "Test Area",
+            "Test Panel", "Electron", "WF1589T (ha-paneld)", "Test Area",
         )
         for (forbidden in listOf("serial", "android_id", "androidId", "mac", "did")) {
             assertFalse(forbidden, raw.contains(forbidden, ignoreCase = true))

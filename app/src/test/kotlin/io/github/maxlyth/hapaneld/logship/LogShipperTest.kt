@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.logship
 
+import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +81,66 @@ class LogShipperTest {
         protocol = protocol,
         panelId = panelId,
     )
+
+    /** Frames each captured line through the production encoder, exactly as a sink receives it. */
+    private fun encodedFrames(protocol: String, line: String): List<String> {
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val capture = FakeCapture()
+        val framed = CopyOnWriteArrayList<String>()
+        val shipper = LogShipper(
+            configSnapshot = { snapshot(protocol = protocol) },
+            scope = scope,
+            subscribeCapture = capture::subscribe,
+            sinkFactory = LogSinkFactory { _, encode ->
+                object : LogSink {
+                    override fun connect() = Unit
+                    override fun send(lines: List<String>) { lines.forEach { framed += encode(it) } }
+                    override fun close() = Unit
+                }
+            },
+        )
+        try {
+            shipper.start()
+            await { capture.subscriptions.get() == 1 }
+            await { capture.emit(line); framed.isNotEmpty() }
+            return framed.toList()
+        } finally {
+            shipper.stop()
+            scope.cancel()
+            dispatcher.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test fun everySyslogFrameCarriesTheBuildAsStructuredData() {
+        val line = "09-25 10:00:00.000  123  456 W ha-paneld/x: a \"quoted\" [bracketed] line"
+        val frame = encodedFrames("syslog-tcp", line).first()
+        val sd = "[hapaneld@32473 versionCode=\"${BuildConfig.VERSION_CODE}\" " +
+            "package=\"${BuildConfig.APPLICATION_ID}\"]"
+
+        // HEADER then SD in the position that was `-`, then the MSG untouched: a collector that ignores
+        // structured data still sees exactly the line it saw before.
+        val header = Regex("""^<12>1 \S+ panel-a ha-paneld - - """)
+        assertTrue(frame, header.containsMatchIn(frame))
+        assertEquals(frame, "$sd $line\n", frame.replaceFirst(header, ""))
+    }
+
+    @Test fun ndjsonEventCarriesTheBuildAsTwoKeys() {
+        val event = JSONObject(encodedFrames("http", "hello").first())
+        assertEquals(BuildConfig.VERSION_CODE, event.optInt("versionCode", -1))
+        assertEquals(BuildConfig.APPLICATION_ID, event.optString("package", "<absent>"))
+        assertEquals("hello", event.getString("message"))
+        assertEquals("ha-paneld", event.getString("app"))
+    }
+
+    /** Real package names never contain the three characters, so only an adversarial value proves the escaper. */
+    @Test fun structuredDataEscapesQuoteBackslashAndBracket() {
+        val sd = LogShipRecord.structuredData(LogShipRecord.Build(42, "a\"b\\c]d"))
+        assertEquals("[hapaneld@32473 versionCode=\"42\" package=\"a\\\"b\\\\c\\]d\"]", sd)
+        assertEquals("plain.pkg_1", LogShipRecord.paramValue("plain.pkg_1"))
+    }
 
     @Test fun runOwnsItsQueueCountersAndTerminalBoundary() {
         val instrumentedDrops = AtomicLong()

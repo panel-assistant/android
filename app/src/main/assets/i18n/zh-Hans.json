@@ -1918,6 +1918,21 @@
       "state": "machine-cross-checked",
       "text": "MQTT 已配置。下一步：选择仪表盘渲染器。"
     },
+    "configure.setup.strategy_allowed.body": {
+      "text": "Home Assistant 根据策略生成本面板的仪表盘，其实体发现检查已允许，因此卡片仅会显示订阅范围内的实体。",
+      "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
+      "state": "machine-cross-checked"
+    },
+    "configure.setup.strategy_allowed.link": {
+      "text": "在“实体”页面查看",
+      "sourceHash": "c3629676fb6496523dd491e6e5f55ab7984b33f995b74d33e023007d17c4ba53",
+      "state": "machine-cross-checked"
+    },
+    "configure.setup.strategy_allowed.title": {
+      "text": "部分仪表盘卡片可能缺失。",
+      "sourceHash": "4eb6bbaee2e66e0cb133be770b21c244e29992602a99e52c62c4848f66dfc315",
+      "state": "machine-cross-checked"
+    },
     "configure.state.active": {
       "sourceHash": "96879611650f80a81392a52e0db9b0237669087c4518e1c130e541a505e0eeef",
       "state": "machine-cross-checked",
@@ -5258,6 +5273,11 @@
       "state": "machine-cross-checked",
       "text": "来源"
     },
+    "entities.issue.strategy_allowed_note": {
+      "text": "Home Assistant 根据策略生成本仪表盘，策略仅为它能识别的实体生成卡片。若此检查已允许，订阅范围外的实体在此不会有卡片，也不会被学习，因此本页面无法列出缺失项目。请在另一台设备上通过 Home Assistant 打开同一仪表盘，并将此处每张缺失卡片背后的实体设为已固定。",
+      "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
+      "state": "machine-cross-checked"
+    },
     "entities.issue.streamline-runtime-coverage.reason": {
       "sourceHash": "10f83b2d9703e2cee1267ce449bf860a18a6439897fff3d8039cc65516de5f5b",
       "state": "machine-cross-checked",
@@ -5677,6 +5697,11 @@
       "sourceHash": "644b72e97de001b8a0e917dde5dc058c35ccf9657b728560604cbcca6ab4f2b4",
       "state": "machine-cross-checked",
       "text": "正在同步"
+    },
+    "entities.status.strategy_allowed": {
+      "text": "策略仪表盘：订阅范围外的实体不会显示卡片",
+      "sourceHash": "7dd9184b9ea1dd56153da981907ac50a2a063e2cec62c51674c3a25fd465a1f4",
+      "state": "machine-cross-checked"
     },
     "entities.status.stream.one": {
       "sourceHash": "fab02429d470d355fdcfe09f2d67dbd0803c09cd93e27959ec1d38775949c141",

@@ -1918,6 +1918,21 @@
       "state": "machine-cross-checked",
       "text": "MQTT configurato. Ora scegli un renderer dashboard."
     },
+    "configure.setup.strategy_allowed.body": {
+      "text": "Home Assistant crea la dashboard di questo pannello in base a una strategia, e la verifica di rilevamento delle entità è consentita, quindi le schede compaiono solo per le entità incluse nella sottoscrizione.",
+      "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
+      "state": "machine-cross-checked"
+    },
+    "configure.setup.strategy_allowed.link": {
+      "text": "Consulta la pagina Entità",
+      "sourceHash": "c3629676fb6496523dd491e6e5f55ab7984b33f995b74d33e023007d17c4ba53",
+      "state": "machine-cross-checked"
+    },
+    "configure.setup.strategy_allowed.title": {
+      "text": "Alcune schede della dashboard potrebbero mancare.",
+      "sourceHash": "4eb6bbaee2e66e0cb133be770b21c244e29992602a99e52c62c4848f66dfc315",
+      "state": "machine-cross-checked"
+    },
     "configure.state.active": {
       "sourceHash": "96879611650f80a81392a52e0db9b0237669087c4518e1c130e541a505e0eeef",
       "state": "machine-cross-checked",
@@ -5258,6 +5273,11 @@
       "state": "machine-cross-checked",
       "text": "Origine"
     },
+    "entities.issue.strategy_allowed_note": {
+      "text": "Home Assistant crea questa dashboard in base a una strategia, e una strategia crea schede solo per le entità che riesce a vedere. Se questa verifica è consentita, qualsiasi entità al di fuori della sottoscrizione non avrà qui una scheda e non verrà mai appresa, quindi questa pagina non può elencare ciò che manca. Apri la stessa dashboard su Home Assistant da un altro dispositivo e fissa l'entità dietro ogni scheda che qui manca.",
+      "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
+      "state": "machine-cross-checked"
+    },
     "entities.issue.streamline-runtime-coverage.reason": {
       "sourceHash": "10f83b2d9703e2cee1267ce449bf860a18a6439897fff3d8039cc65516de5f5b",
       "state": "machine-cross-checked",
@@ -5677,6 +5697,11 @@
       "sourceHash": "644b72e97de001b8a0e917dde5dc058c35ccf9657b728560604cbcca6ab4f2b4",
       "state": "machine-cross-checked",
       "text": "sincronizzazione in corso"
+    },
+    "entities.status.strategy_allowed": {
+      "text": "dashboard della strategia: le entità al di fuori della sottoscrizione non hanno schede",
+      "sourceHash": "7dd9184b9ea1dd56153da981907ac50a2a063e2cec62c51674c3a25fd465a1f4",
+      "state": "machine-cross-checked"
     },
     "entities.status.stream.one": {
       "sourceHash": "fab02429d470d355fdcfe09f2d67dbd0803c09cd93e27959ec1d38775949c141",

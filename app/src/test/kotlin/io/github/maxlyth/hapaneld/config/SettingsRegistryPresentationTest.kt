@@ -1,7 +1,5 @@
 package io.github.maxlyth.hapaneld.config
 
-import io.github.maxlyth.hapaneld.sensors.ProximityLearningEngine
-import io.github.maxlyth.hapaneld.sensors.ProximityLearningRuntime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -151,14 +149,10 @@ class SettingsRegistryPresentationTest {
         assertFalse(proximity.availableWhen(sourcePresentButUnlearned))
         assertFalse(level.availableWhen(sourcePresentButUnlearned))
 
-        for (mode in listOf(ProximityLearningEngine.Mode.BINARY, ProximityLearningEngine.Mode.GRADED)) {
-            assertTrue(ProximityLearningRuntime.isLearnedMode(mode))
-            val learned = Capabilities(hasProximity = true, hasLearnedProximity = true)
-            assertTrue(wake.availableWhen(learned))
-            assertTrue(proximity.availableWhen(learned))
-            assertTrue(level.availableWhen(learned))
-        }
-        assertFalse(ProximityLearningRuntime.isLearnedMode(ProximityLearningEngine.Mode.UNKNOWN))
+        val learned = Capabilities(hasProximity = true, hasLearnedProximity = true)
+        assertTrue(wake.availableWhen(learned))
+        assertTrue(proximity.availableWhen(learned))
+        assertTrue(level.availableWhen(learned))
 
         val learnedLossWithSourceRemaining = Capabilities(hasProximity = true, hasLearnedProximity = false)
         assertTrue(wake.availableWhen(learnedLossWithSourceRemaining))
