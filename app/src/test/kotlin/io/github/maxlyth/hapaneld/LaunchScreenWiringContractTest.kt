@@ -87,21 +87,44 @@ class LaunchScreenWiringContractTest {
         assertTrue(destroy.contains("introGeneration++"))
     }
 
-    @Test fun serviceStartsBeforeNotificationConsentAndResultOnlyNavigates() {
+    @Test fun serviceStartsAndDestinationIsChosenBeforeAnyNotificationConsent() {
         val main = source("MainActivity.kt")
+        assertTrue("Consent is asked in its own step, after startup", main.contains("private fun requestNotificationConsentIfDue"))
         val startup = main.substring(
             main.indexOf("override fun onCreate"),
-            main.indexOf("private fun chooseDestination"),
+            main.indexOf("private fun requestNotificationConsentIfDue"),
         )
         val serviceStart = startup.indexOf("PaneldService.start(this)")
-        val permissionBranch = startup.indexOf("if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU")
+        val destination = startup.indexOf("chooseDestination()")
+        val consent = startup.indexOf("requestNotificationConsentIfDue()")
         assertTrue("The foreground service must start without a notification result", serviceStart >= 0)
-        assertTrue("Service startup must precede the permission branch", permissionBranch > serviceStart)
-        assertTrue(startup.indexOf("requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS)") > permissionBranch)
-        assertTrue("The permission dialog keeps a non-blank standing surface", startup.indexOf("setContentView(buildUi())") in (permissionBranch + 1) until startup.indexOf("requestNotif.launch"))
+        assertTrue("The destination is chosen after the service starts", destination > serviceStart)
+        assertTrue("Consent is asked only after the destination is chosen", consent > destination)
+        assertFalse("onCreate never launches the dialog itself", startup.contains("requestNotif.launch"))
+        assertFalse("No provisional surface stands in for a destination", startup.contains("setContentView("))
         val result = main.substring(main.indexOf("private val requestNotif"), main.indexOf("private fun dp"))
-        assertTrue("Either notification result permits navigation", result.contains("if (!maintenanceFence.stop(this)) chooseDestination()"))
+        assertFalse("The answer never gates navigation", result.contains("chooseDestination"))
         assertFalse("Permission results must not restart the service", result.contains("PaneldService.start"))
+    }
+
+    @Test fun notificationConsentIsAskedOnlyThroughThePerVersionPolicyAndRecordedFirst() {
+        val main = source("MainActivity.kt")
+        assertEquals("One launch site for the dialog", 1, Regex("""requestNotif\.launch\(""").findAll(main).count())
+        assertTrue("The dialog has one gated launch step", main.contains("private fun requestNotificationConsentIfDue"))
+        val ask = main.substring(
+            main.indexOf("private fun requestNotificationConsentIfDue"),
+            main.indexOf("private fun chooseDestination"),
+        )
+        val policy = ask.indexOf("NotificationConsentPrompt.shouldAsk(")
+        val commit = ask.indexOf("if (!config.commitNotificationConsentAsked(versionCode)) return")
+        val launch = ask.indexOf("requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS)")
+        assertTrue("The dialog is gated by the policy", policy >= 0)
+        assertTrue("The version is recorded before the dialog, and a failed record never asks", commit in (policy + 1) until launch)
+        assertTrue(ask.contains("lastAskedVersionCode = config.lastNotificationConsentVersionCode"))
+        assertTrue(ask.contains("currentVersionCode = versionCode"))
+        assertTrue(ask.contains("val versionCode = BuildConfig.VERSION_CODE.toLong()"))
+        assertTrue(ask.contains("standingScreenPresented = presentedIntro != null && !isFinishing"))
+        assertTrue(ask.contains("autoReturnPending = preparedAutoReturn != null || autoReturn != null"))
     }
 
     @Test fun manualBuiltinRecoveryIsAnExplicitRetryRatherThanALatchBypass() {

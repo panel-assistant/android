@@ -62,7 +62,7 @@ class GuardDbActivityMaintenanceFenceTest {
             main.indexOf("private val requestNotif"),
             main.indexOf("private fun dp", main.indexOf("private val requestNotif")),
         )
-        assertTrue(permissionResult.contains("if (!maintenanceFence.stop(this)) chooseDestination()"))
+        assertTrue(permissionResult.contains("maintenanceFence.stop(this)"))
     }
 
     private fun assertGuardBefore(source: String, signature: String, firstOrdinaryWork: String) {
