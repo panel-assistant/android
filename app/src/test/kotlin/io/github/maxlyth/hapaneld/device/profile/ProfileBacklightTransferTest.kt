@@ -104,17 +104,17 @@ class ProfileBacklightTransferTest {
             ProfileLightCurve("points", points = listOf(0 to 0, 64 to 10, 255 to 255), floor = 4),
         ).forEach { curve ->
             val backlight = withBacklight(ProfileBacklight(curve, route = "node"))
-            assertTrue(curve.toString(), issues(backlight).single { it.path == "hardware.backlight" }.message.startsWith("Invalid backlight transfer: "))
+            assertTrue(curve.toString(), issues(backlight).filter { it.path == "hardware.backlight" }.map { it.message }.let { it.size == 1 && it[0].startsWith("Invalid backlight transfer: ") })
             // A refused document never reaches a runtime curve other than the passthrough.
             assertSame(TransferCurve.Identity, profile(backlight).backlightTransfer)
 
             val buttons = withButtons(curve)
-            assertTrue(curve.toString(), issues(buttons).single { it.path == "hardware.button_backlight" }.message.startsWith("Invalid key-backlight transfer: "))
+            assertTrue(curve.toString(), issues(buttons).filter { it.path == "hardware.button_backlight" }.map { it.message }.let { it.size == 1 && it[0].startsWith("Invalid key-backlight transfer: ") })
             assertSame(TransferCurve.Identity, profile(buttons).buttonBacklightTransfer)
 
             if (curve.transfer in LedTransfer.NAMES) {
                 val led = withLed { it.copy(transfer = curve.transfer, gamma = curve.gamma, points = curve.points, floor = curve.floor) }
-                assertTrue(curve.toString(), issues(led).single { it.path == "hardware.led" }.message.startsWith("Invalid LED transfer: "))
+                assertTrue(curve.toString(), issues(led).filter { it.path == "hardware.led" }.map { it.message }.let { it.size == 1 && it[0].startsWith("Invalid LED transfer: ") })
             }
         }
     }
