@@ -61,9 +61,12 @@ class AmbientThemeWiringContractTest {
     // --- source wiring ------------------------------------------------------------------------------
 
     @Test fun `the controller judges the model's own output on the room's own scale`() {
-        val tick = source("control/AutoBrightnessController.kt")
-            .substringAfter("private fun tick(force: Boolean): Long? {")
-            .substringBefore("private fun publishAmbientVerdict()")
+        val controller = source("control/AutoBrightnessController.kt")
+        assertTrue(controller.contains("private fun applyEvaluation(inputs: EvaluationInputs, estimate: BaselineEstimate): BrightnessWrite? {"))
+        val tick = controller
+            .substringAfter("private fun applyEvaluation(inputs: EvaluationInputs, estimate: BaselineEstimate): BrightnessWrite? {")
+            .substringBefore("/** Monitor held. Records a write only if nothing superseded its evaluation while it ran. */")
+        assertTrue("the evaluation's next delay honours the dwell", tick.contains("nextDelayMs = ambientAwareDelay("))
         assertTrue(
             tick.contains(
                 "lastAmbientLevel = AdaptiveLuxCurve.normalizedLevel(result.effectiveLux, result.estimate.brightnessRange)",

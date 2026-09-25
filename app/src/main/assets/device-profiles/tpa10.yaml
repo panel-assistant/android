@@ -1,6 +1,6 @@
 schema: 2
 id: tpa10
-version: 2.0.2
+version: 2.0.3
 display_name: Tuya TPA10
 soc_class: rk3566
 soc:
@@ -60,6 +60,12 @@ hardware:
     mechanism: sysfs-daemon
     transfer: identity
   screen_off: daemon-blpower
+  # Perceptual backlight curve. The firmware pushes Android's brightness setting to the node itself
+  # (measured 2026-09-25), so the curve rides on the setting.
+  backlight:
+    transfer: perceptual
+    floor: 10
+    route: setting
   camera: true
   camera_lens_offset_px: 63
   has_button_backlight: true

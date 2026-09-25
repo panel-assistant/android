@@ -24,7 +24,7 @@ case "$*" in
     fi
     printf '%s\n' "${MOCK_DEVICE:-rk3566_t}"
     ;;
-  "shell getprop ro.build.version.release") printf '%s\n' "${MOCK_ANDROID:-13}" ;;
+  "shell getprop ro.build.version.release") printf '%s\n' 13 ;;
   "shell getprop ro.build.version.sdk") printf '%s\n' "${MOCK_SDK:-33}" ;;
   "shell cat /proc/bus/input/devices")
     if [ "${MOCK_INPUT_FAIL:-none}" != "none" ]; then

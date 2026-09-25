@@ -203,6 +203,49 @@ internal fun dashboardNavigationAllowed(configuredUrl: String, candidateUrl: Str
 }.getOrDefault(false)
 
 /**
+ * The dashboard page that is actually on screen, for [retryNeedsFreshLoad]. Only a page Android reports as
+ * drawn (`onPageCommitVisible`) counts: a load that has merely started ([onLoadStarted]) can hang and leave
+ * the previous page drawn, and a retry that believed it would `reload()` the reconnecting page forever.
+ * [forget] is called whenever what is drawn is about to stop being a Home Assistant page (the reconnecting
+ * page, a torn-down or replaced renderer).
+ */
+internal class ShownPageTracker {
+    var shown: String? = null
+        private set
+
+    /** Deliberately records nothing: starting is not showing. Kept as the named seam the trace and tests use. */
+    @Suppress("UNUSED_PARAMETER")
+    fun onLoadStarted(url: String) = Unit
+
+    fun onCommitVisible(url: String) { shown = url }
+
+    fun forget() { shown = null }
+
+    fun needsFreshLoad(configuredUrl: String, interstitialShown: Boolean, dashboardRenderer: Boolean): Boolean =
+        retryNeedsFreshLoad(shown, configuredUrl, interstitialShown, dashboardRenderer)
+}
+
+/**
+ * Whether a dashboard retry must load the target afresh instead of `reload()`.
+ *
+ * `reload()` repeats the COMMITTED document. The reconnecting page is a `data:` document, so while it is
+ * committed a reload shows it again and never reaches Home Assistant, and before anything has committed
+ * there is nothing to reload. The reconnecting-page flag cannot answer this on its own: it is cleared when
+ * the replacing load is issued, and a load that hangs — Home Assistant accepting connections while it
+ * starts — leaves the reconnecting page committed. Nor can `WebView.getUrl()`, which reports a pending
+ * browser-initiated load. Reproduced on hardware on 2026-09-25: with Home Assistant serving again, the
+ * page stayed on `data:` and reloaded it every 60 seconds. [dashboardRenderer] is false for the on-panel
+ * sign-in view, which has no dashboard target to load.
+ */
+internal fun retryNeedsFreshLoad(
+    committedUrl: String?,
+    configuredUrl: String,
+    interstitialShown: Boolean,
+    dashboardRenderer: Boolean,
+): Boolean = interstitialShown ||
+    (dashboardRenderer && (committedUrl.isNullOrBlank() || !dashboardNavigationAllowed(configuredUrl, committedUrl)))
+
+/**
  * A Home Assistant URL is configured but no credential is: the built-in renderer cannot render yet, but
  * it CAN run the on-panel sign-in that produces the missing credential.
  *
@@ -315,14 +358,38 @@ internal class NetworkRecoveryGate(initiallyAvailable: Boolean) {
     }
 }
 
+/** What one handshake-watchdog fire does. [NONE] is a fire that is not a miss at all. */
+internal enum class HandshakeRecoveryStep { NONE, RELOAD, FRESH_LOAD, RECREATE_WEBVIEW }
+
 /** Retry cadence for a frontend that has not connected yet. A live dashboard gets a longer grace
- * period so HA can heal a brief websocket flap without a disruptive full-page reload. */
+ * period so HA can heal a brief websocket flap without a disruptive full-page reload.
+ *
+ * It also counts consecutive handshake misses, because a reload can fail forever the same way: after
+ * the 2026-09-21 outage one panel reloaded every 60 seconds for almost four hours and recovered only
+ * when its process restarted. From [escalateAfterMisses] on, a fire escalates instead of reloading:
+ * first to a fresh dashboard resolution and load, then to a new WebView. Escalations are spaced by a
+ * doubling number of misses, capped at [maxEscalationGapMisses], and plain reloads fill the gaps, so
+ * every fire still takes exactly one watchdog window. [reset] clears the count with the cadence. */
 internal class DashboardRetryPolicy(
     private val initialRetryMs: Long = 5_000L,
     private val maxRetryMs: Long = 60_000L,
     private val connectedGraceMs: Long = 90_000L,
+    private val escalateAfterMisses: Int = 3,
+    private val maxEscalationGapMisses: Int = 60,
 ) {
+    init { require(escalateAfterMisses > 1 && maxEscalationGapMisses >= escalateAfterMisses) }
+
     private var retryMs = initialRetryMs
+    private var escalations = 0
+    private var nextEscalationAt = escalateAfterMisses
+
+    /** Watchdog fires with no completed handshake since the last [reset]. */
+    var consecutiveMisses = 0
+        private set
+
+    /** The strongest step taken since the last [reset], or null while none has escalated. */
+    var escalatedTo: HandshakeRecoveryStep? = null
+        private set
 
     fun connectionFailureDelay(wasConnected: Boolean): Long =
         if (wasConnected) connectedGraceMs else retryMs
@@ -333,8 +400,27 @@ internal class DashboardRetryPolicy(
         return retryMs
     }
 
+    /** Decide one watchdog fire. A dark panel's timers are paused, so it cannot complete the
+     *  handshake and its fire is not a miss: it neither counts nor resets the count. */
+    fun onWatchdogFired(screenAwake: Boolean): HandshakeRecoveryStep {
+        if (!screenAwake) return HandshakeRecoveryStep.NONE
+        consecutiveMisses++
+        if (consecutiveMisses < nextEscalationAt) return HandshakeRecoveryStep.RELOAD
+        val step = if (escalations == 0) HandshakeRecoveryStep.FRESH_LOAD else HandshakeRecoveryStep.RECREATE_WEBVIEW
+        val gap = (escalateAfterMisses.toLong() shl escalations.coerceAtMost(20))
+            .coerceAtMost(maxEscalationGapMisses.toLong()).toInt()
+        escalations++
+        nextEscalationAt = consecutiveMisses + gap
+        escalatedTo = step
+        return step
+    }
+
     fun reset() {
         retryMs = initialRetryMs
+        consecutiveMisses = 0
+        escalations = 0
+        nextEscalationAt = escalateAfterMisses
+        escalatedTo = null
     }
 }
 
@@ -750,15 +836,6 @@ internal data class StartupNetworkSnapshot(
     val addressAssigned: Boolean,
     val defaultNetwork: Boolean,
 )
-
-/** User-facing network phase. Deliberate line breaks keep every state balanced on a 480px square. */
-internal fun startupNetworkStage(s: StartupNetworkSnapshot): String = when {
-    !s.interfacePresent -> "Starting Android network services"
-    !s.linkUp -> "Waiting for a network link"
-    !s.addressAssigned -> "Network link connected\nWaiting for a network address"
-    !s.defaultNetwork -> "Network address received\nPreparing the connection"
-    else -> "Network ready\nOpening Home Assistant"
-}
 
 /**
  * How long to wait before the next entity-bootstrap watchdog resync.

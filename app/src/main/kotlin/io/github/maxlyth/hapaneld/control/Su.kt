@@ -401,22 +401,6 @@ object Su : RootShell {
         }
     }
 
-    /** Stream binary stdout directly to [target] under a hard byte ceiling. This is for larger root
-     * artifacts such as Companion databases where a ByteArray would double peak heap before staging.
-     * A failed/non-zero/oversized command leaves no partial file. */
-    fun runToFileBounded(cmd: String, target: File, maxBytes: Long, timeoutMs: Long = 30_000L): Long? {
-        val written = overForms { f ->
-            runBounded("file", argvOneShot(f, cmd), timeoutMs) { p ->
-                val count = target.outputStream().use { output ->
-                    BoundedStreams.copy(p.inputStream, output, maxBytes)
-                }
-                if (p.waitFor() == 0) count else null
-            }.also { if (it == null) target.delete() }   // a failed dialect leaves no partial file
-        }
-        if (written == null) target.delete()
-        return written
-    }
-
     /** One-shot, bounded text command for diagnostics. Unlike [runOutput], this never waits behind the
      * synchronized persistent control shell, so a slow perf probe cannot add seconds of latency to a
      * navbar/screen/hardware command. Both possible `su` dialects share one [timeoutMs] deadline. */

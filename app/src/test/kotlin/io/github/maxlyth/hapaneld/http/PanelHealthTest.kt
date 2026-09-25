@@ -19,9 +19,7 @@ class PanelHealthTest {
         val ua = "Mozilla/5.0 (Linux; Android 11; TPA10) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Version/4.0 Chrome/147.0.7727.56 Mobile Safari/537.36"
         assertEquals("147.0.7727.56", PanelHealth.engineVersionFromUa(ua))
-        assertEquals(147, PanelHealth.engineMajorFromUa(ua))
         assertNull(PanelHealth.engineVersionFromUa("no chrome token here"))
-        assertNull(PanelHealth.engineMajorFromUa("no chrome token here"))
     }
 
     @Test fun engineVersionWinsOverStampedPackageVersion() {

@@ -32,9 +32,6 @@ class CrashLoopTracker(
         return true
     }
 
-    /** True while suppressing relaunches after a detected crash-loop (drives the health warning). */
-    fun inBackoff(now: Long): Boolean = now < backoffUntil
-
     /** The dashboard came back healthy (foreground) — forget the history so a later, unrelated crash
      *  gets its full retry budget again. */
     fun reset() {

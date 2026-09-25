@@ -43,6 +43,101 @@ class DashboardRecoveryTest {
         assertEquals(90_000L, policy.connectionFailureDelay(wasConnected = true))
     }
 
+    @Test fun `a retry over the committed reconnecting page loads the dashboard afresh`() {
+        val ha = "http://192.0.2.10:8123"
+        // The committed document DevTools reported on the trapped panel (2026-09-25), with HA serving.
+        assertTrue(retryNeedsFreshLoad("data:text/html;charset=utf-8;base64,", ha, interstitialShown = false, dashboardRenderer = true))
+        assertTrue(retryNeedsFreshLoad("about:blank", ha, interstitialShown = false, dashboardRenderer = true))
+        assertTrue(retryNeedsFreshLoad(null, ha, interstitialShown = false, dashboardRenderer = true))
+        assertTrue(retryNeedsFreshLoad("$ha/lovelace/0?external_auth=1", ha, interstitialShown = true, dashboardRenderer = true))
+    }
+
+    @Test fun `a retry over a committed dashboard page reloads it as before`() {
+        val ha = "http://192.0.2.10:8123"
+        assertFalse(retryNeedsFreshLoad("$ha/lovelace/0?external_auth=1", ha, interstitialShown = false, dashboardRenderer = true))
+        // The on-panel sign-in view has no dashboard target; it keeps reload().
+        assertFalse(retryNeedsFreshLoad(null, ha, interstitialShown = false, dashboardRenderer = false))
+    }
+
+    @Test fun `a load that started but never drew does not make the retry reload the reconnecting page`() {
+        val ha = "http://192.0.2.10:8123"
+        val page = ShownPageTracker()
+        page.onCommitVisible("data:text/html;charset=utf-8;base64,")
+        // The retry's load of Home Assistant starts, then stalls before anything is drawn.
+        page.onLoadStarted("$ha/lovelace/0?external_auth=1")
+        assertTrue(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
+        // Home Assistant is back: the next plain retry still loads it afresh, and once drawn a retry reloads it.
+        page.onCommitVisible("$ha/lovelace/0?external_auth=1")
+        assertFalse(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
+    }
+
+    @Test fun `showing the reconnecting page forgets the Home Assistant page that was drawn`() {
+        val ha = "http://192.0.2.10:8123"
+        val page = ShownPageTracker()
+        page.onCommitVisible("$ha/lovelace/0?external_auth=1")
+        page.forget()
+        assertNull(page.shown)
+        assertTrue(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
+    }
+
+    /** Fire [count] awake misses and return the 1-based miss numbers that did something other than reload. */
+    private fun escalationsWithin(policy: DashboardRetryPolicy, count: Int): List<Pair<Int, HandshakeRecoveryStep>> =
+        (1..count).mapNotNull { miss ->
+            val step = policy.onWatchdogFired(screenAwake = true)
+            if (step == HandshakeRecoveryStep.RELOAD) null else miss to step
+        }
+
+    @Test fun `a single missed handshake reloads on the existing cadence`() {
+        val policy = DashboardRetryPolicy()
+        assertEquals(HandshakeRecoveryStep.RELOAD, policy.onWatchdogFired(screenAwake = true))
+        assertEquals(1, policy.consecutiveMisses)
+        assertNull(policy.escalatedTo)
+        assertEquals(10_000L, policy.afterRetry())
+        assertEquals(HandshakeRecoveryStep.RELOAD, policy.onWatchdogFired(screenAwake = true))
+        assertNull(policy.escalatedTo)
+    }
+
+    @Test fun `consecutive misses escalate to a fresh load then WebView recreation with backoff`() {
+        val policy = DashboardRetryPolicy()
+        val escalations = escalationsWithin(policy, 300)
+        assertEquals(
+            listOf(
+                3 to HandshakeRecoveryStep.FRESH_LOAD,
+                6 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                12 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                24 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                48 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                96 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                // Capped: never sparser than one recreation per 60 misses.
+                156 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                216 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+                276 to HandshakeRecoveryStep.RECREATE_WEBVIEW,
+            ),
+            escalations,
+        )
+        assertEquals(300, policy.consecutiveMisses)
+        assertEquals(HandshakeRecoveryStep.RECREATE_WEBVIEW, policy.escalatedTo)
+    }
+
+    @Test fun `a completed handshake resets the miss count and the escalation ladder`() {
+        val policy = DashboardRetryPolicy()
+        escalationsWithin(policy, 7)
+        assertEquals(HandshakeRecoveryStep.RECREATE_WEBVIEW, policy.escalatedTo)
+        policy.reset()
+        assertEquals(0, policy.consecutiveMisses)
+        assertNull(policy.escalatedTo)
+        assertEquals(listOf(3 to HandshakeRecoveryStep.FRESH_LOAD, 6 to HandshakeRecoveryStep.RECREATE_WEBVIEW), escalationsWithin(policy, 6))
+    }
+
+    @Test fun `a screen-off fire is not a miss and does not reset the count`() {
+        val policy = DashboardRetryPolicy()
+        escalationsWithin(policy, 2)
+        repeat(50) { assertEquals(HandshakeRecoveryStep.NONE, policy.onWatchdogFired(screenAwake = false)) }
+        assertEquals(2, policy.consecutiveMisses)
+        assertNull(policy.escalatedTo)
+        assertEquals(HandshakeRecoveryStep.FRESH_LOAD, policy.onWatchdogFired(screenAwake = true))
+    }
+
     @Test fun `successful connection resets startup backoff`() {
         val policy = DashboardRetryPolicy()
         policy.afterRetry()
@@ -56,20 +151,6 @@ class DashboardRecoveryTest {
         assertEquals(500, networkWaitProgress(elapsedMs = 30_000L, estimateMs = 60_000L))
         assertEquals(950, networkWaitProgress(elapsedMs = 60_000L, estimateMs = 60_000L))
         assertEquals(950, networkWaitProgress(elapsedMs = 90_000L, estimateMs = 60_000L))
-    }
-
-    @Test fun `startup stages distinguish network address delay`() {
-        fun stage(present: Boolean, link: Boolean, address: Boolean, default: Boolean) =
-            startupNetworkStage(StartupNetworkSnapshot(present, link, address, default))
-
-        assertEquals("Starting Android network services", stage(false, false, false, false))
-        assertEquals("Waiting for a network link", stage(true, false, false, false))
-        assertEquals(
-            "Network link connected\nWaiting for a network address",
-            stage(true, true, false, false),
-        )
-        assertEquals("Network address received\nPreparing the connection", stage(true, true, true, false))
-        assertEquals("Network ready\nOpening Home Assistant", stage(true, true, true, true))
     }
 
     @Test fun `renderer generation rejects replaced and closed callbacks`() {

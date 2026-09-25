@@ -138,16 +138,30 @@ internal class AdaptiveBaselineCache(
         zone: TimeZone,
         location: SolarLocation?,
         fallbackLogLux: Double,
-    ): BaselineEstimate {
+    ): BaselineEstimate = current(nowMs, rows, zone, location)
+        ?: compute(nowMs, rows, zone, location, fallbackLogLux).also { store(nowMs, rows, zone, location, it) }
+
+    /** The cached fit when it still describes these inputs, or null when a rebuild is due. */
+    fun current(nowMs: Long, rows: List<AmbientHistoryMinute>, zone: TimeZone, location: SolarLocation?): BaselineEstimate? {
         val stale = computedAtMs == Long.MIN_VALUE || nowMs < computedAtMs || nowMs - computedAtMs >= refreshMs
-        if (cached == null || rows !== rowsIdentity || zone.id != zoneId || location != this.location || stale) {
-            cached = estimator(nowMs, rows, zone, location, fallbackLogLux)
-            rowsIdentity = rows
-            zoneId = zone.id
-            this.location = location
-            computedAtMs = nowMs
-        }
-        return checkNotNull(cached)
+        return cached.takeUnless { rows !== rowsIdentity || zone.id != zoneId || location != this.location || stale }
+    }
+
+    /** The rebuild itself. Touches no cache state, so a caller may run it outside its own lock. */
+    fun compute(
+        nowMs: Long,
+        rows: List<AmbientHistoryMinute>,
+        zone: TimeZone,
+        location: SolarLocation?,
+        fallbackLogLux: Double,
+    ): BaselineEstimate = estimator(nowMs, rows, zone, location, fallbackLogLux)
+
+    fun store(nowMs: Long, rows: List<AmbientHistoryMinute>, zone: TimeZone, location: SolarLocation?, estimate: BaselineEstimate) {
+        cached = estimate
+        rowsIdentity = rows
+        zoneId = zone.id
+        this.location = location
+        computedAtMs = nowMs
     }
 
     fun invalidate() {

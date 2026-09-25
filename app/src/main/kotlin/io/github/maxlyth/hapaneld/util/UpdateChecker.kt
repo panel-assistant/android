@@ -350,10 +350,6 @@ object UpdateChecker {
         } else null
     }
 
-    /** Compatibility wrapper retained for existing tests/callers. */
-    internal fun filterAbsent(list: List<UpdateInfo>, companionInstalled: Boolean): List<UpdateInfo> =
-        if (companionInstalled) list else list.filterNot { it.label == COMPANION_LABEL }
-
     internal val COMPANION_PKGS = listOf(
         CompanionInstaller.FULL_PKG,
         CompanionInstaller.MINIMAL_PKG,

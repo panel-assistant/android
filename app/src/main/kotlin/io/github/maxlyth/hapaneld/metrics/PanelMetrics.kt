@@ -26,28 +26,7 @@ data class Snapshot(
     val freqCurMhz: List<Long>,
     val freqMaxMhz: Long,
     val dump: PerfDump?,
-) {
-    /**
-     * The forward-compat **emit** hook: this reading as normalized [MetricSample] records, keyed by
-     * [MetricRegistry]. Nothing consumes it yet — it's the seam an on-device history store subscribes to
-     * later, so it can persist rows without re-deriving structure from a consumer's JSON. Computed on
-     * demand (no per-tick allocation until called). Only headline scalars are emitted; per-core CPU +
-     * current freq stay on the Snapshot for a store that wants them.
-     */
-    fun toSamples(): List<MetricSample> = buildList {
-        cpuOverall?.let { add(MetricSample.num(MetricRegistry.CPU.key, it.toDouble(), ts, "%")) }
-        memPercent?.let { add(MetricSample.num(MetricRegistry.MEM.key, it.toDouble(), ts, "%")) }
-        if (memTotalMb > 0) {
-            add(MetricSample.num(MetricRegistry.MEM_USED.key, memUsedMb.toDouble(), ts, "MB"))
-            add(MetricSample.num(MetricRegistry.MEM_TOTAL.key, memTotalMb.toDouble(), ts, "MB"))
-        }
-        socTempC?.let { add(MetricSample.num(MetricRegistry.SOC_TEMP.key, it, ts, "°C")) }
-        if (gpuPct >= 0) add(MetricSample.num(MetricRegistry.GPU_LOAD.key, gpuPct.toDouble(), ts, "%"))
-        if (gpuMhz > 0) add(MetricSample.num(MetricRegistry.GPU_FREQ.key, gpuMhz.toDouble(), ts, "MHz"))
-        loadavg.firstOrNull()?.toDoubleOrNull()?.let { add(MetricSample.num(MetricRegistry.LOAD1.key, it, ts)) }
-        if (freqMaxMhz > 0) add(MetricSample.num(MetricRegistry.CPU_FREQ_MAX.key, freqMaxMhz.toDouble(), ts, "MHz"))
-    }
-}
+)
 
 /**
  * The single source of truth for ha-paneld's OS-sourced **poll** telemetry — the union of what PerfReader

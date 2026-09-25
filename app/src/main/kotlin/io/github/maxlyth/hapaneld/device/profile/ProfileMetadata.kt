@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.hardware.LedTransfer
+
 /** Core-owned vocabulary available to untrusted profile files. */
 object ProfileMetadata {
     const val SCHEMA = 2
@@ -94,7 +96,19 @@ object ProfileMetadata {
             field("platform.has_recents", "boolean", false, "Whether Android Recents is functional."),
             field("platform.has_native_navbar", "boolean", false, "Whether the firmware draws its own Android navigation bar."),
             field("hardware.led.mechanism", "enum", true, "Built-in LED route.", listOf("none", "autodetect", "rk3576-ioctl", "rk3576-ioctl-daemon", "sysfs-daemon")),
-            field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", listOf("identity", "rk3576-four-bit")),
+            field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", LedTransfer.NAMES.toList()),
+            field("hardware.led.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
+            field("hardware.led.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
+            field("hardware.led.floor", "integer", false, "Hardware level, 0 through 127, that the lowest non-zero channel value lands on; not with points."),
+            field("hardware.backlight.transfer", "enum", false, "Backlight transfer curve from Home Assistant brightness to the backlight.", CURVE_NAMES),
+            field("hardware.backlight.route", "enum", false, "Where a declared curve is applied: setting (the firmware pushes Android's brightness setting to the node) or node (ha-paneld is the node's only writer).", BACKLIGHT_ROUTES.toList()),
+            field("hardware.backlight.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
+            field("hardware.backlight.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
+            field("hardware.backlight.floor", "integer", false, "Hardware level, 0 through 127, that the lowest non-zero brightness lands on; not with points."),
+            field("hardware.button_backlight.transfer", "enum", false, "Key-backlight transfer curve; needs has_button_backlight.", CURVE_NAMES),
+            field("hardware.button_backlight.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
+            field("hardware.button_backlight.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
+            field("hardware.button_backlight.floor", "integer", false, "Hardware level, 0 through 127, that the lowest non-zero level lands on; not with points."),
             field("hardware.screen_off", "enum", true, "Preferred screen-off route.", listOf("brightness-zero", "su-blpower", "daemon-blpower", "keyevent")),
             field("hardware.has_button_backlight", "boolean", false, "Helper-backed button backlight capability."),
             field("hardware.camera", "boolean", false, "Board carries a usable camera."),
@@ -189,3 +203,5 @@ enum class ProfileHelperAuthorityDemand {
     SHIZUKU_ALTERNATE,
     REQUIRED,
 }
+
+private val CURVE_NAMES = listOf("identity", "perceptual", "gamma", "points")

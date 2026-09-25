@@ -121,13 +121,6 @@ internal object LaunchScreenPolicy {
     }
 }
 
-/** Exact configured external renderer. Automatic selection is the built-in renderer. */
-internal fun externalRendererCandidates(configuredRenderer: String): List<String> = when {
-    configuredRenderer == SystemController.BUILTIN_DASHBOARD -> emptyList()
-    configuredRenderer.isNotBlank() -> listOf(configuredRenderer)
-    else -> emptyList()
-}
-
 /** Pure admission gate for the asynchronous first-draw acknowledgement. */
 internal fun mayAcknowledgePresentedIntro(
     generationMatches: Boolean,

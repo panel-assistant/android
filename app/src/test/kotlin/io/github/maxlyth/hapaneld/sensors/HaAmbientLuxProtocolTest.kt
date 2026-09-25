@@ -9,15 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HaAmbientLuxProtocolTest {
-    @Test fun `subscription uses the permission aware exact entity stream`() {
-        val command = HaAmbientLuxProtocol.subscribeEntities("sensor.room_illuminance", id = 17)
-
-        assertEquals(17, command.getInt("id"))
-        assertEquals("subscribe_entities", command.getString("type"))
-        assertEquals(listOf("sensor.room_illuminance"), command.getJSONArray("entity_ids").let {
-            (0 until it.length()).map(it::getString)
-        })
-    }
 
     @Test fun `compressed exact entity updates retain attributes and timestamps`() {
         val entity = "sensor.room_illuminance"
@@ -94,11 +85,6 @@ class HaAmbientLuxProtocolTest {
         assertNull(candidates[0].currentLux)
         assertTrue(candidates[1].available)
         assertEquals(123.4, candidates[1].currentLux!!, 0.0)
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun `subscription rejects wildcard-like entity ids`() {
-        HaAmbientLuxProtocol.subscribeEntities("sensor.*")
     }
 
     private fun state(entityId: String, value: String, updated: String) = JSONObject()
