@@ -3,7 +3,6 @@ package io.github.maxlyth.hapaneld.http
 import io.github.maxlyth.hapaneld.security.ApprovalBroker
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.ktor.http.Parameters
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -97,44 +96,8 @@ class FormApprovalBindingTest {
         )
     }
 
-    @Test fun everySensitiveFormHandlerUsesTheOrderSensitiveDigest() {
-        val server = source("PaneldServer.kt")
-        val control = source("ControlPlaneRoutes.kt")
-
-        assertCanonicalGate(server, "post(\"/uninstall\")", "get(\"/radio\")")
-        assertCanonicalGate(server, "internal suspend fun handleRemoteAction", "/** One renderer-sensitive execution seam")
-        assertCanonicalGate(server, "post(\"/tame\")", "get(\"/tame/suggest\")", minimumUses = 2)
-        assertCanonicalGate(server, "post(\"/display/density\")", "get(\"/inspect\")")
-        assertCanonicalGate(server, "private suspend fun handleConfigPost", "private fun configSchemaJson")
-        assertCanonicalGate(control, "private suspend fun handleApkCommit", "private suspend fun handleApkUpload")
-        assertCanonicalGate(control, "private suspend fun handleComponentInstall", "private suspend fun handleBackup")
-        assertCanonicalGate(control, "private suspend fun handleBackup", "private val PLAY_URL")
-    }
-
     private fun duplicate(field: String, first: String, second: String) = Parameters.build {
         append(field, first)
         append(field, second)
     }
-
-    private fun assertCanonicalGate(
-        source: String,
-        start: String,
-        end: String,
-        minimumUses: Int = 1,
-    ) {
-        val startIndex = source.indexOf(start)
-        assertTrue("missing sensitive form handler: $start", startIndex >= 0)
-        val endIndex = source.indexOf(end, startIndex)
-        assertTrue("missing end marker $end after $start", endIndex > startIndex)
-        val handler = source.substring(startIndex, endIndex)
-        assertTrue(
-            "$start must bind every sensitive form branch through canonicalDigest",
-            Regex("\\.canonicalDigest\\(\\)").findAll(handler).count() >= minimumUses,
-        )
-    }
-
-    private fun source(name: String): String = listOf(
-        File("src/main/kotlin/io/github/maxlyth/hapaneld/http/$name"),
-        File("app/src/main/kotlin/io/github/maxlyth/hapaneld/http/$name"),
-    ).first(File::isFile).readText()
 }

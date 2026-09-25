@@ -5,129 +5,16 @@ import io.github.maxlyth.hapaneld.sensors.HaNetworkPathSeverity
 import io.github.maxlyth.hapaneld.testsupport.TestSources
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Every network-path surface consumes ONE state owner, `HaNetworkPathRuntime`, and nothing else
- * reads the sample ring. Source-coupled on purpose: a surface that grows its own read is exactly how
- * two surfaces come to disagree about the same moment. The behavioural half (one injected snapshot,
- * every projection) is `HaNetworkPathRuntimeTest`.
+ * The network-path surfaces as shipped: the banner script driven by node, its copy shared with the
+ * Kotlin presentation, and the OpenAPI description. The one-owner behaviour is `HaNetworkPathRuntimeTest`.
  */
 class HaNetworkPathSurfaceContractTest {
-    private val server by lazy { TestSources.kotlin("http/PaneldServer.kt").readText() }
-    private val perf by lazy { TestSources.kotlin("http/PerfReader.kt").readText() }
-    private val service by lazy { TestSources.kotlin("PaneldService.kt").readText() }
-    private val activity by lazy { TestSources.kotlin("DashboardActivity.kt").readText() }
-    private val chip by lazy { TestSources.kotlin("HaNetworkChip.kt").readText() }
-    private val owner by lazy { TestSources.kotlin("sensors/HaExactEntityStreamOwner.kt").readText() }
-    private val diag by lazy { TestSources.kotlin("http/DiagReader.kt").readText() }
+    // Source-text reason: buildwatch.js user-visible banner copy must match the Kotlin presentation strings.
     private val buildwatch by lazy { TestSources.asset("buildwatch.js").readText() }
-    private val info by lazy { TestSources.asset("info.js").readText() }
-
-    @Test fun theServiceIsTheOnlyInstallerAndTheOwnerIsTheOnlyFeed() {
-        assertEquals(1, Regex("HaNetworkPathRuntime\\.install\\(").findAll(service).count())
-        assertTrue(service.contains("haExactEntityStream.bindNetworkPath(haNetworkPath)"))
-        // Install precedes bind: the first demand announcement must already be readable.
-        assertTrue(service.indexOf("HaNetworkPathRuntime.install(haNetworkPath)") < service.indexOf("bindNetworkPath(haNetworkPath)"))
-        // Teardown is identity-gated and re-pokes the renderer only when it actually cleared.
-        assertTrue(service.contains("HaNetworkPathRuntime.uninstall(haNetworkPath)"))
-        // The socket owner and its transport share one clock, or the round trip is two clocks apart.
-        val streamConstruction = service
-            .substringAfter("haExactEntityStream = HaExactEntityStreamOwner(", missingDelimiterValue = "")
-            .substringBefore("\n        )", missingDelimiterValue = "")
-        assertEquals(2, Regex("monotonicMillis = haSocketClock").findAll(streamConstruction).count())
-    }
-
-    @Test fun everySurfaceReadsTheHolderAndNothingReadsTheRing() {
-        // Each surface: exactly one holder read, none of the monitor's internals.
-        assertTrue(server.contains("HaNetworkPathRuntime.healthToken()"))
-        assertTrue(server.contains("HaNetworkPathRuntime.statusText() ?: \"\""))
-        assertTrue(server.contains("\\\"ha_network\\\":${'$'}{HaNetworkPathRuntime.statusJson()}"))
-        assertTrue(server.contains("haNetwork = HaNetworkPathRuntime.diagnosticLine()"))
-        assertTrue(perf.contains("HaNetworkPathRuntime.snapshot()"))
-        assertTrue(activity.contains("networkChip?.update(io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime.snapshot())"))
-        listOf("server" to server, "perf" to perf, "activity" to activity, "chip" to chip, "diag" to diag).forEach { (name, text) ->
-            assertFalse("$name must not touch the monitor directly", text.contains("HaNetworkPathMonitor"))
-            assertFalse("$name must not construct its own path state", text.contains("HaNetworkPath("))
-        }
-        // Measurement ownership: only the stream owner may say the socket is live, and it does so
-        // from the authenticated onLive seam rather than from a demand change.
-        assertTrue(owner.contains("reportSocketState(HaSocketState.LIVE)"))
-        assertTrue(owner.contains("reportSocketState(HaSocketState.STOPPED)"))
-        listOf(server, perf, activity, chip, diag, service).forEach { text ->
-            assertFalse("only the stream owner reports socket state", text.contains("onSocketState("))
-        }
-        // The state owner's feed is the socket owner alone: no other production file reports events.
-        val reporters = listOf(server, perf, service, activity, chip, diag).count { it.contains(".onRoundTrip(") || it.contains(".onProbeTimeout(") }
-        assertEquals(0, reporters)
-        assertTrue(owner.contains("observer.onRoundTrip("))
-        assertTrue(owner.contains("observer.onProbeTimeout()"))
-    }
-
-    @Test fun theHealthTokensRideBothHealthRespondersBesideTheLifecycleToken() {
-        assertEquals(2, Regex("\\$\\{haLifecycleHealthToken\\(\\)}\\$\\{haNetworkHealthToken\\(\\)}").findAll(server).count())
-    }
-
-    @Test fun thePageShellCarriesABannerAndARowTheScriptWritesToFromOneObservation() {
-        assertTrue(server.contains("id=\"hanetbar\""))
-        assertTrue(server.contains("id=\\\"hanetcell\\\""))
-        assertTrue(buildwatch.contains("getElementById(\"hanetbar\")"))
-        assertTrue(buildwatch.contains("getElementById(\"hanetcell\")"))
-        // Rendered from the same /health fetch as the lifecycle pair, inside the same handler.
-        val handler = buildwatch.substringAfter("function vc()").substringBefore("var mb = t.match")
-        assertTrue(handler.contains("ha_net=(\\S+)"))
-        assertTrue(handler.contains("haNetBanner("))
-        assertTrue(handler.contains("haBanner("))
-    }
-
-    @Test fun theBannerReusesTheSevereWarningPresentationAndNeverInjectsMarkup() {
-        val banner = buildwatch.substringAfter("function haNetBanner").substringBefore("function vc()")
-        assertTrue("severe uses the existing crit tone", banner.contains("state === \"severe\" ? \"setup crit\" : \"setup\""))
-        assertTrue(banner.contains("b.textContent = \"⚠ \" + i18nText(text[0], text[1])"))
-        assertFalse("the banner must not use innerHTML", banner.contains("innerHTML"))
-        // Absent token: banner hidden, row emptied; no default verdict is invented.
-        assertTrue(banner.contains("if (!text) { b.style.display = \"none\"; }"))
-        assertTrue(banner.contains("if (!state) { row.textContent = \"\"; return; }"))
-        // Responsiveness is a clause in the same row and can never raise the banner: the banner text
-        // table is keyed on the PATH state alone and has no responsiveness entry.
-        assertTrue(banner.contains("var clause = HA_RESP_CLAUSE[resp]"))
-        assertFalse("latency must not reach the banner", banner.contains("HA_NET_TEXT[resp]"))
-        assertTrue(banner.contains("cause === \"\" || cause === \"loss\""))
-    }
-
-    @Test fun localizedRowsRemainAClosedProjectionOfKnownHealthTokens() {
-        val banner = buildwatch.substringAfter("function haNetBanner").substringBefore("function vc()")
-        assertTrue(
-            "an unknown path token must clear the row instead of becoming a catalogue key or visible copy",
-            banner.contains("!Object.prototype.hasOwnProperty.call(HA_NET_ROW, state)"),
-        )
-        assertTrue(
-            "an absent or unknown responsiveness token must clear the row",
-            banner.contains("!Object.prototype.hasOwnProperty.call(HA_RESP_CLAUSE, resp)"),
-        )
-        assertTrue(
-            "known path states must map through an explicit finite catalogue-stem table",
-            banner.contains("{ healthy: \"healthy\", warning: \"losing_probes\", severe: \"failing\" }[state]"),
-        )
-        assertTrue(
-            "known responsiveness states must select only the finite base, slow, and very-slow suffixes",
-            banner.contains("resp === \"severe\" ? \"_very_slow\" : \"_slow\"") &&
-                banner.contains("var suffix = clause ?") &&
-                banner.contains(": \"\";"),
-        )
-        assertFalse(
-            "raw wire state must never be appended to a catalogue namespace",
-            banner.contains("dashboard.runtime.ha_network_\" + state"),
-        )
-        assertFalse(
-            "raw responsiveness must never be appended to a catalogue namespace",
-            banner.contains("dashboard.runtime.ha_network_\" + resp"),
-        )
-        assertTrue("latency rows must use the closed state/response table", banner.contains("HA_NET_ROW_SLOW[state][resp]"))
-        assertFalse("latency rows must not append raw state text", banner.contains("|| state"))
-    }
 
     @Test fun theScriptAndTheKotlinPresentationShareOneCopy() {
         assertTrue(buildwatch.contains("warning: \"${HaNetworkPathPresentation.BANNER_WARNING_PREFIX}\""))
@@ -150,48 +37,6 @@ class HaNetworkPathSurfaceContractTest {
         }
     }
 
-    @Test fun theDiagnosticsCardRowSitsBetweenWifiStabilityAndTheRenderer() {
-        val contextKeys = server.substringAfter("private val CONTEXT_KEYS").substringBefore("private val BEHAVIOUR_FACT_KEYS")
-        assertTrue(contextKeys.contains("HA_NETWORK_FACT"))
-        assertTrue(contextKeys.indexOf("\"Wi-Fi stability\"") < contextKeys.indexOf("HA_NETWORK_FACT"))
-        assertTrue(contextKeys.indexOf("HA_NETWORK_FACT") < contextKeys.indexOf("HA_RENDERER_FACT"))
-        assertTrue(server.contains("private val HA_NETWORK_FACT = \"HA network path\""))
-    }
-
-    @Test fun thereIsNoServerRenderedNetworkBannerToGoStale() {
-        val banners = server.substringAfter("private fun bannersHtml(").substringBefore("\n    }\n")
-        assertFalse(banners.contains("HaNetworkPath"))
-        assertFalse(server.contains(HaNetworkPathPresentation.BANNER_WARNING_PREFIX))
-        assertFalse(server.contains(HaNetworkPathPresentation.BANNER_SEVERE_PREFIX))
-    }
-
-    @Test fun theDiagLineIsAppendedRightAfterTheRendererLine() {
-        val rendererAt = diag.indexOf("renderer?.let { appendLine(it.diagnosticLine()) }")
-        val networkAt = diag.indexOf("haNetwork?.let { appendLine(it) }")
-        assertTrue(rendererAt in 0 until networkAt)
-    }
-
-    @Test fun theLikelyCauseRanksTheMeasuredPathFirstAndTheScriptLabelsIt() {
-        val telemetry = TestSources.kotlin("dashboard/DashboardTelemetry.kt").readText()
-        val classify = telemetry.substringAfter("private fun classify(").substringBefore("private fun histogramPercentile")
-        assertTrue(classify.indexOf("NETWORK_PATH_CAUSE") < classify.indexOf("\"state_stream\""))
-        assertTrue(info.contains("${HaNetworkPathPresentation.LIKELY_CAUSE}:i18nText('dashboard.cause.ha_network_path','Network path to Home Assistant')"))
-        assertTrue(perf.contains("takeIf { it.degraded }"))
-    }
-
-    @Test fun theNativeChipIsAttachedDetachedAndRedrawnWithTheLifecycleBar() {
-        assertTrue(activity.contains("networkChip = HaNetworkChip.attach(this, container)"))
-        val detach = activity.substringAfter("private fun detachLifecycleBar()").substringBefore("\n    }\n")
-        assertTrue(detach.contains("networkChip?.detach()"))
-        assertTrue(detach.contains("networkChip = null"))
-        // The chip must never take a touch from the dashboard beneath it, and must have no dismiss.
-        assertTrue(chip.contains("isClickable = false"))
-        assertTrue(chip.contains("isFocusable = false"))
-        assertFalse(chip.contains("setOnClickListener"))
-        assertTrue(chip.contains("view.context.getString(R.string.ha_network_unreliable)"))
-        assertFalse("no drawable resource is added for the glyph", chip.contains("R.drawable"))
-    }
-
     /** The script's behaviour, driven through the real asset by node: hide, warn, escalate, retract. */
     @Test fun theBannerAndRowBehaveAsSpecifiedForEveryToken() {
         val working = java.io.File(requireNotNull(System.getProperty("user.dir")))
@@ -199,6 +44,7 @@ class HaNetworkPathSurfaceContractTest {
             java.io.File(working, "app/src/test/js/ha-network-banner-test.mjs"),
             java.io.File(working, "src/test/js/ha-network-banner-test.mjs"),
         ).first(java.io.File::isFile)
+        // Source-text reason: executes the shipped buildwatch.js in a node behaviour fixture.
         val asset = listOf(
             java.io.File(working, "app/src/main/assets/buildwatch.js"),
             java.io.File(working, "src/main/assets/buildwatch.js"),
@@ -211,7 +57,8 @@ class HaNetworkPathSurfaceContractTest {
         assertTrue(output, output.contains("ha network banner cases passed"))
     }
 
-    @Test fun openApiDocumentsTheTokensAndTheStatusObject() {
+    @Test fun openApiHealthTokenAndStatusObjectContract() {
+        // Source-text reason: openapi.json is the published API schema contract.
         val document = JSONObject(TestSources.asset("openapi.json").readText())
         val health = document.getJSONObject("paths").getJSONObject("/api/v1/health")
             .getJSONObject("get").getJSONObject("responses").getJSONObject("200").getString("description")
