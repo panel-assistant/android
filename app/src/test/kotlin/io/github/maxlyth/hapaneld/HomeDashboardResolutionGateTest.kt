@@ -50,7 +50,8 @@ class HomeDashboardResolutionGateTest {
         // An unreadable dashboard list is an incomplete check, so it recovers on its own — the screen
         // must never be terminal.
         assertTrue(resolver.contains("AdmissionOutcome.DASHBOARD_LIST_UNREADABLE"))
-        assertTrue(reconnect.contains("currentUrl(Config(this))"))
+        assertTrue(reconnect.contains("resolvedHomeDashboard(config)"))
+        assertTrue(reconnect.contains("currentUrl(config, home)"))
         assertTrue(networkRecovery.contains("invalidateHomeDashboardResolution(resetRetry = false)"))
         assertTrue(target.contains("homeDashboardResolution"))
         assertFalse(target.contains("frontendDefaultPanel"))

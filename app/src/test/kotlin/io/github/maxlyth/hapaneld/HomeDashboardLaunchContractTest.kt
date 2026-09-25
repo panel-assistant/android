@@ -49,7 +49,7 @@ class HomeDashboardLaunchContractTest {
         val cachedBranch = resolver.substring(cacheRead, resolver.indexOf("if (provisionalPath == null)"))
         assertTrue(cachedBranch.contains("HomeDashboardSource.CACHED"))
         assertTrue(cachedBranch.contains("confirmed = false"))
-        assertTrue(cachedBranch.contains("buildCompatibleAndLoad(config)"))
+        assertTrue(cachedBranch.contains("buildCompatibleAndLoad(config, path)"))
     }
 
     @Test fun `the selecting screen shows only when nothing provisional is rendering`() {
@@ -98,7 +98,7 @@ class HomeDashboardLaunchContractTest {
         assertTrue(resolver.contains("HomeDashboardLaunchCache.refreshOutcome(shownPath, resolution)"))
         assertTrue(resolver.contains("navigateAfterHomeDashboardCorrection(resolution.path)"))
         // The no-page path still builds, so a cacheless cold start is unchanged.
-        assertTrue(resolver.contains("shownPath == null || web == null -> buildCompatibleAndLoad(currentConfig)"))
+        assertTrue(resolver.contains("shownPath == null || web == null -> buildCompatibleAndLoad(currentConfig, resolution.path)"))
     }
 
     @Test fun `the correction prefers the live frontend bus and reloads otherwise`() {
@@ -237,7 +237,7 @@ class HomeDashboardLaunchContractTest {
         assertTrue(rebuild in 0 until earlyReturn)
         val block = resolver.substring(resolver.indexOf("if (web == null) {"), earlyReturn)
         assertTrue(block.contains("cachedHomeDashboardLaunchPath()"))
-        assertTrue(block.contains("buildCompatibleAndLoad(config)"))
+        assertTrue(block.contains("buildCompatibleAndLoad(config, path)"))
         // The rebuilt resolution must ALSO be provisional and epoch-anchored. A battery survivor
         // proved this site was unpinned: marking it confirmed here would let a rebuild outlive the
         // live answer that is supposed to supersede it, and no assertion would have noticed.
