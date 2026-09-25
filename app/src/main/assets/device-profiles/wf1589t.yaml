@@ -1,6 +1,6 @@
 schema: 2
 id: wf1589t
-version: 2.0.3
+version: 2.0.4
 display_name: Electron WF1589T
 soc_class: rk3576
 soc:
@@ -60,6 +60,12 @@ hardware:
     mechanism: rk3576-ioctl
     transfer: rk3576-four-bit
   screen_off: su-blpower
+  # Perceptual backlight curve. The firmware pushes Android's brightness setting to the node itself
+  # (measured 2026-09-25), so the curve rides on the setting.
+  backlight:
+    transfer: perceptual
+    floor: 10
+    route: setting
   camera: true
   camera_lens_offset_px: 43
   microphone: true
