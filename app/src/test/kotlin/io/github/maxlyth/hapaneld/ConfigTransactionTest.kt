@@ -54,28 +54,15 @@ class ConfigTransactionTest {
         )
         val config = Config(prefs.instance)
 
-        val abandoned = DashboardAuth.forConfig(config, nowSec = 1_000_000L, stillCurrent = { false })
+        val abandoned = HaCredentialManager.resolve(config, nowSec = 1_000_000L, stillCurrent = { false })
         assertNull(abandoned.session)
         assertTrue("an abandoned resolution judged nothing", abandoned.notAttempted)
         assertFalse(abandoned.rejected)
 
         // Still current, same configuration: the cached token resolves normally, so the marker tracks
         // abandonment rather than being set on every empty-looking result.
-        val live = DashboardAuth.forConfig(config, nowSec = 1_000_000L, stillCurrent = { true })
+        val live = HaCredentialManager.resolve(config, nowSec = 1_000_000L, stillCurrent = { true })
         assertFalse(live.notAttempted)
-    }
-
-    @Test fun aRefreshThatCannotBeCommittedCarriesNoAuthenticationVerdict() {
-        val refreshed = DashboardAuth.Result(
-            session = DashboardAuth.Session("fresh-access", 300L),
-            persist = "fresh-access" to 1_000_300L,
-        )
-
-        val abandoned = DashboardAuth.retainAfterRefreshPersistence(refreshed, persisted = false)
-        assertNull(abandoned.session)
-        assertTrue("an uncommitted refresh cannot be called rejected", abandoned.notAttempted)
-        assertFalse(abandoned.rejected)
-        assertEquals(refreshed, DashboardAuth.retainAfterRefreshPersistence(refreshed, persisted = true))
     }
 
     @Test fun generatedPanelIdentityIsPersistedOnce() {

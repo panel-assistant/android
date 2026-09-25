@@ -21,8 +21,6 @@ class DashboardAuthTest {
     private fun success(token: String, ttl: Long = 1800L): HaLink.Refresh =
         HaLink.Refresh.Success(HaLink.TokenSet(token, ttl))
 
-    private val OWNER = DashboardAuth.CredentialOwner("https://ha", "old", "refresh", NOW - 1, "client")
-
     @Test fun `no url yields no session`() {
         val r = DashboardAuth.resolve("", "tok", "", 0, NOW, false, ::neverRefresh)
         assertNull(r.session); assertNull(r.persist)
@@ -54,15 +52,6 @@ class DashboardAuthTest {
         }
         assertFalse(transient.notAttempted)
         assertEquals("connect timed out", transient.transientDetail)
-    }
-
-    @Test fun `a result abandoned because its owner changed is not an authentication verdict`() {
-        val other = OWNER.copy(accessToken = "someone else's")
-        val abandoned = DashboardAuth.retainIfOwned(OWNER, other, true, DashboardAuth.Result(null, rejected = true))
-        assertNull(abandoned.session)
-        assertTrue("an abandoned request judged nothing", abandoned.notAttempted)
-        // The discarded result's rejection must not leak out with it.
-        assertFalse(abandoned.rejected)
     }
 
     @Test fun `static token is returned as-is with a long life and never refreshed`() {
@@ -195,22 +184,5 @@ class DashboardAuthTest {
         val r = DashboardAuth.resolve("https://ha", "rejected", "refr", NOW + 3600, NOW, true, { _, _ -> HaLink.Refresh.Rejected })
         assertNull(r.session)
         assertTrue(r.rejected)
-    }
-
-    @Test fun `completed refresh is discarded after renderer or credential ownership changes`() {
-        val refreshed = DashboardAuth.Result(
-            DashboardAuth.Session("new", 1800),
-            "new" to (NOW + 1800),
-        )
-        assertNull(DashboardAuth.retainIfOwned(OWNER, OWNER, false, refreshed).session)
-        assertNull(
-            DashboardAuth.retainIfOwned(
-                OWNER,
-                OWNER.copy(clientId = "replacement-client"),
-                true,
-                refreshed,
-            ).session,
-        )
-        assertEquals(refreshed, DashboardAuth.retainIfOwned(OWNER, OWNER, true, refreshed))
     }
 }

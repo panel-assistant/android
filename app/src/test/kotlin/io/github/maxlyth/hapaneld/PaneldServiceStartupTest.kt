@@ -219,7 +219,7 @@ class PaneldServiceStartupTest {
                 password = "secret-$name",
             ),
             projection = MqttProjectionIdentity("maker", "model-$name", listOf("wake" to true)),
-            haLink = HaLinkIdentity("http://ha/$name", "access-$name", "refresh-$name", 1L, "client-$name"),
+            haLink = HaAuthOwner("http://ha/$name", "refresh-$name", "client-$name", ""),
         )
 
         val initial = snapshot("initial")
@@ -274,7 +274,7 @@ class PaneldServiceStartupTest {
 
     @Test fun localConfigRefreshOnlyRunsTheMqttEffectsWhoseProjectionChanged() {
         val projection = MqttProjectionIdentity("maker", "model", listOf("wake" to true))
-        val ha = HaLinkIdentity("http://ha", "access", "refresh", 1L, "client")
+        val ha = HaAuthOwner("http://ha", "refresh", "client", "")
         assertEquals(ConfigRefreshEffects(false, false), configRefreshEffects(projection, projection, ha, ha))
         assertEquals(
             ConfigRefreshEffects(true, false),
@@ -286,7 +286,7 @@ class PaneldServiceStartupTest {
         )
         assertEquals(
             ConfigRefreshEffects(false, true),
-            configRefreshEffects(projection, projection, ha, HaLinkIdentity("http://other", "a", "r", 2L, "c")),
+            configRefreshEffects(projection, projection, ha, HaAuthOwner("http://other", "r", "c", "")),
         )
     }
 

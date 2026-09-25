@@ -6,7 +6,7 @@ import android.util.Log
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.dashboardEntityScopePath
 import io.github.maxlyth.hapaneld.DashboardEntityDefaultResolverMigration
-import io.github.maxlyth.hapaneld.DashboardAuth
+import io.github.maxlyth.hapaneld.HaCredentialManager
 import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.HaAuthSnapshot
 import io.github.maxlyth.hapaneld.stableOwner
@@ -1642,7 +1642,7 @@ class EntityLearningManager(
         if (!stillCurrent()) return@withContext HomeDashboardCatalog()
         val base = config.haUrl.trim().trimEnd('/')
         if (base.isBlank()) return@withContext HomeDashboardCatalog()
-        val auth = DashboardAuth.forConfig(config, stillCurrent = stillCurrent)
+        val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
         val token = auth.session?.accessToken ?: return@withContext HomeDashboardCatalog()
         runCatching {
             var catalog = HomeDashboardCatalog()
@@ -1674,7 +1674,7 @@ class EntityLearningManager(
         if (!stillCurrent()) return@withContext null
         val base = config.haUrl.trim().trimEnd('/')
         if (base.isBlank()) return@withContext null
-        val auth = DashboardAuth.forConfig(config, stillCurrent = stillCurrent)
+        val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
         val token = auth.session?.accessToken ?: return@withContext null
         runCatching {
             var resolution: EntityLearningProtocol.HomeDashboardResolution? = null
@@ -1717,7 +1717,7 @@ class EntityLearningManager(
         val ownerKey = credentialFingerprint()
         val base = config.haUrl.trim().trimEnd('/')
         if (base.isBlank()) return@withContext HaAreaCatalog(ownerKey = ownerKey)
-        val auth = DashboardAuth.forConfig(config)
+        val auth = HaCredentialManager.resolve(config)
         val token = auth.session?.accessToken ?: return@withContext HaAreaCatalog(ownerKey = ownerKey)
         runCatching {
             var catalog = HaAreaCatalog()
@@ -1773,7 +1773,7 @@ class EntityLearningManager(
             if (expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey) return@withContext false
             val base = config.haUrl.trim().trimEnd('/')
             if (base.isBlank()) return@withContext false
-            val auth = DashboardAuth.forConfig(config)
+            val auth = HaCredentialManager.resolve(config)
             val token = auth.session?.accessToken ?: return@withContext false
             runCatching {
                 var moved = false
@@ -1859,7 +1859,7 @@ class EntityLearningManager(
                 config.dashboardEntityInstanceKey == selected &&
                 config.dashboardEntityTargetKey == targetKey
         }
-        val auth = DashboardAuth.forConfig(config, stillCurrent = stillCurrent)
+        val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
         val token = auth.session?.accessToken
             ?: error(if (auth.rejected) "Home Assistant credential rejected" else "Home Assistant token unavailable")
         check(stillCurrent()) { "entity-learning target changed during authentication" }
