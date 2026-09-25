@@ -909,9 +909,9 @@
    "state": "machine-draft"
   },
   "configure.group.dashboard": {
-   "text": "Панель керування",
+   "text": "Інформаційна панель",
    "sourceHash": "67b696468610b879ed7f224dbf6b0861f27e39d20454cb9d7af1ec52d3e5eeaa",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.group.diagnostics": {
    "text": "Діагностика",
@@ -9394,7 +9394,7 @@
    "state": "machine-draft"
   },
   "settings.kiosk_companion_packages.help": {
-   "text": "Імена пакетів Android, розділені комами, які блокування панелі інструментів залишає на передньому плані замість повернення до панелі інструментів. Використовуйте цю опцію для переходу до екранів супутнього додатка. Потрібні права root.",
+   "text": "Імена пакетів Android, розділені комами, які блокування інформаційної панелі залишає на передньому плані замість повернення до панелі інструментів. Використовуйте цю опцію для переходу до екранів супутнього додатка. Потрібні права root.",
    "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
    "state": "machine-cross-checked"
   },
@@ -10614,7 +10614,7 @@
    "state": "machine-draft"
   },
   "setup.proof.dashboard_help": {
-   "text": "На вкладці «Панель керування» перелічено все, що не так.",
+   "text": "На вкладці «Інформаційна панель» перелічено все, що не так.",
    "sourceHash": "099b789842ad17573a047cbd3d877adbf7b84a8d123e9af4507a25dcff19cbff",
    "state": "machine-cross-checked"
   },
@@ -10684,12 +10684,12 @@
    "state": "machine-cross-checked"
   },
   "setup.renderer.action.open_dashboard_setting": {
-   "text": "Відкрити налаштування «Панель керування»",
+   "text": "Відкрити налаштування «Інформаційна панель»",
    "sourceHash": "c5d268cd415c70ca4aea5846a37468004b27384beabc5f9ca171e7ed1ecb484d",
    "state": "machine-cross-checked"
   },
   "setup.renderer.failure.explanation": {
-   "text": "Виберіть вбудований рендерер ha-paneld (або інший встановлений застосунок) у картці «Панель керування» розділу «Усі налаштування», а потім поверніться сюди.",
+   "text": "Виберіть вбудований рендерер ha-paneld (або інший встановлений застосунок) у картці «Інформаційна панель» розділу «Усі налаштування», а потім поверніться сюди.",
    "sourceHash": "7231ee927e2894750e5b28a26096bb451b8dbaf5e9a3b0bb87a7929cdb7b1fbf",
    "state": "machine-cross-checked"
   },
@@ -10869,9 +10869,9 @@
    "state": "machine-draft"
   },
   "shell.nav.dashboard": {
-   "text": "Панель інструментів",
+   "text": "Інформаційна панель",
    "sourceHash": "67b696468610b879ed7f224dbf6b0861f27e39d20454cb9d7af1ec52d3e5eeaa",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "shell.nav.entities": {
    "text": "Об’єкти",
