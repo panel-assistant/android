@@ -2,6 +2,21 @@ package io.github.maxlyth.hapaneld.sensors
 
 import io.github.maxlyth.hapaneld.HaAuthSnapshot
 import io.github.maxlyth.hapaneld.stableOwner
+import io.github.maxlyth.hapaneld.control.AutoSleepController
+import io.github.maxlyth.hapaneld.control.AutoSleepLearnedLease
+import io.github.maxlyth.hapaneld.control.AutoSleepLearning
+import io.github.maxlyth.hapaneld.control.AutoSleepLocalEvidence
+import io.github.maxlyth.hapaneld.control.AutoSleepManagerHandle
+import io.github.maxlyth.hapaneld.control.AutoSleepRuntimeConfig
+import io.github.maxlyth.hapaneld.control.FakeBacklight
+import io.github.maxlyth.hapaneld.control.FakeDaemon
+import io.github.maxlyth.hapaneld.control.FakeRootShell
+import io.github.maxlyth.hapaneld.control.FakeScreenPower
+import io.github.maxlyth.hapaneld.control.FakeWakeTap
+import io.github.maxlyth.hapaneld.control.MAX_AUTO_SLEEP_LEASE_MS
+import io.github.maxlyth.hapaneld.control.MIN_AUTO_SLEEP_LEASE_MS
+import io.github.maxlyth.hapaneld.control.ScreenController
+import io.github.maxlyth.hapaneld.device.ScreenOff
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
@@ -344,7 +359,7 @@ class HaPresenceSourceManagerTest {
         runCurrent()
         val refreshed = manager.latestAggregate()
         assertEquals(41L, refreshed.controllerEpoch)
-        assertTrue(refreshed.managerGeneration > first.managerGeneration)
+        assertEquals(first.managerGeneration, refreshed.managerGeneration)
         assertEquals(first.feedGeneration, refreshed.feedGeneration)
         assertEquals(first.feedRevision, refreshed.feedRevision)
 
@@ -364,6 +379,32 @@ class HaPresenceSourceManagerTest {
         manager.acceptFeed(feed(newerEpoch, generation = newerEpoch.feedGeneration + 1L, revision = 0L))
         assertEquals(newerEpoch.feedGeneration + 1L, manager.latestAggregate().feedGeneration)
         assertEquals(0L, manager.latestAggregate().feedRevision)
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `activity during a refresh reaches consumers and the unchanged result keeps it`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val exact = FakeExactTransport(FakeExactConnection()).apply { states[ENTITY] = state(ENTITY, "off") }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val discovery = FakePresenceTransport()
+        val (manager, owner) = manager(dispatcher, discovery, exact, aggregates)
+        manager.configure(request())
+        runCurrent()
+        val live = manager.latestAggregate()
+        assertEquals(HaPresencePhase.LIVE, live.phase)
+
+        val before = aggregates.size
+        manager.refresh()
+        manager.acceptFeed(feed(live, revision = live.feedRevision + 1L, value = HaPresenceValue.ON))
+        assertEquals(HaPresenceValue.ON, manager.latestAggregate().finalStates.getValue(ENTITY))
+        runCurrent()
+
+        assertEquals(2, discovery.registryCount)
+        val after = manager.latestAggregate()
+        assertEquals(HaPresencePhase.LIVE, after.phase)
+        assertEquals(HaPresenceValue.ON, after.finalStates.getValue(ENTITY))
+        assertEquals(listOf(HaPresencePhase.LIVE), aggregates.drop(before).map { it.phase }.distinct())
         manager.close()
         owner.close()
     }
@@ -734,6 +775,111 @@ class HaPresenceSourceManagerTest {
         assertEquals(HaPresencePhase.AUTH_FAILED, aggregates.last().phase)
         manager.close()
         owner.close()
+    }
+
+    @Test fun `registry refresh that finds nothing new leaves an automatically slept screen dark`() = runTest {
+        val panel = sleepingPanel()
+
+        panel.registryChanged()
+
+        assertEquals(2, panel.discovery.registryCount)
+        assertTrue(panel.screen.isIntendedOff())
+        assertEquals(listOf(false), panel.screenChanges)
+        assertEquals("live", panel.status().getString("phase"))
+    }
+
+    @Test fun `registry refresh that changes the selection wakes the slept screen`() = runTest {
+        val panel = sleepingPanel()
+
+        panel.discovery.sourceCount = 2
+        panel.registryChanged()
+
+        assertFalse(panel.screen.isIntendedOff())
+        assertEquals(listOf(false, true), panel.screenChanges)
+        assertEquals(2, panel.status().getInt("source_count"))
+    }
+
+    @Test fun `failed rediscovery wakes the slept screen and the status names that wake`() = runTest {
+        val panel = sleepingPanel()
+
+        panel.discovery.registryFailure = true
+        panel.registryChanged()
+        assertFalse(panel.screen.isIntendedOff())
+        assertEquals("discovery_failed", panel.status().getString("phase"))
+
+        panel.discovery.registryFailure = false
+        panel.registryChanged()
+        assertEquals("live", panel.status().getString("phase"))
+        assertEquals("source_loss_wake", panel.status().getString("reason"))
+    }
+
+    private inner class SleepingPanel(
+        val discovery: FakePresenceTransport,
+        val screen: ScreenController,
+        val screenChanges: List<Boolean>,
+        private val exact: FakeExactTransport,
+        private val connections: List<FakeExactConnection>,
+        private val controller: AutoSleepController,
+        private val scope: kotlinx.coroutines.test.TestScope,
+    ) {
+        fun status() = JSONObject(controller.statusJson())
+
+        /** One Home Assistant registry event on the live exact-entity socket, past its coalesce. */
+        fun registryChanged() {
+            connections[exact.subscriptions.size - 1].messages.trySend(HaExactSocketMessage.RegistryChanged)
+            scope.runCurrent()
+            scope.advanceTimeBy(10_000L)
+            scope.runCurrent()
+        }
+    }
+
+    /** The production wiring of manager, stream owner, controller and screen, slept by an expired lease. */
+    private fun kotlinx.coroutines.test.TestScope.sleepingPanel(): SleepingPanel {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val connections = List(4) { FakeExactConnection() }
+        val exact = FakeExactTransport(*connections.toTypedArray())
+        val discovery = FakePresenceTransport()
+        val owner = HaExactEntityStreamOwner(
+            scope = backgroundScope, auth = auth(), transport = exact, workerDispatcher = dispatcher,
+        )
+        val now = java.util.concurrent.atomic.AtomicLong()
+        val screenChanges = Collections.synchronizedList(mutableListOf<Boolean>())
+        val screen = ScreenController(
+            FakeBacklight(), FakeScreenPower(), FakeRootShell(),
+            FakeDaemon(mapOf("SCREEN OFF" to "OK", "SCREEN ON" to "OK", "BLPOWER" to "0")),
+            FakeWakeTap(), ScreenOff.DAEMON_BLPOWER,
+        )
+        val controller = AutoSleepController(
+            scope = backgroundScope,
+            screen = screen,
+            configuration = { AutoSleepRuntimeConfig(true, "device-uid", "panel", "https://ha.example") },
+            learning = object : AutoSleepLearning {
+                override fun learnedLease(partition: String, baseLeaseMs: Long) =
+                    AutoSleepLearnedLease(baseLeaseMs, 0, 0, MIN_AUTO_SLEEP_LEASE_MS)
+                override fun recordGap(partition: String, evidence: AutoSleepLocalEvidence, gapMs: Long) = Unit
+                override fun recordCorrection(partition: String, floorMs: Long) = Unit
+                override fun flush() = Unit
+            },
+            onScreenChanged = { screenChanges += it },
+            elapsedRealtime = now::get,
+            epochMillis = ::epochMillis,
+            workerDispatcher = dispatcher,
+            sourceManagerFactory = { offer ->
+                val manager = HaPresenceSourceManager(
+                    backgroundScope, auth(), discovery, owner, offer, dispatcher, ::epochMillis, FakeExclusions(),
+                )
+                AutoSleepManagerHandle(manager::configure, manager::close, manager::refresh)
+            },
+        )
+        screen.onWakeCompleted = controller::noteScreenWoken
+        assertTrue(controller.start())
+        runCurrent()
+        assertEquals("live", JSONObject(controller.statusJson()).getString("phase"))
+        now.set(MAX_AUTO_SLEEP_LEASE_MS + 60_000L)
+        controller.advanceToForTest(now.get())
+        runCurrent()
+        assertTrue(screen.isIntendedOff())
+        return SleepingPanel(discovery, screen, screenChanges, exact, connections, controller, this)
     }
 
     private fun kotlinx.coroutines.test.TestScope.manager(
