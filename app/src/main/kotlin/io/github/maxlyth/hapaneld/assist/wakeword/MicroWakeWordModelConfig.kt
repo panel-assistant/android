@@ -72,13 +72,6 @@ data class MicroWakeWordModelConfig(
             )
         }
 
-        /** Ids of the bundled models (every `<id>.json` under `assets/wakeword/`), sorted. */
-        fun bundledIds(context: Context): List<String> =
-            (context.assets.list(ASSET_DIR) ?: emptyArray())
-                .filter { it.endsWith(".json") }
-                .map { it.removeSuffix(".json") }
-                .sorted()
-
         /** Load and parse one bundled manifest by id. */
         @Throws(IOException::class)
         fun fromAssets(context: Context, id: String): MicroWakeWordModelConfig {

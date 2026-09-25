@@ -67,12 +67,6 @@ class LaunchScreenPolicyTest {
         assertFalse(decision.rememberVersionShown)
     }
 
-    @Test fun externalTargetResolutionHonoursExplicitPackageAndKeepsAutoBuiltin() {
-        assertEquals(listOf("com.example.renderer"), externalRendererCandidates("com.example.renderer"))
-        assertTrue(externalRendererCandidates("").isEmpty())
-        assertTrue(externalRendererCandidates(SystemController.BUILTIN_DASHBOARD).isEmpty())
-    }
-
     @Test fun introAcknowledgementRequiresTheCurrentAttachedPresentedGeneration() {
         fun admitted(
             generation: Boolean = true,

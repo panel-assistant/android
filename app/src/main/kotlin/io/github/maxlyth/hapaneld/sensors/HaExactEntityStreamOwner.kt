@@ -498,10 +498,6 @@ internal class HaExactEntityStreamOwner(
         }
     }
 
-    fun unbindLifecycle() {
-        synchronized(lock) { lifecycleObserver = null }
-    }
-
     /**
      * Bind the network-path monitor. It is told the CURRENT demand at once so a monitor bound after
      * the socket was demanded does not sit unreportable until the next demand change.

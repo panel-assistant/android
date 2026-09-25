@@ -153,15 +153,6 @@ internal class HaLifecycle(
         Snapshot(stateLocked(nowMs), source, refused, revision, remainingLocked(nowMs))
     }
 
-    /**
-     * How much of the recovery notice is left, in millis, or 0 when it is not showing one.
-     *
-     * A renderer recreated mid-window must finish the ORIGINAL notice rather than start a fresh one:
-     * seeding a full timer on every rebuild let a notice near expiry be extended indefinitely by an
-     * unlucky sequence of rebuilds. The canonical lifetime lives here with the state it belongs to.
-     */
-    fun remainingBackOnlineMs(nowMs: Long): Long = synchronized(lock) { remainingLocked(nowMs) }
-
     private fun remainingLocked(nowMs: Long): Long {
         // No clamp: reaching the arithmetic means the state IS BACK_ONLINE, which stateLocked only
         // reports while elapsed is inside the window — so the result is already within (0, window].
@@ -466,42 +457,6 @@ internal class HaLifecycle(
  * Pure — unit-tested in `HaLifecycleTest`.
  */
 internal object HaLifecycleMessage {
-    /**
-     * Null means "say nothing here". [HaLifecycleState.CONNECTION_LOST] is deliberately null: the
-     * existing generic connection-recovery path owns that case, and dressing it in Home Assistant
-     * wording is exactly the mislabelling this feature exists to prevent.
-     */
-    /**
-     * The supporting line under the panel headline: what it means for the person standing in front of
-     * the panel, and what happens next.
-     *
-     * This is the understandability half. The headline says what happened, which is only useful to
-     * someone who already knows what Home Assistant is; this says the panel is not broken and that
-     * nobody has to do anything, which is what a household member actually needs.
-     */
-    fun panelDetail(state: HaLifecycleState): String? = when (state) {
-        HaLifecycleState.SHUTTING_DOWN -> "Controls unavailable. Reconnecting automatically."
-        HaLifecycleState.STARTING -> "Controls will return shortly."
-        HaLifecycleState.BACK_ONLINE -> "Controls have returned."
-        HaLifecycleState.NORMAL, HaLifecycleState.CONNECTION_LOST -> null
-    }
-
-    /**
-     * The short form for the panel's own bar, which is read from across a room rather than at arm's
-     * length. The smallest panels are 480x480 at density 160, where the full sentence cannot be rendered
-     * four times larger without overflowing the screen — so the bar states the fact and lets its size do
-     * the explaining, while [text] keeps the fuller wording for surfaces with room for it.
-     */
-    fun panelText(state: HaLifecycleState, source: HaLifecycleSource?): String? =
-        when (state) {
-            HaLifecycleState.SHUTTING_DOWN ->
-                if (source == HaLifecycleSource.SOCKET) "Home Assistant is shutting down"
-                else "Home Assistant is offline"
-            HaLifecycleState.STARTING -> "Home Assistant is starting"
-            HaLifecycleState.BACK_ONLINE -> "Home Assistant is back online"
-            HaLifecycleState.NORMAL, HaLifecycleState.CONNECTION_LOST -> null
-        }
-
     fun text(state: HaLifecycleState, source: HaLifecycleSource?): String? = when (state) {
         // Only the socket proves INTENT. Anything else — a broker will, or no attributed source at
         // all — may honestly claim only that the control path vanished, so the weaker wording is the
