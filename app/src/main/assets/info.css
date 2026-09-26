@@ -120,6 +120,10 @@ h2 small{text-transform:none;letter-spacing:0;color:var(--ok-dim);font-weight:40
    known synchronously; a fresh 300px content-visibility placeholder otherwise moves the viewed chart
    again on a later frame. configure.js applies this only while retaining an onscreen activity panel. */
 @container panelcards (width < 818px){#cfg-groups.config-viewport-anchored>.card{content-visibility:visible}}
+/* A catalogue search moves the Entities page to the section with matches. With a placeholder above that
+   section, the jump lands where the placeholder put it and the real table height then pushes the section
+   thousands of pixels down in an engine without scroll anchoring (WebKit), so these cards use real heights. */
+@container panelcards (width < 818px){.entity-cards>.card{content-visibility:visible;contain-intrinsic-size:auto}}
 table{border-collapse:collapse;width:100%;table-layout:fixed}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--divider);vertical-align:top;font-size:.9rem;overflow-wrap:anywhere;word-break:break-word}
 tr:last-child td,tr:last-child th{border-bottom:0}   /* dividers only BETWEEN rows, never after the last */
@@ -253,7 +257,12 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 .entity-policy{border:1px solid var(--line);border-radius:8px;margin:12px 0 0;padding:8px 12px}
 .entity-policy label{display:block;margin:6px 0}
 .entity-policy p{margin:7px 0 2px}
-.entity-search-row{margin-top:12px}/* Two lines are reserved so the per-section counts can wrap on a 480px panel without moving the tables below. */.entity-search-status{min-height:2.7em;margin-top:6px;overflow-wrap:anywhere}
+/* The catalogue search sits between the cards and sticks under the header, so refining a query never means
+   scrolling back to the box after a reveal has brought the matches into view. Not a .card: a stuck bar must
+   not pick up the narrow regime's content-visibility, and the column-regime counts stay card-only. */
+.entity-search-row{position:sticky;top:var(--topbar-h,91px);z-index:15;background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:10px 16px 4px;margin:0 0 18px;box-shadow:0 6px 14px -12px var(--shadow)}
+@media (max-width:857px){.entity-search-row{margin-bottom:10px}}
+/* Two lines are reserved so the per-section counts can wrap on a 480px panel without moving the tables below. */.entity-search-status{min-height:2.7em;margin-top:6px;overflow-wrap:anywhere}
 .entity-action-result{min-height:1.3em;margin-top:9px}.entity-action-result.ok{color:#45a65a}.entity-action-result.error{color:#d34b42}
 .entity-issues{border-left:4px solid var(--border-strong)}.entity-issues.has-blocking{border-left-color:#e05a48}.entity-issues-list:empty{display:none}.entity-issues-list{display:grid;gap:10px;margin:12px 0}.entity-issue{border:1px solid var(--divider);border-radius:8px;padding:10px 12px;background:var(--input-bg2);overflow-wrap:anywhere}.entity-issue.blocking{border-left:4px solid #e05a48}.entity-issue.advisory{border-left:4px solid #3d7fd0}.entity-issue.allowed{border-left:4px solid var(--ok-dim)}.entity-issue-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}.entity-issue-severity{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:10px;background:var(--info-bg);color:var(--info-fg);border:1px solid var(--info-bd)}.entity-issue.blocking .entity-issue-severity{background:var(--crit-bg);color:var(--crit-fg);border-color:var(--crit-bd)}.entity-issue.allowed .entity-issue-severity{background:var(--vtagrec-bg);color:var(--vtagrec-fg);border-color:var(--ok-dim)}.entity-issue-label,.entity-issue-locations>span{color:var(--accent);font-weight:600}.entity-issue code{white-space:normal;word-break:break-word}.entity-issue p{margin:7px 0 0}.entity-issue-recommendation{color:var(--text-soft)}.entity-issue-allow-note{margin:9px 0 0;color:var(--text-soft)}.entity-issue-search{margin-top:7px}.entity-issue-toggle{margin-top:10px}
 .entity-dynamic{margin:14px 0 12px;padding-top:12px;border-top:1px solid var(--divider)}.entity-dynamic[hidden]{display:none}.entity-dynamic h3{margin:0 0 6px;color:var(--accent2);font-size:.86rem;text-transform:uppercase;letter-spacing:.04em}.entity-dynamic-list{display:grid;gap:8px;margin-top:10px}.entity-dynamic-expression{border:1px solid var(--divider);border-radius:8px;padding:9px 11px;background:var(--input-bg2);overflow:hidden}.entity-dynamic-expression pre{margin:7px 0 0;padding:8px;border-radius:6px;background:var(--bg);overflow:auto;white-space:pre-wrap;word-break:break-word}.entity-dynamic-expression code{font-size:.82rem}

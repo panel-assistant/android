@@ -4301,11 +4301,11 @@ class PaneldServer internal constructor(
               <label><input type="checkbox" id="entity-auto-runtime"> ${entityOwnedMarkup(strings.get("entities.policy.runtime"), linkedMapOf("hass.states" to "<code>hass.states</code>"))}</label>
               <p class="muted">${esc(strings.get("entities.policy.note"))}</p>
             </fieldset>
-            <div class="entity-search-row">
-              <label class="sr-only" for="entity-search">${esc(strings.get("entities.search.label"))}</label>
-              <input id="entity-search" type="search" autocomplete="off" placeholder="${esc(strings.get("entities.search.placeholder"))}" aria-describedby="entity-search-status">
-              <div id="entity-search-status" class="entity-search-status muted" role="status" aria-live="polite"></div>
-            </div>
+          </div>
+          <div class="entity-search-row">
+            <label class="sr-only" for="entity-search">${esc(strings.get("entities.search.label"))}</label>
+            <input id="entity-search" type="search" autocomplete="off" placeholder="${esc(strings.get("entities.search.placeholder"))}" aria-describedby="entity-search-status">
+            <div id="entity-search-status" class="entity-search-status muted" role="status" aria-live="polite"></div>
           </div>
           <div class="card entity-issues" id="entity-issues"><h2>${esc(strings.get("entities.issues.title"))}</h2>
             <div id="entity-issues-summary" class="muted" role="status" aria-live="polite">${esc(strings.get("entities.issues.checking"))}</div>
