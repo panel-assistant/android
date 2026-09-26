@@ -714,7 +714,7 @@
    "state": "machine-cross-checked"
   },
   "configure.brightness.sources_load_failed": {
-   "text": "Не вдалося завантажити джерела з Home Assistant; точний ідентифікатор об’єкта датчика все ще можна ввести.",
+   "text": "Не вдалося завантажити джерела з Home Assistant; точний ідентифікатор сутності датчика все ще можна ввести.",
    "sourceHash": "c7968b3a9d9a13e3abc244c1404692d1359fed376b56f61f5a53005127b7bd29",
    "state": "machine-cross-checked"
   },
@@ -729,7 +729,7 @@
    "state": "machine-cross-checked"
   },
   "configure.brightness.sources_unavailable": {
-   "text": "Джерела Home Assistant недоступні; точний ідентифікатор об’єкта датчика все ще можна ввести.",
+   "text": "Джерела Home Assistant недоступні; точний ідентифікатор сутності датчика все ще можна ввести.",
    "sourceHash": "cb57d539905851c5c9c7144ab04547cfb584b02d55edbf16424b168726eded68",
    "state": "machine-cross-checked"
   },
@@ -1539,7 +1539,7 @@
    "state": "machine-cross-checked"
   },
   "configure.setup.ha_signin.body": {
-   "text": "Вибрано вбудований рендерер ha-paneld. Скористайтеся входом через браузер у картці «З’єднання з Home Assistant» нижче або завершіть вхід, показаний на панелі.",
+   "text": "Вибрано вбудований рендерер ha-paneld. У картці «З’єднання з Home Assistant» нижче скористайтеся функцією «Вхід через браузер» або завершіть вхід, показаний на панелі.",
    "sourceHash": "b14fe9b7c942a78eb940cb68135e7f4d2c5236919930c977576168e6182a90f5",
    "state": "machine-cross-checked"
   },
@@ -1574,7 +1574,7 @@
    "state": "machine-cross-checked"
   },
   "configure.setup.strategy_allowed.body": {
-   "text": "Home Assistant створює інформаційну панель цієї панелі на основі стратегії, і перевірку виявлення об’єктів дозволено, тому картки з’являються лише для об’єктів, що входять до підписки.",
+   "text": "Home Assistant створює інформаційну панель цієї панелі на основі стратегії, і перевірку виявлення сутностей дозволено, тому картки з’являються лише для сутностей, що входять до підписки.",
    "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
    "state": "machine-cross-checked"
   },
@@ -1774,7 +1774,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.actions.remote_input_disabled": {
-   "text": "Введення даних шляхом дистанційного натискання вимкнено для мережевих клієнтів у режимі «Hardened».",
+   "text": "Дистанційні натискання вимкнено для мережевих клієнтів у режимі «Hardened».",
    "sourceHash": "3aaa115bb156e96c5f3b2f9a1daa5d19806a92e5f1a47f6cd80066b36cc9e209",
    "state": "machine-cross-checked"
   },
@@ -1784,7 +1784,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.auth_rejected.explanation": {
-   "text": "збережені налаштування входу відхилено, тому інформаційна панель припинила повторні спроби (на панелі показано інструкції з виправлення). Скористайтеся входом через браузер на сторінці",
+   "text": "збережені налаштування входу відхилено, тому інформаційна панель припинила повторні спроби (на панелі показано інструкції з виправлення). Скористайтеся функцією «Вхід через браузер» на сторінці",
    "sourceHash": "e414f00aea1c8c8d9ac8a59a1fa6902c8fca809a1ad9990d1bed61898c4d8e96",
    "state": "machine-cross-checked"
   },
@@ -1809,7 +1809,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.companion_url.explanation": {
-   "text": "Виправлення встановлює внутрішню URL-адресу на зовнішню URL-адресу.",
+   "text": "Виправлення замінює внутрішню URL-адресу зовнішньою URL-адресою.",
    "sourceHash": "1fc0536e933993621bd1b791bad1196de804ee4c31783a6fade2011d34bd0c73",
    "state": "machine-cross-checked"
   },
@@ -3229,7 +3229,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.inspect.running": {
-   "text": "Ретранслятор увімкнено. У chrome://inspect інформаційна панель тепер відображається у розділі віддалених цілей — натисніть посилання перегляду. Якщо її не видно, хост потрібно додати до ввімкнення — додайте {host} у Configure…, потім оновіть chrome://inspect. Поки ретранслятор увімкнено, DevTools доступні в LAN; натисніть «Зупинити», коли закінчите.",
+   "text": "Ретранслятор увімкнено. У chrome://inspect інформаційна панель тепер відображається в розділі Remote Target — натисніть inspect. Якщо її не видно, хост потрібно додати до ввімкнення — додайте {host} у Configure…, потім оновіть chrome://inspect. Поки ретранслятор увімкнено, DevTools доступні в LAN; натисніть «Зупинити», коли закінчите.",
    "sourceHash": "2e061fb7d41c99241a10ac0799976d3994087845144cc55526eeb1e3585b8fa6",
    "state": "machine-cross-checked"
   },
@@ -4334,7 +4334,7 @@
    "state": "machine-cross-checked"
   },
   "entities.apply.enable_confirm": {
-   "text": "Зберегти поточний потік (кількість об’єктів: {current}) і ввімкнути майбутні автоматичні оновлення за політикою?",
+   "text": "Зберегти поточний потік (кількість сутностей: {current}) і ввімкнути майбутні автоматичні оновлення за політикою?",
    "sourceHash": "bac6011889095102b94474f07be420771d6019f85ae6145be6e969f509525ecc",
    "state": "machine-cross-checked"
   },
@@ -4344,7 +4344,7 @@
    "state": "machine-cross-checked"
   },
   "entities.apply.replace_confirm": {
-   "text": "Замінити поточний потік (кількість об’єктів: {current}) набором, вибраним політикою (кількість об’єктів: {desired})? Додано: {added}; видалено: {removed}. Це перезавантажить інформаційну панель.",
+   "text": "Замінити поточний потік (кількість сутностей: {current}) набором, вибраним політикою (кількість сутностей: {desired})? Додано: {added}; видалено: {removed}. Це перезавантажить інформаційну панель.",
    "sourceHash": "770343d8562dc49d471c9d0759a998a6c18ca3f79c9d7d27c24c430ce99e6834",
    "state": "machine-cross-checked"
   },
@@ -4359,12 +4359,12 @@
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_all_confirm.one": {
-   "text": "Виключити {count} запропонований об’єкт? Це може порушити роботу карток інформаційної панелі.",
+   "text": "Виключити запропоновану сутність ({count})? Це може порушити роботу карток інформаційної панелі.",
    "sourceHash": "4ee7872151dc628a5534388bc708bbdaaa3854e51513b745e69be6ce297f1447",
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_all_confirm.other": {
-   "text": "Виключити всі запропоновані об’єкти ({count})? Це може порушити роботу карток інформаційної панелі.",
+   "text": "Виключити всі запропоновані сутності ({count})? Це може порушити роботу карток інформаційної панелі.",
    "sourceHash": "f71967c93e9b393036ab0e5c4e0d5189d27764b34014e3998bd9d529ca305ae5",
    "state": "machine-cross-checked"
   },
@@ -4374,12 +4374,12 @@
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_selected_confirm.one": {
-   "text": "Виключити {count} вибраний об’єкт? Це може порушити роботу карток інформаційної панелі.",
+   "text": "Виключити вибрану сутність ({count})? Це може порушити роботу карток інформаційної панелі.",
    "sourceHash": "227268d87fbedc2dfd3681cdb64ea4aa08966e03db558c156671e14d22f4e357",
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_selected_confirm.other": {
-   "text": "Виключити вибрані об’єкти ({count})? Це може порушити роботу карток інформаційної панелі.",
+   "text": "Виключити вибрані сутності ({count})? Це може порушити роботу карток інформаційної панелі.",
    "sourceHash": "a4d9e3e4433232a4693d7b385710a5641b8b1352ea5e80a956edce2e14bd0bba",
    "state": "machine-cross-checked"
   },
@@ -4389,12 +4389,12 @@
    "state": "machine-cross-checked"
   },
   "entities.bulk.pin_all_confirm.one": {
-   "text": "Закріпити {count} запропонований об’єкт?",
+   "text": "Закріпити запропоновану сутність ({count})?",
    "sourceHash": "1d741b9dda2c5645cb6f05b3f56409acf87abee8b61d5c6b955ec13e7ae25c24",
    "state": "machine-cross-checked"
   },
   "entities.bulk.pin_all_confirm.other": {
-   "text": "Закріпити всі запропоновані об’єкти ({count})?",
+   "text": "Закріпити всі запропоновані сутності ({count})?",
    "sourceHash": "9ca6f7bc0cc669c9a4df740064cdbbf4a00b7e2c9224a26dc64f17b5f9a919a5",
    "state": "machine-cross-checked"
   },
@@ -4424,7 +4424,7 @@
    "state": "machine-cross-checked"
   },
   "entities.control.apply_policy": {
-   "text": "Застосувати набір політик ({current} → {desired})",
+   "text": "Застосувати набір, вибраний політикою ({current} → {desired})",
    "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
    "state": "machine-cross-checked"
   },
@@ -4504,7 +4504,7 @@
    "state": "machine-cross-checked"
   },
   "entities.dynamic.body": {
-   "text": "Ці вирази не є помилками конфігурації. Задійте відповідний стан інформаційної панелі, щоб спостереження під час виконання виявило конкретні ідентифікатори сутностей. Шаблони, які Home Assistant обробляє на сервері, наприклад {{ ... }} та {% ... %}, обчислюються до того, як їх отримає інформаційна панель, тому задіювання стану ніколи не виявить сутностей, які вони зчитують. У цьому немає потреби: Home Assistant надсилає оброблений результат окремою підпискою, якої цей фільтр не торкається, тому ці сутності нічого не потребують. Вручну потрібно додати лише ту сутність, яку такий шаблон створює як посилання картки.",
+   "text": "Ці вирази не є помилками конфігурації. Задійте відповідний стан інформаційної панелі, щоб спостереження під час виконання виявило конкретні ідентифікатори сутностей. Шаблони, які Home Assistant обробляє на сервері, наприклад {{ ... }} та {% ... %}, обчислюються до того, як їх отримає інформаційна панель, тому задіювання стану ніколи не виявить сутностей, які вони зчитують. У цьому немає потреби: Home Assistant надсилає оброблений результат окремою підпискою, якої цей фільтр не торкається, тому ці сутності нічого не потребують. Вручну потрібно додати лише сутність, на яку картка посилається через результат такого шаблону.",
    "sourceHash": "b71078752a0fda1c44508c52871014086acdfd547b2ea28da0bb0be8c02e005f",
    "state": "machine-cross-checked"
   },
@@ -4579,7 +4579,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.allow_note": {
-   "text": "Якщо дозволити цю перевірку, сутності ніколи не додаються. Це лише дає змогу автоматичним оновленням продовжуватися без них. Щоб підписатися на одну з них, знайдіть її пошуком у каталозі вгорі цієї сторінки та встановіть для неї значення {pinned}; ручне закріплення зберігається, доки ви його не видалите.",
+   "text": "Якщо дозволити цю перевірку, жодної сутності від цього не додасться. Це лише дає змогу автоматичним оновленням продовжуватися без них. Щоб підписатися на одну з них, знайдіть її пошуком у каталозі вгорі цієї сторінки та встановіть для неї значення {pinned}; ручне закріплення зберігається, доки ви його не видалите.",
    "sourceHash": "d3c4b6d2399ff0b190f6ccafb3bb888b75db62d7a682cd5a5c06dbe91a24df72",
    "state": "machine-cross-checked"
   },
@@ -4599,22 +4599,22 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-options-dynamic.summary": {
-   "text": "Параметри автоматичних сутностей можуть генерувати залежності сутностей під час виконання",
+   "text": "Параметри Auto-entities можуть створювати залежності від сутностей під час виконання",
    "sourceHash": "5c2b12a42a8e3532dc2419da1a6acffb51b32084a7b1e20307a703bce0a5f9e3",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-options-javascript.summary": {
-   "text": "Параметри автоматичних сутностей виконують JavaScript, який може замінити залежності від сутностей",
+   "text": "Параметри Auto-entities виконують JavaScript, який може замінити залежності від сутностей",
    "sourceHash": "22ceb20450b38f3e3d14b8fc60baf3f2f1e72e6f5b67f49b3059452c95e082e7",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-seed-row-dynamic.summary": {
-   "text": "Рядок початкових даних для автоматичних сутностей може генерувати залежності між сутностями під час виконання",
+   "text": "Початковий рядок Auto-entities може створювати залежності від сутностей під час виконання",
    "sourceHash": "19844079e668f90890e0175779b98c82fc44bc1a804f93b91b2da6ca279e6609",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-typed-row-dynamic.summary": {
-   "text": "Рядок з типізованими авто-сутностями може генерувати залежності між сутностями під час виконання",
+   "text": "Типізований рядок Auto-entities може створювати залежності від сутностей під час виконання",
    "sourceHash": "4c5f40b1bf80e9559cc388ad364d6786786976643187f19a5b49c5339c02f7d7",
    "state": "machine-cross-checked"
   },
@@ -4669,7 +4669,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.dashboard-strategy.summary": {
-   "text": "Стратегія інформаційної панелі генерує залежності сутностей під час виконання",
+   "text": "Стратегія інформаційної панелі створює залежності від сутностей під час виконання",
    "sourceHash": "c2ef5e779dcb1501a2b260488a99ebcd44cc4bef2a10e3f47f5399e9dff8d740",
    "state": "machine-cross-checked"
   },
@@ -4829,12 +4829,12 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.selector-registry-incomplete.summary": {
-   "text": "Селектор сутностей вимагає неповних метаданих реєстру",
+   "text": "Селектору сутностей потрібні метадані реєстру, але вони неповні",
    "sourceHash": "1660048cec84e73c46fb601b775b6d846b48ca9c8eb24814e284160122d69420",
    "state": "machine-cross-checked"
   },
   "entities.issue.selector-total-budget.reason": {
-   "text": "Сума обмежених селекторів перевищує безпечний ліміт підписок на інформаційну панель.",
+   "text": "Об’єднаний набір сутностей обмежених селекторів перевищує безпечний ліміт підписки інформаційної панелі.",
    "sourceHash": "8aed88e4dcadaf16d7cdaf424cf672f49063a2514bfdbfb2efdc24da5f914bb6",
    "state": "machine-cross-checked"
   },
@@ -4844,7 +4844,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.selector-total-budget.summary": {
-   "text": "Обмежені селектори разом відповідають сутностям: {candidate_count}",
+   "text": "Кількість сутностей, які разом охоплюють обмежені селектори: {candidate_count}",
    "sourceHash": "b9b9031818790fa57e332221654ebb7128f3110f15825ee9040bdd50153d8446",
    "state": "machine-cross-checked"
   },
@@ -4894,7 +4894,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.suggested_edit": {
-   "text": "Пропоновані зміни:",
+   "text": "Пропонована зміна:",
    "sourceHash": "17f08ab889b9f97f3633228988c4e1d939458e52a181d5cc4f9f78475ce13d70",
    "state": "machine-cross-checked"
   },
@@ -5054,17 +5054,17 @@
    "state": "machine-cross-checked"
   },
   "entities.reset.complete_no_scan": {
-   "text": "Скидання завершено. Вивчені докази, ручні перевизначення та рішення про ігнорування перевірок безпеки видалено. Поточну активну підписку збережено, але сканування на заміну не розпочалося; скористайтеся {scan_action}, щоб спробувати ще раз.",
+   "text": "Скидання завершено. Зібрані дані про сутності, ручні перевизначення та рішення про ігнорування перевірок безпеки видалено. Поточну активну підписку збережено, але нове сканування не розпочалося; скористайтеся {scan_action}, щоб спробувати ще раз.",
    "sourceHash": "f0198d70c226424f7a78ff65f1545e155230fd732de12e08ed4474cbaf7451c6",
    "state": "machine-cross-checked"
   },
   "entities.reset.complete_scanning": {
-   "text": "Скидання завершено. Вивчені докази, ручні перевизначення та рішення про ігнорування перевірок безпеки видалено. Виконується сканування на заміну; поточна активна підписка залишається чинною, доки це сканування не завершиться успішно.",
+   "text": "Скидання завершено. Зібрані дані про сутності, ручні перевизначення та рішення про ігнорування перевірок безпеки видалено. Триває нове сканування; поточна активна підписка залишається чинною, доки це сканування не завершиться успішно.",
    "sourceHash": "0c9fed9e1b5fcde6591508c956e73fb8249ada0f34305d203ebe0298b074dfdf",
    "state": "machine-cross-checked"
   },
   "entities.reset.confirm": {
-   "text": "Скинути всі вивчені докази щодо сутностей, ручні перевизначення закріплення/виключення та рішення про ігнорування перевірок безпеки виявлення сутностей? Цю дію неможливо скасувати. Поточну активну підписку буде збережено, поки сканування на заміну відновлює докази.",
+   "text": "Скинути всі зібрані дані про сутності, ручні перевизначення закріплення/виключення та рішення про ігнорування перевірок безпеки виявлення сутностей? Цю дію неможливо скасувати. Поточну активну підписку буде збережено, поки нове сканування знову збере ці дані.",
    "sourceHash": "af56ee112e5d4353209106117b9426c18de16a6c7cfc2c2e2db39526d56a1db6",
    "state": "machine-cross-checked"
   },
@@ -5124,7 +5124,7 @@
    "state": "machine-cross-checked"
   },
   "entities.scan.complete_unchanged": {
-   "text": "Сканування завершено. Каталогізовано: {catalogued}; запропоновано: {suggested}. Кількість активних підписок не змінилася: {current}.",
+   "text": "Сканування завершено. Каталогізовано: {catalogued}; запропоновано: {suggested}. Кількість сутностей в активній підписці не змінилася: {current}.",
    "sourceHash": "700d9dd54f5cbdb25b1daf336f7ac7afc0bd5713f4e109c8065af376a65b2033",
    "state": "machine-cross-checked"
   },
@@ -5619,7 +5619,7 @@
    "state": "machine-cross-checked"
   },
   "install.apk_status.fetch_failed": {
-   "text": "панель не змогла завантажити це посилання",
+   "text": "панель не змогла завантажити файл за цим посиланням",
    "sourceHash": "f42498880844fec60487847c9df29ce4b684942fef96f3f8a925cfd39ae30ccd",
    "state": "machine-cross-checked"
   },
@@ -5684,7 +5684,7 @@
    "state": "machine-cross-checked"
   },
   "install.apk_status.upload_timeout": {
-   "text": "завантаження тривало занадто довго",
+   "text": "передавання на панель тривало надто довго",
    "sourceHash": "9f6766e89a507d7be8719e9dc7d3b399435583e862aa8bfe6172f5d2f3656dd6",
    "state": "machine-cross-checked"
   },
@@ -5864,17 +5864,17 @@
    "state": "machine-cross-checked"
   },
   "install.companion.error.helper_busy": {
-   "text": "Допоміжний модуль компаньйона зайнятий",
+   "text": "Помічник застосунку-компаньйона зайнятий",
    "sourceHash": "bd72fd8b3124959c616cb91ed361f86344f27fdf37bc90faf023768f701dac29",
    "state": "machine-cross-checked"
   },
   "install.companion.error.helper_unavailable": {
-   "text": "Допоміжний модуль компаньйона недоступний",
+   "text": "Помічник застосунку-компаньйона недоступний",
    "sourceHash": "7ff8ce015e30889d9cc37648e0f3cf6e03b100156bed873f69993b5339e18cca",
    "state": "machine-cross-checked"
   },
   "install.companion.error.marker_failed": {
-   "text": "Не вдалося зберегти маркер безпеки операції компаньйона",
+   "text": "Не вдалося зберегти маркер безпеки операції застосунку-компаньйона",
    "sourceHash": "bcf33daf2b195cd0bf26848ff1e14f60bc1cd537f618bd3eaa1e09d924d4b855",
    "state": "machine-cross-checked"
   },
@@ -6064,7 +6064,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_staging_retained": {
-   "text": "Не вдалося видалити конфіденційні тимчасові дані резервної копії. Перевірте простір на панелі, а потім спробуйте ще раз; резервна копія не була завантажена.",
+   "text": "Не вдалося видалити конфіденційні тимчасові дані резервної копії. Перевірте сховище панелі, а потім спробуйте ще раз; резервну копію не завантажено.",
    "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
    "state": "machine-cross-checked"
   },
@@ -6164,7 +6164,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.install_durable_rejection": {
-   "text": "{component}: встановлення відхилено перевіркою безпеки; це рішення збережено.",
+   "text": "{component}: встановлення відхилено перевіркою безпеки; повторна спроба за тих самих умов не допоможе.",
    "sourceHash": "9db26fbbcef40ecc31fdf592e4bc29ffc05ab027fb642ce568ab02f9a7805b07",
    "state": "machine-cross-checked"
   },
@@ -6414,7 +6414,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.status_builtin_renderer_retries_stopped": {
-   "text": "⛔ Вбудований рендерер припинив повторні спроби після багаторазових збоїв WebView. Оновіть або відновіть System WebView, а потім скористайтеся «Перезавантажити інформаційну панель» у навігаційному меню панелі або на вкладці «Інформаційна панель».",
+   "text": "⛔ Вбудований рендерер припинив повторні спроби після багаторазових збоїв WebView. Оновіть або відновіть System WebView, а потім скористайтеся «Перезавантажити інформаційну панель» на панелі навігації пристрою або «Оновити» на вкладці «Інформаційна панель».",
    "sourceHash": "1b5418807f2f485ae2f516c802d5e0801c94630d573966d230b92d877e08417e",
    "state": "machine-cross-checked"
   },
@@ -6499,7 +6499,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.status_zigbee_not_joined": {
-   "text": "⚠ Маршрутизатор Zigbee увімкнено, але не приєднано — повторні спроби приєднання можуть споживати значну частину ресурсів CPU. Приєднайте цю панель до свого координатора Zigbee або вимкніть перемикач маршрутизатора Zigbee. Вирішити налаштування Zigbee →",
+   "text": "⚠ Маршрутизатор Zigbee увімкнено, але не приєднано — повторні спроби приєднання можуть споживати значну частину ресурсів CPU. Приєднайте цю панель до свого координатора Zigbee або вимкніть перемикач маршрутизатора Zigbee. Виправити налаштування Zigbee →",
    "sourceHash": "756f12ad96609cfe381d71d0132cd7dcd400cdb9d2aa499bcb86de8aad7fba04",
    "state": "machine-cross-checked"
   },
@@ -6729,12 +6729,12 @@
    "state": "machine-cross-checked"
   },
   "install.status.companion_url_missing.one": {
-   "text": "⚠ У Home Assistant Companion немає внутрішньої URL-адреси для {count} сервера — інформаційна панель може видавати помилку «Відсутній заголовок 'Host'». Виправте це на вкладці «Встановлення».",
+   "text": "⚠ У Home Assistant Companion немає внутрішньої URL-адреси для {count} сервера — інформаційна панель може видавати помилку «Відсутній заголовок 'Host'». Виправте цю внутрішню адресу на вкладці «Встановлення».",
    "sourceHash": "6ec34cbc2c652fbcf870b2d71fb669d7d4ae9e8d53a769d7d775816ce539c94b",
    "state": "machine-cross-checked"
   },
   "install.status.companion_url_missing.other": {
-   "text": "⚠ У Home Assistant Companion немає внутрішньої URL-адреси для {count} серверів — інформаційна панель може видавати помилку «Відсутній заголовок 'Host'». Виправте їх на вкладці «Встановлення».",
+   "text": "⚠ У Home Assistant Companion немає внутрішньої URL-адреси для {count} серверів — інформаційна панель може видавати помилку «Відсутній заголовок 'Host'». Виправте ці внутрішні адреси на вкладці «Встановлення».",
    "sourceHash": "0e438c28f54290449d21614ea11cf55a5fee35079ca10181de7174535f670dc5",
    "state": "machine-cross-checked"
   },
@@ -6924,7 +6924,7 @@
    "state": "machine-cross-checked"
   },
   "oauth.callback.ambient_warning": {
-   "text": "Home Assistant налаштовано, але вибране джерело навколишнього освітлення потребує уваги.",
+   "text": "Home Assistant налаштовано, але вибране джерело даних про рівень навколишнього освітлення потребує уваги.",
    "sourceHash": "c78fcf2f6d3db79e150a52552aea094c1fa8af3dad4accfd061ef4a5dc5fa251",
    "state": "machine-cross-checked"
   },
@@ -6964,7 +6964,7 @@
    "state": "machine-cross-checked"
   },
   "oauth.callback.stale": {
-   "text": "Налаштування Home Assistant змінилися, поки було відкрито вхід. Почніть новий вхід.",
+   "text": "Налаштування Home Assistant змінилися, поки сторінка входу була відкрита. Почніть новий вхід.",
    "sourceHash": "453e015499c34d971376e4670845e3b60943c834fdd580b9731ff407b4352467",
    "state": "machine-cross-checked"
   },
@@ -8549,7 +8549,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.state.last_known_good": {
-   "text": "Останній відомий працездатний стан",
+   "text": "Останній відомий працездатний профіль",
    "sourceHash": "f352aca110ce966b98af6211665ab16a127210a9b397d9cb50d4f009cf2537ea",
    "state": "machine-cross-checked"
   },
@@ -8739,7 +8739,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.mdns.stale_address": {
-   "text": "⚠ Виявлення панелі (mDNS) містить застарілу адресу ({bound_ip}, тепер {lan_ip}) — інші панелі не можуть отримати доступ до цієї панелі через перемикач, доки вона не буде переприв’язана.",
+   "text": "⚠ Виявлення панелі (mDNS) містить застарілу адресу ({bound_ip}, тепер {lan_ip}) — інші панелі не можуть отримати доступ до цієї панелі через перемикач, доки служба виявлення не прив’яжеться знову до актуальної адреси.",
    "sourceHash": "8677f10a52a47c0e7df96907de1da8b86cd875d30bb03b25092a3d63c725157c",
    "state": "machine-cross-checked"
   },
@@ -8769,7 +8769,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.power_safety.action.acknowledgeable": {
-   "text": "Блокування CPU/Wi-Fi застосунку та нескінченний тайм-аут активні, але параметр Android «Не вимикати екран» і Doze не можна змінити через поточний маршрут цієї панелі. Ви можете приховати саме це попередження; воно з’явиться знову, якщо зміняться дані або можливості.",
+   "text": "Блокування засинання CPU/Wi-Fi у застосунку та нескінченний тайм-аут активні, але параметр Android «Не вимикати екран» і Doze не можна змінити через поточний маршрут цієї панелі. Ви можете приховати саме це попередження; воно з’явиться знову, якщо зміняться дані або можливості.",
    "sourceHash": "54602ea6c3a55fe72a8109d82bb47beaad03647a29f9a4e04449c1d2b8e223fa",
    "state": "machine-cross-checked"
   },
@@ -8784,7 +8784,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.power_safety.action.repair_degraded": {
-   "text": "Скористайтеся кнопкою «Відновити безпеку живлення», щоб перевірити захист застосунку й повторити спробу поточного погіршеного маршруту прямого root-доступу цієї панелі. Відновлення ніколи не перезавантажує панель.",
+   "text": "Скористайтеся кнопкою «Відновити безпеку живлення», щоб перевірити захист застосунку й повторити спробу використати поточний шлях прямого root-доступу цієї панелі, який працює з обмеженнями. Відновлення ніколи не перезавантажує панель.",
    "sourceHash": "acb7d2bc475d897202962a44cc3c84ebffcdb1e55369edeadd13ab130dbf0735",
    "state": "machine-cross-checked"
   },
@@ -8794,7 +8794,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.power_safety.action.repair_limited": {
-   "text": "Скористайтеся кнопкою «Відновити безпеку живлення», щоб увімкнути й перевірити блокування CPU/Wi-Fi застосунку та нескінченний тайм-аут. Зміни параметра Android «Не вимикати екран» і Doze недоступні через поточний маршрут цієї панелі.",
+   "text": "Скористайтеся кнопкою «Відновити безпеку живлення», щоб увімкнути й перевірити блокування засинання CPU/Wi-Fi у застосунку та нескінченний тайм-аут. Зміни параметра Android «Не вимикати екран» і Doze недоступні через поточний маршрут цієї панелі.",
    "sourceHash": "4524b3525e8bddcd709de253886b1737e2e5afd6d19c89b90d3b0fddd7dd842a",
    "state": "machine-cross-checked"
   },
@@ -8889,7 +8889,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.renderer_recovery.builtin": {
-   "text": "Вбудований рендерер припинив повторні спроби після повторюваних збоїв WebView. Оновіть або відновіть System WebView, а потім скористайтеся «Перезавантажити інформаційну панель» на панелі навігації або у вкладці «Інформаційна панель».",
+   "text": "Вбудований рендерер припинив повторні спроби після повторюваних збоїв WebView. Оновіть або відновіть System WebView, а потім скористайтеся «Перезавантажити інформаційну панель» на панелі навігації або «Оновити» на вкладці «Інформаційна панель».",
    "sourceHash": "20f93e06aeff7310a8f77b8fa3242cd484ebedb2b1a6242e5aaba65209c4b428",
    "state": "machine-cross-checked"
   },
@@ -8919,12 +8919,12 @@
    "state": "machine-cross-checked"
   },
   "runtime.zigbee.warning.legacy_watchdog": {
-   "text": "Виявлено дефект застарілого сторожового механізму Zigbee — присутнє саме те рекурсивне призначення LD_LIBRARY_PATH. ha-paneld не редагуватиме скрипт постачальника автоматично.",
+   "text": "Виявлено дефект застарілого сторожового механізму Zigbee — наявне саме те рекурсивне присвоєння змінній LD_LIBRARY_PATH. ha-paneld не редагуватиме скрипт постачальника автоматично.",
    "sourceHash": "cb9f47756c7492c12f1ef735915723ec820b711f086df460a42eeb72302a0719",
    "state": "machine-cross-checked"
   },
   "runtime.zigbee.warning.resolve": {
-   "text": "Завершити налаштування Zigbee →",
+   "text": "Виправити налаштування Zigbee →",
    "sourceHash": "a3e1ee4e02fb8ad443c2e66c6d6331a19f727ceab84dd5abf4cd216241261573",
    "state": "machine-cross-checked"
   },
@@ -9849,7 +9849,7 @@
    "state": "machine-cross-checked"
   },
   "setup.area.none_yet": {
-   "text": "Області ще немає — виберіть одну",
+   "text": "Приміщення ще не вказано — виберіть одне",
    "sourceHash": "b4db738a6df76b81c63a39c1bd6aa29b427e08ba267ffa3941d830533d1384b8",
    "state": "machine-cross-checked"
   },
@@ -9874,7 +9874,7 @@
    "state": "machine-cross-checked"
   },
   "setup.dashboard.action.follow_default": {
-   "text": "Використати типову для облікового запису",
+   "text": "Використовувати типову інформаційну панель облікового запису",
    "sourceHash": "6c6cfb2c5bf349ea601bc08b9f6737cd027a15697c3e5012db95d114b8bff1a8",
    "state": "machine-cross-checked"
   },
@@ -9944,7 +9944,7 @@
    "state": "machine-cross-checked"
   },
   "setup.dashboard.option.auto_default": {
-   "text": "Авто — типове значення цього облікового запису",
+   "text": "Авто — використовувати типову інформаційну панель цього облікового запису",
    "sourceHash": "b049c63a3b2b17956fa93993993be49fef42b7b5be21a0272ee5fa4c2a8f1eef",
    "state": "machine-cross-checked"
   },
@@ -10024,7 +10024,7 @@
    "state": "machine-cross-checked"
   },
   "setup.done.action.configure": {
-   "text": "Налаштування панелі",
+   "text": "Налаштувати панель",
    "sourceHash": "2fd565639231606a819c15ed7c1f9c2cfae635bb48c2b38a3fa9e57cc282a857",
    "state": "machine-cross-checked"
   },
@@ -10064,7 +10064,7 @@
    "state": "machine-cross-checked"
   },
   "setup.done.taming_intro": {
-   "text": "Необов’язково: панелі часто постачаються із застосунками виробника, які спливають поверх інформаційної панелі. ha-paneld може їх приглушити.",
+   "text": "Необов’язково: панелі часто постачаються із застосунками виробника, які спливають поверх інформаційної панелі. ha-paneld може їх приборкати.",
    "sourceHash": "df51327092a8655bdb336547196c85ecc908233391c308ae6085a8e18c2519b8",
    "state": "machine-cross-checked"
   },
@@ -10079,7 +10079,7 @@
    "state": "machine-cross-checked"
   },
   "setup.error.approval_required": {
-   "text": "Підтвердьте цей запит на панелі, а потім збережіть ще раз.",
+   "text": "Схваліть цей запит на панелі, а потім збережіть ще раз.",
    "sourceHash": "f13edc21eed9b6db17aafc75e5fdd3e20121e23c18732d4ececf3bc3a40d3f99",
    "state": "machine-cross-checked"
   },
@@ -10214,12 +10214,12 @@
    "state": "machine-cross-checked"
   },
   "setup.filter.red.consequence": {
-   "text": "Ви все ще можете завантажити його без фільтрації, якщо хочете самостійно переконатися в різниці. Все працюватиме — просто відчуватиметься значна повільність та затримки.",
+   "text": "Ви все ще можете завантажити її без фільтрації, якщо хочете самі побачити різницю. Вона працюватиме, але буде дуже повільною й реагуватиме із затримкою.",
    "sourceHash": "b25e0b2f36ae4dff1d5921b7a9720527a6b5abf33138ab6c17d57e6c6af4d8f0",
    "state": "machine-cross-checked"
   },
   "setup.filter.red.estimated": {
-   "text": "Судячи з апаратного забезпечення цього чіпа та кількості ваших сутностей, це набагато більше оновлень, ніж він зможе встигнути обробити.",
+   "text": "Судячи з апаратних можливостей цього чіпа та кількості ваших сутностей, він, імовірно, не встигатиме обробляти таку кількість оновлень.",
    "sourceHash": "3eb153c16c649dab20b33bad67490c249062482521d65fe873d61b11a28a9367",
    "state": "machine-cross-checked"
   },
@@ -10279,7 +10279,7 @@
    "state": "machine-cross-checked"
   },
   "setup.ha_url.error.scheme": {
-   "text": "URL повинно починатися з http:// або https://.",
+   "text": "URL-адреса має починатися з http:// або https://.",
    "sourceHash": "3ee6ebecdcd3c42228a623102aed95334a9d75ee98d8b8658c99aedfba9752a0",
    "state": "machine-cross-checked"
   },
@@ -10469,7 +10469,7 @@
    "state": "machine-cross-checked"
   },
   "setup.mqtt.failure.unreachable.confirmed_body": {
-   "text": "Панель підключилася до мережі, але не знайшла там брокера MQTT. Варто перевірити: IP-адресу брокера, порт (1883 для звичайного з’єднання, 8883 для TLS) і чи працює доповнення Mosquitto.",
+   "text": "Панель підключилася до мережі, але не знайшла там брокера MQTT. Варто перевірити: IP-адресу брокера, порт (1883 для незашифрованого з’єднання, 8883 для TLS) і чи працює доповнення Mosquitto.",
    "sourceHash": "c440a30ca8175a84108e62fc8e5639ce768b79ad94e52af2f7a45dcf77a80d43",
    "state": "machine-cross-checked"
   },
@@ -10479,7 +10479,7 @@
    "state": "machine-cross-checked"
   },
   "setup.mqtt.failure.unreachable.presumed_body": {
-   "text": "Панель усе ще намагається з’єднатися у фоновому режимі, але зазвичай це означає, що адреса або порт неправильні. Варто перевірити: IP-адресу брокера, порт (1883 для звичайного з’єднання, 8883 для TLS) і чи працює доповнення Mosquitto.",
+   "text": "Панель усе ще намагається з’єднатися у фоновому режимі, але зазвичай це означає, що адреса або порт неправильні. Варто перевірити: IP-адресу брокера, порт (1883 для незашифрованого з’єднання, 8883 для TLS) і чи працює доповнення Mosquitto.",
    "sourceHash": "d823f63cb15926469341671ed7b82153de68ba03ce26c4ca440310105c32de4c",
    "state": "machine-cross-checked"
   },
@@ -10489,7 +10489,7 @@
    "state": "machine-cross-checked"
   },
   "setup.mqtt.help.body": {
-   "text": "У Home Assistant: Налаштування → Доповнення → брокер Mosquitto. Адреса зазвичай tcp://, а потім IP вашого Home Assistant і :1883. Ім’я користувача та пароль — це користувач Home Assistant: Налаштування → Люди → Додати особу, з увімкненим «Дозволити вхід».",
+   "text": "У Home Assistant: Налаштування → Доповнення → брокер Mosquitto. Адреса зазвичай складається з tcp://, IP-адреси вашого Home Assistant і :1883. Використовуйте ім’я користувача та пароль облікового запису Home Assistant — Налаштування → Особи → Додати особу, увімкнувши «Дозволити вхід в систему».",
    "sourceHash": "2b6c76952afc7a0b34ae075bacd4113d2c5b79ba562ed3c745847ff2d359b0ef",
    "state": "machine-cross-checked"
   },
@@ -10659,7 +10659,7 @@
    "state": "machine-cross-checked"
   },
   "setup.proof.milestone.loading": {
-   "text": "● Завантаження інформаційної панелі — вона може перезавантажитися ще один або два рази під час точного налаштування панелі",
+   "text": "● Завантаження інформаційної панелі — вона може перезавантажитися ще один або два рази, поки панель уточнює налаштування.",
    "sourceHash": "10373fe801f25404a411d4f625bc9407b2f57720321b24290fc36e557c27f5e8",
    "state": "machine-cross-checked"
   },
@@ -10679,7 +10679,7 @@
    "state": "machine-cross-checked"
   },
   "setup.proof.state": {
-   "text": "Панель зараз повинна налаштовувати свою інформаційну панель. Ця сторінка підтвердить, коли Home Assistant почне відображатися.",
+   "text": "Панель зараз повинна налаштовувати свою інформаційну панель. Ця сторінка підтвердить, коли Home Assistant відображатиме інформаційну панель.",
    "sourceHash": "b615c935f105b2be8bd5823406f7dc98af95d833c436b1903f77dbdde1442727",
    "state": "machine-cross-checked"
   },
@@ -11469,7 +11469,7 @@
    "state": "machine-cross-checked"
   },
   "install.display.approval": {
-   "text": "Зміна постійної щільності відображення або розміру тексту",
+   "text": "Постійно змінити щільність відображення або розмір тексту",
    "sourceHash": "815c1f48a68f28f90917791a55c702e08b9b4acf37701d75caaa925a6a29ae73",
    "state": "machine-cross-checked"
   },
