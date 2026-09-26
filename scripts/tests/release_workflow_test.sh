@@ -144,7 +144,7 @@ else
   fail_test "curated changelog remains the sole release prose source"
 fi
 
-required_check_names='["Android build","Host contracts","Dependency integrity","Privileged helper","CodeQL · actions","CodeQL · c-cpp","CodeQL · java-kotlin","CodeQL · javascript-typescript","CodeQL · python"]'
+required_check_names='["Android build","Host contracts","Dependency integrity","Privileged helper","CodeQL · actions, javascript-typescript, python","CodeQL · c-cpp","CodeQL · java-kotlin"]'
 latest_success_checks="$TMP/latest-success-checks.json"
 jq -cn --argjson names "$required_check_names" '
   {check_runs: [$names[] as $name |
@@ -196,11 +196,10 @@ if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" 
    grep -Fq '"Host contracts"' "$WORKFLOW" && \
    grep -Fq '"Dependency integrity"' "$WORKFLOW" && \
    grep -Fq '"Privileged helper"' "$WORKFLOW" && \
-   grep -Fq '"CodeQL · actions"' "$WORKFLOW" && \
+   grep -Fq '"CodeQL · actions, javascript-typescript, python"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · c-cpp"' "$WORKFLOW" && \
    grep -Fq '"CodeQL · java-kotlin"' "$WORKFLOW" && \
-   grep -Fq '"CodeQL · javascript-typescript"' "$WORKFLOW" && \
-   grep -Fq '"CodeQL · python"' "$WORKFLOW" && \
+   ! grep -Fq '"CodeQL · python"' "$WORKFLOW" && \
    grep -Fq 'select(.name == $name and .head_sha == $source and .app.slug == "github-actions")' "$WORKFLOW" && \
    grep -Fq '| max_by(.id) // {}' "$WORKFLOW" && \
    grep -Fq 'max_attempts=60' "$WORKFLOW" && \

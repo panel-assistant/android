@@ -15,6 +15,7 @@ ALL_SHARDS=(
   database-runtime
   install-export
   install-runtime
+  helper-release-install
   helper-transaction
   release-integrity
   renderer-seeding
@@ -22,6 +23,7 @@ ALL_SHARDS=(
   backup
   publication
   database-authority
+  database-capture
   fleet-installer
   host-reclamation
   git-bash
@@ -36,8 +38,9 @@ Runs all provisioning shards by default. A named subset may be supplied for a
 focused gate. --aggregate validates retained shard results without running the
 shards again. Valid shards:
   database-host database-runtime install-export install-runtime
-  helper-transaction release-integrity renderer-seeding install-finish
-  backup publication database-authority fleet-installer
+  helper-release-install helper-transaction release-integrity renderer-seeding
+  install-finish backup publication database-authority database-capture
+  fleet-installer
   host-reclamation git-bash
 EOF
 }

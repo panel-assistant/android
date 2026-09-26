@@ -146,11 +146,9 @@ jobs:
             "Host contracts"
             "Dependency integrity"
             "Privileged helper"
-            "CodeQL · actions"
+            "CodeQL · actions, javascript-typescript, python"
             "CodeQL · c-cpp"
             "CodeQL · java-kotlin"
-            "CodeQL · javascript-typescript"
-            "CodeQL · python"
           )
           max_attempts=60
           sleep_seconds=10

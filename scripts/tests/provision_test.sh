@@ -7,9 +7,9 @@ PROVISION_TEST_SCOPE="${PROVISION_TEST_SCOPE:-all}"
 case "$PROVISION_TEST_SCOPE" in
   db|backup|publication|core|all|\
   shard-database-host|shard-database-runtime|\
-  shard-install-export|shard-install-runtime|shard-helper-transaction|\
+  shard-install-export|shard-install-runtime|shard-helper-release-install|shard-helper-transaction|\
   shard-release-integrity|shard-renderer-seeding|shard-install-finish|\
-  shard-backup|shard-publication|shard-database-authority|shard-fleet-installer|\
+  shard-backup|shard-publication|shard-database-authority|shard-database-capture|shard-fleet-installer|\
   shard-host-reclamation|shard-git-bash) ;;
   *) echo "unknown PROVISION_TEST_SCOPE: $PROVISION_TEST_SCOPE" >&2; exit 2 ;;
 esac
@@ -840,7 +840,7 @@ RESTORE="$TMP/restore.json"
 printf '{"kind":"ha-paneld-config","schema":1,"values":{}}\n' > "$RESTORE"
 if provision_scope_is db core all \
   shard-database-host shard-database-runtime shard-install-export shard-install-runtime \
-  shard-helper-transaction shard-release-integrity shard-renderer-seeding \
+  shard-helper-release-install shard-helper-transaction shard-release-integrity shard-renderer-seeding \
   shard-install-finish; then
 if provision_scope_is db core all shard-database-host; then
 # The host and Android gates consume one normative table. Every row whose owner can occur at a host
@@ -2834,6 +2834,11 @@ assert_success "ample writable /system keeps the normal system layout"
 assert_log_contains 'helper-transaction-[0-9a-f]+.*install-system' "ample capacity selects the system transactional installer"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*install-hybrid' "$MOCK_CALL_LOG" "ample capacity does not create a new hybrid layout"
 
+fi
+[ "$PROVISION_TEST_SCOPE" != shard-install-runtime ] || finish_provision_test
+
+# Split from install-runtime when that shard became the slowest CI job; nothing above is shared.
+if provision_scope_is core all shard-helper-release-install; then
 # Bind the boundary to the exact rc bytes production renders.  Only that boot registration lives on
 # /system now: the helper binary and recovery journal are canonical under /data, so retaining the old
 # fixed 1MB floor would route healthy panels to hybrid for space they never need.
@@ -3130,7 +3135,7 @@ assert_not_contains 'Restarting the panel clears a wedged helper' "$LAST_OUTPUT"
   "a hybrid capacity refusal is never given the wedged-helper advice"
 
 fi
-[ "$PROVISION_TEST_SCOPE" != shard-install-runtime ] || finish_provision_test
+[ "$PROVISION_TEST_SCOPE" != shard-helper-release-install ] || finish_provision_test
 
 if provision_scope_is core all shard-helper-transaction; then
 # The retirement case must keep its own advice: this is the one INSTALL_UNCHANGED reason where a
@@ -6039,6 +6044,11 @@ for admission in MOCK_DB_DEVICE_ROWS=0:rows_empty MOCK_DB_DEVICE_USER_VERSION=0:
   esac
 done
 
+fi
+[ "$PROVISION_TEST_SCOPE" != shard-database-authority ] || finish_provision_test
+
+# Split from database-authority when that shard reached the time budget; nothing above is shared.
+if provision_scope_is core all shard-database-capture; then
 # The host accepts only a complete manifest from the legacy transaction, while an invalid optional
 # manifest is discarded without blocking an ordinary Android package replacement. Each case names the
 # whole refusal: a bare field word such as "schema" or "rows" also appears in an ordinary run's
@@ -6427,7 +6437,7 @@ assert_contains 'unknown provisioning option: --hapaneld-test-sentinel' "the pub
 assert_not_contains 'unknown provisioning option: --allow-missing-db-snapshot' "$LAST_OUTPUT" "the public installer accepts --allow-missing-db-snapshot"
 
 fi
-[ "$PROVISION_TEST_SCOPE" != shard-database-authority ] || finish_provision_test
+[ "$PROVISION_TEST_SCOPE" != shard-database-capture ] || finish_provision_test
 
 if provision_scope_is core all shard-fleet-installer; then
 # ── --reset-config ──────────────────────────────────────────────────────────────────────────────

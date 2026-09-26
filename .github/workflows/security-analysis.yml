@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   codeql:
-    name: CodeQL · ${{ matrix.language }}
+    name: CodeQL · ${{ matrix.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -33,17 +33,21 @@ jobs:
       security-events: write
     strategy:
       fail-fast: false
+      # A push starts these jobs beside CI's, and GitHub runs at most twenty jobs at once, so the three
+      # languages that need no build share one job; Kotlin and C each need their own traced build and keep
+      # their existing /language:<name> code scanning category.
       matrix:
         include:
-          - language: java-kotlin
+          - name: java-kotlin
+            languages: java-kotlin
             build-mode: manual
-          - language: c-cpp
+            category: /language:java-kotlin
+          - name: c-cpp
+            languages: c-cpp
             build-mode: manual
-          - language: javascript-typescript
-            build-mode: none
-          - language: python
-            build-mode: none
-          - language: actions
+            category: /language:c-cpp
+          - name: actions, javascript-typescript, python
+            languages: actions,javascript-typescript,python
             build-mode: none
     steps:
       - name: Check out repository
@@ -52,14 +56,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up JDK 17
-        if: matrix.language == 'java-kotlin'
+        if: matrix.languages == 'java-kotlin'
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Android SDK
-        if: matrix.language == 'java-kotlin'
+        if: matrix.languages == 'java-kotlin'
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
           # The action's default package list includes the retired `tools` package, which sdkmanager
@@ -67,11 +71,11 @@ jobs:
           packages: platform-tools
 
       - name: Install Android build toolchain
-        if: matrix.language == 'java-kotlin'
+        if: matrix.languages == 'java-kotlin'
         run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
 
       - name: Set up Gradle
-        if: matrix.language == 'java-kotlin'
+        if: matrix.languages == 'java-kotlin'
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           cache-provider: enhanced
@@ -79,12 +83,12 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          languages: ${{ matrix.language }}
+          languages: ${{ matrix.languages }}
           build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql-config.yml
 
       - name: Build Android sources for analysis
-        if: matrix.language == 'java-kotlin'
+        if: matrix.languages == 'java-kotlin'
         # The bundled root helper and CDP relay are C, analysed by the c-cpp job; building them here only adds
         # traced compiler time to the Kotlin extraction.
         run: >-
@@ -92,10 +96,10 @@ jobs:
           -x :app:verifyBundledRootHelperBuildIdentity -x :app:compileCdpRelay
 
       - name: Build helper sources for analysis
-        if: matrix.language == 'c-cpp'
+        if: matrix.languages == 'c-cpp'
         run: make -C helper clean all
 
       - name: Analyze
         uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          category: /language:${{ matrix.language }}
+          category: ${{ matrix.category }}

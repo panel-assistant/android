@@ -25,6 +25,7 @@ case "$name" in
   renderer-seeding) cases=1 ;; install-finish) cases=1 ;;
   backup) cases=1 ;; publication) cases=1 ;; database-authority) cases=1 ;;
   fleet-installer) cases=1 ;; host-reclamation) cases=1 ;; git-bash) cases=1 ;;
+  helper-release-install) cases=1 ;; database-capture) cases=1 ;;
   *) exit 2 ;;
 esac
 printf 'tmpdir=%s\n' "$TMPDIR"
@@ -77,26 +78,26 @@ chmod 755 "$FAKE_RUNNER"
 STATE="$TMP/state"; mkdir "$STATE"
 OUT="$TMP/pass-results"
 PASS_LOG="$TMP/pass.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=14 \
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=16 \
 FAKE_STATE_DIR="$STATE" FAKE_SLEEP_SECONDS=0.05 \
   bash "$WRAPPER" --jobs 2 --output "$OUT" > "$PASS_LOG" 2>&1
 status=$?
 description="the complete fake gate passes"; assert_true test "$status" -eq 0
-description="the aggregate pins all 14 shard cases"; assert_true grep -q '^AGGREGATE PASS shards=14 cases=14 failures=0 ' "$PASS_LOG"
+description="the aggregate pins all 16 shard cases"; assert_true grep -q '^AGGREGATE PASS shards=16 cases=16 failures=0 ' "$PASS_LOG"
 description="a successful full gate emits exactly one compatible totals marker"; assert_true test "$(grep -c '^PROVISION_GATE_TOTALS=' "$PASS_LOG")" -eq 1
-description="the full-gate totals marker is coherent"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=14/14;tests=14/14;failures=0' "$PASS_LOG"
+description="the full-gate totals marker is coherent"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=16/16;tests=16/16;failures=0' "$PASS_LOG"
 order="$(awk '/^SHARD / {printf "%s ", $2}' "$PASS_LOG")"
-description="per-shard reports retain deterministic manifest order"; assert_true test "$order" = "database-host database-runtime install-export install-runtime helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority fleet-installer host-reclamation git-bash "
+description="per-shard reports retain deterministic manifest order"; assert_true test "$order" = "database-host database-runtime install-export install-runtime helper-release-install helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority database-capture fleet-installer host-reclamation git-bash "
 unique_tmp="$(grep -h '^tmpdir=' "$OUT"/*/tap.log | sort -u | wc -l | tr -d ' ')"
-description="every shard receives isolated temporary state"; assert_true test "$unique_tmp" -eq 14
+description="every shard receives isolated temporary state"; assert_true test "$unique_tmp" -eq 16
 description="the jobs limit permits the requested concurrency"; assert_true test "$(cat "$STATE/maximum")" -eq 2
 
 AGGREGATE_ONLY_LOG="$TMP/aggregate-only.log"
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=14 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=16 \
   bash "$WRAPPER" --aggregate "$OUT" > "$AGGREGATE_ONLY_LOG" 2>&1
 status=$?
 description="retained results can be aggregated without a shard runner"; assert_true test "$status" -eq 0
-description="retained full-gate results preserve the canonical totals marker"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=14/14;tests=14/14;failures=0' "$AGGREGATE_ONLY_LOG"
+description="retained full-gate results preserve the canonical totals marker"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=16/16;tests=16/16;failures=0' "$AGGREGATE_ONLY_LOG"
 
 # The shard time budget only warns: it names a shard that has grown well past the median, as a GitHub
 # annotation and a step-summary table under Actions, and never changes the verdict or exit status.
@@ -107,7 +108,7 @@ printf '0 130\n' > "$BUDGET/install-runtime/result"
 BUDGET_LOG="$TMP/budget.log"
 BUDGET_SUMMARY="$TMP/budget-summary.md"
 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$BUDGET_SUMMARY" \
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=14 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=16 \
   bash "$WRAPPER" --aggregate "$BUDGET" > "$BUDGET_LOG" 2>&1
 status=$?
 description="an over-budget shard does not fail the gate"; assert_true test "$status" -eq 0
@@ -116,7 +117,7 @@ description="only the over-budget shard is warned"; assert_true test "$(grep -c 
 description="the budget warning is a GitHub annotation under Actions"; assert_true grep -q '^::warning title=Provisioning shard over budget::install-runtime took 130s' "$BUDGET_LOG"
 description="the step summary lists shards slowest first"; assert_true test "$(grep -m1 '^| [a-z]' "$BUDGET_SUMMARY" | cut -d'|' -f2 | tr -d ' ')" = install-runtime
 printf '0 55\n' > "$BUDGET/install-runtime/result"
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=14 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=16 \
   bash "$WRAPPER" --aggregate "$BUDGET" > "$BUDGET_LOG" 2>&1
 description="a short shard stays under the budget floor"; assert_true grep -qx 'BUDGET OK median=20s ratio=2' "$BUDGET_LOG"
 description="no annotation is written outside Actions"; assert_true test "$(grep -c '^::warning' "$BUDGET_LOG" || true)" -eq 0
@@ -125,7 +126,7 @@ MISSING_AGGREGATE="$TMP/missing-aggregate"
 cp -a "$OUT" "$MISSING_AGGREGATE"
 rm -rf "$MISSING_AGGREGATE/database-host"
 MISSING_AGGREGATE_LOG="$TMP/missing-aggregate.log"
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=14 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=16 \
   bash "$WRAPPER" --aggregate "$MISSING_AGGREGATE" > "$MISSING_AGGREGATE_LOG" 2>&1
 status=$?
 description="a retained full gate fails when one shard artifact is missing"; assert_true test "$status" -ne 0
@@ -210,11 +211,11 @@ description="an interrupted nonzero worker fails closed"; assert_true test "$sta
 description="the interrupted status is retained in the shard report"; assert_true grep -q '^SHARD publication FAIL cases=1 failures=0 status=143 ' "$NONZERO_LOG"
 
 AGGREGATE_MISMATCH_LOG="$TMP/aggregate-mismatch.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=15 \
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=17 \
   bash "$WRAPPER" --output "$TMP/aggregate-mismatch-results" > "$AGGREGATE_MISMATCH_LOG" 2>&1
 status=$?
 description="a complete-set aggregate count mismatch fails closed"; assert_true test "$status" -ne 0
-description="the exact expected and actual aggregate are reported"; assert_true grep -q '^CONTRACT FAIL expected_cases=15 actual_cases=14$' "$AGGREGATE_MISMATCH_LOG"
+description="the exact expected and actual aggregate are reported"; assert_true grep -q '^CONTRACT FAIL expected_cases=17 actual_cases=16$' "$AGGREGATE_MISMATCH_LOG"
 description="an aggregate mismatch emits no passing totals marker"; assert_true test "$(grep -c '^PROVISION_GATE_TOTALS=' "$AGGREGATE_MISMATCH_LOG" || true)" -eq 0
 
 TERM_LOG="$TMP/term.log"
@@ -266,8 +267,9 @@ hosted_build_job="$(awk '/^  build:$/ { in_job=1 } /^  android-build:$/ { exit }
 android_build_job="$(awk '/^  android-build:$/ { in_job=1 } /^  host-contracts:$/ { exit } in_job' "$CI_WORKFLOW")"
 host_job="$(awk '/^  host-contracts:$/ { in_job=1 } /^  provisioning:$/ { exit } in_job' "$CI_WORKFLOW")"
 shard_list="$(awk '/^            shards: / { sub(/^            shards: /, ""); print }' <<<"$provisioning_job" | tr ' ' '\n' | sort)"
-expected_shards="$(printf '%s\n' database-host database-runtime install-export install-runtime helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority fleet-installer host-reclamation git-bash | sort)"
+expected_shards="$(printf '%s\n' database-host database-runtime install-export install-runtime helper-release-install helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority database-capture fleet-installer host-reclamation git-bash | sort)"
 if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 3 --output "$results" ${{ matrix.shards }}' <<<"$provisioning_job" &&
+   grep -Fqx "    runs-on: \${{ github.event_name != 'pull_request' && vars.CI_PROVISIONING_RUNNER != 'hosted' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}" <<<"$provisioning_job" &&
    [ "$shard_list" = "$expected_shards" ] &&
    grep -Fq 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' <<<"$provisioning_job" &&
    grep -Fq 'name: provisioning-${{ matrix.group }}' <<<"$provisioning_job" &&

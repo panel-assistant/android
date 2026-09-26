@@ -488,20 +488,31 @@ jobs:
     # jobs, so shards queued for up to two minutes behind each other. Grouping keeps every group within
     # the longest shard's time on a four-core runner while leaving the workflows under that ceiling.
     name: Provisioning ${{ matrix.group }}
-    runs-on: ubuntu-24.04
+    # Pushes and manual runs use Blacksmith's 4-vCPU Ubuntu 24.04 runners, which have no concurrency
+    # limit, so these twelve CPU-bound jobs no longer queue behind GitHub's twenty. Pull requests stay on
+    # GitHub-hosted runners, and setting the repository variable CI_PROVISIONING_RUNNER to `hosted` moves
+    # every run back without a commit.
+    runs-on: ${{ github.event_name != 'pull_request' && vars.CI_PROVISIONING_RUNNER != 'hosted' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          # The six longest shards run alone; the rest pair a medium shard with a short one. Three
-          # CPU-heavy shards on one four-core runner slowed each by about 60% and broke
-          # release-integrity's timing-bounded Shizuku cases. Ten groups keep CI and CodeQL under
-          # GitHub's twenty concurrent jobs when the Android build runs as one job.
+          # The longest shards run alone and the rest are grouped with shorter ones. Three CPU-heavy
+          # shards on one four-core runner slowed each by about 60% and broke release-integrity's
+          # timing-bounded Shizuku cases, so no group runs more than two heavy shards at once. backup,
+          # publication and host-reclamation own their process-group signals and run one after another
+          # before a group's other shards start, so each signal owner shares a group only with a short
+          # shard. Twelve hosted groups stay under GitHub's twenty concurrent jobs when Android runs on the
+          # project runner.
           - group: install-runtime
             shards: install-runtime
+          - group: helper-release-install
+            shards: helper-release-install
           - group: database-authority
-            shards: database-authority
+            shards: database-authority renderer-seeding
+          - group: database-capture
+            shards: database-capture
           - group: fleet-installer
             shards: fleet-installer
           - group: database-host
@@ -511,13 +522,13 @@ jobs:
           - group: helper-transaction
             shards: helper-transaction
           - group: release-integrity
-            shards: release-integrity publication
+            shards: release-integrity git-bash
           - group: install-finish
-            shards: install-finish git-bash
+            shards: install-finish
           - group: backup
-            shards: backup database-runtime
-          - group: renderer-seeding
-            shards: renderer-seeding host-reclamation
+            shards: backup publication
+          - group: host-reclamation
+            shards: host-reclamation database-runtime
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
