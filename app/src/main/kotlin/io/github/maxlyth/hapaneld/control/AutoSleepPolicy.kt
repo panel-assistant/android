@@ -9,6 +9,8 @@ internal enum class AutoSleepReason {
     PARTIAL_SOURCE_LOSS,
     SOURCE_ACTIVITY_LEASE,
     TOUCH_ACTIVITY,
+    /** The controller woke its own automatic sleep because its sources stopped being live. */
+    SOURCE_LOSS_WAKE,
     PROXIMITY_ACTIVITY,
     LEASE_EXPIRED,
 }
@@ -27,7 +29,10 @@ internal sealed class AutoSleepEvent(open val atMs: Long) {
         val activityMarker: AutoSleepActivityMarker? = null,
     ) : AutoSleepEvent(atMs)
     data class Touch(override val atMs: Long, val wokeOwnedAutomaticSleep: Boolean = false) : AutoSleepEvent(atMs)
-    data class ScreenWoken(override val atMs: Long) : AutoSleepEvent(atMs)
+    data class ScreenWoken(
+        override val atMs: Long,
+        val reason: AutoSleepReason = AutoSleepReason.TOUCH_ACTIVITY,
+    ) : AutoSleepEvent(atMs)
     data class QualifiedProximity(override val atMs: Long) : AutoSleepEvent(atMs)
     data class AutomaticSleepRecorded(override val atMs: Long) : AutoSleepEvent(atMs)
     data class LearnedLeaseChanged(override val atMs: Long, val learnedLeaseMs: Long) : AutoSleepEvent(atMs)
@@ -74,8 +79,7 @@ internal object AutoSleepPolicyReducer {
         val next = when (event) {
             is AutoSleepEvent.SourcesHydrated -> sources(current, event.states, event.feed, event.activityMarker)
             is AutoSleepEvent.Touch -> touch(current, event.wokeOwnedAutomaticSleep)
-            is AutoSleepEvent.ScreenWoken ->
-                extend(current, current.effectiveLeaseMs(), AutoSleepReason.TOUCH_ACTIVITY)
+            is AutoSleepEvent.ScreenWoken -> extend(current, current.effectiveLeaseMs(), event.reason)
             is AutoSleepEvent.QualifiedProximity -> if (current.proximityExtensionMs == 0L) current else {
                 extend(current, current.proximityExtensionMs, AutoSleepReason.PROXIMITY_ACTIVITY)
             }

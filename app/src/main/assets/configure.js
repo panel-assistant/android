@@ -1860,6 +1860,7 @@
       partial_source_loss: i18nText("configure.auto_sleep.value.partial_source_loss", "Partial source loss"),
       source_activity_lease: i18nText("configure.auto_sleep.value.source_activity_lease", "Source activity lease"),
       touch_activity: i18nText("configure.auto_sleep.value.touch_activity", "Touch activity"),
+      source_loss_wake: i18nText("configure.auto_sleep.value.source_loss_wake", "Woken on source loss"),
       proximity_activity: i18nText("configure.auto_sleep.value.proximity_activity", "Proximity activity"),
       lease_expired: i18nText("configure.auto_sleep.value.lease_expired", "Lease expired")
     };
