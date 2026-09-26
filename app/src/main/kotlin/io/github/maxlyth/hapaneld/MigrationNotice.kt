@@ -84,7 +84,7 @@ internal class MigrationNotice(private val context: Context, private val config:
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(4), 0, dp(4))
             addView(text(strings.get("shell.migration.title"), bold = true).apply {
-                contentDescription = "${strings.get("shell.migration.title")}. ${strings.get("shell.migration.body")}"
+                contentDescription = strings.get("shell.migration.title") + ". " + strings.get("shell.migration.body")
             })
             addView(text(URL.removePrefix("https://")))
         }
@@ -96,7 +96,7 @@ internal class MigrationNotice(private val context: Context, private val config:
             }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginEnd = dp(8) })
         }
         card.addView(Button(context).apply {
-            text = "\u00d7"
+            text = "×"
             contentDescription = strings.get("shell.migration.dismiss")
             isAllCaps = false
             textSize = 24f
