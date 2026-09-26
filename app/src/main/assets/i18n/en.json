@@ -37128,6 +37128,57 @@
       "softMaxChars": 12,
       "hardMaxChars": 24
     },
+    "shell.migration.body": {
+      "text": "Add the Panel Assistant integration in Home Assistant to manage this panel. MQTT support will be removed.",
+      "sourceHash": "20339679c60bd71b0416b68306c5b5559ed4beb7a81b0a6173335fdd511311b1",
+      "surface": "shell",
+      "context": "Persistent panel and web migration notice for owners without a Panel Assistant connection. Instruct the owner to add the Home Assistant integration to manage this panel. MQTT removal is future, not already complete; do not imply panel data or features are already lost.",
+      "risk": "setup",
+      "siblings": [
+        "shell.migration.title",
+        "shell.migration.dismiss"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Panel Assistant",
+        "Home Assistant",
+        "MQTT"
+      ],
+      "softMaxChars": 160,
+      "hardMaxChars": 210
+    },
+    "shell.migration.dismiss": {
+      "text": "Dismiss until the next update",
+      "sourceHash": "4408fd0fc8e99928d6e4692d251092ad97818a409742e5f85e03696dedcf65e4",
+      "surface": "shell",
+      "context": "Action on the migration notice. Hide it for now; it returns after the next app update unless the panel connects to Panel Assistant. Do not imply permanent dismissal.",
+      "risk": "setup",
+      "siblings": [
+        "shell.migration.title",
+        "shell.migration.body"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 72
+    },
+    "shell.migration.title": {
+      "text": "Panel Assistant is required",
+      "sourceHash": "3c6a7e4ff60e0b683b82059e1d48cce22adf06168d8477c1b9130c8d9c2ab1c3",
+      "surface": "shell",
+      "context": "Headline of the persistent migration notice. Panel Assistant is required to manage this panel, not merely recommended; do not imply it is already installed.",
+      "risk": "setup",
+      "siblings": [
+        "shell.migration.body",
+        "shell.migration.dismiss"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Panel Assistant"
+      ],
+      "softMaxChars": 44,
+      "hardMaxChars": 64
+    },
     "shell.nav.configure": {
       "text": "Configure",
       "sourceHash": "6defafa2caa65304173956e3fbc26b6947c50bc769c08c3da32c1032fa6519d4",

@@ -924,6 +924,28 @@ class PanelAssistantTransportOwnerTest {
         third.owner.close()
     }
 
+    @Test fun `MQTT fallback is not a connection but an accepted MQTT hello is`() = runTest {
+        val connected = AtomicInteger()
+        val persisted = Persisted("native", "withdraw")
+        val harness = harness(
+            FakeConnection(Ha.accepting()),
+            persisted = persisted,
+            onConnected = { connected.incrementAndGet() },
+        )
+
+        assertTrue(harness.owner.releaseToMqtt())
+        assertEquals("mqtt", persisted.authority)
+        assertEquals("announce", persisted.discovery)
+        assertEquals(0, connected.get())
+
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+        assertEquals("mqtt", harness.owner.status.session?.authority)
+        assertEquals(1, connected.get())
+        harness.owner.close()
+    }
+
     // ---- harness ---------------------------------------------------------------------------------
 
     /** Runs every command at once with [result]; approvals stay pending. */
@@ -970,6 +992,7 @@ class PanelAssistantTransportOwnerTest {
         shadow: PanelAssistantShadowReporter? = null,
         commands: PanelAssistantCommandSink? = null,
         onAuthority: (String) -> Unit = {},
+        onConnected: () -> Unit = {},
         mqttDiscovery: () -> String = { "" },
         onMqttDiscovery: (String) -> Unit = {},
         persisted: Persisted? = null,
@@ -994,6 +1017,7 @@ class PanelAssistantTransportOwnerTest {
             commands = commands,
             embedKeys = embedKeys,
             onAuthority = persisted?.let { store -> { value: String -> store.events += "authority:$value"; store.authority = value } } ?: onAuthority,
+            onConnected = onConnected,
             authority = persisted?.let { store -> { store.authority } } ?: { "" },
             mqttDiscovery = persisted?.let { store -> { store.discovery } } ?: mqttDiscovery,
             onMqttDiscovery = persisted?.let { store -> { value: String -> store.events += "discovery:$value"; store.discovery = value } } ?: onMqttDiscovery,

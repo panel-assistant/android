@@ -17,7 +17,7 @@ package io.github.maxlyth.hapaneld.migration
  * successor's id is never launched, never handed the release token and never replaced silently.
  */
 internal class SuccessorHandoff(private val ports: Ports) {
-    data class InstalledSuccessor(val version: String, val signers: Set<String>)
+    data class InstalledSuccessor(val version: String, val signers: Set<String>, val versionCode: Long = 0L)
 
     interface Ports {
         /** True once the release endpoint has retired this bridge; nothing is ever offered again. */
@@ -34,6 +34,9 @@ internal class SuccessorHandoff(private val ports: Ports) {
 
         /** This bridge's versionName: the successor version it installs. */
         fun ownVersion(): String
+
+        /** Signed release code used by the LAN installed-only retry path. */
+        fun ownVersionCode(): Long = 0L
 
         /** Negative when [left] is older than [right]; null when the two cannot be ordered. */
         fun compareVersions(left: String, right: String): Int?
@@ -88,7 +91,12 @@ internal class SuccessorHandoff(private val ports: Ports) {
         if (present != null && !trusted(present)) return Outcome.UntrustedSuccessor
         // Absent or older only. A successor newer than this bridge is kept: the installer allows
         // downgrades, and reinstalling would also kill a migration that is already running.
-        if (present == null || ports.compareVersions(present.version, ports.ownVersion())?.let { it < 0 } == true) {
+        val needsInstall = present == null || if (allowInstall) {
+            ports.compareVersions(present.version, ports.ownVersion())?.let { it < 0 } == true
+        } else {
+            present.versionCode < ports.ownVersionCode()
+        }
+        if (needsInstall) {
             // Host provisioning already installed its authenticated pair. A startup handover may
             // finish that transfer even with self-update off, but never downloads or replaces an app.
             if (!allowInstall) return Outcome.NoSuitableInstalledSuccessor

@@ -1,9 +1,10 @@
-// Build + config watch (shared by every page). /health carries two tokens:
+// Build + config watch (shared by every page). /health carries these tokens:
 //  - build= : per-INSTALL token (changes on every (re)install, even a same-version dev re-spin). If it
 //    changes while a page is open, the app was updated → AUTO-RELOAD to pull fresh html/css/js.
 //  - cfg=   : fingerprint of the panel settings. If it changes while the CONFIGURE page is open, the
 //    settings were changed underneath this tab (the API, an HA entity, another browser) → auto-reload
 //    so the form shows reality.
+//  - pa_notice= : whether an unconnected panel still owes its owner the migration notice.
 // Exception for both: unsaved edits (a focused field, or the Configure form's enabled Save button)
 // must never be destroyed — show the #verbar banner instead and let the user choose.
 // Baselines = <body data-build> / <body data-cfg>; configure.js re-stamps data-cfg after its own save
@@ -63,6 +64,26 @@
     b.appendChild(document.createTextNode(" " + i18nText("shell.new_version.refresh_suffix", "to refresh this page.")));
     b.style.display = "";
   }
+  function migrationBanner(visible) {
+    var b = document.getElementById("migrationbar");
+    if (b) b.style.display = visible ? "" : "none";
+  }
+  // A poll started before durable dismissal can arrive afterwards; it cannot restore the old notice.
+  var noticeEpoch = 0;
+  var dismiss = document.getElementById("migration-dismiss");
+  if (dismiss) dismiss.addEventListener("click", function () {
+    dismiss.disabled = true;
+    fetch("api/v1/migration-notice/dismiss", { method: "POST" })
+      .then(function (response) {
+        if (!response.ok) throw new Error("dismiss failed");
+        return response.json();
+      })
+      .then(function (result) {
+        dismiss.disabled = false;
+        if (result && result.ok === true) { noticeEpoch++; migrationBanner(false); }
+      })
+      .catch(function () { dismiss.disabled = false; });
+  });
   // Home Assistant lifecycle. /health carries `ha=<state>` only while the panel is watching, so an
   // absent token means "nothing to say" rather than "healthy". Rendered here rather than through the
   // Information page's banner zone because that hydrates once and would freeze mid-outage; this poll
@@ -236,7 +257,10 @@
     row.textContent = i18nText(rowKey, rowFallback, { evidence: evidence });
   }
   function vc() {
+    var requestedNoticeEpoch = noticeEpoch;
     fetch("health").then(function (r) { return r.text(); }).then(function (t) {
+      var notice = t.match(/(?:^|\s)pa_notice=([01])(?:\s|$)/);
+      if (notice && requestedNoticeEpoch === noticeEpoch) migrationBanner(notice[1] === "1");
       var mh = t.match(/ha=(\S+)/);
       var ms = t.match(/ha_src=(\S+)/);
       var mr = t.match(/ha_refused=1/);

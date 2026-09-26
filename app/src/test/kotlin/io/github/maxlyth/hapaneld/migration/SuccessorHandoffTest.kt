@@ -34,6 +34,7 @@ class SuccessorHandoffTest {
         override fun installedSuccessor(): InstalledSuccessor? = installed
         override fun trustedSigner(): String = SIGNER
         override fun ownVersion(): String = "1.0"
+        override fun ownVersionCode(): Long = 100L
         override fun compareVersions(left: String, right: String): Int? = UpdateChecker.compareVersions(left, right)
         override fun successorAssetUrl(): String? = assetUrl.also { events += "resolve" }
         override suspend fun installSuccessor(url: String): String? {
@@ -58,8 +59,15 @@ class SuccessorHandoffTest {
 
     private fun offer(ports: FakePorts) = runBlocking { SuccessorHandoff(ports).offer(successor) }
 
+    @Test fun installedProbeReportsOnlyThePinnedSoleSignerAsTrusted() {
+        assertEquals(InstalledSuccessorStatus.Trusted(110), trustedInstalledSuccessor(110, setOf(SIGNER.uppercase()), SIGNER))
+        for (signers in listOf(null, emptySet(), setOf(OTHER_SIGNER), setOf(SIGNER, OTHER_SIGNER))) {
+            assertEquals(InstalledSuccessorStatus.Untrusted, trustedInstalledSuccessor(110, signers, SIGNER))
+        }
+    }
+
     @Test fun installedOnlyHandoffNeverResolvesAnAssetForAbsentOrOlderSuccessor() = runBlocking {
-        for (installed in listOf(null, InstalledSuccessor("0.9", setOf(SIGNER)))) {
+        for (installed in listOf(null, InstalledSuccessor("0.9", setOf(SIGNER), 90L))) {
             val ports = FakePorts(installed = installed)
             assertEquals(Outcome.NoSuitableInstalledSuccessor, SuccessorHandoff(ports).offer(successor, allowInstall = false))
             assertEquals(listOf("helper"), ports.events)
@@ -68,8 +76,8 @@ class SuccessorHandoffTest {
     }
 
     @Test fun installedOnlyHandoffLaunchesCurrentOrNewerSuccessorWithoutUpdating() = runBlocking {
-        for (version in listOf("1.0", "1.1")) {
-            val installed = InstalledSuccessor(version, setOf(SIGNER))
+        for ((version, code) in listOf("1.0" to 100L, "1.1" to 110L, "0.9" to 101L)) {
+            val installed = InstalledSuccessor(version, setOf(SIGNER), code)
             val ports = FakePorts(installed = installed)
             assertEquals(Outcome.Launched, SuccessorHandoff(ports).offer(successor, allowInstall = false))
             assertEquals(listOf("helper", "helper", "companion $successor", "launch", "token"), ports.events)
@@ -83,7 +91,7 @@ class SuccessorHandoffTest {
         assertEquals(listOf("helper"), untrusted.events)
         for (refusals in listOf(mutableListOf<String?>("unconfirmed"), mutableListOf(null, "unconfirmed"))) {
             val ports = FakePorts(
-                installed = InstalledSuccessor("1.0", setOf(SIGNER)),
+                installed = InstalledSuccessor("1.0", setOf(SIGNER), 100L),
                 helperRefusals = refusals,
             )
             assertEquals(Outcome.HelperNotConfirmed("unconfirmed"), SuccessorHandoff(ports).offer(successor, allowInstall = false))

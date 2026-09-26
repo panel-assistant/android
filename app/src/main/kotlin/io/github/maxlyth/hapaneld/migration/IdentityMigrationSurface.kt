@@ -8,6 +8,15 @@ import kotlinx.coroutines.CompletableDeferred
  * question the way a build without the migration would.
  */
 internal interface IdentityMigrationSurface {
+    /** Active bridge with a confirmed dual-uid helper; null means LAN migration upload is unavailable. */
+    fun successorUploadCapability(): SuccessorUploadCapability? = null
+
+    /** Fresh installed-package proof for the bridge; an unreadable signer is untrusted. */
+    fun installedSuccessorStatus(): InstalledSuccessorStatus = InstalledSuccessorStatus.Absent
+
+    /** Continue only from an installed successor; this path must never resolve a release asset. */
+    suspend fun offerInstalledOnly(): SuccessorHandoff.Outcome? = null
+
     /** Successor: true only while the migration is waiting to restore the receipt it pulled. */
     fun restoreOpen(): Boolean = false
 
@@ -29,6 +38,22 @@ internal interface IdentityMigrationSurface {
         val NONE: IdentityMigrationSurface = object : IdentityMigrationSurface {}
     }
 }
+
+internal data class SuccessorUploadCapability(val pkg: String, val version: String, val versionCode: Long, val signer: String)
+
+internal sealed interface InstalledSuccessorStatus {
+    data object Absent : InstalledSuccessorStatus
+    data object Untrusted : InstalledSuccessorStatus
+    data class Trusted(val versionCode: Long) : InstalledSuccessorStatus
+}
+
+/** The installed package may be reported to LAN callers only under the same sole-signer pin as handover. */
+internal fun trustedInstalledSuccessor(code: Long, signers: Set<String>?, pinnedSigner: String): InstalledSuccessorStatus =
+    if (signers?.size == 1 && signers.single().equals(pinnedSigner, ignoreCase = true)) {
+        InstalledSuccessorStatus.Trusted(code)
+    } else {
+        InstalledSuccessorStatus.Untrusted
+    }
 
 /**
  * One migration-mode restore attempt's answer. Reporting is idempotent and the first report wins, so
