@@ -18,6 +18,8 @@ class MigrationNoticeConfigTest {
         val config = Config(Preferences().preferences)
         assertTrue(config.migrationNoticeVisible(100))
         config.setPanelAssistantAuthority("mqtt")
+        assertTrue(config.migrationNoticeVisible(100))
+        config.markPanelAssistantConnected()
         assertFalse(config.migrationNoticeVisible(100))
         assertFalse(config.migrationNoticeVisible(101))
     }

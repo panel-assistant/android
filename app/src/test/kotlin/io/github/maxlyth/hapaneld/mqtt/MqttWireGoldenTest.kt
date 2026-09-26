@@ -561,7 +561,7 @@ class MqttWireGoldenTest {
 
     @Test(timeout = 90_000)
     fun `panel already seen by Panel Assistant never announces migration problem`() {
-        val rig = rig { it.setPanelAssistantAuthority("mqtt") }
+        val rig = rig { it.markPanelAssistantConnected() }
         try {
             rig.announce()
             val configTopic = "homeassistant/binary_sensor/${PANEL}_panel_assistant_required/config"

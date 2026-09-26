@@ -7,7 +7,7 @@ import org.junit.Test
 
 class MigrationNoticeHistoryTest {
     @Test fun eachAcceptedAuthorityBecomesNoticeHistoryOnly() {
-        for (authority in listOf("mqtt", "shadow", "native")) {
+        for (authority in listOf("shadow", "native")) {
             val source = row("panel_assistant_authority", "string", authority, updatedAt = 11L)
             assertEquals(listOf(noticeRow(11L)), carry(listOf(source)))
         }
@@ -42,6 +42,7 @@ class MigrationNoticeHistoryTest {
 
     @Test fun absentFalseMalformedAndForeignEvidenceCarriesNothing() {
         val invalid = listOf(
+            row("panel_assistant_authority", "string", "mqtt"),
             row("panel_assistant_authority", "string", ""),
             row("panel_assistant_authority", "string", "connected"),
             row("panel_assistant_authority", "string", "Native"),

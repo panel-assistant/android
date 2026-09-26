@@ -1469,8 +1469,12 @@ class Config private constructor(
 
     /** Either accepted transport or a declared integration poll proves this panel has been managed. */
     val panelAssistantConnectionSeen: Boolean
-        get() = panelAssistantAuthority in setOf("mqtt", "shadow", "native") ||
+        get() = panelAssistantAuthority in setOf("shadow", "native") ||
             panelAssistantUpdateOwnerSeenMs > 0L || prefs.getBoolean("migration_notice_connection_seen", false)
+
+    fun markPanelAssistantConnected() {
+        prefs.edit().putBoolean("migration_notice_connection_seen", true).apply()
+    }
 
     fun migrationNoticeVisible(versionCode: Int = BuildConfig.VERSION_CODE): Boolean =
         !panelAssistantConnectionSeen && prefs.getInt("migration_notice_dismissed_version", -1) != versionCode

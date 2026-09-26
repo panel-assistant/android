@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.migration
 
-import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
 import io.github.maxlyth.hapaneld.persistence.ConfigVault
 
 /** Carry only positive notice history, never the legacy transport authority or update-owner lease. */
@@ -17,7 +16,7 @@ internal fun migrationNoticeHistoryRows(
             when (row.key) {
                 "panel_assistant_authority" ->
                     row.type == "string" &&
-                        row.valueText?.let(PanelAssistantTransportProtocol.AUTHORITIES::contains) == true
+                        row.valueText in setOf("shadow", "native")
                 "panel_assistant_update_owner_seen_ms" ->
                     row.type == "long" && (row.valueText?.toLongOrNull() ?: 0L) > 0L
                 "migration_notice_connection_seen" -> row.type == "boolean" && row.valueText == "1"
