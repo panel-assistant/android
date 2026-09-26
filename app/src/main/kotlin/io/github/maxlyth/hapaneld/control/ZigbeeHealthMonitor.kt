@@ -35,8 +35,24 @@ enum class ZigbeeHealthState(val wireValue: String) {
 enum class ZigbeeGatewayLayout(val wireValue: String) {
     MANAGED("nspaneltools-managed"),
     VENDOR_NATIVE("vendor-native"),
-    UNKNOWN_4X("unknown-4.x"),
+    VENDOR_4X("vendor-native-4.x"),
     UNKNOWN("unknown"),
+
+    ;
+
+    companion object {
+        /** The captured launchers, binary and package marker determine which stop route is safe. */
+        fun fromFiles(files: Set<String>): ZigbeeGatewayLayout = when {
+            listOf("run_guard_process.sh", "guard_process.sh", "zgateway", "package_version")
+                .all(files::contains) -> MANAGED
+            "run_guard_process.sh" !in files && "package_version" !in files &&
+                listOf("guard_process.sh", "zgateway").all(files::contains) -> VENDOR_NATIVE
+            "run_guard_process.sh" !in files && "guard_process.sh" !in files &&
+                "package_version" !in files &&
+                listOf("run.sh", "zgateway", "mosquitto").all(files::contains) -> VENDOR_4X
+            else -> UNKNOWN
+        }
+    }
 }
 
 enum class ZigbeeContainmentResult(val wireValue: String) {
@@ -265,10 +281,9 @@ class ZigbeeHealthPolicy(
             highCpuSamples = 0
             return Decision(ZigbeeHealthState.STARTING, joined, 0, false)
         }
-        if (observation.layout == ZigbeeGatewayLayout.UNKNOWN ||
-            observation.layout == ZigbeeGatewayLayout.UNKNOWN_4X ||
-            joined == null
-        ) return Decision(ZigbeeHealthState.UNKNOWN, joined, restarts, false)
+        if (observation.layout == ZigbeeGatewayLayout.UNKNOWN || joined == null) {
+            return Decision(ZigbeeHealthState.UNKNOWN, joined, restarts, false)
+        }
 
         val runaway = restarts >= requiredPidChanges ||
             joined == false && highCpuSamples >= requiredHighCpuSamples
@@ -354,17 +369,8 @@ class AndroidZigbeeGatewayHealthSource(
 
     override fun observe(): ZigbeeGatewayObservation {
         val gatewayDir = dir ?: return absent()
-        val files = root.runOutput(
-            "for f in run_guard_process.sh guard_process.sh run.sh zgateway package_version; do " +
-                "[ -e $gatewayDir/\$f ] && echo \$f; done",
-        ).orEmpty().lineSequence().map(String::trim).filter(String::isNotEmpty).toSet()
-        val layout = when {
-            "run_guard_process.sh" in files -> ZigbeeGatewayLayout.MANAGED
-            "guard_process.sh" in files && "zgateway" in files -> ZigbeeGatewayLayout.VENDOR_NATIVE
-            "run.sh" in files && "zgateway" in files -> ZigbeeGatewayLayout.UNKNOWN_4X
-            "zgateway" in files -> ZigbeeGatewayLayout.UNKNOWN
-            else -> ZigbeeGatewayLayout.UNKNOWN
-        }
+        val files = zigbeeGatewayFiles(root, gatewayDir).orEmpty()
+        val layout = ZigbeeGatewayLayout.fromFiles(files)
         val processes = parseProcesses(root.runOutput("ps -A -o PID=,ARGS= 2>/dev/null").orEmpty(), gatewayDir)
         val cpu = sampleCpu(processes.gatewayPid, processes.guardPid)
         val packageVersion = root.runOutput("cat $gatewayDir/package_version 2>/dev/null")
@@ -393,7 +399,7 @@ class AndroidZigbeeGatewayHealthSource(
     }
 
     override fun contain(layout: ZigbeeGatewayLayout): ZigbeeContainmentResult {
-        if (layout == ZigbeeGatewayLayout.VENDOR_NATIVE) {
+        if (layout == ZigbeeGatewayLayout.VENDOR_NATIVE || layout == ZigbeeGatewayLayout.VENDOR_4X) {
             return when (daemon.send("ZIGBEECONTAIN")) {
                 "OK" -> ZigbeeContainmentResult.COMPLETE
                 "PARTIAL" -> ZigbeeContainmentResult.PARTIAL

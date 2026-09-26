@@ -481,7 +481,6 @@ void cmd_zigbeecontain(conn_ctx *ctx, const char *args) {
      */
     const char *cmd =
         "d=/vendor/bin/siliconlabs_host; "
-        "[ -f \"$d/run.sh\" ] && [ ! -L \"$d/run.sh\" ] && "
         "[ -x \"$d/zgateway\" ] && [ ! -L \"$d/zgateway\" ] || exit 3; "
         "guard=0; if [ -f \"$d/guard_process.sh\" ] && [ ! -L \"$d/guard_process.sh\" ]; then "
           "guard=1; "
@@ -490,6 +489,7 @@ void cmd_zigbeecontain(conn_ctx *ctx, const char *args) {
           "else [ ! -e \"$d/run_guard_process.sh\" ] && [ ! -L \"$d/run_guard_process.sh\" ] && "
                "[ ! -e \"$d/package_version\" ] && [ ! -L \"$d/package_version\" ] || exit 3; fi; "
         "else "
+          "[ -f \"$d/run.sh\" ] && [ ! -L \"$d/run.sh\" ] && "
           "[ ! -L \"$d/guard_process.sh\" ] && [ ! -e \"$d/guard_process.sh\" ] && "
           "[ ! -e \"$d/run_guard_process.sh\" ] && [ ! -L \"$d/run_guard_process.sh\" ] && "
           "[ ! -e \"$d/package_version\" ] && [ ! -L \"$d/package_version\" ] && "
