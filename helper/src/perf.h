@@ -19,4 +19,8 @@ long stat_jiffies(const char *buf, char *comm, size_t commsz);
 int stat_process_metrics(const char *buf, char *comm, size_t commsz,
                          long *jiffies, long *rss_pages);
 
+// Match a running bridge payload in a NUL-separated /proc/<pid>/cmdline, not its runit supervisor.
+// Return -1 when a relative Node entrypoint needs an unreadable cwd to decide.
+int is_panel_bridge_cmdline(const char *buf, size_t length, const char *cwd);
+
 #endif

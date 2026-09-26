@@ -2228,6 +2228,11 @@
       "state": "machine-cross-checked",
       "text": "MQTT 已配置。下一步：选择仪表盘渲染器。"
     },
+    "dashboard.banner.panel_bridge_running": {
+      "text": "此面板的 Termux 中正在运行 Zigbee 桥接程序。它可能会干扰面板的 Zigbee 网关。启用 Zigbee 网关功能前，请先检查 Termux 桥接程序。",
+      "sourceHash": "8f34977d31f04f138f7a744265cece7fa548eb6d9abc3ac55c5a255e009d515a",
+      "state": "machine-cross-checked"
+    },
     "dashboard.banner.proximity_learning.action": {
       "sourceHash": "f9d5be8cab3ce30fbc94c115eb102ec4df35d57cb57e2f8d3b070f303e79de2f",
       "state": "machine-cross-checked",
