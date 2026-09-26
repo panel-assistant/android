@@ -2691,12 +2691,10 @@ class PaneldService : Service() {
         }
     }
 
-    /**
-     * Start or stop the lifecycle watch to match the current renderer and credentials. Safe to call
-     * repeatedly: an unchanged demand is a no-op inside the stream owner.
-     */
+    /** Rebind a changed link, then match lifecycle demand after renderer settlement. */
     private fun refreshHaLifecycleWatch() {
         if (!::haExactEntityStream.isInitialized || !::system.isInitialized) return
+        haExactEntityStream.replaceHaLink(currentHaLinkIdentity())
         val wanted = haLifecycleWatchWanted(
             builtinRendererSelected = system.isBuiltinDashboardTarget(config.dashboardPackage),
             credentialsPresent = config.haUrl.isNotBlank() &&

@@ -107,6 +107,38 @@ class HaExactEntityStreamOwnerTest {
         owner.close()
     }
 
+    @Test fun `lifecycle socket follows a changed Home Assistant link without an app restart`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val first = FakeConnection()
+        val second = FakeConnection()
+        val transport = FakeTransport(first, second)
+        var link = OWNER
+        val owner = HaExactEntityStreamOwner(
+            scope = this,
+            auth = HaApiSessionProvider { HaApiSession(link.url, "token", owner = link) },
+            transport = transport,
+            workerDispatcher = dispatcher,
+        )
+
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals(listOf(OWNER.url), transport.baseUrls)
+
+        link = OWNER.copy(url = "https://new-ha.example")
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals("the old lifecycle socket must close", 1, first.closeCount)
+        assertEquals(listOf(OWNER.url, link.url), transport.baseUrls)
+
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals("an unchanged link must not reconnect", 2, transport.subscribeCount)
+        owner.close()
+    }
+
     @Test fun `disabling the lifecycle watch releases the socket it was holding open`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val connection = FakeConnection()
@@ -867,6 +899,7 @@ class HaExactEntityStreamOwnerTest {
         val subscriptions = mutableListOf<Set<String>>()
         val registryWatches = mutableListOf<Boolean>()
         val lifecycleWatches = mutableListOf<Boolean>()
+        val baseUrls = mutableListOf<String>()
 
         override suspend fun subscribe(
             baseUrl: String,
@@ -892,6 +925,7 @@ class HaExactEntityStreamOwnerTest {
             watchLifecycle: Boolean,
         ): HaExactEntityConnection {
             subscribeCount++
+            baseUrls += baseUrl
             subscriptions += entityIds
             registryWatches += watchRegistry
             lifecycleWatches += watchLifecycle
