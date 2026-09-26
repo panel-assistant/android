@@ -8,6 +8,12 @@ import kotlinx.coroutines.CompletableDeferred
  * question the way a build without the migration would.
  */
 internal interface IdentityMigrationSurface {
+    /** Active bridge with a confirmed dual-uid helper; null means LAN migration upload is unavailable. */
+    fun successorUploadCapability(): SuccessorUploadCapability? = null
+
+    /** Continue only from an installed successor; this path must never resolve a release asset. */
+    suspend fun offerInstalledOnly(): SuccessorHandoff.Outcome? = null
+
     /** Successor: true only while the migration is waiting to restore the receipt it pulled. */
     fun restoreOpen(): Boolean = false
 
@@ -29,6 +35,8 @@ internal interface IdentityMigrationSurface {
         val NONE: IdentityMigrationSurface = object : IdentityMigrationSurface {}
     }
 }
+
+internal data class SuccessorUploadCapability(val pkg: String, val version: String, val versionCode: Long, val signer: String)
 
 /**
  * One migration-mode restore attempt's answer. Reporting is idempotent and the first report wins, so
