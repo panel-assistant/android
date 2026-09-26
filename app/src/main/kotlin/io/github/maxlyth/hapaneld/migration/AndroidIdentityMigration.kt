@@ -122,6 +122,20 @@ internal class AndroidIdentityMigration(
         )
     }
 
+    override fun installedSuccessorStatus(): InstalledSuccessorStatus {
+        val info = try {
+            context.packageManager.getPackageInfo(AppIdentity.SUCCESSOR, 0)
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+            return InstalledSuccessorStatus.Absent
+        } catch (_: Exception) {
+            return InstalledSuccessorStatus.Untrusted
+        }
+        val signers = AppInstaller.installedSigners(context, AppIdentity.SUCCESSOR)
+        @Suppress("DEPRECATION")
+        val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+        return trustedInstalledSuccessor(code, signers, AppInstaller.MIGRATION_SIGNER)
+    }
+
     override suspend fun offerInstalledOnly(): SuccessorHandoff.Outcome? = offerInstalledHandoff()
 
     override suspend fun release(token: String?, loopback: Boolean): BridgeRelease.Outcome =
