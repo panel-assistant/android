@@ -30,6 +30,14 @@ internal fun Route.identityMigrationRoutes(
 ) {
     route("/api/v1/successor") {
         post("/offer") {
+            val installedOnly = when (call.request.queryParameters.getAll("installed_only")) {
+                null -> false
+                listOf("1") -> true
+                else -> {
+                    call.respondText("""{"ok":false,"error":"invalid-installed-only"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
+                    return@post
+                }
+            }
             // An install like any other: under hardened security a LAN caller needs on-panel approval.
             if (!authorize(
                     call,
@@ -38,7 +46,7 @@ internal fun Route.identityMigrationRoutes(
                     "Install and start the app under its new application id",
                 )
             ) return@post
-            val outcome = surface.offer()
+            val outcome = (if (installedOnly) surface.offerInstalledOnly() else surface.offer())
                 ?: return@post call.respondText(NOT_A_BRIDGE, ContentType.Application.Json, HttpStatusCode.NotFound)
             call.respondText(
                 """{"ok":true,"outcome":${Json.str(outcome::class.simpleName.orEmpty())},"detail":${Json.str(outcome.detail)}}""",

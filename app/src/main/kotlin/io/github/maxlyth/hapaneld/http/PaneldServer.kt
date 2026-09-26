@@ -2107,6 +2107,7 @@ class PaneldServer internal constructor(
                         },
                         backupFileStem = { config.panelId },
                         authorize = ::authorizeSensitive,
+                        identityMigration = identityMigration,
                         apkUpload = ApkUploadRouteDependencies(
                             enabled = { config.apkUploadAllowed },
                             rootAvailable = { rootOk() },
@@ -2114,22 +2115,22 @@ class PaneldServer internal constructor(
                             createStagingFile = { File.createTempFile("apk-upload-", ".apk", appContext.cacheDir) },
                             inspect = { staged ->
                                 withContext(Dispatchers.IO) { AppInstaller.inspect(appContext, staged.absolutePath) }?.let {
-                                    UploadedApkIdentity(it.pkg, it.version, it.signerSha256)
+                                    UploadedApkIdentity(it.pkg, it.version, it.signerSha256, it.signerSha256s, it.versionCode)
                                 }
                             },
                             startInstall = { claimed, progress ->
                                 val apk = claimed.file
                                 val job = scope.launch {
-                                    val result = runCatching { AppInstaller.installLocalApk(appContext, apk) }
-                                        .fold(
-                                            onSuccess = { outcome ->
-                                                when (outcome) {
-                                                    InstallOutcome.Succeeded -> "OK"
-                                                    is InstallOutcome.Failure -> outcome.message
-                                                }
-                                            },
-                                            onFailure = { "error: ${it.message}" },
+                                    val result = runCatching {
+                                        installUploadedApk(
+                                            claimed,
+                                            identityMigration,
+                                            install = { AppInstaller.installLocalApk(appContext, it) },
                                         )
+                                    }.getOrElse {
+                                        apk.delete()
+                                        "error: ${it.message}"
+                                    }
                                     Log.i(TAG, "APK upload install: $result")
                                     InstallProgress.finish(progress, result)
                                 }

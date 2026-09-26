@@ -5,6 +5,11 @@ import android.provider.Settings
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.BuildConfig
+import io.github.maxlyth.hapaneld.util.AppInstaller
+import io.github.maxlyth.hapaneld.util.HelperClient
+import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
+import io.github.maxlyth.hapaneld.util.dualUidHelperRefusal
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Environment
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Result
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Step
@@ -90,6 +95,7 @@ internal class AndroidIdentityMigration(
     private val androidId: () -> String,
     private val mqttState: () -> String,
     private val offerHandoff: suspend () -> SuccessorHandoff.Outcome?,
+    private val offerInstalledHandoff: suspend () -> SuccessorHandoff.Outcome?,
     private val requestRestart: () -> Unit,
 ) : IdentityMigrationSurface {
     private val context = context.applicationContext
@@ -105,6 +111,32 @@ internal class AndroidIdentityMigration(
     override fun claimRestoreAttempt(): RestoreAttempt = restoreAttempts.claim()
 
     override suspend fun offer(): SuccessorHandoff.Outcome? = offerHandoff()
+
+    override fun successorUploadCapability(): SuccessorUploadCapability? {
+        if (!AppIdentity.IS_BRIDGE || BridgeRetirement.isRetired(context) ||
+            !GuardDbProcessAdmission.ordinaryMutationsAllowed()
+        ) return null
+        if (dualUidHelperRefusal(HelperClient.helperStatus(), BuildConfig.HELPER_BUILD_ID, context.packageName) != null) return null
+        return SuccessorUploadCapability(
+            AppIdentity.SUCCESSOR, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), AppInstaller.MIGRATION_SIGNER,
+        )
+    }
+
+    override fun installedSuccessorStatus(): InstalledSuccessorStatus {
+        val info = try {
+            context.packageManager.getPackageInfo(AppIdentity.SUCCESSOR, 0)
+        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+            return InstalledSuccessorStatus.Absent
+        } catch (_: Exception) {
+            return InstalledSuccessorStatus.Untrusted
+        }
+        val signers = AppInstaller.installedSigners(context, AppIdentity.SUCCESSOR)
+        @Suppress("DEPRECATION")
+        val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+        return trustedInstalledSuccessor(code, signers, AppInstaller.MIGRATION_SIGNER)
+    }
+
+    override suspend fun offerInstalledOnly(): SuccessorHandoff.Outcome? = offerInstalledHandoff()
 
     override suspend fun release(token: String?, loopback: Boolean): BridgeRelease.Outcome =
         BridgeRelease(AndroidBridgeReleasePorts(context)).request(token, loopback)
