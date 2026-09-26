@@ -1329,6 +1329,7 @@ class PaneldService : Service() {
             shadow = panelAssistantShadow,
             commands = panelAssistantCommands,
             onAuthority = config::setPanelAssistantAuthority,
+            onConnected = config::markPanelAssistantConnected,
             authority = config::panelAssistantAuthority,
             mqttDiscovery = config::panelAssistantMqttDiscovery,
             onMqttDiscovery = { value ->
