@@ -632,6 +632,7 @@ class HaPresenceSourceManagerTest {
         val terminal = aggregates.last()
         assertEquals(HaPresencePhase.NO_CREDIBLE_SOURCES, terminal.phase)
         assertEquals("No device-backed activity source is ready", terminal.detail)
+        assertEquals("Room", terminal.areaName)
         assertTrue(discovery.historyEntitySets.isEmpty())
         assertTrue(terminal.selectedEntityIds.isEmpty())
         manager.close()
@@ -828,7 +829,7 @@ class HaPresenceSourceManagerTest {
         fun registryChanged() {
             connections[exact.subscriptions.size - 1].messages.trySend(HaExactSocketMessage.RegistryChanged)
             scope.runCurrent()
-            scope.advanceTimeBy(10_000L)
+            scope.advanceTimeBy(2 * 60_000L)
             scope.runCurrent()
         }
     }
