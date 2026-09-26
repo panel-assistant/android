@@ -2,7 +2,15 @@
 
 ## v0.9.8-rc2 - 2026-09-26
 
-This release candidate brings the biggest behind-the-scenes change ha-paneld has had: the app is moving to its new application id, `io.panelassistant.android`. It also carries the panel side of Panel Assistant 0.6.0's move away from MQTT, and a long list of fixes found by running the installer on real panels.
+This is a big one, and it changes how ha-paneld fits into your home. Two things happen at once: the app moves to its new application id, `io.panelassistant.android`, and the Panel Assistant integration for Home Assistant becomes the way you install, update and manage your panels. Nothing you rely on today stops working in this release, but if you run ha-paneld on its own with MQTT, please read the next section.
+
+### Panel Assistant is the way forward
+
+**What changes.** Until now ha-paneld talked to Home Assistant through MQTT, and you set each panel up by hand. Panel Assistant, the integration for Home Assistant, now does that work: it finds panels on your network, installs and updates them, and puts each panel's own interface in your Home Assistant sidebar. Going forward, panels are installed and managed through Panel Assistant.
+
+**A direct connection instead of MQTT.** A panel can now talk to Home Assistant over its own connection, with Panel Assistant looking after its entities directly, rather than through your MQTT broker. This release carries the panel's side of that. You switch a panel over from Panel Assistant 0.6.0, one panel at a time, and your entity IDs, history and customisations come with it. MQTT keeps working exactly as before until you choose to switch.
+
+**What to do.** Install Panel Assistant 0.6.0 from HACS and add your panels to it. Its release notes walk through moving a panel off MQTT, what to watch for and how to go back.
 
 ### Moving to the new app
 
