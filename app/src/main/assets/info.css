@@ -427,7 +427,7 @@ body.hdr-hide-brand .hdr .brand{display:none}
 .toggle::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--knob);transition:.15s}
 .toggle.on::after{left:20px}
 .toggle:focus-visible,.pip:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-.savebar{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(100%,1860px);box-sizing:border-box;
+.savebar{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;box-sizing:border-box;
   background:var(--bg);padding:12px max(20px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));
   border-top:1px solid var(--card-border);box-shadow:0 -8px 18px -12px var(--shadow);display:flex;gap:14px;align-items:center;z-index:25}
 .savebar[hidden]{display:none}

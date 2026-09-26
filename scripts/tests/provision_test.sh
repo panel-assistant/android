@@ -1886,6 +1886,17 @@ assert_not_contains '^adb .* (install|shell (settings put|appops set|pm grant|am
 
 assert_count "$(grep -c -- '--max-time 60 .*/api/v1/config/schema$' "$MOCK_CALL_LOG")" 1 "a ready Configuration schema is read once within the total request budget"
 
+# The notification permission is read back from the package manager on --verify as well, so a panel an
+# installer missed, or one where a person turned notifications off, is reported rather than passed.
+assert_contains 'notification permission granted' "verify-only reports the notification permission"
+MOCK_POST_NOTIFICATIONS_HELD=0 run_provision "$MOCK_TARGET" --verify
+assert_failure "verify-only fails a panel without the notification permission"
+assert_contains 'ha-paneld . Notifications' "verify-only names the missing notification permission and its recovery"
+MOCK_SDK=30 MOCK_POST_NOTIFICATIONS_HELD=0 run_provision "$MOCK_TARGET" --verify
+assert_success "verify-only does not fail a pre-Android-13 panel for notifications"
+assert_contains 'not a runtime permission before Android 13' "verify-only tells a pre-Android-13 panel why notifications are not checked"
+unset MOCK_SDK MOCK_POST_NOTIFICATIONS_HELD
+
 # Grant state left by an earlier case would let a later case pass without granting anything, so every
 # run starts without it. A read-only verify creates none, which isolates the reset itself.
 printf '1\n' > "$TMP/write-settings-granted"
@@ -4364,11 +4375,11 @@ else
 fi
 unset MOCK_RECORD_AUDIO_GRANT_FAIL
 
-MOCK_POST_NOTIFICATIONS_GRANT_FAIL=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+MOCK_POST_NOTIFICATIONS_HELD=0 MOCK_POST_NOTIFICATIONS_GRANT_FAIL=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "post-install verification rejects a refused notification grant"
 assert_contains 'notification permission granted' "refused notification grant names the failed item"
 assert_contains 'ha-paneld . Notifications' "refused notification grant gives manual recovery"
-unset MOCK_POST_NOTIFICATIONS_GRANT_FAIL
+unset MOCK_POST_NOTIFICATIONS_GRANT_FAIL MOCK_POST_NOTIFICATIONS_HELD
 
 # POST_NOTIFICATIONS only became a runtime permission in Android 13. Failing an older panel for a
 # grant its platform has no concept of would break provisioning across most of the supported fleet,
@@ -4381,11 +4392,11 @@ unset MOCK_SDK MOCK_POST_NOTIFICATIONS_GRANT_FAIL
 
 # An unreadable platform level is not a licence to skip the check: it fails closed and reports what
 # Android actually said about the grant.
-MOCK_SDK= MOCK_POST_NOTIFICATIONS_GRANT_FAIL=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+MOCK_POST_NOTIFICATIONS_HELD=0 MOCK_SDK= MOCK_POST_NOTIFICATIONS_GRANT_FAIL=1 run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_failure "an unreadable platform level still verifies the notification permission"
 assert_contains 'notification permission granted' "an unreadable platform level names the failed item"
 assert_not_contains 'not a runtime permission before Android 13' "$LAST_OUTPUT" "an unreadable platform level is not reported as an old platform"
-unset MOCK_SDK MOCK_POST_NOTIFICATIONS_GRANT_FAIL
+unset MOCK_SDK MOCK_POST_NOTIFICATIONS_GRANT_FAIL MOCK_POST_NOTIFICATIONS_HELD
 
 # Likewise, the final permission/HTTP checklist is a success gate rather than advisory output.
 MOCK_VERIFY=fail run_provision "$MOCK_TARGET" --apk "$APK" --no-tame

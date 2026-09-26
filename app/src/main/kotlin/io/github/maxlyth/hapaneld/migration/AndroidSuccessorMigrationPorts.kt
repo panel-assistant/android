@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.migration
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -12,6 +13,7 @@ import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Environment
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
+import io.github.maxlyth.hapaneld.platform.NotificationPermissionRepair
 import io.github.maxlyth.hapaneld.util.AppInstaller
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.HelperClient
@@ -166,9 +168,7 @@ internal class AndroidSuccessorMigrationPorts(
         }
     }
 
-    override fun missingGrants(): Set<String> = GRANTS.filterTo(linkedSetOf()) { grant ->
-        held(grant, legacy) && !held(grant, own)
-    }
+    override fun missingGrants(): Set<String> = missingGrants(Build.VERSION.SDK_INT, own, legacy, ::held)
 
     override fun claimGrant(grant: String): Boolean {
         if (grant !in GRANTS) return false
@@ -238,14 +238,25 @@ internal class AndroidSuccessorMigrationPorts(
             useCaches = false
         }
 
-    private companion object {
-        const val TAG = "ha-paneld/migration"
-        const val HELPER_TIMEOUT_MS = 60_000L
-        const val RETIREMENT_WAIT_MS = 60_000L
-        const val RESTORE_WAIT_MS = 5 * 60_000L
-        const val MAX_REFUSAL_BYTES = 64L * 1024L
+    internal companion object {
+        /**
+         * Grants the legacy app holds that this app does not. Notifications are the exception: claimed
+         * whenever this app lacks them, whatever the legacy app held, because the service notification
+         * keeps the panel working and a person's denial there may have been a mis-tap.
+         */
+        fun missingGrants(sdkInt: Int, own: String, legacy: String, held: (grant: String, pkg: String) -> Boolean): Set<String> =
+            GRANTS.filterTo(linkedSetOf()) { grant ->
+                if (grant == "NOTIFICATIONS") !NotificationPermissionRepair.held(sdkInt) { held(grant, own) }
+                else held(grant, legacy) && !held(grant, own)
+            }
+
+        private const val TAG = "ha-paneld/migration"
+        private const val HELPER_TIMEOUT_MS = 60_000L
+        private const val RETIREMENT_WAIT_MS = 60_000L
+        private const val RESTORE_WAIT_MS = 5 * 60_000L
+        private const val MAX_REFUSAL_BYTES = 64L * 1024L
 
         /** The helper's fixed `GRANT` capability table. */
-        val GRANTS = listOf("NOTIFICATIONS", "MICROPHONE", "WRITESETTINGS", "OVERLAY", "BATTERY", "ACCESSIBILITY")
+        private val GRANTS = listOf("NOTIFICATIONS", "MICROPHONE", "WRITESETTINGS", "OVERLAY", "BATTERY", "ACCESSIBILITY")
     }
 }
