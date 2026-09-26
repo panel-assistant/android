@@ -470,9 +470,10 @@ void cmd_zigbeecontain(conn_ctx *ctx, const char *args) {
         return;
     }
     /*
-     * Argument-free by design. Admission is the exact vendor-native Sonoff layout and the process
-     * allowlist is path/cmdline exact: its guard, zgateway, and the broker launched from the same
-     * directory with that directory's config. No caller-controlled bytes reach this shell.
+     * Argument-free by design. Admit the captured native, managed, or guardless 4.x Sonoff layout
+     * before signalling anything. The process allowlist remains tied to that vendor directory:
+     * its guard, zgateway, and the broker launched with that directory's config. No caller-controlled
+     * bytes reach this shell. The 4.x run.sh has no stop action, so do not invoke it for containment.
      *
      * Exit 0 = every targeted process disappeared. Exit 2 = at least one survived signalling; the
      * respawner was removed where possible and surviving gateway/broker work was demoted to nice 19
@@ -480,7 +481,20 @@ void cmd_zigbeecontain(conn_ctx *ctx, const char *args) {
      */
     const char *cmd =
         "d=/vendor/bin/siliconlabs_host; "
-        "[ -f \"$d/guard_process.sh\" ] && [ -x \"$d/zgateway\" ] || exit 3; "
+        "[ -x \"$d/zgateway\" ] && [ ! -L \"$d/zgateway\" ] || exit 3; "
+        "guard=0; if [ -f \"$d/guard_process.sh\" ] && [ ! -L \"$d/guard_process.sh\" ]; then "
+          "guard=1; "
+          "if [ -f \"$d/run_guard_process.sh\" ] && [ ! -L \"$d/run_guard_process.sh\" ] && "
+             "[ -f \"$d/package_version\" ] && [ ! -L \"$d/package_version\" ]; then :; "
+          "else [ ! -e \"$d/run_guard_process.sh\" ] && [ ! -L \"$d/run_guard_process.sh\" ] && "
+               "[ ! -e \"$d/package_version\" ] && [ ! -L \"$d/package_version\" ] || exit 3; fi; "
+        "else "
+          "[ -f \"$d/run.sh\" ] && [ ! -L \"$d/run.sh\" ] && "
+          "[ ! -L \"$d/guard_process.sh\" ] && [ ! -e \"$d/guard_process.sh\" ] && "
+          "[ ! -e \"$d/run_guard_process.sh\" ] && [ ! -L \"$d/run_guard_process.sh\" ] && "
+          "[ ! -e \"$d/package_version\" ] && [ ! -L \"$d/package_version\" ] && "
+          "[ -x \"$d/mosquitto\" ] && [ ! -L \"$d/mosquitto\" ] || exit 3; "
+        "fi; "
         "targets=''; gateways=''; "
         "for p in /proc/[0-9]*; do "
           "pid=${p#/proc/}; exe=$(readlink \"$p/exe\" 2>/dev/null || true); "
@@ -490,7 +504,7 @@ void cmd_zigbeecontain(conn_ctx *ctx, const char *args) {
               "targets=\"$targets $pid\"; gateways=\"$gateways $pid\" ;; "
             "\"/system/bin/sh|sh $d/guard_process.sh\"|"
             "\"/system/bin/sh|/system/bin/sh $d/guard_process.sh\") "
-              "targets=\"$targets $pid\" ;; "
+              "[ \"$guard\" -eq 0 ] || targets=\"$targets $pid\" ;; "
             "\"$d/mosquitto|$d/mosquitto -c $d/mosquitto.conf\"|"
             "\"$d/mosquitto|$d/mosquitto -c $d/mosquitto.conf \"*) "
               "targets=\"$targets $pid\" ;; "

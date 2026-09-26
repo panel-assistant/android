@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "cmd.h"
@@ -474,6 +475,160 @@ static void test_dispatch_exact_match(void) {
     CHECK(strcmp(out, "ERR\n") == 0, "RGB with too few args -> ERR (got '%s')\n", out);
     dispatch_reply("BLPOWER", out, sizeof out);
     CHECK(strcmp(out, "ERR\n") == 0, "BLPOWER with no host backlight node -> ERR (got '%s')\n", out);
+}
+
+// Execute the command emitted by the real dispatch path against a synthetic vendor directory and
+// proc tree. Only fixture paths are substituted; kill is a shell function that removes fixture PIDs.
+static int replace_text(const char *source, const char *from, const char *to,
+                        char *out, size_t capacity) {
+    size_t used = 0, from_len = strlen(from), to_len = strlen(to);
+    int replacements = 0;
+    while (*source) {
+        size_t copy = strncmp(source, from, from_len) == 0 ? to_len : 1;
+        if (used + copy >= capacity) return -1;
+        if (copy == to_len && strncmp(source, from, from_len) == 0) {
+            memcpy(out + used, to, copy);
+            source += from_len;
+            replacements++;
+        } else {
+            out[used] = *source++;
+        }
+        used += copy;
+    }
+    out[used] = '\0';
+    return replacements;
+}
+
+static void fixture_file(const char *path, mode_t mode) {
+    int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, mode);
+    CHECK(fd >= 0, "Zigbee fixture creates %s\n", path);
+    if (fd >= 0) close(fd);
+}
+
+static void fixture_process(const char *proc, const char *pid, const char *exe,
+                            const char *arg0, const char *arg1, const char *arg2) {
+    char dir[300], path[320];
+    snprintf(dir, sizeof dir, "%s/%s", proc, pid);
+    CHECK(mkdir(dir, 0700) == 0, "Zigbee fixture creates process %s\n", pid);
+    snprintf(path, sizeof path, "%s/exe", dir);
+    CHECK(symlink(exe, path) == 0, "Zigbee fixture links process %s\n", pid);
+    snprintf(path, sizeof path, "%s/cmdline", dir);
+    int fd = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+    CHECK(fd >= 0, "Zigbee fixture creates cmdline %s\n", pid);
+    if (fd < 0) return;
+    const char *args[] = {arg0, arg1, arg2};
+    for (size_t i = 0; i < 3 && args[i]; i++) {
+        size_t length = strlen(args[i]) + 1;
+        CHECK(write(fd, args[i], length) == (ssize_t)length,
+              "Zigbee fixture writes cmdline %s\n", pid);
+    }
+    close(fd);
+}
+
+static void test_zigbeecontain_layouts(void) {
+    struct layout_case {
+        const char *name;
+        int run, gateway, broker, guard, managed, version;
+        const char *targets;
+    } cases[] = {
+        {"4.x", 1, 1, 1, 0, 0, 0, "-TERM 101 102\n"},
+        {"older native", 1, 1, 0, 1, 0, 0, "-TERM 101 102 103\n"},
+        {"NSPPT managed", 1, 1, 0, 1, 1, 1, "-TERM 101 102 103\n"},
+        {"4.x without broker", 1, 1, 0, 0, 0, 0, ""},
+        {"4.x nonexecutable broker", 1, 1, -1, 0, 0, 0, ""},
+        {"4.x without launcher", 0, 1, 1, 0, 0, 0, ""},
+        {"4.x without gateway", 1, 0, 1, 0, 0, 0, ""},
+        {"native without launcher", 0, 1, 0, 1, 0, 0, "-TERM 101 102 103\n"},
+        {"mixed managed launcher", 1, 1, 1, 1, 1, 0, ""},
+        {"mixed package version", 1, 1, 1, 1, 0, 1, ""},
+        {"guardless managed marker", 1, 1, 1, 0, 1, 0, ""},
+        {"guardless package marker", 1, 1, 1, 0, 0, 1, ""},
+        {"guard symlink", 1, 1, 1, -1, 0, 0, ""},
+    };
+    char out[64], original[4096];
+    sysexec_stub_reset();
+    dispatch_reply("ZIGBEECONTAIN", out, sizeof out);
+    CHECK(sysexec_stub_last_run(original, sizeof original),
+          "ZIGBEECONTAIN supplies a complete production command\n");
+    if (!sysexec_stub_last_run(original, sizeof original)) return;
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const struct layout_case *c = &cases[i];
+        char root[] = "/tmp/zigbeecontain-XXXXXX";
+        CHECK(mkdtemp(root) != NULL, "Zigbee fixture directory for %s\n", c->name);
+        char vendor[256], proc[256], log[300], path[320], exe[320], conf[320];
+        snprintf(vendor, sizeof vendor, "%s/vendor", root);
+        snprintf(proc, sizeof proc, "%s/proc", root);
+        snprintf(log, sizeof log, "%s/kills", root);
+        CHECK(mkdir(vendor, 0700) == 0 && mkdir(proc, 0700) == 0,
+              "Zigbee fixture subdirectories for %s\n", c->name);
+        fixture_file(log, 0600);
+        if (c->run) {
+            snprintf(path, sizeof path, "%s/run.sh", vendor); fixture_file(path, 0600);
+        }
+        if (c->gateway) {
+            snprintf(path, sizeof path, "%s/zgateway", vendor); fixture_file(path, 0700);
+        }
+        if (c->broker) {
+            snprintf(path, sizeof path, "%s/mosquitto", vendor);
+            fixture_file(path, c->broker > 0 ? 0700 : 0600);
+        }
+        if (c->guard > 0) {
+            snprintf(path, sizeof path, "%s/guard_process.sh", vendor); fixture_file(path, 0600);
+        } else if (c->guard < 0) {
+            snprintf(path, sizeof path, "%s/guard_process.sh", vendor);
+            CHECK(symlink("run.sh", path) == 0, "Zigbee fixture guard symlink\n");
+        }
+        if (c->managed) {
+            snprintf(path, sizeof path, "%s/run_guard_process.sh", vendor); fixture_file(path, 0600);
+        }
+        if (c->version) {
+            snprintf(path, sizeof path, "%s/package_version", vendor); fixture_file(path, 0600);
+        }
+        snprintf(exe, sizeof exe, "%s/zgateway", vendor);
+        fixture_process(proc, "101", exe, exe, NULL, NULL);
+        snprintf(exe, sizeof exe, "%s/mosquitto", vendor);
+        snprintf(conf, sizeof conf, "%s/mosquitto.conf", vendor);
+        fixture_process(proc, "102", exe, exe, "-c", conf);
+        snprintf(exe, sizeof exe, "%s/guard_process.sh", vendor);
+        fixture_process(proc, "103", "/system/bin/sh", "sh", exe, NULL);
+        fixture_process(proc, "104", "/tmp/zgateway", exe, NULL, NULL);
+        snprintf(exe, sizeof exe, "%s/zgateway", vendor);
+        fixture_process(proc, "105", exe, "/tmp/zgateway", NULL, NULL);
+        snprintf(exe, sizeof exe, "%s/mosquitto", vendor);
+        fixture_process(proc, "106", exe, exe, "-c", "/tmp/mosquitto.conf");
+
+        char substituted[8192], command[12000], proc_prefix[300];
+        snprintf(proc_prefix, sizeof proc_prefix, "%s/proc/", root);
+        int a = replace_text(original, "d=/vendor/bin/siliconlabs_host",
+                             "d=__FIXTURE_VENDOR__", substituted, sizeof substituted);
+        char with_vendor[8192];
+        char assignment[300];
+        snprintf(assignment, sizeof assignment, "d=%s", vendor);
+        int b = replace_text(substituted, "d=__FIXTURE_VENDOR__", assignment,
+                             with_vendor, sizeof with_vendor);
+        int p = replace_text(with_vendor, "/proc/", proc_prefix,
+                             substituted, sizeof substituted);
+        CHECK(a == 1 && b == 1 && p >= 4, "Zigbee fixture rewrites all fixed paths for %s\n", c->name);
+        if (a != 1 || b != 1 || p < 4) return;
+        snprintf(command, sizeof command,
+                 "kill() { printf '%%s\\n' \"$*\" >> '%s'; shift; "
+                 "for zpid in \"$@\"; do rm -f '%s'/\"$zpid\"/exe '%s'/\"$zpid\"/cmdline; "
+                 "rmdir '%s'/\"$zpid\"; done; }; "
+                 "killall() { return 99; }; pkill() { return 99; }; sleep() { :; }; %s",
+                 log, proc, proc, proc, substituted);
+        int status = system(command);
+        int expected = c->targets[0] ? 0 : 3;
+        CHECK(WIFEXITED(status) && WEXITSTATUS(status) == expected,
+              "Zigbee %s admission returns %d (status=%d)\n", c->name, expected, status);
+        char actual[128] = "";
+        FILE *kills = fopen(log, "r");
+        if (kills) { size_t n = fread(actual, 1, sizeof actual - 1, kills); actual[n] = '\0'; fclose(kills); }
+        CHECK(strcmp(actual, c->targets) == 0,
+              "Zigbee %s signals only exact allowed processes (got '%s')\n", c->name, actual);
+        snprintf(command, sizeof command, "rm -rf -- '%s'", root);
+        CHECK(system(command) == 0, "Zigbee fixture cleanup for %s\n", c->name);
+    }
 }
 
 // The reporter's defect and its fix, as a request/reply contract: `svc power reboot` exits 0 without
@@ -2081,6 +2236,7 @@ int main(void) {
     test_clamp();
     test_stat_jiffies();
     test_dispatch_exact_match();
+    test_zigbeecontain_layouts();
     test_reboot_escalation();
     test_keyevent_named_keys_only();
     test_sysctl_execution_results();
