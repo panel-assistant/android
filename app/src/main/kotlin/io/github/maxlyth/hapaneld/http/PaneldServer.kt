@@ -6,6 +6,7 @@ import android.util.Log
 import io.github.maxlyth.hapaneld.canonicalHaOrigin
 import io.github.maxlyth.hapaneld.sameOriginDashboardRoute
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.MigrationNotice
 import io.github.maxlyth.hapaneld.NativeLocale
 import io.github.maxlyth.hapaneld.sensors.HaLifecycle
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleMessage
@@ -2459,7 +2460,7 @@ class PaneldServer internal constructor(
                     call.respondText(html, ContentType.Text.Html)
                 }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -2496,7 +2497,15 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
+                    }
+                    post("/migration-notice/dismiss") {
+                        val persisted = config.dismissMigrationNotice()
+                        call.respondText(
+                            """{"ok":$persisted}""",
+                            ContentType.Application.Json,
+                            if (persisted) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
+                        )
                     }
                     configReadRoutes(
                         currentConfigJson = ::configJson,
@@ -4423,6 +4432,7 @@ class PaneldServer internal constructor(
      content is parsed and publishes the final header height without causing a post-paint card-wall shift. -->
 <script src="assets/switcher.js"></script>
 """
+        val migrationNotice = """<div id="migrationbar" class="setup"${if (config.migrationNoticeVisible()) "" else " style=\"display:none\""}>⚠ <b>${esc(strings.get("shell.migration.title"))}</b> ${esc(strings.get("shell.migration.body"))} <a href="${MigrationNotice.URL}" target="_blank" rel="noopener">${esc(MigrationNotice.URL)}</a> <button id="migration-dismiss" class="pbtn" type="button">${esc(strings.get("shell.migration.dismiss"))}</button></div>"""
         return """<!doctype html><html lang="${esc(strings.requestedLocale)}"$themeAttr><head><base href="/"><meta charset="utf-8">
 <script>/* ?theme=light|dark pins the UI theme for testing (else the browser preference rules) */
 (function(){var m=location.search.match(/[?&]theme=(dark|light)\b/);if(m)document.documentElement.setAttribute("data-theme",m[1])})();</script>
@@ -4435,6 +4445,7 @@ class PaneldServer internal constructor(
 <div class="topbar">$header${navBar(active, strings, preserveExplicitEnglish, embed?.hiddenTabs.orEmpty())}</div>
 $switcher<div id="halifebar" class="setup" style="display:none"></div>
 <div id="hanetbar" class="setup" style="display:none"></div>
+$migrationNotice
 <div id="verbar" class="setup" style="display:none">⟳ ${esc(strings.get("shell.new_version.installed"))} — <a href="#" onclick="location.reload();return false">${esc(strings.get("shell.action.reload"))}</a> ${esc(strings.get("shell.new_version.refresh_suffix"))}</div>
 $body
 $extraScripts<script src="assets/power-safety.js"></script>
@@ -10003,7 +10014,10 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                     val decoded = ConfigVault.decode(
                         readArchiveText(plainFile, ref, archiveEntries, "app-state-restore-"),
                     ) ?: throw IllegalArgumentException("corrupt app_state payload")
-                    StateBackupPolicy.restorableRows(decoded.rows, samePanel)
+                    StateBackupPolicy.restorableRows(decoded.rows, samePanel) +
+                        io.github.maxlyth.hapaneld.migration.migrationNoticeHistoryRows(
+                            decoded.rows, migrationRestore, sameDeviceByDiscoveryId,
+                        )
                 }.getOrNull() ?: return call.respondText(
                     withInstallPresentation(
                         """{"ok":false,"error":"invalid app_state payload"}""",
