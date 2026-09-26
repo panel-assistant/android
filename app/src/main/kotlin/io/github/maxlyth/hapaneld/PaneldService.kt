@@ -1664,6 +1664,7 @@ class PaneldService : Service() {
             androidId = { config.androidId },
             mqttState = { runtime.current().mqtt.state },
             offerHandoff = { offerSuccessorHandoff() },
+            offerInstalledHandoff = { offerSuccessorHandoff(allowInstall = false) },
             // The restore is durable; only a fresh process runs wholly from the restored configuration.
             requestRestart = { recoveryRestart.request() },
         )
