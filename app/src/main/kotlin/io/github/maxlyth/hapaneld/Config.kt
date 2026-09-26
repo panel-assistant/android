@@ -1467,6 +1467,18 @@ class Config private constructor(
         prefs.edit().putLong("panel_assistant_update_owner_seen_ms", wallMs).apply()
     }
 
+    /** Either accepted transport or a declared integration poll proves this panel has been managed. */
+    val panelAssistantConnectionSeen: Boolean
+        get() = panelAssistantAuthority in setOf("mqtt", "shadow", "native") ||
+            panelAssistantUpdateOwnerSeenMs > 0L || prefs.getBoolean("migration_notice_connection_seen", false)
+
+    fun migrationNoticeVisible(versionCode: Int = BuildConfig.VERSION_CODE): Boolean =
+        !panelAssistantConnectionSeen && prefs.getInt("migration_notice_dismissed_version", -1) != versionCode
+
+    /** Acknowledges only this build; installing a later build brings an unconnected panel's notice back. */
+    fun dismissMigrationNotice(versionCode: Int = BuildConfig.VERSION_CODE): Boolean =
+        durableCommit { putInt("migration_notice_dismissed_version", versionCode) }
+
     // Per-panel intended "home" dashboard path (e.g. "/lovelace/0"). When set, a reload keeps the hard
     // restart but re-navigates HERE once the frontend is back up, instead of leaving the Companion on its
     // user-default view. Empty = keep current behaviour (cold-start to the Companion default).
