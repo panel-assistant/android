@@ -654,7 +654,7 @@
    "state": "machine-cross-checked"
   },
   "configure.brightness.runtime_unavailable": {
-   "text": "Funkcja adaptacyjnej jasności nie jest dostępna.",
+   "text": "Mechanizm adaptacyjnej jasności jest niedostępny.",
    "sourceHash": "ff261271c47217afa1f2616da075c1c72d5551b8750ffbd17ce8acdaabf041d5",
    "state": "machine-cross-checked"
   },
@@ -684,7 +684,7 @@
    "state": "machine-cross-checked"
   },
   "configure.brightness.selected_source_failed": {
-   "text": "Nie udało się załadować wybranego źródła; próba zostanie powtórzona przy następnej aktualizacji.",
+   "text": "Nie udało się załadować wybranego źródła; próba zostanie powtórzona przy zwykłym odświeżeniu.",
    "sourceHash": "62b265c191f452f772e6a2accd686bc29f6bf99e84aae2b4878e11ba6862d4b8",
    "state": "machine-cross-checked"
   },
@@ -1244,7 +1244,7 @@
    "state": "machine-cross-checked"
   },
   "configure.proximity.message.learning_clear_baseline": {
-   "text": "Nie trzeba niczego konfigurować. Przez chwilę nie zbliżaj się do panelu, aby mógł nauczyć się swojego poziomu odniesienia.",
+   "text": "Nie trzeba niczego konfigurować. Przez chwilę zadbaj, by przestrzeń przed panelem była wolna, aby mógł nauczyć się poziomu odniesienia.",
    "sourceHash": "f14cf2497d96832b03c9b3442247990bf8e72648d8802d9c50cdb4d375a08455",
    "state": "machine-cross-checked"
   },
@@ -1269,7 +1269,7 @@
    "state": "machine-cross-checked"
   },
   "configure.proximity.message.safety_reset_failed": {
-   "text": "Gesty wybudzania są wyłączone, bo nie udało się zapisać ich resetowania bezpieczeństwa.",
+   "text": "Gesty wybudzania są wyłączone, ponieważ nie udało się zapisać resetu zabezpieczającego.",
    "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
    "state": "machine-cross-checked"
   },
@@ -1769,12 +1769,12 @@
    "state": "machine-cross-checked"
   },
   "dashboard.actions.hardened_approval": {
-   "text": "Tryb Hardened wymaga fizycznego zatwierdzenia na tym panelu; nie można go zatwierdzić zdalnie.",
+   "text": "W trybie Hardened ta czynność wymaga fizycznego zatwierdzenia na tym panelu; nie można jej zatwierdzić zdalnie.",
    "sourceHash": "7cebbbb063c4ee4afd81e5f244967f8c1c8d281e01b51785e00b8e97f7618d4e",
    "state": "machine-cross-checked"
   },
   "dashboard.actions.remote_input_disabled": {
-   "text": "Zdalne wprowadzanie danych za pomocą dotknięcia jest wyłączone dla klientów sieciowych w trybie Hardened.",
+   "text": "Zdalne dotknięcia ekranu wysyłane przez klientów sieciowych są wyłączone w trybie Hardened.",
    "sourceHash": "3aaa115bb156e96c5f3b2f9a1daa5d19806a92e5f1a47f6cd80066b36cc9e209",
    "state": "machine-cross-checked"
   },
@@ -1784,7 +1784,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.auth_rejected.explanation": {
-   "text": "zapisane ustawienia logowania zostały odrzucone, więc pulpit przestał ponawiać próbę (na panelu wyświetlają się instrukcje naprawy). Użyj logowania przez przeglądarkę na",
+   "text": "zapisane ustawienia logowania zostały odrzucone, więc pulpit przestał ponawiać próbę (na panelu wyświetlają się instrukcje naprawy). Użyj opcji „Logowanie przez przeglądarkę” na",
    "sourceHash": "e414f00aea1c8c8d9ac8a59a1fa6902c8fca809a1ad9990d1bed61898c4d8e96",
    "state": "machine-cross-checked"
   },
@@ -3199,12 +3199,12 @@
    "state": "machine-cross-checked"
   },
   "dashboard.inspect.enable_in_companion": {
-   "text": "Najpierw włącz to w aplikacji pulpitu: Companion → Ustawienia → Rozwiązywanie problemów → „Zdalne debugowanie WebView”, a potem uruchom ponownie pulpit nawigacyjny i ponownie naciśnij „Włącz”.",
+   "text": "Najpierw włącz tę funkcję w aplikacji Companion na panelu wyświetlającym pulpit nawigacyjny: Companion → Ustawienia → Rozwiązywanie problemów → „Zdalne debugowanie WebView”, a potem uruchom ponownie pulpit nawigacyjny i ponownie naciśnij „Włącz”.",
    "sourceHash": "760752b57777587b23fb91a39c73f1865016cc24324d3bf3e64d4d55fb5fcc74",
    "state": "machine-cross-checked"
   },
   "dashboard.inspect.hardened_disabled": {
-   "text": "Niedostępne, gdy włączony jest tryb Hardened. Przed udostępnieniem narzędzi programistycznych WebView w sieci LAN przełącz się na tryb złagodzony.",
+   "text": "Niedostępne, gdy włączony jest tryb Hardened. Przed udostępnieniem narzędzi programistycznych WebView w sieci LAN przełącz się na tryb Relaxed.",
    "sourceHash": "ee70f4d65d45904d8878a2146235add5ac0fc61183d50fc2d7c7369eb52b0970",
    "state": "machine-cross-checked"
   },
@@ -4579,7 +4579,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.allow_note": {
-   "text": "Zezwolenie na tę kontrolę nigdy nie dodaje encji. Pozwala jedynie kontynuować automatyczne aktualizacje bez nich. Aby subskrybować jedną z nich, znajdź ją w wyszukiwarce katalogu u góry tej strony i ustaw na {pinned}; ręczne przypięcie pozostaje, dopóki go nie usuniesz.",
+   "text": "Zezwolenie na kontynuowanie mimo wyniku tej kontroli nigdy nie dodaje encji. Pozwala jedynie kontynuować automatyczne aktualizacje bez nich. Aby subskrybować jedną z nich, znajdź ją w wyszukiwarce katalogu u góry tej strony i ustaw na {pinned}; ręczne przypięcie pozostaje, dopóki go nie usuniesz.",
    "sourceHash": "d3c4b6d2399ff0b190f6ccafb3bb888b75db62d7a682cd5a5c06dbe91a24df72",
    "state": "machine-cross-checked"
   },
@@ -4879,7 +4879,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.strategy_allowed_note": {
-   "text": "Home Assistant tworzy ten pulpit nawigacyjny na podstawie strategii, a strategia tworzy karty tylko dla encji, które widzi. Gdy ta kontrola jest dozwolona, żadna encja spoza subskrypcji nie dostaje tu karty i nigdy nie zostanie wyuczona, więc ta strona nie może pokazać, czego brakuje. Otwórz ten sam pulpit nawigacyjny w Home Assistant na innym urządzeniu i przypnij encję stojącą za każdą kartą, której tu brakuje.",
+   "text": "Home Assistant tworzy ten pulpit nawigacyjny na podstawie strategii, a strategia tworzy karty tylko dla encji, które widzi. Gdy ta kontrola jest dozwolona, żadna encja spoza subskrypcji nie dostaje tu karty i nie zostanie wykryta przez mechanizm uczenia zależności, więc ta strona nie może pokazać, czego brakuje. Otwórz ten sam pulpit nawigacyjny w Home Assistant na innym urządzeniu i przypnij encję stojącą za każdą kartą, której tu brakuje.",
    "sourceHash": "70b006b69bb10b22043fbe4f51269ef7cd47586b1e0dfa6f5c02be15f119782b",
    "state": "machine-cross-checked"
   },
@@ -5054,17 +5054,17 @@
    "state": "machine-cross-checked"
   },
   "entities.reset.complete_no_scan": {
-   "text": "Reset zakończony. Usunięto wyuczone dowody, ręczne nadpisania i decyzje o ignorowaniu kontroli bezpieczeństwa. Bieżąca subskrypcja na żywo została zachowana, ale skanowanie zastępcze się nie rozpoczęło; użyj {scan_action}, aby spróbować ponownie.",
+   "text": "Reset zakończony. Usunięto dane o encjach zebrane podczas uczenia zależności, ręczne przypięcia i wykluczenia oraz decyzje o ignorowaniu kontroli bezpieczeństwa. Bieżąca subskrypcja na żywo została zachowana, ale skanowanie zastępcze się nie rozpoczęło; użyj {scan_action}, aby spróbować ponownie.",
    "sourceHash": "f0198d70c226424f7a78ff65f1545e155230fd732de12e08ed4474cbaf7451c6",
    "state": "machine-cross-checked"
   },
   "entities.reset.complete_scanning": {
-   "text": "Reset zakończony. Usunięto wyuczone dowody, ręczne nadpisania i decyzje o ignorowaniu kontroli bezpieczeństwa. Trwa skanowanie zastępcze; obecna subskrypcja na żywo pozostaje aktywna, dopóki skanowanie nie zakończy się powodzeniem.",
+   "text": "Reset zakończony. Usunięto dane o encjach zebrane podczas uczenia zależności, ręczne przypięcia i wykluczenia oraz decyzje o ignorowaniu kontroli bezpieczeństwa. Trwa skanowanie zastępcze; obecna subskrypcja na żywo pozostaje aktywna, dopóki skanowanie nie zakończy się powodzeniem.",
    "sourceHash": "0c9fed9e1b5fcde6591508c956e73fb8249ada0f34305d203ebe0298b074dfdf",
    "state": "machine-cross-checked"
   },
   "entities.reset.confirm": {
-   "text": "Czy na pewno chcesz zresetować wszystkie wyuczone dowody dotyczące encji, ręczne nadpisania (przypięcie/wykluczenie) oraz decyzje o ignorowaniu kontroli bezpieczeństwa wykrywania encji? Nie można tego cofnąć. Bieżąca subskrypcja na żywo zostanie zachowana, a skanowanie zastępcze odbuduje dowody.",
+   "text": "Czy na pewno chcesz zresetować wszystkie dane o encjach zebrane podczas uczenia zależności, ręczne przypięcia i wykluczenia oraz decyzje o ignorowaniu kontroli bezpieczeństwa wykrywania encji? Nie można tego cofnąć. Bieżąca subskrypcja na żywo zostanie zachowana, a skanowanie zastępcze odbuduje te dane.",
    "sourceHash": "af56ee112e5d4353209106117b9426c18de16a6c7cfc2c2e2db39526d56a1db6",
    "state": "machine-cross-checked"
   },
@@ -5074,7 +5074,7 @@
    "state": "machine-cross-checked"
   },
   "entities.reset.resetting": {
-   "text": "Resetowanie wyuczonych danych encji przy zachowaniu bieżącej subskrypcji na żywo…",
+   "text": "Resetowanie danych o encjach zebranych podczas uczenia zależności przy zachowaniu bieżącej subskrypcji na żywo…",
    "sourceHash": "4245bf2a7c7d1dfb95da35ba88bc5e7dcb1ae69ca3754477666697d1597eca3d",
    "state": "machine-cross-checked"
   },
@@ -5409,7 +5409,7 @@
    "state": "machine-cross-checked"
   },
   "entities.table.review.note": {
-   "text": "Encje z bieżącego strumienia, których brakuje w Home Assistant, które otrzymują aktualizacje, choć nie zaobserwowano ich jako zależności pulpitu nawigacyjnego, lub które przypięto ręcznie, choć ten pulpit ich nie używa. Tylko do przeglądu; ręczne przypięcie lub wykluczenie nigdy nie jest usuwane automatycznie — odepnij je tutaj, jeśli chcesz się go pozbyć.",
+   "text": "Encje z bieżącego strumienia, których brakuje w Home Assistant, które otrzymują aktualizacje, choć nie zaobserwowano ich jako zależności pulpitu nawigacyjnego, lub które przypięto ręcznie, choć ten pulpit ich nie używa. Tylko do przeglądu; ręczne przypięcie lub wykluczenie nigdy nie jest usuwane automatycznie — jeśli chcesz usunąć przypięcie, odepnij encję tutaj.",
    "sourceHash": "96035cee159d53cfff753798302c0d73e6ff3552be2aca08d4003359264efbbe",
    "state": "machine-cross-checked"
   },
@@ -5949,7 +5949,7 @@
    "state": "machine-cross-checked"
   },
   "install.config_import_status.dry_run": {
-   "text": "podgląd",
+   "text": "wyświetlono podgląd",
    "sourceHash": "e77dd7def5c403c2fa0e7bc5e9d1204157d5551a1b3600b376ad54869cbfd4d4",
    "state": "machine-cross-checked"
   },
@@ -6064,7 +6064,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_staging_retained": {
-   "text": "Nie udało się usunąć wrażliwych tymczasowych danych kopii zapasowej. Sprawdź miejsce na panelu, a potem spróbuj ponownie; nie pobrano żadnej kopii zapasowej.",
+   "text": "Nie udało się usunąć wrażliwych tymczasowych danych kopii zapasowej. Sprawdź pamięć panelu, a potem spróbuj ponownie; nie pobrano żadnej kopii zapasowej.",
    "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
    "state": "machine-cross-checked"
   },
@@ -6289,7 +6289,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_archive_entries_invalid": {
-   "text": "Archiwum kopii zapasowej zawiera brakujące lub nieoczekiwane pliki",
+   "text": "W archiwum kopii zapasowej brakuje plików albo znajdują się w nim nieoczekiwane pliki.",
    "sourceHash": "05160b8fa6ac6f7af161dc55f176491aae6c19ec889c921e906f10882782e671",
    "state": "machine-cross-checked"
   },
@@ -6344,7 +6344,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_legacy_too_large": {
-   "text": "stara kopia zapasowa jest za duża; przed przywróceniem utwórz nową kopię zapasową",
+   "text": "kopia zapasowa w starym formacie jest za duża; przed przywróceniem utwórz nową kopię zapasową",
    "sourceHash": "ebf134ca6c3afdbecf848bbce058c27770f8f3a4513ddd22f6f5d4652b52e72b",
    "state": "machine-cross-checked"
   },
@@ -6414,7 +6414,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.status_builtin_renderer_retries_stopped": {
-   "text": "⛔ Wbudowany renderer przestał ponawiać próby po powtarzających się błędach WebView. Zaktualizuj lub napraw System WebView, a potem użyj opcji „Odśwież pulpit nawigacyjny” na pasku nawigacyjnym panelu lub w zakładce „Pulpit nawigacyjny”.",
+   "text": "⛔ Wbudowany renderer przestał ponawiać próby po powtarzających się błędach WebView. Zaktualizuj lub napraw System WebView, a potem użyj „Odśwież pulpit nawigacyjny” na pasku nawigacyjnym panelu lub „Odśwież” na karcie „Pulpit nawigacyjny”.",
    "sourceHash": "1b5418807f2f485ae2f516c802d5e0801c94630d573966d230b92d877e08417e",
    "state": "machine-cross-checked"
   },
@@ -6924,7 +6924,7 @@
    "state": "machine-cross-checked"
   },
   "oauth.callback.ambient_warning": {
-   "text": "Home Assistant jest skonfigurowane, ale wybrane źródło światła otoczenia wymaga uwagi.",
+   "text": "Home Assistant jest skonfigurowane, ale wybrane źródło pomiaru natężenia oświetlenia wymaga uwagi.",
    "sourceHash": "c78fcf2f6d3db79e150a52552aea094c1fa8af3dad4accfd061ef4a5dc5fa251",
    "state": "machine-cross-checked"
   },
@@ -7064,7 +7064,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.action.use_automatic": {
-   "text": "Użyj automatycznego",
+   "text": "Użyj automatycznego dopasowania",
    "sourceHash": "539ca38b10265667d2ecca6424e6bec15d47aaed08577648ad463be14c6b75b2",
    "state": "machine-cross-checked"
   },
@@ -7949,7 +7949,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.modal.delete_detail": {
-   "text": "{profile}\nsha256:{sha256}\n\nNie da się tego cofnąć. Nie można usunąć wersji aktywnych, zaznaczonych, w pakiecie ani ostatnio znanych jako poprawne.",
+   "text": "{profile}\nsha256:{sha256}\n\nNie da się tego cofnąć. Nie można usunąć wersji aktywnych, wybranych, dołączonych w pakiecie ani ostatniej znanej poprawnej.",
    "sourceHash": "4797115e10e60a6830bb0342e65763855f48f834d5e096571fa37a0fc392043d",
    "state": "machine-cross-checked"
   },
@@ -8159,7 +8159,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.result.activation-pending": {
-   "text": "Wybór został zaplanowany; konieczne jest ponowne uruchomienie.",
+   "text": "Wybór został przygotowany; konieczne jest ponowne uruchomienie.",
    "sourceHash": "037cb7a9c3e6805d5ad99fcd7ade3efa0c27082e4b09bd0811cd6927d5821455",
    "state": "machine-cross-checked"
   },
@@ -8279,7 +8279,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.result.profile-activation-abort-persist-failed": {
-   "text": "Nie udało się zaplanować ponownego uruchomienia profilu, a jego oczekującej aktywacji nie dało się trwale cofnąć. Aktywacja pozostaje w toku i może zostać zastosowana przy następnym ponownym uruchomieniu procesu.",
+   "text": "Nie udało się zaplanować ponownego uruchomienia profilu, a oczekującej aktywacji nie udało się trwale cofnąć. Aktywacja nadal oczekuje na wykonanie i może nastąpić przy następnym ponownym uruchomieniu procesu.",
    "sourceHash": "51736e644ada8cf2e4e04884ea7c92562af09e5bb2046703c8d36ae76af7a45d",
    "state": "machine-cross-checked"
   },
@@ -8549,7 +8549,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.state.last_known_good": {
-   "text": "Ostatni znany poprawny stan",
+   "text": "Ostatnia znana poprawna wersja",
    "sourceHash": "f352aca110ce966b98af6211665ab16a127210a9b397d9cb50d4f009cf2537ea",
    "state": "machine-cross-checked"
   },
@@ -8739,7 +8739,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.mdns.stale_address": {
-   "text": "⚠ Wykrywanie paneli (mDNS) ma nieaktualny adres ({bound_ip}, teraz {lan_ip}) — inne panele nie mają dostępu do tego panelu ze swojego przełącznika, dopóki nie zostanie on ponownie przypisany.",
+   "text": "⚠ Wykrywanie paneli (mDNS) ma nieaktualny adres ({bound_ip}, teraz {lan_ip}) — inne panele nie mają dostępu do tego panelu ze swojego przełącznika, dopóki usługa mDNS nie powiąże się ponownie z aktualnym adresem.",
    "sourceHash": "8677f10a52a47c0e7df96907de1da8b86cd875d30bb03b25092a3d63c725157c",
    "state": "machine-cross-checked"
   },
@@ -8819,7 +8819,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.power_safety.button.repair_title": {
-   "text": "Naprawa jest jawna, zweryfikowana poprzez odczyt wyników i nigdy nie powoduje ponownego uruchomienia panelu",
+   "text": "Naprawa wymaga jawnego uruchomienia, jest weryfikowana ponownym odczytem i nie uruchamia panelu ponownie",
    "sourceHash": "e8af7e6d7a717d25be060e60abb34f970a5534d9836423a0972de0690e5ecb34",
    "state": "machine-cross-checked"
   },
@@ -8889,7 +8889,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.renderer_recovery.builtin": {
-   "text": "Wbudowany renderer przestał ponawiać próby po wielokrotnych awariach WebView. Zaktualizuj lub napraw System WebView, a potem użyj opcji „Odśwież pulpit nawigacyjny” na pasku nawigacyjnym panelu lub na karcie „Pulpit nawigacyjny”.",
+   "text": "Wbudowany renderer przestał ponawiać próby po powtarzających się błędach WebView. Zaktualizuj lub napraw System WebView, a potem użyj „Odśwież pulpit nawigacyjny” na pasku nawigacyjnym panelu lub „Odśwież” na karcie „Pulpit nawigacyjny”.",
    "sourceHash": "20f93e06aeff7310a8f77b8fa3242cd484ebedb2b1a6242e5aaba65209c4b428",
    "state": "machine-cross-checked"
   },
@@ -9859,7 +9859,7 @@
    "state": "machine-cross-checked"
   },
   "setup.attest.no": {
-   "text": "Nie — jest puste lub nieprawidłowe",
+   "text": "Nie — jest pusty lub nieprawidłowy",
    "sourceHash": "ef3c7d7d0f3d50f8afa0b6ec09fb18e59dcce91bbcb4dbb96cf461cfee792c7d",
    "state": "machine-cross-checked"
   },
@@ -9874,7 +9874,7 @@
    "state": "machine-cross-checked"
   },
   "setup.dashboard.action.follow_default": {
-   "text": "Postępuj zgodnie z domyślnymi ustawieniami konta",
+   "text": "Korzystaj z domyślnego pulpitu konta",
    "sourceHash": "6c6cfb2c5bf349ea601bc08b9f6737cd027a15697c3e5012db95d114b8bff1a8",
    "state": "machine-cross-checked"
   },
@@ -9894,7 +9894,7 @@
    "state": "machine-cross-checked"
   },
   "setup.dashboard.fetch_failed.continue": {
-   "text": "Kontynuuj, korzystając z poniższych ustawień domyślnych konta.",
+   "text": "Kontynuuj, wybierając poniżej domyślny pulpit konta.",
    "sourceHash": "bacf492386070db8a7643fa9a7eb1431691747007576c440d2223ac2fdc2cd18",
    "state": "machine-cross-checked"
   },
@@ -9924,7 +9924,7 @@
    "state": "machine-cross-checked"
   },
   "setup.dashboard.lead": {
-   "text": "Ten panel ciągle wraca do tego pulpitu — po odświeżeniu, po bezczynności, podczas uruchamiania.",
+   "text": "Ten panel ciągle wraca do tego pulpitu — po odświeżeniu, po bezczynności, po uruchomieniu.",
    "sourceHash": "a704ac0a80953f11601df013cacc7a9b2d6669530a77eb7d8820817644d3099f",
    "state": "machine-cross-checked"
   },
@@ -9944,12 +9944,12 @@
    "state": "machine-cross-checked"
   },
   "setup.dashboard.option.auto_default": {
-   "text": "Auto — zastosuj ustawienia domyślne tego konta",
+   "text": "Auto — korzystaj z domyślnego pulpitu tego konta",
    "sourceHash": "b049c63a3b2b17956fa93993993be49fef42b7b5be21a0272ee5fa4c2a8f1eef",
    "state": "machine-cross-checked"
   },
   "setup.dashboard.option.auto_none": {
-   "text": "Auto — dla tego konta nie ustawiono wartości domyślnej",
+   "text": "Auto — dla tego konta nie ustawiono domyślnego pulpitu",
    "sourceHash": "7b82f22b1413e07c8671b4d4a7b847856157697f2b735396d3b9af343799326c",
    "state": "machine-cross-checked"
   },
@@ -10064,7 +10064,7 @@
    "state": "machine-cross-checked"
   },
   "setup.done.taming_intro": {
-   "text": "Opcjonalnie: panele często są dostarczane z aplikacjami producenta, które wyskakują nad pulpitem. ha-paneld może je wyciszyć.",
+   "text": "Opcjonalnie: panele często są dostarczane z aplikacjami producenta, które wyskakują nad pulpitem. ha-paneld może ograniczyć ich działanie.",
    "sourceHash": "df51327092a8655bdb336547196c85ecc908233391c308ae6085a8e18c2519b8",
    "state": "machine-cross-checked"
   },
@@ -10164,7 +10164,7 @@
    "state": "machine-cross-checked"
   },
   "setup.filter.counting.red": {
-   "text": "Zbliża się do poziomu, z którym ten panel sobie nie poradzi",
+   "text": "Liczba encji rośnie ponad poziom, z którym ten panel może sobie poradzić",
    "sourceHash": "10f1f05a101203f22e8bce7990f866b9f3e70b835af7b87b41c0c0307ad719cb",
    "state": "machine-cross-checked"
   },
@@ -10354,7 +10354,7 @@
    "state": "machine-cross-checked"
   },
   "setup.identity.friendly_name.help": {
-   "text": "Tylko etykieta w Home Assistant. Możesz to zmienić w dowolnym momencie.",
+   "text": "To tylko etykieta w Home Assistant. Możesz ją bezpiecznie zmienić w dowolnym momencie.",
    "sourceHash": "c0cb163ff36450f4c08b82bbcc86f62b0906aa096da711e7c455a582dea9e9d7",
    "state": "machine-cross-checked"
   },
@@ -10489,7 +10489,7 @@
    "state": "machine-cross-checked"
   },
   "setup.mqtt.help.body": {
-   "text": "W Home Assistant: Ustawienia → Dodatki → Mosquitto broker. Adres to zazwyczaj tcp://, a po nim IP twojego Home Assistant i :1883. Nazwa użytkownika i hasło to użytkownik Home Assistant — Ustawienia → Osoby → Dodaj osobę, z włączoną opcją „Zezwól na logowanie”.",
+   "text": "W Home Assistant: Ustawienia → Dodatki → Mosquitto broker. Adres to zazwyczaj tcp://, a po nim IP twojego Home Assistant i :1883. Nazwa użytkownika i hasło należą do konta użytkownika Home Assistant — Ustawienia → Osoby → Dodaj osobę, z włączoną opcją „Zezwól na logowanie”.",
    "sourceHash": "2b6c76952afc7a0b34ae075bacd4113d2c5b79ba562ed3c745847ff2d359b0ef",
    "state": "machine-cross-checked"
   },
@@ -10719,7 +10719,7 @@
    "state": "machine-cross-checked"
   },
   "setup.repair.explanation": {
-   "text": "Ustawienia nadal tu są — nic nie zostało zresetowane. Poniżej jest jedna rzecz, na którą warto zwrócić uwagę.",
+   "text": "Ustawienia nadal tu są — nic nie zostało zresetowane. Jedna rzecz poniżej wymaga uwagi.",
    "sourceHash": "c4ab1bbb196d9f326a880ca9ccae6bb7379404d0dc3a3b093419128d3e366684",
    "state": "machine-cross-checked"
   },
@@ -10819,7 +10819,7 @@
    "state": "machine-cross-checked"
   },
   "setup.webview.manual_note": {
-   "text": "Nie ma żadnego sprawdzonego silnika dołączonego do tego modelu panelu, więc trzeba go zaktualizować ręcznie — zazwyczaj przez aktualizację systemu panelu albo przez zainstalowanie najnowszej wersji Android System WebView.",
+   "text": "Nie ma żadnego sprawdzonego silnika dołączonego do tego modelu panelu, więc trzeba go zaktualizować ręcznie — zazwyczaj przez aktualizację systemu panelu albo przez zainstalowanie aktualnej wersji Android System WebView.",
    "sourceHash": "464dc553f785e31bb4878a421d52a46a91c913d436bd9b65f5fbd4a0ff59c885",
    "state": "machine-cross-checked"
   },
@@ -11634,7 +11634,7 @@
    "state": "machine-cross-checked"
   },
   "install.tame.approval.recommended": {
-   "text": "Ogranicz zalecane przez profil pakiety dostawcy",
+   "text": "Poskrom zalecane przez profil pakiety dostawcy",
    "sourceHash": "3a77da60cbcfc809f72b7fd8d18d38f88119734d8ec517da65b2653c1bdcc833",
    "state": "machine-cross-checked"
   },
