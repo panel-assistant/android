@@ -2718,6 +2718,12 @@
     } else if (f.help) {
       help = el("small", { lang: f.helpLanguage, text: f.help });
     }
+    var companionRendererHint = f.key === "dashboard_package" && rendererChoices.some(function (renderer) {
+      return renderer && renderer.pkg === values.dashboard_package;
+    }) ? el("small", {
+      class: "companion-renderer-hint",
+      text: i18nText("configure.renderer.companion_launcher_hint", "Turn on the Companion app's launcher option for it to take Home.")
+    }) : null;
     var protectedSetting = !!HARDENED_APPROVAL_SETTING_KEYS[f.key];
     var labelText = el("span", { lang: f.labelLanguage });
     if (protectedSetting) {
@@ -2734,6 +2740,7 @@
     var label = el("div", { class: "flabel" }, [
       labelText,
       help,
+      companionRendererHint,
       Object.prototype.hasOwnProperty.call(applyPending, f.key) ?
         el("small", { class: "apply-pending-status", text: applyPendingStatusText(f.key) }) : null,
     ]);
