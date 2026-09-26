@@ -16,10 +16,17 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 | --- | --- | --- | --- |
 | **4.0.12** | 865677434 (825.6 MB) | [SN_3326S_750X1334_4lan_V4.0.12_20251031-ota.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom/21/SN_3326S_750X1334_4lan_V4.0.12_20251031-ota.zip) | [2026-06-18](https://web.archive.org/web/20260618095402/https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom/21/SN_3326S_750X1334_4lan_V4.0.12_20251031-ota.zip) |
 
-### Incremental diffs (65)
+### Incremental diffs (72)
 
 | To (target) | From | Size | Download | Archived |
 | --- | --- | --- | --- | --- |
+| **4.9.0** | 4.8.0 | 53905985 (51.4 MB) | [CK_4.8.0_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.8.0_4.9.0V228-diff.zip) | — |
+| **4.9.0** | 4.7.0 | 50680783 (48.3 MB) | [CK_4.7.0_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.7.0_4.9.0V228-diff.zip) | — |
+| **4.9.0** | 4.6.0 | 55407361 (52.8 MB) | [CK_4.6.0_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.6.0_4.9.0V228-diff.zip) | — |
+| **4.9.0** | 4.5.3 | 173103128 (165.1 MB) | [CK_4.5.3_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.5.3_4.9.0V228-diff.zip) | — |
+| **4.9.0** | 4.5.1 | 176334962 (168.2 MB) | [CK_4.5.1_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.5.1_4.9.0V228-diff.zip) | — |
+| **4.9.0** | 4.4.0 | 196455904 (187.4 MB) | [CK_4.4.0_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.4.0_4.9.0V228-diff.zip) | — |
+| **4.9.0** | 4.0.12 | 322650113 (307.7 MB) | [CK_4.0.12_4.9.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/31/CK_4.0.12_4.9.0V228-diff.zip) | — |
 | **4.8.0** | 4.7.0 | 40262414 (38.4 MB) | [CK_4.7.0_4.8.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/30/CK_4.7.0_4.8.0V228-diff.zip) | 2026-08-23 |
 | **4.8.0** | 4.6.0 | 44510200 (42.4 MB) | [CK_4.6.0_4.8.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/30/CK_4.6.0_4.8.0V228-diff.zip) | 2026-08-23 |
 | **4.8.0** | 4.5.3 | 160160350 (152.7 MB) | [CK_4.5.3_4.8.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/30/CK_4.5.3_4.8.0V228-diff.zip) | 2026-08-19 |
@@ -86,12 +93,13 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 | **3.7.0** | 3.5.1 | 238514959 (227.5 MB) | [CK_3.5.1_3.7.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/11/CK_3.5.1_3.7.0V228-diff.zip) | 2026-06-18 |
 | **3.7.0** | 3.5.0 | 238587307 (227.5 MB) | [CK_3.5.0_3.7.0V228-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/rom-diff/11/CK_3.5.0_3.7.0V228-diff.zip) | 2026-06-18 |
 
-### eWeLink app APKs (22)
+### eWeLink app APKs (23)
 
 | Version | Size | Download | Archived |
 | --- | --- | --- | --- |
-| 4.8.4 | 137906808 (131.5 MB) | [228V4.8.4.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/75/228V4.8.4.apk) | — |
-| 4.8.1 | 137890388 (131.5 MB) | [228V4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/74/228V4.8.1.apk) | — |
+| 4.9.0 | 138237869 (131.8 MB) | [228V4.9.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/76/228V4.9.0.apk) | — |
+| 4.8.4 | 137906808 (131.5 MB) | [228V4.8.4.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/75/228V4.8.4.apk) | 2026-09-05 |
+| 4.8.1 | 137890388 (131.5 MB) | [228V4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/74/228V4.8.1.apk) | 2026-09-05 |
 | 4.8.0 | 137890388 (131.5 MB) | [228V4.8.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/73/228V4.8.0.apk) | 2026-08-23 |
 | 4.7.0 | 137695680 (131.3 MB) | [228V4.7.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/72/228V4.7.0.apk) | 2026-08-03 |
 | 4.6.2 | 137533807 (131.2 MB) | [228V4.6.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro-ver120/apk/71/228V4.6.2.apk) | 2026-08-02 |
@@ -130,14 +138,20 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 | **1.5.6** | 708703080 (675.9 MB) | [NSPanel86P_CoolKit_480P_20230217_1.5.6-ota.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom/16/NSPanel86P_CoolKit_480P_20230217_1.5.6-ota.zip) | [2026-06-18](https://web.archive.org/web/20260618093051/https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom/16/NSPanel86P_CoolKit_480P_20230217_1.5.6-ota.zip) |
 | **1.5.0** | 704387357 (671.8 MB) | [NSPanel86P_CoolKit_480P_20221213_1.5.0-ota.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom/14/NSPanel86P_CoolKit_480P_20221213_1.5.0-ota.zip) | [2026-07-07](https://web.archive.org/web/20260707104924/https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom/14/NSPanel86P_CoolKit_480P_20221213_1.5.0-ota.zip) |
 
-### Incremental diffs (112)
+### Incremental diffs (118)
 
 | To (target) | From | Size | Download | Archived |
 | --- | --- | --- | --- | --- |
+| **4.9.0** | 4.8.0 | 54825809 (52.3 MB) | [CK_4.8.0_4.9.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/53/CK_4.8.0_4.9.0-diff.zip) | — |
+| **4.9.0** | 4.7.0 | 53026703 (50.6 MB) | [CK_4.7.0_4.9.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/53/CK_4.7.0_4.9.0-diff.zip) | — |
+| **4.9.0** | 4.6.0 | 58429383 (55.7 MB) | [CK_4.6.0_4.9.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/53/CK_4.6.0_4.9.0-diff.zip) | — |
+| **4.9.0** | 4.5.1 | 176173820 (168.0 MB) | [CK_4.5.1_4.9.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/53/CK_4.5.1_4.9.0-diff.zip) | — |
+| **4.9.0** | 4.4.0 | 182377315 (173.9 MB) | [CK_4.4.0_4.9.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/53/CK_4.4.0_4.9.0-diff.zip) | — |
+| **4.9.0** | 4.0.12 | 244837327 (233.5 MB) | [CK_4.0.12_4.9.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/53/CK_4.0.12_4.9.0-diff.zip) | — |
 | **4.8.0** | 4.7.0 | 46442328 (44.3 MB) | [CK_4.7.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.7.0_4.8.0-diff.zip) | 2026-08-23 |
 | **4.8.0** | 4.6.0 | 46939498 (44.8 MB) | [CK_4.6.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.6.0_4.8.0-diff.zip) | 2026-08-19 |
 | **4.8.0** | 4.5.1 | 166378996 (158.7 MB) | [CK_4.5.1_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.5.1_4.8.0-diff.zip) | — |
-| **4.8.0** | 4.4.0 | 172645168 (164.6 MB) | [CK_4.4.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.4.0_4.8.0-diff.zip) | — |
+| **4.8.0** | 4.4.0 | 172645168 (164.6 MB) | [CK_4.4.0_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.4.0_4.8.0-diff.zip) | 2026-09-05 |
 | **4.8.0** | 4.0.12 | 234385007 (223.5 MB) | [CK_4.0.12_4.8.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.0.12_4.8.0-diff.zip) | 2026-08-19 |
 | **4.7.0** | 4.6.0 | 41721861 (39.8 MB) | [CK_4.6.0_4.7.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/51/CK_4.6.0_4.7.0-diff.zip) | 2026-07-30 |
 | **4.7.0** | 4.5.1 | 164367525 (156.8 MB) | [CK_4.5.1_4.7.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/51/CK_4.5.1_4.7.0-diff.zip) | 2026-07-30 |
@@ -247,13 +261,16 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 | **3.3.0** | 3.1.0 | 37490177 (35.8 MB) | [CK_3.1.0_3.3.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/29/CK_3.1.0_3.3.0-diff.zip) | 2026-06-18 |
 | **3.3.0** | 3.0.0 | 48193655 (46.0 MB) | [CK_3.0.0_3.3.0-diff.zip](https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/29/CK_3.0.0_3.3.0-diff.zip) | 2026-07-12 |
 
-### eWeLink app APKs (30)
+### eWeLink app APKs (33)
 
 | Version | Size | Download | Archived |
 | --- | --- | --- | --- |
-| 4.8.3 | 137890388 (131.5 MB) | [app4.8.3.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/134/app4.8.3.apk) | — |
-| 4.8.2 | 137890388 (131.5 MB) | [app4.8.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/133/app4.8.2.apk) | — |
-| 4.8.1 | 137890388 (131.5 MB) | [app4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/132/app4.8.1.apk) | — |
+| 4.9.1 | 138237869 (131.8 MB) | [app4.9.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/137/app4.9.1.apk) | — |
+| 4.9.0 | 138237869 (131.8 MB) | [app4.9.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/136/app4.9.0.apk) | — |
+| 4.8.5 | 138221505 (131.8 MB) | [app4.8.5.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/135/app4.8.5.apk) | — |
+| 4.8.3 | 137890388 (131.5 MB) | [app4.8.3.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/134/app4.8.3.apk) | 2026-09-06 |
+| 4.8.2 | 137890388 (131.5 MB) | [app4.8.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/133/app4.8.2.apk) | 2026-09-05 |
+| 4.8.1 | 137890388 (131.5 MB) | [app4.8.1.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/132/app4.8.1.apk) | 2026-09-06 |
 | 4.8.0 | 137890388 (131.5 MB) | [app4.8.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/131/app4.8.0.apk) | 2026-08-19 |
 | 4.7.0 | 137695680 (131.3 MB) | [app4.7.0.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/130/app4.7.0.apk) | 2026-07-30 |
 | 4.6.2 | 137533807 (131.2 MB) | [app4.6.2.apk](https://global-otadl2bsy.coolkit.cc/nspanel-pro/apk/129/app4.6.2.apk) | 2026-07-30 |
@@ -286,8 +303,8 @@ The **Archived** column is the Wayback Machine capture date; reach a capture at 
 
 | | Count |
 |---|---|
-| Indexed objects | 240 |
-| With a Wayback capture | 233 |
-| Without a capture | 7 |
+| Indexed objects | 257 |
+| With a Wayback capture | 239 |
+| Without a capture | 18 |
 
 Regenerate with `python3 tools/firmware-index/firmware_index.py archive --wayback wayback.json --out docs/hardware/nspanel-pro-firmware-archive.md`, where `wayback.json` comes from the `wayback-state` branch. Without it the generator refuses to run rather than blank the Archived column.
