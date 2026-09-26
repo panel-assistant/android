@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.device.LedMechanism
 import io.github.maxlyth.hapaneld.hardware.LedTransfer
 import io.github.maxlyth.hapaneld.hardware.TransferCurve
 import java.net.URI
@@ -146,7 +147,7 @@ internal object ProfileValidator {
         }
         if (document.platform.suForm !in setOf("none", "android", "toolbox")) reject("platform.su_form", "Unknown su form '${document.platform.suForm}'.", "unknown-su-form", mapOf("value" to document.platform.suForm))
         if (document.platform.suForm == "none" && document.platform.appCanSu) reject("platform.app_can_su", "Cannot be true when su_form is none.", "app-su-needs-su-form")
-        if (document.hardware.led.mechanism !in setOf("none", "autodetect", "rk3576-ioctl", "rk3576-ioctl-daemon", "sysfs-daemon")) {
+        if (LedMechanism.ofYaml(document.hardware.led.mechanism) == null) {
             reject("hardware.led.mechanism", "Unknown LED mechanism '${document.hardware.led.mechanism}'.", "unknown-led-mechanism", mapOf("value" to document.hardware.led.mechanism))
         }
         document.hardware.backlight?.let { backlight ->

@@ -17,6 +17,8 @@ import org.junit.Before
 import org.junit.Test
 import org.json.JSONObject
 
+private const val LED_TYPO = "rk3576-ioctrl"
+
 class RuntimeProfileRegistryTest {
     private lateinit var directory: File
     private lateinit var preferences: MemoryProfilePreferences
@@ -729,6 +731,69 @@ class RuntimeProfileRegistryTest {
         assertTrue(recovered.issues.any { "incompatible" in it.message })
     }
 
+    // A NONE LED is stated unsupported in the hello, and Panel Assistant then deletes the panel's LED
+    // entity with its name, area and entity id. A typo in a mechanism must never arrive there as NONE.
+
+    @Test fun `bundled profile with a mistyped LED mechanism is refused and the panel keeps the fallback LED route`() {
+        val registry = registry(
+            mapOf(
+                "generic.yaml" to ProfileYaml.serialize(ledDocument("generic", "autodetect", fallback = true)),
+                "typo.yaml" to ProfileYaml.serialize(ledDocument("typo", LED_TYPO)),
+            ),
+        )
+
+        val resolved = registry.resolveForStartup()
+
+        assertEquals("generic", resolved.profile.id)
+        assertEquals(LedMechanism.AUTODETECT, resolved.profile.ledMechanism)
+        assertTrue(resolved.issues.toString(), resolved.issues.namesLedTypo())
+    }
+
+    @Test fun `imported profile with a mistyped LED mechanism is refused at preview and gets no import token`() {
+        val registry = registry(mapOf("generic.yaml" to genericYaml()))
+
+        val preview = registry.preview(ProfileYaml.serialize(ledDocument("community.example.typo", LED_TYPO)))
+
+        assertFalse(preview.compatible)
+        assertNull(preview.previewToken)
+        assertTrue(preview.issues.toString(), preview.issues.namesLedTypo())
+    }
+
+    @Test fun `pinned revision with a mistyped LED mechanism recovers to the last known good profile at startup`() {
+        val typo = restore(ProfileYaml.serialize(ledDocument("community.example.typo", LED_TYPO)))
+        val lkg = restore(ProfileYaml.serialize(ledDocument("community.example.lkg", "sysfs-daemon")))
+        preferences.put(
+            "selection" to "${typo.id}@${typo.revision}",
+            "last_known_good" to "${lkg.id}@${lkg.revision}",
+            "activation_phase" to ProfileActivationPhase.ACTIVE.name,
+        )
+
+        val resolved = registry(mapOf("generic.yaml" to genericYaml())).resolveForStartup()
+
+        assertEquals(lkg, resolved.summary.ref)
+        assertEquals(LedMechanism.SYSFS_DAEMON, resolved.profile.ledMechanism)
+        assertTrue(resolved.issues.toString(), resolved.issues.namesLedTypo())
+    }
+
+    @Test fun `every LED mechanism name round-trips through validation and an explicit none stays none`() {
+        LedMechanism.entries.forEach { mechanism ->
+            val document = ledDocument("community.example.${mechanism.yamlName}", mechanism.yamlName)
+            val issues = ProfileValidator.validate(document, "1.0.0", bundled = false)
+                .filter { it.path.startsWith("hardware.led") || it.path == "requires.drivers" }
+            assertTrue("${mechanism.yamlName}: $issues", issues.isEmpty())
+            assertEquals(mechanism, DataDeviceProfile(document, "", "rev", trustedBundledContent = false).ledMechanism)
+        }
+    }
+
+    @Test fun `a mistyped LED mechanism that bypassed validation is refused rather than read as no LED`() {
+        val error = runCatching {
+            DataDeviceProfile(ledDocument("community.example.typo", LED_TYPO), "", "rev", trustedBundledContent = false).ledMechanism
+        }.exceptionOrNull()
+
+        assertTrue("expected a refusal, got $error", error is IllegalStateException)
+        assertTrue(error!!.message.orEmpty().contains(LED_TYPO))
+    }
+
     @Test fun `incompatible imported revision remains listable exportable and deletable but cannot activate`() {
         val raw = incompatibleImportedYaml()
         val ref = restore(raw)
@@ -1081,6 +1146,17 @@ class RuntimeProfileRegistryTest {
     )
 
     private fun genericYaml() = ProfileYaml.serialize(testProfileDocument(id = "generic", fallback = true))
+
+    private fun ledDocument(id: String, mechanism: String, fallback: Boolean = false) =
+        testProfileDocument(id = id, facts = facts, fallback = fallback).copy(
+            requires = ProfileRequirements(
+                drivers = setOfNotNull("screen.brightness-zero", "led.$mechanism".takeIf { mechanism != "none" }),
+            ),
+            hardware = ProfileHardware(ProfileLed(mechanism), "brightness-zero"),
+        )
+
+    private fun Iterable<ProfileIssue>.namesLedTypo() =
+        any { it.presentation?.code == "unknown-led-mechanism" && it.presentation?.params?.get("value") == LED_TYPO }
 
     private fun assertCapabilityEmpty(profile: DeviceProfile) {
         assertEquals("generic", profile.id)

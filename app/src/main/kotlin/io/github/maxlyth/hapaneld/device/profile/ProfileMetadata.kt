@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.device.LedMechanism
 import io.github.maxlyth.hapaneld.hardware.LedTransfer
 
 /** Core-owned vocabulary available to untrusted profile files. */
@@ -95,7 +96,7 @@ object ProfileMetadata {
             field("platform.app_can_su", "boolean", true, "Whether an ordinary app can attempt su."),
             field("platform.has_recents", "boolean", false, "Whether Android Recents is functional."),
             field("platform.has_native_navbar", "boolean", false, "Whether the firmware draws its own Android navigation bar."),
-            field("hardware.led.mechanism", "enum", true, "Built-in LED route.", listOf("none", "autodetect", "rk3576-ioctl", "rk3576-ioctl-daemon", "sysfs-daemon")),
+            field("hardware.led.mechanism", "enum", true, "Built-in LED route.", LedMechanism.entries.map { it.yamlName }),
             field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", LedTransfer.NAMES.toList()),
             field("hardware.led.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
             field("hardware.led.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
