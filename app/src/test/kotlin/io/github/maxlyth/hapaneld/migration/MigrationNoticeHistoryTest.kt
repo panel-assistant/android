@@ -34,7 +34,7 @@ class MigrationNoticeHistoryTest {
     }
 
     @Test fun ordinaryOrUnprovenRestoreCarriesNothing() {
-        val source = listOf(row("panel_assistant_authority", "string", "mqtt"))
+        val source = listOf(row("panel_assistant_authority", "string", "native"))
         assertTrue(migrationNoticeHistoryRows(source, migrationRestore = false, sameDevice = true).isEmpty())
         assertTrue(migrationNoticeHistoryRows(source, migrationRestore = true, sameDevice = false).isEmpty())
         assertTrue(migrationNoticeHistoryRows(source, migrationRestore = false, sameDevice = false).isEmpty())
