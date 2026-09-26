@@ -4369,11 +4369,11 @@ function entitiesFixture() {
           <label><input type="checkbox" id="entity-auto-static"> Static</label>
           <label><input type="checkbox" id="entity-auto-runtime"> Runtime</label>
         </fieldset>
-        <div class="entity-search-row">
-          <label class="sr-only" for="entity-search">Search the complete Home Assistant entity catalogue</label>
-          <input id="entity-search" type="search" autocomplete="off" placeholder="Search the complete Home Assistant entity catalogue" aria-describedby="entity-search-status">
-          <div id="entity-search-status" class="entity-search-status muted" role="status" aria-live="polite"></div>
-        </div>
+      </div>
+      <div class="entity-search-row">
+        <label class="sr-only" for="entity-search">Search the complete Home Assistant entity catalogue</label>
+        <input id="entity-search" type="search" autocomplete="off" placeholder="Search the complete Home Assistant entity catalogue" aria-describedby="entity-search-status">
+        <div id="entity-search-status" class="entity-search-status muted" role="status" aria-live="polite"></div>
       </div>
       <div class="card entity-issues" id="entity-issues"><h2>Entity-discovery compatibility</h2>
         <div id="entity-issues-summary" class="muted" role="status" aria-live="polite"></div>

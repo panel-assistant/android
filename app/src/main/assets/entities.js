@@ -49,17 +49,27 @@
   // The search line is one live region written only with a changed string, so a background poll
   // that finds the same counts does not re-announce them to a screen reader.
   function announce(text){if(!searchStatus)return;if(announcedText===text)return;announcedText=text;searchStatus.textContent=text}
+  // Where the sticky search bar ends once stuck: its own `top` (the header height) plus its height. A section
+  // is revealed below that line, never under the bar the user is still typing into.
+  function searchCover(){
+    var row=document.querySelector&&document.querySelector('.entity-search-row');
+    if(!row||!window.getComputedStyle)return 0;
+    return (parseFloat(window.getComputedStyle(row).top)||0)+row.getBoundingClientRect().height;
+  }
   // Minimal and one-shot. A section already showing its heading and some content is left alone, and
   // reduced-motion users get an instant jump rather than a long smooth scroll.
   function revealNode(node){
     if(!node||typeof node.scrollIntoView!=='function')return;
     var viewport=window.innerHeight||(document.documentElement&&document.documentElement.clientHeight)||0;
+    var cover=searchCover();
     var rect=typeof node.getBoundingClientRect==='function'?node.getBoundingClientRect():null;
-    if(rect&&rect.top>=0&&rect.top<=Math.max(0,viewport-120))return;
+    if(rect&&rect.top>=cover&&rect.top<=Math.max(cover,viewport-120))return;
+    if(node.style)node.style.scrollMarginTop=cover+'px';
     var reduced=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     try{node.scrollIntoView({behavior:reduced?'auto':'smooth',block:'start'})}catch(e){node.scrollIntoView(true)}
   }
-  function focusCatalogSearch(){if(!search)return;revealNode(search.closest?(search.closest('.card')||search):search);try{search.focus()}catch(e){}}
+  // The box sticks under the header wherever the page is, so focusing it is all the route has to do.
+  function focusCatalogSearch(){if(!search)return;try{search.focus()}catch(e){}}
   // Every dispatch gets one page-level generation. A section reports into it once, the counts are
   // rendered only when that whole generation has settled, and a response belonging to an earlier
   // generation is discarded rather than mixed into the line.

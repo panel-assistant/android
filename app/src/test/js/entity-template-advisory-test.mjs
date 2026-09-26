@@ -112,12 +112,11 @@ assert.equal(blockingRow.children.length, 1);
 assert.equal(blockingRow.children[0].className, 'pbtn entity-issue-toggle');
 assert.equal(blockingRow.children[0].textContent, 'Ignore potential entities and continue');
 
-// The route actually goes somewhere: it brings the catalogue search into view and focuses it.
+// The route actually goes somewhere: it focuses the catalogue search box, which is sticky and so in view.
 await ids['entity-issues-list'].fire('click', {
   target: { closest: (selector) => (selector === '.entity-issue-search' ? element('route') : null) },
 });
 assert.deepEqual(focused, ['entity-search'], 'the route focuses the catalogue search box');
-assert.equal(scrolled.length, 1, 'the route brings the search box into view exactly once');
 
 // An unrelated click inside the issues card does nothing.
 focused.length = 0;
