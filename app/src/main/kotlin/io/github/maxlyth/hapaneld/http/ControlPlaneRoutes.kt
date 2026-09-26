@@ -13,6 +13,11 @@ import io.github.maxlyth.hapaneld.util.StreamDeadline
 import io.github.maxlyth.hapaneld.util.UpdateChecker
 import io.github.maxlyth.hapaneld.backup.PanelBackup
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
+import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
+import io.github.maxlyth.hapaneld.migration.SuccessorUploadCapability
+import io.github.maxlyth.hapaneld.migration.SuccessorHandoff
+import io.github.maxlyth.hapaneld.migration.InstalledSuccessorStatus
+import io.github.maxlyth.hapaneld.util.InstallOutcome
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -72,6 +77,7 @@ internal data class ControlPlaneRouteDependencies(
     val buildBackup: suspend (request: CompanionBackupRequest, passphrase: String) -> PanelBackup.Artifact,
     val backupFileStem: () -> String,
     val apkUpload: ApkUploadRouteDependencies,
+    val identityMigration: IdentityMigrationSurface = IdentityMigrationSurface.NONE,
     val authorize: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean = { _, _, _, _ -> true },
 )
 
@@ -138,7 +144,57 @@ internal fun validApkFetchUrl(raw: String, maxChars: Int = APK_FETCH_URL_MAX_CHA
     return trimmed
 }
 
-internal data class UploadedApkIdentity(val pkg: String, val version: String, val signerSha256: String?)
+internal data class UploadedApkIdentity(
+    val pkg: String,
+    val version: String,
+    val signerSha256: String?,
+    val signerSha256s: Set<String> = setOfNotNull(signerSha256),
+    val versionCode: Long = 0L,
+)
+
+private val SUCCESSOR_DIGEST = Regex("[0-9a-f]{64}")
+
+internal fun successorCandidateMatches(identity: UploadedApkIdentity?, capability: SuccessorUploadCapability): Boolean =
+    identity?.pkg == capability.pkg && identity.version == capability.version && identity.versionCode == capability.versionCode &&
+        identity.signerSha256s.size == 1 &&
+        identity.signerSha256s.single().equals(capability.signer, ignoreCase = true)
+
+/** Consumes the ordinary upload claim, with migration preconditions immediately before installation. */
+internal suspend fun installUploadedApk(
+    entry: PendingUploadStore.Entry,
+    migration: IdentityMigrationSurface,
+    install: suspend (File) -> InstallOutcome,
+): String = try {
+    val digest = entry.migrationSha256
+    val capability = if (digest != null) migration.successorUploadCapability() else null
+    val installed = if (capability != null) migration.installedSuccessorStatus() else InstalledSuccessorStatus.Absent
+    if (digest != null && (capability == null || !successorCandidateMatches(entry.identity, capability))) {
+        "migration unavailable"
+    } else if (digest != null && AppInstaller.sha256(entry.file) != digest) {
+        "migration hash mismatch"
+    } else if (installed == InstalledSuccessorStatus.Untrusted) {
+        "untrusted successor installed"
+    } else if (capability != null && (installed as? InstalledSuccessorStatus.Trusted)
+            ?.versionCode?.let { it >= capability.versionCode } == true) {
+        installedOnlyHandoff(migration)
+    } else when (val outcome = install(entry.file)) {
+        InstallOutcome.Succeeded -> if (capability == null) "OK" else {
+            if (migration.installedSuccessorStatus() != InstalledSuccessorStatus.Trusted(capability.versionCode)) {
+                "installed successor was not confirmed"
+            } else installedOnlyHandoff(migration)
+        }
+        is InstallOutcome.Failure -> outcome.message
+    }
+} finally {
+    entry.file.delete()
+}
+
+private suspend fun installedOnlyHandoff(migration: IdentityMigrationSurface): String =
+    when (val handoff = migration.offerInstalledOnly()) {
+        SuccessorHandoff.Outcome.Launched -> "OK"
+        null -> "installed-only handover unavailable"
+        else -> "installed-only handover: ${handoff.detail}"
+    }
 
 /** Builds the physical-approval text from untrusted APK metadata. Package and signer identity are
  * individually bounded and shown before the version field, so version metadata cannot hide them. */
@@ -294,19 +350,39 @@ internal fun Route.controlPlaneRoutes(dependencies: ControlPlaneRouteDependencie
     route("/api/v1") {
         post("/play") { handlePlay(call, dependencies) }
         post("/install/component") { handleComponentInstall(call, dependencies) }
-        post("/install/apk") { handleApkUpload(call, dependencies.apkUpload) }
+        post("/install/apk") { handleApkUpload(call, dependencies) }
         post("/install/apk/from-url") { handleApkFetchFromUrl(call, dependencies) }
         post("/install/apk/fetch/cancel") { handleApkFetchCancel(call, dependencies.apkUpload) }
         post("/install/apk/discard") { handleApkDiscard(call, dependencies.apkUpload) }
         get("/install/apk/pending") { handleApkPending(call, dependencies.apkUpload) }
         post("/install/apk/commit") { handleApkCommit(call, dependencies) }
+        get("/successor") {
+            val capability = dependencies.identityMigration.successorUploadCapability()
+            if (capability == null) {
+                call.respondText("""{"ok":false,"error":"not-a-bridge"}""", ContentType.Application.Json, HttpStatusCode.NotFound)
+            } else {
+                val installed = when (val status = dependencies.identityMigration.installedSuccessorStatus()) {
+                    InstalledSuccessorStatus.Absent -> ""
+                    InstalledSuccessorStatus.Untrusted -> ",\"installed_untrusted\":true"
+                    is InstalledSuccessorStatus.Trusted -> ",\"installed_version_code\":${status.versionCode}"
+                }
+                call.respondText(
+                    """{"package":${Json.str(capability.pkg)},"version":${Json.str(capability.version)}$installed}""",
+                    ContentType.Application.Json,
+                )
+            }
+        }
         post("/backup") { handleBackup(call, dependencies) }
     }
 }
 
 private suspend fun handleApkCommit(call: ApplicationCall, routes: ControlPlaneRouteDependencies) {
     val dependencies = routes.apkUpload
-    if (!dependencies.enabled()) {
+    val parameters = receiveBoundedFormParameters(call) ?: return
+    val token = parameters["token"].orEmpty()
+    val inspected = dependencies.pending.peek(token)
+    val migrationSha256 = inspected?.migrationSha256
+    if (migrationSha256 == null && !dependencies.enabled()) {
         call.respondText(
             """{"status":"disabled"}""",
             ContentType.Application.Json,
@@ -314,9 +390,6 @@ private suspend fun handleApkCommit(call: ApplicationCall, routes: ControlPlaneR
         )
         return
     }
-    val parameters = receiveBoundedFormParameters(call) ?: return
-    val token = parameters["token"].orEmpty()
-    val inspected = dependencies.pending.peek(token)
     if (inspected == null) {
         call.respondText(
             """{"status":"stale-or-missing"}""",
@@ -325,8 +398,15 @@ private suspend fun handleApkCommit(call: ApplicationCall, routes: ControlPlaneR
         )
         return
     }
+    val capability = if (migrationSha256 != null) routes.identityMigration.successorUploadCapability() else null
+    if (migrationSha256 != null && capability == null) {
+        call.respondText("""{"status":"not-a-bridge"}""", ContentType.Application.Json, HttpStatusCode.NotFound)
+        return
+    }
     val identity = inspected.identity
-    val identitySummary = identity?.let(::uploadedApkApprovalSummary) ?: "Install the inspected uploaded APK"
+    val identitySummary = identity?.let(::uploadedApkApprovalSummary)?.let {
+        if (migrationSha256 != null) "$it for identity migration" else it
+    } ?: "Install the inspected uploaded APK"
     if (!routes.authorize(
             call,
             SensitiveOperation.APK_INSTALL,
@@ -348,8 +428,16 @@ private suspend fun handleApkCommit(call: ApplicationCall, routes: ControlPlaneR
         call.respondText("""{"status":"busy"}""", ContentType.Application.Json)
         return
     }
-    val claimed = dependencies.pending.claim(token)
+    var invalidMigration = false
+    val claimed = if (migrationSha256 == null) dependencies.pending.claim(token) else dependencies.pending.claimAfter(token) { entry ->
+        val current = routes.identityMigration.successorUploadCapability()
+        val valid = current != null && successorCandidateMatches(entry.identity, current) &&
+            runCatching { AppInstaller.sha256(entry.file) == entry.migrationSha256 }.getOrDefault(false)
+        invalidMigration = !valid
+        valid
+    }
     if (claimed == null) {
+        if (invalidMigration) dependencies.pending.discard(token)
         // The entry vanished between the approved peek and the lane grant (discarded, replaced or
         // expired). Release the lane with an honest status rather than leaving it stranded busy.
         InstallProgress.finish(
@@ -358,7 +446,7 @@ private suspend fun handleApkCommit(call: ApplicationCall, routes: ControlPlaneR
             presentation = InstallPresentation("apk-pending-lost"),
         )
         call.respondText(
-            """{"status":"stale-or-missing"}""",
+            if (invalidMigration) """{"status":"migration-invalid"}""" else """{"status":"stale-or-missing"}""",
             ContentType.Application.Json,
             HttpStatusCode.Conflict,
         )
@@ -393,6 +481,8 @@ private suspend fun stageInspectAndRespond(
     lease: PendingUploadStore.Lease,
     declaredBytes: Long?,
     request: String? = null,
+    migrationSha256: String? = null,
+    migration: IdentityMigrationSurface = IdentityMigrationSurface.NONE,
     writeBytes: suspend (File, Long) -> StagedBytes,
 ) {
     // Echoed on every answer for a request-owned source, so a client can discard a reply belonging to
@@ -439,7 +529,20 @@ private suspend fun stageInspectAndRespond(
             )
             return
         }
-        val entry = dependencies.pending.stage(lease, staged, identity)
+        if (migrationSha256 != null) {
+            val capability = migration.successorUploadCapability()
+            val valid = capability != null && successorCandidateMatches(identity, capability) &&
+                withContext(Dispatchers.IO) { runCatching { AppInstaller.sha256(staged) == migrationSha256 }.getOrDefault(false) }
+            if (!valid) {
+                call.respondText(
+                    """{"ok":false,"error":"migration-invalid"$owner}""",
+                    ContentType.Application.Json,
+                    HttpStatusCode.UnprocessableEntity,
+                )
+                return
+            }
+        }
+        val entry = dependencies.pending.stage(lease, staged, identity, migrationSha256)
         if (entry == null) {
             // A transfer that finished while the operator was cancelling must be reported as cancelled,
             // not as a shutdown, and above all must not have produced a token.
@@ -664,8 +767,26 @@ private suspend fun handleApkPending(call: ApplicationCall, dependencies: ApkUpl
 }
 
 /** Stages an arbitrary user-supplied APK on the unauthenticated LAN-trust surface, so the production source, origin, host, explicit-enable and root-capability gates must remain in force around this route. */
-private suspend fun handleApkUpload(call: ApplicationCall, dependencies: ApkUploadRouteDependencies) {
-    if (!dependencies.enabled()) {
+private suspend fun handleApkUpload(call: ApplicationCall, routes: ControlPlaneRouteDependencies) {
+    val dependencies = routes.apkUpload
+    val migrationParam = call.request.queryParameters.getAll("migration")
+    val digestParam = call.request.queryParameters.getAll("sha256")
+    val migrationRequested = migrationParam != null || digestParam != null
+    if (migrationRequested && routes.identityMigration.successorUploadCapability() == null) {
+        call.respondText("""{"ok":false,"error":"not-a-bridge"}""", ContentType.Application.Json, HttpStatusCode.NotFound)
+        return
+    }
+    val migrationSha256 = if (migrationRequested) {
+        val value = digestParam?.singleOrNull()
+        if (migrationParam?.singleOrNull() != "successor" || value == null || !SUCCESSOR_DIGEST.matches(value) ||
+            call.request.queryParameters.names() != setOf("migration", "sha256")
+        ) {
+            call.respondText("""{"ok":false,"error":"invalid-migration-request"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
+            return
+        }
+        value
+    } else null
+    if (!migrationRequested && !dependencies.enabled()) {
         call.respondText(
             """{"ok":false,"error":"disabled"}""",
             ContentType.Application.Json,
@@ -673,7 +794,7 @@ private suspend fun handleApkUpload(call: ApplicationCall, dependencies: ApkUplo
         )
         return
     }
-    if (!dependencies.rootAvailable()) {
+    if (!migrationRequested && !dependencies.rootAvailable()) {
         call.respondText(
             """{"ok":false,"error":"no-root"}""",
             ContentType.Application.Json,
@@ -700,7 +821,11 @@ private suspend fun handleApkUpload(call: ApplicationCall, dependencies: ApkUplo
         return
     }
     val lease = (beginApkStaging(call, dependencies) ?: return).lease
-    stageInspectAndRespond(call, dependencies, lease, declaredBytes) { staged, stagingLimit ->
+    stageInspectAndRespond(
+        call, dependencies, lease, declaredBytes,
+        migrationSha256 = migrationSha256,
+        migration = routes.identityMigration,
+    ) { staged, stagingLimit ->
         try {
             val received = withContext(Dispatchers.IO) {
                 call.receiveStream().use { input ->
