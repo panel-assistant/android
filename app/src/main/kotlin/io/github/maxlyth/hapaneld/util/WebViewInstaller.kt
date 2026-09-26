@@ -63,51 +63,73 @@ object WebViewInstaller {
     }
 
     /**
-     * Decide whether to install. [engineMajor] is the real Chromium major from the WebView UA (null =
-     * unknown). [force] skips every check (the manual "Update WebView" button). [autoUpdate] is the
+     * Decide whether to install. [engineVersion] is the real four-part Chromium version from the
+     * WebView UA (null = unknown). [force] allows reinstalling an equal build from the manual
+     * "Update WebView" button. [autoUpdate] is the
      * scheduled auto-update intent: it drops the "engine already renders HA → leave it" short-circuit so
      * a WORKING engine still advances to a newer pinned build — the heal path (autoUpdate=false) instead
      * only touches an engine genuinely below [minChromium]. Either way an unknown engine is never
      * disturbed and a pin that isn't newer is a no-op, so there's no reinstall loop from [decide] alone.
      */
-    fun decide(rec: WebViewSpec?, engineMajor: Int?, minChromium: Int, force: Boolean, autoUpdate: Boolean = false): Decision = when {
-        rec == null -> Decision.NoRecommendation
-        force -> Decision.Install(rec)
-        engineMajor == null -> Decision.UpToDate(null) // can't compare → don't touch
-        !autoUpdate && engineMajor >= minChromium -> Decision.UpToDate(engineMajor) // heal-only: leave a working engine
-        rec.major <= engineMajor -> Decision.NotNewer(rec.version)
-        else -> Decision.Install(rec)
+    fun decide(rec: WebViewSpec?, engineVersion: String?, minChromium: Int, force: Boolean, autoUpdate: Boolean = false): Decision {
+        if (rec == null) return Decision.NoRecommendation
+        val engine = versionParts(engineVersion) ?: return Decision.UpToDate(null)
+        val recommended = versionParts(rec.version) ?: return Decision.NotNewer(rec.version)
+        if (!force && !autoUpdate && engine[0] >= minChromium) return Decision.UpToDate(engine[0])
+        return if (isOlder(engine, recommended) || (force && engine == recommended)) {
+            Decision.Install(rec)
+        } else Decision.NotNewer(rec.version)
     }
+
+    private fun versionParts(version: String?): List<Int>? {
+        val parts = version?.split('.') ?: return null
+        if (parts.size != 4) return null
+        return parts.map {
+            if (it.isEmpty() || !it.all(Char::isDigit)) return null
+            it.toIntOrNull() ?: return null
+        }
+    }
+
+    private fun isOlder(engine: List<Int>, recommended: List<Int>): Boolean =
+        engine.zip(recommended).firstOrNull { (current, pin) -> current != pin }
+            ?.let { (current, pin) -> current < pin } == true
 
     /**
      * Loop guard for the scheduled auto-update ([io.github.maxlyth.hapaneld.PaneldService] `autoUpdateWebView`):
      * skip re-attempting the same pinned [recVersion] once a prior tick recorded it AND the running
-     * [engineMajor] still hasn't reached [recMajor] — i.e. the provider isn't actually switching
+     * [engineVersion] still hasn't reached [recVersion] — i.e. the provider isn't actually switching
      * (variant / signature-locked hardware where `pm install` can't change the WebView signer), so
      * re-downloading ~90 MB (and, on the built-in renderer, restarting the process) every 24 h tick would be
      * pointless. A pin bump ([recVersion] differs from the recorded one) clears it and re-attempts; an
-     * unknown engine ([engineMajor] == null) counts as "still not switched" so a records-then-can't-verify
+     * unknown engine ([engineVersion] == null) counts as "still not switched" so a records-then-can't-verify
      * panel also stops retrying. Kept pure + unit-tested because this predicate is the only thing standing
      * between an opt-in panel and a daily re-download/restart loop, and a regression here stays green.
      */
-    fun shouldSkipAutoUpdate(lastVersion: String, recVersion: String, recMajor: Int, engineMajor: Int?): Boolean =
-        lastVersion == recVersion && (engineMajor == null || engineMajor < recMajor)
+    fun shouldSkipAutoUpdate(lastVersion: String, recVersion: String, engineVersion: String?): Boolean {
+        if (lastVersion != recVersion) return false
+        val engine = versionParts(engineVersion) ?: return true
+        val recommended = versionParts(recVersion) ?: return true
+        return isOlder(engine, recommended)
+    }
 
     /** Whether an auto-update result is durable evidence that retrying the same pin cannot help. Network,
      *  staging, storage, and temporarily unavailable privilege failures remain retryable on the next tick;
      *  successful/no-op decisions and package-manager rejection of a provider swap are terminal until the
-     *  profile pin changes or the user explicitly retries. The terminal-vs-retryable classification is the
+     *  profile pin changes or the user explicitly retries. An unknown engine is not durable evidence of
+     *  being current: the UA read may have timed out, so the next tick must be allowed to try again.
+     *  The terminal-vs-retryable classification is the
      *  producer's ([InstallOutcome]), carried on [HealResult.Failed.terminal]. */
-    internal fun shouldRecordAutoAttempt(result: HealResult): Boolean = when (result) {
-        is HealResult.Failed -> result.terminal
-        is HealResult.NoAction, is HealResult.Installed -> true
-    }
+    internal fun shouldRecordAutoAttempt(result: HealResult, engineVersion: String?): Boolean =
+        versionParts(engineVersion) != null && when (result) {
+            is HealResult.Failed -> result.terminal
+            is HealResult.NoAction, is HealResult.Installed -> true
+        }
 
     /** Heal the WebView per [decide], returning a typed [HealResult] whose [HealResult.status] is a short
      *  human status ("OK: …" on a successful install). [autoUpdate] = the scheduled update-to-pin path
      *  (advance a working engine to a newer pin). */
-    suspend fun heal(context: Context, profile: DeviceProfile, engineMajor: Int?, force: Boolean = false, autoUpdate: Boolean = false): HealResult =
-        when (val d = decide(profile.recommendedWebView, engineMajor, PanelHealth.MIN_CHROMIUM, force, autoUpdate)) {
+    suspend fun heal(context: Context, profile: DeviceProfile, engineVersion: String?, force: Boolean = false, autoUpdate: Boolean = false): HealResult =
+        when (val d = decide(profile.recommendedWebView, engineVersion, PanelHealth.MIN_CHROMIUM, force, autoUpdate)) {
             is Decision.NoRecommendation -> HealResult.NoAction(
                 "no known-good WebView for this panel",
                 presentation("managed-no-recommendation"),
@@ -121,7 +143,7 @@ object WebViewInstaller {
                 presentation("managed-no-newer", "current" to d.version),
             )
             is Decision.Install -> {
-                Log.i(TAG, "healing WebView → ${d.spec.version} (engine major was $engineMajor)")
+                Log.i(TAG, "healing WebView → ${d.spec.version} (engine was $engineVersion)")
                 when (val outcome = AppInstaller.install(
                     context,
                     d.spec.url,

@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld
 
 import io.github.maxlyth.hapaneld.control.ZigbeeObservation
+import io.github.maxlyth.hapaneld.control.ZigbeeGatewayLayout
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,7 +32,7 @@ class ManagementProjectionPolicyTest {
     private fun observation(probeSucceeded: Boolean, present: Boolean) = ZigbeeObservation(
         probeSucceeded = probeSucceeded,
         present = present,
-        managed = false,
+        layout = ZigbeeGatewayLayout.VENDOR_NATIVE,
         running = present,
         driver = if (present) "vendor-native" else null,
         role = null,

@@ -183,13 +183,13 @@ class ZigbeeHealthMonitorTest {
         assertFalse(decision.shouldContain)
     }
 
-    @Test fun unknownFourXLayoutFailsSafe() {
+    @Test fun unknownLayoutFailsSafe() {
         val policy = ZigbeeHealthPolicy(startupGraceMs = 0)
         policy.resetGrace(1)
         var decision = policy.evaluate(
             2, true,
             observation(
-                layout = ZigbeeGatewayLayout.UNKNOWN_4X,
+                layout = ZigbeeGatewayLayout.UNKNOWN,
                 cpu = 90.0,
                 role = null,
                 netInfo = ZigbeeNetInfo(0, 0, 0xffff),
@@ -200,7 +200,7 @@ class ZigbeeHealthMonitorTest {
                 3L + it,
                 true,
                 observation(
-                    layout = ZigbeeGatewayLayout.UNKNOWN_4X,
+                    layout = ZigbeeGatewayLayout.UNKNOWN,
                     cpu = 90.0,
                     role = null,
                     netInfo = ZigbeeNetInfo(0, 0, 0xffff),
@@ -209,6 +209,33 @@ class ZigbeeHealthMonitorTest {
         }
         assertEquals(ZigbeeHealthState.UNKNOWN, decision.state)
         assertFalse(decision.shouldContain)
+    }
+
+    @Test fun recognizedFourXRunawayCanUseContainment() {
+        val policy = ZigbeeHealthPolicy(startupGraceMs = 0)
+        policy.resetGrace(1)
+        var decision = policy.evaluate(
+            2, true,
+            observation(
+                layout = ZigbeeGatewayLayout.VENDOR_4X,
+                cpu = 90.0,
+                role = null,
+                netInfo = ZigbeeNetInfo(0, 0, 0xffff),
+            ),
+        )
+        repeat(4) {
+            decision = policy.evaluate(
+                3L + it,
+                true,
+                observation(
+                    layout = ZigbeeGatewayLayout.VENDOR_4X,
+                    cpu = 90.0,
+                    role = null,
+                    netInfo = ZigbeeNetInfo(0, 0, 0xffff),
+                ),
+            )
+        }
+        assertTrue(decision.shouldContain)
     }
 
     @Test fun containmentIsSingleShotAndExplicitRetryRearmsIt() {

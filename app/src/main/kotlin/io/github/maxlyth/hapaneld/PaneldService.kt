@@ -3170,9 +3170,9 @@ class PaneldService : Service() {
                 "skipped: no managed WebView",
                 InstallPresentation("managed-no-recommendation", mapOf("component" to "webview")),
             )
-        val engineMajor = io.github.maxlyth.hapaneld.http.PanelInfo.webViewStatus(this@PaneldService).engineMajor
-        if (io.github.maxlyth.hapaneld.util.WebViewInstaller.shouldSkipAutoUpdate(config.webViewAutoLastVersion, rec.version, rec.major, engineMajor)) {
-            val skipped = "skipped: ${rec.version} already attempted but engine is ${engineMajor ?: "?"}; manual heal may be needed"
+        val engineVersion = PanelInfo.engineVersion(this@PaneldService)
+        if (io.github.maxlyth.hapaneld.util.WebViewInstaller.shouldSkipAutoUpdate(config.webViewAutoLastVersion, rec.version, engineVersion)) {
+            val skipped = "skipped: ${rec.version} already attempted but engine is ${engineVersion ?: "?"}; manual heal may be needed"
             Log.w(TAG, "WebView auto-update: $skipped")
             return WebViewInstaller.HealResult.NoAction(
                 skipped,
@@ -3181,19 +3181,17 @@ class PaneldService : Service() {
                     mapOf(
                         "component" to "webview",
                         "version" to rec.version,
-                        "current" to (engineMajor?.toString() ?: "?"),
+                        "current" to (engineVersion ?: "?"),
                     ),
                 ),
             )
         }
-        val r = io.github.maxlyth.hapaneld.util.WebViewInstaller.heal(
-            this@PaneldService, profile, engineMajor = engineMajor, force = false, autoUpdate = true,
-        )
+        val r = WebViewInstaller.heal(this@PaneldService, profile, engineVersion, autoUpdate = true)
         // Persist only terminal evidence. A signature-locked provider rejection should not re-download
         // forever, but a transient network/staging/storage/root failure must retry on the next daily tick.
         // A pin bump clears the guard; the manual button always retries regardless of the marker. The
         // caller owns successful provider activation so manual, component, and scheduled paths cannot drift.
-        if (io.github.maxlyth.hapaneld.util.WebViewInstaller.shouldRecordAutoAttempt(r)) {
+        if (WebViewInstaller.shouldRecordAutoAttempt(r, engineVersion)) {
             config.setWebViewAutoLastVersion(rec.version)
         }
         return r
@@ -3489,7 +3487,7 @@ class PaneldService : Service() {
                             channel = config.companionUpdateChannel,
                             maxVersion = profile.companionMaxVersion,
                         )
-                    "webview" -> WebViewInstaller.heal(this@PaneldService, profile, engineMajor = null, force = true)
+                    "webview" -> WebViewInstaller.heal(this@PaneldService, profile, PanelInfo.engineVersion(this@PaneldService), force = true)
                         .also { webViewHeal = it }
                         .let { InstallOperationResult(it.status, it.presentation) }
                     else -> InstallOperationResult("unknown component")
