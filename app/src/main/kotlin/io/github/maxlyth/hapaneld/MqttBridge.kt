@@ -3530,7 +3530,7 @@ internal class MqttBridge(
         try {
             val execution = zigbeeActuation.executeIfCurrent(zigbeeLease) {
                 val reconciled = zigbee.reconcile(desired)
-                if (desired) for (i in 0 until 18) {
+                if (desired && reconciled) for (i in 0 until 18) {
                     // A newer bridge generation or command is already authoritative. Stop waiting and
                     // release the shared actuator so its latest desired state can run after this one.
                     if (!lifecycle.isOpen() || !zigbeeActuation.isCurrent(zigbeeLease) ||

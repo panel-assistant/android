@@ -147,7 +147,7 @@ object PanelInfo {
 
     /** Package + real-engine WebView status for the info row and the health banner. */
     // [engineMajor] = the real Chromium major (from the WebView UA when the package version looked old),
-    // or the package major on the fast path, or null. The WebView auto-heal keys its install on this.
+    // or the package major on the fast path, or null. Scheduled WebView updates read the full UA directly.
     class WebViewStatus(
         val display: String,
         val tooOld: Boolean,
@@ -239,16 +239,19 @@ object PanelInfo {
 
     // Real engine version from the WebView default UA, computed once and cached: the fetch loads the
     // WebView provider into this process and must run on a Looper thread (see [defaultUserAgent]), and
-    // it's only reached via the escalation gate above, so modern-package panels never trigger it.
+    // the status page reaches it only via the escalation gate above. Scheduled updates read it directly
+    // because a modern package version can still hide an older build within the recommended major.
     @Volatile private var uaComputed = false
     @Volatile private var uaEngineVersion: String? = null
 
-    private fun engineVersion(context: Context): String? {
+    internal fun engineVersion(context: Context): String? {
         if (uaComputed) return uaEngineVersion
         synchronized(this) {
             if (uaComputed) return uaEngineVersion
-            uaEngineVersion = defaultUserAgent(context)?.let { PanelHealth.engineVersionFromUa(it) }
-            uaComputed = true
+            val ua = defaultUserAgent(context)
+            uaEngineVersion = ua?.let { PanelHealth.engineVersionFromUa(it) }
+            // A timed-out main-thread hop is transient; try again on the next update tick.
+            uaComputed = ua != null
             return uaEngineVersion
         }
     }

@@ -12,17 +12,36 @@ class ZigbeeControllerTest {
 
     private val dir = "/vendor/bin/siliconlabs_host"
 
+    // Launcher-relevant entries captured read-only from three live NSPanel Pro gateway directories.
+    private val managedFiles = setOf("run_guard_process.sh", "guard_process.sh", "run.sh", "zgateway", "mosquitto", "package_version")
+    private val nativeFiles = setOf("guard_process.sh", "run.sh", "zgateway", "mosquitto")
+    private val fourXFiles = setOf("run.sh", "zgateway", "mosquitto")
+
+    private fun capturedRoot(files: Set<String>, running: Boolean = false, role: String? = null): FakeRootShell {
+        val outputs = files.associate { "$dir/$it" to it } + mapOf(
+            "for f in run_guard_process.sh" to files.joinToString("\n", postfix = "\n"),
+            "pidof zgateway" to if (running) "1234" else "",
+        ) + (role?.let { mapOf("-t zigbee/system/network-role/information -C 1" to it) } ?: emptyMap())
+        return FakeRootShell(outputs)
+    }
+
     private fun metadata(
         managed: Boolean = false,
         guard: Boolean = false,
+        run: Boolean = managed || guard,
         binary: Boolean = false,
+        broker: Boolean = managed || guard || run,
         running: Boolean = false,
         packageVersion: String = "",
+        packageMarker: Boolean = managed,
     ): String = buildString {
         appendLine("HAPANELD_ZIGBEE_V1")
         appendLine("managed=${managed.bit()}")
         appendLine("guard=${guard.bit()}")
+        appendLine("run=${run.bit()}")
         appendLine("binary=${binary.bit()}")
+        appendLine("broker=${broker.bit()}")
+        appendLine("package_marker=${packageMarker.bit()}")
         appendLine("running=${running.bit()}")
         appendLine("package=$packageVersion")
         appendLine("HAPANELD_ZIGBEE_END")
@@ -73,7 +92,7 @@ class ZigbeeControllerTest {
 
         assertTrue(observed.probeSucceeded)
         assertFalse(observed.present)
-        assertFalse(observed.managed)
+        assertEquals(ZigbeeGatewayLayout.UNKNOWN, observed.layout)
         assertFalse(observed.running)
         assertNull(observed.driver)
         assertNull(observed.role)
@@ -91,18 +110,25 @@ class ZigbeeControllerTest {
         assertTrue(root.outputRan.isEmpty())
     }
 
-    @Test fun binaryOnlyFourXLayoutIsPresentAndStoppedWithoutRoleWait() {
+    @Test fun binaryOnlyIncompleteLayoutIsReportedWithoutRoleWait() {
         val (z, root) = zb(metadata = metadata(binary = true))
 
         val observed = z.observe(includeRole = true)
 
         assertTrue(observed.present)
         assertTrue(observed.probeSucceeded)
-        assertFalse(observed.managed)
+        assertEquals(ZigbeeGatewayLayout.UNKNOWN, observed.layout)
         assertFalse(observed.running)
-        assertEquals("vendor-native", observed.driver)
+        assertEquals("zgateway", observed.driver)
         assertNull(observed.role)
-        assertEquals("vendor-native · stopped", observed.status)
+        assertEquals("gateway · unknown layout: zgateway", observed.status)
+        assertEquals(1, root.isolatedOutputRan.size)
+    }
+
+    @Test fun orphanedBrokerAndPackageMarkerAreReportedAsUnknown() {
+        val (z, root) = zb(metadata = metadata(broker = true, packageMarker = true))
+
+        assertEquals("gateway · unknown layout: mosquitto, package_version", z.observe(includeRole = true).status)
         assertEquals(1, root.isolatedOutputRan.size)
     }
 
@@ -120,6 +146,7 @@ class ZigbeeControllerTest {
         val (z, root) = zb(
             metadata = metadata(
                 managed = true,
+                guard = true,
                 binary = true,
                 running = true,
                 packageVersion = "sonoff-v3.5.4:sonoff-3.5.0",
@@ -130,7 +157,7 @@ class ZigbeeControllerTest {
         val observed = z.observe(includeRole = true)
 
         assertTrue(observed.present)
-        assertTrue(observed.managed)
+        assertEquals(ZigbeeGatewayLayout.MANAGED, observed.layout)
         assertTrue(observed.running)
         assertEquals("sonoff 3.5.0", observed.driver)
         assertEquals("Repeater", observed.role)
@@ -161,6 +188,13 @@ class ZigbeeControllerTest {
         assertTrue(root.isolatedOutputRan.none { it.contains("network-role/information") })
     }
 
+    @Test fun capturedFourXMetadataReportsTheKnownLayout() {
+        val (z, root) = zb(metadata = metadata(run = true, binary = true))
+
+        assertEquals("vendor-native 4.x · stopped", z.observe(includeRole = true).status)
+        assertEquals(1, root.isolatedOutputRan.size)
+    }
+
     @Test fun runningProcessAloneIsAValidPresenceMarker() {
         val (z, root) = zb(
             metadata = metadata(running = true),
@@ -171,7 +205,7 @@ class ZigbeeControllerTest {
 
         assertTrue(observed.present)
         assertTrue(observed.running)
-        assertEquals("vendor-native", observed.driver)
+        assertEquals("running zgateway", observed.driver)
         assertNull(observed.role)
         assertEquals(1, root.isolatedOutputRan.size)
     }
@@ -192,7 +226,7 @@ class ZigbeeControllerTest {
             val observed = z.observe(includeRole = true)
             assertFalse("malformed frame must remain unknown, not absent", observed.probeSucceeded)
             assertFalse("frame must fail closed: ${frame.take(40)}", observed.present)
-            assertFalse(observed.managed)
+            assertEquals(ZigbeeGatewayLayout.UNKNOWN, observed.layout)
             assertFalse(observed.running)
             assertNull(observed.driver)
             assertNull(observed.role)
@@ -256,41 +290,94 @@ class ZigbeeControllerTest {
         assertFalse(zb(outputs = mapOf("pidof zgateway" to "")).first.running())
     }
 
-    @Test fun reconcileStartsWhenDesiredOnAndDown() {
-        val (z, root) = zb(
-            metadata = metadata(binary = true),
-            role = """{"role":"Repeater"}""",
-            outputs = mapOf("siliconlabs_host/zgateway" to "zgateway"),
-        )
+    @Test fun capturedFourXLayoutStartsThroughItsLauncher() {
+        val root = capturedRoot(fourXFiles)
+        val z = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), root)
+
         assertTrue(z.reconcile(true))
-        assertTrue("expected a guard start, got ${root.ran}", root.ran.any { it.contains("guard_process.sh") })
+        assertTrue(root.ran.any { it.contains("sh $dir/run.sh") })
+        assertTrue(root.ran.none { it.contains("sh $dir/guard_process.sh") })
     }
 
-    @Test fun reconcileStopsWhenDesiredOffAndUp() {
-        val (z, root) = zb(
-            metadata = metadata(binary = true, running = true),
-            outputs = mapOf("siliconlabs_host/zgateway" to "zgateway", "pidof zgateway" to "1234"),
+    @Test fun capturedLayoutsDispatchStartAndStopThroughTheirOwnMechanisms() {
+        val managedRoot = capturedRoot(managedFiles)
+        val managed = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), managedRoot)
+        assertTrue(managed.enable())
+        assertTrue(managed.disable())
+        assertTrue(managedRoot.ran.any { it == "sh $dir/run_guard_process.sh" })
+        assertTrue(managedRoot.ran.any { it == "sh $dir/run_guard_process.sh stop" })
+
+        val nativeRoot = capturedRoot(nativeFiles)
+        val native = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), nativeRoot)
+        assertTrue(native.enable())
+        assertTrue(native.disable())
+        assertTrue(nativeRoot.ran.any { it.contains("nohup sh $dir/guard_process.sh") })
+        assertTrue(nativeRoot.ran.any { it.contains("killall -9 zgateway") })
+
+        val daemon = FakeDaemon(mapOf("ZIGBEECONTAIN" to "OK"))
+        val fourXRoot = capturedRoot(fourXFiles)
+        val fourX = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), fourXRoot, daemon)
+        assertTrue(fourX.disable())
+        assertEquals(listOf("ZIGBEECONTAIN"), daemon.sent)
+        assertTrue(fourXRoot.ran.isEmpty())
+
+        val source = AndroidZigbeeGatewayHealthSource(
+            dir = dir,
+            controller = fourX,
+            root = fourXRoot,
+            daemon = daemon,
+            productVersion = { null },
         )
-        assertTrue(z.reconcile(false))
-        assertTrue(root.ran.any { it.contains("killall") })
+        assertEquals(ZigbeeContainmentResult.COMPLETE, source.contain(ZigbeeGatewayLayout.VENDOR_4X))
+        assertEquals(ZigbeeContainmentResult.FAILED, source.contain(ZigbeeGatewayLayout.UNKNOWN))
+        assertEquals(listOf("ZIGBEECONTAIN", "ZIGBEECONTAIN"), daemon.sent)
+    }
+
+    @Test fun healthSourceClassifiesTheCapturedFileLayouts() {
+        listOf(
+            managedFiles to ZigbeeGatewayLayout.MANAGED,
+            nativeFiles to ZigbeeGatewayLayout.VENDOR_NATIVE,
+            fourXFiles to ZigbeeGatewayLayout.VENDOR_4X,
+            setOf("zgateway") to ZigbeeGatewayLayout.UNKNOWN,
+        ).forEach { (files, expected) ->
+            val root = capturedRoot(files)
+            val source = AndroidZigbeeGatewayHealthSource(
+                dir = dir,
+                controller = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), root),
+                root = root,
+                daemon = FakeDaemon(),
+                productVersion = { null },
+            )
+            assertEquals(expected, source.observe().layout)
+        }
+    }
+
+    @Test fun unidentifiedGatewayFootprintRefusesControlAndNamesWhatWasSeen() {
+        // An adversarial incomplete variant of the captured 4.x footprint: the launcher is gone.
+        val root = capturedRoot(setOf("zgateway"))
+        val daemon = FakeDaemon(mapOf("ZIGBEECONTAIN" to "OK"))
+        val z = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), root, daemon)
+
+        assertFalse(z.reconcile(true))
+        assertFalse(z.disable())
+        assertTrue(root.ran.isEmpty())
+        assertTrue(daemon.sent.isEmpty())
+        val status = zb(metadata = metadata(binary = true)).first.observe(includeRole = false).status
+        assertTrue(status.contains("unknown layout"))
+        assertTrue(status.contains("zgateway"))
     }
 
     @Test fun reconcileNeverSpawnsASecondGuardWhenAlreadyRunning() {
-        val (z, root) = zb(
-            metadata = metadata(binary = true, running = true),
-            outputs = mapOf("siliconlabs_host/zgateway" to "zgateway", "pidof zgateway" to "1234"),
-        )
+        val root = capturedRoot(nativeFiles, running = true)
+        val z = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), root)
         assertTrue(z.reconcile(true))
         assertTrue(root.ran.none { it.contains("guard_process.sh") })
         assertTrue("explicit ON must reassert Repeater mode", root.ran.any { it.contains("network-role/switch") })
     }
 
     @Test fun explicitOnDoesNotRepublishWhenAlreadyARepeater() {
-        val (z, root) = zb(
-            metadata = metadata(binary = true, running = true),
-            role = """{"role":"Repeater"}""",
-            outputs = mapOf("siliconlabs_host/zgateway" to "zgateway", "pidof zgateway" to "1234"),
-        )
+        val root = capturedRoot(nativeFiles, running = true, role = """{"role":"Repeater"}""")
+        val z = ZigbeeController(fakeProfile(zigbeeGatewayDir = dir), root)
         assertTrue(z.reconcile(true))
         assertTrue(root.ran.none { it.contains("guard_process.sh") })
         assertTrue(root.ran.none { it.contains("network-role/switch") })
