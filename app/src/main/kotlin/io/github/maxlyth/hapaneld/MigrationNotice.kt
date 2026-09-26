@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.maxlyth.hapaneld.control.Su
@@ -28,6 +29,7 @@ internal class MigrationNotice(private val context: Context, private val config:
     private val catalogue = CatalogueLoader { context.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
     private var view: View? = null
     private var started = false
+    private val guideQr by lazy { qrBitmap(URL, (56 * context.resources.displayMetrics.density).toInt()) }
     @Volatile private var closed = false
     private val redraw = Runnable { if (!closed) render() }
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -65,7 +67,7 @@ internal class MigrationNotice(private val context: Context, private val config:
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, 0, 0)
+            setPadding(dp(12), dp(8), dp(8), dp(8))
             background = GradientDrawable().apply {
                 setColor(Color.rgb(42, 36, 24))
                 cornerRadius = dp(8).toFloat()
@@ -87,6 +89,12 @@ internal class MigrationNotice(private val context: Context, private val config:
             addView(text(URL.removePrefix("https://")))
         }
         card.addView(message, LinearLayout.LayoutParams(0, WindowManager.LayoutParams.WRAP_CONTENT, 1f))
+        guideQr?.let { qr ->
+            card.addView(ImageView(context).apply {
+                setImageBitmap(qr)
+                contentDescription = URL
+            }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginEnd = dp(8) })
+        }
         card.addView(Button(context).apply {
             text = "\u00d7"
             contentDescription = strings.get("shell.migration.dismiss")
