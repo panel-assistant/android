@@ -63,8 +63,9 @@ internal class MigrationNotice(private val context: Context, private val config:
         val density = context.resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, 0, 0)
             background = GradientDrawable().apply {
                 setColor(Color.rgb(42, 36, 24))
                 cornerRadius = dp(8).toFloat()
@@ -77,17 +78,27 @@ internal class MigrationNotice(private val context: Context, private val config:
             textSize = if (bold) 15f else 13f
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }
-        card.addView(text(strings.get("shell.migration.title"), bold = true))
-        card.addView(text(strings.get("shell.migration.body")))
-        card.addView(text(URL.removePrefix("https://"), bold = true))
+        val message = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+            addView(text(strings.get("shell.migration.title"), bold = true).apply {
+                contentDescription = "${strings.get("shell.migration.title")}. ${strings.get("shell.migration.body")}"
+            })
+            addView(text(URL.removePrefix("https://")))
+        }
+        card.addView(message, LinearLayout.LayoutParams(0, WindowManager.LayoutParams.WRAP_CONTENT, 1f))
         card.addView(Button(context).apply {
-            text = strings.get("shell.migration.dismiss")
+            text = "\u00d7"
+            contentDescription = strings.get("shell.migration.dismiss")
             isAllCaps = false
-            textSize = 12f
+            textSize = 24f
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
             setOnClickListener {
                 if (config.dismissMigrationNotice()) remove()
             }
-        })
+        }, LinearLayout.LayoutParams(dp(48), dp(48)))
         val width = minOf(context.resources.displayMetrics.widthPixels - dp(24), dp(420)).coerceAtLeast(1)
         val params = WindowManager.LayoutParams(
             width, WindowManager.LayoutParams.WRAP_CONTENT,
