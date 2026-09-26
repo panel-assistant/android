@@ -13,6 +13,7 @@
 
 #define MAX_POPEN_RULES 8
 #define MAX_RUN_HISTORY 32
+#define MAX_RUN_BYTES 4096
 #define MAX_ARGV_HISTORY 32
 #define MAX_ARGV_ARGS 8
 #define MAX_ARGV_BYTES 128
@@ -38,7 +39,7 @@ static int run_blocked;
 static int run_released;
 static pthread_mutex_t run_block_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t run_block_cond = PTHREAD_COND_INITIALIZER;
-static char run_history[MAX_RUN_HISTORY][600];
+static char run_history[MAX_RUN_HISTORY][MAX_RUN_BYTES];
 static int run_history_count;
 static argv_call argv_history[MAX_ARGV_HISTORY];
 static int argv_history_count;
@@ -123,6 +124,14 @@ int sysexec_stub_count_run(const char *needle) {
         if (strstr(run_history[i], needle)) count++;
     pthread_mutex_unlock(&run_block_lock);
     return count;
+}
+
+int sysexec_stub_last_run(char *out, size_t size) {
+    pthread_mutex_lock(&run_block_lock);
+    int found = run_history_count > 0 && size > strlen(run_history[run_history_count - 1]);
+    if (found) strcpy(out, run_history[run_history_count - 1]);
+    pthread_mutex_unlock(&run_block_lock);
+    return found;
 }
 
 int sysexec_stub_count_argv(const char *path, const char *const argv[], int quiet) {
