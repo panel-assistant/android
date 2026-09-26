@@ -303,6 +303,8 @@ TARGET_LITERAL_EXCEPTIONS = {
     ("uk", "dashboard.inspect.enable_in_companion"): ("Companion",),
     ("uk", "dashboard.inspect.hardened_disabled"): ("Hardened", "Relaxed"),
     ("uk", "dashboard.inspect.instructions"): ("Companion",),
+    # Chrome DevTools exposes these controls in English on chrome://inspect.
+    ("uk", "dashboard.inspect.running"): ("Remote Target", "inspect"),
     ("uk", "dashboard.responsiveness.heap_churn"): ("heap",),
     ("uk", "dashboard.responsiveness.tap_breakdown"): ("ms",),
     ("uk", "dashboard.runtime.mqtt.config_error"): ("config-error",),
@@ -310,6 +312,11 @@ TARGET_LITERAL_EXCEPTIONS = {
     ("uk", "dashboard.screenshot.view_only"): ("Hardened",),
     ("uk", "dashboard.state_stream.main_thread_detail"): ("ms",),
     ("uk", "entities.issue.button-card-limited-support.reason"): ("config-template",),
+    # Auto-entities is the card name, not a generic phrase for entities.
+    ("uk", "entities.issue.auto-entities-options-dynamic.summary"): ("Auto-entities",),
+    ("uk", "entities.issue.auto-entities-options-javascript.summary"): ("Auto-entities",),
+    ("uk", "entities.issue.auto-entities-seed-row-dynamic.summary"): ("Auto-entities",),
+    ("uk", "entities.issue.auto-entities-typed-row-dynamic.summary"): ("Auto-entities",),
     ("uk", "install.apk_status.disabled"): ("install",),
     ("uk", "install.apk_status.no_root"): ("root", "helper"),
     ("uk", "install.backup.companion.helper_required"): ("helper",),

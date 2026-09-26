@@ -1149,7 +1149,7 @@
    "state": "machine-cross-checked"
   },
   "configure.proximity.confirm.forget": {
-   "text": "Eerst uit de buurt van het paneel gaan en daarna de geleerde nabijheidsgeschiedenis voor deze sensor verwijderen? ‘Touch-to-wake’ blijft beschikbaar terwijl het opnieuw leert.",
+   "text": "Ga eerst uit de buurt van het paneel. Wil je daarna de aangeleerde nabijheidsgeschiedenis voor deze sensor verwijderen? Aanraken om te wekken blijft beschikbaar terwijl de sensor opnieuw leert.",
    "sourceHash": "e4ed73da8434174e02d6aa4413c24c088aad8fc6b39f214146bc5f74813288e5",
    "state": "machine-cross-checked"
   },
@@ -1539,7 +1539,7 @@
    "state": "machine-cross-checked"
   },
   "configure.setup.ha_signin.body": {
-   "text": "De ingebouwde renderer van ha-paneld is geselecteerd. Gebruik ‘Inloggen via browser’ in de kaart Home Assistant-verbinding hieronder, of voltooi het inloggen dat op het paneel wordt weergegeven.",
+   "text": "De ingebouwde renderer van ha-paneld is geselecteerd. Gebruik ‘Inloggen via de browser’ in de kaart Home Assistant-verbinding hieronder, of voltooi het inloggen dat op het paneel wordt weergegeven.",
    "sourceHash": "b14fe9b7c942a78eb940cb68135e7f4d2c5236919930c977576168e6182a90f5",
    "state": "machine-cross-checked"
   },
@@ -1574,7 +1574,7 @@
    "state": "machine-cross-checked"
   },
   "configure.setup.strategy_allowed.body": {
-   "text": "Home Assistant bouwt het dashboard van dit paneel op basis van een strategie, en de controle op entiteitherkenning is toegestaan, dus er verschijnen alleen kaarten voor entiteiten in het abonnement.",
+   "text": "Home Assistant bouwt het dashboard van dit paneel op basis van een strategie, en de controle voor entiteitsdetectie is toegestaan, dus er verschijnen alleen kaarten voor entiteiten in het abonnement.",
    "sourceHash": "775e7bde2d357258f45f814e974079a72d8e907dfd0678208bc0685908dd0cc9",
    "state": "machine-cross-checked"
   },
@@ -1784,7 +1784,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.auth_rejected.explanation": {
-   "text": "de opgeslagen inloginstellingen zijn geweigerd, dus het dashboard probeert het niet meer opnieuw (het toont instructies om dit op te lossen op het paneel). Gebruik ‘Inloggen via browser’ op",
+   "text": "de opgeslagen inloginstellingen zijn geweigerd, dus het dashboard probeert het niet meer opnieuw (het toont instructies om dit op te lossen op het paneel). Gebruik ‘Inloggen via de browser’ op",
    "sourceHash": "e414f00aea1c8c8d9ac8a59a1fa6902c8fca809a1ad9990d1bed61898c4d8e96",
    "state": "machine-cross-checked"
   },
@@ -1889,7 +1889,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.banner.proximity_learning.touch_available": {
-   "text": "‘Touch-to-wake’ blijft beschikbaar.",
+   "text": "Aanraken om te wekken blijft beschikbaar.",
    "sourceHash": "903915dd8ee56238ac39ddd50edf407ff66796e29173afbeb3da700f6838c234",
    "state": "machine-cross-checked"
   },
@@ -2039,7 +2039,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.camera.action.report_encode_failure": {
-   "text": "de camera levert frames aan, maar deze konden niet worden gecodeerd; meld dit via de diagnostiek van het paneel",
+   "text": "de camera levert frames aan, maar deze konden niet worden gecodeerd; meld dit samen met de diagnostische gegevens van het paneel",
    "sourceHash": "e357e35fdd3e41b26dfcd530e77a10a34b239a0b525a735f9ed401554bf40eb6",
    "state": "machine-cross-checked"
   },
@@ -4359,12 +4359,12 @@
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_all_confirm.one": {
-   "text": "{count} voorgestelde entiteit uitsluiten? Dit kan dashboardkaarten verstoren.",
+   "text": "{count} voorgestelde entiteit uitsluiten? Hierdoor werken dashboardkaarten mogelijk niet meer.",
    "sourceHash": "4ee7872151dc628a5534388bc708bbdaaa3854e51513b745e69be6ce297f1447",
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_all_confirm.other": {
-   "text": "Alle {count} voorgestelde entiteiten uitsluiten? Dit kan dashboardkaarten verstoren.",
+   "text": "Alle {count} voorgestelde entiteiten uitsluiten? Hierdoor werken dashboardkaarten mogelijk niet meer.",
    "sourceHash": "f71967c93e9b393036ab0e5c4e0d5189d27764b34014e3998bd9d529ca305ae5",
    "state": "machine-cross-checked"
   },
@@ -4374,12 +4374,12 @@
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_selected_confirm.one": {
-   "text": "{count} geselecteerde entiteit uitsluiten? Dit kan dashboardkaarten verstoren.",
+   "text": "{count} geselecteerde entiteit uitsluiten? Hierdoor werken dashboardkaarten mogelijk niet meer.",
    "sourceHash": "227268d87fbedc2dfd3681cdb64ea4aa08966e03db558c156671e14d22f4e357",
    "state": "machine-cross-checked"
   },
   "entities.bulk.exclude_selected_confirm.other": {
-   "text": "{count} geselecteerde entiteiten uitsluiten? Dit kan dashboardkaarten verstoren.",
+   "text": "{count} geselecteerde entiteiten uitsluiten? Hierdoor werken dashboardkaarten mogelijk niet meer.",
    "sourceHash": "a4d9e3e4433232a4693d7b385710a5641b8b1352ea5e80a956edce2e14bd0bba",
    "state": "machine-cross-checked"
   },
@@ -4399,7 +4399,7 @@
    "state": "machine-cross-checked"
   },
   "entities.bulk.pin_all_suggested": {
-   "text": "Alle suggesties vastzetten",
+   "text": "Alle voorgestelde entiteiten vastzetten",
    "sourceHash": "a065b473d105e06ffe8a8f0ea34c19753f14452c09493e24901c6b1073aeaa50",
    "state": "machine-cross-checked"
   },
@@ -4584,37 +4584,37 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.area-broad.summary": {
-   "text": "De gebiedskaart overschrijdt de veiligheidslimiet voor het abonnement per selector",
+   "text": "De ruimtekaart overschrijdt de veiligheidslimiet voor het abonnement per selector",
    "sourceHash": "8ef940c2a79a9331d1a10a00ddeba03e63618b3afdc4528e2380e0553f7f8861",
    "state": "machine-cross-checked"
   },
   "entities.issue.area-missing-id.summary": {
-   "text": "De gebiedskaart heeft geen statische gebieds-ID",
+   "text": "De ruimtekaart heeft geen statische ruimte-ID",
    "sourceHash": "96f1bb3976e5f7e232bbe3cef6d90da628247f136d69569a2156e7a965f944ec",
    "state": "machine-cross-checked"
   },
   "entities.issue.area-registry-incomplete.summary": {
-   "text": "De registermetadata van de gebiedskaart zijn onvolledig",
+   "text": "De registermetadata van de ruimtekaart zijn onvolledig",
    "sourceHash": "d25c1fe35add58e9f0e38d8c03485387e1f1ff193fc1830b5387cda97495c1f7",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-options-dynamic.summary": {
-   "text": "Opties voor automatische entiteiten kunnen tijdens de uitvoering entiteitsafhankelijkheden genereren",
+   "text": "Opties van Auto-entities kunnen tijdens de uitvoering entiteitsafhankelijkheden genereren",
    "sourceHash": "5c2b12a42a8e3532dc2419da1a6acffb51b32084a7b1e20307a703bce0a5f9e3",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-options-javascript.summary": {
-   "text": "Opties voor automatische entiteiten voeren JavaScript uit dat entiteitsafhankelijkheden kan vervangen",
+   "text": "Opties van Auto-entities voeren JavaScript uit dat entiteitsafhankelijkheden kan vervangen",
    "sourceHash": "22ceb20450b38f3e3d14b8fc60baf3f2f1e72e6f5b67f49b3059452c95e082e7",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-seed-row-dynamic.summary": {
-   "text": "De startrij met automatische entiteiten kan tijdens de uitvoering entiteitsafhankelijkheden genereren",
+   "text": "Een startrij van Auto-entities kan tijdens de uitvoering entiteitsafhankelijkheden genereren",
    "sourceHash": "19844079e668f90890e0175779b98c82fc44bc1a804f93b91b2da6ca279e6609",
    "state": "machine-cross-checked"
   },
   "entities.issue.auto-entities-typed-row-dynamic.summary": {
-   "text": "Een getypeerde rij met automatische entiteiten kan tijdens de uitvoering entiteitsafhankelijkheden genereren",
+   "text": "Een getypeerde rij van Auto-entities kan tijdens de uitvoering entiteitsafhankelijkheden genereren",
    "sourceHash": "4c5f40b1bf80e9559cc388ad364d6786786976643187f19a5b49c5339c02f7d7",
    "state": "machine-cross-checked"
   },
@@ -4694,7 +4694,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.default-broad.recommendation": {
-   "text": "Beperk de selector met een gebied, verdieping, label, entiteitspatroon of een expliciete lijst met entiteiten.",
+   "text": "Beperk de selector met een ruimte, verdieping, label, entiteitspatroon of een expliciete lijst met entiteiten.",
    "sourceHash": "ee01905364ebf98329a8c55c886e5437838273b6eb78f464b5320cc42501932a",
    "state": "machine-cross-checked"
   },
@@ -4704,7 +4704,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.default-unbounded.recommendation": {
-   "text": "Voeg een beperking toe met een expliciete entiteits-ID, entiteitspatroon, domein, gebied, verdieping of label.",
+   "text": "Voeg een beperking toe met een expliciete entiteits-ID, entiteitspatroon, domein, ruimte, verdieping of label.",
    "sourceHash": "d714413bd8c2e44d31e88af3b74b728fe19cfc282c90d2d77af0aaa986ce1939",
    "state": "machine-cross-checked"
   },
@@ -4769,7 +4769,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.map-dynamic-enumeration.summary": {
-   "text": "De kaart-kaart somt entiteiten dynamisch op",
+   "text": "De kaart ‘Kaart’ somt entiteiten dynamisch op",
    "sourceHash": "b111a3e84686fe9239a5c1e667c61725cda8c4d80fa6295e738525a5733f33b1",
    "state": "machine-cross-checked"
   },
@@ -4984,7 +4984,7 @@
    "state": "machine-cross-checked"
   },
   "entities.override.failed": {
-   "text": "Het overschrijven van de entiteit is mislukt",
+   "text": "Wijzigen van entiteitskeuze mislukt",
    "sourceHash": "b42ba8ad55e097922c0c1b5bb2122a798ffa01e071c205d78086dc166c3e8347",
    "state": "machine-cross-checked"
   },
@@ -5054,17 +5054,17 @@
    "state": "machine-cross-checked"
   },
   "entities.reset.complete_no_scan": {
-   "text": "Reset voltooid. Aangeleerd bewijs, handmatige overschrijvingen en beslissingen om veiligheidscontroles te negeren zijn verwijderd. Het huidige live-abonnement is behouden, maar de vervangende scan is niet gestart; gebruik {scan_action} om het opnieuw te proberen.",
+   "text": "Reset voltooid. Aangeleerd bewijs, handmatige vastzettingen en uitsluitingen en beslissingen om veiligheidscontroles te negeren zijn verwijderd. Het huidige live-abonnement is behouden, maar de vervangende scan is niet gestart; gebruik {scan_action} om het opnieuw te proberen.",
    "sourceHash": "f0198d70c226424f7a78ff65f1545e155230fd732de12e08ed4474cbaf7451c6",
    "state": "machine-cross-checked"
   },
   "entities.reset.complete_scanning": {
-   "text": "Reset voltooid. Aangeleerd bewijs, handmatige overschrijvingen en beslissingen om veiligheidscontroles te negeren zijn verwijderd. Er wordt een vervangende scan uitgevoerd; het huidige live-abonnement blijft van kracht totdat die scan is geslaagd.",
+   "text": "Reset voltooid. Aangeleerd bewijs, handmatige vastzettingen en uitsluitingen en beslissingen om veiligheidscontroles te negeren zijn verwijderd. Er wordt een vervangende scan uitgevoerd; het huidige live-abonnement blijft van kracht totdat die scan is geslaagd.",
    "sourceHash": "0c9fed9e1b5fcde6591508c956e73fb8249ada0f34305d203ebe0298b074dfdf",
    "state": "machine-cross-checked"
   },
   "entities.reset.confirm": {
-   "text": "Wil je al het aangeleerde entiteitsbewijs, handmatige overschrijvingen (vastzetten/uitsluiten) en beslissingen om veiligheidscontroles voor entiteitsdetectie te negeren resetten? Dit kan niet ongedaan worden gemaakt. Het huidige live-abonnement blijft behouden terwijl een vervangende scan het bewijs opnieuw opbouwt.",
+   "text": "Wil je al het aangeleerde entiteitsbewijs, handmatige vastzettingen en uitsluitingen en beslissingen om veiligheidscontroles voor entiteitsdetectie te negeren resetten? Dit kan niet ongedaan worden gemaakt. Het huidige live-abonnement blijft behouden terwijl een vervangende scan het bewijs opnieuw opbouwt.",
    "sourceHash": "af56ee112e5d4353209106117b9426c18de16a6c7cfc2c2e2db39526d56a1db6",
    "state": "machine-cross-checked"
   },
@@ -5279,7 +5279,7 @@
    "state": "machine-cross-checked"
   },
   "entities.status.state.degraded": {
-   "text": "beperkt",
+   "text": "verminderde werking",
    "sourceHash": "3c8cab8b47d6d0ac0e1bb0a3c209b836f5cf1a61e851626dc7a5d7f011a7e5dd",
    "state": "machine-cross-checked"
   },
@@ -5309,12 +5309,12 @@
    "state": "machine-cross-checked"
   },
   "entities.status.stream.one": {
-   "text": "{count} entiteit actief geabonneerd",
+   "text": "Actief geabonneerd op {count} entiteit",
    "sourceHash": "fab02429d470d355fdcfe09f2d67dbd0803c09cd93e27959ec1d38775949c141",
    "state": "machine-cross-checked"
   },
   "entities.status.stream.other": {
-   "text": "{count} entiteiten actief geabonneerd",
+   "text": "Actief geabonneerd op {count} entiteiten",
    "sourceHash": "9250b45af2f1f5d7621031270cf48938c21e3405dd745198d1393dab7f8ff74f",
    "state": "machine-cross-checked"
   },
@@ -5649,7 +5649,7 @@
    "state": "machine-cross-checked"
   },
   "install.apk_status.no_root": {
-   "text": "dit paneel heeft geen root- of helper-daemon",
+   "text": "dit paneel heeft geen root-toegang of helper-daemon",
    "sourceHash": "ccacf47c8e35732eeb3c5a32f4bb40643b3bcaf95b27c22a8e5b39134e10412d",
    "state": "machine-cross-checked"
   },
@@ -5839,7 +5839,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.dynamic.restore_start_failed": {
-   "text": "Het herstellen is niet gestart.",
+   "text": "Herstellen kon niet worden gestart.",
    "sourceHash": "d4a3fc81ca2d38a5e54bd5775b77cfc85b11a8749f42befac9de38c9e68f9bd6",
    "state": "machine-cross-checked"
   },
@@ -6049,7 +6049,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_restored_selection_staged": {
-   "text": "De profielcatalogus is hersteld; de selectie is klaargezet voor een herstart die door een statuscontrole wordt bewaakt.",
+   "text": "Profielcatalogus hersteld; selectie klaargezet voor herstart en pas na een geslaagde gezondheidscontrole behouden.",
    "sourceHash": "71d179990d3bdbab24c8dc55c8ab5a9cd6af24ed3707703477c00ea94c59c9f7",
    "state": "machine-cross-checked"
   },
@@ -6064,7 +6064,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_staging_retained": {
-   "text": "Gevoelige tijdelijke back-upgegevens konden niet worden verwijderd. Controleer de opslagruimte van het paneel en probeer het opnieuw; er is geen back-up gedownload.",
+   "text": "Gevoelige tijdelijke back-upgegevens konden niet worden verwijderd. Controleer de opslag van het paneel op achtergebleven gegevens en probeer het opnieuw; er is geen back-up gedownload.",
    "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
    "state": "machine-cross-checked"
   },
@@ -6114,7 +6114,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.companion_rollback_failed": {
-   "text": "Herstellen en terugdraaien zijn mislukt; de Companion-status kan onvolledig zijn",
+   "text": "Herstellen en terugdraaien zijn mislukt; de toestand van Companion kan onvolledig zijn",
    "sourceHash": "186bdcdc3b12e49ed3dfee4d0de307d39e938bb6956fe4c994be65d273082b56",
    "state": "machine-cross-checked"
   },
@@ -6289,7 +6289,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_archive_entries_invalid": {
-   "text": "het back-uparchief bevat ontbrekende of onverwachte bestanden",
+   "text": "In het back-uparchief ontbreken bestanden of staan onverwachte bestanden",
    "sourceHash": "05160b8fa6ac6f7af161dc55f176491aae6c19ec889c921e906f10882782e671",
    "state": "machine-cross-checked"
   },
@@ -6409,12 +6409,12 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_state_object_invalid": {
-   "text": "ongeldig statusobject",
+   "text": "ongeldig toestandsobject",
    "sourceHash": "4d8d22f9fa4bd06a614b3f860d8b2bf582cefb5f80aafa2ede6e0344c45478a0",
    "state": "machine-cross-checked"
   },
   "install.presentation.status_builtin_renderer_retries_stopped": {
-   "text": "⛔ De ingebouwde renderer is gestopt met opnieuw proberen na herhaalde fouten van WebView. Werk System WebView bij of repareer het en gebruik daarna ‘Dashboard opnieuw laden’ in de navigatiebalk van het paneel of op het tabblad Dashboard.",
+   "text": "⛔ De ingebouwde renderer is gestopt met opnieuw proberen na herhaalde fouten van WebView. Werk System WebView bij of repareer het en gebruik daarna ‘Dashboard opnieuw laden’ in de navigatiebalk van het paneel of ‘Opnieuw laden’ op het tabblad Dashboard.",
    "sourceHash": "1b5418807f2f485ae2f516c802d5e0801c94630d573966d230b92d877e08417e",
    "state": "machine-cross-checked"
   },
@@ -6434,22 +6434,22 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.status_power_at_risk": {
-   "text": "⛔ Stroomveiligheid van het paneel: risico — het paneel kan na het uitschakelen van het scherm in slaapstand gaan of Doze activeren, waardoor HTTP, MQTT en achtergrondwerk onbereikbaar worden.",
+   "text": "⛔ Energiebeheer van het paneel: bereikbaarheid in gevaar — het paneel kan na het uitschakelen van het scherm in slaapstand gaan of Doze activeren, waardoor het via HTTP en MQTT onbereikbaar wordt en achtergrondtaken stilvallen.",
    "sourceHash": "a74da057925352acddd3dd33fbb3024de2c565cbcb5410079024512fbe9ad1ab",
    "state": "machine-cross-checked"
   },
   "install.presentation.status_power_caution": {
-   "text": "⚠ Stroomveiligheid van het paneel: let op — de bereikbaarheid van het paneel hangt momenteel af van slechts één waargenomen stroombeveiliging.",
+   "text": "⚠ Energiebeheer van het paneel: let op — de bereikbaarheid van het paneel hangt momenteel af van slechts één waargenomen maatregel tegen slaapstand.",
    "sourceHash": "273989e72a98d72372d95ba1d2feaf622938b7d790190778fe97601d39eb31f2",
    "state": "machine-cross-checked"
   },
   "install.presentation.status_power_unknown": {
-   "text": "⚠ Stroomveiligheid van het paneel: onbekend — de stroomveiligheid kon niet worden vastgesteld omdat een of meer stroomcontroles van Android niet beschikbaar of onduidelijk waren.",
+   "text": "⚠ Energiebeheer van het paneel: onbekend — het was niet vast te stellen of het paneel bereikbaar blijft, omdat een of meer controles van het energiebeheer van Android niet beschikbaar of onduidelijk waren.",
    "sourceHash": "4860f8deecc3d0e600a76ea9939ee63a388c57f725018c5fdcef7e2a4d102a94",
    "state": "machine-cross-checked"
   },
   "install.presentation.status_schema_rollback": {
-   "text": "⚠ Nieuwere database behouden na een downgrade ({from_schema} → {to_schema}) — deze build heeft een nieuwe statusopslag geopend omdat het schema ouder is; sommige instellingen zijn mogelijk gereset. De vorige database wordt op het paneel bewaard voor herstel. Controleer Configureren of herstel een back-up.",
+   "text": "⚠ Nieuwere database behouden na een downgrade ({from_schema} → {to_schema}) — deze build heeft nieuwe opslag voor paneelgegevens geopend omdat het schema ouder is; sommige instellingen zijn mogelijk gereset. De vorige database wordt op het paneel bewaard voor herstel. Controleer Configureren of herstel een back-up.",
    "sourceHash": "ff545e82f7b3e9d88e6e9660d1be124df64ff521098d5cbfe7290f766b84be88",
    "state": "machine-cross-checked"
   },
@@ -6669,12 +6669,12 @@
    "state": "machine-cross-checked"
   },
   "install.restore.state_values.one": {
-   "text": "Herstel voltooid ({count} waarde van de paneelstatus hersteld)",
+   "text": "Herstel voltooid ({count} waarde uit de paneelgegevens hersteld)",
    "sourceHash": "706097a0c28ba85557497af9ba9f404cf40d5f38c7e2511c977c0ff3c9e6bf53",
    "state": "machine-cross-checked"
   },
   "install.restore.state_values.other": {
-   "text": "Herstel voltooid ({count} waarden van de paneelstatus hersteld)",
+   "text": "Herstel voltooid ({count} waarden uit de paneelgegevens hersteld)",
    "sourceHash": "882f5a25b20ebede1a5e18886df93e4d9568aa19ab67e4d21b8e5cc443aa6070",
    "state": "machine-cross-checked"
   },
@@ -6819,7 +6819,7 @@
    "state": "machine-cross-checked"
   },
   "logs.note.privacy": {
-   "text": "Tokens/wachtwoorden worden vóór weergave verborgen; de stream is alleen via LAN beschikbaar en stopt wanneer deze pagina wordt gesloten.",
+   "text": "Tokens en wachtwoorden worden vóór weergave onleesbaar gemaakt; de stream is alleen via LAN beschikbaar en stopt wanneer deze pagina wordt gesloten.",
    "sourceHash": "17998dd43d953a451f90eb220c1f9575589f7e9c9eb7916357833d75fd9f548a",
    "state": "machine-cross-checked"
   },
@@ -7209,7 +7209,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.error.delete_catalog_changed": {
-   "text": "De catalogus is gewijzigd; laad hem opnieuw voordat je iets verwijdert.",
+   "text": "De catalogus is gewijzigd; laad de pagina opnieuw voordat je het profiel verwijdert.",
    "sourceHash": "cfee6dc954ee34e78c4d4dfbe7ed6f2bb368181c4d2acc7b41a0ad92ab9bbf9d",
    "state": "machine-cross-checked"
   },
@@ -7234,7 +7234,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.error.must_validate": {
-   "text": "Het profiel moet gevalideerd zijn voordat het opgeslagen kan worden",
+   "text": "Het profiel moet de validatie doorstaan voordat het kan worden opgeslagen",
    "sourceHash": "481d9b91ba9125d86b9a808e0d35c0d90638d50c0aa5e1dbd5aff39f18485c2a",
    "state": "machine-cross-checked"
   },
@@ -8469,7 +8469,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.schema.description.webview_artifact": {
-   "text": "APK-artefact en vertrouwensbasis van de ondertekenaar, in beheer van de kern.",
+   "text": "APK-artefact en vertrouwensanker voor de ondertekenaar, beide in beheer van de kern.",
    "sourceHash": "139ebdeeda56385d56e264d1551ba06f4a507eb4ffefba9056b927362fc7d1a1",
    "state": "machine-cross-checked"
   },
@@ -8889,7 +8889,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.renderer_recovery.builtin": {
-   "text": "De ingebouwde renderer probeert het niet meer opnieuw na herhaalde WebView-fouten. Werk System WebView bij of herstel het, en gebruik daarna ‘Dashboard opnieuw laden’ in de navigatiebalk van het paneel of op het tabblad Dashboard.",
+   "text": "De ingebouwde renderer probeert het niet meer opnieuw na herhaalde WebView-fouten. Werk System WebView bij of herstel het, en gebruik daarna ‘Dashboard opnieuw laden’ in de navigatiebalk van het paneel of ‘Opnieuw laden’ op het tabblad Dashboard.",
    "sourceHash": "20f93e06aeff7310a8f77b8fa3242cd484ebedb2b1a6242e5aaba65209c4b428",
    "state": "machine-cross-checked"
   },
@@ -9319,7 +9319,7 @@
    "state": "machine-cross-checked"
   },
   "settings.ha_refresh_token.help": {
-   "text": "Interne tokenstatus, bewaard voor compatibiliteit met API-/configuratie-import. Overgenomen Companion-aanmeldingen en door ha-paneld uitgegeven OAuth-aanmeldingen beheren dit automatisch.",
+   "text": "Interne tokenstatus, bewaard voor compatibiliteit met API-/configuratie-import. Geleende Companion-aanmeldingen en door ha-paneld uitgegeven OAuth-aanmeldingen beheren dit automatisch.",
    "sourceHash": "6366b03a354de30d09782192cf07b058b689b63e893c4b6d2c6ca6178ed23795",
    "state": "machine-cross-checked"
   },
@@ -9329,7 +9329,7 @@
    "state": "machine-cross-checked"
   },
   "settings.ha_token.help": {
-   "text": "Gebruik waar mogelijk de aanmelding via de browser. Deze fallback kun je aanmaken in je Home Assistant gebruikersprofiel.",
+   "text": "Gebruik waar mogelijk de aanmelding via de browser. Deze fallback kun je aanmaken in je Home Assistant-gebruikersprofiel.",
    "sourceHash": "2a751871e7f1239703cb7b4c6b11ec965ebcff7f5b208e61824d91d3fd7be35f",
    "state": "machine-cross-checked"
   },
@@ -9644,7 +9644,7 @@
    "state": "machine-cross-checked"
   },
   "settings.tame_vendor_packages.help": {
-   "text": "Opslagruimte uitsluitend voor back-ups van pakketselecties die worden beheerd via de kaart ‘Pakketten van leveranciers’.",
+   "text": "Opslag van pakketselecties uitsluitend voor back-ups; de selecties worden beheerd via de kaart ‘Pakketten van leveranciers’.",
    "sourceHash": "9e5114f2319b4a394da900d05306035a7d83aba15ac1d66dcd705004814ced95",
    "state": "machine-cross-checked"
   },
@@ -9824,17 +9824,17 @@
    "state": "machine-cross-checked"
   },
   "setup.area.admin_help": {
-   "text": "Waar dit paneel zich bevindt. Home Assistant gebruikt gebieden om automatisch dashboards te maken.",
+   "text": "Waar dit paneel zich bevindt. Home Assistant gebruikt ruimtes om automatisch dashboards te maken.",
    "sourceHash": "e8def03c2693689cc85bed2fd7666da8ee99749f36848ef921c5d30df1ce8494",
    "state": "machine-cross-checked"
   },
   "setup.area.label": {
-   "text": "Stel het HA-gebied in waarin je paneel zich bevindt",
+   "text": "Stel de HA-ruimte in waarin je paneel zich bevindt",
    "sourceHash": "4e7a4dcffefda5ae807e8f0bd8f42e71f78354cdd1ad7f9ce2eb3530c5d0d12e",
    "state": "machine-cross-checked"
   },
   "setup.area.locked_note": {
-   "text": "Dit paneel is al geregistreerd in Home Assistant, dus het gebied ervan kan alleen daar worden gewijzigd door een HA-beheerder — dit paneel volgt wat daar is ingesteld.",
+   "text": "Dit paneel is al geregistreerd in Home Assistant, dus de ruimte ervan kan alleen daar worden gewijzigd door een HA-beheerder — dit paneel volgt wat daar is ingesteld.",
    "sourceHash": "010860028168077f6b7e67b81e55c6c980c27d1012f3bd4426c56af0110c5700",
    "state": "machine-cross-checked"
   },
@@ -9844,12 +9844,12 @@
    "state": "machine-cross-checked"
   },
   "setup.area.none": {
-   "text": "Geen gebied",
+   "text": "Geen ruimte",
    "sourceHash": "3fd59f11b54e96933a2b02aa304ac4702497072e362651bddfe49cffc8ba393d",
    "state": "machine-cross-checked"
   },
   "setup.area.none_yet": {
-   "text": "Nog geen gebied — kies er een",
+   "text": "Nog geen ruimte — kies er een",
    "sourceHash": "b4db738a6df76b81c63a39c1bd6aa29b427e08ba267ffa3941d830533d1384b8",
    "state": "machine-cross-checked"
   },
@@ -10679,7 +10679,7 @@
    "state": "machine-cross-checked"
   },
   "setup.proof.state": {
-   "text": "Het paneel zou nu zijn dashboard moeten instellen. Op deze pagina krijg je te zien wanneer Home Assistant wordt weergegeven.",
+   "text": "Het paneel zou nu zijn dashboard moeten instellen. Deze pagina bevestigt wanneer Home Assistant het dashboard weergeeft.",
    "sourceHash": "b615c935f105b2be8bd5823406f7dc98af95d833c436b1903f77dbdde1442727",
    "state": "machine-cross-checked"
   },
@@ -11159,7 +11159,7 @@
    "state": "machine-cross-checked"
   },
   "configure.save.hardware_unavailable": {
-   "text": "Opgeslagen. Dit paneel kan dit nog niet toepassen; het wordt toegepast zodra dat verandert.",
+   "text": "Opgeslagen. Dit paneel kan dit nog niet toepassen; het wordt toegepast als dat verandert.",
    "sourceHash": "67b5afeafe3ae46c4d5fe55a308ba88d39ff45f61c663e5fae47d17317334f3b",
    "state": "machine-cross-checked"
   },
@@ -11334,7 +11334,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.dynamic.preview_state_unavailable": {
-   "text": "Deze back-up bevat geen paneelstatus: het paneel waar deze vandaan komt, kon zijn eigen database niet lezen. Als je deze terugzet, krijg je de paneelstatus niet terug.",
+   "text": "Deze back-up bevat geen opgeslagen paneelgegevens: het paneel waar de back-up vandaan komt, kon zijn eigen database niet lezen. Als je de back-up herstelt, worden de paneelgegevens niet teruggezet.",
    "sourceHash": "c557f33105dc8983e12e29fa0d11c15c0544145fa3e3808a48dd379b31fed10e",
    "state": "machine-cross-checked"
   },
@@ -11564,12 +11564,12 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_ready_state_unavailable": {
-   "text": "back-up klaar zonder paneelstatus",
+   "text": "back-up klaar zonder opgeslagen paneelgegevens",
    "sourceHash": "df783634b6ab429676f0459ad7279d1a349b3ba3c6b7857b34df5e2fcc443119",
    "state": "machine-cross-checked"
   },
   "install.presentation.restore_completed_state_unavailable": {
-   "text": "Herstel voltooid; deze back-up bevatte geen paneelstatus",
+   "text": "Herstel voltooid; deze back-up bevatte geen opgeslagen paneelgegevens",
    "sourceHash": "634e79faec27e14712a5c81b756955e808723baecd2c66159561ef8722a138fb",
    "state": "machine-cross-checked"
   },
@@ -11634,7 +11634,7 @@
    "state": "machine-cross-checked"
   },
   "install.tame.approval.recommended": {
-   "text": "Pas de aanbevolen leverancierspakketten van het profiel aan",
+   "text": "Tem de aanbevolen leverancierspakketten van het profiel",
    "sourceHash": "3a77da60cbcfc809f72b7fd8d18d38f88119734d8ec517da65b2653c1bdcc833",
    "state": "machine-cross-checked"
   },
