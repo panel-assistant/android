@@ -215,6 +215,36 @@ class AutoBrightnessControllerLockTest {
         assertEquals("the write is still inside su", 1L, h.root.exited.count)
     }
 
+    @Test(timeout = 30_000)
+    fun `a system change still reading the backlight when the controller closes is dropped quietly`() {
+        val h = harness()
+        val reading = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val lane = Executors.newSingleThreadExecutor()
+        val failures = CopyOnWriteArrayList<Throwable>()
+        val observer = BrightnessSettingObserver(
+            handler = null,
+            initialLevel = 100,
+            readSetting = { 240 },
+            levelFromSetting = { it },
+            consumeOwnedWrite = { false },
+            observedDark = { reading.countDown(); release.await(5, TimeUnit.SECONDS); false },
+            noteExternal = { level, prior ->
+                h.controller.noteExternalBrightness(level, BrightnessPreferenceOrigin.ANDROID_SYSTEM, prior)
+            },
+            background = { task -> lane.execute { runCatching(task).onFailure { failures += it } } },
+        )
+        observer.onChange(false)
+        assertTrue(reading.await(5, TimeUnit.SECONDS))
+
+        h.controller.closeAndJoin(timeoutMs = 5_000L)
+        release.countDown()
+        lane.shutdown()
+
+        assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS))
+        assertEquals("a late system change after close", emptyList<Throwable>(), failures.toList())
+    }
+
     private class Harness(val controller: AutoBrightnessController, val root: BlockingRootShell)
 
     /** Blocks the first actuation before its action runs; counts completed actuations. */

@@ -47,6 +47,7 @@ import io.github.maxlyth.hapaneld.control.AutoBrightnessController
 import io.github.maxlyth.hapaneld.control.AutoSleepController
 import io.github.maxlyth.hapaneld.control.BootChimeController
 import io.github.maxlyth.hapaneld.control.BrightnessController
+import io.github.maxlyth.hapaneld.control.BrightnessSettingObserver
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.BrightnessPreferenceOrigin
 import io.github.maxlyth.hapaneld.control.CpuController
@@ -1049,7 +1050,8 @@ class PaneldService : Service() {
     private var brightnessObserver: ContentObserver? = null
     private var haCandidateIdentity = ""
     private val adaptiveSiteGeneration = java.util.concurrent.atomic.AtomicLong()
-    @Volatile private var lastObservedCommandedBrightness = -1
+    // One observer task at a time, in delivery order, on the service scope's IO pool: no thread of its own.
+    private val brightnessObserverLane = Dispatchers.IO.limitedParallelism(1)
     private lateinit var screen: ScreenController
     private lateinit var led: LedController
     // Effect loop for the LED — owned here (not the MQTT bridge) so a bridge rebuild never orphans it.
@@ -2093,20 +2095,21 @@ class PaneldService : Service() {
     }
 
     private fun registerBrightnessPreferenceObserver() {
-        lastObservedCommandedBrightness = brightness.getCommanded()
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                val setting = runCatching {
-                    Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-                }.getOrNull() ?: return
-                // Attribution matches the raw setting ha-paneld wrote; preferences are on the HA scale.
-                val level = brightness.levelFromSetting(setting)
-                val prior = lastObservedCommandedBrightness
-                lastObservedCommandedBrightness = level
-                if (brightness.consumeOwnedSettingChange(setting) || screen.observedDark() == true) return
+        val observer = BrightnessSettingObserver(
+            handler = Handler(Looper.getMainLooper()),
+            initialLevel = brightness.getCommanded(),
+            readSetting = {
+                runCatching { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) }
+                    .getOrNull()
+            },
+            levelFromSetting = brightness::levelFromSetting,
+            consumeOwnedWrite = { setting -> brightness.consumeOwnedSettingChange(setting) },
+            observedDark = screen::observedDark,
+            noteExternal = { level, prior ->
                 autoBright.noteExternalBrightness(level, BrightnessPreferenceOrigin.ANDROID_SYSTEM, prior)
-            }
-        }
+            },
+            background = { task -> scope.launch(brightnessObserverLane) { task() } },
+        )
         contentResolver.registerContentObserver(
             Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS),
             false,
