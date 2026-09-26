@@ -298,7 +298,19 @@ data class WebViewSpec(
  *  label); SYSFS_DAEMON = root-only sysfs LED via the daemon (e.g. TPA10); AUTODETECT = probe rk3576
  *  ioctl then the daemon (used by the generic YAML profile); NONE = no LED, skip probing.
  *  The daemon auto-detects sysfs-vs-ledjni itself, so both daemon mechanisms use the same client. */
-enum class LedMechanism { RK3576_IOCTL, RK3576_IOCTL_DAEMON, SYSFS_DAEMON, AUTODETECT, NONE }
+enum class LedMechanism(val yamlName: String) {
+    NONE("none"),
+    AUTODETECT("autodetect"),
+    RK3576_IOCTL("rk3576-ioctl"),
+    RK3576_IOCTL_DAEMON("rk3576-ioctl-daemon"),
+    SYSFS_DAEMON("sysfs-daemon"),
+    ;
+
+    companion object {
+        /** The one list of accepted `hardware.led.mechanism` names; null for anything else. */
+        fun ofYaml(name: String): LedMechanism? = entries.firstOrNull { it.yamlName == name }
+    }
+}
 
 /**
  * True-screen-off path.

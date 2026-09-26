@@ -37,13 +37,10 @@ class DataDeviceProfile internal constructor(
     override val hasRecents = document.platform.hasRecents
     override val declarationsFromCatalog = true
     override val hasNativeNavbar = document.platform.hasNativeNavbar
-    override val ledMechanism = when (document.hardware.led.mechanism) {
-        "rk3576-ioctl" -> LedMechanism.RK3576_IOCTL
-        "rk3576-ioctl-daemon" -> LedMechanism.RK3576_IOCTL_DAEMON
-        "sysfs-daemon" -> LedMechanism.SYSFS_DAEMON
-        "autodetect" -> LedMechanism.AUTODETECT
-        else -> LedMechanism.NONE
-    }
+    // Never default an unknown name to NONE: a NONE LED is stated unsupported and Panel Assistant deletes
+    // the entity. The validator refuses the profile first (`unknown-led-mechanism`), so this is unreachable.
+    override val ledMechanism = LedMechanism.ofYaml(document.hardware.led.mechanism)
+        ?: error("Unknown LED mechanism '${document.hardware.led.mechanism}' in an unvalidated profile.")
     override val ledTransfer: LedTransfer =
         if (document.hardware.led.transfer == LedTransfer.RK3576_FOUR_BIT) {
             LedTransfer.Rk3576FourBit
