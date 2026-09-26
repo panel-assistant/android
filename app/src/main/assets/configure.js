@@ -7,7 +7,7 @@
   var schema = [], values = {}, expose = {}, haAuth = {}, applyPending = {}, applyStalled = {}, applyPendingTimer = null, advanced = true, dirty = false, saving = false, editGeneration = 0, configDiscoveryRequest = 0, schemaLanguageRequest = 0, apps = [], rendererChoices = [], radio = null;
   var savedValues = {}, savedExpose = {};
   var dirtyValues = Object.create(null), dirtyExpose = Object.create(null);
-  var joinCooldownUntil = 0, joinPollTimer = null, hashFocused = false;
+  var joinCooldownUntil = 0, joinPollTimer = null, hashJumpUntil = 0;
   var haSourceItems = [], haSourceRequest = 0, haSourceTimer = null;
   var homeDashboardItems = [], homeDashboardRequest = 0, homeDashboardQueried = false;
   // Assist pipeline catalogue for the voice_pipelines picker. null = not fetched yet, false = the
@@ -2812,13 +2812,25 @@
   }
 
   function focusHash() {
-    if (hashFocused || !location.hash) return;
+    if (hashJumpUntil < 0 || !location.hash) return;
     var target = document.getElementById(location.hash.slice(1));
     if (!target) return;
-    hashFocused = true;
+    if (!hashJumpUntil) {
+      hashJumpUntil = Date.now() + 1400;
+      target.classList.add("flash");
+      setTimeout(function () { target.classList.remove("flash"); }, 1800);
+    } else if (Date.now() > hashJumpUntil) {
+      hashJumpUntil = -1;
+      return;
+    }
+    // A jump computed on content-visibility placeholders lands short once the cards above render
+    // (WebKit has no scroll anchoring to hide it). Scroll on exact layout, and repeat after each
+    // render in the settle window until the user moves, since a render drops the exact layout; the
+    // bounded release then keeps the target where the jump put it.
+    var root = document.getElementById("cfg-groups");
+    root.classList.add("config-viewport-anchored");
     target.scrollIntoView({ block: "center" });
-    target.classList.add("flash");
-    setTimeout(function () { target.classList.remove("flash"); }, 1800);
+    scheduleConfigExactLayoutRelease(root, configViewportAnchor(target));
   }
 
   // Per-card maturity badges: [text, css-modifier]. Applied to the card heading by render().
@@ -2996,6 +3008,7 @@
     // Keep exact layout until the bounded release, but never let its final scroll correction compete
     // with navigation the user has started since the render.
     if (configExactLayoutReleaseTimer) configExactLayoutCompensationCancelled = true;
+    if (hashJumpUntil > 0) hashJumpUntil = -1;
   }
   if (document.addEventListener) {
     ["pointerdown", "touchstart", "wheel", "keydown"].forEach(function (type) {

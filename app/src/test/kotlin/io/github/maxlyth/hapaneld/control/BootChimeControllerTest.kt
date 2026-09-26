@@ -145,7 +145,9 @@ class BootChimeControllerTest {
 
         assertEquals(ControlApplyOutcome.APPLIED, hardware.silence())
 
-        assertEquals(listOf(BootChimeState(0, 0, 0, 0, 0)), direct.applied)
+        // The app route logs a refused private-setting and Do Not Disturb write on every attempt, so a
+        // working helper must spare it.
+        assertTrue(direct.applied.isEmpty())
         assertEquals(listOf("BOOTCHIME SILENCE"), daemon.sent)
         assertTrue(root.ran.isEmpty())
     }
@@ -174,18 +176,20 @@ class BootChimeControllerTest {
         assertEquals(command, restoreHelperCommand(prior))
         assertEquals(listOf(command), daemon.sent)
         assertTrue(root.ran.isEmpty())
+        assertTrue(direct.applied.isEmpty())
     }
 
-    @Test fun directSuccessAvoidsHelperAndSu() {
+    @Test fun appPathIsTheLastResortAfterHelperAndSu() {
         val direct = FakeBootChimeDirect(prior, applySucceeds = true)
-        val daemon = FakeDaemon(mapOf("BOOTCHIME SILENCE" to "OK"))
-        val root = FakeRootShell(runResult = true)
+        val daemon = FakeDaemon()
+        val root = FakeRootShell(available = false, runResult = false)
         val hardware = AndroidBootChimeHardware(direct, root, daemon)
 
         assertEquals(ControlApplyOutcome.APPLIED, hardware.silence())
 
-        assertTrue(daemon.sent.isEmpty())
-        assertTrue(root.ran.isEmpty())
+        assertEquals(listOf("BOOTCHIME SILENCE"), daemon.sent)
+        assertEquals(listOf(silenceShellCommand(0)), root.ran)
+        assertEquals(listOf(BootChimeState(0, 0, 0, 0, 0)), direct.applied)
     }
 
     @Test fun allRouteFailureRemainsFalseAndPendingAtControllerLevel() {

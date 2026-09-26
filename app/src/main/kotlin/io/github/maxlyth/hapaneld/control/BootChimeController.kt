@@ -223,6 +223,12 @@ internal class AndroidBootChimeHardware(
     /**
      * Every path in turn, and unavailability only when all three agree.
      *
+     * The helper and root go first. The app path cannot complete a transition on these panels:
+     * `volume_ring_speaker` is not a public System setting, so its write is refused whatever
+     * `WRITE_SETTINGS` says, and moving the ring stream to or from 0 changes the ringer mode, which
+     * needs Do Not Disturb access the app never requests. Trying it first only logged those refusals
+     * before a privileged path did the work.
+     *
      * Boot chime is not a root-only setting — it has an app path — so root's absence alone proves
      * nothing, which is why an earlier attempt to classify this from the root probe was wrong. Each
      * path here reports what its own attempt found, and a single path that merely failed keeps the
@@ -233,11 +239,6 @@ internal class AndroidBootChimeHardware(
         helperCommand: String,
         rootCommand: String,
     ): ControlApplyOutcome {
-        val direct = runCatching { direct.apply(state) }
-            .onFailure { Log.w(TAG, "app boot-chime transition failed; trying helper: ${it.message}") }
-            .getOrDefault(ControlApplyOutcome.FAILED)
-        if (direct.applied) return ControlApplyOutcome.APPLIED
-
         // A null reply is an unreachable daemon socket. Within one boot that cannot be told from a
         // helper which simply has not started yet — hence "every path agrees, on two separate boots"
         // before anything is presented as unappliable.
@@ -247,9 +248,14 @@ internal class AndroidBootChimeHardware(
         if (helperReply == "OK") return ControlApplyOutcome.APPLIED
 
         val rootOutcome = runCatching { root.runClassified(rootCommand) }
-            .onFailure { Log.w(TAG, "root boot-chime transition failed: ${it.message}") }
+            .onFailure { Log.w(TAG, "root boot-chime transition failed; trying app: ${it.message}") }
             .getOrDefault(RootRunOutcome.RAN_FAILED)
         if (rootOutcome == RootRunOutcome.RAN_OK) return ControlApplyOutcome.APPLIED
+
+        val direct = runCatching { direct.apply(state) }
+            .onFailure { Log.w(TAG, "app boot-chime transition failed: ${it.message}") }
+            .getOrDefault(ControlApplyOutcome.FAILED)
+        if (direct.applied) return ControlApplyOutcome.APPLIED
 
         // Root counts as structurally absent only when no root process was ever created. A root manager
         // that ran this command and refused it is a transient failure, not a missing capability.
