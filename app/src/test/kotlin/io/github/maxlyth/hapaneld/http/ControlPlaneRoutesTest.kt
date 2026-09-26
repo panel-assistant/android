@@ -5,6 +5,7 @@ import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
 import io.github.maxlyth.hapaneld.migration.SuccessorUploadCapability
 import io.github.maxlyth.hapaneld.migration.SuccessorHandoff
+import io.github.maxlyth.hapaneld.migration.InstalledSuccessorStatus
 import io.github.maxlyth.hapaneld.util.InstallOutcome
 import kotlinx.coroutines.runBlocking
 import io.github.maxlyth.hapaneld.util.AppInstaller
@@ -42,6 +43,36 @@ class ControlPlaneRoutesTest {
     @get:Rule val temporary = TemporaryFolder()
 
     @Test
+    fun installedOnlyOfferUsesTheExistingRouteWithoutDownloading() = testApplication {
+        var installedOnlyCalls = 0
+        var ordinaryCalls = 0
+        val surface = object : IdentityMigrationSurface {
+            override suspend fun offerInstalledOnly(): SuccessorHandoff.Outcome {
+                installedOnlyCalls++
+                return SuccessorHandoff.Outcome.Launched
+            }
+            override suspend fun offer(): SuccessorHandoff.Outcome {
+                ordinaryCalls++
+                return SuccessorHandoff.Outcome.NoSuccessorAsset
+            }
+        }
+        application { routing { identityMigrationRoutes(surface) { _, _, _, _ -> true } } }
+
+        val retry = client.post("/api/v1/successor/offer?installed_only=1")
+        assertEquals(HttpStatusCode.OK, retry.status)
+        assertTrue(retry.bodyAsText().contains("\"outcome\":\"Launched\""))
+        assertEquals(1, installedOnlyCalls)
+        assertEquals(0, ordinaryCalls)
+
+        assertEquals(HttpStatusCode.BadRequest, client.post("/api/v1/successor/offer?installed_only=0").status)
+        assertEquals(1, installedOnlyCalls)
+        assertEquals(0, ordinaryCalls)
+
+        assertEquals(HttpStatusCode.OK, client.post("/api/v1/successor/offer").status)
+        assertEquals(1, ordinaryCalls)
+    }
+
+    @Test
     fun successorPurposeIsUnavailableWithoutAnActiveBridge() = testApplication {
         val pending = PendingUploadStore().apply { open() }
         val upload = ApkUploadRouteDependencies(
@@ -67,6 +98,7 @@ class ControlPlaneRoutesTest {
         val signer = "b".repeat(64)
         val capability = SuccessorUploadCapability("io.panelassistant.android", "0.9.8", 949, signer)
         var helperReady = false
+        var installedStatus: InstalledSuccessorStatus = InstalledSuccessorStatus.Absent
         var genericEnabled = false
         var identity = UploadedApkIdentity(capability.pkg, capability.version, signer, setOf(signer), capability.versionCode)
         val expected = temporary.newFile("expected-successor.apk").apply { writeText("apk") }
@@ -88,6 +120,7 @@ class ControlPlaneRoutesTest {
         )
         val surface = object : IdentityMigrationSurface {
             override fun successorUploadCapability() = capability.takeIf { helperReady }
+            override fun installedSuccessorStatus() = installedStatus
         }
         application { routing { controlPlaneRoutes(dependencies(apkUpload = upload, identityMigration = surface)) } }
 
@@ -101,6 +134,17 @@ class ControlPlaneRoutesTest {
         val probe = client.get("/api/v1/successor")
         assertEquals(HttpStatusCode.OK, probe.status)
         assertEquals("""{"package":"io.panelassistant.android","version":"0.9.8"}""", probe.bodyAsText())
+        installedStatus = InstalledSuccessorStatus.Trusted(950)
+        assertEquals(
+            """{"package":"io.panelassistant.android","version":"0.9.8","installed_version_code":950}""",
+            client.get("/api/v1/successor").bodyAsText(),
+        )
+        installedStatus = InstalledSuccessorStatus.Untrusted
+        assertEquals(
+            """{"package":"io.panelassistant.android","version":"0.9.8","installed_untrusted":true}""",
+            client.get("/api/v1/successor").bodyAsText(),
+        )
+        installedStatus = InstalledSuccessorStatus.Absent
 
         suspend fun stage(hash: String = digest, body: String = "apk") =
             client.post("/api/v1/install/apk?migration=successor&sha256=$hash") { setBody(body) }
@@ -158,7 +202,8 @@ class ControlPlaneRoutesTest {
         val identity = UploadedApkIdentity(capability.pkg, capability.version, signer, setOf(signer), capability.versionCode)
         val digest = AppInstaller.sha256(temporary.newFile("install-expected.apk").apply { writeText("apk") })
         var ready = true
-        var installedIdentity = identity
+        var installedStatus: InstalledSuccessorStatus = InstalledSuccessorStatus.Absent
+        var installedAfterInstall: InstalledSuccessorStatus = InstalledSuccessorStatus.Trusted(948)
         var outcome: InstallOutcome = InstallOutcome.Succeeded
         var handoff: SuccessorHandoff.Outcome = SuccessorHandoff.Outcome.Launched
         var installs = 0
@@ -167,6 +212,7 @@ class ControlPlaneRoutesTest {
         var result = ""
         val surface = object : IdentityMigrationSurface {
             override fun successorUploadCapability() = capability.takeIf { ready }
+            override fun installedSuccessorStatus() = installedStatus
             override suspend fun offer(): SuccessorHandoff.Outcome = error("LAN migration must never request a download")
             override suspend fun offerInstalledOnly(): SuccessorHandoff.Outcome {
                 handoffs++
@@ -184,8 +230,9 @@ class ControlPlaneRoutesTest {
                 result = runBlocking {
                     installUploadedApk(entry, surface, install = {
                         installs++
+                        if (outcome == InstallOutcome.Succeeded) installedStatus = installedAfterInstall
                         outcome
-                    }, installedIdentity = { installedIdentity })
+                    })
                 }
                 assertFalse(entry.file.exists())
                 InstallProgress.finish(ticket, result)
@@ -220,13 +267,12 @@ class ControlPlaneRoutesTest {
         assertEquals(0, handoffs)
 
         outcome = InstallOutcome.Succeeded
-        installedIdentity = identity.copy(versionCode = 948)
         commit()
         assertEquals("installed successor was not confirmed", result)
         assertEquals(2, installs)
         assertEquals(0, handoffs)
 
-        installedIdentity = identity
+        installedAfterInstall = InstalledSuccessorStatus.Trusted(949)
         commit()
         assertEquals("OK", result)
         assertEquals(3, installs)
@@ -235,8 +281,21 @@ class ControlPlaneRoutesTest {
         handoff = SuccessorHandoff.Outcome.HelperNotConfirmed("helper lost")
         commit()
         assertEquals("installed-only handover: helper lost", result)
-        assertEquals(4, installs)
+        assertEquals(3, installs)
         assertEquals(2, handoffs)
+
+        handoff = SuccessorHandoff.Outcome.Launched
+        installedStatus = InstalledSuccessorStatus.Trusted(950)
+        commit()
+        assertEquals("OK", result)
+        assertEquals(3, installs)
+        assertEquals(3, handoffs)
+
+        installedStatus = InstalledSuccessorStatus.Untrusted
+        commit()
+        assertEquals("untrusted successor installed", result)
+        assertEquals(3, installs)
+        assertEquals(3, handoffs)
     }
 
     @Test

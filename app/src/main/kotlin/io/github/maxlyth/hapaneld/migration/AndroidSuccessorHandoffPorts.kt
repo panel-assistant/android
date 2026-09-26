@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.migration
 
 import android.content.Context
+import android.os.Build
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.Config
@@ -25,15 +26,23 @@ internal class AndroidSuccessorHandoffPorts(
 
     override fun installedSuccessor(): SuccessorHandoff.InstalledSuccessor? {
         val signers = AppInstaller.installedSigners(context, AppIdentity.SUCCESSOR) ?: return null
+        @Suppress("DEPRECATION")
+        val code = runCatching {
+            val info = context.packageManager.getPackageInfo(AppIdentity.SUCCESSOR, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+        }.getOrDefault(-1L)
         return SuccessorHandoff.InstalledSuccessor(
             AppInstaller.installedVersion(context, AppIdentity.SUCCESSOR),
             signers,
+            code,
         )
     }
 
     override fun trustedSigner(): String = AppInstaller.MIGRATION_SIGNER
 
     override fun ownVersion(): String = BuildConfig.VERSION_NAME
+
+    override fun ownVersionCode(): Long = BuildConfig.VERSION_CODE.toLong()
 
     override fun compareVersions(left: String, right: String): Int? = UpdateChecker.compareVersions(left, right)
 

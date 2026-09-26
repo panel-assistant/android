@@ -16,6 +16,7 @@ import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
 import io.github.maxlyth.hapaneld.migration.SuccessorUploadCapability
 import io.github.maxlyth.hapaneld.migration.SuccessorHandoff
+import io.github.maxlyth.hapaneld.migration.InstalledSuccessorStatus
 import io.github.maxlyth.hapaneld.util.InstallOutcome
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -163,29 +164,37 @@ internal suspend fun installUploadedApk(
     entry: PendingUploadStore.Entry,
     migration: IdentityMigrationSurface,
     install: suspend (File) -> InstallOutcome,
-    installedIdentity: (String) -> UploadedApkIdentity?,
 ): String = try {
     val digest = entry.migrationSha256
     val capability = if (digest != null) migration.successorUploadCapability() else null
+    val installed = if (capability != null) migration.installedSuccessorStatus() else InstalledSuccessorStatus.Absent
     if (digest != null && (capability == null || !successorCandidateMatches(entry.identity, capability))) {
         "migration unavailable"
     } else if (digest != null && AppInstaller.sha256(entry.file) != digest) {
         "migration hash mismatch"
+    } else if (installed == InstalledSuccessorStatus.Untrusted) {
+        "untrusted successor installed"
+    } else if (capability != null && (installed as? InstalledSuccessorStatus.Trusted)
+            ?.versionCode?.let { it >= capability.versionCode } == true) {
+        installedOnlyHandoff(migration)
     } else when (val outcome = install(entry.file)) {
         InstallOutcome.Succeeded -> if (capability == null) "OK" else {
-            if (!successorCandidateMatches(installedIdentity(capability.pkg), capability)) {
+            if (migration.installedSuccessorStatus() != InstalledSuccessorStatus.Trusted(capability.versionCode)) {
                 "installed successor was not confirmed"
-            } else when (val handoff = migration.offerInstalledOnly()) {
-                SuccessorHandoff.Outcome.Launched -> "OK"
-                null -> "installed-only handover unavailable"
-                else -> "installed-only handover: ${handoff.detail}"
-            }
+            } else installedOnlyHandoff(migration)
         }
         is InstallOutcome.Failure -> outcome.message
     }
 } finally {
     entry.file.delete()
 }
+
+private suspend fun installedOnlyHandoff(migration: IdentityMigrationSurface): String =
+    when (val handoff = migration.offerInstalledOnly()) {
+        SuccessorHandoff.Outcome.Launched -> "OK"
+        null -> "installed-only handover unavailable"
+        else -> "installed-only handover: ${handoff.detail}"
+    }
 
 /** Builds the physical-approval text from untrusted APK metadata. Package and signer identity are
  * individually bounded and shown before the version field, so version metadata cannot hide them. */
@@ -352,8 +361,13 @@ internal fun Route.controlPlaneRoutes(dependencies: ControlPlaneRouteDependencie
             if (capability == null) {
                 call.respondText("""{"ok":false,"error":"not-a-bridge"}""", ContentType.Application.Json, HttpStatusCode.NotFound)
             } else {
+                val installed = when (val status = dependencies.identityMigration.installedSuccessorStatus()) {
+                    InstalledSuccessorStatus.Absent -> ""
+                    InstalledSuccessorStatus.Untrusted -> ",\"installed_untrusted\":true"
+                    is InstalledSuccessorStatus.Trusted -> ",\"installed_version_code\":${status.versionCode}"
+                }
                 call.respondText(
-                    """{"package":${Json.str(capability.pkg)},"version":${Json.str(capability.version)}}""",
+                    """{"package":${Json.str(capability.pkg)},"version":${Json.str(capability.version)}$installed}""",
                     ContentType.Application.Json,
                 )
             }

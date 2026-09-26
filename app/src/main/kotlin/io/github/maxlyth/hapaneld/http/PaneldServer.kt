@@ -2125,16 +2125,6 @@ class PaneldServer internal constructor(
                                             claimed,
                                             identityMigration,
                                             install = { AppInstaller.installLocalApk(appContext, it) },
-                                            installedIdentity = { pkg ->
-                                                runCatching {
-                                                    val info = appContext.packageManager.getPackageInfo(pkg, 0)
-                                                    val signers = AppInstaller.installedSigners(appContext, pkg).orEmpty()
-                                                    UploadedApkIdentity(
-                                                        pkg, info.versionName.orEmpty(), signers.firstOrNull(), signers,
-                                                        info.versionCode.toLong(),
-                                                    )
-                                                }.getOrNull()
-                                            },
                                         )
                                     }.getOrElse {
                                         apk.delete()
