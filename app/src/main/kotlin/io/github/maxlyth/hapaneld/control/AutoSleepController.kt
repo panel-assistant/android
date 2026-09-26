@@ -205,6 +205,8 @@ internal class AutoSleepController private constructor(
     private var rediscoveryToken = 0L
     private var rediscoveryJob: Job? = null
     private var noAreaFailOffRequested = false
+    /** Set by [wakeOwnedScreen] so the wake it causes is not booked as a touch. */
+    private var ownWakePending = false
 
     fun start(): Boolean = configureLatest()
     fun refresh(): Boolean = configureLatest()
@@ -530,7 +532,11 @@ internal class AutoSleepController private constructor(
             Slot.PROXIMITY -> applyProximity(entry.value as Proximity)
             // A tap callback carrying the exact automatic epoch may be queued behind this generic wake
             // notification. Never let generic reconciliation consume that proof before it is reduced.
-            Slot.SCREEN_WAKE -> reduce(AutoSleepEvent.ScreenWoken((entry.value as ScreenWake).atMs), actuate = false)
+            Slot.SCREEN_WAKE -> {
+                val reason = if (ownWakePending) AutoSleepReason.SOURCE_LOSS_WAKE else AutoSleepReason.TOUCH_ACTIVITY
+                ownWakePending = false
+                reduce(AutoSleepEvent.ScreenWoken((entry.value as ScreenWake).atMs, reason), actuate = false)
+            }
             Slot.DEADLINE -> (entry.value as Deadline).let { deadline ->
                 if (deadline.token == deadlineToken) reduce(AutoSleepEvent.TimeAdvanced(deadline.atMs))
             }
@@ -869,6 +875,7 @@ internal class AutoSleepController private constructor(
     private fun wakeOwnedScreen() {
         val epoch = automaticEpoch ?: return
         if (admission == Admission.OPEN && screen.wakeAutomaticallyIfOwned(epoch) == WakeOutcome.WOKEN) {
+            ownWakePending = true
             onScreenChanged(true)
         }
         automaticEpoch = null
