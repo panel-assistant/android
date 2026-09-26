@@ -304,19 +304,45 @@ class BoundedAuthQueueTest {
 }
 
 class V2HandshakeGateTest {
+    // Each document is driven through the WebViewClient callbacks in the order Android delivers them.
+    private fun V2HandshakeGate.committedAndFinished(session: ExternalBusController.Session) {
+        begin(session); commit(session); finish(session)
+    }
+
     @Test fun `missing V2 evidence is counted only for finished current documents`() {
         val gate = V2HandshakeGate(missingDocumentLimit = 2)
         val first = ExternalBusController.Session(1, 1)
         val second = ExternalBusController.Session(1, 2)
 
         gate.begin(first)
+        gate.commit(first)
         assertFalse(gate.onTimeout(first))
         gate.finish(first)
         assertFalse(gate.onTimeout(first))
         gate.begin(second)
         assertFalse(gate.onTimeout(first))
+        gate.commit(second)
         gate.finish(second)
         assertTrue(gate.onTimeout(second))
+    }
+
+    @Test fun `documents that finish without committing during a hung load never block`() {
+        // Home Assistant accepting connections while it starts: each retry's load finishes without ever
+        // committing a page, so the watchdog must keep retrying behind the reconnecting page.
+        val gate = V2HandshakeGate(missingDocumentLimit = 2)
+        for (document in 1..4) {
+            val session = ExternalBusController.Session(3, document.toLong())
+            gate.begin(session)
+            gate.finish(session)
+            assertFalse("uncommitted document $document", gate.onTimeout(session))
+        }
+        // Home Assistant then serves a page that really cannot run the bridge: it still blocks in two.
+        val served = ExternalBusController.Session(3, 5)
+        gate.committedAndFinished(served)
+        assertFalse(gate.onTimeout(served))
+        val retried = ExternalBusController.Session(3, 6)
+        gate.committedAndFinished(retried)
+        assertTrue(gate.onTimeout(retried))
     }
 
     @Test fun `valid current-document V2 observation clears missing history`() {
@@ -325,13 +351,13 @@ class V2HandshakeGateTest {
         val second = ExternalBusController.Session(2, 2)
         val third = ExternalBusController.Session(2, 3)
 
-        gate.begin(first); gate.finish(first)
+        gate.committedAndFinished(first)
         assertFalse(gate.onTimeout(first))
         gate.observe(first)
         assertFalse(gate.onTimeout(first))
-        gate.begin(second); gate.finish(second)
+        gate.committedAndFinished(second)
         assertFalse(gate.onTimeout(second))
-        gate.begin(third); gate.finish(third)
+        gate.committedAndFinished(third)
         assertTrue(gate.onTimeout(third))
         gate.reset()
         assertFalse(gate.onTimeout(third))

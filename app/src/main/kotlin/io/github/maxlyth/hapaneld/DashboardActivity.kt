@@ -3787,6 +3787,9 @@ class DashboardActivity : AppCompatActivity() {
             override fun onPageCommitVisible(view: WebView, url: String) {
                 if (!rendererCurrent(generation, view)) return
                 shownPage.onCommitVisible(url)
+                // Non-HA documents (the reconnecting page) suspended the bus session in onPageStarted, so
+                // only a Home Assistant document can commit here.
+                externalBusSession?.takeIf { bridgeCurrent(generation, it) }?.let(v2Handshake::commit)
                 Log.d(TAG, "page shown (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
             }
 
