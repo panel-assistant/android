@@ -1232,23 +1232,23 @@ verify() {
     if [ "$a11y_enabled_state" = 1 ]; then
       if a11y_service_enabled "$a11y_state" "$A11Y"; then a11y_granted=1; fi
     fi
-    # The runtime permissions granted over adb above are read back from the package manager, not from
-    # the app's own report: a grant that a vendor build silently refuses leaves the app running with a
-    # capability quietly missing, and only Android knows which it kept.
-    package_state="$(run_with_deadline 5 adb_exec -s "$TARGET" shell \
-      dumpsys package "$PKG" 2>/dev/null || true)"
-    # POST_NOTIFICATIONS is a runtime permission only from Android 13. Asking an older panel for it is
-    # not a failure there, so the platform level decides whether that grant is checkable at all.
-    sdk_level="$(run_with_deadline 5 adb_exec -s "$TARGET" shell \
-      getprop ro.build.version.sdk 2>/dev/null || true)"
-    sdk_level="${sdk_level//$'\r'/}"
-    case "$sdk_level" in
-      # An unreadable or nonsense platform level is not a reason to stop checking: fail closed and let
-      # the check itself report what Android actually says.
-      ''|*[!0-9]*) notifications_are_runtime=1 ;;
-      *) if [ "$sdk_level" -ge 33 ]; then notifications_are_runtime=1; fi ;;
-    esac
   fi
+  # Runtime permissions are read back from the package manager, not from the app's own report: a grant
+  # that a vendor build silently refuses leaves the app running with a capability quietly missing, and
+  # only Android knows which it kept. Read on --verify too, where nothing was granted this run.
+  package_state="$(run_with_deadline 5 adb_exec -s "$TARGET" shell \
+    dumpsys package "$PKG" 2>/dev/null || true)"
+  # POST_NOTIFICATIONS is a runtime permission only from Android 13. Asking an older panel for it is
+  # not a failure there, so the platform level decides whether that grant is checkable at all.
+  sdk_level="$(run_with_deadline 5 adb_exec -s "$TARGET" shell \
+    getprop ro.build.version.sdk 2>/dev/null || true)"
+  sdk_level="${sdk_level//$'\r'/}"
+  case "$sdk_level" in
+    # An unreadable or nonsense platform level is not a reason to stop checking: fail closed and let
+    # the check itself report what Android actually says.
+    ''|*[!0-9]*) notifications_are_runtime=1 ;;
+    *) if [ "$sdk_level" -ge 33 ]; then notifications_are_runtime=1; fi ;;
+  esac
   cfg="$(curl -fsS --max-time 3 "$URL/api/v1/config" 2>/dev/null || true)"
   schema="$(read_config_schema)"
   schema_flat="$(printf '%s' "$schema" | tr -d '\r\n\t ')"
@@ -1382,18 +1382,18 @@ verify() {
       *'android.permission.RECORD_AUDIO: granted=true'*) : ;;
       *) echo "     ${D}Enable Settings → Apps → ha-paneld → Permissions → Microphone, then re-run this command.${X}" ;;
     esac
-    if [ "$notifications_are_runtime" = 1 ]; then
-      chk "notification permission granted" "$package_state" 'android\.permission\.POST_NOTIFICATIONS: granted=true'
-      case "$package_state" in
-        *'android.permission.POST_NOTIFICATIONS: granted=true'*) : ;;
-        *) echo "     ${D}Enable Settings → Apps → ha-paneld → Notifications, then re-run this command.${X}" ;;
-      esac
-    else
-      echo "   ${GRN}✓${X} notification permission: not a runtime permission before Android 13 ${D}(this panel reports API $sdk_level; notifications need no grant here)${X}"
-    fi
   else
     chk "WRITE_SETTINGS granted" "$diag" "write_settings=true"
     chk "accessibility enabled"  "$diag" "a11y=true"
+  fi
+  if [ "$notifications_are_runtime" = 1 ]; then
+    chk "notification permission granted" "$package_state" 'android\.permission\.POST_NOTIFICATIONS: granted=true'
+    case "$package_state" in
+      *'android.permission.POST_NOTIFICATIONS: granted=true'*) : ;;
+      *) echo "     ${D}Enable Settings → Apps → ha-paneld → Notifications, then re-run this command.${X}" ;;
+    esac
+  else
+    echo "   ${GRN}✓${X} notification permission: not a runtime permission before Android 13 ${D}(this panel reports API $sdk_level; notifications need no grant here)${X}"
   fi
   # Root helper daemon — installed automatically on every rooted panel by current provisioners.
   if printf '%s' "$diag" | grep -q "daemon=true"; then

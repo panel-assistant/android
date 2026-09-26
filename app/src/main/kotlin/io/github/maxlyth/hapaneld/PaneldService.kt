@@ -242,6 +242,7 @@ import io.github.maxlyth.hapaneld.mqtt.SoftwareUpdateSources
 import io.github.maxlyth.hapaneld.util.PanelAssistantUpdateLease
 import io.github.maxlyth.hapaneld.platform.AndroidScreenPower
 import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
+import io.github.maxlyth.hapaneld.platform.NotificationPermissionRepair
 import io.github.maxlyth.hapaneld.util.periodic
 import io.github.maxlyth.hapaneld.util.SystemProps
 import io.github.maxlyth.hapaneld.dashboard.shouldReloadBuiltinAfterEntityFilterChange
@@ -3582,6 +3583,7 @@ class PaneldService : Service() {
             scope.launch { if (!teardownBoundary.isStopping) voice.start() }
             startStorageHealthChecks()
             reconcileHelperInstallStaging()
+            scope.launch(Dispatchers.IO) { repairNotificationPermission() }
             registerBrightnessPreferenceObserver()
             refreshAdaptiveBrightnessInputs(restartSource = false)
             autoBright.activate()
@@ -5594,6 +5596,22 @@ class PaneldService : Service() {
     private fun stopMqttWatchdog(joinMs: Long) {
         mqttWatchdogAlive = false
         mqttWatchdog?.stop(joinMs)
+    }
+
+    private fun repairNotificationPermission() {
+        val outcome = NotificationPermissionRepair.repair(
+            sdkInt = Build.VERSION.SDK_INT,
+            granted = {
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            },
+            helper = HelperClient,
+            packageName = packageName,
+        )
+        when (outcome) {
+            NotificationPermissionRepair.Outcome.HELD -> Unit
+            NotificationPermissionRepair.Outcome.CLAIMED -> Log.i(TAG, "notification permission claimed through the root helper")
+            else -> Log.w(TAG, "notification permission missing and not claimed (${outcome.name.lowercase()}); the service notification stays hidden")
+        }
     }
 
     private fun reconcileHelperInstallStaging() {

@@ -1229,7 +1229,10 @@ case "${1:-}" in
         # Before Android 13 POST_NOTIFICATIONS is not a runtime permission, so the package manager
         # lists no grant for it at all. That absence is the branch the platform-level gate exists for.
         if [ "$(mock_sdk_level)" -ge 33 ]; then
-          if [ "$VERIFY_GRANTS_OK" = 1 ] && [ -f "$post_notifications_grant_state" ]; then
+          # A panel provisioned before this run already holds it; MOCK_POST_NOTIFICATIONS_HELD=0
+          # models one that does not (a person's denial, or an installer that missed it).
+          if [ "$VERIFY_GRANTS_OK" = 1 ] && { [ -f "$post_notifications_grant_state" ] || \
+               [ "${MOCK_POST_NOTIFICATIONS_HELD:-1}" = 1 ]; }; then
             printf '      android.permission.POST_NOTIFICATIONS: granted=true\n'
           else
             printf '      android.permission.POST_NOTIFICATIONS: granted=false\n'

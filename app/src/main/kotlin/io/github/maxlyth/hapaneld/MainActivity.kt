@@ -1,10 +1,8 @@
 package io.github.maxlyth.hapaneld
 
-import android.Manifest
 import android.content.Intent
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.SystemController
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -25,31 +23,19 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import io.github.maxlyth.hapaneld.util.LocalAdminEndpoint
 import io.github.maxlyth.hapaneld.util.localIpv4
 import io.github.maxlyth.hapaneld.util.localIpv6
 
 /**
  * Launcher Activity. Starts [PaneldService], then either opens the configured dashboard under kiosk
- * policy or shows a small standing screen, where a missing notification permission (Android 13+) is
- * asked for at most once per version ([NotificationConsentPrompt]) — app
- * icon, the full config URL, and buttons to open the config page or dashboard. The standing screen stays
+ * policy or shows a small standing screen — app icon, the full config URL, and buttons to open the config page or dashboard. The standing screen stays
  * available for explicit admin and recovery entry. The agent runs headless as a foreground service
  * regardless of this Activity.
  */
 class MainActivity : AppCompatActivity() {
 
     private val maintenanceFence = GuardDbActivityMaintenanceFence()
-    private val requestNotif =
-        registerForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-        ) {
-            // Navigation never waited on this answer. A denial is the user's and is not asked again for
-            // this version; only a maintenance fence raised while the dialog was up still applies here.
-            maintenanceFence.stop(this)
-        }
-
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
     private val config by lazy { Config(this) }
 
@@ -204,33 +190,10 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // Notification consent controls notification visibility, not service availability. Start while
-        // this Activity is foreground so remote setup works even if the dialog is left unanswered.
+        // Start while this Activity is foreground. The notification permission is granted by whatever
+        // installed the app, or claimed by the service through the root helper; it is never asked here.
         PaneldService.start(this)
-        // The destination never waits on consent; the dialog, if any, is asked over the chosen surface.
         chooseDestination()
-        requestNotificationConsentIfDue()
-    }
-
-    /**
-     * Last resort for a panel whose installer did not grant POST_NOTIFICATIONS: asked at most once per
-     * version code, and only over a standing screen no automatic return will cover. The version is
-     * committed before the dialog, so a recreation, relaunch or failed commit can never ask again.
-     */
-    private fun requestNotificationConsentIfDue() {
-        val versionCode = BuildConfig.VERSION_CODE.toLong()
-        if (!NotificationConsentPrompt.shouldAsk(
-                sdkInt = Build.VERSION.SDK_INT,
-                granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-                    PackageManager.PERMISSION_GRANTED,
-                standingScreenPresented = presentedIntro != null && !isFinishing,
-                autoReturnPending = preparedAutoReturn != null || autoReturn != null,
-                currentVersionCode = versionCode,
-                lastAskedVersionCode = config.lastNotificationConsentVersionCode,
-            )
-        ) return
-        if (!config.commitNotificationConsentAsked(versionCode)) return
-        requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun chooseDestination() {
