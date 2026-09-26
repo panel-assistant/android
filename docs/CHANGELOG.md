@@ -53,6 +53,8 @@ This is a big one, and it changes how ha-paneld fits into your home. Two things 
 - **Setting up entity filtering no longer looks like a crashing dashboard.**
 - **No illuminance sensor from light sensors that never start.**
 - **The web interface keeps its columns** as the window widens, and the Logs tab note names all three log sources.
+- **Zigbee gateways with the 4.x layout are recognised** and handled like the earlier ones.
+- **A pinned Android System WebView build is compared by its full version number** before it is installed.
 
 ## v0.9.8-rc1 - 2026-09-15
 
