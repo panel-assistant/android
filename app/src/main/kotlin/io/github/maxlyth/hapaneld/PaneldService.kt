@@ -4798,6 +4798,7 @@ class PaneldService : Service() {
         val audioDrained = AtomicBoolean(false)
         val ownerCleanup = ServiceOwnerCleanupTracker()
         val mqttFinalization = AtomicReference<Future<Unit>?>(null)
+        val mdnsRetirement = AtomicReference<CompletableFuture<Boolean>?>(null)
         val sensorPersistenceClosed = AtomicReference<Future<Unit>?>(null)
         val stopped = runtime.shutdown(teardownDeadline.remainingMs()) { activeRuntime ->
             fun closeOwner(name: String, close: () -> Unit) {
@@ -4834,18 +4835,18 @@ class PaneldService : Service() {
             // MQTT commands and convergence observers can use the service-owned hardware controllers.
             // Latest live refresh/replacement work has already drained on this runtime lane. Prove the
             // remaining mutation owners terminal before dismantling any dependent controller. mDNS is
-            // fenced at the same time and both consume the one asynchronous teardown deadline.
-            val mdnsRetirement = activeRuntime.mdns.retire(asyncTeardownDeadline)
+            // fenced at the same time, but no controller depends on it and its JmDNS goodbye
+            // announcements take seconds, so the finalizer proves it before any successor starts.
+            mdnsRetirement.set(activeRuntime.mdns.retire(asyncTeardownDeadline))
             val mqttRetirement = activeRuntime.mqtt.stop(asyncTeardownDeadline)
             mqttFinalization.set(mqttRetirement.finalization)
             val mqttOwnersDrained = mqttRetirement.ownersDrained.awaitTrue(asyncTeardownDeadline)
-            val mdnsStopped = mdnsRetirement.awaitTrue(asyncTeardownDeadline)
             val lightPublisherDrained = lightMqttPublisher.awaitTermination(asyncTeardownDeadline.remainingMs())
-            if (!mqttOwnersDrained || !mdnsStopped || !lightPublisherDrained) {
+            if (!mqttOwnersDrained || !lightPublisherDrained) {
                 ownerCleanup.record(false)
                 error(
                     "network mutation owners did not drain before hardware teardown " +
-                        "(mqtt=$mqttOwnersDrained mdns=$mdnsStopped light=$lightPublisherDrained)",
+                        "(mqtt=$mqttOwnersDrained light=$lightPublisherDrained)",
                 )
             }
 
@@ -4960,6 +4961,7 @@ class PaneldService : Service() {
             audioDrained,
             ownerCleanup,
             mqttFinalization,
+            mdnsRetirement,
             sensorPersistenceClosed,
         )
         // stopSelf() removes START_STICKY. Re-arm only an app-internal profile/WebView/recovery
@@ -4985,6 +4987,7 @@ class PaneldService : Service() {
         audioDrained: AtomicBoolean,
         ownerCleanup: ServiceOwnerCleanupTracker,
         mqttFinalization: AtomicReference<Future<Unit>?>,
+        mdnsRetirement: AtomicReference<CompletableFuture<Boolean>?>,
         sensorPersistenceClosed: AtomicReference<Future<Unit>?>,
     ) {
         Thread {
@@ -5047,6 +5050,15 @@ class PaneldService : Service() {
                     return@Thread finishTeardownAfterExternalStateIsSafe(
                         completed = false,
                         reason = "final MQTT publication did not finish",
+                        shutdownFreeze = shutdownFreeze,
+                    )
+                }
+                // A successor advertises the same instance, so this responder's retirement is proved before
+                // any successor lease opens, as reconfiguration proves it before a replacement pair starts.
+                if (mdnsRetirement.get()?.awaitTrue(finalizerDeadline) != true) {
+                    return@Thread finishTeardownAfterExternalStateIsSafe(
+                        completed = false,
+                        reason = "mDNS responder did not stop",
                         shutdownFreeze = shutdownFreeze,
                     )
                 }
