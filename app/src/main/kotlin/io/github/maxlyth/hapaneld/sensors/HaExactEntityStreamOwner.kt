@@ -369,6 +369,7 @@ internal class HaExactEntityStreamOwner(
         val presence: Set<String>,
         val watchRegistry: Boolean = false,
         val watchLifecycle: Boolean = false,
+        val haLink: HaAuthOwner? = null,
     ) {
         val union: Set<String> = buildSet {
             ambient?.let(::add)
@@ -543,6 +544,11 @@ internal class HaExactEntityStreamOwner(
      */
     fun replaceLifecycleWatch(enabled: Boolean) {
         replaceRequest { it.copy(watchLifecycle = enabled) }
+    }
+
+    /** A changed Home Assistant credential owner retires the socket selected under the old link. */
+    fun replaceHaLink(next: HaAuthOwner) {
+        replaceRequest { it.copy(haLink = next) }
     }
 
     fun replaceAmbientSource(nextEntityId: String?) {
