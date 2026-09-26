@@ -40,18 +40,28 @@ internal object DashboardV2Compatibility {
             (HomeAssistantVersion.parse(serverVersion)?.let { it >= MINIMUM_HA_VERSION } == true)
 }
 
-/** Per-document evidence for stopping a loaded frontend that never exposes the required V2 bridge. */
+/**
+ * Per-document evidence for stopping a loaded frontend that never exposes the required V2 bridge.
+ *
+ * A document counts as missing the envelope only once it has both committed ([commit], from
+ * `onPageCommitVisible`) and finished. `onPageFinished` alone is not evidence: while Home Assistant accepts
+ * connections but is still starting, a load that never committed also finishes, and two of those used to
+ * blame the web viewer for a server that was simply not up yet. The handshake watchdog already retries
+ * that case behind the reconnecting page.
+ */
 internal class V2HandshakeGate(private val missingDocumentLimit: Int = 2) {
     init { require(missingDocumentLimit > 0) }
 
     private var current: ExternalBusController.Session? = null
     private var observed = false
+    private var committed = false
     private var finished = false
     private var missingDocuments = 0
 
     @Synchronized fun begin(session: ExternalBusController.Session) {
         current = session
         observed = false
+        committed = false
         finished = false
     }
 
@@ -61,18 +71,23 @@ internal class V2HandshakeGate(private val missingDocumentLimit: Int = 2) {
         missingDocuments = 0
     }
 
+    @Synchronized fun commit(session: ExternalBusController.Session) {
+        if (current == session) committed = true
+    }
+
     @Synchronized fun finish(session: ExternalBusController.Session) {
         if (current == session) finished = true
     }
 
     @Synchronized fun onTimeout(session: ExternalBusController.Session): Boolean {
-        if (current != session || !finished || observed) return false
+        if (current != session || !committed || !finished || observed) return false
         return ++missingDocuments >= missingDocumentLimit
     }
 
     @Synchronized fun reset() {
         current = null
         observed = false
+        committed = false
         finished = false
         missingDocuments = 0
     }
