@@ -538,7 +538,7 @@ static void test_zigbeecontain_layouts(void) {
         {"4.x nonexecutable broker", 1, 1, -1, 0, 0, 0, ""},
         {"4.x without launcher", 0, 1, 1, 0, 0, 0, ""},
         {"4.x without gateway", 1, 0, 1, 0, 0, 0, ""},
-        {"native without launcher", 0, 1, 0, 1, 0, 0, ""},
+        {"native without launcher", 0, 1, 0, 1, 0, 0, "-TERM 101 102 103\n"},
         {"mixed managed launcher", 1, 1, 1, 1, 1, 0, ""},
         {"mixed package version", 1, 1, 1, 1, 0, 1, ""},
         {"guardless managed marker", 1, 1, 1, 0, 1, 0, ""},
