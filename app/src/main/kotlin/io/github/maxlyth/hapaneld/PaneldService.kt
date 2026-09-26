@@ -1080,6 +1080,7 @@ class PaneldService : Service() {
     private lateinit var system: SystemController
     private lateinit var tame: TameController
     private lateinit var navbar: NavbarController
+    private lateinit var migrationNotice: MigrationNotice
     private lateinit var watchdog: WatchdogController
     private lateinit var kiosk: KioskController
     private lateinit var kioskSettings: KioskSettingCoordinator
@@ -1181,6 +1182,7 @@ class PaneldService : Service() {
         // of the legacy Android-id device identifier.
         config.ensureDeviceUid()
         config.ensurePanelId()      // materialize the generated identity before MQTT/mDNS snapshot it
+        migrationNotice = MigrationNotice(this, config)
         reconcileNativePresentationAfterPromotion()
         // Same reason, same window: Application.onCreate only registered the Shizuku Binder listeners,
         // because reading its consent opens the database. Derive the bridge's real state here, after
@@ -1327,6 +1329,7 @@ class PaneldService : Service() {
             shadow = panelAssistantShadow,
             commands = panelAssistantCommands,
             onAuthority = config::setPanelAssistantAuthority,
+            onConnected = config::markPanelAssistantConnected,
             authority = config::panelAssistantAuthority,
             mqttDiscovery = config::panelAssistantMqttDiscovery,
             onMqttDiscovery = { value ->
@@ -1844,6 +1847,11 @@ class PaneldService : Service() {
         stalePanelId: String? = null,
     ): MqttBridge {
         val credentials = identity.mqttCredentials()
+        val migrationStrings by lazy {
+            io.github.maxlyth.hapaneld.i18n.CatalogueLoader { path ->
+                assets.open(path).bufferedReader().use { it.readText() }
+            }.strings(io.github.maxlyth.hapaneld.i18n.AppLocale.ENGLISH)
+        }
         // One lease per bridge generation. Registering it retires the previous generation's
         // MQTT-sourced lifecycle claims — the birth that would retract them is not retained, so the
         // replacement channel gets no replay — and makes every superseded bridge's queued callback a
@@ -1911,6 +1919,7 @@ class PaneldService : Service() {
             onDirectKioskSetting = { on ->
                 kioskSettings.apply(on)
             },
+            migrationNoticeEnglish = { key -> migrationStrings.get(key) },
             onExternalSettingApplied = liveSettingAuthority::discard,
             zigbeeHealth = zigbeeHealth::snapshot,
             storageHealth = StorageHealthRuntime::snapshot,
@@ -3726,6 +3735,7 @@ class PaneldService : Service() {
             logShipper.start()
             // Restore the soft navbar to its persisted mode (no-op when Off / no overlay permission).
             navbar.apply(config.navbarMode)
+            if (!IdentityMigrationGate.holdsNetworkIdentity()) migrationNotice.start()
             // Start the app watchdog if enabled (off by default; self-heals a dead/abandoned dashboard).
             watchdog.apply(config.watchdogEnabled)
             // Experimental kiosk lock: a reboot CLEARS the runtime lock (by design — the anti-brick net), so
@@ -4746,6 +4756,7 @@ class PaneldService : Service() {
         // External display/system-policy recovery remains mandatory even after this deadline expires.
         val asyncTeardownDeadline = MonotonicDeadline(ASYNC_TEARDOWN_BUDGET_MS)
         teardownBoundary.markStopping()
+        if (::migrationNotice.isInitialized) migrationNotice.close()
         // Bind any armed request to this exact lifecycle generation. A finalizer that was already in
         // flight before PREPARE cannot later satisfy or cancel the new request.
         upgradeShutdownClaim = UpgradeShutdownCoordinator.claimShutdown()
