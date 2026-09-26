@@ -198,7 +198,8 @@ internal class AutoBrightnessController(
         origin: BrightnessPreferenceOrigin,
         priorAppliedLevel: Int? = null,
     ): Boolean {
-        if (!config.autoBrightness) return false
+        // The Android observer delivers after a root read, so a change can arrive after close.
+        if (closed || !config.autoBrightness) return false
         val automatic = lastAutomaticTarget.takeIf { it >= BrightnessController.MIN_VISIBLE }
             ?: brightness.getCommanded().takeIf { it >= BrightnessController.MIN_VISIBLE }
             ?: level.coerceIn(BrightnessController.MIN_VISIBLE, 255)
