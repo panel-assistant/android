@@ -74,7 +74,7 @@ jobs:
   discover:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'update')
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45  # the CDN search alone took 17-19 min in September 2026
     permissions:
       contents: write       # push the update branch
       pull-requests: write  # open/update the index PR (main requires PR review)
