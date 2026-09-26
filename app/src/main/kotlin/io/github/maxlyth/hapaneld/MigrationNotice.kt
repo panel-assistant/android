@@ -29,7 +29,7 @@ internal class MigrationNotice(private val context: Context, private val config:
     private val catalogue = CatalogueLoader { context.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
     private var view: View? = null
     private var started = false
-    private val guideQr by lazy { qrBitmap(URL, (56 * context.resources.displayMetrics.density).toInt()) }
+    private val guideQr by lazy { qrBitmap(URL, (GUIDE_QR_SIZE_DP * context.resources.displayMetrics.density).toInt()) }
     @Volatile private var closed = false
     private val redraw = Runnable { if (!closed) render() }
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -93,7 +93,7 @@ internal class MigrationNotice(private val context: Context, private val config:
             card.addView(ImageView(context).apply {
                 setImageBitmap(qr)
                 contentDescription = URL
-            }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginEnd = dp(8) })
+            }, LinearLayout.LayoutParams(dp(GUIDE_QR_SIZE_DP), dp(GUIDE_QR_SIZE_DP)))
         }
         card.addView(Button(context).apply {
             text = "×"
@@ -135,6 +135,8 @@ internal class MigrationNotice(private val context: Context, private val config:
 
     companion object {
         const val URL = "https://panel-assistant.io/go/migration"
+        // 29 payload modules plus the QR-standard four-module quiet zone on each edge.
+        private const val GUIDE_QR_SIZE_DP = 37
         private const val TAG = "ha-paneld/migration-notice"
         private val OBSERVED_KEYS = setOf(
             "panel_assistant_authority", "panel_assistant_update_owner_seen_ms",
