@@ -327,17 +327,22 @@ class CameraIndicator(
         }, holdAfterCloseMs)
     }
 
-    /** Teardown: no hold, no delay. Safe from any thread. */
+    /**
+     * Teardown: no hold, no delay. Safe from any thread, and never waits for the main thread: service
+     * teardown calls this from its runtime lane while the main thread waits for that lane.
+     */
     fun forceHide() {
-        synchronized(lock) { generation++ }
-        onMain {
+        val token = synchronized(lock) { ++generation }
+        val takeDown = Runnable {
             synchronized(lock) {
+                if (generation != token) return@Runnable
                 main.removeCallbacks(pulse)
                 view?.let { runCatching { wm.removeView(it) } }
                 view = null
             }
         }
         val onMainNow = Looper.myLooper() == Looper.getMainLooper()
+        if (onMainNow) takeDown.run() else main.post(takeDown)
         if (onMainNow) offMain { synchronized(lock) { releaseLedLocked() } }
         else synchronized(lock) { releaseLedLocked() }
     }
