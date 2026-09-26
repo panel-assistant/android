@@ -278,8 +278,8 @@ enum class SuForm { TOOLBOX, ANDROID, NONE }
  * A known-good System WebView build for a panel (see [DeviceProfile.recommendedWebView]). The package
  * is always `com.android.webview` — the id the Android framework requires to auto-select a WebView
  * provider — so only the source + version + pinned signer vary. [version] is the full Chromium version
- * the build provides (e.g. "138.0.7204.63"); its major gates the "is a newer one worth installing"
- * check. [certSha256] is the build's signing cert (LineageOS / Cromite / …), and [apkSha256] pins the
+ * the build provides (e.g. "138.0.7204.63"); all four numeric components gate automatic updates.
+ * [certSha256] is the build's signing cert (LineageOS / Cromite / …), and [apkSha256] pins the
  * exact mirrored artifact; both are verified before install.
  */
 data class WebViewSpec(
