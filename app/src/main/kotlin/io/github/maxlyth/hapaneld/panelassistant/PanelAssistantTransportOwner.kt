@@ -167,6 +167,8 @@ internal class PanelAssistantTransportOwner(
     private val commands: PanelAssistantCommandSink? = null,
     private val approvalTtlMs: Long = io.github.maxlyth.hapaneld.security.ApprovalBroker.DEFAULT_TTL_MS,
     private val onAuthority: (String) -> Unit = {},
+    /** Positive handshake evidence; a local MQTT fallback is not an accepted session. */
+    private val onConnected: () -> Unit = {},
     /** The persisted authority, empty before any session. */
     private val authority: () -> String = { "" },
     /** The persisted MQTT discovery value, empty before any session. */
@@ -297,6 +299,7 @@ internal class PanelAssistantTransportOwner(
                         val described = offer?.descriptors.orEmpty()
                         when (val outcome = handshake(opened, demand.identity, offered, described, offer?.unsupported.orEmpty())) {
                             is PanelAssistantHelloOutcome.Accepted -> {
+                                onConnected()
                                 attempt = 0
                                 authRefreshed = false
                                 publish(run, PanelAssistantTransportStatus(

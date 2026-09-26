@@ -42,6 +42,8 @@ import io.github.maxlyth.hapaneld.control.ZigbeeController
 import io.github.maxlyth.hapaneld.control.fakeProfile
 import io.github.maxlyth.hapaneld.device.ScreenOff
 import io.github.maxlyth.hapaneld.hardware.LedController
+import io.github.maxlyth.hapaneld.i18n.AppLocale
+import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.platform.RootShell
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelCatalog
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelDescriptor
@@ -76,12 +78,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Captures the complete MQTT wire output of the REAL [MqttBridge] — a full connect announcement, a
+ * Captures the established MQTT wire output of the REAL [MqttBridge] — a full connect announcement, a
  * representative burst of Home Assistant commands and local sensor updates, and retirement — and
  * compares it byte for byte against a checked-in golden fixture. It exists so a refactor of the state
  * converger wiring or the command dispatcher can prove it changed no topic, payload, retain flag,
  * subscription or publication order.
  *
+ * The separately tested Panel Assistant migration problem is omitted from this historical fixture.
  * Only the broker client is replaced: a recording [MqttTransport] injected through the bridge's
  * constructor seam. Everything the bridge decides — discovery, cleanup, pruning, state convergence,
  * command dispatch — runs as in production against fake hardware.
@@ -158,6 +161,13 @@ class MqttWireGoldenTest {
     fun `bridge wire output matches the golden fixture`() {
         val problems = mutableListOf<String>()
         val actual = capture(problems)
+        val historical = actual.filterNot { line ->
+            line.isPublication() && line.topic() in setOf(
+                "homeassistant/binary_sensor/${PANEL}_panel_assistant_required/config",
+                "ha-paneld/$PANEL/panel_assistant_required/state",
+                "ha-paneld/$PANEL/panel_assistant_required/attributes",
+            )
+        }
         println(summarise(actual))
         if (System.getenv(RECORD_ENV) != "1") {
             val stream = javaClass.getResourceAsStream("/$FIXTURE")
@@ -165,7 +175,7 @@ class MqttWireGoldenTest {
             val expected = stream.bufferedReader().use { it.readLines() }.filter { it.isNotEmpty() }
             // The wire comparison comes first so a changed byte is reported as a readable diff even when
             // it also derails a scenario step; scenario problems are appended to the same failure.
-            if (expected != actual) fail(renderDiff(expected, actual) + problems.joinToString("") { "\nscenario: $it" })
+            if (expected != historical) fail(renderDiff(expected, historical) + problems.joinToString("") { "\nscenario: $it" })
         }
         assertEquals("scenario problems", emptyList<String>(), problems)
 
@@ -188,8 +198,8 @@ class MqttWireGoldenTest {
             )
             val target = sourceFixture()
             target.parentFile.mkdirs()
-            target.writeText(actual.joinToString("\n", postfix = "\n"))
-            println("recorded ${actual.size} lines to ${target.absolutePath}")
+            target.writeText(historical.joinToString("\n", postfix = "\n"))
+            println("recorded ${historical.size} lines to ${target.absolutePath}")
         }
     }
 
@@ -437,6 +447,8 @@ class MqttWireGoldenTest {
                 configs.sorted(),
             )
             assertTrue("state topics still publish while withdrawn", lines.any { it.isPublication() && it.topic() == "ha-paneld/$PANEL/screen/state" })
+            assertTrue("withdrawal clears migration state", lines.any { it.isPublication() && it.topic() == "ha-paneld/$PANEL/panel_assistant_required/state" && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
+            assertTrue("withdrawal clears migration guidance", lines.any { it.isPublication() && it.topic() == "ha-paneld/$PANEL/panel_assistant_required/attributes" && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
             assertTrue("availability still publishes while withdrawn", lines.any { it.isPublication() && it.topic() == "ha-paneld/$PANEL/availability" && it.decodedPayload() == "online" })
             assertTrue("the command subscription is unchanged", lines.contains("subscribe\tha-paneld/$PANEL/+/set"))
             assertEquals("dropped publications", 0, lines.count { it.startsWith("# dropped") })
@@ -487,6 +499,78 @@ class MqttWireGoldenTest {
             val released = rig.transport.snapshot().drop(releaseFrom)
             assertEquals("the release announces exactly the configs the connect announcement did", announced, released.filter { it.isConfig() }.toSortedSet())
             assertEquals("dropped publications", 0, rig.transport.snapshot().count { it.startsWith("# dropped") })
+        } finally {
+            rig.close()
+        }
+    }
+
+    @Test(timeout = 180_000)
+    fun `unconnected panel announces actionable problem until connection is seen despite local dismissal`() {
+        val rig = rig()
+        val configTopic = "homeassistant/binary_sensor/${PANEL}_panel_assistant_required/config"
+        val stateTopic = "ha-paneld/$PANEL/panel_assistant_required/state"
+        val attributesTopic = "ha-paneld/$PANEL/panel_assistant_required/attributes"
+        try {
+            rig.announce()
+            val first = rig.transport.snapshot()
+            assertTrue("unconnected panel must announce a nonempty migration config", first.any {
+                it.isPublication() && it.topic() == configTopic && it.decodedPayload().isNotEmpty()
+            })
+            val discovery = first.last { it.isPublication() && it.topic() == configTopic && it.decodedPayload().isNotEmpty() }.decodedPayload()
+            val entity = org.json.JSONObject(discovery)
+            val english = org.json.JSONObject(File("src/main/assets/i18n/en.json").readText()).getJSONObject("strings")
+            assertEquals(english.getJSONObject("shell.migration.title").getString("text"), entity.getString("name"))
+            assertEquals("problem", entity.getString("device_class"))
+            assertFalse("normal device entity, not hidden diagnostic", entity.has("entity_category"))
+            assertEquals(stateTopic, entity.getString("state_topic"))
+            assertEquals(attributesTopic, entity.getString("json_attributes_topic"))
+            assertTrue("keep the panel's Visit URL", discovery.contains("http://192.0.2.10:8888/"))
+            assertTrue(first.any { it.isPublication() && it.topic() == stateTopic && it.decodedPayload() == "ON" && it.startsWith("true\t") })
+            val attributes = org.json.JSONObject(first.last { it.isPublication() && it.topic() == attributesTopic }.decodedPayload())
+            val englishBody = english.getJSONObject("shell.migration.body").getString("text")
+            assertEquals(englishBody, attributes.getString("message"))
+            assertEquals("https://panel-assistant.io/go/migration", attributes.getString("url"))
+
+            assertTrue(rig.config.dismissMigrationNotice())
+            val afterDismiss = rig.transport.size()
+            rig.bridge.refreshPanelAssistantDiscovery()
+            rig.transport.awaitPublication(afterDismiss, "problem after local dismissal") { it.topic() == configTopic && it.decodedPayload().isNotEmpty() }
+            rig.transport.drain()
+            assertTrue(rig.transport.snapshot().drop(afterDismiss).any { it.isPublication() && it.topic() == configTopic && it.decodedPayload().isNotEmpty() })
+
+            val afterConnection = rig.transport.size()
+            rig.config.setPanelAssistantUpdateOwnerSeenMs(1L)
+            rig.transport.awaitPublication(afterConnection, "problem tombstone") { it.topic() == configTopic && it.decodedPayload().isEmpty() }
+            rig.transport.drain()
+            val cleared = rig.transport.snapshot().drop(afterConnection)
+            assertTrue(cleared.any { it.isPublication() && it.topic() == configTopic && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
+            assertTrue(cleared.any { it.isPublication() && it.topic() == stateTopic && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
+            assertTrue(cleared.any { it.isPublication() && it.topic() == attributesTopic && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
+            assertFalse(cleared.any { it.isPublication() && it.topic() == configTopic && it.decodedPayload().isNotEmpty() })
+
+            val afterRefresh = rig.transport.size()
+            rig.config.setPanelAssistantUpdateOwnerSeenMs(2L)
+            rig.transport.drain()
+            assertFalse("a later lease timestamp must not reannounce discovery", rig.transport.snapshot().drop(afterRefresh).any {
+                it.isPublication() && it.topic() == configTopic
+            })
+        } finally {
+            rig.close()
+        }
+    }
+
+    @Test(timeout = 90_000)
+    fun `panel already seen by Panel Assistant never announces migration problem`() {
+        val rig = rig { it.markPanelAssistantConnected() }
+        try {
+            rig.announce()
+            val configTopic = "homeassistant/binary_sensor/${PANEL}_panel_assistant_required/config"
+            val lines = rig.transport.snapshot()
+            assertFalse(lines.any { it.isPublication() && it.topic() == configTopic && it.decodedPayload().isNotEmpty() })
+            assertTrue(lines.any { it.isPublication() && it.topic() == configTopic && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
+            for (topic in listOf("ha-paneld/$PANEL/panel_assistant_required/state", "ha-paneld/$PANEL/panel_assistant_required/attributes")) {
+                assertTrue(lines.any { it.isPublication() && it.topic() == topic && it.decodedPayload().isEmpty() && it.startsWith("true\t") })
+            }
         } finally {
             rig.close()
         }
@@ -786,6 +870,7 @@ class MqttWireGoldenTest {
         val storage = java.util.concurrent.atomic.AtomicReference(storageSnapshot(StorageHealthSeverity.HEALTHY, walBytes = 4_096))
         val storageReads = AtomicInteger()
         val updateSources = java.util.concurrent.atomic.AtomicReference(updateSources())
+        val english = CatalogueLoader { path -> File("src/main/assets/$path").readText() }
         val autoSleepConfigChanges = AtomicInteger()
         val companionUpdateRequests = AtomicInteger()
 
@@ -826,6 +911,7 @@ class MqttWireGoldenTest {
             onSelfUpdateChannelChange = { _, _ -> false },
             softwareUpdateSources = { updateSources.get() },
             onDirectKioskSetting = { true },
+            migrationNoticeEnglish = { key -> english.strings(AppLocale.ENGLISH).get(key) },
             storageHealth = { storageReads.incrementAndGet(); storage.get() },
             wifiOutages = { WifiOutageCounts(last24h = 3) },
             learnedProximityEligibility = { true },
@@ -1251,20 +1337,30 @@ class MqttWireGoldenTest {
             return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(field.get(null), type) as T
         }
 
-        fun proxy(values: MutableMap<String, Any>): SharedPreferences =
+        fun proxy(
+            values: MutableMap<String, Any>,
+            listeners: CopyOnWriteArrayList<SharedPreferences.OnSharedPreferenceChangeListener> = CopyOnWriteArrayList(),
+        ): SharedPreferences =
             Proxy.newProxyInstance(
                 SharedPreferences::class.java.classLoader,
                 arrayOf(SharedPreferences::class.java),
-            ) { _, method, args ->
+            ) { instance, method, args ->
                 when (method.name) {
                     "getAll" -> synchronized(values) { values.toMap() }
                     "getString", "getInt", "getLong", "getFloat", "getBoolean", "getStringSet" ->
                         values[args!![0] as String] ?: args[1]
                     "contains" -> values.containsKey(args!![0] as String)
-                    "edit" -> editor(values)
-                    "registerOnSharedPreferenceChangeListener",
-                    "unregisterOnSharedPreferenceChangeListener",
-                    -> null
+                    "edit" -> editor(values) { key ->
+                        listeners.forEach { it.onSharedPreferenceChanged(instance as SharedPreferences, key) }
+                    }
+                    "registerOnSharedPreferenceChangeListener" -> {
+                        listeners.addIfAbsent(args!![0] as SharedPreferences.OnSharedPreferenceChangeListener)
+                        null
+                    }
+                    "unregisterOnSharedPreferenceChangeListener" -> {
+                        listeners.remove(args!![0] as SharedPreferences.OnSharedPreferenceChangeListener)
+                        null
+                    }
                     "toString" -> "MemoryPreferences"
                     "hashCode" -> System.identityHashCode(values)
                     "equals" -> false
@@ -1272,7 +1368,7 @@ class MqttWireGoldenTest {
                 }
             } as SharedPreferences
 
-        fun editor(values: MutableMap<String, Any>): SharedPreferences.Editor {
+        fun editor(values: MutableMap<String, Any>, onChange: (String) -> Unit = {}): SharedPreferences.Editor {
             val writes = LinkedHashMap<String, Any?>()
             val removals = LinkedHashSet<String>()
             var clear = false
@@ -1297,6 +1393,7 @@ class MqttWireGoldenTest {
                             removals.forEach { values.remove(it) }
                             writes.forEach { (k, v) -> if (v == null) values.remove(k) else values[k] = v }
                         }
+                        (removals + writes.keys).forEach(onChange)
                         if (method.name == "commit") true else null
                     }
                     "toString" -> "MemoryPreferencesEditor"

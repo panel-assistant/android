@@ -12108,6 +12108,21 @@
       "state": "machine-cross-checked",
       "text": "菜单"
     },
+    "shell.migration.body": {
+      "sourceHash": "20339679c60bd71b0416b68306c5b5559ed4beb7a81b0a6173335fdd511311b1",
+      "state": "machine-cross-checked",
+      "text": "请在 Home Assistant 中添加 Panel Assistant 集成，以管理此面板。MQTT 支持将被移除。"
+    },
+    "shell.migration.dismiss": {
+      "sourceHash": "4408fd0fc8e99928d6e4692d251092ad97818a409742e5f85e03696dedcf65e4",
+      "state": "machine-cross-checked",
+      "text": "暂不显示，直至下次更新"
+    },
+    "shell.migration.title": {
+      "sourceHash": "3c6a7e4ff60e0b683b82059e1d48cce22adf06168d8477c1b9130c8d9c2ab1c3",
+      "state": "machine-cross-checked",
+      "text": "必须使用 Panel Assistant"
+    },
     "shell.nav.configure": {
       "sourceHash": "6defafa2caa65304173956e3fbc26b6947c50bc769c08c3da32c1032fa6519d4",
       "state": "machine-cross-checked",

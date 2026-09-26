@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
@@ -1308,6 +1309,9 @@ internal class MqttBridge(
     // Direct MQTT kiosk commands join the service-owned coordinator used by HTTP and the local escape
     // gesture, instead of creating a second persistence/actuation ordering lane inside this bridge.
     private val onDirectKioskSetting: (Boolean) -> Boolean,
+    // The app-asset source catalogue in English. The service owns Android Context; the MQTT bridge
+    // receives only the lookup so the device-facing title and guidance do not duplicate public copy.
+    private val migrationNoticeEnglish: (String) -> String,
     // A successfully executed external MQTT setting is newer truth than any HTTP generation which
     // timed out ahead of it, even though their dispatcher conflation keys intentionally differ.
     private val onExternalSettingApplied: (String) -> Boolean = { true },
@@ -1548,6 +1552,8 @@ internal class MqttBridge(
     private val panel = runtimePanelId
     internal val panelId: String get() = panel
     private val availabilityTopic = "ha-paneld/$panel/availability"
+    private val migrationNoticeState = "ha-paneld/$panel/panel_assistant_required/state"
+    private val migrationNoticeAttributes = "ha-paneld/$panel/panel_assistant_required/attributes"
     private val cmdScreen = "ha-paneld/$panel/screen/set"
     private val cmdLed = "ha-paneld/$panel/led/set"
     private val cmdNavigate = "ha-paneld/$panel/navigate/set"
@@ -1692,6 +1698,15 @@ internal class MqttBridge(
         debounceMs = REANNOUNCE_DEBOUNCE_MS,
         perform = ::performReAnnounce,
     )
+    // The update-owner lease refreshes its persisted timestamp hourly; only the first positive
+    // observation needs to remove this notice from HA.
+    private val migrationConnectionSeen = AtomicBoolean(config.panelAssistantConnectionSeen)
+    private val migrationConnectionListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if ((key == "panel_assistant_authority" || key == "panel_assistant_update_owner_seen_ms" ||
+                key == "migration_notice_connection_seen") &&
+            config.panelAssistantConnectionSeen && migrationConnectionSeen.compareAndSet(false, true)
+        ) requestReAnnounce()
+    }
 
     /** The process-wide convergence pump is only a scheduler; this bridge's lifecycle gate remains the
      * authority for whether a queued observation may touch this concrete generation. */
@@ -1998,7 +2013,15 @@ internal class MqttBridge(
         // A successor that has not restored the panel's identity yet must not connect under the one it
         // generated for itself; the process restarts from the restored configuration and starts then.
         if (io.github.maxlyth.hapaneld.migration.IdentityMigrationGate.holdsNetworkIdentity()) return
-        lifecycle.runIfOpen(Unit, ::startOpen)
+        lifecycle.runIfOpen(Unit) {
+            config.registerChangeListener(migrationConnectionListener)
+            try {
+                startOpen()
+            } catch (failure: Throwable) {
+                config.unregisterChangeListener(migrationConnectionListener)
+                throw failure
+            }
+        }
     }
 
     private fun startOpen() {
@@ -3989,6 +4012,8 @@ internal class MqttBridge(
     private fun publishDiscovery(capabilitySnapshot: Capabilities?) {
         val channelShape = ensureCapabilityChannels(capabilitySnapshot).possible
         if (config.panelAssistantMqttDiscovery == PanelAssistantTransportProtocol.MQTT_DISCOVERY_WITHDRAW) {
+            publish(migrationNoticeState, "", retain = true)
+            publish(migrationNoticeAttributes, "", retain = true)
             withdrawDiscovery()
             return
         }
@@ -4039,6 +4064,27 @@ internal class MqttBridge(
         val avail = """"availability_topic":"$availabilityTopic","payload_available":"online","payload_not_available":"offline""""
         val proximityAvail = """"availability":[{"topic":"$availabilityTopic","payload_available":"online","payload_not_available":"offline"},{"topic":"$proximityAvailabilityTopic","payload_available":"online","payload_not_available":"offline"}],"availability_mode":"all""""
         val cameraSnapshotAvail = dualAvailabilityFragment(availabilityTopic, cameraSnapshotAvailability)
+
+        // Keep this a normal device entity: diagnostic entities are easy to overlook on the HA device
+        // page. The English guidance comes from shell.migration.body in the shared source catalogue;
+        // the device's existing Visit URL remains the panel UI, while the entity attributes carry the
+        // installation URL. A previously announced entity is tombstoned after the first connection.
+        if (config.panelAssistantConnectionSeen) {
+            publishConfig("binary_sensor", "${panel}_panel_assistant_required", "")
+            publish(migrationNoticeState, "", retain = true)
+            publish(migrationNoticeAttributes, "", retain = true)
+        } else {
+            publishConfig(
+                "binary_sensor", "${panel}_panel_assistant_required",
+                """{"name":"${jsonEsc(migrationNoticeEnglish("shell.migration.title"))}","object_id":"${panel}_panel_assistant_required","unique_id":"${panel}_panel_assistant_required","state_topic":"$migrationNoticeState","payload_on":"ON","payload_off":"OFF","device_class":"problem","json_attributes_topic":"$migrationNoticeAttributes",$avail,$device}""",
+            )
+            publish(migrationNoticeState, "ON", retain = true)
+            publish(
+                migrationNoticeAttributes,
+                """{"message":"${jsonEsc(migrationNoticeEnglish("shell.migration.body"))}","url":"${MigrationNotice.URL}"}""",
+                retain = true,
+            )
+        }
 
         // Every HA entity backed by a SettingsRegistry descriptor derives its identity and discovery
         // payload from that ONE declaration (HaEntity.buildDiscoveryJson) — byte-identical to the
@@ -4668,6 +4714,7 @@ internal class MqttBridge(
 
         // Fence every mutation source before spending the shared budget waiting on any one of them.
         lifecycle.closeAdmission()
+        config.unregisterChangeListener(migrationConnectionListener)
         announcementReadiness.clear()
         connectionEventDispatcher.close()
         connectAnnouncementDispatcher.close()
@@ -5030,6 +5077,7 @@ private object MqttZigbeeActuationCoordinators {
  */
 internal fun mqttKnownConfigTopics(panel: String): Set<String> = listOf(
     "light" to "${panel}_screen", "light" to "${panel}_led",
+    "binary_sensor" to "${panel}_panel_assistant_required",
     "text" to "${panel}_navigate", "text" to "${panel}_home_dashboard", "event" to "${panel}_button",
     "button" to "${panel}_back", "button" to "${panel}_recents",
     "number" to "${panel}_volume", "sensor" to "${panel}_illuminance",
