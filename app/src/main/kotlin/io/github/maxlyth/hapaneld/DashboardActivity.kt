@@ -565,11 +565,11 @@ class DashboardActivity : AppCompatActivity() {
                             TAG,
                             "entity bootstrap held — watchdog resync ${entityBootstrapWatchdog.resyncs}",
                         )
-                        EntityLearningRuntime.retryBootstrap()
+                        activityScope.launch(Dispatchers.IO) { EntityLearningRuntime.retryBootstrap() }
                     }
                     EntityBootstrapWatchdogAction.PROBE -> {
                         Log.i(TAG, "entity bootstrap held on a decision — dashboard change probe ${entityBootstrapWatchdog.probes}")
-                        EntityLearningRuntime.probeDashboardChange()
+                        activityScope.launch(Dispatchers.IO) { EntityLearningRuntime.probeDashboardChange() }
                     }
                     EntityBootstrapWatchdogAction.PRESENT_PROBLEM -> {
                         showWaitingForEntityBootstrap()
@@ -3496,7 +3496,10 @@ class DashboardActivity : AppCompatActivity() {
                 // A user-driven retry restores hope: the watchdog clock restarts and the screen
                 // returns to the progress presentation until the new deadline.
                 entityBootstrapWatchdog.restart(SystemClock.elapsedRealtime())
-                if (EntityLearningRuntime.retryBootstrap()) showWaitingForEntityBootstrap()
+                activityScope.launch {
+                    val started = withContext(Dispatchers.IO) { EntityLearningRuntime.retryBootstrap() }
+                    if (started && !destroyed) showWaitingForEntityBootstrap()
+                }
             }
             if (filterHold == null && blockingIssues > 0) {
                 if (canIgnoreBlockingIssues) {
@@ -3507,15 +3510,21 @@ class DashboardActivity : AppCompatActivity() {
                     ) { button ->
                         button.isEnabled = false
                         button.setText(R.string.preparing_dashboard)
-                        if (!EntityLearningRuntime.ignoreBlockingIssues()) {
-                            button.isEnabled = true
-                            button.setText(R.string.ignore_flagged_entities)
+                        activityScope.launch {
+                            val started = withContext(Dispatchers.IO) { EntityLearningRuntime.ignoreBlockingIssues() }
+                            if (!started && !destroyed) {
+                                button.isEnabled = true
+                                button.setText(R.string.ignore_flagged_entities)
+                            }
                         }
                     }
                 }
                 rows += surface.action(getString(R.string.disable_entity_filter), fullWidth = true) { button ->
                     button.isEnabled = false
-                    if (!EntityLearningRuntime.disableAutomaticFilter()) button.isEnabled = true
+                    activityScope.launch {
+                        val disabled = withContext(Dispatchers.IO) { EntityLearningRuntime.disableAutomaticFilter() }
+                        if (!disabled && !destroyed) button.isEnabled = true
+                    }
                 }
             }
             rows += surface.action(
