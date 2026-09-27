@@ -2427,15 +2427,6 @@ MOCK_STOPPED_STATE=1 MOCK_LAUNCHER_START=block MOCK_LAUNCHER_PID_FILE="$LAUNCHER
 assert_success "blocked launcher reaches its host deadline and recovers through direct start"
 assert_log_contains '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "launcher deadline advances to the direct route"
 blocked_launcher_pid="$(cat "$LAUNCHER_PID_FILE" 2>/dev/null || true)"
-# The deadline fires and the reap follows, but the two are not the same instant: on a loaded
-# host the process can still be present for a moment after provisioning has moved on. Give it
-# a bounded interval to disappear rather than reading the pid table once.
-launcher_reap_attempt=0
-while [ -n "$blocked_launcher_pid" ] && kill -0 "$blocked_launcher_pid" 2>/dev/null; do
-  launcher_reap_attempt=$((launcher_reap_attempt + 1))
-  [ "$launcher_reap_attempt" -lt 300 ] || break
-  sleep 0.1
-done
 if [ -n "$blocked_launcher_pid" ] && processes_gone "$blocked_launcher_pid"; then
   pass "launcher deadline reaps the blocked host ADB process"
 else
