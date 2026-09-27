@@ -531,10 +531,10 @@ class AutoSleepPolicyTest {
         assertEquals(AutoSleepOutput.ALLOW_SLEEP, trace.last().decision.output)
     }
 
-    @Test fun monotonicAndSourceBoundariesFailClosed() {
+    @Test fun sourceBoundariesFailClosedAndLatePolicyEventsClamp() {
         val policy = TestAutoSleepPolicy(setOf("binary_sensor.activity"))
         policy.advanceTo(MINUTE)
-        assertFailsWith<IllegalArgumentException> { policy.advanceTo(MINUTE - 1) }
+        assertEquals(MINUTE, policy.advanceTo(MINUTE - 1).atMs)
         assertFailsWith<IllegalArgumentException> {
             policy.transition(AutoSleepEvent.SourcesHydrated(
                 MINUTE,
@@ -549,6 +549,25 @@ class AutoSleepPolicyTest {
                 untilMs = MINUTE,
             )
         }
+    }
+
+    @Test fun `late screen wake uses current policy time and retains its lease`() {
+        val initial = AutoSleepPolicyReducer.initial(setOf("binary_sensor.activity"))
+        val hydrated = AutoSleepPolicyReducer.reduce(
+            initial,
+            AutoSleepEvent.SourcesHydrated(
+                0L,
+                mapOf("binary_sensor.activity" to AutoSleepSourceState.OFF),
+                AutoSleepFeedPosition(1L, 1L),
+            ),
+        )
+        val advanced = AutoSleepPolicyReducer.reduce(hydrated.state, AutoSleepEvent.TimeAdvanced(10 * MINUTE))
+        val wake = AutoSleepPolicyReducer.reduce(advanced.state, AutoSleepEvent.ScreenWoken(9 * MINUTE))
+
+        assertEquals(10 * MINUTE, wake.state.lastEventAtMs)
+        assertEquals(AutoSleepOutput.HOLD_AWAKE, wake.decision.output)
+        assertEquals(AutoSleepReason.TOUCH_ACTIVITY, wake.decision.reason)
+        assertEquals(20 * MINUTE, wake.decision.nextDeadlineMs)
     }
 
     private fun source(atMs: Long, state: AutoSleepSourceState) = AutoSleepEvent.SourcesHydrated(

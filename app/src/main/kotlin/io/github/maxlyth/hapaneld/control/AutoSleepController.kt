@@ -796,6 +796,9 @@ internal class AutoSleepController private constructor(
 
     private fun reduce(event: AutoSleepEvent, actuate: Boolean = true): AutoSleepDecision? {
         val current = policy ?: return null
+        if (event.atMs < (current.lastEventAtMs ?: 0L)) {
+            Log.d(TAG, "clamped late auto-sleep ${event.javaClass.simpleName} event")
+        }
         return runCatching { AutoSleepPolicyReducer.reduce(current, event) }
             .onFailure { Log.w(TAG, "rejected auto-sleep event ${event.javaClass.simpleName}", it) }
             .getOrNull()?.let { transition ->
