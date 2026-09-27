@@ -2684,12 +2684,12 @@
    "state": "machine-cross-checked"
   },
   "dashboard.capability.system_actions": {
-   "text": "Перезавантаження / оновлення / програма запуску",
+   "text": "Перезапуск / оновлення / запускач",
    "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
    "state": "machine-cross-checked"
   },
   "dashboard.capability.verified_operations": {
-   "text": "Перевірене оновлення програми / знімок екрана / дисплей",
+   "text": "Перевірене оновлення / знімок екрана / дисплей",
    "sourceHash": "915a6bc11072c301c0f6504d5e7139c4736c62e0798fb0e221d55321a3049414",
    "state": "machine-cross-checked"
   },
@@ -2759,7 +2759,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.card.responsiveness": {
-   "text": "Швидкість відгуку інформаційної панелі",
+   "text": "Відгук інформаційної панелі",
    "sourceHash": "c3a5b81b72c2839068f12c59c5bc192d061aa12064c6e890effa27893c402bf5",
    "state": "machine-cross-checked"
   },
@@ -3314,7 +3314,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.noisy.top_entities": {
-   "text": "Найактивніші сутності",
+   "text": "Топ сутностей",
    "sourceHash": "0689cb4c56fa65718de91eaf61efdc8ec712b2f74c43f211aa556b360e85606e",
    "state": "machine-cross-checked"
   },
@@ -3604,7 +3604,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.responsiveness.tap_response": {
-   "text": "Реакція на натискання",
+   "text": "Реакція на дотик",
    "sourceHash": "584a10d446b38404d69cef0bd3dcbdfbea875bf6665928badbcd9add05ccdf90",
    "state": "machine-cross-checked"
   },
@@ -4439,7 +4439,7 @@
    "state": "machine-cross-checked"
   },
   "entities.control.apply_policy": {
-   "text": "Застосувати набір, вибраний політикою ({current} → {desired})",
+   "text": "Застосувати політику ({current} → {desired})",
    "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
    "state": "machine-cross-checked"
   },
@@ -4744,7 +4744,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.ignore": {
-   "text": "Ігнорувати потенційні сутності та продовжити",
+   "text": "Ігнорувати можливі сутності й продовжити",
    "sourceHash": "ce23f81f852dcb0da169baedd751ff559b6aa05f9f40ff83b5e431d389361844",
    "state": "machine-cross-checked"
   },
@@ -4939,7 +4939,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issues.rescan": {
-   "text": "Повторно сканувати після редагування інформаційної панелі",
+   "text": "Пересканувати після редагування панелі",
    "sourceHash": "a6373efa0c0388c76fbfaff8c85718c444fd22dd8cc9667c3cd02aabc7f84786",
    "state": "machine-cross-checked"
   },
@@ -5039,7 +5039,7 @@
    "state": "machine-cross-checked"
   },
   "entities.policy.static": {
-   "text": "Додати сутності, отримані з конфігурації інформаційної панелі",
+   "text": "Додати сутності з конфігурації інформаційної панелі",
    "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
    "state": "machine-cross-checked"
   },
@@ -5454,7 +5454,7 @@
    "state": "machine-cross-checked"
   },
   "entities.table.suggested.title": {
-   "text": "Рекомендовані сутності інформаційної панелі",
+   "text": "Рекомендовані сутності",
    "sourceHash": "116d030af30a47c77e4b40b6783fbab3837e71cf38b5c7b3d5408ac7f9cd3831",
    "state": "machine-cross-checked"
   },
@@ -5804,7 +5804,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.dynamic.preview_companion": {
-   "text": "Вхід застосунку-компаньйона",
+   "text": "Вхід компаньйона",
    "sourceHash": "a3fc55b59be7ed4d1208fe616ca1405b7326170db3d881d724f9c8c52e583327",
    "state": "machine-cross-checked"
   },
@@ -7079,7 +7079,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.action.use_automatic": {
-   "text": "Використати автоматичний вибір",
+   "text": "Автоматичний вибір",
    "sourceHash": "539ca38b10265667d2ecca6424e6bec15d47aaed08577648ad463be14c6b75b2",
    "state": "machine-cross-checked"
   },
@@ -8954,7 +8954,7 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness.label": {
-   "text": "Автоматична яскравість",
+   "text": "Автояскравість",
    "sourceHash": "62e10cef5de66bc5e979cb1136094352833d6d5b6ea448419cf91ff713baf59d",
    "state": "machine-cross-checked"
   },
@@ -8964,7 +8964,7 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness_ha_entity.label": {
-   "text": "Джерело навколишнього освітлення",
+   "text": "Джерело освітлення",
    "sourceHash": "6d14150bee5d9bdc380ca70414b5d8690a2f65b9563e2e0cf7b8ecd08821882c",
    "state": "machine-cross-checked"
   },
@@ -9209,7 +9209,7 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.help": {
-   "text": "Лише для вбудованого рендерера. «Як у Home Assistant» залишає вибір світлої/темної теми інформаційної панелі за Home Assistant, для якого налаштування «Темний режим» задає значення за замовчуванням. «Темна» і «Світла» обирають тему на цій панелі, коли в Home Assistant встановлено «Авто», — для кіоскової інформаційної панелі без бічної панелі, з якої можна відкрити сторінку профілю Home Assistant. «Навколишнє світло» обирає «Темна» або «Світла» за освітленням кімнати, як його бачить модель автоматичної яскравості, і змінює тему лише після того, як кімната протягом хвилини залишалася темнішою або світлішою; для цього потрібно ввімкнути «Автоматична яскравість», а доки немає показань, тема відповідає Home Assistant. Явний вибір «Світла» або «Темна» в Home Assistant усе одно має пріоритет; використовуйте «Авто» або окремого користувача для панелі. Повернення до «Як у Home Assistant» повертає вибір точно в тому стані, в якому його було знайдено.",
+   "text": "Лише для вбудованого рендерера. «Як у Home Assistant» залишає вибір світлої/темної теми інформаційної панелі за Home Assistant, для якого налаштування «Темний режим» задає значення за замовчуванням. «Темна» і «Світла» обирають тему на цій панелі, коли в Home Assistant встановлено «Авто», — для кіоскової інформаційної панелі без бічної панелі, з якої можна відкрити сторінку профілю Home Assistant. «Навколишнє світло» обирає «Темна» або «Світла» за освітленням кімнати, як його бачить модель автоматичної яскравості, і змінює тему лише після того, як кімната протягом хвилини залишалася темнішою або світлішою; для цього потрібно ввімкнути «Автояскравість», а доки немає показань, тема відповідає Home Assistant. Явний вибір «Світла» або «Темна» в Home Assistant усе одно має пріоритет; використовуйте «Авто» або окремого користувача для панелі. Повернення до «Як у Home Assistant» повертає вибір точно в тому стані, в якому його було знайдено.",
    "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
    "state": "machine-cross-checked"
   },
@@ -9419,7 +9419,7 @@
    "state": "machine-cross-checked"
   },
   "settings.keep_awake.label": {
-   "text": "Забезпечити швидку реакцію панелі",
+   "text": "Швидка реакція панелі",
    "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
    "state": "machine-cross-checked"
   },
@@ -9439,7 +9439,7 @@
    "state": "machine-cross-checked"
   },
   "settings.kiosk_lock.label": {
-   "text": "Заблокувати Android на інформаційній панелі (експериментально)",
+   "text": "Режим кіоску Android (експериментально)",
    "sourceHash": "d8de0e2c0913e951dbe60ae09b03614c48b5b8a495c69ca0c45fa2798de27c63",
    "state": "machine-cross-checked"
   },
@@ -9584,7 +9584,7 @@
    "state": "machine-cross-checked"
   },
   "settings.prevent_idle_dim.label": {
-   "text": "Блокування затемнення екрана",
+   "text": "Не затемнювати екран",
    "sourceHash": "ab4e8ab5e353c0f7a2772ea83b880bba96a671c022dfc853aee0833b5bd2a62f",
    "state": "machine-cross-checked"
   },
@@ -9814,7 +9814,7 @@
    "state": "machine-cross-checked"
   },
   "settings.watchdog_enabled.label": {
-   "text": "Сторожовий таймер застосунку",
+   "text": "Сторожовий таймер",
    "sourceHash": "b26bc7ffa70ab7160d62be62a315160fdf6e8e5b2c000e081cc9fcfd1b17c00d",
    "state": "machine-cross-checked"
   },
@@ -11419,7 +11419,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.title": {
-   "text": "Резервне копіювання та відновлення",
+   "text": "Резервна копія та відновлення",
    "sourceHash": "0076967a94f3290b2122017687a320ec7412aa0176f3fdfece9b0a0553e513b2",
    "state": "machine-cross-checked"
   },

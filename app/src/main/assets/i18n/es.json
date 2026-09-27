@@ -3036,7 +3036,7 @@
     "dashboard.capability.shizuku": {
       "sourceHash": "195c2335bc7909021beca0b17dd90d7d6690c4d9b1bc28d3b41825d6712a83f5",
       "state": "machine-cross-checked",
-      "text": "Acceso mejorado de Shizuku"
+      "text": "Acceso Shizuku ampliado"
     },
     "dashboard.capability.system_actions": {
       "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
@@ -3116,7 +3116,7 @@
     "dashboard.card.responsiveness": {
       "sourceHash": "c3a5b81b72c2839068f12c59c5bc192d061aa12064c6e890effa27893c402bf5",
       "state": "machine-cross-checked",
-      "text": "Capacidad de respuesta del panel de control"
+      "text": "Fluidez del panel de control"
     },
     "dashboard.card.runtime_diagnostics": {
       "sourceHash": "892e412d7f3914a78a8a068b04f376a4665dfc2126be339ab00c056ae0df8621",
@@ -3456,7 +3456,7 @@
     "dashboard.fact.mqtt_timing": {
       "sourceHash": "e98d05be712824bc204ff342d965a29d937fc75bbec8481fe8c106a992abb89c",
       "state": "machine-cross-checked",
-      "text": "Tiempos de conexión y autenticación de MQTT"
+      "text": "Tiempos de conexión/autenticación MQTT"
     },
     "dashboard.fact.navbar": {
       "sourceHash": "ea22ed8d628dd906c10d91accf3769b68cbf37127f2ecab6a66a1f3d27e6e5a6",
@@ -3971,7 +3971,7 @@
     "dashboard.responsiveness.time_to_interactive": {
       "sourceHash": "081eb4e83635e8d5c696b5c24b567ba6cf7fc01ce417cb9f94844ff01504ebbc",
       "state": "machine-cross-checked",
-      "text": "Tiempo hasta poder interactuar"
+      "text": "Tiempo hasta interacción"
     },
     "dashboard.reveal.title": {
       "sourceHash": "b6976c2d96968d679b621136f2b8b300db6db5d6fadfaa0961e2bad94841fb4b",
@@ -4586,7 +4586,7 @@
     "dashboard.state_stream.measurement_drops": {
       "sourceHash": "059e19ee014123ae218d9647bcb779a0042e13706cec1c75ac2355c93fd2a6a8",
       "state": "machine-cross-checked",
-      "text": "Pérdidas de mediciones"
+      "text": "Mediciones perdidas"
     },
     "dashboard.state_stream.p95_rate": {
       "sourceHash": "ca4db622037d7db8b6d78acd6b739d3618f1f61f74deb4ae3e8fa7104a8efe51",
@@ -5389,7 +5389,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issues.title": {
-      "text": "Compatibilidad de detección de entidades",
+      "text": "Compatibilidad de detección",
       "sourceHash": "eb4e09bf32f157bcec74907fe18323558be077e4b7c7c0ac3a6f3697f2a46abb",
       "state": "machine-cross-checked"
     },
@@ -5439,7 +5439,7 @@
       "state": "machine-cross-checked"
     },
     "entities.policy.static": {
-      "text": "Añadir entidades analizadas desde la configuración del panel de control",
+      "text": "Añadir entidades configuradas en el panel de control",
       "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
       "state": "machine-cross-checked"
     },
@@ -5854,7 +5854,7 @@
       "state": "machine-cross-checked"
     },
     "entities.table.suggested.title": {
-      "text": "Entidades sugeridas del panel de control",
+      "text": "Sugerencias del panel de control",
       "sourceHash": "116d030af30a47c77e4b40b6783fbab3837e71cf38b5c7b3d5408ac7f9cd3831",
       "state": "machine-cross-checked"
     },
@@ -6331,7 +6331,7 @@
     "install.backup.dynamic.preview_companion": {
       "sourceHash": "a3fc55b59be7ed4d1208fe616ca1405b7326170db3d881d724f9c8c52e583327",
       "state": "machine-cross-checked",
-      "text": "Inicio de sesión de Companion"
+      "text": "Acceso de Companion"
     },
     "install.backup.dynamic.preview_config_keys": {
       "sourceHash": "361f87bb7c897517e80d6140d0e91e9a57893b3366d7a94533f63ba019293a8f",
@@ -10661,7 +10661,7 @@
     "settings.keep_awake.label": {
       "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
       "state": "machine-cross-checked",
-      "text": "Mantener el panel operativo"
+      "text": "Mantener panel operativo"
     },
     "settings.kiosk_companion_packages.help": {
       "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
@@ -10956,7 +10956,7 @@
     "settings.update_channel.label": {
       "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
       "state": "machine-cross-checked",
-      "text": "Canal de actualización automática de ha-paneld"
+      "text": "Canal de autoactualización de ha-paneld"
     },
     "settings.voice_audio_source.help": {
       "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",

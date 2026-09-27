@@ -3416,7 +3416,7 @@
     "dashboard.fact.light_sensor": {
       "sourceHash": "7cde7fa1b5d5e87a0259ed6ae848ca13727c41b8782079b6319f323f437fccac",
       "state": "machine-cross-checked",
-      "text": "Sensore luce ambientale"
+      "text": "Sensore di luce"
     },
     "dashboard.fact.local_ip": {
       "sourceHash": "89021892db6567352e1dd90ec679776203f50aa454552b3940e9fc56f2e75edd",
@@ -3946,7 +3946,7 @@
     "dashboard.responsiveness.renderer_reloads": {
       "sourceHash": "6de68adfd9cd8d609e785bb92ce376b13cc94c28eb884e377cf56003c3619f22",
       "state": "machine-cross-checked",
-      "text": "Ricaricamenti renderer (24 h)"
+      "text": "Ricariche renderer (24 h)"
     },
     "dashboard.responsiveness.state_updates": {
       "sourceHash": "772d0aa06c819550996c834f637c629220ac691a64791fb8a03a06e98b3f0034",
@@ -4991,7 +4991,7 @@
     "entities.filter.title": {
       "sourceHash": "553c1e39d186ac8c3979ba327a650e28d17b9e3d1d00e1025c4a6a5071bae9d6",
       "state": "machine-cross-checked",
-      "text": "Filtro della sottoscrizione alle entità"
+      "text": "Filtro delle sottoscrizioni"
     },
     "entities.issue.allow_note": {
       "sourceHash": "d3c4b6d2399ff0b190f6ccafb3bb888b75db62d7a682cd5a5c06dbe91a24df72",
@@ -5341,7 +5341,7 @@
     "entities.issues.rescan": {
       "sourceHash": "a6373efa0c0388c76fbfaff8c85718c444fd22dd8cc9667c3cd02aabc7f84786",
       "state": "machine-cross-checked",
-      "text": "Ripeti la scansione dopo aver modificato la dashboard"
+      "text": "Riscansiona dopo le modifiche alla dashboard"
     },
     "entities.issues.summary.allowed.one": {
       "sourceHash": "0fc5ba0d68061746d736429945aa2cb8c7ec0f63fc715d220ff9e4618a369cca",
@@ -5391,7 +5391,7 @@
     "entities.issues.title": {
       "sourceHash": "eb4e09bf32f157bcec74907fe18323558be077e4b7c7c0ac3a6f3697f2a46abb",
       "state": "machine-cross-checked",
-      "text": "Compatibilità del rilevamento delle entità"
+      "text": "Compatibilità del rilevamento"
     },
     "entities.override.exclude_confirm": {
       "sourceHash": "d0ab4e63729c4a23af1b6d0645a61fa9b04070790957b396dea1c56e451ec94b",
@@ -5441,7 +5441,7 @@
     "entities.policy.static": {
       "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
       "state": "machine-cross-checked",
-      "text": "Aggiungi le entità rilevate nella configurazione della dashboard"
+      "text": "Aggiungi le entità configurate nella dashboard"
     },
     "entities.reason.config": {
       "sourceHash": "311816e83e03c9f7385ff897bb2ab989cba37bd9d410e78ef8e7ed39b09e8a6c",
@@ -10186,7 +10186,7 @@
     "settings.auto_brightness.label": {
       "sourceHash": "62e10cef5de66bc5e979cb1136094352833d6d5b6ea448419cf91ff713baf59d",
       "state": "machine-cross-checked",
-      "text": "Luminosità automatica"
+      "text": "Luminosità auto"
     },
     "settings.auto_brightness_ha_entity.help": {
       "sourceHash": "6880e1fea6dee81c8f92542ee7bca6f70b62aecb909cf29b8b43fc5843fb5f9d",
@@ -10196,7 +10196,7 @@
     "settings.auto_brightness_ha_entity.label": {
       "sourceHash": "6d14150bee5d9bdc380ca70414b5d8690a2f65b9563e2e0cf7b8ecd08821882c",
       "state": "machine-cross-checked",
-      "text": "Sorgente di luce ambientale"
+      "text": "Fonte luce ambientale"
     },
     "settings.auto_brightness_minimum_percent.help": {
       "sourceHash": "f867987f4c5e28c720153d3438f9dd602c01a40c89539c5baab444d34bad0ce8",
@@ -10661,7 +10661,7 @@
     "settings.keep_awake.label": {
       "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
       "state": "machine-cross-checked",
-      "text": "Mantieni reattivo il pannello"
+      "text": "Pannello sempre reattivo"
     },
     "settings.kiosk_companion_packages.help": {
       "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
@@ -10956,7 +10956,7 @@
     "settings.update_channel.label": {
       "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
       "state": "machine-cross-checked",
-      "text": "Canale aggiornamenti automatici ha-paneld"
+      "text": "Canale autoaggiornamento ha-paneld"
     },
     "settings.voice_audio_source.help": {
       "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
@@ -11046,7 +11046,7 @@
     "settings.wake_on_wave.label": {
       "sourceHash": "ab0b6ed59096eb00a56a3f3a769132e280d380a9bf59b13e0ed4f6567f026a1a",
       "state": "machine-cross-checked",
-      "text": "Riattiva con un gesto della mano"
+      "text": "Riattiva con la mano"
     },
     "settings.watchdog_enabled.help": {
       "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",
