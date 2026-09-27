@@ -2655,9 +2655,6 @@ class PaneldService : Service() {
                     (if (effects.resolveHaLink) 1L else 0L),
             )
         }
-        // A shutdown claim from the old socket cannot describe the replacement Home Assistant.
-        if (::haLifecycle.isInitialized && desired.haLink != appliedNetworkConfiguration.haLink)
-            haLifecycle.onSocketWatchStopped()
         appliedNetworkConfiguration = desired
         if (ownerRefresh.logShipping) runCatching { logShipper.reconfigure() }
         if (ownerRefresh.keepAwake) runCatching { power.apply(config.keepAwake) }
@@ -2707,8 +2704,6 @@ class PaneldService : Service() {
         if (!haLifecycleRefreshPermitted(BuiltinDashboard.rendererSettled, wanted)) return
         haExactEntityStream.replaceLifecycleWatch(wanted)
         val watchChanged = HaLifecycleRuntime.setWatching(haLifecycle, wanted)
-        // A refusal belongs to the session just switched off.
-        if (!wanted) haLifecycle.onSocketWatchStopped()
         // Switching the watch off retires everything consumers can render (an unreportable holder
         // answers null), so they must be told — otherwise the native card keeps describing an outage
         // for a feature that is no longer watching, and redraws it from that state on resume.

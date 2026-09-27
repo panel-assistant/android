@@ -22,6 +22,7 @@ internal class HaLifecycleCoordinator(
             is HaLifecycleSignal.Event -> lifecycle.onEvent(signal.event, HaLifecycleSource.SOCKET, now)
             HaLifecycleSignal.Rejected -> lifecycle.onSubscriptionRejected()
             HaLifecycleSignal.Established -> lifecycle.onSubscriptionEstablished()
+            HaLifecycleSignal.Retired -> return onSocketWatchStopped()
             is HaLifecycleSignal.Transport -> when (signal.phase) {
                 // Reaching LIVE means a fresh authenticated socket completed its subscriptions — so by
                 // now this session's lifecycle subscription has already been accepted or refused, and
