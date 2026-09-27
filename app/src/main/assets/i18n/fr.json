@@ -3648,6 +3648,11 @@
       "sourceHash": "49b161284bad6dc17436604196248af6d170ad4534da706a03dfcfdbcf4c994f",
       "state": "machine-cross-checked"
     },
+    "dashboard.networking.warning_guidance": {
+      "text": "L’avertissement réseau vérifie avec quelle fiabilité ce panneau peut joindre Home Assistant ; il n’en détermine pas la cause. Vérifiez le signal Wi-Fi du panneau, le point d’accès et la charge de l’hôte Home Assistant.",
+      "sourceHash": "65ebf087852150d6ad87e5cb5b182d4271170d680c65f12156025885fe9565eb",
+      "state": "machine-cross-checked"
+    },
     "dashboard.noisy.aggregate_only": {
       "text": "Données agrégées uniquement — activez l’apprentissage automatique des entités pour identifier les contributrices",
       "sourceHash": "f774453f78cf65bf8e652f1c7a59ef1e7d41c40e99af8e5a796dc35780f3cf92",
@@ -10413,6 +10418,16 @@
       "state": "machine-cross-checked",
       "text": "Masquer la navigation Home Assistant (native)"
     },
+    "settings.dashboard_network_warning.help": {
+      "text": "Affiche l’avertissement de connexion réseau sur le tableau de bord de ce panneau. Les vérifications et l’état du réseau restent disponibles lorsque cette option est désactivée.",
+      "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
+      "state": "machine-cross-checked"
+    },
+    "settings.dashboard_network_warning.label": {
+      "text": "Afficher l’avertissement réseau sur le tableau de bord",
+      "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_overscroll.help": {
       "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
       "state": "machine-cross-checked",
@@ -12096,6 +12111,11 @@
     "shell.github.title": {
       "text": "ha-paneld sur GitHub",
       "sourceHash": "69474ee0f60dbce1020a6bcd6db49daaeeeb20bf7601151aba213b6fd98d66a6",
+      "state": "machine-cross-checked"
+    },
+    "shell.ha_network.dismiss": {
+      "text": "Ignorer l’avertissement réseau",
+      "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
       "state": "machine-cross-checked"
     },
     "shell.hardened.key": {
