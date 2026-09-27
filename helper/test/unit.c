@@ -12,6 +12,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -377,6 +378,90 @@ static void test_stat_jiffies(void) {
     CHECK(strcmp(comm, "resident proc") == 0, "stat_process_metrics extracts comm (got '%s')\n", comm);
     CHECK(stat_process_metrics(s, comm, sizeof comm, &process_jiffies, &rss_pages) == -1,
           "stat_process_metrics rejects a stat line truncated before RSS\n");
+}
+
+static void test_panel_bridge_cmdline(void) {
+    const char running[] = "/data/data/com.termux/files/usr/bin/node\0/data/data/com.termux/files/home/05cube-ts/dist/index.js\0";
+    const char relative[] = "/data/data/com.termux/files/usr/bin/node\0dist/index.js\0";
+    const char stopped[] = "runsv\0cube\0";
+    const char z2m[] = "node\0/home/zigbee2mqtt/index.js\0";
+    const char viewer[] = "tail\0/data/data/com.termux/files/home/zigbee2mqtt/log/current\0";
+    const char maintenance[] = "node\0/data/data/com.termux/files/home/zigbee2mqtt/tools/backup.js\0";
+    const char nested_index[] = "node\0/data/data/com.termux/files/home/zigbee2mqtt/tools/index.js\0";
+    CHECK(is_panel_bridge_cmdline(running, sizeof running - 1, "") == 1, "CUBE node payload is running\n");
+    CHECK(is_panel_bridge_cmdline(relative, sizeof relative - 1, "/data/data/com.termux/files/home/05cube-ts") == 1,
+          "relative CUBE node payload is running\n");
+    CHECK(is_panel_bridge_cmdline(z2m, sizeof z2m - 1, "") == 1, "zigbee2mqtt payload is running\n");
+    CHECK(!is_panel_bridge_cmdline(stopped, sizeof stopped - 1, ""), "runit supervisor is not the bridge\n");
+    CHECK(!is_panel_bridge_cmdline(viewer, sizeof viewer - 1, ""), "log viewer is not the bridge\n");
+    CHECK(!is_panel_bridge_cmdline(maintenance, sizeof maintenance - 1, ""), "maintenance script is not the bridge\n");
+    CHECK(!is_panel_bridge_cmdline(nested_index, sizeof nested_index - 1, ""), "nested index script is not the bridge\n");
+    CHECK(is_panel_bridge_cmdline(relative, sizeof relative - 1, "") == -1,
+          "unreadable bridge cwd is unknown\n");
+}
+
+static void test_perfdump_bridge_protocol(void) {
+    FILE *snapshot = tmpfile();
+    CHECK(snapshot != NULL, "PERFDUMP fixture opens a snapshot sink\n");
+    if (!snapshot) return;
+    conn_ctx ctx = { .fd = fileno(snapshot) };
+    cmd_perfdump(&ctx, "BRIDGE 9999999");
+    rewind(snapshot);
+    char line[512];
+    int marker = 0, ended = 0;
+    while (fgets(line, sizeof line, snapshot)) {
+        if (strcmp(line, "@BRIDGE 0\n") == 0) marker++;
+        if (strcmp(line, "@END\n") == 0) ended++;
+    }
+    CHECK(marker == 1 && ended == 1, "UID-scoped PERFDUMP emits one absent bridge marker and terminates\n");
+    fclose(snapshot);
+
+    snapshot = tmpfile();
+    CHECK(snapshot != NULL, "ordinary PERFDUMP fixture opens a snapshot sink\n");
+    if (!snapshot) return;
+    ctx.fd = fileno(snapshot);
+    cmd_perfdump(&ctx, "");
+    rewind(snapshot);
+    marker = 0;
+    while (fgets(line, sizeof line, snapshot)) if (strncmp(line, "@BRIDGE ", 8) == 0) marker++;
+    CHECK(marker == 0, "ordinary PERFDUMP does no bridge scan or marker\n");
+    fclose(snapshot);
+
+    int ready[2];
+    int piped = pipe(ready) == 0;
+    CHECK(piped, "running bridge fixture opens readiness pipe\n");
+    if (!piped) return;
+    pid_t child = fork();
+    CHECK(child >= 0, "running bridge fixture forks\n");
+    if (child == 0) {
+        close(ready[0]);
+        char fd_arg[16]; snprintf(fd_arg, sizeof fd_arg, "%d", ready[1]);
+        char *const args[] = { "node", "/tmp/05cube-ts/dist/index.js", "--bridge-fixture", fd_arg, NULL };
+        execv("/proc/self/exe", args);
+        _exit(127);
+    }
+    if (child < 0) { close(ready[0]); close(ready[1]); return; }
+    close(ready[1]);
+    char token = 0;
+    int started = read(ready[0], &token, 1) == 1 && token == 'R';
+    close(ready[0]);
+    CHECK(started, "running bridge fixture starts its node-shaped process\n");
+    if (started) {
+        snapshot = tmpfile();
+        CHECK(snapshot != NULL, "running PERFDUMP fixture opens a snapshot sink\n");
+        if (snapshot) {
+            ctx.fd = fileno(snapshot);
+            char command[32]; snprintf(command, sizeof command, "BRIDGE %lu", (unsigned long)getuid());
+            cmd_perfdump(&ctx, command);
+            rewind(snapshot);
+            marker = 0;
+            while (fgets(line, sizeof line, snapshot)) if (strcmp(line, "@BRIDGE 1\n") == 0) marker++;
+            CHECK(marker == 1, "UID-scoped PERFDUMP sees the running bridge fixture\n");
+            fclose(snapshot);
+        }
+    }
+    kill(child, SIGTERM);
+    waitpid(child, NULL, 0);
 }
 
 static void test_dispatch_exact_match(void) {
@@ -2229,12 +2314,21 @@ static void test_grant_accessibility(void) {
           "GRANT ACCESSIBILITY fails closed when the list cannot be read (got '%s')\n", out);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    if (argc == 4 && strcmp(argv[2], "--bridge-fixture") == 0) {
+        int fd = atoi(argv[3]);
+        if (fd < 3 || write(fd, "R", 1) != 1) return 1;
+        close(fd);
+        sleep(30);
+        return 0;
+    }
     guard_test_reset();
     CHECK(guard_test_reconcile() == 0, "Guard package gate initializes empty for legacy unit cases\n");
     test_validators();
     test_clamp();
     test_stat_jiffies();
+    test_panel_bridge_cmdline();
+    test_perfdump_bridge_protocol();
     test_dispatch_exact_match();
     test_zigbeecontain_layouts();
     test_reboot_escalation();

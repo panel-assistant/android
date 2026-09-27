@@ -2233,6 +2233,11 @@
       "state": "machine-cross-checked",
       "text": "MQTT está configurado. Siguiente: elige un renderizador de panel de control."
     },
+    "dashboard.banner.panel_bridge_running": {
+      "text": "Hay un puente Zigbee ejecutándose en Termux en este panel. Podría interferir con la puerta de enlace Zigbee del panel. Revisa el puente de Termux antes de activar las funciones de puerta de enlace Zigbee.",
+      "sourceHash": "8f34977d31f04f138f7a744265cece7fa548eb6d9abc3ac55c5a255e009d515a",
+      "state": "machine-cross-checked"
+    },
     "dashboard.banner.proximity_learning.action": {
       "sourceHash": "f9d5be8cab3ce30fbc94c115eb102ec4df35d57cb57e2f8d3b070f303e79de2f",
       "state": "machine-cross-checked",

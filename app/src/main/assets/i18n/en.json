@@ -5970,6 +5970,18 @@
       "softMaxChars": 76,
       "hardMaxChars": 108
     },
+    "dashboard.banner.panel_bridge_running": {
+      "text": "A Zigbee bridge is running in Termux on this panel. It may interfere with the panel's Zigbee gateway. Review the Termux bridge before enabling Zigbee gateway features.",
+      "sourceHash": "8f34977d31f04f138f7a744265cece7fa548eb6d9abc3ac55c5a255e009d515a",
+      "surface": "dashboard",
+      "context": "Warning shown only when a running panel-side Termux Zigbee bridge process is observed. It does not claim Termux alone runs a bridge or that the app disabled one.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": ["Termux", "Zigbee"],
+      "softMaxChars": 170,
+      "hardMaxChars": 230
+    },
     "dashboard.banner.proximity_learning.action": {
       "text": "Open proximity setup",
       "sourceHash": "f9d5be8cab3ce30fbc94c115eb102ec4df35d57cb57e2f8d3b070f303e79de2f",
