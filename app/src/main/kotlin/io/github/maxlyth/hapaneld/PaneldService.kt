@@ -3701,7 +3701,12 @@ class PaneldService : Service() {
                         launchHome = { pkg -> system.launchHome(pkg) },
                     )
                 },
-                startLearning = entityLearning::start,
+                // Initialization touches SQLite; the service scope already owns background work.
+                startLearning = {
+                    scope.launch(Dispatchers.IO) {
+                        if (!teardownBoundary.isStopping) entityLearning.start()
+                    }
+                },
             )
             if (rendererResult == RendererPreparationCoordinator.Result.PERSIST_FAILED) {
                 Log.e(TAG, "built-in renderer startup preparation did not commit; leaving it retryable")
