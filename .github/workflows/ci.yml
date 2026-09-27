@@ -518,7 +518,7 @@ jobs:
 
 
   # 23 of this workflow's 26 minutes was the provisioning contract as one
-  # serial step. It already ships as fourteen isolated shards, and running
+  # serial step. It already ships as fifteen isolated shards, and running
   # them in process barely parallelised on a two-core image, so each shard
   # gets a runner and the wall time is the longest shard, not their sum.
   provisioning:
@@ -534,7 +534,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The six longest shards run alone; the rest pair a medium shard with a short one. Three
+          # The five longest shards run alone, install-export runs beside install-probe (the two halves
+          # of what was one shard), and the rest pair a medium shard with a short one. Three
           # CPU-heavy shards on one four-core runner slowed each by about 60% and broke
           # release-integrity's timing-bounded Shizuku cases. Ten groups keep CI and CodeQL under
           # GitHub's twenty concurrent jobs when the Android build runs as one job.
@@ -547,7 +548,7 @@ jobs:
           - group: database-host
             shards: database-host
           - group: install-export
-            shards: install-export
+            shards: install-export install-probe
           - group: helper-transaction
             shards: helper-transaction
           - group: release-integrity
