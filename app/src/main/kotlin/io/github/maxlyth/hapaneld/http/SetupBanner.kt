@@ -10,9 +10,16 @@ package io.github.maxlyth.hapaneld.http
  * status is transient/blank, and a configured broker must NOT be reported as missing then.
  */
 object SetupBanner {
-    fun needs(mqttStatus: String, brokerConfigured: Boolean, mqttUserConfigured: Boolean = false): List<String> {
+    fun needs(
+        mqttStatus: String,
+        brokerConfigured: Boolean,
+        mqttUserConfigured: Boolean = false,
+        panelAssistantNative: Boolean = false,
+    ): List<String> {
         val needs = mutableListOf<String>()
         when {
+            // Panel Assistant carries this panel's entities and commands, so MQTT is not something it needs.
+            panelAssistantNative && !brokerConfigured -> {}
             mqttStatus.contains("connected") || mqttStatus.contains("connecting") ||
                 mqttStatus.contains("auth retrying") -> {} // connected / transient — fine
             !brokerConfigured -> needs.add("MQTT configuration") // discovery / broker setup is not proven yet
