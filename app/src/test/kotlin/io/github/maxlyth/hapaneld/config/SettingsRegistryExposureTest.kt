@@ -49,4 +49,13 @@ class SettingsRegistryExposureTest {
         assertNull(nonHaSpec.ha)
         assertNull(SettingsRegistry.parseExposure(SettingsRegistry.exposureKey(nonHaSpec)))
     }
+
+    @Test fun dashboardNetworkWarningIsVisibleOnlyOnThePanel() {
+        val spec = SettingsRegistry.spec("dashboard_network_warning")!!
+        assertEquals("Display", spec.group)
+        assertEquals("true", spec.default)
+        assertEquals(Scope.DEVICE, spec.scope)
+        assertEquals(spec, SettingsRegistry.schemaVisibleSpecs().first { it.key == spec.key })
+        assertNull(SettingsRegistry.parseExposure("ha_expose_dashboard_network_warning"))
+    }
 }

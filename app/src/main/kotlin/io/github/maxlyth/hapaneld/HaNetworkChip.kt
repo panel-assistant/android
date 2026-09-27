@@ -13,9 +13,14 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
+import io.github.maxlyth.hapaneld.i18n.AppLocale
+import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.sensors.HaNetworkPath
 import io.github.maxlyth.hapaneld.sensors.HaNetworkPathSeverity
+import java.util.Locale
 
 /**
  * Decide the chip's text size for a display, in pixels.
@@ -34,6 +39,18 @@ private const val HA_NETWORK_CHIP_TEXT_FRACTION = 0.04f
 private const val HA_NETWORK_CHIP_BASELINE_EDGE_PX = 480f
 private const val HA_NETWORK_CHIP_MAX_TEXT_DP = HA_NETWORK_CHIP_BASELINE_EDGE_PX * HA_NETWORK_CHIP_TEXT_FRACTION
 
+/** One presentation-only decision shared across WebView rebuilds in this process. */
+internal class HaNetworkChipVisibility {
+    private var dismissed = false
+
+    fun dismiss() { dismissed = true }
+
+    fun update(degraded: Boolean, enabled: Boolean): Boolean {
+        if (!degraded) dismissed = false
+        return degraded && enabled && !dismissed
+    }
+}
+
 /**
  * The native, dashboard-independent "HA network slow" chip.
  *
@@ -41,8 +58,8 @@ private const val HA_NETWORK_CHIP_MAX_TEXT_DP = HA_NETWORK_CHIP_BASELINE_EDGE_PX
  * [HaLifecycleBar], so the dashboard keeps rendering underneath and nothing is destroyed. It is
  * deliberately NOT the lifecycle bar: that card explains an outage and may stand over the top of the
  * page for as long as one lasts; this states a degraded path that can persist for hours on a working
- * dashboard, so it must cover as little as possible and never take a touch. The view is neither
- * clickable nor focusable, so a tap falls through to the dashboard beneath it, and it has no dismiss.
+ * dashboard, so it must cover as little as possible. Only its close button takes a touch; the
+ * rest of the card is neither clickable nor focusable and passes taps to the dashboard beneath.
  *
  * Cost: a static view with no animation, composited once per verdict change. Severity is carried
  * by colour (amber for a warning, red for severe) and the wording is one fixed phrase.
@@ -50,25 +67,29 @@ private const val HA_NETWORK_CHIP_MAX_TEXT_DP = HA_NETWORK_CHIP_BASELINE_EDGE_PX
  * The caller owns removal. Every path that swaps or tears down the content view must call [detach].
  */
 internal class HaNetworkChip private constructor(
-    private val view: TextView,
+    private val view: LinearLayout,
+    private val label: TextView,
+    private val close: ImageButton,
     private val card: GradientDrawable,
     private val icon: WarningGlyph,
     private val dark: Boolean,
 ) {
     /** Render one atomic snapshot; hidden unless the panel holds a socket AND the path is degraded. */
-    fun update(snap: HaNetworkPath.Snapshot?) {
-        if (snap == null || !snap.degraded) {
+    fun update(snap: HaNetworkPath.Snapshot?, enabled: Boolean) {
+        if (!incidentVisibility.update(snap?.degraded == true, enabled)) {
             view.visibility = View.GONE
             return
         }
-        val colours = palette(snap.severity, dark)
+        val current = requireNotNull(snap)
+        val colours = palette(current.severity, dark)
         card.setColor(colours.surface)
         card.setStroke((BORDER_DP * view.resources.displayMetrics.density).toInt(), colours.border)
         icon.colour = colours.border
-        view.setTextColor(colours.label)
+        label.setTextColor(colours.label)
+        (close.drawable as? CloseGlyph)?.colour = colours.label
         val description = view.context.getString(R.string.ha_network_unreliable)
-        view.text = description
-        view.contentDescription = description
+        label.text = description
+        label.contentDescription = description
         view.visibility = View.VISIBLE
     }
 
@@ -110,7 +131,28 @@ internal class HaNetworkChip private constructor(
             (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) < 128.0
     }
 
+    private class CloseGlyph(private val sizePx: Int) : Drawable() {
+        var colour: Int = Color.WHITE
+            set(value) { field = value; invalidateSelf() }
+        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            stroke.color = colour
+            stroke.strokeWidth = sizePx * 0.12f
+            val inset = sizePx * 0.18f
+            canvas.drawLine(b.left + inset, b.top + inset, b.right - inset, b.bottom - inset, stroke)
+            canvas.drawLine(b.right - inset, b.top + inset, b.left + inset, b.bottom - inset, stroke)
+        }
+        override fun setAlpha(alpha: Int) { stroke.alpha = alpha }
+        override fun setColorFilter(colorFilter: ColorFilter?) { stroke.colorFilter = colorFilter }
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+        override fun getIntrinsicWidth(): Int = sizePx
+        override fun getIntrinsicHeight(): Int = sizePx
+    }
+
     companion object {
+        private val incidentVisibility = HaNetworkChipVisibility()
         private data class Palette(val surface: Int, val border: Int, val label: Int)
 
         /**
@@ -136,6 +178,8 @@ internal class HaNetworkChip private constructor(
         /** The glyph is sized to the text so the pair reads as one line at every panel size. */
         private const val ICON_TO_TEXT = 1.05f
         private const val ICON_GAP_DP = 8
+        private const val CLOSE_TARGET_DP = 48
+        private const val CLOSE_GLYPH_DP = 20
 
         /**
          * Attach a hidden chip to [root] in the bottom-end corner, clear of the lifecycle bar at the
@@ -149,21 +193,41 @@ internal class HaNetworkChip private constructor(
             val dark = runCatching { Config(context).dashboardThemeDark }.getOrNull() ?: true
             val card = GradientDrawable().apply { cornerRadius = CORNER_DP * density }
             val icon = WarningGlyph((textPx * ICON_TO_TEXT).toInt())
-            val chip = TextView(context).apply {
-                setPadding((PAD_H_DP * density).toInt(), (PAD_V_DP * density).toInt(), (PAD_H_DP * density).toInt(), (PAD_V_DP * density).toInt())
+            val chip = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 background = card
                 elevation = ELEVATION_DP * density
+                isClickable = false
+                isFocusable = false
+            }
+            val label = TextView(context).apply {
+                setPadding((PAD_H_DP * density).toInt(), (PAD_V_DP * density).toInt(), 0, (PAD_V_DP * density).toInt())
                 gravity = Gravity.CENTER_VERTICAL
                 maxLines = 1
                 setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textPx)
                 setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
                 compoundDrawablePadding = (ICON_GAP_DP * density).toInt()
-                // A notice, not a control: it must never take the touch the dashboard beneath needs.
                 isClickable = false
                 isFocusable = false
                 isLongClickable = false
-                visibility = View.GONE
             }
+            chip.addView(label)
+            val strings = CatalogueLoader { context.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
+                .strings(AppLocale.resolve(
+                    explicit = null, persisted = Config(context).uiLanguage, acceptLanguage = null,
+                    deviceLanguageTag = Locale.getDefault().toLanguageTag(), allowPseudo = BuildConfig.DEBUG,
+                ))
+            val close = ImageButton(context).apply {
+                setImageDrawable(CloseGlyph((CLOSE_GLYPH_DP * density).toInt()))
+                setBackgroundColor(Color.TRANSPARENT)
+                contentDescription = strings.get("shell.ha_network.dismiss")
+                setOnClickListener { incidentVisibility.dismiss(); chip.visibility = View.GONE }
+            }
+            chip.addView(close, LinearLayout.LayoutParams(
+                (CLOSE_TARGET_DP * density).toInt(), (CLOSE_TARGET_DP * density).toInt(),
+            ))
+            chip.visibility = View.GONE
             val margin = (MARGIN_DP * density).toInt()
             root.addView(
                 chip,
@@ -173,7 +237,7 @@ internal class HaNetworkChip private constructor(
                     Gravity.BOTTOM or Gravity.END,
                 ).apply { setMargins(margin, margin, margin, margin) },
             )
-            return HaNetworkChip(chip, card, icon, dark)
+            return HaNetworkChip(chip, label, close, card, icon, dark)
         }
     }
 }

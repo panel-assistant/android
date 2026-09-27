@@ -3288,6 +3288,11 @@
    "sourceHash": "49b161284bad6dc17436604196248af6d170ad4534da706a03dfcfdbcf4c994f",
    "state": "machine-cross-checked"
   },
+  "dashboard.networking.warning_guidance": {
+   "text": "De netwerkwaarschuwing controleert hoe betrouwbaar dit paneel Home Assistant kan bereiken; ze stelt de oorzaak niet vast. Controleer het Wi-Fi-signaal van het paneel, het toegangspunt en de belasting van de Home Assistant-host.",
+   "sourceHash": "65ebf087852150d6ad87e5cb5b182d4271170d680c65f12156025885fe9565eb",
+   "state": "machine-cross-checked"
+  },
   "dashboard.noisy.aggregate_only": {
    "text": "Alleen totaal — schakel automatisch entiteitsleren in om bijdragers te identificeren",
    "sourceHash": "f774453f78cf65bf8e652f1c7a59ef1e7d41c40e99af8e5a796dc35780f3cf92",
@@ -9173,6 +9178,16 @@
    "sourceHash": "a305339fcfa063612b7ae7bbb7369fec0ca25ee457ccfcb3df53c9b52060b106",
    "state": "machine-cross-checked"
   },
+  "settings.dashboard_network_warning.help": {
+   "text": "Toon de waarschuwing voor de netwerkverbinding op het dashboard van dit paneel. Netwerkcontroles en de status blijven beschikbaar als deze optie uitstaat.",
+   "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
+   "state": "machine-cross-checked"
+  },
+  "settings.dashboard_network_warning.label": {
+   "text": "Netwerkwaarschuwing op dashboard tonen",
+   "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
+   "state": "machine-cross-checked"
+  },
   "settings.dashboard_overscroll.help": {
    "text": "Ingebouwde renderer: sta het overscroll-effect (uitrekken/gloed) van Android toe wanneer een sleepbeweging voorbij de boven- of onderkant van het dashboard gaat. Standaard uit (een wandpaneel scrollt zelden en het terugveren ziet er misplaatst uit). Alleen via de API — stel in op true om het native effect te herstellen.",
    "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
@@ -10856,6 +10871,11 @@
   "shell.github.title": {
    "text": "ha-paneld op GitHub",
    "sourceHash": "69474ee0f60dbce1020a6bcd6db49daaeeeb20bf7601151aba213b6fd98d66a6",
+   "state": "machine-cross-checked"
+  },
+  "shell.ha_network.dismiss": {
+   "text": "Netwerkwaarschuwing sluiten",
+   "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
    "state": "machine-cross-checked"
   },
   "shell.hardened.key": {
