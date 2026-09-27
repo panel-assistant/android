@@ -1,17 +1,17 @@
-package io.github.maxlyth.hapaneld.http
+package io.github.maxlyth.hapaneld.assets
 
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** What the Entities page says when a dashboard strategy runs under an allowed entity-discovery check (issue #133 follow-up). */
-class EntityStrategyAllowedUiContractTest {
-    @Test fun `the entities page states the strategy consequence and the pin route`() {
+/** Entities-page catalogue search feedback (issue #114) and its one-shot reveal, run against the shipped script. */
+class EntitySearchFeedbackUiContractTest {
+    @Test fun `search feedback and the never-scroll routes behave as specified`() {
         val working = File(requireNotNull(System.getProperty("user.dir")))
         val fixture = listOf(
-            File(working, "app/src/test/js/entity-strategy-allowed-test.mjs"),
-            File(working, "src/test/js/entity-strategy-allowed-test.mjs"),
+            File(working, "app/src/test/js/entity-search-feedback-test.mjs"),
+            File(working, "src/test/js/entity-search-feedback-test.mjs"),
         ).first(File::isFile)
         // Source-text reason: executes the shipped entities.js in a node behaviour fixture.
         val asset = listOf(
@@ -24,6 +24,6 @@ class EntityStrategyAllowedUiContractTest {
         val output = process.inputStream.bufferedReader().readText()
 
         assertEquals(output, 0, process.waitFor())
-        assertTrue(output, output.contains("entity strategy allowed cases passed"))
+        assertTrue(output, output.contains("entity search feedback cases passed"))
     }
 }

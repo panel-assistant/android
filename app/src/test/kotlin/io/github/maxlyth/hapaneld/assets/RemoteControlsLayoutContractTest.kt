@@ -1,4 +1,4 @@
-package io.github.maxlyth.hapaneld.http
+package io.github.maxlyth.hapaneld.assets
 
 import java.io.File
 import org.junit.Assert.assertTrue

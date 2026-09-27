@@ -1,4 +1,4 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.provisioning
 
 import io.github.maxlyth.hapaneld.device.profile.BundledProfileFixtures
 import io.github.maxlyth.hapaneld.device.profile.ProfileHelperAuthorityDemand

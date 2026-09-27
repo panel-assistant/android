@@ -209,11 +209,6 @@ object SelfUpdater {
         prepared: AppInstaller.PreparedSelfInstall,
     ): String = installPreparedOutcome(context, prepared).message
 
-    /** Update ha-paneld to the newest build on [channel] if it is newer. [force] installs the channel's
-     *  newest even when equal or older, which is the deliberate manual/channel-switch downgrade path. */
-    suspend fun checkAndUpdate(context: Context, channel: String, force: Boolean = false): String =
-        checkAndUpdateResult(context, channel, force).message
-
     internal suspend fun checkAndUpdateResult(
         context: Context,
         channel: String,
