@@ -7,7 +7,7 @@ PROVISION_TEST_SCOPE="${PROVISION_TEST_SCOPE:-all}"
 case "$PROVISION_TEST_SCOPE" in
   db|backup|publication|core|all|\
   shard-database-host|shard-database-runtime|\
-  shard-install-export|shard-install-runtime|shard-helper-transaction|\
+  shard-install-export|shard-install-probe|shard-install-runtime|shard-helper-transaction|\
   shard-release-integrity|shard-renderer-seeding|shard-install-finish|\
   shard-backup|shard-publication|shard-database-authority|shard-fleet-installer|\
   shard-host-reclamation|shard-git-bash) ;;
@@ -839,7 +839,7 @@ EXPORT="$TMP/panel-backup.json"
 RESTORE="$TMP/restore.json"
 printf '{"kind":"ha-paneld-config","schema":1,"values":{}}\n' > "$RESTORE"
 if provision_scope_is db core all \
-  shard-database-host shard-database-runtime shard-install-export shard-install-runtime \
+  shard-database-host shard-database-runtime shard-install-export shard-install-probe shard-install-runtime \
   shard-helper-transaction shard-release-integrity shard-renderer-seeding \
   shard-install-finish; then
 if provision_scope_is db core all shard-database-host; then
@@ -2106,6 +2106,10 @@ MOCK_STORAGE_HEALTH=transport-fail MOCK_PM_QUERY_SECONDS=2 STORAGE_HEALTH_PACKAG
 assert_success "a slow package manager is given a budget measured from the panel"
 assert_log_contains '^adb .* install' "the slow panel's measured probe reaches the APK install"
 
+fi
+[ "$PROVISION_TEST_SCOPE" != shard-install-export ] || finish_provision_test
+
+if provision_scope_is core all shard-install-probe; then
 MOCK_STORAGE_HEALTH=missing-state run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
 assert_success "a malformed installed-app storage contract admits an ordinary replacement"
 assert_log_contains '^adb .* install' "malformed storage status does not preempt the APK install"
@@ -2467,7 +2471,7 @@ assert_not_contains '/api/v1/tame|action=recommended' "$MOCK_CALL_LOG" "recommen
 unset MOCK_PLAN MOCK_WEBVIEW_VERSION
 
 fi
-[ "$PROVISION_TEST_SCOPE" != shard-install-export ] || finish_provision_test
+[ "$PROVISION_TEST_SCOPE" != shard-install-probe ] || finish_provision_test
 
 if provision_scope_is core all shard-install-runtime; then
 # ---- host/panel time-zone advisory ---------------------------------------------------------------
