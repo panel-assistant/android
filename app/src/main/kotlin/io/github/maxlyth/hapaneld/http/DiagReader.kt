@@ -27,6 +27,7 @@ import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import io.github.maxlyth.hapaneld.util.SystemProps
 import io.github.maxlyth.hapaneld.util.UpdateChecker
+import io.github.maxlyth.hapaneld.util.WebViewInstaller
 import io.github.maxlyth.hapaneld.util.runBoundedLaunch
 import java.io.File
 import java.util.Locale
@@ -321,6 +322,7 @@ object DiagReader {
         // radios. Its values are all classified or categorical — no URL, host, credential or raw
         // exception text — so this line is as pasteable as the rest of the dump.
         renderer?.let { appendLine(it.diagnosticLine()) }
+        webViewRollbackLine(ctx)?.let { appendLine(it) }
         // The measured path to Home Assistant comes next: it is the first thing to rule in or out
         // when the renderer line says "rendered" and the report still complains of a slow dashboard.
         // Classified state and terse aggregates only; the presentation never carries a host.
@@ -387,6 +389,17 @@ object DiagReader {
         }
         }
     }
+
+    /** The saved reason is internal text, but the dump is commonly pasted into public reports. */
+    internal fun webViewRollbackLine(ctx: Context): String? = WebViewInstaller.rollbackDiagnostic(ctx)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { saved ->
+            // Keep the report one line and refuse path, URL, or control-character details.
+            val safe = saved.takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9 .,_():;\\-]{0,159}")) }
+                ?: "details omitted"
+            "[webview-rollback] reason=$safe"
+        }
 
     internal fun displaySizingLine(evidence: DisplaySizingEvidence, profile: DeviceProfile): String {
         fun dpi(value: Int?) = value?.toString() ?: "?"

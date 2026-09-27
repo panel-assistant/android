@@ -548,6 +548,19 @@ AppInstaller.download("https://cdn.example/app.apk", destination, 1024L, abort) 
         )
     }
 
+    @Test fun aMissingPackageManagerReplyDoesNotCertifyThatTheInstallFailed() {
+        val uncertain = InstallOutcome.Retryable(
+            "install outcome unknown: pm reply lost", mayHaveCommitted = true,
+        )
+        assertEquals(uncertain, AppInstaller.classifyPmInstallReply(null))
+        assertEquals(uncertain, AppInstaller.classifyPmInstallReply(""))
+        assertEquals(InstallOutcome.Succeeded, AppInstaller.classifyPmInstallReply("Success"))
+        assertEquals(
+            InstallOutcome.Rejected("install failed: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]"),
+            AppInstaller.classifyPmInstallReply("Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]"),
+        )
+    }
+
     @Test fun slowProgressCannotExtendTheWholeDownloadDeadline() {
         val remaining = ArrayDeque(listOf(10L, 0L))
         val output = ByteArrayOutputStream()

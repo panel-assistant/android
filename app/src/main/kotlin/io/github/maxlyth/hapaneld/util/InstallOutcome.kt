@@ -38,5 +38,7 @@ sealed interface InstallOutcome {
     data class Retryable(
         override val message: String,
         override val presentation: InstallPresentation? = null,
+        /** A submitted install lost its reply, so the package mutation may still commit. */
+        val mayHaveCommitted: Boolean = false,
     ) : Failure
 }

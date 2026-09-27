@@ -34,7 +34,7 @@ internal class HelperInstallTransaction(
             }
             DaemonStreamResult.Indeterminate -> {
                 apk.delete()
-                return InstallOutcome.Retryable("install outcome unknown: streamed input released")
+                return InstallOutcome.Retryable("install outcome unknown: streamed input released", mayHaveCommitted = true)
             }
             DaemonStreamResult.Unsupported -> Unit
         }
@@ -52,7 +52,7 @@ internal class HelperInstallTransaction(
             }
             DaemonLongResult.Indeterminate -> {
                 staging.release(owned, delete = false)
-                InstallOutcome.Retryable("install outcome unknown: helper staging retained for safety")
+                InstallOutcome.Retryable("install outcome unknown: helper staging retained for safety", mayHaveCommitted = true)
             }
         }
     }
