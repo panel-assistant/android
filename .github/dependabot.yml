@@ -109,24 +109,6 @@ updates:
       prefix: chore
       include: scope
 
-  - package-ecosystem: pip
-    directory: /tools/fdroid
-    schedule:
-      interval: weekly
-      day: monday
-      time: "05:00"
-      timezone: Etc/UTC
-    cooldown:
-      default-days: 7
-    groups:
-      fdroid-build-dependencies:
-        patterns:
-          - "*"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: chore
-      include: scope
-
   - package-ecosystem: docker
     directory: /.devcontainer
     schedule:
