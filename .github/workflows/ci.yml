@@ -358,12 +358,50 @@ jobs:
             *) echo "::error::no Android runner was chosen"; exit 1 ;;
           esac
 
+  # A pull request runs the provisioning and privileged-helper suites only when it changes something they
+  # exercise: scripts/, helper/, a workflow, or one of the two app sources those suites read. Every push
+  # and dispatch runs them. GitHub checks a pull request out as a merge commit whose first parent is the
+  # base, so the change list is one diff; anything else (another runner's checkout, a failed diff) runs
+  # every suite rather than guess. The two aggregate checks below accept a skip only when this job ran
+  # and said the suites were not needed.
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      host: ${{ steps.diff.outputs.host }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          host=true
+          if [ "$EVENT" = pull_request ]; then
+            if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -eq 3 ] && changed="$(git diff --name-only HEAD^1 HEAD)"; then
+              pattern='^(scripts/|helper/|\.github/workflows/|app/src/main/kotlin/io/github/maxlyth/hapaneld/(http/PaneldServer|util/HelperClient)\.kt$)'
+              grep -Eq "$pattern" <<<"$changed" || host=false
+            else
+              echo "::warning::the pull request's changed files could not be listed; running every suite"
+            fi
+          fi
+          echo "Provisioning and helper suites needed: $host" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+
   # The root helper (helper/src/) is C, never touched by the Gradle build. This job is the only place
   # it's compiler-checked and unit-tested — host-native (gcc), so it's fast and needs no NDK. The parser
   # sanitizer smoke (helper/fuzz/run.sh) is deliberately NOT run here: it is deterministic rather than
   # coverage-guided and is run locally when the parser, dispatch, or validators change.
   helper:
     name: Helper ${{ matrix.group }}
+    needs: changes
+    if: needs.changes.outputs.host == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Almost all of the suite's time is the two installer transaction scripts waiting on the installer's
@@ -488,6 +526,8 @@ jobs:
     # jobs, so shards queued for up to two minutes behind each other. Grouping keeps every group within
     # the longest shard's time on a four-core runner while leaving the workflows under that ceiling.
     name: Provisioning ${{ matrix.group }}
+    needs: changes
+    if: needs.changes.outputs.host == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -541,7 +581,7 @@ jobs:
     # Keep the stable check name consumed by release.yml. It turns green only when
     # the shell contracts and the complete provisioning aggregate both pass.
     name: Host contracts
-    needs: [provisioning, host-contracts]
+    needs: [changes, provisioning, host-contracts]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -551,6 +591,7 @@ jobs:
           persist-credentials: false
 
       - name: Download provisioning shard evidence
+        if: needs.changes.outputs.host == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: provisioning-*
@@ -558,15 +599,21 @@ jobs:
           merge-multiple: true
 
       - name: Verify complete provisioning aggregate
+        if: needs.changes.outputs.host == 'true'
         run: bash scripts/tests/provision_gate_parallel.sh --aggregate "$RUNNER_TEMP/provisioning-results"
 
       - name: Require host and provisioning jobs
         env:
           HOST_RESULT: ${{ needs.host-contracts.result }}
           PROVISIONING_RESULT: ${{ needs.provisioning.result }}
+          HOST_PATHS: ${{ needs.changes.outputs.host }}
         run: |
           test "$HOST_RESULT" = success
-          test "$PROVISIONING_RESULT" = success
+          if [ "$HOST_PATHS" = false ]; then
+            test "$PROVISIONING_RESULT" = skipped
+          else
+            test "$PROVISIONING_RESULT" = success
+          fi
 
   dependency-integrity:
     name: Dependency integrity
@@ -647,7 +694,7 @@ jobs:
     # Keep the stable check name consumed by release.yml. It turns green only when every helper
     # group passes.
     name: Privileged helper
-    needs: helper
+    needs: [changes, helper]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -655,4 +702,10 @@ jobs:
       - name: Require every helper group
         env:
           HELPER_RESULT: ${{ needs.helper.result }}
-        run: test "$HELPER_RESULT" = success
+          HOST_PATHS: ${{ needs.changes.outputs.host }}
+        run: |
+          if [ "$HOST_PATHS" = false ]; then
+            test "$HELPER_RESULT" = skipped
+          else
+            test "$HELPER_RESULT" = success
+          fi

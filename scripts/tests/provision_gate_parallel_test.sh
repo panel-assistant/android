@@ -271,7 +271,7 @@ if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 3 --output "$r
    [ "$shard_list" = "$expected_shards" ] &&
    grep -Fq 'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' <<<"$provisioning_job" &&
    grep -Fq 'name: provisioning-${{ matrix.group }}' <<<"$provisioning_job" &&
-   grep -Fqx '    needs: [provisioning, host-contracts]' <<<"$aggregate_job" &&
+   grep -Fqx '    needs: [changes, provisioning, host-contracts]' <<<"$aggregate_job" &&
    ! grep -Fq 'docs-localization' <<<"$aggregate_job" &&
    grep -Fqx '    name: Host contracts' <<<"$aggregate_job" &&
    grep -Fq 'uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c' <<<"$aggregate_job" &&
@@ -288,6 +288,23 @@ if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 3 --output "$r
   pass "CI retains every runner-level shard and preserves the Host contracts release gate"
 else
   fail "CI retains every runner-level shard and preserves the Host contracts release gate"
+fi
+changes_job="$(awk '/^  changes:$/ { in_job=1 } /^  helper:$/ { exit } in_job' "$CI_WORKFLOW")"
+helper_aggregate_job="$(awk '/^  helper-aggregate:$/ { in_job=1 } in_job' "$CI_WORKFLOW")"
+# Only a pull request that touches none of the suites' inputs may skip them, and only then may the
+# release-gate aggregates accept the skip.
+if grep -Fq 'host=true' <<<"$changes_job" &&
+   grep -Fq 'if [ "$EVENT" = pull_request ]; then' <<<"$changes_job" &&
+   grep -Fq "if: needs.changes.outputs.host == 'true'" <<<"$provisioning_job" &&
+   grep -Fq 'HOST_PATHS: ${{ needs.changes.outputs.host }}' <<<"$aggregate_job" &&
+   grep -Fq 'test "$PROVISIONING_RESULT" = skipped' <<<"$aggregate_job" &&
+   grep -Fqx '    needs: [changes, helper]' <<<"$helper_aggregate_job" &&
+   grep -Fq 'test "$HELPER_RESULT" = skipped' <<<"$helper_aggregate_job" &&
+   grep -Fq 'test "$HELPER_RESULT" = success' <<<"$helper_aggregate_job" &&
+   [ "$(grep -c 'if \[ "$HOST_PATHS" = false \]; then' "$CI_WORKFLOW")" -eq 2 ]; then
+  pass "CI skips provisioning and helper suites only on pull requests that leave their inputs alone"
+else
+  fail "CI skips provisioning and helper suites only on pull requests that leave their inputs alone"
 fi
 if awk '
      /- name: Upload debug APK/ { in_step=1; next }
