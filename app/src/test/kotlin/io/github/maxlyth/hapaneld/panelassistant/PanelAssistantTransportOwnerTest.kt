@@ -295,20 +295,24 @@ class PanelAssistantTransportOwnerTest {
         moved.owner.close()
     }
 
-    @Test fun `a refusal retrying cannot change waits on the slow schedule until the network returns`() = runTest {
-        val harness = harness(repeating = { FakeConnection(Ha.refusing("panel_user_mismatch")) })
+    @Test fun `a panel connects within seconds after its account is confirmed`() = runTest {
+        var confirmed = false
+        val harness = harness(repeating = {
+            FakeConnection(if (confirmed) Ha.accepting() else Ha.refusing("panel_user_mismatch"))
+        })
         harness.owner.replaceDemand(DEMAND)
         runCurrent()
-        assertTrue(harness.owner.status.slowRetry)
+        assertFalse(harness.owner.status.slowRetry)
         assertEquals("panel_user_mismatch", harness.owner.status.refusal)
-
-        advanceTimeBy(10L * 60_000L)
-        runCurrent()
         assertEquals(1, harness.connector.times.size)
-
-        harness.owner.nudge()
+        advanceTimeBy(20_000L)
         runCurrent()
-        assertEquals(2, harness.connector.times.size)
+        assertEquals(listOf(0L, 5_000L, 10_000L, 15_000L, 20_000L), harness.connector.times)
+        confirmed = true
+        advanceTimeBy(5_000L)
+        runCurrent()
+        assertEquals(25_000L, harness.connector.times.last())
+        assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
         harness.owner.close()
     }
 

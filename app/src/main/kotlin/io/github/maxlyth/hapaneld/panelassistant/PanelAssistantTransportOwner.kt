@@ -119,7 +119,8 @@ internal data class PanelAssistantTransportStatus(
  * retries. Unlike the exact-entity stream owner it never parks. Network and protocol failures retry
  * on full-jitter exponential backoff from [backoffBaseMs] to [backoffMaxMs], and the attempt counter
  * resets only on an accepted `hello`. Two conditions move to the fixed [slowRetryMs] schedule instead:
- * a token still rejected after one forced refresh, and a `hello` refusal that retrying cannot change.
+ * a token still rejected after one forced refresh, and terminal `hello` refusals. A panel waiting
+ * for account confirmation retries every 5 seconds, so approval becomes visible promptly.
  * Every wait, slow or fast, ends early on [nudge] (the default network returned) and on a demand
  * change (the credential or identity moved).
  *
@@ -402,7 +403,11 @@ internal class PanelAssistantTransportOwner(
             val delayMs = when (retry) {
                 is Retry.Fast -> {
                     attempt = nextAttempt(attempt)
-                    backoffDelay(attempt)
+                    if (retry.refusal == PanelAssistantTransportProtocol.CODE_PANEL_USER_MISMATCH) {
+                        CONFIRMATION_RETRY_MS
+                    } else {
+                        backoffDelay(attempt)
+                    }
                 }
                 is Retry.Slow -> {
                     attempt = nextAttempt(attempt)
@@ -422,6 +427,7 @@ internal class PanelAssistantTransportOwner(
     }
 
     private fun refusalRetry(code: String, warm: Boolean): Retry = when (code) {
+        PanelAssistantTransportProtocol.CODE_PANEL_USER_MISMATCH -> Retry.Fast(code)
         PanelAssistantTransportProtocol.CODE_UNKNOWN_COMMAND,
         PanelAssistantTransportProtocol.CODE_UNKNOWN_PANEL,
         -> if (warm) Retry.Fast(code) else Retry.Slow(code)
@@ -607,6 +613,7 @@ internal class PanelAssistantTransportOwner(
         private const val HELLO_ID = 1L
         private const val MAX_ATTEMPT = 1_000
         private const val MIN_DELAY_MS = 250L
+        private const val CONFIRMATION_RETRY_MS = 5_000L
 
         const val REFUSAL_AUTH_INVALID = "auth_invalid"
         const val REFUSAL_CREDENTIAL_REJECTED = "credential_rejected"
