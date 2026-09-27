@@ -2,6 +2,7 @@
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -25,14 +26,15 @@ static void stop_server(int signal_number) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2 || argv[1][0] == '\0' || strlen(argv[1]) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
-        fprintf(stderr, "usage: socket-test-server <socket-path>\n");
+    if (argc != 3 || argv[1][0] == '\0' || argv[2][0] == '\0' ||
+        strlen(argv[1]) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+        fprintf(stderr, "usage: socket-test-server <socket-path> <guard-test-parent>\n");
         return 2;
     }
+    if (setenv("HAPANELD_GUARD_TEST_PARENT", argv[2], 1) != 0) return 2;
 
     sysexec_stub_reset();
     sysexec_stub_add_popen("screencap -p", "PNG\nfixture\n", 0);
-    guard_test_reset();
     if (guard_maintenance_init() != 0) return 5;
     input_init();
     gpio_init();
@@ -72,7 +74,6 @@ int main(int argc, char **argv) {
         close(client);
     }
 
-    guard_test_reset();
     unlink(address.sun_path);
     return 0;
 }
