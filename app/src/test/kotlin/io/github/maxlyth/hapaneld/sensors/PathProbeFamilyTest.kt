@@ -10,11 +10,8 @@ import java.net.InetAddress
 /**
  * Which address family the socket actually connected on.
  *
- * One fact, from one callback about one socket, and never an address. Whether the OTHER family also
- * resolved was tried and removed: DNS lookups and socket connects reach us through different layers
- * with no shared identity, so a lookup could never be correlated with the attempt it belonged to,
- * and three review rounds each found a narrower version of the same incoherent pair. Measuring the
- * unused family is the honest way to answer that question, and it is queued separately.
+ * The selected family and same-connection DNS fact come through one callback about the upgraded
+ * socket. Neither fact claims the unused family is reachable.
  */
 class PathProbeFamilyTest {
     private val v4: InetAddress = InetAddress.getByName("127.0.0.1")

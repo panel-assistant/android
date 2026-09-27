@@ -4,6 +4,10 @@ import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import io.github.maxlyth.hapaneld.sensors.HaSocketState
+import io.github.maxlyth.hapaneld.sensors.PathEchoSource
+import io.github.maxlyth.hapaneld.sensors.PathProbeMonitor
+import io.github.maxlyth.hapaneld.sensors.PathProbeRuntime
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -167,7 +171,7 @@ class HaWebSocketClientsFailoverTest {
         val connected = AtomicReference<InetAddress>()
         WsAcceptor(expected).use { server ->
             val client = HaWebSocketClients.client(
-                onRouteConnected = { connected.set(it) },
+                onRouteConnected = { address, _ -> connected.set(address) },
             )
             try {
                 runBlocking {
@@ -185,6 +189,62 @@ class HaWebSocketClientsFailoverTest {
             }
         }
         assertEquals("callback must expose the socket peer used by the WebSocket", expected, connected.get())
+    }
+
+    @Test fun diagnosticsDescribeTheConnectedFamilyAndItsOtherResolvedFamily() {
+        val v4 = InetAddress.getByName("127.0.0.1")
+        val v6 = InetAddress.getByName("::1")
+        val cases = listOf(
+            Triple(v4, listOf(v4, v6), "true"),
+            Triple(v4, listOf(v4), "false"),
+            Triple(v6, listOf(v6, v4), "true"),
+            Triple(v6, listOf(v6), "false"),
+        )
+        val monitor = PathProbeMonitor(source = object : PathEchoSource {
+            override fun burst(
+                target: InetAddress,
+                echoes: Int,
+                perEchoTimeoutMs: Long,
+                nowMs: () -> Long,
+            ) = null
+        })
+        PathProbeRuntime.install(monitor) { 0L }
+        try {
+            // Keep one monitor across replacement connections: old DNS facts must not survive.
+            for ((connectedAddress, answers, otherResolved) in cases) {
+                WsAcceptor(connectedAddress).use { server ->
+                    val lookups = AtomicInteger()
+                    val client = HaWebSocketClients.client(
+                        resolver = { lookups.incrementAndGet(); answers },
+                        onRouteConnected = { address, otherResolved -> monitor.onRouteConnected(address, otherResolved) },
+                    )
+                    try {
+                        runBlocking {
+                            val session = withTimeout(15_000) {
+                                HaWebSocketClients.open(
+                                    client,
+                                    "ws://panel-diag.test:${server.port}/api/websocket",
+                                    16L * 1024 * 1024,
+                                )
+                            }
+                            monitor.onSocketState(HaSocketState.LIVE)
+                            val family = if (connectedAddress == v6) "ipv6" else "ipv4"
+                            val line = PathProbeRuntime.diagnosticLine()
+                            assertTrue(line, line.contains("family=$family other_resolved=$otherResolved"))
+                            val status = org.json.JSONObject(PathProbeRuntime.statusJson())
+                            assertEquals(family, status.getString("family"))
+                            assertEquals(otherResolved.toBoolean(), status.getBoolean("other_resolved"))
+                            assertEquals("diagnostics must not add DNS traffic", 1, lookups.get())
+                            session.close()
+                        }
+                    } finally {
+                        client.close()
+                    }
+                }
+            }
+        } finally {
+            PathProbeRuntime.uninstall(monitor)
+        }
     }
 
     @Test fun routeCallbackIgnoresARejectedWebSocketUpgrade() {
@@ -207,7 +267,7 @@ class HaWebSocketClientsFailoverTest {
                 }
             }.apply { isDaemon = true; start() }
             val client = HaWebSocketClients.client(
-                onRouteConnected = { connected.set(it) },
+                onRouteConnected = { address, _ -> connected.set(address) },
             )
             try {
                 val result = runCatching {
@@ -250,7 +310,7 @@ class HaWebSocketClientsFailoverTest {
                 }
             }.apply { isDaemon = true; start() }
             val client = HaWebSocketClients.client(
-                onRouteConnected = { connected.set(it) },
+                onRouteConnected = { address, _ -> connected.set(address) },
             )
             try {
                 val result = runCatching {
