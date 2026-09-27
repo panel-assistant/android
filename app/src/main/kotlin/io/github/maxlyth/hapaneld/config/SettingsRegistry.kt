@@ -60,7 +60,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 10
+    const val SCHEMA = 11
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_MQTT_ADDRESS_FAMILY = "Automatic"
@@ -404,6 +404,11 @@ object SettingsRegistry {
                     )
                 }
             },
+        ),
+        SettingSpec(
+            key = "dashboard_network_warning", type = SettingType.BOOL, group = "Display",
+            label = "Show network warning on dashboard", default = "true", scope = Scope.DEVICE,
+            help = "Show the network connection warning on this panel's dashboard. Network checks and status remain available when this is off.",
         ),
         SettingSpec(
             key = "auto_brightness", type = SettingType.BOOL, group = "Display",

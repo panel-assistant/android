@@ -4734,6 +4734,22 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.renderer.companion_launcher_hint": {
+      "text": "Turn on the Companion app's launcher option for it to take Home.",
+      "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
+      "surface": "configure",
+      "context": "Configure > Dashboard > Dashboard app: shown only for a selected Home Assistant Companion renderer.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.renderer.builtin"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Companion"
+      ],
+      "softMaxChars": 80,
+      "hardMaxChars": 120
+    },
     "configure.renderer.configured_external": {
       "text": "{package} · configured external renderer",
       "sourceHash": "78d416d2e6869c26000b9ec4728509e68c4ab71fda1939964c10fef6d30eb9bb",
@@ -5953,6 +5969,18 @@
       ],
       "softMaxChars": 76,
       "hardMaxChars": 108
+    },
+    "dashboard.banner.panel_bridge_running": {
+      "text": "A Zigbee bridge is running in Termux on this panel. It may interfere with the panel's Zigbee gateway. Review the Termux bridge before enabling Zigbee gateway features.",
+      "sourceHash": "8f34977d31f04f138f7a744265cece7fa548eb6d9abc3ac55c5a255e009d515a",
+      "surface": "dashboard",
+      "context": "Warning shown only when a running panel-side Termux Zigbee bridge process is observed. It does not claim Termux alone runs a bridge or that the app disabled one.",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": ["Termux", "Zigbee"],
+      "softMaxChars": 170,
+      "hardMaxChars": 230
     },
     "dashboard.banner.proximity_learning.action": {
       "text": "Open proximity setup",
@@ -10150,6 +10178,21 @@
       ],
       "softMaxChars": 74,
       "hardMaxChars": 148
+    },
+    "dashboard.networking.warning_guidance": {
+      "text": "The network warning checks how reliably this panel reaches Home Assistant; it does not identify the cause. Check the panel's Wi-Fi signal, the access point, and load on the Home Assistant host.",
+      "sourceHash": "65ebf087852150d6ad87e5cb5b182d4271170d680c65f12156025885fe9565eb",
+      "surface": "dashboard",
+      "context": "Dashboard Networking card: explain the network warning and first checks without claiming to diagnose its cause.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Wi-Fi"
+      ],
+      "softMaxChars": 220,
+      "hardMaxChars": 300
     },
     "dashboard.noisy.aggregate_only": {
       "text": "Aggregate only — enable automatic entity learning to identify contributors",
@@ -31505,6 +31548,34 @@
       "softMaxChars": 53,
       "hardMaxChars": 71
     },
+    "settings.dashboard_network_warning.help": {
+      "text": "Show the network connection warning on this panel's dashboard. Network checks and status remain available when this is off.",
+      "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
+      "surface": "settings",
+      "context": "Configure > Display > Show network warning on dashboard: help for the default-on panel setting. Turning it off hides only the dashboard warning.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_network_warning.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 160,
+      "hardMaxChars": 220
+    },
+    "settings.dashboard_network_warning.label": {
+      "text": "Show network warning on dashboard",
+      "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
+      "surface": "settings",
+      "context": "Configure > Display: label for the dashboard_network_warning panel setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_network_warning.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 64
+    },
     "settings.dashboard_overscroll.help": {
       "text": "Built-in renderer: allow Android's overscroll stretch/glow when a drag runs past the top or bottom of the dashboard. Off by default (a wall panel rarely scrolls, and the bounce looks out of place). API-only — set true to restore the native effect.",
       "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
@@ -37064,6 +37135,18 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 64
+    },
+    "shell.ha_network.dismiss": {
+      "text": "Dismiss network warning",
+      "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
+      "surface": "shell",
+      "context": "Accessible description for the dashboard network warning's dismiss button; dismisses the current warning incident.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 48
     },
     "shell.hardened.key": {
       "text": "Shielded actions need physical approval on this panel in Hardened mode; they cannot be approved remotely.",

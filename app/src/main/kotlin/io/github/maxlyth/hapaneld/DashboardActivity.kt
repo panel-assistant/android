@@ -228,9 +228,7 @@ class DashboardActivity : AppCompatActivity() {
         // no service owns lifecycle tracking — which hides the bar, so a card cannot outlive the
         // service whose state it was rendering.
         lifecycleBar?.update(io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime.snapshot())
-        // The network-path chip answers the same poke from ITS one owner: one atomic snapshot, null
-        // (hidden) when no service owns the monitor or no socket is held.
-        networkChip?.update(io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime.snapshot())
+        networkChip?.update(io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime.snapshot(), activityConfig.dashboardNetworkWarning)
     }
 
     /** Drop the bar and chip with their container. Every content-view swap must reach here, or they outlive their root. */
@@ -271,6 +269,7 @@ class DashboardActivity : AppCompatActivity() {
     // dead activity. Every posted handler checks this first so nothing runs (or re-schedules) post-destroy.
     @Volatile private var destroyed = false
     private val rendererPowerListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "dashboard_network_warning") runOnUiThread { if (!destroyed) redrawLifecycleBar() }
         if (key == "prevent_idle_dim") {
             runOnUiThread {
                 if (!destroyed && ::activityConfig.isInitialized) applyRendererScreenPolicy()

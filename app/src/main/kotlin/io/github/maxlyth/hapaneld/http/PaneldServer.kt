@@ -5431,6 +5431,16 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         shizukuSnapshot = ShizukuBridge::snapshot,
     ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady, it.shizuku.ready)) }
 
+    private val termuxBridgeCache = Cached(SNAP_TTL_MS) {
+        TermuxBridgeProbe.collect(
+            termuxUid = runCatching<Int?> { appContext.packageManager.getApplicationInfo("com.termux", 0).uid }
+                .recoverCatching { if (it is android.content.pm.PackageManager.NameNotFoundException) null else throw it },
+            routes = { privilegeObservation().let { it.directSuReady to it.helperRootReady } },
+            rootRun = Su::runOutputIsolatedBounded,
+            helperRun = { HelperClient.sendBytes(it)?.toString(Charsets.UTF_8) },
+        )
+    }
+
     private val snapCache = Cached(SNAP_TTL_MS) {
         val privilege = privilegeObservation()
         val management = managementProjection(privilege)
@@ -5470,6 +5480,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             wifiStabilityChronic = management.wifiChronic,
             haNetwork = HaNetworkPathRuntime.diagnosticLine(),
             haPathProbe = PathProbeRuntime.diagnosticLine(),
+            termuxBridge = termuxBridgeCache.get(),
         )
     }
 
@@ -6106,6 +6117,9 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             }.orEmpty()
         }
         val haSetup = if (haSignInNeededForEffectiveDashboard()) haSignInBanner(strings) else ""
+        val termuxBridge = if (termuxBridgeCache.get() == TermuxBridgeProbe.State.RUNNING) {
+            """<div class="setup">⚠ ${esc(strings.get("dashboard.banner.panel_bridge_running"))}</div>"""
+        } else ""
         val proximityState = JSONObject(sensors.proximityJson())
         val proximityLearning = ProximityStatusBanner.titleKey(
             enabled = config.wakeOnWave,
@@ -6135,7 +6149,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             strings = strings,
         ) +
             adHocWarnings(s, companionServersForRender(), inlineRepair = false, strings = strings) +
-            findings.joinToString("") { bannerFor(it, strings) } + proximityLearning + haSetup + mqttProgress + setup
+            findings.joinToString("") { bannerFor(it, strings) } + termuxBridge + proximityLearning + haSetup + mqttProgress + setup
     }
 
     private fun effectiveDashboardIsBuiltin(): Boolean =
@@ -6796,7 +6810,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
 <div id="ctlzone">${controlsHtml(s, strings)}</div></div>
 ${tcard("infotbl", strings.get("dashboard.card.panel_information"), s?.let { factRowsHtml(it, infoKeys(it), h, strings) })}
 $shotCard
-${tcard("nettbl", strings.get("dashboard.card.networking"), s?.let { factRowsHtml(it, NET_KEYS, h, strings) })}
+${tcard("nettbl", strings.get("dashboard.card.networking"), s?.let { factRowsHtml(it, NET_KEYS, h, strings) }, post = """<p class="note">${esc(strings.get("dashboard.networking.warning_guidance"))}</p>""")}
 ${tcard("proftbl", strings.get("dashboard.card.profile"), s?.let { factRowsHtml(it, profileFactKeys(profile, it.facts), h, strings) }, post = profNote)}
 ${tcard("contexttbl", strings.get("dashboard.card.runtime_diagnostics"), s?.let { contextRowsHtml(it, h, strings) })}
 ${tcard("captbl", strings.get("dashboard.card.capabilities"), s?.let { capRowsHtml(it.capabilityRows, strings) }, post = capNote)}

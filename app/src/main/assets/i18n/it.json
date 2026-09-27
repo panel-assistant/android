@@ -1803,6 +1803,11 @@
       "state": "machine-cross-checked",
       "text": "Cancellazione…"
     },
+    "configure.renderer.companion_launcher_hint": {
+      "text": "Attiva l’opzione di avvio dell’app Companion perché possa gestire Home.",
+      "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
+      "state": "machine-cross-checked"
+    },
     "configure.renderer.configured_external": {
       "sourceHash": "78d416d2e6869c26000b9ec4728509e68c4ab71fda1939964c10fef6d30eb9bb",
       "state": "machine-cross-checked",
@@ -2227,6 +2232,11 @@
       "sourceHash": "92a39c3ea0af40d258a4b3cf84fc30e00d5b0432fc9ac43c3eca809119cd18a6",
       "state": "machine-cross-checked",
       "text": "MQTT è configurato. Ora scegli un renderer per la dashboard."
+    },
+    "dashboard.banner.panel_bridge_running": {
+      "text": "Su questo pannello è in esecuzione un bridge Zigbee in Termux. Potrebbe interferire con il gateway Zigbee del pannello. Controlla il bridge di Termux prima di attivare le funzioni del gateway Zigbee.",
+      "sourceHash": "8f34977d31f04f138f7a744265cece7fa548eb6d9abc3ac55c5a255e009d515a",
+      "state": "machine-cross-checked"
     },
     "dashboard.banner.proximity_learning.action": {
       "sourceHash": "f9d5be8cab3ce30fbc94c115eb102ec4df35d57cb57e2f8d3b070f303e79de2f",
@@ -3637,6 +3647,11 @@
       "sourceHash": "49b161284bad6dc17436604196248af6d170ad4534da706a03dfcfdbcf4c994f",
       "state": "machine-cross-checked",
       "text": "Cosa mostrano ora le entità di controllo di Home Assistant."
+    },
+    "dashboard.networking.warning_guidance": {
+      "sourceHash": "65ebf087852150d6ad87e5cb5b182d4271170d680c65f12156025885fe9565eb",
+      "state": "machine-cross-checked",
+      "text": "L’avviso di rete verifica con quale affidabilità questo pannello raggiunge Home Assistant; non ne individua la causa. Controlla il segnale Wi-Fi del pannello, il punto di accesso e il carico dell’host Home Assistant."
     },
     "dashboard.noisy.aggregate_only": {
       "sourceHash": "f774453f78cf65bf8e652f1c7a59ef1e7d41c40e99af8e5a796dc35780f3cf92",
@@ -10403,6 +10418,16 @@
       "state": "machine-cross-checked",
       "text": "Nascondi navigazione Home Assistant (nativa)"
     },
+    "settings.dashboard_network_warning.help": {
+      "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
+      "state": "machine-cross-checked",
+      "text": "Mostra l’avviso di connessione di rete sulla dashboard di questo pannello. I controlli e lo stato della rete restano disponibili anche quando l’opzione è disattivata."
+    },
+    "settings.dashboard_network_warning.label": {
+      "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
+      "state": "machine-cross-checked",
+      "text": "Mostra avviso di rete sulla dashboard"
+    },
     "settings.dashboard_overscroll.help": {
       "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
       "state": "machine-cross-checked",
@@ -12087,6 +12112,11 @@
       "sourceHash": "69474ee0f60dbce1020a6bcd6db49daaeeeb20bf7601151aba213b6fd98d66a6",
       "state": "machine-cross-checked",
       "text": "ha-paneld su GitHub"
+    },
+    "shell.ha_network.dismiss": {
+      "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
+      "state": "machine-cross-checked",
+      "text": "Chiudi avviso di rete"
     },
     "shell.hardened.key": {
       "sourceHash": "1cad2d18d4f0144e285115b035fa35f596fd66292288a07b1e25dd45b569f51a",

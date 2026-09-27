@@ -151,6 +151,8 @@ internal sealed interface HaLifecycleSignal {
 
     /** This session holds a live lifecycle subscription, so a startup will announce itself. */
     data object Established : HaLifecycleSignal
+    /** The link or watch was replaced; the predecessor's claims no longer describe this endpoint. */
+    data object Retired : HaLifecycleSignal
     data class Transport(val phase: HaExactEntityStreamPhase) : HaLifecycleSignal
 }
 
@@ -369,6 +371,7 @@ internal class HaExactEntityStreamOwner(
         val presence: Set<String>,
         val watchRegistry: Boolean = false,
         val watchLifecycle: Boolean = false,
+        val haLink: HaAuthOwner? = null,
     ) {
         val union: Set<String> = buildSet {
             ambient?.let(::add)
@@ -416,6 +419,9 @@ internal class HaExactEntityStreamOwner(
             val target: HaLifecycleObserver,
             val signal: HaLifecycleSignal,
         ) : PendingCallback
+
+        /** Ordered after an in-flight old callback, but not discarded by a later generation. */
+        data class LifecycleRetired(val target: HaLifecycleObserver) : PendingCallback
     }
 
     private val generation = AtomicLong()
@@ -545,6 +551,11 @@ internal class HaExactEntityStreamOwner(
         replaceRequest { it.copy(watchLifecycle = enabled) }
     }
 
+    /** A changed Home Assistant credential owner retires the socket selected under the old link. */
+    fun replaceHaLink(next: HaAuthOwner) {
+        replaceRequest { it.copy(haLink = next) }
+    }
+
     fun replaceAmbientSource(nextEntityId: String?) {
         val normalized = nextEntityId?.trim()?.takeIf(String::isNotEmpty)?.also(::validateEntityId)
         replaceRequest { it.copy(ambient = normalized) }
@@ -589,24 +600,32 @@ internal class HaExactEntityStreamOwner(
     private fun replaceRequest(transform: (Request) -> Request) {
         var run = 0L
         var next = Request(null, emptySet())
-        var changed = false
         var demandChanged = false
+        var drainLifecycle = false
         var pathObserver: HaNetworkPathObserver? = null
         synchronized(lock) {
             check(!stopped) { "exact entity stream owner is closed" }
             next = transform(request)
             if (next == request && sourceJob?.isActive == true) return
-            changed = true
             demandChanged = next.active != request.active
+            val retireLifecycle = request.watchLifecycle &&
+                (!next.watchLifecycle || next.haLink != request.haLink)
             pathObserver = networkPathObserver
             sourceJob?.cancel()
             sourceJob = null
             request = next
             run = generation.incrementAndGet()
             resetPresenceLocked(next.presence)
+            if (retireLifecycle) lifecycleObserver?.let {
+                callbackQueue.addLast(PendingCallback.LifecycleRetired(it))
+                if (!drainingCallbacks) {
+                    drainingCallbacks = true
+                    drainLifecycle = true
+                }
+            }
             if (next.active) sourceJob = scope.launch { runSource(run, next) }
         }
-        if (!changed) return
+        if (drainLifecycle) drainCallbacks()
         // Demand on or off is what makes the path verdict reportable; a change of union or watch
         // bits with the socket still wanted is not a demand change and is not announced.
         if (demandChanged) {
@@ -1358,6 +1377,9 @@ internal class HaExactEntityStreamOwner(
                             is PendingCallback.Lifecycle -> candidate.takeIf {
                                 !stopped && generation.get() == it.run && lifecycleObserver === it.target
                             }
+                            is PendingCallback.LifecycleRetired -> candidate.takeIf {
+                                !stopped && lifecycleObserver === it.target
+                            }
                         }
                     }
                     if (accepted == null) drainingCallbacks = false
@@ -1371,6 +1393,9 @@ internal class HaExactEntityStreamOwner(
                     is PendingCallback.Presence -> safeCallback { next.target.onSnapshot(next.snapshot) }
                     is PendingCallback.RegistryChanged -> safeCallback(next.target)
                     is PendingCallback.Lifecycle -> safeCallback { next.target.onSignal(next.signal) }
+                    is PendingCallback.LifecycleRetired -> safeCallback {
+                        next.target.onSignal(HaLifecycleSignal.Retired)
+                    }
                 }
             }
         } catch (error: Error) {

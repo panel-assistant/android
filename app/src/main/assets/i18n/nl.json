@@ -1463,6 +1463,11 @@
    "sourceHash": "9a81378b00d70e669413ed91a709d5b23dd10a3f2d38cb15243bdc97dccb2ac6",
    "state": "machine-cross-checked"
   },
+  "configure.renderer.companion_launcher_hint": {
+   "text": "Schakel de launcheroptie van de Companion-app in zodat deze Home kan overnemen.",
+   "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
+   "state": "machine-draft"
+  },
   "configure.renderer.configured_external": {
    "text": "{package} · Geconfigureerde externe renderer",
    "sourceHash": "78d416d2e6869c26000b9ec4728509e68c4ab71fda1939964c10fef6d30eb9bb",
@@ -1877,6 +1882,11 @@
    "text": "MQTT is geconfigureerd. Volgende stap: kies een dashboard-renderer.",
    "sourceHash": "92a39c3ea0af40d258a4b3cf84fc30e00d5b0432fc9ac43c3eca809119cd18a6",
    "state": "machine-cross-checked"
+  },
+  "dashboard.banner.panel_bridge_running": {
+    "text": "Er draait een Zigbee-bridge in Termux op dit paneel. Deze kan de Zigbee-gateway van het paneel verstoren. Controleer de Termux-bridge voordat je Zigbee-gatewayfuncties inschakelt.",
+    "sourceHash": "8f34977d31f04f138f7a744265cece7fa548eb6d9abc3ac55c5a255e009d515a",
+    "state": "machine-cross-checked"
   },
   "dashboard.banner.proximity_learning.action": {
    "text": "Nabijheidsinstelling openen",
@@ -3276,6 +3286,11 @@
   "dashboard.live_state.note": {
    "text": "Wat de besturingsentiteiten van Home Assistant op dit moment tonen.",
    "sourceHash": "49b161284bad6dc17436604196248af6d170ad4534da706a03dfcfdbcf4c994f",
+   "state": "machine-cross-checked"
+  },
+  "dashboard.networking.warning_guidance": {
+   "text": "De netwerkwaarschuwing controleert hoe betrouwbaar dit paneel Home Assistant kan bereiken; ze stelt de oorzaak niet vast. Controleer het Wi-Fi-signaal van het paneel, het toegangspunt en de belasting van de Home Assistant-host.",
+   "sourceHash": "65ebf087852150d6ad87e5cb5b182d4271170d680c65f12156025885fe9565eb",
    "state": "machine-cross-checked"
   },
   "dashboard.noisy.aggregate_only": {
@@ -9163,6 +9178,16 @@
    "sourceHash": "a305339fcfa063612b7ae7bbb7369fec0ca25ee457ccfcb3df53c9b52060b106",
    "state": "machine-cross-checked"
   },
+  "settings.dashboard_network_warning.help": {
+   "text": "Toon de waarschuwing voor de netwerkverbinding op het dashboard van dit paneel. Netwerkcontroles en de status blijven beschikbaar als deze optie uitstaat.",
+   "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
+   "state": "machine-cross-checked"
+  },
+  "settings.dashboard_network_warning.label": {
+   "text": "Netwerkwaarschuwing op dashboard tonen",
+   "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
+   "state": "machine-cross-checked"
+  },
   "settings.dashboard_overscroll.help": {
    "text": "Ingebouwde renderer: sta het overscroll-effect (uitrekken/gloed) van Android toe wanneer een sleepbeweging voorbij de boven- of onderkant van het dashboard gaat. Standaard uit (een wandpaneel scrollt zelden en het terugveren ziet er misplaatst uit). Alleen via de API — stel in op true om het native effect te herstellen.",
    "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
@@ -10846,6 +10871,11 @@
   "shell.github.title": {
    "text": "ha-paneld op GitHub",
    "sourceHash": "69474ee0f60dbce1020a6bcd6db49daaeeeb20bf7601151aba213b6fd98d66a6",
+   "state": "machine-cross-checked"
+  },
+  "shell.ha_network.dismiss": {
+   "text": "Netwerkwaarschuwing sluiten",
+   "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
    "state": "machine-cross-checked"
   },
   "shell.hardened.key": {
