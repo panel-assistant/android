@@ -936,6 +936,10 @@
    "ts": 1788684596,
    "wb": "20260905164717"
   },
+  "https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.5.1_4.8.0-diff.zip": {
+   "ts": 1790503810,
+   "wb": "20260920092534"
+  },
   "https://global-otadl2bsy.coolkit.cc/nspanel-pro/rom-diff/52/CK_4.6.0_4.8.0-diff.zip": {
    "ts": 1787461437,
    "wb": "20260819134646"
@@ -986,8 +990,8 @@
   }
  },
  "page": {
-  "job": "spn2-8cd254f2322be3b3631531d76097c1dde396b6e6",
+  "job": "spn2-b72c964482262422e3ec8e73c7b06d66aa47ae6b",
   "ok": true,
-  "ts": 1790451197
+  "ts": 1790503805
  }
 }
