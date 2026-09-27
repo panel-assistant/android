@@ -107,17 +107,103 @@ class HaExactEntityStreamOwnerTest {
         owner.close()
     }
 
-    @Test fun `disabling the lifecycle watch releases the socket it was holding open`() = runTest {
+    @Test fun `lifecycle socket follows a changed Home Assistant link without an app restart`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val first = FakeConnection()
+        val second = FakeConnection()
+        val transport = FakeTransport(first, second)
+        var link = OWNER
+        val owner = HaExactEntityStreamOwner(
+            scope = this,
+            auth = HaApiSessionProvider { HaApiSession(link.url, "token", owner = link) },
+            transport = transport,
+            workerDispatcher = dispatcher,
+        )
+
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals(listOf(OWNER.url), transport.baseUrls)
+
+        link = OWNER.copy(url = "https://new-ha.example")
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals("the old lifecycle socket must close", 1, first.closeCount)
+        assertEquals(listOf(OWNER.url, link.url), transport.baseUrls)
+
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals("an unchanged link must not reconnect", 2, transport.subscribeCount)
+        owner.close()
+    }
+
+    @Test fun `old socket STOP cannot claim shutdown for a replacement link that fails to connect`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val first = FakeConnection()
+        val transport = FakeTransport(first)
+        val coordinator = HaLifecycleCoordinator(nowMs = { testScheduler.currentTime })
+        var link = OWNER
+        var deliveredStops = 0
+        lateinit var owner: HaExactEntityStreamOwner
+        owner = HaExactEntityStreamOwner(
+            scope = this,
+            auth = HaApiSessionProvider { HaApiSession(link.url, "token", owner = link) },
+            transport = transport,
+            workerDispatcher = dispatcher,
+        )
+        owner.bindLifecycle { signal ->
+            if (signal == HaLifecycleSignal.Event(HaLifecycleEvent.STOP)) {
+                deliveredStops++
+                // This callback has already been dequeued. Replace its socket before passing the
+                // old STOP to the real coordinator, so cancellation cannot remove the callback.
+                link = OWNER.copy(url = "https://new-ha.example")
+                transport.protocolSubscriptionFailures = 1
+                owner.replaceHaLink(link)
+                // An adjacent demand refresh must not make the queued retirement stale.
+                owner.replacePresenceRegistryWatch(true)
+            }
+            coordinator.onSignal(signal)
+        }
+
+        owner.replaceHaLink(link)
+        owner.replaceLifecycleWatch(true)
+        runCurrent()
+        assertEquals(listOf(OWNER.url), transport.baseUrls)
+        assertEquals(HaLifecycleState.NORMAL, coordinator.snapshot().state)
+
+        first.messages.trySend(HaExactSocketMessage.Lifecycle(HaLifecycleEvent.STOP))
+        runCurrent()
+
+        assertEquals("the old STOP must actually reach the observer", 1, deliveredStops)
+        assertEquals("the replacement endpoint must be attempted", listOf(OWNER.url, link.url), transport.baseUrls)
+        assertEquals("the old connection must close", 1, first.closeCount)
+        assertEquals(
+            "a failed replacement reports loss, never the old server's shutdown",
+            HaLifecycleState.CONNECTION_LOST,
+            coordinator.snapshot().state,
+        )
+        owner.close()
+    }
+
+    @Test fun `disabling the lifecycle watch retires its claim and releases its socket`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val connection = FakeConnection()
         val transport = FakeTransport(connection)
         val observer = RecordingObserver()
         val owner = owner(dispatcher, transport, observer)
+        val coordinator = HaLifecycleCoordinator(nowMs = { testScheduler.currentTime })
+        owner.bindLifecycle(coordinator)
 
         owner.replaceLifecycleWatch(true)
         runCurrent()
+        connection.messages.trySend(HaExactSocketMessage.Lifecycle(HaLifecycleEvent.STOP))
+        runCurrent()
+        assertEquals(HaLifecycleState.SHUTTING_DOWN, coordinator.snapshot().state)
         owner.replaceLifecycleWatch(false)
         runCurrent()
+        assertEquals(HaLifecycleState.NORMAL, coordinator.snapshot().state)
         advanceTimeBy(24L * 60L * 60_000L)
         runCurrent()
 
@@ -867,6 +953,7 @@ class HaExactEntityStreamOwnerTest {
         val subscriptions = mutableListOf<Set<String>>()
         val registryWatches = mutableListOf<Boolean>()
         val lifecycleWatches = mutableListOf<Boolean>()
+        val baseUrls = mutableListOf<String>()
 
         override suspend fun subscribe(
             baseUrl: String,
@@ -892,6 +979,7 @@ class HaExactEntityStreamOwnerTest {
             watchLifecycle: Boolean,
         ): HaExactEntityConnection {
             subscribeCount++
+            baseUrls += baseUrl
             subscriptions += entityIds
             registryWatches += watchRegistry
             lifecycleWatches += watchLifecycle
