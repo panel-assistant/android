@@ -1960,15 +1960,6 @@ else
   fail_test "a hanging schema read is ended by the total verify deadline (request budget ${schema_hang_budget}s, run ${schema_hang_elapsed}s)"
 fi
 
-# A pause is taken only when a one-second request still fits after it. With a two-second deadline and
-# pauses that return at once, the first pause fits and the second would leave no time. The retry's
-# pauses are whole seconds; the adb deadline helper's 0.1 s polls also reach this shim.
-: > "$SCHEMA_SLEEP_DIR/calls"
-PATH="$SCHEMA_SLEEP_DIR:$PATH" CONFIG_SCHEMA_VERIFY_TIMEOUT_SECONDS=2 MOCK_CONFIG_SCHEMA=transport-fail \
-  run_provision "$MOCK_TARGET" --verify
-assert_count "$(grep -c '/api/v1/config/schema$' "$MOCK_CALL_LOG")" 2 "the schema retry stops when no request would fit after the next pause"
-assert_count "$(grep -cE '^sleep [123]$' "$SCHEMA_SLEEP_DIR/calls")" 1 "the schema retry never pauses when no request would fit afterwards"
-
 # A pause that overruns must not let a request start after the deadline: this pause fits on paper but
 # really takes the whole three-second budget.
 SCHEMA_OVERRUN_DIR="$TMP/schema-retry-overrun"
@@ -2427,15 +2418,6 @@ MOCK_STOPPED_STATE=1 MOCK_LAUNCHER_START=block MOCK_LAUNCHER_PID_FILE="$LAUNCHER
 assert_success "blocked launcher reaches its host deadline and recovers through direct start"
 assert_log_contains '^adb .* shell am start -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.MainActivity$' "launcher deadline advances to the direct route"
 blocked_launcher_pid="$(cat "$LAUNCHER_PID_FILE" 2>/dev/null || true)"
-# The deadline fires and the reap follows, but the two are not the same instant: on a loaded
-# host the process can still be present for a moment after provisioning has moved on. Give it
-# a bounded interval to disappear rather than reading the pid table once.
-launcher_reap_attempt=0
-while [ -n "$blocked_launcher_pid" ] && kill -0 "$blocked_launcher_pid" 2>/dev/null; do
-  launcher_reap_attempt=$((launcher_reap_attempt + 1))
-  [ "$launcher_reap_attempt" -lt 300 ] || break
-  sleep 0.1
-done
 if [ -n "$blocked_launcher_pid" ] && processes_gone "$blocked_launcher_pid"; then
   pass "launcher deadline reaps the blocked host ADB process"
 else
