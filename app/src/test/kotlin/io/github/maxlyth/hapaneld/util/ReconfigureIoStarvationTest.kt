@@ -1,4 +1,4 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.util
 
 import io.github.maxlyth.hapaneld.util.LatestOperationPolicy
 import io.github.maxlyth.hapaneld.util.LatestOperationTimeoutPolicy
