@@ -156,4 +156,10 @@ class SetupBannerTest {
             SetupBanner.progress("host · connected, announcing…", brokerConfigured = true),
         )
     }
+
+    /** Panel Assistant carries a natively run panel, so no broker is not a setup need. */
+    @Test fun panelAssistantNative_withoutBroker_needsNothing() {
+        assertTrue(SetupBanner.needs("disabled", brokerConfigured = false, panelAssistantNative = true).isEmpty())
+        assertEquals(listOf("MQTT configuration"), SetupBanner.needs("disabled", brokerConfigured = false))
+    }
 }

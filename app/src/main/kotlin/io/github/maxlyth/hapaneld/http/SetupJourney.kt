@@ -227,6 +227,11 @@ object SetupJourney {
         val proof: RenderProof = RenderProof(),
         /** Fingerprint of the CURRENT configuration, compared against [RenderProof.fingerprint]. */
         val currentFingerprint: String = "",
+        /**
+         * Panel Assistant granted this panel native authority: its entities and commands travel over Panel
+         * Assistant's connection, so the MQTT steps do not apply unless the owner configured a broker anyway.
+         */
+        val panelAssistantNative: Boolean = false,
     )
 
     private val BLOCKING = setOf(
@@ -284,6 +289,13 @@ object SetupJourney {
     }
 
     private fun mqttSteps(inputs: Inputs): List<Step> {
+        if (inputs.panelAssistantNative && !inputs.brokerConfigured) {
+            return listOf(
+                Step(Stage.MQTT_BROKER, Status.SKIPPED, blocking = false),
+                Step(Stage.MQTT_CREDENTIALS, Status.SKIPPED, blocking = false),
+                Step(Stage.MQTT_CONNECTION, Status.SKIPPED, blocking = false),
+            )
+        }
         if (inputs.mqtt == MqttSetupState.DISABLED && !inputs.brokerConfigured) {
             return listOf(
                 Step(Stage.MQTT_BROKER, Status.BLOCKED, blocking = false),
@@ -359,17 +371,14 @@ object SetupJourney {
     }
 
     /**
-     * Home Assistant's URL and credential are needed only by the built-in renderer. A foreign renderer
-     * owns its own connection and sign-in, so demanding ours would invent work the user cannot complete
-     * and would never mark the journey done.
+     * Home Assistant's address and this panel's own sign-in, asked whatever renders the dashboard.
+     *
+     * A foreign renderer such as the Companion app signs itself in, and these steps used to be skipped for
+     * it. But Panel Assistant's connection is this app's own signed-in session, so a panel set up that way
+     * could never run under Panel Assistant: its owner skipped the MQTT page, the wizard ended, and nothing
+     * connected (maintainer, a Companion-app panel on a Home Assistant without MQTT, 2026-09-27).
      */
     private fun haSteps(inputs: Inputs): List<Step> {
-        if (inputs.renderer !is RendererChoice.Builtin) {
-            return listOf(
-                Step(Stage.HA_URL, Status.SKIPPED, blocking = true),
-                Step(Stage.HA_CREDENTIALS, Status.SKIPPED, blocking = true),
-            )
-        }
         val url = Step(
             Stage.HA_URL,
             if (inputs.haUrl.isNotBlank()) Status.SATISFIED else Status.BLOCKED,
