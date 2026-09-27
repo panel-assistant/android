@@ -34,7 +34,6 @@ object EntityFilterProtocol {
         "exclude_domains", "exclude_entities", "exclude_entity_globs",
     )
 
-    data class Mutation(val text: String, val modified: Boolean)
     data class Update(val enabled: Boolean?, val entityIds: List<String>?, val mode: String? = null)
     data class TrafficBatch(
         val sampleMs: Long,
@@ -101,20 +100,6 @@ object EntityFilterProtocol {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(normalized.joinToString("\n").toByteArray(Charsets.UTF_8))
         return digest.take(8).joinToString("") { "%02x".format(it) }
-    }
-
-    /**
-     * Add an exact allow-list only to the frontend's unfiltered `subscribe_entities` command. Existing
-     * filters are passed through byte-for-byte: the wrapper must never broaden a caller's narrower request.
-     * Every other command, including the token-bearing auth message, is returned without re-encoding.
-     */
-    fun injectSubscription(text: String, entityIds: List<String>): Mutation {
-        if (text.length > MAX_TEXT_FRAME_CHARS) return Mutation(text, false)
-        val obj = runCatching { JSONObject(text) }.getOrNull() ?: return Mutation(text, false)
-        if (obj.optString("type") != "subscribe_entities") return Mutation(text, false)
-        if (FILTER_KEYS.any(obj::has)) return Mutation(text, false)
-        obj.put("entity_ids", JSONArray(entityIds.ifEmpty { listOf(EMPTY_SUBSCRIPTION_ENTITY_ID) }))
-        return Mutation(obj.toString(), true)
     }
 
     /** Convert the configured HA HTTP(S) base URL to its WebSocket API URL. */
