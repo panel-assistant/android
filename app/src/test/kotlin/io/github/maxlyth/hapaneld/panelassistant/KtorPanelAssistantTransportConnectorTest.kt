@@ -52,6 +52,7 @@ class KtorPanelAssistantTransportConnectorTest {
                 ),
                 backoffBaseMs = 50L,
                 backoffMaxMs = 200L,
+                observeForHello = { true },
                 log = {},
             )
             owner.replaceDemand(PanelAssistantTransportDemand(OWNER, IDENTITY))
