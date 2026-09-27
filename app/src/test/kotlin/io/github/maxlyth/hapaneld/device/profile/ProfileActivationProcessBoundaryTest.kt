@@ -1,5 +1,10 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.device.profile
 
+import io.github.maxlyth.hapaneld.ProcessBoundaryCommitment
+import io.github.maxlyth.hapaneld.ServiceBoundaryProof
+import io.github.maxlyth.hapaneld.ServiceGenerationAdmission
+import io.github.maxlyth.hapaneld.ServiceTeardownBoundary
+import io.github.maxlyth.hapaneld.ServiceTeardownDisposition
 import io.github.maxlyth.hapaneld.device.profile.DeviceFacts
 import io.github.maxlyth.hapaneld.device.profile.EvdevDeviceInspector
 import io.github.maxlyth.hapaneld.device.profile.ProfileActivationPhase
@@ -12,6 +17,7 @@ import io.github.maxlyth.hapaneld.device.profile.ProfileSelection
 import io.github.maxlyth.hapaneld.device.profile.ProfileYaml
 import io.github.maxlyth.hapaneld.device.profile.RuntimeProfileRegistry
 import io.github.maxlyth.hapaneld.device.profile.testProfileDocument
+import io.github.maxlyth.hapaneld.runServiceBoundary
 import java.io.File
 import java.nio.file.Files
 import org.junit.After

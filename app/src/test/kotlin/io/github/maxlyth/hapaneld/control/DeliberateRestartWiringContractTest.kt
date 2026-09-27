@@ -1,4 +1,4 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.control
 
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import org.junit.Assert.assertEquals
