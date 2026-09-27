@@ -1803,6 +1803,11 @@
       "state": "machine-cross-checked",
       "text": "Borrando…"
     },
+    "configure.renderer.companion_launcher_hint": {
+      "text": "Activa la opción de lanzador de la aplicación Companion para que pueda tomar Inicio.",
+      "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
+      "state": "machine-cross-checked"
+    },
     "configure.renderer.configured_external": {
       "sourceHash": "78d416d2e6869c26000b9ec4728509e68c4ab71fda1939964c10fef6d30eb9bb",
       "state": "machine-cross-checked",

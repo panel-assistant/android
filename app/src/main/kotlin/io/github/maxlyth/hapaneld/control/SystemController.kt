@@ -36,7 +36,13 @@ class SystemController(
     // Foreground state of the built-in renderer (our own activity) — seamed so the `builtin` dashboard
     // path stays unit-testable without loading an Android Activity. Defaults to the live process flag.
     private val builtinForeground: () -> Boolean = { BuiltinDashboard.foreground },
+    // This is the real Log.w sink by default; the focused controller test observes the same emitted line.
+    private val homeWarning: (String) -> Unit = { Log.w(TAG, it) },
 ) {
+
+    // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can
+    // report again if it becomes unavailable later, without turning a steady state into log noise.
+    private var missingHomeTarget: String? = null
 
     private enum class PrivilegedStartResult { STARTED, BLOCKED, FAILED }
 
@@ -307,15 +313,23 @@ class SystemController(
         val target = resolveDashboard(dashboardPkg)
         // Only claim HOME for the built-in renderer once it's actually renderable (an HA URL is set) —
         // else DashboardActivity would be the home yet immediately hand off, churning HOME needlessly.
-        if (isBuiltin(target)) { if (builtinReady) ensureBuiltinHome(); return }
-        if (target.isBlank()) { Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
+        if (isBuiltin(target)) { missingHomeTarget = null; if (builtinReady) ensureBuiltinHome(); return }
+        if (target.isBlank()) { missingHomeTarget = null; Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
         val current = env.defaultHome()?.pkg
-        if (current == target) return                                   // already correct
+        if (current == target) { missingHomeTarget = null; return }     // already correct
         // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
         // may previously have assigned, so switching between installed renderer variants must reclaim it.
-        if (current != null && current != "android" && current != env.ownPackage && current !in KNOWN_RENDERER_HOMES) return
+        if (current != null && current != "android" && current != env.ownPackage && current !in KNOWN_RENDERER_HOMES) {
+            missingHomeTarget = null
+            return
+        }
         val comp = env.homeActivities().firstOrNull { it.pkg == target }?.component
-        if (comp == null) { Log.w(TAG, "ensureHome: $target has no HOME activity"); return }
+        if (comp == null) {
+            if (missingHomeTarget != target) homeWarning("ensureHome: $target has no HOME activity")
+            missingHomeTarget = target
+            return
+        }
+        missingHomeTarget = null
         Log.i(TAG, "ensureHome: default home was '$current' -> $comp")
         setHomeActivity(comp)
     }

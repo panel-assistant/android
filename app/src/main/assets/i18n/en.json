@@ -4734,6 +4734,22 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.renderer.companion_launcher_hint": {
+      "text": "Turn on the Companion app's launcher option for it to take Home.",
+      "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
+      "surface": "configure",
+      "context": "Configure > Dashboard > Dashboard app: shown only for a selected Home Assistant Companion renderer.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.renderer.builtin"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Companion"
+      ],
+      "softMaxChars": 80,
+      "hardMaxChars": 120
+    },
     "configure.renderer.configured_external": {
       "text": "{package} · configured external renderer",
       "sourceHash": "78d416d2e6869c26000b9ec4728509e68c4ab71fda1939964c10fef6d30eb9bb",

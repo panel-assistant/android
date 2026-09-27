@@ -44,10 +44,11 @@ class SystemControllerTest {
         su: Boolean = true,
         suOut: Map<String, String> = emptyMap(),
         builtinForeground: Boolean = false,
+        homeWarnings: MutableList<String>? = null,
     ): Triple<SystemController, FakeRootShell, FakeDaemon> {
         val root = FakeRootShell(outputs = suOut, runResult = su)
         val d = FakeDaemon(replies = daemon ?: emptyMap(), available = daemon != null)
-        return Triple(SystemController(env, root, d, builtinForeground = { builtinForeground }), root, d)
+        return Triple(SystemController(env, root, d, builtinForeground = { builtinForeground }, homeWarning = { homeWarnings?.add(it) }), root, d)
     }
 
     private val BUILTIN = SystemController.BUILTIN_DASHBOARD
@@ -512,6 +513,23 @@ class SystemControllerTest {
         val (c, root, d) = sc(env, daemon = null, su = true)
         c.ensureDashboardHome(MIN)
         assertTrue("target has no HOME activity → nothing set", root.ran.isEmpty() && d.sent.isEmpty())
+    }
+
+    @Test fun ensureHomeLogsMissingCompanionAliasOnceUntilItsStateChanges() {
+        val env = FakeSystemEnv(installed = setOf(MIN), homes = emptyList(), default = ActivityRef("android", "R"))
+        val warnings = mutableListOf<String>()
+        val (controller, root, daemon) = sc(env, daemon = null, homeWarnings = warnings)
+
+        controller.ensureDashboardHome(MIN)
+        controller.ensureDashboardHome(MIN)
+        assertEquals(listOf("ensureHome: $MIN has no HOME activity"), warnings)
+        assertTrue("a disabled alias never receives Home", root.ran.isEmpty() && daemon.sent.isEmpty())
+
+        env.homes = listOf(ActivityRef(MIN, "Home"))
+        controller.ensureDashboardHome(MIN)
+        env.homes = emptyList()
+        controller.ensureDashboardHome(MIN)
+        assertEquals("the warning returns after the alias state changes", 2, warnings.size)
     }
 
     // ---------- launchHome ----------

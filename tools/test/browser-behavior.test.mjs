@@ -1375,6 +1375,7 @@ browserTest('Configure renderer picker reflects the installed Companion catalogu
 
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
   assert.deepEqual(await pickerOptions(), [auto, builtin], 'neither Companion variant installed');
+  assert.equal(await page.locator('.companion-renderer-hint').count(), 0, 'Auto has no Companion-only hint');
   await assertCatalogue([full], [auto, builtin, fullOption]);
   await assertCatalogue([minimal], [auto, builtin, minimalOption]);
   await assertCatalogue([full, minimal], [auto, builtin, fullOption, minimalOption]);
@@ -1382,6 +1383,8 @@ browserTest('Configure renderer picker reflects the installed Companion catalogu
     'an arbitrary launchable app must not become a renderer');
 
   await page.locator('#cfg-dashboard_package select').selectOption(minimal.pkg);
+  await page.locator('.companion-renderer-hint').getByText("Turn on the Companion app's launcher option for it to take Home.").waitFor();
+  assert.equal(await page.locator('.companion-renderer-hint').count(), 1, 'the selected Companion shows one hint');
   const companionSaved = page.waitForResponse((response) => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
   await page.locator('#savebtn').click();
   await companionSaved;
@@ -1392,6 +1395,7 @@ browserTest('Configure renderer picker reflects the installed Companion catalogu
     'saved Companion survives a page reload');
 
   await page.locator('#cfg-dashboard_package select').selectOption('builtin');
+  assert.equal(await page.locator('.companion-renderer-hint').count(), 0, 'Built-in has no Companion-only hint');
   const builtinSaved = page.waitForResponse((response) => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
   await page.locator('#savebtn').click();
   await builtinSaved;
