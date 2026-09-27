@@ -131,6 +131,7 @@ object AppInstaller {
         url: String,
         pin: Pin,
         allowShizuku: Boolean = false,
+        beforeInstall: (() -> Boolean)? = null,
     ): InstallOutcome = withContext(Dispatchers.IO) {
         val component = componentForPin(pin)
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
@@ -176,9 +177,13 @@ object AppInstaller {
                 Log.w(TAG, "refused install: $why")
                 return@withStagedFiles rejected("refused ($why)", component)
             }
-            installLocalApkAdmitted(context, apk, allowShizuku, component = component)
+            installLocalApkAdmitted(context, apk, allowShizuku, component = component, beforeInstall = beforeInstall)
         }
     }
+
+    /** The final dashboard choice is read after the download, immediately before the package mutation. */
+    internal fun mayCommitPinnedInstall(beforeInstall: (() -> Boolean)?): Boolean =
+        beforeInstall?.let { runCatching { it() }.getOrDefault(false) } ?: true
 
     /**
      * Stage one exact self-update candidate and prove its package, signer, database contract and live
@@ -507,6 +512,19 @@ object AppInstaller {
         guardDbInstallBlocked("apk")
     }
 
+    /** Restore an APK saved before a WebView swap through the same package, signer, hash and privileged
+     *  install admission as a downloaded pin. Consumes [apk] only after the pin is verified. */
+    suspend fun restorePinnedWebView(
+        context: Context, apk: File, signerSha256: String, apkSha256: String,
+        beforeInstall: (() -> Boolean)? = null,
+    ): InstallOutcome = withContext(Dispatchers.IO) {
+        val pin = Pin(WebViewInstaller.WEBVIEW_PKG, signerSha256, apkSha256)
+        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return@withContext guardDbInstallBlocked("webview")
+        val why = verifyApk(context, apk.absolutePath, pin)
+        if (why != null) return@withContext rejected("refused ($why)", "webview")
+        installLocalApkAdmitted(context, apk, allowShizuku = false, component = "webview", beforeInstall = beforeInstall)
+    }
+
     private suspend fun installLocalApkAdmitted(
         context: Context,
         apk: File,
@@ -514,6 +532,7 @@ object AppInstaller {
         admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null,
         requireDirectDatabase: Boolean = false,
         component: String,
+        beforeInstall: (() -> Boolean)? = null,
     ): InstallOutcome = withContext(Dispatchers.IO) {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
             return@withContext guardDbInstallBlocked(component)
@@ -548,6 +567,12 @@ object AppInstaller {
             apk.delete()
             return@withContext retryable("skipped: no permitted installer", "install-no-permitted-route", component)
         }
+        if (!mayCommitPinnedInstall(beforeInstall)) {
+            apk.delete()
+            return@withContext retryable(
+                "skipped: dashboard changed before WebView install", "install-precondition-changed", component,
+            )
+        }
         // DB_COMPAT_MUTATION_ANCHOR: IN_APP_FIRST_MUTATION
         val stateQuiescence = if (replacingSelf) {
             prepareSelfReplace(
@@ -574,16 +599,17 @@ object AppInstaller {
                         "pm install -S ${apk.length()} -r -d 2>&1",
                         apk,
                         HelperInstallTransaction.INSTALL_TIMEOUT_MS,
-                    )?.trim() ?: ""
+                    )?.trim()
                 } finally {
                     apk.delete()
                 }
-                if (out.contains("Success", ignoreCase = true)) {
+                val result = classifyPmInstallReply(out)
+                if (result == InstallOutcome.Succeeded) {
                     installSucceeded = true
                     return@withContext InstallOutcome.Succeeded
                 }
                 Log.w(TAG, "install failed: $out")
-                return@withContext installFailure(out).withFailurePresentation(component)
+                return@withContext (result as InstallOutcome.Failure).withFailurePresentation(component)
             }
 
             val outcome: InstallOutcome = if (route == InstallRoute.DAEMON) {
@@ -664,6 +690,15 @@ object AppInstaller {
         val message = "install failed: ${output.take(120)}"
         return if (output.startsWith("Failure [")) InstallOutcome.Rejected(message)
         else InstallOutcome.Retryable(message)
+    }
+
+    /** A missing `su`/`pm` reply is not proof that the package mutation never happened. */
+    internal fun classifyPmInstallReply(output: String?): InstallOutcome = when {
+        output?.contains("Success", ignoreCase = true) == true -> InstallOutcome.Succeeded
+        output.isNullOrBlank() -> InstallOutcome.Retryable(
+            "install outcome unknown: pm reply lost", mayHaveCommitted = true,
+        )
+        else -> installFailure(output)
     }
 
     /**

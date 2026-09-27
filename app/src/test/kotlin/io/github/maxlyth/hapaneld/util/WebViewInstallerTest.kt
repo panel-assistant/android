@@ -169,4 +169,68 @@ class WebViewInstallerTest {
         assertFalse(WebViewInstaller.shouldRecordAutoAttempt(WebViewInstaller.HealResult.NoAction("engine unknown"), null))
         assertFalse(WebViewInstaller.shouldRecordAutoAttempt(WebViewInstaller.HealResult.NoAction("engine unknown"), "invalid"))
     }
+
+    @Test fun unknownInstallOutcomeDoesNotCertifyThePin() {
+        assertFalse(WebViewInstaller.shouldRecordAutoAttempt(
+            WebViewInstaller.HealResult.Uncertain("install outcome unknown: helper reply lost"), "138.0.7204.63",
+        ))
+    }
+
+    @Test fun scheduledSwapRequiresTheBuiltInDashboardButManualRepairStillWorks() {
+        val cases = listOf(
+            Triple(true, true, Decision.Install(newer)),
+            Triple(true, false, Decision.AutoBlockedForeign),
+            Triple(false, false, Decision.UpToDate(147)),
+        )
+        cases.forEach { (auto, builtin, expected) ->
+            assertEquals(
+                "auto=$auto builtin=$builtin",
+                expected,
+                decide(newer, "147.0.7727.56", MIN, force = false, autoUpdate = auto, builtinRenderer = builtin),
+            )
+        }
+        assertEquals(
+            Decision.Install(newer),
+            decide(newer, "147.0.7727.56", MIN, force = true, builtinRenderer = false),
+        )
+    }
+
+    @Test fun builtInSwapKeepsAConnectedPageAndRestoresAfterBlankOrCrashingTimeout() {
+        val pending = WebViewInstaller.PendingRollback("150.0.7871.63", "c".repeat(64), "a".repeat(64), "b".repeat(64), 1_000L)
+        data class Case(
+            val scene: String, val receipt: WebViewInstaller.PendingRollback?, val connected: Boolean,
+            val foreground: Boolean, val now: Long, val alreadyRolledBack: Boolean,
+            val expected: WebViewInstaller.SwapHealthDecision,
+        )
+        val cases = listOf(
+            Case("waiting", pending, false, true, 999, false, WebViewInstaller.SwapHealthDecision.WAIT),
+            Case("healthy", pending, true, true, 999, false, WebViewInstaller.SwapHealthDecision.KEEP),
+            Case("connected behind launcher", pending, true, false, 999, false, WebViewInstaller.SwapHealthDecision.WAIT),
+            Case("old-process handshake", pending.copy(deadlineWallMs = 0), true, true, 999, false, WebViewInstaller.SwapHealthDecision.WAIT),
+            Case("blank timeout", pending, false, true, 1_000, false, WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS),
+            Case("crash-loop timeout", pending, false, true, 1_001, false, WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS),
+            Case("late handshake", pending, true, true, 1_001, false, WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS),
+            Case("one attempt per pin", pending, false, true, 1_001, true, WebViewInstaller.SwapHealthDecision.NO_ACTION),
+            Case("receipt consumed", null, false, true, 1_001, false, WebViewInstaller.SwapHealthDecision.NO_ACTION),
+        )
+        cases.forEach { case ->
+            assertEquals(
+                case.scene, case.expected,
+                WebViewInstaller.postSwapDecision(case.receipt, case.connected, case.foreground, case.now, case.alreadyRolledBack),
+            )
+        }
+    }
+
+    @Test fun anOldProcessCannotCertifyItsOwnInstalledProvider() {
+        val pending = WebViewInstaller.PendingRollback(
+            "150.0.7871.63", "c".repeat(64), "a".repeat(64), "b".repeat(64), 0,
+            originProcess = "installer-process",
+        )
+        assertTrue(WebViewInstaller.sameProcess(pending, "installer-process"))
+        assertFalse(WebViewInstaller.sameProcess(pending, "new-process"))
+        assertEquals(
+            WebViewInstaller.SwapHealthDecision.WAIT,
+            WebViewInstaller.postSwapDecision(pending, true, true, 999, alreadyRolledBack = false),
+        )
+    }
 }

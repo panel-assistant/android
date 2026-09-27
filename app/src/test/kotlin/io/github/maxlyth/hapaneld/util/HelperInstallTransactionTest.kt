@@ -106,7 +106,7 @@ class HelperInstallTransactionTest {
         )
 
         assertEquals(
-            InstallOutcome.Retryable("install outcome unknown: streamed input released"),
+            InstallOutcome.Retryable("install outcome unknown: streamed input released", mayHaveCommitted = true),
             HelperInstallTransaction(daemon).install(source, directory),
         )
         assertFalse(source.exists())
@@ -151,7 +151,7 @@ class HelperInstallTransactionTest {
         val transaction = HelperInstallTransaction(daemon)
 
         assertEquals(
-            InstallOutcome.Retryable("install outcome unknown: helper staging retained for safety"),
+            InstallOutcome.Retryable("install outcome unknown: helper staging retained for safety", mayHaveCommitted = true),
             transaction.install(firstSource, staging),
         )
         val retained = staging.listFiles().orEmpty().single()
@@ -219,7 +219,7 @@ class HelperInstallTransactionTest {
         )
 
         assertEquals(
-            InstallOutcome.Retryable("install outcome unknown: helper staging retained for safety"),
+            InstallOutcome.Retryable("install outcome unknown: helper staging retained for safety", mayHaveCommitted = true),
             HelperInstallTransaction(daemon, staging = staging).install(source, directory),
         )
         assertEquals(1, directory.listFiles().orEmpty().size)
