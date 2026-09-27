@@ -46,9 +46,4 @@ tools/test/node_modules/
 # backups; this path is symlinked there).
 vendor-firmwares
 
-# F-Droid repo build outputs — generated in CI from GitHub Releases, never committed.
-tools/fdroid/repo/
-tools/fdroid/archive/
-tools/fdroid/tmp/
-tools/fdroid/.apkcache
 _site/

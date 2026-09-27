@@ -465,7 +465,6 @@ jobs:
             scripts/tests/hardware_collector_test.sh
             scripts/tests/consumer_docs_test.sh
             scripts/tests/gitbash_path_conversion_test.sh
-            scripts/tests/fdroid_workflow_test.sh
             scripts/tests/release_workflow_test.sh
             scripts/tests/provision_gate_parallel_test.sh
           '
