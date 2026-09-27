@@ -26,6 +26,28 @@ import org.junit.Test
 
 class HelperSocketCompositionTest {
     @Test(timeout = 10_000)
+    fun concurrentNativeSocketKeepsItsOwnGuardCustody() {
+        val root = Files.createTempDirectory("hapaneld-helper-guard-")
+        val socket = Path.of(System.getProperty("java.io.tmpdir"), "hapaneld-helper-${UUID.randomUUID()}.sock")
+        var second: Process? = null
+        try {
+            second = ProcessBuilder(
+                System.getProperty("hapaneld.helper.socketTestServer"), socket.toString(), root.toString(),
+            ).redirectErrorStream(true).start()
+            assertEquals("READY", second.inputStream.bufferedReader().readLine())
+            assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
+            assertEquals("HELPER version=1.3.0 proto=1.3", SocketDaemon(socket).send("VERSION"))
+        } finally {
+            second?.let {
+                it.destroy()
+                if (!it.waitFor(5, TimeUnit.SECONDS)) it.destroyForcibly().waitFor()
+            }
+            Files.deleteIfExists(socket)
+            deleteGuardRoot(root)
+        }
+    }
+
+    @Test(timeout = 10_000)
     fun textFramingCrossesNativeServerAndExactDispatch() {
         val daemon = SocketDaemon(socketPath)
 
@@ -257,6 +279,7 @@ class HelperSocketCompositionTest {
 
     private companion object {
         lateinit var socketPath: Path
+        lateinit var guardRoot: Path
         lateinit var server: Process
         lateinit var fixtureLock: FileLock
 
@@ -267,15 +290,13 @@ class HelperSocketCompositionTest {
             assumeTrue("native UNIX-socket composition requires a Linux host", executablePath != null)
             val executable = File(requireNotNull(executablePath))
             assertTrue(executable.isFile, "native socket test server was not built")
-            // The server keeps its guard fixtures at fixed /tmp paths behind an exclusive owner lock, so a
-            // second server started by a concurrent test JVM (the other build variant, or another fork)
-            // exits before READY. Hold a machine-wide lock for the life of the class instead.
+            // INSTALLSTREAM still uses one fixed staging file across JVMs.
             val lockPath = Path.of("/tmp", "hapaneld-helper-socket-composition.lock")
             fixtureLock = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE).lock()
-            // CI runs this suite as root; leave the lock usable by a later unprivileged run.
             runCatching { Files.setPosixFilePermissions(lockPath, PosixFilePermissions.fromString("rw-rw-rw-")) }
+            guardRoot = Files.createTempDirectory("hapaneld-helper-guard-")
             socketPath = Path.of(System.getProperty("java.io.tmpdir"), "hapaneld-helper-${UUID.randomUUID()}.sock")
-            server = ProcessBuilder(executable.absolutePath, socketPath.toString())
+            server = ProcessBuilder(executable.absolutePath, socketPath.toString(), guardRoot.toString())
                 .redirectErrorStream(true)
                 .start()
             val ready = server.inputStream.bufferedReader().readLine()
@@ -288,11 +309,19 @@ class HelperSocketCompositionTest {
         fun stopServer() {
             if (::server.isInitialized) {
                 server.destroy()
-                if (!server.waitFor(5, TimeUnit.SECONDS)) server.destroyForcibly()
+                if (!server.waitFor(5, TimeUnit.SECONDS)) server.destroyForcibly().waitFor()
             }
             if (::socketPath.isInitialized) Files.deleteIfExists(socketPath)
             Files.deleteIfExists(Path.of("/tmp/hapaneld-helper-install-stream-test.apk"))
+            if (::guardRoot.isInitialized) deleteGuardRoot(guardRoot)
             if (::fixtureLock.isInitialized) fixtureLock.channel().close()
+        }
+
+        private fun deleteGuardRoot(root: Path) {
+            val custody = root.resolve(".hapaneld-guard-db-test")
+            Files.deleteIfExists(custody.resolve(".owner.lock"))
+            Files.deleteIfExists(custody)
+            Files.deleteIfExists(root)
         }
 
         fun DaemonLongResult.replyValue(): String? = (this as? DaemonLongResult.Reply)?.value
