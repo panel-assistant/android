@@ -158,6 +158,50 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun `a deliberate restart reaches a schema 2 peer and health expires if the panel stays down`() = runTest {
+        val connection = FakeConnection(Ha.accepting(protocol = 2))
+        var now = 0L
+        val harness = harness(connection, clock = { now })
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        val delivered = harness.owner.announceRestart("app", "settings", 30_000L)
+        now = 1_000L // Delivery delay must not buy another second of Restarting.
+        runCurrent()
+        assertTrue(delivered.await())
+        val notice = connection.sent.map(::JSONObject).single { it.optString("type") == "panel_assistant/restart_notice" }
+        assertEquals("opaque-session", notice.getString("session"))
+        assertEquals("app", notice.getString("scope"))
+        assertEquals("settings", notice.getString("reason"))
+        assertEquals(29_000L, notice.getLong("expected_back_ms"))
+        assertEquals(" pa_restarting=app,settings,29000", harness.owner.restartHealthToken())
+        now = 30_001L
+        assertEquals("", harness.owner.restartHealthToken())
+        harness.owner.close()
+    }
+
+    @Test fun `an older schema peer gets no new request while health still explains the restart`() = runTest {
+        val connection = FakeConnection(Ha.accepting(protocol = 1))
+        val harness = harness(connection)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        val delivered = harness.owner.announceRestart("panel", "reboot", 120_000L)
+        runCurrent()
+        assertFalse(delivered.await())
+        assertEquals(" pa_restarting=panel,reboot,120000", harness.owner.restartHealthToken())
+        assertFalse(connection.sent.any { JSONObject(it).optString("type") == "panel_assistant/restart_notice" })
+        harness.owner.close()
+    }
+
+    @Test fun `without a live session the HTTP health fact still carries the bounded notice`() = runTest {
+        val harness = harness()
+        assertFalse(harness.owner.announceRestart("app", "recovery", 30_000L).await())
+        assertEquals(" pa_restarting=app,recovery,30000", harness.owner.restartHealthToken())
+        assertEquals(emptyList<Pair<String, String>>(), harness.connector.connects)
+        advanceTimeBy(30_001L)
+        assertEquals("", harness.owner.restartHealthToken())
+        harness.owner.close()
+    }
+
     @Test fun `a closed session reconnects on the first backoff step because acceptance reset the counter`() = runTest {
         val first = FakeConnection(Ha.accepting())
         val harness = harness(IOException("down"), IOException("down"), IOException("down"), first, FakeConnection(Ha.accepting()))
@@ -1035,6 +1079,7 @@ class PanelAssistantTransportOwnerTest {
         persisted: Persisted? = null,
         log: (String) -> Unit = {},
         embedKeys: io.github.maxlyth.hapaneld.http.EmbedProofKeyring? = null,
+        clock: (() -> Long)? = null,
     ): Harness {
         val connector = FakeConnector(this, script.toMutableList(), repeating, repeatingFailure)
         val forces = mutableListOf<Boolean>()
@@ -1047,7 +1092,7 @@ class PanelAssistantTransportOwnerTest {
             },
             connector = connector,
             workerDispatcher = StandardTestDispatcher(testScheduler),
-            monotonicMillis = { testScheduler.currentTime },
+            monotonicMillis = clock ?: { testScheduler.currentTime },
             jitter = { bound -> bound },
             log = log,
             shadow = shadow,
@@ -1119,6 +1164,7 @@ class PanelAssistantTransportOwnerTest {
 
     private object Ha {
         fun accepting(
+            protocol: Int = 1,
             answerPings: Boolean = true,
             authority: String = "mqtt",
             capabilities: List<String> = emptyList(),
@@ -1138,7 +1184,7 @@ class PanelAssistantTransportOwnerTest {
                         .put(
                             "result",
                             JSONObject()
-                                .put("protocol", 1)
+                                .put("protocol", protocol)
                                 .put("session", "opaque-session")
                                 .put("authority", authority)
                                 .put("capabilities", JSONArray(capabilities))
@@ -1166,6 +1212,10 @@ class PanelAssistantTransportOwnerTest {
                         JSONObject().put("id", frame.getLong("id")).put("type", "result").put("success", true)
                             .put("result", JSONObject()).toString()
                     },
+                )
+                "panel_assistant/restart_notice" -> connection.inbound.trySend(
+                    JSONObject().put("id", frame.getLong("id")).put("type", "result").put("success", true)
+                        .put("result", JSONObject()).toString(),
                 )
                 "ping" -> if (answerPings) {
                     connection.inbound.trySend(JSONObject().put("id", frame.getLong("id")).put("type", "pong").toString())

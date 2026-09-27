@@ -38,6 +38,7 @@ class SystemController(
     private val builtinForeground: () -> Boolean = { BuiltinDashboard.foreground },
     // This is the real Log.w sink by default; the focused controller test observes the same emitted line.
     private val homeWarning: (String) -> Unit = { Log.w(TAG, it) },
+    private val beforeReboot: () -> Unit = {},
 ) {
 
     // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can
@@ -442,6 +443,7 @@ class SystemController(
      * before rather than losing its reboot.
      */
     fun reboot() {
+        beforeReboot()
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) {
                 when (val outcome = daemon.sendLong("REBOOT AWAIT", REBOOT_AWAIT_TIMEOUT_MS)) {
