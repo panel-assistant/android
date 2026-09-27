@@ -412,15 +412,9 @@ jobs:
           changelog_body="$(mktemp)"
           mv release-input/release-body.md "$changelog_body"
           cat > release-input/release-body.md <<EOF
-          ## Recommended installation
+          ## Installation
 
-          **Do not use \`adb install\` directly.** It installs the APK but does not complete ha-paneld's permissions, startup, configuration, and verification.
-
-          From macOS, Linux, Git Bash, or WSL, run:
-
-          \`\`\`sh
-          curl -fsSL https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/ha-paneld-installer-$RELEASE_TAG.sh | bash
-          \`\`\`
+          Install and update ha-paneld through the [Panel Assistant integration](https://github.com/panel-assistant/ha-integration) for Home Assistant: add a panel from Settings, Devices & services, and Panel Assistant installs the right app for it. Installing an APK by hand with \`adb install\` skips the permissions, startup and checks that Panel Assistant completes for you.
 
           ## Which APK
 
