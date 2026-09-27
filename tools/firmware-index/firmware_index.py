@@ -223,6 +223,10 @@ ZIP_MAGIC = b"PK\x03\x04"
 DISCOVER_INDEX_WINDOW = 32
 DISCOVER_MINOR_WINDOW = 4
 DISCOVER_PATCH_WINDOW = 8
+# Waits before each retry of a throttled (429), unavailable (5xx) or timed-out
+# probe. Sixteen parallel workers can briefly trip the CDN's rate limit.
+DISCOVER_RETRY_DELAYS = (5, 15, 45)
+TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
 
 
 def discover_one(url):
@@ -235,16 +239,24 @@ def discover_one(url):
     req = urllib.request.Request(url, method="GET")
     req.add_header("Range", "bytes=0-3")
     req.add_header("User-Agent", "ha-paneld-firmware-monitor")
-    try:
-        with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT) as r:
-            total = response_total_size(r)
-            if total is None or r.read(4) != ZIP_MAGIC:
-                return None
-            return total
-    except urllib.error.HTTPError as exc:
-        if exc.code == 403:
-            return None         # This CDN's explicit missing-object response.
-        raise
+    for delay in DISCOVER_RETRY_DELAYS + (None,):
+        try:
+            with urllib.request.urlopen(req, timeout=PROBE_TIMEOUT) as r:
+                total = response_total_size(r)
+                if total is None or r.read(4) != ZIP_MAGIC:
+                    return None
+                return total
+        except urllib.error.HTTPError as exc:
+            if exc.code == 403:
+                return None         # This CDN's explicit missing-object response.
+            if exc.code not in TRANSIENT_HTTP_CODES or delay is None:
+                raise
+        except (TimeoutError, urllib.error.URLError):
+            if delay is None:
+                raise
+        # A throttled or briefly unavailable CDN is not an answer. Wait and ask
+        # again; only a persistent failure fails the run, never "not found".
+        time.sleep(delay)
 
 
 def candidate_versions(

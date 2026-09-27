@@ -247,12 +247,35 @@ class DiscoveryTest(unittest.TestCase):
         throttled = urllib.error.HTTPError("https://example.invalid/x", 429, "slow down", {}, None)
         with mock.patch("urllib.request.urlopen", side_effect=missing):
             self.assertIsNone(firmware_index.discover_one("https://example.invalid/x"))
-        with mock.patch("urllib.request.urlopen", side_effect=throttled):
+        with mock.patch("urllib.request.urlopen", side_effect=throttled), \
+                mock.patch("time.sleep"):
             with self.assertRaises(urllib.error.HTTPError):
                 firmware_index.discover_one("https://example.invalid/x")
-        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")), \
+                mock.patch("time.sleep"):
             with self.assertRaises(TimeoutError):
                 firmware_index.discover_one("https://example.invalid/x")
+
+    def test_a_briefly_unavailable_cdn_is_asked_again(self):
+        unavailable = urllib.error.HTTPError("https://example.invalid/x", 503, "unavailable", {}, None)
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.status = 206
+        response.headers = {"Content-Range": "bytes 0-3/137890388"}
+        response.read.return_value = b"PK\x03\x04"
+        with mock.patch("urllib.request.urlopen", side_effect=[unavailable, unavailable, response]) as urlopen, \
+                mock.patch("time.sleep") as sleep:
+            self.assertEqual(firmware_index.discover_one("https://example.invalid/x.apk"), 137890388)
+        self.assertEqual(urlopen.call_count, 3)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [5, 15])
+
+    def test_a_persistently_unavailable_cdn_fails_the_run(self):
+        unavailable = urllib.error.HTTPError("https://example.invalid/x", 503, "unavailable", {}, None)
+        with mock.patch("urllib.request.urlopen", side_effect=unavailable) as urlopen, \
+                mock.patch("time.sleep"):
+            with self.assertRaises(urllib.error.HTTPError):
+                firmware_index.discover_one("https://example.invalid/x")
+        self.assertEqual(urlopen.call_count, 4)
 
     def test_rom_diffs_are_probed_without_an_apk_hit(self):
         d = self.devices[0]
