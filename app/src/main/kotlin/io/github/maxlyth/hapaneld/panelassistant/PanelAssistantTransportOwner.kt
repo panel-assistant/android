@@ -5,6 +5,7 @@ import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.sensors.HaApiSessionProvider
 import io.github.maxlyth.hapaneld.sensors.HaAuthenticationException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONException
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
 /** One authenticated socket to Home Assistant, already past `auth_ok`. */
@@ -185,6 +187,14 @@ internal class PanelAssistantTransportOwner(
     private val releaseLock = Any()
     private val generation = AtomicLong()
     private val nudges = Channel<Unit>(Channel.CONFLATED)
+    private data class RestartRequest(
+        val scope: String,
+        val reason: String,
+        val expiresAtMs: Long,
+        val acknowledged: CompletableDeferred<Boolean>,
+    )
+    private val restart = AtomicReference<RestartRequest?>()
+    private val restartWake = Channel<Unit>(Channel.CONFLATED)
 
     /**
      * Held for a generation's whole run, teardown included. The shadow reporter has no session identity, so
@@ -222,6 +232,28 @@ internal class PanelAssistantTransportOwner(
         nudges.trySend(Unit)
     }
 
+    /** The same bounded notice feeds the socket and the existing HTTP health poll. */
+    fun announceRestart(scope: String, reason: String, expectedBackMs: Long): CompletableDeferred<Boolean> {
+        require(scope in setOf("app", "panel"))
+        require(reason in setOf("update", "settings", "recovery", "reboot"))
+        require(expectedBackMs in 1..300_000L)
+        val answer = CompletableDeferred<Boolean>()
+        val notice = RestartRequest(scope, reason, monotonicMillis() + expectedBackMs, answer)
+        restart.getAndSet(notice)?.acknowledged?.complete(false)
+        if (status.phase == PanelAssistantTransportPhase.CONNECTED && (status.session?.protocol ?: 0) >= 2) {
+            restartWake.trySend(Unit)
+        } else {
+            answer.complete(false)
+        }
+        return answer
+    }
+
+    fun restartHealthToken(): String {
+        val notice = restart.get() ?: return ""
+        val remaining = notice.expiresAtMs - monotonicMillis()
+        return if (remaining > 0) " pa_restarting=${notice.scope},${notice.reason},$remaining" else ""
+    }
+
     /** The persisted authority and discovery value beside this owner's current phase and refusal. */
     fun facts(): PanelAssistantTransportFacts {
         val current = status
@@ -247,6 +279,7 @@ internal class PanelAssistantTransportOwner(
     }
 
     override fun close() {
+        restart.get()?.acknowledged?.complete(false)
         synchronized(lock) {
             if (stopped) return
             stopped = true
@@ -504,11 +537,22 @@ internal class PanelAssistantTransportOwner(
         var withdrawPending = withdrawAfterSync
         // Ids of command_result requests awaiting their result, kept apart from report_state results.
         val answering = HashSet<Long>()
+        val restartAnswers = HashMap<Long, CompletableDeferred<Boolean>>()
+        var sentRestart: RestartRequest? = null
         var nextPingAt = monotonicMillis() + pingIntervalMs
         var pongDeadline: Long? = null
         if (reporting != null) log("native transport shadow reporting started")
         while (true) {
             val now = monotonicMillis()
+            val notice = restart.get()
+            if (notice != null && now >= notice.expiresAtMs) notice.acknowledged.complete(false)
+            if (notice != null && notice !== sentRestart && !notice.acknowledged.isCompleted && session.protocol >= 2) {
+                connection.send(PanelAssistantTransportProtocol.restartNotice(
+                    nextMessageId, session.token, notice.scope, notice.reason, notice.expiresAtMs - now,
+                ))
+                restartAnswers[nextMessageId++] = notice.acknowledged
+                sentRestart = notice
+            }
             val awaiting = pongDeadline
             if (awaiting != null && now >= awaiting) {
                 throw PanelAssistantProtocolException("Home Assistant stopped answering pings")
@@ -543,6 +587,7 @@ internal class PanelAssistantTransportOwner(
                 frames.onReceive { it }
                 reporting?.wake?.onReceive { null }
                 commanding?.wake?.onReceive { null }
+                restartWake.onReceive { null }
                 onTimeout((due - now).coerceAtLeast(0L)) { null }
             } ?: continue
             pongDeadline = null
@@ -556,6 +601,12 @@ internal class PanelAssistantTransportOwner(
                 null -> Unit
             }
             val id = PanelAssistantTransportProtocol.messageId(frame)
+            if (id != null) {
+                restartAnswers.remove(id)?.let { answer ->
+                    answer.complete(frame.optString("type") == "result" && frame.opt("success") == true)
+                    continue
+                }
+            }
             if (id != null && answering.remove(id)) {
                 when (val result = PanelAssistantTransportProtocol.reportResult(frame)) {
                     is PanelAssistantReportResult.Failed -> {

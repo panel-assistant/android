@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "53a19b4dfeb4f114f0196793c921cb06c2fcea2c",
+  "sourceRevision": "a4ce8c6b231dc8a116f3acc8f50dfec0c9d53fe0",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -118,14 +118,14 @@
         "type": "panel_assistant/hello",
         "protocol": {
           "min": 1,
-          "max": 1
+          "max": 2
         },
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "app": {
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "ed4d5f88540dc08ba6e27ee7887ba8f8f5b9f166dc71e1e329b16357d16fe195",
+        "contract_digest": "2700d1525aa3373f316935b3ba8ea593fca486d0095ca79937ce59ca9f098dda",
         "capabilities": [
           "state",
           "commands",
@@ -184,6 +184,17 @@
         "command_id": "fixture-command",
         "outcome": "refused",
         "code": "approval_timeout"
+      }
+    },
+    {
+      "name": "restart_notice",
+      "message": {
+        "id": 4,
+        "type": "panel_assistant/restart_notice",
+        "session": "fixture-session",
+        "scope": "app",
+        "reason": "settings",
+        "expected_back_ms": 30000
       }
     }
   ],

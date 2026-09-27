@@ -77,6 +77,14 @@ class SystemControllerTest {
         assertTrue("no su when the panel is already going down", root.ran.isEmpty())
     }
 
+    @Test fun rebootAnnouncesBeforeTheDeviceCommand() {
+        val events = mutableListOf<String>()
+        val daemon = FakeDaemon(replies = mapOf("REBOOT AWAIT" to "OK"), onSend = { events += it })
+        val controller = SystemController(FakeSystemEnv(), FakeRootShell(), daemon, beforeReboot = { events += "notice" })
+        controller.reboot()
+        assertEquals(listOf("notice", "REBOOT AWAIT"), events)
+    }
+
     @Test fun rebootFallsToSu() {
         val (c, root, _) = rebootController(outcome = null)
         c.reboot()

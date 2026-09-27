@@ -11,7 +11,7 @@ import org.junit.Test
 
 class PanelAssistantTransportProtocolTest {
 
-    @Test fun `hello offers protocol 1, the given capabilities and channels and a contract digest`() {
+    @Test fun `hello offers schema 2 with schema 1 compatibility and a contract digest`() {
         val bare = JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY))
         assertEquals(0, bare.getJSONArray("capabilities").length())
         assertEquals(0, bare.getJSONArray("channels").length())
@@ -22,7 +22,7 @@ class PanelAssistantTransportProtocolTest {
             ),
         )
         assertEquals(1, hello.getJSONObject("protocol").getInt("min"))
-        assertEquals(1, hello.getJSONObject("protocol").getInt("max"))
+        assertEquals(2, hello.getJSONObject("protocol").getInt("max"))
         assertTrue(Regex("^[0-9a-f]{64}$").matches(hello.getString("contract_digest")))
         assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "embed_proof"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         val relay = hello.getJSONArray("channels").getJSONObject(0)
@@ -41,7 +41,7 @@ class PanelAssistantTransportProtocolTest {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.
         assertEquals(
-            "ed4d5f88540dc08ba6e27ee7887ba8f8f5b9f166dc71e1e329b16357d16fe195",
+            "2700d1525aa3373f316935b3ba8ea593fca486d0095ca79937ce59ca9f098dda",
             PanelAssistantTransportProtocol.CONTRACT_DIGEST,
         )
     }
@@ -252,7 +252,7 @@ class PanelAssistantTransportProtocolTest {
 
     @Test fun `a success result that breaks the contract is a protocol failure`() {
         listOf<(JSONObject) -> Unit>(
-            { it.put("protocol", 2) },
+            { it.put("protocol", 3) },
             { it.put("session", "") },
             { it.remove("authority") },
             { it.put("capabilities", JSONArray().put("commands")) },
