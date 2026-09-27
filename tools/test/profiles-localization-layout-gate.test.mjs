@@ -6,6 +6,11 @@ import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { escapeHtml, stringsFor } from './language-layout/harness.mjs';
+import { profilesApi, profilesBody } from './language-layout/pages/profiles.mjs';
+// This gate keeps measuring the inspector notes shown from first paint, as it always has. Production
+// reveals them after the catalogue loads, which shifts the desktop layout (CLS about 0.4); the language
+// layout gate measures the production state, and the shift is recorded for follow-up.
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const ASSETS = resolve(ROOT, 'app/src/main/assets');
@@ -42,82 +47,8 @@ const MIME = {
   '.svg': 'image/svg+xml',
 };
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character]);
-}
-
-function textOf(catalogues, locale, key) {
-  const localized = catalogues.get(locale)?.strings?.[key]?.text;
-  const english = catalogues.get('en')?.strings?.[key]?.text;
-  assert.equal(typeof english, 'string', `English catalogue is missing ${key}`);
-  return typeof localized === 'string' ? localized : english;
-}
-
-function profilesFrame(catalogues, locale) {
-  const t = (key) => escapeHtml(textOf(catalogues, locale, key));
-  return `
-<link rel="stylesheet" href="/assets/profiles.css">
-<main class="profile-page">
-  <div class="profile-toolbar" aria-label="${t('profiles.toolbar.actions_label')}">
-    <div class="profile-pickers">
-      <label for="profile-select" class="muted">${t('profiles.toolbar.revision')}</label>
-      <select id="profile-select" aria-label="${t('profiles.toolbar.revision_label')}"><option>${t('profiles.status.loading_catalog')}</option></select>
-      <label class="profile-revisions muted" for="profile-revisions"><input id="profile-revisions" type="checkbox">${t('profiles.toolbar.show_superseded')}</label>
-    </div>
-    <div class="profile-actions">
-      <div class="profile-action-group" aria-label="${t('profiles.toolbar.editing_label')}">
-        <button class="pbtn" id="profile-new" type="button">${t('profiles.action.new')}</button>
-        <button class="pbtn" id="profile-edit" type="button" disabled>${t('profiles.action.edit')}</button>
-        <button class="pbtn" id="profile-fork" type="button" disabled>${t('profiles.action.fork')}</button>
-        <label class="pbtn" for="profile-import">${t('profiles.action.import')}<input id="profile-import" type="file" hidden></label>
-        <button class="pbtn" id="profile-export" type="button">${t('profiles.action.export')}</button>
-      </div>
-      <span class="profile-action-break" aria-hidden="true"></span>
-      <div class="profile-action-group" aria-label="${t('profiles.toolbar.review_label')}">
-        <button class="pbtn primary" id="profile-validate" type="button" disabled>${t('profiles.action.validate_yaml')}</button>
-        <button class="pbtn" id="profile-compare" type="button" disabled>${t('profiles.action.compare')}</button>
-      </div>
-      <div class="profile-action-group" aria-label="${t('profiles.toolbar.activation_label')}">
-        <button class="pbtn primary" id="savebtn" type="button" disabled>${t('profiles.action.save_revision')}</button>
-        <button class="pbtn primary" id="profile-activate" type="button" data-hardened-approval disabled>${t('profiles.action.activate')}</button>
-        <button class="pbtn" id="profile-auto" type="button" data-hardened-approval disabled>${t('profiles.action.use_automatic')}</button>
-        <button class="pbtn" id="profile-rollback" type="button" data-hardened-approval disabled>${t('profiles.action.rollback')}</button>
-        <button class="pbtn danger" id="profile-delete" type="button" disabled>${t('profiles.action.delete')}</button>
-      </div>
-    </div>
-  </div>
-  <div id="profile-badges" class="profile-badges" aria-label="${t('profiles.state.label')}"></div>
-  <nav id="profile-links" class="profile-links" aria-label="${t('profiles.references.label')}" hidden></nav>
-  <div id="profile-status" class="profile-status" role="status" aria-live="polite">${t('profiles.status.loading_catalog')}</div>
-  <div class="profile-workspace">
-    <section class="profile-editor-pane" aria-labelledby="profile-editor-title">
-      <div class="profile-editor-head"><h2 id="profile-editor-title">${t('profiles.editor.title')}</h2><span id="profile-editor-meta" class="profile-editor-meta"></span></div>
-      <div id="profile-editor"></div>
-    </section>
-    <aside class="profile-inspector" aria-labelledby="profile-inspector-title">
-      <div class="profile-inspector-head"><h2 id="profile-inspector-title">${t('profiles.inspector.title')}</h2></div>
-      <div class="profile-inspector-body">
-        <section><h3>${t('profiles.section.catalog_runtime')}</h3><div id="profile-catalog-issues" class="profile-issues"></div></section>
-        <section><h3>${t('profiles.section.validation')}</h3><div id="profile-issues" class="profile-issues"></div></section>
-        <div class="profile-guidance" id="profile-shizuku-guidance"><p><b>${t('profiles.shizuku.title')}</b></p><p>${t('profiles.shizuku.body')}</p><p><a href="#">${t('profiles.shizuku.guide')}</a></p></div>
-        <section><h3>${t('profiles.section.compared_active')}</h3><div id="profile-diff" class="profile-diff"></div></section>
-        <section><h3>${t('profiles.section.observed')}</h3><p class="profile-report-note">${t('profiles.observed.note')}</p><div id="profile-report" class="profile-report"></div></section>
-        <div class="profile-draft" id="profile-generic-draft"><p><b>${t('profiles.generic.title')}</b> ${t('profiles.generic.body')}</p><p><button class="pbtn" id="profile-draft" type="button">${t('profiles.action.generate_draft')}</button> <button class="pbtn" id="profile-use-draft" type="button">${t('profiles.action.copy_draft')}</button></p></div>
-      </div>
-    </aside>
-  </div>
-</main>
-<div id="profile-modal" class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" hidden>
-  <div class="profile-modal-card"><h2 id="profile-modal-title">${t('profiles.modal.default_title')}</h2><pre id="profile-modal-detail"></pre>
-    <div class="profile-modal-actions"><button class="pbtn" id="profile-modal-cancel" type="button">${t('profiles.action.cancel')}</button><button class="pbtn primary" id="profile-modal-confirm" type="button">${t('profiles.action.confirm')}</button></div>
-  </div>
-</div>`;
-}
-
 function documentHtml(catalogues, locale, theme) {
-  const t = (key) => escapeHtml(textOf(catalogues, locale, key));
+  const t = (key) => escapeHtml(stringsFor(catalogues, locale).text(key));
   const projection = Object.fromEntries(Object.entries(catalogues.get(locale).strings)
     .filter(([key]) => key.startsWith('profiles.') || key.startsWith('shell.'))
     .map(([key, record]) => [key, record.text]));
@@ -134,59 +65,8 @@ function documentHtml(catalogues, locale, theme) {
 <script>window.__profileLayoutShifts=[];new PerformanceObserver(function(list){list.getEntries().forEach(function(entry){if(!entry.hadRecentInput)window.__profileLayoutShifts.push(entry.value);});}).observe({type:'layout-shift',buffered:true});</script>
 <script src="/assets/i18n.js"></script></head><body><div class="wrap">
 <div class="topbar"><div class="hdr"><button id="navburger" class="navburger pbtn" aria-label="${t('shell.menu.label')}">☰</button><h1><img src="/assets/icon.svg" class="logo" alt=""><span class="brand">ha-paneld</span> <small id="pswitch" data-self-id="layout-gate" data-self-name="Layout gate"><span class="sep">·</span>Layout gate</small></h1><span></span></div><nav class="nav">${nav}</nav></div>
-<script src="/assets/switcher.js"></script>${profilesFrame(catalogues, locale)}
-<script src="/assets/vendor/profile-editor/codemirror.js"></script><script src="/assets/profiles.js"></script>
+<script src="/assets/switcher.js"></script>${profilesBody(stringsFor(catalogues, locale), { guidanceShown: true })}
 </div></body></html>`;
-}
-
-function profileData() {
-  return {
-    ref: { id: 'generic', revision: '0123456789abcdef0123456789abcdef' },
-    display_name: 'Generic panel profile with a deliberately long visible name',
-    content_version: '2026.9.4', author: 'ha-paneld maintainers', origin: 'imported', maturity: 'verified',
-    trusted_provenance: true, compatible: true, matches_this_device: true,
-    active: false, selected: false, last_known_good: false,
-    shizuku_recommendation: 'recommended', risks: ['root_paths', 'package_management', 'future_long_risk_token'],
-    links: [
-      { label: 'Device profile documentation with a long label', url: 'https://example.invalid/profiles/device-profile-documentation' },
-      { label: 'Hardware evidence', url: 'https://example.invalid/evidence/hardware' },
-    ],
-    issues: [
-      { severity: 'warning', path: 'provisioning.packages[12].desired_state', message: 'Compatibility prose', presentation_code: 'unknown-value', presentation_params: { value: 'unexpected_future_value' } },
-      { severity: 'error', path: 'hardware.display.current_density_dpi', message: 'A deliberately long opaque parser diagnostic remains readable without changing API bytes.' },
-    ],
-  };
-}
-
-// The reporter's catalog shape: one profile iterated four times, each edit a separate immutable
-// revision. The picker collapses these, so the toolbar it has to lay out is the collapsed one plus
-// the toggle that reveals the rest -- both of which only exist when duplicates do.
-function supersededRevisions() {
-  const base = profileData();
-  return ['a', 'b', 'c', 'd'].map((suffix, index) => ({
-    ...base,
-    ref: { id: base.ref.id, revision: `${suffix.repeat(8)}0123456789abcdef0123456789abcdef` },
-    content_version: `2026.9.${4 + index}`,
-    imported_at: 1757000000000 + index * 3600000,
-  }));
-}
-
-function apiResponse(path) {
-  if (path === '/api/v1/peers') return [];
-  if (path === '/api/v1/profiles/schema') return { max_bytes: 131072, fields: [] };
-  if (path === '/api/v1/profiles/report') return { items: [
-    { path: 'evidence.android_sdk', status: 'observed', value: '35' },
-    { path: 'evidence.abis', status: 'observed', value: 'arm64-v8a, armeabi-v7a' },
-    { path: 'evidence.display.current_density_dpi', status: 'observed', value: '640' },
-    { path: 'evidence.cpu.available_governors', status: 'observed', value: 'schedutil, performance, powersave' },
-    { path: 'evidence.some_future_opaque_path_with_a_long_name', status: 'unknown', value: 'some_future_opaque_value' },
-  ] };
-  if (path === '/api/v1/profiles') return {
-    catalog_revision: 19, profiles: supersededRevisions(),
-    status: { selection: { mode: 'manual' }, rollback_ref: { id: 'generic', revision: 'previous-revision' }, issues: [] },
-  };
-  if (/^\/api\/v1\/profiles\/generic\/revisions\//.test(path)) return `schema: 1\nmetadata:\n  id: generic\n  display_name: Generic profile\n  version: 2026.9.4\n  author: ha-paneld maintainers\n  maturity: verified\nmatch:\n  any:\n    - all:\n        - field: model\n          op: contains\n          value: panel\nhardware:\n  display:\n    width_px: 1920\n    height_px: 1080\n`;
-  return {};
 }
 
 async function startServer(catalogues) {
@@ -200,7 +80,7 @@ async function startServer(catalogues) {
       return;
     }
     if (url.pathname.startsWith('/api/')) {
-      const payload = apiResponse(url.pathname);
+      const payload = profilesApi(url.pathname);
       const yaml = typeof payload === 'string';
       response.writeHead(200, { 'content-type': yaml ? 'application/yaml; charset=utf-8' : 'application/json; charset=utf-8' });
       response.end(yaml ? payload : JSON.stringify(payload));

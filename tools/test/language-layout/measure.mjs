@@ -7,7 +7,7 @@
 //   overflow (b) horizontal page overflow and content escaping its card; overlap of controls and labels
 //   offscreen(c) an interactive control outside the viewport or clipped out of reach
 //   wraps    (d) a control or label whose own text runs onto a second line
-//   cards        card heights and text lengths, for the "no card grows more than about 20% over English" rule
+//   cards        card heights, for the "no card grows more than about 20% over English" rule
 export function measureLayout() {
   const CONTROL = 'button,a[href],input:not([type="hidden"]),select,textarea,summary,[role="button"],[role="tab"],[role="switch"]';
   const LABEL = 'button,.pbtn,[role="tab"],[role="switch"],.nav a,label,th,legend,.card>h2,.card h2';
@@ -18,6 +18,8 @@ export function measureLayout() {
   const hiddenByAncestor = (node) => !!node.closest('[hidden],.sr-only,template,noscript');
   const visible = (node) => {
     if (!(node instanceof Element) || hiddenByAncestor(node)) return false;
+    // Content of a closed <details> keeps a layout box in some engines but is not rendered.
+    if (typeof node.checkVisibility === 'function' && !node.checkVisibility()) return false;
     const style = getComputedStyle(node);
     if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
     const box = node.getBoundingClientRect();
@@ -55,6 +57,12 @@ export function measureLayout() {
       const style = getComputedStyle(current);
       if (scrolls(style)) return null;              // reachable by scrolling that container
       if (clipsX(style) || clipsY(style)) return { node: current, style };
+    }
+    return null;
+  };
+  const scrollerOf = (node) => {
+    for (let current = node.parentElement; current && current !== document.body; current = current.parentElement) {
+      if (scrolls(getComputedStyle(current))) return current;
     }
     return null;
   };
@@ -103,9 +111,14 @@ export function measureLayout() {
         const clip = clippingAncestor(node);
         if (clip) {
           const box = clip.node.getBoundingClientRect();
-          const escapes = textRects(node).some((rect) =>
+          // Text a clipping box hides where it also lies outside an enclosing scroll container's view
+          // (a sticky editor gutter, say) is reached by scrolling that container, not cut off.
+          const scroller = scrollerOf(clip.node);
+          const view = scroller && scroller.getBoundingClientRect();
+          const outsideView = (rect) => view && (rect.bottom > view.bottom || rect.top < view.top || rect.right > view.right || rect.left < view.left);
+          const escapes = textRects(node).some((rect) => !outsideView(rect) && (
             (clipsX(clip.style) && (rect.right > box.right + 1 || rect.left < box.left - 1)) ||
-            (clipsY(clip.style) && (rect.bottom > box.bottom + 1 || rect.top < box.top - 1)));
+            (clipsY(clip.style) && (rect.bottom > box.bottom + 1 || rect.top < box.top - 1))));
           if (escapes) cut.push({ key: keyOf(node), text: textOf(node), by: keyOf(clip.node) });
         }
       }
@@ -127,7 +140,10 @@ export function measureLayout() {
     if (node.matches(LABEL)) {
       const tops = [];
       for (const rect of textRects(node)) if (!tops.some((top) => Math.abs(top - rect.top) < rect.height / 2)) tops.push(rect.top);
-      if (tops.length > 1) wraps.push({ key: keyOf(node), text: textOf(node), lines: tops.length });
+      // A row header (a th beside td cells in a key/value table) sits in a fixed share of a narrow card;
+      // its wrapping is reported separately from column headers and controls.
+      const rowHeader = node.tagName === 'TH' && !!node.parentElement && [...node.parentElement.children].some((cell) => cell.tagName === 'TD');
+      if (tops.length > 1) wraps.push({ key: keyOf(node), text: textOf(node), lines: tops.length, ...(rowHeader ? { rowHeader: true } : {}) });
     }
   }
 
@@ -137,7 +153,7 @@ export function measureLayout() {
     if (cardNodes.some((other) => other !== card && other.contains(card) && other.matches('.card,.wiz'))) continue;
     const key = keyOf(card);
     const box = card.getBoundingClientRect();
-    if (card.matches('.card,.wiz,details.ep')) cards[key] = { height: round(box.height), text: (card.innerText || '').replace(/\s+/g, ' ').trim().length };
+    if (card.matches('.card,.wiz,details.ep')) cards[key] = { height: round(box.height) };
     const style = getComputedStyle(card);
     const inside = [...card.querySelectorAll('*')].filter(visible);
     if (!clipsX(style)) {

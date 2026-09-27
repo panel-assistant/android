@@ -1,11 +1,91 @@
-# UI layout-stability tests (CLS) — report-only
+# Web interface browser tests
+
+Browser tests for the web interface served from `app/src/main/assets`: behaviour tests (`*.test.mjs`), the
+**language layout gate** (blocking) and the **CLS matrix** (report-only).
+
+```bash
+cd tools/test && npm ci --ignore-scripts          # per worktree; exact playwright-core from package-lock.json
+npx playwright-core install webkit                # once per machine; Chromium comes from CHROME (default /usr/bin/chromium)
+npm test                                          # every *.test.mjs, including the layout gate's own negative controls
+```
+
+## Language layout gate (blocking)
+
+`language-layout-gate.mjs` lays out every page in every catalogue locale, light and dark, in Chromium and
+WebKit, and fails on functional layout errors. Few contributors read every shipped language, so this is
+the check that a translation has not broken a page.
+
+- **Pages** (`language-layout/pages/`): Dashboard `/`, Configure, Setup, Profiles, Entities, Install, Logs and
+  the API explorer. Each module mirrors the Kotlin page builder in `PaneldServer.kt` (shell, nav, body) and
+  answers the page's `api/v1/*` requests with neutral fixture data that puts it in its richest translated
+  state. The mDNS switcher is part of the direct-view shell of every page.
+- **Views**: the panel's own screen at 480×480, 520×480 and 480×800; the Panel Assistant sidebar, with the
+  page embedded (`data-embedded`) in an iframe beside Home Assistant's chrome, on desktop (1440×900, 256 px
+  menu, 56 px toolbar), phone (390×844, full width) and tablet (820×1180, 56 px rail); and direct `:8888` on
+  desktop (1440×900).
+- **Errors**: (a) text cut off or hidden; (b) horizontal overflow, content escaping its card, overlapping
+  controls and labels; (c) a control off-screen or clipped out of reach; (d) a control or label (button, tab,
+  toggle, card title, field label, column header) wrapping onto a second line, or a card growing too much.
+  On the panel sizes only (a) and (c) block; (b) and (d) are reported.
+- **English is the baseline** at the same page, view, theme and browser: truncation or wrapping English shows
+  too is reported, not blocking (English cosmetics stay report-only). Overflow, overlap and unreachable
+  controls are absolute.
+- **Card growth**: every card more than 20% taller than English is reported. It blocks only when its growth
+  exceeds the locale's expected scale by more than 20% (height > English × max(1, scale) × 1.2 + 12 px for
+  sub-line rounding). A locale's scale is the median ratio of translated to English string length across its
+  catalogue, computed at run time and printed with the results; nothing to maintain.
+- **Row headers** of key/value tables (a `th` beside `td` cells, 46% of a narrow card) are reported when
+  they wrap, not blocking: keeping them on one line needs shorter translations or a table layout that
+  changes English.
+- **Known translation-length issues** (`language-layout/known-issues.json`): breakages only a shorter
+  translation can fix (English must stay as it is, and no layout keeps the label whole at that width). Each
+  is reported on every run; an entry that no longer occurs fails as stale, so fixed ones must be removed.
+- `language-layout-harness.test.mjs` proves every check can fail (injected cut-off text, nowrap overflow,
+  page overflow, overlap, an off-screen control, a wrapping title, unexplained card growth) in both
+  browsers, that panel sizes only report (b) and (d), and that a stale known issue fails.
+
+### Run it
+
+```bash
+cd tools/test
+node --test language-layout-gate.mjs                                   # everything, both browsers
+LAYOUT_PAGES=configure,install LAYOUT_BROWSERS=webkit node --test language-layout-gate.mjs
+```
+
+Selectors (comma lists): `LAYOUT_PAGES` (dashboard, configure, setup, profiles, entities, install, logs, api),
+`LAYOUT_BROWSERS` (chromium, webkit), `LAYOUT_VIEWS`, `LAYOUT_THEMES`, `LAYOUT_LOCALES` (English is always
+added as the baseline). `LAYOUT_REPORT_LIMIT` caps the printed non-blocking report lines. Each page × browser
+is one test and prints `language-layout {page, browser, cells, failures, reports, ms}`.
+
+Measured locally (2026-09-27, arm64 dev container, 9 locales × 2 themes × 7 views = 126 cells per shard,
+2016 cells in all): the full gate took 569 s serially. Per shard, Chromium / WebKit in seconds: dashboard
+20 / 28, configure 25 / 50, setup 42 / 44, profiles 28 / 30, entities 21 / 23, install 54 / 55, logs 55 / 55,
+api 19 / 20. In CI the shards run in parallel, so the gate takes about as long as its slowest shard plus setup.
+
+### Local rule
+
+A change to `app/src/main/assets/**` (the i18n catalogues live under it) or `tools/test/**` runs the
+gate for the pages it touches, in both browsers, before it is merged:
+`LAYOUT_PAGES=<pages> node --test language-layout-gate.mjs`. A change to shared CSS or JavaScript
+(`info.css`, `i18n.js`, `switcher.js`, `buildwatch.js`, `power-safety.js`) touches every page. A catalogue
+change touches the pages that show the changed keys.
+
+### CI
+
+[`.github/workflows/ui-layout.yml`](../../.github/workflows/ui-layout.yml) runs on pull requests and pushes to
+`main` that change `app/src/main/assets/**`, `tools/test/**` or the workflow, and on demand. One job per page ×
+browser runs in parallel and fails on errors; `suite` runs `npm test`; the `ui-layout` job aggregates them so
+one required check can be configured. Nothing in `ci.yml` needs or waits for it. The CLS job below stays
+report-only and does not run on pushes to `main`.
+
+## CLS matrix (report-only)
 
 Objective layout-stability testing for the info page (`GET /`). **Non-blocking by design**: it never
 fails a build or gates a merge — it produces a report that flags **regressions** (vs a committed
 baseline) and lists high-CLS cells as **backlog**. The intent is ongoing visibility as the UI settles,
 not a gate.
 
-## What it does
+### What it does
 
 `layout-matrix.mjs` serves the **real** `app/src/main/assets/info.css` + `info.js` (via
 `fixtures/info-fixture.html` — no duplication), mocks `/perf`, `/proximity`, `/inspect` with worst-case
@@ -18,7 +98,7 @@ not a gate.
 
 …while the live cards are scrolled **off-screen**. Each cell is the median of repeated independent page loads and includes the observed range, then the median is diffed against `baseline.json`.
 
-## Run it
+### Run the CLS matrix
 
 ```bash
 cd tools/test && npm ci                # exact playwright-core version from package-lock.json (no browser download)
@@ -29,13 +109,13 @@ CHROME=/usr/bin/chromium node layout-matrix.mjs --update-baseline   # rewrite ba
 
 Env: `CHROME` (chromium path), `SECS` (poll window per run), `RUNS` (odd page-load count per cell, default `3`, maximum `21`), `EPS` (regression slack, default `0.06`). Use at least `RUNS=5` when refreshing the committed baseline.
 
-## CI
+### CLS in CI
 
-[`.github/workflows/ui-layout.yml`](../../.github/workflows/ui-layout.yml) runs the matrix on changes to
-`app/src/main/assets/**` or `tools/test/**` and writes the table to the job summary. The job is
-`continue-on-error` — **green regardless** of CLS.
+The `cls` job in [`.github/workflows/ui-layout.yml`](../../.github/workflows/ui-layout.yml) runs the matrix on
+pull requests and on demand and writes the table to the job summary. It is `continue-on-error` and not part
+of the aggregate — **green regardless** of CLS.
 
-## Known limitations / backlog
+### Known limitations / backlog
 
 - **CLS varies run-to-run** because poll, scroll and masonry timing can align differently. The harness reports the median of three loads and their range; the median rejects isolated timing outliers while retaining one real run's offender attribution. `EPS=0.06` remains report-only and deliberately tolerant. A mean would be pulled by outliers and would not have one matching offender breakdown; worst-of-N would over-report one-off timing noise.
 - **Current baseline is below the 0.1 target in every cell.** The committed 12-cell matrix has a maximum CLS of 0.0247; treat only reproducible regressions as actionable.
