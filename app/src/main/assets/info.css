@@ -132,6 +132,9 @@ th{color:var(--accent);width:46%;font-weight:600}
 canvas{width:100%;display:block;background:#0d0d0d;border:1px solid var(--divider);border-radius:8px;margin-bottom:6px}
 /* Vendor-package tag chips (server-rendered rows use these classes; themed, unlike their old inline styles). */
 .vtag{display:inline-block;background:var(--vtag-bg);color:var(--vtag-fg);border-radius:4px;padding:0 6px;margin-left:5px;font-size:.7em;vertical-align:1px}
+/* Package identifiers are unbreakable tokens: let a long one break rather than run out of its row or card
+   (Vendor packages rows, the pending APK preview) when a longer translation narrows the space beside it. */
+#cfg-tame>div>span:first-child,#apk-preview{overflow-wrap:anywhere}
 .vtag.rec{background:var(--vtagrec-bg);color:var(--vtagrec-fg)}
 .leg{font-size:.72rem;color:var(--ok-dim);margin-bottom:6px}
 /* sub-heading + data table (column headers) so an in-card table reads as its own thing */
@@ -196,7 +199,7 @@ input:disabled,select:disabled{background:var(--disabled-bg);color:var(--disable
 .ctlrow{display:flex;gap:8px;flex-wrap:wrap}
 .ctlrow-secondary{margin-top:8px}
 .ctlrow.collapsed .lbl{display:none}
-@media (max-width:600px){.ctlrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.ctlrow .pbtn{box-sizing:border-box;min-height:48px;margin-left:0!important;text-align:center}.ctlrow .lbl{display:inline}}
+@media (max-width:600px){.ctlrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.ctlrow .pbtn{box-sizing:border-box;min-height:48px;margin-left:0!important;text-align:center}.ctlrow .lbl{display:inline}.ctlrow .pbtn.ctl-wide{grid-column:1/-1}}
 .setup{background:var(--setup-bg);border:1px solid var(--setup-bd);border-radius:8px;padding:12px 14px;margin:10px 0!important;color:var(--setup-fg);font-size:.92rem}
 .setup a{color:var(--setup-link);font-weight:600}
 /* Severity: crit = render-blocking (WebView too old, no dashboard, crash-loop, blank internal_url) —
@@ -273,6 +276,16 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 @media(max-width:760px){.entity-table .col-rate{display:none}}
 @media(max-width:600px){.entity-table .col-reason{width:82px}.entity-table .reason-text{display:none}.entity-table .reason-icons{display:inline-flex}.entity-table .col-override{width:104px}.entity-table th,.entity-table td{padding-left:6px;padding-right:6px}}
 .entity-table th button{appearance:none;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;padding:0;cursor:pointer}.entity-table th button:hover,.entity-table th button.sorted{color:var(--accent2)}.entity-table th button.sorted::after{content:attr(data-dir);font-size:0}.entity-table th button[data-dir="asc"]::after{content:" \2191";font-size:inherit}.entity-table th button[data-dir="desc"]::after{content:" \2193";font-size:inherit}
+/* Sortable headers are buttons, which an ellipsis cannot shorten: the header row may grow instead, each
+   button stays on one line, its period hint sits on its own line, and the metric columns are wide enough
+   for the longest shipped label so no header is clipped or slides under its neighbour. */
+.entity-table th{white-space:normal;vertical-align:bottom}
+.entity-table th button{white-space:nowrap;text-align:inherit;max-width:100%}
+.entity-table th small{display:block;font-weight:400;white-space:normal}
+.entity-table .col-rate{width:215px}
+.entity-table .col-last{width:135px}
+.entity-table .col-override{width:140px}
+@media(max-width:600px){.entity-table .col-reason{width:72px}.entity-table .col-override{width:126px}}
 /* Responsive tab bar -> header hamburger: when the tabs can't fit one line, switcher.js sets
    body.nav-collapsed; the #navburger (first item in .hdr, before the logo) then replaces the inline bar,
    and tapping it (body.nav-open) drops the tabs as a vertical menu in flow below the header. */
