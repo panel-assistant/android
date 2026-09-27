@@ -91,9 +91,11 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.RejectedExecutionException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.WeakHashMap
+import kotlin.coroutines.resume
 import org.json.JSONObject
 
 /** Independent, production-used map from registry live keys to their concrete MqttBridge effect owner.
@@ -4452,7 +4454,9 @@ internal class MqttBridge(
         retain: Boolean = false,
         onComplete: ((Boolean) -> Unit)? = null,
     ) {
-        if (!lifecycle.isOpen()) {
+        // No CONNACK means there is no broker to receive a publication. In particular, HiveMQ's
+        // pre-connect client can block inside send(); a local/native observation must not wait for it.
+        if (!lifecycle.isOpen() || connectionGeneration.currentOrNull() == null) {
             onComplete?.invoke(false)
             return
         }
@@ -4504,6 +4508,17 @@ internal class MqttBridge(
             }
         }
     }
+
+    /** Serialize the accepted hello's full observation before native full_begin. */
+    internal suspend fun observeForNativeHello(stillCurrent: () -> Boolean): Boolean =
+        suspendCancellableCoroutine { waiting ->
+            io.github.maxlyth.hapaneld.mqtt.StateConverger.dispatch {
+                val observed = lifecycle.runIfOpen(false) {
+                    if (!stillCurrent()) false else runCatching { syncLocalState(); stillCurrent() }.getOrDefault(false)
+                }
+                if (waiting.isActive) waiting.resume(observed)
+            }
+        }
 
     /**
      * Liveness probe: publish a monotonic-independent `last_seen_at` (epoch seconds) so a healthy link keeps

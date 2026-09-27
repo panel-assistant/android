@@ -164,6 +164,8 @@ internal class PanelAssistantTransportOwner(
     private val log: (String) -> Unit = { message -> Log.i(TAG, message) },
     /** Null reports no state and offers no capability, exactly as the handshake-only slice did. */
     private val shadow: PanelAssistantShadowReporter? = null,
+    /** Samples the running panel before this accepted session starts its full state report. */
+    private val observeForHello: suspend () -> Boolean,
     /** Null offers neither commands nor approval. */
     private val commands: PanelAssistantCommandSink? = null,
     private val approvalTtlMs: Long = io.github.maxlyth.hapaneld.security.ApprovalBroker.DEFAULT_TTL_MS,
@@ -340,6 +342,9 @@ internal class PanelAssistantTransportOwner(
                                     embedKeys?.install(io.github.maxlyth.hapaneld.http.EmbedProofKey(embed.keyId, embed.key(), did))
                                 }
                                 val reason = try {
+                                    if (reporting != null && !observeForHello()) {
+                                        throw PanelAssistantProtocolException("panel state owner changed during hello")
+                                    }
                                     reporting?.open(described)
                                     holdSession(opened, outcome.session, reporting, commanding, withdrawAfterSync)
                                 } finally {

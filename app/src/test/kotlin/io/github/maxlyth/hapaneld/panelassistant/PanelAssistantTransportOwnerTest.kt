@@ -440,6 +440,38 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun acceptedHelloSamplesStateBeforeFullEnd() = runTest {
+        val shadow = Shadow(listOf("relay1", "screen"))
+        val connection = FakeConnection(Ha.accepting(authority = "native", capabilities = listOf("state")))
+        val harness = harness(connection, shadow = shadow.reporter, observeForHello = {
+            shadow.sink("relay1", "ON")
+            shadow.sink("screen", """{"state":"ON"}""")
+            true
+        })
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+
+        val states = connection.sent.filter { kind(it) == "full_begin" }
+            .flatMap { frame ->
+                val observations = JSONObject(frame).getJSONArray("observations")
+                (0 until observations.length()).map { observations.getJSONObject(it).getString("channel") }
+            }
+        assertEquals(setOf("relay1", "screen"), states.toSet())
+        assertTrue("full sync completed after the sample", connection.sent.any { kind(it) == "full_end" })
+        harness.owner.close()
+    }
+
+    @Test fun retiredStateOwnerCannotCompleteFullSync() = runTest {
+        val shadow = Shadow(listOf("screen"))
+        val connection = FakeConnection(Ha.accepting(authority = "native", capabilities = listOf("state")))
+        val harness = harness(connection, shadow = shadow.reporter, observeForHello = { false })
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+
+        assertEquals(listOf("panel_assistant/hello"), connection.sent.map(::kind))
+        harness.owner.close()
+    }
+
     @Test fun theHelloStatesTheChannelsTheBridgeCannotFillAndAChannelThatBecomesUnsupportedHelloesAgain() = runTest {
         val shadow = Shadow(listOf("relay1", "temperature"))
         shadow.unsupported += "humidity"
@@ -994,6 +1026,7 @@ class PanelAssistantTransportOwnerTest {
         repeating: (() -> FakeConnection)? = null,
         repeatingFailure: (() -> Exception)? = null,
         shadow: PanelAssistantShadowReporter? = null,
+        observeForHello: suspend () -> Boolean = { true },
         commands: PanelAssistantCommandSink? = null,
         onAuthority: (String) -> Unit = {},
         onConnected: () -> Unit = {},
@@ -1018,6 +1051,7 @@ class PanelAssistantTransportOwnerTest {
             jitter = { bound -> bound },
             log = log,
             shadow = shadow,
+            observeForHello = observeForHello,
             commands = commands,
             embedKeys = embedKeys,
             onAuthority = persisted?.let { store -> { value: String -> store.events += "authority:$value"; store.authority = value } } ?: onAuthority,
