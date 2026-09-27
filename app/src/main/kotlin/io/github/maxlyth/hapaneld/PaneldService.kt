@@ -1327,6 +1327,10 @@ class PaneldService : Service() {
             ),
             monotonicMillis = haSocketClock,
             shadow = panelAssistantShadow,
+            observeForHello = {
+                val observed = runtime.observe() ?: return@PanelAssistantTransportOwner false
+                observed.value.mqtt.observeForNativeHello { runtime.isCurrent(observed) }
+            },
             commands = panelAssistantCommands,
             onAuthority = config::setPanelAssistantAuthority,
             onConnected = config::markPanelAssistantConnected,
