@@ -39,6 +39,7 @@ class SetupJourneyTest {
         webViewFixable: Boolean = false,
         proof: RenderProof = RenderProof(ProofSource.BUILTIN_FRONTEND_CONNECTED, certain = true, observedAtMs = 1L),
         currentFingerprint: String = "",
+        panelAssistantNative: Boolean = false,
     ) = SetupJourney.Inputs(
         identityConfirmed = identityConfirmed,
         panelId = "alpha",
@@ -57,6 +58,7 @@ class SetupJourneyTest {
         webViewFixable = webViewFixable,
         proof = proof,
         currentFingerprint = currentFingerprint,
+        panelAssistantNative = panelAssistantNative,
     )
 
     @Test fun aFullyConfiguredPanelWithAProvenRenderIsComplete() {
@@ -495,5 +497,32 @@ class SetupJourneyTest {
         assertTrue("engine too old to render", SetupJourney.evaluate(inputs(webViewTooOld = true)).needsUser)
         // And a healthy proven panel needs nobody.
         assertFalse(SetupJourney.evaluate(inputs()).needsUser)
+    }
+
+    /** A panel Panel Assistant runs natively has no MQTT to set up, so setup never sends its owner to a broker. */
+    @Test fun panelAssistantNative_withoutBroker_skipsEveryMqttStep() {
+        val state = inputs(
+            brokerConfigured = false,
+            mqttUserConfigured = false,
+            mqttPasswordConfigured = false,
+            mqtt = MqttSetupState.DISABLED,
+            panelAssistantNative = true,
+        )
+        val journey = SetupJourney.evaluate(state)
+        listOf(Stage.MQTT_BROKER, Stage.MQTT_CREDENTIALS, Stage.MQTT_CONNECTION).forEach {
+            assertEquals(Status.SKIPPED, journey.step(it).status)
+        }
+        assertNull(journey.next)
+    }
+
+    /** Without Panel Assistant's native authority an unconfigured broker is still the next step. */
+    @Test fun withoutPanelAssistantNative_unconfiguredBrokerIsStillNext() {
+        val state = inputs(
+            brokerConfigured = false,
+            mqttUserConfigured = false,
+            mqttPasswordConfigured = false,
+            mqtt = MqttSetupState.DISABLED,
+        )
+        assertEquals(Stage.MQTT_BROKER, SetupJourney.evaluate(state).next)
     }
 }
