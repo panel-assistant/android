@@ -3039,12 +3039,12 @@
       "state": "machine-cross-checked"
     },
     "dashboard.capability.system_actions": {
-      "text": "Neustart / Neu laden / Launcher",
+      "text": "Neustart / Neuladen / Launcher",
       "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
       "state": "machine-cross-checked"
     },
     "dashboard.capability.verified_operations": {
-      "text": "Verifiziertes App-Update / Screenshot / Anzeige",
+      "text": "Geprüftes App-Update / Screenshot / Anzeige",
       "sourceHash": "915a6bc11072c301c0f6504d5e7139c4736c62e0798fb0e221d55321a3049414",
       "state": "machine-cross-checked"
     },
@@ -3919,7 +3919,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.responsiveness.likely_cause": {
-      "text": "Wahrscheinliche Ursache",
+      "text": "Vermutliche Ursache",
       "sourceHash": "37df288399804af4406547013dfc6e21fb1db3a675036b45bc6dd21883b73449",
       "state": "machine-cross-checked"
     },
@@ -3969,7 +3969,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.responsiveness.time_to_interactive": {
-      "text": "Zeit bis zur Interaktivität",
+      "text": "Zeit bis interaktiv",
       "sourceHash": "081eb4e83635e8d5c696b5c24b567ba6cf7fc01ce417cb9f94844ff01504ebbc",
       "state": "machine-cross-checked"
     },
@@ -4609,7 +4609,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.state_stream.state_updates": {
-      "text": "Zustandsaktualisierungen",
+      "text": "Zustandsupdates",
       "sourceHash": "a15928ad4aed0de25b5ed2b4a81279cd8ad0f8b6e865e5da8ed581f7da981e72",
       "state": "machine-cross-checked"
     },
@@ -4839,7 +4839,7 @@
       "state": "machine-cross-checked"
     },
     "entities.control.apply_policy": {
-      "text": "Von der Richtlinie ausgewählte Entitäten anwenden ({current} → {desired})",
+      "text": "Richtlinie anwenden ({current} → {desired})",
       "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
       "state": "machine-cross-checked"
     },
@@ -5389,7 +5389,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issues.title": {
-      "text": "Kompatibilität der Entitätserkennung",
+      "text": "Kompatibilität der Erkennung",
       "sourceHash": "eb4e09bf32f157bcec74907fe18323558be077e4b7c7c0ac3a6f3697f2a46abb",
       "state": "machine-cross-checked"
     },
@@ -5439,7 +5439,7 @@
       "state": "machine-cross-checked"
     },
     "entities.policy.static": {
-      "text": "Aus der Dashboard-Konfiguration gelesene Entitäten hinzufügen",
+      "text": "Entitäten aus der Dashboard-Konfiguration hinzufügen",
       "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
       "state": "machine-cross-checked"
     },
@@ -5854,7 +5854,7 @@
       "state": "machine-cross-checked"
     },
     "entities.table.suggested.title": {
-      "text": "Vorgeschlagene Dashboard-Entitäten",
+      "text": "Empfohlene Dashboard-Entitäten",
       "sourceHash": "116d030af30a47c77e4b40b6783fbab3837e71cf38b5c7b3d5408ac7f9cd3831",
       "state": "machine-cross-checked"
     },
@@ -10186,7 +10186,7 @@
     "settings.auto_brightness.label": {
       "sourceHash": "62e10cef5de66bc5e979cb1136094352833d6d5b6ea448419cf91ff713baf59d",
       "state": "machine-cross-checked",
-      "text": "Automatische Helligkeit"
+      "text": "Auto-Helligkeit"
     },
     "settings.auto_brightness_ha_entity.help": {
       "sourceHash": "6880e1fea6dee81c8f92542ee7bca6f70b62aecb909cf29b8b43fc5843fb5f9d",
@@ -10449,7 +10449,7 @@
       "text": "Dashboard-App"
     },
     "settings.dashboard_theme.help": {
-      "text": "Nur integrierter Renderer. „Home Assistant folgen“ überlässt Home Assistant die Hell-/Dunkel-Auswahl des Dashboards; dafür liefert die Einstellung „Dunkelmodus“ den Standard. „Dunkel“ und „Hell“ legen die Auswahl auf diesem Panel fest, wenn Home Assistant auf „Automatisch“ steht – gedacht für ein Kiosk-Dashboard ohne Seitenleiste, über die sich die Profilseite von Home Assistant erreichen ließe. „Umgebungslicht“ wählt je nach vom Modell „Automatische Helligkeit“ erfasstem Raumlicht „Dunkel“ oder „Hell“ und wechselt erst nach einer Minute konstanter Helligkeit; „Automatische Helligkeit“ muss aktiviert sein, und es folgt „Home Assistant“, bis ein Messwert vorliegt. Eine ausdrückliche Auswahl von „Hell“ oder „Dunkel“ in Home Assistant hat weiterhin Vorrang; verwende „Automatisch“ oder einen separaten Panel-Benutzer. Die Rückkehr zu „Home Assistant folgen“ gibt die Auswahl genau so zurück, wie sie vorgefunden wurde.",
+      "text": "Nur integrierter Renderer. „Home Assistant folgen“ überlässt Home Assistant die Hell-/Dunkel-Auswahl des Dashboards; dafür liefert die Einstellung „Dunkelmodus“ den Standard. „Dunkel“ und „Hell“ legen die Auswahl auf diesem Panel fest, wenn Home Assistant auf „Automatisch“ steht – gedacht für ein Kiosk-Dashboard ohne Seitenleiste, über die sich die Profilseite von Home Assistant erreichen ließe. „Umgebungslicht“ wählt je nach vom Modell „Auto-Helligkeit“ erfasstem Raumlicht „Dunkel“ oder „Hell“ und wechselt erst nach einer Minute konstanter Helligkeit; „Auto-Helligkeit“ muss aktiviert sein, und es folgt „Home Assistant“, bis ein Messwert vorliegt. Eine ausdrückliche Auswahl von „Hell“ oder „Dunkel“ in Home Assistant hat weiterhin Vorrang; verwende „Automatisch“ oder einen separaten Panel-Benutzer. Die Rückkehr zu „Home Assistant folgen“ gibt die Auswahl genau so zurück, wie sie vorgefunden wurde.",
       "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
       "state": "machine-cross-checked"
     },
@@ -10661,7 +10661,7 @@
     "settings.keep_awake.label": {
       "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
       "state": "machine-cross-checked",
-      "text": "Panel reaktionsbereit halten"
+      "text": "Panel reaktiv halten"
     },
     "settings.kiosk_companion_packages.help": {
       "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
@@ -10701,7 +10701,7 @@
     "settings.log_ship_enabled.label": {
       "sourceHash": "ee4fd7d2333c7de7c8d74fd95cfb065c2be72bd2e52dc3b58cf06c0e1d3d3634",
       "state": "machine-cross-checked",
-      "text": "Protokolle weiterleiten"
+      "text": "Protokolle senden"
     },
     "settings.log_ship_host.help": {
       "sourceHash": "0294f7fbe925135c5f7f310e2a92a2078b168792888dd39d6e41976875b3afaa",
@@ -10906,7 +10906,7 @@
     "settings.silence_boot_chime.label": {
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
       "state": "machine-cross-checked",
-      "text": "Startton stummschalten"
+      "text": "Startton aus"
     },
     "settings.tame_vendor_packages.help": {
       "sourceHash": "9e5114f2319b4a394da900d05306035a7d83aba15ac1d66dcd705004814ced95",
@@ -11046,7 +11046,7 @@
     "settings.wake_on_wave.label": {
       "sourceHash": "ab0b6ed59096eb00a56a3f3a769132e280d380a9bf59b13e0ed4f6567f026a1a",
       "state": "machine-cross-checked",
-      "text": "Durch Winken aufwecken"
+      "text": "Wecken per Winken"
     },
     "settings.watchdog_enabled.help": {
       "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",

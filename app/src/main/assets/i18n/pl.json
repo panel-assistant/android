@@ -2759,7 +2759,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.card.responsiveness": {
-   "text": "Responsywność pulpitu nawigacyjnego",
+   "text": "Responsywność pulpitu",
    "sourceHash": "c3a5b81b72c2839068f12c59c5bc192d061aa12064c6e890effa27893c402bf5",
    "state": "machine-cross-checked"
   },
@@ -3009,7 +3009,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.fact.device_id": {
-   "text": "Identyfikator urządzenia",
+   "text": "ID urządzenia",
    "sourceHash": "6e0a0b9d8c5ee4d9fb14be1c846a402634b77030c53b3f328007cd1c9cd43ece",
    "state": "machine-cross-checked"
   },
@@ -3584,7 +3584,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.responsiveness.renderer_reloads": {
-   "text": "Przeładowania renderera (24 godz.)",
+   "text": "Przeładowania renderera (24 h)",
    "sourceHash": "6de68adfd9cd8d609e785bb92ce376b13cc94c28eb884e377cf56003c3619f22",
    "state": "machine-cross-checked"
   },
@@ -3604,7 +3604,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.responsiveness.tap_response": {
-   "text": "Reakcja na dotknięcie",
+   "text": "Reakcja na dotyk",
    "sourceHash": "584a10d446b38404d69cef0bd3dcbdfbea875bf6665928badbcd9add05ccdf90",
    "state": "machine-cross-checked"
   },
@@ -4069,7 +4069,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.sensors.ambient_light": {
-   "text": "Oświetlenie otoczenia",
+   "text": "Światło otoczenia",
    "sourceHash": "bd754dd6ed86a26c4bdccfdd47a912232bae26b86fd38ad063f8f725bb7b8f97",
    "state": "machine-cross-checked"
   },
@@ -4169,7 +4169,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.state_stream.initial_hydration": {
-   "text": "Początkowe wczytanie danych",
+   "text": "Wczytanie początkowe",
    "sourceHash": "ca50fb27c987cb0a17008609810589315ade038c1bfa44bcb2dad0e06fb8e99d",
    "state": "machine-cross-checked"
   },
@@ -4939,7 +4939,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issues.rescan": {
-   "text": "Przeskanuj ponownie po edycji pulpitu nawigacyjnego",
+   "text": "Przeskanuj ponownie po edycji pulpitu",
    "sourceHash": "a6373efa0c0388c76fbfaff8c85718c444fd22dd8cc9667c3cd02aabc7f84786",
    "state": "machine-cross-checked"
   },
@@ -5039,7 +5039,7 @@
    "state": "machine-cross-checked"
   },
   "entities.policy.static": {
-   "text": "Dodaj encje przeanalizowane na podstawie konfiguracji pulpitu nawigacyjnego",
+   "text": "Dodaj encje z konfiguracji pulpitu nawigacyjnego",
    "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
    "state": "machine-cross-checked"
   },
@@ -5454,7 +5454,7 @@
    "state": "machine-cross-checked"
   },
   "entities.table.suggested.title": {
-   "text": "Sugerowane encje pulpitu nawigacyjnego",
+   "text": "Sugerowane encje pulpitu",
    "sourceHash": "116d030af30a47c77e4b40b6783fbab3837e71cf38b5c7b3d5408ac7f9cd3831",
    "state": "machine-cross-checked"
   },
@@ -7079,7 +7079,7 @@
    "state": "machine-cross-checked"
   },
   "profiles.action.use_automatic": {
-   "text": "Użyj automatycznego dopasowania",
+   "text": "Tryb automatyczny",
    "sourceHash": "539ca38b10265667d2ecca6424e6bec15d47aaed08577648ad463be14c6b75b2",
    "state": "machine-cross-checked"
   },
@@ -9409,7 +9409,7 @@
    "state": "machine-cross-checked"
   },
   "settings.illuminance.label": {
-   "text": "Oświetlenie otoczenia",
+   "text": "Światło otoczenia",
    "sourceHash": "bd754dd6ed86a26c4bdccfdd47a912232bae26b86fd38ad063f8f725bb7b8f97",
    "state": "machine-cross-checked"
   },
@@ -9439,7 +9439,7 @@
    "state": "machine-cross-checked"
   },
   "settings.kiosk_lock.label": {
-   "text": "Zablokuj Android do pulpitu nawigacyjnego (funkcja eksperymentalna)",
+   "text": "Zablokuj Android na pulpicie (eksperymentalne)",
    "sourceHash": "d8de0e2c0913e951dbe60ae09b03614c48b5b8a495c69ca0c45fa2798de27c63",
    "state": "machine-cross-checked"
   },
@@ -11419,7 +11419,7 @@
    "state": "machine-cross-checked"
   },
   "install.backup.title": {
-   "text": "Tworzenie kopii zapasowych i przywracanie",
+   "text": "Kopia zapasowa i przywracanie",
    "sourceHash": "0076967a94f3290b2122017687a320ec7412aa0176f3fdfece9b0a0553e513b2",
    "state": "machine-cross-checked"
   },
