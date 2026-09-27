@@ -72,10 +72,7 @@ internal object AutoSleepPolicyReducer {
     }
     fun reduce(previous: AutoSleepPolicyState, event: AutoSleepEvent): AutoSleepTransition {
         require(event.atMs >= 0L) { "Auto-sleep event time must be non-negative" }
-        require(previous.lastEventAtMs == null || event.atMs >= previous.lastEventAtMs) {
-            "Auto-sleep events must use non-decreasing monotonic time"
-        }
-        val current = previous.copy(lastEventAtMs = event.atMs)
+        val current = previous.copy(lastEventAtMs = maxOf(event.atMs, previous.lastEventAtMs ?: 0L))
         val next = when (event) {
             is AutoSleepEvent.SourcesHydrated -> sources(current, event.states, event.feed, event.activityMarker)
             is AutoSleepEvent.Touch -> touch(current, event.wokeOwnedAutomaticSleep)
@@ -85,7 +82,7 @@ internal object AutoSleepPolicyReducer {
             }
             is AutoSleepEvent.AutomaticSleepRecorded ->
                 if (decision(current).output == AutoSleepOutput.ALLOW_SLEEP) {
-                    current.copy(lastAutomaticSleepMs = event.atMs)
+                    current.copy(lastAutomaticSleepMs = current.lastEventAtMs)
                 } else current
             is AutoSleepEvent.LearnedLeaseChanged -> current.copy(
                 learnedLeaseMs = event.learnedLeaseMs.coerceIn(MIN_AUTO_SLEEP_LEASE_MS, MAX_AUTO_SLEEP_LEASE_MS),
