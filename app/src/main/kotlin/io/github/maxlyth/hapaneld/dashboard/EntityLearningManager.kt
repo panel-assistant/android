@@ -502,7 +502,8 @@ class EntityLearningManager(
     /** Safe native-screen summary. Never return the stored exception text: it can contain target
      * details, while the renderer hold only needs to distinguish credential repair from retry. */
     fun bootstrapProblem(): EntityBootstrapProblem? = runCatching {
-        if (config.dashboardEntityLearningEnabled) ensureInitialized()
+        // Startup initializes on the service scope. The renderer's main thread can observe
+        // not-ready here instead of waiting behind a catalogue scan holding this monitor.
         if (!initialized) return@runCatching null
         store.snapshot(instance(), dashboardPath()).let { classifyEntityBootstrapProblem(it.state, it.error) }
     }.getOrNull()
@@ -1426,8 +1427,8 @@ class EntityLearningManager(
         return syncNow("ignore-blocking-issues")
     }
 
-    @Synchronized fun canIgnoreAllBlockingIssues(): Boolean {
-        ensureInitialized()
+    fun canIgnoreAllBlockingIssues(): Boolean {
+        if (!initialized) return false
         return blockingIssueSelection(store.issuesJson(instance(), dashboardPath())).allIgnorable
     }
 
