@@ -91,10 +91,11 @@ internal sealed interface PanelAssistantReportResult {
  */
 internal object PanelAssistantTransportProtocol {
     const val PROTOCOL_MIN = 1
-    const val PROTOCOL_MAX = 1
+    const val PROTOCOL_MAX = 2
     const val COMMAND_HELLO = "panel_assistant/hello"
     const val COMMAND_REPORT_STATE = "panel_assistant/report_state"
     const val COMMAND_COMMAND_RESULT = "panel_assistant/command_result"
+    const val COMMAND_RESTART_NOTICE = "panel_assistant/restart_notice"
 
     const val AUTHORITY_MQTT = "mqtt"
     const val AUTHORITY_SHADOW = "shadow"
@@ -169,7 +170,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":1,"max":1},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof"]}"""
+        """{"protocol":{"min":1,"max":2},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))
@@ -213,6 +214,10 @@ internal object PanelAssistantTransportProtocol {
         .put("sync", sync)
         .put("observations", observations)
         .toString()
+
+    fun restartNotice(id: Long, session: String, scope: String, reason: String, expectedBackMs: Long): String =
+        JSONObject().put("id", id).put("type", COMMAND_RESTART_NOTICE).put("session", session)
+            .put("scope", scope).put("reason", reason).put("expected_back_ms", expectedBackMs).toString()
 
     /**
      * Interpret a result frame as a `report_state` answer; null for any frame that is not a result. The

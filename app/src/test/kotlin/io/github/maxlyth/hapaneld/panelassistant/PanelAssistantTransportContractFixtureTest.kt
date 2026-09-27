@@ -48,9 +48,10 @@ class PanelAssistantTransportContractFixtureTest {
                     "approval_timeout",
                 ),
             ),
+            JSONObject(PanelAssistantTransportProtocol.restartNotice(4, "fixture-session", "app", "settings", 30_000)),
         )
         val expected = fixture.getJSONArray("transportMessages").objects()
-        assertEquals(expected.map { it.getString("name") }, listOf("hello", "report_state", "command_result"))
+        assertEquals(expected.map { it.getString("name") }, listOf("hello", "report_state", "command_result", "restart_notice"))
         assertEquals(expected.map { it.getJSONObject("message").toString() }, messages.map(JSONObject::toString))
     }
 

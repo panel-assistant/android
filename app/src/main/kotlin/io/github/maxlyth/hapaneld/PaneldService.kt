@@ -1216,7 +1216,7 @@ class PaneldService : Service() {
             restartProcess = {
                 // START_STICKY is already the field-established restart route used for WebView
                 // replacement. It avoids Android 12+'s background foreground-service start ban.
-                requestSafeProcessBoundary("activating staged profile")
+                requestSafeProcessBoundary("activating staged profile", "settings")
             },
             safeToRestart = { !InstallProgress.running &&
                 !GuidedSetupPresence.activelyWalked(android.os.SystemClock.elapsedRealtime()) },
@@ -1225,7 +1225,7 @@ class PaneldService : Service() {
         recoveryRestart = ProfileRestartCoordinator(
             schedule = { delayMs, action -> mainHandler.postDelayed(action, delayMs) },
             restartProcess = {
-                requestSafeProcessBoundary("bounded runtime recovery")
+                requestSafeProcessBoundary("bounded runtime recovery", "recovery")
             },
             safeToRestart = { !InstallProgress.running &&
                 !GuidedSetupPresence.activelyWalked(android.os.SystemClock.elapsedRealtime()) },
@@ -1240,7 +1240,7 @@ class PaneldService : Service() {
         webViewRebindRestart = webViewRebindRestartCoordinator(
             schedule = { delayMs, action -> mainHandler.postDelayed(action, delayMs) },
             restartProcess = {
-                requestSafeProcessBoundary("binding a newly installed WebView provider")
+                requestSafeProcessBoundary("binding a newly installed WebView provider", "update")
             },
             destructiveOperationRunning = { InstallProgress.running },
             guidedSetupBeingWalked = {
@@ -1449,7 +1449,9 @@ class PaneldService : Service() {
             state = voiceStateAuthority,
             engineFactory = io.github.maxlyth.hapaneld.assist.WakeWordEngineFactory.NONE,
         )
-        system = SystemController(AndroidSystemEnv(this))
+        system = SystemController(AndroidSystemEnv(this), beforeReboot = {
+            announcePanelAssistantRestart("panel", "reboot", 120_000L)
+        })
         companionDataOperationState = CompanionDataOperationState.from(this)
         entityLearning = EntityLearningManager(
             context = this,
@@ -1730,6 +1732,7 @@ class PaneldService : Service() {
             radioStatus = { if (profile.zigbeeGatewayDir != null) zigbeeHealth.snapshot() else null },
             camera = camera,
             panelAssistantTransportFacts = { panelAssistantTransport.facts() },
+            panelAssistantRestartHealth = { panelAssistantTransport.restartHealthToken() },
             releasePanelAssistantTransport = { panelAssistantTransport.releaseToMqtt() },
             // Captures the FIELD, not a snapshot, so it follows reconfigure()'s bridge reassignment.
             // A bridge generation built from credentials that no longer match the persisted config is
@@ -3155,7 +3158,7 @@ class PaneldService : Service() {
             // then restarts the service and HOME on the new provider.
             Log.i(TAG, "WebView $verb — restarting process so the built-in renderer binds the new provider")
             kotlinx.coroutines.delay(1_000)
-            requestSafeProcessBoundary("binding the $verb WebView provider")
+            requestSafeProcessBoundary("binding the $verb WebView provider", "update")
             return
         }
         system.reloadDashboard(config.dashboardPackage)
@@ -5457,7 +5460,7 @@ class PaneldService : Service() {
      * synchronous admission now prevents new hardware work before the main-loop stop reaches onDestroy;
      * onDestroy remains the only owner of producer drains, final state flush, checkpoint and exit proof.
      */
-    private fun requestSafeProcessBoundary(reason: String) {
+    private fun requestSafeProcessBoundary(reason: String, noticeReason: String) {
         if (!teardownBoundary.requestExplicitBoundary()) return
         // Accepting the request makes this process terminal — serviceTeardownDisposition always EXITs on
         // an explicit boundary — so every service generation created in it from here on must stand down.
@@ -5465,9 +5468,25 @@ class PaneldService : Service() {
         // exits, and fencing that successor would leave nothing to restart the panel.
         PROCESS_BOUNDARY_COMMITMENT.commit()
         restartAfterInternalBoundary.set(true)
+        announcePanelAssistantRestart("app", noticeReason, 30_000L)
         Log.i(TAG, "safe process restart requested: $reason")
         closeServiceAdmissions()
         mainHandler.post { stopSelf() }
+    }
+
+    private fun announcePanelAssistantRestart(scope: String, reason: String, expectedBackMs: Long) {
+        if (!::panelAssistantTransport.isInitialized) return
+        // One bounded acknowledgement chance before an already accepted restart or reboot tears down
+        // the socket. The notice never decides whether the restart itself may proceed.
+        try {
+            kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.withTimeoutOrNull(300L) {
+                    panelAssistantTransport.announceRestart(scope, reason, expectedBackMs).await()
+                }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "restart notice failed; continuing the accepted restart", error)
+        }
     }
 
     /**
