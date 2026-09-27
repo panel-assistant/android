@@ -21,6 +21,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketAddress
 import java.net.UnknownHostException
+import java.util.IdentityHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.SocketFactory
 import javax.net.ssl.SSLSocketFactory
@@ -56,37 +57,62 @@ internal object HaWebSocketClients {
      */
     internal class TlsTrust(val socketFactory: SSLSocketFactory, val trustManager: X509TrustManager)
 
+    /** DNS and socket attempts share the exact InetAddress objects supplied to OkHttp. */
+    private class ResolvedFamilies {
+        private val byAddress = IdentityHashMap<InetAddress, Boolean?>()
+
+        @Synchronized fun remember(all: List<InetAddress>, planned: List<InetAddress>) {
+            for (address in planned) {
+                val other = all.any { (it is Inet6Address) != (address is Inet6Address) }
+                byAddress[address] = if (byAddress.containsKey(address)) null else other
+            }
+        }
+
+        @Synchronized fun take(address: InetAddress): Boolean? = byAddress.remove(address)
+    }
+
     private class ConnectedRouteTracker(
-        private val onConnected: (InetAddress) -> Unit,
+        private val onConnected: (InetAddress, Boolean?) -> Unit,
     ) {
-        private data class Record(val sequence: Long, val socket: Socket)
+        private data class Record(val sequence: Long, val socket: TrackedSocket)
 
         private val sockets = mutableListOf<Record>()
         private var sequence = 0L
 
         @Synchronized fun mark(): Long = sequence
 
-        @Synchronized fun newSocket(): Socket = Socket().also { socket ->
+        @Synchronized fun newSocket(resolved: ResolvedFamilies): Socket = TrackedSocket(resolved).also { socket ->
             sockets += Record(++sequence, socket)
         }
 
         fun publishUniqueConnectedAfter(mark: Long) {
-            val address = synchronized(this) {
+            val selected = synchronized(this) {
                 val candidates = sockets.filter {
                     it.sequence > mark && it.socket.isConnected && !it.socket.isClosed
                 }
-                val selected = candidates.singleOrNull()?.socket?.inetAddress
+                val selected = candidates.singleOrNull()?.socket
                 sockets.removeAll { it.socket.isClosed }
                 selected
             }
-            address?.let { runCatching { onConnected(it) } }
+            selected?.let { runCatching { onConnected(it.inetAddress, it.otherResolved) } }
+        }
+    }
+
+    private class TrackedSocket(private val resolved: ResolvedFamilies) : Socket() {
+        var otherResolved: Boolean? = null
+            private set
+
+        override fun connect(endpoint: SocketAddress, timeout: Int) {
+            super.connect(endpoint, timeout)
+            otherResolved = (endpoint as? InetSocketAddress)?.address?.let(resolved::take)
         }
     }
 
     private class RouteTrackingSocketFactory(
         private val tracker: ConnectedRouteTracker,
+        private val resolved: ResolvedFamilies,
     ) : SocketFactory() {
-        override fun createSocket(): Socket = tracker.newSocket()
+        override fun createSocket(): Socket = tracker.newSocket(resolved)
 
         override fun createSocket(host: String, port: Int): Socket =
             connected(InetSocketAddress(host, port))
@@ -109,7 +135,7 @@ internal object HaWebSocketClients {
         ): Socket = connected(InetSocketAddress(address, port), InetSocketAddress(localAddress, localPort))
 
         private fun connected(remote: SocketAddress, local: SocketAddress? = null): Socket =
-            tracker.newSocket().apply {
+            tracker.newSocket(resolved).apply {
                 if (local != null) bind(local)
                 connect(remote)
             }
@@ -133,9 +159,10 @@ internal object HaWebSocketClients {
          * Called immediately after Ktor validates the WebSocket upgrade; implementations must only
          * hand the address to an owner that can take it from there.
          */
-        onRouteConnected: ((InetAddress) -> Unit)? = null,
+        onRouteConnected: ((InetAddress, Boolean?) -> Unit)? = null,
     ): HttpClient {
         val routeTracker = onRouteConnected?.let { ConnectedRouteTracker(it) }
+        val resolvedFamilies = routeTracker?.let { ResolvedFamilies() }
         val client = HttpClient(OkHttp) {
         // No engine-level maxFrameSize: the OkHttp engine REJECTS any custom value at session
         // start ("Max frame size switch is not supported"), pinned by HaWebSocketClientsFailoverTest.
@@ -150,18 +177,23 @@ internal object HaWebSocketClients {
                 fastFallback(true)
                 dns(
                     if (resolver == null) {
-                        FamilyPlannedDns(preferIpv4 = preferIpv4, ipv4Only = ipv4Only)
+                        FamilyPlannedDns(
+                            preferIpv4 = preferIpv4,
+                            ipv4Only = ipv4Only,
+                            onResolved = resolvedFamilies?.let { it::remember },
+                        )
                     } else {
                         FamilyPlannedDns(
                             preferIpv4 = preferIpv4,
                             ipv4Only = ipv4Only,
+                            onResolved = resolvedFamilies?.let { it::remember },
                             systemLookup = resolver,
                         )
                     },
                 )
                 if (tls != null) sslSocketFactory(tls.socketFactory, tls.trustManager)
-                if (routeTracker != null) {
-                    socketFactory(RouteTrackingSocketFactory(routeTracker))
+                if (routeTracker != null && resolvedFamilies != null) {
+                    socketFactory(RouteTrackingSocketFactory(routeTracker, resolvedFamilies))
                 }
             }
         }
@@ -230,6 +262,7 @@ internal class InboundBoundedWebSocketSession(
 internal class FamilyPlannedDns(
     private val preferIpv4: Boolean,
     private val ipv4Only: Boolean,
+    private val onResolved: ((List<InetAddress>, List<InetAddress>) -> Unit)? = null,
     private val systemLookup: (String) -> List<InetAddress> = { Dns.SYSTEM.lookup(it) },
 ) : Dns {
     override fun lookup(hostname: String): List<InetAddress> {
@@ -242,6 +275,7 @@ internal class FamilyPlannedDns(
                     "$hostname resolves to no IPv4 address and the address-family policy is Force IPv4",
                 )
             }
+            onResolved?.invoke(all, v4)
             return v4
         }
         val ipv4Leads = preferIpv4 || all.firstOrNull() is Inet4Address
@@ -254,6 +288,7 @@ internal class FamilyPlannedDns(
             if (leadIterator.hasNext()) interleaved.add(leadIterator.next())
             if (trailIterator.hasNext()) interleaved.add(trailIterator.next())
         }
+        onResolved?.invoke(all, interleaved)
         return interleaved
     }
 }

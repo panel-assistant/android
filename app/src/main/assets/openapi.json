@@ -119,6 +119,7 @@
         "required": ["available"],
         "properties": {
           "family": { "type": "string", "enum": ["ipv4", "ipv6"], "nullable": true, "description": "The address family the Home Assistant socket actually connected on; null when no route is held. Reported in every state, including unsupported." },
+          "other_resolved": { "type": "boolean", "nullable": true, "description": "Whether DNS also returned an address in the other family for this connected socket; null when no matching DNS result is known. Resolution is not reachability, and this field does not trigger a warning or another probe." },
           "available": { "type": "string", "enum": ["unowned", "unsupported", "unproven", "proven"], "description": "unsupported means the platform refuses the app an ICMP socket; unproven means no echo has been answered yet, so silence is not counted as loss." },
           "state": { "type": "string", "enum": ["unproven", "healthy", "warning", "severe"] },
           "bursts": { "type": "integer" },

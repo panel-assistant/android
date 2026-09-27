@@ -1313,7 +1313,7 @@ class PaneldService : Service() {
                 haApi,
                 socketFamilyPolicy = { MqttAddressFamilyPolicy.fromConfig(config.mqttAddressFamily) },
                 monotonicMillis = haSocketClock,
-                onRouteConnected = { address -> haPathProbe.onRouteConnected(address) },
+                onRouteConnected = { address, otherResolved -> haPathProbe.onRouteConnected(address, otherResolved) },
             ),
             monotonicMillis = haSocketClock,
         )

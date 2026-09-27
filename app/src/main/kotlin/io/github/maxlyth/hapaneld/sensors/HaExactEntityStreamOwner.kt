@@ -1472,7 +1472,7 @@ internal class KtorHaExactEntityStreamTransport(
      * exactly when it matters, which is a black-holed family the connect race has already stepped
      * around. Null in every build and test that has no probe.
      */
-    private val onRouteConnected: ((java.net.InetAddress) -> Unit)? = null,
+    private val onRouteConnected: ((java.net.InetAddress, Boolean?) -> Unit)? = null,
 ) : HaExactEntityStreamTransport {
     override suspend fun subscribe(
         baseUrl: String,

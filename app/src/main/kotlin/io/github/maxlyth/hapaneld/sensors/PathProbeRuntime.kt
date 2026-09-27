@@ -41,7 +41,7 @@ internal object PathProbeRuntime {
      */
     /** The route fact every state carries, because it is useful precisely when probing is not. */
     private fun routeTokens(snap: PathProbeMonitor.Snapshot): String =
-        " family=${snap.family ?: "none"}"
+        " family=${snap.family ?: "none"} other_resolved=${snap.otherResolved ?: "unknown"}"
 
     fun diagnosticLine(): String {
         val snap = snapshot() ?: return "[ha-path-probe] state=unowned"
@@ -73,6 +73,7 @@ internal object PathProbeRuntime {
             // Route facts are reported in EVERY state, including unsupported: knowing which family
             // the socket is on matters most exactly when the probe itself cannot run.
             json.put("family", snap.family ?: org.json.JSONObject.NULL)
+            json.put("other_resolved", snap.otherResolved ?: org.json.JSONObject.NULL)
         }
         if (snap != null && snap.availability != PathProbeAvailability.UNSUPPORTED) {
             json.put("state", snap.severity?.wireValue ?: "unproven")
