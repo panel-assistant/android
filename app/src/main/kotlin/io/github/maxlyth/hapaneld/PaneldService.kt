@@ -2691,26 +2691,19 @@ class PaneldService : Service() {
         }
     }
 
-    /**
-     * Start or stop the lifecycle watch to match the current renderer and credentials. Safe to call
-     * repeatedly: an unchanged demand is a no-op inside the stream owner.
-     */
+    /** Rebind a changed link, then match lifecycle demand after renderer settlement. */
     private fun refreshHaLifecycleWatch() {
         if (!::haExactEntityStream.isInitialized || !::system.isInitialized) return
+        haExactEntityStream.replaceHaLink(currentHaLinkIdentity())
         val wanted = haLifecycleWatchWanted(
             builtinRendererSelected = system.isBuiltinDashboardTarget(config.dashboardPackage),
             credentialsPresent = config.haUrl.isNotBlank() &&
                 (config.haToken.isNotBlank() || config.haRefreshToken.isNotBlank()),
         )
-        // The deferral gates ENABLING only. Deferring a disable would strand the socket open after the
-        // built-in renderer is deselected — the released renderer resets settled, so the disabling
-        // refresh would wait for a settle that is never coming.
+        // Defer enabling only; disabling must close the socket even when the renderer never settles.
         if (!haLifecycleRefreshPermitted(BuiltinDashboard.rendererSettled, wanted)) return
         haExactEntityStream.replaceLifecycleWatch(wanted)
         val watchChanged = HaLifecycleRuntime.setWatching(haLifecycle, wanted)
-        // A refusal describes a session on the route just switched off; keeping it would show the next
-        // session's user a verdict they were never given.
-        if (!wanted) haLifecycle.onSocketWatchStopped()
         // Switching the watch off retires everything consumers can render (an unreportable holder
         // answers null), so they must be told — otherwise the native card keeps describing an outage
         // for a feature that is no longer watching, and redraws it from that state on resume.
