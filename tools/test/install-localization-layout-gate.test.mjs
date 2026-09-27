@@ -6,6 +6,7 @@ import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
+import { exerciseStates, payload } from './language-layout/pages/install.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const ASSETS = resolve(ROOT, 'app/src/main/assets');
@@ -21,7 +22,6 @@ const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
 ];
 const MIME = { '.css': 'text/css', '.js': 'application/javascript', '.svg': 'image/svg+xml' };
-const hostile = '<img src=x onerror="window.__hostileOwned=1">'.repeat(3);
 
 async function catalogueLocales() {
   const files = (await readdir(resolve(ASSETS, 'i18n'))).filter((name) => name.endsWith('.json')).sort();
@@ -33,23 +33,6 @@ async function catalogueLocales() {
   assert.equal(new Set(locales).size, locales.length, 'catalogue locales must be unique');
   assert.ok(locales.includes('en'), 'layout locale matrix must include the English source catalogue');
   return locales;
-}
-
-function payload(url, method) {
-  const path = url.pathname;
-  if (path === '/api/v1/packages') return { packages: [{ pkg: 'io.example.hostile', label: '<img src=x onerror="window.__hostileOwned=1">' }] };
-  if (path === '/api/v1/install/versions') return { versions: [{ tag: 'v2026.9.4-long', version: '2026.9.4-expanded-release-candidate', installable: true, action: 'Upgrade', presentations: { action: { code: 'version-upgrade', params: {} } }, notes: 'https://github.com/maxlyth/ha-paneld/releases', apk: 'https://github.com/maxlyth/ha-paneld/releases/download/test/app.apk' }] };
-  if (path === '/api/v1/install/apk/pending') return { pending: true, package: 'io.example.pending_application_with_a_very_long_identifier', version: '2026.9.4-expanded-release-candidate', discard: 'discard-reference' };
-  if (path === '/api/v1/radio') return { present: true, status: 'Radio firmware 9.9.9', state: 'degraded_high_cpu', presentations: { status: null } };
-  if (path === '/api/v1/status') return { warnings: ['System WebView compatibility warning', 'Storage is critically constrained with a deliberately long exact diagnostic value'], warning_presentations: [{ code: 'status-webview-old', params: { current_engine: '<img src=x onerror=window.__hostileOwned=1>', target_chromium: '130' } }, { code: 'status-storage-critical', params: { usable_bytes: '1024', total_bytes: '999999999999', used_percent: '99.9' } }] };
-  if (path === '/api/v1/install/component') return { status: 'busy' };
-  if (path === '/api/v1/install/status') return { running: false, component: 'restore', message: hostile, presentation: { code: 'restore-completed', params: {} } };
-  if (path === '/api/v1/uninstall') return { ok: false, result: hostile, presentation: { code: 'package-uninstall-failed', params: { package: 'io.example.hostile_application_with_a_long_identifier' } } };
-  if (path === '/api/v1/restore' && method === 'POST' && url.searchParams.get('dry_run') === '1') return { ok: true, panel_id: hostile, config_keys: 999999, companion_pkg: 'io.homeassistant.companion.android', companion_files: 123 };
-  if (path === '/api/v1/restore' && method === 'POST') return { status: 'started' };
-  if (path === '/api/v1/power-safety/repair') return { status: 'partial', message: hostile, power_safety: { acknowledge_available: true, acknowledgement_fingerprint: 'fingerprint' } };
-  if (path === '/api/v1/power-safety/acknowledge') return { acknowledged: false, message: hostile };
-  return {};
 }
 
 async function startServer() {
@@ -87,31 +70,6 @@ async function startServer() {
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   return server;
-}
-
-async function exerciseStates(page) {
-  await page.waitForFunction(() => document.querySelectorAll('.cvsel option').length === 2 && document.querySelector('#apk-preview button'));
-  await page.evaluate(() => window.installComp('paneld', 'update', document.querySelector('.cinstall')));
-  await page.waitForFunction(() => document.querySelector('#comp-msg').textContent.length > 20);
-  await page.click('#uninstall-button');
-  await page.waitForFunction(() => document.querySelector('#uninst-msg').textContent.length > 20);
-  await page.click('#audit-button');
-  await page.waitForFunction(() => document.querySelectorAll('#audit-out .setup').length === 2);
-  await page.evaluate(() => {
-    const input = document.querySelector('#rs-file');
-    const transfer = new DataTransfer();
-    transfer.items.add(new File(['bounded backup'], 'expanded-layout.hpb', { type: 'application/octet-stream' }));
-    Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
-    window.restorePick(input);
-  });
-  await page.waitForFunction(() => document.querySelectorAll('#rs-preview tr').length === 3);
-  await page.locator('#rs-preview button').click();
-  await page.waitForFunction(() => document.querySelector('#bk-msg').textContent.length > 20 && !document.querySelector('#bk-msg').textContent.includes('Restoring'));
-  await page.locator('form[data-power-safety-repair] button').click();
-  await page.waitForFunction(() => document.querySelector('form[data-power-safety-acknowledge]'));
-  await page.locator('form[data-power-safety-acknowledge] button').click();
-  await page.waitForFunction(() => document.querySelector('.power-safety-acknowledge-result')?.textContent.length > 20);
-  await page.waitForTimeout(180);
 }
 
 async function geometry(page) {
