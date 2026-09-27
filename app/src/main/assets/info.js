@@ -478,10 +478,19 @@ window.addEventListener('resize',function(){['smtbl','streamtbl','topproc','camt
 // Controls panel: at compact desktop widths collapse the labelled action row to icons-only when it would
 // wrap. A narrow panel (600px or below) uses the CSS two-column, 48px labelled grid instead so Dashboard remains
 // recognisable. Runs on load, resize, and after controls re-render (hydrate + the 2s status refresh).
+// A control whose own label runs onto a second line (a longer translation in the two-column phone grid).
+function labelWraps(node){var range=document.createRange();range.selectNodeContents(node);var tops=[];
+ Array.prototype.forEach.call(range.getClientRects(),function(r){if(r.width>0.5&&!tops.some(function(t){return Math.abs(t-r.top)<r.height/2;}))tops.push(r.top);});
+ return tops.length>1;}
 function fitControls(){
  var row=document.querySelector('#ctlzone .ctlrow');
  if(!row)return;
- if(window.matchMedia&&window.matchMedia('(max-width:600px)').matches){row.classList.remove('collapsed');return;}
+ var tiles=document.querySelectorAll('#ctlzone .ctlrow .pbtn');
+ Array.prototype.forEach.call(tiles,function(b){b.classList.remove('ctl-wide');});
+ if(window.matchMedia&&window.matchMedia('(max-width:600px)').matches){row.classList.remove('collapsed');
+  // Phone grid: a tile whose label would wrap takes the full row instead, so it stays on one line.
+  Array.prototype.filter.call(tiles,labelWraps).forEach(function(b){b.classList.add('ctl-wide');});
+  return;}
  row.classList.remove('collapsed');                 // show labels, let it wrap naturally
  var btn=row.querySelector('.pbtn');
  var oneLine=btn?btn.offsetHeight:32;
