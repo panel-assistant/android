@@ -14,6 +14,7 @@ ALL_SHARDS=(
   database-host
   database-runtime
   install-export
+  install-probe
   install-runtime
   helper-transaction
   release-integrity
@@ -35,9 +36,9 @@ Usage: provision_gate_parallel.sh [-j JOBS] [--output DIR] [SHARD ...]
 Runs all provisioning shards by default. A named subset may be supplied for a
 focused gate. --aggregate validates retained shard results without running the
 shards again. Valid shards:
-  database-host database-runtime install-export install-runtime
-  helper-transaction release-integrity renderer-seeding install-finish
-  backup publication database-authority fleet-installer
+  database-host database-runtime install-export install-probe
+  install-runtime helper-transaction release-integrity renderer-seeding
+  install-finish backup publication database-authority fleet-installer
   host-reclamation git-bash
 EOF
 }
