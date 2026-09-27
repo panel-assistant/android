@@ -355,6 +355,7 @@ class SettingsBehaviorContractTest {
 
     private fun nonDefault(spec: SettingSpec): String {
         val keySamples = mapOf(
+            "dashboard_network_warning" to "false",
             "panel_id" to "Contract Panel",
             "mqtt_broker" to "tcp://192.0.2.1:1883",
             "ha_url" to "https://ha.example.test/",

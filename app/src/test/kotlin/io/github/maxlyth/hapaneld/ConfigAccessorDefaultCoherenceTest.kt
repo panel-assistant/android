@@ -65,7 +65,7 @@ class ConfigAccessorDefaultCoherenceTest {
 
         // Booleans that default true.
         listOf(
-            c.darkMode, c.preventIdleDim, c.keepAwake, c.dashboardFullscreen,
+            c.darkMode, c.preventIdleDim, c.keepAwake, c.dashboardFullscreen, c.dashboardNetworkWarning,
             c.dashboardEntityAutoStatic, c.dashboardEntityAutoRuntime, c.dashboardNativeKiosk,
             c.silenceBootChime, c.selfUpdate,
         ).forEach { assertTrue(it) }
@@ -138,6 +138,7 @@ class ConfigAccessorDefaultCoherenceTest {
             "prevent_idle_dim" to c.preventIdleDim.toString(),
             "keep_awake" to c.keepAwake.toString(),
             "dashboard_fullscreen" to c.dashboardFullscreen.toString(),
+            "dashboard_network_warning" to c.dashboardNetworkWarning.toString(),
             "dashboard_entity_auto_static" to c.dashboardEntityAutoStatic.toString(),
             "dashboard_entity_auto_runtime" to c.dashboardEntityAutoRuntime.toString(),
             "auto_sleep" to c.autoSleep.toString(),
