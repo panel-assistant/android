@@ -2375,10 +2375,7 @@
       };
       var node = el("span", { class: "auto-sleep-interval " + state });
       node.style.left = left + "%"; node.style.width = Math.max(.15, right - left) + "%";
-      if (right - left >= 9) {
-        node.textContent = names[state] || autoSleepHuman(state);
-        node.setAttribute("data-label", node.textContent);
-      }
+      if (right - left >= 9) node.setAttribute("data-label", node.textContent = names[state] || autoSleepHuman(state));
       return node;
     }
     function lane(label, segments, kind, source) {
@@ -2645,8 +2642,7 @@
     Array.prototype.forEach.call(scope.querySelectorAll(".auto-sleep-interval[data-label]"), function (node) {
       if (node.textContent !== node.getAttribute("data-label")) node.textContent = node.getAttribute("data-label");
       // The label is centred, so a long one overflows both edges; compare the painted text with the bar.
-      var range = document.createRange();
-      range.selectNodeContents(node);
+      var range = document.createRange(); range.selectNodeContents(node);
       var text = range.getBoundingClientRect(), bar = node.getBoundingClientRect();
       if (text.left < bar.left - 0.5 || text.right > bar.right + 0.5) node.textContent = "";
     });
