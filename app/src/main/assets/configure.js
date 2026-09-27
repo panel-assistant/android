@@ -2375,7 +2375,10 @@
       };
       var node = el("span", { class: "auto-sleep-interval " + state });
       node.style.left = left + "%"; node.style.width = Math.max(.15, right - left) + "%";
-      if (right - left >= 9) node.textContent = names[state] || autoSleepHuman(state);
+      if (right - left >= 9) {
+        node.textContent = names[state] || autoSleepHuman(state);
+        node.setAttribute("data-label", node.textContent);
+      }
       return node;
     }
     function lane(label, segments, kind, source) {
@@ -2452,6 +2455,7 @@
       replacement.appendChild(axis);
     }
     content.replaceChildren(replacement);
+    fitAutoSleepIntervalLabels(replacement);
     if (history && history.available !== false) content.setAttribute("data-settled", "true");
     else content.removeAttribute("data-settled");
     var busy = autoSleepHistoryBusy();
@@ -2631,6 +2635,20 @@
           if (window.configCardSizeGeometryChanged) window.configCardSizeGeometryChanged();
         }
       }
+    });
+  }
+
+  // An interval names its state only where the whole name fits: a longer translation in a narrow bar is
+  // left unlabelled rather than cut off (the legend and the lane description still carry the state).
+  function fitAutoSleepIntervalLabels(scope) {
+    if (!scope || !scope.isConnected) return;
+    Array.prototype.forEach.call(scope.querySelectorAll(".auto-sleep-interval[data-label]"), function (node) {
+      if (node.textContent !== node.getAttribute("data-label")) node.textContent = node.getAttribute("data-label");
+      // The label is centred, so a long one overflows both edges; compare the painted text with the bar.
+      var range = document.createRange();
+      range.selectNodeContents(node);
+      var text = range.getBoundingClientRect(), bar = node.getBoundingClientRect();
+      if (text.left < bar.left - 0.5 || text.right > bar.right + 0.5) node.textContent = "";
     });
   }
 
@@ -3161,7 +3179,7 @@
             .then(function (r) { setClearStatus(r.ok ? i18nText("configure.renderer.clear_requested", "Clear requested.") : i18nText("configure.error.http", "Failed (HTTP {status})", { status: r.status }), r.ok); })
             .catch(function (error) { setClearStatus(error && error.approvalRequired ? approvalMessage(error.body) : i18nText("configure.error.network", "Failed (network)"), false); });
         };
-        card.appendChild(el("div", { class: "frow" }, [
+        card.appendChild(el("div", { class: "frow frow-action" }, [
           el("div", { class: "flabel" }, [
             el("span", {
               text: i18nText("configure.renderer.storage", "Renderer storage"), "data-hardened-approval": "",

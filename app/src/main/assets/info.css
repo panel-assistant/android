@@ -308,6 +308,12 @@ body.hdr-hide-brand .hdr .brand{display:none}
 .frow .flabel{flex:1;min-width:0}
 .frow .flabel small{display:block;color:var(--dim);font-weight:400;font-size:.8em;margin-top:2px;overflow-wrap:anywhere}
 .frow .fctl{flex:0 0 auto;display:flex;align-items:center;gap:12px;max-width:50%}
+/* An action row keeps its button on one line: when a translation no longer fits beside the label, the
+   button moves below it intact instead of wrapping inside itself. */
+.frow.frow-action{flex-wrap:wrap}
+.frow.frow-action .flabel{flex:1 1 10em}
+.frow.frow-action .fctl{max-width:100%;margin-left:auto}
+.frow.frow-action .fctl>.pbtn{white-space:nowrap}
 .frow.dependency-disabled{opacity:.48}
 /* Keep native dropdowns aligned with the text fields beside them.  WebView's native select
    metrics are otherwise shorter than equivalent inputs even when padding and font match. */
@@ -372,6 +378,8 @@ body.hdr-hide-brand .hdr .brand{display:none}
 .auto-sleep-lane{min-height:31px}
 .auto-sleep-lane.policy{background:rgba(74,158,255,.11)}
 .auto-sleep-label{padding:7px 8px;color:var(--text);font-size:.72rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-right:1px solid var(--border)}
+/* The policy lane's label is interface text, not an entity name: let a longer translation wrap instead of cutting it off. */
+.auto-sleep-lane.policy .auto-sleep-label{white-space:normal;overflow-wrap:anywhere;hyphens:auto}
 .auto-sleep-lane.source[role="button"]{cursor:pointer}
 .auto-sleep-lane.source[role="button"]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .auto-sleep-lane.source.suppressed{opacity:.52}
