@@ -375,13 +375,15 @@ object SetupJourney {
      * owns its own connection and sign-in, so demanding ours would invent work the user cannot complete
      * and would never mark the journey done.
      */
+    /**
+     * Home Assistant's address and this panel's own sign-in, asked whatever renders the dashboard.
+     *
+     * A foreign renderer such as the Companion app signs itself in, and these steps used to be skipped for
+     * it. But Panel Assistant's connection is this app's own signed-in session, so a panel set up that way
+     * could never run under Panel Assistant: its owner skipped the MQTT page, the wizard ended, and nothing
+     * connected (maintainer, a Companion-app panel on a Home Assistant without MQTT, 2026-09-27).
+     */
     private fun haSteps(inputs: Inputs): List<Step> {
-        if (inputs.renderer !is RendererChoice.Builtin) {
-            return listOf(
-                Step(Stage.HA_URL, Status.SKIPPED, blocking = true),
-                Step(Stage.HA_CREDENTIALS, Status.SKIPPED, blocking = true),
-            )
-        }
         val url = Step(
             Stage.HA_URL,
             if (inputs.haUrl.isNotBlank()) Status.SATISFIED else Status.BLOCKED,

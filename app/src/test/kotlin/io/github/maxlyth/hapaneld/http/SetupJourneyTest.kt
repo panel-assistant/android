@@ -167,8 +167,9 @@ class SetupJourneyTest {
         assertFalse(j.complete)
     }
 
-    @Test fun aForeignRendererDoesNotInheritOurHomeAssistantRequirements() {
-        // The Companion app owns its own URL and sign-in; demanding ours would invent unfinishable work.
+    @Test fun aForeignRendererStillNeedsThisPanelsOwnHomeAssistantSignIn() {
+        // The Companion app signs itself in for the dashboard, but Panel Assistant's connection is this
+        // app's own session, so setup must still get this panel signed in or it can never run natively.
         val j = SetupJourney.evaluate(
             inputs(
                 renderer = RendererChoice.Foreign("io.homeassistant.companion.android.minimal", installed = true),
@@ -177,9 +178,11 @@ class SetupJourneyTest {
                 proof = RenderProof(ProofSource.USER_ATTESTED, certain = true, observedAtMs = 2L),
             ),
         )
-        assertEquals(Status.SKIPPED, j.step(Stage.HA_URL).status)
-        assertEquals(Status.SKIPPED, j.step(Stage.HA_CREDENTIALS).status)
-        assertTrue(j.complete)
+        assertEquals(Status.BLOCKED, j.step(Stage.HA_URL).status)
+        assertEquals(Stage.HA_URL, j.next)
+        assertFalse(j.complete)
+        // The dashboard choice stays the renderer's own business.
+        assertEquals(Status.SKIPPED, j.step(Stage.HOME_DASHBOARD).status)
     }
 
     @Test fun anExplicitRendererThatIsNotInstalledBlocks() {
