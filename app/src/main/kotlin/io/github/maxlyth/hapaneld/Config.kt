@@ -1547,6 +1547,9 @@ class Config private constructor(
     val dashboardFullscreen: Boolean get() = boolPref("dashboard_fullscreen")
     fun setDashboardFullscreen(on: Boolean) { edit { putBoolean("dashboard_fullscreen", on) } }
 
+    /** Visibility of the panel's dashboard network warning; diagnostic checks stay independent. */
+    val dashboardNetworkWarning: Boolean get() = boolPref("dashboard_network_warning")
+
     /** Ask Home Assistant's own frontend to enter its native kiosk mode. This is independent of
      * Android fullscreen/dashboard lock and does not inject CSS into the dashboard. */
     val dashboardNativeKiosk: Boolean get() = boolPref("dashboard_native_kiosk")
@@ -2664,6 +2667,9 @@ class Config private constructor(
         for (spec in specs) {
             val next = migrated[spec.key] ?: continue
             if (next != current[spec.key]) stage(ed, spec, next)
+        }
+        if (from < 11 && !prefs.contains("dashboard_network_warning")) {
+            ed.putBoolean("dashboard_network_warning", true)
         }
         // Schema 6 moves the adaptive response to a new key, so the chain cannot carry it here: the
         // retired key is no longer a registered setting and never appears in the map built above. This

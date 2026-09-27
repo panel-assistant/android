@@ -3288,6 +3288,11 @@
    "sourceHash": "49b161284bad6dc17436604196248af6d170ad4534da706a03dfcfdbcf4c994f",
    "state": "machine-cross-checked"
   },
+  "dashboard.networking.warning_guidance": {
+   "text": "Ostrzeżenie sieciowe sprawdza niezawodność połączenia tego panelu z Home Assistant; nie ustala przyczyny. Sprawdź sygnał Wi-Fi panelu, punkt dostępowy oraz obciążenie hosta Home Assistant.",
+   "sourceHash": "65ebf087852150d6ad87e5cb5b182d4271170d680c65f12156025885fe9565eb",
+   "state": "machine-cross-checked"
+  },
   "dashboard.noisy.aggregate_only": {
    "text": "Tylko wartość zbiorcza — włącz automatyczne uczenie się encji, aby zidentyfikować źródła",
    "sourceHash": "f774453f78cf65bf8e652f1c7a59ef1e7d41c40e99af8e5a796dc35780f3cf92",
@@ -9173,6 +9178,16 @@
    "sourceHash": "a305339fcfa063612b7ae7bbb7369fec0ca25ee457ccfcb3df53c9b52060b106",
    "state": "machine-cross-checked"
   },
+  "settings.dashboard_network_warning.help": {
+   "text": "Wyświetlaj ostrzeżenie o połączeniu sieciowym na pulpicie tego panelu. Po wyłączeniu tej opcji wyniki kontroli i stan sieci nadal są dostępne.",
+   "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
+   "state": "machine-cross-checked"
+  },
+  "settings.dashboard_network_warning.label": {
+   "text": "Pokazuj ostrzeżenie sieciowe na pulpicie",
+   "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
+   "state": "machine-cross-checked"
+  },
   "settings.dashboard_overscroll.help": {
    "text": "Wbudowany renderer: zezwól na efekt rozciągania/poświaty systemu Android przy przeciągnięciu poza górną lub dolną krawędź pulpitu. Domyślnie wyłączone (panel ścienny rzadko się przewija, a odbicie wygląda nie na miejscu). Tylko przez API — ustaw true, aby przywrócić natywny efekt.",
    "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
@@ -10856,6 +10871,11 @@
   "shell.github.title": {
    "text": "ha-paneld na GitHubie",
    "sourceHash": "69474ee0f60dbce1020a6bcd6db49daaeeeb20bf7601151aba213b6fd98d66a6",
+   "state": "machine-cross-checked"
+  },
+  "shell.ha_network.dismiss": {
+   "text": "Zamknij ostrzeżenie sieciowe",
+   "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
    "state": "machine-cross-checked"
   },
   "shell.hardened.key": {

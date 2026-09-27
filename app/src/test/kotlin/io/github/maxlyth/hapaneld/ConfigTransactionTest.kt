@@ -17,6 +17,19 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class ConfigTransactionTest {
+    @Test fun dashboardNetworkWarningUpgradeMaterializesDefaultAndPreservesOptOut() {
+        val untouched = fakePreferences(initial = mapOf("config_schema" to 10))
+        assertTrue(Config(untouched.instance).migrateLiveStore())
+        assertEquals(true, untouched.values["dashboard_network_warning"])
+
+        val optedOut = fakePreferences(initial = mapOf(
+            "config_schema" to 10,
+            "dashboard_network_warning" to false,
+        ))
+        assertTrue(Config(optedOut.instance).migrateLiveStore())
+        assertEquals(false, optedOut.values["dashboard_network_warning"])
+    }
+
     @Test fun uiLanguageDefaultsToAutoAndRoundTripsAnExplicitChoice() {
         val prefs = fakePreferences()
         val config = Config(prefs.instance)

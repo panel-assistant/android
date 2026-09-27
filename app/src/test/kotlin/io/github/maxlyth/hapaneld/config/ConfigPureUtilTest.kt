@@ -238,6 +238,17 @@ class MigrationsTest {
         assertTrue(explicitWarnings.isEmpty())
     }
 
+    @Test fun schemaTenAddsDashboardNetworkWarningDefaultAndPreservesExplicitChoice() {
+        val (defaults, warnings) = Migrations.migrate(10, emptyMap())
+        assertEquals("true", defaults["dashboard_network_warning"])
+        assertTrue(warnings.isEmpty())
+        val (explicit, explicitWarnings) = Migrations.migrate(
+            10, mapOf("dashboard_network_warning" to "false"),
+        )
+        assertEquals("false", explicit["dashboard_network_warning"])
+        assertTrue(explicitWarnings.isEmpty())
+    }
+
     @Test fun schemaSevenAddsVoiceDefaultsAndExposureAndPreservesExplicitChoices() {
         val (defaults, defaultWarnings) = Migrations.migrate(7, mapOf("mqtt_broker" to "tcp://ha:1883"))
 

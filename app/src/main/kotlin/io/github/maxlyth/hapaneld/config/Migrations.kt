@@ -89,6 +89,7 @@ object Migrations {
             values.putIfAbsent("voice_mic_gain_db", "0")
             values.putIfAbsent("camera_exposure", "0")
         },
+        Migration { values -> values.putIfAbsent("dashboard_network_warning", "true") },
     )
 
     /**

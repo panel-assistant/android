@@ -6810,7 +6810,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
 <div id="ctlzone">${controlsHtml(s, strings)}</div></div>
 ${tcard("infotbl", strings.get("dashboard.card.panel_information"), s?.let { factRowsHtml(it, infoKeys(it), h, strings) })}
 $shotCard
-${tcard("nettbl", strings.get("dashboard.card.networking"), s?.let { factRowsHtml(it, NET_KEYS, h, strings) })}
+${tcard("nettbl", strings.get("dashboard.card.networking"), s?.let { factRowsHtml(it, NET_KEYS, h, strings) }, post = """<p class="note">${esc(strings.get("dashboard.networking.warning_guidance"))}</p>""")}
 ${tcard("proftbl", strings.get("dashboard.card.profile"), s?.let { factRowsHtml(it, profileFactKeys(profile, it.facts), h, strings) }, post = profNote)}
 ${tcard("contexttbl", strings.get("dashboard.card.runtime_diagnostics"), s?.let { contextRowsHtml(it, h, strings) })}
 ${tcard("captbl", strings.get("dashboard.card.capabilities"), s?.let { capRowsHtml(it.capabilityRows, strings) }, post = capNote)}
