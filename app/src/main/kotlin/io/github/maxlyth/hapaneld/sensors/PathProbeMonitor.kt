@@ -31,6 +31,7 @@ internal class PathProbeMonitor(
     private val bursting = AtomicBoolean(false)
 
     @Volatile private var target: InetAddress? = null
+    private var otherResolved: Boolean? = null
     private var measuring = false
 
     /**
@@ -48,11 +49,12 @@ internal class PathProbeMonitor(
      * Taken from the live connection rather than resolved here, so the probe always measures the path
      * the dashboard is using even when the two families disagree about which one works.
      */
-    fun onRouteConnected(address: InetAddress) = synchronized(lock) {
+    fun onRouteConnected(address: InetAddress, resolvedOtherFamily: Boolean? = null) = synchronized(lock) {
         // A replacement connection owns a new route generation even when DNS selected the same
         // address. Let an old silence burst finish, but never attribute its result to the new socket.
         if (target != null) generation++
         target = address
+        otherResolved = resolvedOtherFamily
     }
 
     /** Measurement follows the authenticated socket, exactly as the WebSocket monitor's does. */
@@ -65,6 +67,7 @@ internal class PathProbeMonitor(
                 schedule.reset()
                 history.reset()
                 target = null
+                otherResolved = null
                 // Any burst still in flight belongs to the session that just ended; advancing the
                 // generation is what makes its result discardable when it returns.
                 generation++
@@ -148,6 +151,7 @@ internal class PathProbeMonitor(
         val aggregate = history.aggregate()
         Snapshot(
             family = target?.let { if (it is java.net.Inet6Address) "ipv6" else "ipv4" },
+            otherResolved = otherResolved,
             availability = aggregate.availability,
             severity = history.severity(),
             bursts = aggregate.bursts,
@@ -173,6 +177,8 @@ internal class PathProbeMonitor(
     data class Snapshot(
         /** The family the socket actually connected on, or null when no route is held. */
         val family: String?,
+        /** Whether the other family appeared in this connection's DNS result; null if unknown. */
+        val otherResolved: Boolean?,
         val availability: PathProbeAvailability,
         val severity: HaNetworkPathSeverity?,
         val bursts: Int,
