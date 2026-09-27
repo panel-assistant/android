@@ -9,6 +9,10 @@
 .profile-toolbar .profile-pickers .profile-revisions{display:flex;align-items:center;gap:5px;white-space:nowrap;flex:0 0 auto;font-size:.82rem;visibility:hidden}
 .profile-toolbar .profile-pickers .profile-revisions.has-superseded{visibility:visible}
 .profile-toolbar .profile-pickers select{min-width:0;flex:1 1 auto}
+/* The revision label never shrinks into a column (Chinese breaks between any two characters), and a long
+   option label must not widen the page in WebKit, which paints it past the select's own box. */
+.profile-toolbar .profile-pickers>label[for="profile-select"]{flex:none;white-space:nowrap}
+.profile-toolbar .profile-pickers select{contain:paint}
 .profile-toolbar select{min-width:0;max-width:100%;flex:1}
 .profile-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:1 1 auto;margin-left:auto;flex-wrap:wrap}
 .profile-action-break{display:none}
