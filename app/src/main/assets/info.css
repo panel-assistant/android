@@ -354,7 +354,7 @@ body.hdr-hide-brand .hdr .brand{display:none}
 .autobright-legend .expected::before{background:#f1bd52}
 .autobright-legend .proposed::before{background:#b77cff}
 .autobright-legend small{margin-left:auto;color:var(--dim)}
-.autobright-message{min-height:1.2em;margin-top:5px;color:var(--ok-dim);font-size:.74rem}
+.autobright-message{min-height:1rem;margin-top:5px;color:var(--ok-dim);font-size:.74rem;line-height:1rem}
 .autobright-message.error{color:#d34b42}
 .auto-sleep-prerequisite{margin:-2px 0 8px;padding:0 8px;color:var(--warn);font-size:.72rem;line-height:1.35}
 /* The Camera card's explanation when the panel offers no camera; dimmer than a warning, because
