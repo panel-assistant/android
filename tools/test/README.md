@@ -31,9 +31,7 @@ Env: `CHROME` (chromium path), `SECS` (poll window per run), `RUNS` (odd page-lo
 
 ## CI
 
-[`.github/workflows/ui-layout.yml`](../../.github/workflows/ui-layout.yml) runs the matrix on changes to
-`app/src/main/assets/**` or `tools/test/**` and writes the table to the job summary. The job is
-`continue-on-error` — **green regardless** of CLS.
+These checks run locally, not on GitHub Actions. Run the matrix and `npm test` here before changing layout in `app/src/main/assets/`.
 
 ## Known limitations / backlog
 
