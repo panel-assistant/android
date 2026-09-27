@@ -2655,6 +2655,9 @@ class PaneldService : Service() {
                     (if (effects.resolveHaLink) 1L else 0L),
             )
         }
+        // A shutdown claim from the old socket cannot describe the replacement Home Assistant.
+        if (::haLifecycle.isInitialized && desired.haLink != appliedNetworkConfiguration.haLink)
+            haLifecycle.onSocketWatchStopped()
         appliedNetworkConfiguration = desired
         if (ownerRefresh.logShipping) runCatching { logShipper.reconfigure() }
         if (ownerRefresh.keepAwake) runCatching { power.apply(config.keepAwake) }
@@ -2700,14 +2703,11 @@ class PaneldService : Service() {
             credentialsPresent = config.haUrl.isNotBlank() &&
                 (config.haToken.isNotBlank() || config.haRefreshToken.isNotBlank()),
         )
-        // The deferral gates ENABLING only. Deferring a disable would strand the socket open after the
-        // built-in renderer is deselected — the released renderer resets settled, so the disabling
-        // refresh would wait for a settle that is never coming.
+        // Defer enabling only; disabling must close the socket even when the renderer never settles.
         if (!haLifecycleRefreshPermitted(BuiltinDashboard.rendererSettled, wanted)) return
         haExactEntityStream.replaceLifecycleWatch(wanted)
         val watchChanged = HaLifecycleRuntime.setWatching(haLifecycle, wanted)
-        // A refusal describes a session on the route just switched off; keeping it would show the next
-        // session's user a verdict they were never given.
+        // A refusal belongs to the session just switched off.
         if (!wanted) haLifecycle.onSocketWatchStopped()
         // Switching the watch off retires everything consumers can render (an unreportable holder
         // answers null), so they must be told — otherwise the native card keeps describing an outage
