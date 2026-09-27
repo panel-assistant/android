@@ -8,9 +8,9 @@ This is a big one, and it changes how ha-paneld fits into your home. Two things 
 
 **What changes.** Until now ha-paneld talked to Home Assistant through MQTT, and you set each panel up by hand. Panel Assistant, the integration for Home Assistant, now does that work: it finds panels on your network, installs and updates them, and puts each panel's own interface in your Home Assistant sidebar. Going forward, panels are installed and managed through Panel Assistant.
 
-**A direct connection instead of MQTT.** A panel can now talk to Home Assistant over its own connection, with Panel Assistant looking after its entities directly, rather than through your MQTT broker. This release carries the panel's side of that. You switch a panel over from Panel Assistant 0.6.0, one panel at a time, and your entity IDs, history and customisations come with it. MQTT keeps working exactly as before until you choose to switch.
+**A direct connection instead of MQTT.** A panel can now talk to Home Assistant over its own connection, with Panel Assistant looking after its entities directly, rather than through your MQTT broker. This release carries the panel's side of that. You switch a panel over from Panel Assistant 0.6.0 or later, one panel at a time, and your entity IDs, history and customisations come with it. MQTT keeps working exactly as before until you choose to switch.
 
-**What to do.** Install Panel Assistant 0.6.0 from HACS and add your panels to it. Its release notes walk through moving a panel off MQTT, what to watch for and how to go back.
+**What to do.** Install Panel Assistant 0.6.1 from HACS and add your panels to it. Its release notes walk through moving a panel off MQTT, what to watch for and how to go back.
 
 **Your panel will remind you.** A panel that isn't connected to Panel Assistant now shows a "Panel Assistant is required" notice on its screen and its web page, with a QR code to the setup guide. You can hide it, but it comes back after the next update until Panel Assistant connects.
 
@@ -20,7 +20,7 @@ This is a big one, and it changes how ha-paneld fits into your home. Two things 
 
 **What carries over.** Your settings, the panel's identity, its devices and entities in Home Assistant, and its sign-in, so nothing needs setting up again.
 
-**What you need to do.** Update the Panel Assistant integration to 0.5.0 or later first (0.6.0 is recommended); older versions refuse the new app. After that, update your panels the way you normally do.
+**What you need to do.** Update the Panel Assistant integration to 0.5.0 or later first (0.6.1 is recommended); older versions refuse the new app. After that, update your panels the way you normally do.
 
 **Panels without internet access.** A panel that can't reach GitHub can still move to the new app: with Panel Assistant 0.6.1, Home Assistant hands the new app to it over your local network.
 
