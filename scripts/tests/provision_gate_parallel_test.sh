@@ -296,6 +296,7 @@ helper_aggregate_job="$(awk '/^  helper-aggregate:$/ { in_job=1 } in_job' "$CI_W
 # release-gate aggregates accept the skip.
 if grep -Fq 'host=true' <<<"$changes_job" &&
    grep -Fq 'if [ "$EVENT" = pull_request ]; then' <<<"$changes_job" &&
+   grep -Fq "pattern='^(scripts/|helper/|\\.github/workflows/|app/src/main/kotlin/)'" <<<"$changes_job" &&
    grep -Fq "if: needs.changes.outputs.host == 'true'" <<<"$provisioning_job" &&
    grep -Fq 'HOST_PATHS: ${{ needs.changes.outputs.host }}' <<<"$aggregate_job" &&
    grep -Fq 'test "$PROVISIONING_RESULT" = skipped' <<<"$aggregate_job" &&

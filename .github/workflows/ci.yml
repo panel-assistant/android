@@ -359,7 +359,8 @@ jobs:
           esac
 
   # A pull request runs the provisioning and privileged-helper suites only when it changes something they
-  # exercise: scripts/, helper/, a workflow, or one of the two app sources those suites read. Every push
+  # exercise: scripts/, helper/, a workflow, or app Kotlin, which the helper contract check scans for
+  # every command the app sends and the provisioning suite reads in part. Every push
   # and dispatch runs them. GitHub checks a pull request out as a merge commit whose first parent is the
   # base, so the change list is one diff; anything else (another runner's checkout, a failed diff) runs
   # every suite rather than guess. The two aggregate checks below accept a skip only when this job ran
@@ -385,7 +386,7 @@ jobs:
           host=true
           if [ "$EVENT" = pull_request ]; then
             if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -eq 3 ] && changed="$(git diff --name-only HEAD^1 HEAD)"; then
-              pattern='^(scripts/|helper/|\.github/workflows/|app/src/main/kotlin/io/github/maxlyth/hapaneld/(http/PaneldServer|util/HelperClient)\.kt$)'
+              pattern='^(scripts/|helper/|\.github/workflows/|app/src/main/kotlin/)'
               grep -Eq "$pattern" <<<"$changed" || host=false
             else
               echo "::warning::the pull request's changed files could not be listed; running every suite"
