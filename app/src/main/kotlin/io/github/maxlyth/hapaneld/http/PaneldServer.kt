@@ -179,6 +179,7 @@ import io.github.maxlyth.hapaneld.util.PanelAssistantDevice
 import io.github.maxlyth.hapaneld.util.PanelAssistantUpdateLease
 import io.github.maxlyth.hapaneld.util.UpdateChecker
 import io.github.maxlyth.hapaneld.util.withStagedFiles
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -4676,6 +4677,10 @@ $proximityScript"""
         config.mqttBroker.isNotBlank(),
     )
 
+    /** Panel Assistant granted native authority, so this panel reaches Home Assistant without MQTT. */
+    private fun panelAssistantNative(): Boolean =
+        config.panelAssistantAuthority == PanelAssistantTransportProtocol.AUTHORITY_NATIVE
+
     /** HealthAudit findings for a render surface. The shared (WebView-too-old, no-renderer) inputs come from
      *  the request snapshot; [webViewDisplay] (the version string to show) and [updates] stay per-surface —
      *  the Install tab passes no updates, GET /api/v1/status the unfiltered list, and the dashboard banner
@@ -6102,7 +6107,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val mqtt = s.facts["MQTT"] ?: "disabled"
         // Pure decision (unit-tested in SetupBannerTest) — note a CONFIGURED broker that's merely
         // mid-(re)connect must not be reported as missing.
-        val needs = SetupBanner.needs(mqtt, config.mqttBroker.isNotBlank(), config.mqttUser.isNotBlank())
+        val needs = SetupBanner.needs(mqtt, config.mqttBroker.isNotBlank(), config.mqttUser.isNotBlank(), panelAssistantNative())
         val setup = if (needs.isNotEmpty())
             """<div class="setup">⚠ ${esc(strings.get("dashboard.banner.setup_needs.prefix"))} <a href="${localizedHref("configure", strings)}">${esc(localizedSetupNeeds(needs, strings))}</a> ${esc(strings.get("dashboard.banner.setup_needs.suffix"))}</div>"""
         else ""
@@ -8475,6 +8480,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             mqttPasswordConfigured = config.mqttPassword.isNotEmpty(),
             mqtt = SetupJourney.MqttSetupState.of(mqttState()),
             renderer = renderer,
+            panelAssistantNative = panelAssistantNative(),
             haUrl = config.haUrl,
             haCredentialed = config.haToken.isNotBlank() || config.haRefreshToken.isNotBlank(),
             haOAuthInFlight = haOAuthFlow.pendingCount() > 0,
