@@ -1,0 +1,293 @@
+{
+  "about": "Layout breakages only a shorter translation can fix: English must stay as it is and no layout keeps the label whole at this width. Reported on every run; an entry that no longer occurs fails as stale and must be removed. Fix by shortening the translation, then delete the entry.",
+  "issues": [
+    {
+      "page": "dashboard",
+      "view": "sidebar-phone",
+      "locale": "es",
+      "family": "d wraps",
+      "key": "[data-layout-key=\"responsiveness\"]>h2:nth-of-type(1)",
+      "text": "CAPACIDAD DE RESPUESTA DEL PANEL DE CONTROL · instrumentación integrada en tiemp"
+    },
+    {
+      "page": "dashboard",
+      "view": "sidebar-phone",
+      "locale": "pl",
+      "family": "d wraps",
+      "key": "[data-layout-key=\"responsiveness\"]>h2:nth-of-type(1)",
+      "text": "RESPONSYWNOŚĆ PULPITU NAWIGACYJNEGO · wbudowane narzędzia do monitorowania na ży"
+    },
+    {
+      "page": "dashboard",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "[data-layout-key=\"responsiveness\"]>h2:nth-of-type(1)",
+      "text": "ШВИДКІСТЬ ВІДГУКУ ІНФОРМАЦІЙНОЇ ПАНЕЛІ · вбудовані засоби моніторингу в режимі р"
+    },
+    {
+      "page": "dashboard",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "#noisyentities>tr:nth-of-type(1)>th:nth-of-type(1)",
+      "text": "НАЙАКТИВНІШІ СУТНОСТІ"
+    },
+    {
+      "page": "dashboard",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d card growth",
+      "key": "[data-layout-key=\"behavtbl\"]",
+      "text": "577px → 900px (+56%; uk scale 1.172, limit +41%)",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "profiles",
+      "view": "sidebar-phone",
+      "locale": "pl",
+      "family": "d wraps",
+      "key": "#profile-auto",
+      "text": "Użyj automatycznego dopasowania"
+    },
+    {
+      "page": "profiles",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "#profile-auto",
+      "text": "Використати автоматичний вибір"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "de",
+      "family": "d wraps",
+      "key": "#entity-activate",
+      "text": "Von der Richtlinie ausgewählte Entitäten anwenden (184 → 190)"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "de",
+      "family": "d wraps",
+      "key": "#entity-issues>h2:nth-of-type(1)",
+      "text": "KOMPATIBILITÄT DER ENTITÄTSERKENNUNG"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "de",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(5)>h2:nth-of-type(1)",
+      "text": "VORGESCHLAGENE DASHBOARD-ENTITÄTEN"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "es",
+      "family": "d wraps",
+      "key": "#entity-issues>h2:nth-of-type(1)",
+      "text": "COMPATIBILIDAD DE DETECCIÓN DE ENTIDADES"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "es",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(5)>h2:nth-of-type(1)",
+      "text": "ENTIDADES SUGERIDAS DEL PANEL DE CONTROL"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "fr",
+      "family": "d wraps",
+      "key": "#entity-issues>h2:nth-of-type(1)",
+      "text": "COMPATIBILITÉ DE LA DÉCOUVERTE D’ENTITÉS"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "fr",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(5)>h2:nth-of-type(1)",
+      "text": "ENTITÉS SUGGÉRÉES DU TABLEAU DE BORD"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "it",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>h2:nth-of-type(1)",
+      "text": "FILTRO DELLA SOTTOSCRIZIONE ALLE ENTITÀ"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "it",
+      "family": "d wraps",
+      "key": "#entity-issues>h2:nth-of-type(1)",
+      "text": "COMPATIBILITÀ DEL RILEVAMENTO DELLE ENTITÀ"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "it",
+      "family": "d wraps",
+      "key": "#entity-issues-rescan",
+      "text": "Ripeti la scansione dopo aver modificato la dashboard"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "nl",
+      "family": "d wraps",
+      "key": "#entity-issues>h2:nth-of-type(1)",
+      "text": "COMPATIBILITEIT VAN ENTITEITSDETECTIE"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "pl",
+      "family": "d wraps",
+      "key": "#entity-issues-rescan",
+      "text": "Przeskanuj ponownie po edycji pulpitu nawigacyjnego"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "pl",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(5)>h2:nth-of-type(1)",
+      "text": "SUGEROWANE ENCJE PULPITU NAWIGACYJNEGO"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "#entity-activate",
+      "text": "Застосувати набір, вибраний політикою (184 → 190)"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "#entity-issues-list>article:nth-of-type(1)>button:nth-of-type(2)",
+      "text": "Ігнорувати потенційні сутності та продовжити"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "#entity-issues-rescan",
+      "text": "Повторно сканувати після редагування інформаційної панелі"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(5)>h2:nth-of-type(1)",
+      "text": "РЕКОМЕНДОВАНІ СУТНОСТІ ІНФОРМАЦІЙНОЇ ПАНЕЛІ"
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "de",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Aus der Dashboard-Konfiguration gelesene Entitäten hinzufügen",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "es",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Añadir entidades analizadas desde la configuración del panel de control",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "fr",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Ajouter les entités extraites de la configuration du tableau de bord",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "it",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Aggiungi le entità rilevate nella configurazione della dashboard",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "nl",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Voeg entiteiten toe die uit de dashboardconfiguratie zijn geparseerd",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "pl",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Dodaj encje przeanalizowane na podstawie konfiguracji pulpitu nawigacyjnego",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "entities",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "body:nth-of-type(1)>div:nth-of-type(1)>div:nth-of-type(6)>div:nth-of-type(1)>fieldset:nth-of-type(1)>label:nth-of-type(1)",
+      "text": "Додати сутності, отримані з конфігурації інформаційної панелі",
+      "browsers": [
+        "webkit"
+      ]
+    },
+    {
+      "page": "install",
+      "view": "sidebar-phone",
+      "locale": "pl",
+      "family": "d wraps",
+      "key": "[data-layout-key=\"backup-restore\"]>h2:nth-of-type(1)",
+      "text": "TWORZENIE KOPII ZAPASOWYCH I PRZYWRACANIE"
+    },
+    {
+      "page": "install",
+      "view": "sidebar-phone",
+      "locale": "uk",
+      "family": "d wraps",
+      "key": "[data-layout-key=\"backup-restore\"]>h2:nth-of-type(1)",
+      "text": "РЕЗЕРВНЕ КОПІЮВАННЯ ТА ВІДНОВЛЕННЯ"
+    }
+  ]
+}

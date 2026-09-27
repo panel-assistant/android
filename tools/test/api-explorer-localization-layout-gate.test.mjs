@@ -6,21 +6,16 @@ import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
+import { API_HTML, API_SPEC, EXPANDED_ENDPOINTS, apiFrame, openEndpoints } from './language-layout/pages/api.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const ASSETS = resolve(ROOT, 'app/src/main/assets');
-const API_HTML = resolve(ASSETS, 'api.html');
-const API_SPEC = resolve(ASSETS, 'openapi.json');
 const CHROME = process.env.CHROME || '/usr/bin/chromium';
 const LOCALES = await catalogueLocales();
 const THEMES = ['light', 'dark'];
 const VIEWPORTS = [
   { name: 'narrow-panel', width: 320, height: 568 },
   { name: 'wide-browser', width: 900, height: 800 },
-];
-const EXPANDED_ENDPOINTS = [
-  { path: '/api/v1/power-safety/repair', method: 'POST', approval: '' },
-  { path: '/api/v1/config', method: 'POST', approval: 'conditional' },
 ];
 const MIME = {
   '.js': 'application/javascript',
@@ -40,23 +35,13 @@ async function catalogueLocales() {
   return locales;
 }
 
-function pagePayload(catalogue, locale) {
-  return JSON.stringify({ locale, strings: catalogue.strings }).replaceAll('<', '\\u003c');
-}
-
 async function startServer(catalogues) {
-  const frame = await readFile(API_HTML, 'utf8');
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://layout.test');
     if (url.pathname === '/api') {
       const locale = LOCALES.includes(url.searchParams.get('lang')) ? url.searchParams.get('lang') : 'en';
-      const html = frame
-        .replace('<title>ha-paneld · REST API</title>', '<title>Layout panel · REST API</title>')
-        .replace('__API_LANG__', locale)
-        .replace('__API_BACK_HREF__', `/?lang=${encodeURIComponent(locale)}`)
-        .replace('__API_I18N_PAYLOAD__', pagePayload(catalogues.get(locale), locale));
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(html);
+      response.end(apiFrame({ catalogues, locale }));
       return;
     }
     if (url.pathname === '/api/v1/openapi.json') {
@@ -84,17 +69,7 @@ async function startServer(catalogues) {
 }
 
 async function expandEndpoints(page) {
-  await page.evaluate((targets) => {
-    const endpoints = [...document.querySelectorAll('details.ep')];
-    targets.forEach((target) => {
-      const endpoint = endpoints.find((node) =>
-        node.querySelector('.path')?.textContent === target.path &&
-        node.querySelector('.m')?.textContent === target.method
-      );
-      if (!endpoint) throw new Error(`missing layout endpoint ${target.method} ${target.path}`);
-      endpoint.open = true;
-    });
-  }, EXPANDED_ENDPOINTS);
+  await page.evaluate(openEndpoints, EXPANDED_ENDPOINTS);
   await page.waitForTimeout(80);
 }
 

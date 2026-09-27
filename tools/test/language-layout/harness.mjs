@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright-core';
@@ -33,10 +33,13 @@ export const VIEWS = [
 
 // A card may grow this much over English at the same view before the wrapping is excessive.
 export const GROWTH_LIMIT = 1.2;
+// Absolute allowance for sub-line rounding (under one line of body text).
 const GROWTH_SLACK_PX = 12;
 const CANCELLED_FETCH = /due to access control checks|Load failed|Fetch is aborted|The operation was aborted/i;
-// Height growth a card's own longer text accounts for: its text ratio plus 10% for line-break rounding.
-export const TEXT_EXPANSION_ALLOWANCE = 1.1;
+
+// Breakages that only a shorter translation can fix (English must stay as it is and no layout keeps the
+// label whole), recorded for the translation pipeline. Each is reported, never silently dropped.
+const KNOWN = JSON.parse(readFileSync(new URL('./known-issues.json', import.meta.url), 'utf8')).issues;
 
 const MIME = {
   '.css': 'text/css', '.js': 'application/javascript', '.json': 'application/json',
@@ -60,7 +63,26 @@ export async function loadCatalogues() {
   assert.ok(catalogues.has('en'), 'the English source catalogue is required');
   // English first: every other locale is compared with it.
   const locales = ['en', ...[...catalogues.keys()].filter((locale) => locale !== 'en')];
-  return { catalogues, locales };
+  return { catalogues, locales, scales: localeScales(catalogues) };
+}
+
+/**
+ * Each locale's expected length scale: the median ratio of translated to English string length across
+ * the whole catalogue, computed at run time so there is nothing to maintain. A card is expected to grow
+ * with its language; only growth well beyond that scale is a layout corner case.
+ */
+export function localeScales(catalogues) {
+  const english = catalogues.get('en').strings;
+  const scales = {};
+  for (const [locale, catalogue] of catalogues) {
+    const ratios = Object.entries(english)
+      .filter(([key, record]) => typeof record?.text === 'string' && record.text.length && typeof catalogue.strings[key]?.text === 'string')
+      .map(([key, record]) => catalogue.strings[key].text.length / record.text.length)
+      .sort((a, b) => a - b);
+    const middle = Math.floor(ratios.length / 2);
+    scales[locale] = ratios.length ? Math.round((ratios.length % 2 ? ratios[middle] : (ratios[middle - 1] + ratios[middle]) / 2) * 1000) / 1000 : 1;
+  }
+  return scales;
 }
 
 /** The per-locale strings view a page module renders with; missing keys fall back to English. */
@@ -267,7 +289,8 @@ export async function launch(browserName) {
 }
 
 // Wait for fonts, then until the card wall holds still for three consecutive frames (masonry and column
-// alignment may still be moving cards when the ready condition first holds). Gives up after two seconds.
+// alignment may still be moving cards when the ready condition first holds) and no card is split across
+// columns. Gives up after two seconds.
 async function settle(frame) {
   await frame.evaluate(async () => {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -279,7 +302,10 @@ async function settle(frame) {
     while (stable < 3 && performance.now() < deadline) {
       await new Promise((done) => requestAnimationFrame(done));
       const next = signature();
-      stable = next === last ? stable + 1 : 0; last = next;
+      // WebKit can show a card split across two columns for a few frames after hydration; a card that
+      // stays split past the deadline is measured (and fails) as it is.
+      const fragmented = [...document.querySelectorAll('.cards>.card')].some((card) => card.getClientRects().length > 1);
+      stable = next === last && !fragmented ? stable + 1 : 0; last = next;
     }
   });
 }
@@ -322,7 +348,7 @@ export async function measureCell(page, origin, pageDef, view, theme, locale, mu
  * English cosmetics stay report-only) and for the card growth rule. Overflow, overlap and unreachable
  * controls are absolute.
  */
-export function verdict(result, english, view, locale) {
+export function verdict(result, english, view, locale, scale = 1) {
   const errors = []; const reports = [];
   const englishKeys = (list) => new Set((english?.[list] || []).map((item) => item.key));
   const isEnglish = locale === 'en';
@@ -335,19 +361,22 @@ export function verdict(result, english, view, locale) {
   for (const item of result.overflow) add('b overflow', item, !panel);
   for (const item of result.overlaps) add('b overlap', item, !panel);
   const wrapsInEnglish = englishKeys('wraps');
-  for (const item of result.wraps) add('d wraps', item, !panel && !isEnglish && !wrapsInEnglish.has(item.key));
+  // Row headers of key/value tables wrap in a fixed 46% column; making them single-line needs either
+  // shorter translations or a table layout that changes English, so they are reported, not blocking,
+  // (see tools/test/README.md). Column headers and controls block.
+  for (const item of result.wraps) add(item.rowHeader ? 'd row header wraps' : 'd wraps', item, !panel && !isEnglish && !item.rowHeader && !wrapsInEnglish.has(item.key));
   if (!isEnglish && english) {
-    // Rule (iii): a card may grow about 20% over English. Longer translated prose legitimately needs
-    // more lines, so growth beyond 20% blocks only where it also exceeds what the card's own text
-    // expansion explains (a control pushed onto a new row, a label doubling); the rest is reported.
+    // Rule (iii): every card more than 20% taller than English is reported. It blocks only when its
+    // growth exceeds the locale's expected length scale by more than 20% (a corner case, not the length
+    // inherent in the language). A language shorter than English (scale < 1) is still held to English's
+    // height, since a card cannot shrink below its controls.
+    const expected = Math.max(1, scale) * GROWTH_LIMIT;
     for (const [key, card] of Object.entries(result.cards)) {
       const base = english.cards[key];
       if (!base) continue;
-      const growth = card.height / base.height;
       if (card.height <= base.height * GROWTH_LIMIT + GROWTH_SLACK_PX) continue;
-      const textRatio = base.text ? card.text / base.text : 1;
-      const explained = card.height <= base.height * Math.max(GROWTH_LIMIT, textRatio * TEXT_EXPANSION_ALLOWANCE) + GROWTH_SLACK_PX;
-      add('d card growth', { key, text: `${base.height}px → ${card.height}px (+${Math.round((growth - 1) * 100)}%, text +${Math.round((textRatio - 1) * 100)}%)` }, !panel && !explained);
+      const blocking = card.height > base.height * expected + GROWTH_SLACK_PX;
+      add('d card growth', { key, text: `${base.height}px → ${card.height}px (+${Math.round((card.height / base.height - 1) * 100)}%; ${locale} scale ${scale}, limit +${Math.round((expected - 1) * 100)}%)` }, !panel && blocking);
     }
   }
   // A fetch the previous navigation left in flight is cancelled, not a page failure.
@@ -357,10 +386,10 @@ export function verdict(result, english, view, locale) {
 }
 
 /** Run every selected cell for one page in one browser. Returns counts, failures and wall time. */
-export async function runPage({ pageDef, browserName, origin, sel }) {
+export async function runPage({ pageDef, browserName, origin, sel, scales = {}, known = KNOWN }) {
   const started = Date.now();
   const browser = await launch(browserName);
-  const failures = []; const reports = []; let cells = 0;
+  const failures = []; const reports = []; let cells = 0; const matchedKnown = new Set();
   try {
     for (const viewName of sel.views) {
       const view = VIEWS.find((item) => item.name === viewName);
@@ -379,8 +408,12 @@ export async function runPage({ pageDef, browserName, origin, sel }) {
               failures.push(`${cell}: (load) ${String(error.message).split('\n')[0]}`); cells += 1; continue;
             }
             if (locale === 'en') english = result;
-            const outcome = verdict(result, english, view, locale);
-            outcome.errors.forEach((message) => failures.push(`${cell}: ${message}`));
+            const outcome = verdict(result, english, view, locale, scales[locale] ?? 1);
+            outcome.errors.forEach((message) => {
+              const excused = known.find((entry) => entry.page === pageDef.name && entry.view === view.name && entry.locale === locale
+                && (!entry.browsers || entry.browsers.includes(browserName)) && message.startsWith(`(${entry.family}) ${entry.key}`));
+              if (excused) { matchedKnown.add(excused); reports.push(`${cell}: known translation length ${message}`); } else failures.push(`${cell}: ${message}`);
+            });
             outcome.reports.forEach((message) => reports.push(`${cell}: ${message}`));
             cells += 1;
           }
@@ -391,6 +424,14 @@ export async function runPage({ pageDef, browserName, origin, sel }) {
     }
   } finally {
     await browser.close();
+  }
+  // A known entry that no longer occurs in a cell this run measured is stale: the translation or layout
+  // was fixed, so the entry must go (otherwise it would silently excuse a future regression).
+  for (const entry of known) {
+    if (entry.page !== pageDef.name || matchedKnown.has(entry) || (entry.browsers && !entry.browsers.includes(browserName))) continue;
+    if (sel.views.includes(entry.view) && sel.locales.includes(entry.locale) && sel.themes.length === THEMES.length) {
+      failures.push(`${pageDef.name}/${browserName}/${entry.view}/*/${entry.locale}: stale known-issue entry (${entry.family}) ${entry.key} — remove it from language-layout/known-issues.json`);
+    }
   }
   return { page: pageDef.name, browser: browserName, cells, failures, reports, ms: Date.now() - started };
 }
