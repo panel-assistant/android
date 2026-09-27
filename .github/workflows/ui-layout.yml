@@ -1,20 +1,20 @@
-# Non-blocking layout-stability (CLS) report. NEVER gates a build/merge — it posts a job summary that
-# flags regressions vs tools/test/baseline.json and lists high-CLS cells as backlog. See tools/test/README.md.
-name: UI layout (CLS) · report-only
+# Web interface layout. The language layout gate lays out every page in every catalogue locale, light and
+# dark, Chromium and WebKit, at the panel sizes and in the Panel Assistant sidebar views, and fails on
+# cut-off text, overflow or overlap, unreachable controls and excess wrapping. One job per page and browser
+# runs in parallel; the `ui-layout` job aggregates them so a single required check can be configured.
+# The CLS matrix stays report-only. Nothing in ci.yml needs or waits for this workflow. See tools/test/README.md.
+name: UI layout
 run-name: UI layout · ${{ github.head_ref || github.ref_name }}
 
-# It takes about ten minutes and is report-only, so it runs on pull requests, nightly and on demand rather
-# than on every push to main, where it held up the release path without gating anything.
 on:
   pull_request:
     paths: ['app/src/main/assets/**', 'tools/test/**', '.github/workflows/ui-layout.yml']
-  schedule:
-    - cron: '47 2 * * *'
+  push:
+    branches: [main]
+    paths: ['app/src/main/assets/**', 'tools/test/**', '.github/workflows/ui-layout.yml']
   workflow_dispatch:
 
-# A push supersedes the run before it, so group by ref and let the newer run
-# cancel the older one. Keying a push on its own run id gave every push a group
-# of one, so superseded runs kept burning minutes to no purpose.
+# A push supersedes the run before it, so group by ref and let the newer run cancel the older one.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
@@ -23,8 +23,75 @@ permissions:
   contents: read
 
 jobs:
-  cls:
+  # The rest of tools/test: behaviour tests and the layout gate's own negative controls.
+  suite:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.2'
+      - name: Install playwright-core and WebKit
+        run: cd tools/test && npm ci --ignore-scripts && npx playwright-core install --with-deps webkit
+      - name: Run tools/test
+        run: |
+          export CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
+          test -x "$CHROME"
+          cd tools/test && npm test
+
+  layout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in step with tools/test/language-layout/pages/index.mjs (a test in tools/test enforces it).
+        page: [dashboard, configure, setup, profiles, entities, install, logs, api]
+        browser: [chromium, webkit]
+    name: layout · ${{ matrix.page }} · ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.2'
+      - name: Install playwright-core, browser and fonts
+        run: |
+          cd tools/test && npm ci --ignore-scripts
+          if [ "${{ matrix.browser }}" = webkit ]; then
+            npx playwright-core install --with-deps webkit
+          else
+            npx playwright-core install-deps chromium
+          fi
+      - name: Language layout gate
+        env:
+          LAYOUT_PAGES: ${{ matrix.page }}
+          LAYOUT_BROWSERS: ${{ matrix.browser }}
+        run: |
+          export CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
+          cd tools/test && node --test language-layout-gate.mjs
+
+  # The single check to require: green only when every layout shard and the suite passed.
+  ui-layout:
+    if: always()
+    needs: [suite, layout]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every layout shard passed
+        run: |
+          echo "suite=${{ needs.suite.result }} layout=${{ needs.layout.result }}"
+          test "${{ needs.suite.result }}" = success
+          test "${{ needs.layout.result }}" = success
+
+  # Report-only layout stability; not part of the aggregate and not run on pushes to main.
+  cls:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,7 +102,7 @@ jobs:
       - name: Install playwright-core
         run: cd tools/test && npm ci --ignore-scripts
       - name: Test CLS sampling policy
-        run: cd tools/test && npm test
+        run: cd tools/test && node --test layout-statistics.test.mjs
       - name: Run CLS matrix (report-only)
         run: |
           CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
