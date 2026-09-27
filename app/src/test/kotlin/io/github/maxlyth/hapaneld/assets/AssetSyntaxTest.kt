@@ -1,4 +1,4 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.assets
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

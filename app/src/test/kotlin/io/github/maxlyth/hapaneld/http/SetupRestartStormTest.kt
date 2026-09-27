@@ -1,12 +1,16 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.http
 
 import android.content.SharedPreferences
+import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.DiscoveryResult
+import io.github.maxlyth.hapaneld.entityFilterQuestionPending
 import io.github.maxlyth.hapaneld.http.SetupJourney
 import io.github.maxlyth.hapaneld.http.SetupJourney.MqttSetupState
 import io.github.maxlyth.hapaneld.http.SetupJourney.ProofSource
 import io.github.maxlyth.hapaneld.http.SetupJourney.RenderProof
 import io.github.maxlyth.hapaneld.http.SetupJourney.RendererChoice
 import io.github.maxlyth.hapaneld.http.SetupJourney.Status
+import io.github.maxlyth.hapaneld.panelConfiguredBeforeSetupTracking
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

@@ -1,4 +1,4 @@
-package io.github.maxlyth.hapaneld
+package io.github.maxlyth.hapaneld.res
 
 import java.io.File
 import java.nio.file.Files
