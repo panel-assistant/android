@@ -45,6 +45,26 @@ static int failures = 0;
 #define CHECK(cond, ...) do { if (!(cond)) { \
     printf("FAIL: " __VA_ARGS__); printf("  (%s:%d)\n", __FILE__, __LINE__); failures++; } } while (0)
 
+static void test_guard_test_parent(void) {
+    char parent[] = "/tmp/hapaneld-guard-unit-XXXXXX";
+    if (!mkdtemp(parent)) { CHECK(0, "Guard test parent can be created\n"); return; }
+    CHECK(setenv("HAPANELD_GUARD_TEST_PARENT", parent, 1) == 0,
+        "Guard test parent can be selected\n");
+    CHECK(guard_maintenance_init() == 0, "Guard initializes under the selected test parent\n");
+    char custody[sizeof parent + sizeof "/.hapaneld-guard-db-test"];
+    snprintf(custody, sizeof custody, "%s/.hapaneld-guard-db-test", parent);
+    struct stat st;
+    CHECK(stat(custody, &st) == 0 && S_ISDIR(st.st_mode),
+        "Guard custody uses the selected test parent\n");
+    guard_test_reset();
+    (void)unsetenv("HAPANELD_GUARD_TEST_PARENT");
+    char lock[sizeof custody + sizeof "/.owner.lock"];
+    snprintf(lock, sizeof lock, "%s/.owner.lock", custody);
+    (void)unlink(lock);
+    (void)rmdir(custody);
+    (void)rmdir(parent);
+}
+
 // --- ioctl interception (linked with -Wl,--wrap=ioctl) -------------------------------------------
 // Captures the ledjni per-channel ioctls so we can assert the command numbers + scaled values without
 // a real /dev/ledjni (the SMT1019 isn't hardware we own). Returns 0 = success so the handler proceeds.
@@ -2322,6 +2342,7 @@ int main(int argc, char **argv) {
         sleep(30);
         return 0;
     }
+    test_guard_test_parent();
     guard_test_reset();
     CHECK(guard_test_reconcile() == 0, "Guard package gate initializes empty for legacy unit cases\n");
     test_validators();

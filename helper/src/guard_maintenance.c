@@ -387,7 +387,12 @@ const char *guard_phase_name(enum guard_phase phase) {
 }
 
 static int open_guard_dir(void) {
-    int parent = open(GUARD_PARENT, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    const char *parent_path = GUARD_PARENT;
+#ifdef HAPANELD_TEST
+    const char *test_parent = getenv("HAPANELD_GUARD_TEST_PARENT");
+    if (test_parent && *test_parent) parent_path = test_parent;
+#endif
+    int parent = open(parent_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (parent < 0) return -1;
     struct stat parent_st;
     if (fstat(parent, &parent_st) != 0 || !S_ISDIR(parent_st.st_mode) ||
