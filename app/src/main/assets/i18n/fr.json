@@ -3029,7 +3029,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.capability.screen_power": {
-      "text": "Marche/arrêt de l’écran",
+      "text": "Marche/arrêt écran",
       "sourceHash": "0d4d080bcd55f5ee63c4d2574a7c7e2a743c63673b4d440bbee7984f28e40c4a",
       "state": "machine-cross-checked"
     },
@@ -3039,7 +3039,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.capability.system_actions": {
-      "text": "Redémarrage / rechargement / lanceur",
+      "text": "Redémarrer / recharger / lanceur",
       "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
       "state": "machine-cross-checked"
     },
@@ -3334,7 +3334,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.fact.app_database": {
-      "text": "Base de données de l’application",
+      "text": "Base de données de l’appli",
       "sourceHash": "4ecdb3931af33bb1553c98a8c023bf11d11b6f29ef424358cfa9a2dc7131037d",
       "state": "machine-cross-checked"
     },
@@ -3944,7 +3944,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.responsiveness.renderer_reloads": {
-      "text": "Rechargements du moteur de rendu (24 h)",
+      "text": "Rechargements du rendu (24 h)",
       "sourceHash": "6de68adfd9cd8d609e785bb92ce376b13cc94c28eb884e377cf56003c3619f22",
       "state": "machine-cross-checked"
     },
@@ -5389,7 +5389,7 @@
       "state": "machine-cross-checked"
     },
     "entities.issues.title": {
-      "text": "Compatibilité de la découverte d’entités",
+      "text": "Compatibilité de la découverte",
       "sourceHash": "eb4e09bf32f157bcec74907fe18323558be077e4b7c7c0ac3a6f3697f2a46abb",
       "state": "machine-cross-checked"
     },
@@ -5439,7 +5439,7 @@
       "state": "machine-cross-checked"
     },
     "entities.policy.static": {
-      "text": "Ajouter les entités extraites de la configuration du tableau de bord",
+      "text": "Ajouter les entités configurées dans le tableau de bord",
       "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
       "state": "machine-cross-checked"
     },
@@ -5854,7 +5854,7 @@
       "state": "machine-cross-checked"
     },
     "entities.table.suggested.title": {
-      "text": "Entités suggérées du tableau de bord",
+      "text": "Suggestions du tableau de bord",
       "sourceHash": "116d030af30a47c77e4b40b6783fbab3837e71cf38b5c7b3d5408ac7f9cd3831",
       "state": "machine-cross-checked"
     },
@@ -10186,7 +10186,7 @@
     "settings.auto_brightness.label": {
       "sourceHash": "62e10cef5de66bc5e979cb1136094352833d6d5b6ea448419cf91ff713baf59d",
       "state": "machine-cross-checked",
-      "text": "Luminosité automatique"
+      "text": "Luminosité auto"
     },
     "settings.auto_brightness_ha_entity.help": {
       "sourceHash": "6880e1fea6dee81c8f92542ee7bca6f70b62aecb909cf29b8b43fc5843fb5f9d",
@@ -10446,10 +10446,10 @@
     "settings.dashboard_package.label": {
       "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
       "state": "machine-cross-checked",
-      "text": "Application du tableau de bord"
+      "text": "Appli du tableau de bord"
     },
     "settings.dashboard_theme.help": {
-      "text": "Moteur de rendu intégré uniquement. « Comme dans Home Assistant » laisse Home Assistant choisir le mode clair ou sombre du tableau de bord, pour lequel le réglage Mode sombre fournit la valeur par défaut. Sombre et Clair imposent le mode sur ce panneau lorsque Home Assistant est réglé sur Automatique, pour un tableau de bord kiosque sans barre latérale permettant d’accéder à la page de profil Home Assistant. L’option « Lumière ambiante » choisit « Sombre » ou « Clair » selon la luminosité de la pièce telle que perçue par le modèle de luminosité automatique, et ne change qu’après une minute durant laquelle la pièce est restée plus sombre ou plus claire ; elle nécessite que l’option « Luminosité automatique » soit activée et suit « Home Assistant » jusqu’à ce qu’elle dispose d’une mesure. Un choix explicite Clair ou Sombre dans Home Assistant reste prioritaire ; utilisez Automatique ou un utilisateur distinct pour le panneau. Revenir à « Comme dans Home Assistant » restitue exactement le choix trouvé initialement.",
+      "text": "Moteur de rendu intégré uniquement. « Comme dans Home Assistant » laisse Home Assistant choisir le mode clair ou sombre du tableau de bord, pour lequel le réglage Mode sombre fournit la valeur par défaut. Sombre et Clair imposent le mode sur ce panneau lorsque Home Assistant est réglé sur Automatique, pour un tableau de bord kiosque sans barre latérale permettant d’accéder à la page de profil Home Assistant. L’option « Lumière ambiante » choisit « Sombre » ou « Clair » selon la luminosité de la pièce telle que perçue par le modèle de luminosité automatique, et ne change qu’après une minute durant laquelle la pièce est restée plus sombre ou plus claire ; elle nécessite que l’option « Luminosité auto » soit activée et suit « Home Assistant » jusqu’à ce qu’elle dispose d’une mesure. Un choix explicite Clair ou Sombre dans Home Assistant reste prioritaire ; utilisez Automatique ou un utilisateur distinct pour le panneau. Revenir à « Comme dans Home Assistant » restitue exactement le choix trouvé initialement.",
       "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
       "state": "machine-cross-checked"
     },
@@ -10661,7 +10661,7 @@
     "settings.keep_awake.label": {
       "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
       "state": "machine-cross-checked",
-      "text": "Maintenir le panneau réactif"
+      "text": "Panneau toujours réactif"
     },
     "settings.kiosk_companion_packages.help": {
       "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
@@ -10691,7 +10691,7 @@
     "settings.launcher_package.label": {
       "sourceHash": "f97faee7e687e14fb4356160757e11ca90cc6c89b0e2ce2d40e14a3a62ef1bbd",
       "state": "machine-cross-checked",
-      "text": "Application du lanceur"
+      "text": "Appli du lanceur"
     },
     "settings.log_ship_enabled.help": {
       "sourceHash": "01fd4a6f75c8d1eba5b4765db5c8eb1c9ebc1220b0639982525ab92b2f43e5d7",
@@ -10701,7 +10701,7 @@
     "settings.log_ship_enabled.label": {
       "sourceHash": "ee4fd7d2333c7de7c8d74fd95cfb065c2be72bd2e52dc3b58cf06c0e1d3d3634",
       "state": "machine-cross-checked",
-      "text": "Transmettre les journaux"
+      "text": "Envoyer les journaux"
     },
     "settings.log_ship_host.help": {
       "sourceHash": "0294f7fbe925135c5f7f310e2a92a2078b168792888dd39d6e41976875b3afaa",
@@ -10796,7 +10796,7 @@
     "settings.navbar_mode.label": {
       "sourceHash": "2fd20a36857a818323c2b8ff2d46809e566ad5e13f5e7f1ffb9f0750a82cbc83",
       "state": "machine-cross-checked",
-      "text": "Mode de la barre de navigation"
+      "text": "Mode barre de navigation"
     },
     "settings.network_adb.help": {
       "sourceHash": "09613eac91f1ca4d5abdc8ac3c450d38c097a1050bf088881b34ca7b0a17e97e",
@@ -10906,7 +10906,7 @@
     "settings.silence_boot_chime.label": {
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
       "state": "machine-cross-checked",
-      "text": "Couper le carillon de démarrage"
+      "text": "Couper le son de démarrage"
     },
     "settings.tame_vendor_packages.help": {
       "sourceHash": "9e5114f2319b4a394da900d05306035a7d83aba15ac1d66dcd705004814ced95",
@@ -10956,7 +10956,7 @@
     "settings.update_channel.label": {
       "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
       "state": "machine-cross-checked",
-      "text": "Canal de mise à jour automatique de ha-paneld"
+      "text": "Canal de mise à jour auto de ha-paneld"
     },
     "settings.voice_audio_source.help": {
       "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
@@ -11056,7 +11056,7 @@
     "settings.watchdog_enabled.label": {
       "sourceHash": "b26bc7ffa70ab7160d62be62a315160fdf6e8e5b2c000e081cc9fcfd1b17c00d",
       "state": "machine-cross-checked",
-      "text": "Surveillance de l’application"
+      "text": "Surveillance de l’appli"
     },
     "settings.webview_auto_update.help": {
       "sourceHash": "c213f4530d508c6c3ae53fc24f3ab6654dd3e1618bd68609031c298bf8e903ee",

@@ -2684,7 +2684,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.capability.system_actions": {
-   "text": "Opnieuw opstarten / opnieuw laden / launcher",
+   "text": "Herstarten / herladen / launcher",
    "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
    "state": "machine-cross-checked"
   },
@@ -3169,7 +3169,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.fact.webview_reporting": {
-   "text": "Rapportage van Systeem-WebView",
+   "text": "Systeem-WebView-rapportage",
    "sourceHash": "8a803bb805676261f2d7d35ad7880bec48082293ee16ed448bf0deceb816bec4",
    "state": "machine-cross-checked"
   },
@@ -3574,7 +3574,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.responsiveness.main_thread_blocking": {
-   "text": "Blokkering van de hoofdthread",
+   "text": "Hoofdthreadblokkering",
    "sourceHash": "18da563e4cb2b6f88024f77b0b3be5eef18bb2531d435872feee022f5160d1c2",
    "state": "machine-cross-checked"
   },
@@ -4989,7 +4989,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issues.title": {
-   "text": "Compatibiliteit van entiteitsdetectie",
+   "text": "Compatibiliteit van detectie",
    "sourceHash": "eb4e09bf32f157bcec74907fe18323558be077e4b7c7c0ac3a6f3697f2a46abb",
    "state": "machine-cross-checked"
   },
@@ -5039,7 +5039,7 @@
    "state": "machine-cross-checked"
   },
   "entities.policy.static": {
-   "text": "Voeg entiteiten toe die uit de dashboardconfiguratie zijn geparseerd",
+   "text": "Entiteiten uit de dashboardconfiguratie toevoegen",
    "sourceHash": "ab548e1a8d2f9568a455bfebdc0b65ecd7dd593c4e850ab62116c4d54223c298",
    "state": "machine-cross-checked"
   },
@@ -9419,7 +9419,7 @@
    "state": "machine-cross-checked"
   },
   "settings.keep_awake.label": {
-   "text": "Zorg dat het paneel responsief blijft",
+   "text": "Paneel responsief houden",
    "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
    "state": "machine-cross-checked"
   },
@@ -9459,7 +9459,7 @@
    "state": "machine-cross-checked"
   },
   "settings.log_ship_enabled.label": {
-   "text": "Logboeken doorsturen",
+   "text": "Logs doorsturen",
    "sourceHash": "ee4fd7d2333c7de7c8d74fd95cfb065c2be72bd2e52dc3b58cf06c0e1d3d3634",
    "state": "machine-cross-checked"
   },
@@ -9714,7 +9714,7 @@
    "state": "machine-cross-checked"
   },
   "settings.update_channel.label": {
-   "text": "Kanaal voor automatische updates van ha-paneld",
+   "text": "Auto-updatekanaal van ha-paneld",
    "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
    "state": "machine-cross-checked"
   },
@@ -11629,7 +11629,7 @@
    "state": "machine-cross-checked"
   },
   "install.radio.gateway_health": {
-   "text": "Status van de gateway",
+   "text": "Gatewaystatus",
    "sourceHash": "596df1c31c28dc7246e5800d5e578b4c428528f03e73441ce8f5e2c49ef7db47",
    "state": "machine-cross-checked"
   },
