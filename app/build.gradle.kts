@@ -476,9 +476,11 @@ val unitTestRuntimeReadFiles = listOf(
 val unitTestGeneratedAssetExcludes = listOf("cdprelay-arm*", "hapaneld-helper-arm*")
 
 // The JVM suites are fork-safe: debug and release running concurrently with three forks each pass on the
-// project runner. Half the cores, capped at three, was the measured knee there; hapaneld.testForks overrides.
+// project runner. Half the cores, capped at six, is the measured knee on an 18-core workstation: a warm
+// debug run took 91 s with three forks, 70 s with six, 69 s with eight and 65 s with ten, where ten also
+// surfaced a load-sensitive race in LogCaptureTest. hapaneld.testForks overrides.
 val unitTestForks = providers.gradleProperty("hapaneld.testForks").map { it.toInt() }
-    .orElse((Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 3))
+    .orElse((Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 6))
 
 tasks.withType<Test>().configureEach {
     maxParallelForks = unitTestForks.get()
