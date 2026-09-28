@@ -315,6 +315,65 @@ int sysexec_start_argv(const char *path, const char *const argv[], int quiet, pi
     return 0;
 }
 
+int sysexec_start_stdout_argv(const char *path, const char *const argv[], pid_t *pid_out,
+                              int *stdout_fd) {
+    if (!path || path[0] != '/' || !argv || !argv[0] || !pid_out || !stdout_fd) return -1;
+    int output[2], errors[2];
+    if (pipe(output) != 0) return -1;
+    if (pipe(errors) != 0) { close(output[0]); close(output[1]); return -1; }
+    (void)fcntl(output[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(output[1], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(errors[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(errors[1], F_SETFD, FD_CLOEXEC);
+    int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
+    if (null_fd < 0) {
+        close(output[0]); close(output[1]); close(errors[0]); close(errors[1]);
+        return -1;
+    }
+    pid_t parent = getpid();
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(null_fd); close(output[0]); close(output[1]); close(errors[0]); close(errors[1]);
+        return -1;
+    }
+    if (pid == 0) {
+        close(output[0]); close(errors[0]);
+        int failure = 0;
+        if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0 || getppid() != parent ||
+            setpgid(0, 0) != 0 || dup2(null_fd, STDIN_FILENO) < 0 ||
+            dup2(output[1], STDOUT_FILENO) < 0 || dup2(null_fd, STDERR_FILENO) < 0)
+            failure = errno ? errno : EIO;
+        if (!failure) {
+            close_inherited_fds(errors[1], -1);
+            exec_platform_argv(path, argv);
+            failure = errno ? errno : EIO;
+        }
+        const unsigned char *bytes = (const unsigned char *)&failure;
+        size_t used = 0;
+        while (used < sizeof failure) {
+            ssize_t written = write(errors[1], bytes + used, sizeof failure - used);
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) break;
+            used += (size_t)written;
+        }
+        _exit(127);
+    }
+    (void)setpgid(pid, pid);
+    close(null_fd); close(output[1]); close(errors[1]);
+    int child_error = 0;
+    ssize_t count;
+    do count = read(errors[0], &child_error, sizeof child_error); while (count < 0 && errno == EINTR);
+    close(errors[0]);
+    if (count != 0) {
+        close(output[0]);
+        (void)wait_child(pid);
+        return -1;
+    }
+    *pid_out = pid;
+    *stdout_fd = output[0];
+    return 0;
+}
+
 int sysexec_poll_argv(pid_t pid, int *status) {
     if (pid <= 1 || !status) return -1;
     pid_t result;

@@ -304,7 +304,7 @@ class LogShipTransportTest {
                 harness.start()
                 harness.emit(logcatLine("I", "status probe"))
                 await { receiver.datagrams.isNotEmpty() }
-                await { "1 line sent" in harness.shipper.statusText() }
+                await { "1 record sent" in harness.shipper.statusText() }
 
                 val status = harness.shipper.statusText()
                 // "connected" would assert a delivery guarantee UDP cannot make; a black-holed sink
@@ -328,7 +328,7 @@ class LogShipTransportTest {
                 harness.emit(logcatLine("E", "alpha"))
                 harness.emit(logcatLine("I", "beta"))
                 await { receiver.text().count { it == '\n' } >= 2 }
-                await { "2 lines sent" in harness.shipper.statusText() }
+                await { "2 records sent" in harness.shipper.statusText() }
 
                 val frames = receiver.text().split("\n").filter { it.isNotBlank() }.map(::parseRfc5424)
                 assertEquals(2, frames.size)
@@ -457,7 +457,7 @@ class LogShipTransportTest {
             harness.start()
             harness.emit(logcatLine("I", "refused"))
             await { failureReason(harness.shipper.statusText()) != null }
-            assertTrue(harness.shipper.statusText(), "0 lines sent" in harness.shipper.statusText())
+            assertTrue(harness.shipper.statusText(), "0 records sent" in harness.shipper.statusText())
         }
     }
 

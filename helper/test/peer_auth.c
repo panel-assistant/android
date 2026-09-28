@@ -158,6 +158,8 @@ int main(void) {
     CHECK(!probe_command_allowed("REBOOT"), "root probe mode must not expose mutating verbs");
     CHECK(!probe_command_allowed("KEYEVENT SLEEP"),
           "root probe mode must not expose screen-power key injection");
+    CHECK(!probe_command_allowed("LOGCAT"),
+          "root probe mode must not bypass socket authentication for LOGCAT");
     CHECK(!probe_command_allowed("PING extra"), "root probe mode must require an exact verb");
     CHECK(!probe_command_allowed("GUARDCAPS extra"),
           "root probe mode must require an exact Guard capability verb");

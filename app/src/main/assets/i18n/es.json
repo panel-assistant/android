@@ -10733,6 +10733,16 @@
       "state": "machine-cross-checked",
       "text": "Protocolo"
     },
+    "settings.log_ship_system_enabled.help": {
+      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
+      "state": "machine-cross-checked",
+      "text": "Reenvía los registros del sistema Android al mismo destino cuando «Enviar registros» está activado. Desactivado por defecto; requiere TCP o HTTP y acceso root o el auxiliar instalado. Las entradas se censuran y, si hay mucho volumen, algunas pueden descartarse."
+    },
+    "settings.log_ship_system_enabled.label": {
+      "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
+      "state": "machine-cross-checked",
+      "text": "Enviar registros del sistema"
+    },
     "settings.manufacturer.help": {
       "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",
       "state": "machine-cross-checked",
