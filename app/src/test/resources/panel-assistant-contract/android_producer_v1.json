@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "2fbb0ddeb130fd7dbba4a0b93c9790f4b6557d77",
+  "sourceRevision": "6058d769563f599eceb58b9ab6824b40f823c319",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -721,6 +721,24 @@
       "step": null
     },
     {
+      "channel": "reboot",
+      "platform": "button",
+      "translation_key": "reboot",
+      "unique_suffix": "reboot",
+      "family": null,
+      "index": null,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": "restart",
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
       "channel": "relay1",
       "platform": "switch",
       "translation_key": "relay",
@@ -745,6 +763,24 @@
       "unique_suffix": "relay64",
       "family": "relay",
       "index": 64,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": null,
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
+      "channel": "reload",
+      "platform": "button",
+      "translation_key": "reload",
+      "unique_suffix": "reload",
+      "family": null,
+      "index": null,
       "entity_category": null,
       "enabled_default": true,
       "device_class": null,
