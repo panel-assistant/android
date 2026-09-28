@@ -16,25 +16,47 @@ class ListeningGlowView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var color = Color.parseColor("#00FF88")
     private var animator: ValueAnimator? = null
+    private var pulse: ValueAnimator? = null
 
     init {
         isClickable = false
         isFocusable = false
         alpha = 0f
+        // The outlines are drawn once into a layer; the fade and the pulse only change the layer's
+        // opacity, so neither repaints the tint on the panel's slow CPU.
+        setLayerType(LAYER_TYPE_HARDWARE, null)
     }
 
     /** Fade the tint in or out. */
     fun setListening(active: Boolean) {
         animator?.cancel()
+        pulse?.cancel()
+        pulse = null
         if (active) visibility = VISIBLE
         animator = ValueAnimator.ofFloat(alpha, if (active) 1f else 0f).apply {
             duration = if (active) 250L else 400L
             addUpdateListener { alpha = it.animatedValue as Float }
+            if (active) addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (animation === animator) breathe()
+                }
+            })
             if (!active) addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     if (this@ListeningGlowView.alpha == 0f) visibility = GONE
                 }
             })
+            start()
+        }
+    }
+
+    /** A slow swell and ebb while the assistant attends, so the room can see it is still active. */
+    private fun breathe() {
+        pulse = ValueAnimator.ofFloat(1f, PULSE_LOW).apply {
+            duration = PULSE_MS
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { alpha = it.animatedValue as Float }
             start()
         }
     }
@@ -61,6 +83,7 @@ class ListeningGlowView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         animator?.cancel()
+        pulse?.cancel()
         super.onDetachedFromWindow()
     }
 
@@ -68,5 +91,7 @@ class ListeningGlowView(context: Context) : View(context) {
         const val DEPTH_FRACTION = 0.14f
         const val EDGE_ALPHA = 150
         const val STEPS = 24
+        const val PULSE_LOW = 0.45f
+        const val PULSE_MS = 900L
     }
 }
