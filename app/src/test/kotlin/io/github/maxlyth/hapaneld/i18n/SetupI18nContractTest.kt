@@ -10,8 +10,8 @@ import org.junit.Test
 class SetupI18nContractTest {
     private val assets = File("src/main/assets")
     private val setupJs = File(assets, "setup.js").readText()
-    // Source-text reason: whole-file scans of PaneldServer.kt and setup.js for literal setup.* catalogue keys and their English fallbacks (translation catalogue contract).
-    private val serverSource = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
+    // Source-text reason: whole-file scans of HTTP Kotlin sources and setup.js for literal setup.* catalogue keys and their English fallbacks (translation catalogue contract).
+    private val serverSource = httpCatalogueSources()
     private val sourceJson = JSONObject(File(assets, "i18n/en.json").readText())
     private val sourceRecords = sourceJson.getJSONObject("strings")
     private val sourceCatalogue = SourceCatalogue.parse(sourceJson.toString())

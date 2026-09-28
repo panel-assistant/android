@@ -9,7 +9,7 @@ import org.junit.Test
 class LogsFleetI18nContractTest {
     private val assets = File("src/main/assets")
     // Source-text reason: whole-file scan for literal logs./fleet. catalogue keys (translation catalogue contract).
-    private val serverSource = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt").readText()
+    private val serverSource = httpCatalogueSources()
     private val sourceRecords = JSONObject(File(assets, "i18n/en.json").readText()).getJSONObject("strings")
     private val sourceCatalogue = SourceCatalogue.parse(File(assets, "i18n/en.json").readText())
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
