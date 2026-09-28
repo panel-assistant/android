@@ -785,35 +785,15 @@ object SettingsRegistry {
             },
         ),
         // ---- Voice -------------------------------------------------------------------------------
-        // Local wake-word listening + Home Assistant Assist pipeline selection.
-        //
-        // Every spec here is `hidden`, so the feature ships with no Configure card at all while its
-        // direction is still open. The schema route drops hidden specs, the form is built from the
-        // schema, and a group with no fields renders no card — so hiding the seven removes the card, its
-        // skunk-works badge and the wake-word pipeline picker's fetch together, with no second gate to
-        // keep in step and nothing to remember to undo elsewhere.
-        //
-        // Hidden is not disabled. The values stay readable on GET /api/v1/config, settable on POST, and
-        // carried in config bundles, which is what lets a single panel be brought up for acceptance over
-        // HTTP while nothing is advertised to anyone else. Both HA-capable specs below are
-        // haExposedByDefault = false and the card was the only route to opting them in, so no Home
-        // Assistant entity appears either. To surface the feature, delete the `hidden = true` lines;
-        // nothing else is holding it back.
-        //
-        // The specs also require hasMicrophone, which is a hardware gate rather than a release one and
-        // outlives this. Note the profile truth it reads was corrected on 2026-08-31: the NSPanel Pro
-        // does have a working microphone, on the PDM device's channels 2 and 3, and the earlier
-        // "advertises a microphone it does not have" reading was a mis-shaped capture, not a lying
-        // feature flag.
-        //
-        // The pipeline runtime itself is a separate lane; this is the settings/HTTP/HA surface it
-        // drives, seamed behind AssistPipelineDirectory and VoiceTestTrigger.
+        // The panel as a Home Assistant voice satellite through Panel Assistant: which wake words it
+        // listens for, which Assist pipeline each one runs, and how its microphone is used. Every spec
+        // requires a microphone, which the device profile declares only for proven capture.
         SettingSpec(
             key = "voice_enabled", type = SettingType.BOOL, group = "Voice",
             label = "Voice assistant", default = "false", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             liveApply = true,
             help = "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_wake_words", type = SettingType.STRING, group = "Voice", picker = "voice_wake_words",
@@ -821,7 +801,7 @@ object SettingsRegistry {
             maxChars = 512,
             help = "The wake words to listen for, as a JSON array of model ids: the bundled okay_nabu, " +
                 "hey_jarvis, hey_mycroft and alexa, or one you imported.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
             validate = ::validateVoiceWakeWords,
         ),
         SettingSpec(
@@ -830,7 +810,7 @@ object SettingsRegistry {
             maxChars = 2_048,
             help = "Which Home Assistant Assist pipeline each configured wake word triggers, as a JSON " +
                 "object of wake word to pipeline id. An empty value uses Home Assistant's preferred pipeline.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
             validate = ::validateVoicePipelines,
         ),
         SettingSpec(
@@ -839,7 +819,7 @@ object SettingsRegistry {
             options = listOf("voice_recognition", "mic", "voice_communication"),
             tier = Tier.ADVANCED, scope = Scope.DEVICE,
             help = "Android audio source the wake-word listener records from.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_sensitivity", type = SettingType.ENUM, group = "Voice",
@@ -849,7 +829,7 @@ object SettingsRegistry {
             help = "Wake-word detector threshold, applied as an offset to the model's cutoff score. Low " +
                 "requires a clearer match (fewer false wakes, more likely to miss a quiet or distant call); " +
                 "High matches more readily (faster to wake, more false triggers). Normal applies no offset.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_mic_gain_db", type = SettingType.INT, group = "Voice",
@@ -862,7 +842,7 @@ object SettingsRegistry {
                 "quiet signal on its own and speech-to-text does not. Raise this if commands are missed " +
                 "or mistranscribed while the wake word works. Wake-word detection is deliberately left " +
                 "on the unamplified signal.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
         ),
         // ---- Logging -----------------------------------------------------------------------------
         SettingSpec(
