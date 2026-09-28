@@ -768,6 +768,10 @@
       });
       wakeWrap.appendChild(el("div", { class: "voice-wake-word-import", style: "display:grid;gap:6px;margin-top:8px" }, [
         el("small", { text: i18nText("configure.voice.import_help", "Import a microWakeWord model you trained: its .json manifest and .tflite file.") }),
+        el("a", {
+          class: "voice-wake-word-guide", href: WAKE_WORD_GUIDE_URL, target: "_blank", rel: "noopener noreferrer",
+          text: i18nText("configure.voice.import_guide", "How to train your own wake word")
+        }),
         manifestInput, modelInput, importButton,
         voiceWakeWordImportStatus ? el("small", { text: voiceWakeWordImportStatus }) : null,
       ]));
@@ -2906,6 +2910,8 @@
   // Logging lost its experimental badge after all three transports delivered marked probe records
   // AND real shipped log lines into a collector addressed by hostname. Display keeps its badge — that
   // work is still unvalidated.
+  // The custom wake word guide, through the site's own redirect so the page can move.
+  var WAKE_WORD_GUIDE_URL = "https://panel-assistant.io/go/custom-wake-words";
   var CARD_BADGES = {
     "Display": ["experimental", "exp"]
   };

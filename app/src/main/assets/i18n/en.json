@@ -5378,6 +5378,18 @@
       "softMaxChars": 32,
       "hardMaxChars": 48
     },
+    "configure.voice.import_guide": {
+      "text": "How to train your own wake word",
+      "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 80
+    },
     "configure.voice.import_help": {
       "text": "Import a microWakeWord model you trained: its .json manifest and .tflite file.",
       "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
@@ -33425,8 +33437,8 @@
       "hardMaxChars": 36
     },
     "settings.voice_pipelines.help": {
-      "text": "Which Home Assistant Assist pipeline each configured wake word triggers, as a JSON object of wake word to pipeline id. An empty value uses Home Assistant's preferred pipeline.",
-      "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+      "text": "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred pipeline follows whichever pipeline Home Assistant prefers.",
+      "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
       "surface": "settings",
       "context": "Configure > Voice > Wake word pipelines: supporting help for the voice_pipelines setting.",
       "risk": "ordinary",
@@ -33436,7 +33448,7 @@
       "placeholders": [],
       "frozen": [
         "Home Assistant",
-        "JSON"
+        "Assist"
       ],
       "softMaxChars": 237,
       "hardMaxChars": 315
@@ -33484,8 +33496,8 @@
       "hardMaxChars": 32
     },
     "settings.voice_wake_words.help": {
-      "text": "The wake words to listen for, as a JSON array of model ids: the bundled okay_nabu, hey_jarvis, hey_mycroft and alexa, or one you imported.",
-      "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
+      "text": "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, and any you import below.",
+      "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
       "surface": "settings",
       "context": "Configure > Voice > Wake words: supporting help for the voice_wake_words setting.",
       "risk": "ordinary",
@@ -33494,11 +33506,10 @@
       ],
       "placeholders": [],
       "frozen": [
-        "JSON",
-        "okay_nabu",
-        "hey_jarvis",
-        "hey_mycroft",
-        "alexa"
+        "Okay Nabu",
+        "Hey Jarvis",
+        "Hey Mycroft",
+        "Alexa"
       ],
       "softMaxChars": 160,
       "hardMaxChars": 193

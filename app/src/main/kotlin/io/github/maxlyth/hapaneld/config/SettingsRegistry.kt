@@ -798,8 +798,8 @@ object SettingsRegistry {
             key = "voice_wake_words", type = SettingType.STRING, group = "Voice", picker = "voice_wake_words",
             label = "Wake words", default = "[\"okay_nabu\"]", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             maxChars = 512,
-            help = "The wake words to listen for, as a JSON array of model ids: the bundled okay_nabu, " +
-                "hey_jarvis, hey_mycroft and alexa, or one you imported.",
+            help = "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, " +
+                "and any you import below.",
             availableWhen = { it.hasMicrophone },
             validate = ::validateVoiceWakeWords,
         ),
@@ -807,8 +807,8 @@ object SettingsRegistry {
             key = "voice_pipelines", type = SettingType.STRING, group = "Voice", picker = "voice_pipelines",
             label = "Wake word pipelines", default = "{}", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             maxChars = 2_048,
-            help = "Which Home Assistant Assist pipeline each configured wake word triggers, as a JSON " +
-                "object of wake word to pipeline id. An empty value uses Home Assistant's preferred pipeline.",
+            help = "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred " +
+                "pipeline follows whichever pipeline Home Assistant prefers.",
             availableWhen = { it.hasMicrophone },
             validate = ::validateVoicePipelines,
         ),

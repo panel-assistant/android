@@ -2038,6 +2038,11 @@
       "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
       "state": "machine-cross-checked"
     },
+    "configure.voice.import_guide": {
+      "text": "Comment entraîner votre propre mot d’activation",
+      "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.import_help": {
       "text": "Importez un modèle microWakeWord entraîné : son manifeste « .json » et son fichier « .tflite ».",
       "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
@@ -11024,9 +11029,9 @@
       "text": "Gain du microphone (dB)"
     },
     "settings.voice_pipelines.help": {
-      "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+      "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
       "state": "machine-cross-checked",
-      "text": "Pipeline Assist de Home Assistant déclenché par chaque mot d’activation configuré, sous forme d’un objet JSON associant le mot d’activation à l’id du pipeline. Une valeur vide utilise le pipeline préféré de Home Assistant."
+      "text": "Pipeline Assist de Home Assistant exécuté par chaque mot d’activation. Un mot laissé sur le pipeline préféré suit le pipeline que Home Assistant préfère."
     },
     "settings.voice_pipelines.label": {
       "sourceHash": "16cc76ac6c00b2720d0a7d7be3994e8434186889194c88ae411076440e67b41d",
@@ -11044,9 +11049,9 @@
       "text": "Sensibilité au mot d’activation"
     },
     "settings.voice_wake_words.help": {
-      "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
+      "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
       "state": "machine-cross-checked",
-      "text": "Mots d’activation à écouter, sous forme de tableau JSON d’ID de modèles : les modèles intégrés okay_nabu, hey_jarvis, hey_mycroft et alexa, ou un modèle importé."
+      "text": "Les mots d’activation écoutés : « Okay Nabu », « Hey Jarvis », « Hey Mycroft » et « Alexa », fournis avec l’app, ainsi que ceux que vous importez ci-dessous."
     },
     "settings.voice_wake_words.label": {
       "sourceHash": "f5f0563199a5b4036385d27a248bbd762d55e3ce50e2ece6c2f15d903d1f9b31",
