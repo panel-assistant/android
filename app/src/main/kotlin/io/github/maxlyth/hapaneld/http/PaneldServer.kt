@@ -1230,8 +1230,8 @@ internal fun stageDirectLogShipping(config: Config, posted: Map<String, String>)
 }
 
 /** Stage the direct form's coupled credential groups through their real Config owners. Blank secret
- * placeholders preserve existing credentials except where an owner field is explicitly cleared or a
- * hardened origin changes. Kept production-used so mutations to those dependent clears reach the JVM
+ * placeholders preserve existing credentials except where an owner field is explicitly cleared or the
+ * Home Assistant origin changes. Kept production-used so mutations to those dependent clears reach the JVM
  * contract instead of surviving behind a per-key writer test. */
 internal fun stageDirectCredentialSettings(
     config: Config,
@@ -1261,11 +1261,11 @@ internal fun stageDirectCredentialSettings(
     val previousExpiry = config.haTokenExpiry
     val previousClientId = config.haClientId
     val url = posted["ha_url"]
-    val hardenedOriginChange = config.hardenedSecurityEnabled && url != null &&
+    val haOriginChange = url != null &&
         url.trimEnd('/') != previousUrl.trimEnd('/')
     val token = when {
         url != null && url.isEmpty() -> ""
-        hardenedOriginChange -> posted["ha_token"]?.takeIf(String::isNotEmpty) ?: ""
+        haOriginChange -> posted["ha_token"]?.takeIf(String::isNotEmpty) ?: ""
         else -> posted["ha_token"]?.takeIf(String::isNotEmpty)
     }
     if (url != null || token != null) config.setHaConnection(url ?: previousUrl, token)
@@ -1273,13 +1273,13 @@ internal fun stageDirectCredentialSettings(
     val clearingHa = url != null && url.isEmpty()
     val refresh = when {
         clearingHa -> ""
-        hardenedOriginChange -> posted["ha_refresh_token"]?.takeIf(String::isNotEmpty) ?: ""
+        haOriginChange -> posted["ha_refresh_token"]?.takeIf(String::isNotEmpty) ?: ""
         else -> posted["ha_refresh_token"]?.takeIf(String::isNotEmpty)
     }
     refresh?.let(config::setHaRefreshToken)
-    val expiry = posted["ha_token_expiry"]?.toLongOrNull() ?: if (hardenedOriginChange) 0L else null
+    val expiry = posted["ha_token_expiry"]?.toLongOrNull() ?: if (haOriginChange) 0L else null
     val clientId = posted["ha_client_id"]?.let { if (clearingHa) "" else it }
-        ?: if (hardenedOriginChange) "" else null
+        ?: if (haOriginChange) "" else null
     expiry?.let(config::setHaTokenExpiry)
     clientId?.let(config::setHaClientId)
     if (clearingHa) config.setHaRefreshToken("")
