@@ -14,6 +14,25 @@ internal class MigrationState(noBackupFilesDir: File) : SuccessorMigration.Marke
     private fun marker(name: String) = DurableTextFile(directory.resolve("$name.v1"), maxChars = 256)
     private fun marker(step: Step) = marker("step-${step.name.lowercase().replace('_', '-')}")
 
+    /** Received only through the signature-protected handover, never from the archive. */
+    fun deviceUid(): String? = marker("device-uid").read()?.takeIf { DEVICE_UID.matches(it) }
+
+    fun handoverReady(token: ReleaseToken): Boolean = deviceUid() != null && token.current() != null
+
+    fun acceptDeviceUid(value: String?): Boolean {
+        if (complete() || value == null || !DEVICE_UID.matches(value)) return false
+        val existing = deviceUid()
+        return if (existing != null) existing == value else marker("device-uid").write(value)
+    }
+
+    /** Complete only a pre-upgrade handover already verified and released by this installation. */
+    fun verifiedRetiredReceipt(archive: File): Boolean {
+        if (complete() || marker("device-uid").exists() || !done(Step.RELEASE)) return false
+        val expected = value(Step.PULL)?.takeIf { it.matches(Regex("[0-9a-f]{64}")) } ?: return false
+        if (value(Step.VERIFY) != expected) return false
+        return runCatching { io.github.maxlyth.hapaneld.util.AppInstaller.sha256(archive) == expected }.getOrDefault(false)
+    }
+
     override fun done(step: Step): Boolean = marker(step).exists()
     override fun value(step: Step): String? = marker(step).read()
     override fun record(step: Step, value: String): Boolean = marker(step).write(value)
@@ -24,6 +43,7 @@ internal class MigrationState(noBackupFilesDir: File) : SuccessorMigration.Marke
     fun started(): Boolean = Step.entries.any(::done)
 
     companion object {
+        private val DEVICE_UID = Regex("[0-9a-f]{32}")
         private const val DIRECTORY = "identity-migration"
         private const val COMPLETE = "complete"
 
