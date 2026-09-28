@@ -135,15 +135,21 @@ class WakeWordCatalog(
     /** One imported wake word's files, as a backup carries them and [import] takes them back. */
     class ImportedFiles(val id: String, val manifest: ByteArray, val model: ByteArray)
 
-    /** The files of every imported wake word [available] lists, for a backup. */
+    /**
+     * The files of every imported wake word [available] lists, for a backup. Throws [IOException] when one
+     * cannot be read: a backup that silently left it out could never restore it.
+     */
     @Synchronized
+    @Throws(IOException::class)
     fun exportImported(): List<ImportedFiles> {
         val bundledIds = bundled.ids()
-        return available().filter { it.id !in bundledIds }.mapNotNull { config ->
-            runCatching {
-                val dir = File(importDir, config.id)
+        return available().filter { it.id !in bundledIds }.map { config ->
+            val dir = File(importDir, config.id)
+            try {
                 ImportedFiles(config.id, File(dir, "${config.id}$JSON").readBytes(), File(dir, config.modelFile).readBytes())
-            }.getOrNull()
+            } catch (unreadable: IOException) {
+                throw IOException("imported wake word ${config.id} could not be read", unreadable)
+            }
         }
     }
 
