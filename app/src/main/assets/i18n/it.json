@@ -1248,6 +1248,11 @@
       "state": "machine-cross-checked",
       "text": "Apri l'accesso"
     },
+    "configure.oauth.panel_reachability": {
+      "text": "Per completare l'accesso, questo browser deve poter raggiungere l'indirizzo del pannello. Se non può, apri Configura dalla rete del pannello oppure accedi direttamente sul pannello.",
+      "sourceHash": "f7ee3e4333f5fae799f75a5610c7c5841932d0a5a5b3bd32f19183136611ce89",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.reconnect": {
       "sourceHash": "bf8a9eab9e7e141bfb81f0ca9244a5f68f476ed0b57f03538410417298169d18",
       "state": "machine-cross-checked",

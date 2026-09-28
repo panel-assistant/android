@@ -1248,6 +1248,11 @@
       "state": "machine-cross-checked",
       "text": "Abrir inicio de sesión"
     },
+    "configure.oauth.panel_reachability": {
+      "text": "Para completar el inicio de sesión, este navegador debe poder acceder a la dirección del panel. Si no puede, abre Configurar desde la red del panel o inicia sesión en el panel.",
+      "sourceHash": "f7ee3e4333f5fae799f75a5610c7c5841932d0a5a5b3bd32f19183136611ce89",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.reconnect": {
       "sourceHash": "bf8a9eab9e7e141bfb81f0ca9244a5f68f476ed0b57f03538410417298169d18",
       "state": "machine-cross-checked",
