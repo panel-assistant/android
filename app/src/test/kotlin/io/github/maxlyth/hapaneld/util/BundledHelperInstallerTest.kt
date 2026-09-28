@@ -415,16 +415,19 @@ class BundledHelperInstallerTest {
         }
     }
 
-    @Test fun `startup polling exceeds native three second retire and bind bound`() {
+    @Test fun `startup polling survives four unavailable successor probes`() {
         withTakeoverFiles(
             TakeoverTopology.SYSTEMLESS,
             candidateStarts = true,
-            readyDelaySeconds = 4,
+            readyAfterFailedProbes = 4,
         ) { fixture ->
-            assertEquals(0, runTakeoverCommand(bundledLegacyHelperTakeoverCommand(
+            val virtualBin = File(fixture.root, "virtual-bin").apply { mkdirs() }
+            writeExecutable(File(virtualBin, "sleep"), "#!/bin/sh\nexit 0\n", 755)
+            val command = bundledLegacyHelperTakeoverCommand(
                 sha256(fixture.stage), stagedBuild, incumbentBuild,
                 filesystemRoot = fixture.root.absolutePath, polls = 7,
-            )))
+            )
+            assertEquals(0, runTakeoverCommand("PATH='${virtualBin.absolutePath}':\$PATH; $command"))
             assertEquals(fixture.candidateBytes, fixture.live.readText())
         }
     }
@@ -907,7 +910,7 @@ class BundledHelperInstallerTest {
     private fun withTakeoverFiles(
         topology: TakeoverTopology,
         candidateStarts: Boolean,
-        readyDelaySeconds: Int = 0,
+        readyAfterFailedProbes: Int = 0,
         signalOnReplacementCheck: Boolean = false,
         signalOnSupervise: Boolean = false,
         registrationBytes: String = legacyRegistration(topology),
@@ -934,6 +937,9 @@ class BundledHelperInstallerTest {
             oldBin.parentFile!!.mkdirs()
             registration.parentFile!!.mkdirs()
             val sharedSocketMarker = if (sharedSocketReplies) File(dataLocal, ".candidate-serving") else null
+            if (readyAfterFailedProbes > 0) {
+                File(dataLocal, ".candidate-ready-probes").writeText("$readyAfterFailedProbes\n")
+            }
             val incumbentReady = File(dataLocal, ".incumbent-serving").apply { writeText("ready\n") }
             val oldBytes = fakeHelper(
                 incumbentBuild,
@@ -946,7 +952,7 @@ class BundledHelperInstallerTest {
                 stagedBuild,
                 candidate = true,
                 starts = candidateStarts,
-                readyDelaySeconds = readyDelaySeconds,
+                readyAfterFailedProbes = readyAfterFailedProbes,
                 signalOnReplacementCheck = signalOnReplacementCheck,
                 signalOnSupervise = signalOnSupervise,
                 sharedSocketMarker = sharedSocketMarker,
@@ -1040,7 +1046,7 @@ class BundledHelperInstallerTest {
         build: String,
         candidate: Boolean,
         starts: Boolean,
-        readyDelaySeconds: Int = 0,
+        readyAfterFailedProbes: Int = 0,
         signalOnReplacementCheck: Boolean = false,
         signalOnSupervise: Boolean = false,
         sharedSocketMarker: File? = null,
@@ -1054,7 +1060,6 @@ class BundledHelperInstallerTest {
         fi
         if [ "${'$'}1" = --supervise ]; then
           ${if (signalOnSupervise) "kill -TERM \"${'$'}PPID\"; sleep 1" else ":"}
-          ${if (readyDelaySeconds > 0) "sleep $readyDelaySeconds; : > \"${'$'}0.ready\"" else ":"}
           exit ${if (starts) 0 else 7}
         fi
         if [ "${'$'}1" = --request ]; then
@@ -1065,7 +1070,7 @@ class BundledHelperInstallerTest {
               ;;
             GUARDCAPS) ${if (candidate && starts) "echo '${GuardDbMaintenanceProtocol.CAPS_REPLY} AUTONOMOUS SUPERVISED TERMINAL_RETIRE'" else "echo ERR"} ;;
             GUARDSELF)
-              ${if (readyDelaySeconds > 0) "[ -f \"${'$'}0.ready\" ] || exit 1" else ":"}
+              ${if (readyAfterFailedProbes > 0) "counter=${'$'}{0%/*}/.candidate-ready-probes; remaining=${'$'}(cat \"${'$'}counter\"); if [ \"${'$'}remaining\" -gt 0 ]; then echo ${'$'}((remaining - 1)) > \"${'$'}counter\"; exit 1; fi" else ":"}
               self_bytes=${'$'}(stat -c %s "${'$'}0")
               self_sha=${'$'}(sha256sum "${'$'}0")
               self_sha=${'$'}{self_sha%% *}
