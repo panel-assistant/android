@@ -252,7 +252,7 @@ class SystemControllerTest {
     @Test fun reloadBlankAutoUsesBuiltin() {
         val env = FakeSystemEnv()
         val (c, root, d) = sc(env, daemon = null)
-        c.reloadDashboard("")
+        assertTrue(c.reloadDashboard(""))
         assertTrue(
             "built-in renderer relaunched via privileged or direct route",
             root.ran.contains("am start -n $OWN/.DashboardActivity") ||
@@ -697,9 +697,33 @@ class SystemControllerTest {
     @Test fun builtinReloadRelaunchesActivity() {
         // No force-stop / monkey for builtin — a singleTask relaunch is the reload (onNewIntent).
         val (c, root, d) = sc(FakeSystemEnv(), daemon = mapOf("RELOAD $BUILTIN" to "OK"))
-        c.reloadDashboard(BUILTIN)
+        assertTrue(c.reloadDashboard(BUILTIN))
         assertTrue("relaunch via START", d.sent.contains("START $OWN/.DashboardActivity"))
         assertFalse("no RELOAD force-stop path", d.sent.contains("RELOAD $BUILTIN"))
+    }
+
+    @Test fun builtinReloadReportsHelperBusyWithoutBypassingIt() {
+        val env = FakeSystemEnv()
+        val (c, root, d) = sc(env, daemon = mapOf("START $OWN/.DashboardActivity" to "BUSY"))
+
+        assertFalse(c.reloadDashboard(BUILTIN, "manual retry"))
+        assertEquals(listOf("START $OWN/.DashboardActivity"), d.sent)
+        assertTrue(root.ran.isEmpty())
+        assertTrue(env.directStarts.isEmpty())
+        assertFalse(BuiltinDashboard.consumeReloadRequest())
+        assertEquals("", BuiltinDashboard.consumeReloadReason())
+    }
+
+    @Test fun builtinReloadReportsFailedDirectStart() {
+        val env = FakeSystemEnv(directStartSucceeds = false)
+        val (c, root, d) = sc(env, daemon = emptyMap(), su = false)
+
+        assertFalse(c.reloadDashboard(BUILTIN, "manual retry"))
+        assertEquals(listOf("START $OWN/.DashboardActivity"), d.sent)
+        assertTrue(root.ran.contains("am start -n $OWN/.DashboardActivity"))
+        assertEquals(listOf("$OWN/.DashboardActivity"), env.directStarts)
+        assertFalse(BuiltinDashboard.consumeReloadRequest())
+        assertEquals("", BuiltinDashboard.consumeReloadReason())
     }
 
     @Test fun builtinEnsureHomeSetsDashboardActivityFromResolver() {
