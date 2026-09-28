@@ -623,12 +623,6 @@ internal fun packageHealthToken(packageName: String): String = " pkg=$packageNam
 /** The build number beside the version name, so a reader can tell two builds of one release apart. */
 internal fun versionCodeHealthToken(versionCode: Int): String = " vc=$versionCode"
 
-internal fun autoSleepHistoryHours(hours: String?): Int {
-    val parsed = hours?.toIntOrNull() ?: if (hours == null) 6 else null
-    require(parsed != null && parsed in 1..48) { "hours must be between 1 and 48" }
-    return parsed
-}
-
 internal fun autoSleepRequiresHaAdmission(
     currentEnabled: Boolean,
     currentSource: String,
@@ -2620,66 +2614,7 @@ class PaneldServer internal constructor(
                         call.response.headers.append("Cache-Control", "no-store")
                         call.respondText(autoBrightnessHttpApi.statusJson(), ContentType.Application.Json)
                     }
-                    get("/auto-sleep") {
-                        call.respondText(autoSleepHttpApi.statusJson(), ContentType.Application.Json)
-                    }
-                    get("/auto-sleep/prerequisite") {
-                        if (!admitActiveRead(call)) return@get
-                        val result = autoSleepHttpApi.prerequisite()
-                        call.respondText(
-                            JSONObject()
-                                .put("eligible", result.eligible)
-                                .put("phase", result.phase.name.lowercase())
-                                .put("area_name", result.areaName)
-                                .put("detail", result.detail.take(240))
-                                .toString(),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    get("/auto-sleep/history") {
-                        if (!admitActiveRead(call)) return@get
-                        val hours = runCatching {
-                            autoSleepHistoryHours(call.request.queryParameters["hours"])
-                        }.getOrElse {
-                            return@get call.respondText(
-                                "${it.message ?: "invalid history query"}\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        call.respondText(autoSleepHttpApi.historyJson(hours), ContentType.Application.Json)
-                    }
-                    post("/auto-sleep/source") {
-                        val obj = receiveEntityAdminJson(call) ?: return@post
-                        val areaKey = obj.optString("area_key").trim()
-                        val sourceKey = obj.optString("source_key").trim()
-                        val includedValue = obj.opt("included")
-                        if (!OPAQUE_AUTO_SLEEP_KEY.matches(areaKey) ||
-                            !OPAQUE_AUTO_SLEEP_KEY.matches(sourceKey) || includedValue !is Boolean
-                        ) {
-                            return@post call.respondText(
-                                "area_key, source_key and included are required\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        when (autoSleepHttpApi.setSourceIncluded(areaKey, sourceKey, includedValue)) {
-                            HaPresenceSourceUpdate.UPDATED -> call.respondText(
-                                """{"ok":true,"included":$includedValue}""",
-                                ContentType.Application.Json,
-                            )
-                            HaPresenceSourceUpdate.STALE -> call.respondText(
-                                "activity sources changed; reload and try again\n",
-                                status = HttpStatusCode.Conflict,
-                            )
-                            HaPresenceSourceUpdate.COMMIT_FAILED -> call.respondText(
-                                "configuration commit failed\n",
-                                status = HttpStatusCode.InternalServerError,
-                            )
-                            HaPresenceSourceUpdate.UNAVAILABLE -> call.respondText(
-                                "activity sources are unavailable\n",
-                                status = HttpStatusCode.Conflict,
-                            )
-                        }
-                    }
+                    autoSleepRoutes(autoSleepHttpApi, { admitActiveRead(it) }, ::receiveEntityAdminJson)
                     get("/auto-brightness/history") {
                         call.response.headers.append("Cache-Control", "no-store")
                         if (!admitActiveRead(call)) return@get
@@ -10959,7 +10894,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         private const val REMOTE_SCREENSHOT_WAIT_MS = 25_000L
         private const val REMOTE_TAP_CAPTURE_TIMEOUT_MS = 45_000L
         private const val REMOTE_TAP_CAPTURE_RESPONSE_TIMEOUT_MS = 60_000L
-        private val OPAQUE_AUTO_SLEEP_KEY = Regex("^[a-f0-9]{64}$")
 
         /** Keys routed through [applySetting] after an HTTP persistence commit, declared by the registry. */
         internal val HTTP_LIVE_KEYS = SettingsRegistry.liveApplyKeys()
