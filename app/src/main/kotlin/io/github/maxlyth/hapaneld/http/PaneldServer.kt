@@ -154,7 +154,6 @@ import io.github.maxlyth.hapaneld.util.CompanionOperationStatus
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.GuardDbArmCoordinator
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenance
-import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.guardDbSettingsAuthorityStore
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
 import io.github.maxlyth.hapaneld.util.guardDbBootNonce
@@ -163,7 +162,6 @@ import io.github.maxlyth.hapaneld.util.guardDbTerminalRetirementStore
 import io.github.maxlyth.hapaneld.util.inspectGuardDbCandidate
 import io.github.maxlyth.hapaneld.util.HaLink
 import io.github.maxlyth.hapaneld.util.LogShipEndpoint
-import io.github.maxlyth.hapaneld.util.isLocalSource
 import io.github.maxlyth.hapaneld.util.isLoopbackPeer
 import io.github.maxlyth.hapaneld.util.isRoutable
 import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
@@ -186,7 +184,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.http.parseQueryString
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
@@ -203,7 +200,6 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -220,8 +216,6 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 internal fun panelBrowserTitle(
     friendlyName: String,
@@ -233,22 +227,6 @@ internal fun panelBrowserTitle(
     val suffix = section?.trim().orEmpty()
     val title = if (suffix.isBlank()) panel else "$panel · $suffix"
     return if ('-' in versionName) "$versionCode · $title" else title
-}
-
-/** Pure payload boundary for Configure's app inventories. Keeping the two inputs separate proves that
- * a failed broad launchable-app query (represented by an empty list) cannot suppress detected Companion
- * renderer choices. */
-internal fun configureAppInventoryJson(
-    apps: List<Pair<String, String>>,
-    rendererChoices: List<CompanionInstaller.RendererChoice>,
-): String {
-    val appJson = apps.joinToString(",") { (pkg, label) ->
-        "{\"pkg\":${Json.str(pkg)},\"label\":${Json.str(label)}}"
-    }
-    val rendererJson = rendererChoices.joinToString(",") { choice ->
-        "{\"pkg\":${Json.str(choice.packageName)},\"label\":${Json.str(choice.label)}}"
-    }
-    return "{\"apps\":[$appJson],\"renderers\":[$rendererJson]}"
 }
 
 /**
@@ -332,60 +310,6 @@ internal fun installWarningPresentationsJson(
 ): String? {
     if (warnings.size != presentations.size || warnings.size > 11) return null
     return presentations.joinToString(separator = ",", prefix = "[", postfix = "]") { it?.json() ?: "null" }
-}
-
-internal val PERFORMANCE_WORKLOAD_KEYS = listOf(
-    "dashboard_package",
-    "home_dashboard",
-    "ha_url",
-    "dashboard_fullscreen",
-    "dashboard_native_kiosk",
-    "dashboard_overscroll",
-    "dashboard_idle_return_min",
-    "dashboard_zoom",
-    "dark_mode",
-    "dashboard_theme",
-    "auto_brightness",
-    "auto_brightness_minimum_percent",
-    "auto_brightness_response_percent",
-    "auto_brightness_ha_entity",
-    "cpu_governor",
-    "keep_awake",
-    "prevent_idle_dim",
-)
-
-private val PERFORMANCE_COMPARISON_ID = Regex("^[0-9a-f]{32}$")
-private val PERFORMANCE_DEVICE_SECRET = Regex("^[0-9a-f]{64}$")
-
-internal fun validPerformanceDeviceSecret(value: String): Boolean =
-    value.matches(PERFORMANCE_DEVICE_SECRET)
-
-internal fun performanceBindingJson(
-    comparisonId: String,
-    deviceSecret: String,
-    panelId: String,
-    workload: Map<String, String>,
-): String? {
-    if (!comparisonId.matches(PERFORMANCE_COMPARISON_ID) || !validPerformanceDeviceSecret(deviceSecret)) return null
-    if (workload.keys != PERFORMANCE_WORKLOAD_KEYS.toSet()) return null
-    val key = SecretKeySpec(deviceSecret.lowercase().toByteArray(Charsets.UTF_8), "HmacSHA256")
-    fun fingerprint(domain: String, value: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(key)
-        return mac.doFinal("ha-paneld-perf/$domain\u0000$comparisonId\u0000$value".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    }
-    val workloadValue = buildString {
-        workload.toSortedMap().forEach { (name, value) ->
-            append(name.length).append(':').append(name)
-            append(value.length).append(':').append(value)
-        }
-    }
-    return JSONObject()
-        .put("comparison_id", comparisonId)
-        .put("panel_fingerprint", fingerprint("panel", panelId))
-        .put("workload_fingerprint", fingerprint("workload", workloadValue))
-        .toString()
 }
 
 internal fun Parameters.canonicalDigest(): String {
@@ -682,12 +606,6 @@ internal fun packageHealthToken(packageName: String): String = " pkg=$packageNam
 
 /** The build number beside the version name, so a reader can tell two builds of one release apart. */
 internal fun versionCodeHealthToken(versionCode: Int): String = " vc=$versionCode"
-
-internal fun autoSleepHistoryHours(hours: String?): Int {
-    val parsed = hours?.toIntOrNull() ?: if (hours == null) 6 else null
-    require(parsed != null && parsed in 1..48) { "hours must be between 1 and 48" }
-    return parsed
-}
 
 internal fun autoSleepRequiresHaAdmission(
     currentEnabled: Boolean,
@@ -2017,78 +1935,11 @@ class PaneldServer internal constructor(
         // Bind the IPv6 wildcard "::" — on Android this is dual-stack (net.ipv6.bindv6only=0), so the
         // server answers on both IPv6 and IPv4, instead of the IPv4-only default 0.0.0.0.
         val server = scope.embeddedServer(CIO, port = config.httpPort, host = "::") {
-            // 0.8.1 security: refuse any request whose SOURCE is not LAN-local. The unauthenticated control
-            // surface answers on the panel's globally-routable IPv6 (dual-stack "::"), so without this it can
-            // be reached from the internet whenever the home router doesn't firewall inbound IPv6 — and we
-            // must not depend on that. Allow loopback / RFC1918 / link-local / ULA; global/public source 403s.
-            // (Known limitation to iterate on: a LAN peer reaching the panel via its *global* v6 uses a global
-            // source and is also rejected — use IPv4 on-LAN; a same-/64-prefix exception is the next refinement.)
-            intercept(ApplicationCallPipeline.Plugins) {
-                // OAuth callback URLs carry short-lived state/code query values. Apply privacy headers before
-                // any source, CSRF, or Host rejection can finish the pipeline as well as on routed responses.
-                if (call.request.uri.substringBefore('?') == HA_OAUTH_CALLBACK_PATH) call.noStoreHaOAuth()
-                call.response.headers.append("X-Content-Type-Options", "nosniff")
-                call.response.headers.append("X-Frame-Options", "DENY")
-                call.response.headers.append("Content-Security-Policy", "frame-ancestors 'none'")
-                // Use origin.remoteAddress (the RAW peer IP), NOT remoteHost — remoteHost reverse-resolves to
-                // a hostname, and forward-resolving that picks a (possibly global) address that fails the
-                // RFC1918 check, 403-ing legitimate LAN clients. Verified: remoteAddress returns 192.168.x etc.
-                if (!isLocalSource(call.request.origin.remoteAddress)) {
-                    call.respondText("forbidden\n", status = HttpStatusCode.Forbidden)
-                    return@intercept finish()
-                }
-                // Presentation only: parsed once for the page builders, never logged, and never consulted by a
-                // guard. Only a valid switch varies the response.
-                val embed = call.admitEmbedMode()
-                if (GuardDbProcessAdmission.maintenanceRequired()) {
-                    // The request which durably created INTENT has already crossed this interceptor.
-                    // Every later request belongs to a writer-owning server which is being retired;
-                    // the successor's narrow control plane is the sole admitted surface.
-                    call.respondText("guard database maintenance owns this process\n", status = HttpStatusCode.Locked)
-                    return@intercept finish()
-                }
-                // While guided setup is waiting on a person, every HTML page follows the panel into the
-                // wizard — a laptop tab opened before the first run began otherwise keeps showing the old
-                // page and never presents the wizard (hardware review). After the source gate on purpose:
-                // page redirects are a LAN-client courtesy, never a response to an unverified peer.
-                // Scope: exact page paths only (API, assets, OAuth untouched); a `wiz_escape` cookie —
-                // set by the wizard's own "Skip and exit" link — is honoured so the escape hatch cannot
-                // become a trap.
-                // Panel Assistant's embedded view (EmbedMode) is never redirected: its setup tab stays in
-                // the tab bar, and no escape cookie is written on Home Assistant's origin.
-                if (embed == null && call.request.uri.substringBefore('?') in WIZARD_REDIRECT_PAGES &&
-                    call.request.cookies["wiz_escape"] == null && setupNeedsUser()
-                ) {
-                    call.respondRedirect(setupRedirectLocation(call))
-                    return@intercept finish()
-                }
-                // CSRF guard: a LAN browser on a malicious page must not be able to silently drive a
-                // state-changing endpoint (e.g. POST /config → MQTT takeover). Cross-origin writes carry
-                // a mismatched Origin/Referer and are refused; same-origin UI fetches and header-less API
-                // clients (curl / HA rest_command) pass. See OriginGuard.
-                if (!OriginGuard.allowed(
-                        call.request.origin.method.value,
-                        call.request.headers["Origin"],
-                        call.request.headers["Referer"],
-                        call.request.headers["Host"],
-                    )
-                ) {
-                    call.respondText("cross-origin refused\n", status = HttpStatusCode.Forbidden)
-                    return@intercept finish()
-                }
-                // Anti-DNS-rebinding: pin the Host header to unrebindable values (IP / localhost /
-                // *.local) + any configured names, so a rebound hostname can't read secrets or drive
-                // the surface as "same-origin". See OriginGuard.hostAllowed.
-                if (!OriginGuard.hostAllowed(call.request.headers["Host"], config.httpAllowedHosts)) {
-                    call.respondText("host not allowed\n", status = HttpStatusCode.Forbidden)
-                    return@intercept finish()
-                }
-                // Panel Assistant's proof that a Home Assistant administrator made this request through the
-                // sidebar. Verified after every other guard and before any handler; a present proof that fails
-                // is refused here and never falls through to the request's unproven handling.
-                if (!call.admitEmbedProof(PanelAssistantEmbedKeys.instance)) return@intercept finish()
-            }
-            routing {
+            paneldRoot(
+                allowedHosts = { config.httpAllowedHosts },
+                setupNeedsUser = ::setupNeedsUser,
+                setupRedirectLocation = ::setupRedirectLocation,
+            ) {
                 handBackHomeRoutes(handBackHomeDependencies())
                 controlPlaneRoutes(
                     ControlPlaneRouteDependencies(
@@ -2736,171 +2587,15 @@ class PaneldServer internal constructor(
                         if (id == null) call.respondText("bad-id\n", status = HttpStatusCode.BadRequest)
                         else handleRevisionRestore(call, id)
                     }
-                    get("/perf") {
-                        if (!admitActiveRead(call)) return@get
-                        PerfReader.touch()
-                        call.respondText(PerfReader.json(), ContentType.Application.Json)
-                    }
-                    get("/perf/binding") {
-                        if (!admitActiveRead(call)) return@get
-                        val comparisonId = call.request.queryParameters["comparison_id"].orEmpty()
-                        if (!comparisonId.matches(PERFORMANCE_COMPARISON_ID)) return@get call.respondText(
-                            "{\"error\":\"invalid comparison_id\"}",
-                            ContentType.Application.Json,
-                            HttpStatusCode.BadRequest,
-                        )
-                        val binding = performanceBindingJson(
-                            comparisonId = comparisonId,
-                            deviceSecret = performanceBindingSecret,
-                            panelId = config.panelId,
-                            workload = performanceWorkloadValues(),
-                        ) ?: return@get call.respondText(
-                            "{\"error\":\"stable device identity unavailable\"}",
-                            ContentType.Application.Json,
-                            HttpStatusCode.ServiceUnavailable,
-                        )
-                        call.respondText(binding, ContentType.Application.Json)
-                    }
-                    // Sparse A/B harvesters use this projection without activating the 2 s sampler whose
-                    // own CPU and process probes would perturb the feature burden being measured.
-                    get("/perf/costs") {
-                        call.respondText(FeatureCosts.json(), ContentType.Application.Json)
-                    }
-                    get("/perf/history") {
-                        if (!admitActiveRead(call)) return@get
-                        val hours = call.request.queryParameters["hours"]?.toIntOrNull() ?: 24
-                        call.respondText(entityLearning.performanceHistoryJson(hours), ContentType.Application.Json)
-                    }
-                    get("/auto-brightness") {
-                        call.response.headers.append("Cache-Control", "no-store")
-                        call.respondText(autoBrightnessHttpApi.statusJson(), ContentType.Application.Json)
-                    }
-                    get("/auto-sleep") {
-                        call.respondText(autoSleepHttpApi.statusJson(), ContentType.Application.Json)
-                    }
-                    get("/auto-sleep/prerequisite") {
-                        if (!admitActiveRead(call)) return@get
-                        val result = autoSleepHttpApi.prerequisite()
-                        call.respondText(
-                            JSONObject()
-                                .put("eligible", result.eligible)
-                                .put("phase", result.phase.name.lowercase())
-                                .put("area_name", result.areaName)
-                                .put("detail", result.detail.take(240))
-                                .toString(),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    get("/auto-sleep/history") {
-                        if (!admitActiveRead(call)) return@get
-                        val hours = runCatching {
-                            autoSleepHistoryHours(call.request.queryParameters["hours"])
-                        }.getOrElse {
-                            return@get call.respondText(
-                                "${it.message ?: "invalid history query"}\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        call.respondText(autoSleepHttpApi.historyJson(hours), ContentType.Application.Json)
-                    }
-                    post("/auto-sleep/source") {
-                        val obj = receiveEntityAdminJson(call) ?: return@post
-                        val areaKey = obj.optString("area_key").trim()
-                        val sourceKey = obj.optString("source_key").trim()
-                        val includedValue = obj.opt("included")
-                        if (!OPAQUE_AUTO_SLEEP_KEY.matches(areaKey) ||
-                            !OPAQUE_AUTO_SLEEP_KEY.matches(sourceKey) || includedValue !is Boolean
-                        ) {
-                            return@post call.respondText(
-                                "area_key, source_key and included are required\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        when (autoSleepHttpApi.setSourceIncluded(areaKey, sourceKey, includedValue)) {
-                            HaPresenceSourceUpdate.UPDATED -> call.respondText(
-                                """{"ok":true,"included":$includedValue}""",
-                                ContentType.Application.Json,
-                            )
-                            HaPresenceSourceUpdate.STALE -> call.respondText(
-                                "activity sources changed; reload and try again\n",
-                                status = HttpStatusCode.Conflict,
-                            )
-                            HaPresenceSourceUpdate.COMMIT_FAILED -> call.respondText(
-                                "configuration commit failed\n",
-                                status = HttpStatusCode.InternalServerError,
-                            )
-                            HaPresenceSourceUpdate.UNAVAILABLE -> call.respondText(
-                                "activity sources are unavailable\n",
-                                status = HttpStatusCode.Conflict,
-                            )
-                        }
-                    }
-                    get("/auto-brightness/history") {
-                        call.response.headers.append("Cache-Control", "no-store")
-                        if (!admitActiveRead(call)) return@get
-                        val request = runCatching {
-                            autoBrightnessHistoryParameters(
-                                call.request.queryParameters["hours"],
-                                call.request.queryParameters["sensitivity"],
-                                call.request.queryParameters["minimum_percent"],
-                            )
-                        }.getOrElse {
-                            return@get call.respondText(
-                                "${it.message ?: "invalid history query"}\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        call.respondText(
-                            autoBrightnessHttpApi.historyJson(
-                                request.hours,
-                                request.sensitivity,
-                                request.minimumPercent,
-                            ),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    get("/auto-brightness/sources") {
-                        val query = call.request.queryParameters["q"].orEmpty().trim().take(100)
-                        val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 200)
-                        call.respondText(
-                            autoBrightnessHttpApi.haSourcesJson(query, limit),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    post("/auto-brightness/source") {
-                        val obj = receiveEntityAdminJson(call, allowBlank = true) ?: return@post
-                        if (!obj.has("entity_id")) {
-                            return@post call.respondText(
-                                "entity_id is required (null selects the panel sensor)\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        val raw = obj.opt("entity_id")
-                        val selected = when (raw) {
-                            JSONObject.NULL -> null
-                            is String -> {
-                                val spec = requireNotNull(SettingsRegistry.spec("auto_brightness_ha_entity"))
-                                when (val accepted = SettingValue.validate(spec, raw)) {
-                                    is Validation.Ok -> accepted.normalized.ifBlank { null }
-                                    is Validation.Bad -> return@post call.respondText(
-                                        "${accepted.reason}\n",
-                                        status = HttpStatusCode.BadRequest,
-                                    )
-                                }
-                            }
-                            else -> return@post call.respondText(
-                                "entity_id must be a string or null\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        respondAutoBrightnessAction(call, autoBrightnessHttpApi.selectHaSource(selected))
-                    }
-                    post("/auto-brightness/reset") {
-                        respondAutoBrightnessAction(call, autoBrightnessHttpApi.resetHistory())
-                    }
-                    post("/auto-brightness/resume") {
-                        respondAutoBrightnessAction(call, autoBrightnessHttpApi.resumeFullAuto())
-                    }
+                    performanceRoutes(
+                        admit = { admitActiveRead(it) },
+                        perf = { PerfReader.touch(); PerfReader.json() },
+                        binding = { id -> performanceBindingJson(id, performanceBindingSecret, config.panelId, performanceWorkloadValues()) },
+                        costs = FeatureCosts::json,
+                        history = { entityLearning.performanceHistoryJson(it) },
+                    )
+                    autoBrightnessRoutes(autoBrightnessHttpApi, { admitActiveRead(it) }, ::receiveEntityAdminJson)
+                    autoSleepRoutes(autoSleepHttpApi, { admitActiveRead(it) }, ::receiveEntityAdminJson)
                     // Experimental built-in-renderer entity filter. The exact ids are accepted at runtime
                     // but never echoed, logged, or included in config exports; status is count+hash.
                     get("/dashboard/entity-filter") {
@@ -3009,7 +2704,7 @@ class PaneldServer internal constructor(
                             entityLearning.writeExportJson(this)
                         }
                     }
-                    get("/proximity") { call.respondText(sensors.proximityJson(), ContentType.Application.Json) }
+                    proximityRoutes(sensors::hasProximity, sensors::proximityJson, onProximityCalibration)
                     // Live Sensors card: last-published values + live extras. Volume is the current
                     // media-stream percent; brightness is the system setting (0-255, -1 unknown).
                     get("/sensors") {
@@ -3062,9 +2757,7 @@ class PaneldServer internal constructor(
                     }
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).
-                    get("/peers") {
-                        call.respondText(peersJson(peers()), ContentType.Application.Json)
-                    }
+                    discoveryRoutes({ peersJson(peers()) }, { launchableAppsJson(appContext) })
                     // Hydration payload for the dashboard (see infoJson) — the one place the probe
                     // suite actually runs; cached + single-flight, so concurrent viewers share it.
                     get("/info") {
@@ -3322,7 +3015,6 @@ class PaneldServer internal constructor(
                     get("/packages") { call.respondText(withContext(Dispatchers.IO) { packagesJson() }, ContentType.Application.Json) }
                     // Launchable apps plus the supported installed Companion renderer choices —
                     // populates the Configure tab's Dashboard-app / Launcher-app pickers.
-                    get("/apps") { call.respondText(withContext(Dispatchers.IO) { launchableAppsJson() }, ContentType.Application.Json) }
                     // Uninstall a package over root. Guarded: never ha-paneld itself; the picker only offers
                     // removable apps. `pm uninstall` (system/vendor apps aren't removable, only disable-able
                     // via taming — a separate, safer path).
@@ -3372,44 +3064,12 @@ class PaneldServer internal constructor(
                             )
                         }
                     }
-                    // EFR32 radio status (Install-tab Radio card). {present, status}. present=false → no radio.
-                    get("/radio") {
-                        val st = withContext(Dispatchers.IO) { radioStatus() }
-                        val body = if (st == null) """{"present":false,"status":"none"}""" else JSONObject()
-                            .put("present", true)
-                            .put("router_configured", config.zigbeeRouterConfigured)
-                            .put("router_enabled", config.zigbeeRouterConfigured && config.zigbeeRouterEnabled)
-                            .put("status", st.publicSummary())
-                            .put("state", st.state.wireValue)
-                            .put("attributes", JSONObject(st.mqttAttributes()))
-                            .toString()
-                        call.respondText(body, ContentType.Application.Json)
-                    }
-                    post("/radio/join") {
-                        val st = radioStatus()
-                        when {
-                            st == null -> call.respondText(
-                                """{"status":"unavailable"}""",
-                                ContentType.Application.Json,
-                                HttpStatusCode.NotFound,
-                            )
-                            !config.zigbeeRouterConfigured || !config.zigbeeRouterEnabled ->
-                                call.respondText(
-                                    """{"status":"disabled"}""",
-                                    ContentType.Application.Json,
-                                    HttpStatusCode.Conflict,
-                                )
-                            onZigbeeJoinRetry() -> call.respondText(
-                                """{"status":"started"}""",
-                                ContentType.Application.Json,
-                            )
-                            else -> call.respondText(
-                                """{"status":"busy"}""",
-                                ContentType.Application.Json,
-                                HttpStatusCode.ServiceUnavailable,
-                            )
-                        }
-                    }
+                    radioRoutes(
+                        status = radioStatus,
+                        configured = { config.zigbeeRouterConfigured },
+                        enabled = { config.zigbeeRouterEnabled },
+                        join = onZigbeeJoinRetry,
+                    )
                     // Auto-heal the System WebView (download + install the profile's recommended build).
                     // Fire-and-forget: the install runs off-thread (large download); the client refreshes.
                     post("/webview/heal") {
@@ -3635,52 +3295,6 @@ class PaneldServer internal constructor(
                     }
                     get("/openapi.json") {
                         call.respondText(asset("openapi.json"), ContentType.Application.Json)
-                    }
-                    post("/proximity/calibration") {
-                        if (!proximityUiRequestAllowed(
-                                call.request.headers["Origin"], call.request.headers["Referer"],
-                                call.request.headers["Host"], call.request.headers["Sec-Fetch-Site"],
-                                call.request.headers["X-Proximity-UI"],
-                            )) {
-                            call.respondText("Start proximity setup from this panel's HTML UI.\n", status = HttpStatusCode.Forbidden)
-                            return@post
-                        }
-                        val parameters = receiveBoundedFormParameters(call) ?: return@post
-                        val action = parameters["action"].orEmpty()
-                        if (action !in setOf("start", "cancel", "reset", "heartbeat")) {
-                            call.respondText("Unsupported calibration action.\n", status = HttpStatusCode.BadRequest)
-                            return@post
-                        }
-                        if (!sensors.hasProximity()) {
-                            call.respondText(PROXIMITY_SOURCE_REQUIRED, ContentType.Application.Json, HttpStatusCode.Conflict)
-                            return@post
-                        }
-                        val id = parameters["sessionId"].orEmpty()
-                        val accepted = withContext(Dispatchers.IO) { onProximityCalibration(action, id) }
-                        call.response.headers.append("Cache-Control", "no-store")
-                        call.respondText(sensors.proximityJson(), ContentType.Application.Json,
-                            if (accepted) HttpStatusCode.Accepted else HttpStatusCode.Conflict)
-                    }
-                    post("/proximity/teach") {
-                        call.respondText("Use on-panel proximity setup from the HTML UI.\n", status = HttpStatusCode.Gone)
-                    }
-                    post("/proximity/test") {
-                        call.respondText("Use on-panel proximity setup from the HTML UI.\n", status = HttpStatusCode.Gone)
-                    }
-                    post("/proximity/relearn") {
-                        call.respondText("Use Reset to profile from the HTML UI.\n", status = HttpStatusCode.Gone)
-                    }
-                    post("/proximity/capture") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
-                    }
-                    post("/proximity/threshold") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
-                    }
-                    post("/proximity/sensitivity") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
-                    }
-                    post("/proximity/reset") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
                     }
                     // Per-package vendor taming from the Vendor packages card. action=tame adds the package to
                     // the blocklist and tames it now; action=untame explicitly enables it, then removes it from
@@ -4942,32 +4556,6 @@ $body</div>"""
     /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
      *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
      *  self-uninstall would kill the tool. */
-    /** All apps with a launcher entry, plus supported installed Companion renderers. The former feeds
-     *  the generic Launcher-app picker; the latter is derived independently from the authoritative
-     *  Companion package catalogue so arbitrary launchable apps never become Dashboard choices. */
-    private fun launchableAppsJson(): String {
-        val pm = appContext.packageManager
-        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
-            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-        val apps = runCatching {
-            pm.queryIntentActivities(intent, 0)
-                .mapNotNull { it.activityInfo?.applicationInfo }
-                .associate {
-                    val pkg = it.packageName
-                    val label = if (pkg == appContext.packageName) {
-                        "Panel admin (ha-paneld)"
-                    } else {
-                        runCatching { pm.getApplicationLabel(it).toString() }.getOrDefault(pkg)
-                    }
-                    pkg to label
-                }
-                .toList()
-                .sortedBy { it.second.lowercase(java.util.Locale.ROOT) }
-        }.getOrDefault(emptyList())
-        val rendererChoices = CompanionInstaller.rendererChoices(CompanionInstaller.installedPackages(appContext))
-        return configureAppInventoryJson(apps, rendererChoices)
-    }
-
     private fun packagesJson(): String {
         val apps = removablePackages()
         val arr = apps.joinToString(",") { (pkg, label) -> "{\"pkg\":${jsonStr(pkg)},\"label\":${jsonStr(label)}}" }
@@ -8264,17 +7852,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
     }
 
-    private suspend fun respondAutoBrightnessAction(
-        call: ApplicationCall,
-        action: AutoBrightnessHttpAction,
-    ) {
-        call.respondText(
-            action.json,
-            ContentType.Application.Json,
-            HttpStatusCode.fromValue(action.statusCode),
-        )
-    }
-
     /**
      * Registry metadata for generating the Configure form (type/group/tier/scope/options/range +
      * whether the setting is an HA entity and currently exposed), capability-gated to this panel.
@@ -11175,10 +10752,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             "Requires physical on-panel approval for this action when Hardened mode is enabled."
         private const val HARDENED_CONDITIONAL_APPROVAL_TEXT =
             "Changing this setting may require physical on-panel approval when Hardened mode is enabled."
-        private const val RETIRED_PROXIMITY_OPERATION =
-            "{\"error\":\"automatic proximity learning replaced this operation\"}"
-        private const val PROXIMITY_SOURCE_REQUIRED =
-            "{\"error\":\"proximity_source_required\"}"
         private const val ENTITY_REVISION_PREFIX = "_local.entity_state"
         // Late enough that the first pass does not compete with boot (renderer, MQTT, profile activation),
         // early enough that a panel is correct long before anybody opens a settings page.
@@ -11196,7 +10769,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         private const val REMOTE_SCREENSHOT_WAIT_MS = 25_000L
         private const val REMOTE_TAP_CAPTURE_TIMEOUT_MS = 45_000L
         private const val REMOTE_TAP_CAPTURE_RESPONSE_TIMEOUT_MS = 60_000L
-        private val OPAQUE_AUTO_SLEEP_KEY = Regex("^[a-f0-9]{64}$")
 
         /** Keys routed through [applySetting] after an HTTP persistence commit, declared by the registry. */
         internal val HTTP_LIVE_KEYS = SettingsRegistry.liveApplyKeys()
