@@ -35366,8 +35366,8 @@
       "hardMaxChars": 64
     },
     "setup.ha_url.lead": {
-      "text": "The built-in dashboard loads straight from your Home Assistant.",
-      "sourceHash": "3d2e4fa5486d2038320ca45ee59ad91670561de7b72ff6718b2340b2da47260d",
+      "text": "ha-paneld uses this address to connect to Home Assistant.",
+      "sourceHash": "e71e1d01d14468099c08d3f2123b22e505f3c6b6358779488bc9b3f5419fe4a3",
       "surface": "setup",
       "context": "Setup wizard renderer or Home Assistant URL step; introductory guidance.",
       "risk": "setup",
@@ -35378,6 +35378,7 @@
       ],
       "placeholders": [],
       "frozen": [
+        "ha-paneld",
         "Home Assistant"
       ],
       "softMaxChars": 100,

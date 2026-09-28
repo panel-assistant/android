@@ -11604,8 +11604,8 @@
       "state": "machine-cross-checked"
     },
     "setup.ha_url.lead": {
-      "text": "Le tableau de bord intégré se charge directement depuis votre Home Assistant.",
-      "sourceHash": "3d2e4fa5486d2038320ca45ee59ad91670561de7b72ff6718b2340b2da47260d",
+      "text": "ha-paneld utilise cette adresse pour se connecter à Home Assistant.",
+      "sourceHash": "e71e1d01d14468099c08d3f2123b22e505f3c6b6358779488bc9b3f5419fe4a3",
       "state": "machine-cross-checked"
     },
     "setup.ha_url.title": {

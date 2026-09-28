@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { chromium } from 'playwright-core';
+import { chromium, webkit } from 'playwright-core';
 
 const defaultAsset = fileURLToPath(new URL('../../app/src/main/assets/setup.js', import.meta.url));
 const setupAsset = process.argv[2] ? resolve(process.argv[2]) : defaultAsset;
@@ -103,9 +103,9 @@ async function startHarness({
   return { server, state, url: `http://127.0.0.1:${server.address().port}` };
 }
 
-async function openRig(t, options, path = '/') {
+async function openRig(t, options, path = '/', browserType = chromium) {
   const harness = await startHarness(options);
-  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const browser = await browserType.launch(browserType === chromium ? { executablePath: chrome, headless: true } : { headless: true });
   const page = await browser.newPage();
   page.setDefaultTimeout(3_000);
   t.after(async () => {
@@ -115,6 +115,27 @@ async function openRig(t, options, path = '/') {
   await page.goto(harness.url + path, { waitUntil: 'domcontentloaded', timeout: 5_000 });
   await page.locator('#wiz-step .card').waitFor();
   return { ...harness, browser, page };
+}
+
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  run(`Setup explains the Home Assistant address for built-in and Companion renderers in ${engine}`, async (t) => {
+    for (const renderer of ['builtin', 'companion']) {
+      const rig = await openRig(t, {
+        initialJourney: journey('ha_url', {
+          statuses: renderer === 'companion' ? {
+            home_dashboard: { status: 'skipped', detail: 'foreign_renderer' },
+            entity_filter: { status: 'skipped', detail: 'foreign_renderer' },
+          } : {},
+        }),
+        withHelper: false,
+        locale: 'en',
+      }, '/', browserType);
+      assert.equal(await rig.page.locator('.card h2').textContent(), 'Where is Home Assistant?');
+      assert.equal(await rig.page.locator('.card .wiz-lead').textContent(), 'ha-paneld uses this address to connect to Home Assistant.');
+      assert.equal(await rig.page.locator('#wiz-ha_url').count(), 1);
+    }
+  });
 }
 
 async function reloadJourney(rig, nextJourney, path = '/?lang=zh-Hans') {
