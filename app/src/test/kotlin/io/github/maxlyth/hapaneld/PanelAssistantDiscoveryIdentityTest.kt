@@ -23,7 +23,7 @@ class PanelAssistantDiscoveryIdentityTest {
         assertFalse(token == androidId)
     }
 
-    @Test fun missingAndroidIdProducesNoLanIdentity() {
+    @Test fun missingInstallationIdentityProducesNoLanIdentity() {
         assertNull(panelAssistantDiscoveryId(""))
         assertNull(panelAssistantDiscoveryId(" \t "))
         assertEquals("", panelAssistantDiscoveryHealthToken(""))
@@ -33,7 +33,7 @@ class PanelAssistantDiscoveryIdentityTest {
         val token = requireNotNull(panelAssistantDiscoveryId(androidId))
         val healthToken = panelAssistantDiscoveryHealthToken(androidId)
 
-        assertEquals(" did=$token", healthToken)
+        assertEquals(" did=$token identity=install", healthToken)
         assertFalse(healthToken.contains(androidId))
     }
 
@@ -48,6 +48,6 @@ class PanelAssistantDiscoveryIdentityTest {
             .getString("description")
 
         assertTrue(description.contains("did=<64 lower-case hexadecimal characters>"))
-        assertTrue(description.contains("omitted when Android ID is unavailable"))
+        assertTrue(description.contains("omitted when that identity is unavailable"))
     }
 }
