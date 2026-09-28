@@ -1531,7 +1531,7 @@ class PaneldService : Service() {
         })
         companionDataOperationState = CompanionDataOperationState.from(this)
         entityLearning = preparedEntityLearning
-        watchdog = WatchdogController(system, config)
+        watchdog = WatchdogController(system, config, sensors::proximityCalibrationActive)
         kiosk = KioskController(this, system, config, profile.appCanSu)
         kioskSettings = KioskSettingCoordinator(
             canEnable = kiosk::canEnablePersistentPolicy,
