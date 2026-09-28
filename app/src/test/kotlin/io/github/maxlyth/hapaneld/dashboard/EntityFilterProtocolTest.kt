@@ -290,7 +290,7 @@ class EntityFilterProtocolTest {
     }
 
     @Test fun telemetryResetsAndEmitsValidCounterJson() {
-        val lease = EntityFilterTelemetry.started(ids)
+        val lease = EntityFilterTelemetry.started(ids, EntityFilterProtocol.hash(ids))
         EntityFilterTelemetry.subscriptionModified(lease)
         EntityFilterTelemetry.trafficObserverInstalled(lease)
         EntityFilterTelemetry.traffic(
@@ -345,8 +345,8 @@ class EntityFilterProtocolTest {
     }
 
     @Test fun staleTelemetryLeaseCannotMutateOrStopReplacementState() {
-        val old = EntityFilterTelemetry.started(listOf("light.old"))
-        val current = EntityFilterTelemetry.started(ids)
+        val old = EntityFilterTelemetry.started(listOf("light.old"), EntityFilterProtocol.hash(listOf("light.old")))
+        val current = EntityFilterTelemetry.started(ids, EntityFilterProtocol.hash(ids))
 
         EntityFilterTelemetry.subscriptionModified(old)
         EntityFilterTelemetry.failed(old, "stale")
@@ -371,7 +371,7 @@ class EntityFilterProtocolTest {
     }
 
     @Test fun heldTelemetryIsInactiveAndPreservesConfiguredIdentityWithoutDirectFallback() {
-        val lease = EntityFilterTelemetry.started(ids)
+        val lease = EntityFilterTelemetry.started(ids, EntityFilterProtocol.hash(ids))
         val expectedHash = EntityFilterProtocol.hash(ids)
 
         EntityFilterTelemetry.held(lease, "document_start_install")
