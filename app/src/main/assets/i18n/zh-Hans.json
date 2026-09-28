@@ -1248,6 +1248,11 @@
       "state": "machine-cross-checked",
       "text": "打开登录页面"
     },
+    "configure.oauth.panel_reachability": {
+      "text": "要完成登录，此浏览器必须能访问面板的地址。如果无法访问，请从面板所在网络打开“配置”，或直接在面板上登录。",
+      "sourceHash": "f7ee3e4333f5fae799f75a5610c7c5841932d0a5a5b3bd32f19183136611ce89",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.reconnect": {
       "sourceHash": "bf8a9eab9e7e141bfb81f0ca9244a5f68f476ed0b57f03538410417298169d18",
       "state": "machine-cross-checked",
