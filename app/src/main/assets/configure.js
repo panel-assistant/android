@@ -780,6 +780,7 @@
     // textarea, no picker library.
     if (f.picker === "voice_pipelines") {
       if (voicePipelinesCatalog === null) loadVoicePipelines();
+      if (voiceWakeWordsCatalog === null) loadVoiceWakeWords();
       var pipelinesWrap = el("div", { class: "voice-pipelines-picker" });
       // The raw textarea is focused/mid-edit exactly when it is document.activeElement — checked
       // against THIS render's about-to-be-replaced node, before reconcileConfigCards swaps it out.
@@ -827,9 +828,10 @@
         }
       } catch (e) { pipelineMapping = {}; }
       configuredWakeWords.forEach(function (word) {
-        var pipelineRow = el("div", { class: "voice-pipeline-row" });
-        pipelineRow.appendChild(el("span", { class: "voice-pipeline-label", text: word }));
-        var pipelineSelect = el("select");
+        var pipelineRow = el("div", { class: "voice-pipeline-row", style: "display:flex;align-items:center;gap:8px;margin-bottom:6px" });
+        var known = Array.isArray(voiceWakeWordsCatalog) && voiceWakeWordsCatalog.filter(function (w) { return w && w.id === word; })[0];
+        pipelineRow.appendChild(el("span", { class: "voice-pipeline-label", style: "flex:0 0 auto", text: known && known.wake_word ? String(known.wake_word) : word }));
+        var pipelineSelect = el("select", { style: "flex:1 1 auto;min-width:0;max-width:100%" });
         pipelineSelect.appendChild(el("option", { value: "", text: i18nText("configure.voice.preferred_pipeline", "Preferred pipeline") }));
         var retainedPipelineId = pipelineMapping[word];
         var matchedRetained = false;
