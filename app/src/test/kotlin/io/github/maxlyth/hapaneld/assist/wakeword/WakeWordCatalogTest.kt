@@ -79,6 +79,33 @@ class WakeWordCatalogTest {
         assertEquals("ok_panel_2", WakeWordCatalog.idFor("OK, Panel #2.json"))
     }
 
+    /** A process killed between setting the working model aside and moving its replacement in. */
+    @Test fun `a replacement interrupted between its two renames puts the previous model back at next use`() {
+        catalog().import("porch", manifest("Porch", "porch.tflite").toByteArray(), byteArrayOf(1, 2, 3))
+        assertTrue(File(folder.root, "porch").renameTo(File(folder.root, ".previous-porch")))
+        File(folder.root, ".staging-porch").mkdirs()
+        File(folder.root, ".staging-porch/porch.tflite").writeBytes(byteArrayOf(7))
+
+        val recovered = catalog()
+        assertEquals(listOf("okay_nabu", "porch"), recovered.available().map { it.id })
+        assertArrayEquals(byteArrayOf(1, 2, 3), File(folder.root, "porch/porch.tflite").readBytes())
+        assertEquals(listOf("porch"), folder.root.list()!!.toList())
+        // Idempotent: a second pass finds nothing to do and changes nothing.
+        assertEquals(listOf("okay_nabu", "porch"), recovered.available().map { it.id })
+        assertArrayEquals(byteArrayOf(1, 2, 3), File(folder.root, "porch/porch.tflite").readBytes())
+    }
+
+    /** A process killed after the swap but before the old model was deleted: the new model stands. */
+    @Test fun `a replacement interrupted after its swap keeps the new model and drops the old one`() {
+        catalog().import("porch", manifest("Porch v2", "porch.tflite").toByteArray(), byteArrayOf(4))
+        File(folder.root, ".previous-porch").mkdirs()
+        File(folder.root, ".previous-porch/porch.tflite").writeBytes(byteArrayOf(1, 2, 3))
+
+        assertEquals("Porch v2", catalog().available().single { it.id == "porch" }.wakeWord)
+        assertArrayEquals(byteArrayOf(4), File(folder.root, "porch/porch.tflite").readBytes())
+        assertEquals(listOf("porch"), folder.root.list()!!.toList())
+    }
+
     private fun manifest(phrase: String, model: String) = """
         {"type":"micro","wake_word":"$phrase","author":"me","model":"$model","trained_languages":["en"],"version":2,
          "micro":{"probability_cutoff":0.97,"feature_step_size":10,"sliding_window_size":5,"tensor_arena_size":26080}}
