@@ -1563,9 +1563,12 @@ class PaneldService : Service() {
             microphoneAvailable = { profile.hasMicrophone },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
-            engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(wakeWordCatalog),
+            engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(wakeWordCatalog, log = { Log.i(TAG, it) }),
             runner = io.github.maxlyth.hapaneld.assist.SatelliteTurnRunner(panelAssistantVoice, log = { Log.i(TAG, it) }),
         )
+        voiceStateAuthority.setChangeListener {
+            io.github.maxlyth.hapaneld.assist.VoiceAttention.phase(voiceStateAuthority.current())
+        }
         system = SystemController(AndroidSystemEnv(this), beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
         })
