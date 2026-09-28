@@ -2,11 +2,13 @@ package io.github.maxlyth.hapaneld.util
 
 import android.content.Context
 import android.content.ContextWrapper
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -136,5 +138,63 @@ class WebViewRollbackReceiptTest {
 
         assertFalse(WebViewInstaller.markInstallMayHaveStarted(ctx, pin))
         assertFalse(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
+    }
+
+    @Test fun scheduledDownloadFailureClearsThePreInstallReceipt() = runBlocking {
+        val ctx = context()
+        val pin = "150.0.7871.63"
+        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, WebViewInstaller.PendingRollback(
+            pin, "c".repeat(64), sha, signer, 0, installMayHaveStarted = false,
+        )))
+        WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
+
+        val outcome = WebViewInstaller.installAutoUpdateWithReceipt(ctx, pin, { true }) { _ ->
+            assertFalse(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
+            InstallOutcome.Retryable("download failed")
+        }
+
+        assertEquals(InstallOutcome.Retryable("download failed"), outcome)
+        assertNull(WebViewInstaller.pendingRollback(ctx))
+        assertFalse(WebViewInstaller.previousApk(ctx).exists())
+        assertFalse(WebViewInstaller.alreadyRolledBackPin(ctx, pin))
+    }
+
+    @Test fun scheduledInstallAdmissionDurablyKeepsAnUncertainReceipt() = runBlocking {
+        val ctx = context()
+        val pin = "150.0.7871.63"
+        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, WebViewInstaller.PendingRollback(
+            pin, "c".repeat(64), sha, signer, 0, installMayHaveStarted = false,
+        )))
+        WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
+
+        val outcome = WebViewInstaller.installAutoUpdateWithReceipt(ctx, pin, { true }) { gate ->
+            assertTrue(AppInstaller.mayCommitPinnedInstall(gate))
+            InstallOutcome.Retryable("pm reply lost", mayHaveCommitted = true)
+        }
+
+        assertEquals(InstallOutcome.Retryable("pm reply lost", mayHaveCommitted = true), outcome)
+        assertTrue(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
+        assertFalse(WebViewInstaller.discardUnsubmittedRollback(ctx))
+        assertTrue(WebViewInstaller.previousApk(ctx).exists())
+    }
+
+    @Test fun interruptedDownloadExceptionAlsoReleasesItsReceipt() = runBlocking {
+        val ctx = context()
+        val pin = "150.0.7871.63"
+        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, WebViewInstaller.PendingRollback(
+            pin, "c".repeat(64), sha, signer, 0, installMayHaveStarted = false,
+        )))
+        WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
+
+        try {
+            WebViewInstaller.installAutoUpdateWithReceipt(ctx, pin, { true }) { _ ->
+                throw IllegalStateException("download interrupted")
+            }
+            fail("download exception must escape")
+        } catch (expected: IllegalStateException) {
+            assertEquals("download interrupted", expected.message)
+        }
+        assertNull(WebViewInstaller.pendingRollback(ctx))
+        assertFalse(WebViewInstaller.previousApk(ctx).exists())
     }
 }
