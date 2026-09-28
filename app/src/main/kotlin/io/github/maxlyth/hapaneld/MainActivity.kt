@@ -179,8 +179,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (maintenanceFence.stop(this)) return
-        NativeLocale.apply(config.uiLanguage)
         supportActionBar?.hide()
+        setContentView(TextView(this).apply {
+            text = getString(applicationInfo.labelRes)
+            gravity = android.view.Gravity.CENTER
+        })
         restoredIntroState = savedInstanceState?.takeIf { it.getBoolean(STATE_INTRO_PRESENTED, false) }?.let {
             SavedLaunchIntroState(
                 explicitAdminEntry = it.getBoolean(STATE_INTRO_EXPLICIT, false),
@@ -190,10 +193,19 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // Start while this Activity is foreground. The notification permission is granted by whatever
-        // installed the app, or claimed by the service through the root helper; it is never asked here.
-        PaneldService.start(this)
-        chooseDestination()
+        // Config constructs three SQLite-backed namespaces on a cold process. Finish that work before
+        // choosing the launch destination. Locale still precedes the service start and launch choice.
+        setupPollExecutor.execute {
+            config
+            handler.post {
+                if (isFinishing || isDestroyed) return@post
+                NativeLocale.apply(config.uiLanguage)
+                // Start while this Activity is foreground. The notification permission is granted by
+                // the installer or claimed by the service through the root helper; it is never asked here.
+                PaneldService.start(this)
+                chooseDestination()
+            }
+        }
     }
 
     private fun chooseDestination() {
@@ -315,10 +327,13 @@ class MainActivity : AppCompatActivity() {
                     armAutoReturn(it)
                 }
                 versionCode?.let { pendingVersion ->
-                    if (config.commitLaunchScreenVersionShown(pendingVersion) &&
-                        introVersionPending == pendingVersion
-                    ) {
-                        introVersionPending = null
+                    setupPollExecutor.execute {
+                        val committed = config.commitLaunchScreenVersionShown(pendingVersion)
+                        handler.post {
+                            if (committed && introVersionPending == pendingVersion) {
+                                introVersionPending = null
+                            }
+                        }
                     }
                 }
             }
@@ -439,7 +454,9 @@ class MainActivity : AppCompatActivity() {
         KioskAdminUi.setVisible(this, false)
         cancelAutoReturn()
         handler.removeCallbacks(setupPoll)
-        setupPollExecutor.shutdownNow()
+        // A first-draw acknowledgement may be queued behind a setup poll. Let that durable
+        // SQLite commit finish after the Activity leaves; no new polls are admitted below.
+        setupPollExecutor.shutdown()
         introAcknowledgement?.cancel()
         introAcknowledgement = null
         presentedIntro = null

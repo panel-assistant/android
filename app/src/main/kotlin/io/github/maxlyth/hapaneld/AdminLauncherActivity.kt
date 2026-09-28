@@ -17,6 +17,13 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * On-demand **admin launcher** for the panel — a slim app drawer reachable from the navbar Launcher
@@ -36,6 +43,8 @@ import androidx.appcompat.app.AppCompatActivity
 class AdminLauncherActivity : AppCompatActivity() {
 
     private val maintenanceFence = GuardDbActivityMaintenanceFence()
+    private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var refreshJob: Job? = null
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
@@ -66,7 +75,10 @@ class AdminLauncherActivity : AppCompatActivity() {
         if (maintenanceFence.stop(this)) return
         KioskAdminUi.setVisible(this, true)
         supportActionBar?.hide()
-        setContentView(buildUi())
+        setContentView(TextView(this).apply {
+            setText(R.string.panel_admin)
+            gravity = Gravity.CENTER
+        })
     }
 
     override fun onStart() {
@@ -82,6 +94,8 @@ class AdminLauncherActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         KioskAdminUi.setVisible(this, false)
+        refreshJob?.cancel()
+        activityScope.cancel()
         super.onDestroy()
     }
 
@@ -90,8 +104,19 @@ class AdminLauncherActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (maintenanceFence.stop(this)) return
-        NativeLocale.apply(Config(this).uiLanguage)
-        setContentView(buildUi())
+        refreshJob?.cancel()
+        refreshJob = activityScope.launch {
+            // Config can open SQLite namespaces on a cold HOME launch.
+            val language = readActivityStateOffMain { Config(applicationContext).uiLanguage }
+            if (!isActive) return@launch
+            NativeLocale.apply(language)
+            setContentView(buildUi())
+        }
+    }
+
+    override fun onPause() {
+        refreshJob?.cancel()
+        super.onPause()
     }
 
     private fun buildUi(): View {
