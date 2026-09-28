@@ -271,6 +271,27 @@ class SettingsBehaviorContractTest {
         assertEquals("old-password", failed.mqttPassword)
     }
 
+    @Test fun `changing Home Assistant origin never forwards the previous account tokens`() {
+        val prefs = memoryPreferences(initial = mapOf<String, Any?>(
+            "ha_url" to "https://ha.example.test",
+            "ha_token" to "old-access",
+            "ha_refresh_token" to "old-refresh",
+            "ha_token_expiry" to 1234L,
+            "ha_client_id" to "old-client",
+        ))
+        val config = Config(prefs.instance)
+
+        assertTrue(config.applyBatch {
+            stageDirectCredentialSettings(config, mapOf("ha_url" to "https://other.example.test"))
+        })
+
+        assertEquals("https://other.example.test", config.haUrl)
+        assertEquals("", config.haToken)
+        assertEquals("", config.haRefreshToken)
+        assertEquals(0L, config.haTokenExpiry)
+        assertEquals("", config.haClientId)
+    }
+
     @Test fun `coupled log endpoint reports its stored canonical destination`() {
         val prefs = memoryPreferences()
         val config = Config(prefs.instance)

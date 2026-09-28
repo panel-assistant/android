@@ -286,6 +286,68 @@ browserTest('Setup renders translated markup as text and keeps package, dashboar
   assert.equal(await rig.page.locator('#wiz-step img').count(), 0);
 });
 
+browserTest('a Panel Assistant handover answers the filter on before releasing first render', async (t) => {
+  const rig = await openRig(t, {
+    initialJourney: journey('home_dashboard', {
+      handover: { source: true },
+      home_dashboard: { value: '/dashboard-wall' },
+    }),
+    locale: 'en',
+    dashboards: { queried: true, items: [{ group: 'panel', title: 'Wall', path: '/dashboard-wall' }], default: { explicit: true, path: '/dashboard-wall' } },
+  });
+  await rig.page.locator('#wiz-home_dashboard').waitFor();
+  await rig.page.locator('button.wiz-primary').click();
+  await eventually(
+    () => Promise.resolve(rig.state.requests.filter((request) => request.method === 'POST').length),
+    (count) => count >= 4,
+  );
+  const posts = rig.state.requests.filter((request) => request.method === 'POST');
+  assert.deepEqual(posts.map((request) => request.path), [
+    '/api/v1/config', '/api/v1/setup/home-dashboard',
+    '/api/v1/config', '/api/v1/setup/entity-filter',
+  ]);
+  assert.equal(new URLSearchParams(posts[2].body).get('dashboard_entity_learning'), 'true');
+  assert.equal(posts[2].body.includes('ha_token'), false);
+});
+
+browserTest('declining a previously enabled filter disables it before the answer', async (t) => {
+  const rig = await openRig(t, {
+    initialJourney: journey('entity_filter', {
+      entity_filter: { relevant: true, enabled: true, counting: false, count: 321, level: 'green', confidence: 'measured', tier: 'capable' },
+    }),
+    locale: 'en',
+  });
+  await rig.page.locator('#ef-decline').click();
+  await eventually(
+    () => Promise.resolve(rig.state.requests.filter((request) => request.method === 'POST').length),
+    (count) => count >= 2,
+  );
+  const posts = rig.state.requests.filter((request) => request.method === 'POST');
+  assert.deepEqual(posts.map((request) => request.path), ['/api/v1/config', '/api/v1/setup/entity-filter']);
+  assert.equal(new URLSearchParams(posts[0].body).get('dashboard_entity_learning'), 'false');
+});
+
+browserTest('revisiting a handed-over dashboard does not undo an answered filter choice', async (t) => {
+  const rig = await openRig(t, {
+    initialJourney: journey('home_dashboard', {
+      handover: { source: true },
+      home_dashboard: { value: '/dashboard-wall' },
+      statuses: { entity_filter: { status: 'satisfied' } },
+      entity_filter: { relevant: true, answered: true, enabled: false },
+    }),
+    locale: 'en',
+    dashboards: { queried: true, items: [{ group: 'panel', title: 'Wall', path: '/dashboard-wall' }], default: { explicit: true, path: '/dashboard-wall' } },
+  });
+  await rig.page.locator('#wiz-home_dashboard').waitFor();
+  await rig.page.locator('button.wiz-primary').click();
+  await eventually(
+    () => Promise.resolve(rig.state.requests.filter((request) => request.method === 'POST').length),
+    (count) => count >= 2,
+  );
+  const posts = rig.state.requests.filter((request) => request.method === 'POST');
+  assert.deepEqual(posts.map((request) => request.path), ['/api/v1/config', '/api/v1/setup/home-dashboard']);
+});
+
 browserTest('Setup preserves the active locale on every JavaScript-authored cross-page link', async (t) => {
   const completeJourney = journey('render_proof', {
     complete: true,
