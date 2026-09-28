@@ -87,6 +87,28 @@ class SatelliteTurnRunnerTest {
         assertFalse(turn.await().continueConversation)
     }
 
+    @Test fun `what the microphone hears while the panel's chime sounds is sent as silence`() = runTest {
+        val link = link()
+        var capture: PcmConsumer? = null
+        val turn = async {
+            SatelliteTurnRunner(link.voice, chime = { 100L..200L }).run(
+                VoiceTurnRequest("okay_nabu"),
+                { consumer -> capture = consumer; AutoCloseable {} },
+                {},
+            )
+        }
+        runCurrent()
+        val runId = link.request(PanelAssistantVoice.COMMAND_VOICE_RUN).getLong("id")
+        link.answer(runId, JSONObject().put("handler_id", 5))
+        capture!!.onFrame(PcmFrame(shortArrayOf(1000), timestampNs = 150L))
+        capture!!.onFrame(PcmFrame(shortArrayOf(1000), timestampNs = 250L))
+        link.event(runId, "listen_end")
+        link.event(runId, "end")
+        runCurrent()
+        turn.await()
+        assertEquals(listOf(0, 1000), link.binary.filter { it.size == 3 }.map { (it[2].toInt() shl 8) or (it[1].toInt() and 0xFF) })
+    }
+
     /** The voice link opened on a scripted session; the test plays the session loop. */
     private class Link(val voice: PanelAssistantVoice, private val scope: TestScope) {
         val sent = mutableListOf<JSONObject>()

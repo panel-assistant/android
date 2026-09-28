@@ -25,6 +25,12 @@ internal class SatelliteTurnRunner(
     private val maxListenMs: Long = MAX_LISTEN_MS,
     /** And on the whole turn, reply included. */
     private val maxTurnMs: Long = MAX_TURN_MS,
+    /**
+     * When the panel's own chime sounds, `System.nanoTime()` base. What the microphone hears then is sent
+     * as silence: the stream still starts at the wake word, but neither voice detection nor speech-to-text
+     * hears the chime, which once turned a command into nonsense.
+     */
+    private val chime: () -> LongRange = { LongRange.EMPTY },
 ) : AssistRunner {
     override suspend fun run(
         request: VoiceTurnRequest,
@@ -33,7 +39,7 @@ internal class SatelliteTurnRunner(
     ): AssistOutcome {
         val turn = voice.begin(request.wakeWordId, request.continued)
             ?: return AssistOutcome(error = AssistError(CODE_UNAVAILABLE, "Panel Assistant is not connected"))
-        var attachment: AutoCloseable? = attachAudio(measured(turn, request.heardAtNs))
+        var attachment: AutoCloseable? = attachAudio(measured(withoutChime(turn), request.heardAtNs))
         fun stopListening() {
             attachment?.close()
             attachment = null
@@ -86,6 +92,16 @@ internal class SatelliteTurnRunner(
             turn.close()
         }
         return AssistOutcome(continueConversation = continueConversation && error == null, error = error)
+    }
+
+    private fun withoutChime(consumer: PcmConsumer): PcmConsumer = object : PcmConsumer {
+        override fun onFrame(frame: PcmFrame) {
+            consumer.onFrame(
+                if (frame.timestampNs in chime()) PcmFrame(ShortArray(frame.samples.size), frame.sampleRate, frame.timestampNs) else frame,
+            )
+        }
+
+        override fun onDropped(count: Int) = consumer.onDropped(count)
     }
 
     /** Logs, once, how long after the wake word the first command audio reached the turn. */

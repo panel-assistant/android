@@ -1564,7 +1564,11 @@ class PaneldService : Service() {
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
             engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(wakeWordCatalog, log = { Log.i(TAG, it) }),
-            runner = io.github.maxlyth.hapaneld.assist.SatelliteTurnRunner(panelAssistantVoice, log = { Log.i(TAG, it) }),
+            runner = io.github.maxlyth.hapaneld.assist.SatelliteTurnRunner(
+                panelAssistantVoice,
+                log = { Log.i(TAG, it) },
+                chime = { io.github.maxlyth.hapaneld.assist.VoiceAttention.chime },
+            ),
         )
         voiceStateAuthority.setChangeListener {
             io.github.maxlyth.hapaneld.assist.VoiceAttention.phase(voiceStateAuthority.current())
