@@ -184,6 +184,7 @@ class WebViewRollbackReceiptTest {
             ctx, profile(pin), "147.0.7727.56", autoUpdate = true, stillBuiltin = { true },
             prepareAutoRollback = { _, _, _ -> preparedReceipt(ctx, pin) },
             installPinned = { _, _, _, gate ->
+                assertNotNull("scheduled installer must receive the receipt admission gate", gate)
                 assertTrue(AppInstaller.mayCommitPinnedInstall(gate))
                 InstallOutcome.Retryable("pm reply lost", mayHaveCommitted = true)
             },
