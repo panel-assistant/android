@@ -211,7 +211,7 @@ class KtorPanelAssistantTransportConnectorTest {
                                     JSONObject().put("id", json.getLong("id")).put("type", "result").put("success", true)
                                         .put(
                                             "result",
-                                            JSONObject().put("protocol", 1).put("session", "s").put("authority", "mqtt")
+                                            JSONObject().put("protocol", 3).put("session", "s").put("authority", "mqtt")
                                                 .put("capabilities", JSONArray())
                                                 .put("integration", JSONObject().put("version", "0.3.0")),
                                         ).toString(),

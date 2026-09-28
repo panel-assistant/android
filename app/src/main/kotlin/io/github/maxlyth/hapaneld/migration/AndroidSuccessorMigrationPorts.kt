@@ -59,7 +59,6 @@ internal class AndroidSuccessorMigrationPorts(
     private val state: MigrationState,
     private val environment: Environment,
     private val httpPort: Int,
-    private val androidId: String,
     private val mqttState: () -> String = { "disabled" },
     /** A fresh outcome for one restore attempt, completed by the server when that restore ends. */
     private val beginRestore: () -> CompletableDeferred<Boolean> = { CompletableDeferred() },
@@ -71,7 +70,8 @@ internal class AndroidSuccessorMigrationPorts(
     override fun environment(): Environment = environment
     override fun legacyInstalled(): Boolean = IdentityMigrationGate.legacyInstalled(context)
 
-    override fun releaseTokenHeld(): Boolean = ReleaseToken.of(context).current() != null
+    override fun releaseTokenHeld(): Boolean =
+        state.handoverReady(ReleaseToken.of(context))
 
     override fun receiptSha256(): String? =
         state.receipt.takeIf(File::isFile)?.let { runCatching { AppInstaller.sha256(it) }.getOrNull() }
@@ -97,7 +97,7 @@ internal class AndroidSuccessorMigrationPorts(
                 connection.disconnect()
             }
             // Promote only a verified archive: the stored receipt may be the last one obtainable.
-            ReceiptVerifier.refusal(staged, panelAssistantDiscoveryId(androidId))?.let { refusal ->
+            ReceiptVerifier.refusal(staged, state.deviceUid()?.let(::panelAssistantDiscoveryId))?.let { refusal ->
                 Log.w(TAG, "pulled backup was not kept: $refusal")
                 staged.delete()
                 return@runCatching null
@@ -114,7 +114,11 @@ internal class AndroidSuccessorMigrationPorts(
     // The profile catalog is planned here, before the release, against this build's bundled catalog: a
     // successor that has not restored has nothing else, so this is the plan its restore will make.
     override fun receiptRefusal(): String? =
-        ReceiptVerifier.migrationRefusal(state.receipt, panelAssistantDiscoveryId(androidId)) {
+        ReceiptVerifier.migrationRefusal(
+            state.receipt,
+            state.deviceUid()?.let(::panelAssistantDiscoveryId),
+            identityAlreadyVerified = state.verifiedRetiredReceipt(state.receipt),
+        ) {
             RuntimeProfileRegistry.bundledOnly(context).planBackupRestore(it)
         }
 
