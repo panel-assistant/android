@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.backup
 
 import io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog
+import io.github.maxlyth.hapaneld.http.restoreOverallStatus
 import io.github.maxlyth.hapaneld.http.wakeWordRestoreComponent
 import io.github.maxlyth.hapaneld.http.wakeWordRestoreNote
 import io.github.maxlyth.hapaneld.util.InstallProgress
@@ -94,6 +95,23 @@ class WakeWordBackupTest {
         assertEquals(1, component.items)
         assertTrue(component.detail, component.detail.startsWith("not restored: porch: "))
         assertEquals("; 1 wake word not restored (porch)", wakeWordRestoreNote(outcome))
+        // Not a success overall: a migration must not retire the old install while this model is missing.
+        assertEquals(InstallProgress.Outcome.PARTIAL, restoreOverallStatus(outcome))
+        assertEquals(InstallProgress.Outcome.SUCCEEDED, restoreOverallStatus(WakeWordBackup.restore(catalog(folder.newFolder("again")), emptyList())))
+        assertEquals(InstallProgress.Outcome.SUCCEEDED, restoreOverallStatus(null))
+    }
+
+    @Test fun `a model that cannot be read fails the backup instead of being left out`() {
+        val dir = folder.newFolder("source")
+        val source = catalog(dir)
+        source.import("porch", manifest("Porch", "porch.tflite").toByteArray(), byteArrayOf(1, 2, 3))
+        File(dir, "porch/porch.tflite").delete()
+        File(dir, "porch/porch.tflite").mkdir() // present but unreadable as a file
+
+        val failure = runCatching { source.exportImported() }.exceptionOrNull()
+
+        assertTrue("expected an IOException, got $failure", failure is java.io.IOException)
+        assertTrue(failure!!.message!!.contains("porch"))
     }
 
     @Test fun `a panel without imports writes no wake word section`() {
