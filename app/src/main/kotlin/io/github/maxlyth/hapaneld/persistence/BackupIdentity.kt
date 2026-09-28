@@ -8,10 +8,9 @@ import org.json.JSONObject
  *
  * `panel_id` names a panel to its owner and is restorable configuration, so it cannot also prove which
  * physical device an archive came from: a freshly installed app has not adopted it yet. The discovery
- * id can. It is the Panel Assistant pseudonym, a domain-separated digest of the Android id, which is
- * scoped to the signing key rather than the package, so the legacy and successor identities of this
- * app compute the same value on the same device and a different one anywhere else. The raw Android id
- * is never written.
+ * id identifies the installation. It is a domain-separated digest of the stored random identity.
+ * A signed local application handover transfers that identity before receipt verification. Ordinary
+ * settings restore never transfers it, so restoring onto another installation cannot clone discovery.
  */
 object BackupIdentity {
     const val DISCOVERY_ID_KEY = "discovery_id"
@@ -40,7 +39,7 @@ object BackupIdentity {
 
     /**
      * True only when the archive was written on this device. Both sides must present a well-formed
-     * pseudonym: an archive that predates the field, or a device that cannot read its Android id,
+     * pseudonym: an archive that predates the field, or an installation without a durable identity,
      * proves nothing and is treated as a different device.
      */
     fun sameDevice(manifest: JSONObject, ownDiscoveryId: String?): Boolean {

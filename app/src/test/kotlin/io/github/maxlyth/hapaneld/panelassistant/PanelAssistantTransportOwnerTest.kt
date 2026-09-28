@@ -158,8 +158,8 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
-    @Test fun `a deliberate restart reaches a schema 2 peer and health expires if the panel stays down`() = runTest {
-        val connection = FakeConnection(Ha.accepting(protocol = 2))
+    @Test fun `a deliberate restart reaches a schema 3 peer and health expires if the panel stays down`() = runTest {
+        val connection = FakeConnection(Ha.accepting(protocol = 3))
         var now = 0L
         val harness = harness(connection, clock = { now })
         harness.owner.replaceDemand(DEMAND)
@@ -1164,7 +1164,7 @@ class PanelAssistantTransportOwnerTest {
 
     private object Ha {
         fun accepting(
-            protocol: Int = 1,
+            protocol: Int = 3,
             answerPings: Boolean = true,
             authority: String = "mqtt",
             capabilities: List<String> = emptyList(),

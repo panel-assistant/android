@@ -129,7 +129,7 @@ internal class AutoSleepController private constructor(
         configuration = {
             AutoSleepRuntimeConfig(
                 config.autoSleep, config.deviceUid, config.panelId, config.haUrl, config.haArea, config.autoSleepSource,
-                panelAssistantDiscoveryId(config.androidId),
+                panelAssistantDiscoveryId(config.deviceUid),
             )
         },
         learning = StoredAutoSleepLearning(context),
