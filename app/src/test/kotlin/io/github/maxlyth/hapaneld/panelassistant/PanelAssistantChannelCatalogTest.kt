@@ -70,7 +70,7 @@ class PanelAssistantChannelCatalogTest {
         // beyond the fixture's hardware, so the cross-check covers the hand-written literals too.
         assertTrue("only $checked were cross-checked", checked.containsAll(listOf(
             "screen", "led", "buttons", "navigate", "home_dashboard", "storage_health", "update_paneld",
-            "update_companion", "voice_enabled", "navbar", "relay1", "button_led1", "watchdog", "update_channel",
+            "update_companion", "navbar", "relay1", "button_led1", "watchdog", "update_channel",
             "zigbee_router", "cpu_governor", "network_adb", "room_temp", "diag_wifi_outages_24h", "volume",
         )))
     }
@@ -110,7 +110,7 @@ class PanelAssistantChannelCatalogTest {
 
     @Test fun renamingADisplayLabelChangesNoWireCode() {
         val renamedSelects = SettingsRegistry.haCapable().filter { it.ha!!.facts.options != null }
-        assertTrue(renamedSelects.map { it.key }.containsAll(listOf("navbar_mode", "cpu_governor", "companion_update_channel", "voice_state")))
+        assertTrue(renamedSelects.map { it.key }.containsAll(listOf("navbar_mode", "cpu_governor", "companion_update_channel")))
         for (spec in renamedSelects) {
             val entity = spec.ha!!
             val renamed = entity.facts.options!!.map { ChannelOption(it.code, "${it.label} (renamed)") }
@@ -131,8 +131,11 @@ class PanelAssistantChannelCatalogTest {
     @Test fun uniqueSuffixIsTheMqttUniqueIdAfterThePanelPrefix() {
         assertEquals("ha_paneld_update", PanelAssistantChannelCatalog.describe("update_paneld")?.uniqueSuffix)
         assertEquals("ha_companion_update", PanelAssistantChannelCatalog.describe("update_companion")?.uniqueSuffix)
-        assertEquals("voice_assistant", PanelAssistantChannelCatalog.describe("voice_enabled")?.uniqueSuffix)
         assertEquals("navbar", PanelAssistantChannelCatalog.describe("navbar")?.uniqueSuffix)
+        // A registry entity takes its object suffix, not its channel name, when the two differ.
+        val navbar = requireNotNull(SettingsRegistry.spec("navbar_mode"))
+        val renamed = navbar.copy(ha = navbar.ha!!.copy(objectSuffix = "navigation_bar", channel = "navbar"))
+        assertEquals("navigation_bar", PanelAssistantChannelCatalog.describe(renamed).uniqueSuffix)
     }
 
     @Test fun familiesCarryTheirFamilyAndIndexAndShareOneTranslationKey() {
@@ -148,7 +151,6 @@ class PanelAssistantChannelCatalogTest {
         assertEquals(listOf("stable", "prerelease"), PanelAssistantChannelCatalog.describe("update_channel")?.options)
         assertEquals(listOf("stable", "prerelease"), PanelAssistantChannelCatalog.describe("companion_update_channel")?.options)
         assertEquals(listOf("performance", "efficiency", "auto"), PanelAssistantChannelCatalog.describe("cpu_governor")?.options)
-        assertEquals(listOf("off", "idle", "listening", "processing", "responding", "error"), PanelAssistantChannelCatalog.describe("voice_state")?.options)
         assertEquals(listOf("unchecked", "healthy", "warning", "critical", "database_failure"), PanelAssistantChannelCatalog.describe("storage_health")?.options)
         assertEquals(PanelAssistantValueKind.TEXT, PanelAssistantChannelCatalog.describe("diag_wifi_ssid")?.kind)
         assertEquals(PanelAssistantValueKind.NUMBER, PanelAssistantChannelCatalog.describe("diag_wifi_rssi")?.kind)

@@ -135,6 +135,7 @@ internal fun voiceAssistantCoordinator(
     foregroundMicrophone: (Boolean) -> Boolean,
     state: VoiceStateAuthority,
     engineFactory: WakeWordEngineFactory,
+    runner: AssistRunner,
 ): VoiceAssistantCoordinator {
     val source = ConfiguredMicrophoneSource(context.applicationContext, config)
     return VoiceAssistantCoordinator(
@@ -150,11 +151,10 @@ internal fun voiceAssistantCoordinator(
         microphoneAvailable = microphoneAvailable,
         source = { source.get() },
         engineFactory = engineFactory,
-        runnerFactory = {
-            AssistRunner { request, attach, playback -> AssistPipelineClient(config).run(request, attach, playback) }
-        },
+        runnerFactory = { runner },
         playback = AnnouncementLanePlayback(audio, onStarted = { state.set(VoiceState.RESPONDING) }),
         foregroundMicrophone = foregroundMicrophone,
         state = state,
-    )
+        attention = VoiceAttention::cue,
+    ).also { VoiceAttention.prepare(context) }
 }

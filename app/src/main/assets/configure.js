@@ -13,6 +13,9 @@
   // Assist pipeline catalogue for the voice_pipelines picker. null = not fetched yet, false = the
   // endpoint returned an error/503 (degrade to the raw JSON textarea), an array = the fetched catalogue.
   var voicePipelinesCatalog = null, voicePipelinesRequest = 0;
+  // The wake words this panel holds, bundled and imported, for the voice_wake_words picker; same
+  // null / false / list convention as the pipeline catalogue.
+  var voiceWakeWordsCatalog = null, voiceWakeWordsRequest = 0, voiceWakeWordImportStatus = "";
   // A per-load, owner-safe seed supplied by the config response. The endpoint is still fetched every
   // render so a failed query, credential change or Home Assistant area edit can recover immediately.
   var haAreaSeed = null, haAreaSeedGeneration = 0, haAreaCatalogRequest = 0, haAreaUserOverride = false;
@@ -716,6 +719,59 @@
       }
       sel.addEventListener("change", function () { values[f.key] = sel.value; setDirty(f.key); });
       return sel;
+    }
+    // Wake-word picker: a checkbox per wake word the panel holds (the bundled ones and any imported), and
+    // the import of one the owner trained: its microWakeWord .json manifest and .tflite model, which the
+    // panel checks with its own engine before offering it. Degrades to the raw JSON textarea while the
+    // list is unavailable.
+    if (f.picker === "voice_wake_words") {
+      if (voiceWakeWordsCatalog === null) loadVoiceWakeWords();
+      var wakeWrap = el("div", { class: "voice-wake-words-picker" });
+      if (!Array.isArray(voiceWakeWordsCatalog)) {
+        var wakeRaw = el("textarea", { class: "voice-wake-words-raw", rows: "2", text: v == null ? "" : v });
+        wakeRaw.addEventListener("input", function () { values[f.key] = wakeRaw.value; setDirty(f.key); });
+        wakeWrap.appendChild(wakeRaw);
+        return wakeWrap;
+      }
+      var activeWakeWords = [];
+      try {
+        var parsedActive = JSON.parse(v || "[]");
+        if (Array.isArray(parsedActive)) activeWakeWords = parsedActive.filter(function (w) { return typeof w === "string" && w; });
+      } catch (e) { activeWakeWords = []; }
+      voiceWakeWordsCatalog.forEach(function (word) {
+        var id = word && word.id ? String(word.id) : "";
+        if (!id) return;
+        var box = el("input", { type: "checkbox" });
+        box.checked = activeWakeWords.indexOf(id) >= 0;
+        box.addEventListener("change", function () {
+          activeWakeWords = activeWakeWords.filter(function (w) { return w !== id; });
+          if (box.checked) activeWakeWords.push(id);
+          values[f.key] = JSON.stringify(activeWakeWords);
+          setDirty(f.key);
+          render();
+        });
+        wakeWrap.appendChild(el("label", { class: "voice-wake-word-row", style: "display:block" }, [box, el("span", { text: word.wake_word ? String(word.wake_word) : id })]));
+      });
+      var manifestInput = el("input", { type: "file", accept: ".json,application/json" });
+      var modelInput = el("input", { type: "file", accept: ".tflite" });
+      var importButton = el("button", { type: "button", class: "btn", text: i18nText("configure.voice.import_wake_word", "Import trained wake word") });
+      importButton.addEventListener("click", function () {
+        var manifestFile = manifestInput.files && manifestInput.files[0];
+        var modelFile = modelInput.files && modelInput.files[0];
+        if (!manifestFile || !modelFile) {
+          voiceWakeWordImportStatus = i18nText("configure.voice.import_choose_files", "Choose the .json manifest and the .tflite model first.");
+          render();
+          return;
+        }
+        importButton.disabled = true;
+        importVoiceWakeWord(manifestFile, modelFile);
+      });
+      wakeWrap.appendChild(el("div", { class: "voice-wake-word-import", style: "display:grid;gap:6px;margin-top:8px" }, [
+        el("small", { text: i18nText("configure.voice.import_help", "Import a microWakeWord model you trained: its .json manifest and .tflite file.") }),
+        manifestInput, modelInput, importButton,
+        voiceWakeWordImportStatus ? el("small", { text: voiceWakeWordImportStatus }) : null,
+      ]));
+      return wakeWrap;
     }
     // Wake-word-pipeline picker: one native select per configured wake word (from voice_wake_words),
     // offering the Home Assistant Assist pipelines fetched from /api/v1/voice/pipelines. Degrades to the
@@ -3574,6 +3630,47 @@
     }).catch(function () {
       if (request !== voicePipelinesRequest) return;
       voicePipelinesCatalog = false;
+      render();
+    });
+  }
+
+  function loadVoiceWakeWords() {
+    if (voiceWakeWordsCatalog !== null) return;
+    var request = ++voiceWakeWordsRequest;
+    fetch("api/v1/voice/wake-words", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (body) {
+      if (request !== voiceWakeWordsRequest) return;
+      voiceWakeWordsCatalog = (body && Array.isArray(body.wake_words)) ? body.wake_words : [];
+      render();
+    }).catch(function () {
+      if (request !== voiceWakeWordsRequest) return;
+      voiceWakeWordsCatalog = false;
+      render();
+    });
+  }
+
+  // Reads the two files, sends them to the panel, and shows what the panel said. A model the panel's
+  // engine refuses is not added, and one of the same name that was already there stays as it was.
+  function importVoiceWakeWord(manifestFile, modelFile) {
+    Promise.all([manifestFile.text(), modelFile.arrayBuffer()]).then(function (parts) {
+      var bytes = new Uint8Array(parts[1]), binary = "";
+      for (var i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return fetch("api/v1/voice/wake-words", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelFile.name, manifest: parts[0], model: btoa(binary) }),
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) { return { ok: r.ok, body: body }; });
+    }).then(function (result) {
+      voiceWakeWordImportStatus = result.ok
+        ? i18nText("configure.voice.import_done", "Imported {wake_word}.", { wake_word: String(result.body.wake_word || result.body.id || "") })
+        : i18nText("configure.voice.import_failed", "Import failed: {reason}", { reason: String(result.body.error || "") });
+      voiceWakeWordsCatalog = null;
+      loadVoiceWakeWords();
+    }).catch(function () {
+      voiceWakeWordImportStatus = i18nText("configure.voice.import_failed", "Import failed: {reason}", { reason: "" });
       render();
     });
   }

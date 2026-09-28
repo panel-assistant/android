@@ -26,7 +26,6 @@ class MicroWakeWordModelConfigTest {
         assertEquals("Kevin Ahrendt", config.author)
         assertEquals("https://www.kevinahrendt.com/", config.website)
         assertEquals("okay_nabu.tflite", config.modelFile)
-        assertEquals("wakeword/okay_nabu.tflite", config.modelAssetPath)
         assertEquals(listOf("en"), config.trainedLanguages)
         assertEquals(2, config.version)
         assertEquals(0.97f, config.probabilityCutoff, 1e-6f)

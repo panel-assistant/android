@@ -1,0 +1,69 @@
+package io.github.maxlyth.hapaneld.assist.wakeword
+
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
+
+class WakeWordCatalogTest {
+    @get:Rule
+    val folder = TemporaryFolder()
+
+    private var engineAccepts = true
+
+    private fun catalog(dir: File = folder.root) = WakeWordCatalog(
+        bundled = object : WakeWordCatalog.BundledModels {
+            override fun ids() = listOf("okay_nabu")
+            override fun manifest(id: String) = manifest("Okay Nabu", "okay_nabu.tflite")
+            override fun model(file: String) = byteArrayOf(1)
+        },
+        importDir = dir,
+        accepts = { _, _ -> engineAccepts },
+    )
+
+    @Test fun `an imported model is listed after the bundled ones, under the id its name gives`() {
+        val result = catalog().import("Hey Computer.tflite", manifest("Hey Computer", "hey.tflite").toByteArray(), byteArrayOf(9, 9))
+
+        assertEquals("hey_computer", (result as WakeWordCatalog.ImportResult.Imported).config.id)
+        val listed = catalog().available()
+        assertEquals(listOf("okay_nabu", "hey_computer"), listed.map { it.id })
+        assertEquals("Hey Computer", listed.last().wakeWord)
+        assertArrayEquals(byteArrayOf(9, 9), File(folder.root, "hey_computer/hey.tflite").readBytes())
+    }
+
+    @Test fun `a rejected import keeps the last good model of that id`() {
+        catalog().import("porch", manifest("Porch", "porch.tflite").toByteArray(), byteArrayOf(1, 2, 3))
+
+        engineAccepts = false
+        val refused = catalog().import("porch", manifest("Porch v2", "porch.tflite").toByteArray(), byteArrayOf(4))
+        engineAccepts = true
+        val malformed = catalog().import("porch", "{not json".toByteArray(), byteArrayOf(5))
+
+        assertTrue(refused is WakeWordCatalog.ImportResult.Refused)
+        assertTrue(malformed is WakeWordCatalog.ImportResult.Refused)
+        assertEquals("Porch", catalog().available().single { it.id == "porch" }.wakeWord)
+        assertArrayEquals(byteArrayOf(1, 2, 3), File(folder.root, "porch/porch.tflite").readBytes())
+        assertEquals(listOf("porch"), folder.root.list()!!.toList())
+    }
+
+    @Test fun `an import cannot replace a bundled wake word`() {
+        val result = catalog().import("okay_nabu", manifest("Mine", "m.tflite").toByteArray(), byteArrayOf(1))
+
+        assertTrue(result is WakeWordCatalog.ImportResult.Refused)
+        assertEquals(listOf("okay_nabu"), catalog().available().map { it.id })
+    }
+
+    @Test fun `a name with nothing usable in it is refused`() {
+        assertEquals(null, WakeWordCatalog.idFor("---.tflite"))
+        assertEquals(null, WakeWordCatalog.idFor("9lives"))
+        assertEquals("ok_panel_2", WakeWordCatalog.idFor("OK, Panel #2.json"))
+    }
+
+    private fun manifest(phrase: String, model: String) = """
+        {"type":"micro","wake_word":"$phrase","author":"me","model":"$model","trained_languages":["en"],"version":2,
+         "micro":{"probability_cutoff":0.97,"feature_step_size":10,"sliding_window_size":5,"tensor_arena_size":26080}}
+    """.trimIndent()
+}

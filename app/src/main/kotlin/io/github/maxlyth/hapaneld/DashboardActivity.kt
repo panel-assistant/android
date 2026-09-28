@@ -2198,6 +2198,7 @@ class DashboardActivity : AppCompatActivity() {
         // Below API 29 onTopResumedActivityChanged is never delivered, so resume owns visibility there.
         if (resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) onAdmissionVisibilityChanged(true)
         BuiltinDashboard.setActivityForeground(activityOwner, true)
+        showVoiceRipple()
         if (::activityConfig.isInitialized) applyRendererScreenPolicy()
         applyFullscreen()
         applyOverscroll()
@@ -2282,7 +2283,30 @@ class DashboardActivity : AppCompatActivity() {
         if (maintenanceFence.stop(this)) return
         if (hasFocus) applyFullscreen()
     }
+    /**
+     * The voice assistant's listening ripple, drawn in this window above whatever the dashboard shows. It
+     * is a child of the decor view, so every content swap keeps it on top, and it never takes a touch.
+     */
+    private fun showVoiceRipple() {
+        val decor = window.decorView as? android.view.ViewGroup ?: return
+        val view = decor.findViewWithTag<io.github.maxlyth.hapaneld.assist.WakeRippleView>(VOICE_RIPPLE_TAG)
+            ?: io.github.maxlyth.hapaneld.assist.WakeRippleView(this).also {
+                it.tag = VOICE_RIPPLE_TAG
+                decor.addView(it, android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+            }
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = {
+            runOnUiThread {
+                view.bringToFront()
+                view.startRipple()
+            }
+        }
+    }
+
     override fun onPause() {
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = null
         onAdmissionVisibilityChanged(false)            // the retry stays armed; only the repaint stops
         BuiltinDashboard.setActivityForeground(activityOwner, false)
         super.onPause()
@@ -3914,6 +3938,7 @@ class DashboardActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "ha-paneld/dashboard"
+        private const val VOICE_RIPPLE_TAG = "voice-ripple"
         /** Camera trial: the CAMERA runtime-permission request raised when the camera
          *  setting turns on. Distinct from any other request code — this activity had none before. */
         private const val REQUEST_CAMERA_PERMISSION = 4801
