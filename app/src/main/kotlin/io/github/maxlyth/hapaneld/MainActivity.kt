@@ -210,9 +210,10 @@ class MainActivity : AppCompatActivity() {
             handler.post {
                 if (isFinishing || isDestroyed) return@post
                 NativeLocale.apply(config.uiLanguage)
-                // Start while this Activity is foreground. The notification permission is granted by
-                // the installer or claimed by the service through the root helper; it is never asked here.
-                PaneldService.start(this)
+                // Start while this Activity is visible. On Oreo an ordinary service start avoids
+                // arming the foreground deadline before ART has loaded the cold service class.
+                // The service still promotes itself at the front of onCreate.
+                PaneldService.start(this, fromVisibleActivity = true)
                 chooseDestination()
             }
         }
