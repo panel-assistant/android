@@ -1,1 +1,1 @@
-This page has moved to [panel-assistant.io](https://panel-assistant.io/go/docs?page=hardware/nspanel-pro-firmware).
+This page has moved to the [firmware history and download index](https://panel-assistant.io/hardware/firmware/).
