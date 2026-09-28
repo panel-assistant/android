@@ -12,7 +12,7 @@ import sun.misc.Unsafe
 class HtmlUiCatalogueContractTest {
     private val assets = File("src/main/assets")
     // Source-text reason: whole-file scans for literal catalogue keys (translation catalogue contract), not code structure.
-    private val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
+    private val serverSource = httpCatalogueSources()
     // Source-text reason: loads the shipped i18n catalogues and page scripts' literal key/fallback pairs as catalogue input.
     private val catalogue = JSONObject(File(assets, "i18n/en.json").readText()).getJSONObject("strings")
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
@@ -22,26 +22,26 @@ class HtmlUiCatalogueContractTest {
         val switcher = File(assets, "switcher.js").readText()
         val usages = linkedMapOf(
             "shell" to (
-                literalKeys(server.readText(), "strings\\.get") +
+                literalKeys(serverSource, "strings\\.get") +
                     literalKeys(buildwatch, "i18nText") +
                     literalKeys(switcher, "i18nText")
                 ).filterTo(sortedSetOf()) { it.startsWith("shell.") },
             "dashboard" to (
-                literalKeys(server.readText(), "strings\\.get") +
+                literalKeys(serverSource, "strings\\.get") +
                     literalKeys(File(assets, "info.js").readText(), "i18nText") +
                     literalKeys(buildwatch, "i18nText")
                 ).filterTo(sortedSetOf()) { it.startsWith("dashboard.") },
             "configure" to (
-                literalKeys(server.readText(), "strings\\.get") +
+                literalKeys(serverSource, "strings\\.get") +
                     literalKeys(File(assets, "configure.js").readText(), "i18nText") +
                     literalKeys(File(assets, "proximity-learning.js").readText(), "t").filterNot { it.endsWith(".") }
                 ).filterTo(sortedSetOf()) { it.startsWith("configure.") },
             "profiles" to (
-                literalKeys(server.readText(), "strings\\.get") +
+                literalKeys(serverSource, "strings\\.get") +
                     literalKeys(File(assets, "profiles.js").readText(), "t")
                 ).filterTo(sortedSetOf()) { it.startsWith("profiles.") },
             "entities" to (
-                literalKeys(server.readText(), "strings\\.get") +
+                literalKeys(serverSource, "strings\\.get") +
                     literalKeys(File(assets, "entities.js").readText(), "t")
                 ).filterTo(sortedSetOf()) { it.startsWith("entities.") },
         )
