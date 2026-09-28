@@ -229,22 +229,6 @@ internal fun panelBrowserTitle(
     return if ('-' in versionName) "$versionCode · $title" else title
 }
 
-/** Pure payload boundary for Configure's app inventories. Keeping the two inputs separate proves that
- * a failed broad launchable-app query (represented by an empty list) cannot suppress detected Companion
- * renderer choices. */
-internal fun configureAppInventoryJson(
-    apps: List<Pair<String, String>>,
-    rendererChoices: List<CompanionInstaller.RendererChoice>,
-): String {
-    val appJson = apps.joinToString(",") { (pkg, label) ->
-        "{\"pkg\":${Json.str(pkg)},\"label\":${Json.str(label)}}"
-    }
-    val rendererJson = rendererChoices.joinToString(",") { choice ->
-        "{\"pkg\":${Json.str(choice.packageName)},\"label\":${Json.str(choice.label)}}"
-    }
-    return "{\"apps\":[$appJson],\"renderers\":[$rendererJson]}"
-}
-
 /**
  * Canonical approval payload for a materialized HTTP request. Distinct query-name order is not
  * semantically significant, but duplicate value order is because Ktor's first-value lookup can
@@ -2773,9 +2757,7 @@ class PaneldServer internal constructor(
                     }
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).
-                    get("/peers") {
-                        call.respondText(peersJson(peers()), ContentType.Application.Json)
-                    }
+                    discoveryRoutes({ peersJson(peers()) }, { launchableAppsJson(appContext) })
                     // Hydration payload for the dashboard (see infoJson) — the one place the probe
                     // suite actually runs; cached + single-flight, so concurrent viewers share it.
                     get("/info") {
@@ -3033,7 +3015,6 @@ class PaneldServer internal constructor(
                     get("/packages") { call.respondText(withContext(Dispatchers.IO) { packagesJson() }, ContentType.Application.Json) }
                     // Launchable apps plus the supported installed Companion renderer choices —
                     // populates the Configure tab's Dashboard-app / Launcher-app pickers.
-                    get("/apps") { call.respondText(withContext(Dispatchers.IO) { launchableAppsJson() }, ContentType.Application.Json) }
                     // Uninstall a package over root. Guarded: never ha-paneld itself; the picker only offers
                     // removable apps. `pm uninstall` (system/vendor apps aren't removable, only disable-able
                     // via taming — a separate, safer path).
@@ -4575,32 +4556,6 @@ $body</div>"""
     /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
      *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
      *  self-uninstall would kill the tool. */
-    /** All apps with a launcher entry, plus supported installed Companion renderers. The former feeds
-     *  the generic Launcher-app picker; the latter is derived independently from the authoritative
-     *  Companion package catalogue so arbitrary launchable apps never become Dashboard choices. */
-    private fun launchableAppsJson(): String {
-        val pm = appContext.packageManager
-        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
-            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-        val apps = runCatching {
-            pm.queryIntentActivities(intent, 0)
-                .mapNotNull { it.activityInfo?.applicationInfo }
-                .associate {
-                    val pkg = it.packageName
-                    val label = if (pkg == appContext.packageName) {
-                        "Panel admin (ha-paneld)"
-                    } else {
-                        runCatching { pm.getApplicationLabel(it).toString() }.getOrDefault(pkg)
-                    }
-                    pkg to label
-                }
-                .toList()
-                .sortedBy { it.second.lowercase(java.util.Locale.ROOT) }
-        }.getOrDefault(emptyList())
-        val rendererChoices = CompanionInstaller.rendererChoices(CompanionInstaller.installedPackages(appContext))
-        return configureAppInventoryJson(apps, rendererChoices)
-    }
-
     private fun packagesJson(): String {
         val apps = removablePackages()
         val arr = apps.joinToString(",") { (pkg, label) -> "{\"pkg\":${jsonStr(pkg)},\"label\":${jsonStr(label)}}" }
