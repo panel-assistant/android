@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.github.maxlyth.hapaneld.http.GuardDbBootstrapDatabaseRead
 import io.github.maxlyth.hapaneld.http.GuardDbBootstrapExportDependencies
@@ -36,12 +37,16 @@ import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenance
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceClient
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceProtocol
+import io.github.maxlyth.hapaneld.util.GuardDbMaintenanceStartupGate
 import io.github.maxlyth.hapaneld.util.GuardDbPreparedArm
 import io.github.maxlyth.hapaneld.util.GuardDbPreparedArmLoad
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelState
 import io.github.maxlyth.hapaneld.util.GuardDbStartupSentinel
+import io.github.maxlyth.hapaneld.util.GuardDbStartupAcknowledger
+import io.github.maxlyth.hapaneld.util.GuardDbSuccessorAlarm
+import io.github.maxlyth.hapaneld.util.GuardDbSuccessorHandoff
 import io.github.maxlyth.hapaneld.util.guardDbBootNonce
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
 import io.github.maxlyth.hapaneld.util.guardDbPreparedArmStore
@@ -50,19 +55,73 @@ import io.github.maxlyth.hapaneld.util.inspectGuardDbCandidate
 import io.github.maxlyth.hapaneld.util.stableGuardDbCanonicalMain
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/** Foreground, writer-free successor used only while root owns the Guard DB transaction. */
+/** Foreground Guard DB successor; its writer-free HTTP listener starts after startup proof closes. */
 class GuardDbMaintenanceService : Service() {
     private var server: GuardDbMaintenanceServer? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val startup = GuardDbMaintenanceStartupGate(scope)
+    private var destroyed = false
 
     override fun onCreate() {
         super.onCreate()
         foreground()
+        startup.promoted()
         val sentinel = (GuardDbProcessAdmission.current() as? GuardDbSentinelLoad.Valid)?.sentinel
         if (sentinel == null) {
             stopSelf()
             return
         }
+        if (!(application as HaPaneldApp).guardDbFreshStartupPending) {
+            // A service started after this process armed its own sentinel keeps the existing
+            // maintenance route. Only a process born under the sentinel owes startup health proof.
+            startMaintenanceServer(sentinel)
+            return
+        }
+        // The app's Application returned before constructing any ordinary database owner. Complete
+        // its exact startup acknowledgement on this service's IO scope, after foreground promotion.
+        // The HTTP control plane remains closed until that one SQLite owner has been checkpointed
+        // and closed, as it was when acknowledgement ran in Application.onCreate.
+        startup.launch(
+            acknowledge = {
+                GuardDbStartupAcknowledger.reconcileBeforeMaintenanceServer(applicationContext)
+            },
+            startMaintenance = {
+                withContext(Dispatchers.Main.immediate) {
+                    if (destroyed) return@withContext
+                    val current = (GuardDbProcessAdmission.current() as? GuardDbSentinelLoad.Valid)?.sentinel
+                    if (current?.session != sentinel.session || current?.bootNonce != sentinel.bootNonce) {
+                        Log.e(TAG, "Guard DB startup sentinel changed before maintenance listener")
+                        return@withContext
+                    }
+                    startMaintenanceServer(current)
+                }
+            },
+            resumeOrdinary = {
+                val durableAbsent = guardDbSentinelStore(applicationContext).load() is GuardDbSentinelLoad.Absent
+                withContext(Dispatchers.Main.immediate) {
+                    if (!destroyed &&
+                        GuardDbProcessAdmission.current() is GuardDbSentinelLoad.Valid &&
+                        durableAbsent
+                    ) {
+                        requestFreshProcessBoundary()
+                    }
+                }
+            },
+            onFailure = { failure ->
+                Log.e(TAG, "Guard DB startup acknowledgement failed", failure)
+            },
+        )
+    }
+
+    private fun startMaintenanceServer(sentinel: GuardDbStartupSentinel) {
         val staging = guardDbAppStaging(applicationContext)
         val preparedStore = guardDbPreparedArmStore(applicationContext)
         val sentinelStore = guardDbSentinelStore(applicationContext)
@@ -121,19 +180,40 @@ class GuardDbMaintenanceService : Service() {
                 },
                 monotonicMs = SystemClock::elapsedRealtime,
             ),
-        ) {
-            // Let the accepted HTTP response flush before crossing the process boundary. The explicit
-            // PaneldService intent survives this process; Application startup clears exact FINALIZED.
-            Thread {
-                Thread.sleep(500L)
-                val intent = Intent(applicationContext, PaneldService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
-                Process.killProcess(Process.myPid())
-            }.start()
-        }.also { it.start() }
+        ) { requestFreshProcessBoundary(responseGraceMs = 500L) }.also { it.start() }
+    }
+
+    private fun requestFreshProcessBoundary(responseGraceMs: Long = 0L) {
+        // The OS-owned alarm starts PaneldService after this process dies. It must be published
+        // before exit; direct start could be consumed under this process's still-valid fence.
+        GuardDbSuccessorHandoff(
+            publishAlarmRetry = { GuardDbSuccessorAlarm.schedule(applicationContext) },
+            exitCurrentProcess = {
+                if (responseGraceMs == 0L) {
+                    Process.killProcess(Process.myPid())
+                } else {
+                    // Let an accepted HTTP response flush before crossing the process boundary.
+                    Thread {
+                        Thread.sleep(responseGraceMs)
+                        Process.killProcess(Process.myPid())
+                    }.start()
+                }
+            },
+            scheduleAlarmPublicationRetry = { delayMs, retry ->
+                scope.launch {
+                    delay(delayMs)
+                    retry()
+                }
+            },
+            onPublicationFailure = { failure ->
+                Log.e(TAG, "Guard DB successor alarm publication failed; retaining maintenance", failure)
+            },
+        ).request()
     }
 
     override fun onDestroy() {
+        destroyed = true
+        scope.cancel()
         server?.stop()
         server = null
         super.onDestroy()
@@ -170,6 +250,7 @@ class GuardDbMaintenanceService : Service() {
     }
 
     companion object {
+        private const val TAG = "ha-paneld/guard-db-service"
         private const val CHANNEL = "guard-db-maintenance"
         private const val NOTIFICATION_ID = 0x48414744
 

@@ -2,6 +2,8 @@ package io.github.maxlyth.hapaneld.control
 
 import io.github.maxlyth.hapaneld.platform.ActivityRef
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
+import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
+import io.github.maxlyth.hapaneld.util.RendererPreparationState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -386,6 +388,39 @@ class SystemControllerTest {
 
         assertTrue(root.ran.isEmpty())
         assertTrue(d.sent.isEmpty())
+    }
+
+    @Test fun healthyStartupRestoresExplicitAdminHomeAfterPreferredActivityIsCleared() {
+        val adminHome = ActivityRef(OWN, "$OWN.AdminLauncherActivity")
+        val env = FakeSystemEnv(default = adminHome)
+        val command = "SETHOME ${OWN}/.AdminLauncherActivity"
+        val daemon = FakeDaemon(
+            replies = mapOf(command to "OK"),
+            onSend = { if (it == command) env.default = adminHome },
+        )
+        val system = SystemController(env, FakeRootShell(), daemon)
+
+        fun startFreshProcess() = RendererPreparationCoordinator(
+            builtinPackage = BUILTIN,
+            state = { RendererPreparationState(BUILTIN, "http://ha:8123") },
+            borrow = { error("ready renderer must not borrow") },
+            persist = { error("ready renderer must not persist") },
+        ).reconcileStartup(
+            ensureHome = { pkg, ready -> system.applyLauncherHomePolicy(OWN, pkg, ready) },
+            launchHome = {},
+        )
+
+        assertEquals(RendererPreparationCoordinator.Result.ALREADY_READY, startFreshProcess())
+        assertTrue(daemon.sent.isEmpty())
+
+        // Android can clear the preferred HOME activity after a crash while the saved selection remains.
+        env.default = ActivityRef("android", "ResolverActivity")
+        assertEquals(RendererPreparationCoordinator.Result.ALREADY_READY, startFreshProcess())
+        assertEquals(OWN, env.default?.pkg)
+        assertEquals(listOf(command), daemon.sent)
+
+        startFreshProcess()
+        assertEquals("an already restored HOME needs no further mutation", listOf(command), daemon.sent)
     }
 
     @Test fun ensureAdminHomeForceReclaimsVendorHomeViaDaemon() {

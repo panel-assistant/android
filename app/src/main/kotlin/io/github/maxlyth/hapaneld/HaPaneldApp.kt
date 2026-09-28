@@ -10,7 +10,6 @@ import io.github.maxlyth.hapaneld.storage.ProcessStartWallClock
 import androidx.appcompat.app.AppCompatDelegate
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.control.RemoteDebugSecurityTransitionGate
-import io.github.maxlyth.hapaneld.util.GuardDbStartupAcknowledger
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
 
@@ -22,6 +21,10 @@ import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
  * Runtime changes are applied by the config POST handler; this covers process start.
  */
 class HaPaneldApp : Application() {
+    /** Only a process born with a valid Guard sentinel owes the one startup acknowledgment. */
+    internal var guardDbFreshStartupPending = false
+        private set
+
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
         // The earliest point this process runs; storage remediation proves files orphaned against it.
@@ -45,10 +48,13 @@ class HaPaneldApp : Application() {
         // notification still need the last selected language, so restore it from Config's read-only 0.9.x
         // compatibility mirror before taking that early return.
         NativeLocale.applyBeforeDatabase(this)
-        // A helper-owned replacement transaction must settle before Config or any service/background
-        // producer opens shared state. This performs only the expected migration/proof/nonce-bound ACK.
-        if (!GuardDbStartupAcknowledger.reconcileBeforeServices(this)) {
-            if (GuardDbProcessAdmission.current() is GuardDbSentinelLoad.Valid) {
+        // A valid helper-owned transaction takes the maintenance foreground-service route before
+        // status reacquisition or the one controlled pending-health database open. Ordinary owners
+        // remain fenced by the sentinel until that service settles the exact helper generation.
+        val guardDbAdmission = GuardDbProcessAdmission.current()
+        if (guardDbAdmission !is GuardDbSentinelLoad.Absent) {
+            if (guardDbAdmission is GuardDbSentinelLoad.Valid) {
+                guardDbFreshStartupPending = true
                 GuardDbMaintenanceService.start(this)
             }
             return
