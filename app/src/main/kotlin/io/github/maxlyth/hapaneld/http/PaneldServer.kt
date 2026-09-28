@@ -835,6 +835,15 @@ internal fun wakeWordRestoreComponent(
     detail = outcome.refused.takeIf { it.isNotEmpty() }?.let { "not restored: ${outcome.warning()}" }.orEmpty(),
 )
 
+/**
+ * A restore that could not put back an imported wake word is not a success: the settings may select that
+ * word, and a migration must not retire the old install while its model is missing here.
+ */
+internal fun restoreOverallStatus(
+    wakeWords: io.github.maxlyth.hapaneld.backup.WakeWordBackup.Outcome?,
+): InstallProgress.Outcome =
+    if (wakeWords?.refused?.isNotEmpty() == true) InstallProgress.Outcome.PARTIAL else InstallProgress.Outcome.SUCCEEDED
+
 /** The completion text's note about wake words a restore could not put back, or empty. */
 internal fun wakeWordRestoreNote(outcome: io.github.maxlyth.hapaneld.backup.WakeWordBackup.Outcome?): String =
     outcome?.refused?.takeIf { it.isNotEmpty() }
@@ -9186,7 +9195,13 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             }
             // Imported wake words are files the settings only name. The section exists only when there is
             // one, so a panel without imports still writes an archive older builds restore.
-            val importedWakeWords = wakeWords?.exportImported().orEmpty()
+            // A model that cannot be read refuses the backup rather than leaving a word the settings select
+            // out of it, which a restore could never put back.
+            val importedWakeWords = try {
+                wakeWords?.exportImported().orEmpty()
+            } catch (unreadable: java.io.IOException) {
+                throw CompanionBackupUnavailable(unreadable.message ?: "An imported wake word could not be read")
+            }
             val wakeWordEntry = io.github.maxlyth.hapaneld.backup.WakeWordBackup.encode(importedWakeWords)?.let { text ->
                 if (text.length.toLong() > io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES) {
                     throw CompanionBackupUnavailable(
@@ -9984,7 +9999,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                             else -> "Restore completed"
                         } + wakeWordRestoreNote(wakeWordOutcome),
                         structured = InstallProgress.OperationResult(
-                            status = InstallProgress.Outcome.SUCCEEDED,
+                            status = restoreOverallStatus(wakeWordOutcome),
                             config = succeededComponent(configItems),
                             profiles = profileComponent(profileResult),
                             companion = companionResult?.component
@@ -9992,6 +10007,8 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                             wakeWords = wakeWordComponent,
                         ),
                         presentation = when {
+                            restoreOverallStatus(wakeWordOutcome) != InstallProgress.Outcome.SUCCEEDED ->
+                                InstallPresentation("restore-partial")
                             restoredStateRows > 0 -> InstallPresentation(
                                 "restore-completed-with-state",
                                 mapOf("count" to restoredStateRows.toString()),
