@@ -32542,6 +32542,39 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.log_ship_system_enabled.help": {
+      "text": "Forward Android system logs to the same sink when Ship logs is on. Off by default; requires TCP or HTTP and root or the installed helper. Entries are redacted; high-volume output may be dropped.",
+      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
+      "surface": "settings",
+      "context": "Configure > Logging > Ship system logs: supporting help for the log_ship_system_enabled setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_system_enabled.label",
+        "settings.log_ship_enabled.label"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Android",
+        "TCP",
+        "HTTP"
+      ],
+      "softMaxChars": 208,
+      "hardMaxChars": 280
+    },
+    "settings.log_ship_system_enabled.label": {
+      "text": "Ship system logs",
+      "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
+      "surface": "settings",
+      "context": "Configure > Logging: label for the log_ship_system_enabled setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_system_enabled.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 32
+    },
     "settings.manufacturer.help": {
       "text": "HA device-card manufacturer override (blank = profile/auto).",
       "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",

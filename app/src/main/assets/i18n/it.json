@@ -10733,6 +10733,16 @@
       "state": "machine-cross-checked",
       "text": "Protocollo"
     },
+    "settings.log_ship_system_enabled.help": {
+      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
+      "state": "machine-cross-checked",
+      "text": "Inoltra i log di sistema Android allo stesso collettore quando «Invia log» è attivo. Disattivato per impostazione predefinita; richiede TCP o HTTP e root o l'helper installato. Le voci vengono oscurate e quelle in eccesso possono essere scartate."
+    },
+    "settings.log_ship_system_enabled.label": {
+      "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
+      "state": "machine-cross-checked",
+      "text": "Invia log di sistema"
+    },
     "settings.manufacturer.help": {
       "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",
       "state": "machine-cross-checked",

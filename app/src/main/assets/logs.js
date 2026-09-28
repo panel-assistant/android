@@ -12,6 +12,7 @@
   var source = "app", es = null, buf = [], paused = false, follow = true;
   // threadtime: "MM-DD HH:MM:SS.mmm  PID  TID L TAG: msg" — pull the level char for filter/colour.
   var levelRe = /^\d\d-\d\d \d\d:\d\d:\d\d\.\d+\s+\d+\s+\d+\s+([VDIWEF])\s/;
+  var longLevelRe = /^\[\s*\S+\s+\d+:\s*\d+\s+([VDIWEF])\//;
 
   function i18nText(key, fallback, vars) {
     return window.HaI18n && typeof window.HaI18n.t === "function"
@@ -24,7 +25,7 @@
   function state(msg) { document.getElementById("lg-state").textContent = "· " + msg; }
 
   function levelOf(line) {
-    var m = levelRe.exec(line);
+    var m = levelRe.exec(line) || longLevelRe.exec(line);
     return m ? m[1] : "I";
   }
 

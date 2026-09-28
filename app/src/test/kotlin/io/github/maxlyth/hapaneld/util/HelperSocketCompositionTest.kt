@@ -76,6 +76,9 @@ class HelperSocketCompositionTest {
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
             WireTranscript("COMPANIONSTATUS", "IDLE"),
+            WireTranscript("LOGCATCAPS", "LOGCATCAPS 1"),
+            WireTranscript("LOGCATCAPS extra", "ERR"),
+            WireTranscript("LOGCAT ;sh", "ERR"),
             WireTranscript("LEDPROBE", "none"),
             WireTranscript("RGB 1 2 3", "ERR"),
             WireTranscript("OFF", "ERR"),
@@ -229,6 +232,7 @@ class HelperSocketCompositionTest {
     private class ChannelSession(private val channel: SocketChannel) : HelperCommandSession {
         private val input = Channels.newInputStream(channel)
         private val output = Channels.newOutputStream(channel)
+        private val logcatReader = HelperLogcatLineReader(input)
 
         override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply {
             output.apply { write((command + "\n").toByteArray()); flush() }
@@ -258,6 +262,8 @@ class HelperSocketCompositionTest {
             shutdownOutput = channel::shutdownOutput,
             maxBytes = maxBytes,
         )
+
+        override fun readLogcatLine(): String? = logcatReader.readLine()
 
         override fun backupCompanion(
             packageName: String,

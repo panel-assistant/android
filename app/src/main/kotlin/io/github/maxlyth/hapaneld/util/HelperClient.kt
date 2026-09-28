@@ -7,8 +7,10 @@ import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 
 const val SUPPORTED_HELPER_PROTOCOL_MAJOR = 1
@@ -162,12 +164,25 @@ internal interface HelperCommandSession : AutoCloseable {
     fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult
     fun sendFile(cmd: String, source: File, timeoutMs: Long): DaemonStreamResult
     fun sendBytes(cmd: String, maxBytes: Long): ByteArray?
+    fun readLogcatLine(): String?
     fun backupCompanion(packageName: String, cacheDir: File, timeoutMs: Long): CompanionHelperProtocol.BackupResult
     fun restoreCompanion(
         packageName: String,
         files: Map<String, File>,
         timeoutMs: Long,
     ): CompanionHelperProtocol.RestoreResult
+}
+
+/** Raw long/epoch physical lines, without trailing newline; blank lines separate Android entries. */
+internal interface HelperLogcatStream : AutoCloseable {
+    /** Blocking read. Closing from another thread cancels the socket and the helper child. */
+    fun readLine(): String?
+}
+
+internal sealed interface HelperLogcatOpenResult {
+    data class Open(val stream: HelperLogcatStream) : HelperLogcatOpenResult
+    data object Unsupported : HelperLogcatOpenResult
+    data object Failed : HelperLogcatOpenResult
 }
 
 internal interface HelperCommandTransport {
@@ -205,6 +220,24 @@ internal class IdentityAdmittingHelperClient(
                 incumbentBuildId = incumbentBuildId,
             )
         }
+
+    /** A failed connection is distinct from an authenticated helper that rejects this capability. */
+    fun openLogcat(): HelperLogcatOpenResult {
+        val session = openAdmittedSession(false) ?: return HelperLogcatOpenResult.Failed
+        val caps = session.send("LOGCATCAPS")
+        if (caps != "LOGCATCAPS 1") {
+            session.close()
+            return if (caps == "ERR") HelperLogcatOpenResult.Unsupported else HelperLogcatOpenResult.Failed
+        }
+        if (session.send("LOGCAT") != "OK") {
+            session.close()
+            return HelperLogcatOpenResult.Failed
+        }
+        return HelperLogcatOpenResult.Open(object : HelperLogcatStream {
+            override fun readLine(): String? = session.readLogcatLine()
+            override fun close() = session.close()
+        })
+    }
 
     override fun available(): Boolean = execute(null) { it.send("PING") } == "OK"
 
@@ -318,6 +351,9 @@ internal class IdentityAdmittingHelperClient(
  */
 object HelperClient : Daemon by admittedHelperClient {
 
+    /** Opens a closeable raw system log stream on the authenticated helper socket. */
+    internal fun openLogcat(): HelperLogcatOpenResult = admittedHelperClient.openLogcat()
+
     /**
      * Read-only bootstrap probe for provisioning and diagnostics. Ordinary operations repeat this
      * probe on their own connection; a deployed pre-VERSION helper remains reachable but unverified.
@@ -388,6 +424,7 @@ private class LocalSocketHelperSession(
 ) : HelperCommandSession {
     private val input = socket.inputStream
     private val output = socket.outputStream
+    private val logcatReader = HelperLogcatLineReader(BufferedInputStream(input, 4096))
 
     override fun bootstrap(command: String, deadline: MonotonicDeadline): HelperBootstrapReply = try {
         require(command == "VERSION" || command == "PING" || command == "COMPANIONCAPS")
@@ -457,6 +494,11 @@ private class LocalSocketHelperSession(
         null
     }
 
+    override fun readLogcatLine(): String? {
+        socket.soTimeout = LOGCAT_READ_TIMEOUT_MS
+        return logcatReader.readLine()
+    }
+
     override fun backupCompanion(
         packageName: String,
         cacheDir: File,
@@ -510,6 +552,31 @@ private class LocalSocketHelperSession(
 }
 
 private const val COMPANION_CAPABILITY_VERSION = "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"
+private const val MAX_LOGCAT_LINE_BYTES = 8192
+private const val LOGCAT_READ_TIMEOUT_MS = 1_000
+
+/** Keeps a partial source line across read timeouts so cancellation cannot split an entry. */
+internal class HelperLogcatLineReader(private val input: InputStream) {
+    private val bytes = ByteArray(MAX_LOGCAT_LINE_BYTES)
+    private var used = 0
+
+    fun readLine(): String? {
+        while (true) {
+            val next = input.read()
+            if (next < 0) {
+                if (used != 0) throw IOException("partial helper logcat line")
+                return null
+            }
+            if (next == '\n'.code) {
+                val line = String(bytes, 0, used, StandardCharsets.UTF_8)
+                used = 0
+                return line
+            }
+            if (used == bytes.size) throw IOException("helper logcat line exceeds bound")
+            bytes[used++] = next.toByte()
+        }
+    }
+}
 
 internal fun companionCapabilitySupported(reply: String?): Boolean = reply == COMPANION_CAPABILITY_VERSION
 
