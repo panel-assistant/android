@@ -2334,16 +2334,33 @@ class DashboardActivity : AppCompatActivity() {
                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 ))
             }
+        val glow = decor.findViewWithTag<io.github.maxlyth.hapaneld.assist.ListeningGlowView>(VOICE_GLOW_TAG)
+            ?: io.github.maxlyth.hapaneld.assist.ListeningGlowView(this).also {
+                it.tag = VOICE_GLOW_TAG
+                it.visibility = android.view.View.GONE
+                decor.addView(it, android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+            }
         io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = {
             runOnUiThread {
                 view.bringToFront()
                 view.startRipple()
             }
         }
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.listening = { active ->
+            runOnUiThread {
+                glow.bringToFront()
+                glow.setListening(active)
+            }
+        }
+        glow.setListening(io.github.maxlyth.hapaneld.assist.VoiceAttention.attending)
     }
 
     override fun onPause() {
         io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = null
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.listening = null
         dashboardIsTopResumed = false
         onAdmissionVisibilityChanged(false)            // the retry stays armed; only the repaint stops
         BuiltinDashboard.setActivityForeground(activityOwner, false)
@@ -3998,6 +4015,7 @@ class DashboardActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "ha-paneld/dashboard"
         private const val VOICE_RIPPLE_TAG = "voice-ripple"
+        private const val VOICE_GLOW_TAG = "voice-glow"
         /** Camera trial: the CAMERA runtime-permission request raised when the camera
          *  setting turns on. Distinct from any other request code — this activity had none before. */
         private const val REQUEST_CAMERA_PERMISSION = 4801
