@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.logship
 
+import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -207,6 +208,7 @@ class LogCaptureTest {
         val helperStarts = AtomicInteger()
         val cap = LogCapture.system(
             CoroutineScope(Dispatchers.IO),
+            suForm = SuForm.NONE,
             helperLines = { emit ->
                 helperStarts.incrementAndGet()
                 emit("[ 1790592713.123  123: 456 E/AndroidRuntime ]")
@@ -228,6 +230,34 @@ class LogCaptureTest {
         } finally {
             subscription.close()
             cap.close()
+        }
+    }
+
+    @Test fun rootedSystemCaptureShipsACompleteExceptionWithEitherSuForm() {
+        val record = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
+            "java.lang.IllegalStateException: complete\\n    at Example.first(Example.kt:12)\n\n"
+        for ((form, prefix) in listOf(
+            SuForm.ANDROID to listOf("su", "0", "sh", "-c"),
+            SuForm.TOOLBOX to listOf("su", "-c"),
+        )) {
+            val cap = LogCapture.system(
+                CoroutineScope(Dispatchers.IO),
+                suForm = form,
+                processStarter = { command ->
+                    val accepted = command.take(prefix.size) == prefix && command.last().contains("-v printable")
+                    GateProcess(if (accepted) record else "").also { it.finish(if (accepted) 0 else 1) }
+                },
+            )
+            try {
+                assertEquals(
+                    "$form must deliver the complete exception",
+                    listOf("[ 1790592713.123  123: 456 E/RSLProof ]\n" +
+                        "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)"),
+                    cap.dump(10),
+                )
+            } finally {
+                cap.close()
+            }
         }
     }
 
