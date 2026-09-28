@@ -249,7 +249,7 @@ class MigrationsTest {
         assertTrue(explicitWarnings.isEmpty())
     }
 
-    @Test fun schemaSevenAddsVoiceDefaultsAndExposureAndPreservesExplicitChoices() {
+    @Test fun schemaSevenAddsVoiceDefaultsAndPreservesExplicitChoices() {
         val (defaults, defaultWarnings) = Migrations.migrate(7, mapOf("mqtt_broker" to "tcp://ha:1883"))
 
         assertEquals("false", defaults["voice_enabled"])
@@ -257,10 +257,6 @@ class MigrationsTest {
         assertEquals("{}", defaults["voice_pipelines"])
         assertEquals("voice_recognition", defaults["voice_audio_source"])
         assertEquals("normal", defaults["voice_sensitivity"])
-        // Both HA-capable voice entities are not-exposed by default, unlike schema 3's wake_on_wave
-        // (LEGACY_DEFAULT_ON_HA_EXPOSURES), which preserved an implicit ON.
-        assertEquals("false", defaults["${SettingsRegistry.HA_EXPOSE_PREFIX}voice_enabled"])
-        assertEquals("false", defaults["${SettingsRegistry.HA_EXPOSE_PREFIX}voice_state"])
         assertTrue(defaultWarnings.isEmpty())
 
         val explicitValues = mapOf(
@@ -269,8 +265,6 @@ class MigrationsTest {
             "voice_pipelines" to "{\"hey_jarvis\":\"assist_pipeline_1\"}",
             "voice_audio_source" to "mic",
             "voice_sensitivity" to "high",
-            "${SettingsRegistry.HA_EXPOSE_PREFIX}voice_enabled" to "true",
-            "${SettingsRegistry.HA_EXPOSE_PREFIX}voice_state" to "true",
         )
         val (explicit, explicitWarnings) = Migrations.migrate(7, explicitValues)
 

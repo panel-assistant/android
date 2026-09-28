@@ -1,9 +1,7 @@
 package io.github.maxlyth.hapaneld.assist.wakeword
 
-import android.content.Context
 import io.github.maxlyth.hapaneld.audio.PcmConsumer
 import io.github.maxlyth.hapaneld.audio.PcmFrame
-import java.io.IOException
 
 /** One wake word heard: which model, its phrase, the window-mean probability (0..1) and when. */
 data class WakeWordHit(
@@ -114,30 +112,5 @@ class WakeWordDetector(
 
         /** Matches ESPHome's MIN_SLICES_BEFORE_DETECTION. */
         const val DEFAULT_WARMUP_INFERENCES = 100
-
-        /**
-         * Load bundled models by id with the native scorer. Ids whose model the engine rejects are
-         * skipped; the result is null when the native library is unavailable. Asset read failures
-         * propagate.
-         */
-        @Throws(IOException::class)
-        fun loadBundled(context: Context, ids: List<String>, maxActive: Int = DEFAULT_MAX_ACTIVE): List<LoadedWakeWordModel>? {
-            if (!NativeMicroWakeWord.available) return null
-            val loaded = ArrayList<LoadedWakeWordModel>()
-            try {
-                for (id in ids.take(maxActive)) {
-                    val config = MicroWakeWordModelConfig.fromAssets(context, id)
-                    val scorer = NativeMicroWakeWord.create(MicroWakeWordModelConfig.readModel(context, config), config)
-                        ?: continue
-                    loaded += LoadedWakeWordModel(config, scorer)
-                }
-            } catch (t: Throwable) {
-                // A model that fails to load leaves the ones already built holding native arenas that
-                // nothing else will ever close, because the caller never receives them.
-                loaded.forEach { runCatching { it.close() } }
-                throw t
-            }
-            return loaded
-        }
     }
 }

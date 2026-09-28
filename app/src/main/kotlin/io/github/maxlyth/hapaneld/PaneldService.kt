@@ -918,9 +918,8 @@ class PaneldService : Service() {
     private lateinit var server: PaneldServer
     private lateinit var rendererPreparation: RendererPreparationCoordinator
     private lateinit var entityLearning: EntityLearningManager
-    // Voice-assistant phase authority. The voice-coordinator lane drives it via set(); this service only
-    // wires its change listener to the current MQTT bridge generation (below, alongside the learned-
-    // proximity listener) and reads it into buildMqtt()'s voiceState supplier.
+    // Voice-assistant phase authority, driven by the coordinator. Home Assistant sees the phase as its
+    // satellite entity's state; on the panel it drives the listening indicator.
     private val voiceStateAuthority = io.github.maxlyth.hapaneld.assist.VoiceStateAuthority()
     private var storageHealthSubscription: AutoCloseable? = null
     private val storageHealthLifecycleLock = Any()
@@ -1019,6 +1018,9 @@ class PaneldService : Service() {
     private lateinit var haAmbientLux: HaAmbientLuxSubscriber
     private lateinit var haExactEntityStream: HaExactEntityStreamOwner
     private lateinit var panelAssistantTransport: PanelAssistantTransportOwner
+    // The panel's side of its Assist satellite, carried on the Panel Assistant session.
+    private lateinit var panelAssistantVoice: io.github.maxlyth.hapaneld.panelassistant.PanelAssistantVoice
+    private val wakeWordCatalog by lazy { io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog(this) }
     // Outlives bridge generations: each new bridge binds its converger here, and the transport owner
     // reports what it records only on a session Panel Assistant accepts in shadow mode.
     private val panelAssistantShadow = PanelAssistantShadowReporter()
@@ -1078,8 +1080,29 @@ class PaneldService : Service() {
             voiceRestart = scope.launch {
                 kotlinx.coroutines.delay(VOICE_SETTINGS_COALESCE_MS)
                 voice.start()
+                panelAssistantVoice.configurationChanged()
             }
         }
+    }
+    /**
+     * What this panel tells Home Assistant it hears, or null when it has no microphone to be a satellite
+     * with. Read from the panel's own settings and model catalogue, which stay the one store.
+     */
+    private fun voiceConfiguration(): io.github.maxlyth.hapaneld.panelassistant.PanelAssistantVoiceConfiguration? {
+        if (!profile.hasMicrophone) return null
+        val settings = io.github.maxlyth.hapaneld.assist.VoiceSettings.parse(
+            config.voiceEnabled, config.voiceWakeWords, config.voicePipelines,
+        )
+        val models = wakeWordCatalog.available()
+        val ids = models.map { it.id }.toSet()
+        return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantVoiceConfiguration(
+            enabled = settings.enabled,
+            wakeWords = models.map {
+                io.github.maxlyth.hapaneld.panelassistant.PanelAssistantWakeWord(it.id, it.wakeWord, it.trainedLanguages)
+            },
+            active = settings.wakeWords.filter { it in ids },
+            pipelines = settings.pipelines.filterKeys { it in ids },
+        )
     }
     private lateinit var system: SystemController
     private lateinit var tame: TameController
@@ -1321,6 +1344,23 @@ class PaneldService : Service() {
             ),
             monotonicMillis = haSocketClock,
         )
+        panelAssistantVoice = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantVoice(
+            scope = scope,
+            configuration = ::voiceConfiguration,
+            onAnnouncement = { announcement ->
+                val done = { panelAssistantVoice.played(announcement.announceId) }
+                if (::voice.isInitialized) {
+                    voice.announce(
+                        io.github.maxlyth.hapaneld.assist.VoiceAnnouncement(
+                            announcement.url, announcement.preannounceUrl, announcement.listenAfter, done,
+                        ),
+                    )
+                } else {
+                    done()
+                }
+            },
+            log = { message -> Log.i(TAG, message) },
+        )
         // The native transport's own long-lived socket, on the same credential authority as the stream
         // above and the same address-family policy as every other Home Assistant socket.
         panelAssistantTransport = PanelAssistantTransportOwner(
@@ -1345,6 +1385,7 @@ class PaneldService : Service() {
                 runtime.observe()?.value?.mqtt?.refreshPanelAssistantDiscovery()
             },
             embedKeys = io.github.maxlyth.hapaneld.http.PanelAssistantEmbedKeys.instance,
+            voice = panelAssistantVoice,
         )
         haLifecycle = HaLifecycleCoordinator(
             // elapsedRealtime, not wall clock: a Home Assistant restart is exactly when NTP is likely to
@@ -1440,9 +1481,7 @@ class PaneldService : Service() {
             onFailure = { error -> Log.w(TAG, "audio playback failed: ${error.javaClass.simpleName}") },
         )
         // Arms only when the setting is on and the profile declares a microphone. The profile is the
-        // authority: the platform feature flag reports one on hardware that captures silence. No
-        // wake-word listener ships yet, so the feature is press-to-speak: it holds no microphone while
-        // idle and takes one only for the length of a run.
+        // authority: the platform feature flag reports one on hardware that captures silence.
         voice = io.github.maxlyth.hapaneld.assist.voiceAssistantCoordinator(
             context = this,
             config = config,
@@ -1451,7 +1490,8 @@ class PaneldService : Service() {
             microphoneAvailable = { profile.hasMicrophone },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
-            engineFactory = io.github.maxlyth.hapaneld.assist.WakeWordEngineFactory.NONE,
+            engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(wakeWordCatalog),
+            runner = io.github.maxlyth.hapaneld.assist.SatelliteTurnRunner(panelAssistantVoice, log = { Log.i(TAG, it) }),
         )
         system = SystemController(AndroidSystemEnv(this), beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
@@ -1708,6 +1748,11 @@ class PaneldService : Service() {
             stalledLiveSettings = liveSettingAuthority::pendingStalledSnapshot,
             assistPipelines = io.github.maxlyth.hapaneld.assist.HaAssistPipelineDirectory(config),
             voiceTest = io.github.maxlyth.hapaneld.assist.VoiceTestTrigger { voice.trigger() },
+            wakeWords = wakeWordCatalog,
+            onWakeWordsChanged = {
+                voice.start()
+                panelAssistantVoice.configurationChanged()
+            },
             // Controller-sourced setting values (their state isn't in the config namespace) so the
             // config form/schema/dashboard show live truth. Called on Ktor IO threads (su-safe).
             configLiveValues = ::currentConfigLiveValues,
@@ -1838,11 +1883,6 @@ class PaneldService : Service() {
             server.invalidateCapabilitySnapshot()
             runtime.observe()?.value?.mqtt?.notifyLightAvailabilityChanged()
         }
-        // Resolves the CURRENT bridge generation rather than closing over one, so a bridge rebuild
-        // (reconfigure) never leaves a stale generation publishing a superseded voice_state.
-        voiceStateAuthority.setChangeListener {
-            runtime.observe()?.value?.mqtt?.publishVoiceState()
-        }
     }
 
     private fun refreshAutoSleepPresence(): Boolean {
@@ -1937,7 +1977,6 @@ class PaneldService : Service() {
             zigbeeHealth = zigbeeHealth::snapshot,
             storageHealth = StorageHealthRuntime::snapshot,
             onZigbeeExplicitRetry = zigbeeHealth::explicitRetry,
-            voiceState = { voiceStateAuthority.current().wireValue },
             stalePanelId = stalePanelId,
             profileIdentity = activeProfileIdentity,
             profileButtonEventTypes = profile.evdevButtons.mapTo(linkedSetOf()) { it.eventType },

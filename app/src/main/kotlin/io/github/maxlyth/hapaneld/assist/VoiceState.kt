@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.assist
 
-/** Published as `sensor.<panel>_voice_state`. Lowercase [wireValue] is the exact MQTT/HTTP wire form. */
+/** What the voice assistant is doing. Home Assistant sees it as the satellite entity's state. */
 enum class VoiceState {
     OFF, IDLE, LISTENING, PROCESSING, RESPONDING, ERROR;
 
