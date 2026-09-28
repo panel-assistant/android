@@ -822,6 +822,25 @@ internal fun wakeWordImportResponse(
     }
 }
 
+/**
+ * The restore result's `wake_words` component: how many carried wake words were imported again, and a
+ * short warning naming each one the engine or the catalogue refused. Ids are catalogue ids (lower case
+ * letters, digits and underscores) and the reasons are the catalogue's own fixed texts, never bundle data.
+ */
+internal fun wakeWordRestoreComponent(
+    outcome: io.github.maxlyth.hapaneld.backup.WakeWordBackup.Outcome,
+): InstallProgress.ComponentResult = InstallProgress.ComponentResult(
+    status = if (outcome.refused.isEmpty()) InstallProgress.Outcome.SUCCEEDED else InstallProgress.Outcome.PARTIAL,
+    items = outcome.restored.size,
+    detail = outcome.refused.takeIf { it.isNotEmpty() }?.let { "not restored: ${outcome.warning()}" }.orEmpty(),
+)
+
+/** The completion text's note about wake words a restore could not put back, or empty. */
+internal fun wakeWordRestoreNote(outcome: io.github.maxlyth.hapaneld.backup.WakeWordBackup.Outcome?): String =
+    outcome?.refused?.takeIf { it.isNotEmpty() }
+        ?.let { "; ${it.size} wake word${if (it.size == 1) "" else "s"} not restored (${it.joinToString(", ") { (id, _) -> id }})" }
+        .orEmpty()
+
 internal fun voicePipelinesRefusal(hasMicrophone: Boolean): String? =
     if (!hasMicrophone) "this panel has no microphone capability" else null
 
@@ -980,6 +999,7 @@ internal fun backupStagingRequirement(includeCompanion: Boolean, encrypted: Bool
     val sources = PaneldServer.MAX_BACKUP_MANIFEST_BYTES +
         2L * PaneldServer.MAX_ENTITY_BACKUP_TEXT_BYTES +
         PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES +
+        io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES +
         if (includeCompanion) PaneldServer.MAX_COMPANION_BACKUP_BYTES else 0L
     val archives = PaneldServer.MAX_RESTORE_BYTES * if (encrypted) 2L else 1L
     val archivePeak = sources + archives
@@ -9164,6 +9184,23 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             val profile = profileAdmin?.exportBackup()?.let {
                 textEntry(PROFILE_BACKUP_ENTRY, "profile-backup-", it.toJson().toString(), MAX_PROFILE_BACKUP_ENTRY_BYTES)
             }
+            // Imported wake words are files the settings only name. The section exists only when there is
+            // one, so a panel without imports still writes an archive older builds restore.
+            val importedWakeWords = wakeWords?.exportImported().orEmpty()
+            val wakeWordEntry = io.github.maxlyth.hapaneld.backup.WakeWordBackup.encode(importedWakeWords)?.let { text ->
+                if (text.length.toLong() > io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES) {
+                    throw CompanionBackupUnavailable(
+                        "Imported wake words exceed the backup's " +
+                            "${io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES / (1024 * 1024)} MiB limit",
+                    )
+                }
+                textEntry(
+                    io.github.maxlyth.hapaneld.backup.WakeWordBackup.ENTRY,
+                    "wake-word-backup-",
+                    text,
+                    io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES,
+                )
+            }
             // A database that will not read must not cost the owner the rest of the backup, which still
             // carries the validated config projection — but it must not be silent either. The failure is
             // logged and marked in the manifest below, so this archive can never be mistaken for one taken
@@ -9186,11 +9223,12 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                     MAX_STATE_BACKUP_BYTES,
                 )
             }
-            val sources = ArrayList<PanelBackup.ArchiveSource>(7)
+            val sources = ArrayList<PanelBackup.ArchiveSource>(8)
             sources.add(filter)
             sources.add(overrides)
             profile?.let(sources::add)
             state?.let(sources::add)
+            wakeWordEntry?.let(sources::add)
             sources += companion?.files.orEmpty().mapIndexed { index, file ->
                 PanelBackup.ArchiveSource("companion/$index", file.file)
             }
@@ -9204,6 +9242,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                     state?.file?.length(),
                     stateRows.size,
                     stateFailure != null,
+                    wakeWordEntry?.let {
+                        io.github.maxlyth.hapaneld.backup.WakeWordBackup.manifestFragment(it.file.length(), importedWakeWords.size)
+                    },
                 ),
                 sources = sources,
                 ownedFiles = owned,
@@ -9224,6 +9265,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         stateBytes: Long?,
         stateRows: Int,
         stateCaptureFailed: Boolean,
+        wakeWordSection: String?,
     ): String {
         val live = configLiveValues()
         val cfg = projectConfigSnapshot(
@@ -9265,6 +9307,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             stateRows,
             stateCaptureFailed,
         )?.let { sb.append(",\"state\":").append(it) }
+        wakeWordSection?.let { sb.append(",\"wake_words\":").append(it) }
         if (companion != null) {
             val files = companion.files.mapIndexed { index, file ->
                 "{\"rel\":${jsonStr(file.relativePath)},\"entry\":${jsonStr("companion/$index")},\"size\":${file.file.length()}}"
@@ -9608,8 +9651,18 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                     HttpStatusCode.BadRequest,
                 )
             val stateUnavailable = stateDisposition == StateArchiveSection.Disposition.INCOMPLETE
+            // Imported wake words exist only as archive entries; a section anywhere else is malformed.
+            val wakeWordsObj = obj.optJSONObject("wake_words")
+            if (obj.has("wake_words") && (wakeWordsObj == null || archiveManifest == null)) return call.respondText(
+                withInstallPresentation(
+                    """{"ok":false,"error":"invalid wake_words object"}""",
+                    InstallPresentation("restore-archive-metadata-invalid"),
+                ),
+                ContentType.Application.Json,
+                HttpStatusCode.BadRequest,
+            )
             val archiveEntries = if (archiveManifest != null) {
-                runCatching { declaredArchiveEntries(entityObj, profilesObj, comp, stateObj) }.getOrNull()
+                runCatching { declaredArchiveEntries(entityObj, profilesObj, comp, stateObj, wakeWordsObj) }.getOrNull()
                     ?: return call.respondText(
                         withInstallPresentation(
                             """{"ok":false,"error":"invalid backup archive metadata"}""",
@@ -9771,11 +9824,33 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             val companionPlan = (plannedCompanion as? CompanionRestore.PlanResult.Valid)?.plan
             retainedCompanionPlan = companionPlan
             val compFiles = companionPlan?.files?.size ?: 0
+            // Decoded here so a malformed section refuses the whole restore before anything is written;
+            // whether the engine accepts each model is only known when it is imported, in the job below.
+            val restoreWakeWords = wakeWordsObj?.let { section ->
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        io.github.maxlyth.hapaneld.backup.WakeWordBackup.read(plainFile, section, archiveEntries, cacheDir)
+                    }
+                }.getOrNull() ?: return call.respondText(
+                    withInstallPresentation(
+                        """{"ok":false,"error":"invalid wake word archive entry"}""",
+                        InstallPresentation("restore-archive-entries-invalid"),
+                    ),
+                    ContentType.Application.Json,
+                    HttpStatusCode.BadRequest,
+                )
+            }.orEmpty()
+            val wakeWordCatalog = wakeWords
+            if (restoreWakeWords.isNotEmpty() && wakeWordCatalog == null) return call.respondText(
+                """{"ok":false,"error":"wake word restore is unavailable"}""",
+                ContentType.Application.Json,
+                HttpStatusCode.ServiceUnavailable,
+            )
             if (dryRun) {
                 requestAccepted = true
                 return call.respondText(
                     """{"ok":true,"dry_run":true,"panel_id":${jsonStr(obj.optString("panel_id"))},""" +
-                        """"config_keys":${configPlan.values.size},"config_warnings":${jarr(configPlan.warnings)},"profile_revisions":${profilePlan?.toImport?.size ?: 0},"profile_restart_required":${profilePlan?.restartRequired ?: false},"companion_pkg":${jsonStr(companionPlan?.packageName ?: "")},"companion_files":$compFiles,"state_unavailable":$stateUnavailable}""",
+                        """"config_keys":${configPlan.values.size},"config_warnings":${jarr(configPlan.warnings)},"profile_revisions":${profilePlan?.toImport?.size ?: 0},"profile_restart_required":${profilePlan?.restartRequired ?: false},"companion_pkg":${jsonStr(companionPlan?.packageName ?: "")},"companion_files":$compFiles,"wake_words":${restoreWakeWords.size},"state_unavailable":$stateUnavailable}""",
                     ContentType.Application.Json,
                 )
             }
@@ -9821,6 +9896,20 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 var companionResult: CompanionApplyResult? = null
                 var profileResult: ProfileBackupRestoreResult? = null
                 var appliedRevisionHash: String? = null
+                // Before the configuration, so a restored `voice_wake_words` selecting an imported id finds
+                // its model when the listener rearms. Additive and never fatal: a model the engine refuses is
+                // reported in the result, and a later configuration rollback leaves these imports in place,
+                // exactly as a user's own import would stay.
+                val wakeWordOutcome = if (restoreWakeWords.isEmpty()) null else runCatching {
+                    io.github.maxlyth.hapaneld.backup.WakeWordBackup.restore(requireNotNull(wakeWordCatalog), restoreWakeWords)
+                }.getOrElse { failure ->
+                    io.github.maxlyth.hapaneld.backup.WakeWordBackup.Outcome(
+                        emptyList(),
+                        restoreWakeWords.map { it.id to (failure.message ?: "could not be saved") },
+                    )
+                }
+                if (wakeWordOutcome?.restored?.isNotEmpty() == true) runCatching { onWakeWordsChanged() }
+                val wakeWordComponent = wakeWordOutcome?.let(::wakeWordRestoreComponent)
                 val operation = runCatching {
                     configItems = applyRestoreConfig(
                         configPlan.values,
@@ -9893,13 +9982,14 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                                 "Restore completed, including $restoredStateRows panel state values"
                             stateUnavailable -> "Restore completed; this backup carried no panel state"
                             else -> "Restore completed"
-                        },
+                        } + wakeWordRestoreNote(wakeWordOutcome),
                         structured = InstallProgress.OperationResult(
                             status = InstallProgress.Outcome.SUCCEEDED,
                             config = succeededComponent(configItems),
                             profiles = profileComponent(profileResult),
                             companion = companionResult?.component
                                 ?: skippedComponent("not present"),
+                            wakeWords = wakeWordComponent,
                         ),
                         presentation = when {
                             restoredStateRows > 0 -> InstallPresentation(
@@ -9950,6 +10040,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                                 ?: if (companionPlan == null) skippedComponent("not present")
                                 else InstallProgress.ComponentResult(InstallProgress.Outcome.FAILED, 0),
                             rollback = rollback,
+                            wakeWords = wakeWordComponent,
                         ),
                         presentation = InstallPresentation(if (partial) "restore-partial" else "restore-failed"),
                     )
@@ -10101,8 +10192,10 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         profiles: org.json.JSONObject?,
         companion: org.json.JSONObject?,
         state: org.json.JSONObject?,
+        wakeWords: org.json.JSONObject?,
     ): Set<String> {
-        val entries = ArrayList<String>(7)
+        val entries = ArrayList<String>(8)
+        wakeWords?.let { entries += io.github.maxlyth.hapaneld.backup.WakeWordBackup.declaredEntry(it) }
         if (state?.has("entry") == true) {
             entries += archiveTextRef(
                 state,

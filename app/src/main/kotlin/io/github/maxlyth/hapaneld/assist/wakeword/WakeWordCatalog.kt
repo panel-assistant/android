@@ -54,7 +54,9 @@ class WakeWordCatalog(
     fun isBundled(id: String): Boolean = id in bundled.ids()
 
     /** Every usable model's manifest, bundled first; one that no longer parses is left out. */
+    @Synchronized
     fun available(): List<MicroWakeWordModelConfig> {
+        recover()
         val bundledIds = bundled.ids()
         val found = bundledIds.mapNotNull { id -> runCatching { MicroWakeWordModelConfig.parse(id, bundled.manifest(id)) }.getOrNull() }
         val imported = importDir.listFiles { file -> file.isDirectory && ID.matches(file.name) }.orEmpty()
@@ -67,6 +69,7 @@ class WakeWordCatalog(
     /** Load a model by id with the native engine; null when the id is unknown or the engine refuses it. */
     fun load(id: String): LoadedWakeWordModel? {
         if (!ID.matches(id)) return null
+        synchronized(this) { recover() }
         val (config, bytes) = try {
             if (id in bundled.ids()) {
                 val config = MicroWakeWordModelConfig.parse(id, bundled.manifest(id))
@@ -127,6 +130,42 @@ class WakeWordCatalog(
             return ImportResult.Refused(failed.message ?: "the model could not be saved")
         }
         return ImportResult.Imported(config)
+    }
+
+    /** One imported wake word's files, as a backup carries them and [import] takes them back. */
+    class ImportedFiles(val id: String, val manifest: ByteArray, val model: ByteArray)
+
+    /** The files of every imported wake word [available] lists, for a backup. */
+    @Synchronized
+    fun exportImported(): List<ImportedFiles> {
+        val bundledIds = bundled.ids()
+        return available().filter { it.id !in bundledIds }.mapNotNull { config ->
+            runCatching {
+                val dir = File(importDir, config.id)
+                ImportedFiles(config.id, File(dir, "${config.id}$JSON").readBytes(), File(dir, config.modelFile).readBytes())
+            }.getOrNull()
+        }
+    }
+
+    /**
+     * Finish an import the process did not live to complete. A crash between setting the working model
+     * aside and moving its replacement in leaves only `.previous-<id>`: that model is put back. A crash
+     * after the swap leaves both, and the new one stands. Staging directories are never in use outside
+     * [import], which holds this object's lock, so any found here are abandoned.
+     */
+    private fun recover() {
+        val leftovers = importDir.listFiles { file -> file.name.startsWith(".") }.orEmpty()
+        for (dir in leftovers) {
+            val name = dir.name
+            when {
+                name.startsWith(".previous-") -> {
+                    val id = name.removePrefix(".previous-")
+                    val target = File(importDir, id)
+                    if (ID.matches(id) && !target.exists()) dir.renameTo(target) else dir.deleteRecursively()
+                }
+                name.startsWith(".staging-") -> dir.deleteRecursively()
+            }
+        }
     }
 
     private fun importedConfig(id: String): MicroWakeWordModelConfig =
