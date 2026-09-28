@@ -398,7 +398,7 @@ class HaWebSocketClientsFailoverTest {
         // timeout bounds it. An unbounded engine connect ("connect_timeout=unknown ms" in the field
         // failure this lane fixes) is what this pins against returning.
         val client = HaWebSocketClients.client(
-            routeConnectTimeoutMs = 1_000,
+            routeConnectTimeoutMs = 100,
             resolver = { listOf(blackHoledAddress) },
         )
         val start = System.nanoTime()
@@ -421,7 +421,7 @@ class HaWebSocketClientsFailoverTest {
         // OkHttp would still be waiting. The 1s configured value leaves most of that span as load
         // headroom rather than as a budget the box has to meet.
         assertTrue(
-            "failed in ${elapsedMs}ms - the 1s configured timeout applied, not the " +
+            "failed in ${elapsedMs}ms - the 100ms configured timeout applied, not the " +
                 "${ENGINE_DEFAULT_CONNECT_MS}ms engine default",
             elapsedMs < ENGINE_DEFAULT_CONNECT_MS - 1_000,
         )
@@ -478,6 +478,7 @@ class HaWebSocketClientsFailoverTest {
             } finally {
                 client.close()
                 synchronized(held) { held.forEach { runCatching { it.close() } } }
+                stalling.close()
                 acceptor.join(2_000)
             }
         }
