@@ -29,8 +29,9 @@ object PanelBackup {
     private const val KEY_BITS = 256
     internal const val SEALED_OVERHEAD_BYTES = 4L + SALT_LEN + IV_LEN + TAG_BYTES
     const val MANIFEST_ENTRY = "manifest.json"
-    /** One manifest plus a deliberately small allowance for current and future file-backed payloads. */
-    internal const val MAX_ARCHIVE_ENTRIES = 8
+    /** One manifest plus a deliberately small allowance for current and future file-backed payloads:
+     * entity filter and overrides, profiles, app state, three Companion files and imported wake words. */
+    internal const val MAX_ARCHIVE_ENTRIES = 9
 
     data class ArchiveSource(val entry: String, val file: File)
     data class ArchiveTarget(
