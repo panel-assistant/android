@@ -590,7 +590,7 @@
     ])], "renderer");
   }
 
-  /* ---------- step 3½: Home Assistant URL (built-in renderer only) ---------- */
+  /* ---------- step 3½: Home Assistant URL ---------- */
 
   /* Why the handed-over address the panel already tried outranks the mDNS suggestion here: reaching this
    * card at all means it did NOT answer, so the user is correcting a specific wrong address rather than
@@ -634,7 +634,7 @@
     ]));
     kids.push(el("p", { class: "muted", id: "wiz-err", role: "alert" }));
     show([card(i18nText("setup.ha_url.title", "Where is Home Assistant?"),
-      i18nText("setup.ha_url.lead", "The built-in dashboard loads straight from your Home Assistant."), kids)], "ha_url");
+      i18nText("setup.ha_url.lead", "ha-paneld uses this address to connect to Home Assistant."), kids)], "ha_url");
   }
 
   function haUrlSuggestion() {

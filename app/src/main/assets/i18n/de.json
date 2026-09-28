@@ -11604,8 +11604,8 @@
       "state": "machine-cross-checked"
     },
     "setup.ha_url.lead": {
-      "text": "Das integrierte Dashboard wird direkt aus deinem Home Assistant geladen.",
-      "sourceHash": "3d2e4fa5486d2038320ca45ee59ad91670561de7b72ff6718b2340b2da47260d",
+      "text": "ha-paneld verwendet diese Adresse, um sich mit Home Assistant zu verbinden.",
+      "sourceHash": "e71e1d01d14468099c08d3f2123b22e505f3c6b6358779488bc9b3f5419fe4a3",
       "state": "machine-cross-checked"
     },
     "setup.ha_url.title": {
