@@ -2610,77 +2610,8 @@ class PaneldServer internal constructor(
                         costs = FeatureCosts::json,
                         history = { entityLearning.performanceHistoryJson(it) },
                     )
-                    get("/auto-brightness") {
-                        call.response.headers.append("Cache-Control", "no-store")
-                        call.respondText(autoBrightnessHttpApi.statusJson(), ContentType.Application.Json)
-                    }
+                    autoBrightnessRoutes(autoBrightnessHttpApi, { admitActiveRead(it) }, ::receiveEntityAdminJson)
                     autoSleepRoutes(autoSleepHttpApi, { admitActiveRead(it) }, ::receiveEntityAdminJson)
-                    get("/auto-brightness/history") {
-                        call.response.headers.append("Cache-Control", "no-store")
-                        if (!admitActiveRead(call)) return@get
-                        val request = runCatching {
-                            autoBrightnessHistoryParameters(
-                                call.request.queryParameters["hours"],
-                                call.request.queryParameters["sensitivity"],
-                                call.request.queryParameters["minimum_percent"],
-                            )
-                        }.getOrElse {
-                            return@get call.respondText(
-                                "${it.message ?: "invalid history query"}\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        call.respondText(
-                            autoBrightnessHttpApi.historyJson(
-                                request.hours,
-                                request.sensitivity,
-                                request.minimumPercent,
-                            ),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    get("/auto-brightness/sources") {
-                        val query = call.request.queryParameters["q"].orEmpty().trim().take(100)
-                        val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 200)
-                        call.respondText(
-                            autoBrightnessHttpApi.haSourcesJson(query, limit),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    post("/auto-brightness/source") {
-                        val obj = receiveEntityAdminJson(call, allowBlank = true) ?: return@post
-                        if (!obj.has("entity_id")) {
-                            return@post call.respondText(
-                                "entity_id is required (null selects the panel sensor)\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        val raw = obj.opt("entity_id")
-                        val selected = when (raw) {
-                            JSONObject.NULL -> null
-                            is String -> {
-                                val spec = requireNotNull(SettingsRegistry.spec("auto_brightness_ha_entity"))
-                                when (val accepted = SettingValue.validate(spec, raw)) {
-                                    is Validation.Ok -> accepted.normalized.ifBlank { null }
-                                    is Validation.Bad -> return@post call.respondText(
-                                        "${accepted.reason}\n",
-                                        status = HttpStatusCode.BadRequest,
-                                    )
-                                }
-                            }
-                            else -> return@post call.respondText(
-                                "entity_id must be a string or null\n",
-                                status = HttpStatusCode.BadRequest,
-                            )
-                        }
-                        respondAutoBrightnessAction(call, autoBrightnessHttpApi.selectHaSource(selected))
-                    }
-                    post("/auto-brightness/reset") {
-                        respondAutoBrightnessAction(call, autoBrightnessHttpApi.resetHistory())
-                    }
-                    post("/auto-brightness/resume") {
-                        respondAutoBrightnessAction(call, autoBrightnessHttpApi.resumeFullAuto())
-                    }
                     // Experimental built-in-renderer entity filter. The exact ids are accepted at runtime
                     // but never echoed, logged, or included in config exports; status is count+hash.
                     get("/dashboard/entity-filter") {
@@ -7964,17 +7895,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         respondTapCaptureResult(call, requestId, result, stopping) { png ->
             withContext(Dispatchers.IO) { cacheScreenshot(png) }
         }
-    }
-
-    private suspend fun respondAutoBrightnessAction(
-        call: ApplicationCall,
-        action: AutoBrightnessHttpAction,
-    ) {
-        call.respondText(
-            action.json,
-            ContentType.Application.Json,
-            HttpStatusCode.fromValue(action.statusCode),
-        )
     }
 
     /**
