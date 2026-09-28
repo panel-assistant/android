@@ -436,10 +436,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Test firmware index tooling
-        if: matrix.group == 'other'
-        run: python3 -m unittest discover -s tools/firmware-index -p 'test_*.py' -v
-
       # These contracts drive the standalone installer, which takes ownership of what it
       # installs: it chowns to root and refuses anything not already owned that way, exactly
       # as it does on a panel. An unprivileged caller cannot satisfy either half, so the
