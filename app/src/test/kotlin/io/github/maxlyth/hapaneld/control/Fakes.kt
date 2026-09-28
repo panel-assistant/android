@@ -71,7 +71,9 @@ class FakeRootShell(
     val ran = mutableListOf<String>()
     val outputRan = mutableListOf<String>()
     val isolatedOutputRan = mutableListOf<String>()
-    override fun available() = available
+    var availabilityChecks = 0
+        private set
+    override fun available(): Boolean { availabilityChecks++; return available }
     override fun run(cmd: String): Boolean { ran += cmd; onRun(cmd); return runResult }
     override fun runClassified(cmd: String): RootRunOutcome = when {
         run(cmd) -> RootRunOutcome.RAN_OK
@@ -134,7 +136,9 @@ class FakeDaemon(
 ) : Daemon {
     val sent = mutableListOf<String>()
     val longTimeouts = mutableListOf<Long>()
-    override fun available() = available
+    var availabilityChecks = 0
+        private set
+    override fun available(): Boolean { availabilityChecks++; return available }
     override fun send(cmd: String): String? { sent += cmd; onSend(cmd); return replies[cmd] }
     override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult {
         longTimeouts += timeoutMs

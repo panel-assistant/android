@@ -78,6 +78,19 @@ class SystemControllerTest {
         assertTrue(root.canReloadDashboard(MIN))
     }
 
+    @Test fun nativeDescriptorChecksShareOnePrivilegeProbeAcrossLiveWakes() {
+        val helper = FakeDaemon(available = false)
+        val root = FakeRootShell(available = true)
+        val controller = SystemController(FakeSystemEnv(installed = setOf(MIN)), root, helper)
+
+        repeat(20) {
+            assertTrue(controller.canReboot())
+            assertTrue(controller.canReloadDashboard(MIN))
+        }
+        assertEquals(1, helper.availabilityChecks)
+        assertEquals(1, root.availabilityChecks)
+    }
+
     @Test fun failedActionRoutesDoNotReportAnAppliedPress() {
         val (reboot, _, _) = rebootController(DaemonLongResult.Reply("ERR"), su = false)
         assertFalse(reboot.reboot())
