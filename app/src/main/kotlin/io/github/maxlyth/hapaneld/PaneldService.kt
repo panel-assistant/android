@@ -3250,7 +3250,7 @@ class PaneldService : Service() {
                     WebViewInstaller.recordRollbackDiagnostic(
                         this, "WebView ${interrupted.pinVersion} restored; binding previous provider",
                     )
-                    requestSafeProcessBoundary("binding restored WebView after service restart")
+                    requestSafeProcessBoundary("binding restored WebView after service restart", "update")
                 } else {
                     WebViewInstaller.recordRollbackDiagnostic(this, "WebView ${interrupted.pinVersion} failed; previous provider restored")
                     WebViewInstaller.discardPreviousApk(this)
@@ -3264,7 +3264,7 @@ class PaneldService : Service() {
                 while (!teardownBoundary.isStopping &&
                     !WebViewInstaller.installedApkMatches(this, interrupted.previousSha256)
                 ) kotlinx.coroutines.delay(30_000)
-                if (!teardownBoundary.isStopping) requestSafeProcessBoundary("binding restored WebView after uncertain reply")
+                if (!teardownBoundary.isStopping) requestSafeProcessBoundary("binding restored WebView after uncertain reply", "update")
             }
             return
         }
@@ -3272,6 +3272,7 @@ class PaneldService : Service() {
         // A service may restart without ending its process. Its already-settled Activity still uses the
         // old provider, so only a different process may arm or certify the post-install handshake.
         if (WebViewInstaller.madeInThisProcess(receipt)) return
+        if (WebViewInstaller.discardUnsubmittedRollback(this)) return
         if (!WebViewInstaller.installedApkMatches(this, receipt.targetSha256)) {
             // The submitted install may finish after its reply is lost. No finite wait can prove it
             // cannot still commit, so retain the backup and watch only this exceptional receipt.
@@ -3279,7 +3280,7 @@ class PaneldService : Service() {
             while (!teardownBoundary.isStopping && WebViewInstaller.pendingRollback(this) != null) {
                 kotlinx.coroutines.delay(30_000)
                 if (WebViewInstaller.installedApkMatches(this, receipt.targetSha256)) {
-                    requestSafeProcessBoundary("binding WebView after uncertain install")
+                    requestSafeProcessBoundary("binding WebView after uncertain install", "update")
                     return
                 }
             }
@@ -3388,7 +3389,7 @@ class PaneldService : Service() {
                     WebViewInstaller.recordRollbackDiagnostic(this@PaneldService, "$reason; $detail")
                     InstallOperationResult("WebView rollback: $detail")
                 },
-                after = { if (bindProvider) requestSafeProcessBoundary("binding restored WebView provider") },
+                after = { if (bindProvider) requestSafeProcessBoundary("binding restored WebView provider", "update") },
             )
             if (refusedBackup || WebViewInstaller.pendingRollback(this) == null) return
             kotlinx.coroutines.delay(if (status == null) 1_000 else 30_000)

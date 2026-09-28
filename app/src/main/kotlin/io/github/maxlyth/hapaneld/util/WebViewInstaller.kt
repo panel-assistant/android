@@ -40,6 +40,7 @@ object WebViewInstaller {
         val previousSigner: String,
         val deadlineWallMs: Long,
         val originProcess: String = "",
+        val installMayHaveStarted: Boolean = true,
     )
 
     /** A connection is accepted only in the new process, after the receipt is armed and before its
@@ -99,7 +100,10 @@ object WebViewInstaller {
             val sha = AppInstaller.sha256(staged)
             val previous = rollbackApk(context)
             if (!staged.renameTo(previous)) return "previous WebView APK cannot be retained"
-            val pending = PendingRollback(pinVersion, targetSha256, sha, signer, 0L, originProcess = processToken)
+            val pending = PendingRollback(
+                pinVersion, targetSha256, sha, signer, 0L,
+                originProcess = processToken, installMayHaveStarted = false,
+            )
             if (!writeRollbackRecord(context, pending)) {
                 previous.delete()
                 return "previous WebView receipt cannot be committed"
@@ -122,6 +126,7 @@ object WebViewInstaller {
             previousSigner = json.getString("signer"),
             deadlineWallMs = json.getLong("deadline"),
             originProcess = json.optString("origin_process", ""),
+            installMayHaveStarted = json.optBoolean("install_may_have_started", true),
         ).takeIf {
             it.targetSha256.matches(Regex("[0-9a-f]{64}")) &&
                 it.previousSha256.matches(Regex("[0-9a-f]{64}")) &&
@@ -131,6 +136,24 @@ object WebViewInstaller {
     }.getOrNull()
 
     @Synchronized fun pendingRollback(context: Context): PendingRollback? = readRollbackRecord(rollbackRecord(context))
+
+    /** Persist the uncertainty fence immediately before the verified APK reaches PackageManager. */
+    @Synchronized fun markInstallMayHaveStarted(context: Context, pinVersion: String): Boolean {
+        val pending = pendingRollback(context) ?: return false
+        if (pending.pinVersion != pinVersion || !rollbackApk(context).isFile) return false
+        return pending.installMayHaveStarted || writeRollbackRecord(
+            context, pending.copy(installMayHaveStarted = true),
+        )
+    }
+
+    /** A dead downloader cannot have submitted the install; release only that pre-install receipt. */
+    @Synchronized fun discardUnsubmittedRollback(context: Context): Boolean {
+        val pending = pendingRollback(context) ?: return false
+        if (pending.installMayHaveStarted || madeInThisProcess(pending)) return false
+        if (!rollbackRecord(context).delete()) return false
+        rollbackApk(context).delete()
+        return true
+    }
 
     @Synchronized fun attemptedRollback(context: Context): PendingRollback? =
         readRollbackRecord(File(context.filesDir, ROLLBACK_ATTEMPTED))
@@ -211,6 +234,7 @@ object WebViewInstaller {
             .put("signer", pending.previousSigner)
             .put("deadline", pending.deadlineWallMs)
             .put("origin_process", pending.originProcess)
+            .put("install_may_have_started", pending.installMayHaveStarted)
         val staged = File(file.parentFile, "${file.name}.tmp")
         staged.writeText(json.toString())
         if (!staged.renameTo(file)) {
@@ -372,13 +396,21 @@ object WebViewInstaller {
                     if (reason != null) return HealResult.Failed("WebView update deferred: $reason", terminal = false)
                 }
                 Log.i(TAG, "healing WebView → ${d.spec.version} (engine was $engineVersion)")
-                val result = when (val outcome = AppInstaller.install(
-                    context,
-                    d.spec.url,
-                    AppInstaller.Pin(WEBVIEW_PKG, d.spec.certSha256, d.spec.apkSha256),
-                    allowShizuku = false,
-                    beforeInstall = if (autoUpdate) stillBuiltin else null,
-                )) {
+                val outcome = try {
+                    AppInstaller.install(
+                        context,
+                        d.spec.url,
+                        AppInstaller.Pin(WEBVIEW_PKG, d.spec.certSha256, d.spec.apkSha256),
+                        allowShizuku = false,
+                        beforeInstall = if (autoUpdate) {
+                            { stillBuiltin!!.invoke() && markInstallMayHaveStarted(context, d.spec.version) }
+                        } else null,
+                    )
+                } finally {
+                    // Includes a thrown download or cancellation, which has no typed failure result.
+                    if (autoUpdate && pendingRollback(context)?.installMayHaveStarted == false) abandonRollback(context)
+                }
+                val result = when (outcome) {
                     InstallOutcome.Succeeded ->
                         HealResult.Installed(
                             "OK: installed WebView ${d.spec.version} — reloading the dashboard",
