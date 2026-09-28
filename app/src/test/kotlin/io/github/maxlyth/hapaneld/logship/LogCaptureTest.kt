@@ -240,22 +240,28 @@ class LogCaptureTest {
             SuForm.ANDROID to listOf("su", "0", "sh", "-c"),
             SuForm.TOOLBOX to listOf("su", "-c"),
         )) {
+            val started = java.util.concurrent.CopyOnWriteArrayList<List<String>>()
             val cap = LogCapture.system(
                 CoroutineScope(Dispatchers.IO),
                 suForm = form,
                 processStarter = { command ->
+                    started.add(command)
                     val accepted = command.take(prefix.size) == prefix && command.last().contains("-v printable")
                     GateProcess(if (accepted) record else "").also { it.finish(if (accepted) 0 else 1) }
                 },
             )
+            val received = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val subscription = cap.subscribe(received::add)
             try {
-                assertEquals(
-                    "$form must deliver the complete exception",
-                    listOf("[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-                        "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)"),
-                    cap.dump(10),
-                )
+                await { received.isNotEmpty() }
+                assertEquals("$form must stream the complete exception as one record", 1, received.size)
+                assertEquals("$form must follow from now", true, started.any { it.last().contains("-T 1") })
+                val expected = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
+                    "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)"
+                assertEquals("$form must stream the complete exception", expected, received.single())
+                assertEquals("$form must dump the same complete exception", listOf(expected), cap.dump(10))
             } finally {
+                subscription.close()
                 cap.close()
             }
         }
