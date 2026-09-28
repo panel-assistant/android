@@ -226,4 +226,25 @@ class WakeWordDetectorTest {
         rig.detector.close()
         assertTrue(rig.scorers.all { it.closed })
     }
+
+    @Test
+    fun higherSensitivityWakesBelowTheModelsOwnCutoffAndLowerDoesNot() {
+        fun hitsAt(offset: Float): Int {
+            val scorer = FakeScorer()
+            val hits = mutableListOf<WakeWordHit>()
+            val detector = WakeWordDetector(
+                models = listOf(LoadedWakeWordModel(config("hey_jarvis", cutoff = 0.97f, window = 1), scorer)),
+                listener = { hits += it },
+                warmupInferences = 0,
+                cutoffOffset = offset,
+            )
+            // 230 / 255 = 0.90: short of 0.97, over 0.85.
+            scorer.script.add(230)
+            detector.onFrame(PcmFrame(ShortArray(160), timestampNs = 0L))
+            return hits.size
+        }
+        assertEquals(0, hitsAt(WakeWordDetector.cutoffOffset("normal")))
+        assertEquals(1, hitsAt(WakeWordDetector.cutoffOffset("high")))
+        assertEquals(0, hitsAt(WakeWordDetector.cutoffOffset("low")))
+    }
 }
