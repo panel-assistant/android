@@ -1208,6 +1208,50 @@ browserTest('Configure badges the experimental cards and leaves Voice and settle
   assert.equal(await page.locator('[data-config-group="Dashboard"] .cardbadge').count(), 0);
 });
 
+browserTest('Configure offers the wake words as checkboxes with the training guide beside the import', async (t) => {
+  // The import takes a model the owner trained, so the way to train one has to be one tap away from it.
+  const schema = [
+    { key: 'voice_enabled', label: 'Voice assistant', group: 'Voice', type: 'BOOL', available: true },
+    { key: 'voice_wake_words', label: 'Wake words', group: 'Voice', type: 'STRING', picker: 'voice_wake_words', available: true },
+  ];
+  const harness = await startHarness((path, request) => {
+    if (path === '/api/v1/config/schema') return json(schema);
+    if (path === '/api/v1/config') {
+      if (request.method === 'POST') return json({});
+      return json({ settings: { voice_enabled: 'true', voice_wake_words: '["hey_jarvis"]' }, ha_expose: {}, ha_auth: {} });
+    }
+    if (path === '/api/v1/voice/wake-words') {
+      return json({ wake_words: [
+        { id: 'okay_nabu', wake_word: 'Okay Nabu', imported: false },
+        { id: 'hey_jarvis', wake_word: 'Hey Jarvis', imported: false },
+      ] });
+    }
+    if (path === '/api/v1/apps') return json({ apps: [] });
+    if (path === '/api/v1/radio') return json({ present: false });
+    if (path === '/api/v1/proximity') return json({ present: false });
+    if (path === '/api/v1/voice/pipelines') return json({ pipelines: [] });
+    if (path === '/health') return { body: 'ok cfg=test' };
+  });
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(1_500);
+  t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+  await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+
+  const rows = page.locator('.voice-wake-word-row');
+  await assert.doesNotReject(rows.nth(1).waitFor());
+  assert.deepEqual(await rows.allTextContents(), ['Okay Nabu', 'Hey Jarvis']);
+  assert.equal(await rows.nth(1).locator('input').isChecked(), true);
+  assert.equal(await rows.nth(0).locator('input').isChecked(), false);
+
+  const guide = page.locator('.voice-wake-word-import a.voice-wake-word-guide');
+  assert.equal(await guide.count(), 1);
+  assert.equal(await guide.getAttribute('href'), 'https://panel-assistant.io/go/custom-wake-words');
+  assert.equal(await guide.getAttribute('target'), '_blank');
+  assert.equal(await guide.textContent(), 'How to train your own wake word');
+  assert.equal(await page.locator('.voice-wake-word-import input[type="file"][accept=".tflite"]').count(), 1);
+});
+
 browserTest('Configure help wraps a frozen URL without applying break-all globally', async (t) => {
   const help = 'Built-in renderer: Home Assistant base URL, e.g. http://homeassistant.local:8123. Blank disables it.';
   const schema = [{
