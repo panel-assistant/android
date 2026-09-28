@@ -4,6 +4,7 @@ import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -16,6 +17,63 @@ import kotlin.test.assertTrue
 import org.junit.Test
 
 class HelperClientIdentityTest {
+    @Test
+    fun logcatOpensOnlyAfterCapabilityOnTheAdmittedConnection() {
+        val transport = FakeHelperTransport(FakeGeneration(lineReplies = mapOf("LOGCATCAPS" to "LOGCATCAPS 1")))
+        val client = IdentityAdmittingHelperClient(transport, nowNs = { 0L })
+
+        val opened = assertIs<HelperLogcatOpenResult.Open>(client.openLogcat())
+        assertEquals(listOf("LOGCATCAPS", "LOGCAT"), transport.lineCommands.map { it.command })
+        assertEquals(1, transport.lineCommands.map { it.session }.distinct().size)
+        assertEquals(transport.bootstrapCommands.single().session, transport.lineCommands.first().session)
+        opened.stream.close()
+        assertTrue(transport.closedSessions.contains(transport.lineCommands.first().session))
+    }
+
+    @Test
+    fun logcatFallbackIsOnlyForExactUnsupportedCapability() {
+        val old = FakeHelperTransport(FakeGeneration(lineReplies = mapOf("LOGCATCAPS" to "ERR")))
+        assertEquals(HelperLogcatOpenResult.Unsupported, IdentityAdmittingHelperClient(old).openLogcat())
+        assertEquals(listOf("LOGCATCAPS"), old.lineCommands.map { it.command })
+
+        val failed = FakeHelperTransport(FakeGeneration(lineReplies = mapOf("LOGCATCAPS" to null)))
+        assertEquals(HelperLogcatOpenResult.Failed, IdentityAdmittingHelperClient(failed).openLogcat())
+        assertEquals(listOf("LOGCATCAPS"), failed.lineCommands.map { it.command })
+    }
+
+    @Test
+    fun rawLogcatReaderPreservesBlankLinesAndRefusesPartialOrOversizeLines() {
+        val input = ByteArrayInputStream("[ 123.456 1: 2 E/App ]\n at App.one(App.java:1)\n\n".toByteArray())
+        val reader = HelperLogcatLineReader(input)
+        assertEquals("[ 123.456 1: 2 E/App ]", reader.readLine())
+        assertEquals(" at App.one(App.java:1)", reader.readLine())
+        assertEquals("", reader.readLine())
+        assertNull(reader.readLine())
+        kotlin.test.assertFailsWith<IOException> { HelperLogcatLineReader(ByteArrayInputStream("partial".toByteArray())).readLine() }
+        kotlin.test.assertFailsWith<IOException> {
+            HelperLogcatLineReader(ByteArrayInputStream(("X".repeat(8193) + "\n").toByteArray())).readLine()
+        }
+    }
+
+    @Test
+    fun logcatTimeoutRetainsPartialLineUntilTheNextRead() {
+        val source = object : java.io.InputStream() {
+            private val bytes = " at App.one(App.java:1)\n\n".toByteArray()
+            private var index = 0
+            private var timedOut = false
+            override fun read(): Int {
+                if (index == 6 && !timedOut) {
+                    timedOut = true
+                    throw java.net.SocketTimeoutException("read pause")
+                }
+                return if (index == bytes.size) -1 else bytes[index++].toInt() and 0xff
+            }
+        }
+        val reader = HelperLogcatLineReader(source)
+        kotlin.test.assertFailsWith<java.net.SocketTimeoutException> { reader.readLine() }
+        assertEquals(" at App.one(App.java:1)", reader.readLine())
+        assertEquals("", reader.readLine())
+    }
     @Test
     fun parsesCurrentAndForwardCompatibleIdentity() {
         assertEquals(
@@ -489,6 +547,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
     val fileCommands: MutableList<RecordedCommand> = Collections.synchronizedList(mutableListOf())
     val byteCommands: MutableList<RecordedBytes> = Collections.synchronizedList(mutableListOf())
     val companionCommands: MutableList<RecordedCommand> = Collections.synchronizedList(mutableListOf())
+    val closedSessions: MutableList<Int> = Collections.synchronizedList(mutableListOf())
 
     override fun open(): HelperCommandSession {
         val session = sessions.incrementAndGet()
@@ -524,6 +583,8 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
                 return byteArrayOf(1, 2, 3)
             }
 
+            override fun readLogcatLine(): String? = null
+
             override fun backupCompanion(
                 packageName: String,
                 cacheDir: File,
@@ -542,7 +603,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
                 return CompanionHelperProtocol.RestoreResult.COMMITTED
             }
 
-            override fun close() = Unit
+            override fun close() { closedSessions += session }
         }
     }
 

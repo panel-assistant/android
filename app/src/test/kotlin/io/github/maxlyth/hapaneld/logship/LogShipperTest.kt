@@ -24,8 +24,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 class LogShipperTest {
     @Test fun trafficSummaryNamesPositivePluralAndMultiDropCounts() {
-        assertEquals("2 lines sent · 3 dropped", logShipTrafficText(sent = 2, dropped = 3))
-        assertEquals("1 line sent", logShipTrafficText(sent = 1, dropped = 0))
+        assertEquals("2 records sent · 3 dropped", logShipTrafficText(sent = 2, dropped = 3))
+        assertEquals("1 record sent", logShipTrafficText(sent = 1, dropped = 0))
     }
 
     private class FakeCapture {
@@ -74,12 +74,14 @@ class LogShipperTest {
         host: String = "first",
         panelId: String = "panel-a",
         protocol: String = "syslog",
+        systemEnabled: Boolean = false,
     ) = LogShipConfigSnapshot(
         enabled = true,
         host = host,
         port = 514,
         protocol = protocol,
         panelId = panelId,
+        systemEnabled = systemEnabled,
     )
 
     /** Frames each captured line through the production encoder, exactly as a sink receives it. */
@@ -135,6 +137,22 @@ class LogShipperTest {
         assertEquals("ha-paneld", event.getString("app"))
     }
 
+    @Test fun multilineExceptionIsOneLosslessSyslogFrame() {
+        val exception = "[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+            "java.lang.IllegalStateException: failure\\path\n" +
+            "    at Example.first(Example.kt:12)\n" +
+            "    at Example.second(Example.kt:25)"
+        val frame = encodedFrames("syslog-tcp", exception).first()
+
+        // The existing TCP sink uses newline-delimited frames. An embedded raw newline would be
+        // parsed as another event, and a truncated stack would be impossible to debug.
+        assertTrue(frame, frame.startsWith("<11>1 ")) // AndroidRuntime E stays error severity
+        assertEquals(1, frame.count { it == '\n' })
+        assertTrue(frame.endsWith("\\n    at Example.second(Example.kt:25)\n"))
+        assertTrue(frame.contains("failure\\\\path\\n"))
+        assertEquals(exception, JSONObject(encodedFrames("http", exception).first()).getString("message"))
+    }
+
     /** Real package names never contain the three characters, so only an adversarial value proves the escaper. */
     @Test fun structuredDataEscapesQuoteBackslashAndBracket() {
         val sd = LogShipRecord.structuredData(LogShipRecord.Build(42, "a\"b\\c]d"))
@@ -161,6 +179,107 @@ class LogShipperTest {
         run.offer("after-close")
         assertTrue(run.takeBatch(2, 0).isEmpty())
         assertFalse(run.isOpen())
+    }
+
+    @Test fun systemBudgetAdmitsCompleteBurstThenBoundsSustainedBytesAndOversizeEntries() {
+        val now = AtomicLong(0L)
+        val run = LogShipRun(
+            snapshot(systemEnabled = true).targetOrNull()!!,
+            queueCapacity = 1000,
+            nowNs = now::get,
+        )
+        try {
+            val prefix = "[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+                "java.lang.IllegalStateException: failure\n" +
+                "    at Example.first(Example.kt:12)\n"
+            val completeEntry = prefix + "x".repeat(8_192 - prefix.toByteArray().size)
+            val bytes = completeEntry.toByteArray().size
+            assertTrue(bytes in 8_000..8_192)
+            repeat(64) { run.offerSystem(completeEntry) }
+            run.offerSystem(completeEntry)
+            assertEquals(1L, run.status().dropped)
+            assertEquals(List(64) { completeEntry }, run.takeBatch(100, 0))
+
+            now.set(1_000_000_000L)
+            repeat(16) { run.offerSystem(completeEntry) }
+            run.offerSystem(completeEntry)
+            assertEquals(2L, run.status().dropped)
+            assertEquals(List(16) { completeEntry }, run.takeBatch(100, 0))
+
+            run.offerSystem("z".repeat(8_193))
+            assertEquals(3L, run.status().dropped)
+            assertTrue(run.takeBatch(100, 0).isEmpty())
+        } finally {
+            run.close()
+        }
+    }
+
+    @Test fun systemCaptureSubscribesOnlyForItsSeparateOptInAndSharesTheSink() {
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val ordinary = FakeCapture()
+        val system = FakeCapture()
+        val config = AtomicReference(snapshot())
+        val sink = RecordingSink()
+        val shipper = LogShipper(
+            configSnapshot = config::get,
+            scope = scope,
+            subscribeCapture = ordinary::subscribe,
+            subscribeSystem = system::subscribe,
+            sinkFactory = LogSinkFactory { _, _ -> sink },
+        )
+        try {
+            shipper.start()
+            ordinary.emit("browser console")
+            await { sink.lines.contains("browser console") }
+            assertEquals(0, system.subscriptions.get())
+
+            config.set(snapshot(systemEnabled = true))
+            shipper.reconfigure()
+            await { system.subscriptions.get() == 1 }
+            val exception = "[ 1790592713.123  123: 456 E/AndroidRuntime ]\n" +
+                "java.lang.IllegalStateException: failure\n    at Example.first(Example.kt:12)"
+            system.emit(exception)
+            await { sink.lines.contains(exception) }
+            assertEquals(1, sink.lines.count { it == exception })
+
+            config.set(snapshot())
+            shipper.reconfigure()
+            assertEquals(1, system.closes.get())
+            system.emit("must not ship")
+            assertFalse(sink.lines.contains("must not ship"))
+        } finally {
+            shipper.stop()
+            scope.cancel()
+            dispatcher.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test fun udpDoesNotTurnCompleteExceptionsIntoTruncatedSystemRecords() {
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val ordinary = FakeCapture()
+        val system = FakeCapture()
+        val shipper = LogShipper(
+            configSnapshot = { snapshot(protocol = "syslog-udp", systemEnabled = true) },
+            scope = scope,
+            subscribeCapture = ordinary::subscribe,
+            subscribeSystem = system::subscribe,
+            sinkFactory = LogSinkFactory { _, _ -> RecordingSink() },
+        )
+        try {
+            shipper.start()
+            assertEquals(0, system.subscriptions.get())
+            assertTrue(shipper.statusText().contains("system logs need TCP or HTTP"))
+        } finally {
+            shipper.stop()
+            scope.cancel()
+            dispatcher.close()
+            executor.shutdownNow()
+        }
     }
 
     @Test fun reconfigureClosesOldGenerationBeforeReplacementReceivesLines() {
@@ -281,7 +400,7 @@ class LogShipperTest {
             val recovered = shipper.status()
             // "disconnected" also contains "connected"; the prefix is the only safe discriminator.
             assertTrue(recovered.text, recovered.text.startsWith("connected"))
-            assertTrue(recovered.text.contains(" lines sent"))
+            assertTrue(recovered.text.contains(" records sent"))
             assertFalse(recovered.text.contains("refused connection"))
         } finally {
             shipper.stop()

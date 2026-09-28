@@ -40,17 +40,21 @@ internal data class LogShipConfigSnapshot(
     val port: Int,
     val protocol: String,
     val panelId: String,
+    val systemEnabled: Boolean = false,
 ) {
     fun targetOrNull(): LogShipTarget? {
         if (!enabled || host.isBlank()) return null
         val endpoint = LogShipEndpoint.resolve(host, port, protocol)
         if (endpoint.host.isBlank()) return null
-        return LogShipTarget(endpoint.host, endpoint.port, endpoint.protocol, panelId)
+        return LogShipTarget(endpoint.host, endpoint.port, endpoint.protocol, panelId, systemEnabled)
     }
 }
 
 /** A target belongs to one run; live preference reads never change a run underneath its worker. */
-internal data class LogShipTarget(val host: String, val port: Int, val protocol: String, val panelId: String)
+internal data class LogShipTarget(
+    val host: String, val port: Int, val protocol: String, val panelId: String,
+    val systemEnabled: Boolean = false,
+)
 
 /** Dedicated, cheap control-plane projection of the synchronized shipper generation. */
 internal data class LogShipStatusProjection(
@@ -66,7 +70,7 @@ internal const val LOG_SHIP_STATUS_OFF = "off"
 private val HTTP_STATUS = Regex("""http[ -](\d{3})""")
 
 internal fun logShipTrafficText(sent: Long, dropped: Long): String =
-    "$sent ${if (sent == 1L) "line" else "lines"} sent" +
+    "$sent ${if (sent == 1L) "record" else "records"} sent" +
         if (dropped > 0) " · $dropped dropped" else ""
 
 /** A transport is created inert, attached to its run, and only then allowed to block in [connect]. */
@@ -87,6 +91,7 @@ internal class LogShipRun(
     val target: LogShipTarget,
     queueCapacity: Int,
     private val onDropped: ((Long) -> Unit)? = null,
+    private val nowNs: () -> Long = System::nanoTime,
 ) : AutoCloseable {
     data class Status(val connected: Boolean, val sent: Long, val dropped: Long, val lastError: String?)
 
@@ -99,6 +104,8 @@ internal class LogShipRun(
     private var subscription: AutoCloseable? = null
     private var job: Job? = null
     private var sink: LogSink? = null
+    private var systemTokens = SYSTEM_BURST_BYTES
+    private var lastSystemRefillNs = nowNs()
 
     fun isOpen(): Boolean = open
 
@@ -130,6 +137,22 @@ internal class LogShipRun(
             onDropped?.invoke(1)
             queue.offer(line)
         }
+    }
+
+    /** Admit complete Android entries only; a burst absorbs stack traces without a physical-line cap. */
+    fun offerSystem(entry: String) {
+        if (!open) return
+        val bytes = boundedUtf8Bytes(entry, SYSTEM_ENTRY_MAX_BYTES + 1L)
+        val admitted = synchronized(this) {
+            val now = nowNs()
+            val elapsed = (now - lastSystemRefillNs).coerceIn(0L, SYSTEM_REFILL_NS)
+            systemTokens = (systemTokens + elapsed * SYSTEM_RATE_BYTES / 1_000_000_000L)
+                .coerceAtMost(SYSTEM_BURST_BYTES)
+            lastSystemRefillNs = now
+            if (bytes > SYSTEM_ENTRY_MAX_BYTES || bytes > systemTokens) false
+            else { systemTokens -= bytes; true }
+        }
+        if (admitted) offer(entry) else recordDropped(1)
     }
 
     /** A close wake-up is deliberately not a String, so it can never collide with captured content. */
@@ -189,6 +212,10 @@ internal class LogShipRun(
 
     private companion object {
         val WAKE = Any()
+        const val SYSTEM_ENTRY_MAX_BYTES = 8L * 1024
+        const val SYSTEM_RATE_BYTES = 128L * 1024
+        const val SYSTEM_BURST_BYTES = 512L * 1024
+        const val SYSTEM_REFILL_NS = 4_000_000_000L
     }
 }
 
@@ -204,12 +231,16 @@ class LogShipper internal constructor(
     private val configSnapshot: () -> LogShipConfigSnapshot,
     private val scope: CoroutineScope,
     private val subscribeCapture: ((String) -> Unit) -> AutoCloseable,
+    private val subscribeSystem: (((String) -> Unit) -> AutoCloseable)? = null,
     private val sinkFactory: LogSinkFactory,
     private val featureCosts: FeatureCostRegistry = FeatureCosts.registry,
     private val build: LogShipRecord.Build = LogShipRecord.Build.CURRENT,
 ) {
     /** Ships [capture] and, when given, the dashboard [console] source through the same run. */
-    constructor(config: Config, scope: CoroutineScope, capture: LogCapture, console: LogCapture? = null) : this(
+    constructor(
+        config: Config, scope: CoroutineScope, capture: LogCapture,
+        console: LogCapture? = null, system: LogCapture? = null,
+    ) : this(
         configSnapshot = {
             LogShipConfigSnapshot(
                 enabled = config.logShipEnabled,
@@ -217,10 +248,12 @@ class LogShipper internal constructor(
                 port = config.logShipPort,
                 protocol = config.logShipProtocol,
                 panelId = config.panelId,
+                systemEnabled = config.logShipSystemEnabled,
             )
         },
         scope = scope,
         subscribeCapture = if (console == null) capture::subscribe else subscribeAll(capture, console),
+        subscribeSystem = system?.let { it::subscribe },
         sinkFactory = NetworkLogSinkFactory,
     )
 
@@ -273,12 +306,15 @@ class LogShipper internal constructor(
         // only what they cannot — whether the sink is accepting anything, and how much has gone. A
         // scheme or port embedded in log_ship_host can override the separate Protocol and Port fields,
         // so repeating either the configured fields or resolved target here would be misleading.
-        // "Lines" is spelled out because the counter is a message count, not a byte volume.
+        // "Records" is spelled out because one multiline exception is one sink message.
         LogShipStatusProjection(
             enabled = config.enabled,
             configured = configured,
             text = liveness(target, status) +
-                " · ${logShipTrafficText(status.sent, status.dropped)}",
+                " · ${logShipTrafficText(status.sent, status.dropped)}" +
+                if (target.systemEnabled && target.protocol == LogShipEndpoint.SYSLOG_UDP) {
+                    " · system logs need TCP or HTTP"
+                } else "",
         )
     }
 
@@ -325,10 +361,22 @@ class LogShipper internal constructor(
         } else {
             null
         }
-        val candidate = LogShipRun(target, QUEUE_CAP, onDropped)
+        val candidate = LogShipRun(target, if (target.systemEnabled) SYSTEM_QUEUE_CAP else QUEUE_CAP, onDropped)
         run = candidate
         try {
-            candidate.bindSubscription(subscribeCapture(candidate::offer))
+            val ordinary = subscribeCapture(candidate::offer)
+            val system = try {
+                if (target.systemEnabled && target.protocol != LogShipEndpoint.SYSLOG_UDP) {
+                    subscribeSystem?.invoke(candidate::offerSystem)
+                } else null
+            } catch (e: Exception) {
+                ordinary.close()
+                throw e
+            }
+            candidate.bindSubscription(AutoCloseable {
+                runCatching { system?.close() }
+                ordinary.close()
+            })
             candidate.bindJob(scope.launch(Dispatchers.IO) { shipLoop(candidate) })
             Log.i(
                 TAG,
@@ -443,7 +491,7 @@ class LogShipper internal constructor(
         LogShipRecord.jsonEvent(timestamp(), panelId, build, line)
 
     private fun severityOf(line: String): Int {
-        val level = LEVEL_RE.find(line)?.groupValues?.get(1) ?: return SEV_INFO
+        val level = (LEVEL_RE.find(line) ?: LONG_LEVEL_RE.find(line))?.groupValues?.get(1) ?: return SEV_INFO
         return when (level) {
             "V", "D" -> SEV_DEBUG
             "W" -> SEV_WARNING
@@ -456,6 +504,7 @@ class LogShipper internal constructor(
     companion object {
         private const val TAG = "ha-paneld/logship"
         private const val QUEUE_CAP = 4000
+        private const val SYSTEM_QUEUE_CAP = 1000
         private const val BATCH_MAX = 200
         private const val SHIP_WORK_BYTES_MAX = 4L * 1024 * 1024
         private const val POLL_SECONDS = 5L
@@ -479,6 +528,7 @@ class LogShipper internal constructor(
 
         private val LEVEL_RE =
             Regex("""^\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}\s+\d+\s+\d+\s+([VDIWEF])\s""")
+        private val LONG_LEVEL_RE = Regex("""^\[\s*\S+\s+\d+:\s*\d+\s+([VDIWEF])/""")
 
     }
 }
@@ -509,7 +559,8 @@ internal object LogShipRecord {
 
     /** RFC5424 frame: `<PRI>1 TIMESTAMP HOSTNAME APP-NAME PROCID MSGID SD MSG`, newline-terminated. */
     fun syslogFrame(pri: Int, timestamp: String, panelId: String, build: Build, msg: String): String =
-        "<$pri>1 $timestamp ${hostname(panelId)} $APP - - ${structuredData(build)} $msg\n"
+        "<$pri>1 $timestamp ${hostname(panelId)} $APP - - ${structuredData(build)} " +
+            (if ('\n' in msg || '\r' in msg) msg.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n") else msg) + "\n"
 
     fun jsonEvent(timestamp: String, panelId: String, build: Build, msg: String): String =
         "{\"timestamp\":\"$timestamp\",\"host\":${Json.str(panelId.ifBlank { "panel" })}," +

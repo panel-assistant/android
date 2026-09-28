@@ -213,6 +213,8 @@ import io.github.maxlyth.hapaneld.util.awaitTrue
 import io.github.maxlyth.hapaneld.util.ProfileRestartCoordinator
 import io.github.maxlyth.hapaneld.util.ServiceRestartBarrier
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
@@ -228,6 +230,7 @@ import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.InstallOperationResult
 import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.HelperClient
+import io.github.maxlyth.hapaneld.util.HelperLogcatOpenResult
 import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
@@ -252,6 +255,7 @@ import io.github.maxlyth.hapaneld.dashboard.shouldReloadBuiltinAfterEntityFilter
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.shizuku.ShizukuConsent
 import java.io.File
+import java.net.SocketTimeoutException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.Calendar
@@ -772,7 +776,7 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
         adaptiveBrightness = changedKeys.any(ha::contains),
         autoSleep = changedKeys.any((ha + setOf("panel_id", "auto_sleep_source"))::contains),
         logShipping = changedKeys.any(setOf(
-            "log_ship_enabled", "log_ship_host", "log_ship_port", "log_ship_protocol",
+            "log_ship_enabled", "log_ship_system_enabled", "log_ship_host", "log_ship_port", "log_ship_protocol",
         )::contains),
         keepAwake = "keep_awake" in changedKeys,
         launcherHome = changedKeys.any(setOf("launcher_package", "dashboard_package", "ha_url")::contains),
@@ -1312,17 +1316,36 @@ class PaneldService : Service() {
                 timeoutMs = 2_000L,
             )
         }
-        // Shared demand-driven logcat captures (one subprocess + one redaction pass each): the app
-        // source feeds both remote shipping and the :8888 live log viewer; the system source (su)
-        // only the viewer. Idle-stopped — no subprocess runs until something subscribes.
+        // Shared demand-driven logcat captures (one producer and redaction pass per source): app,
+        // system and browser feed the sink and their live viewers. System uses the helper when this
+        // app cannot run su. Idle-stopped — no logcat runs until something subscribes.
         logCaptureApp = LogCapture.app(scope)
-        logCaptureSystem = LogCapture.system(scope)
+        logCaptureSystem = LogCapture.system(
+            scope,
+            helperLines = { emit ->
+                when (val opened = HelperClient.openLogcat()) {
+                    is HelperLogcatOpenResult.Open -> opened.stream.use { stream ->
+                        while (currentCoroutineContext().isActive) {
+                            val line = try {
+                                stream.readLine()
+                            } catch (_: SocketTimeoutException) {
+                                continue // bounded idle read lets cancellation close the helper socket
+                            } ?: break
+                            emit(line)
+                        }
+                    }
+                    HelperLogcatOpenResult.Unsupported -> error("helper LOGCAT unsupported")
+                    HelperLogcatOpenResult.Failed -> error("helper LOGCAT unavailable")
+                }
+            },
+            rootAvailable = Su::availableCachedIsolated,
+        )
         // The dashboard's JavaScript console, read over a CDP relay the user started. Off unless log
         // shipping is configured, and never in Hardened mode, where the relay itself is refused.
         logCaptureWebView = LogCapture.webView(scope) { webViewConsoleEnabled(config) }
         // Optional remote log shipping (off + inert unless a sink host is configured). Started in
         // onStartCommand alongside the other network subsystems; restarted on a /config change.
-        logShipper = LogShipper(config, scope, logCaptureApp, logCaptureWebView)
+        logShipper = LogShipper(config, scope, logCaptureApp, logCaptureWebView, logCaptureSystem)
 
         brightness = BrightnessController(
             this,

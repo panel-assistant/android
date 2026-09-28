@@ -10733,6 +10733,16 @@
       "state": "machine-cross-checked",
       "text": "Protocole"
     },
+    "settings.log_ship_system_enabled.help": {
+      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
+      "state": "machine-cross-checked",
+      "text": "Transmet les journaux système Android au même collecteur quand « Envoyer les journaux » est activé. Désactivé par défaut ; nécessite TCP ou HTTP ainsi que root ou l’assistant installé. Les entrées sont expurgées et certaines peuvent être ignorées en cas de fort volume."
+    },
+    "settings.log_ship_system_enabled.label": {
+      "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
+      "state": "machine-cross-checked",
+      "text": "Envoyer les journaux système"
+    },
     "settings.manufacturer.help": {
       "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",
       "state": "machine-cross-checked",

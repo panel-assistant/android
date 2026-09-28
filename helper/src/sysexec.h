@@ -53,6 +53,8 @@ int   sysexec_run_argv_timeout(const char *path, const char *const argv[], int q
  * terminate returns 0 only with the leader's exact wait status; it returns -1 after a safe detached
  * reap handoff because no exact status is available to that caller. */
 int   sysexec_start_argv(const char *path, const char *const argv[], int quiet, pid_t *pid);
+/* Start a fixed argv with stdout on a CLOEXEC pipe owned by the caller. */
+int   sysexec_start_stdout_argv(const char *path, const char *const argv[], pid_t *pid, int *stdout_fd);
 int   sysexec_poll_argv(pid_t pid, int *status);
 int   sysexec_terminate_argv(pid_t pid, int *status);
 

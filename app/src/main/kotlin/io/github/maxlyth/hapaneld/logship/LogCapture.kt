@@ -30,8 +30,8 @@ import kotlin.math.min
  * there is no logcat subprocess at all. Two sources exist as separate instances:
  *  - [app]: ha-paneld's own-process logcat (its `Log.*` output + the Ktor/HiveMQ SLF4J lines) —
  *    own-uid, so readable with no `READ_LOGS` permission and no root.
- *  - [system]: the full system logcat via `su -c logcat` — root panels only; callers gate on
- *    `Su.available()`.
+ *  - [system]: full system logcat via `su -c logcat`, or the authenticated helper when the app
+ *    cannot use root itself.
  *  - [webView]: the dashboard WebView's JavaScript console, read over the CDP relay by an in-process
  *    [lineStream] instead of a subprocess (see [WebViewConsoleStream]).
  *
@@ -57,6 +57,10 @@ class LogCapture(
      * exactly like a logcat line. There is no dump for such a source: backlog is the ring alone.
      */
     private val lineStream: (suspend (emit: (String) -> Unit) -> Unit)? = null,
+    /** `-v long -v printable` escapes message newlines; only the blank footer separates entries. */
+    private val longLogcatRecords: Boolean = false,
+    /** Only system capture uses this to choose the root process or the helper at each restart. */
+    private val processAvailable: () -> Boolean = { true },
 ) {
     init {
         require(maxViewers > 0) { "maxViewers must be positive" }
@@ -172,7 +176,7 @@ class LogCapture(
     /** One-shot dump of the last [lines] log lines (redacted). A single flight is shared by all
      * callers, output is capped before decoding, and a wedged command is forcibly terminated. */
     fun dump(lines: Int = DUMP_LINES): List<String> {
-        if (lines <= 0 || lineStream != null) return emptyList()
+        if (lines <= 0 || (lineStream != null && (streamCmd.isEmpty() || !processAvailable()))) return emptyList()
         val (flight, owner) = synchronized(this) {
             if (closed) return emptyList()
             val current = dumpFlight
@@ -264,12 +268,17 @@ class LogCapture(
                 reader.interrupt()
                 readerDone.await(DUMP_READER_GRACE_MS, TimeUnit.MILLISECONDS)
             }
-            return output.toByteArray().toString(Charsets.UTF_8)
-                .lineSequence()
-                .map(::redact)
-                .toList()
-                .dropLastWhile(String::isEmpty)
-                .takeLast(lines)
+            val text = output.toByteArray().toString(Charsets.UTF_8)
+            if (longLogcatRecords) {
+                val records = ArrayList<String>()
+                val reader = LongLogcatRecords { records += redact(it) }
+                // A byte cap or timeout can end after any byte. Ignore the last unterminated
+                // physical line and require the long-format blank footer before emitting a record.
+                text.substringBeforeLast('\n', "").lineSequence().forEach(reader::accept)
+                return records.takeLast(lines)
+            }
+            return text.lineSequence().map(::redact).toList()
+                .dropLastWhile(String::isEmpty).takeLast(lines)
         } finally {
             synchronized(this) {
                 if (dumpProcess === p) dumpProcess = null
@@ -293,40 +302,32 @@ class LogCapture(
         val r = Run()
         run = r
         val producer = lineStream
-        if (producer != null) {
-            r.job = scope.launch(Dispatchers.IO) {
-                while (isActive) {
-                    try {
-                        producer { line -> emit(r, redact(line)) }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w(TAG, "stream restart: ${e.message}")
-                    }
-                    if (isActive) delay(BACKOFF_MS)
-                }
-            }
-            return
-        }
         r.job = scope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
-                    val p = processStarter(streamCmd)
-                    if (!r.attach(p)) break
-                    try {
-                        p.inputStream.bufferedReader().use { reader ->
-                            while (isActive) {
-                                val line = reader.readLine() ?: break
-                                if (featureCosts.recordingEnabled) {
-                                    captureAvailableBatch(r, reader, line)
-                                } else {
-                                    emit(r, redact(line))
+                    val records = if (longLogcatRecords) LongLogcatRecords { emit(r, redact(it)) } else null
+                    if (producer != null && (streamCmd.isEmpty() || !processAvailable())) {
+                        producer { line ->
+                            if (records != null) records.accept(line) else emit(r, redact(line))
+                        }
+                    } else {
+                        val p = processStarter(streamCmd)
+                        if (!r.attach(p)) break
+                        try {
+                            p.inputStream.bufferedReader().use { reader ->
+                                while (isActive) {
+                                    val line = reader.readLine() ?: break
+                                    if (records != null) records.accept(line)
+                                    else if (featureCosts.recordingEnabled) captureAvailableBatch(r, reader, line)
+                                    else emit(r, redact(line))
                                 }
                             }
+                        } finally {
+                            r.detach(p)
                         }
-                    } finally {
-                        r.detach(p)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "capture restart: ${e.message}")
                 }
@@ -417,12 +418,20 @@ class LogCapture(
             { n -> listOf("logcat", "-v", "threadtime", "-d", "-t", "$n", "*:V") },
         )
 
-        /** Full system logcat via su — callers gate on `Su.available()`. The filterspec is quoted so
-         *  su's shell doesn't glob `*:V`. */
-        fun system(scope: CoroutineScope) = LogCapture(
+        /** Full system logcat. A helper producer is used only when root is unavailable to this app.
+         *  `printable` escapes message newlines so only the `long` footer has a blank physical line;
+         *  embedded blank lines in exceptions cannot be mistaken for record boundaries. */
+        fun system(
+            scope: CoroutineScope,
+            helperLines: (suspend (emit: (String) -> Unit) -> Unit)? = null,
+            rootAvailable: () -> Boolean = { true },
+        ) = LogCapture(
             scope,
-            listOf("su", "-c", "logcat -v threadtime -T 1 '*:V'"),
-            { n -> listOf("su", "-c", "logcat -v threadtime -d -t $n '*:V'") },
+            listOf("su", "-c", "logcat -b all -v long -v epoch -v printable -T 1 '*:V'"),
+            { n -> listOf("su", "-c", "logcat -b all -v long -v epoch -v printable -d -t $n '*:V'") },
+            lineStream = helperLines,
+            longLogcatRecords = true,
+            processAvailable = rootAvailable,
         )
 
         /** Dashboard WebView console over the CDP relay. [enabled] keeps it idle unless log shipping is
@@ -457,6 +466,57 @@ class LogCapture(
             return s
         }
     }
+}
+
+/** `logcat -v long -v printable` separates complete native entries with an empty line. */
+private class LongLogcatRecords(private val emit: (String) -> Unit) {
+    private val entry = StringBuilder()
+
+    fun accept(line: String) {
+        if (line.startsWith("--------- beginning of ")) return // logcat buffer banner, not an entry
+        if (line.isEmpty()) {
+            finish()
+        } else {
+            if (entry.isNotEmpty()) entry.append('\n')
+            entry.append(line)
+        }
+    }
+
+    fun finish() {
+        if (entry.isNotEmpty()) {
+            emit(decodePrintableLogcatRecord(entry.toString()))
+            entry.setLength(0)
+        }
+    }
+}
+
+/** Decode AOSP printable's C escapes in the message, before whitespace-sensitive redaction. */
+private fun decodePrintableLogcatRecord(record: String): String {
+    val start = record.indexOf('\n') + 1
+    if (start == 0) return record
+    val decoded = StringBuilder(record.length).append(record, 0, start)
+    var index = start
+    while (index < record.length) {
+        val escaped = if (record[index] == '\\') record.getOrNull(index + 1) else null
+        val value = when (escaped) {
+            '\\' -> '\\'
+            'a' -> '\u0007'
+            'b' -> '\b'
+            't' -> '\t'
+            'n' -> '\n'
+            'v' -> '\u000B'
+            'f' -> '\u000C'
+            'r' -> '\r'
+            else -> null // Retain unknown and hex escapes as their lossless printable text.
+        }
+        if (value != null) {
+            decoded.append(value)
+            index += 2
+        } else {
+            decoded.append(record[index++])
+        }
+    }
+    return decoded.toString()
 }
 
 /** Exact UTF-8 length without allocating an encoded copy; stops once [limit] bytes are reached. */
