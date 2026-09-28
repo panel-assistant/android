@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld
 import android.content.Intent
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -197,6 +198,15 @@ class MainActivity : AppCompatActivity() {
         // choosing the launch destination. Locale still precedes the service start and launch choice.
         setupPollExecutor.execute {
             config
+            // An update can clear preferred HOME. Repair it before requesting the foreground service:
+            // if that first service start crashes, Android must still resolve HOME to the dashboard.
+            runCatching {
+                SystemController(AndroidSystemEnv(this)).applyLauncherHomePolicy(
+                    config.launcherPackage,
+                    config.dashboardPackage,
+                    config.builtInRendererReady(),
+                )
+            }.onFailure { android.util.Log.w("MainActivity", "launcher HOME policy apply failed", it) }
             handler.post {
                 if (isFinishing || isDestroyed) return@post
                 NativeLocale.apply(config.uiLanguage)
