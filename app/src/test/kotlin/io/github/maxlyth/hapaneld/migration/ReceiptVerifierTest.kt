@@ -44,6 +44,21 @@ class ReceiptVerifierTest {
 
     private fun refusal(file: File, ownId: String? = own) = ReceiptVerifier.refusal(file, ownId)
 
+    @Test fun alreadyRetiredOldHandoverRetainsOnlyItsPriorExactReceiptAuthority() {
+        val old = archive(manifest())
+        val state = MigrationState(temp.newFolder())
+        val digest = io.github.maxlyth.hapaneld.util.AppInstaller.sha256(old)
+        state.record(SuccessorMigration.Step.PULL, digest)
+        state.record(SuccessorMigration.Step.VERIFY, digest)
+        state.record(SuccessorMigration.Step.RELEASE)
+        val newIdentity = panelAssistantDiscoveryId("b".repeat(32))
+        assertNull(ReceiptVerifier.refusal(old, newIdentity, state.verifiedRetiredReceipt(old)))
+        val foreign = archive(manifest(discoveryId = newIdentity))
+        assertEquals(false, state.verifiedRetiredReceipt(foreign))
+        assertTrue(state.acceptDeviceUid("c".repeat(32)))
+        assertEquals("receipt was not written on this device", ReceiptVerifier.refusal(old, newIdentity, state.verifiedRetiredReceipt(old)))
+    }
+
     @Test fun aCompleteBackupOfThisDeviceIsAccepted() {
         assertNull(refusal(archive(manifest())))
     }

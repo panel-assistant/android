@@ -117,15 +117,15 @@
         "id": 1,
         "type": "panel_assistant/hello",
         "protocol": {
-          "min": 1,
-          "max": 2
+          "min": 3,
+          "max": 3
         },
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "app": {
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "2700d1525aa3373f316935b3ba8ea593fca486d0095ca79937ce59ca9f098dda",
+        "contract_digest": "7476a36a6910541fe60bfb0cfbffc6726b0ffcdef2873de4f32bc7446c65e7cc",
         "capabilities": [
           "state",
           "commands",

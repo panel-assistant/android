@@ -27,6 +27,51 @@ class ClonedDeviceIdentityTest {
 
     private val clonedAndroidId = "9f86d081884c7d65"
 
+    @Test fun clonedAndroidIdsHaveDistinctDiscoveryHealthAndStableInstallIdentities() {
+        val firstStore = RestoredState(emptyMap())
+        val secondStore = RestoredState(emptyMap())
+        val first = config(firstStore)
+        val second = config(secondStore)
+        first.ensureDeviceUid()
+        second.ensureDeviceUid()
+        val firstHealth = io.github.maxlyth.hapaneld.http.panelAssistantDiscoveryHealthToken(first.deviceUid, clonedAndroidId)
+        val secondHealth = io.github.maxlyth.hapaneld.http.panelAssistantDiscoveryHealthToken(second.deviceUid, clonedAndroidId)
+        fun token(health: String, name: String) = health.trim().split(" ").single { it.startsWith("$name=") }.substringAfter('=')
+        assertNotEquals(token(firstHealth, "did"), token(secondHealth, "did"))
+        assertEquals(token(firstHealth, "legacy_did"), token(secondHealth, "legacy_did"))
+        assertEquals(token(firstHealth, "did"), panelAssistantDiscoveryId(config(firstStore).deviceUid))
+        assertFalse(firstHealth.contains(clonedAndroidId))
+        assertTrue(io.github.maxlyth.hapaneld.http.panelAssistantDiscoveryHealthToken(first.deviceUid).contains(" did="))
+    }
+
+    @Test fun failedIdentityWriteRetriesTheSameIdentityAndThenSurvivesRestart() {
+        val store = RestoredState(emptyMap())
+        store.durable = false
+        val panel = config(store)
+        val first = "a".repeat(32)
+        assertTrue(runCatching { panel.ensureDeviceUid { first } }.isFailure)
+        assertEquals("", io.github.maxlyth.hapaneld.http.panelAssistantDiscoveryHealthToken(panel.deviceUid))
+        assertEquals("", config(store).deviceUid)
+        assertTrue(runCatching { panel.ensureDeviceUid { "b".repeat(32) } }.isFailure)
+        store.durable = true
+        assertEquals(first, panel.ensureDeviceUid { "c".repeat(32) })
+        assertEquals(first, config(store).deviceUid)
+    }
+
+    @Test fun signedHandoverAdoptsDurablyButCannotReplaceAnotherInstallation() {
+        val store = RestoredState(emptyMap())
+        val panel = config(store)
+        store.durable = false
+        assertFalse(panel.adoptMigrationDeviceUid("a".repeat(32)))
+        assertEquals("", panel.deviceUid)
+        store.durable = true
+        assertTrue(panel.adoptMigrationDeviceUid("a".repeat(32)))
+        val reopened = config(store)
+        assertEquals("a".repeat(32), reopened.ensureDeviceUid())
+        assertFalse(reopened.adoptMigrationDeviceUid("b".repeat(32)))
+        assertEquals("a".repeat(32), reopened.deviceUid)
+    }
+
     // --- a cloned ANDROID_ID across two simulated panels ------------------------------------------
 
     @Test fun twoPanelsSharingAnAndroidIdMintDistinctIdentities() {
@@ -253,7 +298,10 @@ class ClonedDeviceIdentityTest {
 
         override fun initialize(): Map<String, Any> = values.toMap()
 
+        var durable = true
+
         override fun persist(mutation: StateMutation): Boolean {
+            if (!durable) return false
             if (mutation.clear) values.clear()
             mutation.changes.forEach { (key, value) ->
                 if (value == null) values.remove(key) else values[key] = value
@@ -262,6 +310,7 @@ class ClonedDeviceIdentityTest {
         }
 
         override fun replace(snapshot: Map<String, Any>): Boolean {
+            if (!durable) return false
             values.clear()
             values.putAll(snapshot)
             return true
