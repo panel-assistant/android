@@ -57,6 +57,50 @@ class SystemControllerTest {
     private val DASH_HOME = ActivityRef(OWN, "io.github.maxlyth.hapaneld.DashboardActivity")
 
     // ---------- reboot ----------
+    @Test fun nativeActionAvailabilityFollowsExecutableRoutes() {
+        val noPrivilege = SystemController(
+            FakeSystemEnv(installed = setOf(MIN)),
+            FakeRootShell(available = false),
+            FakeDaemon(available = false),
+        )
+        assertFalse(noPrivilege.canReboot())
+        assertFalse(noPrivilege.canReloadDashboard(MIN))
+        assertTrue(noPrivilege.canReloadDashboard(BUILTIN))
+
+        val helper = sc(FakeSystemEnv(installed = setOf(MIN)), daemon = emptyMap(), su = false).first
+        assertTrue(helper.canReboot())
+        assertTrue(helper.canReloadDashboard(MIN))
+
+        val root = SystemController(
+            FakeSystemEnv(installed = setOf(MIN)),
+            FakeRootShell(available = true),
+            FakeDaemon(available = false),
+        )
+        assertTrue(root.canReboot())
+        assertTrue(root.canReloadDashboard(MIN))
+    }
+
+    @Test fun nativeDescriptorChecksShareOnePrivilegeProbeAcrossLiveWakes() {
+        val helper = FakeDaemon(available = false)
+        val root = FakeRootShell(available = true)
+        val controller = SystemController(FakeSystemEnv(installed = setOf(MIN)), root, helper)
+
+        repeat(20) {
+            assertTrue(controller.canReboot())
+            assertTrue(controller.canReloadDashboard(MIN))
+        }
+        assertEquals(1, helper.availabilityChecks)
+        assertEquals(1, root.availabilityChecks)
+    }
+
+    @Test fun failedActionRoutesDoNotReportAnAppliedPress() {
+        val (reboot, _, _) = rebootController(DaemonLongResult.Reply("ERR"), su = false)
+        assertFalse(reboot.reboot())
+
+        val (reload, _, _) = sc(FakeSystemEnv(installed = setOf(MIN)), daemon = mapOf("RELOAD $MIN" to "ERR"), su = false)
+        assertFalse(reload.reloadDashboard(MIN))
+    }
+
     /** Build a controller whose helper answers REBOOT AWAIT with an exact [DaemonLongResult]. */
     private fun rebootController(
         outcome: DaemonLongResult? = null,
@@ -192,6 +236,21 @@ class SystemControllerTest {
         assertTrue(env.directStarts.isEmpty())
     }
 
+    @Test fun reloadRefusesWhenHelperBlocksRelaunchAfterSuForceStop() {
+        val component = "$MIN/.Main"
+        val env = FakeSystemEnv(installed = setOf(MIN), launchers = mapOf(MIN to component))
+        val (controller, root, daemon) = sc(
+            env,
+            daemon = mapOf("RELOAD $MIN" to "ERR", "START $component" to "BUSY"),
+            su = true,
+        )
+
+        assertFalse(controller.reloadDashboard(MIN))
+        assertEquals(listOf("RELOAD $MIN", "START $component"), daemon.sent)
+        assertEquals(listOf("am force-stop $MIN"), root.ran)
+        assertTrue(env.directStarts.isEmpty())
+    }
+
     @Test fun reloadViaSuForceStopThenPrivilegedStart() {
         val env = FakeSystemEnv(installed = setOf(MIN), launchers = mapOf(MIN to "$MIN/.Main"))
         val (c, root, _) = sc(env, daemon = null, su = true)
@@ -210,7 +269,7 @@ class SystemControllerTest {
     @Test fun reloadBlankAutoUsesBuiltin() {
         val env = FakeSystemEnv()
         val (c, root, d) = sc(env, daemon = null)
-        c.reloadDashboard("")
+        assertTrue(c.reloadDashboard(""))
         assertTrue(
             "built-in renderer relaunched via privileged or direct route",
             root.ran.contains("am start -n $OWN/.DashboardActivity") ||
@@ -688,9 +747,33 @@ class SystemControllerTest {
     @Test fun builtinReloadRelaunchesActivity() {
         // No force-stop / monkey for builtin — a singleTask relaunch is the reload (onNewIntent).
         val (c, root, d) = sc(FakeSystemEnv(), daemon = mapOf("RELOAD $BUILTIN" to "OK"))
-        c.reloadDashboard(BUILTIN)
+        assertTrue(c.reloadDashboard(BUILTIN))
         assertTrue("relaunch via START", d.sent.contains("START $OWN/.DashboardActivity"))
         assertFalse("no RELOAD force-stop path", d.sent.contains("RELOAD $BUILTIN"))
+    }
+
+    @Test fun builtinReloadReportsHelperBusyWithoutBypassingIt() {
+        val env = FakeSystemEnv()
+        val (c, root, d) = sc(env, daemon = mapOf("START $OWN/.DashboardActivity" to "BUSY"))
+
+        assertFalse(c.reloadDashboard(BUILTIN, "manual retry"))
+        assertEquals(listOf("START $OWN/.DashboardActivity"), d.sent)
+        assertTrue(root.ran.isEmpty())
+        assertTrue(env.directStarts.isEmpty())
+        assertFalse(BuiltinDashboard.consumeReloadRequest())
+        assertEquals("", BuiltinDashboard.consumeReloadReason())
+    }
+
+    @Test fun builtinReloadReportsFailedDirectStart() {
+        val env = FakeSystemEnv(directStartSucceeds = false)
+        val (c, root, d) = sc(env, daemon = emptyMap(), su = false)
+
+        assertFalse(c.reloadDashboard(BUILTIN, "manual retry"))
+        assertEquals(listOf("START $OWN/.DashboardActivity"), d.sent)
+        assertTrue(root.ran.contains("am start -n $OWN/.DashboardActivity"))
+        assertEquals(listOf("$OWN/.DashboardActivity"), env.directStarts)
+        assertFalse(BuiltinDashboard.consumeReloadRequest())
+        assertEquals("", BuiltinDashboard.consumeReloadReason())
     }
 
     @Test fun builtinEnsureHomeSetsDashboardActivityFromResolver() {
