@@ -12,7 +12,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /** How an MQTT state payload becomes a typed value on the native transport (protocol section 7). */
-internal enum class PanelAssistantValueKind { BOOLEAN, NUMBER, OPTION, TEXT, LIGHT, UPDATE }
+internal enum class PanelAssistantValueKind { BOOLEAN, NUMBER, OPTION, TEXT, LIGHT, UPDATE, BUTTON }
 
 /** One channel as the `hello` describes it. Codes and facts only, never display text. */
 internal data class PanelAssistantChannelDescriptor(
@@ -190,6 +190,14 @@ internal object PanelAssistantChannelCatalog {
         PanelAssistantChannelDescriptor(
             channel = "home_dashboard", platform = "text", translationKey = "home_dashboard",
             uniqueSuffix = "home_dashboard", kind = PanelAssistantValueKind.TEXT, entityCategory = "config",
+        ),
+        PanelAssistantChannelDescriptor(
+            channel = "reload", platform = "button", translationKey = "reload",
+            uniqueSuffix = "reload", kind = PanelAssistantValueKind.BUTTON,
+        ),
+        PanelAssistantChannelDescriptor(
+            channel = "reboot", platform = "button", translationKey = "reboot",
+            uniqueSuffix = "reboot", kind = PanelAssistantValueKind.BUTTON, deviceClass = "restart",
         ),
         PanelAssistantChannelDescriptor(
             channel = "storage_health", platform = "sensor", translationKey = "storage_health",

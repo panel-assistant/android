@@ -213,6 +213,21 @@ class PanelAssistantCommandProcessorTest {
         assertEquals("failed" to "hardware_unavailable", outcome(fixture.answers()))
     }
 
+    @Test fun `native action press submits one PRESS command and rejects a value`() {
+        val fixture = Fixture(channels = CHANNELS + requireNotNull(PanelAssistantChannelCatalog.describe("reload")))
+        val frame = JSONObject().put("id", 1).put("type", "event").put("event", JSONObject()
+            .put("kind", "command").put("command_id", "press").put("session", "session-token")
+            .put("channel", "reload").put("value", JSONObject.NULL).put("deadline_ms", 10_000))
+        fixture.processor.onCommand(PanelAssistantTransportProtocol.sessionEvent(frame, 1L) as PanelAssistantSessionEvent.Command)
+        assertEquals("reload" to "PRESS", fixture.sink.submitted.single().command.let { it.channel to it.payload })
+        fixture.sink.submitted.single().done(PanelAssistantCommandResult.Applied)
+        assertEquals("applied" to null, outcome(fixture.answers()))
+
+        fixture.processor.onCommand(command("bad", "reload", true))
+        assertEquals("refused" to "invalid_value", outcome(fixture.answers()))
+        assertEquals(1, fixture.sink.submitted.size)
+    }
+
     private class Submitted(val command: PanelAssistantCommand, val done: (PanelAssistantCommandResult) -> Unit)
 
     private class FakeSink : PanelAssistantCommandSink {
@@ -232,14 +247,17 @@ class PanelAssistantCommandProcessorTest {
         }
     }
 
-    private class Fixture(session: PanelAssistantSession = SESSION) {
+    private class Fixture(
+        session: PanelAssistantSession = SESSION,
+        channels: List<PanelAssistantChannelDescriptor> = CHANNELS,
+    ) {
         var now = 0L
         val sink = FakeSink()
         private var nextId = 100L
         val processor = PanelAssistantCommandProcessor(
             sink = sink,
             session = session,
-            channels = CHANNELS,
+            channels = channels,
             monotonicMillis = { now },
             approvalTtlMs = TTL_MS,
             log = {},
