@@ -20,6 +20,17 @@ fail_test() {
   printf 'not ok - %s\n' "$1" >&2
 }
 
+# The shared release corpus drives the tag-gate checks below. A missing, empty or misshapen corpus
+# ends the suite here, before any check, so the gates can never pass over zero vectors.
+if ! release_tag_vectors="$(python3 -c 'import json, sys
+tags = json.load(open(sys.argv[1]))["tags"]
+assert {t["kind"] for t in tags} == {"stable", "rc", "build", "refused"}, "every tag kind, and no other"
+assert all(isinstance(t["tag"], str) and t["tag"] and not set(t["tag"]) & set("\t\n") for t in tags)
+for t in tags: print(t["kind"] + "\t" + t["tag"])' "$ROOT/scripts/tests/fixtures/release-identity-corpus.json")"; then
+  printf 'Bail out! the shared release corpus could not be loaded\n' >&2
+  exit 1
+fi
+
 extract_named_step() {
   step_name="$1"
   awk -v wanted="$step_name" '
@@ -533,8 +544,7 @@ tag_gate_disagreements="$(
     while IFS=$'\t' read -r kind tag; do
       verdict="$(RELEASE_TAG="$tag" bash -c "$gate echo refused; else echo accepted; fi")"
       case "$kind:$verdict" in stable:accepted|rc:accepted|build:refused|refused:refused) ;; *) echo "$kind $tag -> $verdict" ;; esac
-    done < <(python3 -c 'import json, sys
-for t in json.load(open(sys.argv[1]))["tags"]: print(t["kind"] + "\t" + t["tag"])' "$ROOT/scripts/tests/fixtures/release-identity-corpus.json")
+    done <<<"$release_tag_vectors"
   done <<<"$tag_gates"
 )"
 if [ "$(grep -c . <<<"$tag_gates")" -eq 2 ] && [ -z "$tag_gate_disagreements" ]; then
@@ -542,6 +552,17 @@ if [ "$(grep -c . <<<"$tag_gates")" -eq 2 ] && [ -z "$tag_gate_disagreements" ];
 else
   printf '# %s\n' "$tag_gate_disagreements"
   fail_test "both release tag gates agree with the shared release corpus"
+fi
+# Without the shared corpus the suite must fail rather than pass its tag checks over nothing. The copy
+# differs only by the missing corpus; the file test stops a copy whose load went silent from recursing.
+mkdir -p "$TMP/no-corpus"
+cp -R "$ROOT/scripts" "$ROOT/.github" "$TMP/no-corpus/"
+rm -f "$TMP/no-corpus/scripts/tests/fixtures/release-identity-corpus.json"
+if [ ! -f "$ROOT/scripts/tests/fixtures/release-identity-corpus.json" ] || \
+   RELEASE_WORKFLOW_UNDER_TEST="$WORKFLOW" bash "$TMP/no-corpus/scripts/tests/release_workflow_test.sh" >/dev/null 2>&1; then
+  fail_test "the suite fails when the shared release corpus is missing"
+else
+  pass "the suite fails when the shared release corpus is missing"
 fi
 if ! grep -Eq '^[[:space:]]*if:[[:space:]]*(\$\{\{[[:space:]]*)?false' <<<"$descriptor_step_yaml$proof_step_yaml$final_step_yaml" && \
    ! grep -Eq '^[[:space:]]*continue-on-error:[[:space:]]*true' <<<"$descriptor_step_yaml$proof_step_yaml$final_step_yaml" && \
