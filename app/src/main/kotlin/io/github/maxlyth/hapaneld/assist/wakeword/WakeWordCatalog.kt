@@ -60,7 +60,8 @@ class WakeWordCatalog(
         val imported = importDir.listFiles { file -> file.isDirectory && ID.matches(file.name) }.orEmpty()
             .map { it.name }.filter { it !in bundledIds }.sorted()
             .mapNotNull { id -> runCatching { importedConfig(id) }.getOrNull() }
-        return found + imported
+            .filter { unfit(it) == null }
+        return (found + imported).take(MAX_WAKE_WORDS)
     }
 
     /** Load a model by id with the native engine; null when the id is unknown or the engine refuses it. */
@@ -97,6 +98,11 @@ class WakeWordCatalog(
         } catch (invalid: IllegalArgumentException) {
             return ImportResult.Refused(invalid.message ?: "the .json file is not a microWakeWord manifest")
         }
+        unfit(config)?.let { return ImportResult.Refused(it) }
+        if (config.modelFile == "$id$JSON") return ImportResult.Refused("the model file cannot share the manifest's name")
+        if (!File(importDir, id).isDirectory && available().size >= MAX_WAKE_WORDS) {
+            return ImportResult.Refused("a panel holds at most $MAX_WAKE_WORDS wake words")
+        }
         if (!accepts(direct(model), config)) {
             return ImportResult.Refused("the model was not accepted by the wake-word engine")
         }
@@ -128,6 +134,23 @@ class WakeWordCatalog(
 
     companion object {
         const val IMPORT_DIR = "wakeword"
+
+        /** Home Assistant's own bounds on a satellite's wake words; one outside them refuses them all. */
+        const val MAX_WAKE_WORDS = 32
+        private const val MAX_PHRASE = 64
+        private const val MAX_LANGUAGES = 16
+        private const val MAX_LANGUAGE = 16
+        private val CONTROL = Regex("[\\x00-\\x1f\\x7f]")
+
+        /** Why Home Assistant would refuse to list [config], or null when it fits. */
+        internal fun unfit(config: MicroWakeWordModelConfig): String? = when {
+            config.wakeWord.length > MAX_PHRASE || CONTROL.containsMatchIn(config.wakeWord) ->
+                "the wake word phrase must be at most $MAX_PHRASE plain characters"
+            config.trainedLanguages.size > MAX_LANGUAGES ||
+                config.trainedLanguages.any { it.length > MAX_LANGUAGE || CONTROL.containsMatchIn(it) } ->
+                "the manifest lists too many trained languages, or one that is too long"
+            else -> null
+        }
         private const val JSON = ".json"
         private const val MAX_MANIFEST_BYTES = 16 * 1024
         private const val MAX_MODEL_BYTES = 2 * 1024 * 1024
