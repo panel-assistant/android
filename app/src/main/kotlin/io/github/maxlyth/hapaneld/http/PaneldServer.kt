@@ -154,7 +154,6 @@ import io.github.maxlyth.hapaneld.util.CompanionOperationStatus
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.GuardDbArmCoordinator
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenance
-import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
 import io.github.maxlyth.hapaneld.util.guardDbSettingsAuthorityStore
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
 import io.github.maxlyth.hapaneld.util.guardDbBootNonce
@@ -163,7 +162,6 @@ import io.github.maxlyth.hapaneld.util.guardDbTerminalRetirementStore
 import io.github.maxlyth.hapaneld.util.inspectGuardDbCandidate
 import io.github.maxlyth.hapaneld.util.HaLink
 import io.github.maxlyth.hapaneld.util.LogShipEndpoint
-import io.github.maxlyth.hapaneld.util.isLocalSource
 import io.github.maxlyth.hapaneld.util.isLoopbackPeer
 import io.github.maxlyth.hapaneld.util.isRoutable
 import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
@@ -186,7 +184,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.http.parseQueryString
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
@@ -203,7 +200,6 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.Route
-import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -2017,78 +2013,11 @@ class PaneldServer internal constructor(
         // Bind the IPv6 wildcard "::" — on Android this is dual-stack (net.ipv6.bindv6only=0), so the
         // server answers on both IPv6 and IPv4, instead of the IPv4-only default 0.0.0.0.
         val server = scope.embeddedServer(CIO, port = config.httpPort, host = "::") {
-            // 0.8.1 security: refuse any request whose SOURCE is not LAN-local. The unauthenticated control
-            // surface answers on the panel's globally-routable IPv6 (dual-stack "::"), so without this it can
-            // be reached from the internet whenever the home router doesn't firewall inbound IPv6 — and we
-            // must not depend on that. Allow loopback / RFC1918 / link-local / ULA; global/public source 403s.
-            // (Known limitation to iterate on: a LAN peer reaching the panel via its *global* v6 uses a global
-            // source and is also rejected — use IPv4 on-LAN; a same-/64-prefix exception is the next refinement.)
-            intercept(ApplicationCallPipeline.Plugins) {
-                // OAuth callback URLs carry short-lived state/code query values. Apply privacy headers before
-                // any source, CSRF, or Host rejection can finish the pipeline as well as on routed responses.
-                if (call.request.uri.substringBefore('?') == HA_OAUTH_CALLBACK_PATH) call.noStoreHaOAuth()
-                call.response.headers.append("X-Content-Type-Options", "nosniff")
-                call.response.headers.append("X-Frame-Options", "DENY")
-                call.response.headers.append("Content-Security-Policy", "frame-ancestors 'none'")
-                // Use origin.remoteAddress (the RAW peer IP), NOT remoteHost — remoteHost reverse-resolves to
-                // a hostname, and forward-resolving that picks a (possibly global) address that fails the
-                // RFC1918 check, 403-ing legitimate LAN clients. Verified: remoteAddress returns 192.168.x etc.
-                if (!isLocalSource(call.request.origin.remoteAddress)) {
-                    call.respondText("forbidden\n", status = HttpStatusCode.Forbidden)
-                    return@intercept finish()
-                }
-                // Presentation only: parsed once for the page builders, never logged, and never consulted by a
-                // guard. Only a valid switch varies the response.
-                val embed = call.admitEmbedMode()
-                if (GuardDbProcessAdmission.maintenanceRequired()) {
-                    // The request which durably created INTENT has already crossed this interceptor.
-                    // Every later request belongs to a writer-owning server which is being retired;
-                    // the successor's narrow control plane is the sole admitted surface.
-                    call.respondText("guard database maintenance owns this process\n", status = HttpStatusCode.Locked)
-                    return@intercept finish()
-                }
-                // While guided setup is waiting on a person, every HTML page follows the panel into the
-                // wizard — a laptop tab opened before the first run began otherwise keeps showing the old
-                // page and never presents the wizard (hardware review). After the source gate on purpose:
-                // page redirects are a LAN-client courtesy, never a response to an unverified peer.
-                // Scope: exact page paths only (API, assets, OAuth untouched); a `wiz_escape` cookie —
-                // set by the wizard's own "Skip and exit" link — is honoured so the escape hatch cannot
-                // become a trap.
-                // Panel Assistant's embedded view (EmbedMode) is never redirected: its setup tab stays in
-                // the tab bar, and no escape cookie is written on Home Assistant's origin.
-                if (embed == null && call.request.uri.substringBefore('?') in WIZARD_REDIRECT_PAGES &&
-                    call.request.cookies["wiz_escape"] == null && setupNeedsUser()
-                ) {
-                    call.respondRedirect(setupRedirectLocation(call))
-                    return@intercept finish()
-                }
-                // CSRF guard: a LAN browser on a malicious page must not be able to silently drive a
-                // state-changing endpoint (e.g. POST /config → MQTT takeover). Cross-origin writes carry
-                // a mismatched Origin/Referer and are refused; same-origin UI fetches and header-less API
-                // clients (curl / HA rest_command) pass. See OriginGuard.
-                if (!OriginGuard.allowed(
-                        call.request.origin.method.value,
-                        call.request.headers["Origin"],
-                        call.request.headers["Referer"],
-                        call.request.headers["Host"],
-                    )
-                ) {
-                    call.respondText("cross-origin refused\n", status = HttpStatusCode.Forbidden)
-                    return@intercept finish()
-                }
-                // Anti-DNS-rebinding: pin the Host header to unrebindable values (IP / localhost /
-                // *.local) + any configured names, so a rebound hostname can't read secrets or drive
-                // the surface as "same-origin". See OriginGuard.hostAllowed.
-                if (!OriginGuard.hostAllowed(call.request.headers["Host"], config.httpAllowedHosts)) {
-                    call.respondText("host not allowed\n", status = HttpStatusCode.Forbidden)
-                    return@intercept finish()
-                }
-                // Panel Assistant's proof that a Home Assistant administrator made this request through the
-                // sidebar. Verified after every other guard and before any handler; a present proof that fails
-                // is refused here and never falls through to the request's unproven handling.
-                if (!call.admitEmbedProof(PanelAssistantEmbedKeys.instance)) return@intercept finish()
-            }
-            routing {
+            paneldRoot(
+                allowedHosts = { config.httpAllowedHosts },
+                setupNeedsUser = ::setupNeedsUser,
+                setupRedirectLocation = ::setupRedirectLocation,
+            ) {
                 handBackHomeRoutes(handBackHomeDependencies())
                 controlPlaneRoutes(
                     ControlPlaneRouteDependencies(
