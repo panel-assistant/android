@@ -1171,14 +1171,14 @@ browserTest('Configure badges the experimental cards and leaves Voice and settle
   const schema = [
     { key: 'voice_enabled', label: 'Voice assistant', group: 'Voice', type: 'BOOL', available: true },
     { key: 'voice_mic_gain_db', label: 'Microphone gain (dB)', group: 'Voice', type: 'INT', min: -24, max: 24, available: true },
-    { key: 'camera_enabled', label: 'Camera', group: 'Camera', type: 'BOOL', available: true },
+    { key: 'screen_brightness', label: 'Brightness', group: 'Display', type: 'INT', min: 0, max: 255, available: true },
     { key: 'dashboard_zoom', label: 'Zoom', group: 'Dashboard', type: 'INT', min: 50, max: 200, available: true },
   ];
   const harness = await startHarness((path, request) => {
     if (path === '/api/v1/config/schema') return json(schema);
     if (path === '/api/v1/config') {
       if (request.method === 'POST') return json({});
-      return json({ settings: { voice_enabled: 'false', voice_mic_gain_db: '0', camera_enabled: 'false', dashboard_zoom: '100' }, ha_expose: {}, ha_auth: {} });
+      return json({ settings: { voice_enabled: 'false', voice_mic_gain_db: '0', screen_brightness: '128', dashboard_zoom: '100' }, ha_expose: {}, ha_auth: {} });
     }
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio') return json({ present: false });
@@ -1192,12 +1192,12 @@ browserTest('Configure badges the experimental cards and leaves Voice and settle
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
 
-  const cameraBadge = page.locator('[data-config-group="Camera"] .cardbadge');
-  await assert.doesNotReject(cameraBadge.waitFor());
-  assert.equal(await cameraBadge.textContent(), 'experimental');
+  const displayBadge = page.locator('[data-config-group="Display"] .cardbadge');
+  await assert.doesNotReject(displayBadge.waitFor());
+  assert.equal(await displayBadge.textContent(), 'experimental');
 
   // The pill must be visibly distinct, not merely present: an unstyled span would read as plain text.
-  const styled = await cameraBadge.evaluate((node) => {
+  const styled = await displayBadge.evaluate((node) => {
     const background = getComputedStyle(node).backgroundColor;
     return background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent';
   });
