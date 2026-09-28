@@ -96,6 +96,17 @@ object SettingsRegistry {
      */
     const val RESPONSE_PERCENT_KEY = "auto_brightness_response_percent"
 
+    /**
+     * Keys earlier builds wrote into backups and bundles that no current setting owns. A restore drops
+     * them rather than refusing the whole backup: the voice assistant's MQTT switch and state sensor
+     * were removed without a schema change, so a backup from the build before still carries them.
+     */
+    val RETIRED_KEYS: Set<String> = setOf(
+        "voice_state",
+        "${HA_EXPOSE_PREFIX}voice_enabled",
+        "${HA_EXPOSE_PREFIX}voice_state",
+    )
+
     /** The retired schema-5 key. Read only by migration, and never registered as a current setting. */
     const val LEGACY_SENSITIVITY_KEY = "auto_brightness_sensitivity"
 

@@ -56,6 +56,23 @@ class WakeWordCatalogTest {
         assertEquals(listOf("okay_nabu"), catalog().available().map { it.id })
     }
 
+    /** Home Assistant refuses a satellite's whole wake word list when one entry is outside its bounds. */
+    @Test fun `a model Home Assistant could not list is refused, and the panel never holds more than it can list`() {
+        val long = catalog().import("long", manifest("x".repeat(65), "long.tflite").toByteArray(), byteArrayOf(1))
+        assertTrue(long is WakeWordCatalog.ImportResult.Refused)
+
+        repeat(WakeWordCatalog.MAX_WAKE_WORDS - 1) { i ->
+            val ok = catalog().import("word_$i", manifest("Word $i", "w.tflite").toByteArray(), byteArrayOf(1))
+            assertTrue("import $i: $ok", ok is WakeWordCatalog.ImportResult.Imported)
+        }
+        val over = catalog().import("one_more", manifest("One more", "w.tflite").toByteArray(), byteArrayOf(1))
+        assertTrue(over is WakeWordCatalog.ImportResult.Refused)
+        // Replacing one already held is still allowed at the limit.
+        val replaced = catalog().import("word_0", manifest("Word zero", "w.tflite").toByteArray(), byteArrayOf(2))
+        assertTrue(replaced is WakeWordCatalog.ImportResult.Imported)
+        assertEquals(WakeWordCatalog.MAX_WAKE_WORDS, catalog().available().size)
+    }
+
     @Test fun `a name with nothing usable in it is refused`() {
         assertEquals(null, WakeWordCatalog.idFor("---.tflite"))
         assertEquals(null, WakeWordCatalog.idFor("9lives"))
