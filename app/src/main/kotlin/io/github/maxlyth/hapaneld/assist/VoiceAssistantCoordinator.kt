@@ -64,6 +64,7 @@ data class WakeWordActivation(val modelId: String, val phrase: String, val heard
 /** Arms the microWakeWord engine on the models [catalog] can load, bundled or imported. */
 internal class MicroWakeWordEngineFactory(
     private val catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
+    private val log: (String) -> Unit = {},
 ) : WakeWordEngineFactory {
     override fun create(modelIds: List<String>, onActivation: (WakeWordActivation) -> Unit): WakeWordEngine? {
         val models = modelIds.mapNotNull(catalog::load)
@@ -72,6 +73,7 @@ internal class MicroWakeWordEngineFactory(
             models,
             { hit -> onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs)) },
             maxActive = models.size,
+            nearMiss = { id, mean -> log("wake word $id heard at ${"%.2f".format(mean)}, short of its cutoff") },
         )
         return object : WakeWordEngine, PcmConsumer by detector {
             override fun close() = detector.close()

@@ -19,6 +19,22 @@ internal object VoiceAttention {
     @Volatile
     var ripple: (() -> Unit)? = null
 
+    /** Set by the dashboard while it is resumed: tint the edges while the assistant is attending. */
+    @Volatile
+    var listening: ((Boolean) -> Unit)? = null
+
+    @Volatile
+    var attending = false
+        private set
+
+    /** The assistant's phase changed; the dashboard shows whether it is still attending. */
+    fun phase(state: VoiceState) {
+        val now = state == VoiceState.LISTENING || state == VoiceState.PROCESSING || state == VoiceState.RESPONDING
+        if (now == attending) return
+        attending = now
+        listening?.invoke(now)
+    }
+
     private var pool: SoundPool? = null
 
     @Volatile

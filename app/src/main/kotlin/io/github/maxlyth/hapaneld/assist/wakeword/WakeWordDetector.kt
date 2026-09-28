@@ -36,6 +36,11 @@ class WakeWordDetector(
     maxActive: Int = DEFAULT_MAX_ACTIVE,
     private val cooldownChunks: Int = DEFAULT_COOLDOWN_CHUNKS,
     private val warmupInferences: Int = DEFAULT_WARMUP_INFERENCES,
+    /**
+     * Hears a model's window mean when it comes within reach of its cutoff without firing, at most once a
+     * second per model, so a wake word that is heard but never quite fires can be diagnosed on the panel.
+     */
+    private val nearMiss: (modelId: String, mean: Float) -> Unit = { _, _ -> },
 ) : PcmConsumer, AutoCloseable {
 
     /** True once every loaded model has stopped: the listener is armed but can no longer hear. */
@@ -46,6 +51,7 @@ class WakeWordDetector(
         var next = 0
         var inferences = 0L
         var cooldownRemaining = 0
+        var quietFrames = 0
 
         fun clearWindow() {
             window.fill(0)
@@ -84,6 +90,11 @@ class WakeWordDetector(
             if (slot.inferences <= warmupInferences) continue
             if (coolingDown) continue
             val mean = slot.window.sum().toFloat() / (slot.window.size * WakeWordScorer.MAX_PROBABILITY)
+            if (slot.quietFrames > 0) slot.quietFrames--
+            if (mean < slot.model.config.probabilityCutoff && mean >= NEAR_MISS_FLOOR && slot.quietFrames == 0) {
+                slot.quietFrames = NEAR_MISS_QUIET_FRAMES
+                nearMiss(slot.model.config.id, mean)
+            }
             if (mean >= slot.model.config.probabilityCutoff) {
                 slot.clearWindow()
                 slot.cooldownRemaining = cooldownChunks
@@ -112,5 +123,9 @@ class WakeWordDetector(
 
         /** Matches ESPHome's MIN_SLICES_BEFORE_DETECTION. */
         const val DEFAULT_WARMUP_INFERENCES = 100
+
+        /** A window mean at or above this, short of the cutoff, is worth a diagnostic line. */
+        const val NEAR_MISS_FLOOR = 0.5f
+        private const val NEAR_MISS_QUIET_FRAMES = 100
     }
 }
