@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.view.View
 
 /**
@@ -14,6 +15,7 @@ import android.view.View
  */
 class ListeningGlowView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val path = Path()
     private var color = Color.parseColor("#00FF88")
     private var animator: ValueAnimator? = null
     private var pulse: ValueAnimator? = null
@@ -73,19 +75,21 @@ class ListeningGlowView(context: Context) : View(context) {
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
-        // Nested rounded outlines, strongest at the edge and fading inward, so the corners curve with the
-        // tint instead of meeting at a mitred seam.
+        // Stacked frames, each filled from the screen edge in to a rounded inner edge, so the tint reaches
+        // right into the corners and only its fading inner edge curves. Each frame's opacity is chosen so
+        // the stack builds the falloff, strongest at the edge.
         val depth = minOf(w, h) * DEPTH_FRACTION
         val step = depth / STEPS
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = step + 1f
+        val radius = depth * CORNER_FACTOR
+        paint.style = Paint.Style.FILL
         for (i in 0 until STEPS) {
-            val inset = step * i + step / 2
-            val fade = 1f - i.toFloat() / STEPS
-            paint.color = Color.argb((EDGE_ALPHA * fade * fade).toInt(), Color.red(color), Color.green(color), Color.blue(color))
-            // A gentle curve: the outermost outline turns on about the tint's own width, inner ones less.
-            val radius = (depth * CORNER_FACTOR - inset).coerceAtLeast(0f)
-            canvas.drawRoundRect(inset, inset, w - inset, h - inset, radius, radius, paint)
+            val inset = step * (i + 1)
+            path.reset()
+            path.fillType = Path.FillType.EVEN_ODD
+            path.addRect(0f, 0f, w, h, Path.Direction.CW)
+            path.addRoundRect(inset, inset, w - inset, h - inset, radius, radius, Path.Direction.CW)
+            paint.color = Color.argb(LAYER_ALPHA[i], Color.red(color), Color.green(color), Color.blue(color))
+            canvas.drawPath(path, paint)
         }
     }
 
@@ -99,8 +103,21 @@ class ListeningGlowView(context: Context) : View(context) {
         const val DEPTH_FRACTION = 0.14f
         const val EDGE_ALPHA = 150
         const val STEPS = 24
-        const val CORNER_FACTOR = 1.2f
+        /** The inner edge's corner radius, as a share of the tint's depth: a soft corner, not a curve. */
+        const val CORNER_FACTOR = 0.4f
         const val PULSE_LOW = 0.45f
         const val PULSE_MS = 900L
+
+        /**
+         * Frame i covers every band from the edge to band i, so band j shows every frame from j inward.
+         * Solving for each frame's opacity gives band j a total of EDGE_ALPHA times (1 - j / STEPS) squared.
+         */
+        val LAYER_ALPHA = IntArray(STEPS) { i ->
+            fun target(band: Int): Float {
+                val fade = 1f - band.toFloat() / STEPS
+                return EDGE_ALPHA / 255f * fade * fade
+            }
+            ((1f - (1f - target(i)) / (1f - target(i + 1))) * 255f).toInt().coerceIn(0, 255)
+        }
     }
 }
