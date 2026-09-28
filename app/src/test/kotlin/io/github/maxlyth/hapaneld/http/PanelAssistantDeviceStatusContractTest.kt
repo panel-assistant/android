@@ -16,6 +16,23 @@ class PanelAssistantDeviceStatusContractTest {
         assertEquals(" vc=909", versionCodeHealthToken(909))
     }
 
+    @Test fun homeProofIsAnExplicitFreshStatusRequest() {
+        val endpoint = openApi.getJSONObject("paths").getJSONObject("/api/v1/status").getJSONObject("get")
+        val params = endpoint.getJSONArray("parameters")
+        assertTrue((0 until params.length()).any { params.getJSONObject(it).optString("name") == "home_proof" })
+        val schema = endpoint.getJSONObject("responses").getJSONObject("200")
+            .getJSONObject("content").getJSONObject("application/json").getJSONObject("schema")
+        assertFalse((0 until schema.getJSONArray("required").length()).any {
+            schema.getJSONArray("required").getString(it) == "home_ui"
+        })
+        assertEquals("#/components/schemas/HomeUiProof",
+            schema.getJSONObject("properties").getJSONObject("home_ui").getString("\$ref"))
+        val proof = openApi.getJSONObject("components").getJSONObject("schemas").getJSONObject("HomeUiProof")
+        assertFalse(proof.getBoolean("additionalProperties"))
+        assertEquals(listOf("state", "reason", "evidence"),
+            (0 until proof.getJSONArray("required").length()).map { proof.getJSONArray("required").getString(it) })
+    }
+
     @Test fun openApiKeepsTheProjectionAdditiveAndStrictlyBounded() {
         val statusSchema = openApi.getJSONObject("paths").getJSONObject("/api/v1/status")
             .getJSONObject("get").getJSONObject("responses").getJSONObject("200")

@@ -56,6 +56,47 @@ class SystemControllerTest {
     private val BUILTIN = SystemController.BUILTIN_DASHBOARD
     private val DASH_HOME = ActivityRef(OWN, "io.github.maxlyth.hapaneld.DashboardActivity")
 
+    @Test fun homeUiProofRequiresForegroundDashboardAndResolvedHome() {
+        val ready = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = true).first
+            .homeUiProof("", adminUiVisible = false)
+        assertEquals("ready", ready.state)
+        assertEquals("dashboard_foreground", ready.reason)
+
+        val chooser = sc(FakeSystemEnv(default = ActivityRef("android", "com.android.internal.app.ResolverActivity")),
+            builtinForeground = true).first.homeUiProof("", adminUiVisible = false)
+        assertEquals("blocked", chooser.state)
+        assertEquals("home_resolver", chooser.reason)
+        val chooserOverAdmin = sc(FakeSystemEnv(default = ActivityRef("android", "com.android.internal.app.ResolverActivity"))).first
+            .homeUiProof("", adminUiVisible = true)
+        assertEquals("blocked", chooserOverAdmin.state)
+
+        val covered = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = false).first
+            .homeUiProof("", adminUiVisible = false)
+        assertEquals("blocked", covered.state)
+        assertEquals("dashboard_background", covered.reason)
+
+        val unknown = sc(FakeSystemEnv(default = null), builtinForeground = true).first
+            .homeUiProof("", adminUiVisible = false)
+        assertEquals("unknown", unknown.state)
+        assertEquals("home_unresolved", unknown.reason)
+    }
+
+    @Test fun homeUiProofAllowsOnlyVisibleAdminAsSetup() {
+        val controller = sc(FakeSystemEnv(default = null), builtinForeground = false).first
+        assertEquals("setup", controller.homeUiProof("", adminUiVisible = true).state)
+        assertEquals("unknown", controller.homeUiProof("", adminUiVisible = false).state)
+    }
+
+    @Test fun homeUiProofUsesLiveAppStateForExternalDashboard() {
+        val env = FakeSystemEnv(installed = setOf(MIN), default = ActivityRef(MIN, ".Home"))
+        val foreground = sc(env, daemon = mapOf("APPSTATE $MIN" to "FG")).first
+        assertEquals("ready", foreground.homeUiProof(MIN, adminUiVisible = false).state)
+        val background = sc(env, daemon = mapOf("APPSTATE $MIN" to "BG")).first
+        assertEquals("blocked", background.homeUiProof(MIN, adminUiVisible = false).state)
+        val unobserved = sc(env, daemon = mapOf("APPSTATE $MIN" to "ERR"), su = false).first
+        assertEquals("unknown", unobserved.homeUiProof(MIN, adminUiVisible = false).state)
+    }
+
     // ---------- reboot ----------
     /** Build a controller whose helper answers REBOOT AWAIT with an exact [DaemonLongResult]. */
     private fun rebootController(

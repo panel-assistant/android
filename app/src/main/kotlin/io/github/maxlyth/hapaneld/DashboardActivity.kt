@@ -46,6 +46,8 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.github.maxlyth.hapaneld.control.BottomSwipeDetector
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
+import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import io.github.maxlyth.hapaneld.dashboard.EntityFilterProtocol
 import io.github.maxlyth.hapaneld.dashboard.EntityFilterTelemetry
 import io.github.maxlyth.hapaneld.dashboard.InjectionScript
@@ -702,10 +704,6 @@ class DashboardActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         if (maintenanceFence.stop(this)) return
         supportActionBar?.hide()
-        // DashboardActivity can be foregrounded directly by HOME restoration, the admin path, or a
-        // privileged start. Always bootstrap the service here too so the local HTTP/MQTT surface is
-        // alive even when MainActivity was bypassed.
-        PaneldService.start(this)
         setContentView(TextView(this).apply {
             setText(R.string.preparing_dashboard)
             gravity = android.view.Gravity.CENTER
@@ -715,8 +713,22 @@ class DashboardActivity : AppCompatActivity() {
         // DashboardActivity. Route an actual HOME intent according to the explicit Launcher app policy;
         // service/watchdog starts are component-explicit and therefore continue to foreground the dashboard.
         activityScope.launch {
-            val config = readActivityStateOffMain { Config(this@DashboardActivity) }
-            if (!destroyed && !isFinishing) initializeRenderer(config)
+            val config = readActivityStateOffMain {
+                Config(this@DashboardActivity).also { config ->
+                    // Android may launch this HOME activity directly after a package replacement,
+                    // bypassing MainActivity. Repair HOME before the service can crash.
+                    runCatching {
+                        SystemController(AndroidSystemEnv(this@DashboardActivity)).applyLauncherHomePolicy(
+                            config.launcherPackage, config.dashboardPackage, config.builtInRendererReady(),
+                        )
+                    }.onFailure { Log.w(TAG, "dashboard HOME policy apply failed", it) }
+                }
+            }
+            if (!destroyed && !isFinishing) {
+                // This visible start avoids arming Oreo's foreground deadline during cold class loading.
+                PaneldService.start(this@DashboardActivity, fromVisibleActivity = true)
+                initializeRenderer(config)
+            }
         }
     }
 
