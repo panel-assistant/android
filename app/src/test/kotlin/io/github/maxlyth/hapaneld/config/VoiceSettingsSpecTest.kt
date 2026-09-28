@@ -30,30 +30,18 @@ class VoiceSettingsSpecTest {
         }
     }
 
-    /**
-     * 0.9.7-rc3 ships the voice feature with no Configure card. The card is not suppressed anywhere in
-     * the page: every spec of the group is `hidden`, the schema route drops hidden specs, and a group
-     * with no fields renders no card — so this assertion is the whole mechanism, and un-hiding one spec
-     * would bring the card back carrying a single orphaned field.
-     */
-    @Test fun `every voice setting is hidden, so the group contributes no Configure card`() {
-        everyMicrophoneGatedVoiceSpec.forEach { spec ->
-            assertTrue("${spec.key} must be hidden while the feature is unsurfaced", spec.hidden)
-        }
-        assertTrue(
-            "no Voice spec may reach the Configure form",
-            SettingsRegistry.schemaVisibleSpecs().none { it.group == "Voice" },
+    @Test fun `every voice setting reaches the Configure form`() {
+        everyMicrophoneGatedVoiceSpec.forEach { spec -> assertFalse("${spec.key} must not be hidden", spec.hidden) }
+        assertEquals(
+            everyMicrophoneGatedVoiceSpec.map { it.key }.toSet(),
+            SettingsRegistry.schemaVisibleSpecs().filter { it.group == "Voice" }.map { it.key }.toSet(),
         )
-        // The group still exists in the registry: hiding is a release decision, not a deletion.
-        assertEquals(6, SettingsRegistry.SPECS.count { it.group == "Voice" })
     }
 
     /**
-     * Hidden is not disabled, and the difference is what allows a single panel to be brought up for
-     * acceptance over HTTP while nothing is advertised. A spec that became `transient` or lost its
-     * persist path would read as "hidden" to a casual glance and quietly discard every write.
+     * A spec that became `transient` or lost its persist path would quietly discard every write.
      */
-    @Test fun `hiding the group leaves the values readable, settable and persisted`() {
+    @Test fun `the voice settings are readable, settable and persisted`() {
         everyMicrophoneGatedVoiceSpec.forEach { spec ->
             assertFalse("${spec.key} must still persist", spec.transient)
             assertFalse("${spec.key} must not be secret-redacted", spec.secret)
