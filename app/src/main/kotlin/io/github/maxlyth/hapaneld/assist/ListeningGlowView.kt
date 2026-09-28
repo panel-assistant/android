@@ -4,9 +4,7 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Shader
 import android.view.View
 
 /**
@@ -46,17 +44,19 @@ class ListeningGlowView(context: Context) : View(context) {
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
+        // Nested rounded outlines, strongest at the edge and fading inward, so the corners curve with the
+        // tint instead of meeting at a mitred seam.
         val depth = minOf(w, h) * DEPTH_FRACTION
-        val edge = Color.argb(EDGE_ALPHA, Color.red(color), Color.green(color), Color.blue(color))
-        val clear = Color.argb(0, Color.red(color), Color.green(color), Color.blue(color))
-        fun band(x0: Float, y0: Float, x1: Float, y1: Float, left: Float, top: Float, right: Float, bottom: Float) {
-            paint.shader = LinearGradient(x0, y0, x1, y1, edge, clear, Shader.TileMode.CLAMP)
-            canvas.drawRect(left, top, right, bottom, paint)
+        val step = depth / STEPS
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = step + 1f
+        for (i in 0 until STEPS) {
+            val inset = step * i + step / 2
+            val fade = 1f - i.toFloat() / STEPS
+            paint.color = Color.argb((EDGE_ALPHA * fade * fade).toInt(), Color.red(color), Color.green(color), Color.blue(color))
+            val radius = depth + depth - inset
+            canvas.drawRoundRect(inset, inset, w - inset, h - inset, radius, radius, paint)
         }
-        band(0f, 0f, 0f, depth, 0f, 0f, w, depth)
-        band(0f, h, 0f, h - depth, 0f, h - depth, w, h)
-        band(0f, 0f, depth, 0f, 0f, 0f, depth, h)
-        band(w, 0f, w - depth, 0f, w - depth, 0f, w, h)
     }
 
     override fun onDetachedFromWindow() {
@@ -67,5 +67,6 @@ class ListeningGlowView(context: Context) : View(context) {
     private companion object {
         const val DEPTH_FRACTION = 0.14f
         const val EDGE_ALPHA = 150
+        const val STEPS = 24
     }
 }
