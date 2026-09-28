@@ -2038,6 +2038,11 @@
       "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
       "state": "machine-cross-checked"
     },
+    "configure.voice.import_guide": {
+      "text": "如何训练您自己的唤醒词",
+      "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.import_help": {
       "text": "导入您训练的microWakeWord模型：其.json清单文件和.tflite文件。",
       "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
@@ -11024,9 +11029,9 @@
       "text": "麦克风增益（dB）"
     },
     "settings.voice_pipelines.help": {
-      "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+      "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
       "state": "machine-cross-checked",
-      "text": "各个已配置唤醒词所触发的 Home Assistant Assist 流水线，以唤醒词到流水线 ID 的 JSON 对象表示。空值使用 Home Assistant 的首选流水线。"
+      "text": "每个唤醒词运行的 Home Assistant Assist 流水线。保留为首选流水线的唤醒词将使用 Home Assistant 标记为首选的流水线。"
     },
     "settings.voice_pipelines.label": {
       "sourceHash": "16cc76ac6c00b2720d0a7d7be3994e8434186889194c88ae411076440e67b41d",
@@ -11044,9 +11049,9 @@
       "text": "唤醒灵敏度"
     },
     "settings.voice_wake_words.help": {
-      "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
+      "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
       "state": "machine-cross-checked",
-      "text": "待监听的唤醒词，以JSON数组形式表示的模型标识符：内置的okay_nabu、hey_jarvis、hey_mycroft和alexa，或您导入的自定义模型。"
+      "text": "要监听的唤醒词：内置的“Okay Nabu”“Hey Jarvis”“Hey Mycroft”和“Alexa”，以及您在下方导入的唤醒词。"
     },
     "settings.voice_wake_words.label": {
       "sourceHash": "f5f0563199a5b4036385d27a248bbd762d55e3ce50e2ece6c2f15d903d1f9b31",

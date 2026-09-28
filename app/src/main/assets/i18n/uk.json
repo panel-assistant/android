@@ -1688,6 +1688,11 @@
    "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
    "state": "english-fallback"
   },
+  "configure.voice.import_guide": {
+    "text": "Як навчити власне слово активації",
+    "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+    "state": "machine-cross-checked"
+  },
   "configure.voice.import_help": {
    "text": "Імпортуйте модель «microWakeWord», яку ви навчили: її маніфест «.json» та файл «.tflite».",
    "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
@@ -9784,8 +9789,8 @@
    "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.help": {
-   "text": "Який конвеєр Асистента Home Assistant запускає кожне налаштоване слово активації, у вигляді об’єкта JSON, що зіставляє слово активації з ідентифікатором конвеєра. Порожнє значення використовує бажаний конвеєр Home Assistant.",
-   "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+   "text": "Який конвеєр Assist у Home Assistant запускає кожне слово активації. Слово, залишене на бажаному конвеєрі, використовує конвеєр, який Home Assistant позначив як бажаний.",
+   "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
    "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.label": {
@@ -9804,8 +9809,8 @@
    "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.help": {
-   "text": "Слова-активатори, на які слід прислухатися, у вигляді масиву ідентифікаторів моделей типу «JSON»: вбудовані okay_nabu, hey_jarvis, hey_mycroft та alexa, або ті, що ви імпортували.",
-   "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
+   "text": "Слова активації, які слухає панель: вбудовані «Okay Nabu», «Hey Jarvis», «Hey Mycroft» і «Alexa», а також ті, що ви імпортуєте нижче.",
+   "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
    "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.label": {

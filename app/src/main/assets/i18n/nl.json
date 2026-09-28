@@ -1688,6 +1688,11 @@
    "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
    "state": "english-fallback"
   },
+  "configure.voice.import_guide": {
+    "text": "Zo train je je eigen activeringswoord",
+    "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+    "state": "machine-cross-checked"
+  },
   "configure.voice.import_help": {
    "text": "Importeer een door jou getraind ‘microWakeWord’-model: het manifest ‘.json’ en het bestand ‘.tflite’.",
    "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
@@ -9784,8 +9789,8 @@
    "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.help": {
-   "text": "Welke Home Assistant Assist-pipeline elk geconfigureerd activeringswoord activeert, als een JSON-object van activeringswoord naar pipeline-id. Een lege waarde gebruikt de voorkeurspipeline van Home Assistant.",
-   "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+   "text": "Welke Home Assistant Assist-pipeline elk activeringswoord uitvoert. Een woord dat op de voorkeurspipeline blijft staan, volgt de pipeline die Home Assistant als voorkeur heeft.",
+   "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
    "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.label": {
@@ -9804,8 +9809,8 @@
    "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.help": {
-   "text": "De activeringswoorden waarnaar geluisterd moet worden, als een ‘JSON’-array met model-ID’s: de meegeleverde okay_nabu, hey_jarvis, hey_mycroft en alexa, of een die je zelf hebt geïmporteerd.",
-   "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
+   "text": "De activeringswoorden waarnaar wordt geluisterd: de meegeleverde ‘Okay Nabu’, ‘Hey Jarvis’, ‘Hey Mycroft’ en ‘Alexa’, en de woorden die je hieronder importeert.",
+   "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
    "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.label": {
