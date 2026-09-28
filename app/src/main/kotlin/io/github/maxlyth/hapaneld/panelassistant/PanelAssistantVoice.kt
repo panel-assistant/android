@@ -58,6 +58,8 @@ internal class PanelAssistantVoice(
     private val configuration: () -> PanelAssistantVoiceConfiguration?,
     private val onAnnouncement: (PanelAssistantAnnouncement) -> Unit,
     private val log: (String) -> Unit = {},
+    /** Home Assistant's colour for each wake word's pipeline, as opaque ARGB; the same on every panel. */
+    private val onColors: (Map<String, Int>) -> Unit = {},
 ) {
     /** Signalled whenever a request is waiting for the session loop. */
     val wake = Channel<Unit>(Channel.CONFLATED)
@@ -178,6 +180,10 @@ internal class PanelAssistantVoice(
         val type = frame.optString("type")
         val event = frame.optJSONObject("event")
         if (type == "event" && id == helloId) {
+            if (event?.optString("kind") == EVENT_VOICE_COLORS) {
+                onColors(colors(event.optJSONObject("colors")))
+                return true
+            }
             if (event?.optString("kind") != EVENT_VOICE_ANNOUNCE) return false
             val announcement = announcement(event)
             if (announcement == null) log("voice ignored a malformed announcement") else onAnnouncement(announcement)
@@ -236,6 +242,14 @@ internal class PanelAssistantVoice(
         )
     }
 
+    private fun colors(map: JSONObject?): Map<String, Int> {
+        map ?: return emptyMap()
+        return map.keys().asSequence().mapNotNull { id ->
+            val hex = (map.opt(id) as? String)?.takeIf(COLOR::matches) ?: return@mapNotNull null
+            id to (0xFF000000.toInt() or hex.substring(1).toInt(16))
+        }.toMap()
+    }
+
     private fun resolve(url: String): String = synchronized(lock) { live?.baseUrl }
         ?.let { base -> resolveUrl(base, url) } ?: url
 
@@ -254,6 +268,8 @@ internal class PanelAssistantVoice(
         const val COMMAND_VOICE_RUN = "panel_assistant/voice_run"
         const val COMMAND_VOICE_PLAYED = "panel_assistant/voice_played"
         const val EVENT_VOICE_ANNOUNCE = "voice_announce"
+        const val EVENT_VOICE_COLORS = "voice_colors"
+        private val COLOR = Regex("^#[0-9A-Fa-f]{6}$")
         const val CODE_SESSION_CLOSED = "session_closed"
         private val ANNOUNCE_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
 

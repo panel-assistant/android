@@ -97,6 +97,9 @@ class VoiceAssistantCoordinatorTest {
         state.set(VoiceState.RESPONDING)
     }
 
+    /** Each cue's wake word, with the phase the panel was in when it was cued. */
+    private val cues = java.util.Collections.synchronizedList(mutableListOf<Pair<String?, VoiceState>>())
+
     private fun coordinator(retryMs: Long = 60_000, maxTurns: Int = 5) = VoiceAssistantCoordinator(
         scope = scope,
         settings = { settings },
@@ -109,6 +112,7 @@ class VoiceAssistantCoordinatorTest {
         state = state,
         foregroundRetryMs = retryMs,
         maxConversationTurns = maxTurns,
+        attention = { wakeWordId -> cues += wakeWordId to state.current() },
     )
 
     @After
@@ -558,5 +562,25 @@ class VoiceAssistantCoordinatorTest {
         runBlocking { withTimeout(2_000) { done.await() } }
         assertTrue("an off assistant never listens", mic.leases.isEmpty())
         assertTrue(runners.isEmpty())
+    }
+
+    /**
+     * The listening tint takes its colour from the pipeline, which is named by the wake word; so each cue
+     * names the wake word, a conversation Home Assistant started names the first armed one (whose pipeline
+     * speaks it), and the cue comes before the listening phase that raises the tint.
+     */
+    @Test
+    fun `each cue names the wake word whose pipeline listens, before the listening phase shows`() {
+        settings = settings.copy(wakeWords = listOf("okay_nabu", "hey_jarvis"))
+        val c = coordinator()
+        c.start()
+        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
+        awaitRunner(0).release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) {})
+        awaitRunner(1).release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        assertEquals(listOf("hey_jarvis", "okay_nabu"), cues.map { it.first })
+        assertTrue("cued after listening began: ${cues.map { it.second }}", cues.none { it.second == VoiceState.LISTENING })
     }
 }

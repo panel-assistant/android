@@ -158,7 +158,8 @@ class VoiceAssistantCoordinator internal constructor(
     private val foregroundRetryMs: Long = DEFAULT_FOREGROUND_RETRY_MS,
     private val maxConversationTurns: Int = DEFAULT_MAX_CONVERSATION_TURNS,
     /** Shows the room that the panel has started listening: a chime, and a ripple on screen. */
-    private val attention: () -> Unit = {},
+    /** Named with the wake word whose pipeline is listening; a turn without one uses the first armed. */
+    private val attention: (wakeWordId: String?) -> Unit = {},
 ) : AutoCloseable {
 
     private val lock = Any()
@@ -394,8 +395,9 @@ class VoiceAssistantCoordinator internal constructor(
         var request = VoiceTurnRequest(activation?.modelId, heardAtNs = activation?.heardAtNs ?: 0L)
         var turns = 0
         while (true) {
+            // Cued first, so the listening tint that the state change raises already has this pipeline's colour.
+            attention(request.wakeWordId ?: current.wakeWords.firstOrNull())
             state.set(VoiceState.LISTENING)
-            attention()
             val outcome = runnerFactory().run(
                 request,
                 // Closing the attachment is the panel's own signal that it has stopped listening and is
