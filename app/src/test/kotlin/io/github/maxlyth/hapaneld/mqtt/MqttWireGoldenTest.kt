@@ -480,6 +480,11 @@ internal abstract class MqttWireRig {
         private var lease: MqttConnectionLease? = null
         @Volatile private var lastActivityNanos = System.nanoTime()
         val delivered = AtomicInteger()
+        private var blockedTopic: String? = null
+        val publishEntered = CountDownLatch(1)
+        val releasePublish = CountDownLatch(1)
+
+        fun blockNextPublish(topic: String) { blockedTopic = topic }
 
         private fun touch() {
             lastActivityNanos = System.nanoTime()
@@ -538,6 +543,14 @@ internal abstract class MqttWireRig {
             expectedConnection: MqttConnectionLease?,
             onComplete: ((Boolean) -> Unit)?,
         ) {
+            if (blockedTopic == topic) {
+                blockedTopic = null
+                publishEntered.countDown()
+                // Model a transport send that does not honor the worker's shutdown interrupt.
+                while (releasePublish.count > 0L) {
+                    try { releasePublish.await(100, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { }
+                }
+            }
             val admitted = synchronized(lock) {
                 val current = lease
                 if (current == null || (expectedConnection != null && expectedConnection !== current)) {
