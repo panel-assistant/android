@@ -2906,10 +2906,8 @@
   // Logging lost its experimental badge after all three transports delivered marked probe records
   // AND real shipped log lines into a collector addressed by hostname. Display keeps its badge — that
   // work is still unvalidated.
-  // Camera is an experimental trial: it ships to earn permanent inclusion and can be withdrawn, so
-  // its card says so in the heading rather than only in each setting's help text.
   var CARD_BADGES = {
-    "Display": ["experimental", "exp"], "Camera": ["experimental", "exp"]
+    "Display": ["experimental", "exp"]
   };
   var CARD_NOTES = {
     "Sensors": "Home Assistant reporting",

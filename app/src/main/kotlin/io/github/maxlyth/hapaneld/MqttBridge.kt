@@ -553,7 +553,7 @@ internal fun cameraSnapshotAvailabilityTopic(panel: String): String =
  * its shape is a fact a test can read: a URL topic, never an image topic, because image bytes on the
  * broker would be a frame stored outside the panel, which the camera contract forbids. */
 internal fun cameraSnapshotDiscoveryJson(panel: String, availJson: String, deviceJson: String): String =
-    """{"name":"Camera snapshot (experimental)","object_id":"${panel}_camera_snapshot","unique_id":"${panel}_camera_snapshot","url_topic":"${cameraSnapshotUrlTopic(panel)}","icon":"mdi:camera",$availJson,$deviceJson}"""
+    """{"name":"Camera snapshot","object_id":"${panel}_camera_snapshot","unique_id":"${panel}_camera_snapshot","url_topic":"${cameraSnapshotUrlTopic(panel)}","icon":"mdi:camera",$availJson,$deviceJson}"""
 
 /** One retained publication for the snapshot image entity. Retained because Home Assistant must find the
  * URL and the availability again after its own restart, without the panel having to notice. */
@@ -3289,7 +3289,7 @@ internal class MqttBridge(
         stateConverger.reconcile("webview_auto_update", force = true)
     }
 
-    /** The camera master switch, commanded from Home Assistant. Enabling arms the trial and nothing more:
+    /** The camera master switch, commanded from Home Assistant. Enabling arms the camera and nothing more:
      *  Android still withholds the camera until somebody grants the permission at the panel, and every
      *  enable direction waits for a local approval first, so no remote message alone can put this panel's
      *  camera into service. Disabling ends a live session immediately. */
@@ -4213,7 +4213,7 @@ internal class MqttBridge(
         registryExposable("auto_brightness") {
             stateConverger.reconcile("auto_brightness", force = true)
         }
-        // Camera trial (experimental, off by default, offered only where the profile declares a camera).
+        // Camera is off by default and offered where the profile declares one or Android enumerates one.
         // The switch is the master privacy stop: with it off the hardware does not open for anything, and
         // turning it on here arms nothing more — Android still withholds the camera until the permission
         // is granted at the panel.

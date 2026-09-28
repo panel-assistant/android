@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.util
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.os.Looper
 import android.os.Process
 import android.system.Os
 import android.system.OsConstants
@@ -16,6 +17,11 @@ import io.github.maxlyth.hapaneld.persistence.readAppStateSemanticProof
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 internal data class GuardDbStartupProof(
     val apkSha256: String,
@@ -83,13 +89,44 @@ internal fun guardDbFreshProcessRoute(
         GuardDbFreshProcessRoute.WRITER_FREE_MAINTENANCE
     }
 
+/** The maintenance listener may start only after foreground promotion and the startup proof closes. */
+internal class GuardDbMaintenanceStartupGate(private val scope: CoroutineScope) {
+    @Volatile
+    private var foreground = false
+
+    fun promoted() {
+        foreground = true
+    }
+
+    fun launch(
+        acknowledge: () -> Boolean,
+        startMaintenance: suspend () -> Unit,
+        resumeOrdinary: suspend () -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ): Job {
+        check(foreground) { "Guard DB startup requires foreground promotion" }
+        return scope.launch(Dispatchers.IO) {
+            try {
+                if (acknowledge()) resumeOrdinary() else startMaintenance()
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (failure: Throwable) {
+                onFailure(failure)
+            }
+        }
+    }
+}
+
 internal object GuardDbStartupAcknowledger {
     private const val TAG = "ha-paneld/guard-db-health"
     private const val PROBE_TABLE = "db_compatibility_canary_v15"
     private val attempts = GuardDbHealthAttemptGate()
 
-    /** Called before Config or a service owner can open/write ha-paneld.db. */
-    fun reconcileBeforeServices(context: Context): Boolean {
+    /** Called by the promoted maintenance service before its HTTP listener or an ordinary owner. */
+    fun reconcileBeforeMaintenanceServer(context: Context): Boolean {
+        check(Looper.myLooper() != Looper.getMainLooper()) {
+            "Guard DB startup inspection must not run on the main thread"
+        }
         val load = GuardDbProcessAdmission.current()
         if (load is GuardDbSentinelLoad.Absent) return true
         val sentinel = (load as? GuardDbSentinelLoad.Valid)?.sentinel ?: return false
@@ -101,7 +138,8 @@ internal object GuardDbStartupAcknowledger {
                 val preparedCleared = guardDbPreparedArmStore(context).clear(sentinel.session)
                 if (!preparedCleared) return false
                 val cleared = guardDbSentinelStore(context).clear(sentinel.session)
-                if (cleared) GuardDbProcessAdmission.update(GuardDbSentinelLoad.Absent)
+                // Application skipped ordinary initialization in this process. Keep its in-memory
+                // admission fence until the maintenance service starts an ordinary fresh process.
                 return cleared
             }
             GuardDbFreshProcessRoute.WRITER_FREE_MAINTENANCE -> Unit
@@ -129,7 +167,7 @@ internal object GuardDbStartupAcknowledger {
             ) return false
             if (!guardDbPreparedArmStore(context).clear(sentinel.session)) return false
             val cleared = guardDbSentinelStore(context).clear(sentinel.session)
-            if (cleared) GuardDbProcessAdmission.update(GuardDbSentinelLoad.Absent)
+            // The durable absence is for the next process; this one remains maintenance-only.
             return cleared
         }
         val sentinelStore = guardDbSentinelStore(context)
