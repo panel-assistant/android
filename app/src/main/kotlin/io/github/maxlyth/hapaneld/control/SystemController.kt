@@ -9,6 +9,7 @@ import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.RootShell
 import io.github.maxlyth.hapaneld.platform.SystemEnv
 import io.github.maxlyth.hapaneld.util.AndroidInput
+import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.HelperClient
 
 /** Foreground/liveness state of the dashboard app, as seen by the app watchdog. */
@@ -41,6 +42,12 @@ class SystemController(
     private val beforeReboot: () -> Unit = {},
 ) {
 
+    // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
+    // executable routes; the production su probe stays isolated from the persistent control shell.
+    private val privilegedRouteAvailable = Cached(60_000L) {
+        daemon.available() || if (root === Su) Su.availableCachedIsolated() else root.available()
+    }
+
     // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can
     // report again if it becomes unavailable later, without turning a steady state into log noise.
     private var missingHomeTarget: String? = null
@@ -66,9 +73,14 @@ class SystemController(
      * [component] via [privilegedStart] and, only when that fails outright, fall back to a direct
      * (pre-BAL) start — then log the resolved target under [label]. A BLOCKED (helper BUSY) result
      * deliberately does NOT fall back: the daemon owns that safety boundary. */
-    private fun launchComponent(component: String, label: String) {
-        if (privilegedStart(component) == PrivilegedStartResult.FAILED) env.directStart(component)
-        Log.i(TAG, "$label -> $component")
+    private fun launchComponent(component: String, label: String): Boolean {
+        val started = when (privilegedStart(component)) {
+            PrivilegedStartResult.STARTED -> true
+            PrivilegedStartResult.BLOCKED -> false
+            PrivilegedStartResult.FAILED -> env.directStart(component)
+        }
+        if (started) Log.i(TAG, "$label -> $component")
+        return started
     }
 
     /**
@@ -87,7 +99,7 @@ class SystemController(
         return when (privilegedStart(component)) {
             PrivilegedStartResult.STARTED -> true
             PrivilegedStartResult.BLOCKED -> false
-            PrivilegedStartResult.FAILED -> runCatching { env.directStart(component); true }.getOrDefault(false)
+            PrivilegedStartResult.FAILED -> runCatching { env.directStart(component) }.getOrDefault(false)
         }
     }
 
@@ -106,12 +118,12 @@ class SystemController(
      *  relaunch reaches onNewIntent, which only reloads when [BuiltinDashboard.requestExplicitReload] was set).
      *  Refuses while the renderer is crash-latched so the kiosk/watchdog return loops can't churn a
      *  crash-looping WebView; an explicit reload clears the latch first and always proceeds. */
-    private fun startBuiltin() {
+    private fun startBuiltin(): Boolean {
         if (BuiltinDashboard.rendererLatched(SystemClock.elapsedRealtime())) {
             Log.w(TAG, "builtin renderer crash-latched — refusing automatic relaunch (explicit reload clears it)")
-            return
+            return false
         }
-        launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
+        return launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
     }
 
     /** Configured dashboard package, or the automatic built-in renderer for a blank selection. The
@@ -124,24 +136,25 @@ class SystemController(
 
     /** Force-stop the dashboard and relaunch it. [reason], when given, is announced on the panel first
      *  so a deliberate reset can never be mistaken for a crash. */
-    fun reloadDashboard(dashboardPkg: String, reason: String = "") {
+    fun reloadDashboard(dashboardPkg: String, reason: String = ""): Boolean {
         val pkg = resolveDashboard(dashboardPkg)
         if (CompanionDataOperationGate.blocks(pkg)) {
             Log.i(TAG, "dashboard reload suppressed while Companion data operation owns $pkg")
-            return
+            return false
         }
         // Built-in renderer: an explicit reload clears any crash latch (deliberate retry consent), flags
         // the relaunch as reload-intent, and reaches onNewIntent → fresh page load.
         if (isBuiltin(pkg)) {
             BuiltinDashboard.requestExplicitReload(reason)
-            startBuiltin()
-            return
+            val started = startBuiltin()
+            if (!started) BuiltinDashboard.consumeSupersededReload()
+            return started
         }
-        if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return }
+        if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return false }
         val daemonReply = daemon.send("RELOAD $pkg")
         if (daemonReply == "BUSY") {
             Log.i(TAG, "dashboard reload refused while helper owns Companion data")
-            return
+            return false
         }
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) { daemonReply == "OK" },
@@ -150,8 +163,8 @@ class SystemController(
                 val comp = env.launchComponent(pkg)
                 if (comp == null) return@EffectAttempt root.run("monkey -p $pkg 1")
                 when (privilegedStart(comp)) {
-                    PrivilegedStartResult.STARTED,
-                    PrivilegedStartResult.BLOCKED -> true
+                    PrivilegedStartResult.STARTED -> true
+                    PrivilegedStartResult.BLOCKED -> false
                     PrivilegedStartResult.FAILED -> root.run("monkey -p $pkg 1")
                 }
             },
@@ -161,7 +174,17 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reload via su fallback ($pkg)")
             else -> Log.w(TAG, "reload: helper and su both failed")
         }
+        return route != null
     }
+
+    /** A built-in reload uses this app; an external renderer needs one of the existing privileged routes. */
+    fun canReloadDashboard(dashboardPkg: String): Boolean {
+        val pkg = resolveDashboard(dashboardPkg)
+        return isBuiltin(pkg) || AndroidInput.isPackage(pkg) && privilegedRouteAvailable.get()
+    }
+
+    /** The same helper and root routes [reboot] will try. */
+    fun canReboot(): Boolean = privilegedRouteAvailable.get()
 
     /**
      * Bring a launcher (home screen) to the foreground — for panels with no physical home button.
@@ -442,7 +465,7 @@ class SystemController(
      * accepted as the best evidence that helper can give — so an older helper behaves exactly as
      * before rather than losing its reboot.
      */
-    fun reboot() {
+    fun reboot(): Boolean {
         beforeReboot()
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) {
@@ -459,6 +482,7 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reboot via su fallback")
             else -> Log.w(TAG, "reboot: helper and su both unavailable, or neither could reboot the panel")
         }
+        return route != null
     }
 
     companion object {
