@@ -1,5 +1,10 @@
 package io.github.maxlyth.hapaneld
 
+import io.github.maxlyth.hapaneld.control.AppState
+import io.github.maxlyth.hapaneld.control.CrashLoopTracker
+import io.github.maxlyth.hapaneld.control.DashboardRecoveryPolicy
+import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.control.evaluateDashboardRecovery
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -77,6 +82,37 @@ class ProximityWizardCoordinatorTest {
             assertFalse(f.coordinator.remote("start", ""))
             assertFalse(ProximityWizardHost.action("current", "save"))
             assertEquals(1, f.releases)
+        } finally { f.coordinator.close() }
+    }
+
+    @Test fun activePanelSetupStaysInFrontWhenDashboardWatchdogTicks() {
+        val f = Fixture()
+        val policy = DashboardRecoveryPolicy(2, 300, CrashLoopTracker(2, 1_000, 5_000))
+        try {
+            assertTrue(f.coordinator.remote("start", ""))
+            assertEquals(1, f.launches)
+            for (now in listOf(0L, 300L, 600L)) {
+                val decision = evaluateDashboardRecovery(
+                    policy, SystemController.BUILTIN_DASHBOARD, AppState.BG, now,
+                    builtinTarget = true, calibrationActive = f.active,
+                )
+                assertEquals(DashboardRecoveryPolicy.Action.NONE, decision.action)
+            }
+            assertTrue(f.coordinator.remote("cancel", "current"))
+            assertEquals(
+                DashboardRecoveryPolicy.Action.NONE,
+                evaluateDashboardRecovery(
+                    policy, SystemController.BUILTIN_DASHBOARD, AppState.BG, 601,
+                    builtinTarget = true, calibrationActive = f.active,
+                ).action,
+            )
+            assertEquals(
+                DashboardRecoveryPolicy.Action.RETURN_FROM_BACKGROUND,
+                evaluateDashboardRecovery(
+                    policy, SystemController.BUILTIN_DASHBOARD, AppState.BG, 901,
+                    builtinTarget = true, calibrationActive = f.active,
+                ).action,
+            )
         } finally { f.coordinator.close() }
     }
 
