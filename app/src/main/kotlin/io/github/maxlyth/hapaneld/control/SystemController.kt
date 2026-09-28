@@ -73,9 +73,14 @@ class SystemController(
      * [component] via [privilegedStart] and, only when that fails outright, fall back to a direct
      * (pre-BAL) start — then log the resolved target under [label]. A BLOCKED (helper BUSY) result
      * deliberately does NOT fall back: the daemon owns that safety boundary. */
-    private fun launchComponent(component: String, label: String) {
-        if (privilegedStart(component) == PrivilegedStartResult.FAILED) env.directStart(component)
-        Log.i(TAG, "$label -> $component")
+    private fun launchComponent(component: String, label: String): Boolean {
+        val started = when (privilegedStart(component)) {
+            PrivilegedStartResult.STARTED -> true
+            PrivilegedStartResult.BLOCKED -> false
+            PrivilegedStartResult.FAILED -> env.directStart(component)
+        }
+        if (started) Log.i(TAG, "$label -> $component")
+        return started
     }
 
     /**
@@ -94,7 +99,7 @@ class SystemController(
         return when (privilegedStart(component)) {
             PrivilegedStartResult.STARTED -> true
             PrivilegedStartResult.BLOCKED -> false
-            PrivilegedStartResult.FAILED -> runCatching { env.directStart(component); true }.getOrDefault(false)
+            PrivilegedStartResult.FAILED -> runCatching { env.directStart(component) }.getOrDefault(false)
         }
     }
 
@@ -113,12 +118,12 @@ class SystemController(
      *  relaunch reaches onNewIntent, which only reloads when [BuiltinDashboard.requestExplicitReload] was set).
      *  Refuses while the renderer is crash-latched so the kiosk/watchdog return loops can't churn a
      *  crash-looping WebView; an explicit reload clears the latch first and always proceeds. */
-    private fun startBuiltin() {
+    private fun startBuiltin(): Boolean {
         if (BuiltinDashboard.rendererLatched(SystemClock.elapsedRealtime())) {
             Log.w(TAG, "builtin renderer crash-latched — refusing automatic relaunch (explicit reload clears it)")
-            return
+            return false
         }
-        launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
+        return launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
     }
 
     /** Configured dashboard package, or the automatic built-in renderer for a blank selection. The
@@ -141,8 +146,9 @@ class SystemController(
         // the relaunch as reload-intent, and reaches onNewIntent → fresh page load.
         if (isBuiltin(pkg)) {
             BuiltinDashboard.requestExplicitReload(reason)
-            startBuiltin()
-            return true
+            val started = startBuiltin()
+            if (!started) BuiltinDashboard.consumeSupersededReload()
+            return started
         }
         if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return false }
         val daemonReply = daemon.send("RELOAD $pkg")
