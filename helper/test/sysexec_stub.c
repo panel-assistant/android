@@ -250,6 +250,12 @@ int sysexec_start_argv(const char *path, const char *const argv[], int quiet, pi
     return 0;
 }
 
+int sysexec_start_stdout_argv(const char *path, const char *const argv[], pid_t *pid,
+                              int *stdout_fd) {
+    (void)path; (void)argv; (void)pid; (void)stdout_fd;
+    return -1;
+}
+
 int sysexec_poll_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 int sysexec_terminate_argv(pid_t pid, int *status) { (void)pid; (void)status; return -1; }
 

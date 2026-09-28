@@ -9518,6 +9518,16 @@
    "sourceHash": "cf0883343f4abef779b777c35764f86c9f1f4324e8b5490840245d02ad2f7c6f",
    "state": "machine-cross-checked"
   },
+  "settings.log_ship_system_enabled.help": {
+   "text": "Пересилає системні журнали Android до того самого приймача, коли ввімкнено «Пересилати журнали». Типово вимкнено; потрібні TCP або HTTP та права суперкористувача або встановлений допоміжний компонент. Записи маскуються, а за великого потоку деякі можуть бути пропущені.",
+   "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
+   "state": "machine-cross-checked"
+  },
+  "settings.log_ship_system_enabled.label": {
+   "text": "Пересилати системні журнали",
+   "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
+   "state": "machine-cross-checked"
+  },
   "settings.manufacturer.help": {
    "text": "Перевизначення виробника на картці пристрою HA (порожньо = профіль/авто).",
    "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",

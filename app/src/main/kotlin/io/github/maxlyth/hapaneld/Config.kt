@@ -2185,6 +2185,8 @@ class Config private constructor(
     // lines are redacted (tokens/passwords/URL secrets) before they leave the device. No on-panel UI:
     // set via the HTTP /config endpoint (provision.sh --log-* flags). See logship/LogShipper.
     val logShipEnabled: Boolean get() = boolPref("log_ship_enabled")
+    /** Full Android system log is a separate opt-in; existing process-log subscriptions stay unchanged. */
+    val logShipSystemEnabled: Boolean get() = boolPref("log_ship_system_enabled")
     /** Sink host (the log collector to ship to). Empty => shipping stays inert regardless of the flag. */
     val logShipHost: String get() = stringPref("log_ship_host")
     val logShipPort: Int get() = intPref("log_ship_port")

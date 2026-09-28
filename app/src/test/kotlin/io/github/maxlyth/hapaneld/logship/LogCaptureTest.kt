@@ -1,9 +1,11 @@
 package io.github.maxlyth.hapaneld.logship
 
+import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -165,6 +167,106 @@ class LogCaptureTest {
         }
     }
 
+    @Test fun longLogcatStreamEmitsWholeRedactedExceptionsNotStackFrames() {
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO),
+            streamCmd = emptyList(),
+            dumpCmd = { emptyList() },
+            lineStream = { emit ->
+                listOf(
+                    "--------- beginning of main",
+                    "[ 1790592713.123  123: 456 E/AndroidRuntime ]",
+                    "java.lang.IllegalStateException: password=hunter2secret",
+                    "    at Example.first(Example.kt:12)",
+                    "    at Example.second(Example.kt:25)",
+                    "",
+                    "[ 1790592713.124  123: 456 I/Example ]",
+                    "recovered",
+                    "",
+                ).forEach(emit)
+                awaitCancellation()
+            },
+            longLogcatRecords = true,
+        )
+        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val subscription = cap.subscribe(got::add)
+        try {
+            await { got.size == 2 }
+            assertEquals(2, got.size)
+            assertTrue(got[0].startsWith("[ 1790592713.123"))
+            assertTrue(got[0].contains("    at Example.first(Example.kt:12)\n    at Example.second(Example.kt:25)"))
+            assertFalse(got[0].contains("hunter2secret"))
+            assertEquals("[ 1790592713.124  123: 456 I/Example ]\nrecovered", got[1])
+            assertEquals(got.toList(), cap.snapshot())
+        } finally {
+            subscription.close()
+            cap.close()
+        }
+    }
+
+    @Test fun unrootedSystemCaptureUsesHelperStreamAndKeepsWholeEntry() {
+        val helperStarts = AtomicInteger()
+        val cap = LogCapture.system(
+            CoroutineScope(Dispatchers.IO),
+            suForm = SuForm.NONE,
+            helperLines = { emit ->
+                helperStarts.incrementAndGet()
+                emit("[ 1790592713.123  123: 456 E/AndroidRuntime ]")
+                emit("java.lang.IllegalStateException: password=hunter2secret\\x0AAuthorization: Bearer abc123XYZ\\x0A\\x0A    at Example.first(Example.kt:12)")
+                emit("")
+                awaitCancellation()
+            },
+            rootAvailable = { false },
+        )
+        val got = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val subscription = cap.subscribe(got::add)
+        try {
+            await { got.size == 1 }
+            assertEquals(1, helperStarts.get())
+            assertTrue(got.single().contains("password=***\nAuthorization: Bearer ***\n\n    at Example.first(Example.kt:12)"))
+            assertFalse(got.single().contains("hunter2secret"))
+            assertFalse(got.single().contains("abc123XYZ"))
+            assertEquals(emptyList<String>(), cap.dump()) // no su attempt on an unrooted panel
+        } finally {
+            subscription.close()
+            cap.close()
+        }
+    }
+
+    @Test fun rootedSystemCaptureShipsACompleteExceptionWithEitherSuForm() {
+        val record = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
+            "java.lang.IllegalStateException: complete\\x0A    at Example.first(Example.kt:12)\\x0A\\x0A    at Example.second(Example.kt:25)\n\n"
+        for ((form, prefix) in listOf(
+            SuForm.ANDROID to listOf("su", "0", "sh", "-c"),
+            SuForm.TOOLBOX to listOf("su", "-c"),
+        )) {
+            val started = java.util.concurrent.CopyOnWriteArrayList<List<String>>()
+            val cap = LogCapture.system(
+                CoroutineScope(Dispatchers.IO),
+                suForm = form,
+                processStarter = { command ->
+                    started.add(command)
+                    val accepted = command.take(prefix.size) == prefix && command.last().contains("-v printable")
+                    GateProcess(if (accepted) record else "").also { it.finish(if (accepted) 0 else 1) }
+                },
+            )
+            val received = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val subscription = cap.subscribe(received::add)
+            try {
+                await { received.isNotEmpty() }
+                assertEquals("$form must stream the complete exception as one record", 1, received.size)
+                assertEquals("$form must follow from now", true, started.any { it.last().contains("-T 1") })
+                val expected = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
+                    "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)\n\n    at Example.second(Example.kt:25)"
+                assertEquals("$form must stream the complete exception", expected, received.single())
+                assertEquals("$form must dump the same complete exception", listOf(expected), cap.dump(10))
+            } finally {
+                subscription.close()
+                cap.close()
+            }
+        }
+    }
+
     @Test fun streamingCaptureRecordsOneBoundedBufferedBatch() {
         val wall = AtomicLong()
         val costs = FeatureCostRegistry(
@@ -233,6 +335,33 @@ class LogCaptureTest {
         val out = cap.dump(10)
         assertEquals("ok", out[0])
         assertFalse(out[1].contains("ZZZZ9999ZZZZ"))
+    }
+
+    @Test fun systemViewerBacklogKeepsACompleteLongFormatException() {
+        val header = "[ 1790592713.123  123: 456 E/AndroidRuntime ]"
+        val complete = "$header\n" +
+            "java.lang.IllegalStateException: password=hunter2secret\\n\\n" +
+            "    at Example.first(Example.kt:12)\\n    at Example.second(Example.kt:25)\n\n"
+        val output = complete + "[ 1790592713.124  123: 456 E/AndroidRuntime ]\n" +
+            "java.lang.IllegalStateException: unfinished\\n    at Example.third(Example.kt:40)\n\n"
+        val process = GateProcess(output).also { it.finish() }
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO),
+            streamCmd = listOf("stream"),
+            dumpCmd = { listOf("dump") },
+            processStarter = { process },
+            dumpMaxBytes = complete.toByteArray().size + 60,
+            longLogcatRecords = true,
+        )
+        try {
+            assertEquals(
+                listOf("$header\njava.lang.IllegalStateException: password=***\n\n" +
+                    "    at Example.first(Example.kt:12)\n    at Example.second(Example.kt:25)"),
+                cap.dump(10),
+            )
+        } finally {
+            cap.close()
+        }
     }
 
     @Test fun concurrentFirstViewersShareOneDumpProcess() {
