@@ -1270,6 +1270,10 @@ internal fun stageDirectLogShipping(config: Config, posted: Map<String, String>)
     }
 }
 
+/** One complete log entry, even when its message has embedded newlines, is one SSE event. */
+internal fun logSseEvent(entry: String): String =
+    entry.lineSequence().joinToString(separator = "\n", postfix = "\n\n") { "data: $it" }
+
 /** Stage the direct form's coupled credential groups through their real Config owners. Blank secret
  * placeholders preserve existing credentials except where an owner field is explicitly cleared or the
  * Home Assistant origin changes. Kept production-used so mutations to those dependent clears reach the JVM
@@ -4184,8 +4188,10 @@ class PaneldServer internal constructor(
     private suspend fun handleLogStream(call: ApplicationCall) {
         val cap = when (val src = call.request.queryParameters["source"] ?: "app") {
             "app" -> logApp
-            "system" -> if (withContext(Dispatchers.IO) { Su.availableCachedIsolated() }) logSystem else {
-                call.respondText("system log needs root\n", status = HttpStatusCode.ServiceUnavailable)
+            "system" -> if (withContext(Dispatchers.IO) {
+                    Su.availableCachedIsolated() || HelperClient.send("LOGCATCAPS") == "LOGCATCAPS 1"
+                }) logSystem else {
+                call.respondText("system log needs root or a LOGCAT helper\n", status = HttpStatusCode.ServiceUnavailable)
                 return
             }
             "webview" -> if (webViewConsoleEnabled()) logWebView else {
@@ -4225,11 +4231,11 @@ class PaneldServer internal constructor(
             try {
                 call.response.headers.append("Cache-Control", "no-cache")
                 call.respondTextWriter(ContentType.Text.EventStream) {
-                    for (line in backlog) write("data: $line\n\n")
+                    for (line in backlog) write(logSseEvent(line))
                     flush()
                     while (true) {
                         val line = withTimeoutOrNull(15_000) { chan.receive() }
-                        write(if (line == null) ": ping\n\n" else "data: $line\n\n")
+                        write(if (line == null) ": ping\n\n" else logSseEvent(line))
                         flush()
                     }
                 }
@@ -6533,7 +6539,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
 
     private fun behaviourRowsHtml(s: Snap, strings: AppStrings): String = listOf(
         "wake_on_wave", "prevent_idle_dim", "watchdog_enabled", "kiosk_lock", "touch_sound",
-        "silence_boot_chime", "keep_awake", "navbar_mode", "log_ship_enabled",
+        "silence_boot_chime", "keep_awake", "navbar_mode", "log_ship_enabled", "log_ship_system_enabled",
         "home_dashboard", "ha_area", "dashboard_package", "launcher_package",
     ).let { keys ->
         val hints = autoHints(strings)
@@ -11218,6 +11224,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             "\"silence_boot_chime\":${config.silenceBootChime}," +
             "\"keep_awake\":${config.keepAwake}," +
             "\"log_ship_enabled\":${config.logShipEnabled}," +
+            "\"log_ship_system_enabled\":${config.logShipSystemEnabled}," +
             "\"log_ship_host\":${s(config.logShipHost)}," +
             "\"log_ship_port\":${config.logShipPort}," +
             "\"log_ship_protocol\":${s(config.logShipProtocol)}," +

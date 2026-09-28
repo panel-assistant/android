@@ -874,6 +874,13 @@ object SettingsRegistry {
                 "(LAN-only, tokens and passwords redacted).",
         ),
         SettingSpec(
+            key = "log_ship_system_enabled", type = SettingType.BOOL, group = "Logging",
+            label = "Ship system logs", default = "false", scope = Scope.DEVICE,
+            help = "Forward Android system logs to the same sink when Ship logs is on. Off by default; " +
+                "requires TCP or HTTP and root or the installed helper. Entries are redacted; " +
+                "high-volume output may be dropped.",
+        ),
+        SettingSpec(
             key = "log_ship_host", type = SettingType.STRING, group = "Logging",
             label = "Sink host", default = "", scope = Scope.DEVICE,
             maxChars = 253,

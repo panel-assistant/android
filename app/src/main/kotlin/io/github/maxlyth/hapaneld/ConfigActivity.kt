@@ -35,6 +35,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Read SQLite-backed Activity state without running the read on Android's looper. */
+internal suspend fun <T> readActivityStateOffMain(read: () -> T): T =
+    withContext(Dispatchers.IO) { read() }
+
 /**
  * In-app config screen: a WebView onto the local config page (127.0.0.1:8888). Panels are usually
  * kiosks with no browser installed, so an `ACTION_VIEW http://…` intent finds no handler and silently
@@ -118,6 +122,8 @@ class ConfigActivity : AppCompatActivity() {
         }
         // A top bar with a back arrow → return to the dashboard (finish this activity). Without it there
         // is no obvious way off the config page on a kiosk panel with no visible system nav.
+        lateinit var enhancedAccessItem: android.view.MenuItem
+        lateinit var securityModeItem: android.view.MenuItem
         val bar = Toolbar(this).apply {
             title = getString(applicationInfo.labelRes).ifBlank { "ha-paneld" }
             subtitle = getString(R.string.settings)
@@ -126,20 +132,16 @@ class ConfigActivity : AppCompatActivity() {
             )
             navigationContentDescription = getString(R.string.back_to_dashboard)
             setNavigationOnClickListener { finish() }
-            if (ShizukuSetupDialog.entryVisible(
-                    consented = ShizukuConsent.enabled(this@ConfigActivity),
-                    managerStatus = ShizukuManagerIdentity.status(this@ConfigActivity),
-                )
-            ) {
-                menu.add(R.string.enhanced_access).apply {
-                    setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_NEVER)
-                    setOnMenuItemClickListener {
-                        ShizukuSetupDialog.show(this@ConfigActivity)
-                        true
-                    }
+            enhancedAccessItem = menu.add(R.string.enhanced_access).apply {
+                isVisible = false
+                setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_NEVER)
+                setOnMenuItemClickListener {
+                    ShizukuSetupDialog.show(this@ConfigActivity)
+                    true
                 }
             }
-            menu.add(R.string.security_mode).apply {
+            securityModeItem = menu.add(R.string.security_mode).apply {
+                isEnabled = false
                 setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_NEVER)
                 setOnMenuItemClickListener {
                     showSecurityModeDialog()
@@ -160,13 +162,25 @@ class ConfigActivity : AppCompatActivity() {
         // activity's uiMode reflects the panel's dark_mode/system setting). The :8888 UI honours ?theme=.
         val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val sep = if (path.contains('?')) "&" else "?"
-        val port = Config(this).httpPort
-        pageUrl = LocalAdminEndpoint.loopbackUrl(port, "$path${sep}theme=${if (dark) "dark" else "light"}")
-        healthUrl = LocalAdminEndpoint.loopbackUrl(port, "/health")
         // ConfigActivity can be entered from the launcher or dashboard during process recovery. Ensure the
         // service is requested, then wait for its actual liveness endpoint instead of racing WebView load.
-        PaneldService.start(this)
-        waitForAdminServer()
+        activityScope.launch {
+            val (port, enhancedAccessVisible) = readActivityStateOffMain {
+                val port = Config(applicationContext).httpPort
+                val visible = ShizukuSetupDialog.entryVisible(
+                    consented = ShizukuConsent.enabled(applicationContext),
+                    managerStatus = ShizukuManagerIdentity.status(applicationContext),
+                )
+                port to visible
+            }
+            if (!isActive) return@launch
+            securityModeItem.isEnabled = true
+            enhancedAccessItem.isVisible = enhancedAccessVisible
+            pageUrl = LocalAdminEndpoint.loopbackUrl(port, "$path${sep}theme=${if (dark) "dark" else "light"}")
+            healthUrl = LocalAdminEndpoint.loopbackUrl(port, "/health")
+            PaneldService.start(this@ConfigActivity)
+            waitForAdminServer()
+        }
     }
 
     private fun showSecurityModeDialog() {
@@ -184,10 +198,16 @@ class ConfigActivity : AppCompatActivity() {
             )
             .setPositiveButton(if (hardened) R.string.use_relaxed_mode else R.string.enable_hardened_mode) { _, _ ->
                 if (hardened) {
-                    RemoteDebugSecurityTransitionGate.mutate {
-                        config.setSecurityMode(Config.SecurityMode.RELAXED)
+                    activityScope.launch {
+                        withContext(Dispatchers.IO) {
+                            RemoteDebugSecurityTransitionGate.mutate {
+                                config.setSecurityMode(Config.SecurityMode.RELAXED)
+                            }
+                            // Keep the durable mode change and revocation together even if this
+                            // Activity is destroyed before its coroutine returns to main.
+                            LocalApprovalBroker.instance.clear()
+                        }
                     }
-                    LocalApprovalBroker.instance.clear()
                 } else {
                     enableHardenedMode(config)
                 }
