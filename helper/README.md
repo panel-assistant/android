@@ -28,6 +28,8 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `BLREAD` | read effective and maximum backlight brightness | `<actual> <max>` / `ERR` |
 | `BLSET <n>` | set hardware backlight brightness, clamped to its maximum | `OK` / `ERR` |
 | `SCREENCAP` | capture the screen as PNG | raw PNG bytes, then EOF |
+| `LOGCATCAPS` | probe the authenticated full-system log stream; older helpers return `ERR` | `LOGCATCAPS 1` / `ERR` for arguments |
+| `LOGCAT` | follow all Android log buffers from the current time using fixed `logcat -b all -T 1 -v long -v epoch` arguments; the client closes the socket to stop the stream | `OK`, then raw long-format lines including blank entry separators / `ERR` for arguments or start failure |
 | `RELOAD <pkg>` | force-stop + relaunch an app (dashboard reload); serialized with supported Companion data transactions | `OK` / `ERR` / `BUSY` |
 | `START <pkg/cls>` | launch an activity by component (root, bypasses BAL limits); serialized with supported Companion data transactions | `OK` / `ERR` / `BUSY` |
 | `SETHOME <pkg/cls>` | set the default home (launcher) to a component — re-asserts the dashboard app as home after a HOME-app install clears it | `OK` / `ERR` |
@@ -133,6 +135,7 @@ The daemon is split by capability under `helper/src/` (the binary, `@hapaneld-he
 | `sysctl.c` | density / governor / reload / start / reboot / screencap privileged operations |
 | `companion.c` | descriptor-anchored, bounded HA Companion backup/restore transaction |
 | `perf.c` | `PERFDUMP` `/proc` snapshot |
+| `logcat.c` | bounded full-system log stream; sends complete entries only, with a drop record when entry or rate limits apply |
 | `cht8305.c` | `CHT8305`-compatible room climate read from exact input names/axes (`EVIOCGABS`, no exec) |
 | `util.c` | clamp, node IO, the argument validators |
 | `sysexec.c` | **the only file that execs / pipes / spawns / reboots** — request values use absolute paths and argv |
