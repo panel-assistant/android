@@ -1322,6 +1322,7 @@ class PaneldService : Service() {
         logCaptureApp = LogCapture.app(scope)
         logCaptureSystem = LogCapture.system(
             scope,
+            suForm = profile.suForm,
             helperLines = { emit ->
                 when (val opened = HelperClient.openLogcat()) {
                     is HelperLogcatOpenResult.Open -> opened.stream.use { stream ->

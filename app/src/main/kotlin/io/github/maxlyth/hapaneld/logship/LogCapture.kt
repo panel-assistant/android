@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.logship
 
 import android.util.Log
+import io.github.maxlyth.hapaneld.device.SuForm
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
@@ -30,7 +31,7 @@ import kotlin.math.min
  * there is no logcat subprocess at all. Two sources exist as separate instances:
  *  - [app]: ha-paneld's own-process logcat (its `Log.*` output + the Ktor/HiveMQ SLF4J lines) —
  *    own-uid, so readable with no `READ_LOGS` permission and no root.
- *  - [system]: full system logcat via `su -c logcat`, or the authenticated helper when the app
+ *  - [system]: full system logcat via the profile's su form, or the authenticated helper when the app
  *    cannot use root itself.
  *  - [webView]: the dashboard WebView's JavaScript console, read over the CDP relay by an in-process
  *    [lineStream] instead of a subprocess (see [WebViewConsoleStream]).
@@ -423,16 +424,28 @@ class LogCapture(
          *  embedded blank lines in exceptions cannot be mistaken for record boundaries. */
         fun system(
             scope: CoroutineScope,
+            suForm: SuForm,
             helperLines: (suspend (emit: (String) -> Unit) -> Unit)? = null,
             rootAvailable: () -> Boolean = { true },
-        ) = LogCapture(
-            scope,
-            listOf("su", "-c", "logcat -b all -v long -v epoch -v printable -T 1 '*:V'"),
-            { n -> listOf("su", "-c", "logcat -b all -v long -v epoch -v printable -d -t $n '*:V'") },
-            lineStream = helperLines,
-            longLogcatRecords = true,
-            processAvailable = rootAvailable,
-        )
+            processStarter: (List<String>) -> Process = { command ->
+                ProcessBuilder(command).redirectErrorStream(true).start()
+            },
+        ): LogCapture {
+            val su = when (suForm) {
+                SuForm.TOOLBOX -> listOf("su", "-c")
+                SuForm.ANDROID -> listOf("su", "0", "sh", "-c")
+                SuForm.NONE -> emptyList()
+            }
+            return LogCapture(
+                scope,
+                su + "logcat -b all -v long -v epoch -v printable -T 1 '*:V'",
+                { n -> su + "logcat -b all -v long -v epoch -v printable -d -t $n '*:V'" },
+                processStarter = processStarter,
+                lineStream = helperLines,
+                longLogcatRecords = true,
+                processAvailable = { su.isNotEmpty() && rootAvailable() },
+            )
+        }
 
         /** Dashboard WebView console over the CDP relay. [enabled] keeps it idle unless log shipping is
          *  configured; it never starts the relay itself. */
