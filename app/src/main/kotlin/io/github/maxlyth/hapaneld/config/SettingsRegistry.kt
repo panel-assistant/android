@@ -478,20 +478,19 @@ object SettingsRegistry {
             label = "Keep panel responsive", default = "true", scope = Scope.PORTABLE,
             help = "Keep the network and background services running while the screen is off.",
         ),
-        // Camera trial: off by default, and offered only where the device profile declares
-        // `hardware.camera`. Only the master switch reaches Home Assistant; the three caps stay local
+        // Camera is off by default and offered where the device profile declares a camera or Android
+        // enumerates one. Only the master switch reaches Home Assistant; the three caps stay local
         // because they bound what a stream URL may ask for rather than being things to operate.
         SettingSpec(
             key = "camera_enabled", type = SettingType.BOOL, group = "Camera",
             label = "Camera", default = "false", scope = Scope.DEVICE,
-            // The card heading already says this is experimental, so the label does not repeat it. The
-            // Configure page turns the words RTSP and JPEG into links to the two addresses; the text is
+            // The Configure page turns the words RTSP and JPEG into links to the two addresses; the text is
             // written so it still reads correctly where those links are not rendered.
             help = "Off by default. Serves the panel's camera as a video-only RTSP stream and as a JPEG " +
                 "snapshot for Home Assistant to pull; no frames leave the panel unless a client is " +
                 "connected, and the panel shows a red light whenever the camera is open.",
             availableWhen = { it.hasCamera },
-            ha = haEntity("switch", "camera_enabled", "Camera (experimental)") {
+            ha = haEntity("switch", "camera_enabled", "Camera") {
                 commandTopic()
                 stateTopic()
                 icon("mdi:cctv")
