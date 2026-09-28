@@ -300,9 +300,12 @@ class StateConverger(
         val CHANNEL_ID = Regex("^[a-z][a-z0-9_]{0,47}$")
         private const val MAX_IN_FLIGHT = 4
         private val ALWAYS_ADMIT: () -> Boolean = { true }
+        private val pumpThread = java.util.concurrent.atomic.AtomicReference<Thread>()
         private val PUMP = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-            Thread(r, "state-convergence").apply { isDaemon = true }
+            Thread(r, "state-convergence").apply { isDaemon = true; pumpThread.set(this) }
         }
+
+        internal fun onPumpThread(): Boolean = Thread.currentThread() === pumpThread.get()
 
         /** Serialize local UI/hardware notifications with acknowledgement-driven outbox pumping. */
         internal fun dispatch(task: () -> Unit) = PUMP.execute(task)

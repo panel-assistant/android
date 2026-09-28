@@ -1681,6 +1681,14 @@ internal class MqttBridge(
     // whose construction registers channels.
     private val mqttStateRoutes = java.util.concurrent.ConcurrentHashMap<String, MqttStateRoute>()
     @Volatile private var nativeStateSink: io.github.maxlyth.hapaneld.mqtt.StateSink? = null
+    // A connected broker can block inside send(). Keep every pump-originated MQTT publication off
+    // the shared observation pump; the bounded queue also covers non-converger state topics.
+    private val statePublicationWorker = java.util.concurrent.ThreadPoolExecutor(
+        1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+        java.util.concurrent.ArrayBlockingQueue(64),
+        { task -> Thread(task, "mqtt-state-publish").apply { isDaemon = true } },
+        java.util.concurrent.ThreadPoolExecutor.AbortPolicy(),
+    )
     private val stateConverger = createStateConverger()
     private val zigbeeActuation = MqttZigbeeActuationCoordinators.forController(zigbee)
     private val zigbeeLease = zigbeeActuation.activate()
@@ -4456,30 +4464,49 @@ internal class MqttBridge(
     ) {
         // No CONNACK means there is no broker to receive a publication. In particular, HiveMQ's
         // pre-connect client can block inside send(); a local/native observation must not wait for it.
-        if (!lifecycle.isOpen() || connectionGeneration.currentOrNull() == null) {
+        val publishedGeneration = connectionGeneration.currentOrNull()
+        if (!lifecycle.isOpen() || publishedGeneration == null) {
             onComplete?.invoke(false)
             return
         }
         // Attribute the ACK to the connection that submitted this publication. The transport filters
         // superseded clients, and this second generation check closes the detach-between-check-and-callback
         // race before broker progress reaches the watchdog.
-        val publishedGeneration = connectionGeneration.currentOrNull()
-        transport.publish(
-            topic = topic,
-            payload = payload.toByteArray(),
-            retain = retain,
-            onComplete = { acknowledged ->
-                if (acknowledged && publishedGeneration != null &&
-                    connectionGeneration.isCurrent(publishedGeneration)
-                ) {
-                    // HiveMQ completes this callback on its network event loop. The generation check is the
-                    // complete admission proof needed by markOk; never wait there for the bridge mutation gate.
-                    markOk(publishedGeneration)
+        val expectedConnection = announcementConnection.get()
+        val send: () -> Unit = {
+            if (!lifecycle.isOpen() || !connectionGeneration.isCurrent(publishedGeneration)) {
+                onComplete?.invoke(false)
+            } else {
+                try {
+                    transport.publish(
+                        topic = topic,
+                        payload = payload.toByteArray(),
+                        retain = retain,
+                        onComplete = { acknowledged ->
+                            if (acknowledged && connectionGeneration.isCurrent(publishedGeneration)) {
+                                // HiveMQ completes this on its network loop; never wait for the bridge gate.
+                                markOk(publishedGeneration)
+                            }
+                            onComplete?.invoke(acknowledged)
+                        },
+                        expectedConnection = expectedConnection,
+                    )
+                } catch (_: Exception) {
+                    onComplete?.invoke(false)
                 }
-                onComplete?.invoke(acknowledged)
-            },
-            expectedConnection = announcementConnection.get(),
-        )
+            }
+        }
+        // Announcement stays on its existing thread and retains its discovery/state wire order.
+        if (!io.github.maxlyth.hapaneld.mqtt.StateConverger.onPumpThread()) {
+            send()
+            return
+        }
+        try {
+            statePublicationWorker.execute(send)
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            onComplete?.invoke(false)
+            Log.w(TAG, "MQTT state publication queue full; topic=$topic")
+        }
     }
 
     private fun subscribe(
@@ -4733,6 +4760,9 @@ internal class MqttBridge(
         announcementReadiness.clear()
         connectionEventDispatcher.close()
         connectAnnouncementDispatcher.close()
+        // A broker-facing send may ignore interruption. Its generation and lifecycle are fenced;
+        // runtime replacement must not wait for this transport's blocked I/O to return.
+        statePublicationWorker.shutdownNow()
         stateConverger.close()
         zigbeeActuation.retire(zigbeeLease)
         val cancelledCommands = commandDispatcher.close()
