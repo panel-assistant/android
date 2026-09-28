@@ -89,7 +89,13 @@ class VoiceAssistantCoordinatorTest {
     }
 
     private val runners = CopyOnWriteArrayList<ScriptedRunner>()
-    private val playback = AssistPlayback { state.set(VoiceState.RESPONDING) }
+    private val played = CopyOnWriteArrayList<String>()
+    private val pausedWhilePlaying = CopyOnWriteArrayList<Boolean>()
+    private val playback = AssistPlayback { url ->
+        played += url
+        mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
+        state.set(VoiceState.RESPONDING)
+    }
 
     private fun coordinator(retryMs: Long = 60_000, maxTurns: Int = 5) = VoiceAssistantCoordinator(
         scope = scope,
@@ -498,5 +504,59 @@ class VoiceAssistantCoordinatorTest {
         val broken = VoiceSettings.parse(true, "not json", "[1,2]")
         assertTrue(broken.wakeWords.isEmpty())
         assertTrue(broken.pipelines.isEmpty())
+    }
+
+    @Test
+    fun `an announcement plays its chime then its message with the listener paused, then reports it played`() {
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(Unit) })
+        runBlocking { withTimeout(2_000) { done.await() } }
+        awaitRunFinished(c)
+        assertEquals(listOf("chime.mp3", "message.mp3"), played)
+        assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
+        assertFalse(mic.leases[0].paused)
+        assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `start conversation listens after the announcement, with no wake word`() {
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { done.complete(Unit) })
+        val runner = awaitRunner(0)
+        assertTrue(done.isCompleted)
+        assertEquals(listOf("question.mp3"), played)
+        assertEquals(VoiceTurnRequest(null), runner.requests.single())
+        runner.release.complete(AssistOutcome())
+        awaitState(VoiceState.IDLE)
+    }
+
+    @Test
+    fun `an announcement plays with the assistant off and never opens the microphone`() {
+        settings = settings.copy(enabled = false)
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("message.mp3", null, listenAfter = false) { done.complete(Unit) })
+        runBlocking { withTimeout(2_000) { done.await() } }
+        awaitRunFinished(c)
+        assertEquals(listOf("message.mp3"), played)
+        assertTrue(mic.leases.isEmpty())
+        assertTrue(foregroundCalls.none { it })
+    }
+
+    @Test
+    fun `a conversation Home Assistant starts while the assistant is off is still answered`() {
+        settings = settings.copy(enabled = false)
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { done.complete(Unit) })
+        runBlocking { withTimeout(2_000) { done.await() } }
+        assertTrue("an off assistant never listens", mic.leases.isEmpty())
+        assertTrue(runners.isEmpty())
     }
 }

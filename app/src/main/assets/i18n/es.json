@@ -2028,6 +2028,31 @@
       "state": "machine-cross-checked",
       "text": "Configura antes una palabra de activación arriba."
     },
+    "configure.voice.import_choose_files": {
+      "text": "Elige primero el manifiesto «.json» y el modelo «.tflite».",
+      "sourceHash": "fa414a4812d0db87e2bb63ec269b6f25fd0ae7870052984f468c6de6530fc588",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.import_done": {
+      "text": "{wake_word} importado.",
+      "sourceHash": "0e0dca7d3b4ad4b487ce709a1fa74d1e0bb9f256c419d7af3c1e20e6aeda09aa",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.import_failed": {
+      "text": "Error al importar: {reason}",
+      "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.import_help": {
+      "text": "Importa un modelo de «microWakeWord» que hayas entrenado: su manifiesto «.json» y el archivo «.tflite».",
+      "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.import_wake_word": {
+      "text": "Importar palabra de activación entrenada",
+      "sourceHash": "67ca4b530450a4ac62a77d2916c15496edc7a423f82f7639dd6ff386eddee540",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.pipeline_not_listed": {
       "sourceHash": "71773debc9e3b12cc0d7cd4efd8241dd25e5e42e51532072c309dabbd180dd46",
       "state": "machine-cross-checked",
@@ -11013,20 +11038,10 @@
       "state": "machine-cross-checked",
       "text": "Sensibilidad de activación"
     },
-    "settings.voice_state.help": {
-      "sourceHash": "2a671d81e77de2a726125f798e643ca84897af8699a27bb850c10bbd4f803c45",
-      "state": "machine-cross-checked",
-      "text": "Fase actual del asistente de voz: apagado, inactivo, escuchando, procesando, respondiendo o error."
-    },
-    "settings.voice_state.label": {
-      "sourceHash": "51616ec4032c3dd7c2a589b3338db98e776642afbe237f6d1c4099abe132bb74",
-      "state": "machine-cross-checked",
-      "text": "Estado del asistente de voz"
-    },
     "settings.voice_wake_words.help": {
-      "sourceHash": "b3b162ba4d8e06e2520a3ba4f8fd28f822616749940c6ab4fbfa245e5ff7199b",
+      "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
       "state": "machine-cross-checked",
-      "text": "Hasta dos modelos locales de palabras de activación que detectar, como array JSON: okay_nabu, hey_jarvis, hey_mycroft, alexa."
+      "text": "Palabras de activación que escucha, como una matriz de tipo «JSON» con los ID de los modelos: los predeterminados (okay_nabu, hey_jarvis, hey_mycroft y alexa) o alguna que hayas importado."
     },
     "settings.voice_wake_words.label": {
       "sourceHash": "f5f0563199a5b4036385d27a248bbd762d55e3ce50e2ece6c2f15d903d1f9b31",
