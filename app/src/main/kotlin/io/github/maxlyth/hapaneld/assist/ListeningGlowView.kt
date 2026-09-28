@@ -76,8 +76,8 @@ class ListeningGlowView(context: Context) : View(context) {
             val inset = step * i + step / 2
             val fade = 1f - i.toFloat() / STEPS
             paint.color = Color.argb((EDGE_ALPHA * fade * fade).toInt(), Color.red(color), Color.green(color), Color.blue(color))
-            // Generous corners: the outermost outline turns on a radius of half the tint's width again.
-            val radius = depth * CORNER_FACTOR - inset
+            // A gentle curve: the outermost outline turns on about the tint's own width, inner ones less.
+            val radius = (depth * CORNER_FACTOR - inset).coerceAtLeast(0f)
             canvas.drawRoundRect(inset, inset, w - inset, h - inset, radius, radius, paint)
         }
     }
@@ -92,7 +92,7 @@ class ListeningGlowView(context: Context) : View(context) {
         const val DEPTH_FRACTION = 0.14f
         const val EDGE_ALPHA = 150
         const val STEPS = 24
-        const val CORNER_FACTOR = 3.5f
+        const val CORNER_FACTOR = 1.2f
         const val PULSE_LOW = 0.45f
         const val PULSE_MS = 900L
     }

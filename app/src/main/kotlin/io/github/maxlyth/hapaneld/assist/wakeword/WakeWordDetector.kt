@@ -37,8 +37,8 @@ class WakeWordDetector(
     private val cooldownChunks: Int = DEFAULT_COOLDOWN_CHUNKS,
     private val warmupInferences: Int = DEFAULT_WARMUP_INFERENCES,
     /**
-     * Hears a model's window mean when it comes within reach of its cutoff without firing, at most once a
-     * second per model, so a wake word that is heard but never quite fires can be diagnosed on the panel.
+     * Hears the highest window mean of each approach that came within reach of a model's cutoff without
+     * firing, once the approach is over, so a wake word that is heard but never quite fires can be diagnosed.
      */
     private val nearMiss: (modelId: String, mean: Float) -> Unit = { _, _ -> },
     /** Added to every model's cutoff: negative wakes more readily, positive asks for a clearer match. */
@@ -53,7 +53,7 @@ class WakeWordDetector(
         var next = 0
         var inferences = 0L
         var cooldownRemaining = 0
-        var quietFrames = 0
+        var approachPeak = 0f
 
         fun clearWindow() {
             window.fill(0)
@@ -92,13 +92,15 @@ class WakeWordDetector(
             if (slot.inferences <= warmupInferences) continue
             if (coolingDown) continue
             val mean = slot.window.sum().toFloat() / (slot.window.size * WakeWordScorer.MAX_PROBABILITY)
-            if (slot.quietFrames > 0) slot.quietFrames--
             val cutoff = (slot.model.config.probabilityCutoff + cutoffOffset).coerceIn(MIN_CUTOFF, MAX_CUTOFF)
-            if (mean < cutoff && mean >= NEAR_MISS_FLOOR && slot.quietFrames == 0) {
-                slot.quietFrames = NEAR_MISS_QUIET_FRAMES
-                nearMiss(slot.model.config.id, mean)
+            if (mean >= NEAR_MISS_FLOOR && mean < cutoff) {
+                slot.approachPeak = maxOf(slot.approachPeak, mean)
+            } else if (mean < NEAR_MISS_FLOOR && slot.approachPeak > 0f) {
+                nearMiss(slot.model.config.id, slot.approachPeak)
+                slot.approachPeak = 0f
             }
             if (mean >= cutoff) {
+                slot.approachPeak = 0f
                 slot.clearWindow()
                 slot.cooldownRemaining = cooldownChunks
                 listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs))
@@ -138,6 +140,5 @@ class WakeWordDetector(
             "high" -> -0.12f
             else -> 0f
         }
-        private const val NEAR_MISS_QUIET_FRAMES = 100
     }
 }
