@@ -91,4 +91,50 @@ class WebViewRollbackReceiptTest {
         assertTrue("installer consumption must leave the saved provider available", saved.isFile)
         assertEquals("previous signed APK", saved.readText())
     }
+
+    @Test fun interruptedDownloadReleasesItsReceiptWithoutSpendingThePin() {
+        val ctx = context()
+        val pin = "150.0.7871.63"
+        val pending = WebViewInstaller.PendingRollback(
+            pin, "c".repeat(64), sha, signer, 0,
+            originProcess = "process-that-died", installMayHaveStarted = false,
+        )
+        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, pending))
+        WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
+
+        assertTrue(WebViewInstaller.discardUnsubmittedRollback(ctx))
+        assertNull(WebViewInstaller.pendingRollback(ctx))
+        assertFalse(WebViewInstaller.previousApk(ctx).exists())
+        assertFalse(WebViewInstaller.alreadyRolledBackPin(ctx, pin))
+    }
+
+    @Test fun admittedInstallKeepsItsReceiptAndBackupAcrossProcessDeath() {
+        val ctx = context()
+        val pin = "150.0.7871.63"
+        val pending = WebViewInstaller.PendingRollback(
+            pin, "c".repeat(64), sha, signer, 0,
+            originProcess = "process-that-died", installMayHaveStarted = false,
+        )
+        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, pending))
+        WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
+
+        assertFalse(WebViewInstaller.markInstallMayHaveStarted(ctx, "different pin"))
+        assertTrue(WebViewInstaller.markInstallMayHaveStarted(ctx, pin))
+        assertFalse(WebViewInstaller.discardUnsubmittedRollback(ctx))
+        assertTrue(WebViewInstaller.previousApk(ctx).exists())
+        assertTrue(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
+        assertEquals("another WebView swap is awaiting health verification", WebViewInstaller.prepareRollback(ctx, pin, "c".repeat(64)))
+    }
+
+    @Test fun aMissingBackupCannotAdmitAnInstall() {
+        val ctx = context()
+        val pin = "150.0.7871.63"
+        val pending = WebViewInstaller.PendingRollback(
+            pin, "c".repeat(64), sha, signer, 0, installMayHaveStarted = false,
+        )
+        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, pending))
+
+        assertFalse(WebViewInstaller.markInstallMayHaveStarted(ctx, pin))
+        assertFalse(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
+    }
 }
