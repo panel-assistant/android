@@ -216,8 +216,6 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 internal fun panelBrowserTitle(
     friendlyName: String,
@@ -328,60 +326,6 @@ internal fun installWarningPresentationsJson(
 ): String? {
     if (warnings.size != presentations.size || warnings.size > 11) return null
     return presentations.joinToString(separator = ",", prefix = "[", postfix = "]") { it?.json() ?: "null" }
-}
-
-internal val PERFORMANCE_WORKLOAD_KEYS = listOf(
-    "dashboard_package",
-    "home_dashboard",
-    "ha_url",
-    "dashboard_fullscreen",
-    "dashboard_native_kiosk",
-    "dashboard_overscroll",
-    "dashboard_idle_return_min",
-    "dashboard_zoom",
-    "dark_mode",
-    "dashboard_theme",
-    "auto_brightness",
-    "auto_brightness_minimum_percent",
-    "auto_brightness_response_percent",
-    "auto_brightness_ha_entity",
-    "cpu_governor",
-    "keep_awake",
-    "prevent_idle_dim",
-)
-
-private val PERFORMANCE_COMPARISON_ID = Regex("^[0-9a-f]{32}$")
-private val PERFORMANCE_DEVICE_SECRET = Regex("^[0-9a-f]{64}$")
-
-internal fun validPerformanceDeviceSecret(value: String): Boolean =
-    value.matches(PERFORMANCE_DEVICE_SECRET)
-
-internal fun performanceBindingJson(
-    comparisonId: String,
-    deviceSecret: String,
-    panelId: String,
-    workload: Map<String, String>,
-): String? {
-    if (!comparisonId.matches(PERFORMANCE_COMPARISON_ID) || !validPerformanceDeviceSecret(deviceSecret)) return null
-    if (workload.keys != PERFORMANCE_WORKLOAD_KEYS.toSet()) return null
-    val key = SecretKeySpec(deviceSecret.lowercase().toByteArray(Charsets.UTF_8), "HmacSHA256")
-    fun fingerprint(domain: String, value: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(key)
-        return mac.doFinal("ha-paneld-perf/$domain\u0000$comparisonId\u0000$value".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    }
-    val workloadValue = buildString {
-        workload.toSortedMap().forEach { (name, value) ->
-            append(name.length).append(':').append(name)
-            append(value.length).append(':').append(value)
-        }
-    }
-    return JSONObject()
-        .put("comparison_id", comparisonId)
-        .put("panel_fingerprint", fingerprint("panel", panelId))
-        .put("workload_fingerprint", fingerprint("workload", workloadValue))
-        .toString()
 }
 
 internal fun Parameters.canonicalDigest(): String {
@@ -2665,41 +2609,13 @@ class PaneldServer internal constructor(
                         if (id == null) call.respondText("bad-id\n", status = HttpStatusCode.BadRequest)
                         else handleRevisionRestore(call, id)
                     }
-                    get("/perf") {
-                        if (!admitActiveRead(call)) return@get
-                        PerfReader.touch()
-                        call.respondText(PerfReader.json(), ContentType.Application.Json)
-                    }
-                    get("/perf/binding") {
-                        if (!admitActiveRead(call)) return@get
-                        val comparisonId = call.request.queryParameters["comparison_id"].orEmpty()
-                        if (!comparisonId.matches(PERFORMANCE_COMPARISON_ID)) return@get call.respondText(
-                            "{\"error\":\"invalid comparison_id\"}",
-                            ContentType.Application.Json,
-                            HttpStatusCode.BadRequest,
-                        )
-                        val binding = performanceBindingJson(
-                            comparisonId = comparisonId,
-                            deviceSecret = performanceBindingSecret,
-                            panelId = config.panelId,
-                            workload = performanceWorkloadValues(),
-                        ) ?: return@get call.respondText(
-                            "{\"error\":\"stable device identity unavailable\"}",
-                            ContentType.Application.Json,
-                            HttpStatusCode.ServiceUnavailable,
-                        )
-                        call.respondText(binding, ContentType.Application.Json)
-                    }
-                    // Sparse A/B harvesters use this projection without activating the 2 s sampler whose
-                    // own CPU and process probes would perturb the feature burden being measured.
-                    get("/perf/costs") {
-                        call.respondText(FeatureCosts.json(), ContentType.Application.Json)
-                    }
-                    get("/perf/history") {
-                        if (!admitActiveRead(call)) return@get
-                        val hours = call.request.queryParameters["hours"]?.toIntOrNull() ?: 24
-                        call.respondText(entityLearning.performanceHistoryJson(hours), ContentType.Application.Json)
-                    }
+                    performanceRoutes(
+                        admit = { admitActiveRead(it) },
+                        perf = { PerfReader.touch(); PerfReader.json() },
+                        binding = { id -> performanceBindingJson(id, performanceBindingSecret, config.panelId, performanceWorkloadValues()) },
+                        costs = FeatureCosts::json,
+                        history = { entityLearning.performanceHistoryJson(it) },
+                    )
                     get("/auto-brightness") {
                         call.response.headers.append("Cache-Control", "no-store")
                         call.respondText(autoBrightnessHttpApi.statusJson(), ContentType.Application.Json)
