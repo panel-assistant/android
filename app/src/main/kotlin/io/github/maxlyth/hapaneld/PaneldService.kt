@@ -35,6 +35,7 @@ import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.device.probe.AndroidPassiveProfileProbe
 import io.github.maxlyth.hapaneld.device.profile.ProfileDraftFactory
 import io.github.maxlyth.hapaneld.device.profile.RuntimeProfileRegistry
+import io.github.maxlyth.hapaneld.device.profile.ResolvedProfile
 import io.github.maxlyth.hapaneld.persistence.AppState
 import io.github.maxlyth.hapaneld.persistence.CleanDatabaseProof
 import io.github.maxlyth.hapaneld.persistence.StateQuiescence
@@ -213,6 +214,7 @@ import io.github.maxlyth.hapaneld.util.ProfileRestartCoordinator
 import io.github.maxlyth.hapaneld.util.ServiceRestartBarrier
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
@@ -248,6 +250,7 @@ import io.github.maxlyth.hapaneld.util.periodic
 import io.github.maxlyth.hapaneld.util.SystemProps
 import io.github.maxlyth.hapaneld.dashboard.shouldReloadBuiltinAfterEntityFilterChange
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
+import io.github.maxlyth.hapaneld.shizuku.ShizukuConsent
 import java.io.File
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -911,6 +914,9 @@ class PaneldService : Service() {
     private val pendingReconfigureKeys = linkedSetOf<String>()
     private val liveSettingRetryAttempts = mutableMapOf<String, Int>()
     private lateinit var restartLease: ServiceRestartBarrier.Lease
+    private var startupInitialization: Job? = null
+    private var pendingStart = false
+    private var pendingInstalledHandoff = false
     private lateinit var mainHandler: Handler
     private lateinit var liveSettingAuthority: LiveSettingAuthority
     private lateinit var config: Config
@@ -1174,18 +1180,64 @@ class PaneldService : Service() {
             return
         }
         restartLease = SERVICE_RESTART_BARRIER.enter()
-        config = Config(this)
-        config.migrateLiveStore()   // carry persisted settings across a schema bump before anything reads them
-        // Must run BEFORE ensurePanelId and before any renderer starts: it decides, once, whether this panel
-        // predates the entity-filter question, and a panel that predates it must never be held to answer it.
-        config.migrateLogShipTcpDefault()
-        config.migrateAutoSleepSource()
-        config.migrateSetupQuestionsForExistingInstall()
-        // Must run BEFORE ensurePanelId: a generated panel id takes its suffix from this identity, and
-        // this is also where a panel decides, once, whether it owes Home Assistant a final publication
-        // of the legacy Android-id device identifier.
-        config.ensureDeviceUid()
-        config.ensurePanelId()      // materialize the generated identity before MQTT/mDNS snapshot it
+        startupInitialization = scope.launch {
+            val preparedConfig = Config(this@PaneldService)
+            preparedConfig.migrateLiveStore() // carry persisted settings across a schema bump before anything reads them
+            // These migrations and generated identities precede every renderer and network owner.
+            preparedConfig.migrateLogShipTcpDefault()
+            preparedConfig.migrateAutoSleepSource()
+            preparedConfig.migrateSetupQuestionsForExistingInstall()
+            preparedConfig.ensureDeviceUid()
+            preparedConfig.ensurePanelId()
+            val preparedLiveSettings = LiveSettingAuthority.persistent(
+                this@PaneldService, MqttBridge.APPLY_SETTING_KEYS,
+            )
+            val preparedProfiles = RuntimeProfileRegistry(this@PaneldService)
+            val resolvedProfile = preparedProfiles.resolveForStartup()
+            val wifiStore = AndroidWifiOutageStore(this@PaneldService)
+            val preparedEntityLearning = EntityLearningManager(
+                context = this@PaneldService,
+                config = preparedConfig,
+                scope = scope,
+                // mDNS is started by onStartCommand before the learner can synchronize.
+                resolveInstanceUuid = { urls -> runtime.current().mdns.discoverHaInstanceUuid(urls) },
+                onFilterChanged = {
+                    if (shouldReloadBuiltinAfterEntityFilterChange(
+                            system.resolveDashboard(config.dashboardPackage),
+                            SystemController.BUILTIN_DASHBOARD,
+                            setupEntityFilterAnswered = config.setupEntityFilterAnswered,
+                            setupEverCompleted = config.setupEverCompleted,
+                        )) {
+                        system.reloadDashboard(
+                            SystemController.BUILTIN_DASHBOARD,
+                            reason = BuiltinDashboard.LEARNING_RELOAD_REASON,
+                        )
+                    }
+                },
+            )
+            ShizukuConsent.enabled(this@PaneldService)
+            // These controllers are constructed on main below, but each opens its namespace in
+            // its constructor. Warm the same AppState cache while still on the service IO lane.
+            AppState.preferences(this@PaneldService, "controller-state", "ha-paneld-controller-state")
+            AppState.preferences(this@PaneldService, "auto-brightness-runtime", "ha-paneld-auto-brightness-runtime")
+            AppState.preferences(this@PaneldService, "auto-sleep-learning", "ha-paneld-auto-sleep-learning")
+            AppState.preferences(this@PaneldService, "startup-recovery", "ha-paneld-startup-recovery")
+            withContext(Dispatchers.Main.immediate) {
+                if (teardownBoundary.isStopping) return@withContext
+                config = preparedConfig
+                liveSettingAuthority = preparedLiveSettings
+                profileRegistry = preparedProfiles
+                initializeRuntimeAfterDatabase(resolvedProfile, wifiStore, preparedEntityLearning)
+                if (pendingStart) startInitializedRuntime(pendingInstalledHandoff)
+            }
+        }
+    }
+
+    private fun initializeRuntimeAfterDatabase(
+        resolvedProfile: ResolvedProfile,
+        wifiStore: AndroidWifiOutageStore,
+        preparedEntityLearning: EntityLearningManager,
+    ) {
         migrationNotice = MigrationNotice(this, config)
         reconcileNativePresentationAfterPromotion()
         // Same reason, same window: Application.onCreate only registered the Shizuku Binder listeners,
@@ -1193,11 +1245,8 @@ class PaneldService : Service() {
         // the promote, exactly as the locale/night-mode correction above is.
         ShizukuBridge.activateAfterPromotion()
         updateForegroundStatus(nativeString(R.string.starting))
-        liveSettingAuthority = LiveSettingAuthority.persistent(this, MqttBridge.APPLY_SETTING_KEYS)
         // Resolve one immutable profile revision before constructing any hardware owner. Activations are
         // restart-bound, so every controller below observes this exact object for the service lifetime.
-        profileRegistry = RuntimeProfileRegistry(this)
-        val resolvedProfile = profileRegistry.resolveForStartup()
         profile = resolvedProfile.profile
         activeProfileIdentity = resolvedProfile.summary.ref.let { "${it.id}@${it.revision}" }
         profileActivationGeneration = resolvedProfile.activationGeneration
@@ -1255,7 +1304,7 @@ class PaneldService : Service() {
         config.attachProfile(profile)   // supplies per-panel manufacturer/model defaults
         appliedNetworkConfiguration = currentNetworkConfigurationSnapshot()
         sensors = SensorReporter(this, config, profile)
-        wifiOutageTracker = WifiOutageTracker(store = AndroidWifiOutageStore(this))
+        wifiOutageTracker = WifiOutageTracker(store = wifiStore)
         wifiDiagnostics = AndroidWifiDiagnostics(this) {
             Su.runOutputIsolatedBounded(
                 "cmd wifi status 2>/dev/null || dumpsys wifi",
@@ -1457,30 +1506,7 @@ class PaneldService : Service() {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
         })
         companionDataOperationState = CompanionDataOperationState.from(this)
-        entityLearning = EntityLearningManager(
-            context = this,
-            config = config,
-            scope = scope,
-            // The runtime owner is initialized here; onStartCommand starts its mDNS instance before the
-            // learner can synchronize, so UUID discovery has a live resolver from the first attempt.
-            resolveInstanceUuid = { urls -> runtime.current().mdns.discoverHaInstanceUuid(urls) },
-            onFilterChanged = {
-                // Synchronization can finish while another renderer is deliberately selected (for example
-                // during a staged cutover). Persist the learned set, but never let that background work
-                // launch DashboardActivity behind the configured renderer's back.
-                if (shouldReloadBuiltinAfterEntityFilterChange(
-                        system.resolveDashboard(config.dashboardPackage),
-                        SystemController.BUILTIN_DASHBOARD,
-                        setupEntityFilterAnswered = config.setupEntityFilterAnswered,
-                        setupEverCompleted = config.setupEverCompleted,
-                    )) {
-                    system.reloadDashboard(
-                        SystemController.BUILTIN_DASHBOARD,
-                        reason = BuiltinDashboard.LEARNING_RELOAD_REASON,
-                    )
-                }
-            },
-        )
+        entityLearning = preparedEntityLearning
         watchdog = WatchdogController(system, config)
         kiosk = KioskController(this, system, config, profile.appCanSu)
         kioskSettings = KioskSettingCoordinator(
@@ -3741,9 +3767,19 @@ class PaneldService : Service() {
         // A stood-down generation has no owner to start. START_STICKY is the point of keeping it: the
         // live started-service record is what Android recreates once the committed process has exited.
         if (standingDown) return START_STICKY
+        val handoffRequested = installedHandoffWakeRequested(AppIdentity.IS_BRIDGE, intent?.action)
+        if (!::runtime.isInitialized) {
+            pendingStart = true
+            pendingInstalledHandoff = pendingInstalledHandoff || handoffRequested
+            return START_STICKY
+        }
+        return startInitializedRuntime(handoffRequested)
+    }
+
+    private fun startInitializedRuntime(handoffRequested: Boolean): Int {
         // Generic RELEASE also runs on abort. Only the host's separate, post-commit handoff action
         // may request migration; retain it across cold startup or an already-starting generation.
-        if (!teardownBoundary.isStopping && installedHandoffWakeRequested(AppIdentity.IS_BRIDGE, intent?.action)) {
+        if (!teardownBoundary.isStopping && handoffRequested) {
             val ready = installedHandoffWake.request()
             Log.i(TAG, "installed successor handover requested: host commit, ready=$ready")
             if (ready) requestInstalledSuccessorHandoff("host commit")
@@ -4956,6 +4992,15 @@ class PaneldService : Service() {
         // A stood-down generation constructed no controller, holds no restart lease and armed no
         // boundary, so every wait, drain and proof below would be about another generation's owners.
         if (standingDown) {
+            super.onDestroy()
+            return
+        }
+        if (!::runtime.isInitialized) {
+            teardownBoundary.markStopping()
+            startupInitialization?.invokeOnCompletion { restartLease.completeTeardown() }
+            startupInitialization?.cancel()
+            scope.cancel()
+            stopForeground(true)
             super.onDestroy()
             return
         }

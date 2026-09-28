@@ -261,6 +261,7 @@ class DashboardActivity : AppCompatActivity() {
     private var entityFilterRetryDueAtMs = 0L
     private var rendererGeneration = 0L
     private var activityOwner = 0L
+    private var dashboardIsTopResumed = false
     private var conn: ConnectivityManager? = null
     private var netCallback: ConnectivityManager.NetworkCallback? = null
     private var networkRecovery: NetworkRecoveryGate? = null
@@ -498,6 +499,7 @@ class DashboardActivity : AppCompatActivity() {
     /** The decision hold announces itself in the log once, not once per poll. */
     private var entityBootstrapDecisionLogged = false
     private var entityBootstrapProblem: EntityBootstrapProblem? = null
+    private var entityBootstrapReadEpoch = 0L
     private var waitingStartedAt = 0L
     private val waitingTick = object : Runnable {
         override fun run() {
@@ -520,7 +522,11 @@ class DashboardActivity : AppCompatActivity() {
     private val entityBootstrapCheck = object : Runnable {
         override fun run() {
             if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
-            val config = Config(this@DashboardActivity)
+            val check = this
+            val readEpoch = ++entityBootstrapReadEpoch
+            activityScope.launch {
+            val config = readActivityStateOffMain { Config(this@DashboardActivity) }
+            if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || readEpoch != entityBootstrapReadEpoch) return@launch
             if (holdForEntityBootstrap(config)) {
                 // The hold is structurally forbidden from being terminal. The enable-time sync has died
                 // silently on hardware more than once, each time leaving a happy spinner over a dead
@@ -542,7 +548,8 @@ class DashboardActivity : AppCompatActivity() {
                 // machine owns every clock; see EntityBootstrapWatchdog.
                 val now = SystemClock.elapsedRealtime()
                 val blocking = EntityLearningRuntime.blockingIssueCount()
-                val problem = EntityLearningRuntime.bootstrapProblem()
+                val problem = readActivityStateOffMain { EntityLearningRuntime.bootstrapProblem() }
+                if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || readEpoch != entityBootstrapReadEpoch) return@launch
                 val action = entityBootstrapWatchdog.tick(
                     nowMs = now,
                     blockingIssues = blocking,
@@ -573,36 +580,39 @@ class DashboardActivity : AppCompatActivity() {
                     }
                     EntityBootstrapWatchdogAction.PRESENT_PROBLEM -> {
                         showWaitingForEntityBootstrap()
-                        return
+                        return@launch
                     }
                     EntityBootstrapWatchdogAction.IDLE -> Unit
                 }
                 if (blocking != entityBootstrapBlockedCount || problem != entityBootstrapProblem) {
                     showWaitingForEntityBootstrap()
-                    return
+                    return@launch
                 }
                 // Live milestone tick — the count climbing is the trust signal a spinner never was.
                 entityBootstrapMilestoneView?.takeIf { it.isAttachedToWindow }?.let {
                     // Still on screen: the learning notice counts from when it was last seen, not first.
                     BuiltinDashboard.restartAnnouncements.learningNoticeShown(now)
-                    val milestone = localizedBootstrapMilestone()
+                    val milestone = readActivityStateOffMain { EntityLearningRuntime.bootstrapMilestoneState() }
+                        .let(::localizedBootstrapMilestone)
+                    if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || readEpoch != entityBootstrapReadEpoch) return@launch
                     if (milestone.isNotBlank() && it.text != milestone) it.text = milestone
                 }
-                main.postDelayed(this, ENTITY_BOOTSTRAP_CHECK_MS)
-                return
+                main.postDelayed(check, ENTITY_BOOTSTRAP_CHECK_MS)
+                return@launch
             }
             entityBootstrapWatchdog.reset()
             entityBootstrapDecisionLogged = false
             // A sync may finish after the panel went dark. Do not create a WebView whose timers have no
             // connection callback or dark-settle owner; the next poll after a real wake will build it.
             if (deferReadyEntityBootstrapUntilWake(screenAwake)) {
-                main.postDelayed(this, ENTITY_BOOTSTRAP_CHECK_MS)
-                return
+                main.postDelayed(check, ENTITY_BOOTSTRAP_CHECK_MS)
+                return@launch
             }
             entityFilterLease?.let(EntityFilterTelemetry::stop)
             entityFilterLease = null
             configureEntityFilter(config)
             buildAndLoad(config)
+            }
         }
     }
     /**
@@ -648,17 +658,30 @@ class DashboardActivity : AppCompatActivity() {
         // privileged start. Always bootstrap the service here too so the local HTTP/MQTT surface is
         // alive even when MainActivity was bypassed.
         PaneldService.start(this)
-        val config = Config(this)
+        setContentView(TextView(this).apply {
+            setText(R.string.preparing_dashboard)
+            gravity = android.view.Gravity.CENTER
+        })
         // Android 14's HOME role resolves at package granularity when one package exposes multiple HOME
         // activities: set-home-activity can report success for AdminLauncherActivity yet still resolve
         // DashboardActivity. Route an actual HOME intent according to the explicit Launcher app policy;
         // service/watchdog starts are component-explicit and therefore continue to foreground the dashboard.
+        activityScope.launch {
+            val config = readActivityStateOffMain { Config(this@DashboardActivity) }
+            if (!destroyed && !isFinishing) initializeRenderer(config)
+        }
+    }
+
+    private fun initializeRenderer(config: Config) {
         if (shouldRouteDashboardHomeToAdmin(config.launcherPackage, packageName, intent?.action, intent?.categories)) {
             Log.i(TAG, "HOME invoked with Panel admin selected — opening the admin launcher")
             fallbackToLauncher()
             return
         }
         activityOwner = BuiltinDashboard.acquireActivityOwner()
+        if (dashboardIsTopResumed) {
+            BuiltinDashboard.setActivityForeground(activityOwner, true)
+        }
         if (!config.builtInRendererReady()) {
             // A configured URL with no credential is the one not-ready state that can fix itself: the
             // on-panel Home Assistant sign-in produces the missing token. Bouncing here instead is what
@@ -695,6 +718,13 @@ class DashboardActivity : AppCompatActivity() {
         io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.setListener {
             main.post { if (!destroyed) cameraPromptDelivery.onSignal() }
         }
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+            cameraPromptDelivery.onResumed()
+            NativeLocale.apply(config.uiLanguage)
+            applyFullscreen()
+            applyOverscroll()
+            applyZoom()
+        }
         applyRendererScreenPolicy()
         configureEntityFilter(config)
         // Freeze the WebView when the panel screen is off (CPU/heat/memory), and reload the moment
@@ -710,6 +740,10 @@ class DashboardActivity : AppCompatActivity() {
         lastTouchAt = SystemClock.elapsedRealtime()
         main.postDelayed(idleCheck, IDLE_CHECK_MS)
         if (networkAvailable) buildAndLoad(config) else showWaitingForNetwork()
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) &&
+            resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) {
+            onAdmissionVisibilityChanged(true)
+        }
         // Created dark: let the initial load settle, then freeze (onLoadStarted skipped the watchdog;
         // onConnectionStatus freezes earlier if the frontend connects first).
         if (!screenAwake) main.postDelayed(darkSettle, DARK_SETTLE_MS)
@@ -1343,8 +1377,9 @@ class DashboardActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         if (maintenanceFence.stop(this)) return
+        setIntent(intent)
         if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
-        val config = Config(this)
+        val config = activityConfig
         if (shouldRouteDashboardHomeToAdmin(config.launcherPackage, packageName, intent?.action, intent?.categories)) {
             Log.i(TAG, "HOME invoked with Panel admin selected — opening the admin launcher")
             fallbackToLauncher()
@@ -2194,10 +2229,12 @@ class DashboardActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (maintenanceFence.stop(this)) return
-        NativeLocale.apply(Config(this).uiLanguage)
+        if (resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) dashboardIsTopResumed = true
+        if (!::activityConfig.isInitialized) return
+        NativeLocale.apply(activityConfig.uiLanguage)
         // Below API 29 onTopResumedActivityChanged is never delivered, so resume owns visibility there.
         if (resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) onAdmissionVisibilityChanged(true)
-        BuiltinDashboard.setActivityForeground(activityOwner, true)
+        BuiltinDashboard.setActivityForeground(activityOwner, dashboardIsTopResumed)
         if (::activityConfig.isInitialized) applyRendererScreenPolicy()
         applyFullscreen()
         applyOverscroll()
@@ -2280,9 +2317,10 @@ class DashboardActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (maintenanceFence.stop(this)) return
-        if (hasFocus) applyFullscreen()
+        if (hasFocus && ::activityConfig.isInitialized) applyFullscreen()
     }
     override fun onPause() {
+        dashboardIsTopResumed = false
         onAdmissionVisibilityChanged(false)            // the retry stays armed; only the repaint stops
         BuiltinDashboard.setActivityForeground(activityOwner, false)
         super.onPause()
@@ -2290,6 +2328,7 @@ class DashboardActivity : AppCompatActivity() {
     override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
         super.onTopResumedActivityChanged(isTopResumedActivity)
         if (maintenanceFence.stop(this)) return
+        dashboardIsTopResumed = isTopResumedActivity
         if (!resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) {
             onAdmissionVisibilityChanged(isTopResumedActivity)
         }
@@ -2335,6 +2374,7 @@ class DashboardActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
         if (maintenanceFence.stop(this)) return
         if (android.os.Build.VERSION.SDK_INT in 29..32) web?.let { applyForceDark(it) }
+        if (!::activityConfig.isInitialized) return
         // This activity handles orientation, screen size and night mode itself rather than being
         // recreated, so a status screen that is up stays as drawn unless it is redrawn here — but only
         // when something it depends on actually moved. It also receives locale, keyboard and font-scale
@@ -3399,8 +3439,8 @@ class DashboardActivity : AppCompatActivity() {
         return ip?.let { "http://$it:8888/entities" }
     }
 
-    private fun localizedBootstrapMilestone(): String {
-        val milestone = EntityLearningRuntime.bootstrapMilestoneState() ?: return ""
+    private fun localizedBootstrapMilestone(milestone: EntityLearningRuntime.BootstrapMilestone?): String {
+        milestone ?: return ""
         return when (milestone.stage) {
             1 -> milestone.count?.let { getString(R.string.entity_scan_step_reading_count, it) }
                 ?: getString(R.string.entity_scan_step_reading)
@@ -3416,15 +3456,34 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun showWaitingForEntityBootstrap() {
+        val readEpoch = ++entityBootstrapReadEpoch
+        activityScope.launch {
+            val blockingIssues = EntityLearningRuntime.blockingIssueCount()
+            val read = readActivityStateOffMain {
+                Triple(
+                    EntityLearningRuntime.bootstrapProblem(),
+                    blockingIssues > 0 && EntityLearningRuntime.canIgnoreBlockingIssues(),
+                    EntityLearningRuntime.bootstrapMilestoneState(),
+                )
+            }
+            if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || readEpoch != entityBootstrapReadEpoch) return@launch
+            renderWaitingForEntityBootstrap(blockingIssues, read.first, read.second, read.third)
+        }
+    }
+
+    private fun renderWaitingForEntityBootstrap(
+        blockingIssues: Int,
+        problem: EntityBootstrapProblem?,
+        canIgnoreBlockingIssues: Boolean,
+        milestone: EntityLearningRuntime.BootstrapMilestone?,
+    ) {
         cancelAdmissionAutoRetry()
         main.removeCallbacks(entityBootstrapCheck)
         teardownWeb()
         val filterHold = entityFilterNativeHold
-        val blockingIssues = EntityLearningRuntime.blockingIssueCount()
-        val canIgnoreBlockingIssues = blockingIssues > 0 && EntityLearningRuntime.canIgnoreBlockingIssues()
         // Past the watchdog's give-up deadline a formless hold PRESENTS as a synchronization problem so
         // the retry/disable buttons appear — the happy spinner must never be terminal.
-        val bootstrapProblem = EntityLearningRuntime.bootstrapProblem()
+        val bootstrapProblem = problem
             ?: if (entityBootstrapWatchdog.gaveUp) EntityBootstrapProblem.SYNCHRONIZATION else null
         entityBootstrapBlockedCount = blockingIssues
         entityBootstrapProblem = bootstrapProblem
@@ -3438,7 +3497,7 @@ class DashboardActivity : AppCompatActivity() {
                 // Deterministic milestones, not a spinner: nobody trusts the circle (hardware review),
                 // and this text updates with the live scan count on every bootstrap poll tick.
                 entityBootstrapMilestoneView = surface.detail(
-                    localizedBootstrapMilestone(),
+                    localizedBootstrapMilestone(milestone),
                     accent = true,
                 )
                 rows += entityBootstrapMilestoneView!!
