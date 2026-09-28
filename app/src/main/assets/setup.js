@@ -1033,6 +1033,14 @@
     if (typed.ha_area !== undefined) fields.ha_area = typed.ha_area;
     postForm("api/v1/config", fields)
       .then(function () { return postForm("api/v1/setup/home-dashboard", {}); })
+      .then(function () {
+        // Panel Assistant already chose this panel's native path. The filter defaults on
+        // for that new panel, before its answer releases the first dashboard render.
+        if (!(journey.handover && journey.handover.source && journey.entity_filter &&
+          journey.entity_filter.relevant && !journey.entity_filter.answered)) return;
+        return postForm("api/v1/config", { dashboard_entity_learning: "true" })
+          .then(function () { return postForm("api/v1/setup/entity-filter", {}); });
+      })
       .then(function () { typed = {}; refresh(); })
       .catch(function (e) {
         lockStep(false);
@@ -1222,10 +1230,7 @@
     var other = document.getElementById(enable ? "ef-decline" : "");
     if (other) other.disabled = true;
     button.textContent = enable ? i18nText("setup.filter.action.enabling", "Turning on filtering…") : i18nText("setup.filter.action.loading", "Loading the dashboard…");
-    var chain = enable
-      ? postForm("api/v1/config", { dashboard_entity_learning: "true" })
-      : Promise.resolve();
-    chain
+    postForm("api/v1/config", { dashboard_entity_learning: enable ? "true" : "false" })
       .then(function () { return postForm("api/v1/setup/entity-filter", {}); })
       .then(function () { typed = {}; refresh(); })
       .catch(function (e) {
