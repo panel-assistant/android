@@ -1932,9 +1932,28 @@ class PaneldServer internal constructor(
     fun start() {
         stopping = false
         pendingApks.open()
-        // Bind the IPv6 wildcard "::" — on Android this is dual-stack (net.ipv6.bindv6only=0), so the
-        // server answers on both IPv6 and IPv4, instead of the IPv4-only default 0.0.0.0.
+        // Android's IPv6 wildcard accepts both IPv6 and IPv4.
         val server = scope.embeddedServer(CIO, port = config.httpPort, host = "::") {
+            mount(this)
+        }
+        // Binding is required startup: close ingress and propagate failures to the service owner.
+        try {
+            startOwnedHttpServer(
+                start = { server.start(wait = false) },
+                stop = { server.stop(500, 1500) },
+                closeIngress = pendingApks::close,
+            )
+            stopServer = { server.stop(500, 1500) }
+            startHaAreaConvergence()
+            Log.i(TAG, "HTTP listening on :${config.httpPort}")
+        } catch (e: Exception) {
+            stopping = true
+            Log.e(TAG, "HTTP bind on :${config.httpPort} failed", e)
+            throw e
+        }
+    }
+    internal fun mount(application: io.ktor.server.application.Application) {
+        with(application) {
             paneldRoot(
                 allowedHosts = { config.httpAllowedHosts },
                 setupNeedsUser = ::setupNeedsUser,
@@ -3574,25 +3593,6 @@ class PaneldServer internal constructor(
                 }
             }
         }
-        // Treat the bind as required startup, not a best-effort sidecar. A failure must close this
-        // generation's admission and reach the service runtime owner, which records FAILED and prevents
-        // a staged profile from being marked healthy without its management/control surface.
-        try {
-            startOwnedHttpServer(
-                start = { server.start(wait = false) },
-                stop = { server.stop(500, 1500) },
-                closeIngress = pendingApks::close,
-            )
-            stopServer = { server.stop(500, 1500) }
-            startHaAreaConvergence()
-            Log.i(TAG, "HTTP listening on :${config.httpPort}")
-        } catch (e: Exception) {
-            // HTTP is part of the service's required control plane. Propagate a bind/start failure to the
-            // runtime owner so this generation becomes FAILED and a staged profile cannot be marked healthy.
-            stopping = true
-            Log.e(TAG, "HTTP bind on :${config.httpPort} failed", e)
-            throw e
-        }
     }
 
     /**
@@ -3671,45 +3671,6 @@ class PaneldServer internal constructor(
         if (dm.widthPixels > 0 && dm.heightPixels > 0) "${dm.widthPixels}/${dm.heightPixels}" else "3/4"
     } catch (e: Throwable) { "3/4" }
 
-    /** 308 for a legacy flat path — preserves method, body and query so pre-0.8.5 tooling keeps working. */
-    private suspend fun legacy(call: ApplicationCall, new: String) {
-        val q = call.request.uri.substringAfter('?', "")
-        val loc = if (q.isEmpty()) new else "$new?$q"
-        call.response.headers.append("Location", loc)
-        call.respondText("moved-permanently: $loc\n", status = HttpStatusCode.PermanentRedirect)
-    }
-
-    /** Every pre-0.8.5 flat machine endpoint → its /api/v1 home. GET+POST both registered — 308
-     *  preserves the method, so the right verb reaches the real handler either way. */
-    private fun io.ktor.server.routing.Route.legacyRedirects() {
-        val map = mapOf(
-            "/perf" to "/api/v1/perf",
-            "/action" to "/api/v1/action",
-            "/diag" to "/api/v1/diag",
-            "/sensortrace" to "/api/v1/sensortrace",
-            "/screenshot.png" to "/api/v1/screenshot.png",
-            "/openapi.json" to "/api/v1/openapi.json",
-            "/proximity" to "/api/v1/proximity",
-            "/proximity/capture" to "/api/v1/proximity/capture",
-            "/proximity/threshold" to "/api/v1/proximity/threshold",
-            "/proximity/sensitivity" to "/api/v1/proximity/sensitivity",
-            "/proximity/reset" to "/api/v1/proximity/reset",
-            "/proximity/teach" to "/api/v1/proximity/teach",
-            "/proximity/test" to "/api/v1/proximity/test",
-            "/proximity/relearn" to "/api/v1/proximity/relearn",
-            "/config" to "/api/v1/config",
-            "/tame" to "/api/v1/tame",
-            "/tame/suggest" to "/api/v1/tame/suggest",
-            "/density" to "/api/v1/display/density",
-            "/inspect" to "/api/v1/inspect",
-            "/inspect/start" to "/api/v1/inspect/start",
-            "/inspect/stop" to "/api/v1/inspect/stop",
-        )
-        for ((old, new) in map) {
-            get(old) { legacy(call, new) }
-            post(old) { legacy(call, new) }
-        }
-    }
 
     // ---- live log stream (SSE) ----
 

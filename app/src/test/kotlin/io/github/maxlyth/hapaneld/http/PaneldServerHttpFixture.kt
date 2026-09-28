@@ -1,0 +1,114 @@
+package io.github.maxlyth.hapaneld.http
+
+import android.content.ContextWrapper
+import android.content.SharedPreferences
+import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportFacts
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportPhase
+import io.github.maxlyth.hapaneld.sensors.HaCurrentUserClient
+import io.github.maxlyth.hapaneld.sensors.SensorReporter
+import io.github.maxlyth.hapaneld.util.guardDbAppStaging
+import io.ktor.server.application.Application
+import java.io.File
+import java.lang.reflect.Proxy
+import java.nio.file.Files
+import sun.misc.Unsafe
+
+/**
+ * Temporary characterization fixture while the server is split into constructible route owners.
+ * Mounts the complete production registration with real guards and readers. Only the collaborators
+ * needed for registration and the baseline requests are initialized; other handlers are not simulated.
+ * Optional profile/provisioning owners remain absent, matching that supported production composition.
+ * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
+ */
+internal class PaneldServerHttpFixture : java.io.Closeable {
+    private val directory = Files.createTempDirectory("paneld-http-baseline").toFile()
+    private val context = object : ContextWrapper(null) {
+        override fun getFilesDir(): File = directory
+        override fun getCacheDir(): File = directory
+        override fun getNoBackupFilesDir(): File = directory
+        override fun getPackageName(): String = "io.github.maxlyth.hapaneld"
+    }
+    private val values = mutableMapOf<String, Any?>("panel_id" to "contract-panel")
+    private val preferences = Proxy.newProxyInstance(
+        SharedPreferences::class.java.classLoader,
+        arrayOf(SharedPreferences::class.java),
+    ) { _, method, args ->
+        when (method.name) {
+            "contains" -> values.containsKey(args!![0])
+            "getAll" -> values.toMap()
+            "getString", "getInt", "getLong", "getFloat", "getBoolean", "getStringSet" -> values[args!![0]] ?: args[1]
+            "edit" -> editor()
+            else -> error("Baseline unexpectedly accessed preferences: ${method.name}")
+        }
+    } as SharedPreferences
+    val config = Config(preferences)
+    private val pending = PendingUploadStore().apply { open() }
+    val server = allocate(PaneldServer::class.java).apply {
+        field("config", config)
+        field("appContext", context)
+        field("cacheDir", directory)
+        field("pendingApks", pending)
+        field("guardDbStaging", guardDbAppStaging(context))
+        field("identityMigration", IdentityMigrationSurface.NONE)
+        field("playAudio", { _: String -> error("Unexpected playback") })
+        field("onInstallComponent", { _: String, _: String, _: String -> error("Unexpected install") })
+        field("panelAssistantTransportFacts", {
+            PanelAssistantTransportFacts("", "", PanelAssistantTransportPhase.STOPPED, null)
+        })
+        field("releasePanelAssistantTransport", { error("Unexpected transport release") })
+        field("haOAuthFlow", HaOAuthFlow())
+        field("haCurrentUser", allocate(HaCurrentUserClient::class.java))
+        field("sensors", allocate(SensorReporter::class.java))
+        field("onProximityCalibration", { _: String, _: String -> false })
+        field("autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)
+        field("autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
+        field("radioStatus", { null })
+        field("onZigbeeJoinRetry", { error("Unavailable radio must not join") })
+        field("stopping", false)
+    }
+
+    fun mount(application: Application) = server.mount(application)
+
+    override fun close() {
+        pending.close()
+        check(directory.deleteRecursively()) { "Could not remove baseline directory" }
+    }
+
+    private fun PaneldServer.field(name: String, value: Any) {
+        PaneldServer::class.java.getDeclaredField(name).apply { isAccessible = true }.set(this, value)
+    }
+
+    private fun <T> allocate(type: Class<T>): T = type.cast(unsafe.allocateInstance(type))
+
+    private fun editor(): SharedPreferences.Editor {
+        val pendingValues = mutableMapOf<String, Any?>()
+        var clear = false
+        return Proxy.newProxyInstance(
+            SharedPreferences.Editor::class.java.classLoader,
+            arrayOf(SharedPreferences.Editor::class.java),
+        ) { proxy, method, args ->
+            when {
+                method.name.startsWith("put") -> { pendingValues[args!![0] as String] = args[1]; proxy }
+                method.name == "remove" -> { pendingValues[args!![0] as String] = null; proxy }
+                method.name == "clear" -> { clear = true; proxy }
+                method.name == "apply" || method.name == "commit" -> {
+                    if (clear) values.clear()
+                    pendingValues.forEach { (key, value) ->
+                        if (value == null) values.remove(key) else values[key] = value
+                    }
+                    if (method.name == "commit") true else null
+                }
+                else -> error("Unexpected editor operation: ${method.name}")
+            }
+        } as SharedPreferences.Editor
+    }
+
+    private companion object {
+        val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").run {
+            isAccessible = true
+            get(null) as Unsafe
+        }
+    }
+}
