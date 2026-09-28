@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.logship
 import io.github.maxlyth.hapaneld.util.LogShipEndpoint
 import io.github.maxlyth.hapaneld.util.LoopbackPortPair
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.Inet4Address
@@ -22,12 +23,7 @@ import java.util.concurrent.atomic.AtomicReference
 class LogShipAddressFamilyTest {
 
     private companion object {
-        /**
-         * Large enough that the gap between one shared deadline and one per candidate is seconds
-         * wide. These socket tests run inside the composed-wave gate alongside other builds, so a
-         * bound derived from a fast unloaded run reports contention as a shared-deadline defect.
-         */
-        const val DEADLINE_MS = 4_000L
+        const val DEADLINE_MS = 250L
     }
 
     private val v4: InetAddress = InetAddress.getByName("192.0.2.118")
@@ -208,38 +204,32 @@ class LogShipAddressFamilyTest {
         }
     }
 
-    @Test(timeout = 30_000)
+    @Test(timeout = 10_000)
     fun httpCandidatesShareOneAbsoluteDeadline() {
         val first = InetAddress.getByName("127.0.0.1")
         val second = InetAddress.getByName("127.0.0.2")
-        // BOTH candidates must hang. With a listener on only the first, the second was refused
-        // instantly, so one shared deadline and one deadline per candidate both finished in about
-        // one deadline and this assertion could not tell them apart - it stayed green under a
-        // mutation that made the budget per-candidate, at this revision and at every earlier one.
-        // Two hanging candidates make the difference the whole span of a second deadline.
+        // The first candidate consumes the shared deadline. A second candidate that gets its own
+        // fresh deadline would reach the live responder and succeed; no wall-clock budget is needed.
         val routes = LoopbackPortPair.bind(first, 1, second, 1)
         val hangs = Hangs()
         routes.use { hangs.use {
             hangs.on(routes.first)
-            hangs.on(routes.second)
+            val requests = ArrayBlockingQueue<String>(1)
+            serveHttp(routes.second, 204, requests)
             val sink = NetworkLogSinkFactory.create(
                 LogShipTarget("collector.test", routes.port, LogShipEndpoint.HTTP, "panel"),
                 { it },
                 LogAddressResolver { _, _ -> listOf(first, second) },
                 DEADLINE_MS,
             )
-            val started = System.nanoTime()
             sink.connect()
-            runCatching { sink.send(listOf("{}")) }
-            val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-            sink.close()
-            // Midway between the two outcomes: one shared deadline spends DEADLINE_MS in total, a
-            // per-candidate deadline spends it twice. Seconds of slack on either side, so host load
-            // moves the measurement without moving the verdict.
-            assertTrue(
-                "candidate timeouts multiplied the ${DEADLINE_MS}ms deadline: ${elapsed}ms",
-                elapsed < DEADLINE_MS * 3 / 2,
-            )
+            try {
+                assertThrows(java.io.IOException::class.java) { sink.send(listOf("{}")) }
+                assertTrue("first route did not actually hang", hangs.acceptedOne())
+                assertTrue("the second route received a POST after the shared deadline", requests.isEmpty())
+            } finally {
+                sink.close()
+            }
         } }
     }
 
@@ -251,6 +241,7 @@ class LogShipAddressFamilyTest {
      */
     private class Hangs : AutoCloseable {
         private val release = java.util.concurrent.CountDownLatch(1)
+        private val entered = java.util.concurrent.CountDownLatch(1)
         private val threads = mutableListOf<Thread>()
         private val accepted = java.util.Collections.synchronizedList(mutableListOf<Socket>())
         private val listeners = mutableListOf<ServerSocket>()
@@ -260,10 +251,13 @@ class LogShipAddressFamilyTest {
             threads += Thread {
                 runCatching { server.accept() }.getOrNull()?.let { socket ->
                     accepted.add(socket)
+                    entered.countDown()
                     runCatching { release.await() }
                 }
             }.apply { isDaemon = true; start() }
         }
+
+        fun acceptedOne(): Boolean = entered.await(1, TimeUnit.SECONDS)
 
         override fun close() {
             release.countDown()

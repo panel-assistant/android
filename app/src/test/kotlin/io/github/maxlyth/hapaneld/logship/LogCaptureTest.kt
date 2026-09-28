@@ -34,6 +34,7 @@ class LogCaptureTest {
         private val terminateOnDestroy: Boolean = true,
     ) : Process() {
         private val finished = CountDownLatch(1)
+        private val waiting = CountDownLatch(1)
         private val input = ByteArrayInputStream(output.toByteArray())
         val forcedDestroys = AtomicInteger()
         @Volatile private var exitCode: Int? = null
@@ -50,7 +51,11 @@ class LogCaptureTest {
             finished.await()
             return exitCode ?: 0
         }
-        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = finished.await(timeout, unit)
+        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
+            waiting.countDown()
+            return finished.await(timeout, unit)
+        }
+        fun awaitWaiting() = assertTrue("dump did not start waiting", waiting.await(2, TimeUnit.SECONDS))
         override fun exitValue(): Int = exitCode ?: throw IllegalThreadStateException("still running")
         override fun destroy() {
             if (terminateOnDestroy) finish(143)
@@ -65,6 +70,7 @@ class LogCaptureTest {
 
     private class InterruptingInputStream : InputStream() {
         private val entered = CountDownLatch(1)
+        private val interrupted = CountDownLatch(1)
 
         override fun read(): Int {
             entered.countDown()
@@ -72,11 +78,13 @@ class LogCaptureTest {
                 CountDownLatch(1).await()
                 return -1
             } catch (_: InterruptedException) {
+                interrupted.countDown()
                 throw InterruptedIOException("log dump reader interrupted during cleanup")
             }
         }
 
         fun awaitEntered() = assertTrue("dump reader did not start", entered.await(2, TimeUnit.SECONDS))
+        fun awaitInterrupted() = assertTrue("dump reader was not interrupted", interrupted.await(2, TimeUnit.SECONDS))
     }
 
     private fun redact(s: String) = LogCapture.redact(s)
@@ -188,11 +196,26 @@ class LogCaptureTest {
     }
 
     @Test fun fanOutReachesEverySubscriberAndIdleStopClearsRing() {
-        val cap = capture("echo shared; sleep 30")
+        val started = CountDownLatch(1)
+        lateinit var process: Process
+        val cap = LogCapture(
+            CoroutineScope(Dispatchers.IO),
+            listOf("sh", "-c", "read _; echo shared; sleep 30"),
+            { listOf("true") },
+            processStarter = { command ->
+                ProcessBuilder(command).redirectErrorStream(true).start().also {
+                    process = it
+                    started.countDown()
+                }
+            },
+        )
         val a = java.util.concurrent.CopyOnWriteArrayList<String>()
         val b = java.util.concurrent.CopyOnWriteArrayList<String>()
         val subA = cap.subscribe { a.add(it) }
         val subB = cap.subscribe { b.add(it) }
+        assertTrue("capture did not start", started.await(2, TimeUnit.SECONDS))
+        process.outputStream.write('\n'.code)
+        process.outputStream.flush()
         await { a.isNotEmpty() && b.isNotEmpty() }
         assertEquals("shared", a[0])
         assertEquals("shared", b[0])
@@ -202,6 +225,7 @@ class LogCaptureTest {
         subB.close()
         // Last detach = idle-stop: the subprocess is destroyed and the ring cleared.
         assertTrue(cap.snapshot().isEmpty())
+        cap.close()
     }
 
     @Test fun dumpRunsOneShotCommandRedacted() {
@@ -342,7 +366,7 @@ class LogCaptureTest {
                 executor.shutdownNow()
             }
             assertTrue(result.isEmpty())
-            Thread.sleep(100)
+            input.awaitInterrupted()
             assertNull(uncaught.get())
         } finally {
             cap.close()
@@ -355,30 +379,34 @@ class LogCaptureTest {
         val before = java.util.concurrent.CopyOnWriteArrayList<String>()
         val first = cap.subscribe { before.add(it) }
         await { before.isNotEmpty() }
+        val stoppedRun = cap.activeRun()!!
 
         cap.close()
         assertTrue(cap.snapshot().isEmpty())
         assertTrue(cap.dump().isEmpty())
         val after = java.util.concurrent.CopyOnWriteArrayList<String>()
         val rejected = cap.subscribe { after.add(it) }
-        Thread.sleep(100)
+        cap.emit(stoppedRun, "after-close")
         assertTrue(after.isEmpty())
         first.close()
         rejected.close()
     }
 
     @Test fun terminalCloseDestroysBlockedDumpProcess() {
+        val process = GateProcess("")
         val cap = LogCapture(
             CoroutineScope(Dispatchers.IO),
             listOf("true"),
-            { listOf("sleep", "30") },
+            { listOf("dump") },
+            processStarter = { process },
         )
         val executor = Executors.newSingleThreadExecutor()
         try {
             val dump = executor.submit<List<String>> { cap.dump() }
-            Thread.sleep(100)
+            process.awaitWaiting()
             cap.close()
             assertTrue(dump.get(2, TimeUnit.SECONDS).isEmpty())
+            assertTrue("close did not destroy the blocked process", process.forcedDestroys.get() > 0)
         } finally {
             executor.shutdownNow()
         }
