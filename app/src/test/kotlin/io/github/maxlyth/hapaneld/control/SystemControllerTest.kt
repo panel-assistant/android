@@ -55,6 +55,37 @@ class SystemControllerTest {
     private val DASH_HOME = ActivityRef(OWN, "io.github.maxlyth.hapaneld.DashboardActivity")
 
     // ---------- reboot ----------
+    @Test fun nativeActionAvailabilityFollowsExecutableRoutes() {
+        val noPrivilege = SystemController(
+            FakeSystemEnv(installed = setOf(MIN)),
+            FakeRootShell(available = false),
+            FakeDaemon(available = false),
+        )
+        assertFalse(noPrivilege.canReboot())
+        assertFalse(noPrivilege.canReloadDashboard(MIN))
+        assertTrue(noPrivilege.canReloadDashboard(BUILTIN))
+
+        val helper = sc(FakeSystemEnv(installed = setOf(MIN)), daemon = emptyMap(), su = false).first
+        assertTrue(helper.canReboot())
+        assertTrue(helper.canReloadDashboard(MIN))
+
+        val root = SystemController(
+            FakeSystemEnv(installed = setOf(MIN)),
+            FakeRootShell(available = true),
+            FakeDaemon(available = false),
+        )
+        assertTrue(root.canReboot())
+        assertTrue(root.canReloadDashboard(MIN))
+    }
+
+    @Test fun failedActionRoutesDoNotReportAnAppliedPress() {
+        val (reboot, _, _) = rebootController(DaemonLongResult.Reply("ERR"), su = false)
+        assertFalse(reboot.reboot())
+
+        val (reload, _, _) = sc(FakeSystemEnv(installed = setOf(MIN)), daemon = mapOf("RELOAD $MIN" to "ERR"), su = false)
+        assertFalse(reload.reloadDashboard(MIN))
+    }
+
     /** Build a controller whose helper answers REBOOT AWAIT with an exact [DaemonLongResult]. */
     private fun rebootController(
         outcome: DaemonLongResult? = null,

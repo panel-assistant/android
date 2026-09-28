@@ -124,24 +124,24 @@ class SystemController(
 
     /** Force-stop the dashboard and relaunch it. [reason], when given, is announced on the panel first
      *  so a deliberate reset can never be mistaken for a crash. */
-    fun reloadDashboard(dashboardPkg: String, reason: String = "") {
+    fun reloadDashboard(dashboardPkg: String, reason: String = ""): Boolean {
         val pkg = resolveDashboard(dashboardPkg)
         if (CompanionDataOperationGate.blocks(pkg)) {
             Log.i(TAG, "dashboard reload suppressed while Companion data operation owns $pkg")
-            return
+            return false
         }
         // Built-in renderer: an explicit reload clears any crash latch (deliberate retry consent), flags
         // the relaunch as reload-intent, and reaches onNewIntent → fresh page load.
         if (isBuiltin(pkg)) {
             BuiltinDashboard.requestExplicitReload(reason)
             startBuiltin()
-            return
+            return true
         }
-        if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return }
+        if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return false }
         val daemonReply = daemon.send("RELOAD $pkg")
         if (daemonReply == "BUSY") {
             Log.i(TAG, "dashboard reload refused while helper owns Companion data")
-            return
+            return false
         }
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) { daemonReply == "OK" },
@@ -161,7 +161,17 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reload via su fallback ($pkg)")
             else -> Log.w(TAG, "reload: helper and su both failed")
         }
+        return route != null
     }
+
+    /** A built-in reload uses this app; an external renderer needs one of the existing privileged routes. */
+    fun canReloadDashboard(dashboardPkg: String): Boolean {
+        val pkg = resolveDashboard(dashboardPkg)
+        return isBuiltin(pkg) || AndroidInput.isPackage(pkg) && (daemon.available() || root.available())
+    }
+
+    /** The same helper and root routes [reboot] will try. */
+    fun canReboot(): Boolean = daemon.available() || root.available()
 
     /**
      * Bring a launcher (home screen) to the foreground — for panels with no physical home button.
@@ -442,7 +452,7 @@ class SystemController(
      * accepted as the best evidence that helper can give — so an older helper behaves exactly as
      * before rather than losing its reboot.
      */
-    fun reboot() {
+    fun reboot(): Boolean {
         beforeReboot()
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) {
@@ -459,6 +469,7 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reboot via su fallback")
             else -> Log.w(TAG, "reboot: helper and su both unavailable, or neither could reboot the panel")
         }
+        return route != null
     }
 
     companion object {
