@@ -1513,18 +1513,6 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
-    "configure.badge.skunk_works": {
-      "text": "skunk-works",
-      "sourceHash": "a8f2afd0e3e85d2b17b647f2dd1471a8df0c450ce5eeb25c858a7068088d060d",
-      "surface": "configure",
-      "context": "badge",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 24,
-      "hardMaxChars": 40
-    },
     "configure.brightness.chart_label": {
       "text": "24-hour ambient-light pattern: the three most recent days drawn individually, with the rest of the week shown as a shaded minimum-to-maximum range",
       "sourceHash": "de769cd44d5e548e3985585296f2a48b20eba114b6696b24fb84400fbb5b2579",

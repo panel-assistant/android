@@ -124,6 +124,26 @@ class PanelAssistantVoiceTest {
         )
     }
 
+    @Test fun `Home Assistant's pipeline colours reach the panel, and a malformed one is dropped`() = runTest {
+        val rig = rig()
+        rig.connection.inbound.trySend(
+            JSONObject().put("id", 1).put("type", "event").put(
+                "event",
+                JSONObject().put("kind", "voice_colors").put(
+                    "colors",
+                    JSONObject().put("okay_nabu", "#3D8BFF").put("hey_jarvis", "#00ff88")
+                        .put("alexa", "blue").put("hey_mycroft", 7),
+                ),
+            ).toString(),
+        )
+        runCurrent()
+        assertEquals(
+            listOf(mapOf("okay_nabu" to 0xFF3D8BFF.toInt(), "hey_jarvis" to 0xFF00FF88.toInt())),
+            rig.colors,
+        )
+        assertTrue("colours are not an announcement", rig.announcements.isEmpty())
+    }
+
     @Test fun `leaving a turn Home Assistant has not ended cancels it there`() = runTest {
         val rig = rig()
         val turn = rig.voice.begin("okay_nabu", continued = false)!!
@@ -154,6 +174,7 @@ class PanelAssistantVoiceTest {
         val voice: PanelAssistantVoice,
         val connection: ScriptedHa,
         val announcements: MutableList<PanelAssistantAnnouncement>,
+        val colors: MutableList<Map<String, Int>>,
     )
 
     private fun TestScope.rig(
@@ -161,7 +182,8 @@ class PanelAssistantVoiceTest {
     ): Rig {
         val connection = ScriptedHa(grantVoice = configuration != null)
         val announcements = mutableListOf<PanelAssistantAnnouncement>()
-        val voice = PanelAssistantVoice(backgroundScope, { configuration }, { announcements += it })
+        val colors = mutableListOf<Map<String, Int>>()
+        val voice = PanelAssistantVoice(backgroundScope, { configuration }, { announcements += it }, onColors = { colors += it })
         val owner = PanelAssistantTransportOwner(
             scope = backgroundScope,
             auth = HaApiSessionProvider { HaApiSession("https://ha.example", "token", owner = OWNER) },
@@ -174,7 +196,7 @@ class PanelAssistantVoiceTest {
         )
         owner.replaceDemand(PanelAssistantTransportDemand(OWNER, IDENTITY))
         runCurrent()
-        return Rig(voice, connection, announcements)
+        return Rig(voice, connection, announcements, colors)
     }
 
     /** Home Assistant's side of one socket: accepts hello and voice configuration, records the rest. */
