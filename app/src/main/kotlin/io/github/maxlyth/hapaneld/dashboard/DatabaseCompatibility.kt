@@ -142,18 +142,7 @@ internal object DatabaseCompatibility {
             )
         }
 
-        val newest = observation.recoveries
-            .asSequence()
-            // DB_COMPAT_MUTATION_ANCHOR: SUPERSEDED_RECOVERY
-            .filter { it.kind == RecoveryDatabaseKind.PREMIGRATE }
-            // DB_COMPAT_MUTATION_ANCHOR: RECOVERY_SELECTION
-            .filter { recovery ->
-                recovery.namedSchema?.let { it <= boundary.maximumSchema } == true
-            }
-            .maxWithOrNull(
-                compareBy<RecoveryDatabaseObservation> { it.namedSchema ?: Int.MIN_VALUE }
-                    .thenBy { it.file.name },
-            )
+        val newest = newestEligibleRecovery(observation.recoveries, boundary)
             ?: return DatabaseCompatibilityDecision.Refuse(
                 DatabaseCompatibilityRefusal.PRIMARY_ABOVE_MAXIMUM_WITHOUT_PREMIGRATE,
             )
@@ -202,6 +191,7 @@ internal fun observeDatabaseCompatibility(
 ): DatabaseCompatibilityObservation = observeDatabaseCompatibility(
     target = context.getDatabasePath(boundary.databaseName),
     inspectRecoveryDatabase = { recovery -> inspectRecoveryDatabaseIsolated(recovery, context.cacheDir) },
+    boundary = boundary,
 )
 
 internal data class DatabaseFileInspection(val schema: Int, val integrityValid: Boolean)
@@ -211,6 +201,7 @@ internal fun observeDatabaseCompatibility(
     target: File,
     isRegularFile: (File) -> Boolean = File::isRegularFileWithoutFollowingLinks,
     inspectRecoveryDatabase: ((File) -> IsolatedRecoveryInspection?)? = null,
+    boundary: DatabaseCompatibilityBoundary = EntityCatalogSchema.DATABASE_COMPATIBILITY,
     inspectDatabase: (File) -> DatabaseFileInspection? = ::inspectSqlite,
 ): DatabaseCompatibilityObservation {
     val orphanedPrimarySidecar = listOf("-wal", "-shm", "-journal")
@@ -239,6 +230,8 @@ internal fun observeDatabaseCompatibility(
         target,
         isRegularFile,
         inspectRecoveryDatabase ?: { recovery -> inspectRecoveryDirectForTests(recovery, inspectDatabase) },
+        primary,
+        boundary,
     )
     return DatabaseCompatibilityObservation(
         primary = primary,
@@ -387,10 +380,25 @@ private data class RecoveryInventory(
     val complete: Boolean,
 )
 
+private fun newestEligibleRecovery(
+    recoveries: List<RecoveryDatabaseObservation>,
+    boundary: DatabaseCompatibilityBoundary,
+): RecoveryDatabaseObservation? = recoveries.asSequence()
+    // DB_COMPAT_MUTATION_ANCHOR: SUPERSEDED_RECOVERY
+    .filter { it.kind == RecoveryDatabaseKind.PREMIGRATE }
+    // DB_COMPAT_MUTATION_ANCHOR: RECOVERY_SELECTION
+    .filter { it.namedSchema?.let { schema -> schema <= boundary.maximumSchema } == true }
+    .maxWithOrNull(
+        compareBy<RecoveryDatabaseObservation> { it.namedSchema ?: Int.MIN_VALUE }
+            .thenBy { it.file.name },
+    )
+
 private fun observeRecoveryDatabases(
     target: File,
     isRegularFile: (File) -> Boolean,
     inspectDatabase: (File) -> IsolatedRecoveryInspection?,
+    primary: PrimaryDatabaseObservation,
+    boundary: DatabaseCompatibilityBoundary,
 ): RecoveryInventory {
     val directory = target.parentFile ?: return RecoveryInventory(emptyList(), emptyList(), false)
     if (!directory.exists()) return RecoveryInventory(emptyList(), emptyList(), true)
@@ -411,19 +419,14 @@ private fun observeRecoveryDatabases(
                 else -> RecoveryDatabaseKind.SUPERSEDED
             }
             val regularFile = isRegularFile(file)
-            val standaloneBeforeInspection = recoveryCompanionsAbsent(file)
-            val inspected = file.takeIf { regularFile && standaloneBeforeInspection }?.let(inspectDatabase)
-            val standalone = standaloneBeforeInspection && recoveryCompanionsAbsent(file)
             RecoveryDatabaseObservation(
                 file = file,
                 kind = kind,
                 namedSchema = namedSchema,
-                actualSchema = inspected?.inspection?.schema,
-                integrityValid = inspected?.inspection?.integrityValid == true,
+                actualSchema = null,
+                integrityValid = false,
                 regularFile = regularFile,
-                standalone = standalone,
-                sourceSha256 = inspected?.sourceSha256,
-                sourceBytes = inspected?.sourceBytes,
+                standalone = recoveryCompanionsAbsent(file),
             )
         }
     val companionPattern = Regex(
@@ -452,7 +455,27 @@ private fun observeRecoveryDatabases(
             )
         }
         .distinctBy { Triple(it.file.name, it.kind, it.namedSchema) }
-    val recoveries = (recoveriesWithMain + incompleteClaims)
+    val inventory = recoveriesWithMain + incompleteClaims
+    // A missing primary needs the complete name inventory to refuse false-fresh startup. A readable
+    // primary needs recovery bytes only when it is too new; then the exact newest eligible snapshot
+    // alone can authorize replacement. Hashing older or superseded files cannot change that verdict.
+    val selected = (primary as? PrimaryDatabaseObservation.Readable)
+        ?.takeIf { it.schema > boundary.maximumSchema }
+        ?.let { newestEligibleRecovery(inventory, boundary) }
+    val recoveries = inventory.map { recovery ->
+        if (recovery != selected || recovery.incompleteClaim || !recovery.regularFile || !recovery.standalone) {
+            recovery
+        } else {
+            val inspected = inspectDatabase(recovery.file)
+            recovery.copy(
+                actualSchema = inspected?.inspection?.schema,
+                integrityValid = inspected?.inspection?.integrityValid == true,
+                standalone = recoveryCompanionsAbsent(recovery.file),
+                sourceSha256 = inspected?.sourceSha256,
+                sourceBytes = inspected?.sourceBytes,
+            )
+        }
+    }
         .sortedWith(compareBy<RecoveryDatabaseObservation> { it.kind }.thenBy { it.namedSchema })
     return RecoveryInventory(
         recoveries = recoveries,
