@@ -4803,7 +4803,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             ?.let { "\"warning_presentations\":$it," }
             .orEmpty()
         return "{\"warnings\":[${warns.joinToString(",") { jsonStr(it) }}]," + presentationOverlay +
-            "\"capabilities\":[$caps]," +
+            "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege)}," +
             storageProof +
             "\"panel_assistant_update\":${UpdateChecker.panelAssistantUpdateJson(currentUpdates)}," +
             // Additive, presentation-only, and read from state the panel already holds.
