@@ -86,6 +86,46 @@ internal fun shouldRouteDashboardHomeToAdmin(
 ): Boolean = configuredLauncherPackage == ownPackage &&
     action == Intent.ACTION_MAIN && categories?.contains(Intent.CATEGORY_HOME) == true
 
+internal data class EntityFilterPreparationInput(
+    val enabled: Boolean,
+    val learningEnabled: Boolean,
+    val ids: List<String>,
+    val haUrl: String,
+    val origins: Set<String>,
+)
+
+internal data class PreparedEntityFilter(
+    val signature: String,
+    val ids: List<String> = emptyList(),
+    val hash: String = "",
+    val script: Result<String>? = null,
+)
+
+/** The same preparation used by cold HOME startup and subsequent renderer rebuilds. */
+internal suspend fun prepareEntityFilterOffMain(
+    read: () -> EntityFilterPreparationInput,
+    hash: (Iterable<String>) -> String = EntityFilterProtocol::hash,
+): PreparedEntityFilter = withContext(Dispatchers.IO) {
+    val input = read()
+    val learning = ":learning=${input.learningEnabled}"
+    if (!input.enabled) {
+        PreparedEntityFilter("disabled$learning")
+    } else {
+        runCatching {
+            val ids = EntityFilterProtocol.normalize(input.ids)
+            val digest = hash(ids)
+            PreparedEntityFilter(
+                signature = "enabled:$digest:${input.haUrl}$learning",
+                ids = ids,
+                hash = digest,
+                script = runCatching {
+                    EntityFilterProtocol.documentStartScript(input.haUrl, ids, input.origins)
+                },
+            )
+        }.getOrDefault(PreparedEntityFilter("invalid$learning"))
+    }
+}
+
 internal enum class EntityFilterFailureDisposition { HOLD_NATIVE, ALLOW_DIRECT }
 
 /** Automatic learning must never turn an interceptor failure into a full, unfiltered HA stream. */
@@ -239,6 +279,7 @@ class DashboardActivity : AppCompatActivity() {
         networkChip = null
     }
     private var entityFilterSignature = "disabled"
+    private var preparedEntityFilter: PreparedEntityFilter? = null
     // The colour-scheme policy baked into the live WebView's document-start script. Document-start
     // scripts cannot be replaced in an existing WebView, so a policy change rebuilds it (below).
     private var dashboardThemeSignature = DashboardTheme.DEFAULT
@@ -254,6 +295,9 @@ class DashboardActivity : AppCompatActivity() {
     // early or while paused and delivers it at the lifecycle's own ON_RESUME.
     private val cameraPromptDelivery = io.github.maxlyth.hapaneld.camera.CameraPromptDelivery { requestCameraPermissionIfNeeded() }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var newIntentJob: Job? = null
+    // A relaunch or retry that begins while a large filter is being prepared supersedes that result.
+    private var filterPreparationEpoch = 0L
     private val rendererGate = RendererGenerationGate()
     private val wakeMediaRecovery = WakeMediaRecoveryGate()
     private val entityFilterRetryPolicy = EntityFilterRetryPolicy()
@@ -610,7 +654,11 @@ class DashboardActivity : AppCompatActivity() {
             }
             entityFilterLease?.let(EntityFilterTelemetry::stop)
             entityFilterLease = null
-            configureEntityFilter(config)
+            val filterEpoch = ++filterPreparationEpoch
+            val prepared = prepareEntityFilter(config)
+            if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) ||
+                readEpoch != entityBootstrapReadEpoch || filterEpoch != filterPreparationEpoch) return@launch
+            configureEntityFilter(config, prepared)
             buildAndLoad(config)
             }
         }
@@ -672,7 +720,7 @@ class DashboardActivity : AppCompatActivity() {
         }
     }
 
-    private fun initializeRenderer(config: Config) {
+    private suspend fun initializeRenderer(config: Config) {
         if (shouldRouteDashboardHomeToAdmin(config.launcherPackage, packageName, intent?.action, intent?.categories)) {
             Log.i(TAG, "HOME invoked with Panel admin selected — opening the admin launcher")
             fallbackToLauncher()
@@ -697,6 +745,23 @@ class DashboardActivity : AppCompatActivity() {
                 fallbackToFirstRunSurface()
                 return
             }
+        }
+        var filterEpoch = filterPreparationEpoch
+        var prepared = prepareEntityFilter(config)
+        while (!destroyed && filterEpoch != filterPreparationEpoch) {
+            filterEpoch = filterPreparationEpoch
+            prepared = prepareEntityFilter(config)
+        }
+        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
+        // onNewIntent may have arrived while preparation was suspended, before activityConfig existed.
+        // Its epoch forced a fresh preparation; honor its latest HOME and readiness state as well.
+        if (shouldRouteDashboardHomeToAdmin(config.launcherPackage, packageName, intent?.action, intent?.categories)) {
+            fallbackToLauncher()
+            return
+        }
+        if (!config.builtInRendererReady() && !haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)) {
+            fallbackToFirstRunSurface()
+            return
         }
         activityConfig = config
         activityConfig.registerChangeListener(rendererPowerListener)
@@ -726,7 +791,7 @@ class DashboardActivity : AppCompatActivity() {
             applyZoom()
         }
         applyRendererScreenPolicy()
-        configureEntityFilter(config)
+        configureEntityFilter(config, prepared)
         // Freeze the WebView when the panel screen is off (CPU/heat/memory), and reload the moment
         // connectivity returns if the frontend isn't connected — registered for the activity's lifetime.
         BuiltinDashboard.setScreenListener(screenListener)
@@ -1053,14 +1118,17 @@ class DashboardActivity : AppCompatActivity() {
         busTimeouts.clear()
     }
 
-    private fun entityFilterSignature(config: Config): String {
-        val learning = ":learning=${config.dashboardEntityLearningEnabled}"
-        if (!config.dashboardEntityFilterEnabled) return "disabled$learning"
-        return runCatching {
-            val ids = EntityFilterProtocol.normalize(config.dashboardEntityFilterIds)
-            "enabled:${EntityFilterProtocol.hash(ids)}:${config.haUrl}$learning"
-        }.getOrDefault("invalid$learning")
-    }
+    private suspend fun prepareEntityFilter(config: Config): PreparedEntityFilter = prepareEntityFilterOffMain(read = {
+        val enabled = config.dashboardEntityFilterEnabled
+        val haUrl = config.haUrl
+        EntityFilterPreparationInput(
+            enabled = enabled,
+            learningEnabled = config.dashboardEntityLearningEnabled,
+            ids = if (enabled) config.dashboardEntityFilterIds else emptyList(),
+            haUrl = haUrl,
+            origins = if (enabled) dashboardDocumentStartOrigins(haUrl) else emptySet(),
+        )
+    })
 
     private fun holdForEntityBootstrap(config: Config): Boolean =
         shouldHoldRendererForEntityBootstrap(
@@ -1071,9 +1139,10 @@ class DashboardActivity : AppCompatActivity() {
 
     /** Prepare the exact allow-list for document-start interception. Automatic filtering fails closed:
      *  an unavailable interceptor holds the native diagnostic screen rather than opening HA unfiltered. */
-    private fun configureEntityFilter(config: Config) {
+    private fun configureEntityFilter(config: Config, prepared: PreparedEntityFilter) {
         entityFilterNativeHold = null
-        entityFilterSignature = entityFilterSignature(config)
+        preparedEntityFilter = prepared
+        entityFilterSignature = prepared.signature
         if (!entityFilterSignature.startsWith("enabled:")) {
             val lease = EntityFilterTelemetry.stopped()
             entityFilterLease = lease
@@ -1088,32 +1157,16 @@ class DashboardActivity : AppCompatActivity() {
                     error = "invalid_configuration",
                     detail = "The entity list saved on this panel is not valid, so it cannot be used.",
                 )
+            } else if (entityFilterSignature.startsWith("invalid")) {
+                Log.e(TAG, "invalid entity-filter configuration")
+                entityFilterSignature = "disabled"
+                EntityFilterTelemetry.failed(lease, "invalid_configuration")
+                EntityFilterTelemetry.directFallback(lease)
             }
             return
         }
-        val ids = runCatching { EntityFilterProtocol.normalize(config.dashboardEntityFilterIds) }
-            .getOrElse {
-                Log.e(TAG, "invalid entity-filter configuration", it)
-                val lease = EntityFilterTelemetry.stopped()
-                entityFilterLease = lease
-                if (entityFilterFailureDisposition(
-                        automaticLearningEnabled = config.dashboardEntityLearningEnabled,
-                        filterConfigured = config.dashboardEntityFilterEnabled,
-                    ) == EntityFilterFailureDisposition.HOLD_NATIVE
-                ) {
-                    EntityFilterTelemetry.held(lease, "invalid_configuration")
-                    entityFilterNativeHold = EntityFilterNativeHold(
-                        error = "invalid_configuration",
-                        detail = "The entity list saved on this panel is not valid, so it cannot be used.",
-                    )
-                } else {
-                    entityFilterSignature = "disabled"
-                    EntityFilterTelemetry.failed(lease, "invalid_configuration")
-                    EntityFilterTelemetry.directFallback(lease)
-                }
-                return
-            }
-        val lease = EntityFilterTelemetry.started(ids)
+        val ids = prepared.ids
+        val lease = EntityFilterTelemetry.started(ids, prepared.hash)
         entityFilterLease = lease
         if (!webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             Log.w(TAG, "entity filter unavailable: document-start script unsupported")
@@ -1160,10 +1213,15 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun retryEntityFilter(config: Config) {
         main.removeCallbacks(entityFilterRetry)
-        entityFilterLease?.let(EntityFilterTelemetry::stop)
-        entityFilterLease = null
-        configureEntityFilter(config)
-        buildAndLoad(config)
+        val filterEpoch = ++filterPreparationEpoch
+        activityScope.launch {
+            val prepared = prepareEntityFilter(config)
+            if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || filterEpoch != filterPreparationEpoch) return@launch
+            entityFilterLease?.let(EntityFilterTelemetry::stop)
+            entityFilterLease = null
+            configureEntityFilter(config, prepared)
+            buildAndLoad(config)
+        }
     }
 
     private fun scheduleEntityFilterRetry() {
@@ -1378,7 +1436,15 @@ class DashboardActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         if (maintenanceFence.stop(this)) return
         setIntent(intent)
+        ++filterPreparationEpoch
+        newIntentJob?.cancel()
+        newIntentJob = activityScope.launch { handleNewIntent(intent) }
+    }
+
+    private suspend fun handleNewIntent(intent: Intent?) {
         if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
+        if (!::activityConfig.isInitialized) return // the changed epoch makes initial preparation repeat
+        val filterEpoch = filterPreparationEpoch
         val config = activityConfig
         if (shouldRouteDashboardHomeToAdmin(config.launcherPackage, packageName, intent?.action, intent?.categories)) {
             Log.i(TAG, "HOME invoked with Panel admin selected — opening the admin launcher")
@@ -1400,6 +1466,8 @@ class DashboardActivity : AppCompatActivity() {
                 return
             }
         }
+        val prepared = prepareEntityFilter(config)
+        if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || filterEpoch != filterPreparationEpoch) return
         val normalizedUrl = config.haUrl.trim().trimEnd('/')
         if (haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)) {
             if (signInShownForUrl == normalizedUrl && web != null) {
@@ -1423,7 +1491,7 @@ class DashboardActivity : AppCompatActivity() {
             retryPolicy.reset()
             interstitialShown = false
             teardownWeb()
-            configureEntityFilter(config)
+            configureEntityFilter(config, prepared)
             buildAndLoad(config)
             return
         }
@@ -1439,7 +1507,7 @@ class DashboardActivity : AppCompatActivity() {
             retryPolicy.reset()
             interstitialShown = false
             teardownWeb()
-            configureEntityFilter(config)
+            configureEntityFilter(config, prepared)
             buildAndLoad(config)
             return
         }
@@ -1452,14 +1520,14 @@ class DashboardActivity : AppCompatActivity() {
             retryPolicy.reset()
             interstitialShown = false
             teardownWeb()
-            configureEntityFilter(config)
+            configureEntityFilter(config, prepared)
             buildAndLoad(config)
             return
         }
         // The filter endpoint reloads this singleTask activity after committing. Document-start scripts
         // cannot be replaced in an existing WebView, so a filter-set change or learning-mode change
         // deliberately rebuilds only the WebView while keeping the foreground service and app process alive.
-        val nextFilterSignature = entityFilterSignature(config)
+        val nextFilterSignature = prepared.signature
         if (nextFilterSignature != entityFilterSignature) {
             Log.i(TAG, "entity instrumentation changed — rebuilding dashboard WebView")
             // The learner's reload lands here with its reason pending. Only it is a learning restart;
@@ -1472,7 +1540,7 @@ class DashboardActivity : AppCompatActivity() {
             retryPolicy.reset()
             interstitialShown = false
             teardownWeb()
-            configureEntityFilter(config)
+            configureEntityFilter(config, prepared)
             buildAndLoad(config)
             return
         }
@@ -1489,7 +1557,7 @@ class DashboardActivity : AppCompatActivity() {
             retryPolicy.reset()
             interstitialShown = false
             teardownWeb()
-            configureEntityFilter(config)
+            configureEntityFilter(config, prepared)
             buildAndLoad(config)
             return
         }
@@ -3701,11 +3769,7 @@ class DashboardActivity : AppCompatActivity() {
             try {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
-                    EntityFilterProtocol.documentStartScript(
-                        config.haUrl,
-                        config.dashboardEntityFilterIds,
-                        documentStartOrigins,
-                    ),
+                    requireNotNull(preparedEntityFilter?.script).getOrThrow(),
                     documentStartOrigins,
                 )
                 entityFilterRetryPolicy.reset()

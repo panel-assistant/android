@@ -37,12 +37,12 @@ object EntityFilterTelemetry {
         )
     }
 
-    @Synchronized fun started(entityIds: List<String>): Lease {
+    @Synchronized fun started(entityIds: List<String>, hash: String): Lease {
         val lease = Lease(++nextLease)
         owner = lease.id
         active = true
         configuredCount = entityIds.size
-        configuredHash = EntityFilterProtocol.hash(entityIds)
+        configuredHash = hash
         lastError = ""
         modifiedSubscriptions = 0; failures = 0; directFallbacks = 0
         resetTraffic()
