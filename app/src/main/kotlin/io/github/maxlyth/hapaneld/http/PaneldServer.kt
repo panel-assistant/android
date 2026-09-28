@@ -3217,44 +3217,12 @@ class PaneldServer internal constructor(
                             )
                         }
                     }
-                    // EFR32 radio status (Install-tab Radio card). {present, status}. present=false → no radio.
-                    get("/radio") {
-                        val st = withContext(Dispatchers.IO) { radioStatus() }
-                        val body = if (st == null) """{"present":false,"status":"none"}""" else JSONObject()
-                            .put("present", true)
-                            .put("router_configured", config.zigbeeRouterConfigured)
-                            .put("router_enabled", config.zigbeeRouterConfigured && config.zigbeeRouterEnabled)
-                            .put("status", st.publicSummary())
-                            .put("state", st.state.wireValue)
-                            .put("attributes", JSONObject(st.mqttAttributes()))
-                            .toString()
-                        call.respondText(body, ContentType.Application.Json)
-                    }
-                    post("/radio/join") {
-                        val st = radioStatus()
-                        when {
-                            st == null -> call.respondText(
-                                """{"status":"unavailable"}""",
-                                ContentType.Application.Json,
-                                HttpStatusCode.NotFound,
-                            )
-                            !config.zigbeeRouterConfigured || !config.zigbeeRouterEnabled ->
-                                call.respondText(
-                                    """{"status":"disabled"}""",
-                                    ContentType.Application.Json,
-                                    HttpStatusCode.Conflict,
-                                )
-                            onZigbeeJoinRetry() -> call.respondText(
-                                """{"status":"started"}""",
-                                ContentType.Application.Json,
-                            )
-                            else -> call.respondText(
-                                """{"status":"busy"}""",
-                                ContentType.Application.Json,
-                                HttpStatusCode.ServiceUnavailable,
-                            )
-                        }
-                    }
+                    radioRoutes(
+                        status = radioStatus,
+                        configured = { config.zigbeeRouterConfigured },
+                        enabled = { config.zigbeeRouterEnabled },
+                        join = onZigbeeJoinRetry,
+                    )
                     // Auto-heal the System WebView (download + install the profile's recommended build).
                     // Fire-and-forget: the install runs off-thread (large download); the client refreshes.
                     post("/webview/heal") {
