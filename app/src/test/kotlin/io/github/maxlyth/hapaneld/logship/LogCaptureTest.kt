@@ -212,7 +212,7 @@ class LogCaptureTest {
             helperLines = { emit ->
                 helperStarts.incrementAndGet()
                 emit("[ 1790592713.123  123: 456 E/AndroidRuntime ]")
-                emit("java.lang.IllegalStateException: password=hunter2secret\\nAuthorization: Bearer abc123XYZ\\n\\n    at Example.first(Example.kt:12)")
+                emit("java.lang.IllegalStateException: password=hunter2secret\\x0AAuthorization: Bearer abc123XYZ\\x0A\\x0A    at Example.first(Example.kt:12)")
                 emit("")
                 awaitCancellation()
             },
@@ -235,7 +235,7 @@ class LogCaptureTest {
 
     @Test fun rootedSystemCaptureShipsACompleteExceptionWithEitherSuForm() {
         val record = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-            "java.lang.IllegalStateException: complete\\n    at Example.first(Example.kt:12)\n\n"
+            "java.lang.IllegalStateException: complete\\x0A    at Example.first(Example.kt:12)\\x0A\\x0A    at Example.second(Example.kt:25)\n\n"
         for ((form, prefix) in listOf(
             SuForm.ANDROID to listOf("su", "0", "sh", "-c"),
             SuForm.TOOLBOX to listOf("su", "-c"),
@@ -257,7 +257,7 @@ class LogCaptureTest {
                 assertEquals("$form must stream the complete exception as one record", 1, received.size)
                 assertEquals("$form must follow from now", true, started.any { it.last().contains("-T 1") })
                 val expected = "[ 1790592713.123  123: 456 E/RSLProof ]\n" +
-                    "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)"
+                    "java.lang.IllegalStateException: complete\n    at Example.first(Example.kt:12)\n\n    at Example.second(Example.kt:25)"
                 assertEquals("$form must stream the complete exception", expected, received.single())
                 assertEquals("$form must dump the same complete exception", listOf(expected), cap.dump(10))
             } finally {
