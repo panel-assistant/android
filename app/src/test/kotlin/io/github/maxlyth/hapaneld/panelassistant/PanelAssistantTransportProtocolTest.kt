@@ -24,7 +24,7 @@ class PanelAssistantTransportProtocolTest {
         assertEquals(1, hello.getJSONObject("protocol").getInt("min"))
         assertEquals(2, hello.getJSONObject("protocol").getInt("max"))
         assertTrue(Regex("^[0-9a-f]{64}$").matches(hello.getString("contract_digest")))
-        assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "embed_proof"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "embed_proof", "voice"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         val relay = hello.getJSONArray("channels").getJSONObject(0)
         assertEquals(listOf("relay3", "switch", "relay", "relay3", "relay", "3"), listOf("channel", "platform", "translation_key", "unique_suffix", "family", "index").map { relay.get(it).toString() })
     }
@@ -41,7 +41,7 @@ class PanelAssistantTransportProtocolTest {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.
         assertEquals(
-            "2700d1525aa3373f316935b3ba8ea593fca486d0095ca79937ce59ca9f098dda",
+            "5557a65e4b729110205fd4fefb69d665a08e33218f81521a50094a8bab577dd2",
             PanelAssistantTransportProtocol.CONTRACT_DIGEST,
         )
     }

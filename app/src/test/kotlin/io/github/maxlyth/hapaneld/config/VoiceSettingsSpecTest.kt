@@ -2,9 +2,10 @@ package io.github.maxlyth.hapaneld.config
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONArray
 
 class VoiceSettingsSpecTest {
     private val voiceEnabled = requireNotNull(SettingsRegistry.spec("voice_enabled"))
@@ -12,12 +13,11 @@ class VoiceSettingsSpecTest {
     private val pipelines = requireNotNull(SettingsRegistry.spec("voice_pipelines"))
     private val audioSource = requireNotNull(SettingsRegistry.spec("voice_audio_source"))
     private val sensitivity = requireNotNull(SettingsRegistry.spec("voice_sensitivity"))
-    private val voiceState = requireNotNull(SettingsRegistry.spec("voice_state"))
 
     private val micGain = requireNotNull(SettingsRegistry.spec("voice_mic_gain_db"))
 
     private val everyMicrophoneGatedVoiceSpec =
-        listOf(voiceEnabled, wakeWords, pipelines, audioSource, sensitivity, voiceState, micGain)
+        listOf(voiceEnabled, wakeWords, pipelines, audioSource, sensitivity, micGain)
 
     @Test fun `every voice setting requires the microphone capability and lives in the Voice group`() {
         everyMicrophoneGatedVoiceSpec.forEach { spec ->
@@ -45,7 +45,7 @@ class VoiceSettingsSpecTest {
             SettingsRegistry.schemaVisibleSpecs().none { it.group == "Voice" },
         )
         // The group still exists in the registry: hiding is a release decision, not a deletion.
-        assertEquals(7, SettingsRegistry.SPECS.count { it.group == "Voice" })
+        assertEquals(6, SettingsRegistry.SPECS.count { it.group == "Voice" })
     }
 
     /**
@@ -65,16 +65,12 @@ class VoiceSettingsSpecTest {
         }
     }
 
-    @Test fun `voice_enabled is an advanced live-apply switch, off and unexposed by default`() {
+    @Test fun `voice_enabled is an advanced live-apply switch, off by default and not a Home Assistant entity`() {
         assertEquals(SettingType.BOOL, voiceEnabled.type)
         assertEquals("false", voiceEnabled.default)
         assertEquals(Tier.ADVANCED, voiceEnabled.tier)
         assertTrue(voiceEnabled.liveApply)
-        assertFalse(voiceEnabled.haExposedByDefault)
-        assertNotNull(voiceEnabled.ha)
-        assertEquals("switch", voiceEnabled.ha!!.component)
-        assertEquals("voice_assistant", voiceEnabled.ha!!.objectSuffix)
-        assertFalse(voiceEnabled.ha!!.readOnly)
+        assertNull(voiceEnabled.ha)
     }
 
     @Test fun `voice_wake_words defaults to okay_nabu and validates known ids up to two entries`() {
@@ -99,17 +95,25 @@ class VoiceSettingsSpecTest {
         assertTrue(SettingValue.validate(wakeWords, "[\"okay_nabu\"") is Validation.Bad)
     }
 
-    @Test fun `voice_wake_words rejects an unknown model id`() {
-        val bad = SettingValue.validate(wakeWords, """["okay_nabu","computer"]""") as Validation.Bad
-        assertTrue(bad.reason.contains("computer"))
+    @Test fun `voice_wake_words accepts an imported model id`() {
+        val ok = SettingValue.validate(wakeWords, """["okay_nabu","computer"]""") as Validation.Ok
+        assertEquals("""["okay_nabu","computer"]""", ok.normalized)
     }
 
-    @Test fun `voice_wake_words rejects more than two entries`() {
-        val bad = SettingValue.validate(
-            wakeWords,
-            """["okay_nabu","hey_jarvis","alexa"]""",
-        ) as Validation.Bad
+    @Test fun `voice_wake_words rejects an id that is not a wake-word id`() {
+        listOf("Computer", "1computer", "hey-jarvis", "", "a" + "b".repeat(64)).forEach { id ->
+            val bad = SettingValue.validate(wakeWords, """["okay_nabu","$id"]""") as Validation.Bad
+            assertTrue(id, bad.reason.contains("\"$id\""))
+        }
+        // The longest id the shape admits is 64 characters.
+        assertTrue(SettingValue.validate(wakeWords, """["a${"b".repeat(63)}"]""") is Validation.Ok)
+    }
+
+    @Test fun `voice_wake_words rejects more than thirty-two entries`() {
+        val ids = (1..33).map { "wake_$it" }
+        val bad = SettingValue.validate(wakeWords, JSONArray(ids).toString()) as Validation.Bad
         assertTrue(bad.reason.contains("at most"))
+        assertTrue(SettingValue.validate(wakeWords, JSONArray(ids.take(32)).toString()) is Validation.Ok)
     }
 
     @Test fun `voice_wake_words rejects a duplicate entry`() {
@@ -142,9 +146,14 @@ class VoiceSettingsSpecTest {
         assertTrue(SettingValue.validate(pipelines, "{\"okay_nabu\":\"x\"") is Validation.Bad)
     }
 
-    @Test fun `voice_pipelines rejects an unknown wake word key`() {
-        val bad = SettingValue.validate(pipelines, """{"computer":"assist_pipeline_1"}""") as Validation.Bad
-        assertTrue(bad.reason.contains("computer"))
+    @Test fun `voice_pipelines accepts an imported wake word key`() {
+        val ok = SettingValue.validate(pipelines, """{"computer":"assist_pipeline_1"}""") as Validation.Ok
+        assertEquals("""{"computer":"assist_pipeline_1"}""", ok.normalized)
+    }
+
+    @Test fun `voice_pipelines rejects a key that is not a wake-word id`() {
+        val bad = SettingValue.validate(pipelines, """{"Computer":"assist_pipeline_1"}""") as Validation.Bad
+        assertTrue(bad.reason.contains("Computer"))
     }
 
     @Test fun `voice_pipelines rejects a non-string value`() {
@@ -166,12 +175,7 @@ class VoiceSettingsSpecTest {
         assertTrue(sensitivity.help.contains("offset"))
     }
 
-    @Test fun `voice_state is a read-only unexposed-by-default sensor`() {
-        assertTrue(voiceState.readOnly)
-        assertFalse(voiceState.haExposedByDefault)
-        assertNotNull(voiceState.ha)
-        assertEquals("sensor", voiceState.ha!!.component)
-        assertEquals("voice_state", voiceState.ha!!.objectSuffix)
-        assertFalse(voiceState in SettingsRegistry.settable())
+    @Test fun `the voice phase is the satellite's state in Home Assistant, not a panel setting`() {
+        assertNull(SettingsRegistry.spec("voice_state"))
     }
 }

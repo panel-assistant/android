@@ -125,13 +125,14 @@
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "2700d1525aa3373f316935b3ba8ea593fca486d0095ca79937ce59ca9f098dda",
+        "contract_digest": "5557a65e4b729110205fd4fefb69d665a08e33218f81521a50094a8bab577dd2",
         "capabilities": [
           "state",
           "commands",
           "approval",
           "mqtt_withdraw",
-          "embed_proof"
+          "embed_proof",
+          "voice"
         ],
         "channels": [
           {
@@ -959,49 +960,6 @@
       "state_class": null,
       "force_update": false,
       "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "voice_enabled",
-      "platform": "switch",
-      "translation_key": "voice_enabled",
-      "unique_suffix": "voice_assistant",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "voice_state",
-      "platform": "sensor",
-      "translation_key": "voice_state",
-      "unique_suffix": "voice_state",
-      "family": null,
-      "index": null,
-      "entity_category": "diagnostic",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": [
-        "off",
-        "idle",
-        "listening",
-        "processing",
-        "responding",
-        "error"
-      ],
       "min": null,
       "max": null,
       "step": null

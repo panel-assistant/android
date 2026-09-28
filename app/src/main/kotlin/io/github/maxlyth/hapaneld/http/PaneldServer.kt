@@ -863,6 +863,47 @@ internal fun voiceTestRefusal(hasMicrophone: Boolean, voiceEnabled: Boolean): St
  *  route's docs and OpenAPI both promise this endpoint "requires a microphone-capable panel" — the
  *  directory itself has no live capability signal, so the capability-less case must be checked here,
  *  exactly like [voiceTestRefusal] checks it ahead of the trigger. */
+private const val MAX_WAKE_WORD_IMPORT_BYTES = 4L * 1024L * 1024L
+private const val WAKE_WORD_IMPORT_DEADLINE_MS = 30_000L
+
+/** `GET /api/v1/voice/wake-words`: every wake word the panel holds, bundled first. */
+internal fun wakeWordsResponse(
+    catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
+): Pair<HttpStatusCode, String> {
+    val words = catalog.available().joinToString(",") { config ->
+        "{\"id\":${Json.str(config.id)},\"wake_word\":${Json.str(config.wakeWord)}," +
+            "\"imported\":${!catalog.isBundled(config.id)}}"
+    }
+    return HttpStatusCode.OK to "{\"wake_words\":[$words]}"
+}
+
+/**
+ * `POST /api/v1/voice/wake-words`: import one user-trained microWakeWord model from
+ * `{"name":…,"manifest":"<the .json text>","model":"<the .tflite, base64>"}`. [changed] runs after a
+ * model is installed, so the listener and Home Assistant see it.
+ */
+internal fun wakeWordImportResponse(
+    catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
+    body: ByteArray,
+    changed: () -> Unit,
+): Pair<HttpStatusCode, String> {
+    val request = runCatching { org.json.JSONObject(body.toString(Charsets.UTF_8)) }.getOrNull()
+    val name = request?.opt("name") as? String
+    val manifest = request?.opt("manifest") as? String
+    val model = (request?.opt("model") as? String)?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
+    if (name == null || manifest == null || model == null) {
+        return HttpStatusCode.BadRequest to "{\"error\":\"expected name, manifest and a base64 model\"}"
+    }
+    return when (val result = catalog.import(name, manifest.toByteArray(Charsets.UTF_8), model)) {
+        is io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog.ImportResult.Imported -> {
+            changed()
+            HttpStatusCode.OK to "{\"id\":${Json.str(result.config.id)},\"wake_word\":${Json.str(result.config.wakeWord)}}"
+        }
+        is io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog.ImportResult.Refused ->
+            HttpStatusCode.UnprocessableEntity to "{\"error\":${Json.str(result.reason)}}"
+    }
+}
+
 internal fun voicePipelinesRefusal(hasMicrophone: Boolean): String? =
     if (!hasMicrophone) "this panel has no microphone capability" else null
 
@@ -1737,6 +1778,10 @@ class PaneldServer internal constructor(
     // unavailable; the voice-coordinator lane injects the real pipeline-runtime trigger.
     private val voiceTest: io.github.maxlyth.hapaneld.assist.VoiceTestTrigger =
         io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.NOT_WIRED,
+    // The wake words this panel holds, bundled and imported, for the Configure wake-word picker; null
+    // answers 503. [onWakeWordsChanged] rearms the listener and tells Home Assistant after an import.
+    private val wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog? = null,
+    private val onWakeWordsChanged: () -> Unit = {},
     // The native transport's persisted authority, discovery value and phase, and the panel-local release
     // that hands entities and commands back to MQTT. Migration scaffolding; deleted with MQTT.
     private val panelAssistantTransportFacts: () -> io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportFacts,
@@ -3054,6 +3099,42 @@ class PaneldServer internal constructor(
                             return@post
                         }
                         val (status, body) = voiceTestTriggerResponse(voiceTest.trigger())
+                        call.respondText(body, ContentType.Application.Json, status)
+                    }
+                    // The wake words this panel can listen for, and the import of one a user trained: a
+                    // microWakeWord manifest and model, sent as JSON with the model base64-encoded.
+                    get("/voice/wake-words") {
+                        val catalog = wakeWords
+                        if (catalog == null || !liveCapabilities(snapStaleOk().caps).hasMicrophone) {
+                            call.respondText("{\"error\":\"unavailable\"}", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                            return@get
+                        }
+                        val (status, body) = withContext(Dispatchers.IO) { wakeWordsResponse(catalog) }
+                        call.respondText(body, ContentType.Application.Json, status)
+                    }
+                    post("/voice/wake-words") {
+                        val catalog = wakeWords
+                        if (catalog == null || !liveCapabilities(snapStaleOk().caps).hasMicrophone) {
+                            call.respondText("{\"error\":\"unavailable\"}", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
+                            return@post
+                        }
+                        val received = java.io.ByteArrayOutputStream()
+                        try {
+                            withContext(Dispatchers.IO) {
+                                call.receiveStream().use { input ->
+                                    DeadlineBoundedBody.copy(input, received, MAX_WAKE_WORD_IMPORT_BYTES, WAKE_WORD_IMPORT_DEADLINE_MS)
+                                }
+                            }
+                        } catch (_: ByteLimitExceeded) {
+                            call.respondText("{\"error\":\"too-large\"}", ContentType.Application.Json, HttpStatusCode.PayloadTooLarge)
+                            return@post
+                        } catch (_: BodyReceiptTimeout) {
+                            call.respondText("{\"error\":\"timeout\"}", ContentType.Application.Json, HttpStatusCode.RequestTimeout)
+                            return@post
+                        }
+                        val (status, body) = withContext(Dispatchers.IO) {
+                            wakeWordImportResponse(catalog, received.toByteArray(), onWakeWordsChanged)
+                        }
                         call.respondText(body, ContentType.Application.Json, status)
                     }
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of

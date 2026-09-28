@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.config
 
-import io.github.maxlyth.hapaneld.assist.VoiceState
 import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.parseKioskCompanionPackages
 import io.github.maxlyth.hapaneld.i18n.AppLocale
@@ -117,13 +116,13 @@ object SettingsRegistry {
     private const val MAX_PANEL_ID_INPUT_CHARS = 255
     private val HA_ILLUMINANCE_ENTITY = Regex("^sensor\\.[a-z0-9_]+$")
 
-    /** Local wake-word model ids openWakeWord ships that voice_wake_words/voice_pipelines may name. */
-    val VOICE_WAKE_WORDS: Set<String> = setOf("okay_nabu", "hey_jarvis", "hey_mycroft", "alexa")
-    private const val MAX_VOICE_WAKE_WORDS = 2
+    /** A wake-word id as `voice_wake_words` and `voice_pipelines` name it: a bundled or imported model. */
+    private val VOICE_WAKE_WORD_ID = Regex("^[a-z][a-z0-9_]{0,63}$")
+    private const val MAX_VOICE_WAKE_WORDS = 32
 
-    /** `voice_wake_words`: a JSON array of at most [MAX_VOICE_WAKE_WORDS] entries, each one of
-     *  [VOICE_WAKE_WORDS], with no duplicate. Re-serializes to a canonical compact form so a stored
-     *  value round-trips byte-identically regardless of the request's whitespace or key order. */
+    /** `voice_wake_words`: a JSON array of wake-word ids with no duplicate. Which ids exist depends on the
+     *  models the panel holds, which the listener checks as it arms; only the shape is checked here.
+     *  Re-serializes to a canonical compact form so a stored value round-trips byte-identically. */
     private fun validateVoiceWakeWords(raw: String): Validation {
         val array = try {
             JSONArray(raw)
@@ -137,8 +136,8 @@ object SettingsRegistry {
         for (index in 0 until array.length()) {
             val entry = array.opt(index) as? String
                 ?: return Validation.Bad("voice_wake_words: every entry must be a string")
-            if (entry !in VOICE_WAKE_WORDS) {
-                return Validation.Bad("voice_wake_words: unknown wake word \"$entry\"")
+            if (!VOICE_WAKE_WORD_ID.matches(entry)) {
+                return Validation.Bad("voice_wake_words: \"$entry\" is not a wake-word id")
             }
             if (entry in ids) return Validation.Bad("voice_wake_words: duplicate wake word \"$entry\"")
             ids += entry
@@ -146,9 +145,9 @@ object SettingsRegistry {
         return Validation.Ok(JSONArray(ids).toString())
     }
 
-    /** `voice_pipelines`: a JSON object mapping a [VOICE_WAKE_WORDS] id to a pipeline id (blank = the
-     *  Home Assistant preferred pipeline). Re-serializes with sorted keys so the persisted value is
-     *  stable regardless of the request's key order. */
+    /** `voice_pipelines`: a JSON object mapping a wake-word id to a pipeline id (blank = the Home
+     *  Assistant preferred pipeline). Re-serializes with sorted keys so the persisted value is stable
+     *  regardless of the request's key order. */
     private fun validateVoicePipelines(raw: String): Validation {
         val obj = try {
             JSONObject(raw)
@@ -157,8 +156,8 @@ object SettingsRegistry {
         }
         val normalized = JSONObject()
         for (key in obj.keys().asSequence().sorted()) {
-            if (key !in VOICE_WAKE_WORDS) {
-                return Validation.Bad("voice_pipelines: unknown wake word \"$key\"")
+            if (!VOICE_WAKE_WORD_ID.matches(key)) {
+                return Validation.Bad("voice_pipelines: \"$key\" is not a wake-word id")
             }
             val value = obj.opt(key) as? String
                 ?: return Validation.Bad("voice_pipelines: $key: expected a string pipeline id")
@@ -815,20 +814,13 @@ object SettingsRegistry {
             liveApply = true,
             help = "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
             availableWhen = { it.hasMicrophone }, hidden = true,
-            haExposedByDefault = false,
-            ha = haEntity("switch", "voice_assistant", "Voice assistant", channel = "voice_enabled") {
-                commandTopic()
-                stateTopic()
-                icon("mdi:microphone-message")
-                entityCategory("config")
-            },
         ),
         SettingSpec(
-            key = "voice_wake_words", type = SettingType.STRING, group = "Voice",
+            key = "voice_wake_words", type = SettingType.STRING, group = "Voice", picker = "voice_wake_words",
             label = "Wake words", default = "[\"okay_nabu\"]", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             maxChars = 512,
-            help = "Up to two local wake-word models to listen for, as a JSON array: " +
-                "${VOICE_WAKE_WORDS.joinToString(", ")}.",
+            help = "The wake words to listen for, as a JSON array of model ids: the bundled okay_nabu, " +
+                "hey_jarvis, hey_mycroft and alexa, or one you imported.",
             availableWhen = { it.hasMicrophone }, hidden = true,
             validate = ::validateVoiceWakeWords,
         ),
@@ -871,19 +863,6 @@ object SettingsRegistry {
                 "or mistranscribed while the wake word works. Wake-word detection is deliberately left " +
                 "on the unamplified signal.",
             availableWhen = { it.hasMicrophone }, hidden = true,
-        ),
-        SettingSpec(
-            key = "voice_state", type = SettingType.STRING, group = "Voice",
-            label = "Voice assistant state", default = "",
-            help = "Current voice-assistant phase: off, idle, listening, processing, responding or error.",
-            haExposedByDefault = false,
-            availableWhen = { it.hasMicrophone }, hidden = true,
-            ha = haEntity("sensor", "voice_state", "Voice assistant state", readOnly = true) {
-                stateTopic()
-                icon("mdi:microphone-message")
-                entityCategory("diagnostic")
-                sensorOptions(VoiceState.entries.map { ChannelOption(it.wireValue, it.wireValue) })
-            },
         ),
         // ---- Logging -----------------------------------------------------------------------------
         SettingSpec(

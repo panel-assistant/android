@@ -75,7 +75,6 @@ class AssistPipelineClientTest {
 
         assertEquals(AssistPipelineClient.CODE_INVALID_TEXT, outcome.error?.code)
         assertEquals(0, harness.connects.get())
-        assertEquals(0, harness.attachments.get())
         assertTrue(socket.sentText.isEmpty())
     }
 
@@ -95,6 +94,7 @@ class AssistPipelineClientTest {
 
         assertEquals("german", org.json.JSONObject(runSocket.sentText.single()).getString("pipeline"))
         runSocket.deliver(event("run-start", """{"runner_data":{}}"""))
+        runSocket.deliver(event("tts-end", """{"tts_output":{"url":"/api/tts_proxy/de.mp3"}}"""))
         runSocket.deliver(event("run-end"))
         runCurrent()
         assertNull(run.await().error)
@@ -118,267 +118,15 @@ class AssistPipelineClientTest {
         assertTrue(unusedRunSocket.sentText.isEmpty())
     }
 
-    @Test fun `intent text runs do not attach the microphone`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(
-            socket,
-            attachFails = true,
-            request = AssistRunRequest(
-                inputText = "Turn on the lights",
-                startStage = AssistRunRequest.STAGE_INTENT,
-            ),
-        )
-        val run = harness.start(this)
-        runCurrent()
-
-        assertEquals(0, harness.attachments.get())
-        assertEquals("Turn on the lights", org.json.JSONObject(socket.sentText.single()).getJSONObject("input").getString("text"))
-        socket.deliver(event("run-start", """{"runner_data":{}}"""))
-        socket.deliver(event("run-end"))
-        runCurrent()
-        assertNull(run.await().error)
-    }
-
-    @Test fun `wake word runs still attach the microphone`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(
-            socket,
-            request = AssistRunRequest(startStage = AssistRunRequest.STAGE_WAKE_WORD),
-        )
-        val run = harness.start(this)
-        runCurrent()
-
-        assertEquals(1, harness.attachments.get())
-        socket.deliver(runStart(7))
-        socket.deliver(event("run-end"))
-        runCurrent()
-        assertNull(run.await().error)
-    }
-
-    @Test fun `audio captured before the handler id arrives is flushed in order behind it`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-
-        assertEquals(1, harness.connects.get())
-        assertEquals(AssistPipelineJson.RUN_TYPE, org.json.JSONObject(socket.sentText.single()).getString("type"))
-
-        // Capture starts before the request is answered, which is what keeps the first syllable.
-        harness.consume(pcmFrame(1, -2))
-        harness.consume(pcmFrame(3, 4))
-        harness.consume(pcmFrame(5, 6))
-        runCurrent()
-        assertTrue("no audio may leave before Home Assistant names a handler", socket.sentBinary.isEmpty())
-
-        socket.deliver(runStart(200))
-        runCurrent()
-
-        assertEquals(3, socket.sentBinary.size)
-        assertEquals(3, harness.client.sentAudioFrames)
-        assertEquals(0, harness.client.droppedAudioFrames)
-        // Oldest first, each behind the one-byte handler id, samples little-endian signed 16-bit.
-        assertEquals(listOf(200, 200, 200), socket.sentBinary.map { it[0].toInt() and 0xFF })
-        assertEquals(listOf(1, 3, 5), socket.sentBinary.map { it.sampleAt(0) })
-        assertEquals(listOf(-2, 4, 6), socket.sentBinary.map { it.sampleAt(1) })
-
-        finish(socket, run)
-    }
-
-    @Test fun `the capture callback never writes to the socket itself`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(9))
-        runCurrent()
-
-        harness.consume(pcmFrame(7, 7))
-
-        // The frame is now queued. If onFrame sent it inline it would be on the socket already, and
-        // the capture thread would be blocked behind a network write that stalls every other lease.
-        assertTrue(socket.sentBinary.isEmpty())
-        runCurrent()
-        assertEquals(1, socket.sentBinary.size)
-
-        finish(socket, run)
-    }
-
-    @Test fun `an overflowing queue keeps the newest audio`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, queueFrames = 2)
-        val run = harness.start(this)
-        runCurrent()
-
-        repeat(5) { harness.consume(pcmFrame(it, it)) }
-        runCurrent()
-        socket.deliver(runStart(1))
-        runCurrent()
-
-        // The end of an utterance carries the request; the lead-in is what may be sacrificed.
-        assertEquals(2, socket.sentBinary.size)
-        assertEquals(listOf(3, 4), socket.sentBinary.map { it.sampleAt(0) })
-
-        finish(socket, run)
-    }
-
-    @Test fun `every frame the queue discards is counted`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, queueFrames = 2)
-        val run = harness.start(this)
-        runCurrent()
-
-        repeat(5) { harness.consume(pcmFrame(it, it)) }
-        runCurrent()
-
-        // Audio lost to back-pressure is the difference between a clipped answer and a mystery.
-        assertEquals(3, harness.client.droppedAudioFrames)
-
-        socket.deliver(runStart(1))
-        runCurrent()
-        finish(socket, run)
-    }
-
-    @Test fun `frames lost inside the capture lease are counted too`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-
-        // The shared lease drops on its own queue before this client ever sees a frame; a figure
-        // counting only local losses reads as healthy exactly when capture is starving.
-        harness.dropUpstream(2)
-        assertEquals(2, harness.client.droppedAudioFrames)
-
-        socket.deliver(runStart(1))
-        runCurrent()
-        finish(socket, run)
-    }
-
-    @Test fun `voice activity end flushes the utterance then terminates it with one byte`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        runCurrent()
-
-        harness.consume(pcmFrame(11, 12))
-        harness.consume(pcmFrame(13, 14))
-        socket.deliver(event("stt-vad-end"))
-        runCurrent()
-
-        val terminator = socket.sentBinary.last()
-        assertEquals(1, terminator.size)
-        assertEquals(200, terminator[0].toInt() and 0xFF)
-        // Everything captured precedes the terminator: the terminator is what tells Home Assistant
-        // the utterance is complete, so a frame after it would be audio the pipeline never hears.
-        assertEquals(2, socket.sentBinary.count { it.size > 1 })
-        assertEquals(1, socket.sentBinary.count { it.size == 1 })
-        assertEquals(1, harness.closes.get())
-
-        finish(socket, run)
-    }
-
-    @Test fun `a stop asked for before streaming still delivers what was captured`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-
-        harness.consume(pcmFrame(21, 22))
-        harness.client.requestStop()
-        runCurrent()
-        assertTrue(socket.sentBinary.isEmpty())
-
-        socket.deliver(runStart(5))
-        runCurrent()
-
-        assertEquals(2, socket.sentBinary.size)
-        assertEquals(21, socket.sentBinary.first().sampleAt(0))
-        assertEquals(byteArrayOf(5).toList(), socket.sentBinary.last().toList())
-
-        finish(socket, run)
-    }
-
-    @Test fun `a completed run returns the transcript, reply and an absolute reply url`() = runTest {
-        val socket = FakeAssistSocket()
-        val played = mutableListOf<String>()
-        val harness = harness(socket, playback = { played += it })
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        socket.deliver(event("stt-end", """{"stt_output":{"text":"turn on the lamp"}}"""))
-        socket.deliver(
-            event(
-                "intent-end",
-                """{"intent_output":{"response":{"speech":{"plain":{"speech":"Done"}}},""" +
-                    """"conversation_id":"conv-3","continue_conversation":true}}""",
-            ),
-        )
-        socket.deliver(event("tts-end", """{"tts_output":{"url":"/api/tts_proxy/reply.mp3"}}"""))
-        socket.deliver(event("run-end"))
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        assertEquals("turn on the lamp", outcome.sttText)
-        assertEquals("Done", outcome.responseText)
-        assertEquals("conv-3", outcome.conversationId)
-        assertTrue(outcome.continueConversation)
-        // Home Assistant returns a site-relative path; playback needs the panel's own endpoint.
-        assertEquals(listOf("https://ha.example/api/tts_proxy/reply.mp3"), played)
-        assertEquals("https://ha.example/api/tts_proxy/reply.mp3", outcome.ttsUrl)
-        assertNull(outcome.error)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-    }
-
-    @Test fun `a pipeline error ends the run and releases the microphone`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        socket.deliver(event("error", """{"code":"duplicate_wake_up_detected","message":"twice"}"""))
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        assertEquals("duplicate_wake_up_detected", outcome.error?.code)
-        assertTrue(outcome.error?.silent == true)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-        // A run Home Assistant abandoned is never told where the utterance ended.
-        assertTrue(socket.sentBinary.none { it.size == 1 })
-    }
-
-    @Test fun `a socket that closes before the run ends fails the run`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        runCurrent()
-        socket.endOfStream()
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        assertEquals(AssistPipelineClient.CODE_CLOSED, run.await().error?.code)
-        assertEquals(1, harness.closes.get())
-    }
-
     @Test fun `a rejected credential fails without opening a socket`() = runTest {
         val socket = FakeAssistSocket()
         val harness = harness(socket, session = HaApiSession("https://ha.example", null, rejected = true))
-        val run = harness.start(this)
+        val run = harness.list(this)
         runCurrent()
 
-        assertEquals(AssistPipelineClient.CODE_AUTH_REJECTED, run.await().error?.code)
+        assertEquals(AssistPipelineClient.CODE_AUTH_REJECTED, run.await().failure?.code)
         assertEquals(0, harness.connects.get())
         assertEquals(listOf(false), harness.forces)
-        // No microphone is opened for a run that cannot reach Home Assistant.
-        assertEquals(0, harness.attachments.get())
     }
 
     @Test fun `an untried credential and a missing one fail apart from each other`() = runTest {
@@ -388,12 +136,12 @@ class AssistPipelineClientTest {
         )
         val absent = harness(FakeAssistSocket(), session = HaApiSession("https://ha.example", null))
 
-        val untriedRun = untried.start(this)
-        val absentRun = absent.start(this)
+        val untriedRun = untried.list(this)
+        val absentRun = absent.list(this)
         runCurrent()
 
-        assertEquals(AssistPipelineClient.CODE_CREDENTIALS_UNAVAILABLE, untriedRun.await().error?.code)
-        assertEquals(AssistPipelineClient.CODE_NOT_CONFIGURED, absentRun.await().error?.code)
+        assertEquals(AssistPipelineClient.CODE_CREDENTIALS_UNAVAILABLE, untriedRun.await().failure?.code)
+        assertEquals(AssistPipelineClient.CODE_NOT_CONFIGURED, absentRun.await().failure?.code)
         assertEquals(0, untried.connects.get())
         assertEquals(0, absent.connects.get())
     }
@@ -401,42 +149,25 @@ class AssistPipelineClientTest {
     @Test fun `a refused token is retried once with a forced refresh`() = runTest {
         val socket = FakeAssistSocket()
         val harness = harness(socket, refuseFirstConnections = 1)
-        val run = harness.start(this)
+        val run = harness.list(this)
         runCurrent()
 
         assertEquals(2, harness.connects.get())
         assertEquals(listOf(false, true), harness.forces)
 
-        socket.deliver(runStart(200))
-        socket.deliver(event("run-end"))
+        socket.deliver("""{"id":1,"type":"result","success":true,"result":{"pipelines":[],"preferred_pipeline":null}}""")
         runCurrent()
-        assertNull(run.await().error)
+        assertNull(run.await().failure)
     }
 
     @Test fun `a token refused twice stops instead of storming`() = runTest {
         val harness = harness(FakeAssistSocket(), refuseFirstConnections = 2)
-        val run = harness.start(this)
+        val run = harness.list(this)
         runCurrent()
 
-        assertEquals(AssistPipelineClient.CODE_AUTH_REJECTED, run.await().error?.code)
+        assertEquals(AssistPipelineClient.CODE_AUTH_REJECTED, run.await().failure?.code)
         assertEquals(2, harness.connects.get())
         assertEquals(listOf(false, true), harness.forces)
-    }
-
-    @Test fun `one client drives one run`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val first = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        socket.deliver(event("run-end"))
-        runCurrent()
-        assertNull(first.await().error)
-
-        val second = harness.start(this)
-        runCurrent()
-        assertEquals(AssistPipelineClient.CODE_ALREADY_RUN, second.await().error?.code)
-        assertEquals(1, harness.connects.get())
     }
 
     @Test fun `listing pipelines returns the catalog and closes its socket`() = runTest {
@@ -485,258 +216,6 @@ class AssistPipelineClientTest {
         assertEquals(AssistError("unauthorized", "no"), (listing.await() as AssistCatalogResult.Failed).error)
     }
 
-    @Test fun `a reply that cannot be played fails the run and still reports what was heard`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, playback = { throw java.io.IOException("no audio route") })
-        val run = harness.start(this)
-        runCurrent()
-        deliverAnsweredRun(socket)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        // Speaking the answer is part of answering: a reply nobody heard is not a successful run.
-        assertEquals(AssistPipelineClient.CODE_PLAYBACK_FAILED, outcome.error?.code)
-        // The caller can still log what the panel heard and what Home Assistant did about it.
-        assertEquals("turn on the lamp", outcome.sttText)
-        assertEquals("Done", outcome.responseText)
-        assertEquals("conv-3", outcome.conversationId)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-    }
-
-    @Test fun `a reply that never finishes playing fails the run on its own bound`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, playbackTimeoutMs = 5_000L, playback = { awaitCancellation() })
-        val run = harness.start(this)
-        runCurrent()
-        deliverAnsweredRun(socket)
-        runCurrent()
-
-        // The pipeline is over; only playback is outstanding, and it is bounded separately.
-        assertFalse(run.isCompleted)
-        advanceTimeBy(4_000L)
-        runCurrent()
-        assertFalse("playback must not be abandoned before its own deadline", run.isCompleted)
-
-        advanceTimeBy(1_001L)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        assertEquals(AssistPipelineClient.CODE_PLAYBACK_TIMEOUT, outcome.error?.code)
-        assertEquals("turn on the lamp", outcome.sttText)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-    }
-
-    @Test fun `cancelling a run closes the socket and releases the microphone`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        runCurrent()
-        harness.consume(pcmFrame(1, 1))
-        runCurrent()
-
-        run.cancel()
-        runCurrent()
-
-        // Teardown has to survive the cancellation that triggered it: an abandoned run that keeps
-        // the microphone open holds the platform privacy indicator on for nothing.
-        assertTrue(run.isCancelled)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-    }
-
-    @Test fun `the caller's deadline bounds the run`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, request = AssistRunRequest(timeoutSeconds = 2), defaultRunTimeoutMs = 50_000L)
-        val run = harness.start(this)
-        runCurrent()
-        assertEquals(2, org.json.JSONObject(socket.sentText.single()).optInt("timeout", -1))
-
-        advanceTimeBy(1_500L)
-        runCurrent()
-        assertFalse("the run must not end before the deadline it asked for", run.isCompleted)
-
-        advanceTimeBy(600L)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        assertEquals(AssistPipelineClient.CODE_TIMEOUT, run.await().error?.code)
-        assertEquals(1, harness.closes.get())
-    }
-
-    @Test fun `the server's own deadline is honoured when the caller sets none`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, defaultRunTimeoutMs = 50_000L)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(event("run-start", """{"runner_data":{"stt_binary_handler_id":200,"timeout":3}}"""))
-        runCurrent()
-
-        advanceTimeBy(2_500L)
-        runCurrent()
-        assertFalse(run.isCompleted)
-
-        // Fires at the server's three seconds, not at the panel's fifty: the run adopted the
-        // deadline Home Assistant reported for it.
-        advanceTimeBy(600L)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        assertEquals(AssistPipelineClient.CODE_TIMEOUT, run.await().error?.code)
-    }
-
-    @Test fun `a deadline beyond the panel's ceiling is capped locally`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(
-            socket,
-            request = AssistRunRequest(timeoutSeconds = 86_400),
-            maxRunTimeoutMs = 4_000L,
-        )
-        val run = harness.start(this)
-        runCurrent()
-
-        advanceTimeBy(4_001L)
-        runCurrent()
-
-        // A caller or server asking for a day cannot hold the microphone and the socket open for one.
-        assertTrue(run.isCompleted)
-        assertEquals(AssistPipelineClient.CODE_TIMEOUT, run.await().error?.code)
-        assertEquals(1, harness.closes.get())
-    }
-
-    @Test fun `a microphone that cannot be leased ends the run before it asks`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket, attachFails = true)
-        val run = harness.start(this)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        assertEquals(AssistPipelineClient.CODE_MICROPHONE_UNAVAILABLE, run.await().error?.code)
-        // Asking a speech pipeline to listen to a microphone that refused to open can only time out.
-        assertTrue(socket.sentText.isEmpty())
-        assertEquals(1, socket.closes)
-    }
-
-    @Test fun `a socket that fails mid-run becomes an outcome, not a crash`() = runTest {
-        val socket = FakeAssistSocket()
-        socket.failSends = true
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        // This client runs inside an always-on service: a dead socket must not propagate.
-        assertEquals(AssistPipelineClient.CODE_UNAVAILABLE, run.await().error?.code)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-    }
-
-    /** Scripts a run through to its reply, leaving only playback outstanding. */
-    private fun deliverAnsweredRun(socket: FakeAssistSocket) {
-        socket.deliver(runStart(200))
-        socket.deliver(event("stt-end", """{"stt_output":{"text":"turn on the lamp"}}"""))
-        socket.deliver(
-            event(
-                "intent-end",
-                """{"intent_output":{"response":{"speech":{"plain":{"speech":"Done"}}},""" +
-                    """"conversation_id":"conv-3","continue_conversation":false}}""",
-            ),
-        )
-        socket.deliver(event("tts-end", """{"tts_output":{"url":"/api/tts_proxy/reply.mp3"}}"""))
-        socket.deliver(event("run-end"))
-    }
-
-    @Test fun `a superseded reply is not a successful reply`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(
-            socket,
-            playback = {
-                throw AssistPlaybackException(
-                    AssistPipelineClient.CODE_PLAYBACK_SUPERSEDED,
-                    "a later announcement replaced this reply",
-                )
-            },
-        )
-        val run = harness.start(this)
-        runCurrent()
-        deliverAnsweredRun(socket)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        // Announcements keep only the newest, so this is an ordinary outcome — and an answer the
-        // room never heard, which is not a run that succeeded.
-        assertEquals(AssistPipelineClient.CODE_PLAYBACK_SUPERSEDED, outcome.error?.code)
-        assertEquals("turn on the lamp", outcome.sttText)
-        assertEquals("Done", outcome.responseText)
-        assertEquals(1, harness.closes.get())
-        assertEquals(1, socket.closes)
-    }
-
-    @Test fun `a reply cancelled under a live run fails the run`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(
-            socket,
-            playback = { throw kotlinx.coroutines.CancellationException("the announcement was dropped") },
-        )
-        val run = harness.start(this)
-        runCurrent()
-        deliverAnsweredRun(socket)
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        // The run itself was never cancelled, so this cancellation happened to the reply alone.
-        assertEquals(AssistPipelineClient.CODE_PLAYBACK_CANCELLED, run.await().error?.code)
-        assertEquals(1, harness.closes.get())
-    }
-
-    @Test fun `an event for another command cannot end this run`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        runCurrent()
-
-        // Same socket, another command's id: run-end here would finish a run it has nothing to do with.
-        socket.deliver(foreign(event("run-end")))
-        socket.deliver(foreign(event("error", """{"code":"boom","message":"not ours"}""")))
-        runCurrent()
-        assertFalse("a foreign event must not finish or fail this run", run.isCompleted)
-
-        socket.deliver(event("stt-end", """{"stt_output":{"text":"ours"}}"""))
-        socket.deliver(event("run-end"))
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        assertNull(outcome.error)
-        assertEquals("ours", outcome.sttText)
-    }
-
-    @Test fun `a late event cannot change a finished run`() = runTest {
-        val socket = FakeAssistSocket()
-        val harness = harness(socket)
-        val run = harness.start(this)
-        runCurrent()
-        socket.deliver(runStart(200))
-        socket.deliver(event("stt-end", """{"stt_output":{"text":"lights out"}}"""))
-        socket.deliver(event("run-end"))
-        // Arrives behind run-end, with this run's own id: the run is over and stays over.
-        socket.deliver(event("error", """{"code":"late","message":"after the end"}"""))
-        runCurrent()
-
-        assertTrue(run.isCompleted)
-        val outcome = run.await()
-        assertNull(outcome.error)
-        assertEquals("lights out", outcome.sttText)
-    }
-
     @Test fun `an unreachable Home Assistant is not a missing credential`() = runTest {
         val socket = FakeAssistSocket()
         val harness = harness(
@@ -748,10 +227,10 @@ class AssistPipelineClientTest {
                 transientEvidence = HaTransportEvidence(HaTransportFault.DNS),
             ),
         )
-        val run = harness.start(this)
+        val run = harness.list(this)
         runCurrent()
 
-        val error = run.await().error
+        val error = run.await().failure
         // Telling the owner to sign in again would be a lie about a panel whose network is broken.
         assertEquals(AssistPipelineClient.CODE_HA_UNREACHABLE, error?.code)
         assertTrue("the classified fault is what a diagnostic surface can paste", error?.message?.contains("dns") == true)
@@ -766,10 +245,10 @@ class AssistPipelineClientTest {
             socket,
             session = HaApiSession("https://ha.example", null, transientDetail = "something went wrong"),
         )
-        val run = harness.start(this)
+        val run = harness.list(this)
         runCurrent()
 
-        val error = run.await().error
+        val error = run.await().failure
         // "We did not classify it" must degrade to unknown, never to a healthy-looking absence.
         assertEquals(AssistPipelineClient.CODE_HA_UNREACHABLE, error?.code)
         assertTrue(error?.message?.contains("unknown") == true)
@@ -786,10 +265,10 @@ class AssistPipelineClientTest {
                 transientEvidence = HaTransportEvidence(HaTransportFault.TIMEOUT),
             ),
         )
-        val run = harness.start(this)
+        val run = harness.list(this)
         runCurrent()
 
-        val error = run.await().error
+        val error = run.await().failure
         // The token was refused once and the refresh never reached the server: that is a network
         // fault, not a credential the owner has to replace.
         assertEquals(AssistPipelineClient.CODE_HA_UNREACHABLE, error?.code)
@@ -801,29 +280,9 @@ class AssistPipelineClientTest {
     private fun TestScope.harness(
         socket: FakeAssistSocket,
         session: HaApiSession = HaApiSession("https://ha.example", "token"),
-        queueFrames: Int = 200,
         refuseFirstConnections: Int = 0,
         refreshSession: HaApiSession? = null,
-        attachFails: Boolean = false,
-        request: AssistRunRequest = AssistRunRequest(),
-        defaultRunTimeoutMs: Long = 50_000L,
-        maxRunTimeoutMs: Long = 300_000L,
-        playbackTimeoutMs: Long = 30_000L,
-        playback: suspend (String) -> Unit = {},
-    ): Harness = Harness(
-        socket,
-        session,
-        queueFrames,
-        refuseFirstConnections,
-        refreshSession,
-        attachFails,
-        request,
-        defaultRunTimeoutMs,
-        maxRunTimeoutMs,
-        playbackTimeoutMs,
-        playback,
-        testScheduler,
-    )
+    ): Harness = Harness(socket, session, refuseFirstConnections, refreshSession, testScheduler)
 
     private fun TestScope.speechClient(vararg sockets: FakeAssistSocket): AssistPipelineClient {
         val next = AtomicInteger()
@@ -834,38 +293,15 @@ class AssistPipelineClientTest {
         )
     }
 
-    /** Ends a run a case left mid-utterance, so every test tears the driver down deterministically. */
-    private fun TestScope.finish(socket: FakeAssistSocket, run: Deferred<AssistOutcome>) {
-        socket.deliver(event("run-end"))
-        runCurrent()
-        if (!run.isCompleted) {
-            socket.endOfStream()
-            runCurrent()
-        }
-        assertTrue("the run must reach a terminal outcome", run.isCompleted)
-    }
-
     private class Harness(
         private val socket: FakeAssistSocket,
         private val session: HaApiSession,
-        queueFrames: Int,
         private val refuseFirstConnections: Int,
         private val refreshSession: HaApiSession?,
-        private val attachFails: Boolean,
-        private val request: AssistRunRequest,
-        defaultRunTimeoutMs: Long,
-        maxRunTimeoutMs: Long,
-        playbackTimeoutMs: Long,
-        private val playback: suspend (String) -> Unit,
         scheduler: TestCoroutineScheduler,
     ) {
         val forces = mutableListOf<Boolean>()
         val connects = AtomicInteger()
-        val attachments = AtomicInteger()
-        val closes = AtomicInteger()
-
-        @Volatile
-        private var consumer: PcmConsumer? = null
 
         val client = AssistPipelineClient(
             auth = HaApiSessionProvider { force ->
@@ -879,42 +315,18 @@ class AssistPipelineClientTest {
                 socket
             },
             dispatcher = StandardTestDispatcher(scheduler),
-            queueFrames = queueFrames,
-            defaultRunTimeoutMs = defaultRunTimeoutMs,
-            maxRunTimeoutMs = maxRunTimeoutMs,
-            playbackTimeoutMs = playbackTimeoutMs,
         )
 
-        fun start(scope: TestScope): Deferred<AssistOutcome> = scope.async {
-            client.run(
-                request,
-                attachAudio = { pcm ->
-                    attachments.incrementAndGet()
-                    if (attachFails) throw IllegalStateException("the microphone is already in use")
-                    consumer = pcm
-                    object : AutoCloseable {
-                        override fun close() {
-                            closes.incrementAndGet()
-                        }
-                    }
-                },
-                playback = { url -> playback(url) },
-            )
-        }
-
-        fun consume(frame: PcmFrame) {
-            checkNotNull(consumer).onFrame(frame)
-        }
-
-        fun dropUpstream(count: Int) {
-            checkNotNull(consumer).onDropped(count)
-        }
+        fun list(scope: TestScope): Deferred<AssistCatalogResult> = scope.async { client.listPipelines() }
     }
+
+    /** The error of a failed listing, or null for a catalogue. */
+    private val AssistCatalogResult.failure: AssistError?
+        get() = (this as? AssistCatalogResult.Failed)?.error
 
     private class FakeAssistSocket : AssistSocket {
         private val inbound = Channel<String>(Channel.UNLIMITED)
         val sentText = mutableListOf<String>()
-        val sentBinary = mutableListOf<ByteArray>()
         var failSends = false
         var closes = 0
             private set
@@ -934,10 +346,6 @@ class AssistPipelineClientTest {
             sentText += text
         }
 
-        override suspend fun sendBinary(bytes: ByteArray) {
-            sentBinary += bytes
-        }
-
         override suspend fun close() {
             // A real socket close suspends. Without a suspension point here a cancelled run would
             // appear to close cleanly whether or not teardown is protected, and the cancellation
@@ -949,22 +357,6 @@ class AssistPipelineClientTest {
     }
 
     private companion object {
-        fun pcmFrame(first: Int, second: Int) =
-            PcmFrame(shortArrayOf(first.toShort(), second.toShort()), timestampNs = 0L)
-
-        /** Reads sample [index] back out of a sent frame, past the one-byte handler prefix. */
-        fun ByteArray.sampleAt(index: Int): Int {
-            val low = this[1 + index * 2].toInt() and 0xFF
-            val high = this[2 + index * 2].toInt()
-            return (high shl 8) or low
-        }
-
-        fun runStart(handlerId: Int) =
-            event("run-start", """{"runner_data":{"stt_binary_handler_id":$handlerId,"timeout":300}}""")
-
-        /** Rewrites a scripted frame to another command's request id. */
-        fun foreign(raw: String) = raw.replaceFirst("""{"id":1,""", """{"id":99,""")
-
         fun event(name: String, data: String = "{}") =
             """{"id":1,"type":"event","event":{"type":"$name","data":$data,"timestamp":1.0}}"""
     }

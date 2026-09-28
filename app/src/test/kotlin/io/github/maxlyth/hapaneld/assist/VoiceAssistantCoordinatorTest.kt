@@ -48,7 +48,7 @@ class VoiceAssistantCoordinatorTest {
     private var teardownGate: CompletableDeferred<Unit>? = null
 
     private inner class ScriptedRunner : AssistRunner {
-        val requests = CopyOnWriteArrayList<AssistRunRequest>()
+        val requests = CopyOnWriteArrayList<VoiceTurnRequest>()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<AssistOutcome>()
         /** Completed once this run has fully unwound, including its capture attachment. */
@@ -67,7 +67,7 @@ class VoiceAssistantCoordinatorTest {
         fun speak(url: String = "/api/tts_proxy/x.mp3") = runBlocking { playbackHandle?.play(url) }
 
         override suspend fun run(
-            request: AssistRunRequest,
+            request: VoiceTurnRequest,
             attachAudio: (PcmConsumer) -> AutoCloseable,
             playback: AssistPlayback,
         ): AssistOutcome {
@@ -164,13 +164,12 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `an activation pauses the wake lease, runs the mapped pipeline with the phrase, then resumes`() {
+    fun `an activation pauses the wake lease, runs a turn for its wake word, then resumes`() {
         val c = coordinator()
         c.start()
-        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
+        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis", heardAtNs = 42L))
         val runner = awaitRunner(0)
-        assertEquals("pipe-2", runner.requests.single().pipelineId)
-        assertEquals("hey jarvis", runner.requests.single().wakeWordPhrase)
+        assertEquals(VoiceTurnRequest("hey_jarvis", continued = false, heardAtNs = 42L), runner.requests.single())
         assertTrue(mic.leases[0].paused)
         assertEquals(MicPurpose.ASSIST, mic.leases[1].purpose)
         assertEquals(VoiceState.LISTENING, state.current())
@@ -222,17 +221,6 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `an unmapped wake word runs the preferred pipeline`() {
-        val c = coordinator()
-        c.start()
-        engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
-        val runner = awaitRunner(0)
-        assertNull(runner.requests.single().pipelineId)
-        runner.release.complete(AssistOutcome())
-        awaitState(VoiceState.IDLE)
-    }
-
-    @Test
     fun `a second activation during a run is ignored`() {
         val c = coordinator()
         c.start()
@@ -246,15 +234,14 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `a continued conversation carries the id and stops at the turn bound`() {
+    fun `a continued conversation keeps its wake word, is not woken again, and stops at the turn bound`() {
         val c = coordinator(maxTurns = 2)
         c.start()
         engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
         val first = awaitRunner(0)
         first.release.complete(AssistOutcome(conversationId = "conv-1", continueConversation = true))
         val second = awaitRunner(1)
-        assertEquals("conv-1", second.requests.single().conversationId)
-        assertNull(second.requests.single().wakeWordPhrase)
+        assertEquals(VoiceTurnRequest("okay_nabu", continued = true), second.requests.single())
         second.release.complete(AssistOutcome(conversationId = "conv-1", continueConversation = true))
         awaitState(VoiceState.IDLE)
         assertEquals(2, runners.size)
@@ -504,12 +491,10 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `settings parsing tolerates malformed json and caps active wake words`() {
+    fun `settings parsing tolerates malformed json and keeps every wake word`() {
         val parsed = VoiceSettings.parse(true, "[\"okay_nabu\",\"hey_jarvis\",\"alexa\"]", "{\"hey_jarvis\":\"p2\",\"alexa\":\"\"}")
-        assertEquals(listOf("okay_nabu", "hey_jarvis"), parsed.wakeWords)
-        assertEquals("p2", parsed.pipelineFor("hey_jarvis"))
-        assertNull(parsed.pipelineFor("alexa"))
-        assertNull(parsed.pipelineFor("okay_nabu"))
+        assertEquals(listOf("okay_nabu", "hey_jarvis", "alexa"), parsed.wakeWords)
+        assertEquals(mapOf("hey_jarvis" to "p2", "alexa" to ""), parsed.pipelines)
         val broken = VoiceSettings.parse(true, "not json", "[1,2]")
         assertTrue(broken.wakeWords.isEmpty())
         assertTrue(broken.pipelines.isEmpty())
