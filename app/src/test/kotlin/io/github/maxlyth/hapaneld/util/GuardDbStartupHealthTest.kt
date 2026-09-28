@@ -1,6 +1,13 @@
 package io.github.maxlyth.hapaneld.util
 
 import android.database.sqlite.SQLiteDatabase
+import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibility
+import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityBoundary
+import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityDecision
+import io.github.maxlyth.hapaneld.dashboard.DatabaseFileInspection
+import io.github.maxlyth.hapaneld.dashboard.DatabaseOwnerState
+import io.github.maxlyth.hapaneld.dashboard.inspectRecoveryDatabaseIsolated
+import io.github.maxlyth.hapaneld.dashboard.observeDatabaseCompatibility
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult
 import org.junit.Assert.assertEquals
@@ -9,6 +16,10 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.io.RandomAccessFile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
 
 class GuardDbStartupHealthTest {
     private val session = "1".repeat(64)
@@ -16,6 +27,107 @@ class GuardDbStartupHealthTest {
     private val apk = "a".repeat(64)
     private val ordered = "d".repeat(64)
     private val settings = "e".repeat(64)
+
+    @Test fun `maintenance startup waits for foreground and closed proof before listening`() = runBlocking {
+        val gate = GuardDbMaintenanceStartupGate(CoroutineScope(SupervisorJob()))
+        val events = mutableListOf<String>()
+        val acknowledge = { events += "proof"; events += "closed"; false }
+        val listen: suspend () -> Unit = {
+            assertEquals("proof must close before the maintenance listener", "closed", events.last())
+            events += "listen"
+        }
+        val ordinary: suspend () -> Unit = { error("ordinary owner must remain fenced") }
+
+        val premature = runCatching { gate.launch(acknowledge, listen, ordinary) { throw it } }.exceptionOrNull()
+        assertTrue(premature is IllegalStateException)
+        assertTrue(events.isEmpty())
+
+        gate.promoted()
+        gate.launch(acknowledge, listen, ordinary) { throw it }.join()
+        assertEquals(listOf("proof", "closed", "listen"), events)
+    }
+
+    @Test fun `cleared sentinel resumes ordinary process without opening maintenance listener`() = runBlocking {
+        val gate = GuardDbMaintenanceStartupGate(CoroutineScope(SupervisorJob())).apply { promoted() }
+        val events = mutableListOf<String>()
+        gate.launch(
+            acknowledge = { events += "cleared"; true },
+            startMaintenance = { error("cleared sentinel must not bind maintenance listener") },
+            resumeOrdinary = { events += "restart" },
+            onFailure = { throw it },
+        ).join()
+        assertEquals(listOf("cleared", "restart"), events)
+    }
+
+    @Test fun `failed startup proof leaves both control planes closed`() = runBlocking {
+        val gate = GuardDbMaintenanceStartupGate(CoroutineScope(SupervisorJob())).apply { promoted() }
+        var maintenanceStarts = 0
+        var ordinaryStarts = 0
+        var failure: Throwable? = null
+        gate.launch(
+            acknowledge = { error("status and proof could not be reconciled") },
+            startMaintenance = { maintenanceStarts++ },
+            resumeOrdinary = { ordinaryStarts++ },
+            onFailure = { failure = it },
+        ).join()
+        assertTrue(failure is IllegalStateException)
+        assertEquals(0, maintenanceStarts)
+        assertEquals(0, ordinaryStarts)
+    }
+
+    @Test fun `selected 60 MB recovery and primary inspection run off startup caller`() = runBlocking {
+        val directory = kotlin.io.path.createTempDirectory("guard-db-large-recovery").toFile()
+        try {
+            val target = File(directory, "ha-paneld.db").apply { writeText("primary") }
+            val recovery = File(directory, "ha-paneld.db.v14.premigrate")
+            RandomAccessFile(recovery, "rw").use { it.setLength(60L * 1024 * 1024) }
+            val scratch = File(directory, "scratch")
+            val caller = Thread.currentThread()
+            val gate = GuardDbMaintenanceStartupGate(CoroutineScope(SupervisorJob())).apply { promoted() }
+            var primaryInspected = false
+            var recoveryInspected = false
+            var decision: DatabaseCompatibilityDecision? = null
+            var failure: Throwable? = null
+            gate.launch(
+                acknowledge = {
+                    val observation = observeDatabaseCompatibility(
+                        target = target,
+                        boundary = DatabaseCompatibilityBoundary(1, "ha-paneld.db", 11, 14),
+                        inspectDatabase = {
+                            assertTrue("primary quick_check must be off startup caller", Thread.currentThread() !== caller)
+                            primaryInspected = true
+                            DatabaseFileInspection(15, true)
+                        },
+                        inspectRecoveryDatabase = { source ->
+                            inspectRecoveryDatabaseIsolated(source, scratch) { copy ->
+                                assertTrue("selected recovery inspection must be off startup caller", Thread.currentThread() !== caller)
+                                assertEquals(60L * 1024 * 1024, copy.length())
+                                recoveryInspected = true
+                                DatabaseFileInspection(14, true)
+                            }
+                        },
+                    )
+                    decision = DatabaseCompatibility.decide(
+                        DatabaseCompatibilityBoundary(1, "ha-paneld.db", 11, 14),
+                        observation,
+                        DatabaseOwnerState.RUNTIME_STARTUP,
+                    )
+                    false
+                },
+                startMaintenance = {},
+                resumeOrdinary = { error("downgrade requires maintenance") },
+                onFailure = { failure = it },
+            ).join()
+            assertEquals(null, failure)
+            assertTrue(primaryInspected)
+            assertTrue(recoveryInspected)
+            assertTrue(decision is DatabaseCompatibilityDecision.Recover)
+            assertEquals(60L * 1024 * 1024, recovery.length())
+            assertTrue(scratch.listFiles().isNullOrEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
 
     @Test fun `proof failure and definite not-submitted remain retryable for same generation`() {
         val transport = HealthTransport()

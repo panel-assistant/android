@@ -138,24 +138,50 @@ class DatabaseCompatibilityTest {
         }
     }
 
-    @Test fun fileObserverRecordsExactRecoveryNameSchemaIntegrityAndKind() {
+    @Test fun directOpenDoesNotReadLargeUnusedRecovery() {
+        val directory = kotlin.io.path.createTempDirectory("compat-unused-recovery").toFile()
+        try {
+            val target = File(directory, "ha-paneld.db").apply { writeText("current database") }
+            val unused = File(directory, "ha-paneld.db.v14.premigrate")
+            java.io.RandomAccessFile(unused, "rw").use { it.setLength(60L * 1024 * 1024) }
+            var inspected = 0
+            val observation = observeDatabaseCompatibility(
+                target,
+                inspectRecoveryDatabase = { inspected++; null },
+                inspectDatabase = { DatabaseFileInspection(14, true) },
+            )
+            assertEquals(
+                DatabaseCompatibilityDecision.Direct(14),
+                DatabaseCompatibility.decide(boundary, observation, DatabaseOwnerState.RUNTIME_STARTUP),
+            )
+            assertEquals("unused recovery bytes must not be inspected", 0, inspected)
+            assertEquals(60L * 1024 * 1024, unused.length())
+            assertEquals(listOf(target.name, unused.name), directory.listFiles()!!.map(File::getName).sorted())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun fileObserverInspectsOnlyRecoveryThatCanAuthorizeDowngrade() {
         val directory = kotlin.io.path.createTempDirectory("compat-recovery").toFile()
         try {
             val target = File(directory, "ha-paneld.db").apply { writeText("live") }
+            val older = File(directory, "ha-paneld.db.v13.premigrate").apply { writeText("older") }
             val premigrate = File(directory, "ha-paneld.db.v14.premigrate").apply { writeText("snapshot") }
             val superseded = File(directory, "ha-paneld.db.v15.superseded").apply { writeText("aside") }
             val observation = observeDatabaseCompatibility(target) { file ->
                 when (file) {
                     target -> DatabaseFileInspection(15, true)
                     premigrate -> DatabaseFileInspection(14, true)
-                    superseded -> DatabaseFileInspection(15, false)
+                    older -> error("older premigrate cannot authorize recovery")
+                    superseded -> error("superseded database cannot authorize recovery")
                     else -> null
                 }
             }
             assertEquals(PrimaryDatabaseObservation.Readable(15), observation.primary)
-            assertEquals(2, observation.recoveries.size)
+            assertEquals(3, observation.recoveries.size)
             val premigrateObservation = observation.recoveries.single {
-                it.kind == RecoveryDatabaseKind.PREMIGRATE
+                it.file == premigrate
             }
             assertEquals(
                 RecoveryDatabaseObservation(
@@ -166,14 +192,16 @@ class DatabaseCompatibilityTest {
                 premigrateObservation,
             )
             assertTrue(!premigrateObservation.sourceSha256.isNullOrBlank())
+            assertEquals(
+                RecoveryDatabaseObservation(older, RecoveryDatabaseKind.PREMIGRATE, 13, null, false, true),
+                observation.recoveries.single { it.file == older },
+            )
             val supersededObservation = observation.recoveries.single {
                 it.kind == RecoveryDatabaseKind.SUPERSEDED
             }
             assertEquals(
                 RecoveryDatabaseObservation(
-                    superseded, RecoveryDatabaseKind.SUPERSEDED, 15, 15, false, true,
-                    sourceSha256 = supersededObservation.sourceSha256,
-                    sourceBytes = superseded.length(),
+                    superseded, RecoveryDatabaseKind.SUPERSEDED, 15, null, false, true,
                 ),
                 supersededObservation,
             )
