@@ -178,7 +178,7 @@ class ConfigActivity : AppCompatActivity() {
             enhancedAccessItem.isVisible = enhancedAccessVisible
             pageUrl = LocalAdminEndpoint.loopbackUrl(port, "$path${sep}theme=${if (dark) "dark" else "light"}")
             healthUrl = LocalAdminEndpoint.loopbackUrl(port, "/health")
-            PaneldService.start(this@ConfigActivity)
+            PaneldService.start(this@ConfigActivity, fromVisibleActivity = true)
             waitForAdminServer()
         }
     }
@@ -317,7 +317,7 @@ class ConfigActivity : AppCompatActivity() {
             // main thread. Service teardown deliberately exits the process after cleanup, so an
             // in-process delayed restart could die before it reached ActivityManager.
             stopService(Intent(this, PaneldService::class.java))
-            PaneldService.start(this)
+            PaneldService.start(this, fromVisibleActivity = true)
         }
         readinessJob = activityScope.launch {
             val ready = withContext(Dispatchers.IO) {

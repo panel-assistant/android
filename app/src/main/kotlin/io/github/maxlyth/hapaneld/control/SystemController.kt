@@ -14,6 +14,9 @@ import io.github.maxlyth.hapaneld.util.HelperClient
 /** Foreground/liveness state of the dashboard app, as seen by the app watchdog. */
 enum class AppState { FG, BG, DEAD, UNKNOWN }
 
+/** Fresh HOME/foreground evidence requested by an installer after a package replacement. */
+data class HomeUiProof(val state: String, val reason: String, val evidence: String)
+
 /**
  * Panel-level actions: reload the dashboard, bring a launcher / the dashboard to the foreground,
  * reboot.
@@ -402,6 +405,22 @@ class SystemController(
                 if (focus.contains("$pkg/")) AppState.FG else AppState.BG
             }
         )?.value ?: AppState.UNKNOWN
+    }
+
+    /** A healthy service is not proof that the panel left Android's HOME chooser. */
+    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean): HomeUiProof {
+        val home = env.defaultHome()
+        if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
+            return HomeUiProof("blocked", "home_resolver", "home_resolve")
+        }
+        if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
+        if (home == null) return HomeUiProof("unknown", "home_unresolved", "home_resolve")
+        val evidence = if (isBuiltinDashboardTarget(dashboardPkg)) "builtin_lifecycle" else "dashboard_appstate"
+        return when (dashboardState(dashboardPkg)) {
+            AppState.FG -> HomeUiProof("ready", "dashboard_foreground", evidence)
+            AppState.BG, AppState.DEAD -> HomeUiProof("blocked", "dashboard_background", evidence)
+            AppState.UNKNOWN -> HomeUiProof("unknown", "dashboard_unobserved", evidence)
+        }
     }
 
     /**
