@@ -1563,7 +1563,11 @@ class PaneldService : Service() {
             microphoneAvailable = { profile.hasMicrophone },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
-            engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(wakeWordCatalog, log = { Log.i(TAG, it) }),
+            engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(
+                wakeWordCatalog,
+                log = { Log.i(TAG, it) },
+                sensitivity = { config.voiceSensitivity },
+            ),
             runner = io.github.maxlyth.hapaneld.assist.SatelliteTurnRunner(
                 panelAssistantVoice,
                 log = { Log.i(TAG, it) },

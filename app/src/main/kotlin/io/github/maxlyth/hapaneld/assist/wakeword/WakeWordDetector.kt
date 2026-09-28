@@ -41,6 +41,8 @@ class WakeWordDetector(
      * second per model, so a wake word that is heard but never quite fires can be diagnosed on the panel.
      */
     private val nearMiss: (modelId: String, mean: Float) -> Unit = { _, _ -> },
+    /** Added to every model's cutoff: negative wakes more readily, positive asks for a clearer match. */
+    private val cutoffOffset: Float = 0f,
 ) : PcmConsumer, AutoCloseable {
 
     /** True once every loaded model has stopped: the listener is armed but can no longer hear. */
@@ -91,11 +93,12 @@ class WakeWordDetector(
             if (coolingDown) continue
             val mean = slot.window.sum().toFloat() / (slot.window.size * WakeWordScorer.MAX_PROBABILITY)
             if (slot.quietFrames > 0) slot.quietFrames--
-            if (mean < slot.model.config.probabilityCutoff && mean >= NEAR_MISS_FLOOR && slot.quietFrames == 0) {
+            val cutoff = (slot.model.config.probabilityCutoff + cutoffOffset).coerceIn(MIN_CUTOFF, MAX_CUTOFF)
+            if (mean < cutoff && mean >= NEAR_MISS_FLOOR && slot.quietFrames == 0) {
                 slot.quietFrames = NEAR_MISS_QUIET_FRAMES
                 nearMiss(slot.model.config.id, mean)
             }
-            if (mean >= slot.model.config.probabilityCutoff) {
+            if (mean >= cutoff) {
                 slot.clearWindow()
                 slot.cooldownRemaining = cooldownChunks
                 listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs))
@@ -126,6 +129,15 @@ class WakeWordDetector(
 
         /** A window mean at or above this, short of the cutoff, is worth a diagnostic line. */
         const val NEAR_MISS_FLOOR = 0.5f
+        private const val MIN_CUTOFF = 0.5f
+        private const val MAX_CUTOFF = 0.99f
+
+        /** The `voice_sensitivity` setting as an offset to each model's own cutoff. */
+        fun cutoffOffset(sensitivity: String?): Float = when (sensitivity?.trim()?.lowercase()) {
+            "low" -> 0.02f
+            "high" -> -0.12f
+            else -> 0f
+        }
         private const val NEAR_MISS_QUIET_FRAMES = 100
     }
 }

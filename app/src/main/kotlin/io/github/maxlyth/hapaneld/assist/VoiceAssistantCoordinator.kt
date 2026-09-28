@@ -65,6 +65,8 @@ data class WakeWordActivation(val modelId: String, val phrase: String, val heard
 internal class MicroWakeWordEngineFactory(
     private val catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
     private val log: (String) -> Unit = {},
+    /** The `voice_sensitivity` setting, read each time the listener is armed. */
+    private val sensitivity: () -> String? = { null },
 ) : WakeWordEngineFactory {
     override fun create(modelIds: List<String>, onActivation: (WakeWordActivation) -> Unit): WakeWordEngine? {
         val models = modelIds.mapNotNull(catalog::load)
@@ -74,6 +76,7 @@ internal class MicroWakeWordEngineFactory(
             { hit -> onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs)) },
             maxActive = models.size,
             nearMiss = { id, mean -> log("wake word $id heard at ${"%.2f".format(mean)}, short of its cutoff") },
+            cutoffOffset = io.github.maxlyth.hapaneld.assist.wakeword.WakeWordDetector.cutoffOffset(sensitivity()),
         )
         return object : WakeWordEngine, PcmConsumer by detector {
             override fun close() = detector.close()
