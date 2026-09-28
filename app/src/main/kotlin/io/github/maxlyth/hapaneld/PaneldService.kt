@@ -1433,6 +1433,7 @@ class PaneldService : Service() {
                 }
             },
             log = { message -> Log.i(TAG, message) },
+            onColors = { colors -> io.github.maxlyth.hapaneld.assist.VoiceAttention.colors = colors },
         )
         // The native transport's own long-lived socket, on the same credential authority as the stream
         // above and the same address-family policy as every other Home Assistant socket.

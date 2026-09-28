@@ -16,6 +16,9 @@ internal object VoiceAttention {
     private const val WAKE_SOUND = "voice/wake_word_triggered.flac"
     private const val CHIME_TAIL_NS = 100_000_000L
 
+    /** Before Home Assistant has assigned any, and for a wake word it has not coloured. */
+    const val DEFAULT_COLOR = 0xFF00FF88.toInt()
+
     /** Set by the dashboard while it is resumed, so the ripple is drawn in its own window. */
     @Volatile
     var ripple: (() -> Unit)? = null
@@ -26,6 +29,15 @@ internal object VoiceAttention {
 
     @Volatile
     var attending = false
+        private set
+
+    /** Home Assistant's colour for each wake word's pipeline; every panel is sent the same ones. */
+    @Volatile
+    var colors: Map<String, Int> = emptyMap()
+
+    /** The colour of the conversation now on screen: its wake word's pipeline's. */
+    @Volatile
+    var color: Int = DEFAULT_COLOR
         private set
 
     /** The assistant's phase changed; the dashboard shows whether it is still attending. */
@@ -81,8 +93,9 @@ internal object VoiceAttention {
         }
     }
 
-    /** The panel has started listening: chime, and ripple if the dashboard is showing. */
-    fun cue() {
+    /** The panel has started listening for [wakeWordId]'s pipeline: chime, and ripple if the dashboard is showing. */
+    fun cue(wakeWordId: String?) {
+        color = wakeWordId?.let { colors[it] } ?: DEFAULT_COLOR
         val sound = wakeSound
         if (sound != 0 && pool?.play(sound, 1f, 1f, 1, 0, 1f) != 0) {
             val start = System.nanoTime()

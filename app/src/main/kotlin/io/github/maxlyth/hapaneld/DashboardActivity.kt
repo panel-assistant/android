@@ -2346,15 +2346,18 @@ class DashboardActivity : AppCompatActivity() {
         io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = {
             runOnUiThread {
                 view.bringToFront()
+                view.setColor(io.github.maxlyth.hapaneld.assist.VoiceAttention.color)
                 view.startRipple()
             }
         }
         io.github.maxlyth.hapaneld.assist.VoiceAttention.listening = { active ->
             runOnUiThread {
                 glow.bringToFront()
+                glow.setColor(io.github.maxlyth.hapaneld.assist.VoiceAttention.color)
                 glow.setListening(active)
             }
         }
+        glow.setColor(io.github.maxlyth.hapaneld.assist.VoiceAttention.color)
         glow.setListening(io.github.maxlyth.hapaneld.assist.VoiceAttention.attending)
     }
 

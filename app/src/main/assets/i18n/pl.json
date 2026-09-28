@@ -548,11 +548,6 @@
    "sourceHash": "748be63c87c9fad252fbd0a2e16d0bdd446d2f7acb456b820ed417e9b1f451df",
    "state": "machine-cross-checked"
   },
-  "configure.badge.skunk_works": {
-   "text": "skunk-works",
-   "sourceHash": "a8f2afd0e3e85d2b17b647f2dd1471a8df0c450ce5eeb25c858a7068088d060d",
-   "state": "machine-cross-checked"
-  },
   "configure.brightness.chart_label": {
    "text": "24-godzinny wykres oświetlenia otoczenia: trzy ostatnie dni przedstawione osobno, a reszta tygodnia pokazana jako zacieniony zakres od minimum do maksimum",
    "sourceHash": "de769cd44d5e548e3985585296f2a48b20eba114b6696b24fb84400fbb5b2579",

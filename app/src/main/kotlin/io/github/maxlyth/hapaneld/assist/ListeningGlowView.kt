@@ -27,6 +27,13 @@ class ListeningGlowView(context: Context) : View(context) {
         setLayerType(LAYER_TYPE_HARDWARE, null)
     }
 
+    /** Tint in [value], the colour of the pipeline that is listening. */
+    fun setColor(value: Int) {
+        if (value == color) return
+        color = value
+        invalidate()
+    }
+
     /** Fade the tint in or out. */
     fun setListening(active: Boolean) {
         animator?.cancel()

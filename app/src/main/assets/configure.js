@@ -2909,10 +2909,7 @@
   // Camera is an experimental trial: it ships to earn permanent inclusion and can be withdrawn, so
   // its card says so in the heading rather than only in each setting's help text.
   var CARD_BADGES = {
-    "Display": ["experimental", "exp"], "Camera": ["experimental", "exp"],
-    // Voice is further from settled than the experimental cards: it is off by default, gated on a
-    // profile declaring a microphone, and unannounced.
-    "Voice": ["skunk-works", "skunk"]
+    "Display": ["experimental", "exp"], "Camera": ["experimental", "exp"]
   };
   var CARD_NOTES = {
     "Sensors": "Home Assistant reporting",
@@ -3172,8 +3169,7 @@
       var h2kids = [el("span", { text: groupTitle(g) })];
       if (CARD_NOTES[g]) h2kids.push(el("small", { text: i18nText("configure.group.ha_reporting_note", " · Home Assistant reporting") }));
       var badge = CARD_BADGES[g];
-      if (badge) h2kids.push(el("span", { class: "cardbadge " + badge[1], text: badge[0] === "experimental"
-        ? i18nText("configure.badge.experimental", "experimental") : i18nText("configure.badge.skunk_works", "skunk-works") }));
+      if (badge) h2kids.push(el("span", { class: "cardbadge " + badge[1], text: i18nText("configure.badge.experimental", "experimental") }));
       var card = el("div", { class: "card" }, [el("h2", {}, h2kids)]);
       card.setAttribute("data-config-group", g);
       card.setAttribute("data-layout-key", configLayoutKey(g));
