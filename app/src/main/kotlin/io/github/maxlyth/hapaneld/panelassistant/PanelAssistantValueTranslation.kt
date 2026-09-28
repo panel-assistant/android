@@ -27,6 +27,7 @@ internal object PanelAssistantValueTranslation {
         descriptor: PanelAssistantChannelDescriptor,
         observation: StateConverger.Observation.Reportable,
     ): PanelAssistantWireValue? {
+        if (descriptor.kind == PanelAssistantValueKind.BUTTON) return null
         val payload = when (observation) {
             StateConverger.Observation.Unavailable -> return PanelAssistantWireValue.Unavailable
             is StateConverger.Observation.Known -> observation.payload
@@ -45,6 +46,7 @@ internal object PanelAssistantValueTranslation {
             PanelAssistantValueKind.TEXT -> payload
             PanelAssistantValueKind.LIGHT -> light(payload)
             PanelAssistantValueKind.UPDATE -> update(payload)
+            PanelAssistantValueKind.BUTTON -> null
         } ?: return null
         return PanelAssistantWireValue.Known(value)
     }
