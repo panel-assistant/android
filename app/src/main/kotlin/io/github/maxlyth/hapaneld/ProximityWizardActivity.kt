@@ -21,6 +21,12 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.text.NumberFormat
 import org.json.JSONObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 internal data class ProximityWizardSpeech(
     val prompt: String,
@@ -102,6 +108,7 @@ internal fun proximityWizardLayoutSpec(widthDp: Int, heightDp: Int): ProximityWi
 class ProximityWizardActivity : AppCompatActivity() {
     private val maintenanceFence = GuardDbActivityMaintenanceFence()
     private val handler = Handler(Looper.getMainLooper())
+    private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var sessionId: String? = null
     private var visible = false
     private var stage = ""
@@ -138,19 +145,28 @@ class ProximityWizardActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (maintenanceFence.stop(this)) return
-        NativeLocale.apply(Config(this).uiLanguage)
-        supportActionBar?.hide()
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         sessionId = savedInstanceState?.getString(SESSION)
-        layoutSpec = proximityWizardLayoutSpec(
-            resources.configuration.screenWidthDp,
-            resources.configuration.screenHeightDp,
-        )
-        rawNumberFormat = NumberFormat.getNumberInstance(resources.configuration.locales[0]).apply {
-            isGroupingUsed = false
-            maximumFractionDigits = 4
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        setContentView(TextView(this).apply {
+            text = getString(applicationInfo.labelRes)
+            gravity = Gravity.CENTER
+        })
+        activityScope.launch {
+            val language = readActivityStateOffMain { Config(applicationContext).uiLanguage }
+            if (!isActive) return@launch
+            NativeLocale.apply(language)
+            supportActionBar?.hide()
+            layoutSpec = proximityWizardLayoutSpec(
+                resources.configuration.screenWidthDp,
+                resources.configuration.screenHeightDp,
+            )
+            rawNumberFormat = NumberFormat.getNumberInstance(resources.configuration.locales[0]).apply {
+                isGroupingUsed = false
+                maximumFractionDigits = 4
+            }
+            buildUi()
+            if (visible) startPresentation()
         }
-        buildUi()
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -325,8 +341,12 @@ class ProximityWizardActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (maintenanceFence.stop(this) || !::instruction.isInitialized) return
+        if (maintenanceFence.stop(this)) return
         visible = true
+        if (::instruction.isInitialized) startPresentation()
+    }
+
+    private fun startPresentation() {
         pictogram.setPresenting(true)
         KioskAdminUi.setVisible(this, true)
         handler.post(poll)
@@ -336,7 +356,7 @@ class ProximityWizardActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         // A later explicit launch can replace a completed screen, never an in-progress journey.
-        if (proximityWizardMayRebind(stage)) {
+        if (::instruction.isInitialized && proximityWizardMayRebind(stage)) {
             sessionId = null
             lastPresentation = ""
             refresh()
@@ -358,6 +378,7 @@ class ProximityWizardActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(poll)
+        activityScope.cancel()
         KioskAdminUi.setVisible(this, false)
         super.onDestroy()
     }
