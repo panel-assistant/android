@@ -2854,7 +2854,7 @@ class PaneldServer internal constructor(
                             entityLearning.writeExportJson(this)
                         }
                     }
-                    get("/proximity") { call.respondText(sensors.proximityJson(), ContentType.Application.Json) }
+                    proximityRoutes(sensors::hasProximity, sensors::proximityJson, onProximityCalibration)
                     // Live Sensors card: last-published values + live extras. Volume is the current
                     // media-stream percent; brightness is the system setting (0-255, -1 unknown).
                     get("/sensors") {
@@ -3448,52 +3448,6 @@ class PaneldServer internal constructor(
                     }
                     get("/openapi.json") {
                         call.respondText(asset("openapi.json"), ContentType.Application.Json)
-                    }
-                    post("/proximity/calibration") {
-                        if (!proximityUiRequestAllowed(
-                                call.request.headers["Origin"], call.request.headers["Referer"],
-                                call.request.headers["Host"], call.request.headers["Sec-Fetch-Site"],
-                                call.request.headers["X-Proximity-UI"],
-                            )) {
-                            call.respondText("Start proximity setup from this panel's HTML UI.\n", status = HttpStatusCode.Forbidden)
-                            return@post
-                        }
-                        val parameters = receiveBoundedFormParameters(call) ?: return@post
-                        val action = parameters["action"].orEmpty()
-                        if (action !in setOf("start", "cancel", "reset", "heartbeat")) {
-                            call.respondText("Unsupported calibration action.\n", status = HttpStatusCode.BadRequest)
-                            return@post
-                        }
-                        if (!sensors.hasProximity()) {
-                            call.respondText(PROXIMITY_SOURCE_REQUIRED, ContentType.Application.Json, HttpStatusCode.Conflict)
-                            return@post
-                        }
-                        val id = parameters["sessionId"].orEmpty()
-                        val accepted = withContext(Dispatchers.IO) { onProximityCalibration(action, id) }
-                        call.response.headers.append("Cache-Control", "no-store")
-                        call.respondText(sensors.proximityJson(), ContentType.Application.Json,
-                            if (accepted) HttpStatusCode.Accepted else HttpStatusCode.Conflict)
-                    }
-                    post("/proximity/teach") {
-                        call.respondText("Use on-panel proximity setup from the HTML UI.\n", status = HttpStatusCode.Gone)
-                    }
-                    post("/proximity/test") {
-                        call.respondText("Use on-panel proximity setup from the HTML UI.\n", status = HttpStatusCode.Gone)
-                    }
-                    post("/proximity/relearn") {
-                        call.respondText("Use Reset to profile from the HTML UI.\n", status = HttpStatusCode.Gone)
-                    }
-                    post("/proximity/capture") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
-                    }
-                    post("/proximity/threshold") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
-                    }
-                    post("/proximity/sensitivity") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
-                    }
-                    post("/proximity/reset") {
-                        call.respondText(RETIRED_PROXIMITY_OPERATION, ContentType.Application.Json, HttpStatusCode.Gone)
                     }
                     // Per-package vendor taming from the Vendor packages card. action=tame adds the package to
                     // the blocklist and tames it now; action=untame explicitly enables it, then removes it from
@@ -10988,10 +10942,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             "Requires physical on-panel approval for this action when Hardened mode is enabled."
         private const val HARDENED_CONDITIONAL_APPROVAL_TEXT =
             "Changing this setting may require physical on-panel approval when Hardened mode is enabled."
-        private const val RETIRED_PROXIMITY_OPERATION =
-            "{\"error\":\"automatic proximity learning replaced this operation\"}"
-        private const val PROXIMITY_SOURCE_REQUIRED =
-            "{\"error\":\"proximity_source_required\"}"
         private const val ENTITY_REVISION_PREFIX = "_local.entity_state"
         // Late enough that the first pass does not compete with boot (renderer, MQTT, profile activation),
         // early enough that a panel is correct long before anybody opens a settings page.
