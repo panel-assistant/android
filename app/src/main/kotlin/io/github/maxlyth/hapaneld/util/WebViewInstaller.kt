@@ -244,20 +244,6 @@ object WebViewInstaller {
         true
     }.getOrDefault(false)
 
-    /** Keep download failure and the last pre-mutation gate on the same production install path. */
-    internal suspend fun installAutoUpdateWithReceipt(
-        context: Context,
-        pinVersion: String,
-        stillBuiltin: () -> Boolean,
-        install: suspend ((() -> Boolean)?) -> InstallOutcome,
-    ): InstallOutcome = try {
-        install({ stillBuiltin() && markInstallMayHaveStarted(context, pinVersion) })
-    } finally {
-        // A thrown download or cancellation has no typed failure result. Once the gate ran,
-        // an interrupted privileged reply remains uncertain and retains the only backup.
-        if (pendingRollback(context)?.installMayHaveStarted == false) abandonRollback(context)
-    }
-
     /**
      * The result of a [heal] attempt. [status] is the exact human-readable message shown in the UI /
      * InstallProgress; callers switch on the variant rather than re-parsing it.
@@ -382,6 +368,13 @@ object WebViewInstaller {
         autoUpdate: Boolean = false,
         builtinRenderer: Boolean = true,
         stillBuiltin: (() -> Boolean)? = null,
+        prepareAutoRollback: suspend (Context, String, String) -> String? = { ctx, version, sha ->
+            withContext(Dispatchers.IO) { prepareRollback(ctx, version, sha) }
+        },
+        installPinned: suspend (Context, String, AppInstaller.Pin, (() -> Boolean)?) -> InstallOutcome =
+            { ctx, url, pin, gate ->
+                AppInstaller.install(ctx, url, pin, allowShizuku = false, beforeInstall = gate)
+            },
     ): HealResult {
         return when (val d = decide(profile.recommendedWebView, engineVersion, PanelHealth.MIN_CHROMIUM, force, autoUpdate, builtinRenderer)) {
             Decision.AutoBlockedForeign -> HealResult.Failed(
@@ -404,24 +397,23 @@ object WebViewInstaller {
                     if (stillBuiltin == null) return HealResult.Failed(
                         "WebView update deferred: dashboard health guard unavailable", terminal = false,
                     )
-                    val reason = withContext(Dispatchers.IO) {
-                        prepareRollback(context, d.spec.version, d.spec.apkSha256)
-                    }
+                    val reason = prepareAutoRollback(context, d.spec.version, d.spec.apkSha256)
                     if (reason != null) return HealResult.Failed("WebView update deferred: $reason", terminal = false)
                 }
                 Log.i(TAG, "healing WebView → ${d.spec.version} (engine was $engineVersion)")
-                val installPinned: suspend ((() -> Boolean)?) -> InstallOutcome = { beforeInstall ->
-                    AppInstaller.install(
-                        context,
-                        d.spec.url,
+                val outcome = try {
+                    installPinned(
+                        context, d.spec.url,
                         AppInstaller.Pin(WEBVIEW_PKG, d.spec.certSha256, d.spec.apkSha256),
-                        allowShizuku = false,
-                        beforeInstall = beforeInstall,
+                        if (autoUpdate) {
+                            { stillBuiltin!!.invoke() && markInstallMayHaveStarted(context, d.spec.version) }
+                        } else null,
                     )
+                } finally {
+                    // A thrown download or cancellation has no typed failure result. Once the gate
+                    // ran, an interrupted privileged reply retains the only backup.
+                    if (autoUpdate && pendingRollback(context)?.installMayHaveStarted == false) abandonRollback(context)
                 }
-                val outcome = if (autoUpdate) {
-                    installAutoUpdateWithReceipt(context, d.spec.version, stillBuiltin!!, installPinned)
-                } else installPinned(null)
                 val result = when (outcome) {
                     InstallOutcome.Succeeded ->
                         HealResult.Installed(
