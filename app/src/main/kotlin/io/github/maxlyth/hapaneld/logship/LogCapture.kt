@@ -510,6 +510,12 @@ private fun decodePrintableLogcatRecord(record: String): String {
     val decoded = StringBuilder(record.length).append(record, 0, start)
     var index = start
     while (index < record.length) {
+        // Some Android logcat builds print embedded newlines as hex, not C-style \n.
+        if (record.regionMatches(index, "\\x0A", 0, 4, ignoreCase = true)) {
+            decoded.append('\n')
+            index += 4
+            continue
+        }
         val escaped = if (record[index] == '\\') record.getOrNull(index + 1) else null
         val value = when (escaped) {
             '\\' -> '\\'
@@ -520,7 +526,7 @@ private fun decodePrintableLogcatRecord(record: String): String {
             'v' -> '\u000B'
             'f' -> '\u000C'
             'r' -> '\r'
-            else -> null // Retain unknown and hex escapes as their lossless printable text.
+            else -> null // Retain other escapes as their lossless printable text.
         }
         if (value != null) {
             decoded.append(value)
