@@ -3362,6 +3362,18 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.oauth.panel_reachability": {
+      "text": "To finish sign-in, this browser must reach the panel's address. If it cannot, open Configure from the panel's network or sign in on the panel.",
+      "sourceHash": "f7ee3e4333f5fae799f75a5610c7c5841932d0a5a5b3bd32f19183136611ce89",
+      "surface": "configure",
+      "context": "Embedded sidebar OAuth callback guidance when the browser cannot reach the panel address.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 145,
+      "hardMaxChars": 210
+    },
     "configure.oauth.reconnect": {
       "text": "Reconnect",
       "sourceHash": "bf8a9eab9e7e141bfb81f0ca9244a5f68f476ed0b57f03538410417298169d18",

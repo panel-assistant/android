@@ -549,17 +549,6 @@
   }
 
   function haOAuthRow() {
-    // Browser sign-in returns to the panel's own address, which the Panel Assistant sidebar cannot reach, and
-    // the integration never signs a panel in itself. Embedded, show the connection state only; sign-in stays
-    // on the panel or its own web page.
-    if (EMBEDDED) {
-      haOauthButton = null;
-      haOauthStatus = el("div", { class: "ha-oauth-status", text: haConnectionStatusText() });
-      renderHaConnectionStatus();
-      return el("div", { class: "frow ha-oauth-row", id: "cfg-ha-oauth" }, [
-        el("div", { class: "flabel" }, [el("span", { text: i18nText("configure.oauth.browser_sign_in", "Browser sign-in") }), haOauthStatus])
-      ]);
-    }
     haOauthButton = el("button", {
       class: "pbtn", type: "button", text: haAuth.configured ? i18nText("configure.oauth.reconnect", "Reconnect") : i18nText("configure.oauth.connect", "Connect")
     });
@@ -589,6 +578,7 @@
         el("span", { text: i18nText("configure.oauth.browser_sign_in", "Browser sign-in") }),
         haOauthStatus,
         el("small", { text: i18nText("configure.oauth.sign_in_help", "Sign in from this computer. To sign in as another user, copy the link into a private window.") }),
+        EMBEDDED ? el("small", { class: "ha-oauth-guidance", text: i18nText("configure.oauth.panel_reachability", "To finish sign-in, this browser must reach the panel's address. If it cannot, open Configure from the panel's network or sign in on the panel.") }) : null,
         guidance ? el("small", { class: "ha-oauth-guidance", text: guidance }) : null
       ]),
       el("div", { class: "fctl ha-oauth-actions" }, [haOauthButton, haOauthLinks])

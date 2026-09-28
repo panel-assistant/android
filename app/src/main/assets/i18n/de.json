@@ -1248,6 +1248,11 @@
       "sourceHash": "c766817ace23b0a631e0fc10b24576d12fd716fe3c26705eca57a31a23d278e1",
       "state": "machine-cross-checked"
     },
+    "configure.oauth.panel_reachability": {
+      "text": "Zum Abschließen der Anmeldung muss dieser Browser die Adresse des Panels erreichen. Falls das nicht möglich ist, öffne Konfigurieren aus dem Netzwerk des Panels oder melde dich direkt am Panel an.",
+      "sourceHash": "f7ee3e4333f5fae799f75a5610c7c5841932d0a5a5b3bd32f19183136611ce89",
+      "state": "machine-cross-checked"
+    },
     "configure.oauth.reconnect": {
       "text": "Neu verbinden",
       "sourceHash": "bf8a9eab9e7e141bfb81f0ca9244a5f68f476ed0b57f03538410417298169d18",
