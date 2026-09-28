@@ -1678,6 +1678,31 @@
    "sourceHash": "29db9e0656abb9d76014f07d2f3faac2ece244b4b3e8c217ae984de03ab4aff8",
    "state": "machine-cross-checked"
   },
+  "configure.voice.import_choose_files": {
+   "text": "Proszę najpierw wybrać manifest „.json” oraz model „.tflite”.",
+   "sourceHash": "fa414a4812d0db87e2bb63ec269b6f25fd0ae7870052984f468c6de6530fc588",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_done": {
+   "text": "Zaimportowano „{wake_word}”.",
+   "sourceHash": "0e0dca7d3b4ad4b487ce709a1fa74d1e0bb9f256c419d7af3c1e20e6aeda09aa",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_failed": {
+   "text": "Import failed: {reason}",
+   "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
+   "state": "english-fallback"
+  },
+  "configure.voice.import_help": {
+   "text": "Proszę zaimportować wyszkolony model „microWakeWord”: plik manifestu „.json” oraz plik „.tflite”.",
+   "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_wake_word": {
+   "text": "Importuj wyuczone słowo aktywujące",
+   "sourceHash": "67ca4b530450a4ac62a77d2916c15496edc7a423f82f7639dd6ff386eddee540",
+   "state": "machine-cross-checked"
+  },
   "configure.voice.pipeline_not_listed": {
    "text": "{pipeline} · nie ma na liście Home Assistant",
    "sourceHash": "71773debc9e3b12cc0d7cd4efd8241dd25e5e42e51532072c309dabbd180dd46",
@@ -9773,19 +9798,9 @@
    "sourceHash": "5df43abc6ac192d8e244aa63b84795d5fff6bce32f84f7014212a9719cf654c8",
    "state": "machine-cross-checked"
   },
-  "settings.voice_state.help": {
-   "text": "Aktualny stan asystenta głosowego: wyłączony, w stanie spoczynku, nasłuchuje, przetwarza, odpowiada lub błąd.",
-   "sourceHash": "2a671d81e77de2a726125f798e643ca84897af8699a27bb850c10bbd4f803c45",
-   "state": "machine-cross-checked"
-  },
-  "settings.voice_state.label": {
-   "text": "Stan asystenta głosowego",
-   "sourceHash": "51616ec4032c3dd7c2a589b3338db98e776642afbe237f6d1c4099abe132bb74",
-   "state": "machine-cross-checked"
-  },
   "settings.voice_wake_words.help": {
-   "text": "Maksymalnie dwa lokalne modele słów budzących do nasłuchiwania, jako tablica JSON: okay_nabu, hey_jarvis, hey_mycroft, alexa.",
-   "sourceHash": "b3b162ba4d8e06e2520a3ba4f8fd28f822616749940c6ab4fbfa245e5ff7199b",
+   "text": "Słowa aktywujące, na które nasłuchiwać, jako tablica JSON identyfikatorów modeli: wbudowane okay_nabu, hey_jarvis, hey_mycroft oraz alexa, albo zaimportowany.",
+   "sourceHash": "742dff13997bceee40c505f5246cd6aaaf7066a88362bff0595f7d83cf719e84",
    "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.label": {
