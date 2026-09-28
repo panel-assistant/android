@@ -9,6 +9,7 @@ import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.RootShell
 import io.github.maxlyth.hapaneld.platform.SystemEnv
 import io.github.maxlyth.hapaneld.util.AndroidInput
+import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.HelperClient
 
 /** Foreground/liveness state of the dashboard app, as seen by the app watchdog. */
@@ -40,6 +41,12 @@ class SystemController(
     private val homeWarning: (String) -> Unit = { Log.w(TAG, it) },
     private val beforeReboot: () -> Unit = {},
 ) {
+
+    // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
+    // executable routes; the production su probe stays isolated from the persistent control shell.
+    private val privilegedRouteAvailable = Cached(60_000L) {
+        daemon.available() || if (root === Su) Su.availableCachedIsolated() else root.available()
+    }
 
     // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can
     // report again if it becomes unavailable later, without turning a steady state into log noise.
@@ -167,11 +174,11 @@ class SystemController(
     /** A built-in reload uses this app; an external renderer needs one of the existing privileged routes. */
     fun canReloadDashboard(dashboardPkg: String): Boolean {
         val pkg = resolveDashboard(dashboardPkg)
-        return isBuiltin(pkg) || AndroidInput.isPackage(pkg) && (daemon.available() || root.available())
+        return isBuiltin(pkg) || AndroidInput.isPackage(pkg) && privilegedRouteAvailable.get()
     }
 
     /** The same helper and root routes [reboot] will try. */
-    fun canReboot(): Boolean = daemon.available() || root.available()
+    fun canReboot(): Boolean = privilegedRouteAvailable.get()
 
     /**
      * Bring a launcher (home screen) to the foreground — for panels with no physical home button.
