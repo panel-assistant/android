@@ -209,11 +209,15 @@ class FakeSystemEnv(
     var launchers: Map<String, String> = emptyMap(),
     var homes: List<ActivityRef> = emptyList(),
     var default: ActivityRef? = null,
+    var directStartSucceeds: Boolean = true,
 ) : SystemEnv {
     val directStarts = mutableListOf<String>()
     override fun isInstalled(pkg: String) = pkg in installed
     override fun launchComponent(pkg: String) = launchers[pkg]
     override fun homeActivities() = homes
     override fun defaultHome() = default
-    override fun directStart(component: String) { directStarts += component }
+    override fun directStart(component: String): Boolean {
+        directStarts += component
+        return directStartSucceeds
+    }
 }
