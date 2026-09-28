@@ -26,6 +26,8 @@ class MigrationTokenReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             ACTION_TOKEN -> if (!AppIdentity.IS_BRIDGE) {
+                // Identity must be durable before the token allows the successor to pull or release.
+                if (!MigrationState.of(context).acceptDeviceUid(intent.getStringExtra(EXTRA_DEVICE_UID))) return
                 ReleaseToken.of(context).accept(intent.getStringExtra(EXTRA_TOKEN))
                 LegacyPort.of(context).accept(intent.getIntExtra(EXTRA_PORT, 0))
             }
@@ -46,6 +48,7 @@ class MigrationTokenReceiver : BroadcastReceiver() {
         const val ACTION_STATUS = "io.github.maxlyth.hapaneld.action.MIGRATION_STATUS"
         const val EXTRA_TOKEN = "token"
         const val EXTRA_PORT = "port"
+        const val EXTRA_DEVICE_UID = "device_uid"
         const val PERMISSION = "io.github.maxlyth.hapaneld.permission.IDENTITY_MIGRATION"
         const val STATUS_ACTIVE = 1
         const val STATUS_RETIRED = 2
@@ -56,11 +59,12 @@ class MigrationTokenReceiver : BroadcastReceiver() {
             .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
 
         /** Bridge: address the token to the successor package alone, never as an implicit broadcast. */
-        fun deliver(context: Context, token: String, httpPort: Int): Boolean = runCatching {
+        fun deliver(context: Context, token: String, httpPort: Int, deviceUid: String): Boolean = runCatching {
             context.sendBroadcast(
                 addressed(ACTION_TOKEN, AppIdentity.SUCCESSOR)
                     .putExtra(EXTRA_TOKEN, token)
-                    .putExtra(EXTRA_PORT, httpPort),
+                    .putExtra(EXTRA_PORT, httpPort)
+                    .putExtra(EXTRA_DEVICE_UID, deviceUid),
             )
             true
         }.getOrDefault(false)

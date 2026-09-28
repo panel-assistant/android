@@ -14,6 +14,62 @@ import org.junit.rules.TemporaryFolder
 class MigrationStateTest {
     @get:Rule val temp = TemporaryFolder()
 
+    @Test fun signedInstallationIdentitySurvivesRestartAndRefusesReplacement() {
+        val state = MigrationState(temp.root)
+        assertFalse(state.acceptDeviceUid(null))
+        assertFalse(state.acceptDeviceUid("bad"))
+        assertNull(state.deviceUid())
+        assertTrue(state.acceptDeviceUid("a".repeat(32)))
+        val reopened = MigrationState(temp.root)
+        assertEquals("a".repeat(32), reopened.deviceUid())
+        assertTrue(reopened.acceptDeviceUid("a".repeat(32)))
+        assertFalse(reopened.acceptDeviceUid("b".repeat(32)))
+        assertEquals("a".repeat(32), reopened.deviceUid())
+    }
+
+    @Test fun failedIdentityWriteCanBeRetriedWithoutAdmittingAnAbsentIdentity() {
+        val blocked = temp.root.resolve("identity-migration")
+        blocked.writeText("not a directory")
+        val state = MigrationState(temp.root)
+        assertFalse(state.acceptDeviceUid("a".repeat(32)))
+        assertNull(state.deviceUid())
+        assertTrue(blocked.delete())
+        assertTrue(state.acceptDeviceUid("a".repeat(32)))
+        assertEquals("a".repeat(32), MigrationState(temp.root).deviceUid())
+    }
+
+    @Test fun completedStandaloneInstallationRefusesLaterIdentityDelivery() {
+        val state = MigrationState(temp.root)
+        assertTrue(state.recordComplete())
+        assertFalse(state.acceptDeviceUid("a".repeat(32)))
+        assertNull(MigrationState(temp.root).deviceUid())
+    }
+
+    @Test fun retiredOldHandoverCanFinishOnlyItsAlreadyVerifiedExactReceipt() {
+        val state = MigrationState(temp.root)
+        state.receipt.parentFile.mkdirs()
+        state.receipt.writeText("previously verified old receipt bytes")
+        val digest = io.github.maxlyth.hapaneld.util.AppInstaller.sha256(state.receipt)
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+        assertTrue(state.record(Step.PULL, digest))
+        assertTrue(state.record(Step.VERIFY, digest))
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+        assertTrue(state.record(Step.RELEASE))
+        temp.root.resolve("identity-migration/step-verify.v1").delete()
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+        assertTrue(state.record(Step.VERIFY, "f".repeat(64)))
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+        assertTrue(state.record(Step.VERIFY, digest))
+        assertTrue(MigrationState(temp.root).verifiedRetiredReceipt(state.receipt))
+        state.receipt.appendText("changed")
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+        state.receipt.writeText("previously verified old receipt bytes")
+        assertTrue(state.acceptDeviceUid("a".repeat(32)))
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+        temp.root.resolve("identity-migration/device-uid.v1").writeText("corrupt")
+        assertFalse(state.verifiedRetiredReceipt(state.receipt))
+    }
+
     private fun disposition(
         isBridge: Boolean = false,
         bridgeRetired: Boolean = false,

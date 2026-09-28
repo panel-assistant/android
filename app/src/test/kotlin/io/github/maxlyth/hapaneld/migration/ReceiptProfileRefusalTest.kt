@@ -70,11 +70,11 @@ class ReceiptProfileRefusalTest {
     private val own = panelAssistantDiscoveryId("9774d56d682e549c")!!
 
     /** Exactly what the successor's VERIFY step asks. */
-    private fun refusal(archive: File) = ReceiptVerifier.migrationRefusal(archive, own, ::plan)
+    private fun refusal(archive: File) = ReceiptVerifier.migrationRefusal(archive, own, plan = ::plan)
 
     @Test fun aWholeReceiptIsCheckedFirstAndTheCatalogOnlyAfterIt() {
         val archive = receipt(catalog(ProfileSelection.Pinned(ProfileRef("vendor.dropped", "d".repeat(64)))))
-        assertEquals("receipt was not written on this device", ReceiptVerifier.migrationRefusal(archive, "someone-else", ::plan))
+        assertEquals("receipt was not written on this device", ReceiptVerifier.migrationRefusal(archive, "someone-else", plan = ::plan))
     }
 
     @Test fun aCatalogPinnedToARetiredBundledRevisionIsAdmittedBeforeTheRelease() {
