@@ -214,6 +214,7 @@
 
     <string name="ha_shutting_down">Home Assistant 正在关闭</string>
     <string name="ha_offline">Home Assistant 已离线</string>
+    <string name="ha_disconnected">已与 Home Assistant 断开连接</string>
     <string name="ha_starting">Home Assistant 正在启动</string>
     <string name="ha_back_online">Home Assistant 已恢复在线</string>
     <string name="controls_unavailable_reconnect">控制不可用。正在自动重新连接。</string>

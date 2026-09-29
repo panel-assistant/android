@@ -37,6 +37,9 @@
 
 ### Fixed
 
+- Panels report their current primary and secondary network addresses to Panel Assistant when connecting, allowing it to verify a reachable address after a network change.
+- A saved dashboard displayed while disconnected now shows an outage notice until its live connection returns.
+
 - **The note under the Logs tab now names all three log sources.** It described App and System only, and the new Browser console source was missing from it. The Dutch and Polish versions of the note were also garbled and have been rewritten in every language.
 - **Turning the camera off and straight back on no longer disturbs the new stream.** The camera finishes a session a moment after the session ends, and a stream that started in that moment could be caught by the old session's finish: its viewers could be disconnected or refused, or its first viewer handed the encoding details of the stream before, which a player cannot decode the new picture with. Each part of that finish now reaches only the session it belongs to. A viewer of the session that ended is still disconnected, as before, even when a new session has already started.
 

@@ -208,6 +208,7 @@
     <string name="open_entity_settings">Entiteitsinstellingen openen</string>
     <string name="ha_shutting_down">Home Assistant wordt afgesloten</string>
     <string name="ha_offline">Home Assistant is offline</string>
+    <string name="ha_disconnected">Verbinding met Home Assistant verbroken</string>
     <string name="ha_starting">Home Assistant wordt gestart</string>
     <string name="ha_back_online">Home Assistant is weer online</string>
     <string name="controls_unavailable_reconnect">Bedieningselementen niet beschikbaar. Wordt automatisch opnieuw verbonden.</string>

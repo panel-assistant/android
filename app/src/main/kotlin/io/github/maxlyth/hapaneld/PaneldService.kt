@@ -1447,6 +1447,13 @@ class PaneldService : Service() {
                 socketFamilyPolicy = { MqttAddressFamilyPolicy.fromConfig(config.mqttAddressFamily) },
             ),
             monotonicMillis = haSocketClock,
+            addresses = {
+                val primary = runCatching {
+                    val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                    cm?.getLinkProperties(cm.activeNetwork)?.linkAddresses.orEmpty().map { it.address }
+                }.getOrDefault(emptyList())
+                io.github.maxlyth.hapaneld.util.localPanelAddresses(primary)
+            },
             shadow = panelAssistantShadow,
             observeForHello = {
                 val observed = runtime.observe() ?: return@PanelAssistantTransportOwner false

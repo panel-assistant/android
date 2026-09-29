@@ -208,6 +208,7 @@
     <string name="open_entity_settings">Відкрити налаштування сутностей</string>
     <string name="ha_shutting_down">Home Assistant вимикається</string>
     <string name="ha_offline">Home Assistant не в мережі</string>
+    <string name="ha_disconnected">З’єднання з Home Assistant втрачено</string>
     <string name="ha_starting">Home Assistant запускається</string>
     <string name="ha_back_online">Home Assistant знову в мережі</string>
     <string name="controls_unavailable_reconnect">Елементи керування недоступні. Автоматичне повторне підключення.</string>
