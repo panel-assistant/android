@@ -264,10 +264,19 @@ internal abstract class MqttWireRig {
         if (payload.startsWith("{")) org.json.JSONObject(payload).toString() else payload
 
     /** The publications and hardware writes [action] causes, sorted, with discovery excluded. */
-    protected fun effect(rig: Rig, action: () -> Unit): List<String> {
+    protected fun effect(rig: Rig, channel: String, action: () -> Unit): List<String> {
         val lines = rig.transport.size()
         val writes = rig.sysfs.writes.size
         action()
+        if (channel.startsWith("button_led")) {
+            // Read-back leaves the command worker, then publication leaves the convergence pump.
+            // A quiet transport and a pump barrier do not prove that the send worker has finished.
+            val topic = "ha-paneld/$PANEL/$channel/state"
+            rig.transport.awaitPublication(lines, "$channel command state") { it.topic() == topic }
+            assertTrue("$channel command state published", rig.transport.snapshot().drop(lines).any {
+                it.isPublication() && it.topic() == topic
+            })
+        }
         rig.transport.drain()
         val published = rig.transport.snapshot().drop(lines).filter { it.isPublication() && !it.topic().startsWith("homeassistant/") }
         return (published + rig.sysfs.writes.drop(writes).map { "write\t$it" }).sorted()
@@ -1058,12 +1067,12 @@ internal class MqttNativeParityTest : MqttWireRig() {
             }
             for (descriptor in representatives) for ((value, mqttPayload) in commandSamples(descriptor)) {
                 val label = "${descriptor.channel} $value"
-                val overMqtt = effect(mqtt) {
+                val overMqtt = effect(mqtt, descriptor.channel) {
                     mqtt.transport.deliver("ha-paneld/$PANEL/${descriptor.channel}/set", mqttPayload)
                     barrier(mqtt, descriptor.channel)
                 }
                 var result: PanelAssistantCommandResult? = null
-                val overNative = effect(native) {
+                val overNative = effect(native, descriptor.channel) {
                     result = submitNative(native, descriptor.channel, PanelAssistantCommandTranslation.payload(descriptor, value)!!)
                 }
                 results[label] = result!!
