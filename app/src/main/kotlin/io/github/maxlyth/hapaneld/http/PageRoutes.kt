@@ -7,6 +7,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -25,6 +26,32 @@ internal fun Route.dashboardPageRoute(
             strings.languages(setOf("shell.", "dashboard.")).joinToString(", "),
         )
         call.respondText(render(strings, call.embedMode()), ContentType.Text.Html)
+    }
+    // The experimental remote-control page is withheld from 0.9.2. Keep old bookmarks
+    // useful while its tap-injection UX is reviewed for a later release.
+    get("/test") { call.respondRedirect("/") }
+}
+
+internal fun Route.dashboardHydrationRoute(
+    requestStrings: (ApplicationCall) -> AppStrings,
+    render: (AppStrings) -> String,
+) {
+    // Hydration payload for the dashboard (see DashboardPageHandler.json) — the one place the probe
+    // suite actually runs; cached + single-flight, so concurrent viewers share it.
+    get("/info") {
+        val strings = requestStrings(call)
+        call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
+        call.response.headers.append(
+            HttpHeaders.ContentLanguage,
+            strings.languages(setOf("dashboard.")).joinToString(", "),
+        )
+        call.respondText(withContext(Dispatchers.IO) { render(strings) }, ContentType.Application.Json)
+    }
+}
+
+internal fun Route.apiSpecificationRoute(asset: (String) -> String) {
+    get("/openapi.json") {
+        call.respondText(asset("openapi.json"), ContentType.Application.Json)
     }
 }
 
