@@ -27,6 +27,8 @@ import sun.misc.Unsafe
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
 internal class PaneldServerHttpFixture(
+    powerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyAssessment = { error("Unexpected power assessment") },
+    repairPowerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult = { error("Unexpected power repair") },
     logApp: io.github.maxlyth.hapaneld.logship.LogCapture? = null,
 ) : java.io.Closeable {
     private val directory = Files.createTempDirectory("paneld-http-baseline").toFile()
@@ -85,6 +87,26 @@ internal class PaneldServerHttpFixture(
         field("webViewConsoleEnabled", { false })
         field("logShipStatus", { io.github.maxlyth.hapaneld.logship.LogShipStatusProjection(false, false, "disabled") })
         if (logApp != null) field("logApp", logApp)
+        field("powerSafety", powerSafety)
+        field("onRepairPowerSafety", repairPowerSafety)
+        field("freshPowerSafetyRepairCapability", { io.github.maxlyth.hapaneld.control.PowerRepairCapability.APP_ONLY })
+        val privilege = io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation(
+            directSuReady = true,
+            helperRootReady = false,
+            shizuku = io.github.maxlyth.hapaneld.shizuku.ShizukuBridge.Snapshot(
+                io.github.maxlyth.hapaneld.shizuku.ShizukuState.DISABLED, ready = false,
+            ),
+        )
+        val snap = PaneldServer::class.java.declaredClasses.single { it.simpleName == "Snap" }
+            .declaredConstructors.single().run {
+                isAccessible = true
+                newInstance(emptyMap<String, String>(), emptyMap<String, String>(),
+                    io.github.maxlyth.hapaneld.config.Capabilities(), emptyList<Any>(),
+                    privilege, null, null, 1.0f, false)
+            }
+        field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { snap }.also { it.set(snap) })
+        field("diagCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { error("Unexpected diagnostic read") })
+        field("densityCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { error("Unexpected density read") })
         field("stopping", false)
     }
 
