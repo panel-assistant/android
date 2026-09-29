@@ -1,0 +1,63 @@
+package io.github.maxlyth.hapaneld.http
+
+import io.github.maxlyth.hapaneld.backup.PanelBackup
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import java.io.File
+import java.nio.file.Files
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class BackupArchiveReaderTest {
+    @Test fun nestedConfigIsRefusedBeforePlanning() {
+        val plan = planRestoreConfig(
+            JSONObject().put("friendly_name", JSONObject().put("nested", "value")),
+            SettingsRegistry.SCHEMA,
+            null,
+            false,
+        )
+        assertTrue(plan.values.isEmpty())
+        assertEquals(listOf("friendly_name: expected a scalar setting value"), plan.errors)
+    }
+
+    @Test fun declaredSizeMustMatchExtractedBytes() = withArchive("text".toByteArray()) { reader, archive, directory ->
+        val result = runCatching {
+            reader.readArchiveText(archive, ArchiveTextRef("entity/filter-ids.txt", 3, 100, true), entries, "read-")
+        }
+        assertTrue("a false size must refuse the payload", result.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(setOf("payload", "backup.zip"), directory.list()!!.toSet())
+    }
+
+    @Test fun malformedUtf8IsRefusedAndStagingIsRemoved() = withArchive(byteArrayOf(0xc3.toByte(), 0x28)) { reader, archive, directory ->
+        val result = runCatching {
+            reader.readArchiveText(archive, ArchiveTextRef("entity/filter-ids.txt", 2, 100, true), entries, "read-")
+        }
+        assertTrue("replacement text would corrupt restored owner state", result.exceptionOrNull() is java.nio.charset.CharacterCodingException)
+        assertEquals(setOf("payload", "backup.zip"), directory.list()!!.toSet())
+    }
+
+    @Test fun validTextIsReturnedAndStagingIsRemoved() = withArchive("light.kitchen\n".toByteArray()) { reader, archive, directory ->
+        assertEquals(
+            "light.kitchen\n",
+            reader.readArchiveText(archive, ArchiveTextRef("entity/filter-ids.txt", 14, 100, true), entries, "read-"),
+        )
+        assertEquals(setOf("payload", "backup.zip"), directory.list()!!.toSet())
+    }
+
+    private fun withArchive(bytes: ByteArray, test: (BackupArchiveReader, File, File) -> Unit) {
+        val directory = Files.createTempDirectory("archive-reader-test").toFile()
+        try {
+            val payload = File(directory, "payload").apply { writeBytes(bytes) }
+            val archive = File(directory, "backup.zip")
+            archive.outputStream().use {
+                PanelBackup.writeArchive(it, "{}", listOf(PanelBackup.ArchiveSource("entity/filter-ids.txt", payload)), 1024)
+            }
+            test(BackupArchiveReader(directory) { emptySet() }, archive, directory)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    private val entries = setOf("entity/filter-ids.txt")
+}
