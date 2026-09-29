@@ -147,6 +147,8 @@ internal class PaneldServerHttpFixture(
             when (method.name) {
                 "getRecommendedWebView" -> null
                 "getAppCanSu" -> false
+                "getProfileLinks" -> emptyList<Any>()
+                "getHasRecents" -> false
                 else -> error("Unexpected page profile read: ${method.name}")
             }
         })
@@ -154,7 +156,7 @@ internal class PaneldServerHttpFixture(
 
 
     /** Cached management observations keep Configure on the real banner path without Android probes. */
-    fun enableConfigurePage(proximity: Boolean = false) {
+    fun enableConfigurePage(proximity: Boolean = false, root: Boolean = false) {
         config.setMqtt("mqtt://contract.invalid:1883", "", "")
         val sensor = PaneldServer::class.java.getDeclaredField("sensors").run {
             isAccessible = true
@@ -165,7 +167,7 @@ internal class PaneldServerHttpFixture(
         }.set(sensor, if (proximity) io.github.maxlyth.hapaneld.sensors.ProximityAcquisition.ANDROID_HAL
             else io.github.maxlyth.hapaneld.sensors.ProximityAcquisition.ABSENT)
         val privilege = io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation(
-            directSuReady = false,
+            directSuReady = root,
             helperRootReady = false,
             shizuku = io.github.maxlyth.hapaneld.shizuku.ShizukuBridge.Snapshot(
                 io.github.maxlyth.hapaneld.shizuku.ShizukuState.DISABLED, ready = false,
@@ -201,6 +203,34 @@ internal class PaneldServerHttpFixture(
         config.setDashboardEntityLearningEnabled(true)
         config.setDashboardPackage(io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD)
         server.field("webViewTooOldOnce\$delegate", lazy { false })
+    }
+
+
+    fun enableInstallPage(root: Boolean = false) {
+        enableConfigurePage(root = root)
+        config.setDashboardPackage(io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD)
+        config.setHaConnection("http://ha.invalid:8123", "contract-token")
+        server.field("webViewTooOldOnce\$delegate", lazy { false })
+        val companion = io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY
+        server.field("companionServerCache\$delegate", lazy {
+            io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) { companion }.also { it.set(companion) }
+        })
+        val sizing = io.github.maxlyth.hapaneld.control.DisplaySizingObservation(200, 160, 1.0f)
+        server.field("densityCache", io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) { sizing }.also { it.set(sizing) })
+        server.field("companionHelperCache", io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) { false }.also { it.set(false) })
+        server.field("tameProfileCandidates", emptyList<io.github.maxlyth.hapaneld.device.TameCandidate>())
+        val tame = allocate(io.github.maxlyth.hapaneld.control.TameController::class.java)
+        io.github.maxlyth.hapaneld.control.TameController::class.java.getDeclaredField("context").apply {
+            isAccessible = true
+        }.set(tame, context)
+        server.field("tame", tame)
+    }
+
+    fun enableColdDashboard() {
+        server.field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) {
+            error("Cold dashboard must not request management probes")
+        })
+        server.field("camera", io.github.maxlyth.hapaneld.camera.AbsentCameraSurface)
     }
 
     override fun close() {
