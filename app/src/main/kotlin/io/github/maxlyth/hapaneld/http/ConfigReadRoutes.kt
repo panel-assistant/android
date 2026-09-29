@@ -1,5 +1,11 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.DiscoveryResult
+import io.github.maxlyth.hapaneld.dashboard.HomeDashboardCatalog
+import io.github.maxlyth.hapaneld.util.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import io.github.maxlyth.hapaneld.i18n.AppLocale
 import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.i18n.Strings
@@ -71,6 +77,55 @@ internal fun localizedConfigSchema(
         catalogueLoader = catalogueLoader,
     )
     return LocalizedConfigSchema(render(strings), strings.languages(setOf("settings.")))
+}
+
+/** Production Configure reads and discovery metadata; no configuration or discovery state is retained here. */
+internal fun Route.configReadRoutes(
+    config: Config,
+    values: () -> ConfigValueProjection,
+    requestStrings: (ApplicationCall) -> Strings,
+    schemaJson: (Strings) -> String,
+    homeDashboards: suspend () -> HomeDashboardCatalog,
+    discover: () -> ConfigDiscoverySuggestions,
+    rememberDiscovery: (DiscoveryResult) -> Unit,
+) {
+    configReadRoutes(
+        currentConfigJson = { values().configJson() },
+        localizedSchema = { call ->
+            val strings = requestStrings(call)
+            LocalizedConfigSchema(schemaJson(strings), strings.languages(setOf("settings.")))
+        },
+    )
+    get("/config/home-dashboards") {
+        val catalog = homeDashboards()
+        val items = catalog.items.joinToString(",") { dashboard ->
+            "{\"path\":${Json.str(dashboard.path)},\"title\":${Json.str(dashboard.title)}," +
+                "\"icon\":${Json.str(dashboard.icon)},\"group\":${Json.str(dashboard.group)}}"
+        }
+        // `default` reports whether the ACCOUNT carries a real server-side default dashboard
+        // (HA ≥ 2025.12 stores the profile picker's choice per user). When it does not, the
+        // pickers demote "follow the account's default" and recommend nominating one.
+        val default = "{\"explicit\":${catalog.default.explicit}," +
+            "\"path\":${Json.str(catalog.default.path)}}"
+        call.respondText(
+            "{\"queried\":${catalog.queried},\"items\":[$items],\"default\":$default}",
+            ContentType.Application.Json,
+        )
+    }
+    get("/config/discovery") {
+        val needsMqtt = config.mqttBroker.isBlank()
+        val needsHa = config.haUrl.isBlank()
+        val found = if (needsMqtt || needsHa) {
+            withContext(Dispatchers.IO) { discover() }
+                .also { rememberDiscovery(it.haDiscovery) }
+        } else ConfigDiscoverySuggestions()
+        val mqtt = found.mqttBroker.takeIf { needsMqtt && config.mqttBroker.isBlank() }.orEmpty()
+        val ha = found.haUrl.takeIf { needsHa && config.haUrl.isBlank() }.orEmpty()
+        call.respondText(
+            "{\"mqtt_broker\":${Json.str(mqtt)},\"ha_url\":${Json.str(ha)}}",
+            ContentType.Application.Json,
+        )
+    }
 }
 
 /** Dynamic Configure reads. Neither response may be reused after settings or locale signals change. */

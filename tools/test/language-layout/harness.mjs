@@ -333,9 +333,12 @@ export async function measureCell(page, origin, pageDef, view, theme, locale, mu
     // Narrow card walls skip rendering off-screen cards (content-visibility:auto). Measure every card as
     // it renders once scrolled into view, identically for English and the locale.
     await frame.evaluate(() => document.head.insertAdjacentHTML('beforeend', '<style id="layout-gate-render-all">*{content-visibility:visible!important}</style>'));
-    if (mutate) await frame.evaluate(mutate);
     await settle(frame);
-    const result = await frame.evaluate(measureLayout);
+    // Measure injected defects in the same browser turn: a later hydration render can replace the
+    // mutated card while we await settlement and erase the negative control before it is observed.
+    const result = await frame.evaluate(mutate
+      ? `(() => { (${mutate.toString()})(); return (${measureLayout.toString()})(); })()`
+      : measureLayout);
     return { ...result, errors };
   } finally {
     page.off('pageerror', onError);

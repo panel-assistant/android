@@ -25,14 +25,14 @@ class ProfilesI18nContractTest {
     private val assets = File("src/main/assets")
     private val sourceFile = File(assets, "i18n/en.json")
     private val profilesScript = File(assets, "profiles.js")
-    // Source-text reason: whole-file scans of PaneldServer.kt and profiles.js for literal profiles.* catalogue keys and their bound English fallbacks (translation catalogue contract).
-    private val server = File("src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt")
+    // Source-text reason: whole-file scans of HTTP Kotlin sources and profiles.js for literal profiles.* catalogue keys and their bound English fallbacks (translation catalogue contract).
+    private val serverSource = httpCatalogueSources()
     private val releaseTargetLocales = AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }
 
     @Test fun `English Profiles records are exactly the server and browser consumer union`() {
         val source = SourceCatalogue.parse(sourceFile.readText())
         val records = source.strings.keys.filterTo(sortedSetOf()) { it.startsWith("profiles.") }
-        val consumers = quotedProfileKeys(server.readText()) + quotedProfileKeys(profilesScript.readText())
+        val consumers = quotedProfileKeys(serverSource) + quotedProfileKeys(profilesScript.readText())
 
         assertFalse("Profiles must retain a finite non-empty catalogue surface", consumers.isEmpty())
         assertEquals(

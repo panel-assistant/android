@@ -393,7 +393,10 @@ class LogShipTransportTest {
             Harness(LogShipEndpoint.HTTP, receiver.port).use { harness ->
                 harness.start()
                 harness.emit(logcatLine("I", "rejected"))
-                await { "1 dropped" in harness.shipper.statusText() }
+                await {
+                    val status = harness.shipper.statusText()
+                    "1 dropped" in status && failureReason(status) != null
+                }
 
                 val status = harness.shipper.statusText()
                 // The batch already left the bounded queue, so a rejection is real data loss and the
