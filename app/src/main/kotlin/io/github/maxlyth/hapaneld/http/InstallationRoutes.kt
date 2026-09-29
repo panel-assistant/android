@@ -169,6 +169,9 @@ internal fun Route.webViewHealRoute(
 
 }
 
+/** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
+ *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
+ *  self-uninstall would kill the tool. */
 private fun packagesJson(appContext: Context, config: Config): String {
     val apps = removablePackages(appContext, config)
     val arr = apps.joinToString(",") { (pkg, label) -> "{\"pkg\":${Json.str(pkg)},\"label\":${Json.str(label)}}" }

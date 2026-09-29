@@ -543,13 +543,13 @@ class PaneldServer internal constructor(
                 assetRoutes(asset)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
-                configurePageRoute(::requestStrings, { pages }) { strings -> configureBody(strings, sensors.hasProximity(), configureSetupBanners(strings)) }
+                configurePageRoute(::requestStrings, { pages }) { strings -> configurePageHandler().body(strings) }
                 setupPageRoute(::requestStrings, { pages }, ::buildToken)
                 profilesPageRoute(::requestStrings, { pages })
                 // The experimental remote-control page is withheld from 0.9.2. Keep old bookmarks
                 // useful while its tap-injection UX is reviewed for a later release.
                 get("/test") { call.respondRedirect("/") }
-                installPageRoute(::requestStrings, { pages }, ::installBody)
+                installPageRoute(::requestStrings, { pages }) { strings -> installPageHandler().body(strings) }
                 fleetPageRoute(::requestStrings, { pages }) { config.httpPort }
                 logsPageRoute(::requestStrings, { pages }) { config.httpPort }
                 entitiesPageRoute(::requestStrings, { pages }) { config.dashboardEntityLearningEnabled && effectiveDashboardIsBuiltin() }
@@ -848,107 +848,10 @@ class PaneldServer internal constructor(
 
     // ---- tabbed multi-page shell ----
 
-    private fun configureSetupBanners(strings: AppStrings): String {
-        val management = managementObservations.snapStaleOk()
-        val power = localizedPowerSafetyBanner(
-            powerSafetyAdvisory(management.privilege),
-            inlineRepair = true,
-            strings = strings,
-        )
-        // Someone landing on the full settings wall mid-commissioning (an old bookmark, the QR from a
-        // build that pointed here) should learn the guided path exists — once setup completes this line
-        // vanishes with the rest of the wizard surface.
-        val resume = if (setupState.setupNeedsUser()) {
-            configureResumeBanner(strings)
-        } else ""
-        // MQTT verification runs asynchronously after the save returns, and the Configure tab is where the
-        // user actually is while it happens — but it showed nothing, so a save that was still being checked
-        // looked like a save that had done nothing. SetupBanner already derives this state and is already
-        // rendered on the dashboard; surfacing it here too costs nothing and keeps one authority.
-        val mqtt = management.facts["MQTT"] ?: "disabled"
-        SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState())?.let { progress ->
-            return power + resume + setupProgressBanner(progress, strings)
-        }
-        if (haSignInNeededForEffectiveDashboard()) {
-            return power + resume + configureSignInBanner(strings)
-        }
-        val noRenderer = pageHealth.healthFindings(pageHealth.healthInputs(), "", emptyList()).any { it.kind == HealthAudit.Kind.NO_RENDERER }
-        // Only a panel past setup runs a filtered dashboard, so only this path can carry the strategy note.
-        if (!noRenderer) return power + resume + strategySelectorAllowedBanner(strings)
-        return power + resume + configureRendererBanner(strings)
-    }
-
-    // Issue #133 follow-up. With a strategy dashboard's check allowed, cards for entities outside the
-    // subscription never appear and nothing on the panel can list them, so say so where settings are
-    // changed and send the reader to the Entities page, which explains what to pin. A failed read of the
-    // entity store must not take the Configure page down with it.
-    private fun strategySelectorAllowedBanner(strings: AppStrings): String =
-        if (!runCatching { entityLearning.strategySelectorAllowed() }.getOrDefault(false)) "" else
-            configureStrategyBanner(strings)
-
     /** Panel Assistant granted native authority, so this panel reaches Home Assistant without MQTT. */
     private fun panelAssistantNative(): Boolean =
         config.panelAssistantAuthority == PanelAssistantTransportProtocol.AUTHORITY_NATIVE
 
-    /** Install tab — software-management hub: setup warnings, managed component versions, radio firmware,
-     *  on-demand health audit, and config backup. (The Capabilities card lives on the Dashboard.) */
-    private fun installBody(strings: AppStrings): String {
-        val management = managementObservations.snapStaleOk()
-        val companion = managementObservations.companionServersStaleOk()
-        // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version).
-        val h = pageHealth.healthInputs()
-        val wv = h.webView
-        val root = management.privilege.rootControlReady
-        val installer = management.privilege.typedShellControlReady
-        val su = management.privilege.directSuReady
-        val displaySizing = managementObservations.densityCache.peek() ?: DisplaySizingObservation(
-            current = management.densityCur,
-            base = management.densityBase,
-            fontScale = management.fontScale,
-        )
-        val companionHelper = managementObservations.companionHelperCache.get()
-        // Same finding set as the dashboard banner (HealthAudit). Update findings are surfaced by the
-        // Managed-components card below, so the top warnings show only the render-blocking states.
-        val problems = pageHealth.healthFindings(h, wv.display, emptyList())
-        // Auto-heal offer: if the profile ships a known-good WebView and we have root/daemon to install it,
-        // the too-old warning gets a one-tap "Update WebView now" button (POST /api/v1/webview/heal).
-        val canHeal = wv.tooOld && profile.recommendedWebView != null && root
-        // A missing dashboard app can be self-healed by installing the minimal HA Companion over root — a
-        // Play-managed full Companion would already count as a renderer, so NO_RENDERER + root ⇒ safe.
-        val canInstallCompanion = installer
-        // Two warnings not modelled by HealthAudit (crash-looping dashboard, Companion blank internal_url)
-        // — shared with the dashboard banner. Here (Install tab, install.js loaded) they get inline buttons.
-        val powerAdvisory = powerSafetyAdvisory(management.privilege)
-        val extra = localizedPowerSafetyBanner(
-            powerAdvisory,
-            inlineRepair = true,
-            strings = strings,
-        ) +
-            adHocWarnings(
-                config, catalogueLoader, management.privilege.directSuReady, management.densityBase,
-                radioStatus, ::dashboardRecoveryState,
-                companion, inlineRepair = true, strings = strings,
-            )
-        val warnings = extra + problems.joinToString("") { installWarning(it, canHeal, canInstallCompanion, strings) }
-        val allGood = if (h.brokerConfigured && problems.isEmpty() && extra.isEmpty() && !powerAdvisory.assessment.warning) """<div class="card" data-layout-key="ready"><p class="note">✓ ${esc(strings.get("install.ready"))}</p></div>""" else ""
-        val compPkg = CompanionInstaller.installedPkg(appContext)
-        val compCur = compPkg?.let { AppInstaller.installedVersion(appContext, it) }?.takeIf { it.isNotBlank() }
-        return installPageBody(
-            strings = strings,
-            warnings = warnings,
-            allGood = allGood,
-            components = componentsCardHtml(wv, root, installer, strings, config, compPkg, compCur, profile.recommendedWebView != null),
-            apk = apkCardHtml(root, strings, config),
-            uninstall = uninstallCardHtml(su, strings),
-            vendor = tameCardHtml(root, strings) { tame.cardCandidates(config.tameVendorPackages, tameProfileCandidates) },
-            display = displayCardHtml(management.privilege.typedShellControlReady, displaySizing, strings, recommendedDensity, recommendedFontScale),
-            backup = backupCardHtml(companionHelper, CompanionInstaller.installedPkg(appContext) != null, strings),
-        )
-    }
-
-    /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
-     *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
-     *  self-uninstall would kill the tool. */
 
     /** One renderer-aware warning shared by JSON status and the Dashboard/Install banners. */
     private fun dashboardRecoveryState(): PanelStatus.DashboardRecoveryState =
@@ -1027,6 +930,18 @@ class PaneldServer internal constructor(
         },
         scope = scope,
         isStopping = { stopping },
+    )
+
+    private fun configurePageHandler() = ConfigurePageHandler(
+        config, sensors, managementObservations, setupState,
+        strategySelectorAllowed = { entityLearning.strategySelectorAllowed() },
+        pageHealth, mqttState, ::powerSafetyAdvisory, ::haSignInNeededForEffectiveDashboard,
+    )
+
+    private fun installPageHandler() = InstallPageHandler(
+        config, appContext, profile, managementObservations, pageHealth,
+        tame, tameProfileCandidates, recommendedDensity, recommendedFontScale,
+        { catalogueLoader }, radioStatus, ::dashboardRecoveryState, ::powerSafetyAdvisory,
     )
 
     private fun snapInvalidate() = managementObservations.snapInvalidate()
