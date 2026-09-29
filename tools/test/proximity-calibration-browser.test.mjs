@@ -14,6 +14,7 @@ async function fixture(t, initial = {}) {
   t.after(() => browser.close());
   const page = await browser.newPage();
   const posts = [];
+  let refusal = null;
   let status = { present: true, phase: 'ready', signalMode: 'binary', profileDefaultAvailable: false, ...initial };
   await page.clock.install();
   await page.route('http://panel.test/**', async (route) => {
@@ -23,6 +24,7 @@ async function fixture(t, initial = {}) {
     if (path === '/api/v1/proximity/calibration') {
       const body = Object.fromEntries(new URLSearchParams(request.postData()));
       posts.push({ body, headers: request.headers() });
+      if (refusal) return route.fulfill(refusal);
       if (body.action === 'start') status = { ...status, phase: 'calibrating', stage: 'intro', sessionActive: true, sessionId: 'starter-session' };
       if (body.action === 'cancel') status = { ...status, phase: 'ready', stage: 'cancelled', sessionActive: false, sessionId: null };
     }
@@ -34,7 +36,7 @@ async function fixture(t, initial = {}) {
   const expectedStatus = initial.present === false || initial.phase === 'source_unavailable' ? 'Proximity source is unavailable'
     : initial.phase === 'calibrating' ? 'Setup is running on the panel' : 'Proximity is ready';
   await page.getByText(expectedStatus, { exact: true }).waitFor();
-  return { page, posts, setStatus: (value) => { status = value; } };
+  return { page, posts, setStatus: (value) => { status = value; }, refuse: (value) => { refusal = value; } };
 }
 
 browserTest('browser launches on-panel setup, heartbeats only its own session, and cancels with session binding', async (t) => {
@@ -165,3 +167,16 @@ browserTest('new hand-wave stages report progress while physical instructions re
   assert.match(await page.locator('.prox-learning .note').first().textContent(), /Follow the instructions on the panel/);
   assert.equal(posts.length, 0);
 });
+
+for (const [kind, refusal] of [
+  ['JSON', { status: 403, json: { error: "Start proximity setup from this panel's HTML UI." } }],
+  ['plain text', { status: 403, contentType: 'text/plain', body: 'cross-origin refused\n' }],
+]) {
+  browserTest(`a ${kind} refusal shows the panel's own reason`, async (t) => {
+    const { page, refuse } = await fixture(t);
+    refuse(refusal);
+    await page.getByRole('button', { name: 'Set up proximity on panel', exact: true }).click();
+    const expected = refusal.json ? refusal.json.error : 'cross-origin refused';
+    await page.getByText(expected, { exact: true }).waitFor({ timeout: 3000 });
+  });
+}

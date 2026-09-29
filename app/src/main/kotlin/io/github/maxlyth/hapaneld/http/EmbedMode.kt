@@ -7,9 +7,9 @@ import java.util.Locale
 
 /**
  * The presentation switch Panel Assistant sends when it proxies the web interface into its Home Assistant
- * sidebar (`X-Panel-Assistant-Embed`). It changes only how pages render: no guard, response header other
- * than `Vary`, approval or persisted setting reads it, so a LAN client sending it gains nothing. Its value
- * is never logged.
+ * sidebar (`X-Panel-Assistant-Embed`). It changes how pages render; the only guard that reads it is proximity
+ * UI admission, which a LAN client can already pass with its own Origin, so sending it gains nothing. No
+ * response header other than `Vary`, approval or persisted setting reads it. Its value is never logged.
  *
  * Grammar, version 1 (quoted literals match case-insensitively, as in RFC 5234):
  *

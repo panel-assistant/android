@@ -14,6 +14,9 @@ private const val RETIRED_PROXIMITY_OPERATION =
     "{\"error\":\"automatic proximity learning replaced this operation\"}"
 private const val PROXIMITY_SOURCE_REQUIRED = "{\"error\":\"proximity_source_required\"}"
 
+/** Refusals are JSON like every other answer here, so the page can show the panel's own reason. */
+private fun proximityError(message: String) = "{\"error\":\"$message\"}"
+
 internal fun Route.proximityRoutes(
     hasProximity: () -> Boolean,
     proximityJson: () -> String,
@@ -24,15 +27,17 @@ internal fun Route.proximityRoutes(
         if (!proximityUiRequestAllowed(
                 call.request.headers["Origin"], call.request.headers["Referer"],
                 call.request.headers["Host"], call.request.headers["Sec-Fetch-Site"],
-                call.request.headers["X-Proximity-UI"],
+                call.request.headers["X-Proximity-UI"], call.request.headers[EmbedMode.HEADER],
             )) {
-            call.respondText("Start proximity setup from this panel's HTML UI.\n", status = HttpStatusCode.Forbidden)
+            call.respondText(proximityError("Start proximity setup from this panel's HTML UI."),
+                ContentType.Application.Json, HttpStatusCode.Forbidden)
             return@post
         }
         val parameters = receiveBoundedFormParameters(call) ?: return@post
         val action = parameters["action"].orEmpty()
         if (action !in setOf("start", "cancel", "reset", "heartbeat")) {
-            call.respondText("Unsupported calibration action.\n", status = HttpStatusCode.BadRequest)
+            call.respondText(proximityError("Unsupported calibration action."),
+                ContentType.Application.Json, HttpStatusCode.BadRequest)
             return@post
         }
         if (!hasProximity()) {
