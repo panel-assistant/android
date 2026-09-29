@@ -579,6 +579,20 @@
       "softMaxChars": 90,
       "hardMaxChars": 130
     },
+    "configure.auto_sleep.fixed_delay": {
+      "text": "Screen off after {count} seconds without touch.",
+      "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
+      "surface": "configure",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{count}"
+      ],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 80
+    },
     "configure.auto_sleep.ha_history_retrying": {
       "text": "Home Assistant history is temporarily unavailable. Retrying automatically…",
       "sourceHash": "f8670fc64b08cd7dc979e51f559409b04d5fc8e643ba2ca11b0facb20196ae7e",
@@ -1066,6 +1080,18 @@
       "softMaxChars": 58,
       "hardMaxChars": 87
     },
+    "configure.auto_sleep.source_touch": {
+      "text": "Touch inactivity",
+      "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
+      "surface": "configure",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 80
+    },
     "configure.auto_sleep.source_update_failed": {
       "text": "Could not update this activity source.",
       "sourceHash": "20f147602e00214857ab0183b98da66b0977d11a22395d2052ac093f796c6050",
@@ -1200,6 +1226,20 @@
       ],
       "softMaxChars": 88,
       "hardMaxChars": 126
+    },
+    "configure.auto_sleep.touch_help": {
+      "text": "Uses touch activity on this panel. Home Assistant and presence sensors are not required.",
+      "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
+      "surface": "configure",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 88,
+      "hardMaxChars": 132
     },
     "configure.auto_sleep.updating_suffix": {
       "text": " · Updating…",
@@ -31017,8 +31057,8 @@
       "hardMaxChars": 32
     },
     "settings.auto_sleep.help": {
-      "text": "Automatically wake the panel when activity is detected and switch the screen off after the learned delay. Manual screen control remains separate.",
-      "sourceHash": "5061de3660a9fc18a43615782f216134dffef4d62725528ce1d72e3927d878c9",
+      "text": "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
+      "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
       "surface": "settings",
       "context": "Configure > Behaviour > Auto sleep: supporting help for the auto_sleep setting.",
       "risk": "ordinary",
@@ -31075,8 +31115,8 @@
       "hardMaxChars": 35
     },
     "settings.auto_sleep_source.help": {
-      "text": "Use the panel’s calibrated proximity sensor, or choose Home Assistant Area devices. If the selected source is unavailable, automatic sleep pauses and touch remains available.",
-      "sourceHash": "0350776edee98aa7748c83872293309856544907f647121be111047fa868e50b",
+      "text": "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity. Presence modes pause if their source is unavailable; touch inactivity needs no presence setup.",
+      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
       "surface": "settings",
       "context": "Panel proximity presence and Auto-sleep source selection.",
       "risk": "ordinary",
@@ -31089,15 +31129,39 @@
       "hardMaxChars": 522
     },
     "settings.auto_sleep_source.label": {
-      "text": "Auto-sleep presence source",
-      "sourceHash": "9a054a7f24e839eacfc5c07281e98e4d5ddf2a0772fe4bc13838166a6eaca289",
+      "text": "Auto-sleep activity source",
+      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
       "surface": "settings",
-      "context": "Panel proximity presence and Auto-sleep source selection.",
+      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 52,
+      "hardMaxChars": 80
+    },
+    "settings.auto_sleep_touch_delay_seconds.help": {
+      "text": "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
+      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "surface": "settings",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 103,
+      "hardMaxChars": 151
+    },
+    "settings.auto_sleep_touch_delay_seconds.label": {
+      "text": "Touch inactivity delay (seconds)",
+      "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
+      "surface": "settings",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
       "hardMaxChars": 80
     },
     "settings.camera_enabled.help": {

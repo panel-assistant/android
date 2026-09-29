@@ -146,7 +146,9 @@
   function localizedEnumOption(fieldKey, wireValue) {
     if (fieldKey === "auto_sleep_source") return wireValue === "panel"
       ? i18nText("configure.auto_sleep.source_panel", "This panel’s proximity sensor")
-      : i18nText("configure.auto_sleep.source_ha", "Home Assistant Area devices");
+      : wireValue === "touch"
+        ? i18nText("configure.auto_sleep.source_touch", "Touch inactivity")
+        : i18nText("configure.auto_sleep.source_ha", "Home Assistant Area devices");
     if (fieldKey === "ui_language" && Object.prototype.hasOwnProperty.call(UI_LANGUAGE_LABELS, wireValue)) {
       return wireValue === "auto"
         ? i18nText("configure.language.automatic", "Automatic")
@@ -623,7 +625,7 @@
     var v = values[f.key];
     if (f.type === "BOOL") {
       var sourceBlocked = f.key === "auto_brightness" && !ambientLightSourceReady();
-      var prerequisiteBlocked = f.key === "auto_sleep" && !autoSleepUsesPanel() && v !== "true" && autoSleepPrerequisite.eligible !== true;
+      var prerequisiteBlocked = f.key === "auto_sleep" && autoSleepUsesHa() && v !== "true" && autoSleepPrerequisite.eligible !== true;
       var blocked = sourceBlocked || prerequisiteBlocked;
       var t = el("div", {
         class: "toggle" + (v === "true" && !sourceBlocked ? " on" : "") + (blocked ? " blocked" : ""),
@@ -634,7 +636,7 @@
       if (sourceBlocked) t.title = i18nText("configure.brightness.waiting_valid_reading", "Waiting for a valid ambient light reading.");
       function toggleValue() {
         if (f.key === "auto_brightness" && !ambientLightSourceReady()) return;
-        if (f.key === "auto_sleep" && !autoSleepUsesPanel() && values[f.key] !== "true" && autoSleepPrerequisite.eligible !== true) return;
+        if (f.key === "auto_sleep" && autoSleepUsesHa() && values[f.key] !== "true" && autoSleepPrerequisite.eligible !== true) return;
         v = (values[f.key] === "true") ? "false" : "true";
         values[f.key] = v;
         t.classList.toggle("on", v === "true");
@@ -1315,6 +1317,7 @@
     }
     inp.addEventListener("input", function () {
       values[f.key] = inp.value; setDirty(f.key);
+      if (f.key === "auto_sleep_touch_delay_seconds") updateAutoSleepSummary();
       if (f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") queueAutoBrightnessHistory();
     });
     return inp;
@@ -1921,6 +1924,14 @@
 
   function autoSleepSummaryModel(status) {
     status = status || {};
+    if (autoSleepUsesTouch()) {
+      var seconds = Number(values.auto_sleep_touch_delay_seconds || 30);
+      var touchLines = [
+        i18nText("configure.auto_sleep.source_touch", "Touch inactivity"),
+        i18nText("configure.auto_sleep.fixed_delay", "Screen off after {count} seconds without touch.", { count: seconds })
+      ];
+      return { lines: touchLines, accessible: touchLines.join(" · ") };
+    }
     if (autoSleepUsesPanel()) {
       var localLines = [
         i18nText("configure.auto_sleep.source_panel", "This panel’s proximity sensor"),
@@ -1987,9 +1998,12 @@
   }
 
   function autoSleepUsesPanel() { return values.auto_sleep_source === "panel"; }
+  function autoSleepUsesTouch() { return values.auto_sleep_source === "touch"; }
+  function autoSleepUsesHa() { return !autoSleepUsesPanel() && !autoSleepUsesTouch(); }
 
   function autoSleepPrerequisiteText() {
     if (autoSleepUsesPanel()) return i18nText("configure.auto_sleep.panel_setup_help", "Uses calibrated presence at this panel. Set up proximity first; automatic sleep pauses if the sensor is unavailable.");
+    if (autoSleepUsesTouch()) return i18nText("configure.auto_sleep.touch_help", "Uses touch activity on this panel. Home Assistant and presence sensors are not required.");
     var phase = String(autoSleepPrerequisite.phase || "unavailable").toLowerCase();
     var areaName = autoSleepPrerequisite.area_name != null ? autoSleepPrerequisite.area_name : autoSleepPrerequisite.areaName;
     if (phase === "checking") return i18nText("configure.auto_sleep.area_checking", "Checking this panel’s Home Assistant Area…");
@@ -2053,14 +2067,14 @@
     }
     var toggle = document.querySelector("#cfg-auto_sleep [role=switch]");
     if (!toggle) return;
-    var blocked = !autoSleepUsesPanel() && values.auto_sleep !== "true" && autoSleepPrerequisite.eligible !== true;
+    var blocked = autoSleepUsesHa() && values.auto_sleep !== "true" && autoSleepPrerequisite.eligible !== true;
     toggle.classList.toggle("blocked", blocked);
     toggle.setAttribute("aria-disabled", blocked ? "true" : "false");
     toggle.setAttribute("tabindex", "0");
   }
 
   function convergeAutoSleepOffForMissingArea() {
-    if (autoSleepUsesPanel()) return;
+    if (!autoSleepUsesHa()) return;
     if (values.auto_sleep !== "true") return;
     values.auto_sleep = "false";
     savedValues.auto_sleep = "false";
@@ -2077,7 +2091,7 @@
   }
 
   function loadAutoSleepPrerequisite() {
-    if (autoSleepUsesPanel()) { updateAutoSleepPrerequisiteUi(); return; }
+    if (!autoSleepUsesHa()) { updateAutoSleepPrerequisiteUi(); return; }
     if (!schema.some(function (field) { return field.key === "auto_sleep" && field.available; })) return;
     if (autoSleepPrerequisiteTimer) { clearTimeout(autoSleepPrerequisiteTimer); autoSleepPrerequisiteTimer = null; }
     // Focus/visibility refreshes are background validation. Keep a settled Area verdict visible
@@ -2157,6 +2171,12 @@
   }
 
   function autoSleepPanel() {
+    if (autoSleepUsesTouch()) {
+      var touchSummary = autoSleepSummaryNode();
+      var touchAnnouncement = autoSleepSummaryAnnouncementNode();
+      setAutoSleepSummary(touchSummary, touchAnnouncement, autoSleepSummaryModel());
+      return el("div", { class: "autobright-panel", id: "auto-sleep-status" }, [touchSummary, touchAnnouncement]);
+    }
     if (autoSleepUsesPanel()) {
       var localSummary = autoSleepSummaryNode();
       var localAnnouncement = autoSleepSummaryAnnouncementNode();
@@ -2631,7 +2651,7 @@
   // Read status before history. Transitional discovery is followed automatically with capped backoff;
   // once LIVE, steady state owns no timer and the replay is fetched exactly once.
   function loadAutoSleepData() {
-    if (values.auto_sleep !== "true" || autoSleepLoading) return;
+    if (values.auto_sleep !== "true" || autoSleepUsesTouch() || autoSleepLoading) return;
     autoSleepLoading = true;
     autoSleepHistoryWaiting = true;
     autoSleepHistoryWaitingMessage = i18nText("configure.auto_sleep.history_preparing", "Preparing activity history…");
@@ -2944,7 +2964,7 @@
   };
   var BUILTIN_RENDERER_ONLY_KEYS = { dashboard_idle_return_min: true };
   var HA_CONNECTION_KEYS = { ha_url: true, ha_token: true };
-  var AUTO_SLEEP_KEYS = { auto_sleep_source: true, auto_sleep: true };
+  var AUTO_SLEEP_KEYS = { auto_sleep_source: true, auto_sleep_touch_delay_seconds: true, auto_sleep: true };
   var CONFIG_LAYOUT_KEYS = {
     "Identity": "configure-identity", "MQTT": "configure-mqtt", "Behaviour": "configure-behaviour",
     "Auto-sleep": "configure-auto-sleep",
@@ -3184,7 +3204,7 @@
         if (g === "Auto-sleep" && f.key === "auto_sleep") card.appendChild(autoSleepPrerequisiteNode());
         if (g === "Auto-sleep" && f.key === "auto_sleep" && values.auto_sleep === "true") {
           card.appendChild(retainedAutoSleepPanel || autoSleepPanel());
-          if (!autoSleepStatus && !autoSleepLoading) setTimeout(loadAutoSleepData, 0);
+          if (!autoSleepUsesTouch() && !autoSleepStatus && !autoSleepLoading) setTimeout(loadAutoSleepData, 0);
         }
         if (g === "Home Assistant connection" && f.key === "ha_url") card.appendChild(haOAuthRow());
         if (f.key === "zigbee_router") {
