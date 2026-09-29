@@ -26,7 +26,9 @@ import sun.misc.Unsafe
  * Optional profile/provisioning owners remain absent, matching that supported production composition.
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
-internal class PaneldServerHttpFixture : java.io.Closeable {
+internal class PaneldServerHttpFixture(
+    logApp: io.github.maxlyth.hapaneld.logship.LogCapture? = null,
+) : java.io.Closeable {
     private val directory = Files.createTempDirectory("paneld-http-baseline").toFile()
     private val context = object : ContextWrapper(null) {
         override fun getFilesDir(): File = directory
@@ -80,6 +82,9 @@ internal class PaneldServerHttpFixture : java.io.Closeable {
         field("autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
         field("radioStatus", { null })
         field("onZigbeeJoinRetry", { error("Unavailable radio must not join") })
+        field("webViewConsoleEnabled", { false })
+        field("logShipStatus", { io.github.maxlyth.hapaneld.logship.LogShipStatusProjection(false, false, "disabled") })
+        if (logApp != null) field("logApp", logApp)
         field("stopping", false)
     }
 
