@@ -97,6 +97,9 @@ internal class SetupState(
         }
     }
 
+    /** Whether setup is waiting on a person — the one gate every first-run affordance shares. */
+    fun setupNeedsUser(): Boolean = SetupJourney.evaluate(setupJourneyInputs()).needsUser
+
     /**
      * Whether setup genuinely still owes the user a dashboard/renderer step.
      *
@@ -106,9 +109,6 @@ internal class SetupState(
      * RENDERER stage rather than from `dashboard_package` directly, so a blocked renderer — an uninstalled
      * foreign app, or an engine too old to render — still counts as outstanding, which it is.
      */
-    /** Whether setup is waiting on a person — the one gate every first-run affordance shares. */
-    fun setupNeedsUser(): Boolean = SetupJourney.evaluate(setupJourneyInputs()).needsUser
-
     fun dashboardSetupStepPending(): Boolean =
         SetupJourney.evaluate(setupJourneyInputs()).step(SetupJourney.Stage.RENDERER).status !=
             SetupJourney.Status.SATISFIED
@@ -190,15 +190,6 @@ internal class SetupState(
         )
     }
 
-    /**
-     * The entity-filter question's supporting facts: how many entities Home Assistant would send, and how
-     * much panel there is to receive them.
-     *
-     * The count is a live reading — a scan in flight reports its running total so the wizard can show the
-     * number climbing while the user reads the question, and only a completed scan produces a settled
-     * verdict. The tier comes from the profile's declared SoC where there is one and from the platform
-     * otherwise; neither costs a probe.
-     */
     /** Sticky across catalog re-keys; see the comment in entityFilterVerdict(). */
     @Volatile private var lastSettledEntityCount = 0
 
@@ -210,6 +201,15 @@ internal class SetupState(
         return listOfNotNull(soc.model, cores).joinToString(" · ")
     }
 
+    /**
+     * The entity-filter question's supporting facts: how many entities Home Assistant would send, and how
+     * much panel there is to receive them.
+     *
+     * The count is a live reading — a scan in flight reports its running total so the wizard can show the
+     * number climbing while the user reads the question, and only a completed scan produces a settled
+     * verdict. The tier comes from the profile's declared SoC where there is one and from the platform
+     * otherwise; neither costs a probe.
+     */
     private fun entityFilterVerdict(): EntityFilterAdvice.Verdict {
         val progress = entityLearning.scanProgress()
         val settled = entityLearning.catalogCount()
