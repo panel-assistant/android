@@ -208,8 +208,9 @@ class LogShipAddressFamilyTest {
     fun httpCandidatesShareOneAbsoluteDeadline() {
         val first = InetAddress.getByName("127.0.0.1")
         val second = InetAddress.getByName("127.0.0.2")
-        // The first candidate consumes the shared deadline. A second candidate that gets its own
-        // fresh deadline would reach the live responder and succeed; no wall-clock budget is needed.
+        // Remaining time is rounded down to milliseconds, so the first timeout can leave a fractional
+        // millisecond. Try the held listener twice to consume that remainder before the live route.
+        // A fresh deadline per candidate would still reach the live responder and succeed.
         val routes = LoopbackPortPair.bind(first, 1, second, 1)
         val hangs = Hangs()
         routes.use { hangs.use {
@@ -219,7 +220,7 @@ class LogShipAddressFamilyTest {
             val sink = NetworkLogSinkFactory.create(
                 LogShipTarget("collector.test", routes.port, LogShipEndpoint.HTTP, "panel"),
                 { it },
-                LogAddressResolver { _, _ -> listOf(first, second) },
+                LogAddressResolver { _, _ -> listOf(first, first, second) },
                 DEADLINE_MS,
             )
             sink.connect()
