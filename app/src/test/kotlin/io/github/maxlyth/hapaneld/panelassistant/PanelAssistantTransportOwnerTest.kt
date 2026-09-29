@@ -256,7 +256,7 @@ class PanelAssistantTransportOwnerTest {
 
     @Test fun `losing a session reopens the warm-up window so an entry reload does not slow the panel`() = runTest {
         val accepted = FakeConnection(Ha.accepting())
-        val harness = harness(accepted, repeating = { FakeConnection(Ha.refusing("unknown_panel")) })
+        val harness = harness(accepted, repeating = { FakeConnection(Ha.refusing("unknown_command")) })
         harness.owner.replaceDemand(DEMAND)
         // Well outside the window opened when demand started.
         advanceTimeBy(20L * 60_000L)
@@ -266,7 +266,7 @@ class PanelAssistantTransportOwnerTest {
 
         advanceTimeBy(5L * 60_000L)
         runCurrent()
-        assertEquals("unknown_panel", harness.owner.status.refusal)
+        assertEquals("unknown_command", harness.owner.status.refusal)
         assertFalse(harness.owner.status.slowRetry)
         harness.owner.close()
     }
@@ -339,25 +339,26 @@ class PanelAssistantTransportOwnerTest {
         moved.owner.close()
     }
 
-    @Test fun `a panel connects within seconds after its account is confirmed`() = runTest {
-        var confirmed = false
-        val harness = harness(repeating = {
-            FakeConnection(if (confirmed) Ha.accepting() else Ha.refusing("panel_user_mismatch"))
-        })
-        harness.owner.replaceDemand(DEMAND)
-        runCurrent()
-        assertFalse(harness.owner.status.slowRetry)
-        assertEquals("panel_user_mismatch", harness.owner.status.refusal)
-        assertEquals(1, harness.connector.times.size)
-        advanceTimeBy(20_000L)
-        runCurrent()
-        assertEquals(listOf(0L, 5_000L, 10_000L, 15_000L, 20_000L), harness.connector.times)
-        confirmed = true
-        advanceTimeBy(5_000L)
-        runCurrent()
-        assertEquals(25_000L, harness.connector.times.last())
-        assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
-        harness.owner.close()
+    @Test fun `a panel connects within seconds after prolonged identity or account confirmation`() = runTest {
+        for (code in listOf("unknown_panel", "panel_user_mismatch")) {
+            var confirmed = false
+            val startedAt = testScheduler.currentTime
+            val harness = harness(repeating = {
+                FakeConnection(if (confirmed) Ha.accepting() else Ha.refusing(code))
+            })
+            harness.owner.replaceDemand(DEMAND)
+            advanceTimeBy(20L * 60_000L)
+            runCurrent()
+            assertEquals(code, harness.owner.status.refusal)
+            assertFalse(code, harness.owner.status.slowRetry)
+            assertEquals((0L..240L).map { startedAt + it * 5_000L }, harness.connector.times)
+            confirmed = true
+            advanceTimeBy(5_000L)
+            runCurrent()
+            assertEquals(startedAt + 20L * 60_000L + 5_000L, harness.connector.times.last())
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            harness.owner.close()
+        }
     }
 
     @Test fun `a rejected token gets one forced refresh and then the slow schedule`() = runTest {
