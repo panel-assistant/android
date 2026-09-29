@@ -1,15 +1,54 @@
 package io.github.maxlyth.hapaneld.http
 
 import io.ktor.client.request.post
+import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.ktor.server.testing.testApplication
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PaneldServerBackupRestoreRoutesTest {
+    @Test fun `full mount requires an explicit backup request before capture`() {
+        PaneldServerHttpFixture().use { fixture ->
+            testApplication {
+                application { fixture.mount(this) }
+                for ((form, error) in listOf(
+                    "include_companion=invalid&allow_plaintext=1" to "invalid-include-companion",
+                    "include_companion=0" to "passphrase-required",
+                )) {
+                    val response = client.post("/api/v1/backup") {
+                        header(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString())
+                        setBody(form)
+                    }
+                    assertEquals(HttpStatusCode.BadRequest, response.status)
+                    assertEquals(error, JSONObject(response.bodyAsText()).getString("error"))
+                }
+            }
+        }
+    }
+
+    @Test fun `full mount refuses restore while another operation owns admission`() {
+        val held = requireNotNull(InstallProgress.start("existing owner"))
+        try {
+            PaneldServerHttpFixture().use { fixture ->
+                testApplication {
+                    application { fixture.mount(this) }
+                    val response = client.post("/api/v1/restore?dry_run=1") { setBody("not a backup") }
+                    assertEquals(HttpStatusCode.Conflict, response.status)
+                    assertEquals("busy", JSONObject(response.bodyAsText()).getString("status"))
+                }
+            }
+        } finally {
+            InstallProgress.finish(held, "released")
+        }
+    }
+
     @Test fun `full mount previews legacy config without changing the panel`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {

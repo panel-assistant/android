@@ -13,6 +13,10 @@ import io.ktor.server.application.Application
 import java.io.File
 import java.lang.reflect.Proxy
 import java.nio.file.Files
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import sun.misc.Unsafe
 
 /**
@@ -50,8 +54,10 @@ internal class PaneldServerHttpFixture : java.io.Closeable {
         }
     }
     private val pending = PendingUploadStore().apply { open() }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val server = allocate(PaneldServer::class.java).apply {
         field("config", config)
+        field("scope", scope)
         field("appContext", context)
         field("cacheDir", directory)
         field("screenshots", ScreenshotCache(directory))
@@ -84,6 +90,7 @@ internal class PaneldServerHttpFixture : java.io.Closeable {
     }
 
     override fun close() {
+        scope.cancel()
         pending.close()
         check(directory.deleteRecursively()) { "Could not remove baseline directory" }
     }
