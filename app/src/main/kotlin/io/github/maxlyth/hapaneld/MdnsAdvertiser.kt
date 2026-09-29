@@ -50,6 +50,8 @@ class MdnsAdvertiser(
     // on a JVM, where there is no WifiManager.
     private val acquireMulticastLock: () -> () -> Unit = { acquireWifiMulticastLock(context) },
     private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.deviceUid) },
+    // The production cadence is fixed; a shorter interval lets the real responder recovery run in a JVM test.
+    private val refreshIntervalMs: Long = REFRESH_MS,
 ) {
     private val ownerGate = RetirableMutationGate()
     private var jmdns: JmDNS? = null
@@ -254,7 +256,7 @@ class MdnsAdvertiser(
                 lateinit var worker: Thread
                 worker = Thread {
                     while (mdnsRunCurrent(browseGeneration, generation, browsing, jmdns === dns)) {
-                        try { Thread.sleep(REFRESH_MS) } catch (e: InterruptedException) { break }
+                        try { Thread.sleep(refreshIntervalMs) } catch (e: InterruptedException) { break }
                         if (!mdnsRunCurrent(browseGeneration, generation, browsing, jmdns === dns)) break
                         val cost = FeatureCosts.registry.span(FeatureCostOperation.MDNS_PEER_REFRESH)
                         try {
@@ -527,7 +529,7 @@ class MdnsAdvertiser(
             return false
         }
         lock = null
-        return deadline.remainingMs() > 0L
+        return true
     }
 
     /**
