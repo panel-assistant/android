@@ -1,6 +1,13 @@
 package io.github.maxlyth.hapaneld.http
 
 import android.content.Context
+import android.os.SystemClock
+import io.github.maxlyth.hapaneld.PanelStatus
+import io.github.maxlyth.hapaneld.control.PowerRepairCapability
+import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisory
+import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisoryPolicy
+import io.github.maxlyth.hapaneld.control.PowerSafetyAssessment
+import io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
 import io.github.maxlyth.hapaneld.dashboard.SchemaReconcileAction
@@ -11,6 +18,34 @@ internal class PageHealth(
     private val appContext: Context,
     private val config: Config,
 ) {
+    /** One renderer-aware warning shared by JSON status and the Dashboard/Install banners. */
+    fun dashboardRecoveryState(): PanelStatus.DashboardRecoveryState =
+        PanelStatus.dashboardRecoveryState(
+            config.dashboardPackage,
+            appContext.packageName,
+            SystemClock.elapsedRealtime(),
+        )
+
+
+    /** Presentation capability from the existing bounded privilege snapshot. Fresh root probing remains
+     * confined to the explicit repair operation, so opening a page cannot add a multi-second su probe. */
+    fun powerSafetyAdvisory(
+        privilege: PrivilegedRouteObservation,
+        appCanSu: () -> Boolean,
+        powerSafety: () -> PowerSafetyAssessment,
+    ): PowerSafetyAdvisory {
+        val capability = when {
+            privilege.directSuReady -> PowerRepairCapability.DIRECT_ROOT
+            appCanSu() -> PowerRepairCapability.DEGRADED
+            else -> PowerRepairCapability.APP_ONLY
+        }
+        return PowerSafetyAdvisoryPolicy.evaluate(
+            powerSafety(),
+            capability,
+            config.powerSafetyAcknowledgementFingerprint,
+        )
+    }
+
     /** Request-scoped snapshot of the two health inputs several render surfaces consult — the real WebView
      *  engine status and whether any dashboard renderer is present. Captured ONCE per render so the banner,
      *  facts card and diagnostics rows on one page can't disagree about the WebView. Benign normalization of

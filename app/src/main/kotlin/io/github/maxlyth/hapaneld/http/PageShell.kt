@@ -6,6 +6,7 @@ import io.github.maxlyth.hapaneld.i18n.AppLocale
 import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 
+// ---- tabbed multi-page shell ----
 /** Shared page chrome; service observations remain supplied by the HTTP server. */
 internal class PageShell(
     private val config: Config,

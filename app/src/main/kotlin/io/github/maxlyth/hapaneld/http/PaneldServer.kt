@@ -1,7 +1,6 @@
 package io.github.maxlyth.hapaneld.http
 
 import android.content.Context
-import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.canonicalHaOrigin
 import io.github.maxlyth.hapaneld.Config
@@ -17,10 +16,8 @@ import io.github.maxlyth.hapaneld.DiscoveryResult
 import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.HaDiscovery
 import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
-import io.github.maxlyth.hapaneld.PanelStatus
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import io.github.maxlyth.hapaneld.RendererResolver
-import io.github.maxlyth.hapaneld.haSignInPending
 import io.github.maxlyth.hapaneld.normalizeDashboardEntityPath
 import io.github.maxlyth.hapaneld.peersJson
 import io.github.maxlyth.hapaneld.config.Capabilities
@@ -39,28 +36,23 @@ import io.github.maxlyth.hapaneld.i18n.AppLocale
 import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.github.maxlyth.hapaneld.camera.AbsentCameraSurface
-import io.github.maxlyth.hapaneld.camera.CameraState
 import io.github.maxlyth.hapaneld.camera.CameraSurface
 import io.github.maxlyth.hapaneld.control.AmbientThemeReport
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.CdpRelay
 import io.github.maxlyth.hapaneld.control.AdbController
 import io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve
-import io.github.maxlyth.hapaneld.control.CompanionDb
 import io.github.maxlyth.hapaneld.control.CompanionDataLease
 import io.github.maxlyth.hapaneld.control.CompanionDataOperationGate
 import io.github.maxlyth.hapaneld.control.CompanionDataOperationState
 import io.github.maxlyth.hapaneld.control.DensityController
-import io.github.maxlyth.hapaneld.control.DisplaySizingObservation
 import io.github.maxlyth.hapaneld.control.InteractiveController
 import io.github.maxlyth.hapaneld.control.PrivilegeRoute
 import io.github.maxlyth.hapaneld.control.RemoteDebugSecurityTransitionGate
 import io.github.maxlyth.hapaneld.control.RemoteDebugAuthorityResult
 import io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation
 import io.github.maxlyth.hapaneld.control.PowerRepairCapability
-import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisory
 import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisoryAction
-import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisoryPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyAssessment
 import io.github.maxlyth.hapaneld.control.PowerSafetyMutationPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult
@@ -75,13 +67,10 @@ import io.github.maxlyth.hapaneld.control.VolumeController
 import io.github.maxlyth.hapaneld.control.ZigbeeHealthSnapshot
 import io.github.maxlyth.hapaneld.control.ZigbeeHealthState
 import io.github.maxlyth.hapaneld.control.zigbeeHealthPresentation
-import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
 import io.github.maxlyth.hapaneld.dashboard.readThenClose
 import io.github.maxlyth.hapaneld.dashboard.EntityFilterProtocol
 import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
-import io.github.maxlyth.hapaneld.dashboard.SchemaReconcileAction
 import io.github.maxlyth.hapaneld.device.DeviceProfile
-import io.github.maxlyth.hapaneld.device.LedMechanism
 import io.github.maxlyth.hapaneld.device.TameCandidate
 import io.github.maxlyth.hapaneld.device.profile.PassiveProfileDraft
 import io.github.maxlyth.hapaneld.device.profile.PassiveProfileReport
@@ -117,7 +106,6 @@ import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.sensors.SensorReporter
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
-import io.github.maxlyth.hapaneld.util.AppInstaller
 import io.github.maxlyth.hapaneld.util.AndroidInput
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.BoundedDns
@@ -392,13 +380,6 @@ class PaneldServer internal constructor(
         runCatching { appContext.packageManager.getPackageInfo(appContext.packageName, 0).lastUpdateTime.toString() }
             .getOrDefault(Config.VERSION)
 
-    private fun displayCell(v: String): String {
-        val observation = DisplayGeometryReport.observe(appContext) ?: return esc(v)
-        val size = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)?.physical
-            ?: return esc(v)
-        return displayCell(v, size)
-    }
-
     // Display sizing (density + text scale) via `wm density` / `font_scale` — su panels only.
     private val density = DensityController(canSu = profile.appCanSu)
     private val interactive = InteractiveController(canSu = profile.appCanSu)
@@ -439,7 +420,6 @@ class PaneldServer internal constructor(
     private val catalogueLoader by lazy { CatalogueLoader(asset) }
     private val pageHealth = PageHealth(appContext, config)
     private val pages get() = PageShell(config, catalogueLoader, { setupState.setupNeedsUser() }, ::buildToken, ::renderConfigConcurrencyHash)
-    private val settingRows get() = DashboardSettingRows(config)
 
     /** One locale negotiation path for every localized human page and its hydration payload. */
     private fun requestStrings(call: ApplicationCall): AppStrings = resolvedRequestStrings(
@@ -539,7 +519,7 @@ class PaneldServer internal constructor(
                 guardDbBootstrapRoutes(
                     guardDbBootstrapDependencies(appContext, config, scope, pendingApks, guardDbStaging),
                 )
-                dashboardPageRoute(::requestStrings, ::infoHtml)
+                dashboardPageRoute(::requestStrings) { strings, embed -> dashboardPageHandler().html(strings, embed) }
                 assetRoutes(asset)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
@@ -612,7 +592,7 @@ class PaneldServer internal constructor(
                             configValues().schemaJson(
                                 strings,
                                 liveCapabilities(managementObservations.snapStaleOk().caps), // learned eligibility is fail-closed and live
-                                autoHints(strings), // what blank ("auto") package fields resolve to → field placeholder
+                                dashboardAutoHints(system, strings), // what blank ("auto") package fields resolve to → field placeholder
                                 profile.manufacturer,
                                 profile.model,
                             )
@@ -678,7 +658,7 @@ class PaneldServer internal constructor(
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).
                     discoveryRoutes({ peersJson(peers()) }, { launchableAppsJson(appContext) })
-                    // Hydration payload for the dashboard (see infoJson) — the one place the probe
+                    // Hydration payload for the dashboard (see DashboardPageHandler.json) — the one place the probe
                     // suite actually runs; cached + single-flight, so concurrent viewers share it.
                     get("/info") {
                         val strings = requestStrings(call)
@@ -687,7 +667,7 @@ class PaneldServer internal constructor(
                             HttpHeaders.ContentLanguage,
                             strings.languages(setOf("dashboard.")).joinToString(", "),
                         )
-                        call.respondText(withContext(Dispatchers.IO) { infoJson(strings) }, ContentType.Application.Json)
+                        call.respondText(withContext(Dispatchers.IO) { dashboardPageHandler().json(strings) }, ContentType.Application.Json)
                     }
                     managementRoutes(
                         diagnostics = managementObservations::diagStaleOk,
@@ -709,7 +689,7 @@ class PaneldServer internal constructor(
                     )
                     powerSafetyRoutes(
                         config, powerSafety,
-                        powerSafetyAdvisory = { powerSafetyAdvisory(managementObservations.snapStaleOk().privilege) },
+                        powerSafetyAdvisory = { pageHealth.powerSafetyAdvisory(managementObservations.snapStaleOk().privilege, { profile.appCanSu }, powerSafety) },
                         onRepairPowerSafety, freshPowerSafetyRepairCapability,
                         snapInvalidate = ::snapInvalidate,
                         authorizeSensitive = ::authorizeSensitive,
@@ -835,33 +815,11 @@ class PaneldServer internal constructor(
         )
     }
 
-    // The panel's physical resolution as a CSS aspect-ratio (e.g. "750/1334") so the Screenshot card can
-    // reserve the exact box and not reflow when the image arrives. Sane portrait fallback if unavailable.
-    private fun screenAspectRatio(): String = try {
-        val wm = appContext.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-        val dm = android.util.DisplayMetrics()
-        @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(dm)
-        if (dm.widthPixels > 0 && dm.heightPixels > 0) "${dm.widthPixels}/${dm.heightPixels}" else "3/4"
-    } catch (e: Throwable) { "3/4" }
-
-
-
-    // ---- tabbed multi-page shell ----
 
     /** Panel Assistant granted native authority, so this panel reaches Home Assistant without MQTT. */
     private fun panelAssistantNative(): Boolean =
         config.panelAssistantAuthority == PanelAssistantTransportProtocol.AUTHORITY_NATIVE
 
-
-    /** One renderer-aware warning shared by JSON status and the Dashboard/Install banners. */
-    private fun dashboardRecoveryState(): PanelStatus.DashboardRecoveryState =
-        PanelStatus.dashboardRecoveryState(
-            config.dashboardPackage,
-            appContext.packageName,
-            SystemClock.elapsedRealtime(),
-        )
-
-    private fun dashboardRecoveryWarning(): String? = dashboardRecoveryWarning(dashboardRecoveryState())
 
     private fun statusJson(
         storageSnapshot: StorageHealthSnapshot,
@@ -869,7 +827,7 @@ class PaneldServer internal constructor(
         homeProofRequested: Boolean = false,
     ): String {
         val management = managementObservations.snapStaleOk()
-        val powerAdvisory = powerSafetyAdvisory(management.privilege)
+        val powerAdvisory = pageHealth.powerSafetyAdvisory(management.privilege, { profile.appCanSu }, powerSafety)
         val companion = managementObservations.companionServersStaleOk()
         val radio = radioStatus()
         val storage = HealthAudit.storage(storageSnapshot)
@@ -877,7 +835,7 @@ class PaneldServer internal constructor(
         val updates = UpdateChecker.current(appContext)
         val findings = pageHealth.healthFindings(h, h.webView.display, updates)
         val health = StatusHealth(
-            updates, findings, ::dashboardRecoveryState,
+            updates, findings, pageHealth::dashboardRecoveryState,
             mdnsWarningProjection, pageHealth::schemaRollbackVersions,
         )
         return managementStatusJson(
@@ -891,23 +849,7 @@ class PaneldServer internal constructor(
     }
 
 
-    /** What the "auto" (blank) package settings actually resolved to — shown as `auto (label)` in the
-     *  dashboard rows and as the Configure-field placeholder, so "auto" is never a mystery. When no
-     *  launcher app resolves, the Launcher key falls back to ha-paneld's own admin launcher (see
-     *  SystemController.launchLauncher) — say so instead of leaving a "—" that reads like a dead key. */
-    private fun autoHints(strings: AppStrings): Map<String, String> = buildMap {
-        system.resolveDashboard("").takeIf { it.isNotBlank() }?.let {
-            put("dashboard_package", dashboardRendererAutoLabel(it, strings))
-        }
-        put("launcher_package", system.resolvedLauncher("") ?: "ha-paneld admin launcher")
-        // Unset home_dashboard = reload/boot land on whatever HA's frontend picks. On this path,
-        // resolve the HA user's profile default (or the system fallback) in-band so the UI shows
-        // a concrete target instead of an abstract description.
-        put("home_dashboard", strings.get("dashboard.value.ha_default_view"))
-    }
-
-    private fun dashboardRendererAutoLabel(resolved: String, strings: AppStrings): String =
-        if (resolved == SystemController.BUILTIN_DASHBOARD) strings.get("dashboard.value.builtin_renderer") else resolved
+    private val screenshots = ScreenshotCache(appContext.filesDir)
 
     // ---- dashboard snapshot (probe results) + hydration ---------------------------------------------
     //
@@ -917,8 +859,6 @@ class PaneldServer internal constructor(
     // whatever is last known instantly (placeholders on a cold start). Post-critical prewarm and stale
     // management endpoints all enter the same at-most-once-per-TTL, single-flight cache supplier.
 
-
-    private val screenshots = ScreenshotCache(appContext.filesDir)
 
     private val managementObservations = ManagementObservations(
         appContext, density, managementProjection,
@@ -932,16 +872,52 @@ class PaneldServer internal constructor(
         isStopping = { stopping },
     )
 
+    private fun dashboardRows() = DashboardRows(
+        config, appContext, profile, system, sensors, camera, autoBrightnessHttpApi,
+        effectiveBrightness = { effectiveBrightness() },
+        volumePercent = { volume.getPercent() },
+        liveCapabilities = ::liveCapabilities,
+    )
+
+    private fun dashboardAdvisories() = DashboardAdvisories(
+        config, appContext, sensors, managementObservations, setupState, pageHealth,
+        mqttState,
+        panelAssistantNative = ::panelAssistantNative,
+        haSignInNeededForEffectiveDashboard = setupState::haSignInNeededForEffectiveDashboard,
+        powerSafetyAdvisory = { privilege ->
+            pageHealth.powerSafetyAdvisory(privilege, { profile.appCanSu }, powerSafety)
+        },
+        storageHealth = { storageHealth() },
+        catalogueLoader = { catalogueLoader },
+        radioStatus = radioStatus,
+        dashboardRecoveryState = pageHealth::dashboardRecoveryState,
+    )
+
+    private fun dashboardPageHandler() = DashboardPageHandler(
+        config, appContext, profile, camera, managementObservations, pageHealth, screenshots,
+        dashboardRows(), dashboardAdvisories(), { pages }, ::buildToken, ::renderConfigConcurrencyHash,
+    )
+
     private fun configurePageHandler() = ConfigurePageHandler(
         config, sensors, managementObservations, setupState,
         strategySelectorAllowed = { entityLearning.strategySelectorAllowed() },
-        pageHealth, mqttState, ::powerSafetyAdvisory, ::haSignInNeededForEffectiveDashboard,
+        pageHealth = pageHealth,
+        mqttState = mqttState,
+        powerSafetyAdvisory = { privilege ->
+            pageHealth.powerSafetyAdvisory(privilege, { profile.appCanSu }, powerSafety)
+        },
+        haSignInNeededForEffectiveDashboard = setupState::haSignInNeededForEffectiveDashboard,
     )
 
     private fun installPageHandler() = InstallPageHandler(
         config, appContext, profile, managementObservations, pageHealth,
         tame, tameProfileCandidates, recommendedDensity, recommendedFontScale,
-        { catalogueLoader }, radioStatus, ::dashboardRecoveryState, ::powerSafetyAdvisory,
+        catalogueLoader = { catalogueLoader },
+        radioStatus = radioStatus,
+        dashboardRecoveryState = pageHealth::dashboardRecoveryState,
+        powerSafetyAdvisory = { privilege ->
+            pageHealth.powerSafetyAdvisory(privilege, { profile.appCanSu }, powerSafety)
+        },
     )
 
     private fun snapInvalidate() = managementObservations.snapInvalidate()
@@ -961,104 +937,6 @@ class PaneldServer internal constructor(
             hasLearnedProximity = sensors.hasLearnedProximity(),
         )
 
-    /** Presentation capability from the existing bounded privilege snapshot. Fresh root probing remains
-     * confined to the explicit repair operation, so opening a page cannot add a multi-second su probe. */
-    private fun powerSafetyAdvisory(privilege: PrivilegedRouteObservation): PowerSafetyAdvisory {
-        val capability = when {
-            privilege.directSuReady -> PowerRepairCapability.DIRECT_ROOT
-            profile.appCanSu -> PowerRepairCapability.DEGRADED
-            else -> PowerRepairCapability.APP_ONLY
-        }
-        return PowerSafetyAdvisoryPolicy.evaluate(
-            powerSafety(),
-            capability,
-            config.powerSafetyAcknowledgementFingerprint,
-        )
-    }
-
-    private val NET_KEYS = listOf("Local IP", "Local IPv6", "HTTP port", "MQTT", "mDNS", "Network ADB")
-    private val HA_LIFECYCLE_FACT = "HA lifecycle"
-    private val HA_NETWORK_FACT = "HA network path"
-    private val HA_RENDERER_FACT = "HA renderer"
-    private val CAMERA_FACT = "Camera"
-
-    // Order is the render order of the Runtime diagnostics card. "Wi-Fi stability" leads because it is
-    // absent on a healthy panel and only ever appears when the network under everything else on this
-    // card has been dropping out — so when it IS shown it explains the rows below it, and reading it
-    // last is reading it too late. "HA renderer" follows it for the same reason one place down: it is
-    // the panel's headline outcome — whether the dashboard is actually up — and every row below it
-    // describes machinery that exists to keep it up. "HA network path" sits between them: it is the
-    // measured path to the server every row below depends on, and the likeliest reason a dashboard
-    // that IS rendered still feels broken.
-    private val CONTEXT_KEYS = listOf(
-        "Wi-Fi stability", HA_NETWORK_FACT, HA_RENDERER_FACT, "MQTT state", "State convergence", "Local-state sync",
-        "App database", "Security mode", "Audio playback", CAMERA_FACT, "Log shipping", HA_LIFECYCLE_FACT,
-    )
-    private val BEHAVIOUR_FACT_KEYS = setOf(
-        "Keep panel responsive", "Prevent idle dim", "Android dashboard lock", "Navbar",
-    )
-    // Rows whose values are DECLARED by the DeviceProfile, so wrong data points a contributor straight
-    // at the fix: Platform/SoC=profile identity, LED=ledMechanism, sensor tech=proximityTech/lightTech,
-    // Zigbee=zigbeeGatewayDir, Relays=relayBase, CPU profile=cpuGovernors.
-    private fun infoKeys(s: ManagementSnapshot): List<String> =
-        s.facts.keys.filter {
-            it !in NET_KEYS && it !in PROFILE_FACT_KEYS && it !in CONTEXT_KEYS && it !in BEHAVIOUR_FACT_KEYS
-        }
-
-    // The lifecycle state changes DURING an outage, so this row is rendered from the live
-    // snapshot rather than the stale-while-revalidate facts cache AND is then kept current by
-    // the same ten-second `/health` poll that drives the banner — one observation feeding every
-    // lifecycle surface. A server-rendered advisory banner used to sit alongside it; it was
-    // DELETED rather than synchronised, because a one-shot render cannot retract itself and left
-    // an outage warning on screen after recovery.
-    // The lifecycle row is rendered even when there is nothing to say yet — as an empty cell the
-    // poll can fill. Omitting it meant a panel that began watching AFTER the page was rendered
-    // (the watch waits for the renderer to settle) had no element to populate, so the row could
-    // never appear without a reload: a surface that can only ever go from present to absent.
-    // The renderer row is live for the same reason as the lifecycle row and one more: its
-    // whole subject is a state that changes while the page is open. Routing it through the
-    // facts cache would let a panel that went blank a minute ago keep saying "rendered" for a
-    // TTL — precisely the reassuring-but-wrong answer this row exists to stop giving.
-    private fun contextValue(key: String, facts: Map<String, String>): String? = when (key) {
-        HA_LIFECYCLE_FACT -> HaLifecycleRuntime.statusText() ?: ""
-        // Live and always present for the same reasons as the lifecycle row: the verdict
-        // changes while the page is open, and the poll fills the cell from the same `/health`
-        // observation that drives the banner. One read of the one state owner.
-        HA_NETWORK_FACT -> HaNetworkPathRuntime.statusText() ?: ""
-        HA_RENDERER_FACT -> rendererAdmission(appContext, config, autoBrightnessHttpApi).statusText()
-        // The camera row is live for the same reason, and it is also where a person reads the
-        // stream URL off the panel — with the warning that travels beside it, because the place
-        // the URL is copied from is the place somebody is about to paste it into a card on this
-        // very panel. A panel whose profile declares no camera has nothing to say and no row.
-        CAMERA_FACT -> camera.presentation().takeIf { it.state != CameraState.ABSENT }?.summary
-        else -> facts[key]
-    }
-
-
-    /** Browser form failures get a localized, escaped mini-page; API callers retain the stable legacy token. */
-    private suspend fun respondInstallFormError(
-        call: ApplicationCall,
-        strings: AppStrings,
-        key: String,
-        machineText: String,
-        status: HttpStatusCode,
-    ) {
-        if (!installFormWantsHtml(call.request.headers["Accept"])) {
-            call.respondText("$machineText\n", status = status)
-            return
-        }
-        call.respondText(
-            "<!doctype html><base href=\"/\"><meta charset=utf-8><body style='font-family:system-ui;background:#111;color:#eee;padding:20px'>" +
-                esc(strings.get(key)) + "</body>",
-            ContentType.Text.Html,
-            status,
-        )
-    }
-
-
-
-    /** The setup / health / update banners — everything above the cards. Needs the facts map (MQTT
-     *  state), so on a cold start it hydrates with the rest. */
     /**
      * The lifecycle suffix on `/health`. Appended rather than given its own endpoint because every page
      * already polls `/health` every ten seconds through `buildwatch.js`, so this needs no new route and
@@ -1075,180 +953,8 @@ class PaneldServer internal constructor(
      */
     private fun haNetworkHealthToken(): String = HaNetworkPathRuntime.healthToken()
 
-    private fun bannersHtml(s: ManagementSnapshot, h: PageHealth.Inputs, strings: AppStrings): String {
-        val storage = HealthAudit.storage(storageHealth())
-        val mqtt = s.facts["MQTT"] ?: "disabled"
-        // Pure decision (unit-tested in SetupBannerTest) — note a CONFIGURED broker that's merely
-        // mid-(re)connect must not be reported as missing.
-        val needs = SetupBanner.needs(mqtt, config.mqttBroker.isNotBlank(), config.mqttUser.isNotBlank(), panelAssistantNative())
-        val setup = if (needs.isNotEmpty())
-            dashboardSetupNeedsBanner(needs, strings)
-        else ""
-        // Commissioning progress only while somebody is actually commissioning. `announcing` is transient but
-        // recurs on every bridge reconnect — an HA restart, a broker blip, a panel waking — so on a finished
-        // panel this banner kept reappearing to narrate a step that was done months ago. Reported twice from
-        // deployed panels. The Configure tab keeps it unconditionally: there it is feedback for a save the user just
-        // made, which is the reason it was added.
-        val mqttProgress = if (!setupState.setupNeedsUser()) "" else {
-            SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState())?.let {
-                setupProgressBanner(it, strings)
-            }.orEmpty()
-        }
-        val haSetup = if (haSignInNeededForEffectiveDashboard()) haSignInBanner(strings) else ""
-        val termuxBridge = if (managementObservations.termuxBridgeCache.get() == TermuxBridgeProbe.State.RUNNING) {
-            dashboardPanelBridgeBanner(strings)
-        } else ""
-        val proximityState = JSONObject(sensors.proximityJson())
-        val proximityLearning = ProximityStatusBanner.titleKey(
-            enabled = config.wakeOnWave,
-            present = proximityState.optBoolean("present", false),
-            phase = proximityState.optString("phase"),
-            health = proximityState.optString("health"),
-            active = proximityState.optBoolean("sessionActive", false),
-            wakeReady = proximityState.optBoolean("wakeReady", false),
-        )?.let { title ->
-            proximityLearningBanner(title, strings)
-        }.orEmpty()
-        // Panel-health + update findings: states that stop the panel rendering the dashboard as expected but
-        // that the info map otherwise reports neutrally. Soft + best-effort — ha-paneld runs fine regardless.
-        // The WebView verdict is from the REAL engine version (WebView UA), not the stamped package version
-        // (cached, so cheap). Shared decision — see HealthAudit; updates are filtered by the per-version
-        // dismissals so an "Ignore this version" click stays hidden until a newer release ticks it back.
-        val findings = pageHealth.healthFindings(h, s.facts["System WebView"] ?: "", UpdateChecker.current(appContext, config.ignoredUpdates))
-        // Order: storage/database safety first, then actively-broken render states, render findings
-        // (WebView / renderer / updates), and finally the needs-config setup notice. On the dashboard the
-        // ad-hoc warnings link to the Install tab for the fix (their one-tap buttons live there, with install.js).
-        // The lifecycle banner leads: while Home Assistant is going away or coming back, that explains
-        // most of what else the page is about to report.
-        return localizedStorageBanner(storage, strings) + localizedPowerSafetyBanner(
-            advisory = powerSafetyAdvisory(s.privilege),
-            inlineRepair = true,
-            strings = strings,
-        ) +
-            adHocWarnings(
-                config, catalogueLoader, s.privilege.directSuReady, s.densityBase,
-                radioStatus, ::dashboardRecoveryState,
-                managementObservations.companionServersForRender(), inlineRepair = false, strings = strings,
-            ) +
-            findings.joinToString("") { bannerFor(it, strings) } + termuxBridge + proximityLearning + haSetup + mqttProgress + setup
-    }
-
     private fun effectiveDashboardIsBuiltin(): Boolean =
         system.resolveDashboard(config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD
-
-    // Shares haSignInPending with the renderer, so what the browser advertises as the next step and what
-    // the panel actually does when it starts cannot drift apart.
-    private fun haSignInNeededForEffectiveDashboard(): Boolean =
-        effectiveDashboardIsBuiltin() &&
-            haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)
-
-
-
-    private fun zigbeeWarning(snapshot: ZigbeeHealthSnapshot): String? = zigbeeWarningText(
-        snapshot,
-        configuredOn = config.zigbeeRouterConfigured && config.zigbeeRouterEnabled,
-    )
-
-    private fun liveRowsHtml(strings: AppStrings): String {
-        val led = config.lastLed
-        val brightness = effectiveBrightness().takeIf { it >= 0 } ?: runCatching {
-            android.provider.Settings.System.getInt(appContext.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
-        }.getOrNull()
-        return liveRowsHtml(led, brightness, volume.getPercent(), config.lastNavigate, strings)
-    }
-
-
-    /** Visible "this needs root" banner for a root-gated card/control group — shown (never hidden) so a
-     *  no-root user sees the feature and what root would unlock, next to controls rendered disabled. */
-    /** Hydration payload for the dashboard: ready-to-inject HTML fragments, rendered by the same
-     *  functions as the warm server render so the two paths can't drift. Builds the snapshot (this
-     *  is where the probe cost actually lands — once per TTL). */
-    private fun infoJson(strings: AppStrings): String {
-        val s = managementObservations.snapCache.get()
-        // One health snapshot for this render — the banner, facts card and diagnostics rows below all read
-        // the same WebView/renderer verdict rather than each re-probing (which could otherwise disagree).
-        val h = pageHealth.healthInputs()
-        val cards = listOf(
-            "livetbl" to liveRowsHtml(strings),
-            "behavtbl" to settingRows.behaviourRowsHtml(s.live, strings, autoHints(strings), liveCapabilities(s.caps)),
-            "disptbl" to settingRows.displayRowsHtml(
-                s.live, DisplaySizingObservation(s.densityCur, s.densityBase, s.fontScale), strings,
-                capabilities = { liveCapabilities(s.caps) },
-                proximity = { sensors.proximitySummary().takeIf { sensors.hasProximity() } },
-            ),
-            "updtbl" to settingRows.updatesRowsHtml(s.live, strings) { liveCapabilities(s.caps) },
-            "infotbl" to factRowsHtml(s.facts, infoKeys(s), h.webView.tooOld, strings, ::displayCell),
-            "nettbl" to factRowsHtml(s.facts, NET_KEYS, h.webView.tooOld, strings, ::displayCell),
-            "proftbl" to factRowsHtml(s.facts, profileFactKeys(profile, s.facts), h.webView.tooOld, strings, ::displayCell),
-            "contexttbl" to contextRowsHtml(CONTEXT_KEYS, h.webView.reportingQuirk, strings) { key -> contextValue(key, s.facts) },
-            "captbl" to capRowsHtml(s.capabilityRows, strings),
-        ).joinToString(",") { (k, v) -> "\"$k\":${jsonStr(v)}" }
-        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshots.placeholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s.facts, s.privilege, profile.hasRecents, { system.resolvedLauncher(config.launcherPackage)?.let { it != appContext.packageName } == true }, strings))},"cards":{$cards}}"""
-    }
-
-    private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
-        // Stale-while-revalidate: render the last-known snapshot instantly (placeholders if none yet)
-        // and let the page hydrate/refresh from /api/v1/info when the snapshot is missing or old.
-        val s = managementObservations.snapCache.peek()
-        // One health snapshot shared by every warm branch below (banner + facts + diagnostics), captured
-        // lazily so a cold shell (s == null, nothing rendered warm) still probes nothing.
-        val h: PageHealth.Inputs by lazy(LazyThreadSafetyMode.NONE) { pageHealth.healthInputs() }
-        val hydrate = s == null || managementObservations.snapCache.ageMs() > ManagementObservations.SNAP_TTL_MS
-        val profNote = dashboardProfileNote(profile.profileLinks, strings)
-        // A cold shell can safely show the app-private last-successful capture before the capability
-        // probes finish. It must not request a new capture until hydration confirms a privileged route.
-        val cachedShot = screenshots.placeholderUrl()
-        val shotCard = dashboardScreenshotCard(
-            s == null, s?.privilege?.typedShellControlReady == true,
-            cachedShot, ::screenAspectRatio, strings,
-        )
-        val cameraCard = dashboardCameraCard(camera.presentation().state != CameraState.ABSENT, strings)
-        val rightControls = dashboardHeaderControls(config, strings)
-        return pages.pageShell(
-            active = "dashboard",
-            sectionTitle = null,
-            bodyAttrs = """data-ver="${Config.VERSION}" data-build="${buildToken()}" data-cfg="${renderConfigConcurrencyHash()}" data-hydrate="${if (hydrate) "1" else "0"}" data-hardened="${if (config.hardenedSecurityEnabled) "1" else "0"}"""",
-            rightControls = rightControls,
-            embed = embed,
-            extraScripts = """<script src="assets/card-size-memory.js"></script>
-<script src="assets/card-column-alignment.js"></script>
-<script src="info.js"></script>
-""",
-            body = dashboardBody(
-                config, strings, profNote, shotCard, cameraCard,
-                banners = s?.let { bannersHtml(it, h, strings) } ?: "",
-                controls = controlsHtml(
-                    s?.facts, s?.privilege, profile.hasRecents,
-                    distinctLauncher = {
-                        system.resolvedLauncher(config.launcherPackage)?.let { it != appContext.packageName } == true
-                    },
-                    strings,
-                ),
-                rowHtml = { id ->
-                    when (id) {
-                        "infotbl" -> s?.let { factRowsHtml(it.facts, infoKeys(it), h.webView.tooOld, strings, ::displayCell) }
-                        "nettbl" -> s?.let { factRowsHtml(it.facts, NET_KEYS, h.webView.tooOld, strings, ::displayCell) }
-                        "proftbl" -> s?.let { factRowsHtml(it.facts, profileFactKeys(profile, it.facts), h.webView.tooOld, strings, ::displayCell) }
-                        "contexttbl" -> s?.let { contextRowsHtml(CONTEXT_KEYS, h.webView.reportingQuirk, strings) { key -> contextValue(key, it.facts) } }
-                        "captbl" -> s?.let { capRowsHtml(it.capabilityRows, strings) }
-                        "livetbl" -> if (s == null) null else liveRowsHtml(strings)
-                        "behavtbl" -> s?.let { settingRows.behaviourRowsHtml(it.live, strings, autoHints(strings), liveCapabilities(it.caps)) }
-                        "disptbl" -> s?.let {
-                            settingRows.displayRowsHtml(
-                                it.live, DisplaySizingObservation(it.densityCur, it.densityBase, it.fontScale), strings,
-                                capabilities = { liveCapabilities(it.caps) },
-                                proximity = { sensors.proximitySummary().takeIf { sensors.hasProximity() } },
-                            )
-                        }
-                        "updtbl" -> s?.let { settingRows.updatesRowsHtml(it.live, strings) { liveCapabilities(it.caps) } }
-                        else -> error("Unknown dashboard table: $id")
-                    }
-                },
-            ),
-            strings = strings,
-            translationPrefixes = setOf("shell.", "dashboard.", "runtime."),
-        )
-    }
 
     /** JSON-quote a string value (escapes backslash + double-quote). */
     private fun jsonStr(s: String): String = Json.str(s)
@@ -1298,7 +1004,7 @@ class PaneldServer internal constructor(
         pendingLiveSettings = { pendingLiveSettings() },
         stalledLiveSettings = { stalledLiveSettings() },
         proximityJson = { sensors.proximityJson() },
-        powerSafetyJson = { PowerSafetyPresentation.json(powerSafetyAdvisory(managementObservations.snapStaleOk().privilege)) },
+        powerSafetyJson = { PowerSafetyPresentation.json(pageHealth.powerSafetyAdvisory(managementObservations.snapStaleOk().privilege, { profile.appCanSu }, powerSafety)) },
         haAreaCatalogJson = { haArea.haAreaCatalogJson() },
     )
 
@@ -1493,39 +1199,8 @@ class PaneldServer internal constructor(
             "/", "/configure", "/profiles", "/install", "/logs", "/entities", "/api",
         )
 
-        private val PROFILE_FACT_KEYS =
-            listOf("Platform", "SoC", "LED", "Light sensor", "Proximity", "Zigbee", "Relays", "CPU profile")
-
-        /**
-         * Exact-profile declarations suppress rows for hardware that is both declared absent and absent
-         * at runtime. Generic keeps the capability discovery set but omits an unknown SoC identity,
-         * while an unexpected positive runtime observation remains visible so a stale exact profile
-         * can still be corrected.
-         */
-        internal fun profileFactKeys(profile: DeviceProfile, facts: Map<String, String>): List<String> {
-            val declaredSoc = profile.socClass.trim().takeUnless { it.isBlank() || it == "?" || it.equals("unknown", ignoreCase = true) }
-            val availableKeys = PROFILE_FACT_KEYS.filterNot { it == "SoC" && declaredSoc == null }
-            if (profile.id == "generic") return availableKeys
-            fun observed(key: String, vararg absent: String): Boolean =
-                facts[key]?.trim()?.lowercase()?.let { it !in absent.toSet() } ?: false
-            return availableKeys.filter { key ->
-                when (key) {
-                    "LED" -> profile.ledMechanism != LedMechanism.NONE || observed(key, "none")
-                    "Light sensor" -> profile.lightTech != null || observed(key, "no")
-                    "Proximity" -> profile.proximityTech != null || observed(key, "no")
-                    "Zigbee" -> profile.zigbeeGatewayDir != null || observed(key, "none")
-                    "Relays" ->
-                        profile.relayBase != null || profile.relayBaseFallbacks.isNotEmpty() ||
-                            observed(key, "none")
-                    "CPU profile" -> profile.cpuGovernors != null || observed(key, "n/a")
-                    else -> true
-                }
-            }
-        }
 
 
-        // Probe-cache TTLs: the dashboard renders from the snapshot, so these bound both staleness
-        // and how often the su round-trips can run. Density/su flap even less than the rest.
         internal const val MAX_PLAY_BODY_BYTES = 16L * 1024L
         internal const val MAX_CONFIG_POST_BODY_BYTES = 256L * 1024L
         internal const val MAX_SMALL_FORM_POST_BODY_BYTES = 16L * 1024L
