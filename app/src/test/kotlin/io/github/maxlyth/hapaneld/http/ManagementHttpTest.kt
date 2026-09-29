@@ -9,6 +9,30 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ManagementHttpTest {
+    @Test fun `status selects Companion warning before sampling mDNS`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setDashboardPackage("builtin")
+            fixture.useManagementStatus(
+                companion = io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY.copy(
+                    status = io.github.maxlyth.hapaneld.control.CompanionDb.UrlStatus(true, 1),
+                ),
+                mdns = {
+                    fixture.config.setDashboardPackage("io.homeassistant.companion.android")
+                    "mDNS observed" to null
+                },
+                onRefresh = {},
+            )
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.get("/api/v1/status")
+                assertEquals(HttpStatusCode.OK, response.status)
+                val warnings = org.json.JSONObject(response.bodyAsText()).getJSONArray("warnings").toString()
+                org.junit.Assert.assertTrue(warnings.contains("mDNS observed"))
+                org.junit.Assert.assertFalse(warnings.contains("Companion has no internal URL"))
+            }
+        }
+    }
+
     @Test fun `status emits unconditional observations and binds database proof to a fresh read`() {
         PaneldServerHttpFixture().use { fixture ->
             var refreshes = 0
