@@ -226,4 +226,43 @@ class WakeWordDetectorTest {
         rig.detector.close()
         assertTrue(rig.scorers.all { it.closed })
     }
+
+    @Test
+    fun higherSensitivityWakesBelowTheModelsOwnCutoffAndLowerDoesNot() {
+        fun hitsAt(offset: Float): Int {
+            val scorer = FakeScorer()
+            val hits = mutableListOf<WakeWordHit>()
+            val detector = WakeWordDetector(
+                models = listOf(LoadedWakeWordModel(config("hey_jarvis", cutoff = 0.97f, window = 1), scorer)),
+                listener = { hits += it },
+                warmupInferences = 0,
+                cutoffOffset = offset,
+            )
+            // 230 / 255 = 0.90: short of 0.97, over 0.85.
+            scorer.script.add(230)
+            detector.onFrame(PcmFrame(ShortArray(160), timestampNs = 0L))
+            return hits.size
+        }
+        assertEquals(0, hitsAt(WakeWordDetector.cutoffOffset("normal")))
+        assertEquals(1, hitsAt(WakeWordDetector.cutoffOffset("high")))
+        assertEquals(0, hitsAt(WakeWordDetector.cutoffOffset("low")))
+    }
+
+    @Test
+    fun aNearMissReportsTheHighestMeanOfTheApproachOnceItIsOver() {
+        val scorer = FakeScorer()
+        val misses = mutableListOf<Pair<String, Float>>()
+        val detector = WakeWordDetector(
+            models = listOf(LoadedWakeWordModel(config("hey_jarvis", cutoff = 0.97f, window = 1), scorer)),
+            listener = {},
+            warmupInferences = 0,
+            nearMiss = { id, mean -> misses += id to mean },
+        )
+        // 0.55, 0.80, 0.60 approach the cutoff, then 0.10 ends the approach; a second approach peaks at 0.70.
+        scorer.script.addAll(listOf(140, 204, 153, 26, 179, 26))
+        repeat(6) { detector.onFrame(PcmFrame(ShortArray(160), timestampNs = it.toLong())) }
+        assertEquals(listOf("hey_jarvis", "hey_jarvis"), misses.map { it.first })
+        assertEquals(204 / 255f, misses[0].second, 0.001f)
+        assertEquals(179 / 255f, misses[1].second, 0.001f)
+    }
 }

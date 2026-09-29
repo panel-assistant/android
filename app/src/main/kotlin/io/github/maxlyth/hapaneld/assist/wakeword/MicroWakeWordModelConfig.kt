@@ -1,10 +1,6 @@
 package io.github.maxlyth.hapaneld.assist.wakeword
 
-import android.content.Context
 import org.json.JSONObject
-import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 /**
  * One bundled micro-wake-word model, described by the JSON manifest published beside each
@@ -31,8 +27,6 @@ data class MicroWakeWordModelConfig(
     /** Interpreter arena the trainer measured (an ESP32 figure; the native engine adds headroom). */
     val tensorArenaSize: Int,
 ) {
-    val modelAssetPath: String get() = "$ASSET_DIR/$modelFile"
-
     companion object {
         const val ASSET_DIR = "wakeword"
 
@@ -70,23 +64,6 @@ data class MicroWakeWordModelConfig(
                 slidingWindowSize = window,
                 tensorArenaSize = micro.optInt("tensor_arena_size", 0),
             )
-        }
-
-        /** Load and parse one bundled manifest by id. */
-        @Throws(IOException::class)
-        fun fromAssets(context: Context, id: String): MicroWakeWordModelConfig {
-            val text = context.assets.open("$ASSET_DIR/$id.json").bufferedReader().use { it.readText() }
-            return parse(id, text)
-        }
-
-        /** Read the model flatbuffer into a direct buffer, as the native engine requires. */
-        @Throws(IOException::class)
-        fun readModel(context: Context, config: MicroWakeWordModelConfig): ByteBuffer {
-            val bytes = context.assets.open(config.modelAssetPath).use { it.readBytes() }
-            return ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
-                put(bytes)
-                rewind()
-            }
         }
     }
 }

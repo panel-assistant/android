@@ -66,6 +66,7 @@ import io.github.maxlyth.hapaneld.control.PowerSafetyMutationPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult
 import io.github.maxlyth.hapaneld.control.Su
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.KioskAdminUi
 import io.github.maxlyth.hapaneld.control.HandBackHomeController
 import io.github.maxlyth.hapaneld.control.HandBackHomePolicy
 import io.github.maxlyth.hapaneld.control.TameController
@@ -339,6 +340,10 @@ class PaneldServer internal constructor(
     // unavailable; the voice-coordinator lane injects the real pipeline-runtime trigger.
     private val voiceTest: io.github.maxlyth.hapaneld.assist.VoiceTestTrigger =
         io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.NOT_WIRED,
+    // The wake words this panel holds, bundled and imported, for the Configure wake-word picker; null
+    // answers 503. [onWakeWordsChanged] rearms the listener and tells Home Assistant after an import.
+    private val wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog? = null,
+    private val onWakeWordsChanged: () -> Unit = {},
     // The native transport's persisted authority, discovery value and phase, and the panel-local release
     // that hands entities and commands back to MQTT. Migration scaffolding; deleted with MQTT.
     private val panelAssistantTransportFacts: () -> io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportFacts,
@@ -551,7 +556,7 @@ class PaneldServer internal constructor(
                 // renders — the spec also imports into Swagger/Postman for fleet tooling.
                 apiPageRoute(::requestStrings, asset) { config.friendlyName }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -588,7 +593,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
                     }
                     post("/migration-notice/dismiss") {
                         val persisted = config.dismissMigrationNotice()
@@ -661,44 +666,14 @@ class PaneldServer internal constructor(
                             ContentType.Application.Json,
                         )
                     }
-                    // Home Assistant Assist pipelines for the Configure voice_pipelines picker. Delegates to
-                    // an injectable directory (the voice-coordinator lane's real HA-backed implementation;
-                    // the stub default reports 503 not-configured) rather than talking to Home Assistant here.
-                    // The response is decided by the pure voicePipelinesResponse() so it is unit-testable
-                    // without a routed request.
-                    get("/voice/pipelines") {
-                        val caps = liveCapabilities(managementObservations.snapStaleOk().caps)
-                        val refusal = voicePipelinesRefusal(hasMicrophone = caps.hasMicrophone)
-                        if (refusal != null) {
-                            call.respondText(
-                                "{\"error\":\"unavailable\",\"reason\":${Json.str(refusal)}}",
-                                ContentType.Application.Json,
-                                HttpStatusCode.ServiceUnavailable,
-                            )
-                            return@get
-                        }
-                        val (status, body) = voicePipelinesResponse(assistPipelines.list())
-                        call.respondText(body, ContentType.Application.Json, status)
-                    }
-                    // One-shot voice-assistant test run. Refused with 409 before ever reaching the trigger
-                    // when the panel has no microphone capability or voice_enabled is off, so a disabled
-                    // panel never depends on whether the coordinator lane happens to be wired up. The
-                    // refusal check and the trigger-result mapping are both pure (voiceTestRefusal(),
-                    // voiceTestTriggerResponse()) so every branch is unit-testable without a routed request.
-                    post("/voice/test") {
-                        val caps = liveCapabilities(managementObservations.snapStaleOk().caps)
-                        val refusal = voiceTestRefusal(hasMicrophone = caps.hasMicrophone, voiceEnabled = config.voiceEnabled)
-                        if (refusal != null) {
-                            call.respondText(
-                                "{\"reason\":${Json.str(refusal)}}",
-                                ContentType.Application.Json,
-                                HttpStatusCode.Conflict,
-                            )
-                            return@post
-                        }
-                        val (status, body) = voiceTestTriggerResponse(voiceTest.trigger())
-                        call.respondText(body, ContentType.Application.Json, status)
-                    }
+                    voiceRoutes(
+                        hasMicrophone = { liveCapabilities(managementObservations.snapStaleOk().caps).hasMicrophone },
+                        voiceEnabled = { config.voiceEnabled },
+                        assistPipelines = assistPipelines,
+                        voiceTest = voiceTest,
+                        wakeWords = wakeWords,
+                        onWakeWordsChanged = onWakeWordsChanged,
+                    )
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).
                     discoveryRoutes({ peersJson(peers()) }, { launchableAppsJson(appContext) })
@@ -1051,6 +1026,7 @@ class PaneldServer internal constructor(
     private fun statusJson(
         storageSnapshot: StorageHealthSnapshot,
         databaseObservationNonce: String? = null,
+        homeProofRequested: Boolean = false,
     ): String {
         val management = managementObservations.snapStaleOk()
         val powerAdvisory = powerSafetyAdvisory(management.privilege)
@@ -1067,6 +1043,10 @@ class PaneldServer internal constructor(
         return managementStatusJson(
             config, management, companion, powerAdvisory, radio, storage, health,
             { rendererAdmission(appContext, config, autoBrightnessHttpApi) }, camera::presentation, databaseObservationNonce,
+            homeProof = if (homeProofRequested) ({
+                val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible())
+                homeUiProofJson(proof.state, proof.reason, proof.evidence)
+            }) else null,
         )
     }
 
@@ -1597,6 +1577,7 @@ class PaneldServer internal constructor(
             profileAdmin = profileAdmin,
             companion = companionBackupOperations(),
             mqttState = mqttState,
+            wakeWords = wakeWords,
         ).build(request, passphrase)
 
     private suspend fun handleRestore(call: ApplicationCall) {
@@ -1639,6 +1620,7 @@ class PaneldServer internal constructor(
             onProfileRestart = { onProfileRestart() },
             onProfileRestartAbort = { onProfileRestartAbort(it) },
             onDurableStateRestored = { onDurableStateRestored() },
+            onWakeWordsChanged = { onWakeWordsChanged() },
         )
         RestoreRoutes(
             cacheDir = cacheDir,
@@ -1651,6 +1633,10 @@ class PaneldServer internal constructor(
             rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
             scope = scope,
             executor = executor,
+            wakeWords = wakeWords,
+            verifiedRetiredReceipt = {
+                io.github.maxlyth.hapaneld.migration.MigrationState.of(appContext).verifiedRetiredReceipt(it)
+            },
         ).handle(call)
     }
 

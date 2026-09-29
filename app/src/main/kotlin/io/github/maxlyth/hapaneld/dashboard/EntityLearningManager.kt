@@ -1762,7 +1762,7 @@ class EntityLearningManager(
         deviceRegistry: JSONObject,
     ): Set<String> = io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.panelAssistantEntryIds(
         io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.readProbe(request, deviceRegistry),
-        io.github.maxlyth.hapaneld.panelAssistantDiscoveryId(config.androidId),
+        io.github.maxlyth.hapaneld.panelAssistantDiscoveryId(config.deviceUid),
     )
 
     /** Non-secret digest identifying the HA endpoint and credential generation used by area operations. */

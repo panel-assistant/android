@@ -123,6 +123,7 @@ class SettingsCatalogueContractTest {
         val localPresenceBindings = linkedMapOf(
             "panel" to ("configure.auto_sleep.source_panel" to "This panel’s proximity sensor"),
             "home_assistant" to ("configure.auto_sleep.source_ha" to "Home Assistant Area devices"),
+            "touch" to ("configure.auto_sleep.source_touch" to "Touch inactivity"),
         )
         val declared = SettingsRegistry.SPECS.filter { it.type == SettingType.ENUM }.associate { it.key to it.options }
         assertEquals(expected.keys + setOf("ui_language", "auto_sleep_source"), declared.keys)

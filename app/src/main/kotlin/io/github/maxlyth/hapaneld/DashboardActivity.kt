@@ -46,6 +46,8 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.github.maxlyth.hapaneld.control.BottomSwipeDetector
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
+import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import io.github.maxlyth.hapaneld.dashboard.EntityFilterProtocol
 import io.github.maxlyth.hapaneld.dashboard.EntityFilterTelemetry
 import io.github.maxlyth.hapaneld.dashboard.InjectionScript
@@ -702,10 +704,6 @@ class DashboardActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         if (maintenanceFence.stop(this)) return
         supportActionBar?.hide()
-        // DashboardActivity can be foregrounded directly by HOME restoration, the admin path, or a
-        // privileged start. Always bootstrap the service here too so the local HTTP/MQTT surface is
-        // alive even when MainActivity was bypassed.
-        PaneldService.start(this)
         setContentView(TextView(this).apply {
             setText(R.string.preparing_dashboard)
             gravity = android.view.Gravity.CENTER
@@ -715,8 +713,22 @@ class DashboardActivity : AppCompatActivity() {
         // DashboardActivity. Route an actual HOME intent according to the explicit Launcher app policy;
         // service/watchdog starts are component-explicit and therefore continue to foreground the dashboard.
         activityScope.launch {
-            val config = readActivityStateOffMain { Config(this@DashboardActivity) }
-            if (!destroyed && !isFinishing) initializeRenderer(config)
+            val config = readActivityStateOffMain {
+                Config(this@DashboardActivity).also { config ->
+                    // Android may launch this HOME activity directly after a package replacement,
+                    // bypassing MainActivity. Repair HOME before the service can crash.
+                    runCatching {
+                        SystemController(AndroidSystemEnv(this@DashboardActivity)).applyLauncherHomePolicy(
+                            config.launcherPackage, config.dashboardPackage, config.builtInRendererReady(),
+                        )
+                    }.onFailure { Log.w(TAG, "dashboard HOME policy apply failed", it) }
+                }
+            }
+            if (!destroyed && !isFinishing) {
+                // This visible start avoids arming Oreo's foreground deadline during cold class loading.
+                PaneldService.start(this@DashboardActivity, fromVisibleActivity = true)
+                initializeRenderer(config)
+            }
         }
     }
 
@@ -2303,6 +2315,7 @@ class DashboardActivity : AppCompatActivity() {
         // Below API 29 onTopResumedActivityChanged is never delivered, so resume owns visibility there.
         if (resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) onAdmissionVisibilityChanged(true)
         BuiltinDashboard.setActivityForeground(activityOwner, dashboardIsTopResumed)
+        showVoiceRipple()
         if (::activityConfig.isInitialized) applyRendererScreenPolicy()
         applyFullscreen()
         applyOverscroll()
@@ -2387,7 +2400,50 @@ class DashboardActivity : AppCompatActivity() {
         if (maintenanceFence.stop(this)) return
         if (hasFocus && ::activityConfig.isInitialized) applyFullscreen()
     }
+    /**
+     * The voice assistant's listening ripple, drawn in this window above whatever the dashboard shows. It
+     * is a child of the decor view, so every content swap keeps it on top, and it never takes a touch.
+     */
+    private fun showVoiceRipple() {
+        val decor = window.decorView as? android.view.ViewGroup ?: return
+        val view = decor.findViewWithTag<io.github.maxlyth.hapaneld.assist.WakeRippleView>(VOICE_RIPPLE_TAG)
+            ?: io.github.maxlyth.hapaneld.assist.WakeRippleView(this).also {
+                it.tag = VOICE_RIPPLE_TAG
+                decor.addView(it, android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+            }
+        val glow = decor.findViewWithTag<io.github.maxlyth.hapaneld.assist.ListeningGlowView>(VOICE_GLOW_TAG)
+            ?: io.github.maxlyth.hapaneld.assist.ListeningGlowView(this).also {
+                it.tag = VOICE_GLOW_TAG
+                it.visibility = android.view.View.GONE
+                decor.addView(it, android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+            }
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = {
+            runOnUiThread {
+                view.bringToFront()
+                view.setColor(io.github.maxlyth.hapaneld.assist.VoiceAttention.color)
+                view.startRipple()
+            }
+        }
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.listening = { active ->
+            runOnUiThread {
+                glow.bringToFront()
+                glow.setColor(io.github.maxlyth.hapaneld.assist.VoiceAttention.color)
+                glow.setListening(active)
+            }
+        }
+        glow.setColor(io.github.maxlyth.hapaneld.assist.VoiceAttention.color)
+        glow.setListening(io.github.maxlyth.hapaneld.assist.VoiceAttention.attending)
+    }
+
     override fun onPause() {
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.ripple = null
+        io.github.maxlyth.hapaneld.assist.VoiceAttention.listening = null
         dashboardIsTopResumed = false
         onAdmissionVisibilityChanged(false)            // the retry stays armed; only the repaint stops
         BuiltinDashboard.setActivityForeground(activityOwner, false)
@@ -4037,6 +4093,8 @@ class DashboardActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "ha-paneld/dashboard"
+        private const val VOICE_RIPPLE_TAG = "voice-ripple"
+        private const val VOICE_GLOW_TAG = "voice-glow"
         /** Camera trial: the CAMERA runtime-permission request raised when the camera
          *  setting turns on. Distinct from any other request code — this activity had none before. */
         private const val REQUEST_CAMERA_PERMISSION = 4801

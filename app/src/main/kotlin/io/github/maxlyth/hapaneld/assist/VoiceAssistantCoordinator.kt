@@ -7,8 +7,10 @@ import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.audio.MicrophoneSource
 import io.github.maxlyth.hapaneld.audio.MicrophoneSourceLifecycle
 import io.github.maxlyth.hapaneld.audio.PcmConsumer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -20,18 +22,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** The voice settings the coordinator acts on, parsed once per (re)start. */
 data class VoiceSettings(
     val enabled: Boolean,
-    /** Bundled wake-word model ids to arm, in order; at most [MAX_ACTIVE_WAKE_WORDS] are used. */
+    /** Wake-word model ids to arm, in order. */
     val wakeWords: List<String>,
     /** Wake-word model id to Assist pipeline id; an absent or blank value means the preferred pipeline. */
     val pipelines: Map<String, String>,
     /** Decibels of pre-amplification for the pipeline audio only; the wake-word listener never sees it. */
     val micGainDb: Int = 0,
 ) {
-    fun pipelineFor(modelId: String?): String? = modelId?.let { pipelines[it] }?.takeIf { it.isNotBlank() }
-
     companion object {
-        const val MAX_ACTIVE_WAKE_WORDS = 2
-
         /** Tolerant of malformed JSON: the registry validates on write, but a hand-edited store must not crash the service. */
         fun parse(
             enabled: Boolean,
@@ -42,7 +40,7 @@ data class VoiceSettings(
             val words = runCatching {
                 val array = JSONArray(wakeWordsJson ?: "[]")
                 (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotBlank() } }
-            }.getOrDefault(emptyList()).distinct().take(MAX_ACTIVE_WAKE_WORDS)
+            }.getOrDefault(emptyList()).distinct()
             val map = runCatching {
                 val obj = JSONObject(pipelinesJson ?: "{}")
                 obj.keys().asSequence().associateWith { obj.optString(it) }
@@ -57,8 +55,44 @@ data class VoiceSettings(
     }
 }
 
-/** A wake-word activation as the coordinator sees it: which model fired and the phrase it is trained on. */
-data class WakeWordActivation(val modelId: String, val phrase: String)
+/**
+ * A wake-word activation as the coordinator sees it: which model fired, the phrase it is trained on, and
+ * the capture time of the frame that completed it, which measures how soon the command audio attaches.
+ */
+data class WakeWordActivation(val modelId: String, val phrase: String, val heardAtNs: Long = 0L)
+
+/** Arms the microWakeWord engine on the models [catalog] can load, bundled or imported. */
+internal class MicroWakeWordEngineFactory(
+    private val catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
+    private val log: (String) -> Unit = {},
+    /** The `voice_sensitivity` setting, read each time the listener is armed. */
+    private val sensitivity: () -> String? = { null },
+) : WakeWordEngineFactory {
+    override fun create(modelIds: List<String>, onActivation: (WakeWordActivation) -> Unit): WakeWordEngine? {
+        val models = modelIds.mapNotNull(catalog::load)
+        if (models.isEmpty()) return null
+        val detector = io.github.maxlyth.hapaneld.assist.wakeword.WakeWordDetector(
+            models,
+            { hit -> onActivation(WakeWordActivation(hit.modelId, hit.phrase, hit.timestampNs)) },
+            maxActive = models.size,
+            nearMiss = { id, mean -> log("wake word $id heard at ${"%.2f".format(mean)}, short of its cutoff") },
+            cutoffOffset = io.github.maxlyth.hapaneld.assist.wakeword.WakeWordDetector.cutoffOffset(sensitivity()),
+        )
+        return object : WakeWordEngine, PcmConsumer by detector {
+            override fun close() = detector.close()
+        }
+    }
+}
+
+/** One conversation turn as the satellite asks Home Assistant for it. */
+internal data class VoiceTurnRequest(
+    /** The wake word that started the conversation, which names its pipeline; null for one Home Assistant started. */
+    val wakeWordId: String?,
+    /** A later turn of the same conversation, where nobody said the wake word again. */
+    val continued: Boolean = false,
+    /** When the wake word was heard, `System.nanoTime()` base; 0 when no wake word started this turn. */
+    val heardAtNs: Long = 0L,
+)
 
 /** An armed wake-word listener: a microphone consumer that reports activations until closed. */
 interface WakeWordEngine : PcmConsumer, AutoCloseable
@@ -76,14 +110,24 @@ fun interface WakeWordEngineFactory {
     }
 }
 
-/** One Assist pipeline run. A fresh runner is created per run, mirroring [AssistPipelineClient]. */
+/** One conversation turn: Home Assistant runs the pipeline, the panel streams and plays. */
 internal fun interface AssistRunner {
     suspend fun run(
-        request: AssistRunRequest,
+        request: VoiceTurnRequest,
         attachAudio: (PcmConsumer) -> AutoCloseable,
         playback: AssistPlayback,
     ): AssistOutcome
 }
+
+/** Something Home Assistant asked the panel to say, as the coordinator plays it. */
+internal data class VoiceAnnouncement(
+    val url: String,
+    val preannounceUrl: String?,
+    /** Listen for an answer afterwards, as for `start_conversation`. */
+    val listenAfter: Boolean,
+    /** Called once the announcement has played, or could not be. */
+    val done: () -> Unit,
+)
 
 /**
  * Owns the voice assistant's lifecycle on the panel: arms the wake-word engine on the shared
@@ -113,6 +157,9 @@ class VoiceAssistantCoordinator internal constructor(
     private val state: VoiceStateAuthority,
     private val foregroundRetryMs: Long = DEFAULT_FOREGROUND_RETRY_MS,
     private val maxConversationTurns: Int = DEFAULT_MAX_CONVERSATION_TURNS,
+    /** Shows the room that the panel has started listening: a chime, and a ripple on screen. */
+    /** Named with the wake word whose pipeline is listening; a turn without one uses the first armed. */
+    private val attention: (wakeWordId: String?) -> Unit = {},
 ) : AutoCloseable {
 
     private val lock = Any()
@@ -255,19 +302,48 @@ class VoiceAssistantCoordinator internal constructor(
         beginRun(activation, current, null)
 
     /**
+     * Play what Home Assistant asked the panel to say, replacing whatever it was saying or hearing: Home
+     * Assistant has already ended that pipeline. The wake-word listener is paused for the playback, so the
+     * panel never wakes itself; with [VoiceAnnouncement.listenAfter] a turn follows, as after a wake word.
+     */
+    internal fun announce(announcement: VoiceAnnouncement) {
+        if (closed.get()) return announcement.done()
+        scope.launch {
+            repeat(ANNOUNCE_ADMISSION_ATTEMPTS) {
+                val previous = synchronized(lock) { runJob }
+                previous?.cancelAndJoin()
+                when (beginRun(activation = null, settings(), null, announcement)) {
+                    RunAdmission.STARTED -> return@launch
+                    RunAdmission.BUSY -> Unit
+                    else -> return@launch announcement.done()
+                }
+            }
+            announcement.done()
+        }
+    }
+
+    /**
      * Returns false when the run was refused: one is already in flight, the coordinator has stood
      * down or shut down, the setting is off, or the caller belongs to a superseded listener. The
      * admission decision is taken inside the lock so a callback cannot pass a check that a concurrent
      * stop has already invalidated.
      */
-    private fun beginRun(activation: WakeWordActivation?, current: VoiceSettings, generation: Long?): RunAdmission {
-        val mic = obtainSource() ?: return RunAdmission.NOT_ELIGIBLE
+    private fun beginRun(
+        activation: WakeWordActivation?,
+        current: VoiceSettings,
+        generation: Long?,
+        announcement: VoiceAnnouncement? = null,
+    ): RunAdmission {
+        // Playing an announcement needs no microphone; listening afterwards does.
+        val listens = announcement == null || announcement.listenAfter
+        val mic = obtainSource()
+        if (listens && mic == null) return RunAdmission.NOT_ELIGIBLE
         synchronized(lock) {
             if (closed.get()) return RunAdmission.NOT_ELIGIBLE
             if (runJob != null) return RunAdmission.BUSY
             if (generation != null && (generation != engineGeneration || !armed)) return RunAdmission.NOT_ELIGIBLE
-            if (!current.enabled) return RunAdmission.NOT_ELIGIBLE
-            if (!claimForegroundLocked()) {
+            if (listens && !current.enabled) return RunAdmission.NOT_ELIGIBLE
+            if (listens && !claimForegroundLocked()) {
                 state.set(VoiceState.ERROR)
                 return RunAdmission.FOREGROUND_REFUSED
             }
@@ -275,7 +351,16 @@ class VoiceAssistantCoordinator internal constructor(
             runJob = scope.launch {
                 var failed = false
                 try {
-                    failed = !converse(mic, activation, current)
+                    if (announcement != null) {
+                        state.set(VoiceState.RESPONDING)
+                        val played = runCatching {
+                            announcement.preannounceUrl?.let { playback.play(it) }
+                            playback.play(announcement.url)
+                        }
+                        announcement.done()
+                        played.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+                    }
+                    if (listens && mic != null) failed = !converse(mic, activation, current)
                 } finally {
                     synchronized(lock) {
                         // This run is the only one the coordinator has admitted, so its cleanup owns
@@ -307,12 +392,11 @@ class VoiceAssistantCoordinator internal constructor(
 
     /** Returns false when the exchange ended in a reportable error. */
     private suspend fun converse(mic: MicrophoneSource, activation: WakeWordActivation?, current: VoiceSettings): Boolean {
-        var request = AssistRunRequest(
-            pipelineId = current.pipelineFor(activation?.modelId),
-            wakeWordPhrase = activation?.phrase,
-        )
+        var request = VoiceTurnRequest(activation?.modelId, heardAtNs = activation?.heardAtNs ?: 0L)
         var turns = 0
         while (true) {
+            // Cued first, so the listening tint that the state change raises already has this pipeline's colour.
+            attention(request.wakeWordId ?: current.wakeWords.firstOrNull())
             state.set(VoiceState.LISTENING)
             val outcome = runnerFactory().run(
                 request,
@@ -334,7 +418,7 @@ class VoiceAssistantCoordinator internal constructor(
             if (error != null) return error.silent
             turns += 1
             if (!outcome.continueConversation || turns >= maxConversationTurns) return true
-            request = request.copy(conversationId = outcome.conversationId, wakeWordPhrase = null)
+            request = request.copy(continued = true, heardAtNs = 0L)
         }
     }
 
@@ -400,5 +484,6 @@ class VoiceAssistantCoordinator internal constructor(
         const val DEFAULT_FOREGROUND_RETRY_MS = 5 * 60_000L
         const val DEFAULT_CLOSE_TIMEOUT_MS = 2_000L
         const val DEFAULT_MAX_CONVERSATION_TURNS = 5
+        private const val ANNOUNCE_ADMISSION_ATTEMPTS = 3
     }
 }

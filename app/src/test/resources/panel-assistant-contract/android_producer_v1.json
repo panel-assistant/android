@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "a4ce8c6b231dc8a116f3acc8f50dfec0c9d53fe0",
+  "sourceRevision": "f4e17d2a63f6918511904b5ed6d6bacf4c59e2c2",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -117,21 +117,22 @@
         "id": 1,
         "type": "panel_assistant/hello",
         "protocol": {
-          "min": 1,
-          "max": 2
+          "min": 3,
+          "max": 3
         },
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "app": {
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "2700d1525aa3373f316935b3ba8ea593fca486d0095ca79937ce59ca9f098dda",
+        "contract_digest": "29d65178c4cd01bd7e5200e4303ca1e61751f78c4e76772b41f07f19197fa479",
         "capabilities": [
           "state",
           "commands",
           "approval",
           "mqtt_withdraw",
-          "embed_proof"
+          "embed_proof",
+          "voice"
         ],
         "channels": [
           {
@@ -721,6 +722,24 @@
       "step": null
     },
     {
+      "channel": "reboot",
+      "platform": "button",
+      "translation_key": "reboot",
+      "unique_suffix": "reboot",
+      "family": null,
+      "index": null,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": "restart",
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
       "channel": "relay1",
       "platform": "switch",
       "translation_key": "relay",
@@ -745,6 +764,24 @@
       "unique_suffix": "relay64",
       "family": "relay",
       "index": 64,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": null,
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
+      "channel": "reload",
+      "platform": "button",
+      "translation_key": "reload",
+      "unique_suffix": "reload",
+      "family": null,
+      "index": null,
       "entity_category": null,
       "enabled_default": true,
       "device_class": null,
@@ -959,49 +996,6 @@
       "state_class": null,
       "force_update": false,
       "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "voice_enabled",
-      "platform": "switch",
-      "translation_key": "voice_enabled",
-      "unique_suffix": "voice_assistant",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "voice_state",
-      "platform": "sensor",
-      "translation_key": "voice_state",
-      "unique_suffix": "voice_state",
-      "family": null,
-      "index": null,
-      "entity_category": "diagnostic",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": [
-        "off",
-        "idle",
-        "listening",
-        "processing",
-        "responding",
-        "error"
-      ],
       "min": null,
       "max": null,
       "step": null

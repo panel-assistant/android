@@ -48,7 +48,7 @@ class VoiceAssistantCoordinatorTest {
     private var teardownGate: CompletableDeferred<Unit>? = null
 
     private inner class ScriptedRunner : AssistRunner {
-        val requests = CopyOnWriteArrayList<AssistRunRequest>()
+        val requests = CopyOnWriteArrayList<VoiceTurnRequest>()
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<AssistOutcome>()
         /** Completed once this run has fully unwound, including its capture attachment. */
@@ -67,7 +67,7 @@ class VoiceAssistantCoordinatorTest {
         fun speak(url: String = "/api/tts_proxy/x.mp3") = runBlocking { playbackHandle?.play(url) }
 
         override suspend fun run(
-            request: AssistRunRequest,
+            request: VoiceTurnRequest,
             attachAudio: (PcmConsumer) -> AutoCloseable,
             playback: AssistPlayback,
         ): AssistOutcome {
@@ -89,7 +89,16 @@ class VoiceAssistantCoordinatorTest {
     }
 
     private val runners = CopyOnWriteArrayList<ScriptedRunner>()
-    private val playback = AssistPlayback { state.set(VoiceState.RESPONDING) }
+    private val played = CopyOnWriteArrayList<String>()
+    private val pausedWhilePlaying = CopyOnWriteArrayList<Boolean>()
+    private val playback = AssistPlayback { url ->
+        played += url
+        mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
+        state.set(VoiceState.RESPONDING)
+    }
+
+    /** Each cue's wake word, with the phase the panel was in when it was cued. */
+    private val cues = java.util.Collections.synchronizedList(mutableListOf<Pair<String?, VoiceState>>())
 
     private fun coordinator(retryMs: Long = 60_000, maxTurns: Int = 5) = VoiceAssistantCoordinator(
         scope = scope,
@@ -103,6 +112,7 @@ class VoiceAssistantCoordinatorTest {
         state = state,
         foregroundRetryMs = retryMs,
         maxConversationTurns = maxTurns,
+        attention = { wakeWordId -> cues += wakeWordId to state.current() },
     )
 
     @After
@@ -164,13 +174,12 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `an activation pauses the wake lease, runs the mapped pipeline with the phrase, then resumes`() {
+    fun `an activation pauses the wake lease, runs a turn for its wake word, then resumes`() {
         val c = coordinator()
         c.start()
-        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
+        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis", heardAtNs = 42L))
         val runner = awaitRunner(0)
-        assertEquals("pipe-2", runner.requests.single().pipelineId)
-        assertEquals("hey jarvis", runner.requests.single().wakeWordPhrase)
+        assertEquals(VoiceTurnRequest("hey_jarvis", continued = false, heardAtNs = 42L), runner.requests.single())
         assertTrue(mic.leases[0].paused)
         assertEquals(MicPurpose.ASSIST, mic.leases[1].purpose)
         assertEquals(VoiceState.LISTENING, state.current())
@@ -222,17 +231,6 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `an unmapped wake word runs the preferred pipeline`() {
-        val c = coordinator()
-        c.start()
-        engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
-        val runner = awaitRunner(0)
-        assertNull(runner.requests.single().pipelineId)
-        runner.release.complete(AssistOutcome())
-        awaitState(VoiceState.IDLE)
-    }
-
-    @Test
     fun `a second activation during a run is ignored`() {
         val c = coordinator()
         c.start()
@@ -246,15 +244,14 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `a continued conversation carries the id and stops at the turn bound`() {
+    fun `a continued conversation keeps its wake word, is not woken again, and stops at the turn bound`() {
         val c = coordinator(maxTurns = 2)
         c.start()
         engines.single().onActivation(WakeWordActivation("okay_nabu", "okay nabu"))
         val first = awaitRunner(0)
         first.release.complete(AssistOutcome(conversationId = "conv-1", continueConversation = true))
         val second = awaitRunner(1)
-        assertEquals("conv-1", second.requests.single().conversationId)
-        assertNull(second.requests.single().wakeWordPhrase)
+        assertEquals(VoiceTurnRequest("okay_nabu", continued = true), second.requests.single())
         second.release.complete(AssistOutcome(conversationId = "conv-1", continueConversation = true))
         awaitState(VoiceState.IDLE)
         assertEquals(2, runners.size)
@@ -504,14 +501,86 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
-    fun `settings parsing tolerates malformed json and caps active wake words`() {
+    fun `settings parsing tolerates malformed json and keeps every wake word`() {
         val parsed = VoiceSettings.parse(true, "[\"okay_nabu\",\"hey_jarvis\",\"alexa\"]", "{\"hey_jarvis\":\"p2\",\"alexa\":\"\"}")
-        assertEquals(listOf("okay_nabu", "hey_jarvis"), parsed.wakeWords)
-        assertEquals("p2", parsed.pipelineFor("hey_jarvis"))
-        assertNull(parsed.pipelineFor("alexa"))
-        assertNull(parsed.pipelineFor("okay_nabu"))
+        assertEquals(listOf("okay_nabu", "hey_jarvis", "alexa"), parsed.wakeWords)
+        assertEquals(mapOf("hey_jarvis" to "p2", "alexa" to ""), parsed.pipelines)
         val broken = VoiceSettings.parse(true, "not json", "[1,2]")
         assertTrue(broken.wakeWords.isEmpty())
         assertTrue(broken.pipelines.isEmpty())
+    }
+
+    @Test
+    fun `an announcement plays its chime then its message with the listener paused, then reports it played`() {
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("message.mp3", "chime.mp3", listenAfter = false) { done.complete(Unit) })
+        runBlocking { withTimeout(2_000) { done.await() } }
+        awaitRunFinished(c)
+        assertEquals(listOf("chime.mp3", "message.mp3"), played)
+        assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
+        assertFalse(mic.leases[0].paused)
+        assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `start conversation listens after the announcement, with no wake word`() {
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { done.complete(Unit) })
+        val runner = awaitRunner(0)
+        assertTrue(done.isCompleted)
+        assertEquals(listOf("question.mp3"), played)
+        assertEquals(VoiceTurnRequest(null), runner.requests.single())
+        runner.release.complete(AssistOutcome())
+        awaitState(VoiceState.IDLE)
+    }
+
+    @Test
+    fun `an announcement plays with the assistant off and never opens the microphone`() {
+        settings = settings.copy(enabled = false)
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("message.mp3", null, listenAfter = false) { done.complete(Unit) })
+        runBlocking { withTimeout(2_000) { done.await() } }
+        awaitRunFinished(c)
+        assertEquals(listOf("message.mp3"), played)
+        assertTrue(mic.leases.isEmpty())
+        assertTrue(foregroundCalls.none { it })
+    }
+
+    @Test
+    fun `a conversation Home Assistant starts while the assistant is off is still answered`() {
+        settings = settings.copy(enabled = false)
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) { done.complete(Unit) })
+        runBlocking { withTimeout(2_000) { done.await() } }
+        assertTrue("an off assistant never listens", mic.leases.isEmpty())
+        assertTrue(runners.isEmpty())
+    }
+
+    /**
+     * The listening tint takes its colour from the pipeline, which is named by the wake word; so each cue
+     * names the wake word, a conversation Home Assistant started names the first armed one (whose pipeline
+     * speaks it), and the cue comes before the listening phase that raises the tint.
+     */
+    @Test
+    fun `each cue names the wake word whose pipeline listens, before the listening phase shows`() {
+        settings = settings.copy(wakeWords = listOf("okay_nabu", "hey_jarvis"))
+        val c = coordinator()
+        c.start()
+        engines.single().onActivation(WakeWordActivation("hey_jarvis", "hey jarvis"))
+        awaitRunner(0).release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true) {})
+        awaitRunner(1).release.complete(AssistOutcome())
+        awaitRunFinished(c)
+        assertEquals(listOf("hey_jarvis", "okay_nabu"), cues.map { it.first })
+        assertTrue("cued after listening began: ${cues.map { it.second }}", cues.none { it.second == VoiceState.LISTENING })
     }
 }

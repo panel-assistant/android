@@ -41,6 +41,9 @@ internal interface PanelAssistantTransportConnection {
     suspend fun receive(timeoutMs: Long): String?
 
     suspend fun close()
+
+    /** One binary frame: a voice turn's handler byte and its PCM. Safe beside [send] from another coroutine. */
+    suspend fun sendBinary(bytes: ByteArray): Unit = throw UnsupportedOperationException("binary frames")
 }
 
 internal fun interface PanelAssistantTransportConnector {
@@ -182,6 +185,8 @@ internal class PanelAssistantTransportOwner(
     private val onMqttDiscovery: (String) -> Unit = {},
     /** Holds the sidebar proof key for the live session; null offers no `embed_proof`. */
     private val embedKeys: io.github.maxlyth.hapaneld.http.EmbedProofKeyring? = null,
+    /** The Assist satellite; null, or one reporting no configuration, offers no `voice`. */
+    private val voice: PanelAssistantVoice? = null,
 ) : AutoCloseable {
     private val lock = Any()
     private val releaseLock = Any()
@@ -328,6 +333,7 @@ internal class PanelAssistantTransportOwner(
                                 PanelAssistantTransportProtocol.CAPABILITY_MQTT_WITHDRAW -> true
                                 // Proofs are verified by the web server, whatever else the session carries.
                                 PanelAssistantTransportProtocol.CAPABILITY_EMBED_PROOF -> embedKeys != null
+                                PanelAssistantTransportProtocol.CAPABILITY_VOICE -> voice?.offered() == true
                                 else -> commands != null
                             }
                         }
@@ -374,13 +380,18 @@ internal class PanelAssistantTransportOwner(
                                 if (embed != null && did != null) {
                                     embedKeys?.install(io.github.maxlyth.hapaneld.http.EmbedProofKey(embed.keyId, embed.key(), did))
                                 }
+                                val speaking = voice?.takeIf {
+                                    PanelAssistantTransportProtocol.CAPABILITY_VOICE in outcome.session.capabilities
+                                }
                                 val reason = try {
                                     if (reporting != null && !observeForHello()) {
                                         throw PanelAssistantProtocolException("panel state owner changed during hello")
                                     }
                                     reporting?.open(described)
-                                    holdSession(opened, outcome.session, reporting, commanding, withdrawAfterSync)
+                                    speaking?.open(opened, outcome.session.token, session.baseUrl)
+                                    holdSession(opened, outcome.session, reporting, commanding, withdrawAfterSync, speaking)
                                 } finally {
+                                    speaking?.close()
                                     // The key belongs to this session: once it ends no proof verifies.
                                     if (embed != null) embedKeys?.clear(embed.keyId)
                                     commanding?.close()
@@ -505,6 +516,7 @@ internal class PanelAssistantTransportOwner(
         reporting: PanelAssistantShadowReporter?,
         commanding: PanelAssistantCommandProcessor?,
         withdrawAfterSync: Boolean,
+        speaking: PanelAssistantVoice?,
     ): String = coroutineScope {
         val frames = Channel<String>(Channel.UNLIMITED)
         val reader = launch {
@@ -518,7 +530,7 @@ internal class PanelAssistantTransportOwner(
             }
         }
         try {
-            sessionLoop(connection, session, reporting, commanding, frames, withdrawAfterSync)
+            sessionLoop(connection, session, reporting, commanding, frames, withdrawAfterSync, speaking)
         } finally {
             reader.cancel()
         }
@@ -531,6 +543,7 @@ internal class PanelAssistantTransportOwner(
         commanding: PanelAssistantCommandProcessor?,
         frames: Channel<String>,
         withdrawAfterSync: Boolean,
+        speaking: PanelAssistantVoice?,
     ): String {
         var nextMessageId = HELLO_ID + 1
         // A withdrawal still owed to the bridge once this session's full sync is acknowledged.
@@ -572,6 +585,12 @@ internal class PanelAssistantTransportOwner(
                     continue
                 }
             }
+            val spoken = speaking?.next(nextMessageId)
+            if (spoken != null) {
+                connection.send(spoken)
+                nextMessageId++
+                continue
+            }
             if (reporting != null) {
                 reporting.expire(now)
                 if (reporting.descriptorsChanged()) return REASON_DESCRIPTORS_CHANGED
@@ -588,10 +607,12 @@ internal class PanelAssistantTransportOwner(
                 reporting?.wake?.onReceive { null }
                 commanding?.wake?.onReceive { null }
                 restartWake.onReceive { null }
+                speaking?.wake?.onReceive { null }
                 onTimeout((due - now).coerceAtLeast(0L)) { null }
             } ?: continue
             pongDeadline = null
             val frame = parse(text)
+            if (speaking != null && speaking.onFrame(frame, HELLO_ID)) continue
             when (val event = PanelAssistantTransportProtocol.sessionEvent(frame, HELLO_ID)) {
                 is PanelAssistantSessionEvent.Closed -> return event.reason
                 is PanelAssistantSessionEvent.Command ->

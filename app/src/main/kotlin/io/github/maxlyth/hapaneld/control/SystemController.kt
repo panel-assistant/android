@@ -4,15 +4,20 @@ import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.RendererResolver
+import io.github.maxlyth.hapaneld.platform.ActivityRef
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.RootShell
 import io.github.maxlyth.hapaneld.platform.SystemEnv
 import io.github.maxlyth.hapaneld.util.AndroidInput
+import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.HelperClient
 
 /** Foreground/liveness state of the dashboard app, as seen by the app watchdog. */
 enum class AppState { FG, BG, DEAD, UNKNOWN }
+
+/** Fresh HOME/foreground evidence requested by an installer after a package replacement. */
+data class HomeUiProof(val state: String, val reason: String, val evidence: String)
 
 /**
  * Panel-level actions: reload the dashboard, bring a launcher / the dashboard to the foreground,
@@ -41,6 +46,12 @@ class SystemController(
     private val beforeReboot: () -> Unit = {},
 ) {
 
+    // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
+    // executable routes; the production su probe stays isolated from the persistent control shell.
+    private val privilegedRouteAvailable = Cached(60_000L) {
+        daemon.available() || if (root === Su) Su.availableCachedIsolated() else root.available()
+    }
+
     // Drift checks run repeatedly. Retain only the currently missing target so a recovered alias can
     // report again if it becomes unavailable later, without turning a steady state into log noise.
     private var missingHomeTarget: String? = null
@@ -66,9 +77,14 @@ class SystemController(
      * [component] via [privilegedStart] and, only when that fails outright, fall back to a direct
      * (pre-BAL) start — then log the resolved target under [label]. A BLOCKED (helper BUSY) result
      * deliberately does NOT fall back: the daemon owns that safety boundary. */
-    private fun launchComponent(component: String, label: String) {
-        if (privilegedStart(component) == PrivilegedStartResult.FAILED) env.directStart(component)
-        Log.i(TAG, "$label -> $component")
+    private fun launchComponent(component: String, label: String): Boolean {
+        val started = when (privilegedStart(component)) {
+            PrivilegedStartResult.STARTED -> true
+            PrivilegedStartResult.BLOCKED -> false
+            PrivilegedStartResult.FAILED -> env.directStart(component)
+        }
+        if (started) Log.i(TAG, "$label -> $component")
+        return started
     }
 
     /**
@@ -87,7 +103,7 @@ class SystemController(
         return when (privilegedStart(component)) {
             PrivilegedStartResult.STARTED -> true
             PrivilegedStartResult.BLOCKED -> false
-            PrivilegedStartResult.FAILED -> runCatching { env.directStart(component); true }.getOrDefault(false)
+            PrivilegedStartResult.FAILED -> runCatching { env.directStart(component) }.getOrDefault(false)
         }
     }
 
@@ -96,6 +112,9 @@ class SystemController(
      *  package (e.g. for perf attribution), and letting it fall through to the foreign-app paths would
      *  `am force-stop` ha-paneld itself — killing the service, MQTT and the web UI. */
     private fun isBuiltin(pkg: String) = isBuiltinSelection(pkg, env.ownPackage)
+
+    private fun isSystemFallbackHome(home: ActivityRef?): Boolean =
+        home?.let { it.pkg == "com.android.settings" && it.cls.endsWith("FallbackHome") } == true
 
     /** Renderer-kind query for recovery policy routing. Resolution stays here so the watchdog cannot
      *  drift from launch/state handling for blank or own-package aliases. */
@@ -106,12 +125,12 @@ class SystemController(
      *  relaunch reaches onNewIntent, which only reloads when [BuiltinDashboard.requestExplicitReload] was set).
      *  Refuses while the renderer is crash-latched so the kiosk/watchdog return loops can't churn a
      *  crash-looping WebView; an explicit reload clears the latch first and always proceeds. */
-    private fun startBuiltin() {
+    private fun startBuiltin(): Boolean {
         if (BuiltinDashboard.rendererLatched(SystemClock.elapsedRealtime())) {
             Log.w(TAG, "builtin renderer crash-latched — refusing automatic relaunch (explicit reload clears it)")
-            return
+            return false
         }
-        launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
+        return launchComponent(AppIdentity.component(env.ownPackage, ".DashboardActivity"), "builtin dashboard")
     }
 
     /** Configured dashboard package, or the automatic built-in renderer for a blank selection. The
@@ -124,24 +143,25 @@ class SystemController(
 
     /** Force-stop the dashboard and relaunch it. [reason], when given, is announced on the panel first
      *  so a deliberate reset can never be mistaken for a crash. */
-    fun reloadDashboard(dashboardPkg: String, reason: String = "") {
+    fun reloadDashboard(dashboardPkg: String, reason: String = ""): Boolean {
         val pkg = resolveDashboard(dashboardPkg)
         if (CompanionDataOperationGate.blocks(pkg)) {
             Log.i(TAG, "dashboard reload suppressed while Companion data operation owns $pkg")
-            return
+            return false
         }
         // Built-in renderer: an explicit reload clears any crash latch (deliberate retry consent), flags
         // the relaunch as reload-intent, and reaches onNewIntent → fresh page load.
         if (isBuiltin(pkg)) {
             BuiltinDashboard.requestExplicitReload(reason)
-            startBuiltin()
-            return
+            val started = startBuiltin()
+            if (!started) BuiltinDashboard.consumeSupersededReload()
+            return started
         }
-        if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return }
+        if (!AndroidInput.isPackage(pkg)) { Log.w(TAG, "reload: invalid or missing dashboard package"); return false }
         val daemonReply = daemon.send("RELOAD $pkg")
         if (daemonReply == "BUSY") {
             Log.i(TAG, "dashboard reload refused while helper owns Companion data")
-            return
+            return false
         }
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) { daemonReply == "OK" },
@@ -150,8 +170,8 @@ class SystemController(
                 val comp = env.launchComponent(pkg)
                 if (comp == null) return@EffectAttempt root.run("monkey -p $pkg 1")
                 when (privilegedStart(comp)) {
-                    PrivilegedStartResult.STARTED,
-                    PrivilegedStartResult.BLOCKED -> true
+                    PrivilegedStartResult.STARTED -> true
+                    PrivilegedStartResult.BLOCKED -> false
                     PrivilegedStartResult.FAILED -> root.run("monkey -p $pkg 1")
                 }
             },
@@ -161,7 +181,17 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reload via su fallback ($pkg)")
             else -> Log.w(TAG, "reload: helper and su both failed")
         }
+        return route != null
     }
+
+    /** A built-in reload uses this app; an external renderer needs one of the existing privileged routes. */
+    fun canReloadDashboard(dashboardPkg: String): Boolean {
+        val pkg = resolveDashboard(dashboardPkg)
+        return isBuiltin(pkg) || AndroidInput.isPackage(pkg) && privilegedRouteAvailable.get()
+    }
+
+    /** The same helper and root routes [reboot] will try. */
+    fun canReboot(): Boolean = privilegedRouteAvailable.get()
 
     /**
      * Bring a launcher (home screen) to the foreground — for panels with no physical home button.
@@ -305,10 +335,10 @@ class SystemController(
      * The side effect: Android **clears the default-home association** whenever a package adds or changes
      * a HOME activity (i.e. every ha-paneld install/update) — after which pressing Home pops a chooser
      * instead of booting straight to the dashboard. So on boot we re-assert the dashboard app as the
-     * default home when home is unowned (the system resolver), owned by *us*, or still assigned to a
-     * supported Companion renderer ha-paneld previously selected. A deliberate third-party launcher set
-     * as home is left alone. If the dashboard app isn't installed we do nothing, leaving our admin launcher
-     * as the genuine last-resort home.
+     * default home when home is unowned (the system resolver or Settings FallbackHome), owned by *us*,
+     * or still assigned to a supported Companion renderer ha-paneld previously selected. A deliberate
+     * third-party launcher set as home is left alone. If the dashboard app isn't installed we do
+     * nothing, leaving our admin launcher as the genuine last-resort home.
      */
     fun ensureDashboardHome(dashboardPkg: String, builtinReady: Boolean = true) {
         val target = resolveDashboard(dashboardPkg)
@@ -316,11 +346,13 @@ class SystemController(
         // else DashboardActivity would be the home yet immediately hand off, churning HOME needlessly.
         if (isBuiltin(target)) { missingHomeTarget = null; if (builtinReady) ensureBuiltinHome(); return }
         if (target.isBlank()) { missingHomeTarget = null; Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
-        val current = env.defaultHome()?.pkg
+        val currentHome = env.defaultHome()
+        val current = currentHome?.pkg
         if (current == target) { missingHomeTarget = null; return }     // already correct
         // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
         // may previously have assigned, so switching between installed renderer variants must reclaim it.
-        if (current != null && current != "android" && current != env.ownPackage && current !in KNOWN_RENDERER_HOMES) {
+        if (current != null && current != "android" && current != env.ownPackage &&
+            current !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(currentHome)) {
             missingHomeTarget = null
             return
         }
@@ -337,9 +369,10 @@ class SystemController(
 
     /** Make our built-in DashboardActivity the default home (parity with the Companion path): so the
      *  panel boots to it, the Home key returns to it, and it self-heals as a home app. Reclaims from an
-     *  unowned ("android") resolver, ourselves, or a known dashboard renderer that ha-paneld itself set
-     *  as home (the Companion — [ensureDashboardHome] made it the default on every existing panel, so
-     *  switching to the built-in renderer must be able to take HOME back from it). A genuinely
+     *  unowned ("android") resolver, Settings FallbackHome, ourselves, or a known dashboard renderer
+     *  that ha-paneld itself set as home (the Companion — [ensureDashboardHome] made it the default
+     *  on every existing panel, so switching to the built-in renderer must be able to take HOME back
+     *  from it). A genuinely
      *  third-party launcher the user chose is still left alone. */
     private fun ensureBuiltinHome() {
         val comp = env.homeActivities().firstOrNull { it.pkg == env.ownPackage && it.cls.endsWith("DashboardActivity") }?.component
@@ -347,7 +380,8 @@ class SystemController(
         val current = env.defaultHome()
         if (current?.component == comp) return                           // already correct
         val curPkg = current?.pkg
-        if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage && curPkg !in KNOWN_RENDERER_HOMES) return
+        if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage &&
+            curPkg !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(current)) return
         Log.i(TAG, "ensureHome(builtin): default home was '${current?.component}' -> $comp")
         setHomeActivity(comp)
     }
@@ -404,6 +438,33 @@ class SystemController(
         )?.value ?: AppState.UNKNOWN
     }
 
+    /** A healthy service is not proof that the panel left Android's HOME chooser. */
+    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean): HomeUiProof {
+        val home = env.defaultHome()
+        if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
+            return HomeUiProof("blocked", "home_resolver", "home_resolve")
+        }
+        if (isSystemFallbackHome(home)) {
+            return HomeUiProof("blocked", "home_fallback", "home_resolve")
+        }
+        if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
+        if (home == null) return HomeUiProof("unknown", "home_unresolved", "home_resolve")
+        val target = resolveDashboard(dashboardPkg)
+        val builtin = isBuiltin(target)
+        val expectedHome = if (builtin) env.ownPackage else target
+        // Existing HOME policy preserves a deliberate foreign launcher, but reclaims our own
+        // launcher or an old Companion renderer when the configured dashboard has changed.
+        if (home.pkg != expectedHome && (home.pkg == env.ownPackage || home.pkg in KNOWN_RENDERER_HOMES)) {
+            return HomeUiProof("blocked", "home_mismatch", "home_resolve")
+        }
+        val evidence = if (builtin) "builtin_lifecycle" else "dashboard_appstate"
+        return when (dashboardState(dashboardPkg)) {
+            AppState.FG -> HomeUiProof("ready", "dashboard_foreground", evidence)
+            AppState.BG, AppState.DEAD -> HomeUiProof("blocked", "dashboard_background", evidence)
+            AppState.UNKNOWN -> HomeUiProof("unknown", "dashboard_unobserved", evidence)
+        }
+    }
+
     /**
      * The package currently holding window focus, or null when it cannot be established.
      *
@@ -442,7 +503,7 @@ class SystemController(
      * accepted as the best evidence that helper can give — so an older helper behaves exactly as
      * before rather than losing its reboot.
      */
-    fun reboot() {
+    fun reboot(): Boolean {
         beforeReboot()
         val route = ShortOperationRouter.effect(
             EffectAttempt(PrivilegeRoute.DAEMON) {
@@ -459,6 +520,7 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reboot via su fallback")
             else -> Log.w(TAG, "reboot: helper and su both unavailable, or neither could reboot the panel")
         }
+        return route != null
     }
 
     companion object {

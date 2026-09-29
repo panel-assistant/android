@@ -59,7 +59,8 @@ class PaneldServerBackupRestoreRoutesTest {
                 assertEquals(response.bodyAsText(), HttpStatusCode.OK, response.status)
                 val body = JSONObject(response.bodyAsText())
                 assertEquals(true, body.getBoolean("dry_run"))
-                assertEquals(27, body.getInt("config_keys"))
+                // Current migrations retire two voice exposure defaults and add the touch-delay setting.
+                assertEquals(26, body.getInt("config_keys"))
                 assertEquals("source", body.getString("panel_id"))
                 assertEquals(false, body.getBoolean("state_unavailable"))
                 assertEquals("contract-panel", fixture.config.panelId)

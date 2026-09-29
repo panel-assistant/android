@@ -37,6 +37,7 @@ internal fun managementStatusJson(
     renderer: () -> RendererAdmissionPresentation,
     camera: () -> CameraPresentation,
     databaseObservationNonce: String?,
+    homeProof: (() -> String)? = null,
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
     // set as the dashboard banner + Install tab (HealthAudit); the audit lists ALL available updates
@@ -112,12 +113,14 @@ internal fun managementStatusJson(
     val storageProof = databaseObservationNonce?.let {
         "\"database_observation_nonce\":${jsonStr(it)},"
     }.orEmpty()
+    val homeProofJson = homeProof?.let { "\"home_ui\":${it()}," }.orEmpty()
     val presentationOverlay = installWarningPresentationsJson(warns, warningPresentations)
         ?.let { "\"warning_presentations\":$it," }
         .orEmpty()
     return "{\"warnings\":[${warns.joinToString(",") { jsonStr(it) }}]," + presentationOverlay +
         "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege)}," +
         storageProof +
+        homeProofJson +
         "\"panel_assistant_update\":${UpdateChecker.panelAssistantUpdateJson(currentUpdates)}," +
         // Additive, presentation-only, and read from state the panel already holds.
         "\"panel_assistant_device\":${
@@ -137,6 +140,10 @@ internal fun managementStatusJson(
         "\"camera\":${camera().statusJson()}," +
         "\"power_safety\":${PowerSafetyPresentation.json(powerAdvisory)}}"
 }
+
+/** Wire projection of the system controller\'s HOME observation. */
+internal fun homeUiProofJson(state: String, reason: String, evidence: String): String =
+    "{\"state\":${jsonStr(state)},\"reason\":${jsonStr(reason)},\"evidence\":${jsonStr(evidence)}}"
 
 /** A health finding as a one-line HTML warning for GET /api/v1/status (no Ignore button; updates keep
  *  a direct download link — this is the machine-readable audit, not the dashboard banner). */
