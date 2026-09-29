@@ -130,6 +130,4 @@ internal class DashboardRows(
     }
 
 
-    /** Visible "this needs root" banner for a root-gated card/control group — shown (never hidden) so a
-     *  no-root user sees the feature and what root would unlock, next to controls rendered disabled. */
 }
