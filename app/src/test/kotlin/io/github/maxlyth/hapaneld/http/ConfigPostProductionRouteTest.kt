@@ -58,6 +58,102 @@ import kotlin.test.assertTrue
 
 class ConfigPostProductionRouteTest {
 
+    @Test fun `full mount config reads redact secrets preserve source separation and localize schema`() =
+        withFullReadServer { config, fixture ->
+            config.setMqtt("", "reader", "private-test-password")
+            setField(fixture.server, "configLiveValues", { mapOf("keep_awake" to "false") })
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.get("/api/v1/config")
+                assertEquals(HttpStatusCode.OK, response.status)
+                assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+                val body = JSONObject(response.bodyAsText())
+                assertTrue(body.getBoolean("mqtt_password_set"))
+                assertEquals("", body.getJSONObject("settings").getString("mqtt_password"))
+                assertEquals(config.keepAwake, body.getJSONObject("settings").getBoolean("keep_awake"))
+                val exported = ConfigBundle.parse(client.get("/api/v1/config/export").bodyAsText())!!
+                assertEquals("false", exported.values["keep_awake"])
+
+                val schema = client.get("/api/v1/config/schema?lang=de")
+                assertEquals(HttpStatusCode.OK, schema.status)
+                assertEquals("no-store", schema.headers[HttpHeaders.CacheControl])
+                assertEquals(HttpHeaders.AcceptLanguage, schema.headers[HttpHeaders.Vary])
+                assertTrue(schema.headers[HttpHeaders.ContentLanguage].orEmpty().contains("de"))
+                val entries = JSONArray(schema.bodyAsText())
+                val friendly = (0 until entries.length()).map(entries::getJSONObject)
+                    .single { it.getString("key") == "friendly_name" }
+                assertEquals("de", friendly.getString("labelLanguage"))
+                val refused = client.get("/api/v1/config") { header(HttpHeaders.Host, "foreign.example") }
+                assertEquals(HttpStatusCode.Forbidden, refused.status)
+            }
+        }
+
+    @Test fun `full mount config metadata reads expose discovery without overwriting configured targets`() =
+        withFullReadServer { config, fixture ->
+            var discoveries = 0
+            setField(fixture.server, "configDiscoverySuggestions", {
+                discoveries++
+                ConfigDiscoverySuggestions(mqttBroker = "mqtt.test", haUrl = "http://ha.test")
+            })
+            testApplication {
+                application { fixture.mount(this) }
+                val catalog = client.get("/api/v1/config/home-dashboards")
+                assertEquals(HttpStatusCode.OK, catalog.status)
+                val dashboards = JSONObject(catalog.bodyAsText())
+                assertEquals(false, dashboards.getBoolean("queried"))
+                assertEquals(0, dashboards.getJSONArray("items").length())
+                assertEquals(false, dashboards.getJSONObject("default").getBoolean("explicit"))
+                val found = JSONObject(client.get("/api/v1/config/discovery").bodyAsText())
+                assertEquals("mqtt.test", found.getString("mqtt_broker"))
+                assertEquals("http://ha.test", found.getString("ha_url"))
+                assertEquals("", config.mqttBroker)
+                assertEquals("", config.haUrl)
+                config.setMqtt("configured.test", "", "")
+                config.setHaConnection("http://configured.test", null)
+                val configured = JSONObject(client.get("/api/v1/config/discovery").bodyAsText())
+                assertEquals("", configured.getString("mqtt_broker"))
+                assertEquals("", configured.getString("ha_url"))
+                assertEquals(1, discoveries)
+            }
+        }
+
+    private fun withFullReadServer(block: (Config, PaneldServerHttpFixture) -> Unit) =
+        withRouteConfig { config, _, server, _ ->
+            PaneldServerHttpFixture().use { fixture ->
+                // Reuse the existing real Config/projection collaborators inside the complete root mount.
+                for (name in listOf(
+                    "config", "system", "sensors", "pendingLiveSettings", "stalledLiveSettings",
+                    "configLiveValues", "rendererPreparation", "tameReconciliation", "revisions",
+                    "managementObservations", "powerSafety", "stopping", "haArea",
+                )) {
+                    val value = PaneldServer::class.java.getDeclaredField(name).run {
+                        isAccessible = true
+                        get(server)
+                    }
+                    setField(fixture.server, name, value)
+                }
+                // Source-text reason: the shipped catalogue is runtime input, not a source-shape assertion.
+                setField(fixture.server, "catalogueLoader\$delegate", lazyOf(
+                    io.github.maxlyth.hapaneld.i18n.CatalogueLoader { File("src/main/assets", it).readText() },
+                ))
+                val profileType = io.github.maxlyth.hapaneld.device.DeviceProfile::class.java
+                setField(fixture.server, "profile", java.lang.reflect.Proxy.newProxyInstance(
+                    profileType.classLoader, arrayOf(profileType),
+                ) { _, method, _ ->
+                    when (method.name) {
+                        "getManufacturer" -> "Profile maker"
+                        "getModel" -> "Profile model"
+                        else -> error("Unexpected profile access: ${method.name}")
+                    }
+                })
+                val learning = allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java)
+                setField(learning, "config", config)
+                setField(fixture.server, "entityLearning", learning)
+                block(config, fixture)
+            }
+        }
+
+
     @Test fun `production bundle import exports redacted values and revision restore undoes the commit`() =
         withRouteConfig { config, _, server, _ ->
             assertTrue(config.applyBatch { config.setMqtt("", "test-user", "private-test-value") })
