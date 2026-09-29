@@ -10249,9 +10249,9 @@
       "text": "Empfindlichkeit"
     },
     "settings.auto_sleep.help": {
-      "sourceHash": "5061de3660a9fc18a43615782f216134dffef4d62725528ce1d72e3927d878c9",
-      "state": "machine-cross-checked",
-      "text": "Weckt das Panel automatisch bei erkannter Aktivität und schaltet den Bildschirm nach der erlernten Verzögerung aus. Die manuelle Bildschirmsteuerung bleibt davon unabhängig."
+      "text": "Den Bildschirm nach der erlernten Verzögerung des gewählten Anwesenheitsmodus oder der festgelegten Verzögerung bei Berührungsinaktivität ausschalten. Die manuelle Bildschirmsteuerung bleibt separat.",
+      "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
+      "state": "machine-cross-checked"
     },
     "settings.auto_sleep.label": {
       "sourceHash": "69d958fb4d9465ad4a08bcec58dc47971fceba6a8631352203aa884ebd413428",
@@ -10269,13 +10269,13 @@
       "text": "Aktivität des Auto-Ruhemodus"
     },
     "settings.auto_sleep_source.help": {
-      "text": "Verwenden Sie den kalibrierten Näherungssensor des Panels oder Geräte im Home Assistant-Bereich. Ist die gewählte Quelle nicht verfügbar, pausiert der automatische Ruhemodus; die Touchbedienung bleibt verfügbar.",
-      "sourceHash": "0350776edee98aa7748c83872293309856544907f647121be111047fa868e50b",
+      "text": "Den kalibrierten Näherungssensor des Panels, Geräte im Home Assistant-Bereich oder Berührungsinaktivität verwenden. Anwesenheitsmodi pausieren, wenn ihre Quelle nicht verfügbar ist; Berührungsinaktivität benötigt keine Anwesenheitseinrichtung.",
+      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_source.label": {
-      "text": "Anwesenheitsquelle für automatischen Ruhemodus",
-      "sourceHash": "9a054a7f24e839eacfc5c07281e98e4d5ddf2a0772fe4bc13838166a6eaca289",
+      "text": "Aktivitätsquelle für automatischen Ruhezustand",
+      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
@@ -12376,6 +12376,31 @@
     "install.tame.hand_back.warning": {
       "text": "Führe dies aus, bevor du „ha-paneld“ entfernst. Sonst hat das Panel keinen Startbildschirm.",
       "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.fixed_delay": {
+      "text": "Bildschirm nach {count} Sekunden ohne Berührung ausschalten.",
+      "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.source_touch": {
+      "text": "Berührungsinaktivität",
+      "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.touch_help": {
+      "text": "Verwendet Berührungen an diesem Panel. Home Assistant und Anwesenheitssensoren sind nicht erforderlich.",
+      "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_touch_delay_seconds.help": {
+      "text": "Bei Auswahl von Berührungsinaktivität wird der Bildschirm nach dieser Anzahl Sekunden ohne Berührung vollständig ausgeschaltet.",
+      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_touch_delay_seconds.label": {
+      "text": "Verzögerung bei Berührungsinaktivität (Sekunden)",
+      "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
       "state": "machine-cross-checked"
     }
   }
