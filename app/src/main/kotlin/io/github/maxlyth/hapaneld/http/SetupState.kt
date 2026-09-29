@@ -22,7 +22,7 @@ internal class SetupState(
     private val profile: DeviceProfile,
     private val appContext: Context,
     private val mqttState: () -> String,
-    private val haOAuthFlow: HaOAuthFlow,
+    private val haOAuthPending: () -> Int,
     private val lastHaDiscovery: () -> DiscoveryResult,
     private val webViewTooOldOnce: () -> Boolean,
     private val panelAssistantNative: () -> Boolean,
@@ -168,7 +168,7 @@ internal class SetupState(
             panelAssistantNative = panelAssistantNative(),
             haUrl = config.haUrl,
             haCredentialed = config.haToken.isNotBlank() || config.haRefreshToken.isNotBlank(),
-            haOAuthInFlight = haOAuthFlow.pendingCount() > 0,
+            haOAuthInFlight = haOAuthPending() > 0,
             discovery = lastHaDiscovery(),
             // Uses the true engine major from the WebView user agent, not the package stamp, so a panel
             // already swapped to a LineageOS/Cromite build is not accused of being ancient because the
