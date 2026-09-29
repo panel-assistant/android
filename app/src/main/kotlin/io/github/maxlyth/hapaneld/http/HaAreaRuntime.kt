@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.http
 
 import android.util.Log
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.config.isLiteralNullAreaName
 import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
 import io.github.maxlyth.hapaneld.util.Json
 import kotlinx.coroutines.CoroutineScope
@@ -9,6 +10,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+
+/** Share the area presentation for Configure and Setup while retaining raw rows for repair. */
+internal fun haAreaCatalogPresentationJson(catalog: EntityLearningManager.HaAreaCatalog): String {
+    val areas = catalog.areas.filterNot { isLiteralNullAreaName(it.name) }.joinToString(",") { area ->
+        "{\"area_id\":${Json.str(area.areaId)},\"name\":${Json.str(area.name)}," +
+            "\"icon\":${Json.str(area.icon)}}"
+    }
+    val invalidDeviceArea = HaAreaProtocol.hasLiteralNullAssignment(catalog.device, catalog.areas)
+    return "{\"areas\":[$areas],\"device\":{\"found\":${catalog.device.found}," +
+        "\"area_id\":${Json.str(if (invalidDeviceArea) "" else catalog.device.areaId)}," +
+        "\"area_name\":${Json.str(if (invalidDeviceArea) "" else catalog.device.areaName)}}," +
+        "\"admin\":${catalog.admin},\"queried\":${catalog.queried}}"
+}
 
 internal class HaAreaRuntime(
     private val config: Config,
@@ -27,16 +42,10 @@ internal class HaAreaRuntime(
         // pickers whether editing is honest to offer (moving a device is admin-only).
         val snapshot = captureHaAreaSnapshot()
         val catalog = applyHaAreaPrecedence(snapshot, haAreaCatalogFor(snapshot))
-        val areas = catalog.areas.joinToString(",") { area ->
-            "{\"area_id\":${jsonStr(area.areaId)},\"name\":${jsonStr(area.name)}," +
-                "\"icon\":${jsonStr(area.icon)}}"
-        }
-        val device = "{\"found\":${catalog.device.found}," +
-            "\"area_id\":${jsonStr(catalog.device.areaId)}," +
-            "\"area_name\":${jsonStr(catalog.device.areaName)}}"
-        return "{\"areas\":[$areas],\"device\":$device,\"admin\":${catalog.admin}," +
-            "\"queried\":${catalog.queried},\"requested\":${jsonStr(config.haArea)}," +
-            "\"ha_username\":${jsonStr(catalog.haUsername)}}"
+        return JSONObject(haAreaCatalogPresentationJson(catalog))
+            .put("requested", config.haArea)
+            .put("ha_username", catalog.haUsername)
+            .toString()
     }
 
     fun stop() {
@@ -162,6 +171,20 @@ internal class HaAreaRuntime(
         if (!catalog.queried || !catalog.device.found || catalog.ownerKey != snapshot.ownerKey ||
             !ownsHaAreaSnapshot(snapshot)
         ) return catalog
+        if (allowWriteBack && catalog.admin &&
+            HaAreaProtocol.hasLiteralNullAssignment(catalog.device, catalog.areas) &&
+            ownsHaAreaSnapshot(snapshot)
+        ) {
+            val cleared = entityLearning.applyRequestedArea(
+                snapshot.deviceUid, snapshot.panelId, "", snapshot.ownerKey,
+            )
+            if (cleared && ownsHaAreaSnapshot(snapshot)) {
+                invalidateHaAreaCatalogCache()
+                val after = entityLearning.haAreaCatalog(snapshot.deviceUid, snapshot.panelId)
+                cacheHaAreaCatalog(snapshot, after)
+                return applyHaAreaPrecedence(snapshot, after, allowWriteBack = false)
+            }
+        }
         when (HaAreaProtocol.reconcile(snapshot.localArea, catalog.device.areaName, catalog.admin, snapshot.userOverride)) {
             HaAreaProtocol.ReconcileAction.ADOPT_HA -> withContext(Dispatchers.IO) {
                 synchronized(directConfigMutationLock) {
@@ -256,18 +279,8 @@ internal class HaAreaRuntime(
             warmHaAreaCatalogInBackground()
             return null
         }
-        val catalog = entry.catalog
-        val areas = catalog.areas.joinToString(",") { area ->
-            "{\"area_id\":${Json.str(area.areaId)},\"name\":${Json.str(area.name)}," +
-                "\"icon\":${Json.str(area.icon)}}"
-        }
-        return "{\"areas\":[$areas],\"device\":{\"found\":${catalog.device.found}," +
-            "\"area_id\":${Json.str(catalog.device.areaId)}," +
-            "\"area_name\":${Json.str(catalog.device.areaName)}}," +
-            "\"admin\":${catalog.admin},\"queried\":true}"
+        return haAreaCatalogPresentationJson(entry.catalog)
     }
-
-    private fun jsonStr(s: String): String = Json.str(s)
 
     companion object {
         private const val TAG = "ha-paneld/http"
