@@ -387,24 +387,11 @@ class PaneldServer internal constructor(
         runCatching { appContext.packageManager.getPackageInfo(appContext.packageName, 0).lastUpdateTime.toString() }
             .getOrDefault(Config.VERSION)
 
-    // Panel-info rows blurred by default (screenshot hygiene) — identity + network values a casual share
-    // shouldn't leak. "Reveal" un-blurs them. Not access control: the values are still in the page source.
-    private val SECRET_FIELDS = setOf("Device ID", "MQTT")
-    // Address rows blur ONLY when the value is globally ROUTABLE — an unroutable RFC1918 / ULA / link-local
-    // address (e.g. the LAN IPv4, or a ULA v6) has no external use, so it stays visible.
-    private val ADDRESS_FIELDS = setOf("Local IP", "Local IPv6")
-
-    /** Appends physical dimensions only when profile evidence selects this panel's physical geometry.
-     *  Logical density is a layout setting and must never be used to infer the panel's physical size. */
     private fun displayCell(v: String): String {
         val observation = DisplayGeometryReport.observe(appContext) ?: return esc(v)
         val size = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)?.physical
             ?: return esc(v)
-        val inchS = "%.1f".format(size.diagonalInches)
-        val cmS = "%.1f".format(size.diagonalInches * 2.54)
-        val title = "W %.1f × H %.1f cm".format(size.widthMm / 10, size.heightMm / 10)
-        return """${esc(v)} · <span class="diag" data-in="$inchS″" data-cm="$cmS cm" """ +
-            """title="${esc(title)}" onclick="diagToggle(this)">$inchS″</span>"""
+        return displayCell(v, size)
     }
 
     // Display sizing (density + text scale) via `wm density` / `font_scale` — su panels only.
@@ -446,6 +433,7 @@ class PaneldServer internal constructor(
     )
     private val catalogueLoader by lazy { CatalogueLoader(asset) }
     private val pages get() = PageShell(config, catalogueLoader, { setupState.setupNeedsUser() }, ::buildToken, ::renderConfigConcurrencyHash)
+    private val settingRows get() = DashboardSettingRows(config)
 
     /** One locale negotiation path for every localized human page and its hydration payload. */
     private fun requestStrings(call: ApplicationCall): AppStrings = resolvedRequestStrings(
@@ -545,167 +533,23 @@ class PaneldServer internal constructor(
                 guardDbBootstrapRoutes(
                     guardDbBootstrapDependencies(appContext, config, scope, pendingApks, guardDbStaging),
                 )
-                get("/") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        strings.languages(setOf("shell.", "dashboard.")).joinToString(", "),
-                    )
-                    call.respondText(infoHtml(strings, call.embedMode()), ContentType.Text.Html)
-                }
+                dashboardPageRoute(::requestStrings, ::infoHtml)
                 assetRoutes(asset)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
-                get("/configure") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        strings.languages(setOf("shell.", "configure.")).joinToString(", "),
-                    )
-                    call.respondText(
-                        pages.page(
-                            active = "configure",
-                            title = strings.get("shell.nav.configure"),
-                            body = configureBody(strings, sensors.hasProximity(), configureSetupBanners(strings)),
-                            strings = strings,
-                            embed = call.embedMode(),
-                        ),
-                        ContentType.Text.Html,
-                    )
-                }
-                get("/setup") {
-                    val strings = requestStrings(call)
-                    val preserveExplicitEnglish = AppLocale.canonical(
-                        call.request.queryParameters["lang"],
-                        allowPseudo = BuildConfig.DEBUG,
-                    ) == AppLocale.ENGLISH
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        strings.languages(setOf("shell.", "setup.")).joinToString(", "),
-                    )
-                    // No data-cfg, unlike every other page: buildwatch.js reloads /configure when settings
-                    // change underneath it, and that same reload mid-step would throw away what the user is
-                    // typing. The wizard tracks server state by polling instead. The build token stays, so a
-                    // reinstall still refreshes the page.
-                    call.respondText(
-                        pages.pageShell(
-                            active = "setup",
-                            sectionTitle = strings.get("shell.nav.setup"),
-                            bodyAttrs = """data-build="${buildToken()}"""",
-                            rightControls = ghLink(strings),
-                            body = setupBody(strings, preserveExplicitEnglish, embedded = call.embedMode() != null),
-                            strings = strings,
-                            translationPrefixes = setOf("shell.", "setup.", "runtime."),
-                            preserveExplicitEnglish = preserveExplicitEnglish,
-                            embed = call.embedMode(),
-                        ),
-                        ContentType.Text.Html,
-                    )
-                }
-                get("/profiles") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        strings.languages(setOf("shell.", "configure.hardened.", "profiles.")).joinToString(", "),
-                    )
-                    call.respondText(
-                        pages.page("profiles", strings.get("shell.nav.profile"), profilesBody(strings), strings, call.embedMode()),
-                        ContentType.Text.Html,
-                    )
-                }
+                configurePageRoute(::requestStrings, { pages }) { strings -> configureBody(strings, sensors.hasProximity(), configureSetupBanners(strings)) }
+                setupPageRoute(::requestStrings, { pages }, ::buildToken)
+                profilesPageRoute(::requestStrings, { pages })
                 // The experimental remote-control page is withheld from 0.9.2. Keep old bookmarks
                 // useful while its tap-injection UX is reviewed for a later release.
                 get("/test") { call.respondRedirect("/") }
-                get("/install") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        (strings.languages(
-                            setOf(
-                                "shell.",
-                                "configure.hardened.",
-                                "dashboard.banner.",
-                                "install.",
-                                "runtime.",
-                            ),
-                        ) + AppLocale.ENGLISH)
-                            .distinct().sorted().joinToString(", "),
-                    )
-                    call.respondText(
-                        withContext(Dispatchers.IO) {
-                            pages.page("install", strings.get("shell.nav.install"), installBody(strings), strings, call.embedMode())
-                        },
-                        ContentType.Text.Html,
-                    )
-                }
-                get("/fleet") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        strings.languages(setOf("shell.", "configure.hardened.", "fleet.")).joinToString(", "),
-                    )
-                    call.respondText(
-                        pages.page("fleet", strings.get("shell.nav.fleet"), fleetBody(strings), strings, call.embedMode()),
-                        ContentType.Text.Html,
-                    )
-                }
-                get("/logs") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        strings.languages(setOf("shell.", "configure.hardened.", "logs.")).joinToString(", "),
-                    )
-                    call.respondText(
-                        pages.page("logs", strings.get("shell.nav.logs"), logsBody(strings), strings, call.embedMode()),
-                        ContentType.Text.Html,
-                    )
-                }
-                get("/entities") {
-                    val strings = requestStrings(call)
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        (
-                            strings.languages(setOf("shell.", "configure.hardened.", "entities.")) +
-                                strings.resolve("settings.dashboard_entity_learning.label").language +
-                                strings.resolve("configure.group.dashboard").language +
-                                AppLocale.ENGLISH
-                            )
-                            .distinct().sorted().joinToString(", "),
-                    )
-                    call.respondText(
-                        pages.page("entities", strings.get("shell.nav.entities"), entitiesBody(strings, config.dashboardEntityLearningEnabled && effectiveDashboardIsBuiltin()), strings, call.embedMode()),
-                        ContentType.Text.Html,
-                    )
-                }
+                installPageRoute(::requestStrings, { pages }, ::installBody)
+                fleetPageRoute(::requestStrings, { pages }) { config.httpPort }
+                logsPageRoute(::requestStrings, { pages }) { config.httpPort }
+                entitiesPageRoute(::requestStrings, { pages }) { config.dashboardEntityLearningEnabled && effectiveDashboardIsBuiltin() }
                 // Self-contained REST API explorer (no Swagger-UI CDN bundle) + the OpenAPI spec it
                 // renders — the spec also imports into Swagger/Postman for fleet tooling.
-                get("/api") {
-                    val strings = requestStrings(call)
-                    val projectionPrefixes = setOf("api.", "configure.hardened.", "shell.hardened.")
-                    call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                    call.response.headers.append(
-                        HttpHeaders.ContentLanguage,
-                        (strings.languages(projectionPrefixes) + AppLocale.ENGLISH)
-                            .distinct().sorted().joinToString(", "),
-                    )
-                    val html = asset("api.html")
-                        .replace(
-                            "<title>ha-paneld · REST API</title>",
-                            "<title>${esc(panelBrowserTitle(config.friendlyName, "REST API"))}</title>",
-                        )
-                        .replace("__API_LANG__", esc(strings.requestedLocale))
-                        .replace("__API_BACK_HREF__", esc(localizedHref("./", strings)))
-                        .replace("__API_I18N_PAYLOAD__", browserI18nPayload(strings, projectionPrefixes))
-                    call.respondText(html, ContentType.Text.Html)
-                }
+                apiPageRoute(::requestStrings, asset) { config.friendlyName }
                 get("/health") {
                     call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
                 }
@@ -1152,7 +996,7 @@ class PaneldServer internal constructor(
         // build that pointed here) should learn the guided path exists — once setup completes this line
         // vanishes with the rest of the wizard surface.
         val resume = if (setupState.setupNeedsUser()) {
-            """<div class="setup info">${esc(strings.get("configure.setup.question"))} <a href="${localizedHref("setup", strings)}"><b>${esc(strings.get("configure.setup.link"))}</b></a> ${esc(strings.get("configure.setup.explanation"))}</div>"""
+            configureResumeBanner(strings)
         } else ""
         // MQTT verification runs asynchronously after the save returns, and the Configure tab is where the
         // user actually is while it happens — but it showed nothing, so a save that was still being checked
@@ -1160,15 +1004,15 @@ class PaneldServer internal constructor(
         // rendered on the dashboard; surfacing it here too costs nothing and keeps one authority.
         val mqtt = management.facts["MQTT"] ?: "disabled"
         SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState())?.let { progress ->
-            return power + resume + """<div class="setup">⟳ ${esc(localizedSetupProgress(progress, strings))}</div>"""
+            return power + resume + setupProgressBanner(progress, strings)
         }
         if (haSignInNeededForEffectiveDashboard()) {
-            return power + resume + """<div class="setup">🏠 <b>${esc(strings.get("configure.setup.ha_signin.title"))}</b> ${esc(strings.get("configure.setup.ha_signin.body"))}</div>"""
+            return power + resume + configureSignInBanner(strings)
         }
         val noRenderer = healthFindings(healthInputs(), "", emptyList()).any { it.kind == HealthAudit.Kind.NO_RENDERER }
         // Only a panel past setup runs a filtered dashboard, so only this path can carry the strategy note.
         if (!noRenderer) return power + resume + strategySelectorAllowedBanner(strings)
-        return power + resume + """<div class="setup">ℹ <b>${esc(strings.get("configure.setup.renderer.title"))}</b> ${esc(strings.get("configure.setup.renderer.body"))} <small>${esc(strings.get("configure.setup.renderer.note"))}</small></div>"""
+        return power + resume + configureRendererBanner(strings)
     }
 
     // Issue #133 follow-up. With a strategy dashboard's check allowed, cards for entities outside the
@@ -1177,7 +1021,7 @@ class PaneldServer internal constructor(
     // entity store must not take the Configure page down with it.
     private fun strategySelectorAllowedBanner(strings: AppStrings): String =
         if (!runCatching { entityLearning.strategySelectorAllowed() }.getOrDefault(false)) "" else
-            """<div class="setup info">ℹ <b>${esc(strings.get("configure.setup.strategy_allowed.title"))}</b> ${esc(strings.get("configure.setup.strategy_allowed.body"))} <a href="${localizedHref("entities", strings)}">${esc(strings.get("configure.setup.strategy_allowed.link"))}</a>.</div>"""
+            configureStrategyBanner(strings)
 
     /** Request-scoped snapshot of the two health inputs several render surfaces consult — the real WebView
      *  engine status and whether any dashboard renderer is present. Captured ONCE per render so the banner,
@@ -1281,7 +1125,11 @@ class PaneldServer internal constructor(
             inlineRepair = true,
             strings = strings,
         ) +
-            adHocWarnings(management, companion, inlineRepair = true, strings = strings)
+            adHocWarnings(
+                config, catalogueLoader, management.privilege.directSuReady, management.densityBase,
+                radioStatus, ::dashboardRecoveryState,
+                companion, inlineRepair = true, strings = strings,
+            )
         val warnings = extra + problems.joinToString("") { installWarning(it, canHeal, canInstallCompanion, strings) }
         val allGood = if (h.brokerConfigured && problems.isEmpty() && extra.isEmpty() && !powerAdvisory.assessment.warning) """<div class="card" data-layout-key="ready"><p class="note">✓ ${esc(strings.get("install.ready"))}</p></div>""" else ""
         val compPkg = CompanionInstaller.installedPkg(appContext)
@@ -1302,38 +1150,6 @@ class PaneldServer internal constructor(
     /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
      *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
      *  self-uninstall would kill the tool. */
-
-    /** Logs tab — live log tail over SSE. App source always; system source needs root (gated live). */
-    private fun logsBody(strings: AppStrings): String {
-        // Deliberately NOT inside a `.cards` masonry container — the log card wants the full page width.
-        return """
-<div class="card"><h2>${esc(strings.get("logs.title"))} <small id="lg-state" class="muted">· ${esc(strings.get("logs.state.connecting"))}</small></h2>
-<div class="log-toolbar">
- <span class="log-source"><button id="lg-src-app" class="pbtn on" onclick="lgSource('app')">${esc(strings.get("logs.source.app"))}</button><button id="lg-src-system" class="pbtn" onclick="lgSource('system')" title="${esc(strings.get("logs.source.system_root_check"))}">${esc(strings.get("logs.source.system"))}</button><button id="lg-src-webview" class="pbtn" onclick="lgSource('webview')" title="${esc(strings.get("logs.source.webview_hint"))}">${esc(strings.get("logs.source.webview"))}</button></span>
- <select id="lg-level" onchange="lgRender()" title="${esc(strings.get("logs.level.minimum"))}">
-  <option value="V" selected>${esc(strings.get("logs.level.verbose"))}</option><option value="D">${esc(strings.get("logs.level.debug"))}</option><option value="I">${esc(strings.get("logs.level.info"))}</option>
-  <option value="W">${esc(strings.get("logs.level.warning"))}</option><option value="E">${esc(strings.get("logs.level.error"))}</option>
- </select>
- <input id="lg-filter" class="log-filter" placeholder="${esc(strings.get("logs.filter.placeholder"))}" oninput="lgRender()">
- <span class="log-actions">
-  <label class="log-follow muted"><input type="checkbox" id="lg-follow" checked> ${esc(strings.get("logs.action.follow"))}</label>
-  <button id="lg-pause" class="pbtn" onclick="lgPause()">⏸ ${esc(strings.get("logs.action.pause"))}</button>
-  <button class="pbtn" onclick="lgClear()">${esc(strings.get("logs.action.clear"))}</button>
- </span>
-</div>
-<div id="lg-out" class="logview" onscroll="lgScrolled()"></div>
-<p class="note">${esc(strings.get("logs.note.sources"))}
-${esc(strings.get("logs.note.privacy"))}
-${esc(strings.get("logs.note.raw_stream"))} <code>curl -N http://&lt;panel&gt;:${esc(config.httpPort.toString())}/api/v1/logs/stream</code></p></div>
-<script src="assets/logs.js"></script>"""
-    }
-
-    /** Fleet tab — placeholder (discovery hooks exist; the roster lands later). */
-    private fun fleetBody(strings: AppStrings): String = """
-<div class="cards"><div class="card"><h2>${esc(strings.get("fleet.title"))} <small>· ${esc(strings.get("fleet.state.coming_soon"))}</small></h2>
-<p class="note">${esc(strings.get("fleet.note.roster"))}
-${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERVICE_TYPE)}</code>) ${esc(strings.get("fleet.note.discovery_suffix"))}</p>
-<p class="note">${esc(strings.get("fleet.note.direct"))} <code>http://&lt;its-ip&gt;:${esc(config.httpPort.toString())}/</code>.</p></div></div>"""
 
     /** One renderer-aware warning shared by JSON status and the Dashboard/Install banners. */
     private fun dashboardRecoveryState(): PanelStatus.DashboardRecoveryState =
@@ -1367,13 +1183,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         )
     }
 
-    /** The pencil that marks a value as CONFIGURABLE (vs a static fact) and deep-links to the exact
-     *  setting/card on the Configure tab (`/configure#<anchor>` scrolls + flashes it). */
-    private fun cfgIcon(anchor: String, strings: AppStrings): String =
-        """&nbsp;<a class="cfglink" href="${localizedHref("configure#$anchor", strings)}" title="${esc(strings.get("dashboard.link.edit_configure"))}" aria-label="${esc(strings.get("dashboard.link.edit"))}">✎</a>"""
-
-    private fun installIcon(anchor: String, strings: AppStrings): String =
-        """&nbsp;<a class="cfglink" href="${localizedHref("install#$anchor", strings)}" title="${esc(strings.get("dashboard.link.open_install"))}" aria-label="${esc(strings.get("dashboard.link.open"))}">✎</a>"""
 
     /** What the "auto" (blank) package settings actually resolved to — shown as `auto (label)` in the
      *  dashboard rows and as the Configure-field placeholder, so "auto" is never a mystery. When no
@@ -1392,36 +1201,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
 
     private fun dashboardRendererAutoLabel(resolved: String, strings: AppStrings): String =
         if (resolved == SystemController.BUILTIN_DASHBOARD) strings.get("dashboard.value.builtin_renderer") else resolved
-
-    /** One read-only dashboard row for a registry setting: label → current value + the edit pencil.
-     *  Null when the setting doesn't exist on this panel (capability-gated). */
-    private fun settingRowHtml(
-        key: String,
-        live: Map<String, String>,
-        caps: Capabilities,
-        strings: AppStrings,
-        hints: Map<String, String> = emptyMap(),
-        valueFormatter: SettingRowFormatter? = null,
-    ): String? {
-        val spec = SettingsRegistry.spec(key) ?: return null
-        if (!spec.availableWhen(caps)) return null
-        val raw = effectiveValue(spec, live)
-        // NOTE the ordering: secret and BOOL specs resolve before [valueFormatter] is consulted, so a
-        // formatter attached to one of those keys would be dead code. [SettingRowFormatter.of] refuses
-        // to build one, so that is now unrepresentable rather than merely documented. Live state does
-        // not belong on a setting row at all — put it on a fact row (see CONTEXT_KEYS).
-        val shown = when {
-            spec.secret -> if (raw.isNotEmpty()) strings.get("dashboard.value.set") else "—"
-            spec.type == SettingType.BOOL -> strings.get(if (raw.toBoolean()) "dashboard.value.on" else "dashboard.value.off")
-            raw.isBlank() -> hints[key]?.let {
-                formattedString(strings, "dashboard.value.auto_detail", "value" to it)
-            } ?: "—"
-            // The built-in renderer sentinel has no package label — show its friendly name, not "builtin".
-            raw == SystemController.BUILTIN_DASHBOARD -> strings.get("dashboard.value.builtin_renderer")
-            else -> valueFormatter?.formatFor(key, raw) ?: raw
-        }
-        return """<tr><th>${esc(strings.get(spec.labelKey))}</th><td>${esc(shown)}${cfgIcon("cfg-$key", strings)}</td></tr>"""
-    }
 
     // ---- dashboard snapshot (probe results) + hydration ---------------------------------------------
     //
@@ -1507,100 +1286,33 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             it !in NET_KEYS && it !in PROFILE_FACT_KEYS && it !in CONTEXT_KEYS && it !in BEHAVIOUR_FACT_KEYS
         }
 
-    private fun factLabel(key: String, strings: AppStrings): String {
-        val suffix = when (key) {
-            "panel_id" -> "panel_id"
-            "Android" -> "android"
-            "Firmware" -> "firmware"
-            "Device" -> "device"
-            "Device ID" -> "device_id"
-            "CPU" -> "cpu"
-            "RAM" -> "ram"
-            "Storage" -> "storage"
-            "Display" -> "display"
-            "System WebView" -> "system_webview"
-            "HA Companion" -> "ha_companion"
-            "Friendly name" -> "friendly_name"
-            "HTTP port" -> "http_port"
-            "Local IP" -> "local_ip"
-            "Local IPv6" -> "local_ipv6"
-            "MQTT" -> "mqtt"
-            "MQTT state" -> "mqtt_timing"
-            "Security mode" -> "security_mode"
-            "mDNS" -> "mdns"
-            "Platform" -> "platform"
-            "SoC" -> "soc"
-            "Model" -> "model"
-            "LED" -> "led"
-            "Light sensor" -> "light_sensor"
-            "Proximity" -> "proximity"
-            "Navbar" -> "navbar"
-            "Zigbee" -> "zigbee"
-            "Relays" -> "relays"
-            "CPU profile" -> "cpu_profile"
-            "Network ADB" -> "network_adb"
-            "Log shipping" -> "log_shipping"
-            "Audio playback" -> "audio_playback"
-            "App database" -> "app_database"
-            "Wi-Fi stability" -> "wifi_stability"
-            HA_NETWORK_FACT -> "ha_network_path"
-            HA_RENDERER_FACT -> "ha_renderer"
-            "State convergence" -> "state_convergence"
-            "Local-state sync" -> "local_state_sync"
-            CAMERA_FACT -> "camera"
-            HA_LIFECYCLE_FACT -> "ha_lifecycle"
-            "System WebView reporting" -> "webview_reporting"
-            else -> return key
-        }
-        return strings.get("dashboard.fact.$suffix")
-    }
-
-    private fun contextRowsHtml(s: ManagementSnapshot, h: HealthInputs, strings: AppStrings): String {
-        val rows = CONTEXT_KEYS.mapNotNull { key ->
-            // The lifecycle state changes DURING an outage, so this row is rendered from the live
-            // snapshot rather than the stale-while-revalidate facts cache AND is then kept current by
-            // the same ten-second `/health` poll that drives the banner — one observation feeding every
-            // lifecycle surface. A server-rendered advisory banner used to sit alongside it; it was
-            // DELETED rather than synchronised, because a one-shot render cannot retract itself and left
-            // an outage warning on screen after recovery.
-            // The lifecycle row is rendered even when there is nothing to say yet — as an empty cell the
-            // poll can fill. Omitting it meant a panel that began watching AFTER the page was rendered
-            // (the watch waits for the renderer to settle) had no element to populate, so the row could
-            // never appear without a reload: a surface that can only ever go from present to absent.
-            // The renderer row is live for the same reason as the lifecycle row and one more: its
-            // whole subject is a state that changes while the page is open. Routing it through the
-            // facts cache would let a panel that went blank a minute ago keep saying "rendered" for a
-            // TTL — precisely the reassuring-but-wrong answer this row exists to stop giving.
-            val current = when (key) {
-                HA_LIFECYCLE_FACT -> HaLifecycleRuntime.statusText() ?: ""
-                // Live and always present for the same reasons as the lifecycle row: the verdict
-                // changes while the page is open, and the poll fills the cell from the same `/health`
-                // observation that drives the banner. One read of the one state owner.
-                HA_NETWORK_FACT -> HaNetworkPathRuntime.statusText() ?: ""
-                HA_RENDERER_FACT -> rendererAdmission(appContext, config, autoBrightnessHttpApi).statusText()
-                // The camera row is live for the same reason, and it is also where a person reads the
-                // stream URL off the panel — with the warning that travels beside it, because the place
-                // the URL is copied from is the place somebody is about to paste it into a card on this
-                // very panel. A panel whose profile declares no camera has nothing to say and no row.
-                CAMERA_FACT -> camera.presentation().takeIf { it.state != CameraState.ABSENT }?.summary
-                else -> s.facts[key]
-            }
-            // Log shipping earns a live row only while it is on; when it is off the Behaviour card's
-            // "Ship logs" already says so, and a permanent "off" here is noise.
-            current?.takeUnless { key == "Log shipping" && it == LOG_SHIP_STATUS_OFF }?.let { value ->
-                val label = factLabel(key, strings)
-                val cellId = when (key) {
-                    HA_LIFECYCLE_FACT -> " id=\"halifecell\""
-                    HA_NETWORK_FACT -> " id=\"hanetcell\""
-                    else -> ""
-                }
-                "<tr><th>${esc(label)}</th><td$cellId>${esc(localizedRuntimeValue(key, value, strings))}</td></tr>"
-            }
-        }.toMutableList()
-        h.webView.reportingQuirk?.let {
-            rows += "<tr><th>${esc(factLabel("System WebView reporting", strings))}</th><td>${esc(it)}</td></tr>"
-        }
-        return rows.joinToString("\n")
+    // The lifecycle state changes DURING an outage, so this row is rendered from the live
+    // snapshot rather than the stale-while-revalidate facts cache AND is then kept current by
+    // the same ten-second `/health` poll that drives the banner — one observation feeding every
+    // lifecycle surface. A server-rendered advisory banner used to sit alongside it; it was
+    // DELETED rather than synchronised, because a one-shot render cannot retract itself and left
+    // an outage warning on screen after recovery.
+    // The lifecycle row is rendered even when there is nothing to say yet — as an empty cell the
+    // poll can fill. Omitting it meant a panel that began watching AFTER the page was rendered
+    // (the watch waits for the renderer to settle) had no element to populate, so the row could
+    // never appear without a reload: a surface that can only ever go from present to absent.
+    // The renderer row is live for the same reason as the lifecycle row and one more: its
+    // whole subject is a state that changes while the page is open. Routing it through the
+    // facts cache would let a panel that went blank a minute ago keep saying "rendered" for a
+    // TTL — precisely the reassuring-but-wrong answer this row exists to stop giving.
+    private fun contextValue(key: String, facts: Map<String, String>): String? = when (key) {
+        HA_LIFECYCLE_FACT -> HaLifecycleRuntime.statusText() ?: ""
+        // Live and always present for the same reasons as the lifecycle row: the verdict
+        // changes while the page is open, and the poll fills the cell from the same `/health`
+        // observation that drives the banner. One read of the one state owner.
+        HA_NETWORK_FACT -> HaNetworkPathRuntime.statusText() ?: ""
+        HA_RENDERER_FACT -> rendererAdmission(appContext, config, autoBrightnessHttpApi).statusText()
+        // The camera row is live for the same reason, and it is also where a person reads the
+        // stream URL off the panel — with the warning that travels beside it, because the place
+        // the URL is copied from is the place somebody is about to paste it into a card on this
+        // very panel. A panel whose profile declares no camera has nothing to say and no row.
+        CAMERA_FACT -> camera.presentation().takeIf { it.state != CameraState.ABSENT }?.summary
+        else -> facts[key]
     }
 
 
@@ -1651,7 +1363,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         // mid-(re)connect must not be reported as missing.
         val needs = SetupBanner.needs(mqtt, config.mqttBroker.isNotBlank(), config.mqttUser.isNotBlank(), panelAssistantNative())
         val setup = if (needs.isNotEmpty())
-            """<div class="setup">⚠ ${esc(strings.get("dashboard.banner.setup_needs.prefix"))} <a href="${localizedHref("configure", strings)}">${esc(localizedSetupNeeds(needs, strings))}</a> ${esc(strings.get("dashboard.banner.setup_needs.suffix"))}</div>"""
+            dashboardSetupNeedsBanner(needs, strings)
         else ""
         // Commissioning progress only while somebody is actually commissioning. `announcing` is transient but
         // recurs on every bridge reconnect — an HA restart, a broker blip, a panel waking — so on a finished
@@ -1660,12 +1372,12 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         // made, which is the reason it was added.
         val mqttProgress = if (!setupState.setupNeedsUser()) "" else {
             SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState())?.let {
-                """<div class="setup">⟳ ${esc(localizedSetupProgress(it, strings))}</div>"""
+                setupProgressBanner(it, strings)
             }.orEmpty()
         }
         val haSetup = if (haSignInNeededForEffectiveDashboard()) haSignInBanner(strings) else ""
         val termuxBridge = if (managementObservations.termuxBridgeCache.get() == TermuxBridgeProbe.State.RUNNING) {
-            """<div class="setup">⚠ ${esc(strings.get("dashboard.banner.panel_bridge_running"))}</div>"""
+            dashboardPanelBridgeBanner(strings)
         } else ""
         val proximityState = JSONObject(sensors.proximityJson())
         val proximityLearning = ProximityStatusBanner.titleKey(
@@ -1676,8 +1388,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             active = proximityState.optBoolean("sessionActive", false),
             wakeReady = proximityState.optBoolean("wakeReady", false),
         )?.let { title ->
-            """<div class="setup">👋 <b>${esc(strings.get(title))}</b>. """ +
-                """${esc(strings.get("dashboard.banner.proximity_learning.touch_available"))} <a href="${localizedHref("configure#cfg-proximity-learning", strings)}">${esc(strings.get("dashboard.banner.proximity_learning.action"))}</a>.</div>"""
+            proximityLearningBanner(title, strings)
         }.orEmpty()
         // Panel-health + update findings: states that stop the panel rendering the dashboard as expected but
         // that the info map otherwise reports neutrally. Soft + best-effort — ha-paneld runs fine regardless.
@@ -1695,7 +1406,11 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             inlineRepair = true,
             strings = strings,
         ) +
-            adHocWarnings(s, managementObservations.companionServersForRender(), inlineRepair = false, strings = strings) +
+            adHocWarnings(
+                config, catalogueLoader, s.privilege.directSuReady, s.densityBase,
+                radioStatus, ::dashboardRecoveryState,
+                managementObservations.companionServersForRender(), inlineRepair = false, strings = strings,
+            ) +
             findings.joinToString("") { bannerFor(it, strings) } + termuxBridge + proximityLearning + haSetup + mqttProgress + setup
     }
 
@@ -1708,407 +1423,24 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         effectiveDashboardIsBuiltin() &&
             haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)
 
-    private fun haSignInBanner(strings: AppStrings): String =
-        """<div class="setup">🏠 <b>${esc(strings.get("dashboard.banner.ha_sign_in.title"))}</b> """ +
-            """${esc(strings.get("dashboard.banner.ha_sign_in.explanation"))} """ +
-            """<a href="${localizedHref("configure#cfg-ha-oauth", strings)}">${esc(strings.get("dashboard.banner.ha_sign_in.action"))}</a>.</div>"""
 
-    /** Render-blocking warnings not modelled by HealthAudit: a crash-looping dashboard app, and Companion
-     *  server inspection/blank-internal-URL findings — the latter only when Companion is the active renderer
-     *  ([CompanionDb.warningApplies]). Shown on BOTH the dashboard
-     *  banner and the Install tab as high-severity (`crit`). [inlineRepair] adds the one-tap repair button
-     *  (Install tab, where install.js is loaded); the dashboard links to the Install tab for the action. */
-    private fun adHocWarnings(
-        management: ManagementSnapshot,
-        companion: CompanionDb.ServerObservation?,
-        inlineRepair: Boolean,
-        strings: AppStrings = catalogueLoader.strings(AppLocale.ENGLISH),
-    ): String = buildString {
-        radioStatus()?.let { z ->
-            zigbeeWarning(z)?.let { warning ->
-                append(
-                    """<div class="setup${if (z.state in setOf(ZigbeeHealthState.RUNAWAY, ZigbeeHealthState.CONTAINMENT_FAILED)) " crit" else ""}">""",
-                )
-                append(localizedZigbeeWarning(z, warning, strings))
-                append("</div>")
-            }
-        }
-        if (io.github.maxlyth.hapaneld.control.BuiltinDashboard.authLatched) append(
-            """<div class="setup crit">⛔ <b>${esc(strings.get("dashboard.banner.auth_rejected.title"))}</b> — """ +
-                """${esc(strings.get("dashboard.banner.auth_rejected.explanation"))} """ +
-                """<a href="${localizedHref("configure#cfg-ha-oauth", strings)}">${esc(strings.get("dashboard.banner.auth_rejected.action"))}</a>; """ +
-                """${esc(strings.get("dashboard.banner.auth_rejected.reload_suffix"))}</div>""",
-        )
-        val recoveryState = dashboardRecoveryState()
-        dashboardRecoveryWarning(recoveryState)?.let { warning ->
-            append("""<div class="setup crit">${localizedRecoveryWarning(recoveryState, warning, strings)}</div>""")
-        }
-        // Shared companion internal-URL decision (CompanionDb.warning); this surface renders it as a banner
-        // with the one-tap repair button ([inlineRepair], Install tab) or an Install-tab link (dashboard).
-        when (val w = CompanionDb.warning(config.dashboardPackage, companion, management.privilege.directSuReady)) {
-            is CompanionDb.Warning.NeedsRepair -> {
-                val action = if (inlineRepair)
-                    """<div style="margin-top:10px"><button class="pbtn"${hardenedApprovalAttrs(strings = catalogueLoader.strings(AppLocale.ENGLISH))} onclick="repairCompUrl(this)">⚙ ${esc(strings.get("dashboard.banner.companion_url.repair"))}</button> <span id="cu-fix" class="muted"></span></div>"""
-                else """ <a href="${localizedHref("install", strings)}">${esc(strings.get("dashboard.banner.companion_url.install_action"))}</a>"""
-                val summaryKey = if (w.affected == 1) {
-                    "dashboard.banner.companion_url.summary_one"
-                } else {
-                    "dashboard.banner.companion_url.summary_many"
-                }
-                append(
-                    """<div class="setup crit">⚠ <b>${esc(strings.get("dashboard.banner.companion_url.title"))}</b> """ +
-                        """${esc(formattedString(strings, summaryKey, "count" to w.affected.toString()))} """ +
-                        """<i>"Missing 'Host' header"</i>. ${esc(strings.get("dashboard.banner.companion_url.explanation"))}$action</div>""",
-                )
-            }
-            CompanionDb.Warning.ProbeFailed -> append(
-                """<div class="setup">⚠ <b>${esc(strings.get("dashboard.banner.companion_probe_failed.title"))}</b> — """ +
-                    """${esc(strings.get("dashboard.banner.companion_probe_failed.explanation"))}</div>""",
-            )
-            null -> {}
-        }
-        // Built-in renderer zoomed off 100% (usually carried over from the Companion's "Page zoom"). App
-        // zoom is a compatibility lever; the cleaner way to size the dashboard is the panel display density
-        // — so we only nudge when that's actually available (rooted / helper daemon). No root = app zoom is
-        // the only sizing tool, so stay quiet. densityBase comes from the shared snapshot (no su round-trip).
-        val zoom = config.dashboardZoom
-        if ((config.dashboardPackage.isBlank() || config.dashboardPackage == SystemController.BUILTIN_DASHBOARD) && zoom != 100 && management.densityBase != null) {
-            // Reset is a plain form POST (no JS), so it works on the dashboard banner too — not just the
-            // Install tab. The message already links to the Display-sizing card.
-            append(
-                """<div class="setup">⚠ <b>${esc(formattedString(strings, "dashboard.banner.zoom.title", "zoom" to zoom.toString()))}</b> """ +
-                    """${esc(strings.get("dashboard.banner.zoom.explanation"))} """ +
-                    """<a href="${localizedHref("install#cfg-display", strings)}">${esc(strings.get("dashboard.banner.zoom.display_density"))}</a>, """ +
-                    """${esc(strings.get("dashboard.banner.zoom.action_suffix"))}""" +
-                    """ <form method="post" action="api/v1/config" style="display:inline">""" +
-                    """<input type="hidden" name="dashboard_zoom" value="100">""" +
-                    """<button class="pbtn" type="submit">${esc(strings.get("dashboard.banner.zoom.reset"))}</button></form></div>""",
-            )
-        }
-    }
 
     private fun zigbeeWarning(snapshot: ZigbeeHealthSnapshot): String? = zigbeeWarningText(
         snapshot,
         configuredOn = config.zigbeeRouterConfigured && config.zigbeeRouterEnabled,
     )
 
-    /** Use only a catalogue record actually resolved in the requested locale; otherwise retain exact HTML. */
-    private fun translatedText(strings: AppStrings, key: String): String? = runCatching { strings.resolve(key) }
-        .getOrNull()
-        ?.takeIf { it.language != AppLocale.ENGLISH }
-        ?.text
-
-    private fun localizedRecoveryWarning(
-        state: PanelStatus.DashboardRecoveryState,
-        fallbackHtml: String,
-        strings: AppStrings,
-    ): String {
-        val key = when (state) {
-            PanelStatus.DashboardRecoveryState.NONE -> return fallbackHtml
-            PanelStatus.DashboardRecoveryState.BUILTIN_RENDERER -> "runtime.renderer_recovery.builtin"
-            PanelStatus.DashboardRecoveryState.EXTERNAL_RENDERER -> "runtime.renderer_recovery.external"
-        }
-        return translatedText(strings, key)?.let { "⛔ ${esc(it)}" } ?: fallbackHtml
-    }
-
-    private fun localizedZigbeeWarning(
-        snapshot: ZigbeeHealthSnapshot,
-        fallbackHtml: String,
-        strings: AppStrings,
-    ): String {
-        val presentation = zigbeeHealthPresentation(
-            snapshot,
-            config.zigbeeRouterConfigured && config.zigbeeRouterEnabled,
-        ) ?: return fallbackHtml
-        val key = when (presentation.code) {
-            "status-zigbee-contained" -> "runtime.zigbee.warning.contained"
-            "status-zigbee-containment-incomplete" -> "runtime.zigbee.warning.containment_failed"
-            "status-zigbee-runaway" -> "runtime.zigbee.warning.runaway"
-            "status-zigbee-high-cpu" -> "runtime.zigbee.warning.degraded_high_cpu"
-            "status-zigbee-not-joined" -> "runtime.zigbee.warning.degraded_unjoined"
-            "status-zigbee-legacy-watchdog" -> "runtime.zigbee.warning.legacy_watchdog"
-            else -> return fallbackHtml
-        }
-        val translated = translatedText(strings, key) ?: return fallbackHtml
-        val action = if (presentation.code == "status-zigbee-not-joined") {
-            val label = translatedText(strings, "runtime.zigbee.warning.resolve")
-                ?: strings.get("shell.nav.configure")
-            " <a href=\"${localizedHref("configure#cfg-zigbee_join", strings)}\">${esc(label)}</a>"
-        } else ""
-        return "${if (presentation.code in setOf("status-zigbee-contained", "status-zigbee-containment-incomplete", "status-zigbee-runaway")) "⛔" else "⚠"} ${esc(translated)}$action"
-    }
-
-    private fun localizedStorageBanner(
-        storage: HealthAudit.StoragePresentation,
-        strings: AppStrings,
-    ): String {
-        val fallback = storage.bannerHtml()
-        val presentation = storage.warningPresentation ?: return fallback
-        val key = when (presentation.code) {
-            "status-storage-warning" -> "install.presentation.status_storage_warning"
-            "status-storage-critical" -> "install.presentation.status_storage_critical"
-            "status-storage-database-failure" -> "install.presentation.status_storage_database_failure"
-            else -> return fallback
-        }
-        val translated = translatedText(strings, key) ?: return fallback
-        val rendered = presentation.params.entries.fold(translated) { text, (name, value) ->
-            text.replace("{$name}", value)
-        }
-        val critical = presentation.code != "status-storage-warning"
-        return "<div class=\"setup${if (critical) " crit" else ""}\">${esc(rendered)}</div>"
-    }
-
-    private fun localizedPowerSafetyBanner(
-        advisory: PowerSafetyAdvisory,
-        inlineRepair: Boolean,
-        strings: AppStrings,
-    ): String {
-        val fallback = PowerSafetyPresentation.bannerHtml(advisory, inlineRepair)
-        if (fallback.isEmpty()) return fallback
-        val presentation = PowerSafetyPresentation.warningPresentation(advisory) ?: return fallback
-        val levelKey = when (presentation.code) {
-            "status-power-at-risk" -> "runtime.power_safety.level.at_risk"
-            "status-power-caution" -> "runtime.power_safety.level.caution"
-            "status-power-unknown" -> "runtime.power_safety.level.unknown"
-            else -> return fallback
-        }
-        val level = translatedText(strings, levelKey) ?: return fallback
-        val summaryKey = when (presentation.code) {
-            "status-power-at-risk" -> "runtime.power_safety.summary.at_risk"
-            "status-power-caution" -> "runtime.power_safety.summary.caution"
-            "status-power-unknown" -> "runtime.power_safety.summary.unknown"
-            else -> return fallback
-        }
-        val summary = translatedText(strings, summaryKey) ?: return fallback
-        val actionKey = when (advisory.action) {
-            PowerSafetyAdvisoryAction.NONE -> "runtime.power_safety.action.review"
-            PowerSafetyAdvisoryAction.REPAIR -> when (advisory.repairCapability.wireValue) {
-                "direct_root" -> "runtime.power_safety.action.repair_direct"
-                "degraded" -> "runtime.power_safety.action.repair_degraded"
-                else -> "runtime.power_safety.action.repair_limited"
-            }
-            PowerSafetyAdvisoryAction.ACKNOWLEDGE -> if (advisory.acknowledged) {
-                "runtime.power_safety.action.acknowledged"
-            } else {
-                "runtime.power_safety.action.acknowledgeable"
-            }
-            PowerSafetyAdvisoryAction.MANUAL_ONLY -> "runtime.power_safety.action.manual"
-        }
-        val actionText = translatedText(strings, actionKey) ?: return fallback
-        val control = when {
-            !inlineRepair -> " <a href=\"${localizedHref("configure#cfg-keep_awake", strings)}\">${esc(strings.get("shell.nav.configure"))} →</a>"
-            advisory.action == PowerSafetyAdvisoryAction.REPAIR -> {
-                val label = translatedText(strings, "runtime.power_safety.button.repair") ?: "Repair power safety"
-                val title = translatedText(strings, "runtime.power_safety.button.repair_title")
-                    ?: "Repair is explicit, read-back verified, and never reboots the panel"
-                """ <form method="post" action="api/v1/power-safety/repair" data-power-safety-repair style="display:inline"><button class="pbtn" type="submit" data-hardened-approval title="${esc(title)}">${esc(label)}</button> <span class="power-safety-repair-result" role="status" aria-live="polite"></span></form>"""
-            }
-            advisory.action == PowerSafetyAdvisoryAction.ACKNOWLEDGE -> {
-                val fingerprint = requireNotNull(advisory.acknowledgementFingerprint)
-                val label = translatedText(strings, "runtime.power_safety.button.hide") ?: "Hide this caution"
-                val title = translatedText(strings, "runtime.power_safety.button.hide_title")
-                    ?: "Hide this unchanged caution in panel web pages; Hardened mode requires physical approval"
-                """ <form method="post" action="api/v1/power-safety/acknowledge" data-power-safety-acknowledge style="display:inline"><input type="hidden" name="fingerprint" value="${esc(fingerprint)}"><button class="pbtn" type="submit" data-hardened-approval title="${esc(title)}">${esc(label)}</button> <span class="power-safety-acknowledge-result" role="status" aria-live="polite"></span></form>"""
-            }
-            else -> ""
-        }
-        val critical = presentation.code == "status-power-at-risk"
-        return "<div class=\"setup${if (critical) " crit" else ""}\" data-power-safety-banner>" +
-            "${if (critical) "⛔" else "⚠"} <b>${esc(level)}</b> — ${esc(summary)} ${esc(actionText)}$control</div>"
-    }
-
-    /** One dashboard banner for a health finding. Update findings link to the Install tab (where the user
-     *  manages versions) and carry an "Ignore this version" button — a per-version dismissal that stays
-     *  hidden until a newer release ships (see Config.ignoreUpdate / UpdateChecker.visible). */
-    private fun bannerFor(f: HealthAudit.Finding, strings: AppStrings): String = when (f.kind) {
-        HealthAudit.Kind.WEBVIEW_OLD ->
-            """<div class="setup crit">⚠ <b>${esc(strings.get("dashboard.banner.webview_old.title"))}</b> (${esc(f.detail)}) — """ +
-                """${esc(strings.get("dashboard.banner.webview_old.explanation"))} <a href="$WEBVIEW_DOC" target="_blank" rel="noopener">""" +
-                """${esc(strings.get("dashboard.banner.webview_old.update_action"))}</a> """ +
-                """${esc(formattedString(strings, "dashboard.banner.webview_old.target", "version" to PanelHealth.MIN_CHROMIUM.toString()))}. """ +
-                """<small>${esc(strings.get("dashboard.banner.webview_old.engine_note"))}</small> """ +
-                """<a href="${localizedHref("install", strings)}">${esc(strings.get("dashboard.banner.manage_install"))}</a></div>"""
-        HealthAudit.Kind.NO_RENDERER ->
-            """<div class="setup">ℹ <b>${esc(strings.get("dashboard.banner.no_renderer.title"))}</b> """ +
-                """${esc(strings.get("dashboard.banner.no_renderer.configure_prefix"))} <a href="${localizedHref("configure", strings)}">${esc(strings.get("shell.nav.configure"))}</a> """ +
-                """${esc(strings.get("dashboard.banner.no_renderer.explanation"))} <small>${esc(strings.get("dashboard.banner.no_renderer.note"))}</small></div>"""
-        HealthAudit.Kind.UPDATE -> {
-            val u = f.update!!
-            """<div class="setup info" data-update="${esc(u.label)}" data-version="${esc(u.latestVersion)}">""" +
-                """⬆ <b>${esc(u.label)}</b> ${esc(formattedString(strings, "dashboard.banner.update.available", "latest" to u.latestVersion, "current" to u.currentVersion))} — """ +
-                """<a href="${localizedHref("install", strings)}">${esc(strings.get("dashboard.banner.manage_install"))}</a> """ +
-                """<button class="pbtn" onclick="ignoreUpdate(this)">${esc(strings.get("dashboard.banner.update.ignore"))}</button></div>"""
-        }
-        HealthAudit.Kind.SCHEMA_ROLLED_BACK ->
-            """<div class="setup crit">⚠ <b>${esc(strings.get("dashboard.banner.schema_rollback.title"))}</b> (${esc(f.detail)}) — """ +
-                """${esc(strings.get("dashboard.banner.schema_rollback.explanation"))} """ +
-                """<a href="${localizedHref("configure", strings)}">${esc(strings.get("dashboard.banner.schema_rollback.configure_action"))}</a> """ +
-                """${esc(strings.get("dashboard.banner.schema_rollback.or_restore"))} <a href="${localizedHref("install", strings)}">${esc(strings.get("shell.nav.install"))}</a>.</div>"""
-    }
-
-    /** Table rows for one facts card (Panel information / Networking / ha-paneld profile). */
-    private fun factRowsHtml(s: ManagementSnapshot, keys: List<String>, h: HealthInputs, strings: AppStrings): String {
-        val webViewTooOld = h.webView.tooOld
-        return keys.filter { s.facts.containsKey(it) }.joinToString("\n") { k ->
-            val v = s.facts.getValue(k)
-            // Version: plain text + a compact GitHub releases icon (a hyperlinked version reads ugly).
-            val cell = if (k == "ha-paneld") {
-                """${esc(v)}&nbsp;<a class="gh gh-inline" href="$RELEASES_URL" target="_blank" rel="noopener" """ +
-                    """title="${esc(strings.get("dashboard.fact.releases_on_github"))}" aria-label="${esc(strings.get("dashboard.fact.releases_on_github"))}"><svg viewBox="0 0 24 24"><path d="$GH_ICON"/></svg></a>"""
-            } else if (k == "Display") {
-                displayCell(v)
-            } else if (k == "System WebView" && webViewTooOld) {
-                """<span style="color:#f5c451">${esc(v)} ⚠</span>"""
-            } else if (k in SECRET_FIELDS || (k in ADDRESS_FIELDS && isRoutable(v))) {
-                // Blurred by default so a casual screenshot doesn't leak it; "Reveal" un-blurs (screenshot
-                // hygiene, not access control — the value is still in the page source).
-                """<span class="secret">${esc(v)}</span>"""
-            } else {
-                esc(v)
-            }
-            // Facts backed by a setting get the ✎ marker (configurable vs static at a glance),
-            // deep-linking to the exact row on the Configure tab.
-            val edit = FACT_CFG[k]?.let { cfgIcon(it, strings) } ?: ""
-            "<tr><th>${esc(factLabel(k, strings))}</th><td>$cell$edit</td></tr>"
-        }
-    }
-
-    // Live control states (what HA's control entities currently show) — controls, not config.
     private fun liveRowsHtml(strings: AppStrings): String {
-        val led = config.lastLed.split(",").mapNotNull { it.toIntOrNull() }
-        val ledShown = if (led.size == 5 && led[0] == 1) "${strings.get("dashboard.value.on")} · rgb(${led[2]},${led[3]},${led[4]}) @ ${led[1]}" else strings.get("dashboard.value.off")
+        val led = config.lastLed
         val brightness = effectiveBrightness().takeIf { it >= 0 } ?: runCatching {
             android.provider.Settings.System.getInt(appContext.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
         }.getOrNull()
-        val brightnessShown = brightness?.coerceIn(0, 255)?.let { value ->
-            "${(value * 100 + 127) / 255}% ($value)"
-        } ?: "?"
-        return listOf(
-            strings.get("dashboard.live.screen_brightness") to brightnessShown,
-            strings.get("dashboard.live.volume") to "${volume.getPercent()}%",
-            strings.get("dashboard.live.navigate") to config.lastNavigate.ifEmpty { "/" },
-            strings.get("dashboard.live.led") to ledShown,
-        ).joinToString("\n") { (k, v) -> """<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>""" }
-    }
-
-    private fun behaviourRowsHtml(s: ManagementSnapshot, strings: AppStrings): String = listOf(
-        "wake_on_wave", "prevent_idle_dim", "watchdog_enabled", "kiosk_lock", "touch_sound",
-        "silence_boot_chime", "keep_awake", "navbar_mode", "log_ship_enabled", "log_ship_system_enabled",
-        "home_dashboard", "ha_area", "dashboard_package", "launcher_package",
-    ).let { keys ->
-        val hints = autoHints(strings)
-        val caps = liveCapabilities(s.caps)
-        keys.mapNotNull { key ->
-            // A deliberately overridden area must say so wherever the value is shown; at rest it is
-            // otherwise indistinguishable from an adopted value.
-            val areaFormatter: SettingRowFormatter? =
-                if (key == "ha_area" && config.haAreaUserOverride) {
-                    SettingRowFormatter.of(key) { raw ->
-                        formattedString(strings, "dashboard.value.local_override", "value" to raw)
-                    }
-                } else {
-                    null
-                }
-            settingRowHtml(key, s.live, caps, strings, hints, areaFormatter)
-        }
-    }.joinToString("\n")
-
-    // Display and install-backed values, each deep-linking to its owning surface.
-    private fun displayRowsHtml(s: ManagementSnapshot, strings: AppStrings): String {
-        return listOf(
-            "auto_brightness", "auto_brightness_minimum_percent", "auto_brightness_response_percent", "auto_brightness_ha_entity",
-        ).mapNotNull { key ->
-            val formatter: SettingRowFormatter? = when (key) {
-                "auto_brightness_minimum_percent" -> SettingRowFormatter.of(key) { raw ->
-                    raw.toIntOrNull()?.coerceIn(0, 100)?.let { percent ->
-                        "$percent% (${AdaptiveLuxCurve.percentToBrightness(percent)})"
-                    } ?: raw
-                }
-                "auto_brightness_response_percent" -> SettingRowFormatter.of(key) { raw ->
-                    raw.toIntOrNull()?.coerceIn(0, 100)?.let { "$it%" } ?: raw
-                }
-                else -> null
-            }
-            settingRowHtml(key, s.live, liveCapabilities(s.caps), strings, valueFormatter = formatter)
-        }
-            .joinToString("\n") + "\n" + listOfNotNull(
-            s.densityCur?.let { """<tr><th>${esc(strings.get("dashboard.display.logical_density"))}</th><td>$it dpi (${esc(strings.get("dashboard.display.factory_base"))} ${s.densityBase ?: "?"})${installIcon("cfg-display", strings)}</td></tr>""" },
-            s.densityCur?.let { """<tr><th>${esc(strings.get("dashboard.display.text_size"))}</th><td>${s.fontScale}${installIcon("cfg-display", strings)}</td></tr>""" },
-            sensors.proximitySummary().takeIf { sensors.hasProximity() }?.let {
-                """<tr><th>${esc(strings.get("settings.wake_on_wave.label"))}</th><td>${esc(localizedProximitySummary(it, strings))}${cfgIcon("cfg-wake_on_wave", strings)}</td></tr>"""
-            },
-            """<tr><th>${esc(strings.get("dashboard.display.tamed_packages"))}</th><td>${esc(config.tameVendorPackagesRaw.ifBlank { strings.get("dashboard.value.none") })}${installIcon("cfg-tame", strings)}</td></tr>""",
-        ).joinToString("\n")
-    }
-
-    private fun updatesRowsHtml(s: ManagementSnapshot, strings: AppStrings): String = listOf("self_update", "update_channel", "companion_auto_update")
-        .mapNotNull { settingRowHtml(it, s.live, liveCapabilities(s.caps), strings) }.joinToString("\n")
-
-    private fun capRowsHtml(capabilities: List<DiagReader.Cap>, strings: AppStrings): String {
-        val capColor = mapOf("ok" to "#48c774", "degraded" to "#d9a528", "none" to "#d04a3b")
-        return capabilities.joinToString("\n") { c ->
-            val col = capColor[c.status] ?: "#888"
-            """<tr><th>${esc(capabilityName(c.name, strings))}</th><td><span style="color:$col">●</span> ${esc(capabilityNote(c.note, strings))}</td></tr>"""
-        }
+        return liveRowsHtml(led, brightness, volume.getPercent(), config.lastNavigate, strings)
     }
 
 
     /** Visible "this needs root" banner for a root-gated card/control group — shown (never hidden) so a
      *  no-root user sees the feature and what root would unlock, next to controls rendered disabled. */
-    /** The Controls-card button rows. [s] null (cold shell) → everything disabled as "checking…";
-     *  hydration swaps in the capability-gated real state. */
-    private fun controlsHtml(s: ManagementSnapshot?, strings: AppStrings): String {
-        // Controls buttons: render but DISABLE (not hide, not silently-broken) when the action's capability
-        // is missing — back/recents accept Accessibility or Shizuku input; launcher/reboot need root.
-        val a11yOk = s?.facts?.get("Nav actions (a11y)") == "yes"
-        val navigation = ControlAvailability.navigation(
-            accessibilityReady = a11yOk,
-            shizukuReady = s?.privilege?.shizuku?.ready == true,
-            hasRecents = profile.hasRecents,
-        )
-        // Recents is only real where the firmware has an overview screen — KEYCODE_APP_SWITCH no-ops on
-        // single-purpose panels, so the policy gates it on the profile rather than show a dead one.
-        val rootOk = s?.privilege?.rootControlReady == true
-        val checking = s == null
-        fun pbtn(
-            action: String,
-            label: String,
-            ok: Boolean,
-            needsKey: String,
-            style: String = "",
-            disabledTitle: String? = null,
-        ): String {
-            val disabledReason = when {
-                checking -> strings.get("dashboard.controls.checking_capabilities")
-                !ok -> strings.get(needsKey)
-                disabledTitle != null -> disabledTitle
-                else -> null
-            }
-            return dashboardControlButtonHtml(action, label, disabledReason, style)
-        }
-        // "Launcher" opens the best real home-screen launcher; "Admin launcher" always opens ha-paneld's
-        // own. When no separate launcher exists (e.g. the vendor kiosk is tamed), "Launcher" would just
-        // fall through to the admin launcher — so DISABLE it rather than show two buttons that do the same
-        // thing. resolvedLauncher() is a cheap PackageManager query (no root).
-        val hasDistinctLauncher = !checking &&
-            (system.resolvedLauncher(config.launcherPackage)?.let { it != appContext.packageName } == true)
-        // Launcher / Admin launcher / Reboot need root; a disabled button's tooltip is invisible on a
-        // touch panel, so add a visible note that accurately reflects the remaining navigation routes.
-        val rootNote = if (!checking && !rootOk)
-            """<div class="setup rootlock" style="margin:0 0 8px">🔒 ${esc(strings.get("dashboard.controls.root_required_note"))}</div>""" else ""
-        return """$rootNote<div class="ctlrow">
- ${pbtn("back", "←<span class=\"lbl\"> ${esc(strings.get("dashboard.controls.back"))}</span>", navigation.backEnabled, "dashboard.controls.input_required")}
- ${pbtn("recents", "▢<span class=\"lbl\"> ${esc(strings.get("dashboard.controls.recents"))}</span>", navigation.recentsEnabled, "dashboard.controls.input_required")}
- ${pbtn("launcher", "⊞<span class=\"lbl\"> ${esc(strings.get("dashboard.controls.launcher"))}</span>", rootOk, "dashboard.controls.root_required", "margin-left:auto", disabledTitle = if (hasDistinctLauncher) null else strings.get("dashboard.controls.no_separate_launcher"))}
- ${pbtn("admin_launcher", "⚙<span class=\"lbl\"> ${esc(strings.get("dashboard.controls.admin_launcher"))}</span>", rootOk, "dashboard.controls.root_required")}
-</div>
-<div class="ctlrow ctlrow-secondary">
- ${pbtn("dashboard", "⌂<span class=\"lbl\"> ${esc(strings.get("dashboard.controls.dashboard"))}</span>", !checking, "dashboard.controls.unavailable")}
- ${pbtn("reload", "↻ ${esc(strings.get("dashboard.controls.reload"))}", !checking, "dashboard.controls.unavailable", "border-color:#7a6330;color:#f5cf82")}
- ${pbtn("reboot", "⟳ ${esc(strings.get("dashboard.controls.reboot"))}", rootOk, "dashboard.controls.root_required", "margin-left:auto;border-color:#7a3a2a;color:#f5a08a")}
-</div>"""
-    }
-
     /** Hydration payload for the dashboard: ready-to-inject HTML fragments, rendered by the same
      *  functions as the warm server render so the two paths can't drift. Builds the snapshot (this
      *  is where the probe cost actually lands — once per TTL). */
@@ -2119,16 +1451,20 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val h = healthInputs()
         val cards = listOf(
             "livetbl" to liveRowsHtml(strings),
-            "behavtbl" to behaviourRowsHtml(s, strings),
-            "disptbl" to displayRowsHtml(s, strings),
-            "updtbl" to updatesRowsHtml(s, strings),
-            "infotbl" to factRowsHtml(s, infoKeys(s), h, strings),
-            "nettbl" to factRowsHtml(s, NET_KEYS, h, strings),
-            "proftbl" to factRowsHtml(s, profileFactKeys(profile, s.facts), h, strings),
-            "contexttbl" to contextRowsHtml(s, h, strings),
+            "behavtbl" to settingRows.behaviourRowsHtml(s.live, strings, autoHints(strings), liveCapabilities(s.caps)),
+            "disptbl" to settingRows.displayRowsHtml(
+                s.live, DisplaySizingObservation(s.densityCur, s.densityBase, s.fontScale), strings,
+                capabilities = { liveCapabilities(s.caps) },
+                proximity = { sensors.proximitySummary().takeIf { sensors.hasProximity() } },
+            ),
+            "updtbl" to settingRows.updatesRowsHtml(s.live, strings) { liveCapabilities(s.caps) },
+            "infotbl" to factRowsHtml(s.facts, infoKeys(s), h.webView.tooOld, strings, ::displayCell),
+            "nettbl" to factRowsHtml(s.facts, NET_KEYS, h.webView.tooOld, strings, ::displayCell),
+            "proftbl" to factRowsHtml(s.facts, profileFactKeys(profile, s.facts), h.webView.tooOld, strings, ::displayCell),
+            "contexttbl" to contextRowsHtml(CONTEXT_KEYS, h.webView.reportingQuirk, strings) { key -> contextValue(key, s.facts) },
             "captbl" to capRowsHtml(s.capabilityRows, strings),
         ).joinToString(",") { (k, v) -> "\"$k\":${jsonStr(v)}" }
-        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshots.placeholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
+        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshots.placeholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s.facts, s.privilege, profile.hasRecents, { system.resolvedLauncher(config.launcherPackage)?.let { it != appContext.packageName } == true }, strings))},"cards":{$cards}}"""
     }
 
     private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
@@ -2139,103 +1475,57 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         // lazily so a cold shell (s == null, nothing rendered warm) still probes nothing.
         val h: HealthInputs by lazy(LazyThreadSafetyMode.NONE) { healthInputs() }
         val hydrate = s == null || managementObservations.snapCache.ageMs() > ManagementObservations.SNAP_TTL_MS
-        val placeholder = """<tr><td style="color:#888">${esc(strings.get("dashboard.status.reading"))}</td></tr>"""
-        // One facts/value card: cold → placeholder rows (hydration fills or hides); warm → rows, and
-        // an EMPTY card is omitted exactly as before.
-        fun tcard(id: String, title: String, rows: String?, pre: String = "", post: String = ""): String = when {
-            rows == null -> """<div class="card" data-layout-key="$id"><h2>${esc(title)}</h2>$pre<table id="$id">$placeholder</table>$post</div>"""
-            rows.isBlank() -> ""
-            else -> """<div class="card" data-layout-key="$id"><h2>${esc(title)}</h2>$pre<table id="$id">$rows</table>$post</div>"""
-        }
-        val profileReferences = profile.profileLinks.joinToString(" · ") { link ->
-            val host = runCatching { java.net.URI(link.url).host }.getOrNull().orEmpty()
-            val destination = host.takeIf { it.isNotBlank() }
-                ?.let { """ · <bdi class="profile-reference-host" dir="ltr">${esc(it)}</bdi>""" }
-                .orEmpty()
-            """<a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><bdi class="profile-reference-label" dir="auto">${esc(link.label)}</bdi>$destination</a>"""
-        }.takeIf { it.isNotBlank() }?.let { """<br><span class="profile-reference-links">$it</span>""" }.orEmpty()
-        val profNote = """<p class="note">${esc(strings.get("dashboard.profile_note.prefix"))} <a href="$DEVICE_PROFILES_DOC" target="_blank" rel="noopener" style="color:#9cf">${esc(strings.get("dashboard.profile_note.link"))}</a>.$profileReferences</p>"""
-        val capNote = """<p class="note"><a href="api/v1/diag" target="_blank" style="color:#9cf">⭳ ${esc(strings.get("dashboard.diagnostics_dump.link"))}</a> — ${esc(strings.get("dashboard.diagnostics_dump.explanation"))}</p>"""
+        val profNote = dashboardProfileNote(profile.profileLinks, strings)
         // A cold shell can safely show the app-private last-successful capture before the capability
         // probes finish. It must not request a new capture until hydration confirms a privileged route.
         val cachedShot = screenshots.placeholderUrl()
-        val shotTitle = """<h2>${esc(strings.get("dashboard.card.screenshot"))} <small>· ${esc(strings.get("dashboard.card.live_panel"))}</small><a class="card-title-action" href="#" onclick="refreshScreenshot(this.closest('.card'));return false" title="${esc(strings.get("dashboard.screenshot.capture_title"))}">↻ ${esc(strings.get("dashboard.action.refresh"))}</a></h2>"""
-        val shotInner = { src: String? ->
-            val source = src?.let { """src="${esc(it)}"""" } ?: ""
-            """<a class="shot" href="api/v1/screenshot.png" target="_blank" rel="noopener" title="${esc(strings.get("dashboard.screenshot.open_full_size"))}" data-error-label="${esc(strings.get("dashboard.screenshot.unavailable"))}" style="aspect-ratio:${screenAspectRatio()}"><img $source alt="${esc(strings.get("dashboard.screenshot.alt"))}" onload="this.parentElement.classList.add('loaded')" onerror="this.parentElement.classList.add('failed')"></a>"""
-        }
-        val shotCard = when {
-            s == null && cachedShot != null ->
-                """<div class="card" id="shotcard" data-layout-key="screenshot" data-capture-ok="0">$shotTitle${shotInner(cachedShot)}</div>"""
-            s == null ->
-                """<div class="card" id="shotcard" data-layout-key="screenshot" data-capture-ok="0" style="display:none">$shotTitle${shotInner(null)}</div>"""
-            s.privilege.typedShellControlReady ->
-                """<div class="card" id="shotcard" data-layout-key="screenshot" data-capture-ok="1">$shotTitle${shotInner(cachedShot)}</div>"""
-            else -> ""
-        }
-        // The camera card is a live measurement surface, so the server renders the shell and nothing
-        // else: rows written here would be a reading from page-render time that the card could not
-        // retract, which is the defect the lifecycle banner was deleted for. The poll owns every row.
-        // A board whose profile declares no camera gets no card rather than an empty one — the same
-        // rule the Camera row in Runtime diagnostics already follows.
-        val cameraCard = if (camera.presentation().state == CameraState.ABSENT) "" else
-            """<div class="card" data-layout-key="camera-stream"><h2>${esc(strings.get("dashboard.camera.title"))} <small id="camhdr"></small></h2>
-<table id="camtbl"><tr><td style="color:#888">${esc(strings.get("dashboard.status.reading"))}</td></tr></table>
-<p class="note">${esc(strings.get("dashboard.camera.note"))} ${esc(strings.get("dashboard.camera.settings_on"))} <a href="${localizedHref("configure", strings)}">${esc(strings.get("dashboard.camera.configure_link"))}</a>.</p></div>"""
-        val infoHaLink = if (config.haLinkUrl.isNotBlank())
-            """<a class="pbtn" href="${esc(config.haLinkUrl)}" target="_blank" rel="noopener" title="${esc(strings.get("dashboard.open_in_ha.title"))}">${esc(strings.get("shell.open_in_ha"))}</a>""" else ""
-        val revealBtn = """<button id="revbtn" class="pbtn" onclick="toggleReveal()" title="${esc(strings.get("dashboard.reveal.title"))}">${esc(strings.get("dashboard.action.reveal"))}</button>"""
+        val shotCard = dashboardScreenshotCard(
+            s == null, s?.privilege?.typedShellControlReady == true,
+            cachedShot, ::screenAspectRatio, strings,
+        )
+        val cameraCard = dashboardCameraCard(camera.presentation().state != CameraState.ABSENT, strings)
+        val rightControls = dashboardHeaderControls(config, strings)
         return pages.pageShell(
             active = "dashboard",
             sectionTitle = null,
             bodyAttrs = """data-ver="${Config.VERSION}" data-build="${buildToken()}" data-cfg="${renderConfigConcurrencyHash()}" data-hydrate="${if (hydrate) "1" else "0"}" data-hardened="${if (config.hardenedSecurityEnabled) "1" else "0"}"""",
-            rightControls = "$infoHaLink$revealBtn ${ghLink(strings)}",
+            rightControls = rightControls,
             embed = embed,
             extraScripts = """<script src="assets/card-size-memory.js"></script>
 <script src="assets/card-column-alignment.js"></script>
 <script src="info.js"></script>
 """,
-            body = """<div id="bannerzone">${s?.let { bannersHtml(it, h, strings) } ?: ""}</div>
-<div class="cards" id="dashboard-cards" data-card-size-page="dashboard" data-card-size-epoch="1" data-card-size-restore="1">
-<div class="card" data-layout-key="controls"><h2>${esc(strings.get("dashboard.card.controls"))} <small>· ${esc(strings.get("dashboard.card.software_nav_bar"))}</small></h2>
-<div id="ctlzone">${controlsHtml(s, strings)}</div></div>
-${tcard("infotbl", strings.get("dashboard.card.panel_information"), s?.let { factRowsHtml(it, infoKeys(it), h, strings) })}
-$shotCard
-${tcard("nettbl", strings.get("dashboard.card.networking"), s?.let { factRowsHtml(it, NET_KEYS, h, strings) }, post = """<p class="note">${esc(strings.get("dashboard.networking.warning_guidance"))}</p>""")}
-${tcard("proftbl", strings.get("dashboard.card.profile"), s?.let { factRowsHtml(it, profileFactKeys(profile, it.facts), h, strings) }, post = profNote)}
-${tcard("contexttbl", strings.get("dashboard.card.runtime_diagnostics"), s?.let { contextRowsHtml(it, h, strings) })}
-${tcard("captbl", strings.get("dashboard.card.capabilities"), s?.let { capRowsHtml(it.capabilityRows, strings) }, post = capNote)}
-<div class="card" data-layout-key="responsiveness"><h2>${esc(strings.get("dashboard.card.responsiveness"))} <small id="smhdr"></small></h2>
-<canvas id="respchart" width="600" height="150" style="height:150px"></canvas>
-<div class="leg"><span style="color:#d04a3b">▬</span> ${esc(strings.get("dashboard.chart.interaction_latency"))}&nbsp;&nbsp;<span style="color:#4a9eff">▬</span> ${esc(strings.get("dashboard.chart.state_updates"))}&nbsp;&nbsp;<span style="color:#f5a623">▬</span> ${esc(strings.get("dashboard.chart.main_thread_blocking"))} · ~4 min</div>
-<table id="smtbl"><tr><td style="color:#888">${esc(strings.get("dashboard.status.measuring"))}</td></tr></table></div>
-<div class="card" data-layout-key="ha-state-stream"><h2>${esc(strings.get("dashboard.card.ha_state_stream"))} <small>· ${esc(strings.get("dashboard.card.builtin_renderer"))}</small></h2>
-<table id="streamtbl"><tr><td style="color:#888">${esc(strings.get("dashboard.status.waiting_state_traffic"))}</td></tr></table>
-<table class="dt" id="noisyentities"><tr><td style="color:#888">${esc(strings.get("dashboard.status.waiting_entity_contributors"))}</td></tr></table>
-<p class="note">${esc(strings.get("dashboard.ha_stream.note"))} <a href="${localizedHref("entities", strings)}">${esc(strings.get("dashboard.ha_stream.open_diagnostics"))}</a>.</p></div>
-<div class="card" data-layout-key="sensors"><h2>${esc(strings.get("dashboard.card.sensors"))} <small id="sensage"></small></h2>
-<table id="senstbl"><tr><td style="color:#888">${esc(strings.get("dashboard.status.reading"))}</td></tr></table>
-<p class="note">${esc(strings.get("dashboard.sensors.note"))}</p></div>
-$cameraCard
-<div class="card" data-layout-key="performance"><h2>${esc(strings.get("dashboard.card.performance"))} <small id="perfage"></small></h2>
-<div style="color:#666;font-size:.78rem;margin-bottom:8px">${esc(strings.get("dashboard.performance.samples_note"))}</div>
-<canvas id="perfchart" width="600" height="96" style="height:96px"></canvas>
-<div class="leg"><span style="color:#4a9eff">■</span> CPU&nbsp;&nbsp;<span style="color:#48c774">■</span> RAM&nbsp;&nbsp;<span style="color:#f5a623">■</span> GPU (${esc(strings.get("dashboard.chart.percent_used"))}) · ~4&nbsp;min</div>
-<table id="perf"><tr><td style="color:#888">${esc(strings.get("dashboard.status.sampling"))}</td></tr></table></div>
-<div class="card" data-layout-key="top-processes"><h2>${esc(strings.get("dashboard.card.top_processes"))} <span class="top-process-modes" role="group" aria-label="${esc(strings.get("dashboard.processes.rank_by"))}"><button type="button" class="top-process-mode on" data-mode="cpu" aria-pressed="true" onclick="setTopMode('cpu')">CPU</button><button type="button" class="top-process-mode" data-mode="ram" aria-pressed="false" onclick="setTopMode('ram')">RAM</button></span></h2>
-<table class="dt" id="topproc"><tr><td style="color:#888">${esc(strings.get("dashboard.status.top_processes"))}</td></tr></table></div>
-<div class="card" data-layout-key="remote-webview"><h2>${esc(strings.get("dashboard.card.remote_webview"))} <small id="insthdr"></small></h2>
-<div style="display:flex;gap:8px;margin-bottom:4px">
- <button id="inspstart" type="button" class="pbtn" onclick="inspStart()"${if (config.hardenedSecurityEnabled) " disabled title=\"${esc(strings.get("dashboard.remote_webview.hardened_unavailable"))}\"" else ""}>${esc(strings.get("dashboard.action.enable"))}</button>
- <button type="button" class="pbtn" onclick="inspStop()">${esc(strings.get("dashboard.action.stop"))}</button></div>
-<p class="note" id="insthint"></p></div>
-${tcard("livetbl", strings.get("dashboard.card.live_state"), if (s == null) null else liveRowsHtml(strings), pre = """<p class="note">${esc(strings.get("dashboard.live_state.note"))}</p>""")}
-${tcard("behavtbl", strings.get("dashboard.card.behaviour"), s?.let { behaviourRowsHtml(it, strings) })}
-${tcard("disptbl", strings.get("dashboard.card.display_tuning"), s?.let { displayRowsHtml(it, strings) })}
-${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtml(it, strings) })}
-</div>
-<p class="note" style="text-align:center;margin-top:18px"><a href="${localizedHref("api", strings)}" style="color:#9cf">${esc(strings.get("dashboard.footer.api_explorer"))}</a>
- · <a href="api/v1/diag" target="_blank" style="color:#9cf">${esc(strings.get("dashboard.footer.diagnostics"))}</a> · <a href="$REPO_URL" target="_blank" rel="noopener" style="color:#9cf">GitHub</a></p>""",
+            body = dashboardBody(
+                config, strings, profNote, shotCard, cameraCard,
+                banners = s?.let { bannersHtml(it, h, strings) } ?: "",
+                controls = controlsHtml(
+                    s?.facts, s?.privilege, profile.hasRecents,
+                    distinctLauncher = {
+                        system.resolvedLauncher(config.launcherPackage)?.let { it != appContext.packageName } == true
+                    },
+                    strings,
+                ),
+                rowHtml = { id ->
+                    when (id) {
+                        "infotbl" -> s?.let { factRowsHtml(it.facts, infoKeys(it), h.webView.tooOld, strings, ::displayCell) }
+                        "nettbl" -> s?.let { factRowsHtml(it.facts, NET_KEYS, h.webView.tooOld, strings, ::displayCell) }
+                        "proftbl" -> s?.let { factRowsHtml(it.facts, profileFactKeys(profile, it.facts), h.webView.tooOld, strings, ::displayCell) }
+                        "contexttbl" -> s?.let { contextRowsHtml(CONTEXT_KEYS, h.webView.reportingQuirk, strings) { key -> contextValue(key, it.facts) } }
+                        "captbl" -> s?.let { capRowsHtml(it.capabilityRows, strings) }
+                        "livetbl" -> if (s == null) null else liveRowsHtml(strings)
+                        "behavtbl" -> s?.let { settingRows.behaviourRowsHtml(it.live, strings, autoHints(strings), liveCapabilities(it.caps)) }
+                        "disptbl" -> s?.let {
+                            settingRows.displayRowsHtml(
+                                it.live, DisplaySizingObservation(it.densityCur, it.densityBase, it.fontScale), strings,
+                                capabilities = { liveCapabilities(it.caps) },
+                                proximity = { sensors.proximitySummary().takeIf { sensors.hasProximity() } },
+                            )
+                        }
+                        "updtbl" -> s?.let { settingRows.updatesRowsHtml(it.live, strings) { liveCapabilities(it.caps) } }
+                        else -> error("Unknown dashboard table: $id")
+                    }
+                },
+            ),
             strings = strings,
             translationPrefixes = setOf("shell.", "dashboard.", "runtime."),
         )
@@ -2526,7 +1816,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
     private fun performanceWorkloadValues(): Map<String, String> {
         val live = managementObservations.snapStaleOk().live
         return PERFORMANCE_WORKLOAD_KEYS.associateWith { key ->
-            effectiveValue(requireNotNull(SettingsRegistry.spec(key)), live)
+            effectiveSettingValue(config, requireNotNull(SettingsRegistry.spec(key)), live)
         }
     }
 
@@ -2602,19 +1892,5 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
         /** Configuration is tens of kilobytes on real panels; this is headroom, not a target. */
         internal const val MAX_STATE_BACKUP_BYTES = 4L * 1024L * 1024L
 
-        // Dashboard fact rows that are BACKED BY A SETTING → the Configure anchor the ✎ marker
-        // deep-links to. Facts absent here are static (hardware/runtime) and get no marker.
-        private val FACT_CFG = mapOf(
-            "panel_id" to "cfg-panel_id",
-            "Friendly name" to "cfg-friendly_name",
-            "MQTT" to "cfg-mqtt_broker",
-            "Navbar" to "cfg-navbar_mode",
-            "Zigbee" to "cfg-zigbee_router",
-            "CPU profile" to "cfg-cpu_governor",
-            "Network ADB" to "cfg-network_adb",
-            "Log shipping" to "cfg-log_ship_enabled",
-        )
-        private const val RELEASES_URL = "https://github.com/panel-assistant/android/releases"
-        private const val DEVICE_PROFILES_DOC = "https://panel-assistant.io/go/docs?page=architecture/device-profiles"
     }
 }

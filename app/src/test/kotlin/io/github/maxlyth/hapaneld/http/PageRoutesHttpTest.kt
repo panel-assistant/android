@@ -73,6 +73,8 @@ class PageRoutesHttpTest {
                     "setup" to "id=\"wiz-step\"",
                     "profiles" to "id=\"profile-editor\"",
                     "entities" to "entities.disabled.title",
+                    "logs" to "id=\"lg-out\"",
+                    "fleet" to "http://&lt;its-ip&gt;:",
                 )) {
                     val response = client.get("/$path?lang=zh-Hans") {
                         header(HttpHeaders.Cookie, "wiz_escape=1")
@@ -97,6 +99,17 @@ class PageRoutesHttpTest {
                 assertTrue(setup.contains("href=\"configure?lang=en\""))
                 assertTrue(setup.contains("wiz_escape=1;path=/;max-age=3600"))
                 assertFalse(setup.contains("data-cfg="))
+                val api = client.get("/api?lang=zh-Hans") {
+                    header(HttpHeaders.Cookie, "wiz_escape=1")
+                }
+                assertEquals(HttpStatusCode.OK, api.status)
+                assertTrue(api.bodyAsText().contains("Contract &lt;panel&gt;"))
+                assertFalse(api.bodyAsText().contains("__API_I18N_PAYLOAD__"))
+                val refusedApi = client.get("/api") {
+                    header(HttpHeaders.Cookie, "wiz_escape=1")
+                    header(HttpHeaders.Host, "elsewhere.example")
+                }
+                assertEquals(HttpStatusCode.Forbidden, refusedApi.status)
             }
         }
     }
