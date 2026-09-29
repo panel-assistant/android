@@ -10249,9 +10249,9 @@
       "text": "灵敏度"
     },
     "settings.auto_sleep.help": {
-      "sourceHash": "5061de3660a9fc18a43615782f216134dffef4d62725528ce1d72e3927d878c9",
-      "state": "machine-cross-checked",
-      "text": "检测到活动时自动唤醒面板，并在学习到的延迟后关闭屏幕。手动屏幕控制不受影响。"
+      "text": "在所选存在模式学习到的延迟或设定的触摸空闲延迟后关闭屏幕。手动屏幕控制保持独立。",
+      "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
+      "state": "machine-cross-checked"
     },
     "settings.auto_sleep.label": {
       "sourceHash": "69d958fb4d9465ad4a08bcec58dc47971fceba6a8631352203aa884ebd413428",
@@ -10269,13 +10269,13 @@
       "text": "自动休眠活动"
     },
     "settings.auto_sleep_source.help": {
-      "text": "使用面板已校准的接近传感器，或选择 Home Assistant 区域设备。所选来源不可用时，自动休眠会暂停，触摸控制仍可使用。",
-      "sourceHash": "0350776edee98aa7748c83872293309856544907f647121be111047fa868e50b",
+      "text": "使用面板已校准的接近传感器、Home Assistant 区域设备或触摸空闲。如果存在模式的来源不可用，该模式会暂停；触摸空闲无需设置存在检测。",
+      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_source.label": {
-      "text": "自动休眠的存在检测来源",
-      "sourceHash": "9a054a7f24e839eacfc5c07281e98e4d5ddf2a0772fe4bc13838166a6eaca289",
+      "text": "自动休眠活动来源",
+      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
@@ -12377,6 +12377,31 @@
       "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
       "state": "machine-cross-checked",
       "text": "在移除ha-paneld之前请执行此操作。否则，该面板将没有主屏幕。"
+    },
+    "configure.auto_sleep.fixed_delay": {
+      "text": "连续 {count} 秒未触摸后关闭屏幕。",
+      "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.source_touch": {
+      "text": "触摸空闲",
+      "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
+      "state": "machine-cross-checked"
+    },
+    "configure.auto_sleep.touch_help": {
+      "text": "使用此面板的触摸活动。无需 Home Assistant 或存在传感器。",
+      "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_touch_delay_seconds.help": {
+      "text": "选择触摸空闲后，连续指定秒数未触摸时完全关闭屏幕。",
+      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_touch_delay_seconds.label": {
+      "text": "触摸空闲延迟（秒）",
+      "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
+      "state": "machine-cross-checked"
     }
   }
 }

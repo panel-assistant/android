@@ -17,6 +17,7 @@ internal enum class AutoSleepReason {
 internal data class AutoSleepPolicyConfig(
     val learnedLeaseMs: Long = MIN_AUTO_SLEEP_LEASE_MS,
     val qualifiedProximityExtensionMs: Long = DEFAULT_PROXIMITY_EXTENSION_MS,
+    val fixedLeaseMs: Long? = null,
 )
 internal data class AutoSleepFeedPosition(val generation: Long, val revision: Long)
 internal data class AutoSleepActivityMarker(val sequence: Long, val atMs: Long)
@@ -51,6 +52,7 @@ internal data class AutoSleepPolicyState(
     val sources: Map<String, AutoSleepSourceState>,
     val learnedLeaseMs: Long,
     val proximityExtensionMs: Long,
+    val fixedLeaseMs: Long? = null,
     val correctionFloorMs: Long = MIN_AUTO_SLEEP_LEASE_MS,
     val awakeUntilMs: Long? = null,
     val leaseReason: AutoSleepReason = AutoSleepReason.SOURCE_ACTIVITY_LEASE,
@@ -68,6 +70,7 @@ internal object AutoSleepPolicyReducer {
             sources = sourceIds.associateWith { AutoSleepSourceState.UNAVAILABLE },
             learnedLeaseMs = config.learnedLeaseMs.coerceIn(MIN_AUTO_SLEEP_LEASE_MS, MAX_AUTO_SLEEP_LEASE_MS),
             proximityExtensionMs = config.qualifiedProximityExtensionMs.coerceIn(0L, MAX_PROXIMITY_EXTENSION_MS),
+            fixedLeaseMs = config.fixedLeaseMs?.coerceIn(5_000L, 86_400_000L),
         )
     }
     fun reduce(previous: AutoSleepPolicyState, event: AutoSleepEvent): AutoSleepTransition {
@@ -142,7 +145,7 @@ internal object AutoSleepPolicyReducer {
         val sleptAt = current.lastAutomaticSleepMs
         val prompt = wokeOwnedAutomaticSleep && sleptAt != null &&
             current.lastEventAtMs!! - sleptAt in 0L..PREMATURE_TOUCH_WINDOW_MS
-        val corrected = if (prompt) {
+        val corrected = if (prompt && current.fixedLeaseMs == null) {
             current.copy(
                 correctionFloorMs = safeAdd(current.effectiveLeaseMs(), PREMATURE_TOUCH_CORRECTION_MS)
                     .coerceAtMost(MAX_AUTO_SLEEP_LEASE_MS),
@@ -187,7 +190,7 @@ internal object AutoSleepPolicyReducer {
             healthy, unavailable,
         )
     }
-    private fun AutoSleepPolicyState.effectiveLeaseMs() = maxOf(learnedLeaseMs, correctionFloorMs)
+    private fun AutoSleepPolicyState.effectiveLeaseMs() = fixedLeaseMs ?: maxOf(learnedLeaseMs, correctionFloorMs)
     private fun safeAdd(value: Long, increment: Long) =
         if (Long.MAX_VALUE - value < increment) Long.MAX_VALUE else value + increment
 }

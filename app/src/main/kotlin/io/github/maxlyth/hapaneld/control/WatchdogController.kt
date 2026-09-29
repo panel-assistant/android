@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 class WatchdogController(
     private val system: SystemController,
     private val config: Config,
+    private val calibrationActive: () -> Boolean = { false },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile
@@ -61,6 +62,7 @@ class WatchdogController(
                 state = state,
                 now = now,
                 builtinTarget = system.isBuiltinDashboardTarget(pkg),
+                calibrationActive = calibrationActive(),
             )
             if (generation != runGeneration.get() || pkg != config.dashboardPackage) return@periodic
             val becameCrashLooping = publishCrashStatus(generation, pkg, decision.crashLooping) ?: return@periodic
@@ -68,6 +70,7 @@ class WatchdogController(
                 Log.e(TAG, "dashboard crash-looping -> backing off relaunches; see health warning")
             }
             if (generation != runGeneration.get() || pkg != config.dashboardPackage) return@periodic
+            if (calibrationActive()) return@periodic
             when (decision.action) {
                 DashboardRecoveryPolicy.Action.NONE -> Unit
                 DashboardRecoveryPolicy.Action.RELAUNCH_DEAD -> {
@@ -120,7 +123,12 @@ internal fun evaluateDashboardRecovery(
     state: AppState,
     now: Long,
     builtinTarget: Boolean,
+    calibrationActive: Boolean = false,
 ): DashboardRecoveryPolicy.Decision {
+    if (calibrationActive) {
+        policy.reset()
+        return DashboardRecoveryPolicy.Decision(DashboardRecoveryPolicy.Action.NONE, crashLooping = false)
+    }
     // Built-in state is DEAD only for its own renderer latch; unlike a foreign process it cannot be
     // absent while this service process is alive. Route on the observed state as one fact, so a latch
     // clear/expiry racing after that observation cannot leak a stale DEAD sample into the foreign budget.
