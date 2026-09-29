@@ -550,59 +550,11 @@ class PaneldServer internal constructor(
             ) {
                 handBackHomeRoutes(handBackHomeDependencies())
                 controlPlaneRoutes(
-                    ControlPlaneRouteDependencies(
-                        playAudio = playAudio,
-                        installComponent = onInstallComponent,
-                        installedComponentVersion = { name ->
-                            when (name) {
-                                "paneld" -> Config.VERSION
-                                "companion" -> CompanionInstaller.installedPkg(appContext)?.let { pkg ->
-                                    AppInstaller.installedVersion(appContext, pkg).takeIf { it.isNotBlank() }
-                                }
-                                "webview" -> runCatching {
-                                    android.webkit.WebView.getCurrentWebViewPackage()?.versionName
-                                }.getOrNull()
-                                else -> null
-                            }
-                        },
-                        buildBackup = { request, passphrase ->
-                            withContext(Dispatchers.IO) {
-                                buildBackupArtifact(request, passphrase)
-                            }
-                        },
-                        backupFileStem = { config.panelId },
-                        authorize = ::authorizeSensitive,
-                        identityMigration = identityMigration,
-                        apkUpload = ApkUploadRouteDependencies(
-                            enabled = { config.apkUploadAllowed },
-                            rootAvailable = { rootOk() },
-                            pending = pendingApks,
-                            createStagingFile = { File.createTempFile("apk-upload-", ".apk", appContext.cacheDir) },
-                            inspect = { staged ->
-                                withContext(Dispatchers.IO) { AppInstaller.inspect(appContext, staged.absolutePath) }?.let {
-                                    UploadedApkIdentity(it.pkg, it.version, it.signerSha256, it.signerSha256s, it.versionCode)
-                                }
-                            },
-                            startInstall = { claimed, progress ->
-                                val apk = claimed.file
-                                val job = scope.launch {
-                                    val result = runCatching {
-                                        installUploadedApk(
-                                            claimed,
-                                            identityMigration,
-                                            install = { AppInstaller.installLocalApk(appContext, it) },
-                                        )
-                                    }.getOrElse {
-                                        apk.delete()
-                                        "error: ${it.message}"
-                                    }
-                                    Log.i(TAG, "APK upload install: $result")
-                                    InstallProgress.finish(progress, result)
-                                }
-                                job.invokeOnCompletion { cause -> if (cause != null) apk.delete() }
-                                InstallProgress.finishOnFailure(progress, job)
-                            },
-                        ),
+                    controlPlaneDependencies(
+                        appContext, config, scope, pendingApks, identityMigration,
+                        playAudio, onInstallComponent,
+                        buildBackupArtifact = ::buildBackupArtifact,
+                        authorizeSensitive = ::authorizeSensitive,
                     ),
                 )
                 identityMigrationRoutes(identityMigration, ::authorizeSensitive)
@@ -614,123 +566,7 @@ class PaneldServer internal constructor(
                     ),
                 )
                 guardDbBootstrapRoutes(
-                    GuardDbBootstrapRouteDependencies(
-                        pendingUploads = pendingApks,
-                        staging = guardDbStaging,
-                        inspectPending = { file -> inspectGuardDbCandidate(appContext, file) },
-                        inspectInstalled = {
-                            inspectGuardDbCandidate(appContext, File(appContext.applicationInfo.sourceDir))
-                        },
-                        settingsAuthority = {
-                            guardDbSettingsAuthorityStore(appContext).materializeExact()
-                        },
-                        client = GuardDbMaintenance.client,
-                        sentinelStore = guardDbSentinelStore(appContext),
-                        bootNonce = ::guardDbBootNonce,
-                        monotonicMs = SystemClock::elapsedRealtime,
-                        httpPort = { config.httpPort },
-                        hardened = { config.hardenedSecurityEnabled },
-                        securityEpoch = {
-                            RemoteDebugSecurityTransitionGate.withLock {
-                                val epoch = RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch()
-                                    ?: return@withLock null
-                                val adb = AdbController(appContext, config)
-                                epoch.takeIf {
-                                    config.hardenedSecurityEnabled && !CdpRelay.running &&
-                                        adb.hardenedRemoteDebugOff() && config.hardenedSecurityEnabled &&
-                                        !CdpRelay.running &&
-                                        RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() == epoch
-                                }
-                            }
-                        },
-                        commitSentinel = { expectedEpoch, sentinel ->
-                            when (val authority = RemoteDebugSecurityTransitionGate.withEpoch(expectedEpoch) {
-                                if (sentinel.securityAuthorityEpoch != expectedEpoch ||
-                                    RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() != expectedEpoch ||
-                                    !config.hardenedSecurityEnabled || CdpRelay.running
-                                ) {
-                                    return@withEpoch GuardDbSentinelCommit.SecurityRefused
-                                }
-                                val adb = AdbController(appContext, config)
-                                if (!adb.hardenedRemoteDebugOff() || !config.hardenedSecurityEnabled ||
-                                    CdpRelay.running ||
-                                    RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() != expectedEpoch
-                                ) return@withEpoch GuardDbSentinelCommit.SecurityRefused
-                                val store = guardDbSentinelStore(appContext)
-                                val written = store.write(sentinel)
-                                val load = store.load()
-                                if (written && load is io.github.maxlyth.hapaneld.util.GuardDbSentinelLoad.Valid &&
-                                    load.sentinel == sentinel
-                                ) {
-                                    GuardDbSentinelCommit.Committed(load)
-                                } else {
-                                    GuardDbSentinelCommit.Failed(load)
-                                }
-                            }) {
-                                RemoteDebugAuthorityResult.Changed -> GuardDbSentinelCommit.SecurityRefused
-                                is RemoteDebugAuthorityResult.Value -> authority.value
-                            }
-                        },
-                        authorize = { call, operation, payload, summary ->
-                            authorizeSensitiveRequest(
-                                call = call,
-                                hardened = true,
-                                peer = call.request.origin.remoteAddress,
-                                operation = operation,
-                                payload = payload,
-                                summary = summary,
-                                broker = LocalApprovalBroker.instance,
-                            )
-                        },
-                        prepare = { manifest, schedule ->
-                            GuardDbArmCoordinator.prepare(
-                                appContext,
-                                manifest,
-                                schedule,
-                            )
-                        },
-                        contain = {
-                            scope.launch {
-                                delay(GUARD_DB_ARM_RESPONSE_GRACE_MS)
-                                appContext.stopService(
-                                    android.content.Intent(appContext, io.github.maxlyth.hapaneld.PaneldService::class.java),
-                                )
-                                Thread {
-                                    Thread.sleep(1_500L)
-                                    io.github.maxlyth.hapaneld.GuardDbMaintenanceService.start(appContext)
-                                }.start()
-                            }
-                        },
-                        terminalRetirement = GuardDbTerminalRetirementRouteDependencies(
-                            client = GuardDbMaintenance.client,
-                            store = guardDbTerminalRetirementStore(appContext),
-                            hardened = { config.hardenedSecurityEnabled },
-                            securityEpoch = {
-                                RemoteDebugSecurityTransitionGate.withLock {
-                                    val epoch = RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch()
-                                        ?: return@withLock null
-                                    val adb = AdbController(appContext, config)
-                                    epoch.takeIf {
-                                        config.hardenedSecurityEnabled && !CdpRelay.running &&
-                                            adb.hardenedRemoteDebugOff() && config.hardenedSecurityEnabled &&
-                                            !CdpRelay.running &&
-                                            RemoteDebugSecurityTransitionGate.hardenedAuthorityEpoch() == epoch
-                                    }
-                                }
-                            },
-                            authorize = { call, operation, payload, summary ->
-                                authorizeSensitiveRequest(
-                                    call = call,
-                                    hardened = true,
-                                    peer = call.request.origin.remoteAddress,
-                                    operation = operation,
-                                    payload = payload,
-                                    summary = summary,
-                                    broker = LocalApprovalBroker.instance,
-                                )
-                            },
-                        ),
-                    ),
+                    guardDbBootstrapDependencies(appContext, config, scope, pendingApks, guardDbStaging),
                 )
                 get("/") {
                     val strings = requestStrings(call)
@@ -1107,138 +943,14 @@ class PaneldServer internal constructor(
                         snapInvalidate = ::snapInvalidate,
                         authorizeSensitive = ::authorizeSensitive,
                     )
-                    // Dismiss a component update from the DASHBOARD banner only (per-version; re-surfaces when
-                    // a newer release ships). The Install tab still lists it. See Config.ignoreUpdate.
-                    post("/updates/ignore") {
-                        val p = receiveBoundedFormParameters(call) ?: return@post
-                        val label = p["label"]?.trim().orEmpty()
-                        val version = p["version"]?.trim().orEmpty()
-                        if (label.isEmpty() || version.isEmpty())
-                            call.respondText("""{"ok":false}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
-                        else { config.ignoreUpdate(label, version); call.respondText("""{"ok":true}""", ContentType.Application.Json) }
-                    }
-                    // Recent installable versions for a component's picker (name ∈ {paneld,companion};
-                    // channel ∈ {stable,prerelease}). Up to 10, newest first, each with a release-notes URL.
-                    get("/install/versions") {
-                        val name = call.request.queryParameters["name"]?.trim().orEmpty()
-                        val channel = call.request.queryParameters["channel"]?.trim()?.ifEmpty { "stable" } ?: "stable"
-                        val vers = withContext(Dispatchers.IO) {
-                            when (name) {
-                                "paneld" -> SelfUpdater.versions(channel)
-                                "companion" -> CompanionInstaller.versions(
-                                    channel,
-                                    maxVersion = profile.companionMaxVersion,
-                                )
-                                else -> emptyList()
-                            }
-                        }
-                        val installedVersion = when (name) {
-                            "paneld" -> Config.VERSION
-                            "companion" -> CompanionInstaller.installedPkg(appContext)?.let {
-                                AppInstaller.installedVersion(appContext, it)
-                            }
-                            else -> null
-                        }
-                        val arr = vers.joinToString(",") { v ->
-                            val candidate = if (name == "companion") UpdateChecker.stripVariant(v.version) else v.version
-                            val installed = installedVersion?.let {
-                                if (name == "companion") UpdateChecker.stripVariant(it) else it
-                            }
-                            val comparison = installed?.let { UpdateChecker.compareVersions(candidate, it) }
-                            val (action, presentation) = when {
-                                comparison == null || comparison == 0 ->
-                                    "Install" to InstallPresentation("version-install")
-                                comparison > 0 ->
-                                    "Upgrade" to InstallPresentation("version-upgrade")
-                                else ->
-                                    "Downgrade" to InstallPresentation("version-downgrade")
-                            }
-                            """{"version":${jsonStr(v.version)},"tag":${jsonStr(v.tag)},"notes":${jsonStr(v.notesUrl)},"installable":${v.installable},"action":${jsonStr(action)},"apk":${jsonStr(v.apkUrl ?: "")},"presentations":{"action":${presentation.json()}}}"""
-                        }
-                        call.respondText("""{"channel":${jsonStr(channel)},"versions":[$arr]}""", ContentType.Application.Json)
-                    }
-                    get("/install/status") { call.respondText(InstallProgress.json(), ContentType.Application.Json) }
-                    // Enable/disable the APK-upload capability (the card's toggle).
-                    post("/install/apk/allow") {
-                        val on = (receiveBoundedFormParameters(call) ?: return@post)["on"]
-                            ?.let { it == "true" || it == "1" } ?: true
-                        config.setApkUploadAllowed(on)
-                        if (!on) pendingApks.clear()
-                        call.respondText("""{"ok":true,"allowed":$on}""", ContentType.Application.Json)
-                    }
-                    // Removable apps (third-party + updated-system; excludes ha-paneld + stock system apps,
-                    // which pm can't uninstall anyway) for the Uninstall card's picker.
-                    get("/packages") { call.respondText(withContext(Dispatchers.IO) { packagesJson() }, ContentType.Application.Json) }
-                    // Launchable apps plus the supported installed Companion renderer choices —
-                    // populates the Configure tab's Dashboard-app / Launcher-app pickers.
-                    // Uninstall a package over root. Guarded: never ha-paneld itself; the picker only offers
-                    // removable apps. `pm uninstall` (system/vendor apps aren't removable, only disable-able
-                    // via taming — a separate, safer path).
-                    post("/uninstall") {
-                        if (!Su.availableCachedIsolated()) return@post call.respondText(
-                            """{"ok":false,"error":"no-root"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
-                        val parameters = receiveBoundedFormParameters(call) ?: return@post
-                        val pkg = parameters["pkg"]?.trim().orEmpty()
-                        val protected = pkg == appContext.packageName || pkg == io.github.maxlyth.hapaneld.util.WebViewInstaller.WEBVIEW_PKG
-                        if (pkg.isEmpty() || protected || !AndroidInput.isPackage(pkg) ||
-                            pkg !in removablePackages().mapTo(hashSetOf()) { it.first })
-                            return@post call.respondText("""{"ok":false,"error":"bad-package"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
-                        if (!authorizeSensitive(
-                                call,
-                                SensitiveOperation.PACKAGE_UNINSTALL,
-                                exactHttpApprovalPayload(call, parameters.canonicalDigest()),
-                                "Uninstall $pkg",
-                            )
-                        ) return@post
-                        val progress = InstallProgress.start(
-                            "Uninstall",
-                            InstallPresentation("operation-working", mapOf("owner" to "package-uninstall")),
-                        ) ?: return@post call.respondText(
-                            """{"ok":false,"error":"busy"}""", ContentType.Application.Json, HttpStatusCode.Conflict)
-                        var progressResult = "uninstall cancelled"
-                        var progressPresentation: InstallPresentation? = InstallPresentation("operation-cancelled")
-                        try {
-                            val (out, path) = withContext(Dispatchers.IO) {
-                                Su.runOutput("pm uninstall $pkg")?.trim() to
-                                    Su.runOutput("pm path $pkg 2>/dev/null")?.trim()
-                            }
-                            // Empty stdout can be a real persistent-shell success, but null means the probe failed.
-                            val ok = uninstallSucceeded(out, path)
-                            progressResult = if (ok) "uninstalled $pkg" else "uninstall failed: $pkg"
-                            progressPresentation = InstallPresentation(
-                                if (ok) "package-uninstalled" else "package-uninstall-failed",
-                                mapOf("package" to pkg),
-                            )
-                            if (ok) Log.i(TAG, "uninstalled $pkg")
-                            val result = out?.ifEmpty { if (ok) "removed" else "uninstall failed" } ?: "uninstall failed"
-                            call.respondText("""{"ok":$ok,"result":${jsonStr(result)}}""", ContentType.Application.Json)
-                        } finally {
-                            InstallProgress.finish(
-                                progress,
-                                progressResult,
-                                presentation = progressPresentation,
-                            )
-                        }
-                    }
+                    installationRoutes(appContext, config, profile, pendingApks, ::authorizeSensitive)
                     radioRoutes(
                         status = radioStatus,
                         configured = { config.zigbeeRouterConfigured },
                         enabled = { config.zigbeeRouterEnabled },
                         join = onZigbeeJoinRetry,
                     )
-                    // Auto-heal the System WebView (download + install the profile's recommended build).
-                    // Fire-and-forget: the install runs off-thread (large download); the client refreshes.
-                    post("/webview/heal") {
-                        if (!authorizeSensitive(
-                                call,
-                                SensitiveOperation.APK_INSTALL,
-                                exactHttpApprovalPayload(call, sha256Hex(ByteArray(0))),
-                                "Reinstall the recommended System WebView",
-                            )
-                        ) return@post
-                        val status = if (onInstallComponent("webview", "reinstall", "")) "started" else "busy"
-                        call.respondText("""{"status":"$status"}""", ContentType.Application.Json)
-                    }
+                    webViewHealRoute(onInstallComponent, ::authorizeSensitive)
                     // Clear the built-in renderer's browsing data (localStorage/IndexedDB/caches/cookies)
                     // — the remote heal for a corrupted-storage dashboard that survives plain reloads.
                     // Sign-in is NOT stored there (the external-auth bridge holds the token in Config),
@@ -1767,13 +1479,6 @@ class PaneldServer internal constructor(
     /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
      *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
      *  self-uninstall would kill the tool. */
-    private fun packagesJson(): String {
-        val apps = removablePackages()
-        val arr = apps.joinToString(",") { (pkg, label) -> "{\"pkg\":${jsonStr(pkg)},\"label\":${jsonStr(label)}}" }
-        return "{\"packages\":[$arr]}"
-    }
-
-    /** The server re-evaluates the same policy used by the picker; UI filtering is never authorization. */
     /**
      * Wire the hand-back routes to this panel's real taming state.
      *
@@ -1824,32 +1529,6 @@ class PaneldServer internal constructor(
                 authorizeSensitive(call, operation, payload, summary)
             },
         )
-    private fun removablePackages(): List<Pair<String, String>> {
-        val pm = appContext.packageManager
-        val homePackage = runCatching {
-            pm.resolveActivity(
-                android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME),
-                0,
-            )?.activityInfo?.packageName
-        }.getOrNull()
-        val excluded = setOfNotNull(
-            appContext.packageName,
-            io.github.maxlyth.hapaneld.util.WebViewInstaller.WEBVIEW_PKG,
-            config.dashboardPackage.takeIf { it.isNotBlank() && it != SystemController.BUILTIN_DASHBOARD },
-            config.launcherPackage.takeIf(String::isNotBlank),
-            homePackage,
-        )
-        return runCatching {
-            pm.getInstalledApplications(0)
-                .filter { it.packageName !in excluded }
-                .filter {
-                    it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM == 0 ||
-                        it.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
-                }
-                .map { it.packageName to runCatching { pm.getApplicationLabel(it).toString() }.getOrDefault(it.packageName) }
-                .sortedBy { it.second.lowercase(java.util.Locale.ROOT) }
-        }.getOrDefault(emptyList())
-    }
 
     /** Logs tab — live log tail over SSE. App source always; system source needs root (gated live). */
     private fun logsBody(strings: AppStrings): String {
@@ -1979,7 +1658,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     // whatever is last known instantly (placeholders on a cold start). Post-critical prewarm and stale
     // management endpoints all enter the same at-most-once-per-TTL, single-flight cache supplier.
 
-    private fun rootOk(): Boolean = Su.availableCachedIsolated() || HelperClient.available()
 
     private val screenshots = ScreenshotCache(appContext.filesDir)
 
@@ -3118,7 +2796,6 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
 
     companion object {
         private const val TAG = "ha-paneld/http"
-        private const val GUARD_DB_ARM_RESPONSE_GRACE_MS = 500L
         private const val HARDENED_APPROVAL_TEXT =
             "Requires physical on-panel approval for this action when Hardened mode is enabled."
         private const val HARDENED_CONDITIONAL_APPROVAL_TEXT =

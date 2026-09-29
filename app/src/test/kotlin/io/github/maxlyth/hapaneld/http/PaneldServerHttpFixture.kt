@@ -27,6 +27,7 @@ import sun.misc.Unsafe
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
 internal class PaneldServerHttpFixture(
+    installComponent: (String, String, String) -> Boolean = { _, _, _ -> error("Unexpected install") },
     density: io.github.maxlyth.hapaneld.control.DensityController? = null,
     camera: io.github.maxlyth.hapaneld.camera.CameraSurface = io.github.maxlyth.hapaneld.camera.AbsentCameraSurface,
     powerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyAssessment = { error("Unexpected power assessment") },
@@ -34,6 +35,7 @@ internal class PaneldServerHttpFixture(
     logApp: io.github.maxlyth.hapaneld.logship.LogCapture? = null,
 ) : java.io.Closeable {
     private val directory = Files.createTempDirectory("paneld-http-baseline").toFile()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val context = object : ContextWrapper(null) {
         override fun getFilesDir(): File = directory
         override fun getCacheDir(): File = directory
@@ -59,8 +61,7 @@ internal class PaneldServerHttpFixture(
             set(config, object : android.content.ContentResolver(null) {})
         }
     }
-    private val pending = PendingUploadStore().apply { open() }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val pending = PendingUploadStore().apply { open() }
     private var observations = ManagementObservations(
         context,
         density ?: io.github.maxlyth.hapaneld.control.DensityController(canSu = false),
@@ -91,7 +92,7 @@ internal class PaneldServerHttpFixture(
         field("guardDbStaging", guardDbAppStaging(context))
         field("identityMigration", IdentityMigrationSurface.NONE)
         field("playAudio", { _: String -> error("Unexpected playback") })
-        field("onInstallComponent", { _: String, _: String, _: String -> error("Unexpected install") })
+        field("onInstallComponent", installComponent)
         field("panelAssistantTransportFacts", {
             PanelAssistantTransportFacts("", "", PanelAssistantTransportPhase.STOPPED, null)
         })
