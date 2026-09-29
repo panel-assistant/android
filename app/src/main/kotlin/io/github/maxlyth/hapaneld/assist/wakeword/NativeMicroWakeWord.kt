@@ -1,8 +1,6 @@
 package io.github.maxlyth.hapaneld.assist.wakeword
 
-import android.content.Context
 import android.util.Log
-import java.io.IOException
 import java.nio.ByteBuffer
 
 /**
@@ -93,14 +91,6 @@ class NativeMicroWakeWord private constructor(
                 return null
             }
             return NativeMicroWakeWord(handle, nativeStride(handle))
-        }
-
-        /** Load a bundled model by id. Null when unavailable; throws only on an asset read failure. */
-        @Throws(IOException::class)
-        fun load(context: Context, id: String): NativeMicroWakeWord? {
-            if (!available) return null
-            val config = MicroWakeWordModelConfig.fromAssets(context, id)
-            return create(MicroWakeWordModelConfig.readModel(context, config), config)
         }
 
         @JvmStatic

@@ -9,6 +9,25 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ManagementHttpTest {
+    @Test fun `full mount returns the real controller HOME proof only when requested`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.useUnresolvedHome()
+            fixture.useManagementStatus { error("A HOME proof must not refresh storage") }
+            testApplication {
+                application { fixture.mount(this) }
+                val passive = client.get("/api/v1/status")
+                assertEquals(HttpStatusCode.OK, passive.status)
+                org.junit.Assert.assertFalse(org.json.JSONObject(passive.bodyAsText()).has("home_ui"))
+                val requested = client.get("/api/v1/status?home_proof=1")
+                assertEquals(HttpStatusCode.OK, requested.status)
+                val proof = org.json.JSONObject(requested.bodyAsText()).getJSONObject("home_ui")
+                assertEquals("unknown", proof.getString("state"))
+                assertEquals("home_unresolved", proof.getString("reason"))
+                assertEquals("home_resolve", proof.getString("evidence"))
+            }
+        }
+    }
+
     @Test fun `status selects Companion warning before sampling mDNS`() {
         PaneldServerHttpFixture().use { fixture ->
             fixture.config.setDashboardPackage("builtin")

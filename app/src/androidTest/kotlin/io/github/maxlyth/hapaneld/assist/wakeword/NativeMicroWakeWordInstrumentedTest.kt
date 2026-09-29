@@ -21,10 +21,11 @@ class NativeMicroWakeWordInstrumentedTest {
     @Test
     fun okayNabuScoresSilenceWithoutFiring() {
         assertTrue("native wake-word library must load on the test device", NativeMicroWakeWord.available)
-        val config = MicroWakeWordModelConfig.fromAssets(context, "okay_nabu")
-        val scorer = NativeMicroWakeWord.create(MicroWakeWordModelConfig.readModel(context, config), config)
-        assertNotNull("engine rejected okay_nabu", scorer)
-        scorer!!.use {
+        val catalog = WakeWordCatalog(context)
+        val loaded = catalog.load("okay_nabu")
+        assertNotNull("engine rejected okay_nabu", loaded)
+        val config = loaded!!.config
+        (loaded.scorer as NativeMicroWakeWord).use {
             assertEquals(3, it.stride)
             val hits = mutableListOf<WakeWordHit>()
             val detector = WakeWordDetector(listOf(LoadedWakeWordModel(config, it)), { hit -> hits += hit })
@@ -36,7 +37,7 @@ class NativeMicroWakeWordInstrumentedTest {
                 detector.onFrame(PcmFrame(silence, timestampNs = index.toLong()))
             }
             assertEquals(0, hits.size)
-            NativeMicroWakeWord.create(MicroWakeWordModelConfig.readModel(context, config), config)!!.use { probe ->
+            catalog.load("okay_nabu")!!.scorer.use { probe ->
                 repeat(300) { if (probe.score(silence) >= 0) inferences++ }
                 // 300 chunks = 298 feature frames after the 30 ms window fills; stride 3 -> 99 inferences.
                 assertEquals(99, inferences)

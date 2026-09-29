@@ -722,15 +722,14 @@ class Config private constructor(
      * Deliberately NOT a [SettingsRegistry] spec, which is what keeps it out of the settings export
      * and out of a restore: `projectConfigSnapshot` only ever writes registered specs, and
      * `planRestoreSettings` refuses an unregistered key outright. That exclusion cannot be delegated
-     * to the archive's same-device proof, because that proof is a digest of [androidId] and is
-     * therefore cloned across precisely the panels this identity exists to separate.
+     * to an archive's identity claim: a settings import must never replace the receiving installation.
      *
-     * Blank only before [ensureDeviceUid] has run.
+     * Blank until [ensureDeviceUid] has durably committed the identity.
      */
     val deviceUid: String
-        get() = prefs.getString(DEVICE_UID_PREF, null)?.takeIf { it.isNotBlank() } ?: runtimeDeviceUid ?: ""
+        get() = prefs.getString(DEVICE_UID_PREF, null)?.takeIf { it.isNotBlank() } ?: ""
 
-    /** Retains a minted identity whose durable write failed, so one boot cannot mint two identities. */
+    /** Retains a minted candidate after a failed write; startup retries must commit it before advertising. */
     @Volatile private var runtimeDeviceUid: String? = null
 
     /**
@@ -742,7 +741,7 @@ class Config private constructor(
      */
     internal fun ensureDeviceUid(mint: () -> String = ::mintDeviceUid): String = synchronized(CONFIG_LOCK) {
         prefs.getString(DEVICE_UID_PREF, null)?.takeIf { it.isNotBlank() }?.let { return@synchronized it }
-        val minted = mint().takeIf { it.isNotBlank() }
+        val minted = (runtimeDeviceUid ?: mint()).takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("minted device id is blank")
         // A panel that has never had a broker cannot have registered an MQTT device in Home Assistant,
         // so it has nothing to re-attach to and must never publish the shared identifier even once.
@@ -753,9 +752,17 @@ class Config private constructor(
             putBoolean(LEGACY_AID_BRIDGE_PREF, bridge)
         }
         if (!committed) {
-            Log.w(TAG, "could not persist minted device id; retaining runtime identity for this boot")
+            throw IllegalStateException("could not persist installation identity")
         }
         minted
+    }
+
+    /** The signed same-panel handover may carry identity; ordinary settings restore never may. */
+    internal fun adoptMigrationDeviceUid(value: String): Boolean = synchronized(CONFIG_LOCK) {
+        if (!Regex("[0-9a-f]{32}").matches(value)) return@synchronized false
+        val existing = deviceUid
+        if (existing.isNotBlank()) return@synchronized existing == value
+        durableCommit { putString(DEVICE_UID_PREF, value) }
     }
 
     /**
@@ -1100,7 +1107,8 @@ class Config private constructor(
         prefs.contains("auto_sleep_source") || durableCommit { putString("auto_sleep_source", absentAutoSleepSource) }
     }
     val autoSleepSource: String get() = prefs.getString("auto_sleep_source", null)
-        ?.takeIf { it == "panel" || it == "home_assistant" } ?: absentAutoSleepSource
+        ?.takeIf { it == "panel" || it == "home_assistant" || it == "touch" } ?: absentAutoSleepSource
+    val autoSleepTouchDelaySeconds: Int get() = intPref("auto_sleep_touch_delay_seconds").coerceIn(5, 86_400)
     internal val autoSleepGeneration: Long get() = synchronized(CONFIG_LOCK) {
         prefs.getLong(AUTO_SLEEP_GENERATION_PREF, 0L)
     }

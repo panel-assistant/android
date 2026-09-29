@@ -249,6 +249,7 @@ internal abstract class MqttWireRig {
             else -> listOf(org.json.JSONObject().put("on", true).put("brightness", 128) to """{"state":"ON","brightness":128}""")
         }
         PanelAssistantValueKind.UPDATE -> emptyList()
+        PanelAssistantValueKind.BUTTON -> listOf(org.json.JSONObject.NULL to "PRESS")
     }
 
     /** The payload form a command takes on the wire: its value kind, with the three light payloads apart. */
@@ -344,7 +345,7 @@ internal abstract class MqttWireRig {
         // Most config entities are opt-in. Expose a representative set so their discovery payloads, not
         // only their tombstones, are on the wire. Host-metric diagnostics stay hidden: they read /proc.
         listOf(
-            "diag_wifi_outages_24h", "voice_state", "voice_enabled", "wake_on_wave", "auto_sleep",
+            "diag_wifi_outages_24h", "wake_on_wave", "auto_sleep",
             "auto_sleep_activity", "touch_sound", "kiosk_lock", "auto_brightness", "navbar_mode",
             "companion_auto_update", "companion_update_channel", "webview_auto_update",
         ).forEach { config.setHaExposed(it, true) }
@@ -782,7 +783,7 @@ internal abstract class MqttWireRig {
             "auto_brightness", "auto_sleep", "button_led1", "buttons", "camera_enabled", "companion_auto_update",
             "companion_update_channel", "home_dashboard", "kiosk_lock", "led", "navbar", "navigate", "prevent_idle_dim",
             "relay1", "relay2", "screen", "self_update", "silence_boot_chime", "touch_sound", "update_channel",
-            "voice_enabled", "volume", "wake_on_wave", "watchdog", "webview_auto_update",
+            "volume", "wake_on_wave", "watchdog", "webview_auto_update",
         )
         const val RELAY_BASE = "/sys/class/strelay"
         const val LED_GPIO_BASE = 147
@@ -1014,7 +1015,7 @@ internal class MqttWireGoldenTest : MqttWireRig() {
                     }
             }
             assertTrue("only $translated were announced", translated.size >= 30)
-            assertTrue(translated.containsAll(listOf("navbar", "update_channel", "companion_update_channel", "voice_state", "storage_health")))
+            assertTrue(translated.containsAll(listOf("navbar", "update_channel", "companion_update_channel", "storage_health")))
         } finally {
             rig.close()
         }

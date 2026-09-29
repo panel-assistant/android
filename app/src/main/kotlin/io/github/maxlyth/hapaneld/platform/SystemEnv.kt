@@ -32,8 +32,8 @@ interface SystemEnv {
     /** The current default HOME activity, or null if unresolved (may be the `android` resolver). */
     fun defaultHome(): ActivityRef?
 
-    /** Best-effort direct start of the activity [component] ("pkg/cls") — the pre-BAL (API < 29) fallback. */
-    fun directStart(component: String)
+    /** Whether Android accepted a direct start of [component] ("pkg/cls") — the pre-BAL fallback. */
+    fun directStart(component: String): Boolean
 }
 
 /** Real [SystemEnv] over the Android PackageManager + Context. */
@@ -55,10 +55,10 @@ class AndroidSystemEnv(private val context: Context) : SystemEnv {
     override fun defaultHome(): ActivityRef? =
         pm.resolveActivity(homeIntent(), 0)?.activityInfo?.let { ActivityRef(it.packageName, it.name) }
 
-    override fun directStart(component: String) {
-        val cn = ComponentName.unflattenFromString(component) ?: return
-        runCatching {
+    override fun directStart(component: String): Boolean {
+        val cn = ComponentName.unflattenFromString(component) ?: return false
+        return runCatching {
             context.startActivity(Intent(Intent.ACTION_MAIN).setComponent(cn).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
+        }.isSuccess
     }
 }

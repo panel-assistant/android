@@ -6,7 +6,7 @@ import java.security.MessageDigest
 
 /** What this panel says about itself in `panel_assistant/hello`. */
 internal data class PanelAssistantHelloIdentity(
-    /** Lowercase hex discovery identity; null when Android supplies no Android ID. */
+    /** Lowercase hex discovery identity; null until an installation identity is durable. */
     val did: String?,
     val appVersion: String,
     val appVersionCode: Int,
@@ -90,8 +90,8 @@ internal sealed interface PanelAssistantReportResult {
  * so the owner's lifecycle can be tested without a socket.
  */
 internal object PanelAssistantTransportProtocol {
-    const val PROTOCOL_MIN = 1
-    const val PROTOCOL_MAX = 2
+    const val PROTOCOL_MIN = 3
+    const val PROTOCOL_MAX = 3
     const val COMMAND_HELLO = "panel_assistant/hello"
     const val COMMAND_REPORT_STATE = "panel_assistant/report_state"
     const val COMMAND_COMMAND_RESULT = "panel_assistant/command_result"
@@ -124,6 +124,9 @@ internal object PanelAssistantTransportProtocol {
      * required; the key lives in memory for the session only.
      */
     const val CAPABILITY_EMBED_PROOF = "embed_proof"
+
+    /** The panel is an Assist satellite on this session ([PanelAssistantVoice]). */
+    const val CAPABILITY_VOICE = "voice"
 
     const val OUTCOME_APPLIED = "applied"
     const val OUTCOME_SUPERSEDED = "superseded"
@@ -162,7 +165,14 @@ internal object PanelAssistantTransportProtocol {
      * leave the integration waiting.
      */
     val CAPABILITIES: List<String> =
-        listOf(CAPABILITY_STATE, CAPABILITY_COMMANDS, CAPABILITY_APPROVAL, CAPABILITY_MQTT_WITHDRAW, CAPABILITY_EMBED_PROOF)
+        listOf(
+            CAPABILITY_STATE,
+            CAPABILITY_COMMANDS,
+            CAPABILITY_APPROVAL,
+            CAPABILITY_MQTT_WITHDRAW,
+            CAPABILITY_EMBED_PROOF,
+            CAPABILITY_VOICE,
+        )
 
     /**
      * The handshake contract this build implements, in canonical form. The specification's shared
@@ -170,7 +180,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":1,"max":2},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof"]}"""
+        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))

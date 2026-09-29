@@ -10,8 +10,7 @@ import org.json.JSONObject
  * presentation text, so anything blank, over-long or carrying control characters is represented as
  * absence rather than guessed or truncated.
  *
- * The Android id is deliberately omitted. The mDNS `did` token is a domain-separated pseudonym of
- * that id precisely so the raw value never leaves the panel, and the integration registers its own
+ * The Android id is deliberately omitted. The mDNS `did` token identifies the app installation, and the integration registers its own
  * Home Assistant device rather than adopting the MQTT bridge's identifiers, so it has no need of
  * MQTT's `serial_number` to match on.
  */

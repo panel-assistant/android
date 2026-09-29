@@ -1,6 +1,5 @@
 package io.github.maxlyth.hapaneld.config
 
-import io.github.maxlyth.hapaneld.assist.VoiceState
 import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.parseKioskCompanionPackages
 import io.github.maxlyth.hapaneld.i18n.AppLocale
@@ -60,7 +59,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 11
+    const val SCHEMA = 12
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_MQTT_ADDRESS_FAMILY = "Automatic"
@@ -97,6 +96,17 @@ object SettingsRegistry {
      */
     const val RESPONSE_PERCENT_KEY = "auto_brightness_response_percent"
 
+    /**
+     * Keys earlier builds wrote into backups and bundles that no current setting owns. A restore drops
+     * them rather than refusing the whole backup: the voice assistant's MQTT switch and state sensor
+     * were removed without a schema change, so a backup from the build before still carries them.
+     */
+    val RETIRED_KEYS: Set<String> = setOf(
+        "voice_state",
+        "${HA_EXPOSE_PREFIX}voice_enabled",
+        "${HA_EXPOSE_PREFIX}voice_state",
+    )
+
     /** The retired schema-5 key. Read only by migration, and never registered as a current setting. */
     const val LEGACY_SENSITIVITY_KEY = "auto_brightness_sensitivity"
 
@@ -117,13 +127,13 @@ object SettingsRegistry {
     private const val MAX_PANEL_ID_INPUT_CHARS = 255
     private val HA_ILLUMINANCE_ENTITY = Regex("^sensor\\.[a-z0-9_]+$")
 
-    /** Local wake-word model ids openWakeWord ships that voice_wake_words/voice_pipelines may name. */
-    val VOICE_WAKE_WORDS: Set<String> = setOf("okay_nabu", "hey_jarvis", "hey_mycroft", "alexa")
-    private const val MAX_VOICE_WAKE_WORDS = 2
+    /** A wake-word id as `voice_wake_words` and `voice_pipelines` name it: a bundled or imported model. */
+    private val VOICE_WAKE_WORD_ID = Regex("^[a-z][a-z0-9_]{0,63}$")
+    private const val MAX_VOICE_WAKE_WORDS = 32
 
-    /** `voice_wake_words`: a JSON array of at most [MAX_VOICE_WAKE_WORDS] entries, each one of
-     *  [VOICE_WAKE_WORDS], with no duplicate. Re-serializes to a canonical compact form so a stored
-     *  value round-trips byte-identically regardless of the request's whitespace or key order. */
+    /** `voice_wake_words`: a JSON array of wake-word ids with no duplicate. Which ids exist depends on the
+     *  models the panel holds, which the listener checks as it arms; only the shape is checked here.
+     *  Re-serializes to a canonical compact form so a stored value round-trips byte-identically. */
     private fun validateVoiceWakeWords(raw: String): Validation {
         val array = try {
             JSONArray(raw)
@@ -137,8 +147,8 @@ object SettingsRegistry {
         for (index in 0 until array.length()) {
             val entry = array.opt(index) as? String
                 ?: return Validation.Bad("voice_wake_words: every entry must be a string")
-            if (entry !in VOICE_WAKE_WORDS) {
-                return Validation.Bad("voice_wake_words: unknown wake word \"$entry\"")
+            if (!VOICE_WAKE_WORD_ID.matches(entry)) {
+                return Validation.Bad("voice_wake_words: \"$entry\" is not a wake-word id")
             }
             if (entry in ids) return Validation.Bad("voice_wake_words: duplicate wake word \"$entry\"")
             ids += entry
@@ -146,9 +156,9 @@ object SettingsRegistry {
         return Validation.Ok(JSONArray(ids).toString())
     }
 
-    /** `voice_pipelines`: a JSON object mapping a [VOICE_WAKE_WORDS] id to a pipeline id (blank = the
-     *  Home Assistant preferred pipeline). Re-serializes with sorted keys so the persisted value is
-     *  stable regardless of the request's key order. */
+    /** `voice_pipelines`: a JSON object mapping a wake-word id to a pipeline id (blank = the Home
+     *  Assistant preferred pipeline). Re-serializes with sorted keys so the persisted value is stable
+     *  regardless of the request's key order. */
     private fun validateVoicePipelines(raw: String): Validation {
         val obj = try {
             JSONObject(raw)
@@ -157,8 +167,8 @@ object SettingsRegistry {
         }
         val normalized = JSONObject()
         for (key in obj.keys().asSequence().sorted()) {
-            if (key !in VOICE_WAKE_WORDS) {
-                return Validation.Bad("voice_pipelines: unknown wake word \"$key\"")
+            if (!VOICE_WAKE_WORD_ID.matches(key)) {
+                return Validation.Bad("voice_pipelines: \"$key\" is not a wake-word id")
             }
             val value = obj.opt(key) as? String
                 ?: return Validation.Bad("voice_pipelines: $key: expected a string pipeline id")
@@ -275,16 +285,22 @@ object SettingsRegistry {
         // ---- Behaviour ---------------------------------------------------------------------------
         SettingSpec(
             key = "auto_sleep_source", type = SettingType.ENUM, group = "Behaviour",
-            label = "Auto-sleep presence source", default = "panel", tier = Tier.BASIC, scope = Scope.DEVICE,
-            liveApply = true, options = listOf("panel", "home_assistant"),
-            help = "Use the panel’s calibrated proximity sensor, or choose Home Assistant Area devices. " +
-                "If the selected source is unavailable, automatic sleep pauses and touch remains available.",
+            label = "Auto-sleep activity source", default = "panel", tier = Tier.BASIC, scope = Scope.DEVICE,
+            liveApply = true, options = listOf("panel", "home_assistant", "touch"),
+            help = "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity. " +
+                "Presence modes pause if their source is unavailable; touch inactivity needs no presence setup.",
+        ),
+        SettingSpec(
+            key = "auto_sleep_touch_delay_seconds", type = SettingType.INT, group = "Behaviour",
+            label = "Touch inactivity delay (seconds)", default = "30", min = 5.0, max = 86_400.0,
+            step = 1.0, tier = Tier.BASIC, scope = Scope.DEVICE,
+            help = "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
         ),
         SettingSpec(
             key = "auto_sleep", type = SettingType.BOOL, group = "Behaviour",
             label = "Auto sleep", default = "false", tier = Tier.BASIC, scope = Scope.DEVICE,
             liveApply = true,
-            help = "Automatically wake the panel when activity is detected and switch the screen off after the learned delay. Manual screen control remains separate.",
+            help = "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
             ha = haEntity("switch", "auto_sleep", "Auto sleep") {
                 commandTopic()
                 stateTopic()
@@ -785,59 +801,32 @@ object SettingsRegistry {
             },
         ),
         // ---- Voice -------------------------------------------------------------------------------
-        // Local wake-word listening + Home Assistant Assist pipeline selection.
-        //
-        // Every spec here is `hidden`, so the feature ships with no Configure card at all while its
-        // direction is still open. The schema route drops hidden specs, the form is built from the
-        // schema, and a group with no fields renders no card — so hiding the seven removes the card, its
-        // skunk-works badge and the wake-word pipeline picker's fetch together, with no second gate to
-        // keep in step and nothing to remember to undo elsewhere.
-        //
-        // Hidden is not disabled. The values stay readable on GET /api/v1/config, settable on POST, and
-        // carried in config bundles, which is what lets a single panel be brought up for acceptance over
-        // HTTP while nothing is advertised to anyone else. Both HA-capable specs below are
-        // haExposedByDefault = false and the card was the only route to opting them in, so no Home
-        // Assistant entity appears either. To surface the feature, delete the `hidden = true` lines;
-        // nothing else is holding it back.
-        //
-        // The specs also require hasMicrophone, which is a hardware gate rather than a release one and
-        // outlives this. Note the profile truth it reads was corrected on 2026-08-31: the NSPanel Pro
-        // does have a working microphone, on the PDM device's channels 2 and 3, and the earlier
-        // "advertises a microphone it does not have" reading was a mis-shaped capture, not a lying
-        // feature flag.
-        //
-        // The pipeline runtime itself is a separate lane; this is the settings/HTTP/HA surface it
-        // drives, seamed behind AssistPipelineDirectory and VoiceTestTrigger.
+        // The panel as a Home Assistant voice satellite through Panel Assistant: which wake words it
+        // listens for, which Assist pipeline each one runs, and how its microphone is used. Every spec
+        // requires a microphone, which the device profile declares only for proven capture.
         SettingSpec(
             key = "voice_enabled", type = SettingType.BOOL, group = "Voice",
             label = "Voice assistant", default = "false", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             liveApply = true,
             help = "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
-            haExposedByDefault = false,
-            ha = haEntity("switch", "voice_assistant", "Voice assistant", channel = "voice_enabled") {
-                commandTopic()
-                stateTopic()
-                icon("mdi:microphone-message")
-                entityCategory("config")
-            },
+            availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
-            key = "voice_wake_words", type = SettingType.STRING, group = "Voice",
+            key = "voice_wake_words", type = SettingType.STRING, group = "Voice", picker = "voice_wake_words",
             label = "Wake words", default = "[\"okay_nabu\"]", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             maxChars = 512,
-            help = "Up to two local wake-word models to listen for, as a JSON array: " +
-                "${VOICE_WAKE_WORDS.joinToString(", ")}.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            help = "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, " +
+                "and any you import below.",
+            availableWhen = { it.hasMicrophone },
             validate = ::validateVoiceWakeWords,
         ),
         SettingSpec(
             key = "voice_pipelines", type = SettingType.STRING, group = "Voice", picker = "voice_pipelines",
             label = "Wake word pipelines", default = "{}", tier = Tier.ADVANCED, scope = Scope.DEVICE,
             maxChars = 2_048,
-            help = "Which Home Assistant Assist pipeline each configured wake word triggers, as a JSON " +
-                "object of wake word to pipeline id. An empty value uses Home Assistant's preferred pipeline.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            help = "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred " +
+                "pipeline follows whichever pipeline Home Assistant prefers.",
+            availableWhen = { it.hasMicrophone },
             validate = ::validateVoicePipelines,
         ),
         SettingSpec(
@@ -846,7 +835,7 @@ object SettingsRegistry {
             options = listOf("voice_recognition", "mic", "voice_communication"),
             tier = Tier.ADVANCED, scope = Scope.DEVICE,
             help = "Android audio source the wake-word listener records from.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_sensitivity", type = SettingType.ENUM, group = "Voice",
@@ -856,7 +845,7 @@ object SettingsRegistry {
             help = "Wake-word detector threshold, applied as an offset to the model's cutoff score. Low " +
                 "requires a clearer match (fewer false wakes, more likely to miss a quiet or distant call); " +
                 "High matches more readily (faster to wake, more false triggers). Normal applies no offset.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
+            availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_mic_gain_db", type = SettingType.INT, group = "Voice",
@@ -869,20 +858,7 @@ object SettingsRegistry {
                 "quiet signal on its own and speech-to-text does not. Raise this if commands are missed " +
                 "or mistranscribed while the wake word works. Wake-word detection is deliberately left " +
                 "on the unamplified signal.",
-            availableWhen = { it.hasMicrophone }, hidden = true,
-        ),
-        SettingSpec(
-            key = "voice_state", type = SettingType.STRING, group = "Voice",
-            label = "Voice assistant state", default = "",
-            help = "Current voice-assistant phase: off, idle, listening, processing, responding or error.",
-            haExposedByDefault = false,
-            availableWhen = { it.hasMicrophone }, hidden = true,
-            ha = haEntity("sensor", "voice_state", "Voice assistant state", readOnly = true) {
-                stateTopic()
-                icon("mdi:microphone-message")
-                entityCategory("diagnostic")
-                sensorOptions(VoiceState.entries.map { ChannelOption(it.wireValue, it.wireValue) })
-            },
+            availableWhen = { it.hasMicrophone },
         ),
         // ---- Logging -----------------------------------------------------------------------------
         SettingSpec(

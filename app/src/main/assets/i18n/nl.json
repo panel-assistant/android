@@ -548,11 +548,6 @@
    "sourceHash": "748be63c87c9fad252fbd0a2e16d0bdd446d2f7acb456b820ed417e9b1f451df",
    "state": "machine-cross-checked"
   },
-  "configure.badge.skunk_works": {
-   "text": "skunk-works",
-   "sourceHash": "a8f2afd0e3e85d2b17b647f2dd1471a8df0c450ce5eeb25c858a7068088d060d",
-   "state": "machine-cross-checked"
-  },
   "configure.brightness.chart_label": {
    "text": "24-uurs patroon van het omgevingslicht: de drie meest recente dagen worden afzonderlijk weergegeven, terwijl de rest van de week wordt getoond als een gearceerd bereik van minimum tot maximum",
    "sourceHash": "de769cd44d5e548e3985585296f2a48b20eba114b6696b24fb84400fbb5b2579",
@@ -1676,6 +1671,36 @@
   "configure.voice.configure_wake_word_first": {
    "text": "Stel eerst hierboven een activeringswoord in.",
    "sourceHash": "29db9e0656abb9d76014f07d2f3faac2ece244b4b3e8c217ae984de03ab4aff8",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_choose_files": {
+   "text": "Kies eerst het manifest ‘.json’ en het model ‘.tflite’.",
+   "sourceHash": "fa414a4812d0db87e2bb63ec269b6f25fd0ae7870052984f468c6de6530fc588",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_done": {
+   "text": "Geïmporteerd: {wake_word}.",
+   "sourceHash": "0e0dca7d3b4ad4b487ce709a1fa74d1e0bb9f256c419d7af3c1e20e6aeda09aa",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_failed": {
+   "text": "Import failed: {reason}",
+   "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
+   "state": "english-fallback"
+  },
+  "configure.voice.import_guide": {
+    "text": "Zo train je je eigen activeringswoord",
+    "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+    "state": "machine-cross-checked"
+  },
+  "configure.voice.import_help": {
+   "text": "Importeer een door jou getraind ‘microWakeWord’-model: het manifest ‘.json’ en het bestand ‘.tflite’.",
+   "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
+   "state": "machine-cross-checked"
+  },
+  "configure.voice.import_wake_word": {
+   "text": "Getraind activeringswoord importeren",
+   "sourceHash": "67ca4b530450a4ac62a77d2916c15496edc7a423f82f7639dd6ff386eddee540",
    "state": "machine-cross-checked"
   },
   "configure.voice.pipeline_not_listed": {
@@ -8994,9 +9019,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
-   "text": "Activeer het paneel automatisch wanneer er activiteit wordt gedetecteerd en schakel het scherm uit na de aangeleerde vertraging. Handmatige schermbediening blijft hier los van.",
-   "sourceHash": "5061de3660a9fc18a43615782f216134dffef4d62725528ce1d72e3927d878c9",
-   "state": "machine-cross-checked"
+   "text": "Schakelt het scherm uit na de aangeleerde vertraging van de gekozen aanwezigheidsmodus of de ingestelde vertraging bij geen aanraakactiviteit. Handmatige schermbediening blijft apart.",
+   "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
+   "state": "machine-draft"
   },
   "settings.auto_sleep.label": {
    "text": "Automatische slaapstand",
@@ -9764,8 +9789,8 @@
    "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.help": {
-   "text": "Welke Home Assistant Assist-pipeline elk geconfigureerd activeringswoord activeert, als een JSON-object van activeringswoord naar pipeline-id. Een lege waarde gebruikt de voorkeurspipeline van Home Assistant.",
-   "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+   "text": "Welke Home Assistant Assist-pipeline elk activeringswoord uitvoert. Een woord dat op de voorkeurspipeline blijft staan, volgt de pipeline die Home Assistant als voorkeur heeft.",
+   "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
    "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.label": {
@@ -9783,19 +9808,9 @@
    "sourceHash": "5df43abc6ac192d8e244aa63b84795d5fff6bce32f84f7014212a9719cf654c8",
    "state": "machine-cross-checked"
   },
-  "settings.voice_state.help": {
-   "text": "Huidige status van de spraakassistent: uit, inactief, luisterend, bezig, aan het antwoorden of fout.",
-   "sourceHash": "2a671d81e77de2a726125f798e643ca84897af8699a27bb850c10bbd4f803c45",
-   "state": "machine-cross-checked"
-  },
-  "settings.voice_state.label": {
-   "text": "Status van de spraakassistent",
-   "sourceHash": "51616ec4032c3dd7c2a589b3338db98e776642afbe237f6d1c4099abe132bb74",
-   "state": "machine-cross-checked"
-  },
   "settings.voice_wake_words.help": {
-   "text": "Maximaal twee lokale activeringswoordmodellen om naar te luisteren, als JSON-array: okay_nabu, hey_jarvis, hey_mycroft, alexa.",
-   "sourceHash": "b3b162ba4d8e06e2520a3ba4f8fd28f822616749940c6ab4fbfa245e5ff7199b",
+   "text": "De activeringswoorden waarnaar wordt geluisterd: de meegeleverde ‘Okay Nabu’, ‘Hey Jarvis’, ‘Hey Mycroft’ en ‘Alexa’, en de woorden die je hieronder importeert.",
+   "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
    "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.label": {
@@ -12189,9 +12204,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.help": {
-   "text": "Gebruik de gekalibreerde nabijheidssensor van het paneel, of kies Home Assistant-gebiedsapparaten. Als de geselecteerde bron niet beschikbaar is, wordt de automatische slaapstand gepauzeerd en blijft aanraking beschikbaar.",
-   "sourceHash": "0350776edee98aa7748c83872293309856544907f647121be111047fa868e50b",
-   "state": "machine-cross-checked"
+   "text": "Gebruik de gekalibreerde nabijheidssensor van het paneel, apparaten in het Home Assistant-gebied of geen aanraakactiviteit. Aanwezigheidsmodi pauzeren als hun bron niet beschikbaar is; voor geen aanraakactiviteit hoeft aanwezigheid niet te worden ingesteld.",
+   "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
+   "state": "machine-draft"
   },
   "configure.proximity.setup.stage.wave_baseline": {
    "text": "Startpositie voor handzwaai controleren",
@@ -12274,9 +12289,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.label": {
-   "text": "Aanwezigheidsbron voor automatische slaapstand",
-   "sourceHash": "9a054a7f24e839eacfc5c07281e98e4d5ddf2a0772fe4bc13838166a6eaca289",
-   "state": "machine-cross-checked"
+   "text": "Activiteitsbron voor automatische slaapstand",
+   "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
+   "state": "machine-draft"
   },
   "configure.proximity.setup.no_source": {
    "text": "Wekken door zwaaien is niet beschikbaar. Aanraken om te wekken blijft beschikbaar.",
@@ -12362,6 +12377,31 @@
    "text": "Doe dit voordat je ha-paneld verwijdert. Anders heeft het paneel geen startscherm.",
    "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
    "state": "machine-cross-checked"
+  },
+  "configure.auto_sleep.fixed_delay": {
+   "text": "Scherm uitschakelen na {count} seconden zonder aanraking.",
+   "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
+   "state": "machine-draft"
+  },
+  "configure.auto_sleep.source_touch": {
+   "text": "Geen aanraakactiviteit",
+   "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
+   "state": "machine-draft"
+  },
+  "configure.auto_sleep.touch_help": {
+   "text": "Gebruikt aanrakingen op dit paneel. Home Assistant en aanwezigheidssensoren zijn niet nodig.",
+   "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
+   "state": "machine-draft"
+  },
+  "settings.auto_sleep_touch_delay_seconds.help": {
+   "text": "Als Geen aanraakactiviteit is geselecteerd, wordt het scherm na dit aantal seconden zonder aanraking volledig uitgeschakeld.",
+   "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+   "state": "machine-draft"
+  },
+  "settings.auto_sleep_touch_delay_seconds.label": {
+   "text": "Vertraging bij geen aanraakactiviteit (seconden)",
+   "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
+   "state": "machine-draft"
   }
  }
 }

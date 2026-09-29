@@ -36,6 +36,7 @@ internal class PanelBackupBuilder(
     private val profileAdmin: ProfileAdmin?,
     private val companion: CompanionBackupOperations,
     private val mqttState: () -> String,
+    private val wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog?,
 ) {
     private data class BackupArchiveParts(
         val manifest: String,
@@ -110,6 +111,29 @@ internal class PanelBackupBuilder(
             val profile = profileAdmin?.exportBackup()?.let {
                 textEntry(PROFILE_BACKUP_ENTRY, "profile-backup-", it.toJson().toString(), MAX_PROFILE_BACKUP_ENTRY_BYTES)
             }
+            // Imported wake words are files the settings only name. The section exists only when there is
+            // one, so a panel without imports still writes an archive older builds restore.
+            // A model that cannot be read refuses the backup rather than leaving a word the settings select
+            // out of it, which a restore could never put back.
+            val importedWakeWords = try {
+                wakeWords?.exportImported().orEmpty()
+            } catch (unreadable: java.io.IOException) {
+                throw CompanionBackupUnavailable(unreadable.message ?: "An imported wake word could not be read")
+            }
+            val wakeWordEntry = io.github.maxlyth.hapaneld.backup.WakeWordBackup.encode(importedWakeWords)?.let { text ->
+                if (text.length.toLong() > io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES) {
+                    throw CompanionBackupUnavailable(
+                        "Imported wake words exceed the backup's " +
+                            "${io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES / (1024 * 1024)} MiB limit",
+                    )
+                }
+                textEntry(
+                    io.github.maxlyth.hapaneld.backup.WakeWordBackup.ENTRY,
+                    "wake-word-backup-",
+                    text,
+                    io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES,
+                )
+            }
             // A database that will not read must not cost the owner the rest of the backup, which still
             // carries the validated config projection — but it must not be silent either. The failure is
             // logged and marked in the manifest below, so this archive can never be mistaken for one taken
@@ -132,11 +156,12 @@ internal class PanelBackupBuilder(
                     MAX_STATE_BACKUP_BYTES,
                 )
             }
-            val sources = ArrayList<PanelBackup.ArchiveSource>(7)
+            val sources = ArrayList<PanelBackup.ArchiveSource>(8)
             sources.add(filter)
             sources.add(overrides)
             profile?.let(sources::add)
             state?.let(sources::add)
+            wakeWordEntry?.let(sources::add)
             sources += companion?.files.orEmpty().mapIndexed { index, file ->
                 PanelBackup.ArchiveSource("companion/$index", file.file)
             }
@@ -150,6 +175,9 @@ internal class PanelBackupBuilder(
                     state?.file?.length(),
                     stateRows.size,
                     stateFailure != null,
+                    wakeWordEntry?.let {
+                        io.github.maxlyth.hapaneld.backup.WakeWordBackup.manifestFragment(it.file.length(), importedWakeWords.size)
+                    },
                 ),
                 sources = sources,
                 ownedFiles = owned,
@@ -170,6 +198,7 @@ internal class PanelBackupBuilder(
         stateBytes: Long?,
         stateRows: Int,
         stateCaptureFailed: Boolean,
+        wakeWordSection: String?,
     ): String {
         val live = configLiveValues()
         val cfg = projectConfigSnapshot(
@@ -189,7 +218,7 @@ internal class PanelBackupBuilder(
         // this one, prove the archive is from the same device before it has adopted the panel id.
         sb.append(
             BackupIdentity.manifestFragment(
-                panelAssistantDiscoveryId(config.androidId),
+                panelAssistantDiscoveryId(config.deviceUid),
                 appContext.packageName,
                 mqttConnected = mqttState() == "connected",
             ),
@@ -211,6 +240,7 @@ internal class PanelBackupBuilder(
             stateRows,
             stateCaptureFailed,
         )?.let { sb.append(",\"state\":").append(it) }
+        wakeWordSection?.let { sb.append(",\"wake_words\":").append(it) }
         if (companion != null) {
             val files = companion.files.mapIndexed { index, file ->
                 "{\"rel\":${Json.str(file.relativePath)},\"entry\":${Json.str("companion/$index")},\"size\":${file.file.length()}}"

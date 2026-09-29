@@ -1165,20 +1165,20 @@ browserTest('Top processes explains when resident RAM is unavailable from an old
   assert.equal(await page.locator('#topproc tr').count(), 2);
 });
 
-browserTest('Configure badges the Voice card as skunk-works and leaves settled cards unbadged', async (t) => {
-  // The badge is the only signal in the UI that this feature is unfinished, and it is the whole reason a
-  // panel owner does not read the Voice card as a supported setting. A card badge is data-driven, so a
-  // typo in the table renders nothing at all rather than failing anywhere.
+browserTest('Configure badges the experimental cards and leaves Voice and settled cards unbadged', async (t) => {
+  // A card badge is data-driven, so a typo in the table renders nothing at all rather than failing
+  // anywhere. Voice is a supported card now and must not carry a badge.
   const schema = [
     { key: 'voice_enabled', label: 'Voice assistant', group: 'Voice', type: 'BOOL', available: true },
     { key: 'voice_mic_gain_db', label: 'Microphone gain (dB)', group: 'Voice', type: 'INT', min: -24, max: 24, available: true },
+    { key: 'screen_brightness', label: 'Brightness', group: 'Display', type: 'INT', min: 0, max: 255, available: true },
     { key: 'dashboard_zoom', label: 'Zoom', group: 'Dashboard', type: 'INT', min: 50, max: 200, available: true },
   ];
   const harness = await startHarness((path, request) => {
     if (path === '/api/v1/config/schema') return json(schema);
     if (path === '/api/v1/config') {
       if (request.method === 'POST') return json({});
-      return json({ settings: { voice_enabled: 'false', voice_mic_gain_db: '0', dashboard_zoom: '100' }, ha_expose: {}, ha_auth: {} });
+      return json({ settings: { voice_enabled: 'false', voice_mic_gain_db: '0', screen_brightness: '128', dashboard_zoom: '100' }, ha_expose: {}, ha_auth: {} });
     }
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio') return json({ present: false });
@@ -1192,20 +1192,64 @@ browserTest('Configure badges the Voice card as skunk-works and leaves settled c
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
 
-  const voiceBadge = page.locator('[data-config-group="Voice"] .cardbadge');
-  await assert.doesNotReject(voiceBadge.waitFor());
-  assert.equal(await voiceBadge.textContent(), 'skunk-works');
-  assert.equal(await voiceBadge.evaluate((node) => node.classList.contains('skunk')), true);
+  const displayBadge = page.locator('[data-config-group="Display"] .cardbadge');
+  await assert.doesNotReject(displayBadge.waitFor());
+  assert.equal(await displayBadge.textContent(), 'experimental');
 
   // The pill must be visibly distinct, not merely present: an unstyled span would read as plain text.
-  const styled = await voiceBadge.evaluate((node) => {
+  const styled = await displayBadge.evaluate((node) => {
     const background = getComputedStyle(node).backgroundColor;
     return background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent';
   });
   assert.equal(styled, true);
 
-  // A settled card must not pick the badge up, which is what proves the table is consulted per group.
+  await assert.doesNotReject(page.locator('[data-config-group="Voice"] h2').waitFor());
+  assert.equal(await page.locator('[data-config-group="Voice"] .cardbadge').count(), 0);
   assert.equal(await page.locator('[data-config-group="Dashboard"] .cardbadge').count(), 0);
+});
+
+browserTest('Configure offers the wake words as checkboxes with the training guide beside the import', async (t) => {
+  // The import takes a model the owner trained, so the way to train one has to be one tap away from it.
+  const schema = [
+    { key: 'voice_enabled', label: 'Voice assistant', group: 'Voice', type: 'BOOL', available: true },
+    { key: 'voice_wake_words', label: 'Wake words', group: 'Voice', type: 'STRING', picker: 'voice_wake_words', available: true },
+  ];
+  const harness = await startHarness((path, request) => {
+    if (path === '/api/v1/config/schema') return json(schema);
+    if (path === '/api/v1/config') {
+      if (request.method === 'POST') return json({});
+      return json({ settings: { voice_enabled: 'true', voice_wake_words: '["hey_jarvis"]' }, ha_expose: {}, ha_auth: {} });
+    }
+    if (path === '/api/v1/voice/wake-words') {
+      return json({ wake_words: [
+        { id: 'okay_nabu', wake_word: 'Okay Nabu', imported: false },
+        { id: 'hey_jarvis', wake_word: 'Hey Jarvis', imported: false },
+      ] });
+    }
+    if (path === '/api/v1/apps') return json({ apps: [] });
+    if (path === '/api/v1/radio') return json({ present: false });
+    if (path === '/api/v1/proximity') return json({ present: false });
+    if (path === '/api/v1/voice/pipelines') return json({ pipelines: [] });
+    if (path === '/health') return { body: 'ok cfg=test' };
+  });
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(1_500);
+  t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+  await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+
+  const rows = page.locator('.voice-wake-word-row');
+  await assert.doesNotReject(rows.nth(1).waitFor());
+  assert.deepEqual(await rows.allTextContents(), ['Okay Nabu', 'Hey Jarvis']);
+  assert.equal(await rows.nth(1).locator('input').isChecked(), true);
+  assert.equal(await rows.nth(0).locator('input').isChecked(), false);
+
+  const guide = page.locator('.voice-wake-word-import a.voice-wake-word-guide');
+  assert.equal(await guide.count(), 1);
+  assert.equal(await guide.getAttribute('href'), 'https://panel-assistant.io/go/custom-wake-words');
+  assert.equal(await guide.getAttribute('target'), '_blank');
+  assert.equal(await guide.textContent(), 'How to train your own wake word');
+  assert.equal(await page.locator('.voice-wake-word-import input[type="file"][accept=".tflite"]').count(), 1);
 });
 
 browserTest('Configure help wraps a frozen URL without applying break-all globally', async (t) => {
@@ -2408,6 +2452,60 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
   await toggle.click();
   assert.equal(await toggle.getAttribute('aria-checked'), 'true');
   assert.ok(prerequisiteCalls >= 2);
+});
+
+browserTest('Touch inactivity can enable Auto-sleep without an Area and saves a fixed seconds delay', async (t) => {
+  const calls = [];
+  const posts = [];
+  const settings = { auto_sleep_source: 'panel', auto_sleep_touch_delay_seconds: '30', auto_sleep: 'false' };
+  const schema = [
+    { key: 'auto_sleep_source', label: 'Auto-sleep activity source', group: 'Behaviour', type: 'ENUM',
+      available: true, options: ['panel', 'home_assistant', 'touch'] },
+    { key: 'auto_sleep_touch_delay_seconds', label: 'Touch inactivity delay (seconds)', group: 'Behaviour',
+      type: 'INT', available: true, min: 5, max: 86400 },
+    { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true },
+  ];
+  const harness = await startHarness(async (path, request) => {
+    calls.push(path);
+    if (path === '/api/v1/config/schema') return json(schema);
+    if (path === '/api/v1/config') {
+      if (request.method === 'POST') {
+        const posted = Object.fromEntries(new URLSearchParams(await requestBody(request)));
+        posts.push(posted);
+        Object.assign(settings, posted);
+        return json({ status: 'saved' });
+      }
+      return json({ settings, ha_expose: {}, ha_auth: {} });
+    }
+    if (path === '/api/v1/apps') return json({ apps: [] });
+    if (path === '/api/v1/radio') return json({ present: false });
+    if (path === '/api/v1/proximity') return json({ present: false });
+  });
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(2_000);
+  t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+  await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+
+  const toggle = page.locator('#cfg-auto_sleep [role=switch]');
+  await toggle.waitFor();
+  await page.locator('#cfg-auto_sleep_source select').selectOption('touch');
+  assert.equal(await page.locator('#cfg-auto_sleep_source select').inputValue(), 'touch');
+  assert.equal(await page.locator('#cfg-auto_sleep_touch_delay_seconds input').inputValue(), '30');
+  assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
+  await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
+  await toggle.click();
+  assert.equal(await toggle.getAttribute('aria-checked'), 'true');
+  const delay = page.locator('#cfg-auto_sleep_touch_delay_seconds input');
+  await delay.fill('45');
+  await page.locator('#savebtn').click();
+  await page.waitForFunction(() => document.querySelector('#cfg-msg')?.textContent === 'Saved.');
+  assert.match(await page.locator('#auto-sleep-summary-announcement').textContent(), /45 seconds without touch/);
+  assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
+  assert.deepEqual(posts, [{ auto_sleep_source: 'touch', auto_sleep_touch_delay_seconds: '45', auto_sleep: 'true' }]);
+  assert.equal(calls.includes('/api/v1/auto-sleep/prerequisite'), false);
+  assert.equal(calls.includes('/api/v1/auto-sleep'), false);
+  assert.equal(calls.includes('/api/v1/auto-sleep/history'), false);
 });
 
 browserTest('Auto-sleep Area focus refresh supersedes a slow prerequisite request', async (t) => {

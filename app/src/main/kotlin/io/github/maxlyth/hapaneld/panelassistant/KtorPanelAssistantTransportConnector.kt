@@ -87,6 +87,10 @@ internal class KtorPanelAssistantTransportConnector(
             socket.send(Frame.Text(text))
         }
 
+        override suspend fun sendBinary(bytes: ByteArray) {
+            socket.send(Frame.Binary(true, bytes))
+        }
+
         override suspend fun receive(timeoutMs: Long): String? {
             val deadline = System.nanoTime() + timeoutMs.coerceAtLeast(0L) * 1_000_000L
             while (true) {

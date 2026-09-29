@@ -32,7 +32,7 @@ class MqttHeartbeatPolicyTest {
         )
         listOf(
             "screen", "volume", "proximity", "auto_sleep_activity",
-            "diag_ip", "diag_boot", "diag_wifi_ssid", "voice_state",
+            "diag_ip", "diag_boot", "diag_wifi_ssid",
         ).forEach { assertNull("$it must remain change-only", mqttMeasurementRefreshAfterAckMs(it)) }
 
         val observation = { StateConverger.Observation.Known("50") }

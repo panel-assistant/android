@@ -9,6 +9,7 @@ internal fun backupStagingRequirement(includeCompanion: Boolean, encrypted: Bool
     val sources = PaneldServer.MAX_BACKUP_MANIFEST_BYTES +
         2L * PaneldServer.MAX_ENTITY_BACKUP_TEXT_BYTES +
         PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES +
+        io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES +
         if (includeCompanion) PaneldServer.MAX_COMPANION_BACKUP_BYTES else 0L
     val archives = PaneldServer.MAX_RESTORE_BYTES * if (encrypted) 2L else 1L
     val archivePeak = sources + archives
