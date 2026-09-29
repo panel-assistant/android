@@ -413,9 +413,20 @@ class SystemController(
         if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
             return HomeUiProof("blocked", "home_resolver", "home_resolve")
         }
+        if (home?.pkg == "com.android.settings" || home?.cls?.endsWith("FallbackHome") == true) {
+            return HomeUiProof("blocked", "home_fallback", "home_resolve")
+        }
         if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
         if (home == null) return HomeUiProof("unknown", "home_unresolved", "home_resolve")
-        val evidence = if (isBuiltinDashboardTarget(dashboardPkg)) "builtin_lifecycle" else "dashboard_appstate"
+        val target = resolveDashboard(dashboardPkg)
+        val builtin = isBuiltin(target)
+        val expectedHome = if (builtin) env.ownPackage else target
+        // Existing HOME policy preserves a deliberate foreign launcher, but reclaims our own
+        // launcher or an old Companion renderer when the configured dashboard has changed.
+        if (home.pkg != expectedHome && (home.pkg == env.ownPackage || home.pkg in KNOWN_RENDERER_HOMES)) {
+            return HomeUiProof("blocked", "home_mismatch", "home_resolve")
+        }
+        val evidence = if (builtin) "builtin_lifecycle" else "dashboard_appstate"
         return when (dashboardState(dashboardPkg)) {
             AppState.FG -> HomeUiProof("ready", "dashboard_foreground", evidence)
             AppState.BG, AppState.DEAD -> HomeUiProof("blocked", "dashboard_background", evidence)

@@ -87,6 +87,25 @@ class SystemControllerTest {
         assertEquals("unknown", controller.homeUiProof("", adminUiVisible = false).state)
     }
 
+    @Test fun homeUiProofRejectsFallbackAndMismatchedRendererHome() {
+        val fallback = sc(FakeSystemEnv(default = ActivityRef("com.android.settings", ".FallbackHome")),
+            builtinForeground = true).first
+        assertEquals("blocked", fallback.homeUiProof("", adminUiVisible = false).state)
+        assertEquals("blocked", fallback.homeUiProof("", adminUiVisible = true).state)
+
+        val oldRenderer = sc(FakeSystemEnv(default = ActivityRef(MIN, ".Home")),
+            builtinForeground = true).first
+        assertEquals("blocked", oldRenderer.homeUiProof("", adminUiVisible = false).state)
+
+        val ownHome = sc(FakeSystemEnv(installed = setOf(MIN), default = DASH_HOME),
+            daemon = mapOf("APPSTATE $MIN" to "FG")).first
+        assertEquals("blocked", ownHome.homeUiProof(MIN, adminUiVisible = false).state)
+
+        val deliberateLauncher = sc(FakeSystemEnv(default = ActivityRef(VENDOR, ".Home")),
+            builtinForeground = true).first
+        assertEquals("ready", deliberateLauncher.homeUiProof("", adminUiVisible = false).state)
+    }
+
     @Test fun homeUiProofUsesLiveAppStateForExternalDashboard() {
         val env = FakeSystemEnv(installed = setOf(MIN), default = ActivityRef(MIN, ".Home"))
         val foreground = sc(env, daemon = mapOf("APPSTATE $MIN" to "FG")).first
