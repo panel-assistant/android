@@ -308,10 +308,10 @@ class SystemController(
      * The side effect: Android **clears the default-home association** whenever a package adds or changes
      * a HOME activity (i.e. every ha-paneld install/update) — after which pressing Home pops a chooser
      * instead of booting straight to the dashboard. So on boot we re-assert the dashboard app as the
-     * default home when home is unowned (the system resolver), owned by *us*, or still assigned to a
-     * supported Companion renderer ha-paneld previously selected. A deliberate third-party launcher set
-     * as home is left alone. If the dashboard app isn't installed we do nothing, leaving our admin launcher
-     * as the genuine last-resort home.
+     * default home when home is unowned (the system resolver or Settings FallbackHome), owned by *us*,
+     * or still assigned to a supported Companion renderer ha-paneld previously selected. A deliberate
+     * third-party launcher set as home is left alone. If the dashboard app isn't installed we do
+     * nothing, leaving our admin launcher as the genuine last-resort home.
      */
     fun ensureDashboardHome(dashboardPkg: String, builtinReady: Boolean = true) {
         val target = resolveDashboard(dashboardPkg)
@@ -319,11 +319,14 @@ class SystemController(
         // else DashboardActivity would be the home yet immediately hand off, churning HOME needlessly.
         if (isBuiltin(target)) { missingHomeTarget = null; if (builtinReady) ensureBuiltinHome(); return }
         if (target.isBlank()) { missingHomeTarget = null; Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
-        val current = env.defaultHome()?.pkg
+        val currentHome = env.defaultHome()
+        val current = currentHome?.pkg
         if (current == target) { missingHomeTarget = null; return }     // already correct
         // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
         // may previously have assigned, so switching between installed renderer variants must reclaim it.
-        if (current != null && current != "android" && current != env.ownPackage && current !in KNOWN_RENDERER_HOMES) {
+        if (current != null && current != "android" && current != "com.android.settings" &&
+            current != env.ownPackage && current !in KNOWN_RENDERER_HOMES &&
+            currentHome?.cls?.endsWith("FallbackHome") != true) {
             missingHomeTarget = null
             return
         }
@@ -340,9 +343,10 @@ class SystemController(
 
     /** Make our built-in DashboardActivity the default home (parity with the Companion path): so the
      *  panel boots to it, the Home key returns to it, and it self-heals as a home app. Reclaims from an
-     *  unowned ("android") resolver, ourselves, or a known dashboard renderer that ha-paneld itself set
-     *  as home (the Companion — [ensureDashboardHome] made it the default on every existing panel, so
-     *  switching to the built-in renderer must be able to take HOME back from it). A genuinely
+     *  unowned ("android") resolver, Settings FallbackHome, ourselves, or a known dashboard renderer
+     *  that ha-paneld itself set as home (the Companion — [ensureDashboardHome] made it the default
+     *  on every existing panel, so switching to the built-in renderer must be able to take HOME back
+     *  from it). A genuinely
      *  third-party launcher the user chose is still left alone. */
     private fun ensureBuiltinHome() {
         val comp = env.homeActivities().firstOrNull { it.pkg == env.ownPackage && it.cls.endsWith("DashboardActivity") }?.component
@@ -350,7 +354,9 @@ class SystemController(
         val current = env.defaultHome()
         if (current?.component == comp) return                           // already correct
         val curPkg = current?.pkg
-        if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage && curPkg !in KNOWN_RENDERER_HOMES) return
+        if (curPkg != null && curPkg != "android" && curPkg != "com.android.settings" &&
+            curPkg != env.ownPackage && curPkg !in KNOWN_RENDERER_HOMES &&
+            current?.cls?.endsWith("FallbackHome") != true) return
         Log.i(TAG, "ensureHome(builtin): default home was '${current?.component}' -> $comp")
         setHomeActivity(comp)
     }

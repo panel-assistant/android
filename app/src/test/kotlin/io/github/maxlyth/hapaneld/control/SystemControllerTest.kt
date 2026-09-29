@@ -579,6 +579,19 @@ class SystemControllerTest {
         assertTrue("reclaim from resolver via su", root.ran.contains("cmd package set-home-activity $MIN/Home"))
     }
 
+    @Test fun fallbackHomeIsReclaimedForBuiltinAndCompanion() {
+        val fallback = ActivityRef("com.android.settings", ".FallbackHome")
+        val builtinEnv = FakeSystemEnv(homes = listOf(DASH_HOME), default = fallback)
+        val (builtin, builtinRoot, _) = sc(builtinEnv, daemon = null)
+        builtin.applyLauncherHomePolicy("", "")
+        assertEquals(listOf("cmd package set-home-activity ${DASH_HOME.component}"), builtinRoot.ran)
+
+        val companionEnv = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = fallback)
+        val (companion, companionRoot, _) = sc(companionEnv, daemon = null)
+        companion.applyLauncherHomePolicy("", MIN)
+        assertEquals(listOf("cmd package set-home-activity $MIN/Home"), companionRoot.ran)
+    }
+
     @Test fun ensureHomeReclaimsFromSelfViaDaemon() {
         val env = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = ActivityRef(OWN, ".AdminLauncherActivity"))
         val (c, _, d) = sc(env, daemon = mapOf("SETHOME $MIN/Home" to "OK"))
