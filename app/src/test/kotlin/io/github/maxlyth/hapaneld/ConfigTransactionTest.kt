@@ -7,16 +7,114 @@ import io.github.maxlyth.hapaneld.control.fakeProfile
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.util.HaLink
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
+import io.github.maxlyth.hapaneld.http.LocalizedConfigSchema
+import io.github.maxlyth.hapaneld.http.configReadRoutes
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import io.ktor.server.testing.testApplication
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class ConfigTransactionTest {
+    @Test fun firstConfigReadRepairsLegacyAreaBeforeReportingOverride() = testApplication {
+        val stale = fakePreferences(initial = mapOf(
+            "ha_area" to "null",
+            "device_local_ha_area_user_override" to true,
+        ))
+        val config = Config(stale.instance)
+        val areaSpec = requireNotNull(SettingsRegistry.spec("ha_area"))
+        application {
+            routing {
+                route("/api/v1") {
+                    configReadRoutes(
+                        currentConfigJson = {
+                            JSONObject()
+                                .put("ha_area_user_override", config.haAreaUserOverride)
+                                .put("settings", JSONObject().put("ha_area", config.getRaw(areaSpec)))
+                                .toString()
+                        },
+                        localizedSchema = { LocalizedConfigSchema("{}", listOf("en")) },
+                    )
+                }
+            }
+        }
+
+        val first = JSONObject(client.get("/api/v1/config").bodyAsText())
+        assertEquals("", first.getJSONObject("settings").getString("ha_area"))
+        assertFalse(first.getBoolean("ha_area_user_override"))
+        assertEquals("", stale.values["ha_area"])
+        assertEquals(false, stale.values["device_local_ha_area_user_override"])
+
+        val rawOnly = fakePreferences(initial = mapOf("ha_area" to "null"))
+        assertEquals("", Config(rawOnly.instance).getRaw(areaSpec))
+        assertEquals("", rawOnly.values["ha_area"])
+
+        assertTrue(config.commitHaArea("Kitchen", userOverride = true))
+        val named = JSONObject(client.get("/api/v1/config").bodyAsText())
+        assertEquals("Kitchen", named.getJSONObject("settings").getString("ha_area"))
+        assertTrue(named.getBoolean("ha_area_user_override"))
+    }
+
+    @Test fun storedLiteralNullAreaIsClearedBeforeThePanelCanReportIt() {
+        val stale = fakePreferences(initial = mapOf(
+            "ha_area" to "null",
+            "device_local_ha_area_user_override" to true,
+        ))
+        val config = Config(stale.instance)
+        assertEquals("", config.haArea)
+        assertEquals("", stale.values["ha_area"])
+        assertFalse(config.haAreaUserOverride)
+        assertEquals("", Config(stale.instance).haArea)
+
+        val named = fakePreferences(initial = mapOf("ha_area" to "Office"))
+        assertEquals("Office", Config(named.instance).haArea)
+        assertEquals("Office", named.values["ha_area"])
+
+        val areaSpec = requireNotNull(SettingsRegistry.spec("ha_area"))
+        assertTrue(Config(named.instance).commitRaw(areaSpec, "null"))
+        assertEquals("", named.values["ha_area"])
+        assertEquals(false, named.values["device_local_ha_area_user_override"])
+        assertTrue(Config(named.instance).commitRaw(areaSpec, "Kitchen"))
+        assertEquals("Kitchen", named.values["ha_area"])
+    }
+
+    @Test fun legacyAreaCleanupDoesNotEraseAnInterveningUserChoice() {
+        val writerStarted = CountDownLatch(1)
+        val writerFinished = CountDownLatch(1)
+        var config: Config? = null
+        var writer: Thread? = null
+        val prefs = fakePreferences(
+            initial = mapOf("ha_area" to "null", "device_local_ha_area_user_override" to true),
+            onGetString = { key, value ->
+                if (key == "ha_area" && value == "null" && writer == null) {
+                    writer = Thread {
+                        writerStarted.countDown()
+                        checkNotNull(config).commitHaArea("Kitchen", userOverride = true)
+                        writerFinished.countDown()
+                    }.also(Thread::start)
+                    assertTrue(writerStarted.await(2, TimeUnit.SECONDS))
+                    writerFinished.await(200, TimeUnit.MILLISECONDS)
+                }
+            },
+        )
+        config = Config(prefs.instance)
+
+        assertEquals("", config.haArea)
+        assertTrue(writerFinished.await(2, TimeUnit.SECONDS))
+        writer?.join(2_000)
+        assertEquals("Kitchen", config.haArea)
+        assertTrue(config.haAreaUserOverride)
+    }
+
     @Test fun dashboardNetworkWarningUpgradeMaterializesDefaultAndPreservesOptOut() {
         val untouched = fakePreferences(initial = mapOf("config_schema" to 10))
         assertTrue(Config(untouched.instance).migrateLiveStore())
@@ -2382,6 +2480,7 @@ class ConfigTransactionTest {
     private fun fakePreferences(
         initial: Map<String, Any?> = emptyMap(),
         commitSucceeds: Boolean = true,
+        onGetString: ((String, String) -> Unit)? = null,
     ): FakePreferences {
         val values = initial.toMutableMap()
         val commitsSucceed = java.util.concurrent.atomic.AtomicBoolean(commitSucceeds)
@@ -2392,7 +2491,9 @@ class ConfigTransactionTest {
         ) { _, method, args ->
             when (method.name) {
                 "getAll" -> values.toMap()
-                "getString" -> values[args!![0]] as? String ?: args[1]
+                "getString" -> (values[args!![0]] as? String ?: args[1]).also {
+                    if (it is String) onGetString?.invoke(args[0] as String, it)
+                }
                 "getStringSet" -> values[args!![0]] as? Set<*> ?: args[1]
                 "getInt" -> values[args!![0]] as? Int ?: args[1]
                 "getLong" -> values[args!![0]] as? Long ?: args[1]

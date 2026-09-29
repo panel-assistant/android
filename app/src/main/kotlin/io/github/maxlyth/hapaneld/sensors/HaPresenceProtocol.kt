@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.sensors
 
+import io.github.maxlyth.hapaneld.config.isLiteralNullAreaName
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -225,13 +226,16 @@ internal object HaPresenceProtocol {
         if (preferred.isNotEmpty()) {
             for ((id, row) in areas) {
                 val name = row.optString("name").safeName()
-                if (name.equals(preferred, ignoreCase = true)) return HaPanelArea(id, name)
+                if (!isLiteralNullAreaName(name) && name.equals(preferred, ignoreCase = true))
+                    return HaPanelArea(id, name)
             }
         }
         val device = panelDevice(devices, deviceUid, panelId, panelAssistantEntryIds)
         val areaId = device.optString("area_id").trim().lowercase(Locale.ROOT)
         if (!validRegistryId(areaId)) throw HaProtocolException("Home Assistant panel device has no Area")
-        return HaPanelArea(areaId, areas[areaId]?.optString("name")?.safeName() ?: areaId)
+        val areaName = areas[areaId]?.optString("name")?.safeName() ?: areaId
+        if (isLiteralNullAreaName(areaName)) throw HaProtocolException("Home Assistant panel device has no Area")
+        return HaPanelArea(areaId, areaName)
     }
 
     fun parseHistory(

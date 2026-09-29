@@ -22,6 +22,8 @@ import io.github.maxlyth.hapaneld.config.defaultFloat
 import io.github.maxlyth.hapaneld.config.defaultInt
 import io.github.maxlyth.hapaneld.config.defaultLong
 import io.github.maxlyth.hapaneld.config.navbarModeDefault
+import io.github.maxlyth.hapaneld.config.isLiteralNullAreaName
+import io.github.maxlyth.hapaneld.config.normalizedHaAreaName
 import io.github.maxlyth.hapaneld.dashboard.HomeDashboardLaunchCache
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.persistence.AppState
@@ -1503,9 +1505,17 @@ class Config private constructor(
      * re-trigger the write-back side effect.
      */
     var haArea: String
-        get() = stringPref("ha_area")
+        get() = synchronized(CONFIG_LOCK) {
+            val stored = stringPref("ha_area")
+            val invalid = isLiteralNullAreaName(stored)
+            if (invalid) editCommit {
+                putString("ha_area", "")
+                putBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
+            }
+            if (invalid) "" else stored
+        }
         set(value) = synchronized(CONFIG_LOCK) {
-            durableCommit { putString("ha_area", value.trim()) }
+            durableCommit { putString("ha_area", normalizedHaAreaName(value)) }
             Unit
         }
 
@@ -1517,7 +1527,10 @@ class Config private constructor(
      * every deliberate divergence seconds after it was saved.
      */
     var haAreaUserOverride: Boolean
-        get() = prefs.getBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
+        get() = synchronized(CONFIG_LOCK) {
+            haArea // Repair a legacy literal and its stale override before either can be reported.
+            prefs.getBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
+        }
         set(value) = synchronized(CONFIG_LOCK) {
             durableCommit { putBoolean(HA_AREA_USER_OVERRIDE_PREF, value) }
             Unit
@@ -1525,9 +1538,10 @@ class Config private constructor(
 
     /** Persist the requested Area and its ownership bit as one live-setting authority. */
     internal fun commitHaArea(value: String, userOverride: Boolean): Boolean = synchronized(CONFIG_LOCK) {
+        val normalized = normalizedHaAreaName(value)
         durableCommit {
-            putString("ha_area", value.trim())
-            putBoolean(HA_AREA_USER_OVERRIDE_PREF, userOverride)
+            putString("ha_area", normalized)
+            putBoolean(HA_AREA_USER_OVERRIDE_PREF, userOverride && normalized.isNotBlank())
         }
     }
 
@@ -2490,6 +2504,7 @@ class Config private constructor(
             (SettingValue.validate(spec, floatPref(spec.key).toString()) as Validation.Ok).normalized
         }
         else -> when (spec.key) {
+            "ha_area" -> haArea
             "auto_sleep_source" -> autoSleepSource
             "navbar_mode" -> navbarMode
             // A pre-UDP panel has the retired "syslog" spelling on disk. Canonicalize here so the

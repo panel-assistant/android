@@ -1,6 +1,8 @@
 package io.github.maxlyth.hapaneld.http
 
 import io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher
+import io.github.maxlyth.hapaneld.config.normalizedHaAreaName
+import io.github.maxlyth.hapaneld.config.isLiteralNullAreaName
 import org.json.JSONObject
 
 internal fun haAreaCacheEntryUsable(
@@ -66,9 +68,10 @@ object HaAreaProtocol {
      * and the caller should clear the override bit.
      */
     fun reconcile(localName: String, haName: String, admin: Boolean, userOverride: Boolean = false): ReconcileAction {
-        val local = localName.trim()
-        val ha = haName.trim()
+        val local = normalizedHaAreaName(localName)
+        val ha = normalizedHaAreaName(haName)
         return when {
+            isLiteralNullAreaName(localName) -> ReconcileAction.ADOPT_HA
             userOverride && local.isNotBlank() && ha.isNotBlank() && !ha.equals(local, ignoreCase = true) ->
                 ReconcileAction.KEEP
             ha.isNotBlank() && !ha.equals(local, ignoreCase = true) -> ReconcileAction.ADOPT_HA
@@ -129,9 +132,15 @@ object HaAreaProtocol {
             found = true,
             deviceId = device.optString("id").trim(),
             areaId = areaId,
-            areaName = if (areaId.isBlank()) "" else areaName,
+            areaName = if (areaId.isBlank()) "" else normalizedHaAreaName(areaName),
         )
     }
+
+    /** Only a registry row actually named `null` is safe to clear; an unmatched id is not evidence. */
+    fun hasLiteralNullAssignment(device: PanelDeviceArea, areas: List<HaArea>): Boolean =
+        device.areaId.isNotBlank() && areas.any { area ->
+            area.areaId == device.areaId && isLiteralNullAreaName(area.name)
+        }
 
     /** Case-insensitive area-name resolution, because names are what people type and remember. */
     fun resolveAreaId(areas: List<HaArea>, name: String): String? =

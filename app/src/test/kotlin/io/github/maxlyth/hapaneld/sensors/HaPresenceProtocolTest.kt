@@ -64,6 +64,30 @@ class HaPresenceProtocolTest {
         assertTrue(failure?.message.orEmpty().contains("no Area"))
     }
 
+    @Test fun `literal null area is unassigned for auto sleep while real choices survive`() {
+        val devices = response(JSONArray().put(device("panel-device", "bad-area", "ha-paneld-uid-abc")))
+        val areas = response(JSONArray()
+            .put(JSONObject().put("area_id", "bad-area").put("name", " NuLl "))
+            .put(JSONObject().put("area_id", "study").put("name", "Study")))
+
+        val invalid = runCatching {
+            HaPresenceProtocol.projectPanelArea(devices, areas, "abc", "legacy", emptySet())
+        }.exceptionOrNull()
+        assertTrue(invalid is HaProtocolException)
+        assertTrue(invalid?.message.orEmpty().contains("no Area"))
+        assertEquals(
+            HaPanelArea("study", "Study"),
+            HaPresenceProtocol.projectPanelArea(
+                devices, areas, "abc", "legacy", emptySet(), preferredAreaName = "Study",
+            ),
+        )
+        assertTrue(runCatching {
+            HaPresenceProtocol.projectPanelArea(
+                devices, areas, "abc", "legacy", emptySet(), preferredAreaName = "null",
+            )
+        }.exceptionOrNull() is HaProtocolException)
+    }
+
     @Test fun `large source sets are byte batched without dropping entities`() {
         val entities = (1..2_000).mapTo(linkedSetOf()) { "binary_sensor.room_motion_$it" }
         val longEntities = (1..5_000).mapTo(linkedSetOf()) {
