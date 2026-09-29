@@ -59,23 +59,19 @@ import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
 import io.github.maxlyth.hapaneld.util.UpdateChecker
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
 import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.origin
-import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.SecureRandom
 
@@ -435,9 +431,6 @@ class PaneldServer internal constructor(
                 configurePageRoute(::requestStrings, { pages }) { strings -> configurePageHandler().body(strings) }
                 setupPageRoute(::requestStrings, { pages }, ::buildToken)
                 profilesPageRoute(::requestStrings, { pages })
-                // The experimental remote-control page is withheld from 0.9.2. Keep old bookmarks
-                // useful while its tap-injection UX is reviewed for a later release.
-                get("/test") { call.respondRedirect("/") }
                 installPageRoute(::requestStrings, { pages }) { strings -> installPageHandler().body(strings) }
                 fleetPageRoute(::requestStrings, { pages }) { config.httpPort }
                 logsPageRoute(::requestStrings, { pages }) { config.httpPort }
@@ -545,17 +538,7 @@ class PaneldServer internal constructor(
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).
                     discoveryRoutes({ peersJson(peers()) }, { launchableAppsJson(appContext) })
-                    // Hydration payload for the dashboard (see DashboardPageHandler.json) — the one place the probe
-                    // suite actually runs; cached + single-flight, so concurrent viewers share it.
-                    get("/info") {
-                        val strings = requestStrings(call)
-                        call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-                        call.response.headers.append(
-                            HttpHeaders.ContentLanguage,
-                            strings.languages(setOf("dashboard.")).joinToString(", "),
-                        )
-                        call.respondText(withContext(Dispatchers.IO) { dashboardPageHandler().json(strings) }, ContentType.Application.Json)
-                    }
+                    dashboardHydrationRoute(::requestStrings) { strings -> dashboardPageHandler().json(strings) }
                     managementRoutes(
                         diagnostics = managementObservations::diagStaleOk,
                         status = ::statusJson,
@@ -600,9 +583,7 @@ class PaneldServer internal constructor(
                     sensorTraceRoute()
                     screenshotRoutes(screenshots, { interactive.screenshot() }, { admitActiveRead(it) })
                     cameraRoutes(camera, ::admitActiveRead)
-                    get("/openapi.json") {
-                        call.respondText(asset("openapi.json"), ContentType.Application.Json)
-                    }
+                    apiSpecificationRoute(asset)
                     tameRoutes {
                         TameRoutes(
                             config = config,
