@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.haSignInPending
+
 import android.content.Context
 import android.util.Log
 import io.github.maxlyth.hapaneld.Config
@@ -30,6 +32,12 @@ internal class SetupState(
     private val scope: CoroutineScope,
     private val rendererPreparation: RendererPreparationCoordinator,
 ) {
+    // Shares haSignInPending with the renderer, so what the browser advertises as the next step and what
+    // the panel actually does when it starts cannot drift apart.
+    fun haSignInNeededForEffectiveDashboard(): Boolean =
+        effectiveDashboardIsBuiltin() &&
+            haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)
+
     fun attest() {
         // A human at the panel (or looking at it) confirms the dashboard is actually
         // showing. Bound to the current configuration fingerprint, so changing the URL,
