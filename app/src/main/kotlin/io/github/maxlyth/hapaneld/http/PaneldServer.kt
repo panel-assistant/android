@@ -470,28 +470,7 @@ class PaneldServer internal constructor(
     private val directConfigMutationLock = Any()
     @Volatile private var stopping = true
     private val haArea = HaAreaRuntime(config, entityLearning, scope, directConfigMutationLock) { stopping }
-    private val tameReconciliation = TameReconcileAuthority(
-        readDesired = { config.tameVendorPackages.toSet() },
-        reconcile = { desired, stopping ->
-            val cost = FeatureCosts.registry.span(FeatureCostOperation.TAME_MUTATION)
-            try {
-                tame.reconcileBlocklist(desired, stopping).also { result ->
-                    cost.work(units = result.attempted.toLong())
-                    if (result.retryableFailure) cost.outcome(FeatureCostOutcome.FAILURE)
-                }
-            } catch (error: Exception) {
-                cost.outcome(FeatureCostOutcome.FAILURE)
-                Log.w(TAG, "vendor package reconciliation failed", error)
-                TameReconcileResult(attempted = 0, retryableFailure = true)
-            } finally {
-                cost.close()
-            }
-        },
-        stopping = { stopping },
-        onBacklogChanged = { pending ->
-            FeatureCosts.registry.setBacklog(FeatureCostOperation.TAME_MUTATION, pending)
-        },
-    )
+    private val tameReconciliation = TameReconcileAuthority(config, tame) { stopping }
     private val remoteControlRoutes = RemoteControlRoutes(
         config = config,
         interactive = interactive,
@@ -539,7 +518,14 @@ class PaneldServer internal constructor(
                 setupNeedsUser = { setupState.setupNeedsUser() },
                 setupRedirectLocation = ::setupRedirectLocation,
             ) {
-                handBackHomeRoutes(handBackHomeDependencies())
+                handBackHomeRoutes(handBackHomeDependencies(
+                    config = config,
+                    tameController = { tame },
+                    profileKnownPackages = { tameProfileCandidates.mapTo(hashSetOf()) { it.pkg } },
+                    setHome = { system.setHomeActivity(it) },
+                    ownPackage = { appContext.packageName },
+                    authorize = ::authorizeSensitive,
+                ))
                 controlPlaneRoutes(
                     controlPlaneDependencies(
                         appContext, config, scope, pendingApks, identityMigration,
@@ -1058,7 +1044,7 @@ class PaneldServer internal constructor(
                             config = config,
                             tame = tame,
                             tameProfileCandidates = tameProfileCandidates,
-                            requestTameReconcileAfterCommit = ::requestTameReconcileAfterCommit,
+                            requestTameReconcileAfterCommit = tameReconciliation::requestAfterCommit,
                             snapInvalidate = ::snapInvalidate,
                             requestStrings = ::requestStrings,
                             localizedHref = ::localizedHref,
@@ -1316,56 +1302,6 @@ class PaneldServer internal constructor(
     /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
      *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
      *  self-uninstall would kill the tool. */
-    /**
-     * Wire the hand-back routes to this panel's real taming state.
-     *
-     * The device profile is what authorises adopting a package carrying no ownership marker, so it is read
-     * from the active profile here rather than accepted from a caller: a panel may only hand back the vendor
-     * apps its own hardware profile names.
-     */
-    private fun handBackHomeDependencies(): HandBackHomeRouteDependencies =
-        HandBackHomeRouteDependencies(
-            profileKnownPackages = { tameProfileCandidates.mapTo(hashSetOf()) { it.pkg } },
-            handBack = { profileKnown ->
-                HandBackHomeController(
-                    ownedMarkers = tame::ownedMarkerSnapshot,
-                    packageStates = tame::handBackPackageStates,
-                    homeCandidates = tame::handBackHomeCandidates,
-                    clearDesiredState = {
-                        // Both keys, and before the role moves: the reconciler re-asserts the desired
-                        // blocklist on every wake, and `launcher_package` naming ha-paneld keeps the
-                        // admin-home repair tick putting the role straight back.
-                        runCatching {
-                            config.setTameVendorPackages("")
-                            config.setLauncherPackage("")
-                        }.isSuccess
-                    },
-                    restoreOwned = tame::restoreEveryOwnedPackage,
-                    enable = tame::adoptAndEnable,
-                    setHome = { component -> system.setHomeActivity(component) },
-                    observeHome = tame::observeDefaultHome,
-                    ownPackage = appContext.packageName,
-                ).handBack(profileKnown)
-            },
-            recordTamed = { pkg ->
-                val outcome = tame.recordExternallyTamed(pkg)
-                // An ownership marker outside the desired set is what the reconciler restores, so a recorded
-                // package has to join the desired set or the next wake would undo the provisioner's work.
-                if (outcome == HandBackHomePolicy.RecordOutcome.RECORDED) {
-                    runCatching {
-                        val desired = config.tameVendorPackages.toMutableList()
-                        if (pkg !in desired) {
-                            desired += pkg
-                            config.setTameVendorPackages(desired.joinToString(" "))
-                        }
-                    }
-                }
-                outcome
-            },
-            authorize = { call, operation, payload, summary ->
-                authorizeSensitive(call, operation, payload, summary)
-            },
-        )
 
     /** Logs tab — live log tail over SSE. App source always; system source needs root (gated live). */
     private fun logsBody(strings: AppStrings): String {
@@ -2344,7 +2280,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
         applyRendererEffects = ::applyRendererEffects,
         onEntityTargetChanged = { entityLearning.onTargetConfigurationChanged() },
         setEntityLearningEnabled = { entityLearning.setEnabled(it) },
-        requestTameReconcileAfterCommit = ::requestTameReconcileAfterCommit,
+        requestTameReconcileAfterCommit = tameReconciliation::requestAfterCommit,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
         snapInvalidate = ::snapInvalidate,
         onReconfigure = { onReconfigure(it) },
@@ -2358,28 +2294,11 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
     )
 
 
-    /** Startup/reconfigure wake-up. Config commits use [requestTameReconcileAfterCommit] under the lock. */
+    /** Startup/reconfigure wake-up. Config commits use [TameReconcileAuthority.requestAfterCommit] under the lock. */
     fun requestTameReconcile(): Boolean = config.synchronizedTransaction {
-        requestTameReconcileAfterCommit()
+        tameReconciliation.requestAfterCommit()
     }
 
-    /**
-     * One commit-order submission seam. Admission loss is observable but not correctness-critical: the
-     * desired config and write-ahead ownership markers are durable, and startup requests another pass.
-     */
-    private fun requestTameReconcileAfterCommit(): Boolean {
-        val admission = tameReconciliation.request()
-        when (admission) {
-            LatestDispatcher.Admission.ACCEPTED -> Unit
-            LatestDispatcher.Admission.COALESCED ->
-                FeatureCosts.registry.recordCoalesced(FeatureCostOperation.TAME_MUTATION)
-            LatestDispatcher.Admission.REJECTED,
-            LatestDispatcher.Admission.CLOSED ->
-                FeatureCosts.registry.recordDropped(FeatureCostOperation.TAME_MUTATION)
-        }
-        return admission == LatestDispatcher.Admission.ACCEPTED ||
-            admission == LatestDispatcher.Admission.COALESCED
-    }
 
 
     private fun configValues() = ConfigValueProjection(
@@ -2477,7 +2396,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
         onEntityTargetChanged = { entityLearning.onTargetConfigurationChanged() },
         setEntityLearningEnabled = { entityLearning.setEnabled(it) },
         effectiveDashboardIsBuiltin = ::effectiveDashboardIsBuiltin,
-        requestTameReconcileAfterCommit = ::requestTameReconcileAfterCommit,
+        requestTameReconcileAfterCommit = tameReconciliation::requestAfterCommit,
         snapInvalidate = ::snapInvalidate,
         onReconfigure = { onReconfigure(it) },
         prepareSelfUpdateChannel = { channel, force -> prepareSelfUpdateChannel(channel, force) },
