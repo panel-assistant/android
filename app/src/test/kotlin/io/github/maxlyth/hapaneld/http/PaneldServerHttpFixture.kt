@@ -43,7 +43,12 @@ internal class PaneldServerHttpFixture : java.io.Closeable {
             else -> error("Baseline unexpectedly accessed preferences: ${method.name}")
         }
     } as SharedPreferences
-    val config = Config(preferences)
+    val config = Config(preferences).also { config ->
+        Config::class.java.getDeclaredField("contentResolver").apply {
+            isAccessible = true
+            set(config, object : android.content.ContentResolver(null) {})
+        }
+    }
     private val pending = PendingUploadStore().apply { open() }
     val server = allocate(PaneldServer::class.java).apply {
         field("config", config)
