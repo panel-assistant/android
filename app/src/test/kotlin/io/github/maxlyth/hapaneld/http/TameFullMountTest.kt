@@ -7,6 +7,7 @@ import io.github.maxlyth.hapaneld.control.TameController
 import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
 import io.ktor.client.request.header
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -24,6 +25,39 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TameFullMountTest {
+    @Test fun `suggestions render at request time and reject untrusted reads before observation`() {
+        PaneldServerHttpFixture().use { fixture ->
+            var observations = 0
+            prepare(fixture) { observations++ }
+            testApplication {
+                application { fixture.mount(this) }
+                for ((header, value) in listOf(
+                    HttpHeaders.Origin to "http://elsewhere.example",
+                    "Sec-Fetch-Site" to "cross-site",
+                    HttpHeaders.Host to "elsewhere.example",
+                )) {
+                    val rejected = client.get("/api/v1/tame/suggest") { header(header, value) }
+                    assertEquals(HttpStatusCode.Forbidden, rejected.status)
+                    assertEquals(0, observations)
+                }
+                // Source-text reason: bundled locale data is runtime input, not a source-shape assertion.
+                val catalogue = CatalogueLoader { File("src/main/assets", it).readText() }
+                for (locale in listOf("en", "de")) {
+                    val before = observations
+                    val response = client.get("/api/v1/tame/suggest?lang=$locale")
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    assertEquals("text/html; charset=UTF-8", response.headers[HttpHeaders.ContentType])
+                    assertEquals("DENY", response.headers["X-Frame-Options"])
+                    assertEquals(
+                        "<p class=\"note\">${esc(catalogue.strings(locale).get("install.tame.suggest.none_found"))}</p>",
+                        response.bodyAsText(),
+                    )
+                    assertTrue(observations > before, "Each admitted request must observe packages anew")
+                }
+            }
+        }
+    }
+
     @Test fun `hand back and record routes retain real approval before package ownership access`() {
         PaneldServerHttpFixture().use { fixture ->
             prepare(fixture)
@@ -155,7 +189,7 @@ class TameFullMountTest {
         }
     }
 
-    private fun prepare(fixture: PaneldServerHttpFixture) {
+    private fun prepare(fixture: PaneldServerHttpFixture, onObservation: () -> Unit = {}) {
         // Source-text reason: load the shipped locale data as runtime input, not a code-shape assertion.
         field(fixture.server, "catalogueLoader\$delegate", lazyOf(CatalogueLoader {
             File("src/main/assets", it).readText()
@@ -165,8 +199,10 @@ class TameFullMountTest {
         val tame = unsafe.allocateInstance(TameController::class.java) as TameController
         field(tame, "context", object : ContextWrapper(null) {
             override fun getPackageName(): String = "io.github.maxlyth.hapaneld"
-            override fun getPackageManager(): PackageManager =
+            override fun getPackageManager(): PackageManager {
+                onObservation()
                 throw UnsupportedOperationException("Package inventory unavailable in JVM fixture")
+            }
         })
         field(fixture.server, "tame", tame)
         field(fixture.server, "tameProfileCandidates", emptyList<Any>())
