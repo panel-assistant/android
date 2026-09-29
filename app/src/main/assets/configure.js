@@ -940,10 +940,9 @@
       sel.addEventListener("change", function () { values[f.key] = sel.value; setDirty(f.key); });
       return sel;
     }
-    // Wake-word picker: a checkbox per wake word the panel holds (the bundled ones and any imported), and
-    // the import of one the owner trained: its microWakeWord .json manifest and .tflite model, which the
-    // panel checks with its own engine before offering it. Degrades to the raw JSON textarea while the
-    // list is unavailable.
+    // Wake-word picker: a checkbox per wake word the panel holds (the bundled ones and any imported).
+    // Degrades to the raw JSON textarea while the list is unavailable. The import has its own row below
+    // it (voiceWakeWordImportRow), across the whole card.
     if (f.picker === "voice_wake_words") {
       if (voiceWakeWordsCatalog === null) loadVoiceWakeWords();
       var wakeWrap = el("div", { class: "voice-wake-words-picker" });
@@ -972,29 +971,6 @@
         });
         wakeWrap.appendChild(el("label", { class: "voice-wake-word-row", style: "display:block" }, [box, el("span", { text: word.wake_word ? String(word.wake_word) : id })]));
       });
-      var manifestInput = el("input", { type: "file", accept: ".json,application/json" });
-      var modelInput = el("input", { type: "file", accept: ".tflite" });
-      var importButton = el("button", { type: "button", class: "btn", text: i18nText("configure.voice.import_wake_word", "Import trained wake word") });
-      importButton.addEventListener("click", function () {
-        var manifestFile = manifestInput.files && manifestInput.files[0];
-        var modelFile = modelInput.files && modelInput.files[0];
-        if (!manifestFile || !modelFile) {
-          voiceWakeWordImportStatus = i18nText("configure.voice.import_choose_files", "Choose the .json manifest and the .tflite model first.");
-          render();
-          return;
-        }
-        importButton.disabled = true;
-        importVoiceWakeWord(manifestFile, modelFile);
-      });
-      wakeWrap.appendChild(el("div", { class: "voice-wake-word-import", style: "display:grid;gap:6px;margin-top:8px" }, [
-        el("small", { text: i18nText("configure.voice.import_help", "Import a microWakeWord model you trained: its .json manifest and .tflite file.") }),
-        el("a", {
-          class: "voice-wake-word-guide", href: WAKE_WORD_GUIDE_URL, target: "_blank", rel: "noopener noreferrer",
-          text: i18nText("configure.voice.import_guide", "How to train your own wake word")
-        }),
-        manifestInput, modelInput, importButton,
-        voiceWakeWordImportStatus ? el("small", { text: voiceWakeWordImportStatus }) : null,
-      ]));
       return wakeWrap;
     }
     // Wake-word-pipeline picker: one native select per configured wake word (from voice_wake_words),
@@ -3228,6 +3204,7 @@
           if (!autoSleepUsesTouch() && !autoSleepStatus && !autoSleepLoading) setTimeout(loadAutoSleepData, 0);
         }
         if (g === "Home Assistant connection" && f.key === "ha_url") card.appendChild(haOAuthRow());
+        if (f.picker === "voice_wake_words" && Array.isArray(voiceWakeWordsCatalog)) card.appendChild(voiceWakeWordImportRow());
         if (f.key === "zigbee_router") {
           var join = zigbeeJoinRow();
           if (join) card.appendChild(join);
@@ -3692,6 +3669,38 @@
       voiceWakeWordsCatalog = false;
       render();
     });
+  }
+
+  // The import of a wake word the owner trained, across the whole Voice card: the microWakeWord .json
+  // manifest and .tflite model are picked together, and the panel checks them with its own engine
+  // before offering the word. The way to train one is one tap away.
+  function voiceWakeWordImportRow() {
+    var filesInput = el("input", { type: "file", multiple: "", accept: ".json,.tflite,application/json" });
+    var importButton = el("button", { type: "button", class: "pbtn", text: i18nText("configure.voice.import_button", "Import") });
+    importButton.addEventListener("click", function () {
+      var files = Array.prototype.slice.call(filesInput.files || []);
+      var modelFile = files.find(function (file) { return /\.tflite$/i.test(file.name); });
+      var manifestFile = files.find(function (file) { return /\.json$/i.test(file.name); });
+      if (!manifestFile || !modelFile) {
+        voiceWakeWordImportStatus = i18nText("configure.voice.import_choose_files", "Choose the .json manifest and the .tflite model first.");
+        render();
+        return;
+      }
+      importButton.disabled = true;
+      importVoiceWakeWord(manifestFile, modelFile);
+    });
+    return el("div", { class: "frow frow-action voice-wake-word-import" }, [
+      el("div", { class: "flabel" }, [
+        el("span", { text: i18nText("configure.voice.import_wake_word", "Import trained wake word") }),
+        el("small", { text: i18nText("configure.voice.import_help", "Import a microWakeWord model you trained: its .json manifest and .tflite file.") }),
+        el("small", {}, [el("a", {
+          class: "voice-wake-word-guide", href: WAKE_WORD_GUIDE_URL, target: "_blank", rel: "noopener noreferrer",
+          text: i18nText("configure.voice.import_guide", "How to train your own wake word")
+        })]),
+        voiceWakeWordImportStatus ? el("small", { class: "voice-wake-word-import-status", text: voiceWakeWordImportStatus }) : null,
+      ]),
+      el("div", { class: "fctl" }, [filesInput, importButton]),
+    ]);
   }
 
   // Reads the two files, sends them to the panel, and shows what the panel said. A model the panel's

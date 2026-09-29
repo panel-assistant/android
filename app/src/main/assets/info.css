@@ -459,6 +459,7 @@ body.hdr-hide-brand .hdr .brand{display:none}
 @media(max-width:600px){
   .frow{flex-direction:column;align-items:stretch;gap:8px}
   .frow .fctl{width:100%;max-width:none;justify-content:flex-end}
+  .frow.frow-action .flabel{flex:0 0 auto}
   .frow .fctl input[type=text],.frow .fctl input[type=password],.frow .fctl input[type=number],.frow .fctl select{
     flex:1 1 auto;width:100%;min-width:0;box-sizing:border-box
   }

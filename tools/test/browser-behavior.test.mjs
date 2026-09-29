@@ -1265,19 +1265,25 @@ browserTest('Configure badges the experimental cards and leaves Voice and settle
   assert.equal(await page.locator('[data-config-group="Dashboard"] .cardbadge').count(), 0);
 });
 
-browserTest('Configure offers the wake words as checkboxes with the training guide beside the import', async (t) => {
+browserTest('Configure offers the wake words as checkboxes and imports a trained one from its own row', async (t) => {
   // The import takes a model the owner trained, so the way to train one has to be one tap away from it.
+  // It spans the card rather than sharing the wake-word row's control column.
+  let imported = null;
   const schema = [
     { key: 'voice_enabled', label: 'Voice assistant', group: 'Voice', type: 'BOOL', available: true },
     { key: 'voice_wake_words', label: 'Wake words', group: 'Voice', type: 'STRING', picker: 'voice_wake_words', available: true },
   ];
-  const harness = await startHarness((path, request) => {
+  const harness = await startHarness(async (path, request) => {
     if (path === '/api/v1/config/schema') return json(schema);
     if (path === '/api/v1/config') {
       if (request.method === 'POST') return json({});
       return json({ settings: { voice_enabled: 'true', voice_wake_words: '["hey_jarvis"]' }, ha_expose: {}, ha_auth: {} });
     }
     if (path === '/api/v1/voice/wake-words') {
+      if (request.method === 'POST') {
+        imported = JSON.parse(await requestBody(request));
+        return json({ id: 'hey_panel', wake_word: 'Hey Panel' });
+      }
       return json({ wake_words: [
         { id: 'okay_nabu', wake_word: 'Okay Nabu', imported: false },
         { id: 'hey_jarvis', wake_word: 'Hey Jarvis', imported: false },
@@ -1306,7 +1312,16 @@ browserTest('Configure offers the wake words as checkboxes with the training gui
   assert.equal(await guide.getAttribute('href'), 'https://panel-assistant.io/go/custom-wake-words');
   assert.equal(await guide.getAttribute('target'), '_blank');
   assert.equal(await guide.textContent(), 'How to train your own wake word');
-  assert.equal(await page.locator('.voice-wake-word-import input[type="file"][accept=".tflite"]').count(), 1);
+  assert.equal(await page.locator('.voice-wake-words-picker .voice-wake-word-import').count(), 0);
+  assert.equal(await page.locator('[data-config-group="Voice"] > .voice-wake-word-import').count(), 1);
+
+  await page.locator('.voice-wake-word-import input[type="file"]').setInputFiles([
+    { name: 'hey_panel.tflite', mimeType: 'application/octet-stream', buffer: Buffer.from([1, 2, 3]) },
+    { name: 'hey_panel.json', mimeType: 'application/json', buffer: Buffer.from('{"wake_word":"Hey Panel"}') },
+  ]);
+  await page.locator('.voice-wake-word-import button').click();
+  await assert.doesNotReject(page.locator('.voice-wake-word-import-status', { hasText: 'Imported Hey Panel.' }).waitFor());
+  assert.deepEqual(imported, { name: 'hey_panel.tflite', manifest: '{"wake_word":"Hey Panel"}', model: 'AQID' });
 });
 
 browserTest('Configure help wraps a frozen URL without applying break-all globally', async (t) => {
