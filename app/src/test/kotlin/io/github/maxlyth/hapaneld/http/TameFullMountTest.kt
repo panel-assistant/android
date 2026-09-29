@@ -24,6 +24,59 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class TameFullMountTest {
+    @Test fun `hand back and record routes retain real approval before package ownership access`() {
+        PaneldServerHttpFixture().use { fixture ->
+            prepare(fixture)
+            assertTrue(fixture.config.setSecurityMode(Config.SecurityMode.HARDENED))
+            LocalApprovalBroker.instance.clear()
+            try {
+                testApplication {
+                    application {
+                        intercept(ApplicationCallPipeline.Setup) {
+                            context.mutableOriginConnectionPoint.remoteAddress = "192.168.50.20"
+                        }
+                        fixture.mount(this)
+                    }
+                    for (path in listOf("hand-back-home", "tame/record")) {
+                        val pending = client.post("/api/v1/$path") {
+                            header(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString())
+                            setBody("pkg=com.vendor.keep")
+                        }
+                        assertEquals(HttpStatusCode.Accepted, pending.status)
+                        assertEquals("approval-required", JSONObject(pending.bodyAsText()).getString("error"))
+                        LocalApprovalBroker.instance.clear()
+                    }
+                    assertEquals(emptyList(), fixture.config.tameVendorPackages)
+                }
+            } finally {
+                LocalApprovalBroker.instance.clear()
+            }
+        }
+    }
+
+    @Test fun `ownership routes fail closed for unknown package observations`() {
+        PaneldServerHttpFixture().use { fixture ->
+            prepare(fixture)
+            testApplication {
+                application { fixture.mount(this) }
+                suspend fun record(pkg: String) = client.post("/api/v1/tame/record") {
+                    header(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString())
+                    setBody("pkg=$pkg")
+                }
+                val invalid = record("not-a-package")
+                assertEquals(HttpStatusCode.BadRequest, invalid.status)
+                assertEquals("bad-package", JSONObject(invalid.bodyAsText()).getString("error"))
+                val unknown = record("com.vendor.unknown")
+                assertEquals(HttpStatusCode.ServiceUnavailable, unknown.status)
+                assertEquals("unknown", JSONObject(unknown.bodyAsText()).getString("result"))
+                val handBack = client.post("/api/v1/hand-back-home")
+                assertEquals(HttpStatusCode.Conflict, handBack.status)
+                assertEquals("package-state-unknown", JSONObject(handBack.bodyAsText()).getString("error"))
+                assertEquals(emptyList(), fixture.config.tameVendorPackages)
+            }
+        }
+    }
+
     @Test fun `full mount rejects invalid or unknown packages and enforces root admission`() {
         PaneldServerHttpFixture().use { fixture ->
             prepare(fixture)
@@ -111,6 +164,7 @@ class TameFullMountTest {
         // classify it as unknown and refuse taming, rather than assuming an unobserved app is safe.
         val tame = unsafe.allocateInstance(TameController::class.java) as TameController
         field(tame, "context", object : ContextWrapper(null) {
+            override fun getPackageName(): String = "io.github.maxlyth.hapaneld"
             override fun getPackageManager(): PackageManager =
                 throw UnsupportedOperationException("Package inventory unavailable in JVM fixture")
         })
