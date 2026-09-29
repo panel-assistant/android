@@ -1,0 +1,306 @@
+package io.github.maxlyth.hapaneld.http
+
+import android.util.Log
+import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.DashboardEntityBackupState
+import io.github.maxlyth.hapaneld.HaAuthOwner
+import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
+import io.github.maxlyth.hapaneld.normalizeDashboardEntityPath
+import io.github.maxlyth.hapaneld.stableOwner
+import io.github.maxlyth.hapaneld.config.ConfigBundle
+import io.github.maxlyth.hapaneld.config.SettingValue
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
+import io.github.maxlyth.hapaneld.util.InstallPresentation
+import io.github.maxlyth.hapaneld.util.InstallProgress
+import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+internal sealed interface ApplyAcceptedResult {
+    data object Applied : ApplyAcceptedResult
+    data object Stale : ApplyAcceptedResult
+    data object CommitFailed : ApplyAcceptedResult
+    data class CompatibilityRefused(val message: String) : ApplyAcceptedResult
+}
+
+
+/** Ordered accepted-config commit and renderer effects shared by import, OAuth and restore. */
+internal class AcceptedConfigTransaction(
+    private val config: Config,
+    private val revisions: RevisionStore,
+    private val rendererPreparation: RendererPreparationCoordinator,
+    private val system: SystemController,
+    private val currentValues: () -> Map<String, String>,
+    private val revisionValues: () -> Map<String, String>,
+    private val applySetting: (String, String) -> LiveSettingRequestOutcome,
+    private val onEntityTargetChanged: () -> Unit,
+    private val setEntityLearningEnabled: (Boolean) -> Boolean,
+    private val effectiveDashboardIsBuiltin: () -> Boolean,
+    private val requestTameReconcileAfterCommit: () -> Boolean,
+    private val snapInvalidate: () -> Unit,
+    private val onReconfigure: (Set<String>) -> Unit,
+    private val prepareSelfUpdateChannel: suspend (String, Boolean) -> SelfUpdateChannelPreflight,
+    private val onSelfUpdateChannelCommitted: (
+        SelfUpdateChannelPreflight.Ready?, InstallProgress.Ticket?, String, String,
+    ) -> Unit,
+) {
+    /** Apply a validated value set in two ordered phases: snapshot current → atomically commit ordinary
+     *  preference fields → run live controller/hardware persistence and side-effects → reconfigure.
+     *  External state cannot be rolled back and only starts after a successful preference commit.
+     *  Returns false without starting side-effects when the preference commit fails. */
+
+    suspend fun applyAccepted(
+        accepted: Map<String, String>,
+        expectedConfig: String? = null,
+        expectedRevision: String? = null,
+        expectedHaAuthOwner: HaAuthOwner? = null,
+        expectedHaOAuthEpoch: Long? = null,
+        entityState: DashboardEntityBackupState? = null,
+        existingOperationTicket: InstallProgress.Ticket? = null,
+        onDurableRevision: (String) -> Unit = {},
+        afterCommitBeforeRenderer: (RendererConfigEffects, String) -> Unit = { _, _ -> },
+        afterApply: () -> Unit = {},
+    ): ApplyAcceptedResult = withContext(Dispatchers.IO) {
+        if (existingOperationTicket != null && !InstallProgress.owns(existingOperationTicket)) {
+            return@withContext ApplyAcceptedResult.CompatibilityRefused(
+                "the owning panel operation is no longer active",
+            )
+        }
+        val configMutationTicket = if (existingOperationTicket == null) {
+            InstallProgress.startConfigMutation()
+                ?: return@withContext ApplyAcceptedResult.CompatibilityRefused(
+                    "another panel operation owns configuration admission",
+                )
+        } else null
+        var channelMutation: SelfUpdateChannelMutation? = null
+        var preparedChannel: SelfUpdateChannelPreflight.Ready? = null
+        var channelCommitted = false
+        val previousChannel = config.updateChannel
+        try {
+        if (existingOperationTicket != null && restoreChangesUpdateChannel(config.updateChannel, accepted)) {
+            return@withContext ApplyAcceptedResult.CompatibilityRefused(
+                "backup restore cannot change an active self-update channel",
+            )
+        }
+        channelMutation = selfUpdateChannelMutation(config.updateChannel, config.selfUpdate, accepted)
+        channelMutation?.let { request ->
+            when (val preflight = prepareSelfUpdateChannel(request.requested, request.force)) {
+                is SelfUpdateChannelPreflight.Ready -> {
+                    if (preflight.requiresRecovery) {
+                        preflight.close()
+                        return@withContext ApplyAcceptedResult.CompatibilityRefused(
+                            "An update-channel change cannot recover an older database snapshot.",
+                        )
+                    }
+                    preparedChannel = preflight
+                }
+                is SelfUpdateChannelPreflight.UpToDate -> Unit
+                is SelfUpdateChannelPreflight.Refused,
+                is SelfUpdateChannelPreflight.Unresolved ->
+                    return@withContext ApplyAcceptedResult.CompatibilityRefused(preflight.message)
+            }
+        }
+        val result = rendererPreparation.transaction {
+            var earlyResult: ApplyAcceptedResult? = null
+            var committed: AcceptedCommit? = null
+            config.synchronizedTransaction {
+                if (expectedConfig != null &&
+                    io.github.maxlyth.hapaneld.config.ConfigHash.of(configConcurrencyValues(currentValues())) != expectedConfig
+                ) {
+                    earlyResult = ApplyAcceptedResult.Stale
+                    return@synchronizedTransaction
+                }
+                if (expectedRevision != null &&
+                    io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()) != expectedRevision
+                ) {
+                    earlyResult = ApplyAcceptedResult.Stale
+                    return@synchronizedTransaction
+                }
+                if (expectedHaAuthOwner != null && config.haAuthSnapshot().stableOwner() != expectedHaAuthOwner) {
+                    earlyResult = ApplyAcceptedResult.Stale
+                    return@synchronizedTransaction
+                }
+                if (expectedHaOAuthEpoch != null && !config.isHaOAuthAttemptCurrent(expectedHaOAuthEpoch)) {
+                    earlyResult = ApplyAcceptedResult.Stale
+                    return@synchronizedTransaction
+                }
+                val previous = ConfigBundle.fromValues(
+                    revisionValues(), kind = ConfigBundle.KIND_REVISION,
+                    exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
+                )
+                val editor = config.editor()
+                val live = ArrayList<Pair<String, String>>()
+                for ((key, value) in accepted) {
+                    when {
+                        key == "panel_id" -> config.stagePanelId(editor, value)
+                        SettingsRegistry.parseExposure(key) != null -> editor.putBoolean(key, SettingValue.parseBool(value) == true)
+                        // EntityLearningManager owns enable/disable transition semantics and commits this
+                        // preference after the ordinary bundle transaction succeeds.
+                        key == "dashboard_entity_learning" -> Unit
+                        key == "update_channel" -> SettingsRegistry.spec(key)?.let { config.stage(editor, it, value) }
+                        key in liveKeys -> live.add(key to value)
+                        else -> SettingsRegistry.spec(key)?.let { spec ->
+                            config.stage(editor, spec, value)
+                        }
+                    }
+                }
+                config.stageImportDependencies(editor, accepted)
+                entityState?.let { config.stageDashboardEntityBackupState(editor, it) }
+                // DB_COMPAT_MUTATION_ANCHOR: HTTP_SHARED_CONFIG_COMMIT
+                preparedChannel?.revalidateForConfigCommit()?.let { refusal ->
+                    // Staging is non-durable. Revalidate at the last boundary before commit so a
+                    // refusal leaves this complete imported/restored configuration untouched.
+                    earlyResult = ApplyAcceptedResult.CompatibilityRefused(refusal)
+                    return@synchronizedTransaction
+                }
+                if (!config.commit(
+                        editor,
+                        afterCommit = {
+                            if ("tame_vendor_packages" in accepted) requestTameReconcileAfterCommit()
+                        },
+                    )
+                ) {
+                    earlyResult = ApplyAcceptedResult.CommitFailed
+                    return@synchronizedTransaction
+                }
+                channelCommitted = "update_channel" in accepted &&
+                    accepted["update_channel"] == config.updateChannel
+                committed = AcceptedCommit(
+                    previous = previous,
+                    live = live,
+                    effects = RendererConfigEffects.between(previous.values, accepted),
+                )
+            }
+            earlyResult?.let { return@transaction it }
+            val phase = requireNotNull(committed)
+            revisions.snapshot(phase.previous)
+            var rendererFailure: Throwable? = null
+            runCatching {
+                // The base transaction deliberately excludes live keys. Publish every actually durable
+                // generation to rollback ownership, then converge all live values before any external
+                // Companion/profile work can fail.
+                onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                val previousHome = phase.previous.values["home_dashboard"].orEmpty()
+                phase.live.firstOrNull { it.first == "home_dashboard" }?.let { (_, value) ->
+                    val applied = applySetting("home_dashboard", value).legacyAcknowledged
+                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                    check(applied) { "home_dashboard live apply refused" }
+                }
+                for ((k, v) in phase.live) if (k != "home_dashboard") {
+                    val applied = applySetting(k, v).legacyAcknowledged
+                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                    check(applied) { "$k live apply refused" }
+                }
+                val homeChanged = normalizeDashboardEntityPath(config.homeDashboard) !=
+                    normalizeDashboardEntityPath(previousHome)
+                val credentialsChanged = RendererConfigEffects.credentialsChanged(phase.previous.values, accepted)
+                if (homeChanged || credentialsChanged) onEntityTargetChanged()
+                accepted["dashboard_entity_learning"]?.let { raw ->
+                    val enabled = SettingValue.parseBool(raw)
+                        ?: error("validated automatic entity-filter value became invalid")
+                    if (enabled != config.dashboardEntityLearningEnabled && !setEntityLearningEnabled(enabled)) {
+                        error("entity-learning transition failed")
+                    }
+                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                }
+                // All accepted values are now durable. This same fence remains exact if either the
+                // Companion/renderer callback or the later profile callback fails.
+                afterCommitBeforeRenderer(
+                    phase.effects,
+                    io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()),
+                )
+                applyRendererEffects(phase.effects)
+            }.onFailure { rendererFailure = it }
+            snapInvalidate()
+            onReconfigure(accepted.keys)
+            rendererFailure?.let { throw it }
+            afterApply()
+            ApplyAcceptedResult.Applied
+        }
+        result
+        } finally {
+            val promotedChannelTicket = if (channelCommitted && preparedChannel != null) {
+                checkNotNull(
+                    InstallProgress.promoteConfigMutation(
+                        requireNotNull(configMutationTicket),
+                        "ha-paneld",
+                        InstallPresentation("operation-working", mapOf("owner" to "paneld")),
+                    ),
+                ) { "committed self-update channel lost its configuration owner" }
+            } else null
+            configMutationTicket?.let(InstallProgress::finishConfigMutation)
+            if (channelCommitted) {
+                onSelfUpdateChannelCommitted(
+                    preparedChannel,
+                    promotedChannelTicket,
+                    previousChannel,
+                    config.updateChannel,
+                )
+                preparedChannel = null
+            }
+            preparedChannel?.close()
+        }
+    }
+
+    private data class AcceptedCommit(
+        val previous: ConfigBundle,
+        val live: List<Pair<String, String>>,
+        val effects: RendererConfigEffects,
+    )
+
+    /** Apply renderer changes only after their preferences commit. A dashboard switch dominates all
+     *  reloads; otherwise a reload dominates a foreground relaunch, so one request schedules at most
+     *  one renderer operation. */
+    fun applyRendererEffects(effects: RendererConfigEffects) {
+        effects.darkMode?.let { dark ->
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                    if (dark) androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    else androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO,
+                )
+            }
+        }
+        when {
+            effects.dashboardChanged -> {
+                val result = rendererPreparation.launchConfigured(
+                    ensureHome = { pkg, ready ->
+                        system.applyLauncherHomePolicy(config.launcherPackage, pkg, ready)
+                    },
+                    launchHome = { pkg -> system.launchHome(pkg) },
+                )
+                requireRendererResult(result)
+                Log.i(TAG, "renderer switch completed (preparation=$result)")
+            }
+            effects.reloadBuiltin && effectiveDashboardIsBuiltin() -> {
+                val result = rendererPreparation.prepareIfNeeded()
+                requireRendererResult(result)
+                system.reloadDashboard(
+                    SystemController.BUILTIN_DASHBOARD,
+                    reason = "applying your settings",
+                )
+            }
+            effects.relaunchBuiltin && effectiveDashboardIsBuiltin() -> {
+                val result = rendererPreparation.prepareIfNeeded()
+                requireRendererResult(result)
+                system.launchHome(SystemController.BUILTIN_DASHBOARD)
+            }
+        }
+    }
+
+
+    private companion object {
+        const val TAG = "ha-paneld/http"
+        val liveKeys = SettingsRegistry.liveApplyKeys()
+    }
+}
+
+internal fun requireRendererResult(result: RendererPreparationCoordinator.Result) {
+    check(result != RendererPreparationCoordinator.Result.PERSIST_FAILED) {
+        "built-in renderer preparation did not commit"
+    }
+    check(result != RendererPreparationCoordinator.Result.CLOSED) {
+        "renderer lifecycle is stopping"
+    }
+}

@@ -7,6 +7,7 @@ import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
 import io.github.maxlyth.hapaneld.MqttBridge
 import io.github.maxlyth.hapaneld.dispatchLiveSetting
 import io.github.maxlyth.hapaneld.config.Capabilities
+import io.github.maxlyth.hapaneld.config.ConfigBundle
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.control.PowerRiskLevel
 import io.github.maxlyth.hapaneld.control.PowerSafetyAssessment
@@ -24,9 +25,11 @@ import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.shizuku.ShizukuState
 import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
 import io.github.maxlyth.hapaneld.util.Cached
+import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
 import io.github.maxlyth.hapaneld.util.RendererPreparationState
 import io.ktor.client.request.accept
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -47,12 +50,69 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.util.concurrent.Executors
 import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.Test
 import sun.misc.Unsafe
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ConfigPostProductionRouteTest {
+
+    @Test fun `production bundle import exports redacted values and revision restore undoes the commit`() =
+        withRouteConfig { config, _, server, _ ->
+            assertTrue(config.applyBatch { config.setMqtt("", "test-user", "private-test-value") })
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installConfigBundleRoutes() } }
+                    }
+                }
+                val exported = client.get("/api/v1/config/export")
+                assertEquals(HttpStatusCode.OK, exported.status)
+                val bundle = requireNotNull(ConfigBundle.parse(exported.bodyAsText()))
+                assertEquals("Contract panel", bundle.values["friendly_name"])
+                assertTrue("mqtt_password" !in bundle.values)
+                val imported = client.post("/api/v1/config/import") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(ConfigBundle.fromValues(mapOf("friendly_name" to "Imported panel")).serialize())
+                }
+                assertEquals(HttpStatusCode.OK, imported.status, imported.bodyAsText())
+                assertEquals("applied", JSONObject(imported.bodyAsText()).getString("status"))
+                assertEquals("Imported panel", config.friendlyName)
+                val revisions = JSONArray(client.get("/api/v1/config/revisions").bodyAsText())
+                assertEquals(1, revisions.length())
+                val restored = client.post("/api/v1/config/revisions/${revisions.getJSONObject(0).getLong("id")}/restore")
+                assertEquals(HttpStatusCode.OK, restored.status, restored.bodyAsText())
+                assertEquals("restored", JSONObject(restored.bodyAsText()).getString("status"))
+                assertEquals("Contract panel", config.friendlyName)
+                assertEquals(2, JSONArray(client.get("/api/v1/config/revisions").bodyAsText()).length())
+            }
+        }
+
+    @Test fun `failed production bundle commit records no revision and starts no live effects`() =
+        withRouteConfig { config, persistence, server, live ->
+            persistence.failWrites = true
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installConfigBundleRoutes() } }
+                    }
+                }
+                val response = client.post("/api/v1/config/import") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(ConfigBundle.fromValues(mapOf(
+                        "friendly_name" to "Changed",
+                        "home_dashboard" to "/lovelace/changed",
+                    )).serialize())
+                }
+                assertEquals(HttpStatusCode.InternalServerError, response.status)
+                assertEquals("error", JSONObject(response.bodyAsText()).getString("status"))
+                assertEquals(0, JSONArray(client.get("/api/v1/config/revisions").bodyAsText()).length())
+                assertEquals("Contract panel", config.friendlyName)
+                assertEquals("Contract panel", persistence.initialize()["friendly_name"])
+                assertTrue(live.isEmpty(), "failed import must not dispatch hardware or reconfigure")
+            }
+        }
     @Test fun `production config root guards and bounded reader refuse requests without changing settings`() =
         withRouteConfig { config, _, server, _ ->
             testApplication {
@@ -384,10 +444,19 @@ class ConfigPostProductionRouteTest {
         setField(server, "stalledLiveSettings", { emptySet<String>() })
         setField(server, "configLiveValues", { emptyMap<String, String>() })
         setField(server, "onReconfigure", { _: Set<String> -> })
+        setField(server, "onSelfUpdateChannelCommitted", {
+            _: SelfUpdateChannelPreflight.Ready?, _: InstallProgress.Ticket?, before: String, after: String ->
+            assertEquals(before, after, "Route fixture must not switch update channels")
+        })
         setField(server, "rendererPreparation", renderer)
         setField(server, "autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
         setField(server, "autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)
         setField(server, "directConfigMutationLock", Any())
+        setField(server, "tameReconciliation", TameReconcileAuthority(
+            readDesired = { emptySet() },
+            reconcile = { _, _ -> error("Stopped route fixture must not actuate packages") },
+            stopping = { true },
+        ).also { check(it.closeAndJoin(1_000)) })
         setField(server, "revisions", RevisionStore(Files.createTempDirectory("config-route-revisions").toFile()))
         setField(server, "snapCache", snapCache)
         setField(server, "diagCache", Cached<Any>(Long.MAX_VALUE) { Any() })

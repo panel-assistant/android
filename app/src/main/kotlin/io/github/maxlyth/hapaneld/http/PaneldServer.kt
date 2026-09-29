@@ -1227,20 +1227,11 @@ class PaneldServer internal constructor(
                             },
                         ),
                     )
-                    // Versioned config bundle: backup (export) and validated restore/deploy (import).
-                    get("/config/export") { handleConfigExport(call) }
-                    post("/config/import") { handleConfigImport(call) }
+                    installConfigBundleRoutes()
                     // Restore a .hpb bundle (raw body; passphrase in the X-Backup-Passphrase header so it
                     // never lands in a query log). ?dry_run=1 decrypts + reports the contents WITHOUT writing.
                     // A real restore is DESTRUCTIVE (rewrites config; force-stops + rewrites the Companion DB).
                     post("/restore") { handleRestore(call) }
-                    // On-panel revision history + rollback.
-                    get("/config/revisions") { call.respondText(revisionsJson(), ContentType.Application.Json) }
-                    post("/config/revisions/{id}/restore") {
-                        val id = call.parameters["id"]?.toLongOrNull()
-                        if (id == null) call.respondText("bad-id\n", status = HttpStatusCode.BadRequest)
-                        else handleRevisionRestore(call, id)
-                    }
                     performanceRoutes(
                         admit = { admitActiveRead(it) },
                         perf = { PerfReader.touch(); PerfReader.json() },
@@ -4931,7 +4922,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         configJson = { status, applied, pending, rejected, message ->
             configJson(status, applied, pending, rejected, message)
         },
-        configMutationHtml = ::configMutationHtml,
     )
 
     /** Atomically update the desired selection and notify its owner before releasing config commit order. */
@@ -5063,121 +5053,29 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
     }
 
-    /**
-     * Registry metadata for generating the Configure form (type/group/tier/scope/options/range +
-     * whether the setting is an HA entity and currently exposed), capability-gated to this panel.
-     * Values themselves come from GET /config; this endpoint is metadata only.
-     */
+    private fun configValues() = ConfigValueProjection(
+        config = config,
+        configLiveValues = { configLiveValues() },
+        renderedLiveValues = { snapStaleOk().live },
+        pendingLiveSettings = { pendingLiveSettings() },
+        stalledLiveSettings = { stalledLiveSettings() },
+        proximityJson = { sensors.proximityJson() },
+        powerSafetyJson = { PowerSafetyPresentation.json(powerSafetyAdvisory(snapStaleOk().privilege)) },
+        haAreaCatalogJson = ::haAreaCatalogJson,
+    )
+
     private fun configSchemaJson(): String = configSchemaJson(catalogueLoader.strings(AppLocale.ENGLISH))
 
-    private fun configSchemaJson(strings: AppStrings): String {
-        fun s(v: String) = Json.str(v)
-        val caps = liveCapabilities(snapStaleOk().caps) // learned eligibility is fail-closed and live
-        val hints = autoHints(strings)   // what blank ("auto") package fields resolve to → field placeholder
-        val displaySizingAvailable = caps.canSetDisplay
-        // Include the settable settings PLUS the read-only HA sensors (diagnostics): the latter carry
-        // no editable value but still render an expose pip, so the user can opt them into HA.
-        val schemaSpecs = SettingsRegistry.schemaVisibleSpecs(caps)
-        val items = schemaSpecs.joinToString(",") { spec ->
-            val opts = spec.optionsFor(caps).joinToString(",") { s(it) }
-            val isHa = spec.ha != null
-            val placeholder = hints[spec.key]?.let {
-                formattedString(strings, "configure.option.auto_detail", "value" to it)
-            } ?: when (spec.key) {
-                "manufacturer" -> profile.manufacturer
-                "model" -> profile.model
-                else -> null
-            }?.takeIf { it.isNotBlank() }
-            // Resolve every value that needs a quote — a key comparison, or the bare JSON `null` token —
-            // BEFORE the template below, so each interpolation is a plain identifier. Nesting a quoted
-            // literal inside ${...} is valid Kotlin, but it reads as though it were string data that
-            // someone forgot to escape, and it has twice been "corrected" to \" — which is a parse error,
-            // because ${...} holds code, and which takes the whole module's compilation down with it
-            // (Kotlin loses the enclosing class, so every companion member reports as unresolved).
-            // Bare identifiers leave nothing to second-guess. Guarded by StringTemplateEscapeContractTest.
-            val nullJson = "null"
-            val autoSleepActivityHidden = spec.key == "auto_sleep_activity" && !config.autoSleep
-            val available = spec.availableWhen(caps) && !autoSleepActivityHidden
-            val displaySizing = spec.key == "dashboard_zoom" && displaySizingAvailable
-            val pickerJson = spec.picker?.let { s(it) } ?: nullJson
-            val minJson = spec.min?.toString() ?: nullJson
-            val maxJson = spec.max?.toString() ?: nullJson
-            val stepJson = spec.step?.toString() ?: nullJson
-            val sized = spec.type == SettingType.STRING || spec.type == SettingType.PASSWORD
-            val maxLengthJson = if (sized) spec.maxChars.toString() else nullJson
-            val exposed = if (isHa) config.haExposed(spec.key, spec.haExposedByDefault) else false
-            val placeholderJson = placeholder?.let { s(it) } ?: nullJson
-            val label = strings.resolve(spec.labelKey)
-            val helpKey = spec.helpKeyFor(caps)
-            val help = helpKey?.let(strings::resolve)
-            val helpKeyJson = helpKey?.let(::s) ?: nullJson
-            val helpLanguageJson = help?.language?.let(::s) ?: nullJson
-            "{" +
-                "\"key\":${s(spec.key)}," +
-                "\"type\":${s(spec.type.name)}," +
-                "\"group\":${s(spec.group)}," +
-                "\"labelKey\":${s(spec.labelKey)}," +
-                "\"helpKey\":$helpKeyJson," +
-                "\"label\":${s(label.text)}," +
-                "\"labelLanguage\":${s(label.language)}," +
-                "\"help\":${s(help?.text.orEmpty())}," +
-                "\"helpLanguage\":$helpLanguageJson," +
-                "\"default\":${s(spec.default)}," +
-                "\"tier\":${s(spec.tierFor(caps).name)}," +
-                "\"scope\":${s(spec.scope.name)}," +
-                "\"secret\":${spec.secret}," +
-                "\"readOnly\":${spec.readOnly}," +
-                "\"available\":$available," +
-                "\"displaySizingAvailable\":$displaySizing," +
-                "\"options\":[$opts]," +
-                "\"picker\":$pickerJson," +
-                "\"min\":$minJson," +
-                "\"max\":$maxJson," +
-                "\"step\":$stepJson," +
-                "\"maxLength\":$maxLengthJson," +
-                "\"ha\":$isHa," +
-                "\"exposed\":$exposed," +
-                "\"placeholder\":$placeholderJson" +
-                "}"
-        }
-        return "[$items]"
-    }
+    private fun configSchemaJson(strings: AppStrings): String = configValues().schemaJson(
+        strings,
+        liveCapabilities(snapStaleOk().caps), // learned eligibility is fail-closed and live
+        autoHints(strings), // what blank ("auto") package fields resolve to → field placeholder
+        profile.manufacturer,
+        profile.model,
+    )
 
-    /** A setting's effective current value: controller-sourced live state where it exists, identity
-     *  fields resolved (panel_id auto-derives when unset), else the persisted value. */
     private fun effectiveValue(spec: io.github.maxlyth.hapaneld.config.SettingSpec, live: Map<String, String>): String =
-        live[spec.key] ?: when (spec.key) {
-            "panel_id" -> config.panelId
-            "friendly_name" -> config.friendlyName
-            else -> config.getRaw(spec)
-        }
-
-    /** Registry-driven current values (typed JSON; secrets blanked) for the Configure form. */
-    private fun settingsValuesJson(): String {
-        fun s(v: String) = Json.str(v)
-        val live = snapStaleOk().live   // controller-sourced keys via the snapshot, not fresh su probes
-        val parts = SettingsRegistry.settable().joinToString(",") { spec ->
-            val raw = effectiveValue(spec, live)
-            val v = when {
-                spec.secret -> "\"\""
-                spec.type == SettingType.BOOL -> if (raw.toBoolean()) "true" else "false"
-                spec.type == SettingType.INT || spec.type == SettingType.LONG ->
-                    raw.toLongOrNull()?.toString() ?: s(raw)
-                spec.type == SettingType.FLOAT -> raw.toDoubleOrNull()?.toString() ?: s(raw)
-                else -> s(raw)
-            }
-            "${s(spec.key)}:$v"
-        }
-        return "{$parts}"
-    }
-
-    /** Per-key HA-exposure flags for every HA-capable setting (for the inline expose pips). */
-    private fun haExposeJson(): String {
-        val parts = SettingsRegistry.SPECS.filter { it.ha != null }.joinToString(",") { spec ->
-            "\"${spec.key}\":${config.haExposed(spec.key, spec.haExposedByDefault)}"
-        }
-        return "{$parts}"
-    }
+        configValues().effectiveValue(spec, live)
 
     private fun exposureSpec(key: String) = key.takeIf { it.startsWith("ha_expose_") }
         ?.removePrefix("ha_expose_")
@@ -5186,34 +5084,12 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
 
     // ---- config bundles (export / validated import) + on-panel revision history ----------------
 
-    /** Current registry values as a flat map (skips transient inputs; controller-sourced settings
-     *  read their live state). The basis for export, the pre-change snapshot, and the dry-run diff. */
-    private fun currentValues(): Map<String, String> = currentValues(configLiveValues())
+    private fun currentValues(): Map<String, String> = configValues().currentValues()
 
-    private fun currentValues(live: Map<String, String>): Map<String, String> {
-        val m = projectConfigSnapshot(
-            specs = SettingsRegistry.settable(),
-            zigbeeRouterConfigured = config.zigbeeRouterConfigured,
-            effectiveValue = { effectiveValue(it, live) },
-        )
-        SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-            m[SettingsRegistry.exposureKey(spec)] = config.haExposed(spec.key, spec.haExposedByDefault).toString()
-        }
-        return m
-    }
+    private fun currentValues(live: Map<String, String>): Map<String, String> =
+        configValues().currentValues(live)
 
-    /** Complete effective values for direct POST equality. Unlike export/revision snapshots this includes
-     * transient and untouched hardware-backed settings, and pending durable intent supersedes observed state. */
-    private fun directMutationValues(): Map<String, String> {
-        val live = configLiveValues()
-        return LinkedHashMap<String, String>().apply {
-            SettingsRegistry.settable().forEach { spec -> put(spec.key, effectiveValue(spec, live)) }
-            SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-                put(SettingsRegistry.exposureKey(spec), config.haExposed(spec.key, spec.haExposedByDefault).toString())
-            }
-            putAll(pendingLiveSettings())
-        }
-    }
+    private fun directMutationValues(): Map<String, String> = configValues().directMutationValues()
 
     /** Page shells and liveness use only persisted/non-privileged controller state. */
     /**
@@ -5663,222 +5539,21 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
     private fun revisionValues(
         values: Map<String, String> = currentValues(),
         state: DashboardEntityBackupState = config.dashboardEntityBackupState(),
-    ): Map<String, String> = LinkedHashMap(values).apply {
-        put("$ENTITY_REVISION_PREFIX.instance_key", state.instanceKey)
-        put("$ENTITY_REVISION_PREFIX.instance_origin", state.instanceOrigin)
-        put("$ENTITY_REVISION_PREFIX.instance_uuid", state.instanceUuid)
-        put("$ENTITY_REVISION_PREFIX.dashboard_path", state.dashboardPath)
-        put("$ENTITY_REVISION_PREFIX.filter_ids", state.filterIds)
-        put("$ENTITY_REVISION_PREFIX.filter_enabled", state.filterEnabled.toString())
-        put("$ENTITY_REVISION_PREFIX.filter_owner", state.filterOwner)
-        put("$ENTITY_REVISION_PREFIX.learning_applied", state.learningApplied.toString())
-        put("$ENTITY_REVISION_PREFIX.applied_owner", state.appliedOwner)
-        put("$ENTITY_REVISION_PREFIX.overrides", state.overrides)
-        put("$ENTITY_REVISION_PREFIX.override_owner", state.overrideOwner)
-    }
+    ): Map<String, String> = configValues().revisionValues(values, state)
 
-    private fun revisionEntityState(values: Map<String, String>): DashboardEntityBackupState? {
-        val fields = values.filterKeys { it.startsWith("$ENTITY_REVISION_PREFIX.") }
-        if (fields.isEmpty()) return null
-        val obj = org.json.JSONObject()
-        for ((key, value) in fields) {
-            val name = key.removePrefix("$ENTITY_REVISION_PREFIX.")
-            obj.put(name, if (name == "filter_enabled" || name == "learning_applied") {
-                SettingValue.parseBool(value) ?: return null
-            } else value)
-        }
-        return runCatching { planEntityBackup(obj) }.getOrNull()
-    }
 
-    /** Export a versioned config bundle. Secrets are excluded unless `?include_secrets=1`. */
-    private suspend fun handleConfigExport(call: ApplicationCall) {
-        val includeSecrets = call.request.queryParameters["include_secrets"] == "1"
-        if (includeSecrets && !authorizeSensitive(
-                call,
-                SensitiveOperation.CONFIG_SECRET_EXPORT,
-                exactHttpApprovalPayload(call, sha256Hex(ByteArray(0))),
-                "Export settings including stored credentials",
+    internal fun Route.installConfigBundleRoutes() {
+        configBundleRoutes {
+            ConfigBundleRoutes(
+                config = config,
+                revisions = revisions,
+                values = configValues(),
+                transaction = acceptedConfigTransaction(),
+                authorizeSensitive = ::authorizeSensitive,
+                rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
+                planEntityBackup = ::planEntityBackup,
             )
-        ) return
-        val live = configLiveValues()
-        val values = projectConfigSnapshot(
-            specs = SettingsRegistry.settable().filter { includeSecrets || !it.secret },
-            zigbeeRouterConfigured = config.zigbeeRouterConfigured,
-            effectiveValue = { effectiveValue(it, live) },
-        )
-        SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-            values[SettingsRegistry.exposureKey(spec)] = config.haExposed(spec.key, spec.haExposedByDefault).toString()
         }
-        val bundle = ConfigBundle.fromValues(
-            values, exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
-        )
-        call.response.headers.append("Content-Disposition", "attachment; filename=\"${config.panelId}-config.json\"")
-        call.respondText(bundle.serialize(), ContentType.Application.Json)
-    }
-
-    /**
-     * Bundle import — BEST-EFFORT by design (a bundle exported from different hardware or a different
-     * ha-paneld version must still restore what it can). Parse → migrate to the current schema →
-     * scope/secret filter (`?mode=fleet` applies only PORTABLE, non-secret keys; default `restore`
-     * applies everything) → validate per-key against the registry: valid keys apply, invalid keys are
-     * reported in `errors` and skipped, unknown keys warn and skip. `?strict=1` restores the old
-     * all-or-nothing validation behaviour. Apply is ordered in two phases: atomically commit ordinary
-     * preferences, then apply controller/hardware-backed live settings and reconfigure. The latter
-     * cannot be rolled back across Android settings, sysfs, services, and hardware. `?dry_run=1`
-     * returns the diff without writing.
-     * Status: "applied" (all valid), "partial" (some skipped as invalid), "rejected" (nothing usable
-     * or strict mode with any error).
-     */
-    private suspend fun handleConfigImport(call: ApplicationCall) {
-        val bodyBytes = when (val receipt = receiveBoundedBody(call, MAX_CONFIG_IMPORT_BYTES)) {
-            is BoundedBodyReceipt.Received -> receipt.bytes
-            BoundedBodyReceipt.TooLarge -> {
-                call.respondText("""{"status":"too-large"}""", ContentType.Application.Json, HttpStatusCode.PayloadTooLarge)
-                return
-            }
-            BoundedBodyReceipt.TimedOut -> {
-                call.respondText("""{"status":"timeout"}""", ContentType.Application.Json, HttpStatusCode.RequestTimeout)
-                return
-            }
-        }
-        val body = String(bodyBytes, Charsets.UTF_8)
-        val bundle = ConfigBundle.parse(body)
-        if (bundle == null) {
-            call.respondText("""{"status":"bad-bundle"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
-            return
-        }
-        if (bundle.kind != ConfigBundle.KIND_CONFIG || bundle.schema < 1) {
-            call.respondText("""{"status":"wrong-kind-or-schema"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
-            return
-        }
-        val (migrated, warnings) = Migrations.migrate(bundle.schema, bundle.values)
-        val fleet = call.request.queryParameters["mode"] == "fleet"
-        val dryRun = call.request.queryParameters["dry_run"] == "1"
-        val expectedConfig = call.request.queryParameters["expected_cfg"]?.trim().orEmpty()
-        if (expectedConfig.isNotEmpty() && !expectedConfig.matches(Regex("^[a-f0-9]{8}$"))) {
-            call.respondText(
-                """{"status":"bad-expected-cfg"}""",
-                ContentType.Application.Json,
-                HttpStatusCode.BadRequest,
-            )
-            return
-        }
-        val accepted = LinkedHashMap<String, String>()
-        val skipped = ArrayList<String>()
-        val errors = ArrayList<String>()
-        val warn = warnings.toMutableList()
-        for ((key, raw) in migrated) {
-            val spec = SettingsRegistry.spec(key)
-            val exposedSpec = SettingsRegistry.parseExposure(key)
-            if (exposedSpec != null) {
-                val normalized = SettingValue.parseBool(raw)?.toString()
-                if (normalized == null) errors.add("$key: expected a boolean") else accepted[key] = normalized
-                continue
-            }
-            if (spec == null) { warn.add("unknown key skipped: $key"); continue }
-            if (spec.readOnly || spec.transient) { skipped.add(key); continue }
-            if (fleet && (spec.scope != Scope.PORTABLE || spec.secret)) { skipped.add(key); continue }
-            // Same rule the upgrade and the restore apply: a value an older release was allowed to store
-            // is read in the form the current validator understands, so an import of an older export
-            // carries it across instead of silently dropping it. A route naming a different server is
-            // still refused here, exactly as it is there.
-            when (val v = SettingValue.validate(spec, restorableSettingValue(key, raw, canonicalHaOrigin(config.haUrl)))) {
-                is Validation.Ok -> {
-                    // A blank portable HA URL means “renderer not configured” on the source panel. In
-                    // fleet mode it must not clear a target's URL and, through import dependencies, its
-                    // device-local OAuth credentials. A non-blank common endpoint remains portable.
-                    if (fleetImportPreservesTargetLocalValue(fleet, key, v.normalized)) {
-                        skipped.add(key)
-                        warn.add("blank ha_url skipped in fleet mode to preserve target-local Home Assistant login")
-                    } else {
-                        accepted[key] = v.normalized
-                    }
-                }
-                is Validation.Bad -> errors.add(v.reason)
-            }
-        }
-        if (preserveUnconfiguredZigbeeOwnership(accepted, config.zigbeeRouterConfigured)) {
-            skipped.add("zigbee_router")
-            warn.add("legacy zigbee_router=false skipped to preserve untouched vendor gateway ownership")
-        }
-        // Canonicalise the sink triple before it is previewed OR applied, so a dry run cannot advertise
-        // a destination the apply would not write. Applying it here is not what makes the stored fields
-        // consistent — Config.stageImportDependencies does that for every applyAccepted path — but doing
-        // it before the branch keeps preview and apply the same operation on the same values.
-        LogShipEndpoint.canonicalUpdate(accepted, config.logShipHost, config.logShipPort, config.logShipProtocol)
-            ?.let { accepted.putAll(it) }
-        val strict = call.request.queryParameters["strict"] == "1"
-        if ((strict && errors.isNotEmpty()) || (accepted.isEmpty() && errors.isNotEmpty())) {
-            call.respondText(importJson("rejected", emptyList(), skipped, warn, errors), ContentType.Application.Json, HttpStatusCode.UnprocessableEntity)
-            return
-        }
-        if (dryRun) {
-            val current = currentValues()
-            call.respondText(
-                configDryRunJson(
-                    configPreviewDiff(current, accepted),
-                    skipped,
-                    warn + errors.map { "would skip (invalid): $it" },
-                    configConcurrencyHash(current),
-                ),
-                ContentType.Application.Json,
-            )
-            return
-        }
-        if (rejectHardenedNetworkAdb(call, accepted["network_adb"])) return
-        if (accepted.isEmpty()) {
-            call.respondText(importJson("no-op", emptyList(), skipped, warn, errors), ContentType.Application.Json)
-            return
-        }
-        val importDigest = sha256Hex(bodyBytes)
-        if (!authorizeSensitive(
-                call,
-                SensitiveOperation.CONFIG_IMPORT,
-                exactHttpApprovalPayload(call, importDigest),
-                "Import ${accepted.size} panel setting${if (accepted.size == 1) "" else "s"}",
-            )
-        ) return
-        when (val applyResult = applyAccepted(accepted, expectedConfig.ifEmpty { null })) {
-            ApplyAcceptedResult.Stale -> {
-                val actual = configConcurrencyHash(currentValues())
-                call.respondText(
-                    """{"status":"stale-preview","expected_cfg":${jsonStr(expectedConfig)},"actual_cfg":${jsonStr(actual)}}""",
-                    ContentType.Application.Json,
-                    HttpStatusCode.Conflict,
-                )
-                return
-            }
-            ApplyAcceptedResult.CommitFailed -> {
-                call.respondText(
-                    importJson("error", emptyList(), skipped, warn, listOf("configuration commit failed")),
-                    ContentType.Application.Json,
-                    HttpStatusCode.InternalServerError,
-                )
-                return
-            }
-            is ApplyAcceptedResult.CompatibilityRefused -> {
-                call.respondText(
-                    importJson("database-compatibility-refused", emptyList(), skipped, warn, listOf(applyResult.message)),
-                    ContentType.Application.Json,
-                    HttpStatusCode.Conflict,
-                )
-                return
-            }
-            ApplyAcceptedResult.Applied -> Unit
-        }
-        val status = if (errors.isEmpty()) "applied" else "partial"
-        call.respondText(importJson(status, accepted.keys.toList(), skipped, warn, errors), ContentType.Application.Json)
-    }
-
-    /** Apply a validated value set in two ordered phases: snapshot current → atomically commit ordinary
-     *  preference fields → run live controller/hardware persistence and side-effects → reconfigure.
-     *  External state cannot be rolled back and only starts after a successful preference commit.
-     *  Returns false without starting side-effects when the preference commit fails. */
-    private sealed interface ApplyAcceptedResult {
-        data object Applied : ApplyAcceptedResult
-        data object Stale : ApplyAcceptedResult
-        data object CommitFailed : ApplyAcceptedResult
-        data class CompatibilityRefused(val message: String) : ApplyAcceptedResult
     }
 
     private suspend fun applyAccepted(
@@ -5892,241 +5567,33 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         onDurableRevision: (String) -> Unit = {},
         afterCommitBeforeRenderer: (RendererConfigEffects, String) -> Unit = { _, _ -> },
         afterApply: () -> Unit = {},
-    ): ApplyAcceptedResult = withContext(Dispatchers.IO) {
-        if (existingOperationTicket != null && !InstallProgress.owns(existingOperationTicket)) {
-            return@withContext ApplyAcceptedResult.CompatibilityRefused(
-                "the owning panel operation is no longer active",
-            )
-        }
-        val configMutationTicket = if (existingOperationTicket == null) {
-            InstallProgress.startConfigMutation()
-                ?: return@withContext ApplyAcceptedResult.CompatibilityRefused(
-                    "another panel operation owns configuration admission",
-                )
-        } else null
-        var channelMutation: SelfUpdateChannelMutation? = null
-        var preparedChannel: SelfUpdateChannelPreflight.Ready? = null
-        var channelCommitted = false
-        val previousChannel = config.updateChannel
-        try {
-        if (existingOperationTicket != null && restoreChangesUpdateChannel(config.updateChannel, accepted)) {
-            return@withContext ApplyAcceptedResult.CompatibilityRefused(
-                "backup restore cannot change an active self-update channel",
-            )
-        }
-        channelMutation = selfUpdateChannelMutation(config.updateChannel, config.selfUpdate, accepted)
-        channelMutation?.let { request ->
-            when (val preflight = prepareSelfUpdateChannel(request.requested, request.force)) {
-                is SelfUpdateChannelPreflight.Ready -> {
-                    if (preflight.requiresRecovery) {
-                        preflight.close()
-                        return@withContext ApplyAcceptedResult.CompatibilityRefused(
-                            "An update-channel change cannot recover an older database snapshot.",
-                        )
-                    }
-                    preparedChannel = preflight
-                }
-                is SelfUpdateChannelPreflight.UpToDate -> Unit
-                is SelfUpdateChannelPreflight.Refused,
-                is SelfUpdateChannelPreflight.Unresolved ->
-                    return@withContext ApplyAcceptedResult.CompatibilityRefused(preflight.message)
-            }
-        }
-        val result = rendererPreparation.transaction {
-            var earlyResult: ApplyAcceptedResult? = null
-            var committed: AcceptedCommit? = null
-            config.synchronizedTransaction {
-                if (expectedConfig != null &&
-                    configConcurrencyHash(currentValues()) != expectedConfig
-                ) {
-                    earlyResult = ApplyAcceptedResult.Stale
-                    return@synchronizedTransaction
-                }
-                if (expectedRevision != null &&
-                    io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()) != expectedRevision
-                ) {
-                    earlyResult = ApplyAcceptedResult.Stale
-                    return@synchronizedTransaction
-                }
-                if (expectedHaAuthOwner != null && config.haAuthSnapshot().stableOwner() != expectedHaAuthOwner) {
-                    earlyResult = ApplyAcceptedResult.Stale
-                    return@synchronizedTransaction
-                }
-                if (expectedHaOAuthEpoch != null && !config.isHaOAuthAttemptCurrent(expectedHaOAuthEpoch)) {
-                    earlyResult = ApplyAcceptedResult.Stale
-                    return@synchronizedTransaction
-                }
-                val previous = ConfigBundle.fromValues(
-                    revisionValues(), kind = ConfigBundle.KIND_REVISION,
-                    exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
-                )
-                val editor = config.editor()
-                val live = ArrayList<Pair<String, String>>()
-                for ((key, value) in accepted) {
-                    when {
-                        key == "panel_id" -> config.stagePanelId(editor, value)
-                        SettingsRegistry.parseExposure(key) != null -> editor.putBoolean(key, SettingValue.parseBool(value) == true)
-                        // EntityLearningManager owns enable/disable transition semantics and commits this
-                        // preference after the ordinary bundle transaction succeeds.
-                        key == "dashboard_entity_learning" -> Unit
-                        key == "update_channel" -> SettingsRegistry.spec(key)?.let { config.stage(editor, it, value) }
-                        key in HTTP_LIVE_KEYS -> live.add(key to value)
-                        else -> SettingsRegistry.spec(key)?.let { spec ->
-                            config.stage(editor, spec, value)
-                        }
-                    }
-                }
-                config.stageImportDependencies(editor, accepted)
-                entityState?.let { config.stageDashboardEntityBackupState(editor, it) }
-                // DB_COMPAT_MUTATION_ANCHOR: HTTP_SHARED_CONFIG_COMMIT
-                preparedChannel?.revalidateForConfigCommit()?.let { refusal ->
-                    // Staging is non-durable. Revalidate at the last boundary before commit so a
-                    // refusal leaves this complete imported/restored configuration untouched.
-                    earlyResult = ApplyAcceptedResult.CompatibilityRefused(refusal)
-                    return@synchronizedTransaction
-                }
-                if (!config.commit(
-                        editor,
-                        afterCommit = {
-                            if ("tame_vendor_packages" in accepted) requestTameReconcileAfterCommit()
-                        },
-                    )
-                ) {
-                    earlyResult = ApplyAcceptedResult.CommitFailed
-                    return@synchronizedTransaction
-                }
-                channelCommitted = "update_channel" in accepted &&
-                    accepted["update_channel"] == config.updateChannel
-                committed = AcceptedCommit(
-                    previous = previous,
-                    live = live,
-                    effects = RendererConfigEffects.between(previous.values, accepted),
-                )
-            }
-            earlyResult?.let { return@transaction it }
-            val phase = requireNotNull(committed)
-            revisions.snapshot(phase.previous)
-            var rendererFailure: Throwable? = null
-            runCatching {
-                // The base transaction deliberately excludes live keys. Publish every actually durable
-                // generation to rollback ownership, then converge all live values before any external
-                // Companion/profile work can fail.
-                onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
-                val previousHome = phase.previous.values["home_dashboard"].orEmpty()
-                phase.live.firstOrNull { it.first == "home_dashboard" }?.let { (_, value) ->
-                    val applied = applySetting("home_dashboard", value).legacyAcknowledged
-                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
-                    check(applied) { "home_dashboard live apply refused" }
-                }
-                for ((k, v) in phase.live) if (k != "home_dashboard") {
-                    val applied = applySetting(k, v).legacyAcknowledged
-                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
-                    check(applied) { "$k live apply refused" }
-                }
-                val homeChanged = normalizeDashboardEntityPath(config.homeDashboard) !=
-                    normalizeDashboardEntityPath(previousHome)
-                val credentialsChanged = RendererConfigEffects.credentialsChanged(phase.previous.values, accepted)
-                if (homeChanged || credentialsChanged) entityLearning.onTargetConfigurationChanged()
-                accepted["dashboard_entity_learning"]?.let { raw ->
-                    val enabled = SettingValue.parseBool(raw)
-                        ?: error("validated automatic entity-filter value became invalid")
-                    if (enabled != config.dashboardEntityLearningEnabled && !entityLearning.setEnabled(enabled)) {
-                        error("entity-learning transition failed")
-                    }
-                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
-                }
-                // All accepted values are now durable. This same fence remains exact if either the
-                // Companion/renderer callback or the later profile callback fails.
-                afterCommitBeforeRenderer(
-                    phase.effects,
-                    io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()),
-                )
-                applyRendererEffects(phase.effects)
-            }.onFailure { rendererFailure = it }
-            snapInvalidate()
-            onReconfigure(accepted.keys)
-            rendererFailure?.let { throw it }
-            afterApply()
-            ApplyAcceptedResult.Applied
-        }
-        result
-        } finally {
-            val promotedChannelTicket = if (channelCommitted && preparedChannel != null) {
-                checkNotNull(
-                    InstallProgress.promoteConfigMutation(
-                        requireNotNull(configMutationTicket),
-                        "ha-paneld",
-                        InstallPresentation("operation-working", mapOf("owner" to "paneld")),
-                    ),
-                ) { "committed self-update channel lost its configuration owner" }
-            } else null
-            configMutationTicket?.let(InstallProgress::finishConfigMutation)
-            if (channelCommitted) {
-                onSelfUpdateChannelCommitted(
-                    preparedChannel,
-                    promotedChannelTicket,
-                    previousChannel,
-                    config.updateChannel,
-                )
-                preparedChannel = null
-            }
-            preparedChannel?.close()
-        }
-    }
-
-    private data class AcceptedCommit(
-        val previous: ConfigBundle,
-        val live: List<Pair<String, String>>,
-        val effects: RendererConfigEffects,
+    ): ApplyAcceptedResult = acceptedConfigTransaction().applyAccepted(
+        accepted, expectedConfig, expectedRevision, expectedHaAuthOwner, expectedHaOAuthEpoch,
+        entityState, existingOperationTicket, onDurableRevision, afterCommitBeforeRenderer, afterApply,
     )
 
-    /** Apply renderer changes only after their preferences commit. A dashboard switch dominates all
-     *  reloads; otherwise a reload dominates a foreground relaunch, so one request schedules at most
-     *  one renderer operation. */
-    private fun applyRendererEffects(effects: RendererConfigEffects) {
-        effects.darkMode?.let { dark ->
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
-                    if (dark) androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
-                    else androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO,
-                )
-            }
-        }
-        when {
-            effects.dashboardChanged -> {
-                val result = rendererPreparation.launchConfigured(
-                    ensureHome = { pkg, ready ->
-                        system.applyLauncherHomePolicy(config.launcherPackage, pkg, ready)
-                    },
-                    launchHome = { pkg -> system.launchHome(pkg) },
-                )
-                requireRendererResult(result)
-                Log.i(TAG, "renderer switch completed (preparation=$result)")
-            }
-            effects.reloadBuiltin && effectiveDashboardIsBuiltin() -> {
-                val result = rendererPreparation.prepareIfNeeded()
-                requireRendererResult(result)
-                system.reloadDashboard(
-                    SystemController.BUILTIN_DASHBOARD,
-                    reason = "applying your settings",
-                )
-            }
-            effects.relaunchBuiltin && effectiveDashboardIsBuiltin() -> {
-                val result = rendererPreparation.prepareIfNeeded()
-                requireRendererResult(result)
-                system.launchHome(SystemController.BUILTIN_DASHBOARD)
-            }
-        }
-    }
+    private fun applyRendererEffects(effects: RendererConfigEffects) =
+        acceptedConfigTransaction().applyRendererEffects(effects)
 
-    private fun requireRendererResult(result: RendererPreparationCoordinator.Result) {
-        check(result != RendererPreparationCoordinator.Result.PERSIST_FAILED) {
-            "built-in renderer preparation did not commit"
-        }
-        check(result != RendererPreparationCoordinator.Result.CLOSED) {
-            "renderer lifecycle is stopping"
-        }
-    }
+    private fun acceptedConfigTransaction() = AcceptedConfigTransaction(
+        config = config,
+        revisions = revisions,
+        rendererPreparation = rendererPreparation,
+        system = system,
+        currentValues = { currentValues() },
+        revisionValues = { revisionValues() },
+        applySetting = { key, value -> applySetting(key, value) },
+        onEntityTargetChanged = { entityLearning.onTargetConfigurationChanged() },
+        setEntityLearningEnabled = { entityLearning.setEnabled(it) },
+        effectiveDashboardIsBuiltin = ::effectiveDashboardIsBuiltin,
+        requestTameReconcileAfterCommit = ::requestTameReconcileAfterCommit,
+        snapInvalidate = ::snapInvalidate,
+        onReconfigure = { onReconfigure(it) },
+        prepareSelfUpdateChannel = { channel, force -> prepareSelfUpdateChannel(channel, force) },
+        onSelfUpdateChannelCommitted = { prepared, ticket, before, after ->
+            onSelfUpdateChannelCommitted(prepared, ticket, before, after)
+        },
+    )
 
     // ---- Full panel backup / restore (device-state bundle) ------------------------------------------
     //
@@ -7700,74 +7167,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
     }
 
-    /** List on-panel revisions (newest first) as `[{id, exported_at, keys}]`. */
-    private fun revisionsJson(): String =
-        "[" + revisions.list().joinToString(",") { (id, b) ->
-            "{\"id\":$id,\"exported_at\":\"${b.exportedAt}\",\"keys\":${b.values.size}}"
-        } + "]"
-
-    /** Roll back to a stored revision (itself recorded as a new revision, so restores are undoable). */
-    private suspend fun handleRevisionRestore(call: ApplicationCall, id: Long) {
-        val bundle = revisions.get(id)
-        if (bundle == null) {
-            call.respondText("""{"status":"not-found"}""", ContentType.Application.Json, HttpStatusCode.NotFound)
-            return
-        }
-        val entityState = revisionEntityState(bundle.values)
-        val ordinaryValues = bundle.values.filterKeys { !it.startsWith("$ENTITY_REVISION_PREFIX.") }
-        val (migrated, _) = Migrations.migrate(bundle.schema, ordinaryValues)
-        val accepted = LinkedHashMap<String, String>()
-        for ((key, raw) in migrated) {
-            if (SettingsRegistry.parseExposure(key) != null) {
-                SettingValue.parseBool(raw)?.let { accepted[key] = it.toString() }
-                continue
-            }
-            val spec = SettingsRegistry.spec(key) ?: continue
-            if (spec.readOnly || spec.transient) continue
-            (SettingValue.validate(spec, raw) as? Validation.Ok)?.let { accepted[key] = it.normalized }
-        }
-        preserveUnconfiguredZigbeeOwnership(accepted, config.zigbeeRouterConfigured)
-        if (rejectHardenedNetworkAdb(call, accepted["network_adb"])) return
-        val revisionDigest = sha256Hex(bundle.serialize().toByteArray(Charsets.UTF_8))
-        if (!authorizeSensitive(
-                call,
-                SensitiveOperation.CONFIG_IMPORT,
-                exactHttpApprovalPayload(call, revisionDigest),
-                "Restore stored configuration revision $id",
-            )
-        ) return
-        if (entityState == null && (
-                accepted["dashboard_entity_overrides"].orEmpty().isNotBlank() ||
-                    accepted["dashboard_entity_learning_applied"] == "true"
-                )
-        ) {
-            call.respondText(
-                importJson("rejected", emptyList(), emptyList(), emptyList(), listOf("revision lacks entity owner metadata")),
-                ContentType.Application.Json,
-                HttpStatusCode.UnprocessableEntity,
-            )
-            return
-        }
-        val applied = applyAccepted(accepted, entityState = entityState)
-        if (applied != ApplyAcceptedResult.Applied) {
-            call.respondText(
-                importJson(
-                    if (applied is ApplyAcceptedResult.CompatibilityRefused) "database-compatibility-refused" else "error",
-                    emptyList(), emptyList(), emptyList(),
-                    listOf(
-                        if (applied is ApplyAcceptedResult.CompatibilityRefused) {
-                            applied.message
-                        } else "configuration commit failed",
-                    ),
-                ),
-                ContentType.Application.Json,
-                if (applied is ApplyAcceptedResult.CompatibilityRefused) HttpStatusCode.Conflict
-                else HttpStatusCode.InternalServerError,
-            )
-            return
-        }
-        call.respondText(importJson("restored", accepted.keys.toList(), emptyList(), emptyList(), emptyList()), ContentType.Application.Json)
-    }
 
     private fun jarr(items: List<String>): String =
         "[" + items.joinToString(",") { Json.str(it) } + "]"
@@ -7782,8 +7181,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         return legacyJson.dropLast(1) + ",\"presentation\":" + presentation.json() + "}"
     }
 
-    private fun importJson(status: String, applied: List<String>, skipped: List<String>, warnings: List<String>, errors: List<String>): String =
-        "{\"status\":\"$status\",\"applied\":${jarr(applied)},\"skipped\":${jarr(skipped)},\"warnings\":${jarr(warnings)},\"errors\":${jarr(errors)}}"
 
     /** Last successfully queried catalog for the current owner; never blocks a config response. */
     private fun haAreaCatalogJson(): String? {
@@ -7823,56 +7220,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         pending: List<String> = emptyList(),
         rejected: List<String> = emptyList(),
         message: String? = null,
-    ): String {
-        fun s(v: String) = Json.str(v)
-        val powerAdvisory = powerSafetyAdvisory(snapStaleOk().privilege)
-        val mutation = mutationStatus?.let {
-            "\"ok\":${rejected.isEmpty()}," +
-                "\"status\":${s(it)}," +
-                "\"applied\":${jarr(applied)}," +
-                "\"pending\":${jarr(pending)}," +
-                "\"rejected\":${jarr(rejected)}," +
-                "\"message\":${s(message.orEmpty())},"
-        }.orEmpty()
-        val pending = pendingLiveSettings()
-        val pendingDesired = pending.entries.joinToString(",") { (key, value) ->
-            "${s(key)}:${s(value)}"
-        }
-        val stalledDesired = jarr(stalledApplyKeys(pending.keys, stalledLiveSettings()))
-        return "{" +
-            mutation +
-            "\"panel_id\":${s(config.panelId)}," +
-            "\"ha_area_user_override\":${config.haAreaUserOverride}," +
-            "\"friendly_name\":${s(config.friendlyName)}," +
-            "\"manufacturer\":${s(config.manufacturer)}," +
-            "\"model\":${s(config.model)}," +
-            "\"http_port\":${config.httpPort}," +
-            "\"mqtt_broker\":${s(config.mqttBroker)}," +
-            "\"mqtt_user\":${s(config.mqttUser)}," +
-            "\"mqtt_password_set\":${config.mqttPassword.isNotEmpty()}," +
-            "\"mqtt_address_family\":${s(config.mqttAddressFamily)}," +
-            "\"dashboard_package\":${s(config.dashboardPackage)}," +
-            "\"launcher_package\":${s(config.launcherPackage)}," +
-            "\"tame_vendor_packages\":${s(config.tameVendorPackagesRaw)}," +
-            "\"silence_boot_chime\":${config.silenceBootChime}," +
-            "\"keep_awake\":${config.keepAwake}," +
-            "\"log_ship_enabled\":${config.logShipEnabled}," +
-            "\"log_ship_system_enabled\":${config.logShipSystemEnabled}," +
-            "\"log_ship_host\":${s(config.logShipHost)}," +
-            "\"log_ship_port\":${config.logShipPort}," +
-            "\"log_ship_protocol\":${s(config.logShipProtocol)}," +
-            "\"ha_auth\":{\"configured\":${config.haToken.isNotEmpty() || config.haRefreshToken.isNotEmpty()},\"oauth\":${config.haRefreshToken.isNotEmpty()}}," +
-            "\"version\":${s(Config.VERSION)}," +
-            "\"proximity\":${sensors.proximityJson()}," +
-            "\"power_safety\":${PowerSafetyPresentation.json(powerAdvisory)}," +
-            // Registry-driven current values + per-key HA-exposure flags for the Configure form.
-            "\"settings\":${settingsValuesJson()}," +
-            "\"ha_expose\":${haExposeJson()}," +
-            haAreaCatalogJson()?.let { "\"ha_area_catalog\":$it," }.orEmpty() +
-            "\"apply_pending\":{$pendingDesired}," +
-            "\"apply_stalled\":$stalledDesired" +
-            "}"
-    }
+    ): String = configValues().configJson(mutationStatus, applied, pending, rejected, message)
 
     private fun performanceWorkloadValues(): Map<String, String> {
         val live = snapStaleOk().live
@@ -7888,7 +7236,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             "Requires physical on-panel approval for this action when Hardened mode is enabled."
         private const val HARDENED_CONDITIONAL_APPROVAL_TEXT =
             "Changing this setting may require physical on-panel approval when Hardened mode is enabled."
-        private const val ENTITY_REVISION_PREFIX = "_local.entity_state"
         // Late enough that the first pass does not compete with boot (renderer, MQTT, profile activation),
         // early enough that a panel is correct long before anybody opens a settings page.
         // Long enough that a round of page reloads costs one Home Assistant read, short enough that an
