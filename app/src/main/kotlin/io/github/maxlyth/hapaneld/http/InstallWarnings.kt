@@ -26,6 +26,8 @@ internal fun installWarning(
         """<div class="setup crit">⚠ <b>${esc(strings.get("install.warning.schema_rollback.title"))}</b> — ${esc(strings.get("install.warning.schema_rollback.prefix"))} <a href="${localizedHref("configure", strings)}">${esc(strings.get("shell.nav.configure"))}</a>${esc(strings.get("install.warning.schema_rollback.suffix"))}</div>"""
 }
 
+/** Visible "this needs root" banner for a root-gated card/control group — shown (never hidden) so a
+ *  no-root user sees the feature and what root would unlock, next to controls rendered disabled. */
 internal fun rootLockBanner(unlocks: String, strings: AppStrings): String =
     """<div class="setup rootlock">🔒 ${esc(formattedString(strings, "install.lock.root_required", "detail" to unlocks))}</div>"""
 
