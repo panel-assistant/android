@@ -8,7 +8,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import sun.misc.Unsafe
 
 /**
  * Exercises the current stateless probe without constructing the Android-backed server graph.
@@ -55,16 +54,5 @@ class BrokerProbeAdversarialTest {
         assertTrue("probe exceeded its 2 second socket-connect bound: ${elapsedMs}ms", elapsedMs < 2_500)
     }
 
-    private fun probe(url: String): JSONObject {
-        val method = PaneldServer::class.java.getDeclaredMethod("probeBrokerJson", String::class.java)
-            .apply { isAccessible = true }
-        val server = unsafe.allocateInstance(PaneldServer::class.java) as PaneldServer
-        return JSONObject(method.invoke(server, url) as String)
-    }
-
-    private companion object {
-        val unsafe: Unsafe = Unsafe::class.java.getDeclaredField("theUnsafe")
-            .apply { isAccessible = true }
-            .get(null) as Unsafe
-    }
+    private fun probe(url: String): JSONObject = JSONObject(probeBrokerJson(url))
 }
