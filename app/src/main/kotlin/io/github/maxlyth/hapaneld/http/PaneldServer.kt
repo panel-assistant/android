@@ -950,41 +950,11 @@ class PaneldServer internal constructor(
         ).build(request, passphrase)
 
     private suspend fun handleRestore(call: ApplicationCall) {
-        val executor = RestoreExecutor(
+        val executor = AcceptedConfigTransaction.restoreExecutor(
             appContext = appContext,
             config = config,
-            currentValues = { configValues().currentValues() },
-            revisionValues = { values, state -> configValues().revisionValues(values, state) },
-            commitConfig = RestoreConfigCommit { accepted, entityState, expectedRevision,
-                existingOperationTicket, onDurableRevision, afterCommitBeforeRenderer, afterApply ->
-                val result = acceptedConfigTransaction().applyAccepted(
-                    accepted,
-                    expectedRevision = expectedRevision,
-                    entityState = entityState,
-                    existingOperationTicket = existingOperationTicket,
-                    onDurableRevision = onDurableRevision,
-                    afterCommitBeforeRenderer = { effects, appliedHash ->
-                        afterCommitBeforeRenderer(effects, accepted.size, appliedHash)
-                    },
-                    afterApply = afterApply,
-                )
-                check(result == ApplyAcceptedResult.Applied) {
-                    if (result is ApplyAcceptedResult.CompatibilityRefused) {
-                        "configuration refused: ${result.message}"
-                    } else "configuration commit failed"
-                }
-                accepted.size
-            },
-            rollbackConfig = { before, entityState, expectedRevision, ticket ->
-                acceptedConfigTransaction().applyAccepted(
-                    before,
-                    expectedRevision = expectedRevision,
-                    entityState = entityState,
-                    existingOperationTicket = ticket,
-                ) == ApplyAcceptedResult.Applied
-            },
+            transaction = ::acceptedConfigTransaction,
             restoreCompanion = { companionBackupOperations().restore(it) },
-            reconcileAfterCompanionRestore = ::reconcileAfterCompanionRestore,
             profileAdmin = profileAdmin,
             onProfileRestart = { onProfileRestart() },
             onProfileRestartAbort = { onProfileRestartAbort(it) },
@@ -1007,19 +977,6 @@ class PaneldServer internal constructor(
                 io.github.maxlyth.hapaneld.migration.MigrationState.of(appContext).verifiedRetiredReceipt(it)
             },
         ).handle(call)
-    }
-
-    /** A Companion-only restore can make an interrupted built-in switch repairable without changing a
-     * renderer setting. When an ordinary renderer effect exists, that effect performs preparation. */
-    private fun reconcileAfterCompanionRestore(effects: RendererConfigEffects?) {
-        if (effects != null && (effects.dashboardChanged || effects.reloadBuiltin || effects.relaunchBuiltin)) return
-        val result = rendererPreparation.reconcileStartup(
-            ensureHome = { pkg, ready ->
-                system.applyLauncherHomePolicy(config.launcherPackage, pkg, ready)
-            },
-            launchHome = { pkg -> system.launchHome(pkg) },
-        )
-        requireRendererResult(result)
     }
 
 

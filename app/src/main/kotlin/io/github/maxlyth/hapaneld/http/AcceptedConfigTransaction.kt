@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
 import android.util.Log
+import android.content.Context
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.DashboardEntityBackupState
 import io.github.maxlyth.hapaneld.HaAuthOwner
@@ -11,7 +12,9 @@ import io.github.maxlyth.hapaneld.config.Capabilities
 import io.github.maxlyth.hapaneld.config.ConfigBundle
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.backup.CompanionRestore
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.device.profile.ProfileAdmin
 import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.util.InstallPresentation
@@ -334,9 +337,76 @@ internal class AcceptedConfigTransaction(
     }
 
 
-    private companion object {
-        const val TAG = "ha-paneld/http"
-        val liveKeys = SettingsRegistry.liveApplyKeys()
+    /** A Companion-only restore can make an interrupted built-in switch repairable without changing a
+     * renderer setting. When an ordinary renderer effect exists, that effect performs preparation. */
+    private fun reconcileAfterCompanionRestore(effects: RendererConfigEffects?) {
+        if (effects != null && (effects.dashboardChanged || effects.reloadBuiltin || effects.relaunchBuiltin)) return
+        val result = rendererPreparation.reconcileStartup(
+            ensureHome = { pkg, ready ->
+                system.applyLauncherHomePolicy(config.launcherPackage, pkg, ready)
+            },
+            launchHome = { pkg -> system.launchHome(pkg) },
+        )
+        requireRendererResult(result)
+    }
+
+    companion object {
+        private const val TAG = "ha-paneld/http"
+        private val liveKeys = SettingsRegistry.liveApplyKeys()
+
+        /** Restore uses the admitted ticket and latest durable revision for both commit and rollback.
+         * Resolve the transaction only when executing, never while admitting or previewing a request. */
+        fun restoreExecutor(
+            appContext: Context,
+            config: Config,
+            transaction: () -> AcceptedConfigTransaction,
+            restoreCompanion: (CompanionRestore.Plan) -> CompanionApplyResult,
+            profileAdmin: ProfileAdmin?,
+            onProfileRestart: () -> Boolean,
+            onProfileRestartAbort: (String) -> Boolean,
+            onDurableStateRestored: () -> Unit,
+            onWakeWordsChanged: () -> Unit,
+        ): RestoreExecutor = RestoreExecutor(
+            appContext = appContext,
+            config = config,
+            currentValues = { transaction().values.currentValues() },
+            revisionValues = { values, state -> transaction().values.revisionValues(values, state) },
+            commitConfig = RestoreConfigCommit { accepted, entityState, expectedRevision,
+                existingOperationTicket, onDurableRevision, afterCommitBeforeRenderer, afterApply ->
+                val result = transaction().applyAccepted(
+                    accepted,
+                    expectedRevision = expectedRevision,
+                    entityState = entityState,
+                    existingOperationTicket = existingOperationTicket,
+                    onDurableRevision = onDurableRevision,
+                    afterCommitBeforeRenderer = { effects, appliedHash ->
+                        afterCommitBeforeRenderer(effects, accepted.size, appliedHash)
+                    },
+                    afterApply = afterApply,
+                )
+                check(result == ApplyAcceptedResult.Applied) {
+                    if (result is ApplyAcceptedResult.CompatibilityRefused) {
+                        "configuration refused: ${result.message}"
+                    } else "configuration commit failed"
+                }
+                accepted.size
+            },
+            rollbackConfig = { before, entityState, expectedRevision, ticket ->
+                transaction().applyAccepted(
+                    before,
+                    expectedRevision = expectedRevision,
+                    entityState = entityState,
+                    existingOperationTicket = ticket,
+                ) == ApplyAcceptedResult.Applied
+            },
+            restoreCompanion = restoreCompanion,
+            reconcileAfterCompanionRestore = { transaction().reconcileAfterCompanionRestore(it) },
+            profileAdmin = profileAdmin,
+            onProfileRestart = onProfileRestart,
+            onProfileRestartAbort = onProfileRestartAbort,
+            onDurableStateRestored = onDurableStateRestored,
+            onWakeWordsChanged = onWakeWordsChanged,
+        )
     }
 }
 
