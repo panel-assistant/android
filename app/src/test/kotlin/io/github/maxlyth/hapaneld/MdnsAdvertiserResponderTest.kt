@@ -6,10 +6,15 @@ import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import io.github.maxlyth.hapaneld.util.RetirableMutationGate
 import java.lang.reflect.Proxy
 import java.net.InetAddress
+import java.net.SocketException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
+import javax.jmdns.impl.DNSOutgoing
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotEquals
@@ -22,6 +27,56 @@ import org.junit.Test
  * holds the multicast lock only while it advertises.
  */
 class MdnsAdvertiserResponderTest {
+    @Test fun oneFailedResponseSendKeepsTheOriginalAdvertisementOnWire() {
+        val failNext = AtomicBoolean(false)
+        val sendFailed = CountDownLatch(1)
+        val sendRetried = CountDownLatch(1)
+        val failedPacket = AtomicReference<DNSOutgoing?>()
+        val advertiser = MdnsAdvertiser(
+            context = ContextWrapper(null),
+            config = Config(readOnlyPreferences()),
+            runtimePanelId = "transient-send-panel",
+            runtimeFriendlyName = "Transient Send Panel",
+            runtimeHttpPort = 8888,
+            acquireMulticastLock = { {} },
+            discoveryId = { "transient-send-did" },
+            refreshIntervalMs = 100,
+            createDns = { address, name ->
+                object : MdnsSendRetryDns(address, name) {
+                    override fun sendPacket(outgoing: DNSOutgoing) {
+                        if (outgoing === failedPacket.get()) sendRetried.countDown()
+                        if (isResponderReply(outgoing) && failNext.compareAndSet(true, false)) {
+                            failedPacket.set(outgoing)
+                            sendFailed.countDown()
+                            throw SocketException("sendto failed: EPERM (Operation not permitted)")
+                        }
+                        super.sendPacket(outgoing)
+                    }
+                }
+            },
+        )
+        try {
+            advertiser.start(LOOPBACK)
+            val original = JmDNS.create(InetAddress.getByName(LOOPBACK), "initial-send-browser").use {
+                browse(it, "transient-send-panel")
+            }
+            assertNotNull("the original service never appeared", original)
+            val token = original!!.getPropertyString("probe")
+
+            failNext.set(true)
+            val afterFault = JmDNS.create(InetAddress.getByName(LOOPBACK), "fault-send-browser").use {
+                browse(it, "transient-send-panel")
+            }
+            assertTrue("the browser never triggered a response send", sendFailed.await(5, TimeUnit.SECONDS))
+            assertNotNull("one failed send withdrew the real advertisement", afterFault)
+            assertEquals("the responder was replaced after one failed send", token, afterFault!!.getPropertyString("probe"))
+            assertTrue("the failed response was not retried", sendRetried.await(5, TimeUnit.SECONDS))
+            assertEquals(0, advertiser.health().liveness.recoveryAttempts)
+        } finally {
+            advertiser.stop()
+        }
+    }
+
     @Test fun ipv4OnlyAdvertiserPublishesRecordsAndReportsCompleteRetirement() {
         var locksHeld = 0
         val advertiser = MdnsAdvertiser(
@@ -63,7 +118,9 @@ class MdnsAdvertiserResponderTest {
         assertEquals("stop must release the multicast lock", 0, locksHeld)
     }
 
-    @Test fun lostIpv4ResponderRecoversAfterCompletedTeardown() {
+    @Test fun persistentFailedResponseSendRecoversAfterCompletedTeardown() {
+        val remainingFailures = AtomicInteger(0)
+        val failedSends = CountDownLatch(2)
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
             config = Config(readOnlyPreferences()),
@@ -76,6 +133,17 @@ class MdnsAdvertiserResponderTest {
             },
             discoveryId = { "responder-recovery-did" },
             refreshIntervalMs = 100,
+            createDns = { address, name ->
+                object : MdnsSendRetryDns(address, name) {
+                    override fun sendPacket(outgoing: DNSOutgoing) {
+                        if (isResponderReply(outgoing) && remainingFailures.getAndUpdate { maxOf(0, it - 1) } > 0) {
+                            failedSends.countDown()
+                            throw SocketException("sendto failed: EPERM (Operation not permitted)")
+                        }
+                        super.sendPacket(outgoing)
+                    }
+                }
+            },
         )
         val ipv4Browser = JmDNS.create(InetAddress.getByName(LOOPBACK), "recovery-ipv4-browser")
         try {
@@ -84,17 +152,14 @@ class MdnsAdvertiserResponderTest {
             assertNotNull("the primary never advertised", original)
             val oldToken = original!!.getPropertyString("probe")
 
-            // Kill only the primary responder, as observed on the affected panel; its owner still
-            // believes it is advertising. This reflection only injects the fault, not the verdict.
-            val primary = MdnsAdvertiser::class.java.getDeclaredField("jmdns").apply {
-                isAccessible = true
-            }.get(advertiser) as JmDNS
-            primary.close()
+            // Two failed attempts for one real response still reach JmDNS's self-close path.
+            remainingFailures.set(2)
             assertEquals(
-                "the production probe must see the dropped responder",
+                "the production probe must see the withdrawn responder",
                 MdnsProbeResult.MISSING,
                 probeMdnsService(LOOPBACK, "responder-recovery-panel", Config.MDNS_SERVICE_TYPE, oldToken),
             )
+            assertTrue("the response did not fail twice", failedSends.await(5, TimeUnit.SECONDS))
 
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60)
             var replacement: ServiceInfo? = null
@@ -254,6 +319,9 @@ class MdnsAdvertiserResponderTest {
         }
         return null
     }
+
+    private fun isResponderReply(outgoing: DNSOutgoing): Boolean = outgoing.isResponse &&
+        Thread.currentThread().stackTrace.any { it.className == "javax.jmdns.impl.tasks.Responder" }
 
     /** Every read answers its default; the advertiser only reads identity from its configuration. */
     private fun readOnlyPreferences(): SharedPreferences {
