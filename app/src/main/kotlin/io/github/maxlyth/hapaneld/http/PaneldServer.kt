@@ -624,18 +624,7 @@ class PaneldServer internal constructor(
                         }
                     }.mount(this)
                     proximityRoutes(sensors::hasProximity, sensors::proximityJson, onProximityCalibration)
-                    // Live Sensors card: last-published values + live extras. Volume is the current
-                    // media-stream percent; brightness is the system setting (0-255, -1 unknown).
-                    get("/sensors") {
-                        // Effective backlight first (reflects firmware dims); raw setting as fallback.
-                        val bright = effectiveBrightness().takeIf { it >= 0 } ?: runCatching {
-                            android.provider.Settings.System.getInt(appContext.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
-                        }.getOrDefault(-1)
-                        call.respondText(
-                            """{${sensors.valuesJson()},"volume_pct":${runCatching { volume.getPercent() }.getOrDefault(-1)},"brightness":$bright}""",
-                            ContentType.Application.Json,
-                        )
-                    }
+                    sensorValuesRoute(appContext, sensors, { volume.getPercent() }, { effectiveBrightness() })
                     voiceRoutes(
                         hasMicrophone = { liveCapabilities(managementObservations.snapStaleOk().caps).hasMicrophone },
                         voiceEnabled = { config.voiceEnabled },
