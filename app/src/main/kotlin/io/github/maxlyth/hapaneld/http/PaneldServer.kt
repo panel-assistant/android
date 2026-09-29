@@ -433,10 +433,11 @@ class PaneldServer internal constructor(
     )
     private val setupState = SetupState(
         config, system, entityLearning, profile, appContext, mqttState, haOAuth::pendingCount,
-        { lastHaDiscovery }, { webViewTooOldOnce }, ::panelAssistantNative,
+        { lastHaDiscovery }, { pageHealth.webViewTooOldOnce }, ::panelAssistantNative,
         ::effectiveDashboardIsBuiltin, scope, rendererPreparation,
     )
     private val catalogueLoader by lazy { CatalogueLoader(asset) }
+    private val pageHealth = PageHealth(appContext, config)
     private val pages get() = PageShell(config, catalogueLoader, { setupState.setupNeedsUser() }, ::buildToken, ::renderConfigConcurrencyHash)
     private val settingRows get() = DashboardSettingRows(config)
 
@@ -871,7 +872,7 @@ class PaneldServer internal constructor(
         if (haSignInNeededForEffectiveDashboard()) {
             return power + resume + configureSignInBanner(strings)
         }
-        val noRenderer = healthFindings(healthInputs(), "", emptyList()).any { it.kind == HealthAudit.Kind.NO_RENDERER }
+        val noRenderer = pageHealth.healthFindings(pageHealth.healthInputs(), "", emptyList()).any { it.kind == HealthAudit.Kind.NO_RENDERER }
         // Only a panel past setup runs a filtered dashboard, so only this path can carry the strategy note.
         if (!noRenderer) return power + resume + strategySelectorAllowedBanner(strings)
         return power + resume + configureRendererBanner(strings)
@@ -885,73 +886,9 @@ class PaneldServer internal constructor(
         if (!runCatching { entityLearning.strategySelectorAllowed() }.getOrDefault(false)) "" else
             configureStrategyBanner(strings)
 
-    /** Request-scoped snapshot of the two health inputs several render surfaces consult — the real WebView
-     *  engine status and whether any dashboard renderer is present. Captured ONCE per render so the banner,
-     *  facts card and diagnostics rows on one page can't disagree about the WebView. Benign normalization of
-     *  a within-render race (the probes are cached + stable across a render-millisecond; making the reads
-     *  consistent can never surface a warning that a fresh read wouldn't have). */
-    private class HealthInputs(
-        val webView: PanelInfo.WebViewStatus,
-        val hasRenderer: Boolean,
-        val brokerConfigured: Boolean,
-    )
-
-    /**
-     * Whether the system WebView is too old, resolved once per process.
-     *
-     * `GET /api/v1/setup` is polled every two seconds during setup, and reading the true engine version can
-     * load the WebView provider to get its user agent — far too expensive to repeat on a poll. Caching is
-     * exactly right rather than merely cheap: a WebView swap restarts this process (see `autoUpdateWebView`),
-     * so the value cannot change underneath the cache, and the answer after a successful update is read by
-     * the new process. Routed through [healthInputs] so the probe keeps its single call site, which is the
-     * discipline HealthWarningAuthoritySourceTest exists to hold — surfaces that probe independently drift.
-     */
-    private val webViewTooOldOnce: Boolean by lazy { healthInputs().webView.tooOld }
-
-    private fun healthInputs(): HealthInputs = HealthInputs(
-        PanelInfo.webViewStatus(appContext),
-        PanelInfo.dashboardRenderers(appContext, config.dashboardPackage, config.haUrl).isNotEmpty(),
-        config.mqttBroker.isNotBlank(),
-    )
-
     /** Panel Assistant granted native authority, so this panel reaches Home Assistant without MQTT. */
     private fun panelAssistantNative(): Boolean =
         config.panelAssistantAuthority == PanelAssistantTransportProtocol.AUTHORITY_NATIVE
-
-    /** HealthAudit findings for a render surface. The shared (WebView-too-old, no-renderer) inputs come from
-     *  the request snapshot; [webViewDisplay] (the version string to show) and [updates] stay per-surface —
-     *  the Install tab passes no updates, GET /api/v1/status the unfiltered list, and the dashboard banner
-     *  the ignore-filtered list. */
-    /** The schema-version detail to warn about when a downgrade reset config to defaults (the last
-     *  reconcile was PRESERVED_FRESH), else null. Stable after boot — the reconcile runs once at store
-     *  construction — so the warning clears only on the next start at the current schema. */
-    private fun schemaRollbackVersions(): Pair<Int, Int>? {
-        // Suppressed when the config vault refilled the fresh store: this warning exists to tell an owner
-        // their settings may have reset and to check them, and once they have been recovered that is both
-        // untrue and actionless. A warning demanding no action teaches people to ignore warnings. The
-        // event itself remains visible in diagnostics.
-        if (EntityCatalogStore.lastConfigRestore != null) return null
-        return EntityCatalogStore.lastSchemaReconcile
-            ?.takeIf { it.action == SchemaReconcileAction.PRESERVED_FRESH }
-            ?.let { it.fromVersion to it.toVersion }
-    }
-
-    private fun schemaRollbackDetail(): String? = schemaRollbackVersions()
-        ?.let { (from, to) -> "schema $from → $to" }
-
-    private fun healthFindings(
-        h: HealthInputs,
-        webViewDisplay: String,
-        updates: List<UpdateChecker.UpdateInfo>,
-    ): List<HealthAudit.Finding> = HealthAudit.evaluate(
-        webViewTooOld = h.webView.tooOld,
-        webViewDisplay = webViewDisplay,
-        hasRenderer = h.hasRenderer,
-        brokerConfigured = h.brokerConfigured,
-        updates = updates,
-        schemaRolledBack = schemaRollbackDetail() != null,
-        schemaRollbackDetail = schemaRollbackDetail() ?: "",
-    )
 
     /** Install tab — software-management hub: setup warnings, managed component versions, radio firmware,
      *  on-demand health audit, and config backup. (The Capabilities card lives on the Dashboard.) */
@@ -959,7 +896,7 @@ class PaneldServer internal constructor(
         val management = managementObservations.snapStaleOk()
         val companion = managementObservations.companionServersStaleOk()
         // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version).
-        val h = healthInputs()
+        val h = pageHealth.healthInputs()
         val wv = h.webView
         val root = management.privilege.rootControlReady
         val installer = management.privilege.typedShellControlReady
@@ -972,7 +909,7 @@ class PaneldServer internal constructor(
         val companionHelper = managementObservations.companionHelperCache.get()
         // Same finding set as the dashboard banner (HealthAudit). Update findings are surfaced by the
         // Managed-components card below, so the top warnings show only the render-blocking states.
-        val problems = healthFindings(h, wv.display, emptyList())
+        val problems = pageHealth.healthFindings(h, wv.display, emptyList())
         // Auto-heal offer: if the profile ships a known-good WebView and we have root/daemon to install it,
         // the too-old warning gets a one-tap "Update WebView now" button (POST /api/v1/webview/heal).
         val canHeal = wv.tooOld && profile.recommendedWebView != null && root
@@ -1033,12 +970,12 @@ class PaneldServer internal constructor(
         val companion = managementObservations.companionServersStaleOk()
         val radio = radioStatus()
         val storage = HealthAudit.storage(storageSnapshot)
-        val h = healthInputs()
+        val h = pageHealth.healthInputs()
         val updates = UpdateChecker.current(appContext)
-        val findings = healthFindings(h, h.webView.display, updates)
+        val findings = pageHealth.healthFindings(h, h.webView.display, updates)
         val health = StatusHealth(
             updates, findings, ::dashboardRecoveryState,
-            mdnsWarningProjection, ::schemaRollbackVersions,
+            mdnsWarningProjection, pageHealth::schemaRollbackVersions,
         )
         return managementStatusJson(
             config, management, companion, powerAdvisory, radio, storage, health,
@@ -1223,7 +1160,7 @@ class PaneldServer internal constructor(
      */
     private fun haNetworkHealthToken(): String = HaNetworkPathRuntime.healthToken()
 
-    private fun bannersHtml(s: ManagementSnapshot, h: HealthInputs, strings: AppStrings): String {
+    private fun bannersHtml(s: ManagementSnapshot, h: PageHealth.Inputs, strings: AppStrings): String {
         val storage = HealthAudit.storage(storageHealth())
         val mqtt = s.facts["MQTT"] ?: "disabled"
         // Pure decision (unit-tested in SetupBannerTest) — note a CONFIGURED broker that's merely
@@ -1262,7 +1199,7 @@ class PaneldServer internal constructor(
         // The WebView verdict is from the REAL engine version (WebView UA), not the stamped package version
         // (cached, so cheap). Shared decision — see HealthAudit; updates are filtered by the per-version
         // dismissals so an "Ignore this version" click stays hidden until a newer release ticks it back.
-        val findings = healthFindings(h, s.facts["System WebView"] ?: "", UpdateChecker.current(appContext, config.ignoredUpdates))
+        val findings = pageHealth.healthFindings(h, s.facts["System WebView"] ?: "", UpdateChecker.current(appContext, config.ignoredUpdates))
         // Order: storage/database safety first, then actively-broken render states, render findings
         // (WebView / renderer / updates), and finally the needs-config setup notice. On the dashboard the
         // ad-hoc warnings link to the Install tab for the fix (their one-tap buttons live there, with install.js).
@@ -1315,7 +1252,7 @@ class PaneldServer internal constructor(
         val s = managementObservations.snapCache.get()
         // One health snapshot for this render — the banner, facts card and diagnostics rows below all read
         // the same WebView/renderer verdict rather than each re-probing (which could otherwise disagree).
-        val h = healthInputs()
+        val h = pageHealth.healthInputs()
         val cards = listOf(
             "livetbl" to liveRowsHtml(strings),
             "behavtbl" to settingRows.behaviourRowsHtml(s.live, strings, autoHints(strings), liveCapabilities(s.caps)),
@@ -1340,7 +1277,7 @@ class PaneldServer internal constructor(
         val s = managementObservations.snapCache.peek()
         // One health snapshot shared by every warm branch below (banner + facts + diagnostics), captured
         // lazily so a cold shell (s == null, nothing rendered warm) still probes nothing.
-        val h: HealthInputs by lazy(LazyThreadSafetyMode.NONE) { healthInputs() }
+        val h: PageHealth.Inputs by lazy(LazyThreadSafetyMode.NONE) { pageHealth.healthInputs() }
         val hydrate = s == null || managementObservations.snapCache.ageMs() > ManagementObservations.SNAP_TTL_MS
         val profNote = dashboardProfileNote(profile.profileLinks, strings)
         // A cold shell can safely show the app-private last-successful capture before the capability
