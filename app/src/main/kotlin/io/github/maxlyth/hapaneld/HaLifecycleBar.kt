@@ -14,6 +14,18 @@ import io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleSource
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleState
 
+/** Select the notice shown over the dashboard from the current owners' observations. */
+internal fun haLifecycleNoticeState(
+    snap: HaLifecycle.Snapshot?,
+    renderer: RendererAdmissionRuntime.Live?,
+): HaLifecycleState? = when {
+    snap?.state == HaLifecycleState.SHUTTING_DOWN || snap?.state == HaLifecycleState.STARTING -> snap.state
+    renderer?.record?.state == RendererAdmissionState.ADMITTED &&
+        renderer.record.admittedOnCachedVersion && !renderer.frontendConnected -> HaLifecycleState.CONNECTION_LOST
+    snap?.state == HaLifecycleState.BACK_ONLINE -> snap.state
+    else -> null
+}
+
 /** The two text sizes the notice renders at, in pixels. */
 internal data class HaLifecycleTextSizes(val headlinePx: Float, val detailPx: Float)
 
@@ -93,41 +105,44 @@ internal class HaLifecycleBar private constructor(
         }
     }
 
-    /** Render one atomic snapshot; null means no service owns lifecycle tracking, so show nothing. */
-    fun update(snap: HaLifecycle.Snapshot?) {
+    /** Render current lifecycle intent and this dashboard's connection evidence. */
+    fun update(snap: HaLifecycle.Snapshot?, renderer: RendererAdmissionRuntime.Live?) {
         view.removeCallbacks(hide)
-        val text = snap?.let {
-            view.context.getString(when (it.state) {
-                HaLifecycleState.SHUTTING_DOWN -> if (it.source == HaLifecycleSource.SOCKET) R.string.ha_shutting_down else R.string.ha_offline
+        val state = haLifecycleNoticeState(snap, renderer)
+        val text = state?.let {
+            view.context.getString(when (it) {
+                HaLifecycleState.SHUTTING_DOWN -> if (snap?.source == HaLifecycleSource.SOCKET) R.string.ha_shutting_down else R.string.ha_offline
                 HaLifecycleState.STARTING -> R.string.ha_starting
                 HaLifecycleState.BACK_ONLINE -> R.string.ha_back_online
-                HaLifecycleState.NORMAL, HaLifecycleState.CONNECTION_LOST -> return@let null
+                HaLifecycleState.CONNECTION_LOST -> R.string.ha_disconnected
+                HaLifecycleState.NORMAL -> return@let null
             })
         }
-        if (snap == null || text == null) {
+        if (state == null || text == null) {
             view.visibility = View.GONE
             return
         }
-        val colours = palette(snap.state, dark)
+        val colours = palette(state, dark)
         card.setColor(colours.surface)
         card.setStroke((BORDER_DP * view.resources.displayMetrics.density).toInt(), colours.border)
         label.setTextColor(colours.label)
         label.text = text
-        val supporting = when (snap.state) {
-            HaLifecycleState.SHUTTING_DOWN -> view.context.getString(R.string.controls_unavailable_reconnect)
+        val supporting = when (state) {
+            HaLifecycleState.SHUTTING_DOWN, HaLifecycleState.CONNECTION_LOST -> view.context.getString(R.string.controls_unavailable_reconnect)
             HaLifecycleState.STARTING -> view.context.getString(R.string.controls_return_shortly)
             HaLifecycleState.BACK_ONLINE -> view.context.getString(R.string.controls_returned)
-            HaLifecycleState.NORMAL, HaLifecycleState.CONNECTION_LOST -> null
+            HaLifecycleState.NORMAL -> null
         }
         detail.setTextColor(colours.label)
         detail.text = supporting.orEmpty()
         detail.visibility = if (supporting == null) View.GONE else View.VISIBLE
         view.visibility = View.VISIBLE
-        if (snap.state == HaLifecycleState.BACK_ONLINE) {
+        if (state == HaLifecycleState.BACK_ONLINE) {
             // The REMAINING canonical lifetime from the SAME snapshot as the wording — a renderer
             // recreated near expiry finishes the original notice rather than starting a fresh one.
-            if (snap.backOnlineRemainingMs <= 0L) view.visibility = View.GONE
-            else view.postDelayed(hide, snap.backOnlineRemainingMs)
+            val remaining = snap?.backOnlineRemainingMs ?: 0L
+            if (remaining <= 0L) view.visibility = View.GONE
+            else view.postDelayed(hide, remaining)
         }
     }
 

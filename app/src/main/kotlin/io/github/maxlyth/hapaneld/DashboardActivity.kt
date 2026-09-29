@@ -266,10 +266,12 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun redrawLifecycleBar() {
-        // ONE snapshot read: state, source and remaining lifetime from the same instant, or null when
-        // no service owns lifecycle tracking — which hides the bar, so a card cannot outlive the
-        // service whose state it was rendering.
-        lifecycleBar?.update(io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime.snapshot())
+        // Each owner supplies one atomic snapshot. Cached admission can explain a disconnected
+        // dashboard even before the service has observed a lifecycle event.
+        lifecycleBar?.update(
+            io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime.snapshot(),
+            RendererAdmissionRuntime.current()?.takeIf { it.owner == activityOwner },
+        )
         networkChip?.update(io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime.snapshot(), activityConfig.dashboardNetworkWarning)
     }
 
@@ -382,7 +384,9 @@ class DashboardActivity : AppCompatActivity() {
             // runtime clears its effective-theme observation, or the stale result can republish it.
             if (!value) themeObservationEpoch++
             field = value
-            RendererAdmissionRuntime.setFrontendConnected(activityOwner, value)
+            if (RendererAdmissionRuntime.setFrontendConnected(activityOwner, value) && !destroyed) {
+                redrawLifecycleBar()
+            }
         }
     private val retryPolicy = DashboardRetryPolicy()
     private var clearedThisLoad = false

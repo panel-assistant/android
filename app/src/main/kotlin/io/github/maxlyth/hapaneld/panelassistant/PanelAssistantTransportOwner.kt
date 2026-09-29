@@ -186,6 +186,8 @@ internal class PanelAssistantTransportOwner(
     private val embedKeys: io.github.maxlyth.hapaneld.http.EmbedProofKeyring? = null,
     /** The Assist satellite; null, or one reporting no configuration, offers no `voice`. */
     private val voice: PanelAssistantVoice? = null,
+    /** Fresh interface addresses for each hello; independent of demand identity. */
+    private val addresses: () -> List<String> = { emptyList() },
 ) : AutoCloseable {
     private val lock = Any()
     private val releaseLock = Any()
@@ -491,7 +493,16 @@ internal class PanelAssistantTransportOwner(
         described: List<PanelAssistantChannelDescriptor>,
         unsupported: List<String>,
     ): PanelAssistantHelloOutcome {
-        connection.send(PanelAssistantTransportProtocol.hello(HELLO_ID, identity, offered, described, unsupported))
+        val currentAddresses = try {
+            addresses()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+        connection.send(PanelAssistantTransportProtocol.hello(
+            HELLO_ID, identity, offered, described, unsupported, currentAddresses,
+        ))
         val deadline = monotonicMillis() + helloTimeoutMs
         while (true) {
             val remaining = deadline - monotonicMillis()

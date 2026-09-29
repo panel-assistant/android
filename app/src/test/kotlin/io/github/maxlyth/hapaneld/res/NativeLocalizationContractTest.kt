@@ -32,9 +32,9 @@ class NativeLocalizationContractTest {
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder()
             .parse(File("src/main/res/values/strings.xml"))
         val catalogue = baseStrings()
-        assertEquals(278, document.getElementsByTagName("string").length)
-        assertEquals(278, catalogue.size)
-        assertEquals(275, catalogue.count { it.value })
+        assertEquals(279, document.getElementsByTagName("string").length)
+        assertEquals(279, catalogue.size)
+        assertEquals(276, catalogue.count { it.value })
         assertEquals(
             setOf("app_name", "home_assistant", "wordmark_description"),
             catalogue.filterValues { !it }.keys,

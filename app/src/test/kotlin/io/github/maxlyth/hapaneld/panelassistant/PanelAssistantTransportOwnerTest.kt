@@ -158,6 +158,44 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun `reconnect reports current interface addresses without replacing demand`() = runTest {
+        val first = FakeConnection(Ha.accepting())
+        val second = FakeConnection(Ha.accepting())
+        var current = listOf("192.0.2.10", "2001:db8::10", "198.51.100.10")
+        val harness = harness(first, second, addresses = { current })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(current, JSONObject(first.sent.single()).getJSONArray("addresses").let {
+                (0 until it.length()).map(it::getString)
+            })
+            current = listOf("192.0.2.11", "2001:db8::11")
+            first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
+            runCurrent()
+            advanceTimeBy(1_000L)
+            runCurrent()
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            assertEquals(current, JSONObject(second.sent.single()).getJSONArray("addresses").let {
+                (0 until it.length()).map(it::getString)
+            })
+        } finally {
+            harness.owner.close()
+        }
+    }
+
+    @Test fun `interface collection failure does not prevent hello acceptance`() = runTest {
+        val connection = FakeConnection(Ha.accepting())
+        val harness = harness(connection, addresses = { throw IOException("interfaces unavailable") })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            assertFalse(JSONObject(connection.sent.single()).has("addresses"))
+        } finally {
+            harness.owner.close()
+        }
+    }
+
     @Test fun `a deliberate restart reaches a schema 3 peer and health expires if the panel stays down`() = runTest {
         val connection = FakeConnection(Ha.accepting(protocol = 3))
         var now = 0L
@@ -1081,6 +1119,7 @@ class PanelAssistantTransportOwnerTest {
         log: (String) -> Unit = {},
         embedKeys: io.github.maxlyth.hapaneld.http.EmbedProofKeyring? = null,
         clock: (() -> Long)? = null,
+        addresses: () -> List<String> = { emptyList() },
     ): Harness {
         val connector = FakeConnector(this, script.toMutableList(), repeating, repeatingFailure)
         val forces = mutableListOf<Boolean>()
@@ -1100,6 +1139,7 @@ class PanelAssistantTransportOwnerTest {
             observeForHello = observeForHello,
             commands = commands,
             embedKeys = embedKeys,
+            addresses = addresses,
             onAuthority = persisted?.let { store -> { value: String -> store.events += "authority:$value"; store.authority = value } } ?: onAuthority,
             onConnected = onConnected,
             authority = persisted?.let { store -> { store.authority } } ?: { "" },

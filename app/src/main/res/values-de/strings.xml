@@ -214,6 +214,7 @@
 
     <string name="ha_shutting_down">Home Assistant wird heruntergefahren</string>
     <string name="ha_offline">Home Assistant ist offline</string>
+    <string name="ha_disconnected">Verbindung zu Home Assistant getrennt</string>
     <string name="ha_starting">Home Assistant wird gestartet</string>
     <string name="ha_back_online">Home Assistant ist wieder online</string>
     <string name="controls_unavailable_reconnect">Steuerung nicht verfügbar. Die Verbindung wird automatisch wiederhergestellt.</string>
