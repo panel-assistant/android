@@ -234,3 +234,8 @@ internal const val ENTITY_OVERRIDES_BACKUP_ENTRY = "entity/overrides.txt"
  * table, in the same flat-text codec the config vault uses.
  */
 internal const val STATE_BACKUP_ENTRY = "state/app-state.txt"
+
+internal val ENTITY_STATE_CONFIG_KEYS = setOf(
+    "dashboard_entity_overrides",
+    "dashboard_entity_learning_applied",
+)
