@@ -14,8 +14,8 @@ class BackupArchiveReaderTest {
         val plan = planRestoreConfig(
             JSONObject().put("friendly_name", JSONObject().put("nested", "value")),
             SettingsRegistry.SCHEMA,
-            { error("Malformed settings must not sample the current HA origin") },
-            { error("Malformed settings must not sample Zigbee ownership") },
+            { throw AssertionError("Malformed settings must not sample the current HA origin") },
+            { throw AssertionError("Malformed settings must not sample Zigbee ownership") },
         )
         assertTrue(plan.values.isEmpty())
         assertEquals(listOf("friendly_name: expected a scalar setting value"), plan.errors)
