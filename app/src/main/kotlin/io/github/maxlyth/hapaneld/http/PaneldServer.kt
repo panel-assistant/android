@@ -83,6 +83,7 @@ import io.github.maxlyth.hapaneld.control.PowerSafetyMutationPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult
 import io.github.maxlyth.hapaneld.control.Su
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.KioskAdminUi
 import io.github.maxlyth.hapaneld.control.HandBackHomeController
 import io.github.maxlyth.hapaneld.control.HandBackHomePolicy
 import io.github.maxlyth.hapaneld.control.TameController
@@ -2901,6 +2902,7 @@ class PaneldServer internal constructor(
                             onPanelAssistantUpdateOwner()
                         }
                         val updateRefreshRequested = call.request.queryParameters["refresh"] == "1"
+                        val homeProofRequested = call.request.queryParameters["home_proof"] == "1"
                         val observationNonce = call.request.queryParameters["database_observation_nonce"]
                         val refreshRequested = updateRefreshRequested || observationNonce != null
                         if (refreshRequested && !admitActiveRead(call)) return@get
@@ -2926,6 +2928,7 @@ class PaneldServer internal constructor(
                                 statusJson(
                                     statusStorage.snapshot,
                                     databaseObservationProof(refreshRequested, observationNonce, statusStorage),
+                                    homeProofRequested,
                                 )
                             },
                             ContentType.Application.Json,
@@ -4830,6 +4833,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     private fun statusJson(
         storageSnapshot: StorageHealthSnapshot,
         databaseObservationNonce: String? = null,
+        homeProofRequested: Boolean = false,
     ): String {
         val management = snapStaleOk()
         val powerAdvisory = powerSafetyAdvisory(management.privilege)
@@ -4911,12 +4915,18 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val storageProof = databaseObservationNonce?.let {
             "\"database_observation_nonce\":${jsonStr(it)},"
         }.orEmpty()
+        val homeProof = if (homeProofRequested) {
+            val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible())
+            "\"home_ui\":{\"state\":${jsonStr(proof.state)},\"reason\":${jsonStr(proof.reason)}," +
+                "\"evidence\":${jsonStr(proof.evidence)}},"
+        } else ""
         val presentationOverlay = installWarningPresentationsJson(warns, warningPresentations)
             ?.let { "\"warning_presentations\":$it," }
             .orEmpty()
         return "{\"warnings\":[${warns.joinToString(",") { jsonStr(it) }}]," + presentationOverlay +
             "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege)}," +
             storageProof +
+            homeProof +
             "\"panel_assistant_update\":${UpdateChecker.panelAssistantUpdateJson(currentUpdates)}," +
             // Additive, presentation-only, and read from state the panel already holds.
             "\"panel_assistant_device\":${
