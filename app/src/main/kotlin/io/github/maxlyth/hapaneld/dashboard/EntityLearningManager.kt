@@ -1760,15 +1760,18 @@ class EntityLearningManager(
     private suspend fun panelAssistantEntryIds(
         request: suspend (JSONObject) -> JSONObject,
         deviceRegistry: JSONObject,
-    ): Set<String> = io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.panelAssistantEntryIds(
-        io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.readProbe(request, deviceRegistry),
-        io.github.maxlyth.hapaneld.panelAssistantDiscoveryId(config.androidId),
-    )
+    ): Set<String> {
+        val probe = io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.readProbe(request, deviceRegistry)
+            ?: return emptySet()
+        return io.github.maxlyth.hapaneld.sensors.HaPanelDeviceMatcher.panelAssistantEntryIds(
+            probe, io.github.maxlyth.hapaneld.panelAssistantDiscoveryId(config.androidId),
+        )
+    }
 
     /** Non-secret digest identifying the HA endpoint and credential generation used by area operations. */
     fun haAreaOwnerKey(): String = credentialFingerprint()
 
-    /** Admin write-back of an area request; blank clears this panel's device assignment. */
+    /** Admin write-back of an area request; blank repairs only a current literal-null assignment. */
     suspend fun applyRequestedArea(
         deviceUid: String,
         panelId: String,
@@ -1800,7 +1803,12 @@ class EntityLearningManager(
                         panelAssistantEntryIds(request, deviceRegistry),
                     )
                     if (!device.found || device.deviceId.isBlank()) return@withHaSocket
-                    if (requested.isBlank() && device.areaId.isBlank()) { moved = true; return@withHaSocket }
+                    if (requested.isBlank()) {
+                        if (device.areaId.isBlank()) { moved = true; return@withHaSocket }
+                        if (!io.github.maxlyth.hapaneld.http.HaAreaProtocol.hasLiteralNullAssignment(device, areas)) {
+                            return@withHaSocket
+                        }
+                    }
                     if (requested.isNotBlank() && device.areaName.equals(requested, ignoreCase = true)) { moved = true; return@withHaSocket }
                     if (expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey) return@withHaSocket
                     val areaId: Any = if (requested.isBlank()) JSONObject.NULL else {
