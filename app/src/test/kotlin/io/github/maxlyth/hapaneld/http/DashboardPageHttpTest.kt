@@ -31,6 +31,15 @@ class DashboardPageHttpTest {
                 assertTrue(html.contains("50% (128)"))
                 assertTrue(html.contains("name=\"dashboard_zoom\" value=\"100\""))
                 assertTrue(html.contains("action=\"api/v1/config\""))
+                val hydration = client.get("/api/v1/info?lang=en")
+                assertEquals(HttpStatusCode.OK, hydration.status)
+                val payload = org.json.JSONObject(hydration.bodyAsText())
+                val cards = payload.getJSONObject("cards")
+                assertTrue(cards.getString("infotbl").contains("Warm &lt;panel&gt;"))
+                assertTrue(cards.getString("infotbl").contains("<span class=\"secret\">secret-value</span>"))
+                assertTrue(cards.getString("contexttbl").contains("id=\"halifecell\""))
+                assertTrue(cards.getString("livetbl").contains("50% (128)"))
+                assertTrue(payload.getString("banners").contains("name=\"dashboard_zoom\" value=\"100\""))
             }
         }
     }
