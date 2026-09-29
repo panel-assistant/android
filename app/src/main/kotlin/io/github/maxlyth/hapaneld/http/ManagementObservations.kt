@@ -200,6 +200,8 @@ internal class ManagementObservations(
 
     companion object {
         private const val TAG = "ha-paneld/http"
+        // Probe-cache TTLs: the dashboard renders from the snapshot, so these bound both staleness
+        // and how often the su round-trips can run. Density/su flap even less than the rest.
         const val SNAP_TTL_MS = 15_000L
         private const val DIAG_TTL_MS = 15_000L
         private const val DENSITY_TTL_MS = 30_000L

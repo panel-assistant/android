@@ -412,16 +412,6 @@ internal class PaneldServerHttpFixture(
             isAccessible = true
         }.set(volume, android.media.AudioManager.STREAM_MUSIC)
         server.field("volume", volume)
-        server.field("NET_KEYS", listOf("Local IP", "Local IPv6", "HTTP port", "MQTT", "mDNS", "Network ADB"))
-        server.field("HA_LIFECYCLE_FACT", "HA lifecycle")
-        server.field("HA_NETWORK_FACT", "HA network path")
-        server.field("HA_RENDERER_FACT", "HA renderer")
-        server.field("CAMERA_FACT", "Camera")
-        server.field("CONTEXT_KEYS", listOf(
-            "Wi-Fi stability", "HA network path", "HA renderer", "MQTT state", "State convergence", "Local-state sync",
-            "App database", "Security mode", "Audio playback", "Camera", "Log shipping", "HA lifecycle",
-        ))
-        server.field("BEHAVIOUR_FACT_KEYS", setOf("Keep panel responsive", "Prevent idle dim", "Android dashboard lock", "Navbar"))
     }
 
     override fun close() {

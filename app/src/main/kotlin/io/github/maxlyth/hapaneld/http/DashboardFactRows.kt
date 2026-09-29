@@ -1,8 +1,44 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.device.DeviceProfile
+import io.github.maxlyth.hapaneld.device.LedMechanism
+
 import io.github.maxlyth.hapaneld.device.profile.PhysicalDisplayGeometry
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.github.maxlyth.hapaneld.util.isRoutable
+
+// Rows whose values are DECLARED by the DeviceProfile, so wrong data points a contributor straight
+// at the fix: Platform/SoC=profile identity, LED=ledMechanism, sensor tech=proximityTech/lightTech,
+// Zigbee=zigbeeGatewayDir, Relays=relayBase, CPU profile=cpuGovernors.
+internal val PROFILE_FACT_KEYS =
+    listOf("Platform", "SoC", "LED", "Light sensor", "Proximity", "Zigbee", "Relays", "CPU profile")
+
+/**
+ * Exact-profile declarations suppress rows for hardware that is both declared absent and absent
+ * at runtime. Generic keeps the capability discovery set but omits an unknown SoC identity,
+ * while an unexpected positive runtime observation remains visible so a stale exact profile
+ * can still be corrected.
+ */
+internal fun profileFactKeys(profile: DeviceProfile, facts: Map<String, String>): List<String> {
+    val declaredSoc = profile.socClass.trim().takeUnless { it.isBlank() || it == "?" || it.equals("unknown", ignoreCase = true) }
+    val availableKeys = PROFILE_FACT_KEYS.filterNot { it == "SoC" && declaredSoc == null }
+    if (profile.id == "generic") return availableKeys
+    fun observed(key: String, vararg absent: String): Boolean =
+        facts[key]?.trim()?.lowercase()?.let { it !in absent.toSet() } ?: false
+    return availableKeys.filter { key ->
+        when (key) {
+            "LED" -> profile.ledMechanism != LedMechanism.NONE || observed(key, "none")
+            "Light sensor" -> profile.lightTech != null || observed(key, "no")
+            "Proximity" -> profile.proximityTech != null || observed(key, "no")
+            "Zigbee" -> profile.zigbeeGatewayDir != null || observed(key, "none")
+            "Relays" ->
+                profile.relayBase != null || profile.relayBaseFallbacks.isNotEmpty() ||
+                    observed(key, "none")
+            "CPU profile" -> profile.cpuGovernors != null || observed(key, "n/a")
+            else -> true
+        }
+    }
+}
 
 // Panel-info rows blurred by default (screenshot hygiene) — identity + network values a casual share
 // shouldn't leak. "Reveal" un-blurs them. Not access control: the values are still in the page source.
