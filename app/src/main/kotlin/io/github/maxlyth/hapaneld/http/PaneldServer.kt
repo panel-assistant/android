@@ -599,51 +599,25 @@ class PaneldServer internal constructor(
                         )
                     }
                     configReadRoutes(
-                        currentConfigJson = ::configJson,
-                        localizedSchema = { call ->
-                            localizedConfigSchema(
-                                call = call,
-                                persistedLanguage = config.uiLanguage,
-                                deviceLanguageTag = java.util.Locale.getDefault().toLanguageTag(),
-                                allowPseudo = BuildConfig.DEBUG,
-                                catalogueLoader = catalogueLoader,
-                                render = ::configSchemaJson,
+                        config = config,
+                        values = ::configValues,
+                        requestStrings = ::requestStrings,
+                        schemaJson = { strings ->
+                            configValues().schemaJson(
+                                strings,
+                                liveCapabilities(managementObservations.snapStaleOk().caps), // learned eligibility is fail-closed and live
+                                autoHints(strings), // what blank ("auto") package fields resolve to → field placeholder
+                                profile.manufacturer,
+                                profile.model,
                             )
                         },
+                        homeDashboards = { entityLearning.homeDashboardCatalog() },
+                        discover = { configDiscoverySuggestions() },
+                        rememberDiscovery = { lastHaDiscovery = it },
                     )
                     installDirectConfigPostRoute()
-                    get("/config/home-dashboards") {
-                        val catalog = entityLearning.homeDashboardCatalog()
-                        val items = catalog.items.joinToString(",") { dashboard ->
-                            "{\"path\":${jsonStr(dashboard.path)},\"title\":${jsonStr(dashboard.title)}," +
-                                "\"icon\":${jsonStr(dashboard.icon)},\"group\":${jsonStr(dashboard.group)}}"
-                        }
-                        // `default` reports whether the ACCOUNT carries a real server-side default dashboard
-                        // (HA ≥ 2025.12 stores the profile picker's choice per user). When it does not, the
-                        // pickers demote "follow the account's default" and recommend nominating one.
-                        val default = "{\"explicit\":${catalog.default.explicit}," +
-                            "\"path\":${jsonStr(catalog.default.path)}}"
-                        call.respondText(
-                            "{\"queried\":${catalog.queried},\"items\":[$items],\"default\":$default}",
-                            ContentType.Application.Json,
-                        )
-                    }
                     haAreaRoutes { haArea.areaJson() }
                     configProbeRoutes(config)
-                    get("/config/discovery") {
-                        val needsMqtt = config.mqttBroker.isBlank()
-                        val needsHa = config.haUrl.isBlank()
-                        val found = if (needsMqtt || needsHa) {
-                            withContext(Dispatchers.IO) { configDiscoverySuggestions() }
-                                .also { lastHaDiscovery = it.haDiscovery }
-                        } else ConfigDiscoverySuggestions()
-                        val mqtt = found.mqttBroker.takeIf { needsMqtt && config.mqttBroker.isBlank() }.orEmpty()
-                        val ha = found.haUrl.takeIf { needsHa && config.haUrl.isBlank() }.orEmpty()
-                        call.respondText(
-                            "{\"mqtt_broker\":${jsonStr(mqtt)},\"ha_url\":${jsonStr(ha)}}",
-                            ContentType.Application.Json,
-                        )
-                    }
                     setupRoutes { setupState }
                     haOAuthRoutes(haOAuth.routes())
                     installConfigBundleRoutes()
@@ -1562,7 +1536,7 @@ class PaneldServer internal constructor(
             ::effectiveDashboardIsBuiltin,
         ),
         capabilities = { liveCapabilities(managementObservations.snapStaleOk().caps) },
-        directMutationValues = ::directMutationValues,
+        directMutationValues = { configValues().directMutationValues() },
         revisionValues = { revisionValues() },
         authorizeSensitive = ::authorizeSensitive,
         rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
@@ -1579,7 +1553,7 @@ class PaneldServer internal constructor(
             onSelfUpdateChannelCommitted(prepared, ticket, before, after)
         },
         configJson = { status, applied, pending, rejected, message ->
-            configJson(status, applied, pending, rejected, message)
+            configValues().configJson(status, applied, pending, rejected, message)
         },
     )
 
@@ -1602,15 +1576,6 @@ class PaneldServer internal constructor(
         haAreaCatalogJson = { haArea.haAreaCatalogJson() },
     )
 
-    private fun configSchemaJson(): String = configSchemaJson(catalogueLoader.strings(AppLocale.ENGLISH))
-
-    private fun configSchemaJson(strings: AppStrings): String = configValues().schemaJson(
-        strings,
-        liveCapabilities(managementObservations.snapStaleOk().caps), // learned eligibility is fail-closed and live
-        autoHints(strings), // what blank ("auto") package fields resolve to → field placeholder
-        profile.manufacturer,
-        profile.model,
-    )
 
     private fun effectiveValue(spec: io.github.maxlyth.hapaneld.config.SettingSpec, live: Map<String, String>): String =
         configValues().effectiveValue(spec, live)
@@ -1624,17 +1589,10 @@ class PaneldServer internal constructor(
 
     private fun currentValues(): Map<String, String> = configValues().currentValues()
 
-    private fun currentValues(live: Map<String, String>): Map<String, String> =
-        configValues().currentValues(live)
-
-    private fun directMutationValues(): Map<String, String> = configValues().directMutationValues()
 
 
     private fun renderConfigConcurrencyHash(): String =
-        configConcurrencyHash(currentValues())
-
-    private fun configConcurrencyHash(values: Map<String, String>): String =
-        io.github.maxlyth.hapaneld.config.ConfigHash.of(configConcurrencyValues(values))
+        configValues().concurrencyHash()
 
     private fun revisionValues(
         values: Map<String, String> = currentValues(),
@@ -1803,15 +1761,6 @@ class PaneldServer internal constructor(
 
 
 
-    /** Full config as JSON for fleet management. The MQTT password is never emitted — only a boolean
-     *  saying whether one is set. `http_port` is read-only (changing it needs a restart). */
-    private fun configJson(
-        mutationStatus: String? = null,
-        applied: List<String> = emptyList(),
-        pending: List<String> = emptyList(),
-        rejected: List<String> = emptyList(),
-        message: String? = null,
-    ): String = configValues().configJson(mutationStatus, applied, pending, rejected, message)
 
     private fun performanceWorkloadValues(): Map<String, String> {
         val live = managementObservations.snapStaleOk().live
