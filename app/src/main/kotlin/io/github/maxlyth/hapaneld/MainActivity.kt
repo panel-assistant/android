@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld
 import android.content.Intent
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -197,12 +198,22 @@ class MainActivity : AppCompatActivity() {
         // choosing the launch destination. Locale still precedes the service start and launch choice.
         setupPollExecutor.execute {
             config
+            // An update can clear preferred HOME. Repair it before requesting the foreground service:
+            // if that first service start crashes, Android must still resolve HOME to the dashboard.
+            runCatching {
+                SystemController(AndroidSystemEnv(this)).applyLauncherHomePolicy(
+                    config.launcherPackage,
+                    config.dashboardPackage,
+                    config.builtInRendererReady(),
+                )
+            }.onFailure { android.util.Log.w("MainActivity", "launcher HOME policy apply failed", it) }
             handler.post {
                 if (isFinishing || isDestroyed) return@post
                 NativeLocale.apply(config.uiLanguage)
-                // Start while this Activity is foreground. The notification permission is granted by
-                // the installer or claimed by the service through the root helper; it is never asked here.
-                PaneldService.start(this)
+                // Start while this Activity is visible. On Oreo an ordinary service start avoids
+                // arming the foreground deadline before ART has loaded the cold service class.
+                // The service still promotes itself at the front of onCreate.
+                PaneldService.start(this, fromVisibleActivity = true)
                 chooseDestination()
             }
         }

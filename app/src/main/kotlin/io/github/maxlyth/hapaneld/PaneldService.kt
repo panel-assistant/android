@@ -6065,7 +6065,7 @@ class PaneldService : Service() {
         private val SERVICE_RESTART_BARRIER = ServiceRestartBarrier()
         private val PROCESS_BOUNDARY_COMMITMENT = ProcessBoundaryCommitment()
 
-        fun start(context: Context) {
+        fun start(context: Context, fromVisibleActivity: Boolean = false) {
             if (GuardDbProcessAdmission.maintenanceRequired()) {
                 GuardDbMaintenanceService.start(context)
                 return
@@ -6084,12 +6084,27 @@ class PaneldService : Service() {
                 return
             }
             val intent = Intent(context, PaneldService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            dispatchPanelServiceStart(
+                Build.VERSION.SDK_INT,
+                fromVisibleActivity,
+                startOrdinary = { context.startService(intent) },
+                startForeground = { context.startForegroundService(intent) },
+            )
         }
+    }
+}
+
+/** A visible Oreo activity may start its own service without arming the cold-process FGS timer. */
+internal fun dispatchPanelServiceStart(
+    sdkInt: Int,
+    fromVisibleActivity: Boolean,
+    startOrdinary: () -> Unit,
+    startForeground: () -> Unit,
+) {
+    if (sdkInt >= Build.VERSION_CODES.O && !(fromVisibleActivity && sdkInt <= Build.VERSION_CODES.O_MR1)) {
+        startForeground()
+    } else {
+        startOrdinary()
     }
 }
 
