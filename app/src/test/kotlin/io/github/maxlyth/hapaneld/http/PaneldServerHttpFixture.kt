@@ -64,6 +64,7 @@ internal class PaneldServerHttpFixture(
         field("config", config)
         field("scope", scope)
         field("camera", camera)
+        field("entityLearning", allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java))
         field("appContext", context)
         field("cacheDir", directory)
         field("screenshots", ScreenshotCache(directory))
