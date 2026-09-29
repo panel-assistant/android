@@ -1,8 +1,10 @@
 package io.github.maxlyth.hapaneld
 
 import android.content.Intent
+import android.net.Uri
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.SystemController
+import io.github.maxlyth.hapaneld.control.NavigateController
 import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import android.content.res.Configuration
 import android.graphics.Color
@@ -412,9 +414,14 @@ class MainActivity : AppCompatActivity() {
                         dashboardRecoveryBlocked = dashboardRecoveryState() != PanelStatus.DashboardRecoveryState.NONE,
                     )
                 ) {
-                    cancelAutoReturn()
-                    if (openDashboard()) finish()
-                    return
+                    val opened = openDashboard()
+                    if (opened || RendererResolver.companionHomeRoute(
+                            config.dashboardPackage, config.homeDashboard,
+                        ) == null) {
+                        cancelAutoReturn()
+                        if (opened) finish()
+                        return
+                    }
                 }
                 val retryNow = SystemClock.elapsedRealtime()
                 if (retryNow >= schedule.deadlineMs) { cancelAutoReturn(); return } // give up (unconfigured)
@@ -682,8 +689,17 @@ class MainActivity : AppCompatActivity() {
             isLaunchable = { packageManager.getLaunchIntentForPackage(it) != null },
         )) {
             RendererTarget.Builtin -> Intent(this, DashboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            is RendererTarget.Foreign -> packageManager.getLaunchIntentForPackage(target.packageName)
-                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            is RendererTarget.Foreign -> {
+                val home = RendererResolver.companionHomeRoute(target.packageName, config.homeDashboard)
+                val route = home?.let {
+                    Intent(Intent.ACTION_VIEW, Uri.parse(NavigateController.homeUrl(it)))
+                        .setPackage(target.packageName)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                route?.takeIf { it.resolveActivity(packageManager) != null }
+                    ?: packageManager.getLaunchIntentForPackage(target.packageName)
+                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
             null -> null
         }
     }

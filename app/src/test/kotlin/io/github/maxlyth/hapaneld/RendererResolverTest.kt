@@ -23,6 +23,18 @@ class RendererResolverTest {
         assertEquals(setOf(MINIMAL, FULL), RendererResolver.LEGACY_COMPANION_PACKAGE_SET)
     }
 
+    @Test fun `only a configured Companion returns to this panels exact route`() {
+        val route = "/lovelace/this-panel?theme=dark#view"
+        assertEquals(route, RendererResolver.companionHomeRoute(MINIMAL, route))
+        assertEquals(route, RendererResolver.companionHomeRoute(FULL, route))
+        assertNull(RendererResolver.companionHomeRoute(MINIMAL, ""))
+        assertNull(RendererResolver.companionHomeRoute(MINIMAL, "/"))
+        assertNull(RendererResolver.companionHomeRoute("com.example.renderer", route))
+        assertNull(RendererResolver.companionHomeRoute(MINIMAL, "https://other.example/lovelace"))
+        assertNull(RendererResolver.companionHomeRoute(MINIMAL, "/lovelace/../auth"))
+        assertNull(RendererResolver.companionHomeRoute(MINIMAL, "/lovelace/%2e%2e/auth"))
+    }
+
     @Test fun `built-in selection is the sentinel or the own-package alias`() {
         assertTrue(RendererResolver.isBuiltinSelection("builtin", OWN))
         assertTrue(RendererResolver.isBuiltinSelection(OWN, OWN))
