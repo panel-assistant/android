@@ -24,11 +24,12 @@ class HaAreaRoutesHttpTest {
                 val response = client.get("/api/v1/config/ha-area")
                 assertEquals(HttpStatusCode.OK, response.status)
                 assertEquals("nosniff", response.headers["X-Content-Type-Options"])
-                assertEquals(
+                val expected = JSONObject(
                     "{\"areas\":[],\"device\":{\"found\":false,\"area_id\":\"\",\"area_name\":\"\"}," +
                         "\"admin\":false,\"queried\":false,\"requested\":\"\",\"ha_username\":\"\"}",
-                    response.bodyAsText(),
                 )
+                val actual = JSONObject(response.bodyAsText())
+                assertEquals(expected.toString(), actual.toString())
             }
         }
     }
