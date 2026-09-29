@@ -1356,13 +1356,8 @@ for anchor in HOST_GATE HOST_FIRST_MUTATION HOST_FORCE_POLICY; do
 done
 unset anchor
 
-SERVER_SOURCE="$ROOT/app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt"
-if grep -Fq 'queryParameters["database_observation_nonce"]' "$SERVER_SOURCE" && \
-   grep -Fq 'databaseObservationProof(refreshRequested, observationNonce, statusStorage)' "$SERVER_SOURCE" && \
-   grep -Fq '"\"database_observation_nonce\":${jsonStr(it)},"' "$SERVER_SOURCE"; then
-  pass "host and server share the exact nonce query and top-level response field grammar"
-else fail_test "host and server share the exact nonce query and top-level response field grammar"; fi
-unset SERVER_SOURCE
+# ManagementHttpTest exercises nonce-bound status responses through the production HTTP mount;
+# the cases above verify the host's request grammar and refusal of missing or invalid proof.
 
 # Execute the shipped root observer itself against real SQLite files. The fixture above isolates the
 # host parser/decision table; this catches drift inside the generated device program, including the
