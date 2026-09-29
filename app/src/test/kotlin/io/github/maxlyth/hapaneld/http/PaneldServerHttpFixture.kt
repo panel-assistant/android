@@ -95,6 +95,7 @@ internal class PaneldServerHttpFixture(
         })
         field("entityLearning", allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java))
         field("appContext", context)
+        field("pageHealth", PageHealth(context, config))
         field("cacheDir", directory)
         field("screenshots", ScreenshotCache(directory))
         // Source-text reason: provide actual bundled asset payloads through the platform reader seam.
@@ -365,7 +366,6 @@ internal class PaneldServerHttpFixture(
     fun enableEntityPage() {
         config.setDashboardEntityLearningEnabled(true)
         config.setDashboardPackage(io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD)
-        server.field("webViewTooOldOnce\$delegate", lazy { false })
     }
 
 
@@ -373,7 +373,6 @@ internal class PaneldServerHttpFixture(
         enableConfigurePage(root = root)
         config.setDashboardPackage(io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD)
         config.setHaConnection("http://ha.invalid:8123", "contract-token")
-        server.field("webViewTooOldOnce\$delegate", lazy { false })
         val companion = io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY
         observations.companionServerCache.set(companion)
         val sizing = io.github.maxlyth.hapaneld.control.DisplaySizingObservation(200, 160, 1.0f)
