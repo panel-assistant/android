@@ -234,7 +234,7 @@ internal class RestoreRoutes(
                 HttpStatusCode.BadRequest,
             )
             val configPlan = planRestoreConfig(
-                cfgObj, backupSchema, canonicalHaOrigin(config.haUrl), config.zigbeeRouterConfigured,
+                cfgObj, backupSchema, { canonicalHaOrigin(config.haUrl) }, { config.zigbeeRouterConfigured },
             ).let { plan ->
                 if (migrationRestore) plan.copy(values = migrationRestoreConfig(plan.values)) else plan
             }
