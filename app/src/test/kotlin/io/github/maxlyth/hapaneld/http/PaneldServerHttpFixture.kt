@@ -119,6 +119,39 @@ internal class PaneldServerHttpFixture(
         server.field("interactive", controller)
     }
 
+    /** Real page rendering with deterministic identity, renderer discovery and bundled catalogues. */
+    fun enablePages() {
+        config.setFriendlyName("Contract <panel>")
+        config.setHardware("Contract manufacturer", "Contract model")
+        config.setDashboardPackage("com.example.dashboard")
+        server.field("configLiveValues", { emptyMap<String, String>() })
+        server.field("mqttState", { "connecting" })
+        server.field("lastHaDiscovery", io.github.maxlyth.hapaneld.DiscoveryResult())
+        server.field("catalogueLoader\$delegate", lazy {
+            io.github.maxlyth.hapaneld.i18n.CatalogueLoader { name -> File("src/main/assets", name).readText() }
+        })
+        server.field("system", io.github.maxlyth.hapaneld.control.SystemController(
+            object : io.github.maxlyth.hapaneld.platform.SystemEnv {
+                override val ownPackage = "io.github.maxlyth.hapaneld"
+                override fun isInstalled(pkg: String) = pkg == "com.example.dashboard"
+                override fun launchComponent(pkg: String): String? = null
+                override fun homeActivities(): List<io.github.maxlyth.hapaneld.platform.ActivityRef> = emptyList()
+                override fun defaultHome(): io.github.maxlyth.hapaneld.platform.ActivityRef? = null
+                override fun directStart(component: String) = Unit
+            },
+        ))
+        server.field("profile", Proxy.newProxyInstance(
+            io.github.maxlyth.hapaneld.device.DeviceProfile::class.java.classLoader,
+            arrayOf(io.github.maxlyth.hapaneld.device.DeviceProfile::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getRecommendedWebView" -> null
+                "getAppCanSu" -> false
+                else -> error("Unexpected page profile read: ${method.name}")
+            }
+        })
+    }
+
     override fun close() {
         scope.cancel()
         pending.close()
