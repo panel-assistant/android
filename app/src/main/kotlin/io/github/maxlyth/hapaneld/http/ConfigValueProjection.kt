@@ -100,6 +100,11 @@ internal class ConfigValueProjection(
         put("$ENTITY_REVISION_PREFIX.override_owner", state.overrideOwner)
     }
 
+    fun concurrencyHash(values: Map<String, String> = currentValues()): String =
+        io.github.maxlyth.hapaneld.config.ConfigHash.of(configConcurrencyValues(values))
+
+    /** Full config as JSON for fleet management. The MQTT password is never emitted — only a boolean
+     *  saying whether one is set. `http_port` is read-only (changing it needs a restart). */
     fun configJson(
         mutationStatus: String? = null,
         applied: List<String> = emptyList(),
