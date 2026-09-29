@@ -5375,6 +5375,18 @@
       "softMaxChars": 43,
       "hardMaxChars": 62
     },
+    "configure.voice.import_button": {
+      "text": "Import",
+      "sourceHash": "2cff9baabf56ca002610e113bc94deb6ededddfc3c130365b6e88ed5195bf774",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
+    },
     "configure.voice.import_choose_files": {
       "text": "Choose the .json manifest and the .tflite model first.",
       "sourceHash": "fa414a4812d0db87e2bb63ec269b6f25fd0ae7870052984f468c6de6530fc588",
