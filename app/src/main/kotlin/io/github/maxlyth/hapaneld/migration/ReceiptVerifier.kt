@@ -5,7 +5,8 @@ import io.github.maxlyth.hapaneld.device.profile.ProfileBackup
 import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestorePlan
 import io.github.maxlyth.hapaneld.device.profile.ProfileIssue
 import io.github.maxlyth.hapaneld.device.profile.ProfileIssueSeverity
-import io.github.maxlyth.hapaneld.http.PaneldServer
+import io.github.maxlyth.hapaneld.http.MAX_PROFILE_BACKUP_ENTRY_BYTES
+import io.github.maxlyth.hapaneld.http.PROFILE_BACKUP_ENTRY
 import io.github.maxlyth.hapaneld.persistence.BackupIdentity
 import io.github.maxlyth.hapaneld.persistence.StateArchiveSection
 import io.github.maxlyth.hapaneld.util.BoundedStreams
@@ -87,11 +88,11 @@ internal object ReceiptVerifier {
     }
 
     private fun profileEntry(archive: File, name: String): String {
-        require(name == PaneldServer.PROFILE_BACKUP_ENTRY) { "unexpected profile entry" }
+        require(name == PROFILE_BACKUP_ENTRY) { "unexpected profile entry" }
         return ZipFile(archive).use { zip ->
             val entry = requireNotNull(zip.getEntry(name))
-            require(entry.size in 1..PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES)
-            val bytes = zip.getInputStream(entry).use { BoundedStreams.readBytes(it, PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES) }
+            require(entry.size in 1..MAX_PROFILE_BACKUP_ENTRY_BYTES)
+            val bytes = zip.getInputStream(entry).use { BoundedStreams.readBytes(it, MAX_PROFILE_BACKUP_ENTRY_BYTES) }
             String(bytes, Charsets.UTF_8)
         }
     }

@@ -31,6 +31,7 @@ class BackupReconciliationTest {
             builder.build(CompanionBackupRequest.EXCLUDED, "").use { artifact ->
                 val manifest = JSONObject(PanelBackup.readManifest(artifact.file, 1024 * 1024)!!)
                 assertFalse(manifest.has("wake_words"))
+                assertTrue("the backup must carry this installation's discovery identity", manifest.has("discovery_id"))
                 assertEquals(panelAssistantDiscoveryId(uid), manifest.getString("discovery_id"))
                 assertNotEquals(panelAssistantDiscoveryId(fixture.config.androidId), manifest.getString("discovery_id"))
             }
@@ -38,6 +39,7 @@ class BackupReconciliationTest {
             assertTrue(catalog.import(word.id, word.manifest, word.model) is WakeWordCatalog.ImportResult.Imported)
             builder.build(CompanionBackupRequest.EXCLUDED, "").use { artifact ->
                 val manifest = JSONObject(PanelBackup.readManifest(artifact.file, 1024 * 1024)!!)
+                assertTrue("an imported model must have an archive section", manifest.has("wake_words"))
                 val section = manifest.getJSONObject("wake_words")
                 val entries = declaredArchiveEntries(
                     manifest.optJSONObject("entity_state"), manifest.optJSONObject("profiles"),

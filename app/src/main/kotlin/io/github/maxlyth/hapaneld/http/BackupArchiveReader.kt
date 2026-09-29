@@ -7,10 +7,6 @@ import io.github.maxlyth.hapaneld.backup.CompanionRestore
 import io.github.maxlyth.hapaneld.device.profile.ProfileBackup
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.withStagedFiles
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.PROFILE_BACKUP_ENTRY
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_PROFILE_BACKUP_ENTRY_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_STATE_BACKUP_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_ENTITY_BACKUP_TEXT_BYTES
 
 internal class BackupArchiveReader(
     private val cacheDir: File,

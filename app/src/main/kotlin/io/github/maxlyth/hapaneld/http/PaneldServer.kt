@@ -1158,22 +1158,7 @@ class PaneldServer internal constructor(
         internal const val MAX_CONFIG_POST_BODY_BYTES = 256L * 1024L
         internal const val MAX_SMALL_FORM_POST_BODY_BYTES = 16L * 1024L
         internal const val MAX_CONFIG_IMPORT_BYTES = 1L * 1024L * 1024L
-        internal const val MAX_RESTORE_BYTES = 64L * 1024L * 1024L
         internal const val MAX_APK_UPLOAD_BYTES = 256L * 1024L * 1024L
-        internal const val MAX_COMPANION_BACKUP_BYTES = CompanionRestore.MAX_AGGREGATE_BYTES
-        // v2 keeps large profile/entity payloads in separately bounded entries, leaving only config and
-        // small ownership metadata here. This avoids one multi-tens-of-MiB String + JSONObject allocation.
-        internal const val MAX_BACKUP_MANIFEST_BYTES = 1L * 1024L * 1024L
-        internal const val MAX_PROFILE_BACKUP_ENTRY_BYTES = 9L * 1024L * 1024L
-        internal const val MAX_ENTITY_BACKUP_TEXT_BYTES = 13_000_000L
-        // Compatibility-only v1 JSON is multiply materialized by JSONObject; keep its heap exposure much
-        // smaller than the streamed/file-backed v2 manifest. New backups are always v2.
-        internal const val MAX_LEGACY_BACKUP_JSON_BYTES = 6L * 1024L * 1024L
-        internal const val BACKUP_STORAGE_MARGIN_BYTES = 64L * 1024L * 1024L
-        internal const val PROFILE_BACKUP_ENTRY = "profiles/catalog.json"
-
-        /** Configuration is tens of kilobytes on real panels; this is headroom, not a target. */
-        internal const val MAX_STATE_BACKUP_BYTES = 4L * 1024L * 1024L
 
     }
 }

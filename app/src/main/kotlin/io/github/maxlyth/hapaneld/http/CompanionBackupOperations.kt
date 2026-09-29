@@ -16,7 +16,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_COMPANION_BACKUP_BYTES
 
 internal class CompanionBackupOperations(
     private val installedCompanionPackage: () -> String?,
