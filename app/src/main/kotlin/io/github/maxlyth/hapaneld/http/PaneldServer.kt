@@ -1053,133 +1053,18 @@ class PaneldServer internal constructor(
                     get("/openapi.json") {
                         call.respondText(asset("openapi.json"), ContentType.Application.Json)
                     }
-                    // Per-package vendor taming from the Vendor packages card. action=tame adds the package to
-                    // the blocklist and tames it now; action=untame explicitly enables it, then removes it from
-                    // the blocklist. The explicit enable also handles firmware-disabled packages which ha-paneld
-                    // never owned and therefore have no restoration marker. The work is privileged + slow, so it
-                    // runs off-thread and the browser gets a short auto-reload back to the Install card.
-                    post("/tame") {
-                        val strings = requestStrings(call)
-                        val returnTo = localizedHref("install#cfg-tame", strings)
-                        val p = receiveBoundedFormParameters(call) ?: return@post
-                        // One-click "Tame all recommended" (the profile's defaultTame set) — no pkg needed.
-                        // Persist the safe installed selection first. The one desired-state owner then converges
-                        // it; write-ahead overlay ownership makes an interrupted profile restart retryable.
-                        if (p["action"]?.trim() == "recommended") {
-                            val recommendedSelections = tame.recommendedSelections(tameProfileCandidates)
-                            val recommended = recommendedSelections.joinToString("\u0000")
-                            val digest = sha256Hex((p.canonicalDigest() + "\u0000" + recommended).toByteArray())
-                            if (!authorizeSensitive(
-                                    call,
-                                    SensitiveOperation.PACKAGE_TAME,
-                                    exactHttpApprovalPayload(call, digest),
-                                    strings.get("install.tame.approval.recommended"),
-                                )
-                            ) return@post
-                            val committed = withContext(Dispatchers.IO) {
-                                updateTameSelection { it.addAll(recommendedSelections) }
-                            }
-                            if (!committed) {
-                                respondInstallFormError(
-                                    call,
-                                    strings,
-                                    "install.tame.error.selection_commit",
-                                    "vendor selection commit failed",
-                                    HttpStatusCode.InternalServerError,
-                                )
-                                return@post
-                            }
-                            snapInvalidate()
-                            if (call.request.headers["Accept"]?.contains("application/json") == true) {
-                                call.respondText(
-                                    "{" +
-                                        "\"ok\":true,\"status\":\"started\",\"message\":" + jsonStr(strings.get("install.tame.result.applying_recommended")) + "," +
-                                        "\"return_to\":" + jsonStr(returnTo) + "}",
-                                    ContentType.Application.Json,
-                                )
-                            } else {
-                                call.respondText(
-                                    "<!doctype html><base href=\"/\"><meta charset=utf-8><meta http-equiv=refresh content='2;url=${esc(returnTo)}'>" +
-                                        "<body style='font-family:system-ui;background:#111;color:#eee;padding:20px'>" +
-                                        esc(strings.get("install.tame.result.applying_recommended_progress")) + "</body>",
-                                    ContentType.Text.Html,
-                                )
-                            }
-                            return@post
-                        }
-                        val pkg = p["pkg"]?.trim().orEmpty()
-                        val untame = p["action"]?.trim() == "untame"
-                        // Re-enable is always allowed; taming is refused for protected packages (the brick-guard
-                        // — critical AOSP names, vendor-renamed persistent system services, launchers, the IME)
-                        // so a hand-typed package name can't disable something the panel needs.
-                        if (!AndroidInput.isPackage(pkg) || (!untame && tame.isProtected(pkg))) {
-                            respondInstallFormError(
-                                call,
-                                strings,
-                                "install.tame.error.invalid_or_protected",
-                                "invalid or protected package",
-                                HttpStatusCode.BadRequest,
-                            )
-                            return@post
-                        }
-                        if (!authorizeSensitive(
-                                call,
-                                SensitiveOperation.PACKAGE_TAME,
-                                exactHttpApprovalPayload(call, p.canonicalDigest()),
-                                formattedString(
-                                    strings,
-                                    "install.tame.approval.package",
-                                    "action" to strings.get(if (untame) "install.tame.action.reenable" else "install.tame.action.tame"),
-                                    "package" to pkg,
-                                ),
-                            )
-                        ) return@post
-                        if (untame && !withContext(Dispatchers.IO) { tame.reenable(pkg) }) {
-                            respondInstallFormError(
-                                call,
-                                strings,
-                                "install.tame.error.reenable_failed",
-                                "could not re-enable package",
-                                HttpStatusCode.ServiceUnavailable,
-                            )
-                            return@post
-                        }
-                        val committed = withContext(Dispatchers.IO) {
-                            updateTameSelection { selected ->
-                                if (untame) selected.remove(pkg) else selected.add(pkg)
-                            }
-                        }
-                        if (!committed) {
-                            respondInstallFormError(
-                                call,
-                                strings,
-                                "install.tame.error.selection_commit",
-                                "vendor selection commit failed",
-                                HttpStatusCode.InternalServerError,
-                            )
-                            return@post
-                        }
-                        snapInvalidate()
-                        val result = formattedString(
-                            strings,
-                            if (untame) "install.tame.result.reenabling" else "install.tame.result.taming",
-                            "package" to pkg,
+                    tameRoutes {
+                        TameRoutes(
+                            config = config,
+                            tame = tame,
+                            tameProfileCandidates = tameProfileCandidates,
+                            requestTameReconcileAfterCommit = ::requestTameReconcileAfterCommit,
+                            snapInvalidate = ::snapInvalidate,
+                            requestStrings = ::requestStrings,
+                            localizedHref = ::localizedHref,
+                            authorizeSensitive = ::authorizeSensitive,
+                            respondInstallFormError = ::respondInstallFormError,
                         )
-                        if (call.request.headers["Accept"]?.contains("application/json") == true) {
-                            call.respondText(
-                                "{" +
-                                    "\"ok\":true,\"status\":\"started\",\"message\":" + jsonStr(result) + "," +
-                                    "\"return_to\":" + jsonStr(returnTo) + "}",
-                                ContentType.Application.Json,
-                            )
-                        } else {
-                            call.respondText(
-                                "<!doctype html><base href=\"/\"><meta charset=utf-8><meta http-equiv=refresh content='2;url=${esc(returnTo)}'>" +
-                                    "<body style='font-family:system-ui;background:#111;color:#eee;padding:20px'>" +
-                                    esc(result) + "</body>",
-                                ContentType.Text.Html,
-                            )
-                        }
                     }
                     // The "Find a package…" picker pop-up content: an on-demand, grouped list of packages a
                     // non-expert might want to control — Recommended (profile) / Other apps / Using the most
@@ -2472,24 +2357,6 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
         },
     )
 
-    /** Atomically update the desired selection and notify its owner before releasing config commit order. */
-    private fun updateTameSelection(update: (MutableSet<String>) -> Unit): Boolean =
-        config.synchronizedTransaction {
-            val selected = config.tameVendorPackages.toCollection(LinkedHashSet())
-            update(selected)
-            val normalized = when (val validation = TamePackagePolicy.normalize(selected.joinToString(" "))) {
-                is Validation.Ok -> validation.normalized
-                is Validation.Bad -> return@synchronizedTransaction false
-            }
-            if (normalized == config.tameVendorPackages.joinToString(" ")) {
-                requestTameReconcileAfterCommit()
-                return@synchronizedTransaction true
-            }
-            val spec = requireNotNull(SettingsRegistry.spec("tame_vendor_packages"))
-            val editor = config.editor()
-            config.stage(editor, spec, normalized)
-            config.commit(editor, afterCommit = ::requestTameReconcileAfterCommit)
-        }
 
     /** Startup/reconfigure wake-up. Config commits use [requestTameReconcileAfterCommit] under the lock. */
     fun requestTameReconcile(): Boolean = config.synchronizedTransaction {
