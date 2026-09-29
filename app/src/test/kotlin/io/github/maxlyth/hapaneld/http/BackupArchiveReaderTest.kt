@@ -14,11 +14,38 @@ class BackupArchiveReaderTest {
         val plan = planRestoreConfig(
             JSONObject().put("friendly_name", JSONObject().put("nested", "value")),
             SettingsRegistry.SCHEMA,
-            null,
-            false,
+            { error("Malformed settings must not sample the current HA origin") },
+            { error("Malformed settings must not sample Zigbee ownership") },
         )
         assertTrue(plan.values.isEmpty())
         assertEquals(listOf("friendly_name: expected a scalar setting value"), plan.errors)
+    }
+
+    @Test fun restorePlanningSamplesLiveSettingsAfterArchiveValuesAndInOriginalOrder() {
+        var origin = "http://old.example:8123"
+        var zigbeeConfigured = true
+        val reads = mutableListOf<String>()
+        val archive = JSONObject().put("home_dashboard", object {
+            override fun toString(): String {
+                reads += "archive"
+                origin = "http://current.example:8123"
+                return "http://current.example:8123/lovelace/home"
+            }
+        }).put("zigbee_router", "false")
+        val plan = planRestoreConfig(
+            archive, SettingsRegistry.SCHEMA,
+            currentHaOrigin = {
+                reads += "origin"
+                zigbeeConfigured = false
+                origin
+            },
+            zigbeeRouterConfigured = { reads += "zigbee"; zigbeeConfigured },
+        )
+        assertEquals(listOf("archive", "origin", "zigbee"), reads)
+        assertEquals(emptyList<String>(), plan.errors)
+        assertEquals("/lovelace/home", plan.values["home_dashboard"])
+        assertTrue("Unconfigured vendor ownership must be preserved", "zigbee_router" !in plan.values)
+        assertTrue(plan.warnings.contains("legacy zigbee_router=false skipped to preserve untouched vendor gateway ownership"))
     }
 
     @Test fun declaredSizeMustMatchExtractedBytes() = withArchive("text".toByteArray()) { reader, archive, directory ->

@@ -207,8 +207,8 @@ internal fun planEntityBackup(obj: org.json.JSONObject): DashboardEntityBackupSt
 internal fun planRestoreConfig(
     cfgObj: org.json.JSONObject,
     schema: Int,
-    currentHaOrigin: String?,
-    zigbeeRouterConfigured: Boolean,
+    currentHaOrigin: () -> String?,
+    zigbeeRouterConfigured: () -> Boolean,
 ): RestoreConfigPlan {
     val raw = LinkedHashMap<String, String>()
     for (key in cfgObj.keys()) {
@@ -219,12 +219,12 @@ internal fun planRestoreConfig(
         raw[key] = value.toString()
     }
     val (migrated, warnings) = Migrations.migrate(schema, raw)
-    val decided = planRestoreSettings(migrated, currentHaOrigin)
+    val decided = planRestoreSettings(migrated, currentHaOrigin())
     val accepted = LinkedHashMap(decided.accepted)
     val errors = ArrayList(decided.errors)
     val ownershipPreserved = preserveUnconfiguredZigbeeOwnership(
         accepted,
-        zigbeeRouterConfigured,
+        zigbeeRouterConfigured(),
     )
     if (accepted.isEmpty() && errors.isEmpty()) errors += "config object contains no restorable settings"
     return RestoreConfigPlan(
