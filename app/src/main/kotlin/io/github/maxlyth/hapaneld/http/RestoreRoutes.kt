@@ -38,10 +38,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_RESTORE_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_BACKUP_MANIFEST_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_LEGACY_BACKUP_JSON_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_STATE_BACKUP_BYTES
 
 internal class RestoreRoutes(
     private val cacheDir: File,

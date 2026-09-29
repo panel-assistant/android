@@ -9,7 +9,7 @@ import io.github.maxlyth.hapaneld.device.profile.ProfileYaml
 import io.github.maxlyth.hapaneld.device.profile.RuntimeProfileRegistry
 import io.github.maxlyth.hapaneld.device.profile.TransientProfilePreferences
 import io.github.maxlyth.hapaneld.device.profile.testProfileDocument
-import io.github.maxlyth.hapaneld.http.PaneldServer
+import io.github.maxlyth.hapaneld.http.PROFILE_BACKUP_ENTRY
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -40,7 +40,7 @@ class ReceiptProfileRefusalTest {
         lastKnownGood = null,
     )
 
-    private fun receipt(profiles: ProfileBackup?, entry: String = PaneldServer.PROFILE_BACKUP_ENTRY): File {
+    private fun receipt(profiles: ProfileBackup?, entry: String = PROFILE_BACKUP_ENTRY): File {
         val sources = listOf("entity/filter", "entity/overrides", "state/app-state")
             .mapTo(mutableListOf()) { PanelBackup.ArchiveSource(it, temp.newFile().apply { writeText("payload") }) }
         val manifest = StringBuilder(
