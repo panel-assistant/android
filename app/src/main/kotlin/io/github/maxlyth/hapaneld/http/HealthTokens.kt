@@ -22,8 +22,10 @@ internal fun haLifecycleHealthToken(watching: Boolean, snap: HaLifecycle.Snapsho
 }
 
 /** Add Panel Assistant's stable discovery pseudonym without exposing the Android ID itself. */
-internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
-    panelAssistantDiscoveryId(androidId)?.let { " did=$it" }.orEmpty()
+internal fun panelAssistantDiscoveryHealthToken(deviceUid: String, androidId: String = ""): String =
+    panelAssistantDiscoveryId(deviceUid)?.let { did ->
+        " did=$did identity=install" + panelAssistantDiscoveryId(androidId)?.let { " legacy_did=$it" }.orEmpty()
+    }.orEmpty()
 
 /** Which installed identity answered: during the application-id migration a panel can hold both. */
 internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"

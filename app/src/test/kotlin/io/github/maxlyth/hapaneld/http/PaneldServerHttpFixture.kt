@@ -27,6 +27,8 @@ import sun.misc.Unsafe
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
 internal class PaneldServerHttpFixture(
+    wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog? = null,
+    identityMigration: IdentityMigrationSurface = IdentityMigrationSurface.NONE,
     repairCompanionUrl: () -> Boolean = { error("Unexpected Companion repair") },
     stopping: Boolean = false,
     installComponent: (String, String, String) -> Boolean = { _, _, _ -> error("Unexpected install") },
@@ -36,13 +38,14 @@ internal class PaneldServerHttpFixture(
     repairPowerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult = { error("Unexpected power repair") },
     logApp: io.github.maxlyth.hapaneld.logship.LogCapture? = null,
 ) : java.io.Closeable {
-    private val directory = Files.createTempDirectory("paneld-http-baseline").toFile()
+    val directory = Files.createTempDirectory("paneld-http-baseline").toFile()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val context = object : ContextWrapper(null) {
+    val context = object : ContextWrapper(null) {
         override fun getFilesDir(): File = directory
         override fun getCacheDir(): File = directory
         override fun getNoBackupFilesDir(): File = directory
         override fun getPackageName(): String = "io.github.maxlyth.hapaneld"
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences = preferences
     }
     private val values = mutableMapOf<String, Any?>("panel_id" to "contract-panel")
     private val preferences = Proxy.newProxyInstance(
@@ -98,7 +101,11 @@ internal class PaneldServerHttpFixture(
         field("asset", { name: String -> File("src/main/assets", name).readText() })
         field("pendingApks", pending)
         field("guardDbStaging", guardDbAppStaging(context))
-        field("identityMigration", IdentityMigrationSurface.NONE)
+        field("identityMigration", identityMigration)
+        wakeWords?.let { field("wakeWords", it) }
+        field("onWakeWordsChanged", {})
+        field("assistPipelines", io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.NOT_WIRED)
+        field("voiceTest", io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.NOT_WIRED)
         field("playAudio", { _: String -> error("Unexpected playback") })
         field("onInstallComponent", installComponent)
         field("panelAssistantTransportFacts", {
@@ -147,6 +154,45 @@ internal class PaneldServerHttpFixture(
     }
 
     fun mount(application: Application) = server.mount(application)
+
+    fun useVoice(
+        hasMicrophone: Boolean,
+        enabled: Boolean = false,
+        assistPipelines: io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory =
+            io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.NOT_WIRED,
+        voiceTest: io.github.maxlyth.hapaneld.assist.VoiceTestTrigger =
+            io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.NOT_WIRED,
+    ) {
+        server.field("assistPipelines", assistPipelines)
+        server.field("voiceTest", voiceTest)
+        values["voice_enabled"] = enabled
+        val previous = requireNotNull(observations.snapCache.peek())
+        observations.snapCache.set(ManagementSnapshot(
+            previous.facts, previous.live, previous.caps.copy(hasMicrophone = hasMicrophone),
+            previous.capabilityRows, previous.privilege, previous.densityCur, previous.densityBase,
+            previous.fontScale, previous.wifiChronic,
+        ))
+    }
+
+    fun backupBuilder(wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog?) = PanelBackupBuilder(
+        appContext = context,
+        config = config,
+        cacheDir = directory,
+        configLiveValues = { emptyMap() },
+        effectiveValue = { spec, _ -> spec.default },
+        profileAdmin = null,
+        companion = CompanionBackupOperations(
+            installedCompanionPackage = { error("Companion explicitly excluded") },
+            cacheDir = directory,
+            ensureCompanionHelper = { error("Companion explicitly excluded") },
+            companionDataOperationState = io.github.maxlyth.hapaneld.control.CompanionDataOperationState.from(context),
+            scope = scope,
+            config = config,
+            system = allocate(io.github.maxlyth.hapaneld.control.SystemController::class.java),
+        ),
+        mqttState = { "disconnected" },
+        wakeWords = wakeWords,
+    )
 
     fun useManagementStatus(
         companion: io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation =
@@ -220,6 +266,21 @@ internal class PaneldServerHttpFixture(
         server.field("interactive", controller)
     }
 
+    fun useUnresolvedHome() {
+        server.field("system", pageSystem())
+    }
+
+    private fun pageSystem() = io.github.maxlyth.hapaneld.control.SystemController(
+        object : io.github.maxlyth.hapaneld.platform.SystemEnv {
+            override val ownPackage = "io.github.maxlyth.hapaneld"
+            override fun isInstalled(pkg: String) = pkg == "com.example.dashboard"
+            override fun launchComponent(pkg: String): String? = null
+            override fun homeActivities(): List<io.github.maxlyth.hapaneld.platform.ActivityRef> = emptyList()
+            override fun defaultHome(): io.github.maxlyth.hapaneld.platform.ActivityRef? = null
+            override fun directStart(component: String): Boolean = error("Unexpected activity launch")
+        },
+    )
+
     /** Real page rendering with deterministic identity, renderer discovery and bundled catalogues. */
     fun enablePages() {
         config.setFriendlyName("Contract <panel>")
@@ -231,16 +292,7 @@ internal class PaneldServerHttpFixture(
         server.field("catalogueLoader\$delegate", lazy {
             io.github.maxlyth.hapaneld.i18n.CatalogueLoader { name -> File("src/main/assets", name).readText() }
         })
-        val system = io.github.maxlyth.hapaneld.control.SystemController(
-            object : io.github.maxlyth.hapaneld.platform.SystemEnv {
-                override val ownPackage = "io.github.maxlyth.hapaneld"
-                override fun isInstalled(pkg: String) = pkg == "com.example.dashboard"
-                override fun launchComponent(pkg: String): String? = null
-                override fun homeActivities(): List<io.github.maxlyth.hapaneld.platform.ActivityRef> = emptyList()
-                override fun defaultHome(): io.github.maxlyth.hapaneld.platform.ActivityRef? = null
-                override fun directStart(component: String) = Unit
-            },
-        )
+        val system = pageSystem()
         server.field("system", system)
         val profile = Proxy.newProxyInstance(
             io.github.maxlyth.hapaneld.device.DeviceProfile::class.java.classLoader,

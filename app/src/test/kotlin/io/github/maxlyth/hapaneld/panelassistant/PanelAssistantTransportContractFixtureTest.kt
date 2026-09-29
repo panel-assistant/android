@@ -58,8 +58,8 @@ class PanelAssistantTransportContractFixtureTest {
     @Test
     fun `every channel descriptor this build describes matches the exported producer fixture`() {
         val fixture = JSONObject(resource(PRODUCER_FIXTURE))
-        val wires = PanelAssistantChannelCatalogTest.convergerChannels()
-            .mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
+        val wires = (PanelAssistantChannelCatalogTest.convergerChannels()
+            .mapNotNull(PanelAssistantChannelCatalog::wireChannel) + listOf("reload", "reboot")).distinct().sorted()
         val described = wires.map { wire ->
             val descriptor = PanelAssistantChannelCatalog.describe(wire)
             assertNotNull("$wire must remain describable", descriptor)

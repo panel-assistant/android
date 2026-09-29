@@ -164,7 +164,6 @@ internal val externalMqttLiveSettingOwners: Map<String, String> = linkedMapOf(
     "prevent_idle_dim" to "prevent_idle_dim",
     "zigbee_router" to "zigbee_router",
     "auto_brightness" to "auto_brightness",
-    "voice_enabled" to "voice_enabled",
 )
 
 /**
@@ -1257,11 +1256,8 @@ internal class MqttBridge(
     // The profile-authoritative microphone capability (Capabilities.hasMicrophone, itself sourced from
     // the active device profile), captured per bridge generation exactly like hasCht8305/
     // hasButtonBacklight — a profile switch already forces a fresh bridge (profileIdentity), so this is
-    // never stale for longer than that. Gates both the voice_enabled command handler (refuses ON without
-    // it) and the voice_enabled/voice_state channels (report OFF rather than echoing stale state), the
-    // same defensive pattern hasProximity uses for wake_on_wave — HA discovery availability alone is not
-    // a write guard, since the command topic is subscribed unconditionally (the wildcard
-    // ha-paneld/$panel/+/set).
+    // never stale for longer than that. Gates the voice_enabled live-setting handler, which refuses ON
+    // without it.
     private val hasMicrophone: Boolean = false,
     // Profile-authoritative camera capability. Discovery visibility is not a write guard because the
     // wildcard command subscription still receives direct camera_enabled publications.
@@ -1320,10 +1316,6 @@ internal class MqttBridge(
     private val zigbeeHealth: () -> ZigbeeHealthSnapshot = { ZigbeeHealthSnapshot() },
     private val storageHealth: () -> StorageHealthSnapshot = StorageHealthRuntime::snapshot,
     private val onZigbeeExplicitRetry: () -> Unit = {},
-    // Current voice-assistant phase for sensor.<panel>_voice_state (io.github.maxlyth.hapaneld.assist.
-    // VoiceState.wireValue). Owned by a service-side VoiceStateAuthority the voice-coordinator lane
-    // drives; defaults to "off" so a bridge built without that wiring reports the safe default.
-    private val voiceState: () -> String = { io.github.maxlyth.hapaneld.assist.VoiceState.OFF.wireValue },
     // A panel-id replaced by reconfiguration. Its discovery and availability are cleared by the NEW
     // connection, so cleanup cannot be lost when the old client is detached or the broker was offline.
     private val stalePanelId: String? = null,
@@ -1636,9 +1628,6 @@ internal class MqttBridge(
     private val attrWifiOutages = "ha-paneld/$panel/diag_wifi_outages_24h/attributes"
     private val cmdAutoBright = "ha-paneld/$panel/auto_brightness/set"
     private val stateAutoBright = "ha-paneld/$panel/auto_brightness/state"
-    private val cmdVoiceEnabled = "ha-paneld/$panel/voice_enabled/set"
-    private val stateVoiceEnabled = "ha-paneld/$panel/voice_enabled/state"
-    private val stateVoiceState = "ha-paneld/$panel/voice_state/state"
     private val cmdCameraEnabled = "ha-paneld/$panel/camera_enabled/set"
     private val stateCameraEnabled = "ha-paneld/$panel/camera_enabled/state"
     // The snapshot image entity carries a URL rather than image bytes: the camera contract serves frames
@@ -1651,7 +1640,7 @@ internal class MqttBridge(
             cmdCpuGov, cmdNetAdb, cmdScreen, cmdLed, cmdNavigate, cmdVolume, cmdHomeDashboard,
             cmdButtons, cmdNavbar, cmdWakeOnWave, cmdAutoSleep, cmdTouchSound, cmdWatchdog, cmdKiosk,
             cmdCompanionAuto, cmdCompanionChannel, cmdSelfUpdate, cmdWebViewAuto, cmdUpdateChannel,
-            cmdSilenceBootChime, cmdPreventIdleDim, cmdZigbee, cmdAutoBright, cmdVoiceEnabled,
+            cmdSilenceBootChime, cmdPreventIdleDim, cmdZigbee, cmdAutoBright,
             cmdCameraEnabled,
         )
     }
@@ -1816,19 +1805,6 @@ internal class MqttBridge(
         channel("auto_brightness", stateAutoBright) { known(if (config.autoBrightness) "ON" else "OFF") }
         channel("camera_enabled", stateCameraEnabled) { known(if (config.cameraEnabled) "ON" else "OFF") }
         channel("navbar", stateNavbar) { known(config.navbarMode) }
-        // Mirrors wake_on_wave's hasProximity gate: without the capability, report OFF rather than
-        // echoing a persisted value the panel can no longer act on — never Unknown/skip, so a stale
-        // retained ON (e.g. from before a profile switch removed the capability) is overwritten rather
-        // than left in place.
-        channel("voice_enabled", stateVoiceEnabled) { known(if (hasMicrophone && config.voiceEnabled) "ON" else "OFF") }
-        // Hidden until exposed, exactly like the diag_* sensors: a hidden entity must not keep a
-        // retained voice-state payload alive on the broker for something nobody opted into. Also reports
-        // "off" — not the coordinator's authority value — once the capability is gone, so a phase like
-        // "listening" can never outlive the microphone it describes.
-        channel("voice_state", stateVoiceState) {
-            if (!hasMicrophone) known(io.github.maxlyth.hapaneld.assist.VoiceState.OFF.wireValue)
-            else diagnosticObservation("voice_state", config.haExposed("voice_state", false), voiceState())
-        }
 
         channel("illuminance", stateIlluminance, retain = false) {
             if (config.haExposed("illuminance", true)) lastIlluminance?.let { known(it.toString()) } ?: unknown
@@ -1914,7 +1890,11 @@ internal class MqttBridge(
     internal fun nativeChannelShape(): io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape {
         val learned = runCatching(learnedProximityState).getOrNull()
         val (unsupported, served) = stateConverger.keys().partition { hardwareAvailability(it, learned) == false }
-        return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape(served, unsupported)
+        val actions = listOf("reload" to system.canReloadDashboard(config.dashboardPackage), "reboot" to system.canReboot())
+        return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape(
+            served + actions.filter { it.second }.map { it.first },
+            unsupported + actions.filterNot { it.second }.map { it.first },
+        )
     }
 
     /**
@@ -2841,9 +2821,9 @@ internal class MqttBridge(
     private val nativeAuthorityDropLogged = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
-     * Run one Panel Assistant command on the same ordered authority MQTT commands use, keyed by the same
-     * channel, so a command for one channel conflates identically whichever transport delivered it. [done]
-     * receives exactly one result. Action channels (reload, reboot, updates) are not accepted here.
+     * Run one Panel Assistant command on the same ordered authority MQTT commands use. Stateful commands
+     * conflate by channel; reload and reboot use the action queue. [done] receives exactly one result.
+     * Actions reach the same sensitive handlers as MQTT.
      *
      * A temporary adapter: until the common handlers take a channel identity, it reaches them through the
      * channel's MQTT command topic, with the payload `PanelAssistantCommandTranslation` mapped from the
@@ -2862,7 +2842,7 @@ internal class MqttBridge(
         val topic = "ha-paneld/$panel/${command.channel}/set"
         when (commandKind(topic)) {
             null -> return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL))
-            CommandKind.ACTION ->
+            CommandKind.ACTION -> if (command.channel !in setOf("reload", "reboot"))
                 return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE))
             CommandKind.LATEST -> Unit
         }
@@ -2870,24 +2850,35 @@ internal class MqttBridge(
         if (payload.size > MAX_COMMAND_PAYLOAD_BYTES) {
             return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE))
         }
-        val admission = commandDispatcher.submitLatest(
-            key = command.channel,
-            onSkipped = { execution ->
-                finish(
-                    if (execution == MqttCommandDispatcher.Execution.SUPERSEDED) {
-                        PanelAssistantCommandResult.Superseded
-                    } else {
-                        PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED)
-                    },
-                )
-            },
-        ) {
+        val run = {
             val refusal = command.admit()
             if (refusal != null) {
                 finish(refusal)
+            } else if (command.channel == "reboot" && !system.canReboot() ||
+                command.channel == "reload" && !system.canReloadDashboard(config.dashboardPackage)
+            ) {
+                finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE))
             } else {
                 finish(panelAssistantCommandResult(consumeCommand(topic, payload, PANEL_ASSISTANT_PEER)))
             }
+        }
+        val admission = if (command.channel == "reload" || command.channel == "reboot") {
+            commandDispatcher.submitAction(run)
+        } else {
+            commandDispatcher.submitLatest(
+                key = command.channel,
+                onSkipped = { execution ->
+                    finish(if (execution == MqttCommandDispatcher.Execution.SUPERSEDED) {
+                        PanelAssistantCommandResult.Superseded
+                    } else {
+                        PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED)
+                    })
+                },
+                command = run,
+            )
+        }
+        if (admission == MqttCommandDispatcher.Admission.CLOSED || admission == MqttCommandDispatcher.Admission.REJECTED) {
+            finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED))
         }
         recordCommandAdmission(admission)
     }
@@ -2959,7 +2950,10 @@ internal class MqttBridge(
                     payload,
                     "Reload the dashboard renderer from Home Assistant",
                 )
-                handleReload()
+                val reloaded = handleReload()
+                if (!reloaded && commandPeer.get() == PANEL_ASSISTANT_PEER) {
+                    throw LiveSettingUnavailableException("reload")
+                }
             }
             cmdReboot -> {
                 authorizeRemoteSensitive(
@@ -2967,7 +2961,10 @@ internal class MqttBridge(
                     payload,
                     "Reboot this panel from Home Assistant",
                 )
-                system.reboot()
+                val rebooted = system.reboot()
+                if (!rebooted && commandPeer.get() == PANEL_ASSISTANT_PEER) {
+                    throw LiveSettingUnavailableException("reboot")
+                }
             }
             cmdButtons -> if (hasButtonBacklight) handleButtons(payload)
             cmdUpdateCompanion -> handleSoftwareCommand(SoftwareComponent.COMPANION, payload) {
@@ -3237,19 +3234,9 @@ internal class MqttBridge(
         stateConverger.reconcile("watchdog", force = true)
     }
 
-    // The wake-word listener / Assist pipeline itself is owned by the voice-coordinator lane: this only
-    // persists the switch and publishes its state, exactly like every other config-only entity here.
-    // Disabling does not force-reconcile voice_state — that stays whatever the coordinator's
-    // VoiceStateAuthority currently reports (its own default is OFF, and the coordinator is expected to
-    // fall back there once it observes the setting go off).
-    //
-    // The command topic is subscribed unconditionally (ha-paneld/$panel/+/set), so HA discovery
-    // gating alone is not a write guard: a directly-published ON must still be refused here when this
-    // bridge generation has no microphone, exactly like handleWakeOnWave refuses without hasProximity.
-    // Unlike that ignore-only refusal, this one also force-reconciles: voice_enabled's own channel now
-    // reports OFF whenever !hasMicrophone (see createStateConverger), so the reconcile call overwrites
-    // any stale retained ON left over from before the capability disappeared (e.g. a profile switch)
-    // rather than merely declining to persist the new one.
+    // The voice assistant is a Home Assistant satellite through Panel Assistant, never an MQTT entity:
+    // this handler is only the live-setting path the panel's own Configure page uses, and an ON on a
+    // bridge generation without a microphone is refused.
     //
     // A refusal or a failed durable commit THROWS rather than returning silently. dispatchSetting runs
     // inside the HTTP live-setting path's command-dispatcher lane, whose exception handling is what
@@ -3264,7 +3251,7 @@ internal class MqttBridge(
             on = on,
             hasMicrophone = hasMicrophone,
             commit = config::commitVoiceEnabled,
-            reconcile = { stateConverger.reconcile("voice_enabled", force = true) },
+            reconcile = {},
         )
         check(accepted) {
             if (on && !hasMicrophone) "this panel has no microphone capability"
@@ -3282,12 +3269,6 @@ internal class MqttBridge(
      *  MQTT/HTTP command path and must still tell HA. */
     fun publishKioskState() {
         dispatchStateWork { stateConverger.reconcile("kiosk_lock", force = true) }
-    }
-
-    /** Publish the current voice-assistant phase — called from VoiceStateAuthority's change listener,
-     *  which the voice-coordinator lane drives outside any MQTT/HTTP command path. */
-    fun publishVoiceState() {
-        dispatchStateWork { stateConverger.reconcile("voice_state", force = true) }
     }
 
     /** Publish only the already-committed channel. Staged self-update transactions call this after the
@@ -3682,15 +3663,14 @@ internal class MqttBridge(
     // Reload: keep the hard restart (the right recovery for a wedged WebView), but if a per-panel home
     // dashboard is set, deep-link back to it once the frontend has cold-started — so reload lands on THIS
     // panel's dashboard, not the Companion's user-default. The delayed nav runs off the MQTT thread.
-    private fun handleReload() {
+    private fun handleReload(): Boolean {
         // Built-in renderer: reload returns to the configured home dashboard (clear any navigate path),
         // and the WebView reloads its own view — no Companion deep-link re-navigation is needed.
         if (config.dashboardPackage.isBlank() || config.dashboardPackage == SystemController.BUILTIN_DASHBOARD) {
             BuiltinDashboard.navPath = null
-            system.reloadDashboard(config.dashboardPackage)
-            return
+            return system.reloadDashboard(config.dashboardPackage)
         }
-        system.reloadDashboard(config.dashboardPackage)
+        if (!system.reloadDashboard(config.dashboardPackage)) return false
         // Already canonical by construction, so it is the local path to deep-link as stored. Re-running
         // it through scheme stripping would corrupt a legal route whose query happens to contain "://".
         val home = config.homeDashboard
@@ -3709,6 +3689,7 @@ internal class MqttBridge(
                 null
             }
         }
+        return true
     }
 
     private fun handleNavigate(payload: String) {
@@ -4214,16 +4195,6 @@ internal class MqttBridge(
         }
         registryExposable("touch_sound") {
             stateConverger.reconcile("touch_sound", force = true)
-        }
-        // Voice assistant — the switch AND the state sensor both require hasMicrophone (spec.availableWhen),
-        // so both tombstone together on a panel with no microphone. The wake-word/Assist runtime itself is
-        // the voice-coordinator lane's; this bridge only persists the switch and republishes the phase the
-        // coordinator's VoiceStateAuthority reports.
-        registryExposable("voice_enabled") {
-            stateConverger.reconcile("voice_enabled", force = true)
-        }
-        registryExposable("voice_state") {
-            publishDiag("voice_state")
         }
 
         // HA Companion app auto-update — installs/updates the minimal Companion over root (the

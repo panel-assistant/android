@@ -61,21 +61,14 @@ object Migrations {
             values.putIfAbsent("camera_fps", "15")
             values.putIfAbsent("camera_kbps", "2000")
         },
-        // Schema 8 adds the Voice settings group. Unlike camera_enabled (schema 7), voice_enabled and
-        // voice_state both carry an `ha` descriptor, so a pre-schema-8 bundle also needs their exposure
-        // defaults filled in — without this, importing an older bundle into a schema-8 store would leave
-        // those two keys absent, and an absent expose flag reads through to the SPEC default anyway on
-        // the live store, but a bundle re-exported at the OLD schema by a fleet member who hasn't upgraded
-        // yet must still carry an explicit, correct default rather than relying on that fallback holding
-        // on every future reader.
+        // Schema 8 adds the Voice settings group. The voice settings carry no `ha` descriptor, so they
+        // need no exposure defaults.
         Migration { values ->
             values.putIfAbsent("voice_enabled", "false")
             values.putIfAbsent("voice_wake_words", "[\"okay_nabu\"]")
             values.putIfAbsent("voice_pipelines", "{}")
             values.putIfAbsent("voice_audio_source", "voice_recognition")
             values.putIfAbsent("voice_sensitivity", "normal")
-            values.putIfAbsent("${SettingsRegistry.HA_EXPOSE_PREFIX}voice_enabled", "false")
-            values.putIfAbsent("${SettingsRegistry.HA_EXPOSE_PREFIX}voice_state", "false")
         },
         // Schema 9 adds the per-panel interface-language preference. `auto` preserves the existing
         // locale-selection behaviour; an explicit value must survive unchanged when a bundle advances.
@@ -83,13 +76,14 @@ object Migrations {
             values.putIfAbsent("ui_language", SettingsRegistry.DEFAULT_UI_LANGUAGE)
         },
         // Schema 10 adds the Assist pre-amplification gain and camera exposure bias. Neither carries an
-        // `ha` descriptor, so unlike the schema-8 voice keys they need no exposure defaults. Zero preserves
-        // both prior behaviours: unity gain and the camera's own automatic exposure.
+        // `ha` descriptor, so they need no exposure defaults. Zero preserves both prior behaviours: unity
+        // gain and the camera's own automatic exposure.
         Migration { values ->
             values.putIfAbsent("voice_mic_gain_db", "0")
             values.putIfAbsent("camera_exposure", "0")
         },
         Migration { values -> values.putIfAbsent("dashboard_network_warning", "true") },
+        Migration { values -> values.putIfAbsent("auto_sleep_touch_delay_seconds", "30") },
     )
 
     /**
@@ -126,6 +120,7 @@ object Migrations {
                     "unrecognised-shape values may be ignored",
             )
         }
+        m.keys.removeAll(SettingsRegistry.RETIRED_KEYS)
         return m to warnings
     }
 }

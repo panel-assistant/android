@@ -579,6 +579,20 @@
       "softMaxChars": 90,
       "hardMaxChars": 130
     },
+    "configure.auto_sleep.fixed_delay": {
+      "text": "Screen off after {count} seconds without touch.",
+      "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
+      "surface": "configure",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{count}"
+      ],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 80
+    },
     "configure.auto_sleep.ha_history_retrying": {
       "text": "Home Assistant history is temporarily unavailable. Retrying automatically…",
       "sourceHash": "f8670fc64b08cd7dc979e51f559409b04d5fc8e643ba2ca11b0facb20196ae7e",
@@ -1066,6 +1080,18 @@
       "softMaxChars": 58,
       "hardMaxChars": 87
     },
+    "configure.auto_sleep.source_touch": {
+      "text": "Touch inactivity",
+      "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
+      "surface": "configure",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
+      "hardMaxChars": 80
+    },
     "configure.auto_sleep.source_update_failed": {
       "text": "Could not update this activity source.",
       "sourceHash": "20f147602e00214857ab0183b98da66b0977d11a22395d2052ac093f796c6050",
@@ -1200,6 +1226,20 @@
       ],
       "softMaxChars": 88,
       "hardMaxChars": 126
+    },
+    "configure.auto_sleep.touch_help": {
+      "text": "Uses touch activity on this panel. Home Assistant and presence sensors are not required.",
+      "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
+      "surface": "configure",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant"
+      ],
+      "softMaxChars": 88,
+      "hardMaxChars": 132
     },
     "configure.auto_sleep.updating_suffix": {
       "text": " · Updating…",
@@ -1504,18 +1544,6 @@
     "configure.badge.experimental": {
       "text": "experimental",
       "sourceHash": "748be63c87c9fad252fbd0a2e16d0bdd446d2f7acb456b820ed417e9b1f451df",
-      "surface": "configure",
-      "context": "badge",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 24,
-      "hardMaxChars": 40
-    },
-    "configure.badge.skunk_works": {
-      "text": "skunk-works",
-      "sourceHash": "a8f2afd0e3e85d2b17b647f2dd1471a8df0c450ce5eeb25c858a7068088d060d",
       "surface": "configure",
       "context": "badge",
       "risk": "ordinary",
@@ -5346,6 +5374,89 @@
       "frozen": [],
       "softMaxChars": 43,
       "hardMaxChars": 62
+    },
+    "configure.voice.import_choose_files": {
+      "text": "Choose the .json manifest and the .tflite model first.",
+      "sourceHash": "fa414a4812d0db87e2bb63ec269b6f25fd0ae7870052984f468c6de6530fc588",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        ".json",
+        ".tflite"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 100
+    },
+    "configure.voice.import_done": {
+      "text": "Imported {wake_word}.",
+      "sourceHash": "0e0dca7d3b4ad4b487ce709a1fa74d1e0bb9f256c419d7af3c1e20e6aeda09aa",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{wake_word}"
+      ],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 48
+    },
+    "configure.voice.import_failed": {
+      "text": "Import failed: {reason}",
+      "sourceHash": "9660b716434b0e4fe2e4aead3463c5084fffbaba0a243f5ce8ddd02bc6a50964",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "consequential",
+      "siblings": [],
+      "placeholders": [
+        "{reason}"
+      ],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 48
+    },
+    "configure.voice.import_guide": {
+      "text": "How to train your own wake word",
+      "sourceHash": "5a8bf4330ceea02e5f36f113f6beac65fbf27c8ac589ac557dcfed326d559913",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 80
+    },
+    "configure.voice.import_help": {
+      "text": "Import a microWakeWord model you trained: its .json manifest and .tflite file.",
+      "sourceHash": "4f5fb189552c28937a37b6125ac56114733f4d41c102b12d39ade8ed4dea00ff",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "microWakeWord",
+        ".json",
+        ".tflite"
+      ],
+      "softMaxChars": 100,
+      "hardMaxChars": 140
+    },
+    "configure.voice.import_wake_word": {
+      "text": "Import trained wake word",
+      "sourceHash": "67ca4b530450a4ac62a77d2916c15496edc7a423f82f7639dd6ff386eddee540",
+      "surface": "configure",
+      "context": "voice",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 48
     },
     "configure.voice.pipeline_not_listed": {
       "text": "{pipeline} · not in Home Assistant's list",
@@ -30946,8 +31057,8 @@
       "hardMaxChars": 32
     },
     "settings.auto_sleep.help": {
-      "text": "Automatically wake the panel when activity is detected and switch the screen off after the learned delay. Manual screen control remains separate.",
-      "sourceHash": "5061de3660a9fc18a43615782f216134dffef4d62725528ce1d72e3927d878c9",
+      "text": "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
+      "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
       "surface": "settings",
       "context": "Configure > Behaviour > Auto sleep: supporting help for the auto_sleep setting.",
       "risk": "ordinary",
@@ -31004,8 +31115,8 @@
       "hardMaxChars": 35
     },
     "settings.auto_sleep_source.help": {
-      "text": "Use the panel’s calibrated proximity sensor, or choose Home Assistant Area devices. If the selected source is unavailable, automatic sleep pauses and touch remains available.",
-      "sourceHash": "0350776edee98aa7748c83872293309856544907f647121be111047fa868e50b",
+      "text": "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity. Presence modes pause if their source is unavailable; touch inactivity needs no presence setup.",
+      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
       "surface": "settings",
       "context": "Panel proximity presence and Auto-sleep source selection.",
       "risk": "ordinary",
@@ -31018,15 +31129,39 @@
       "hardMaxChars": 522
     },
     "settings.auto_sleep_source.label": {
-      "text": "Auto-sleep presence source",
-      "sourceHash": "9a054a7f24e839eacfc5c07281e98e4d5ddf2a0772fe4bc13838166a6eaca289",
+      "text": "Auto-sleep activity source",
+      "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
       "surface": "settings",
-      "context": "Panel proximity presence and Auto-sleep source selection.",
+      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 52,
+      "hardMaxChars": 80
+    },
+    "settings.auto_sleep_touch_delay_seconds.help": {
+      "text": "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
+      "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "surface": "settings",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 103,
+      "hardMaxChars": 151
+    },
+    "settings.auto_sleep_touch_delay_seconds.label": {
+      "text": "Touch inactivity delay (seconds)",
+      "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
+      "surface": "settings",
+      "context": "Auto-sleep touch inactivity source and fixed delay.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 48,
       "hardMaxChars": 80
     },
     "settings.camera_enabled.help": {
@@ -33366,8 +33501,8 @@
       "hardMaxChars": 36
     },
     "settings.voice_pipelines.help": {
-      "text": "Which Home Assistant Assist pipeline each configured wake word triggers, as a JSON object of wake word to pipeline id. An empty value uses Home Assistant's preferred pipeline.",
-      "sourceHash": "9a5deb161029eecc2820836dda2ae9066979d266d70caf0ab2ae93c4e128eebc",
+      "text": "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred pipeline follows whichever pipeline Home Assistant prefers.",
+      "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
       "surface": "settings",
       "context": "Configure > Voice > Wake word pipelines: supporting help for the voice_pipelines setting.",
       "risk": "ordinary",
@@ -33377,7 +33512,7 @@
       "placeholders": [],
       "frozen": [
         "Home Assistant",
-        "JSON"
+        "Assist"
       ],
       "softMaxChars": 237,
       "hardMaxChars": 315
@@ -33424,37 +33559,9 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
-    "settings.voice_state.help": {
-      "text": "Current voice-assistant phase: off, idle, listening, processing, responding or error.",
-      "sourceHash": "2a671d81e77de2a726125f798e643ca84897af8699a27bb850c10bbd4f803c45",
-      "surface": "settings",
-      "context": "Configure > Voice > Voice assistant state: supporting help for the voice_state setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.voice_state.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
-    "settings.voice_state.label": {
-      "text": "Voice assistant state",
-      "sourceHash": "51616ec4032c3dd7c2a589b3338db98e776642afbe237f6d1c4099abe132bb74",
-      "surface": "settings",
-      "context": "Configure > Voice: label for the voice_state setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.voice_state.help"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 32,
-      "hardMaxChars": 38
-    },
     "settings.voice_wake_words.help": {
-      "text": "Up to two local wake-word models to listen for, as a JSON array: okay_nabu, hey_jarvis, hey_mycroft, alexa.",
-      "sourceHash": "b3b162ba4d8e06e2520a3ba4f8fd28f822616749940c6ab4fbfa245e5ff7199b",
+      "text": "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, and any you import below.",
+      "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
       "surface": "settings",
       "context": "Configure > Voice > Wake words: supporting help for the voice_wake_words setting.",
       "risk": "ordinary",
@@ -33463,11 +33570,10 @@
       ],
       "placeholders": [],
       "frozen": [
-        "JSON",
-        "okay_nabu",
-        "hey_jarvis",
-        "hey_mycroft",
-        "alexa"
+        "Okay Nabu",
+        "Hey Jarvis",
+        "Hey Mycroft",
+        "Alexa"
       ],
       "softMaxChars": 160,
       "hardMaxChars": 193

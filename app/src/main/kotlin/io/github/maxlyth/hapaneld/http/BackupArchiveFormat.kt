@@ -42,8 +42,10 @@ internal fun declaredArchiveEntries(
     profiles: org.json.JSONObject?,
     companion: org.json.JSONObject?,
     state: org.json.JSONObject?,
+    wakeWords: org.json.JSONObject?,
 ): Set<String> {
-    val entries = ArrayList<String>(7)
+    val entries = ArrayList<String>(8)
+    wakeWords?.let { entries += io.github.maxlyth.hapaneld.backup.WakeWordBackup.declaredEntry(it) }
     if (state?.has("entry") == true) {
         entries += archiveTextRef(
             state,

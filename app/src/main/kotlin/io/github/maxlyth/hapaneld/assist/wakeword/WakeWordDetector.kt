@@ -1,9 +1,7 @@
 package io.github.maxlyth.hapaneld.assist.wakeword
 
-import android.content.Context
 import io.github.maxlyth.hapaneld.audio.PcmConsumer
 import io.github.maxlyth.hapaneld.audio.PcmFrame
-import java.io.IOException
 
 /** One wake word heard: which model, its phrase, the window-mean probability (0..1) and when. */
 data class WakeWordHit(
@@ -38,6 +36,13 @@ class WakeWordDetector(
     maxActive: Int = DEFAULT_MAX_ACTIVE,
     private val cooldownChunks: Int = DEFAULT_COOLDOWN_CHUNKS,
     private val warmupInferences: Int = DEFAULT_WARMUP_INFERENCES,
+    /**
+     * Hears the highest window mean of each approach that came within reach of a model's cutoff without
+     * firing, once the approach is over, so a wake word that is heard but never quite fires can be diagnosed.
+     */
+    private val nearMiss: (modelId: String, mean: Float) -> Unit = { _, _ -> },
+    /** Added to every model's cutoff: negative wakes more readily, positive asks for a clearer match. */
+    private val cutoffOffset: Float = 0f,
 ) : PcmConsumer, AutoCloseable {
 
     /** True once every loaded model has stopped: the listener is armed but can no longer hear. */
@@ -48,6 +53,7 @@ class WakeWordDetector(
         var next = 0
         var inferences = 0L
         var cooldownRemaining = 0
+        var approachPeak = 0f
 
         fun clearWindow() {
             window.fill(0)
@@ -86,7 +92,15 @@ class WakeWordDetector(
             if (slot.inferences <= warmupInferences) continue
             if (coolingDown) continue
             val mean = slot.window.sum().toFloat() / (slot.window.size * WakeWordScorer.MAX_PROBABILITY)
-            if (mean >= slot.model.config.probabilityCutoff) {
+            val cutoff = (slot.model.config.probabilityCutoff + cutoffOffset).coerceIn(MIN_CUTOFF, MAX_CUTOFF)
+            if (mean >= NEAR_MISS_FLOOR && mean < cutoff) {
+                slot.approachPeak = maxOf(slot.approachPeak, mean)
+            } else if (mean < NEAR_MISS_FLOOR && slot.approachPeak > 0f) {
+                nearMiss(slot.model.config.id, slot.approachPeak)
+                slot.approachPeak = 0f
+            }
+            if (mean >= cutoff) {
+                slot.approachPeak = 0f
                 slot.clearWindow()
                 slot.cooldownRemaining = cooldownChunks
                 listener(WakeWordHit(slot.model.config.id, slot.model.config.wakeWord, mean, frame.timestampNs))
@@ -115,29 +129,16 @@ class WakeWordDetector(
         /** Matches ESPHome's MIN_SLICES_BEFORE_DETECTION. */
         const val DEFAULT_WARMUP_INFERENCES = 100
 
-        /**
-         * Load bundled models by id with the native scorer. Ids whose model the engine rejects are
-         * skipped; the result is null when the native library is unavailable. Asset read failures
-         * propagate.
-         */
-        @Throws(IOException::class)
-        fun loadBundled(context: Context, ids: List<String>, maxActive: Int = DEFAULT_MAX_ACTIVE): List<LoadedWakeWordModel>? {
-            if (!NativeMicroWakeWord.available) return null
-            val loaded = ArrayList<LoadedWakeWordModel>()
-            try {
-                for (id in ids.take(maxActive)) {
-                    val config = MicroWakeWordModelConfig.fromAssets(context, id)
-                    val scorer = NativeMicroWakeWord.create(MicroWakeWordModelConfig.readModel(context, config), config)
-                        ?: continue
-                    loaded += LoadedWakeWordModel(config, scorer)
-                }
-            } catch (t: Throwable) {
-                // A model that fails to load leaves the ones already built holding native arenas that
-                // nothing else will ever close, because the caller never receives them.
-                loaded.forEach { runCatching { it.close() } }
-                throw t
-            }
-            return loaded
+        /** A window mean at or above this, short of the cutoff, is worth a diagnostic line. */
+        const val NEAR_MISS_FLOOR = 0.5f
+        private const val MIN_CUTOFF = 0.5f
+        private const val MAX_CUTOFF = 0.99f
+
+        /** The `voice_sensitivity` setting as an offset to each model's own cutoff. */
+        fun cutoffOffset(sensitivity: String?): Float = when (sensitivity?.trim()?.lowercase()) {
+            "low" -> 0.02f
+            "high" -> -0.12f
+            else -> 0f
         }
     }
 }

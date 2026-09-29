@@ -54,6 +54,8 @@ internal class RestoreRoutes(
     private val rejectHardenedNetworkAdb: suspend (ApplicationCall, String?) -> Boolean,
     private val scope: CoroutineScope,
     private val executor: RestoreExecutor,
+    private val wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog?,
+    private val verifiedRetiredReceipt: (File) -> Boolean,
 ) {
 
     /** Restore endpoint: decrypt + validate; ?dry_run=1 reports contents without writing. A real restore is
@@ -301,8 +303,18 @@ internal class RestoreRoutes(
                     HttpStatusCode.BadRequest,
                 )
             val stateUnavailable = stateDisposition == StateArchiveSection.Disposition.INCOMPLETE
+            // Imported wake words exist only as archive entries; a section anywhere else is malformed.
+            val wakeWordsObj = obj.optJSONObject("wake_words")
+            if (obj.has("wake_words") && (wakeWordsObj == null || archiveManifest == null)) return call.respondText(
+                withInstallPresentation(
+                    """{"ok":false,"error":"invalid wake_words object"}""",
+                    InstallPresentation("restore-archive-metadata-invalid"),
+                ),
+                ContentType.Application.Json,
+                HttpStatusCode.BadRequest,
+            )
             val archiveEntries = if (archiveManifest != null) {
-                runCatching { declaredArchiveEntries(entityObj, profilesObj, comp, stateObj) }.getOrNull()
+                runCatching { declaredArchiveEntries(entityObj, profilesObj, comp, stateObj, wakeWordsObj) }.getOrNull()
                     ?: return call.respondText(
                         withInstallPresentation(
                             """{"ok":false,"error":"invalid backup archive metadata"}""",
@@ -356,7 +368,8 @@ internal class RestoreRoutes(
             // pseudonym instead, and an archive from anywhere else is refused outright rather than
             // restored with its device-local rows withheld.
             val sameDeviceByDiscoveryId =
-                BackupIdentity.sameDevice(obj, panelAssistantDiscoveryId(config.androidId))
+                BackupIdentity.sameDevice(obj, panelAssistantDiscoveryId(config.deviceUid)) ||
+                    (migrationRestore && verifiedRetiredReceipt(plainFile))
             if (migrationRestore && !sameDeviceByDiscoveryId) return call.respondText(
                 """{"ok":false,"error":"migration-backup-not-from-this-device"}""",
                 ContentType.Application.Json,
@@ -464,11 +477,33 @@ internal class RestoreRoutes(
             val companionPlan = (plannedCompanion as? CompanionRestore.PlanResult.Valid)?.plan
             retainedCompanionPlan = companionPlan
             val compFiles = companionPlan?.files?.size ?: 0
+            // Decoded here so a malformed section refuses the whole restore before anything is written;
+            // whether the engine accepts each model is only known when it is imported, in the job below.
+            val restoreWakeWords = wakeWordsObj?.let { section ->
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        io.github.maxlyth.hapaneld.backup.WakeWordBackup.read(plainFile, section, archiveEntries, cacheDir)
+                    }
+                }.getOrNull() ?: return call.respondText(
+                    withInstallPresentation(
+                        """{"ok":false,"error":"invalid wake word archive entry"}""",
+                        InstallPresentation("restore-archive-entries-invalid"),
+                    ),
+                    ContentType.Application.Json,
+                    HttpStatusCode.BadRequest,
+                )
+            }.orEmpty()
+            val wakeWordCatalog = wakeWords
+            if (restoreWakeWords.isNotEmpty() && wakeWordCatalog == null) return call.respondText(
+                """{"ok":false,"error":"wake word restore is unavailable"}""",
+                ContentType.Application.Json,
+                HttpStatusCode.ServiceUnavailable,
+            )
             if (dryRun) {
                 requestAccepted = true
                 return call.respondText(
                     """{"ok":true,"dry_run":true,"panel_id":${Json.str(obj.optString("panel_id"))},""" +
-                        """"config_keys":${configPlan.values.size},"config_warnings":${jarr(configPlan.warnings)},"profile_revisions":${profilePlan?.toImport?.size ?: 0},"profile_restart_required":${profilePlan?.restartRequired ?: false},"companion_pkg":${Json.str(companionPlan?.packageName ?: "")},"companion_files":$compFiles,"state_unavailable":$stateUnavailable}""",
+                        """"config_keys":${configPlan.values.size},"config_warnings":${jarr(configPlan.warnings)},"profile_revisions":${profilePlan?.toImport?.size ?: 0},"profile_restart_required":${profilePlan?.restartRequired ?: false},"companion_pkg":${Json.str(companionPlan?.packageName ?: "")},"companion_files":$compFiles,"wake_words":${restoreWakeWords.size},"state_unavailable":$stateUnavailable}""",
                     ContentType.Application.Json,
                 )
             }
@@ -506,6 +541,7 @@ internal class RestoreRoutes(
                 executor.execute(
                     configPlan, entityState, profilePayload, profilePlan, companionPlan,
                     rawPreferences, restorableState, stateUnavailable, migrationRestore,
+                    restoreWakeWords, wakeWordCatalog,
                     progress, restoreAttempt,
                 )
             }

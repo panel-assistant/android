@@ -13,6 +13,9 @@
   // Assist pipeline catalogue for the voice_pipelines picker. null = not fetched yet, false = the
   // endpoint returned an error/503 (degrade to the raw JSON textarea), an array = the fetched catalogue.
   var voicePipelinesCatalog = null, voicePipelinesRequest = 0;
+  // The wake words this panel holds, bundled and imported, for the voice_wake_words picker; same
+  // null / false / list convention as the pipeline catalogue.
+  var voiceWakeWordsCatalog = null, voiceWakeWordsRequest = 0, voiceWakeWordImportStatus = "";
   // A per-load, owner-safe seed supplied by the config response. The endpoint is still fetched every
   // render so a failed query, credential change or Home Assistant area edit can recover immediately.
   var haAreaSeed = null, haAreaSeedGeneration = 0, haAreaCatalogRequest = 0, haAreaUserOverride = false;
@@ -143,7 +146,9 @@
   function localizedEnumOption(fieldKey, wireValue) {
     if (fieldKey === "auto_sleep_source") return wireValue === "panel"
       ? i18nText("configure.auto_sleep.source_panel", "This panel’s proximity sensor")
-      : i18nText("configure.auto_sleep.source_ha", "Home Assistant Area devices");
+      : wireValue === "touch"
+        ? i18nText("configure.auto_sleep.source_touch", "Touch inactivity")
+        : i18nText("configure.auto_sleep.source_ha", "Home Assistant Area devices");
     if (fieldKey === "ui_language" && Object.prototype.hasOwnProperty.call(UI_LANGUAGE_LABELS, wireValue)) {
       return wireValue === "auto"
         ? i18nText("configure.language.automatic", "Automatic")
@@ -620,7 +625,7 @@
     var v = values[f.key];
     if (f.type === "BOOL") {
       var sourceBlocked = f.key === "auto_brightness" && !ambientLightSourceReady();
-      var prerequisiteBlocked = f.key === "auto_sleep" && !autoSleepUsesPanel() && v !== "true" && autoSleepPrerequisite.eligible !== true;
+      var prerequisiteBlocked = f.key === "auto_sleep" && autoSleepUsesHa() && v !== "true" && autoSleepPrerequisite.eligible !== true;
       var blocked = sourceBlocked || prerequisiteBlocked;
       var t = el("div", {
         class: "toggle" + (v === "true" && !sourceBlocked ? " on" : "") + (blocked ? " blocked" : ""),
@@ -631,7 +636,7 @@
       if (sourceBlocked) t.title = i18nText("configure.brightness.waiting_valid_reading", "Waiting for a valid ambient light reading.");
       function toggleValue() {
         if (f.key === "auto_brightness" && !ambientLightSourceReady()) return;
-        if (f.key === "auto_sleep" && !autoSleepUsesPanel() && values[f.key] !== "true" && autoSleepPrerequisite.eligible !== true) return;
+        if (f.key === "auto_sleep" && autoSleepUsesHa() && values[f.key] !== "true" && autoSleepPrerequisite.eligible !== true) return;
         v = (values[f.key] === "true") ? "false" : "true";
         values[f.key] = v;
         t.classList.toggle("on", v === "true");
@@ -717,6 +722,63 @@
       sel.addEventListener("change", function () { values[f.key] = sel.value; setDirty(f.key); });
       return sel;
     }
+    // Wake-word picker: a checkbox per wake word the panel holds (the bundled ones and any imported), and
+    // the import of one the owner trained: its microWakeWord .json manifest and .tflite model, which the
+    // panel checks with its own engine before offering it. Degrades to the raw JSON textarea while the
+    // list is unavailable.
+    if (f.picker === "voice_wake_words") {
+      if (voiceWakeWordsCatalog === null) loadVoiceWakeWords();
+      var wakeWrap = el("div", { class: "voice-wake-words-picker" });
+      if (!Array.isArray(voiceWakeWordsCatalog)) {
+        var wakeRaw = el("textarea", { class: "voice-wake-words-raw", rows: "2", text: v == null ? "" : v });
+        wakeRaw.addEventListener("input", function () { values[f.key] = wakeRaw.value; setDirty(f.key); });
+        wakeWrap.appendChild(wakeRaw);
+        return wakeWrap;
+      }
+      var activeWakeWords = [];
+      try {
+        var parsedActive = JSON.parse(v || "[]");
+        if (Array.isArray(parsedActive)) activeWakeWords = parsedActive.filter(function (w) { return typeof w === "string" && w; });
+      } catch (e) { activeWakeWords = []; }
+      voiceWakeWordsCatalog.forEach(function (word) {
+        var id = word && word.id ? String(word.id) : "";
+        if (!id) return;
+        var box = el("input", { type: "checkbox" });
+        box.checked = activeWakeWords.indexOf(id) >= 0;
+        box.addEventListener("change", function () {
+          activeWakeWords = activeWakeWords.filter(function (w) { return w !== id; });
+          if (box.checked) activeWakeWords.push(id);
+          values[f.key] = JSON.stringify(activeWakeWords);
+          setDirty(f.key);
+          render();
+        });
+        wakeWrap.appendChild(el("label", { class: "voice-wake-word-row", style: "display:block" }, [box, el("span", { text: word.wake_word ? String(word.wake_word) : id })]));
+      });
+      var manifestInput = el("input", { type: "file", accept: ".json,application/json" });
+      var modelInput = el("input", { type: "file", accept: ".tflite" });
+      var importButton = el("button", { type: "button", class: "btn", text: i18nText("configure.voice.import_wake_word", "Import trained wake word") });
+      importButton.addEventListener("click", function () {
+        var manifestFile = manifestInput.files && manifestInput.files[0];
+        var modelFile = modelInput.files && modelInput.files[0];
+        if (!manifestFile || !modelFile) {
+          voiceWakeWordImportStatus = i18nText("configure.voice.import_choose_files", "Choose the .json manifest and the .tflite model first.");
+          render();
+          return;
+        }
+        importButton.disabled = true;
+        importVoiceWakeWord(manifestFile, modelFile);
+      });
+      wakeWrap.appendChild(el("div", { class: "voice-wake-word-import", style: "display:grid;gap:6px;margin-top:8px" }, [
+        el("small", { text: i18nText("configure.voice.import_help", "Import a microWakeWord model you trained: its .json manifest and .tflite file.") }),
+        el("a", {
+          class: "voice-wake-word-guide", href: WAKE_WORD_GUIDE_URL, target: "_blank", rel: "noopener noreferrer",
+          text: i18nText("configure.voice.import_guide", "How to train your own wake word")
+        }),
+        manifestInput, modelInput, importButton,
+        voiceWakeWordImportStatus ? el("small", { text: voiceWakeWordImportStatus }) : null,
+      ]));
+      return wakeWrap;
+    }
     // Wake-word-pipeline picker: one native select per configured wake word (from voice_wake_words),
     // offering the Home Assistant Assist pipelines fetched from /api/v1/voice/pipelines. Degrades to the
     // raw JSON textarea while that endpoint hasn't answered yet, or answered 503 (no Home Assistant
@@ -724,6 +786,7 @@
     // textarea, no picker library.
     if (f.picker === "voice_pipelines") {
       if (voicePipelinesCatalog === null) loadVoicePipelines();
+      if (voiceWakeWordsCatalog === null) loadVoiceWakeWords();
       var pipelinesWrap = el("div", { class: "voice-pipelines-picker" });
       // The raw textarea is focused/mid-edit exactly when it is document.activeElement — checked
       // against THIS render's about-to-be-replaced node, before reconcileConfigCards swaps it out.
@@ -771,9 +834,10 @@
         }
       } catch (e) { pipelineMapping = {}; }
       configuredWakeWords.forEach(function (word) {
-        var pipelineRow = el("div", { class: "voice-pipeline-row" });
-        pipelineRow.appendChild(el("span", { class: "voice-pipeline-label", text: word }));
-        var pipelineSelect = el("select");
+        var pipelineRow = el("div", { class: "voice-pipeline-row", style: "display:flex;align-items:center;gap:8px;margin-bottom:6px" });
+        var known = Array.isArray(voiceWakeWordsCatalog) && voiceWakeWordsCatalog.filter(function (w) { return w && w.id === word; })[0];
+        pipelineRow.appendChild(el("span", { class: "voice-pipeline-label", style: "flex:0 0 auto", text: known && known.wake_word ? String(known.wake_word) : word }));
+        var pipelineSelect = el("select", { style: "flex:1 1 auto;min-width:0;max-width:100%" });
         pipelineSelect.appendChild(el("option", { value: "", text: i18nText("configure.voice.preferred_pipeline", "Preferred pipeline") }));
         var retainedPipelineId = pipelineMapping[word];
         var matchedRetained = false;
@@ -1253,6 +1317,7 @@
     }
     inp.addEventListener("input", function () {
       values[f.key] = inp.value; setDirty(f.key);
+      if (f.key === "auto_sleep_touch_delay_seconds") updateAutoSleepSummary();
       if (f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") queueAutoBrightnessHistory();
     });
     return inp;
@@ -1859,6 +1924,14 @@
 
   function autoSleepSummaryModel(status) {
     status = status || {};
+    if (autoSleepUsesTouch()) {
+      var seconds = Number(values.auto_sleep_touch_delay_seconds || 30);
+      var touchLines = [
+        i18nText("configure.auto_sleep.source_touch", "Touch inactivity"),
+        i18nText("configure.auto_sleep.fixed_delay", "Screen off after {count} seconds without touch.", { count: seconds })
+      ];
+      return { lines: touchLines, accessible: touchLines.join(" · ") };
+    }
     if (autoSleepUsesPanel()) {
       var localLines = [
         i18nText("configure.auto_sleep.source_panel", "This panel’s proximity sensor"),
@@ -1925,9 +1998,12 @@
   }
 
   function autoSleepUsesPanel() { return values.auto_sleep_source === "panel"; }
+  function autoSleepUsesTouch() { return values.auto_sleep_source === "touch"; }
+  function autoSleepUsesHa() { return !autoSleepUsesPanel() && !autoSleepUsesTouch(); }
 
   function autoSleepPrerequisiteText() {
     if (autoSleepUsesPanel()) return i18nText("configure.auto_sleep.panel_setup_help", "Uses calibrated presence at this panel. Set up proximity first; automatic sleep pauses if the sensor is unavailable.");
+    if (autoSleepUsesTouch()) return i18nText("configure.auto_sleep.touch_help", "Uses touch activity on this panel. Home Assistant and presence sensors are not required.");
     var phase = String(autoSleepPrerequisite.phase || "unavailable").toLowerCase();
     var areaName = autoSleepPrerequisite.area_name != null ? autoSleepPrerequisite.area_name : autoSleepPrerequisite.areaName;
     if (phase === "checking") return i18nText("configure.auto_sleep.area_checking", "Checking this panel’s Home Assistant Area…");
@@ -1991,14 +2067,14 @@
     }
     var toggle = document.querySelector("#cfg-auto_sleep [role=switch]");
     if (!toggle) return;
-    var blocked = !autoSleepUsesPanel() && values.auto_sleep !== "true" && autoSleepPrerequisite.eligible !== true;
+    var blocked = autoSleepUsesHa() && values.auto_sleep !== "true" && autoSleepPrerequisite.eligible !== true;
     toggle.classList.toggle("blocked", blocked);
     toggle.setAttribute("aria-disabled", blocked ? "true" : "false");
     toggle.setAttribute("tabindex", "0");
   }
 
   function convergeAutoSleepOffForMissingArea() {
-    if (autoSleepUsesPanel()) return;
+    if (!autoSleepUsesHa()) return;
     if (values.auto_sleep !== "true") return;
     values.auto_sleep = "false";
     savedValues.auto_sleep = "false";
@@ -2015,7 +2091,7 @@
   }
 
   function loadAutoSleepPrerequisite() {
-    if (autoSleepUsesPanel()) { updateAutoSleepPrerequisiteUi(); return; }
+    if (!autoSleepUsesHa()) { updateAutoSleepPrerequisiteUi(); return; }
     if (!schema.some(function (field) { return field.key === "auto_sleep" && field.available; })) return;
     if (autoSleepPrerequisiteTimer) { clearTimeout(autoSleepPrerequisiteTimer); autoSleepPrerequisiteTimer = null; }
     // Focus/visibility refreshes are background validation. Keep a settled Area verdict visible
@@ -2095,6 +2171,12 @@
   }
 
   function autoSleepPanel() {
+    if (autoSleepUsesTouch()) {
+      var touchSummary = autoSleepSummaryNode();
+      var touchAnnouncement = autoSleepSummaryAnnouncementNode();
+      setAutoSleepSummary(touchSummary, touchAnnouncement, autoSleepSummaryModel());
+      return el("div", { class: "autobright-panel", id: "auto-sleep-status" }, [touchSummary, touchAnnouncement]);
+    }
     if (autoSleepUsesPanel()) {
       var localSummary = autoSleepSummaryNode();
       var localAnnouncement = autoSleepSummaryAnnouncementNode();
@@ -2569,7 +2651,7 @@
   // Read status before history. Transitional discovery is followed automatically with capped backoff;
   // once LIVE, steady state owns no timer and the replay is fetched exactly once.
   function loadAutoSleepData() {
-    if (values.auto_sleep !== "true" || autoSleepLoading) return;
+    if (values.auto_sleep !== "true" || autoSleepUsesTouch() || autoSleepLoading) return;
     autoSleepLoading = true;
     autoSleepHistoryWaiting = true;
     autoSleepHistoryWaitingMessage = i18nText("configure.auto_sleep.history_preparing", "Preparing activity history…");
@@ -2848,11 +2930,10 @@
   // Logging lost its experimental badge after all three transports delivered marked probe records
   // AND real shipped log lines into a collector addressed by hostname. Display keeps its badge — that
   // work is still unvalidated.
+  // The custom wake word guide, through the site's own redirect so the page can move.
+  var WAKE_WORD_GUIDE_URL = "https://panel-assistant.io/go/custom-wake-words";
   var CARD_BADGES = {
-    "Display": ["experimental", "exp"],
-    // Voice is further from settled than the experimental cards: it is off by default, gated on a
-    // profile declaring a microphone, and unannounced.
-    "Voice": ["skunk-works", "skunk"]
+    "Display": ["experimental", "exp"]
   };
   var CARD_NOTES = {
     "Sensors": "Home Assistant reporting",
@@ -2883,7 +2964,7 @@
   };
   var BUILTIN_RENDERER_ONLY_KEYS = { dashboard_idle_return_min: true };
   var HA_CONNECTION_KEYS = { ha_url: true, ha_token: true };
-  var AUTO_SLEEP_KEYS = { auto_sleep_source: true, auto_sleep: true };
+  var AUTO_SLEEP_KEYS = { auto_sleep_source: true, auto_sleep_touch_delay_seconds: true, auto_sleep: true };
   var CONFIG_LAYOUT_KEYS = {
     "Identity": "configure-identity", "MQTT": "configure-mqtt", "Behaviour": "configure-behaviour",
     "Auto-sleep": "configure-auto-sleep",
@@ -3112,8 +3193,7 @@
       var h2kids = [el("span", { text: groupTitle(g) })];
       if (CARD_NOTES[g]) h2kids.push(el("small", { text: i18nText("configure.group.ha_reporting_note", " · Home Assistant reporting") }));
       var badge = CARD_BADGES[g];
-      if (badge) h2kids.push(el("span", { class: "cardbadge " + badge[1], text: badge[0] === "experimental"
-        ? i18nText("configure.badge.experimental", "experimental") : i18nText("configure.badge.skunk_works", "skunk-works") }));
+      if (badge) h2kids.push(el("span", { class: "cardbadge " + badge[1], text: i18nText("configure.badge.experimental", "experimental") }));
       var card = el("div", { class: "card" }, [el("h2", {}, h2kids)]);
       card.setAttribute("data-config-group", g);
       card.setAttribute("data-layout-key", configLayoutKey(g));
@@ -3124,7 +3204,7 @@
         if (g === "Auto-sleep" && f.key === "auto_sleep") card.appendChild(autoSleepPrerequisiteNode());
         if (g === "Auto-sleep" && f.key === "auto_sleep" && values.auto_sleep === "true") {
           card.appendChild(retainedAutoSleepPanel || autoSleepPanel());
-          if (!autoSleepStatus && !autoSleepLoading) setTimeout(loadAutoSleepData, 0);
+          if (!autoSleepUsesTouch() && !autoSleepStatus && !autoSleepLoading) setTimeout(loadAutoSleepData, 0);
         }
         if (g === "Home Assistant connection" && f.key === "ha_url") card.appendChild(haOAuthRow());
         if (f.key === "zigbee_router") {
@@ -3572,6 +3652,47 @@
     }).catch(function () {
       if (request !== voicePipelinesRequest) return;
       voicePipelinesCatalog = false;
+      render();
+    });
+  }
+
+  function loadVoiceWakeWords() {
+    if (voiceWakeWordsCatalog !== null) return;
+    var request = ++voiceWakeWordsRequest;
+    fetch("api/v1/voice/wake-words", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (body) {
+      if (request !== voiceWakeWordsRequest) return;
+      voiceWakeWordsCatalog = (body && Array.isArray(body.wake_words)) ? body.wake_words : [];
+      render();
+    }).catch(function () {
+      if (request !== voiceWakeWordsRequest) return;
+      voiceWakeWordsCatalog = false;
+      render();
+    });
+  }
+
+  // Reads the two files, sends them to the panel, and shows what the panel said. A model the panel's
+  // engine refuses is not added, and one of the same name that was already there stays as it was.
+  function importVoiceWakeWord(manifestFile, modelFile) {
+    Promise.all([manifestFile.text(), modelFile.arrayBuffer()]).then(function (parts) {
+      var bytes = new Uint8Array(parts[1]), binary = "";
+      for (var i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return fetch("api/v1/voice/wake-words", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: modelFile.name, manifest: parts[0], model: btoa(binary) }),
+      });
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) { return { ok: r.ok, body: body }; });
+    }).then(function (result) {
+      voiceWakeWordImportStatus = result.ok
+        ? i18nText("configure.voice.import_done", "Imported {wake_word}.", { wake_word: String(result.body.wake_word || result.body.id || "") })
+        : i18nText("configure.voice.import_failed", "Import failed: {reason}", { reason: String(result.body.error || "") });
+      voiceWakeWordsCatalog = null;
+      loadVoiceWakeWords();
+    }).catch(function () {
+      voiceWakeWordImportStatus = i18nText("configure.voice.import_failed", "Import failed: {reason}", { reason: "" });
       render();
     });
   }

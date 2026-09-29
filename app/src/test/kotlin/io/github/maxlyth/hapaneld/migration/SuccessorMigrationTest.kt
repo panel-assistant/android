@@ -18,6 +18,27 @@ private fun invariant(holds: Boolean, message: () -> String) {
 }
 
 class SuccessorMigrationTest {
+    @org.junit.Rule @JvmField val identityDirectory = org.junit.rules.TemporaryFolder()
+
+    @Test fun oldBridgeTokenAloneCannotReleaseButSignedIdentityDeliveryAllowsRetry() = runBlocking {
+        val state = MigrationState(identityDirectory.root)
+        val token = ReleaseToken(identityDirectory.root)
+        assertTrue(token.accept("a".repeat(64)))
+        val world = World()
+        val markers = FakeMarkers()
+        val ports = object : SuccessorMigration.Ports by world {
+            override fun releaseTokenHeld() = state.handoverReady(token)
+        }
+        val blocked = SuccessorMigration(ports, markers).pass()
+        assertTrue(blocked is Result.Waiting && blocked.step == Step.PULL)
+        assertFalse(world.legacyRetired)
+        assertEquals(0, world.pulls)
+        assertFalse(markers.done(Step.RELEASE))
+        assertTrue(state.acceptDeviceUid("b".repeat(32)))
+        assertEquals(Result.NeedsHeldService, SuccessorMigration(ports, markers).pass())
+        assertTrue(markers.done(Step.RELEASE))
+    }
+
     private class Killed : RuntimeException("process killed")
 
     /** Durable markers survive a kill; everything else in [World] is the device, which also does. */
@@ -178,7 +199,7 @@ class SuccessorMigrationTest {
     @Test fun installedOnlyBridgeHandoffUnblocksTheSuccessorsRealMigrationWithoutAnUpdate() = runBlocking {
         val world = World().apply { tokenHeld = false }
         val markers = FakeMarkers()
-        assertEquals(Result.Waiting(Step.PULL, "no release token has been delivered"), pass(world, markers))
+        assertEquals(Result.Waiting(Step.PULL, "no authenticated installation identity and release token; update the legacy app before handover"), pass(world, markers))
         val handoffEvents = mutableListOf<String>()
         var companion = false
         val signer = "a".repeat(64)
@@ -314,7 +335,7 @@ class SuccessorMigrationTest {
         val world = World().apply { tokenHeld = false }
         val markers = FakeMarkers()
 
-        assertEquals(Result.Waiting(Step.PULL, "no release token has been delivered"), pass(world, markers))
+        assertEquals(Result.Waiting(Step.PULL, "no authenticated installation identity and release token; update the legacy app before handover"), pass(world, markers))
         assertEquals(emptyList<String>(), world.calls)
 
         world.tokenHeld = true

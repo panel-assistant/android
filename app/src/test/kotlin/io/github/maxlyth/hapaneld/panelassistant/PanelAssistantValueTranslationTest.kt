@@ -40,7 +40,6 @@ class PanelAssistantValueTranslationTest {
         assertEquals(known("stable"), translate("companion_update_channel", "Stable"))
         assertEquals(known("swipe_reveal"), translate("navbar", "Swipe reveal"))
         assertEquals(known("performance"), translate("cpu_governor", "Performance"))
-        assertEquals(known("listening"), translate("voice_state", "listening"))
         assertEquals(known("database_failure"), translate("storage_health", "database_failure"))
         assertNull(translate("navbar", "Sideways"))
     }

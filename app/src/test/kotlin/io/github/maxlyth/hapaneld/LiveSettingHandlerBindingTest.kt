@@ -227,7 +227,6 @@ class LiveSettingHandlerBindingTest {
             "prevent_idle_dim" to "prevent_idle_dim",
             "zigbee_router" to "zigbee_router",
             "auto_brightness" to "auto_brightness",
-            "voice_enabled" to "voice_enabled",
         )
 
         assertEquals(expected, externalMqttLiveSettingOwners)
@@ -245,6 +244,8 @@ class LiveSettingHandlerBindingTest {
         val rejected = LiveSettingEffectOwner.settingKeys - admitted
         val expectedRejected = setOf(
             "auto_sleep_source",
+            // The voice assistant is a Home Assistant satellite, never an MQTT switch.
+            "voice_enabled",
             "auto_brightness_minimum_percent",
             "auto_brightness_response_percent",
             "auto_brightness_ha_entity",

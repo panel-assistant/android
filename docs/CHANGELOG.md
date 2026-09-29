@@ -4,6 +4,8 @@
 
 ### Added
 
+- **A panel with a microphone can be a Home Assistant voice assistant.** Turn on **Voice assistant** on the Configure page's Voice card, tick the wake words to listen for and choose the Assist pipeline each one runs. The panel listens for the wake word itself and sends audio to Home Assistant only after hearing it, over its existing Panel Assistant connection, so it appears in Home Assistant as an Assist satellite on the panel's own device, with no ESPHome or MQTT involved. It chimes, ripples and tints the screen edges while it listens, in a colour Panel Assistant gives each pipeline so a pipeline looks the same on every panel. Home Assistant can send it announcements and start conversations. Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa are built in, and you can import a wake word you trained; the Voice card links to a guide. It needs Panel Assistant 0.7.0 or later and is available on the Sonoff NSPanel Pro and the Electron WF1589T.
+
 - **Diagnostics and the info page can warn when a panel-side Zigbee bridge is running.** On panels with Termux, the app checks for a recognized Zigbee2MQTT or CUBE process owned by Termux. Diagnostics distinguishes running, absent, and unknown; the info page warns only when a running bridge is confirmed. The check does not stop or change the bridge.
 
 - **Configure now explains a Companion renderer that cannot take Home.** When a chosen Companion app has its launcher option off, Configure tells you to turn it on. The panel logs the missing Home option once until that state changes, rather than repeating the warning on every check.

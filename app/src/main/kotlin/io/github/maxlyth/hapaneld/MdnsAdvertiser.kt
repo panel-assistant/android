@@ -49,7 +49,7 @@ class MdnsAdvertiser(
     // Acquires the Wi-Fi multicast lock and returns its release. Injectable so the responder can run
     // on a JVM, where there is no WifiManager.
     private val acquireMulticastLock: () -> () -> Unit = { acquireWifiMulticastLock(context) },
-    private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.androidId) },
+    private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.deviceUid) },
 ) {
     private val ownerGate = RetirableMutationGate()
     private var jmdns: JmDNS? = null
@@ -726,11 +726,6 @@ class MdnsAdvertiser(
 
 private const val PANEL_ASSISTANT_DISCOVERY_NAMESPACE = "panel-assistant-mdns-v1\u0000"
 
-/**
- * Return the stable pseudonymous identity exposed to Panel Assistant discovery, if Android supplies
- * one. This deliberately does not expose the Android ID itself: the domain-separated digest cannot be
- * confused with ha-paneld's MQTT or Home Assistant device identity.
- */
 private fun acquireWifiMulticastLock(context: Context): () -> Unit {
     val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     val lock = wifi.createMulticastLock("ha-paneld-mdns").apply {
@@ -740,8 +735,9 @@ private fun acquireWifiMulticastLock(context: Context): () -> Unit {
     return lock::release
 }
 
-internal fun panelAssistantDiscoveryId(androidId: String): String? {
-    val source = androidId.trim()
+/** Domain-separated pseudonym of the persisted installation identity; never a raw hardware ID. */
+internal fun panelAssistantDiscoveryId(installationId: String): String? {
+    val source = installationId.trim()
     if (source.isEmpty()) return null
     return MessageDigest.getInstance("SHA-256")
         .digest((PANEL_ASSISTANT_DISCOVERY_NAMESPACE + source).toByteArray(Charsets.UTF_8))

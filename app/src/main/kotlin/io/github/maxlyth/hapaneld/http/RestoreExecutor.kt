@@ -40,6 +40,7 @@ internal class RestoreExecutor(
     private val onProfileRestart: () -> Boolean,
     private val onProfileRestartAbort: (String) -> Boolean,
     private val onDurableStateRestored: () -> Unit,
+    private val onWakeWordsChanged: () -> Unit,
 ) {
     suspend fun execute(
         configPlan: RestoreConfigPlan,
@@ -51,6 +52,8 @@ internal class RestoreExecutor(
         restorableState: List<ConfigVault.StateRow>,
         stateUnavailable: Boolean,
         migrationRestore: Boolean,
+        restoreWakeWords: List<io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog.ImportedFiles>,
+        wakeWordCatalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog?,
         progress: InstallProgress.Ticket,
         restoreAttempt: RestoreAttempt,
     ) {
@@ -65,6 +68,20 @@ internal class RestoreExecutor(
         var companionResult: CompanionApplyResult? = null
         var profileResult: ProfileBackupRestoreResult? = null
         var appliedRevisionHash: String? = null
+        // Before the configuration, so a restored `voice_wake_words` selecting an imported id finds
+        // its model when the listener rearms. Additive and never fatal: a model the engine refuses is
+        // reported in the result, and a later configuration rollback leaves these imports in place,
+        // exactly as a user's own import would stay.
+        val wakeWordOutcome = if (restoreWakeWords.isEmpty()) null else runCatching {
+            io.github.maxlyth.hapaneld.backup.WakeWordBackup.restore(requireNotNull(wakeWordCatalog), restoreWakeWords)
+        }.getOrElse { failure ->
+            io.github.maxlyth.hapaneld.backup.WakeWordBackup.Outcome(
+                emptyList(),
+                restoreWakeWords.map { it.id to (failure.message ?: "could not be saved") },
+            )
+        }
+        if (wakeWordOutcome?.restored?.isNotEmpty() == true) runCatching { onWakeWordsChanged() }
+        val wakeWordComponent = wakeWordOutcome?.let(::wakeWordRestoreComponent)
         val operation = runCatching {
             configItems = commitConfig.apply(
                 configPlan.values,
@@ -137,15 +154,18 @@ internal class RestoreExecutor(
                         "Restore completed, including $restoredStateRows panel state values"
                     stateUnavailable -> "Restore completed; this backup carried no panel state"
                     else -> "Restore completed"
-                },
+                } + wakeWordRestoreNote(wakeWordOutcome),
                 structured = InstallProgress.OperationResult(
-                    status = InstallProgress.Outcome.SUCCEEDED,
+                    status = restoreOverallStatus(wakeWordOutcome),
                     config = succeededComponent(configItems),
                     profiles = profileComponent(profileResult),
                     companion = companionResult?.component
                         ?: skippedComponent("not present"),
+                    wakeWords = wakeWordComponent,
                 ),
                 presentation = when {
+                    restoreOverallStatus(wakeWordOutcome) != InstallProgress.Outcome.SUCCEEDED ->
+                        InstallPresentation("restore-partial")
                     restoredStateRows > 0 -> InstallPresentation(
                         "restore-completed-with-state",
                         mapOf("count" to restoredStateRows.toString()),
@@ -190,6 +210,7 @@ internal class RestoreExecutor(
                         ?: if (companionPlan == null) skippedComponent("not present")
                         else InstallProgress.ComponentResult(InstallProgress.Outcome.FAILED, 0),
                     rollback = rollback,
+                    wakeWords = wakeWordComponent,
                 ),
                 presentation = InstallPresentation(if (partial) "restore-partial" else "restore-failed"),
             )

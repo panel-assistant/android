@@ -9,9 +9,89 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class RestoreExecutorTest {
+    @get:Rule val folder = TemporaryFolder()
+
+    @Test fun importsPrecedeConfigRearmingAndRemainAfterRollback() = runBlocking {
+        val catalog = wakeWordCatalog(folder.newFolder())
+        PaneldServerHttpFixture().use { fixture ->
+            val ticket = requireNotNull(InstallProgress.start("restore"))
+            var notified = false
+            var rolledBack = false
+            val answers = mutableListOf<Boolean>()
+            try {
+                val executor = executor(
+                    fixture,
+                    wakeWordsChanged = {
+                        assertEquals(listOf("porch"), catalog.available().map { it.id })
+                        notified = true
+                    },
+                    commit = RestoreConfigCommit { _, _, _, _, publish, _, _ ->
+                        assertTrue(notified)
+                        assertEquals(listOf("porch"), catalog.available().map { it.id })
+                        publish("durable")
+                        error("configuration failed after rearming")
+                    },
+                    rollback = { _, _, _, _ -> rolledBack = true; true },
+                )
+                executor.execute(
+                    RestoreConfigPlan(emptyMap(), emptyList(), emptyList()),
+                    null, null, null, null, emptyMap(), emptyList(), false, true,
+                    listOf(importedWakeWord("porch")), catalog, ticket, RestoreAttempt { answers += it },
+                )
+                val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+                assertTrue(rolledBack)
+                assertEquals("failed", result.getString("status"))
+                assertEquals("succeeded", result.getJSONObject("wake_words").getString("status"))
+                assertEquals(listOf("porch"), catalog.exportImported().map { it.id })
+                assertEquals(listOf(false), answers)
+            } finally {
+                InstallProgress.finish(ticket, "test cleanup")
+            }
+        }
+    }
+
+    @Test fun refusedModelsMakeSuccessfulConfigPartialAndDoNotCompleteMigration() = runBlocking {
+        val catalog = wakeWordCatalog(folder.newFolder(), accepts = false)
+        PaneldServerHttpFixture().use { fixture ->
+            val ticket = requireNotNull(InstallProgress.start("restore"))
+            var committed = false
+            val answers = mutableListOf<Boolean>()
+            try {
+                val executor = executor(
+                    fixture,
+                    commit = RestoreConfigCommit { _, _, _, _, publish, _, _ ->
+                        committed = true
+                        publish("durable")
+                        1
+                    },
+                    rollback = { _, _, _, _ -> error("partial import does not roll back configuration") },
+                )
+                executor.execute(
+                    RestoreConfigPlan(emptyMap(), emptyList(), emptyList()),
+                    null, null, null, null, emptyMap(), emptyList(), false, true,
+                    listOf(importedWakeWord("porch")), catalog, ticket, RestoreAttempt { answers += it },
+                )
+                val status = JSONObject(InstallProgress.json())
+                val result = status.getJSONObject("result")
+                assertTrue(committed)
+                assertEquals("partial", result.getString("status"))
+                assertEquals("partial", result.getJSONObject("wake_words").getString("status"))
+                assertEquals(0, result.getJSONObject("wake_words").getInt("items"))
+                assertTrue(status.getString("message").contains("1 wake word not restored (porch)"))
+                assertEquals(listOf(false), answers)
+                assertTrue(catalog.exportImported().isEmpty())
+            } finally {
+                InstallProgress.finish(ticket, "test cleanup")
+            }
+        }
+    }
+
     @Test fun rollbackUsesLatestDurableRevisionAndSameTicket() = runBlocking {
         for (rollbackSucceeds in listOf(true, false)) {
             PaneldServerHttpFixture().use { fixture ->
@@ -40,6 +120,7 @@ class RestoreExecutorTest {
                     executor.execute(
                         RestoreConfigPlan(mapOf("panel_id" to "new-panel"), emptyList(), emptyList()),
                         null, null, null, null, emptyMap(), emptyList(), false, false,
+                        emptyList(), null,
                         ticket, RestoreAttempt { answers += it },
                     )
                     val result = JSONObject(InstallProgress.json()).getJSONObject("result")
@@ -78,6 +159,7 @@ class RestoreExecutorTest {
                 executor.execute(
                     RestoreConfigPlan(mapOf("panel_id" to "new-panel"), emptyList(), emptyList()),
                     null, null, null, null, emptyMap(), emptyList(), true, false,
+                    emptyList(), null,
                     ticket, RestoreAttempt { answers += it },
                 )
                 val status = JSONObject(InstallProgress.json())
@@ -95,6 +177,7 @@ class RestoreExecutorTest {
     private fun executor(
         fixture: PaneldServerHttpFixture,
         currentValues: () -> Map<String, String> = { emptyMap() },
+        wakeWordsChanged: () -> Unit = { error("no successful wake word import") },
         commit: RestoreConfigCommit,
         rollback: suspend (Map<String, String>, DashboardEntityBackupState, String, InstallProgress.Ticket) -> Boolean,
     ) = RestoreExecutor(
@@ -110,5 +193,6 @@ class RestoreExecutorTest {
         onProfileRestart = { error("no profile payload") },
         onProfileRestartAbort = { error("no profile payload") },
         onDurableStateRestored = { error("no state payload") },
+        onWakeWordsChanged = wakeWordsChanged,
     )
 }
