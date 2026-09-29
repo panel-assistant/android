@@ -13,6 +13,65 @@ import org.junit.Test
 
 class PageRoutesHttpTest {
 
+    @Test fun `retired test page redirects old bookmarks under the real host guard`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.enablePages()
+            testApplication {
+                application { fixture.mount(this) }
+                val direct = createClient { followRedirects = false }
+                val response = direct.get("/test?lang=de") { header(HttpHeaders.Cookie, "wiz_escape=1") }
+                assertEquals(HttpStatusCode.Found, response.status)
+                assertEquals("/", response.headers[HttpHeaders.Location])
+                assertEquals("nosniff", response.headers["X-Content-Type-Options"])
+                val refused = direct.get("/test") { header(HttpHeaders.Host, "elsewhere.example") }
+                assertEquals(HttpStatusCode.Forbidden, refused.status)
+                assertEquals("host not allowed\n", refused.bodyAsText())
+            }
+        }
+    }
+
+    @Test fun `API specification is JSON at the canonical route and retains root admission`() {
+        PaneldServerHttpFixture().use { fixture ->
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.get("/api/v1/openapi.json")
+                assertEquals(HttpStatusCode.OK, response.status)
+                assertEquals("application/json", response.headers[HttpHeaders.ContentType]?.substringBefore(';'))
+                assertEquals("nosniff", response.headers["X-Content-Type-Options"])
+                val spec = org.json.JSONObject(response.bodyAsText())
+                assertEquals("3.0.3", spec.getString("openapi"))
+                assertEquals("ha-paneld", spec.getJSONObject("info").getString("title"))
+                assertTrue(spec.getJSONObject("paths").has("/api/v1/info"))
+                val refused = client.get("/api/v1/openapi.json") { header(HttpHeaders.Host, "elsewhere.example") }
+                assertEquals(HttpStatusCode.Forbidden, refused.status)
+                assertEquals("host not allowed\n", refused.bodyAsText())
+            }
+        }
+    }
+
+    @Test fun `dashboard hydration retains localized JSON and root response guards`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.enablePages()
+            fixture.enableWarmDashboard()
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.get("/api/v1/info?lang=zh-Hans")
+                assertEquals(HttpStatusCode.OK, response.status)
+                assertEquals("application/json", response.headers[HttpHeaders.ContentType]?.substringBefore(';'))
+                assertTrue(response.headers.getAll(HttpHeaders.Vary).orEmpty().joinToString().contains("Accept-Language"))
+                assertTrue(response.headers[HttpHeaders.ContentLanguage].orEmpty().contains("zh-Hans"))
+                assertEquals("nosniff", response.headers["X-Content-Type-Options"])
+                val payload = org.json.JSONObject(response.bodyAsText())
+                assertEquals(io.github.maxlyth.hapaneld.BuildConfig.VERSION_CODE, payload.getInt("versionCode"))
+                assertTrue(payload.getJSONObject("cards").getString("infotbl").contains("Warm &lt;panel&gt;"))
+                assertTrue(payload.getJSONObject("cards").getString("livetbl").contains("50% (128)"))
+                val refused = client.get("/api/v1/info") { header(HttpHeaders.Host, "elsewhere.example") }
+                assertEquals(HttpStatusCode.Forbidden, refused.status)
+                assertEquals("host not allowed\n", refused.bodyAsText())
+            }
+        }
+    }
+
     @Test fun `configure keeps proximity mounts conditional and root guards active`() {
         for (proximity in listOf(false, true)) {
             PaneldServerHttpFixture().use { fixture ->
