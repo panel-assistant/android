@@ -1655,96 +1655,14 @@ class PaneldServer internal constructor(
                             else ""
                         call.respondText(recBtn + frag, ContentType.Text.Html)
                     }
-                    get("/display") {
-                        // The factory base is the `wm density` reset reference the sizing control restores;
-                        // the framework's stable density stands in only where that read is unavailable.
-                        val observation = withContext(Dispatchers.IO) {
-                            DisplayGeometryReport.observe(appContext)?.let { framework ->
-                                framework.copy(factoryBaseDpi = densityCache.get().base ?: framework.factoryBaseDpi)
-                            }
-                        }
-                        if (observation == null) {
-                            call.respondText("""{"error":"display-unavailable"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
-                            return@get
-                        }
-                        val profiled = profile.displayGeometry(observation.physicalWidthPx, observation.physicalHeightPx)
-                        call.respondText(
-                            DisplayGeometryReport.json(observation, profiled, recommendedDensity).toString(),
-                            ContentType.Application.Json,
-                        )
-                    }
-                    post("/display/density") {
-                        val strings = requestStrings(call)
-                        val p = receiveBoundedFormParameters(call) ?: return@post
-                        val action = p["action"]                          // "reset" | "rec" (buttons)
-                        val d = p["density"]?.trim()?.toIntOrNull()       // custom density (Apply)
-                        val f = p["font"]?.trim()?.toFloatOrNull()        // custom font scale (Apply)
-                        if (!authorizeSensitive(
-                                call,
-                                SensitiveOperation.DISPLAY_CONFIGURATION,
-                                exactHttpApprovalPayload(call, p.canonicalDigest()),
-                                strings.get("install.display.approval"),
-                            )
-                        ) return@post
-                        val ok = when (action) {
-                            "reset" -> DensityController.allApplied(density.reset(), density.resetFontScale())
-                            "rec" -> DensityController.allApplied(
-                                recommendedDensity?.let { density.set(it) },
-                                recommendedFontScale?.let { density.setFontScale(it) },
-                            )
-                            else -> {  // Apply: set whichever fields were provided
-                                DensityController.allApplied(
-                                    d?.let { density.set(it) },
-                                    f?.let { density.setFontScale(it) },
-                                )
-                            }
-                        }
-                        // Prime the density cache with the KNOWN result so the redirected Install card shows it
-                        // at once — reading `wm density` back immediately after a change can still return the
-                        // pre-write override for a second or two (the change is async), which flashed a stale
-                        // value on the page until a manual reload. Only the just-changed field could race, so
-                        // we take the value we set (d / recommendedDensity / base) and only re-read the
-                        // unchanged fields (which are stable).
-                        val observedSizing = density.observeSizing()
-                        val base = observedSizing.base
-                        val postDpi = when (action) {
-                            "reset" -> base
-                            "rec" -> recommendedDensity ?: observedSizing.current
-                            else -> d ?: observedSizing.current
-                        }
-                        val postFont = when (action) {
-                            "reset" -> 1.0f
-                            "rec" -> recommendedFontScale ?: observedSizing.fontScale
-                            else -> f ?: observedSizing.fontScale
-                        }
-                        snapInvalidate()
-                        if (ok) densityCache.set(DisplaySizingObservation(postDpi, base, postFont))
-                        val message = if (ok) {
-                            strings.get("install.display.result.applied")
-                        } else {
-                            strings.get("install.display.result.failed")
-                        }
-                        val returnTo = localizedHref("install#cfg-display", strings)
-                        val responseStatus = if (ok) HttpStatusCode.OK else HttpStatusCode.InternalServerError
-                        if (call.request.headers["Accept"]?.contains("application/json") == true) {
-                            call.respondText(
-                                "{" +
-                                    "\"ok\":$ok,\"status\":\"${if (ok) "applied" else "apply-failed"}\"," +
-                                    "\"message\":${jsonStr(message)},\"return_to\":${jsonStr(returnTo)}}",
-                                ContentType.Application.Json,
-                                responseStatus,
-                            )
-                        } else {
-                            call.respondText(
-                                "<!doctype html><base href=\"/\"><meta charset=utf-8>" +
-                                    (if (ok) "<meta http-equiv=refresh content='1;url=${esc(returnTo)}'>" else "") +
-                                    "<body style='font-family:system-ui;background:#111;color:#eee;padding:20px'>" +
-                                    esc(message) + (if (ok) "…" else " <a href='${esc(returnTo)}' style='color:#9cf'>${esc(strings.get("install.display.return"))}</a>") + "</body>",
-                                ContentType.Text.Html,
-                                responseStatus,
-                            )
-                        }
-                    }
+                    displayRoutes(
+                        appContext, profile, density, densityCache, recommendedDensity, recommendedFontScale,
+                        requestStrings = ::requestStrings,
+                        snapInvalidate = ::snapInvalidate,
+                        authorizeSensitive = ::authorizeSensitive,
+                        escapeHtml = ::esc,
+                        localizedHref = ::localizedHref,
+                    )
                     // 1-click WebView DevTools: expose the dashboard's CDP socket to the LAN (root relay)
                     // so the user can chrome://inspect with no adb. See CdpRelay.
                     get("/inspect") {

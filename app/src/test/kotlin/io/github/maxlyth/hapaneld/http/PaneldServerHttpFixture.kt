@@ -27,6 +27,7 @@ import sun.misc.Unsafe
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
 internal class PaneldServerHttpFixture(
+    density: io.github.maxlyth.hapaneld.control.DensityController? = null,
     camera: io.github.maxlyth.hapaneld.camera.CameraSurface = io.github.maxlyth.hapaneld.camera.AbsentCameraSurface,
     powerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyAssessment = { error("Unexpected power assessment") },
     repairPowerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult = { error("Unexpected power repair") },
@@ -58,12 +59,22 @@ internal class PaneldServerHttpFixture(
             set(config, object : android.content.ContentResolver(null) {})
         }
     }
+    val sizingCache = io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) {
+        io.github.maxlyth.hapaneld.control.DisplaySizingObservation(240, 320, 1.0f)
+    }
     private val pending = PendingUploadStore().apply { open() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val server = allocate(PaneldServer::class.java).apply {
         field("config", config)
         field("scope", scope)
         field("camera", camera)
+        field("density", density ?: allocate(io.github.maxlyth.hapaneld.control.DensityController::class.java))
+        field("profile", io.github.maxlyth.hapaneld.control.fakeProfile())
+        field("catalogueLoader\$delegate", lazy {
+            // Source-text reason: load runtime catalogues as the app does, so full-mount requests
+            // exercise locale negotiation and translated responses without Android's AssetManager.
+            io.github.maxlyth.hapaneld.i18n.CatalogueLoader { File("src/main/assets", it).readText() }
+        })
         field("entityLearning", allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java))
         field("appContext", context)
         field("cacheDir", directory)
@@ -109,7 +120,7 @@ internal class PaneldServerHttpFixture(
             }
         field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { snap }.also { it.set(snap) })
         field("diagCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { error("Unexpected diagnostic read") })
-        field("densityCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { error("Unexpected density read") })
+        field("densityCache", sizingCache)
         field("stopping", false)
     }
 
