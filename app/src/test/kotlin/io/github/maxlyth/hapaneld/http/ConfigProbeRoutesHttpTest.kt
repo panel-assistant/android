@@ -13,6 +13,57 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ConfigProbeRoutesHttpTest {
+    @Test fun `broker probe reaches a local listener through the production HTTP route`() {
+        java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { listener ->
+            PaneldServerHttpFixture().use { fixture ->
+                testApplication {
+                    application { fixture.mount(this) }
+                    val response = client.get(
+                        "/api/v1/config/probe-broker?url=tcp://127.0.0.1:${listener.localPort}",
+                    )
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    val body = JSONObject(response.bodyAsText())
+                    assertEquals(true, body.getBoolean("ok"))
+                    assertEquals("127.0.0.1", body.getString("host"))
+                    assertEquals("127.0.0.1", body.getString("resolved"))
+                    assertEquals(listener.localPort, body.getInt("port"))
+                    assertEquals(setOf("ok", "host", "port", "resolved"), body.keys().asSequence().toSet())
+                }
+            }
+        }
+    }
+
+    @Test fun `log probe emits a datagram without claiming collector acknowledgement`() {
+        java.net.DatagramSocket(0, java.net.InetAddress.getByName("127.0.0.1")).use { receiver ->
+            receiver.soTimeout = 3_000
+            PaneldServerHttpFixture().use { fixture ->
+                testApplication {
+                    application { fixture.mount(this) }
+                    val response = client.submitForm(
+                        "/api/v1/config/probe-log-sink",
+                        Parameters.build {
+                            append("host", "127.0.0.1")
+                            append("port", receiver.localPort.toString())
+                            append("protocol", "syslog-udp")
+                        },
+                    )
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    val body = JSONObject(response.bodyAsText())
+                    assertEquals(true, body.getBoolean("ok"))
+                    assertEquals(false, body.getBoolean("delivered"))
+                    assertEquals("syslog-udp", body.getString("protocol"))
+                    assertEquals(receiver.localPort, body.getInt("port"))
+                    val packet = java.net.DatagramPacket(ByteArray(4096), 4096)
+                    receiver.receive(packet)
+                    val frame = String(packet.data, packet.offset, packet.length, Charsets.UTF_8)
+                    org.junit.Assert.assertTrue(frame, frame.startsWith("<14>1 "))
+                    org.junit.Assert.assertTrue(frame, frame.contains(" contract-panel ha-paneld - - "))
+                    org.junit.Assert.assertTrue(frame, frame.endsWith(body.getString("marker")))
+                }
+            }
+        }
+    }
+
     @Test fun `network probe validation and body limits run behind production root guards`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {
