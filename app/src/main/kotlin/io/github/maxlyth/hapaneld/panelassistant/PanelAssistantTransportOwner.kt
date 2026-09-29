@@ -125,15 +125,14 @@ internal data class PanelAssistantTransportStatus(
  * on full-jitter exponential backoff from [backoffBaseMs] to [backoffMaxMs], and the attempt counter
  * resets only on an accepted `hello`. Two conditions move to the fixed [slowRetryMs] schedule instead:
  * a token still rejected after one forced refresh, and terminal `hello` refusals. A panel waiting
- * for account confirmation retries every 5 seconds, so approval becomes visible promptly.
+ * for identity or account confirmation retries every 5 seconds, so approval becomes visible promptly.
  * Every wait, slow or fast, ends early on [nudge] (the default network returned) and on a demand
  * change (the credential or identity moved).
  *
- * `unknown_command` and `unknown_panel` are also what a Home Assistant restart looks like from here:
- * Core accepts WebSocket connections before custom integrations finish loading, and an entry reload
- * briefly has no loaded entry. Within [warmupWindowMs] of demand starting or a session ending, those
- * two codes stay on the fast schedule, so a restart or reload costs seconds rather than the slow
- * interval.
+ * `unknown_command` is also what a Home Assistant restart looks like from here: Core accepts
+ * WebSocket connections before custom integrations finish loading. Within [warmupWindowMs] of demand
+ * starting or a session ending, this code stays on the fast schedule, so a restart costs seconds
+ * rather than the slow interval.
  *
  * Credentials come from the shared [HaApiSessionProvider]; this owner holds no token cache. It sends
  * `hello`, protocol pings, the [shadow] reporter's `report_state` requests on a session granted `state`
@@ -452,7 +451,9 @@ internal class PanelAssistantTransportOwner(
             val delayMs = when (retry) {
                 is Retry.Fast -> {
                     attempt = nextAttempt(attempt)
-                    if (retry.refusal == PanelAssistantTransportProtocol.CODE_PANEL_USER_MISMATCH) {
+                    if (retry.refusal == PanelAssistantTransportProtocol.CODE_PANEL_USER_MISMATCH ||
+                        retry.refusal == PanelAssistantTransportProtocol.CODE_UNKNOWN_PANEL
+                    ) {
                         CONFIRMATION_RETRY_MS
                     } else {
                         backoffDelay(attempt)
@@ -476,10 +477,10 @@ internal class PanelAssistantTransportOwner(
     }
 
     private fun refusalRetry(code: String, warm: Boolean): Retry = when (code) {
-        PanelAssistantTransportProtocol.CODE_PANEL_USER_MISMATCH -> Retry.Fast(code)
-        PanelAssistantTransportProtocol.CODE_UNKNOWN_COMMAND,
+        PanelAssistantTransportProtocol.CODE_PANEL_USER_MISMATCH,
         PanelAssistantTransportProtocol.CODE_UNKNOWN_PANEL,
-        -> if (warm) Retry.Fast(code) else Retry.Slow(code)
+        -> Retry.Fast(code)
+        PanelAssistantTransportProtocol.CODE_UNKNOWN_COMMAND -> if (warm) Retry.Fast(code) else Retry.Slow(code)
         else -> Retry.Slow(code)
     }
 
