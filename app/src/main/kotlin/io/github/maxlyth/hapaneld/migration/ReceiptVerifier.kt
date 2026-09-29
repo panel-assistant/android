@@ -30,14 +30,14 @@ internal object ReceiptVerifier {
     private const val MAX_REASON_CHARS = 400
 
     /** Null when the receipt is acceptable, otherwise the first reason it is not. */
-    fun refusal(archive: File, ownDiscoveryId: String?): String? {
+    fun refusal(archive: File, ownDiscoveryId: String?, identityAlreadyVerified: Boolean = false): String? {
         if (!archive.isFile || archive.length() <= 0L) return "receipt is missing"
         val entries = runCatching { readableEntries(archive) }.getOrNull() ?: return "receipt is not a readable archive"
         val manifest = PanelBackup.readManifest(archive, MAX_MANIFEST_BYTES)
             ?.let { runCatching { JSONObject(it) }.getOrNull() }
             ?: return "receipt has no manifest"
         if (manifest.optString("kind") != "ha-paneld-backup") return "receipt is not a panel backup"
-        if (!BackupIdentity.sameDevice(manifest, ownDiscoveryId)) return "receipt was not written on this device"
+        if (!identityAlreadyVerified && !BackupIdentity.sameDevice(manifest, ownDiscoveryId)) return "receipt was not written on this device"
         if ((manifest.optJSONObject("config")?.length() ?: 0) == 0) return "receipt carries no configuration"
 
         val state = manifest.optJSONObject("state")
@@ -59,8 +59,8 @@ internal object ReceiptVerifier {
     }
 
     /** Everything VERIFY asks of a receipt: a whole backup of this device, then one this build can restore. */
-    fun migrationRefusal(archive: File, ownDiscoveryId: String?, plan: (ProfileBackup) -> ProfileBackupRestorePlan): String? =
-        refusal(archive, ownDiscoveryId) ?: profileRefusal(archive, plan)
+    fun migrationRefusal(archive: File, ownDiscoveryId: String?, identityAlreadyVerified: Boolean = false, plan: (ProfileBackup) -> ProfileBackupRestorePlan): String? =
+        refusal(archive, ownDiscoveryId, identityAlreadyVerified) ?: profileRefusal(archive, plan)
 
     /**
      * Why the receipt's profile catalog would be refused by the restore, or null when it would restore.

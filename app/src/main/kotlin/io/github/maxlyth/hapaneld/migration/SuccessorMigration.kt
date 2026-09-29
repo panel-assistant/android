@@ -161,7 +161,7 @@ internal class SuccessorMigration(private val ports: Ports, private val markers:
         }
         // A backup occupies the legacy app's destructive-operation lane and shows there as an operation.
         // Without the token no release can follow, so there is nothing to take one for yet.
-        if (!ports.releaseTokenHeld()) return Result.Waiting(Step.PULL, "no release token has been delivered")
+        if (!ports.releaseTokenHeld()) return Result.Waiting(Step.PULL, "no authenticated installation identity and release token; update the legacy app before handover")
         // While the legacy app still runs, every pass pulls again: a release that was refused for days
         // must not end with a restore of the state the panel had when the successor was first started.
         val sha = ports.pullReceipt() ?: return Result.Waiting(Step.PULL, "backup could not be pulled")

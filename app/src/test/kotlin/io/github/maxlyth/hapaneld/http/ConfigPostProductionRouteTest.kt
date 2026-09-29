@@ -260,7 +260,7 @@ class ConfigPostProductionRouteTest {
             override fun launchComponent(pkg: String): String? = null
             override fun homeActivities(): List<ActivityRef> = emptyList()
             override fun defaultHome(): ActivityRef? = null
-            override fun directStart(component: String) = Unit
+            override fun directStart(component: String) = true
         }))
         setField(server, "sensors", sensors)
         setField(server, "applySetting", applySetting)

@@ -1214,6 +1214,9 @@ class PaneldService : Service() {
             preparedConfig.migrateLogShipTcpDefault()
             preparedConfig.migrateAutoSleepSource()
             preparedConfig.migrateSetupQuestionsForExistingInstall()
+            io.github.maxlyth.hapaneld.migration.MigrationState.of(this@PaneldService).deviceUid()?.let { inherited ->
+                check(preparedConfig.adoptMigrationDeviceUid(inherited)) { "migration installation identity was not committed" }
+            }
             preparedConfig.ensureDeviceUid()
             preparedConfig.ensurePanelId()
             val preparedLiveSettings = LiveSettingAuthority.persistent(
@@ -1776,7 +1779,6 @@ class PaneldService : Service() {
             context = this,
             scope = scope,
             httpPort = { config.httpPort },
-            androidId = { config.androidId },
             mqttState = { runtime.current().mqtt.state },
             offerHandoff = { offerSuccessorHandoff() },
             // LAN delivery has installed the successor; never fall back to a release download.
@@ -2787,7 +2789,7 @@ class PaneldService : Service() {
             credential = auth.stableOwner(),
             accessTokenPresent = auth.accessToken.isNotBlank(),
             identity = PanelAssistantHelloIdentity(
-                did = panelAssistantDiscoveryId(config.androidId),
+                did = panelAssistantDiscoveryId(config.deviceUid),
                 appVersion = BuildConfig.VERSION_NAME,
                 appVersionCode = BuildConfig.VERSION_CODE,
             ),

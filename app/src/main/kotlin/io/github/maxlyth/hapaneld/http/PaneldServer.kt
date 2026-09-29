@@ -598,8 +598,10 @@ internal fun haLifecycleHealthToken(watching: Boolean, snap: HaLifecycle.Snapsho
 }
 
 /** Add Panel Assistant's stable discovery pseudonym without exposing the Android ID itself. */
-internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
-    panelAssistantDiscoveryId(androidId)?.let { " did=$it" }.orEmpty()
+internal fun panelAssistantDiscoveryHealthToken(deviceUid: String, androidId: String = ""): String =
+    panelAssistantDiscoveryId(deviceUid)?.let { did ->
+        " did=$did identity=install" + panelAssistantDiscoveryId(androidId)?.let { " legacy_did=$it" }.orEmpty()
+    }.orEmpty()
 
 /** Which installed identity answered: during the application-id migration a panel can hold both. */
 internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"
@@ -2392,7 +2394,7 @@ class PaneldServer internal constructor(
                     call.respondText(html, ContentType.Text.Html)
                 }
                 get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
+                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
                 }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
@@ -2429,7 +2431,7 @@ class PaneldServer internal constructor(
                         )
                     } ?: unavailableProfileRoutes()
                     get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
+                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
                     }
                     post("/migration-notice/dismiss") {
                         val persisted = config.dismissMigrationNotice()
@@ -9300,7 +9302,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         // this one, prove the archive is from the same device before it has adopted the panel id.
         sb.append(
             BackupIdentity.manifestFragment(
-                panelAssistantDiscoveryId(config.androidId),
+                panelAssistantDiscoveryId(config.deviceUid),
                 appContext.packageName,
                 mqttConnected = mqttState() == "connected",
             ),
@@ -9731,7 +9733,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             // pseudonym instead, and an archive from anywhere else is refused outright rather than
             // restored with its device-local rows withheld.
             val sameDeviceByDiscoveryId =
-                BackupIdentity.sameDevice(obj, panelAssistantDiscoveryId(config.androidId))
+                BackupIdentity.sameDevice(obj, panelAssistantDiscoveryId(config.deviceUid)) ||
+                    (migrationRestore && io.github.maxlyth.hapaneld.migration.MigrationState.of(appContext)
+                        .verifiedRetiredReceipt(plainFile))
             if (migrationRestore && !sameDeviceByDiscoveryId) return call.respondText(
                 """{"ok":false,"error":"migration-backup-not-from-this-device"}""",
                 ContentType.Application.Json,
