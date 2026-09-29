@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld
 
 import io.github.maxlyth.hapaneld.util.AndroidInput
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
+import io.github.maxlyth.hapaneld.util.DashboardPath
 
 /**
  * The dashboard renderer a configured selection resolves to. Shared by the resolver's policies so the
@@ -44,6 +45,13 @@ internal object RendererResolver {
 
     /** Dashboard renderers ha-paneld may have set as HOME and can safely reclaim. */
     val LEGACY_COMPANION_PACKAGE_SET: Set<String> = LEGACY_COMPANION_PACKAGES.toSet()
+
+    /** An explicit per-panel return route only for the two Companion renderers. */
+    fun companionHomeRoute(pkg: String, homeDashboard: String): String? =
+        homeDashboard.takeIf {
+            pkg in LEGACY_COMPANION_PACKAGE_SET &&
+                DashboardPath.canonical(it, preserveRoute = true) == it
+        }
 
     /** Built-in selection: Auto (blank), the [BUILTIN] sentinel, or the own-package alias tolerated as a
      *  self-force-stop-safe alias. Shared by control and status projections. */

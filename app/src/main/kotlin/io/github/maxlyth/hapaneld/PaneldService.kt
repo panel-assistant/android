@@ -1078,6 +1078,7 @@ class PaneldService : Service() {
     // thread until then, and is drained before the camera owner so no client can reattach mid-stop.
     private lateinit var cameraStream: io.github.maxlyth.hapaneld.camera.CameraRtspServer
     private lateinit var navigate: NavigateController
+    private val companionHomeReturnGeneration = java.util.concurrent.atomic.AtomicLong()
     private lateinit var volume: VolumeController
     private lateinit var audio: AudioPlaybackCoordinator
     private lateinit var voice: io.github.maxlyth.hapaneld.assist.VoiceAssistantCoordinator
@@ -1590,6 +1591,25 @@ class PaneldService : Service() {
         }
         system = SystemController(AndroidSystemEnv(this), beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
+        }, homeDashboard = { config.homeDashboard }, onCompanionHome = { pkg, home ->
+            val generation = companionHomeReturnGeneration.incrementAndGet()
+            val priorNavigate = config.lastNavigate
+            scope.launch {
+                kotlinx.coroutines.delay(8_000L) // the Companion frontend must finish its cold start
+                if (teardownBoundary.isStopping || generation != companionHomeReturnGeneration.get() ||
+                    system.resolveDashboard(config.dashboardPackage) != pkg || config.homeDashboard != home ||
+                    config.lastNavigate != priorNavigate
+                ) return@launch
+                val returnId = CompanionHomeReturn.arm(pkg, home, android.os.SystemClock.elapsedRealtime(), valid = {
+                    !teardownBoundary.isStopping && generation == companionHomeReturnGeneration.get() &&
+                        system.resolveDashboard(config.dashboardPackage) == pkg && config.homeDashboard == home &&
+                        config.lastNavigate == priorNavigate
+                }, delivered = {
+                    config.lastNavigate = home
+                    if (::runtime.isInitialized) mqtt.reconcileNavigateState()
+                })
+                if (!system.launchCompanionHomeReturn()) CompanionHomeReturn.clear(returnId)
+            }
         })
         companionDataOperationState = CompanionDataOperationState.from(this)
         entityLearning = preparedEntityLearning

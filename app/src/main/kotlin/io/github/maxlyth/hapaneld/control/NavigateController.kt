@@ -43,5 +43,7 @@ class NavigateController(private val context: Context) {
     companion object {
         private const val TAG = "ha-paneld/navigate"
         private const val DEFAULT_COMPANION = "io.homeassistant.companion.android.minimal"
+
+        internal fun homeUrl(path: String): String = "homeassistant://navigate$path"
     }
 }
