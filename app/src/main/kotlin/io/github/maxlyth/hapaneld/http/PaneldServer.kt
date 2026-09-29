@@ -10,7 +10,6 @@ import io.github.maxlyth.hapaneld.NativeLocale
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleMessage
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime
 import io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime
-import io.github.maxlyth.hapaneld.sensors.PathProbeRuntime
 import io.github.maxlyth.hapaneld.sensors.HaPanelAreaPrerequisitePhase
 import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.DashboardEntityBackupState
@@ -20,11 +19,7 @@ import io.github.maxlyth.hapaneld.HaDiscovery
 import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
 import io.github.maxlyth.hapaneld.PanelStatus
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
-import io.github.maxlyth.hapaneld.RendererAdmissionPresentation
-import io.github.maxlyth.hapaneld.RendererAdmissionRuntime
-import io.github.maxlyth.hapaneld.RendererMode
 import io.github.maxlyth.hapaneld.RendererResolver
-import io.github.maxlyth.hapaneld.dashboardRecoveryPresentation
 import io.github.maxlyth.hapaneld.haSignInPending
 import io.github.maxlyth.hapaneld.normalizeDashboardEntityPath
 import io.github.maxlyth.hapaneld.peersJson
@@ -79,7 +74,6 @@ import io.github.maxlyth.hapaneld.control.VolumeController
 import io.github.maxlyth.hapaneld.control.ZigbeeHealthSnapshot
 import io.github.maxlyth.hapaneld.control.ZigbeeHealthState
 import io.github.maxlyth.hapaneld.control.zigbeeHealthPresentation
-import io.github.maxlyth.hapaneld.control.observePrivilegedRoutes
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
 import io.github.maxlyth.hapaneld.dashboard.readThenClose
 import io.github.maxlyth.hapaneld.dashboard.EntityFilterProtocol
@@ -120,18 +114,12 @@ import io.github.maxlyth.hapaneld.provisioning.ProvisioningReader
 import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.sensors.SensorReporter
-import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
-import io.github.maxlyth.hapaneld.util.AccessDenialMemo
-import io.github.maxlyth.hapaneld.util.DashboardTheme
-import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.AppInstaller
 import io.github.maxlyth.hapaneld.util.AndroidInput
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.BoundedDns
-import io.github.maxlyth.hapaneld.util.BundledHelperInstaller
-import io.github.maxlyth.hapaneld.util.bundledHelperIsCanonical
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
 import io.github.maxlyth.hapaneld.util.CompanionHelperProtocol
 import io.github.maxlyth.hapaneld.util.HelperClient
@@ -156,8 +144,6 @@ import io.github.maxlyth.hapaneld.util.LatestDispatcher
 import io.github.maxlyth.hapaneld.util.GenerationSingleFlight
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
 import io.github.maxlyth.hapaneld.util.SelfUpdater
-import io.github.maxlyth.hapaneld.util.PanelAssistantDevice
-import io.github.maxlyth.hapaneld.util.PanelAssistantUpdateLease
 import io.github.maxlyth.hapaneld.util.UpdateChecker
 import io.github.maxlyth.hapaneld.util.withStagedFiles
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
@@ -1096,55 +1082,24 @@ class PaneldServer internal constructor(
                         )
                         call.respondText(withContext(Dispatchers.IO) { infoJson(strings) }, ContentType.Application.Json)
                     }
-                    get("/diag") {
-                        call.respondText(
-                            withContext(Dispatchers.IO) { managementObservations.diagStaleOk() },
-                            ContentType.Text.Plain,
-                        )
-                    }
+                    managementRoutes(
+                        diagnostics = managementObservations::diagStaleOk,
+                        status = ::statusJson,
+                        onUpdateOwner = onPanelAssistantUpdateOwner,
+                        admitActiveRead = ::admitActiveRead,
+                        refreshUpdates = {
+                            UpdateChecker.check(
+                                appContext, config.updateChannel,
+                                config.companionUpdateChannel, profile.companionMaxVersion,
+                            )
+                        },
+                        refreshStorage = refreshStorageHealth,
+                        cachedStorage = storageHealth,
+                    )
                     loggingRoutes(
                         logApp, logSystem, logWebView, webViewConsoleEnabled, logShipStatus,
                         admitActiveRead = { admitActiveRead(it) },
                     )
-                    // Health + capabilities as JSON (warnings as ready-to-render HTML) — feeds every
-                    // variant's Install/health section client-side. ?refresh=1 forces both the GitHub
-                    // update check and a serialized SQLite observation for this exact response.
-                    get("/status") {
-                        // Only the exact agreed value counts; it hides one MQTT entity and grants nothing.
-                        if (PanelAssistantUpdateLease.declares(call.request.headers[PanelAssistantUpdateLease.HEADER])) {
-                            onPanelAssistantUpdateOwner()
-                        }
-                        val updateRefreshRequested = call.request.queryParameters["refresh"] == "1"
-                        val observationNonce = call.request.queryParameters["database_observation_nonce"]
-                        val refreshRequested = updateRefreshRequested || observationNonce != null
-                        if (refreshRequested && !admitActiveRead(call)) return@get
-                        val statusStorage = withContext(Dispatchers.IO) {
-                            refreshedStatusStorage(
-                                refreshRequested = refreshRequested,
-                                refreshUpdates = {
-                                    if (updateRefreshRequested) runCatching {
-                                        UpdateChecker.check(
-                                            appContext,
-                                            config.updateChannel,
-                                            config.companionUpdateChannel,
-                                            profile.companionMaxVersion,
-                                        )
-                                    }
-                                },
-                                refreshStorage = refreshStorageHealth,
-                                cachedStorage = storageHealth,
-                            )
-                        }
-                        call.respondText(
-                            withContext(Dispatchers.IO) {
-                                statusJson(
-                                    statusStorage.snapshot,
-                                    databaseObservationProof(refreshRequested, observationNonce, statusStorage),
-                                )
-                            },
-                            ContentType.Application.Json,
-                        )
-                    }
                     powerSafetyRoutes(
                         config, powerSafety,
                         powerSafetyAdvisory = { powerSafetyAdvisory(managementObservations.snapStaleOk().privilege) },
@@ -1938,9 +1893,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
 
     private fun dashboardRecoveryWarning(): String? = dashboardRecoveryWarning(dashboardRecoveryState())
 
-    /** Health + capabilities as JSON for the variant UIs. Warnings are ready-to-render HTML fragments. */
-    private fun statusJson(): String = statusJson(storageHealth(), databaseObservationNonce = null)
-
     private fun statusJson(
         storageSnapshot: StorageHealthSnapshot,
         databaseObservationNonce: String? = null,
@@ -1950,125 +1902,18 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val companion = managementObservations.companionServersStaleOk()
         val radio = radioStatus()
         val storage = HealthAudit.storage(storageSnapshot)
-        // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
-        // set as the dashboard banner + Install tab (HealthAudit); the audit lists ALL available updates
-        // (not the ignore-filtered view — Ignore only silences the dashboard banner). Plus two warnings not
-        // modelled by HealthAudit: renderer recovery suppression and a Companion with a blank internal_url.
         val h = healthInputs()
-        val currentUpdates = UpdateChecker.current(appContext)
-        val findings = healthFindings(h, h.webView.display, currentUpdates)
-        val warns = mutableListOf<String>()
-        val warningPresentations = mutableListOf<InstallPresentation?>()
-        fun addWarning(warning: String?, presentation: InstallPresentation?) {
-            if (warning == null) return
-            warns += warning
-            warningPresentations += presentation
-        }
-        val recoveryState = dashboardRecoveryState()
-        addWarning(dashboardRecoveryWarning(recoveryState), dashboardRecoveryPresentation(recoveryState))
-        // Same companion internal-URL decision as the dashboard/Install banner (CompanionDb.warning); this
-        // surface presents it as bare JSON strings (no Ignore/repair buttons), so the copy stays distinct.
-        when (val w = CompanionDb.warning(config.dashboardPackage, companion, management.privilege.directSuReady)) {
-            is CompanionDb.Warning.NeedsRepair -> addWarning(
-                "⚠ <b>Home Assistant Companion has no internal URL</b> (${w.affected} server${if (w.affected == 1) "" else "s"}) — " +
-                    "the dashboard can fail with \"Missing 'Host' header\". Repair it on the Install tab.",
-                InstallPresentation.create("status-companion-url-missing", mapOf("count" to w.affected.toString())),
-            )
-            CompanionDb.Warning.ProbeFailed -> addWarning(
-                "⚠ <b>Home Assistant Companion settings could not be inspected</b> — " +
-                    "ha-paneld will retain any last-known result and retry automatically.",
-                InstallPresentation("status-companion-probe-failed"),
-            )
-            null -> {}
-        }
-        radio?.let { z ->
-            addWarning(
-                zigbeeWarning(z),
-                zigbeeHealthPresentation(z, config.zigbeeRouterConfigured && config.zigbeeRouterEnabled),
-            )
-        }
-        addWarning(storage.warningHtml(), storage.warningPresentation)
-        addWarning(
-            PowerSafetyPresentation.statusWarningHtml(powerAdvisory),
-            PowerSafetyPresentation.warningPresentation(powerAdvisory),
+        val updates = UpdateChecker.current(appContext)
+        val findings = healthFindings(h, h.webView.display, updates)
+        val health = StatusHealth(
+            updates, findings, dashboardRecoveryState(),
+            runCatching(mdnsWarningProjection).getOrNull(), schemaRollbackVersions(),
         )
-        val mdns = runCatching(mdnsWarningProjection).getOrNull()
-        addWarning(mdns?.first, mdns?.second)
-        val rollback = schemaRollbackVersions()
-        findings.forEach { finding ->
-            addWarning(
-                statusWarning(finding),
-                HealthAudit.presentation(
-                    finding,
-                    targetChromium = PanelHealth.MIN_CHROMIUM,
-                    fromSchema = rollback?.first,
-                    toSchema = rollback?.second,
-                    updateComponent = finding.update?.component,
-                ),
-            )
-        }
-        val capColor = mapOf("ok" to "#48c774", "degraded" to "#d9a528", "none" to "#d04a3b")
-        // Stale-while-revalidate keeps status polling fast while ensuring a status-only client still
-        // admits one background refresh instead of preserving an old capability view indefinitely.
-        val caps = management.capabilityRows.joinToString(",") { c ->
-            "{\"name\":${jsonStr(c.name)},\"note\":${jsonStr(c.note)},\"color\":${jsonStr(capColor[c.status] ?: "#888")}}"
-        }
-        val zigbee = radio?.let {
-            JSONObject(it.mqttAttributes()).put("state", it.state.wireValue).toString()
-        } ?: "null"
-        // `renderer` is emitted UNCONDITIONALLY, including for an external or unconfigured renderer,
-        // because a consumer must never have to infer applicability from an absent field. A fleet
-        // check that reads a missing object as "nothing to worry about" restates the very failure
-        // this object exists to expose: a blank panel that every check still reports as green.
-        // `camera` follows the exact same rule for a board with no camera at all — CameraPresentation
-        // .absent() is emitted rather than the field being omitted.
-        val storageProof = databaseObservationNonce?.let {
-            "\"database_observation_nonce\":${jsonStr(it)},"
-        }.orEmpty()
-        val presentationOverlay = installWarningPresentationsJson(warns, warningPresentations)
-            ?.let { "\"warning_presentations\":$it," }
-            .orEmpty()
-        return "{\"warnings\":[${warns.joinToString(",") { jsonStr(it) }}]," + presentationOverlay +
-            "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege)}," +
-            storageProof +
-            "\"panel_assistant_update\":${UpdateChecker.panelAssistantUpdateJson(currentUpdates)}," +
-            // Additive, presentation-only, and read from state the panel already holds.
-            "\"panel_assistant_device\":${
-                PanelAssistantDevice.json(
-                    config.friendlyName,
-                    config.manufacturer,
-                    config.model,
-                    config.haArea,
-                )
-            }," +
-            "\"zigbee_gateway\":$zigbee,\"storage_health\":${storage.statusJson()}," +
-            // `ha_network` follows the same unconditional rule: idle with measuring=false when no
-            // socket is held, never absent.
-            "\"ha_network\":${HaNetworkPathRuntime.statusJson()}," +
-                "\"ha_path_probe\":${PathProbeRuntime.statusJson()}," +
-            "\"renderer\":${rendererAdmission().statusJson()}," +
-            "\"camera\":${camera.presentation().statusJson()}," +
-            "\"power_safety\":${PowerSafetyPresentation.json(powerAdvisory)}}"
+        return managementStatusJson(
+            config, management, companion, powerAdvisory, radio, storage, health,
+            { rendererAdmission(appContext, config, autoBrightnessHttpApi) }, camera::presentation, databaseObservationNonce,
+        )
     }
-
-    /** A health finding as a one-line HTML warning for GET /api/v1/status (no Ignore button; updates keep
-     *  a direct download link — this is the machine-readable audit, not the dashboard banner). */
-    private fun statusWarning(f: HealthAudit.Finding): String = when (f.kind) {
-        HealthAudit.Kind.WEBVIEW_OLD ->
-            "⚠ <b>System WebView is too old</b> (${esc(f.detail)}) — the Home Assistant dashboard may render blank. " +
-                "<a href=\"$WEBVIEW_DOC\" target=\"_blank\" rel=\"noopener\">How &amp; why to update</a> (target Chromium ${PanelHealth.MIN_CHROMIUM}+)."
-        HealthAudit.Kind.NO_RENDERER ->
-            "ℹ <b>MQTT is configured. Next: choose a dashboard renderer.</b> Select ha-paneld's built-in renderer, install the Home Assistant Companion app, or configure another dashboard package."
-        HealthAudit.Kind.UPDATE -> f.update!!.let { u ->
-            "⬆ <b>${esc(u.label)}</b> ${esc(u.latestVersion)} is available (installed ${esc(u.currentVersion)}) — " +
-                "<a href=\"${esc(u.releaseUrl)}\" target=\"_blank\" rel=\"noopener\">download</a>"
-        }
-        HealthAudit.Kind.SCHEMA_ROLLED_BACK ->
-            "⚠ <b>Newer database preserved after a version downgrade</b> (${esc(f.detail)}) — this build opened a " +
-                "fresh state store because its schema is older; some settings may have reset. The previous database " +
-                "is preserved on the panel for recovery. Check Configure or restore a backup."
-    }
-
 
     /** The pencil that marks a value as CONFIGURABLE (vs a static fact) and deep-links to the exact
      *  setting/card on the Configure tab (`/configure#<anchor>` scrolls + flashes it). */
@@ -2141,82 +1986,14 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     private val managementObservations = ManagementObservations(
         appContext, density, managementProjection,
         diagnosticReport = { management, termux ->
-        DiagReader.dump(
-            appContext,
-            profile,
-            management.facts,
-            radioStatus(),
-            privilege = management.privilege,
-            capabilityRows = management.capabilityRows,
-            displaySizing = DiagReader.DisplaySizingEvidence(
-                management.densityBase,
-                management.densityCur,
-                management.fontScale,
-            ),
-            storage = storageHealth(),
-            powerSafety = powerSafety(),
-            renderer = rendererAdmission(),
-            camera = camera.presentation(),
-            wifiStabilityChronic = management.wifiChronic,
-            haNetwork = HaNetworkPathRuntime.diagnosticLine(),
-            haPathProbe = PathProbeRuntime.diagnosticLine(),
-            termuxBridge = termux(),
-        )
+            managementDiagnosticReport(
+                appContext, profile, management, radioStatus(), storageHealth(), powerSafety(),
+                rendererAdmission(appContext, config, autoBrightnessHttpApi), camera.presentation(), termux,
+            )
         },
         scope = scope,
         isStopping = { stopping },
     )
-
-    /**
-     * The renderer/Home Assistant admission projection, built LIVE on every read rather than through
-     * [managementObservations.snapCache].
-     *
-     * Two reasons, both learned the hard way. The state changes during an outage, so a
-     * stale-while-revalidate copy would answer a "is the dashboard up?" question with a value from
-     * before it went down — the same defect that made the lifecycle row live. And a deployment check
-     * judges staleness from `observed_age_ms`, so an age measured against a cached capture would be
-     * an age of the cache, not of the observation.
-     */
-    private fun rendererAdmission(): RendererAdmissionPresentation {
-        val pkg = config.dashboardPackage
-        // Only an Ambient panel pays for the runtime read; every other policy reports nothing from it.
-        val ambient = if (config.dashboardTheme == DashboardTheme.AMBIENT) autoBrightnessHttpApi.ambientTheme() else null
-        val mode = when {
-            SystemController.isBuiltinSelection(pkg, appContext.packageName) -> RendererMode.BUILTIN
-            pkg.isBlank() -> RendererMode.NONE
-            else -> RendererMode.EXTERNAL
-        }
-        return RendererAdmissionPresentation.of(
-            mode = mode,
-            haUrl = config.haUrl,
-            addressFamilyPolicy = config.mqttAddressFamily,
-            live = RendererAdmissionRuntime.current(),
-            nowElapsedMs = android.os.SystemClock.elapsedRealtime(),
-            processStartElapsedMs = android.os.Process.getStartElapsedRealtime(),
-            packageUpdatedAtMs = packageUpdatedAtMs(),
-            nowWallMs = System.currentTimeMillis(),
-            themePolicy = config.dashboardTheme,
-            themeEffectivePolicy = config.dashboardThemeEffective,
-            ambientReason = ambient?.reason,
-            ambientLevel = ambient?.level,
-        )
-    }
-
-    /**
-     * When this app package was last installed or replaced, or null when the package manager would
-     * not say. Same source as [buildToken], read as a number rather than an opaque token because a
-     * deployment check has to do arithmetic with it.
-     *
-     * The failure is deliberately not distinguished from an unset value, and deliberately does not
-     * fail the status request: this is one figure on a health surface whose whole purpose is to keep
-     * answering while things are wrong. Swallowing it is safe because it is reported as null and
-     * every consumer treats null as "cannot prove it" — a deployment check refuses a panel that
-     * cannot name its own install rather than passing it — so the quiet path is the strict one, not
-     * a way through.
-     */
-    private fun packageUpdatedAtMs(): Long? =
-        runCatching { appContext.packageManager.getPackageInfo(appContext.packageName, 0).lastUpdateTime }
-            .getOrNull()
 
     private fun snapInvalidate() = managementObservations.snapInvalidate()
 
@@ -2349,7 +2126,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
                 // changes while the page is open, and the poll fills the cell from the same `/health`
                 // observation that drives the banner. One read of the one state owner.
                 HA_NETWORK_FACT -> HaNetworkPathRuntime.statusText() ?: ""
-                HA_RENDERER_FACT -> rendererAdmission().statusText()
+                HA_RENDERER_FACT -> rendererAdmission(appContext, config, autoBrightnessHttpApi).statusText()
                 // The camera row is live for the same reason, and it is also where a person reads the
                 // stream URL off the panel — with the warning that travels beside it, because the place
                 // the URL is copied from is the place somebody is about to paste it into a card on this
