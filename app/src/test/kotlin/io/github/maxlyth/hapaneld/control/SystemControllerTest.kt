@@ -104,6 +104,10 @@ class SystemControllerTest {
         val deliberateLauncher = sc(FakeSystemEnv(default = ActivityRef(VENDOR, ".Home")),
             builtinForeground = true).first
         assertEquals("ready", deliberateLauncher.homeUiProof("", adminUiVisible = false).state)
+
+        val foreignFallbackName = sc(FakeSystemEnv(default = ActivityRef(VENDOR, ".FallbackHome")),
+            builtinForeground = true).first
+        assertEquals("ready", foreignFallbackName.homeUiProof("", adminUiVisible = false).state)
     }
 
     @Test fun homeUiProofUsesLiveAppStateForExternalDashboard() {
@@ -590,6 +594,11 @@ class SystemControllerTest {
         val (companion, companionRoot, _) = sc(companionEnv, daemon = null)
         companion.applyLauncherHomePolicy("", MIN)
         assertEquals(listOf("cmd package set-home-activity $MIN/Home"), companionRoot.ran)
+
+        val deliberateLauncherEnv = FakeSystemEnv(homes = listOf(DASH_HOME), default = ActivityRef(VENDOR, ".FallbackHome"))
+        val (deliberateLauncher, launcherRoot, _) = sc(deliberateLauncherEnv, daemon = null)
+        deliberateLauncher.applyLauncherHomePolicy("", "")
+        assertTrue(launcherRoot.ran.isEmpty())
     }
 
     @Test fun ensureHomeReclaimsFromSelfViaDaemon() {
