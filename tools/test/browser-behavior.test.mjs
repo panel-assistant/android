@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { chromium } from 'playwright-core';
+import { chromium, webkit } from 'playwright-core';
 
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
@@ -74,6 +74,63 @@ function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
   return { promise, resolve };
+}
+
+for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  browserTest(`Configure entity picker keeps free-form entry, keyboard selection and viewport containment in ${engine}`, async (t) => {
+    let sourceReads = 0;
+    const staleSource = deferred();
+    const brightnessStatus = deferred();
+    const harness = await startHarness((path) => {
+      if (path === '/api/v1/config/schema') return json([{
+        key: 'auto_brightness_ha_entity', label: 'Ambient source', group: 'Display',
+        type: 'STRING', tier: 'ADVANCED', available: true, picker: 'ha_illuminance',
+      }]);
+      if (path === '/api/v1/config') return json({ settings: { auto_brightness_ha_entity: '' }, ha_expose: {}, ha_auth: {} });
+      if (path === '/api/v1/auto-brightness/sources') {
+        sourceReads++;
+        if (sourceReads === 3) return staleSource.promise;
+        return json(sourceReads === 1 ? { items: [], refreshing: true } : {
+          items: [{ entity_id: 'sensor.office_lux', friendly_name: 'Office light', unit: 'lx' }], available: true,
+        });
+      }
+      if (path === '/api/v1/apps') return json({ apps: [] });
+      if (path === '/api/v1/auto-brightness' || path === '/api/v1/auto-brightness/history') return brightnessStatus.promise;
+      return json({});
+    }, configureVisualFixture);
+    const browser = await launcher.launch(engine === 'Chromium'
+      ? { executablePath: chrome, headless: true } : { headless: true });
+    const page = await browser.newPage({ viewport: { width: 320, height: 600 } });
+    page.setDefaultTimeout(5_000);
+    t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+    await page.goto(harness.url, { waitUntil: 'domcontentloaded' });
+    const input = page.locator('.ha-entity-input');
+    await input.waitFor();
+    await input.focus();
+    await page.locator('.ha-entity-option').waitFor();
+    assert.ok(sourceReads >= 2, 'refreshing catalog was polled');
+    assert.equal(await input.getAttribute('aria-expanded'), 'true');
+    const geometry = await page.locator('.ha-entity-listbox').evaluate((list) => {
+      const rect = list.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: innerWidth, height: innerHeight };
+    });
+    assert.ok(geometry.left >= 0 && geometry.right <= geometry.width && geometry.top >= 0 && geometry.bottom <= geometry.height,
+      `picker escaped viewport: ${JSON.stringify(geometry)}`);
+    await input.press('ArrowDown');
+    assert.equal(await input.getAttribute('aria-activedescendant'), 'ha-illuminance-listbox-option-0');
+    await input.press('Enter');
+    assert.equal(await input.inputValue(), 'sensor.office_lux');
+    await page.locator('#savebar').waitFor({ state: 'visible' });
+    const staleRequest = page.waitForRequest((request) => request.url().includes('/auto-brightness/sources?q=sensor.custom_lux'));
+    await input.fill('sensor.custom_lux');
+    assert.equal(await input.inputValue(), 'sensor.custom_lux');
+    await staleRequest;
+    await page.evaluate(() => window.cfgTab(false));
+    const staleResponse = page.waitForResponse((response) => response.url().includes('/auto-brightness/sources?q=sensor.custom_lux'));
+    staleSource.resolve(json({ items: [{ entity_id: 'sensor.stale' }], available: true }));
+    await staleResponse;
+    assert.equal(await page.locator('.ha-entity-listbox').count(), 0, 'rerender removed the body-level portal');
+  });
 }
 
 browserTest('Configure bypasses caches and lets a supported HA language supersede an unsupported stored tag', async (t) => {
