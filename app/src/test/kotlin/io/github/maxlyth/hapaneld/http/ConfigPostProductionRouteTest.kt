@@ -451,12 +451,21 @@ class ConfigPostProductionRouteTest {
         setField(server, "rendererPreparation", renderer)
         setField(server, "autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
         setField(server, "autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)
-        setField(server, "directConfigMutationLock", Any())
         setField(server, "tameReconciliation", TameReconcileAuthority(
             readDesired = { emptySet() },
             reconcile = { _, _ -> error("Stopped route fixture must not actuate packages") },
             stopping = { true },
         ).also { check(it.closeAndJoin(1_000)) })
+        val mutationLock = Any()
+        setField(server, "directConfigMutationLock", mutationLock)
+        val learning = allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java)
+        setField(learning, "config", config)
+        setField(server, "haArea", HaAreaRuntime(
+            config,
+            learning,
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job().apply { cancel() }),
+            mutationLock,
+        ) { true })
         setField(server, "revisions", RevisionStore(Files.createTempDirectory("config-route-revisions").toFile()))
         setField(server, "snapCache", snapCache)
         setField(server, "diagCache", Cached<Any>(Long.MAX_VALUE) { Any() })
