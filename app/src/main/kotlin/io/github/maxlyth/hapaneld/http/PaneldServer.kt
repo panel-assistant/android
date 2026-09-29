@@ -2118,32 +2118,7 @@ class PaneldServer internal constructor(
                             call.respondText(io.github.maxlyth.hapaneld.sensors.SensorTrace.toCsv(), ContentType("text", "csv"))
                         }
                     }
-                    // Live panel screenshot via root `screencap` (LAN-only like the rest of this surface).
-                    // Embedded scaled in the info page + linkable full-size; also usable as an HA camera
-                    // still_image_url. The card asks for ?cached=1 first so it can show the last successful
-                    // capture immediately, then requests a fresh image in the background. A successful live
-                    // capture atomically replaces the app-private placeholder; failed captures leave it intact.
-                    get("/screenshot.png") {
-                        if (!admitActiveRead(call)) return@get
-                        val cachedId = call.request.queryParameters["cached"]
-                        if (cachedId != null) {
-                            call.response.headers.append("Cache-Control", "private, max-age=31536000, immutable")
-                            val cached = withContext(Dispatchers.IO) { readCachedScreenshot(cachedId) }
-                            if (cached != null) call.respondBytes(cached, ContentType.Image.PNG)
-                            else call.respondText("screenshot-unavailable\n", status = HttpStatusCode.ServiceUnavailable)
-                            return@get
-                        }
-                        call.response.headers.append("Cache-Control", "no-store")
-                        val png = withContext(Dispatchers.IO) { interactive.screenshot() }
-                        if (png != null && png.isNotEmpty()) {
-                            withContext(Dispatchers.IO) { cacheScreenshot(png) }?.let {
-                                call.response.headers.append("X-ha-paneld-Screenshot-Id", it)
-                            }
-                            call.respondBytes(png, ContentType.Image.PNG)
-                        } else {
-                            call.respondText("screenshot-unavailable\n", status = HttpStatusCode.ServiceUnavailable)
-                        }
-                    }
+                    screenshotRoutes(screenshots, { interactive.screenshot() }, { admitActiveRead(it) })
                     // Camera trial. The camera opens only for the duration of this request and closes
                     // when no other subscriber
                     // remains, so a caller must expect the open cost on every snapshot. No detail beyond
@@ -3780,69 +3755,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     }
     private fun rootOk(): Boolean = Su.availableCachedIsolated() || HelperClient.available()
 
-    private val screenshotCacheDir: File
-        get() = File(appContext.filesDir, "panel-screenshots")
-
-    private val screenshotCachePointer: File
-        get() = File(screenshotCacheDir, "current")
-
-    private fun storedScreenshotCacheId(): String? = runCatching {
-        screenshotCachePointer.readText().trim().takeIf {
-            it.matches(Regex("[0-9a-f]{64}")) && File(screenshotCacheDir, "$it.png").isFile
-        }
-    }.getOrNull()
-
-    private fun screenshotCacheId(): String? {
-        storedScreenshotCacheId()?.let { return it }
-        val legacy = File(appContext.filesDir, "last-panel-screenshot.png")
-        val bytes = runCatching { legacy.takeIf { it.isFile && it.length() > 0 }?.readBytes() }.getOrNull()
-            ?: return null
-        cacheScreenshot(bytes)
-        legacy.delete()
-        return storedScreenshotCacheId()
-    }
-
-    private fun screenshotPlaceholderUrl(): String? =
-        screenshotCacheId()?.let { "api/v1/screenshot.png?cached=$it" }
-
-    private fun readCachedScreenshot(id: String): ByteArray? = runCatching {
-        if (!id.matches(Regex("[0-9a-f]{64}"))) return@runCatching null
-        File(screenshotCacheDir, "$id.png").takeIf { it.isFile && it.length() > 0 }?.readBytes()
-    }.getOrNull()
-
-    @Synchronized
-    private fun cacheScreenshot(png: ByteArray): String? =
-        runCatching {
-            val dir = screenshotCacheDir.apply { mkdirs() }
-            val id = MessageDigest.getInstance("SHA-256")
-                .digest(png)
-                .joinToString("") { "%02x".format(it) }
-            val target = File(dir, "$id.png")
-            if (!target.isFile) {
-                atomicReplace(File(dir, "$id.png.new"), target, png)
-            }
-            val previous = storedScreenshotCacheId()
-            atomicReplace(File(dir, "current.new"), screenshotCachePointer, "$id\n".toByteArray())
-            dir.listFiles()
-                ?.filter { it.extension == "png" && it.nameWithoutExtension !in setOf(id, previous) }
-                ?.forEach { it.delete() }
-            id
-        }.getOrNull()
-
-    private fun atomicReplace(staged: File, target: File, bytes: ByteArray) {
-        staged.writeBytes(bytes)
-        try {
-            Files.move(
-                staged.toPath(),
-                target.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        } catch (_: Throwable) {
-            target.writeBytes(bytes)
-            staged.delete()
-        }
-    }
+    private val screenshots = ScreenshotCache(appContext.filesDir)
 
     // One servers-table read supplies both the header URL fallback and repair warning. Warm routes use
     // stale-while-revalidate so an expired SQLite observation never blocks rendering.
@@ -4731,7 +4644,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             "contexttbl" to contextRowsHtml(s, h, strings),
             "captbl" to capRowsHtml(s.capabilityRows, strings),
         ).joinToString(",") { (k, v) -> "\"$k\":${jsonStr(v)}" }
-        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshotPlaceholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
+        return """{"banners":${jsonStr(bannersHtml(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshots.placeholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(controlsHtml(s, strings))},"cards":{$cards}}"""
     }
 
     private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
@@ -4761,7 +4674,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val capNote = """<p class="note"><a href="api/v1/diag" target="_blank" style="color:#9cf">⭳ ${esc(strings.get("dashboard.diagnostics_dump.link"))}</a> — ${esc(strings.get("dashboard.diagnostics_dump.explanation"))}</p>"""
         // A cold shell can safely show the app-private last-successful capture before the capability
         // probes finish. It must not request a new capture until hydration confirms a privileged route.
-        val cachedShot = screenshotPlaceholderUrl()
+        val cachedShot = screenshots.placeholderUrl()
         val shotTitle = """<h2>${esc(strings.get("dashboard.card.screenshot"))} <small>· ${esc(strings.get("dashboard.card.live_panel"))}</small><a class="card-title-action" href="#" onclick="refreshScreenshot(this.closest('.card'));return false" title="${esc(strings.get("dashboard.screenshot.capture_title"))}">↻ ${esc(strings.get("dashboard.action.refresh"))}</a></h2>"""
         val shotInner = { src: String? ->
             val source = src?.let { """src="${esc(it)}"""" } ?: ""
@@ -5384,7 +5297,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
         Log.i(TAG, "remote input id=$requestId response=$outcome")
         respondTapCaptureResult(call, requestId, result, stopping) { png ->
-            withContext(Dispatchers.IO) { cacheScreenshot(png) }
+            withContext(Dispatchers.IO) { screenshots.store(png) }
         }
     }
 

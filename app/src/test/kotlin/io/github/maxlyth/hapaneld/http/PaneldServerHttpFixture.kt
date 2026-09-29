@@ -49,6 +49,7 @@ internal class PaneldServerHttpFixture : java.io.Closeable {
         field("config", config)
         field("appContext", context)
         field("cacheDir", directory)
+        field("screenshots", ScreenshotCache(directory))
         // Source-text reason: provide actual bundled asset payloads through the platform reader seam.
         field("asset", { name: String -> File("src/main/assets", name).readText() })
         field("pendingApks", pending)
@@ -72,6 +73,10 @@ internal class PaneldServerHttpFixture : java.io.Closeable {
     }
 
     fun mount(application: Application) = server.mount(application)
+
+    fun useInteractive(controller: io.github.maxlyth.hapaneld.control.InteractiveController) {
+        server.field("interactive", controller)
+    }
 
     override fun close() {
         pending.close()
