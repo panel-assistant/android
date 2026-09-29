@@ -22,16 +22,23 @@ import io.github.maxlyth.hapaneld.mqtt.StateConverger
 import io.github.maxlyth.hapaneld.sensors.SensorReporter
 import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.shizuku.ShizukuState
+import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
 import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
 import io.github.maxlyth.hapaneld.util.RendererPreparationState
 import io.ktor.client.request.accept
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.server.routing.route
+import io.ktor.server.application.ApplicationCallPipeline
+import io.ktor.server.plugins.mutableOriginConnectionPoint
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import java.io.File
@@ -46,6 +53,115 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ConfigPostProductionRouteTest {
+    @Test fun `production config root guards and bounded reader refuse requests without changing settings`() =
+        withRouteConfig { config, _, server, _ ->
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } }
+                    }
+                }
+                val origin = client.submitForm("/api/v1/config", Parameters.build { append("friendly_name", "Changed") }) {
+                    header(HttpHeaders.Origin, "http://elsewhere.example")
+                }
+                assertEquals(HttpStatusCode.Forbidden, origin.status)
+                assertEquals("cross-origin refused\n", origin.bodyAsText())
+                val host = client.submitForm("/api/v1/config", Parameters.build { append("friendly_name", "Changed") }) {
+                    header(HttpHeaders.Host, "elsewhere.example")
+                }
+                assertEquals(HttpStatusCode.Forbidden, host.status)
+                assertEquals("host not allowed\n", host.bodyAsText())
+                val large = client.post("/api/v1/config") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(" ".repeat(PaneldServer.MAX_CONFIG_POST_BODY_BYTES.toInt() + 1))
+                }
+                assertEquals(HttpStatusCode.PayloadTooLarge, large.status)
+                assertEquals("request too large\n", large.bodyAsText())
+                assertEquals("Contract panel", config.friendlyName)
+            }
+        }
+
+    @Test fun `hardened production config requires exact one-shot approval before reducing power safety`() =
+        withRouteConfig { config, _, server, _ ->
+            assertTrue(config.applyBatch { config.setKeepAwake(true) })
+            assertTrue(config.setSecurityMode(Config.SecurityMode.HARDENED))
+            LocalApprovalBroker.instance.clear()
+            try {
+                testApplication {
+                    application {
+                        intercept(ApplicationCallPipeline.Setup) {
+                            context.mutableOriginConnectionPoint.remoteAddress = "192.168.50.20"
+                        }
+                        paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                            route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } }
+                        }
+                    }
+                    suspend fun save() = client.submitForm(
+                        "/api/v1/config", Parameters.build { append("keep_awake", "false") },
+                    ) { accept(ContentType.Application.Json) }
+                    val pending = save()
+                    val pendingBody = JSONObject(pending.bodyAsText())
+                    assertEquals(HttpStatusCode.Accepted, pending.status)
+                    assertEquals("approval-required", pendingBody.getString("error"))
+                    assertTrue(config.keepAwake)
+                    assertTrue(LocalApprovalBroker.instance.approve(pendingBody.getString("approval_id")))
+                    val accepted = save()
+                    assertEquals(HttpStatusCode.OK, accepted.status, accepted.bodyAsText())
+                    assertEquals("saved", JSONObject(accepted.bodyAsText()).getString("status"))
+                    assertEquals(false, config.keepAwake)
+                    assertTrue(LocalApprovalBroker.instance.pending().isEmpty())
+                }
+            } finally {
+                LocalApprovalBroker.instance.clear()
+            }
+        }
+
+    @Test fun `failed production config commit reports failure and leaves SQLite and live effects unchanged`() =
+        withRouteConfig { config, persistence, server, live ->
+            persistence.failWrites = true
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } }
+                    }
+                }
+                val response = client.submitForm("/api/v1/config", Parameters.build {
+                    append("friendly_name", "Changed")
+                    append("home_dashboard", "/lovelace/changed")
+                }) { accept(ContentType.Application.Json) }
+                assertEquals(HttpStatusCode.InternalServerError, response.status)
+                assertEquals("configuration commit failed\n", response.bodyAsText())
+            }
+            assertEquals("Contract panel", config.friendlyName)
+            assertEquals("Contract panel", persistence.initialize()["friendly_name"])
+            assertTrue(live.isEmpty(), "failed persistence must not dispatch hardware or reconfigure")
+        }
+
+    private fun withRouteConfig(block: (Config, JdbcStatePersistence, PaneldServer, MutableList<String>) -> Unit) {
+        val directory = Files.createTempDirectory("config-post-admission").toFile()
+        val writer = Executors.newSingleThreadExecutor()
+        try {
+            val persistence = JdbcStatePersistence(File(directory, "ha-paneld.db"))
+            val config = Config(SqliteStatePreferences(persistence, writer))
+            assertTrue(config.applyBatch {
+                config.setPanelId("contract-panel")
+                config.setFriendlyName("Contract panel")
+                config.setHardware("Contract manufacturer", "Contract model")
+                config.setDashboardPackage("com.example.dashboard")
+            })
+            val live = mutableListOf<String>()
+            val server = routeServer(config) { key, _ ->
+                live += key
+                LiveSettingRequestOutcome.APPLIED
+            }
+            setField(server, "onReconfigure", { _: Set<String> -> live += "reconfigure" })
+            block(config, persistence, server, live)
+        } finally {
+            writer.shutdownNow()
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun `production config POST normalizes persists reads back and dispatches a live setting`() {
         val directory = Files.createTempDirectory("config-post-route").toFile()
         val database = File(directory, "ha-paneld.db")
@@ -269,6 +385,8 @@ class ConfigPostProductionRouteTest {
         setField(server, "configLiveValues", { emptyMap<String, String>() })
         setField(server, "onReconfigure", { _: Set<String> -> })
         setField(server, "rendererPreparation", renderer)
+        setField(server, "autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
+        setField(server, "autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)
         setField(server, "directConfigMutationLock", Any())
         setField(server, "revisions", RevisionStore(Files.createTempDirectory("config-route-revisions").toFile()))
         setField(server, "snapCache", snapCache)
@@ -301,6 +419,7 @@ class ConfigPostProductionRouteTest {
     )
 
     private class JdbcStatePersistence(private val database: File) : StateNamespacePersistence {
+        var failWrites = false
         init {
             connection().use { connection ->
                 connection.createStatement().use {
@@ -352,7 +471,7 @@ class ConfigPostProductionRouteTest {
             }
         }
 
-        private fun transaction(block: (Connection) -> Unit): Boolean = runCatching {
+        private fun transaction(block: (Connection) -> Unit): Boolean = !failWrites && runCatching {
             connection().use { connection ->
                 connection.autoCommit = false
                 block(connection)
