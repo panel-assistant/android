@@ -138,7 +138,7 @@ class AssetSyntaxTest {
               throw new Error('unterminated '+name);
             }
             vm.runInThisContext([
-              'autoSleepUsesPanel','autoSleepSummaryModel','autoSleepHuman',
+              'autoSleepUsesPanel','autoSleepUsesTouch','autoSleepSummaryModel','autoSleepHuman',
               'autoSleepAreaMatchesName','autoSleepAreaMatches','autoSleepAreaTransitioning','autoSleepHistoryReady','autoSleepHistoryPreparing','autoSleepStatusRetryable','autoSleepHistoryTerminalMessage',
               'scheduleAutoSleepReadiness','loadAutoSleepHistory','invalidateAutoSleepHistory',
               'invalidateAutoSleepData','autoSleepDisplayedHours','loadAutoSleepData'

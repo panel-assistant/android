@@ -35,6 +35,88 @@ import java.util.concurrent.atomic.AtomicLong
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AutoSleepControllerTest {
+    @Test fun `owner touch delay powers screen fully off without presence or HA`() = runTest {
+        val h = virtualHarness(source = "touch")
+        try {
+            assertFalse(h.start().enabled)
+            h.await { h.status().getBoolean("available") }
+            assertEquals("30s", h.controller.activitySnapshot().learnedDelay)
+            h.now.set(29_000L)
+            val firstToken = h.controller.deadlineTokenForTest()
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.controller.deadlineTokenForTest() > firstToken }
+            assertFalse(h.status().toString(), h.screen.isIntendedOff())
+
+            h.controller.noteTouchForTest(29_000L, null)
+            h.await { h.status().getString("reason") == "touch_activity" }
+            h.now.set(58_999L)
+            val secondToken = h.controller.deadlineTokenForTest()
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.controller.deadlineTokenForTest() > secondToken }
+            assertFalse(h.status().toString(), h.screen.isIntendedOff())
+            h.now.set(59_000L)
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.screen.routeSelection().selected == ScreenOff.DAEMON_BLPOWER }
+            assertTrue(h.screen.isIntendedOff())
+            assertEquals(ScreenOff.DAEMON_BLPOWER, h.screen.routeSelection().selected)
+            h.now.set(60_000L)
+            h.wakeTap.fireTap()
+            h.await { !h.screen.isIntendedOff() && h.status().getString("reason") == "touch_activity" }
+            h.now.set(90_000L)
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.screen.isIntendedOff() }
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun `owner change to touch delay replaces the running deadline`() = runTest {
+        val h = virtualHarness(source = "touch")
+        try {
+            h.start()
+            h.await { h.status().getBoolean("available") }
+            h.now.set(10_000L)
+            h.setTouchDelaySeconds(45)
+            h.await { h.status().getLong("learned_lease_ms") == 45_000L }
+            h.now.set(39_999L)
+            val firstToken = h.controller.deadlineTokenForTest()
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.controller.deadlineTokenForTest() > firstToken }
+            assertFalse(h.screen.isIntendedOff())
+            h.now.set(54_999L)
+            val secondToken = h.controller.deadlineTokenForTest()
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.controller.deadlineTokenForTest() > secondToken }
+            assertFalse(h.screen.isIntendedOff())
+            h.now.set(55_000L)
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.screen.routeSelection().selected == ScreenOff.DAEMON_BLPOWER }
+            val generation = h.screen.currentOffGeneration()
+            h.setTouchDelaySeconds(60)
+            h.await { h.status().getLong("learned_lease_ms") == 60_000L }
+            assertEquals(generation, h.screen.currentOffGeneration())
+            assertTrue(h.screen.isIntendedOff())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun `unrelated refresh neither postpones touch expiry nor wakes an off screen`() = runTest {
+        val h = virtualHarness(source = "touch")
+        try {
+            h.start()
+            h.await { h.status().getBoolean("available") }
+            h.now.set(10_000L)
+            h.controller.refresh()
+            h.await { h.requests.size == 2 }
+            h.now.set(30_000L)
+            h.controller.advanceToForTest(h.now.get())
+            h.await { h.screen.routeSelection().selected == ScreenOff.DAEMON_BLPOWER }
+            val generation = h.screen.currentOffGeneration()
+            h.now.set(31_000L)
+            h.controller.refresh()
+            h.await { h.requests.size == 3 }
+            assertEquals(generation, h.screen.currentOffGeneration())
+            assertTrue(h.screen.isIntendedOff())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
     @Test fun `panel source restores touch correction after controller restart`() {
         val learning = FakeLearning(persistCorrections = true)
         Harness(source = "panel", learning = learning).use { h ->
@@ -774,7 +856,9 @@ class AutoSleepControllerTest {
     private fun TestScope.virtualHarness(
         enabled: Boolean = true,
         onNoArea: (Long) -> Unit = {},
-    ) = Harness(this, StandardTestDispatcher(testScheduler), enabled = enabled, onNoArea = onNoArea, drive = { runCurrent() })
+        source: String = "home_assistant",
+    ) = Harness(this, StandardTestDispatcher(testScheduler), enabled = enabled, source = source,
+        onNoArea = onNoArea, drive = { runCurrent() })
 
     private class Harness(
         scopeOverride: CoroutineScope? = null,
@@ -804,11 +888,13 @@ class AutoSleepControllerTest {
         val managerClosed = AtomicBoolean()
         val managerRefreshes = AtomicLong()
         private val enabledState = AtomicBoolean(enabled)
+        private val touchDelaySeconds = java.util.concurrent.atomic.AtomicInteger(30)
         private lateinit var aggregateOffer: (HaPresenceAggregate) -> Boolean
         val controller = AutoSleepController(
             scope = scope,
             screen = screen,
-            configuration = { AutoSleepRuntimeConfig(enabledState.get(), "android", "panel", "https://ha", source = source) },
+            configuration = { AutoSleepRuntimeConfig(enabledState.get(), "android", "panel", "https://ha", source = source,
+                touchDelaySeconds = touchDelaySeconds.get()) },
             learning = learning,
             onNoArea = onNoArea,
             onScreenChanged = screenChanges::add,
@@ -855,6 +941,11 @@ class AutoSleepControllerTest {
         fun status() = JSONObject(controller.statusJson())
         fun setEnabled(enabled: Boolean) {
             enabledState.set(enabled)
+            controller.refresh()
+        }
+
+        fun setTouchDelaySeconds(seconds: Int) {
+            touchDelaySeconds.set(seconds)
             controller.refresh()
         }
 
