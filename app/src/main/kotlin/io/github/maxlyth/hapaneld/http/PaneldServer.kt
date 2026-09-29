@@ -606,6 +606,11 @@ class PaneldServer internal constructor(
     private val panelAssistantTransportFacts: () -> io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportFacts,
     private val panelAssistantRestartHealth: () -> String = { "" },
     private val releasePanelAssistantTransport: () -> Unit,
+    /** Read a bundled static asset (info.js / info.css) as text. */
+    // Platform asset access; JVM HTTP hosts read the same bundled files from disk.
+    private val asset: (String) -> String = { name ->
+        appContext.assets.open(name).bufferedReader().use { it.readText() }
+    },
 ) {
     private suspend fun authorizeSensitive(
         call: ApplicationCall,
@@ -714,7 +719,7 @@ class PaneldServer internal constructor(
     private val haOAuthFlow = HaOAuthFlow()
     private val haOAuthStartLock = Any()
     private val haCurrentUser = HaCurrentUserClient(config)
-    private val catalogueLoader by lazy { CatalogueLoader(::asset) }
+    private val catalogueLoader by lazy { CatalogueLoader(asset) }
 
     /** One locale negotiation path for every localized human page and its hydration payload. */
     private fun requestStrings(call: ApplicationCall): AppStrings = resolvedRequestStrings(
@@ -1099,39 +1104,7 @@ class PaneldServer internal constructor(
                     )
                     call.respondText(infoHtml(strings, call.embedMode()), ContentType.Text.Html)
                 }
-                // Static front-end assets (externalised from the Kotlin string so CI can lint them).
-                get("/info.js") {
-                    call.response.headers.append("Cache-Control", "no-cache")  // assets iterate; always serve fresh
-                    call.respondText(asset("info.js"), ContentType.Application.JavaScript)
-                }
-                get("/info.css") {
-                    call.response.headers.append("Cache-Control", "no-cache")
-                    call.respondText(asset("info.css"), ContentType.Text.CSS)
-                }
-                get("/icon.svg") {
-                    call.respondText(asset("icon.svg"), ContentType.Image.SVG)
-                }
-                get("/favicon.svg") {
-                    call.respondText(asset("favicon.svg"), ContentType.Image.SVG)
-                }
-                // Generic bundled-asset server for the redesigned UI (page scripts + vendored libs).
-                get("/assets/{f...}") {
-                    val rel = call.parameters.getAll("f")?.joinToString("/").orEmpty()
-                    val body = if (rel.isEmpty() || rel.contains("..")) null else runCatching { asset(rel) }.getOrNull()
-                    if (body == null) {
-                        call.respondText("not found\n", status = HttpStatusCode.NotFound)
-                    } else {
-                        val ct = when {
-                            rel.endsWith(".js") -> ContentType.Application.JavaScript
-                            rel.endsWith(".css") -> ContentType.Text.CSS
-                            rel.endsWith(".svg") -> ContentType.Image.SVG
-                            rel.endsWith(".json") -> ContentType.Application.Json
-                            else -> ContentType.Text.Plain
-                        }
-                        call.response.headers.append("Cache-Control", "no-cache")
-                        call.respondText(body, ct)
-                    }
-                }
+                assetRoutes(asset)
                 // Tabbed multi-page shell. `/` stays the existing dashboard (now with a tab bar); the
                 // other tabs are dedicated pages that consume /api/v1.
                 get("/configure") {
@@ -5099,10 +5072,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
  </div>
 </form></div>"""
     }
-
-    /** Read a bundled static asset (info.js / info.css) as text. */
-    private fun asset(name: String): String =
-        appContext.assets.open(name).bufferedReader().use { it.readText() }
 
     private fun inspectJson(status: String): String =
         """{"running":${CdpRelay.running},"port":${CdpRelay.PORT},"status":"$status","start_allowed":${!config.hardenedSecurityEnabled}}"""
