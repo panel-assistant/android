@@ -59,11 +59,17 @@ internal class PaneldServerHttpFixture(
             set(config, object : android.content.ContentResolver(null) {})
         }
     }
-    val sizingCache = io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) {
-        io.github.maxlyth.hapaneld.control.DisplaySizingObservation(240, 320, 1.0f)
-    }
     private val pending = PendingUploadStore().apply { open() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var observations = ManagementObservations(
+        context,
+        density ?: io.github.maxlyth.hapaneld.control.DensityController(canSu = false),
+        { error("Unexpected management probe") },
+        { _, _ -> error("Unexpected diagnostic read") },
+        scope,
+        { false },
+    )
+    val sizingCache get() = observations.densityCache
     val server = allocate(PaneldServer::class.java).apply {
         field("config", config)
         field("scope", scope)
@@ -111,20 +117,31 @@ internal class PaneldServerHttpFixture(
                 io.github.maxlyth.hapaneld.shizuku.ShizukuState.DISABLED, ready = false,
             ),
         )
-        val snap = PaneldServer::class.java.declaredClasses.single { it.simpleName == "Snap" }
-            .declaredConstructors.single().run {
-                isAccessible = true
-                newInstance(emptyMap<String, String>(), emptyMap<String, String>(),
-                    io.github.maxlyth.hapaneld.config.Capabilities(), emptyList<Any>(),
-                    privilege, null, null, 1.0f, false)
-            }
-        field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { snap }.also { it.set(snap) })
-        field("diagCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { error("Unexpected diagnostic read") })
-        field("densityCache", sizingCache)
+        observations.snapCache.set(ManagementSnapshot(
+            emptyMap(), emptyMap(), io.github.maxlyth.hapaneld.config.Capabilities(),
+            emptyList(), privilege, null, null, 1.0f, false,
+        ))
+        observations.densityCache.set(io.github.maxlyth.hapaneld.control.DisplaySizingObservation(240, 320, 1.0f))
+        field("managementObservations", observations)
         field("stopping", false)
     }
 
     fun mount(application: Application) = server.mount(application)
+
+    fun useWarmDiagnostics(report: String, stopping: Boolean = false) {
+        val observations = ManagementObservations(
+            context,
+            io.github.maxlyth.hapaneld.control.DensityController(canSu = false),
+            { error("Unexpected management probe") },
+            { _, _ -> error("No refresh after shutdown") },
+            scope,
+            { stopping },
+        )
+        observations.diagCache.set(report)
+        observations.diagCache.invalidate()
+        server.field("managementObservations", observations)
+        server.field("stopping", stopping)
+    }
 
     fun useInteractive(controller: io.github.maxlyth.hapaneld.control.InteractiveController) {
         server.field("interactive", controller)
@@ -184,16 +201,11 @@ internal class PaneldServerHttpFixture(
                 io.github.maxlyth.hapaneld.shizuku.ShizukuState.DISABLED, ready = false,
             ),
         )
-        val snap = PaneldServer::class.java.declaredClasses.single { it.simpleName == "Snap" }
-            .declaredConstructors.single().run {
-                isAccessible = true
-                newInstance(
-                    mapOf("MQTT" to "connecting"), emptyMap<String, String>(),
-                    io.github.maxlyth.hapaneld.config.Capabilities(), emptyList<Any>(),
-                    privilege, null, null, 1.0f, false,
-                )
-            }
-        server.field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { snap }.also { it.set(snap) })
+        observations.snapCache.set(ManagementSnapshot(
+            mapOf("MQTT" to "connecting"), emptyMap(),
+            io.github.maxlyth.hapaneld.config.Capabilities(), emptyList(),
+            privilege, null, null, 1.0f, false,
+        ))
         server.field("powerSafety", {
             io.github.maxlyth.hapaneld.control.PowerSafetyAssessment(
                 level = io.github.maxlyth.hapaneld.control.PowerRiskLevel.SAFE,
@@ -223,12 +235,10 @@ internal class PaneldServerHttpFixture(
         config.setHaConnection("http://ha.invalid:8123", "contract-token")
         server.field("webViewTooOldOnce\$delegate", lazy { false })
         val companion = io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY
-        server.field("companionServerCache\$delegate", lazy {
-            io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) { companion }.also { it.set(companion) }
-        })
+        observations.companionServerCache.set(companion)
         val sizing = io.github.maxlyth.hapaneld.control.DisplaySizingObservation(200, 160, 1.0f)
-        server.field("densityCache", io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) { sizing }.also { it.set(sizing) })
-        server.field("companionHelperCache", io.github.maxlyth.hapaneld.util.Cached(Long.MAX_VALUE) { false }.also { it.set(false) })
+        observations.densityCache.set(sizing)
+        observations.companionHelperCache.set(false)
         server.field("tameProfileCandidates", emptyList<io.github.maxlyth.hapaneld.device.TameCandidate>())
         val tame = allocate(io.github.maxlyth.hapaneld.control.TameController::class.java)
         io.github.maxlyth.hapaneld.control.TameController::class.java.getDeclaredField("context").apply {
@@ -238,9 +248,13 @@ internal class PaneldServerHttpFixture(
     }
 
     fun enableColdDashboard() {
-        server.field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) {
-            error("Cold dashboard must not request management probes")
-        })
+        observations = ManagementObservations(
+            context, io.github.maxlyth.hapaneld.control.DensityController(canSu = false),
+            { error("Cold dashboard must not request management probes") },
+            { _, _ -> error("Cold dashboard must not request diagnostic probes") },
+            scope, { false },
+        )
+        server.field("managementObservations", observations)
         server.field("camera", io.github.maxlyth.hapaneld.camera.AbsentCameraSurface)
     }
 
