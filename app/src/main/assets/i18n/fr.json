@@ -2023,6 +2023,11 @@
       "sourceHash": "29db9e0656abb9d76014f07d2f3faac2ece244b4b3e8c217ae984de03ab4aff8",
       "state": "machine-cross-checked"
     },
+    "configure.voice.import_button": {
+      "text": "Importer",
+      "sourceHash": "2cff9baabf56ca002610e113bc94deb6ededddfc3c130365b6e88ed5195bf774",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.import_choose_files": {
       "text": "Choisissez d’abord le manifeste « .json » et le modèle « .tflite ».",
       "sourceHash": "fa414a4812d0db87e2bb63ec269b6f25fd0ae7870052984f468c6de6530fc588",
