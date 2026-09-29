@@ -751,80 +751,6 @@ internal fun shouldDiscoverHaUrlForMqttOnboarding(currentHaUrl: String, posted: 
         posted["mqtt_password"] != null
 }
 
-/** Maps an [io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result] to the exact
- *  `GET /api/v1/voice/pipelines` response, pure so every branch is unit-testable without a routed
- *  request. */
-internal fun voicePipelinesResponse(
-    result: io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result,
-): Pair<HttpStatusCode, String> = when (result) {
-    is io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result.Available -> {
-        val pipelines = result.pipelines.joinToString(",") {
-            "{\"id\":${Json.str(it.id)},\"name\":${Json.str(it.name)}}"
-        }
-        HttpStatusCode.OK to "{\"pipelines\":[$pipelines],\"preferred\":${Json.str(result.preferred)}}"
-    }
-    is io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result.NotConfigured ->
-        HttpStatusCode.ServiceUnavailable to "{\"error\":\"not-configured\",\"reason\":${Json.str(result.reason)}}"
-    is io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result.Unavailable ->
-        HttpStatusCode.ServiceUnavailable to "{\"error\":\"unavailable\",\"reason\":${Json.str(result.reason)}}"
-}
-
-/** Refuses `POST /api/v1/voice/test` before the trigger is ever called — returns the 409 reason, or
- *  null to proceed. Checked ahead of [io.github.maxlyth.hapaneld.assist.VoiceTestTrigger] so a disabled
- *  or capability-less panel never depends on whether the coordinator lane happens to be wired up. */
-internal fun voiceTestRefusal(hasMicrophone: Boolean, voiceEnabled: Boolean): String? = when {
-    !hasMicrophone -> "this panel has no microphone capability"
-    !voiceEnabled -> "voice assistant is disabled"
-    else -> null
-}
-
-/** Refuses `GET /api/v1/voice/pipelines` before [io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory]
- *  is ever called — returns the reason to report as the existing `{"error":"unavailable",reason}` 503
- *  shape ([voicePipelinesResponse]'s `Unavailable` branch), or null to proceed to the directory. The
- *  route's docs and OpenAPI both promise this endpoint "requires a microphone-capable panel" — the
- *  directory itself has no live capability signal, so the capability-less case must be checked here,
- *  exactly like [voiceTestRefusal] checks it ahead of the trigger. */
-private const val MAX_WAKE_WORD_IMPORT_BYTES = 4L * 1024L * 1024L
-private const val WAKE_WORD_IMPORT_DEADLINE_MS = 30_000L
-
-/** `GET /api/v1/voice/wake-words`: every wake word the panel holds, bundled first. */
-internal fun wakeWordsResponse(
-    catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
-): Pair<HttpStatusCode, String> {
-    val words = catalog.available().joinToString(",") { config ->
-        "{\"id\":${Json.str(config.id)},\"wake_word\":${Json.str(config.wakeWord)}," +
-            "\"imported\":${!catalog.isBundled(config.id)}}"
-    }
-    return HttpStatusCode.OK to "{\"wake_words\":[$words]}"
-}
-
-/**
- * `POST /api/v1/voice/wake-words`: import one user-trained microWakeWord model from
- * `{"name":…,"manifest":"<the .json text>","model":"<the .tflite, base64>"}`. [changed] runs after a
- * model is installed, so the listener and Home Assistant see it.
- */
-internal fun wakeWordImportResponse(
-    catalog: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog,
-    body: ByteArray,
-    changed: () -> Unit,
-): Pair<HttpStatusCode, String> {
-    val request = runCatching { org.json.JSONObject(body.toString(Charsets.UTF_8)) }.getOrNull()
-    val name = request?.opt("name") as? String
-    val manifest = request?.opt("manifest") as? String
-    val model = (request?.opt("model") as? String)?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
-    if (name == null || manifest == null || model == null) {
-        return HttpStatusCode.BadRequest to "{\"error\":\"expected name, manifest and a base64 model\"}"
-    }
-    return when (val result = catalog.import(name, manifest.toByteArray(Charsets.UTF_8), model)) {
-        is io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog.ImportResult.Imported -> {
-            changed()
-            HttpStatusCode.OK to "{\"id\":${Json.str(result.config.id)},\"wake_word\":${Json.str(result.config.wakeWord)}}"
-        }
-        is io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog.ImportResult.Refused ->
-            HttpStatusCode.UnprocessableEntity to "{\"error\":${Json.str(result.reason)}}"
-    }
-}
-
 /**
  * The restore result's `wake_words` component: how many carried wake words were imported again, and a
  * short warning naming each one the engine or the catalogue refused. Ids are catalogue ids (lower case
@@ -852,22 +778,6 @@ internal fun wakeWordRestoreNote(outcome: io.github.maxlyth.hapaneld.backup.Wake
     outcome?.refused?.takeIf { it.isNotEmpty() }
         ?.let { "; ${it.size} wake word${if (it.size == 1) "" else "s"} not restored (${it.joinToString(", ") { (id, _) -> id }})" }
         .orEmpty()
-
-internal fun voicePipelinesRefusal(hasMicrophone: Boolean): String? =
-    if (!hasMicrophone) "this panel has no microphone capability" else null
-
-/** Maps a [io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result] to the exact
- *  `POST /api/v1/voice/test` response, pure so every branch is unit-testable without a routed request. */
-internal fun voiceTestTriggerResponse(
-    result: io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result,
-): Pair<HttpStatusCode, String> = when (result) {
-    is io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result.Accepted ->
-        HttpStatusCode.Accepted to "{\"accepted\":true}"
-    is io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result.Refused ->
-        HttpStatusCode.Conflict to "{\"reason\":${Json.str(result.reason)}}"
-    is io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result.Unavailable ->
-        HttpStatusCode.ServiceUnavailable to "{\"reason\":${Json.str(result.reason)}}"
-}
 
 /**
  * Validate and normalize every direct-config value in one pass. Historically the bespoke route
@@ -2794,80 +2704,14 @@ class PaneldServer internal constructor(
                             ContentType.Application.Json,
                         )
                     }
-                    // Home Assistant Assist pipelines for the Configure voice_pipelines picker. Delegates to
-                    // an injectable directory (the voice-coordinator lane's real HA-backed implementation;
-                    // the stub default reports 503 not-configured) rather than talking to Home Assistant here.
-                    // The response is decided by the pure voicePipelinesResponse() so it is unit-testable
-                    // without a routed request.
-                    get("/voice/pipelines") {
-                        val caps = liveCapabilities(snapStaleOk().caps)
-                        val refusal = voicePipelinesRefusal(hasMicrophone = caps.hasMicrophone)
-                        if (refusal != null) {
-                            call.respondText(
-                                "{\"error\":\"unavailable\",\"reason\":${Json.str(refusal)}}",
-                                ContentType.Application.Json,
-                                HttpStatusCode.ServiceUnavailable,
-                            )
-                            return@get
-                        }
-                        val (status, body) = voicePipelinesResponse(assistPipelines.list())
-                        call.respondText(body, ContentType.Application.Json, status)
-                    }
-                    // One-shot voice-assistant test run. Refused with 409 before ever reaching the trigger
-                    // when the panel has no microphone capability or voice_enabled is off, so a disabled
-                    // panel never depends on whether the coordinator lane happens to be wired up. The
-                    // refusal check and the trigger-result mapping are both pure (voiceTestRefusal(),
-                    // voiceTestTriggerResponse()) so every branch is unit-testable without a routed request.
-                    post("/voice/test") {
-                        val caps = liveCapabilities(snapStaleOk().caps)
-                        val refusal = voiceTestRefusal(hasMicrophone = caps.hasMicrophone, voiceEnabled = config.voiceEnabled)
-                        if (refusal != null) {
-                            call.respondText(
-                                "{\"reason\":${Json.str(refusal)}}",
-                                ContentType.Application.Json,
-                                HttpStatusCode.Conflict,
-                            )
-                            return@post
-                        }
-                        val (status, body) = voiceTestTriggerResponse(voiceTest.trigger())
-                        call.respondText(body, ContentType.Application.Json, status)
-                    }
-                    // The wake words this panel can listen for, and the import of one a user trained: a
-                    // microWakeWord manifest and model, sent as JSON with the model base64-encoded.
-                    get("/voice/wake-words") {
-                        val catalog = wakeWords
-                        if (catalog == null || !liveCapabilities(snapStaleOk().caps).hasMicrophone) {
-                            call.respondText("{\"error\":\"unavailable\"}", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
-                            return@get
-                        }
-                        val (status, body) = withContext(Dispatchers.IO) { wakeWordsResponse(catalog) }
-                        call.respondText(body, ContentType.Application.Json, status)
-                    }
-                    post("/voice/wake-words") {
-                        val catalog = wakeWords
-                        if (catalog == null || !liveCapabilities(snapStaleOk().caps).hasMicrophone) {
-                            call.respondText("{\"error\":\"unavailable\"}", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
-                            return@post
-                        }
-                        val received = java.io.ByteArrayOutputStream()
-                        try {
-                            withContext(Dispatchers.IO) {
-                                call.receiveStream().use { input ->
-                                    DeadlineBoundedBody.copy(input, received, MAX_WAKE_WORD_IMPORT_BYTES, WAKE_WORD_IMPORT_DEADLINE_MS)
-                                }
-                            }
-                        } catch (_: ByteLimitExceeded) {
-                            call.respondText("{\"error\":\"too-large\"}", ContentType.Application.Json, HttpStatusCode.PayloadTooLarge)
-                            return@post
-                        } catch (_: BodyReceiptTimeout) {
-                            call.respondText("{\"error\":\"timeout\"}", ContentType.Application.Json, HttpStatusCode.RequestTimeout)
-                            return@post
-                        }
-                        val (status, body) = withContext(Dispatchers.IO) {
-                            wakeWordImportResponse(catalog, received.toByteArray(), onWakeWordsChanged)
-                        }
-                        call.respondText(body, ContentType.Application.Json, status)
-                    }
+                    voiceRoutes(
+                        hasMicrophone = { liveCapabilities(snapStaleOk().caps).hasMicrophone },
+                        voiceEnabled = { config.voiceEnabled },
+                        assistPipelines = assistPipelines,
+                        voiceTest = voiceTest,
+                        wakeWords = wakeWords,
+                        onWakeWordsChanged = onWakeWordsChanged,
+                    )
                     // LAN ha-paneld panels for the header panel switcher — a cheap, non-blocking snapshot of
                     // the live mDNS roster (a background listener keeps it converged + fresh; see browsePeers).
                     discoveryRoutes({ peersJson(peers()) }, { launchableAppsJson(appContext) })
