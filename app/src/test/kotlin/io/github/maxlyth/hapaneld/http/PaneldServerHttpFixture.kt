@@ -140,7 +140,12 @@ internal class PaneldServerHttpFixture(
 
     fun mount(application: Application) = server.mount(application)
 
-    fun useManagementStatus(onRefresh: () -> Unit) {
+    fun useManagementStatus(
+        companion: io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation =
+            io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY,
+        mdns: () -> Pair<String?, io.github.maxlyth.hapaneld.util.InstallPresentation?> = { null to null },
+        onRefresh: () -> Unit,
+    ) {
         values["friendly_name"] = "Contract panel"
         values["manufacturer"] = "Contract manufacturer"
         values["model"] = "Contract model"
@@ -159,7 +164,7 @@ internal class PaneldServerHttpFixture(
             emptyMap(), emptyMap(), io.github.maxlyth.hapaneld.config.Capabilities(), emptyList(),
             privilege, null, null, 1f, false,
         ))
-        observations.companionServerCache.set(io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY)
+        observations.companionServerCache.set(companion)
         server.field("managementObservations", observations)
         val profileType = io.github.maxlyth.hapaneld.device.DeviceProfile::class.java
         server.field("profile", Proxy.newProxyInstance(profileType.classLoader, arrayOf(profileType)) { _, method, _ ->
@@ -183,7 +188,7 @@ internal class PaneldServerHttpFixture(
             io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot.UNCHECKED
         }
         server.field("refreshStorageHealth", refresh)
-        server.field("mdnsWarningProjection", { null to null })
+        server.field("mdnsWarningProjection", mdns)
         server.field("onPanelAssistantUpdateOwner", {})
         server.field("camera", io.github.maxlyth.hapaneld.camera.AbsentCameraSurface)
     }
