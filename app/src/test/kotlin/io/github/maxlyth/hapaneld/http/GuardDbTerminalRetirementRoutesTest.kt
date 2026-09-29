@@ -132,7 +132,8 @@ class GuardDbTerminalRetirementRoutesTest {
         val fixture = fixture()
         install(fixture)
 
-        listOf("127.0.0.1", "::1", "198.51.100.4", "bad-peer").forEach { peer ->
+        // An invalid IPv6 literal exercises malformed-peer rejection without a DNS lookup.
+        listOf("127.0.0.1", "::1", "198.51.100.4", "::not-an-ip").forEach { peer ->
             assertEquals(peer, HttpStatusCode.Forbidden, postRetirement(fixture.body, peer).status)
         }
         assertEquals(
