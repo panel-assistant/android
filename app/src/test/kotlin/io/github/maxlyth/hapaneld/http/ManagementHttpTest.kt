@@ -9,6 +9,29 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ManagementHttpTest {
+    @Test fun `status emits unconditional observations and binds database proof to a fresh read`() {
+        PaneldServerHttpFixture().use { fixture ->
+            var refreshes = 0
+            fixture.useManagementStatus { refreshes++ }
+            testApplication {
+                application { fixture.mount(this) }
+                val passive = client.get("/api/v1/status")
+                assertEquals(HttpStatusCode.OK, passive.status)
+                val body = org.json.JSONObject(passive.bodyAsText())
+                for (key in listOf("renderer", "camera", "ha_network", "ha_path_probe", "storage_health", "power_safety")) {
+                    org.junit.Assert.assertTrue(key, body.has(key))
+                }
+                org.junit.Assert.assertFalse(body.has("database_observation_nonce"))
+                assertEquals(0, refreshes)
+                val nonce = "0123456789abcdef0123456789abcdef"
+                val refreshed = client.get("/api/v1/status?database_observation_nonce=$nonce")
+                assertEquals(HttpStatusCode.OK, refreshed.status)
+                assertEquals(nonce, org.json.JSONObject(refreshed.bodyAsText()).getString("database_observation_nonce"))
+                assertEquals(1, refreshes)
+            }
+        }
+    }
+
     @Test fun `diagnostics retain the complete last report after shutdown closes refresh admission`() {
         PaneldServerHttpFixture().use { fixture ->
             val report = "Panel diagnostics\nroot: unavailable\ndensity: unknown\n"

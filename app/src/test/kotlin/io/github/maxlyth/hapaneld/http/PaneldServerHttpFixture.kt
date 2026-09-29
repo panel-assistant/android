@@ -129,10 +129,62 @@ internal class PaneldServerHttpFixture(
         ))
         observations.densityCache.set(io.github.maxlyth.hapaneld.control.DisplaySizingObservation(240, 320, 1.0f))
         field("managementObservations", observations)
+        field("onPanelAssistantUpdateOwner", {})
+        field("storageHealth", { io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot.UNCHECKED })
+        val refreshStorage: suspend () -> io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot? = { null }
+        field("refreshStorageHealth", refreshStorage)
         field("stopping", false)
     }
 
     fun mount(application: Application) = server.mount(application)
+
+    fun useManagementStatus(onRefresh: () -> Unit) {
+        values["friendly_name"] = "Contract panel"
+        values["manufacturer"] = "Contract manufacturer"
+        values["model"] = "Contract model"
+        val privilege = io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation(
+            false, false,
+            io.github.maxlyth.hapaneld.shizuku.ShizukuBridge.Snapshot(
+                io.github.maxlyth.hapaneld.shizuku.ShizukuState.DISABLED, ready = false,
+            ),
+        )
+        val observations = ManagementObservations(
+            context, io.github.maxlyth.hapaneld.control.DensityController(canSu = false),
+            { error("Unexpected management probe") }, { _, _ -> error("Unexpected diagnostic probe") },
+            scope, { false },
+        )
+        observations.snapCache.set(ManagementSnapshot(
+            emptyMap(), emptyMap(), io.github.maxlyth.hapaneld.config.Capabilities(), emptyList(),
+            privilege, null, null, 1f, false,
+        ))
+        observations.companionServerCache.set(io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY)
+        server.field("managementObservations", observations)
+        val profileType = io.github.maxlyth.hapaneld.device.DeviceProfile::class.java
+        server.field("profile", Proxy.newProxyInstance(profileType.classLoader, arrayOf(profileType)) { _, method, _ ->
+            when (method.name) {
+                "getAppCanSu" -> false
+                else -> error("Unexpected profile observation: ${method.name}")
+            }
+        })
+        server.field("powerSafety", {
+            io.github.maxlyth.hapaneld.control.PowerSafetyAssessment(
+                io.github.maxlyth.hapaneld.control.PowerRiskLevel.SAFE,
+                io.github.maxlyth.hapaneld.control.PowerSafetyObservation(
+                    true, true, false, false, true, 60_000, true, 1, 1, false, true, "none",
+                ),
+                emptyList(), "safe", "none",
+            )
+        })
+        server.field("storageHealth", { io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot.UNCHECKED })
+        val refresh: suspend () -> io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot? = {
+            onRefresh()
+            io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot.UNCHECKED
+        }
+        server.field("refreshStorageHealth", refresh)
+        server.field("mdnsWarningProjection", { null to null })
+        server.field("onPanelAssistantUpdateOwner", {})
+        server.field("camera", io.github.maxlyth.hapaneld.camera.AbsentCameraSurface)
+    }
 
     fun useWarmDiagnostics(report: String, stopping: Boolean = false) {
         val observations = ManagementObservations(
