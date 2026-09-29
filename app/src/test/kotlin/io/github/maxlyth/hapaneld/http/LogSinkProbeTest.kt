@@ -12,7 +12,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import sun.misc.Unsafe
 
 /**
  * Covers POST /api/v1/config/probe-log-sink without constructing the Android-backed server graph,
@@ -218,21 +217,5 @@ class LogSinkProbeTest {
         port: Int = 514,
         protocol: String = "syslog-udp",
         panelId: String = "test-panel",
-    ): JSONObject {
-        val method = PaneldServer::class.java.getDeclaredMethod(
-            "probeLogSinkJson",
-            String::class.java,
-            Int::class.javaPrimitiveType,
-            String::class.java,
-            String::class.java,
-        ).apply { isAccessible = true }
-        val server = unsafe.allocateInstance(PaneldServer::class.java) as PaneldServer
-        return JSONObject(method.invoke(server, host, port, protocol, panelId) as String)
-    }
-
-    private companion object {
-        val unsafe: Unsafe = Unsafe::class.java.getDeclaredField("theUnsafe")
-            .apply { isAccessible = true }
-            .get(null) as Unsafe
-    }
+    ): JSONObject = JSONObject(probeLogSinkJson(host, port, protocol, panelId))
 }

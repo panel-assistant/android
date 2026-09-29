@@ -242,10 +242,15 @@ class MdnsAdvertiserResponderTest {
         }
 
     private fun browse(browser: JmDNS, name: String = "responder-test-panel"): ServiceInfo? {
-        repeat(3) {
-            browser.list(Config.MDNS_SERVICE_TYPE, 3_000)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(9)
+        while (System.nanoTime() < deadline) {
+            val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()).coerceAtLeast(1)
+            browser.list(Config.MDNS_SERVICE_TYPE, minOf(3_000, remainingMs))
                 .firstOrNull { it.name == name && it.getPropertyString("probe") != null }
                 ?.let { return it }
+            // A cached unrelated service can make list return immediately.
+            val remainingNs = deadline - System.nanoTime()
+            if (remainingNs > 0) TimeUnit.NANOSECONDS.sleep(minOf(TimeUnit.MILLISECONDS.toNanos(20), remainingNs))
         }
         return null
     }

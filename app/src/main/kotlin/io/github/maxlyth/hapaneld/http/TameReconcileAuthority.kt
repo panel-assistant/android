@@ -1,5 +1,11 @@
 package io.github.maxlyth.hapaneld.http
 
+import android.util.Log
+import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.control.TameController
+import io.github.maxlyth.hapaneld.metrics.FeatureCosts
+import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
+import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.control.TameReconcileResult
 import io.github.maxlyth.hapaneld.util.LatestDispatcher
 
@@ -14,6 +20,47 @@ internal class TameReconcileAuthority(
     private val retryDelayMs: Long = 5_000L,
     private val onBacklogChanged: (Int) -> Unit = {},
 ) {
+    constructor(config: Config, tame: TameController, stopping: () -> Boolean) : this(
+        readDesired = { config.tameVendorPackages.toSet() },
+        reconcile = { desired, stopping ->
+            val cost = FeatureCosts.registry.span(FeatureCostOperation.TAME_MUTATION)
+            try {
+                tame.reconcileBlocklist(desired, stopping).also { result ->
+                    cost.work(units = result.attempted.toLong())
+                    if (result.retryableFailure) cost.outcome(FeatureCostOutcome.FAILURE)
+                }
+            } catch (error: Exception) {
+                cost.outcome(FeatureCostOutcome.FAILURE)
+                Log.w("ha-paneld/http", "vendor package reconciliation failed", error)
+                TameReconcileResult(attempted = 0, retryableFailure = true)
+            } finally {
+                cost.close()
+            }
+        },
+        stopping = stopping,
+        onBacklogChanged = { pending ->
+            FeatureCosts.registry.setBacklog(FeatureCostOperation.TAME_MUTATION, pending)
+        },
+    )
+
+    /**
+     * One commit-order submission seam. Admission loss is observable but not correctness-critical: the
+     * desired config and write-ahead ownership markers are durable, and startup requests another pass.
+     */
+    fun requestAfterCommit(): Boolean {
+        val admission = request()
+        when (admission) {
+            LatestDispatcher.Admission.ACCEPTED -> Unit
+            LatestDispatcher.Admission.COALESCED ->
+                FeatureCosts.registry.recordCoalesced(FeatureCostOperation.TAME_MUTATION)
+            LatestDispatcher.Admission.REJECTED,
+            LatestDispatcher.Admission.CLOSED ->
+                FeatureCosts.registry.recordDropped(FeatureCostOperation.TAME_MUTATION)
+        }
+        return admission == LatestDispatcher.Admission.ACCEPTED ||
+            admission == LatestDispatcher.Admission.COALESCED
+    }
+
     private val retryLock = Object()
     @Volatile private var closed = false
     private fun shouldStop(): Boolean = closed || stopping()

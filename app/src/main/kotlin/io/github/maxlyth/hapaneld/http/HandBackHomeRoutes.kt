@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.control.TameController
 import io.github.maxlyth.hapaneld.control.HandBackHomeController
 import io.github.maxlyth.hapaneld.control.HandBackHomePolicy
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
@@ -131,6 +133,64 @@ internal fun Route.handBackHomeRoutes(dependencies: HandBackHomeRouteDependencie
         }
     }
 }
+
+/**
+ * Wire the hand-back routes to this panel's real taming state.
+ *
+ * The device profile is what authorises adopting a package carrying no ownership marker, so it is read
+ * from the active profile here rather than accepted from a caller: a panel may only hand back the vendor
+ * apps its own hardware profile names.
+ */
+internal fun handBackHomeDependencies(
+    config: Config,
+    tameController: () -> TameController,
+    profileKnownPackages: () -> Set<String>,
+    setHome: (String) -> Boolean,
+    ownPackage: () -> String,
+    authorize: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean,
+): HandBackHomeRouteDependencies =
+    HandBackHomeRouteDependencies(
+        profileKnownPackages = profileKnownPackages,
+        handBack = { profileKnown ->
+            val tame = tameController()
+            HandBackHomeController(
+                ownedMarkers = tame::ownedMarkerSnapshot,
+                packageStates = tame::handBackPackageStates,
+                homeCandidates = tame::handBackHomeCandidates,
+                clearDesiredState = {
+                    // Both keys, and before the role moves: the reconciler re-asserts the desired
+                    // blocklist on every wake, and `launcher_package` naming ha-paneld keeps the
+                    // admin-home repair tick putting the role straight back.
+                    runCatching {
+                        config.setTameVendorPackages("")
+                        config.setLauncherPackage("")
+                    }.isSuccess
+                },
+                restoreOwned = tame::restoreEveryOwnedPackage,
+                enable = tame::adoptAndEnable,
+                setHome = setHome,
+                observeHome = tame::observeDefaultHome,
+                ownPackage = ownPackage(),
+            ).handBack(profileKnown)
+        },
+        recordTamed = { pkg ->
+            val tame = tameController()
+            val outcome = tame.recordExternallyTamed(pkg)
+            // An ownership marker outside the desired set is what the reconciler restores, so a recorded
+            // package has to join the desired set or the next wake would undo the provisioner's work.
+            if (outcome == HandBackHomePolicy.RecordOutcome.RECORDED) {
+                runCatching {
+                    val desired = config.tameVendorPackages.toMutableList()
+                    if (pkg !in desired) {
+                        desired += pkg
+                        config.setTameVendorPackages(desired.joinToString(" "))
+                    }
+                }
+            }
+            outcome
+        },
+        authorize = authorize,
+    )
 
 private fun refusalCode(reason: HandBackHomePolicy.Refusal): String = when (reason) {
     HandBackHomePolicy.Refusal.OWNERSHIP_UNREADABLE -> "ownership-unreadable"
