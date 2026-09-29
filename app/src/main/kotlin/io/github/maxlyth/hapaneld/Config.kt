@@ -1519,7 +1519,10 @@ class Config private constructor(
      * every deliberate divergence seconds after it was saved.
      */
     var haAreaUserOverride: Boolean
-        get() = prefs.getBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
+        get() = synchronized(CONFIG_LOCK) {
+            haArea // Repair a legacy literal and its stale override before either can be reported.
+            prefs.getBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
+        }
         set(value) = synchronized(CONFIG_LOCK) {
             durableCommit { putBoolean(HA_AREA_USER_OVERRIDE_PREF, value) }
             Unit
@@ -2493,6 +2496,7 @@ class Config private constructor(
             (SettingValue.validate(spec, floatPref(spec.key).toString()) as Validation.Ok).normalized
         }
         else -> when (spec.key) {
+            "ha_area" -> haArea
             "auto_sleep_source" -> autoSleepSource
             "navbar_mode" -> navbarMode
             // A pre-UDP panel has the retired "syslog" spelling on disk. Canonicalize here so the

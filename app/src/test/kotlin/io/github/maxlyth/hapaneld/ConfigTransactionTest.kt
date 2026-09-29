@@ -7,16 +7,63 @@ import io.github.maxlyth.hapaneld.control.fakeProfile
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.util.HaLink
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
+import io.github.maxlyth.hapaneld.http.LocalizedConfigSchema
+import io.github.maxlyth.hapaneld.http.configReadRoutes
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import io.ktor.server.testing.testApplication
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class ConfigTransactionTest {
+    @Test fun firstConfigReadRepairsLegacyAreaBeforeReportingOverride() = testApplication {
+        val stale = fakePreferences(initial = mapOf(
+            "ha_area" to "null",
+            "device_local_ha_area_user_override" to true,
+        ))
+        val config = Config(stale.instance)
+        val areaSpec = requireNotNull(SettingsRegistry.spec("ha_area"))
+        application {
+            routing {
+                route("/api/v1") {
+                    configReadRoutes(
+                        currentConfigJson = {
+                            JSONObject()
+                                .put("ha_area_user_override", config.haAreaUserOverride)
+                                .put("settings", JSONObject().put("ha_area", config.getRaw(areaSpec)))
+                                .toString()
+                        },
+                        localizedSchema = { LocalizedConfigSchema("{}", listOf("en")) },
+                    )
+                }
+            }
+        }
+
+        val first = JSONObject(client.get("/api/v1/config").bodyAsText())
+        assertEquals("", first.getJSONObject("settings").getString("ha_area"))
+        assertFalse(first.getBoolean("ha_area_user_override"))
+        assertEquals("", stale.values["ha_area"])
+        assertEquals(false, stale.values["device_local_ha_area_user_override"])
+
+        val rawOnly = fakePreferences(initial = mapOf("ha_area" to "null"))
+        assertEquals("", Config(rawOnly.instance).getRaw(areaSpec))
+        assertEquals("", rawOnly.values["ha_area"])
+
+        assertTrue(config.commitHaArea("Kitchen", userOverride = true))
+        val named = JSONObject(client.get("/api/v1/config").bodyAsText())
+        assertEquals("Kitchen", named.getJSONObject("settings").getString("ha_area"))
+        assertTrue(named.getBoolean("ha_area_user_override"))
+    }
+
     @Test fun storedLiteralNullAreaIsClearedBeforeThePanelCanReportIt() {
         val stale = fakePreferences(initial = mapOf(
             "ha_area" to "null",
