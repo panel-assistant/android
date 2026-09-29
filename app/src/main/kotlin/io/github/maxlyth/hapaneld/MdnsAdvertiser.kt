@@ -33,6 +33,7 @@ import javax.jmdns.JmDNS
 import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo
 import javax.jmdns.ServiceListener
+import javax.jmdns.impl.JmDNSImpl
 
 /**
  * Advertises `_ha-paneld._tcp.local.` via JmDNS so HA's zeroconf discovery can auto-pair the
@@ -71,7 +72,7 @@ class MdnsAdvertiser(
     // A dual-stack panel's IPv6 responder. JmDNS answers only its bound address's family, so this second
     // instance carries the AAAA record. It only answers: the primary alone browses peers and carries the
     // liveness probe, so a dual-stack panel's IPv4 advertisement behaves exactly as an IPv4-only one.
-    private var secondaryDns: JmDNS? = null
+    @Volatile private var secondaryDns: JmDNS? = null
     @Volatile private var secondaryBoundIp: String? = null
     private var advertisedProps: Map<String, String>? = null
     private val liveness = MdnsLivenessPolicy()
@@ -91,6 +92,10 @@ class MdnsAdvertiser(
         { task -> Thread(task, "mdns-resolve").apply { isDaemon = true } },
         ThreadPoolExecutor.AbortPolicy(),
     )
+
+    private fun JmDNS?.isStopped(): Boolean = (this as? JmDNSImpl)?.let {
+        it.isCanceling || it.isCanceled || it.isClosing || it.isClosed
+    } == true
 
     // Live roster of discovered ha-paneld panels (keyed by mDNS instance name = panel_id), maintained by a
     // persistent [peerListener]. Reads are cheap + non-blocking and — unlike a one-shot dns.list, which
@@ -255,6 +260,7 @@ class MdnsAdvertiser(
                 val generation = browseGeneration.incrementAndGet()
                 lateinit var worker: Thread
                 worker = Thread {
+                    var secondaryRetryAfterMs = 0L
                     while (mdnsRunCurrent(browseGeneration, generation, browsing, jmdns === dns)) {
                         try { Thread.sleep(refreshIntervalMs) } catch (e: InterruptedException) { break }
                         if (!mdnsRunCurrent(browseGeneration, generation, browsing, jmdns === dns)) break
@@ -291,6 +297,34 @@ class MdnsAdvertiser(
                             MdnsProbeResult.UNAVAILABLE -> Unit
                             MdnsProbeResult.INCONCLUSIVE -> Unit
                         }
+                        val current = topology.snapshot()
+                        val observedSecondary = secondaryDns
+                        if (current.secondaryIp != null &&
+                            (observedSecondary == null || observedSecondary.isStopped()) &&
+                            monotonicMs() >= secondaryRetryAfterMs
+                        ) {
+                            val primaryHealthy = {
+                                liveness.snapshot().let {
+                                    it.state == MdnsLivenessState.HEALTHY && it.consecutiveMisses == 0
+                                }
+                            }
+                            if (recoveryScheduler.scheduleIf(
+                                    admitted = {
+                                        jmdns === dns && secondaryDns === observedSecondary &&
+                                            topology.matches(current.epoch, current.lanIp) && primaryHealthy()
+                                    },
+                                    task = {
+                                        ownerGate.runIfOpen(Unit) {
+                                            if (jmdns === dns && secondaryDns === observedSecondary &&
+                                                topology.matches(current.epoch, current.lanIp) && primaryHealthy()) {
+                                                Log.w(TAG, "mDNS secondary responder stopped; rebinding")
+                                                reconcileSecondary(current.secondaryIp)
+                                            }
+                                        }
+                                    },
+                                    delayMs = 0L,
+                                )) secondaryRetryAfterMs = saturatingAdd(monotonicMs(), 10_000L)
+                        }
                     }
                     if (refreshThread === worker) refreshThread = null
                 }.apply { isDaemon = true; name = "mdns-peer-refresh" }
@@ -312,7 +346,9 @@ class MdnsAdvertiser(
      * describe one panel. A failure leaves the primary alone; the next network callback retries.
      */
     private fun reconcileSecondary(wanted: String?) {
-        if (secondaryBoundIp == wanted) return
+        if (secondaryBoundIp == wanted &&
+            (wanted == null || (secondaryDns != null && !secondaryDns.isStopped()))
+        ) return
         if (!stopSecondary() || wanted == null) return
         val props = advertisedProps ?: return
         try {
