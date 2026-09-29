@@ -8,7 +8,7 @@
   var savedValues = {}, savedExpose = {};
   var dirtyValues = Object.create(null), dirtyExpose = Object.create(null);
   var joinCooldownUntil = 0, joinPollTimer = null, hashJumpUntil = 0;
-  var haSourceItems = [], haSourceRequest = 0, haSourceTimer = null;
+  var haSourceItems = [];
   var homeDashboardItems = [], homeDashboardRequest = 0, homeDashboardQueried = false;
   // Assist pipeline catalogue for the voice_pipelines picker. null = not fetched yet, false = the
   // endpoint returned an error/503 (degrade to the raw JSON textarea), an array = the fetched catalogue.
@@ -620,6 +620,224 @@
     return localPresent ? i18nText("configure.brightness.panel_sensor", "Panel ambient light sensor") : i18nText("configure.brightness.select_ha_sensor", "Select a Home Assistant illuminance sensor");
   }
 
+  // One editable entity picker owns its catalog query, body-level listbox and all listeners/timers.
+  // Callers supply only the source URL, presentation text and selected-value callback.
+  function createEntityPicker(options) {
+    var listId = options.listId;
+    var input = el("input", {
+      type: "text", value: options.value == null ? "" : options.value, class: "ha-entity-input", role: "combobox",
+      "aria-label": options.label, "aria-autocomplete": "list", "aria-expanded": "false",
+      "aria-controls": listId, "aria-haspopup": "listbox",
+      placeholder: options.placeholder, autocomplete: "off", maxlength: options.maxLength || 255
+    });
+    var list = el("div", { id: listId, class: "ha-entity-listbox", role: "listbox" });
+    list.hidden = true;
+    var note = el("small", { class: "picker-note", text: options.messages.initial });
+    var picker = el("div", { class: "ha-entity-picker" }, [input, note]);
+    var sourcePolls = 0;
+    var sourceItems = options.items || [];
+    var sourceRequest = 0, sourceTimer = null;
+    var activeIndex = -1;
+    var renderedItems = [];
+    var disposed = false;
+
+    // The listbox is a fixed body-level portal: no card overflow or transformed ancestor can move it,
+    // while it still inherits the page theme and remains part of the input's ARIA relationship.
+    document.body.appendChild(list);
+
+    function viewportSize() {
+      var visual = window.visualViewport;
+      var left = visual && visual.offsetLeft || 0;
+      var top = visual && visual.offsetTop || 0;
+      var width = visual && visual.width || window.innerWidth || document.documentElement.clientWidth;
+      var height = visual && visual.height || window.innerHeight || document.documentElement.clientHeight;
+      return {
+        left: left, top: top, width: width, height: height,
+        right: left + width, bottom: top + height
+      };
+    }
+    function positionList() {
+      if (disposed || list.hidden) return;
+      var rect = input.getBoundingClientRect();
+      var viewport = viewportSize();
+      var edge = 8, gap = 4, preferredHeight = 280, preferredWidth = 520;
+      var viewportCapacity = Math.max(0, viewport.width - edge * 2);
+      var minimumWidth = Math.min(Math.max(rect.width, 240), viewportCapacity);
+      var desiredWidth = Math.min(Math.max(rect.width, preferredWidth), viewportCapacity);
+      // Stay aligned with the input when its right-hand side has room, widening only into that space.
+      // On a narrow/right-edge layout, shift left only as much as needed to preserve the old minimum.
+      var left = Math.max(viewport.left + edge, Math.min(rect.left, viewport.right - minimumWidth - edge));
+      var width = Math.min(desiredWidth, Math.max(0, viewport.right - edge - left));
+      if (width < minimumWidth) {
+        width = minimumWidth;
+        left = Math.max(viewport.left + edge, viewport.right - edge - width);
+      }
+      var below = Math.max(0, viewport.bottom - rect.bottom - gap - edge);
+      var above = Math.max(0, rect.top - viewport.top - gap - edge);
+      var opensAbove = below < 160 && above > below;
+      var available = opensAbove ? above : below;
+      var maxHeight = Math.min(preferredHeight, Math.max(72, available), Math.max(0, viewport.height - edge * 2));
+      var desiredTop = opensAbove ? rect.top - gap - maxHeight : rect.bottom + gap;
+      list.style.width = width + "px";
+      list.style.maxHeight = maxHeight + "px";
+      list.style.left = left + "px";
+      list.style.top = Math.max(viewport.top + edge, Math.min(desiredTop, viewport.bottom - edge - maxHeight)) + "px";
+    }
+    function setActive(index) {
+      if (!renderedItems.length) index = -1;
+      else if (index < 0) index = renderedItems.length - 1;
+      else if (index >= renderedItems.length) index = 0;
+      activeIndex = index;
+      Array.prototype.forEach.call(list.children, function (option, i) {
+        option.classList.toggle("active", i === activeIndex);
+        option.setAttribute("aria-selected", i === activeIndex ? "true" : "false");
+      });
+      if (activeIndex < 0) input.removeAttribute("aria-activedescendant");
+      else {
+        var active = list.children[activeIndex];
+        input.setAttribute("aria-activedescendant", active.id);
+        if (active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+      }
+    }
+    function closeList() {
+      list.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      activeIndex = -1;
+    }
+    function choose(index) {
+      var item = renderedItems[index];
+      if (!item) return;
+      input.value = item.id;
+      options.onChange(item.id);
+      closeList();
+      input.focus();
+    }
+    function openList() {
+      if (disposed || !renderedItems.length) { closeList(); return; }
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      positionList();
+    }
+    function populate() {
+      list.innerHTML = "";
+      renderedItems = [];
+      activeIndex = -1;
+      sourceItems.forEach(function (item) {
+        var id = item.entity_id || item.entityId || "";
+        if (!id) return;
+        var name = item.friendly_name || item.friendlyName || item.name || id;
+        var unit = item.unit || item.unit_of_measurement || options.defaultUnit || "";
+        var index = renderedItems.length;
+        renderedItems.push({ id: id, name: name, unit: unit });
+        var option = el("div", {
+          id: listId + "-option-" + index, class: "ha-entity-option", role: "option",
+          "aria-selected": "false"
+        }, [
+          el("span", { class: "ha-entity-name", text: name }),
+          el("small", { text: id + (unit ? " · " + unit : "") })
+        ]);
+        option.addEventListener("pointerdown", function (event) {
+          // Keep input focus stable until selection completes (covers mouse, pen and touch).
+          event.preventDefault();
+          choose(index);
+        });
+        // Assistive technology and old WebViews may emit click without a preceding pointer event.
+        option.addEventListener("click", function () {
+          if (input.value !== id || !list.hidden) choose(index);
+        });
+        list.appendChild(option);
+      });
+      if (sourceItems.length) note.textContent = options.messages.available(sourceItems.length);
+      if (document.activeElement === input) openList();
+      else closeList();
+    }
+    function loadSources(query) {
+      var request = ++sourceRequest;
+      note.textContent = options.messages.loading;
+      fetch(options.url(query))
+        .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+        .then(function (body) {
+          if (request !== sourceRequest) return;
+          sourceItems = (body && (body.items || body.candidates)) || [];
+          if (options.onItems) options.onItems(sourceItems);
+          populate();
+          if (!body || body.available === false) {
+            note.textContent = options.messages.unavailable;
+          } else if (!sourceItems.length) {
+            if (body.refreshing === true && sourcePolls < 20) {
+              sourcePolls++;
+              note.textContent = options.messages.loading;
+              setTimeout(function () { if (request === sourceRequest) loadSources(query); }, 500);
+            } else {
+              note.textContent = options.messages.none;
+            }
+          }
+        })
+        .catch(function () {
+          if (request !== sourceRequest) return;
+          note.textContent = options.messages.failed;
+        });
+    }
+    input.addEventListener("focus", function () {
+      if (!sourceItems.length) loadSources(input.value.trim());
+      else openList();
+    });
+    input.addEventListener("input", function () {
+      options.onChange(input.value);
+      closeList();
+      if (sourceTimer) clearTimeout(sourceTimer);
+      var query = input.value.trim();
+      sourceTimer = setTimeout(function () { loadSources(query); }, query.length >= 2 ? 250 : 500);
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (!renderedItems.length) return;
+        event.preventDefault();
+        openList();
+        setActive(activeIndex + (event.key === "ArrowDown" ? 1 : -1));
+      } else if (event.key === "Enter" && !list.hidden && activeIndex >= 0) {
+        event.preventDefault(); choose(activeIndex);
+      } else if (event.key === "Escape" && !list.hidden) {
+        event.preventDefault(); closeList();
+      } else if (event.key === "Tab") closeList();
+    });
+    input.addEventListener("blur", function () {
+      setTimeout(function () {
+        if (disposed || document.activeElement === input) return;
+        closeList();
+        if (options.onBlur) options.onBlur();
+      }, 0);
+    });
+    function outsidePointer(event) {
+      if (event.target !== input && !list.contains(event.target)) closeList();
+    }
+    function reposition() { positionList(); }
+    document.addEventListener("pointerdown", outsidePointer, true);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", reposition);
+      window.visualViewport.addEventListener("scroll", reposition);
+    }
+    var cleanup = function () {
+      if (disposed) return;
+      disposed = true;
+      sourceRequest++; // invalidate fetches and catalog-refresh polls owned by this render
+      if (sourceTimer) { clearTimeout(sourceTimer); sourceTimer = null; }
+      document.removeEventListener("pointerdown", outsidePointer, true);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", reposition);
+        window.visualViewport.removeEventListener("scroll", reposition);
+      }
+      if (list.parentNode) list.parentNode.removeChild(list);
+    };
+    populate();
+    return { element: picker, cleanup: cleanup };
+  }
+
   // One input control bound to values[f.key]; Save appears only while the form differs from its baseline.
   function control(f) {
     var v = values[f.key];
@@ -1083,224 +1301,27 @@
       areaWrap.appendChild(areaNote);
       return areaWrap;
     }
-    // Home Assistant illuminance source: a searchable editable combobox. The listbox is ordinary page
-    // DOM rather than a browser-owned datalist so it stays inside the browser viewport on multi-monitor
-    // desktops. Free-form values remain valid when HA or its entity catalog is temporarily unavailable.
+    // Home Assistant illuminance source: free-form ids remain valid while HA is unavailable.
     if (f.picker === "ha_illuminance") {
-      var current = v == null ? "" : v;
       var sourceReadyAtRender = ambientLightSourceReady();
-      var listId = "ha-illuminance-listbox";
-      var input = el("input", {
-        type: "text", value: current, class: "ha-entity-input", role: "combobox",
-        "aria-label": f.label, "aria-autocomplete": "list", "aria-expanded": "false",
-        "aria-controls": listId, "aria-haspopup": "listbox",
-        placeholder: ambientSourcePlaceholder(), autocomplete: "off", maxlength: f.maxLength || 255
+      var entityPicker = createEntityPicker({
+        value: v, label: f.label, maxLength: f.maxLength, listId: "ha-illuminance-listbox",
+        placeholder: ambientSourcePlaceholder(), defaultUnit: "lx", items: haSourceItems,
+        url: function (query) { return "api/v1/auto-brightness/sources?q=" + encodeURIComponent(query || "") + "&limit=200"; },
+        messages: {
+          initial: i18nText("configure.brightness.focus_to_load", "Focus to load Home Assistant illuminance sensors."),
+          loading: i18nText("configure.brightness.sources_loading", "Loading Home Assistant illuminance sensors…"),
+          available: function (count) { return i18nText("configure.brightness.sources_available", "{count} illuminance source(s) available. Blank uses the panel sensor.", { count: count }); },
+          unavailable: i18nText("configure.brightness.sources_unavailable", "Home Assistant sources are unavailable; an exact sensor entity id can still be entered."),
+          none: i18nText("configure.brightness.sources_none", "No Home Assistant illuminance sensors found; an exact sensor entity id can still be entered."),
+          failed: i18nText("configure.brightness.sources_load_failed", "Could not load Home Assistant sources; an exact sensor entity id can still be entered.")
+        },
+        onItems: function (items) { haSourceItems = items; },
+        onChange: function (value) { values[f.key] = value; setDirty(f.key); },
+        onBlur: function () { if (sourceReadyAtRender !== ambientLightSourceReady()) render(); }
       });
-      var list = el("div", { id: listId, class: "ha-entity-listbox", role: "listbox" });
-      list.hidden = true;
-      var note = el("small", { class: "picker-note", text: i18nText("configure.brightness.focus_to_load", "Focus to load Home Assistant illuminance sensors.") });
-      var picker = el("div", { class: "ha-entity-picker" }, [input, note]);
-      var sourcePolls = 0;
-      var activeIndex = -1;
-      var renderedItems = [];
-      var disposed = false;
-
-      // The listbox is a fixed body-level portal: no card overflow or transformed ancestor can move it,
-      // while it still inherits the page theme and remains part of the input's ARIA relationship.
-      document.body.appendChild(list);
-
-      function viewportSize() {
-        var visual = window.visualViewport;
-        var left = visual && visual.offsetLeft || 0;
-        var top = visual && visual.offsetTop || 0;
-        var width = visual && visual.width || window.innerWidth || document.documentElement.clientWidth;
-        var height = visual && visual.height || window.innerHeight || document.documentElement.clientHeight;
-        return {
-          left: left, top: top, width: width, height: height,
-          right: left + width, bottom: top + height
-        };
-      }
-      function positionList() {
-        if (disposed || list.hidden) return;
-        var rect = input.getBoundingClientRect();
-        var viewport = viewportSize();
-        var edge = 8, gap = 4, preferredHeight = 280, preferredWidth = 520;
-        var viewportCapacity = Math.max(0, viewport.width - edge * 2);
-        var minimumWidth = Math.min(Math.max(rect.width, 240), viewportCapacity);
-        var desiredWidth = Math.min(Math.max(rect.width, preferredWidth), viewportCapacity);
-        // Stay aligned with the input when its right-hand side has room, widening only into that space.
-        // On a narrow/right-edge layout, shift left only as much as needed to preserve the old minimum.
-        var left = Math.max(viewport.left + edge, Math.min(rect.left, viewport.right - minimumWidth - edge));
-        var width = Math.min(desiredWidth, Math.max(0, viewport.right - edge - left));
-        if (width < minimumWidth) {
-          width = minimumWidth;
-          left = Math.max(viewport.left + edge, viewport.right - edge - width);
-        }
-        var below = Math.max(0, viewport.bottom - rect.bottom - gap - edge);
-        var above = Math.max(0, rect.top - viewport.top - gap - edge);
-        var opensAbove = below < 160 && above > below;
-        var available = opensAbove ? above : below;
-        var maxHeight = Math.min(preferredHeight, Math.max(72, available), Math.max(0, viewport.height - edge * 2));
-        var desiredTop = opensAbove ? rect.top - gap - maxHeight : rect.bottom + gap;
-        list.style.width = width + "px";
-        list.style.maxHeight = maxHeight + "px";
-        list.style.left = left + "px";
-        list.style.top = Math.max(viewport.top + edge, Math.min(desiredTop, viewport.bottom - edge - maxHeight)) + "px";
-      }
-      function setActive(index) {
-        if (!renderedItems.length) index = -1;
-        else if (index < 0) index = renderedItems.length - 1;
-        else if (index >= renderedItems.length) index = 0;
-        activeIndex = index;
-        Array.prototype.forEach.call(list.children, function (option, i) {
-          option.classList.toggle("active", i === activeIndex);
-          option.setAttribute("aria-selected", i === activeIndex ? "true" : "false");
-        });
-        if (activeIndex < 0) input.removeAttribute("aria-activedescendant");
-        else {
-          var active = list.children[activeIndex];
-          input.setAttribute("aria-activedescendant", active.id);
-          if (active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
-        }
-      }
-      function closeList() {
-        list.hidden = true;
-        input.setAttribute("aria-expanded", "false");
-        input.removeAttribute("aria-activedescendant");
-        activeIndex = -1;
-      }
-      function choose(index) {
-        var item = renderedItems[index];
-        if (!item) return;
-        input.value = item.id;
-        values[f.key] = item.id;
-        setDirty(f.key);
-        closeList();
-        input.focus();
-      }
-      function openList() {
-        if (disposed || !renderedItems.length) { closeList(); return; }
-        list.hidden = false;
-        input.setAttribute("aria-expanded", "true");
-        positionList();
-      }
-      function populate() {
-        list.innerHTML = "";
-        renderedItems = [];
-        activeIndex = -1;
-        haSourceItems.forEach(function (item) {
-          var id = item.entity_id || item.entityId || "";
-          if (!id) return;
-          var name = item.friendly_name || item.friendlyName || item.name || id;
-          var unit = item.unit || item.unit_of_measurement || "lx";
-          var index = renderedItems.length;
-          renderedItems.push({ id: id, name: name, unit: unit });
-          var option = el("div", {
-            id: listId + "-option-" + index, class: "ha-entity-option", role: "option",
-            "aria-selected": "false"
-          }, [
-            el("span", { class: "ha-entity-name", text: name }),
-            el("small", { text: id + (unit ? " · " + unit : "") })
-          ]);
-          option.addEventListener("pointerdown", function (event) {
-            // Keep input focus stable until selection completes (covers mouse, pen and touch).
-            event.preventDefault();
-            choose(index);
-          });
-          // Assistive technology and old WebViews may emit click without a preceding pointer event.
-          option.addEventListener("click", function () {
-            if (input.value !== id || !list.hidden) choose(index);
-          });
-          list.appendChild(option);
-        });
-        if (haSourceItems.length) note.textContent = i18nText("configure.brightness.sources_available", "{count} illuminance source(s) available. Blank uses the panel sensor.", { count: haSourceItems.length });
-        if (document.activeElement === input) openList();
-        else closeList();
-      }
-      function loadSources(query) {
-        var request = ++haSourceRequest;
-        note.textContent = i18nText("configure.brightness.sources_loading", "Loading Home Assistant illuminance sensors…");
-        fetch("api/v1/auto-brightness/sources?q=" + encodeURIComponent(query || "") + "&limit=200")
-          .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
-          .then(function (body) {
-            if (request !== haSourceRequest) return;
-            haSourceItems = (body && (body.items || body.candidates)) || [];
-            populate();
-            if (!body || body.available === false) {
-              note.textContent = i18nText("configure.brightness.sources_unavailable", "Home Assistant sources are unavailable; an exact sensor entity id can still be entered.");
-            } else if (!haSourceItems.length) {
-              if (body.refreshing === true && sourcePolls < 20) {
-                sourcePolls++;
-                note.textContent = i18nText("configure.brightness.sources_loading", "Loading Home Assistant illuminance sensors…");
-                setTimeout(function () { if (request === haSourceRequest) loadSources(query); }, 500);
-              } else {
-                note.textContent = i18nText("configure.brightness.sources_none", "No Home Assistant illuminance sensors found; an exact sensor entity id can still be entered.");
-              }
-            }
-          })
-          .catch(function () {
-            if (request !== haSourceRequest) return;
-            note.textContent = i18nText("configure.brightness.sources_load_failed", "Could not load Home Assistant sources; an exact sensor entity id can still be entered.");
-          });
-      }
-      input.addEventListener("focus", function () {
-        if (!haSourceItems.length) loadSources(input.value.trim());
-        else openList();
-      });
-      input.addEventListener("input", function () {
-        values[f.key] = input.value; setDirty(f.key);
-        closeList();
-        if (haSourceTimer) clearTimeout(haSourceTimer);
-        var query = input.value.trim();
-        haSourceTimer = setTimeout(function () { loadSources(query); }, query.length >= 2 ? 250 : 500);
-      });
-      input.addEventListener("keydown", function (event) {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          if (!renderedItems.length) return;
-          event.preventDefault();
-          openList();
-          setActive(activeIndex + (event.key === "ArrowDown" ? 1 : -1));
-        } else if (event.key === "Enter" && !list.hidden && activeIndex >= 0) {
-          event.preventDefault(); choose(activeIndex);
-        } else if (event.key === "Escape" && !list.hidden) {
-          event.preventDefault(); closeList();
-        } else if (event.key === "Tab") closeList();
-      });
-      input.addEventListener("blur", function () {
-        setTimeout(function () {
-          if (disposed || document.activeElement === input) return;
-          closeList();
-          if (sourceReadyAtRender !== ambientLightSourceReady()) render();
-        }, 0);
-      });
-      function outsidePointer(event) {
-        if (event.target !== input && !list.contains(event.target)) closeList();
-      }
-      function reposition() { positionList(); }
-      document.addEventListener("pointerdown", outsidePointer, true);
-      window.addEventListener("resize", reposition);
-      window.addEventListener("scroll", reposition, true);
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", reposition);
-        window.visualViewport.addEventListener("scroll", reposition);
-      }
-      var cleanup = function () {
-        if (disposed) return;
-        disposed = true;
-        haSourceRequest++; // invalidate fetches and catalog-refresh polls owned by this render
-        if (haSourceTimer) { clearTimeout(haSourceTimer); haSourceTimer = null; }
-        document.removeEventListener("pointerdown", outsidePointer, true);
-        window.removeEventListener("resize", reposition);
-        window.removeEventListener("scroll", reposition, true);
-        if (window.visualViewport) {
-          window.visualViewport.removeEventListener("resize", reposition);
-          window.visualViewport.removeEventListener("scroll", reposition);
-        }
-        if (list.parentNode) list.parentNode.removeChild(list);
-      };
-      haPickerCleanups.push(cleanup);
-      populate();
-      return picker;
+      haPickerCleanups.push(entityPicker.cleanup);
+      return entityPicker.element;
     }
     var type = f.type === "PASSWORD" ? "password" : (f.type === "INT" || f.type === "FLOAT") ? "number" : "text";
     var inp = el("input", { type: type, value: f.secret ? "" : (v == null ? "" : v) });
