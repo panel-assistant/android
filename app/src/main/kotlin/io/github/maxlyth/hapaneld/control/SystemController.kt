@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.RendererResolver
+import io.github.maxlyth.hapaneld.platform.ActivityRef
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.RootShell
@@ -14,6 +15,9 @@ import io.github.maxlyth.hapaneld.util.HelperClient
 
 /** Foreground/liveness state of the dashboard app, as seen by the app watchdog. */
 enum class AppState { FG, BG, DEAD, UNKNOWN }
+
+/** Fresh HOME/foreground evidence requested by an installer after a package replacement. */
+data class HomeUiProof(val state: String, val reason: String, val evidence: String)
 
 /**
  * Panel-level actions: reload the dashboard, bring a launcher / the dashboard to the foreground,
@@ -108,6 +112,9 @@ class SystemController(
      *  package (e.g. for perf attribution), and letting it fall through to the foreign-app paths would
      *  `am force-stop` ha-paneld itself — killing the service, MQTT and the web UI. */
     private fun isBuiltin(pkg: String) = isBuiltinSelection(pkg, env.ownPackage)
+
+    private fun isSystemFallbackHome(home: ActivityRef?): Boolean =
+        home?.let { it.pkg == "com.android.settings" && it.cls.endsWith("FallbackHome") } == true
 
     /** Renderer-kind query for recovery policy routing. Resolution stays here so the watchdog cannot
      *  drift from launch/state handling for blank or own-package aliases. */
@@ -328,10 +335,10 @@ class SystemController(
      * The side effect: Android **clears the default-home association** whenever a package adds or changes
      * a HOME activity (i.e. every ha-paneld install/update) — after which pressing Home pops a chooser
      * instead of booting straight to the dashboard. So on boot we re-assert the dashboard app as the
-     * default home when home is unowned (the system resolver), owned by *us*, or still assigned to a
-     * supported Companion renderer ha-paneld previously selected. A deliberate third-party launcher set
-     * as home is left alone. If the dashboard app isn't installed we do nothing, leaving our admin launcher
-     * as the genuine last-resort home.
+     * default home when home is unowned (the system resolver or Settings FallbackHome), owned by *us*,
+     * or still assigned to a supported Companion renderer ha-paneld previously selected. A deliberate
+     * third-party launcher set as home is left alone. If the dashboard app isn't installed we do
+     * nothing, leaving our admin launcher as the genuine last-resort home.
      */
     fun ensureDashboardHome(dashboardPkg: String, builtinReady: Boolean = true) {
         val target = resolveDashboard(dashboardPkg)
@@ -339,11 +346,13 @@ class SystemController(
         // else DashboardActivity would be the home yet immediately hand off, churning HOME needlessly.
         if (isBuiltin(target)) { missingHomeTarget = null; if (builtinReady) ensureBuiltinHome(); return }
         if (target.isBlank()) { missingHomeTarget = null; Log.i(TAG, "ensureHome: no dashboard app installed; leaving home as-is"); return }
-        val current = env.defaultHome()?.pkg
+        val currentHome = env.defaultHome()
+        val current = currentHome?.pkg
         if (current == target) { missingHomeTarget = null; return }     // already correct
         // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
         // may previously have assigned, so switching between installed renderer variants must reclaim it.
-        if (current != null && current != "android" && current != env.ownPackage && current !in KNOWN_RENDERER_HOMES) {
+        if (current != null && current != "android" && current != env.ownPackage &&
+            current !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(currentHome)) {
             missingHomeTarget = null
             return
         }
@@ -360,9 +369,10 @@ class SystemController(
 
     /** Make our built-in DashboardActivity the default home (parity with the Companion path): so the
      *  panel boots to it, the Home key returns to it, and it self-heals as a home app. Reclaims from an
-     *  unowned ("android") resolver, ourselves, or a known dashboard renderer that ha-paneld itself set
-     *  as home (the Companion — [ensureDashboardHome] made it the default on every existing panel, so
-     *  switching to the built-in renderer must be able to take HOME back from it). A genuinely
+     *  unowned ("android") resolver, Settings FallbackHome, ourselves, or a known dashboard renderer
+     *  that ha-paneld itself set as home (the Companion — [ensureDashboardHome] made it the default
+     *  on every existing panel, so switching to the built-in renderer must be able to take HOME back
+     *  from it). A genuinely
      *  third-party launcher the user chose is still left alone. */
     private fun ensureBuiltinHome() {
         val comp = env.homeActivities().firstOrNull { it.pkg == env.ownPackage && it.cls.endsWith("DashboardActivity") }?.component
@@ -370,7 +380,8 @@ class SystemController(
         val current = env.defaultHome()
         if (current?.component == comp) return                           // already correct
         val curPkg = current?.pkg
-        if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage && curPkg !in KNOWN_RENDERER_HOMES) return
+        if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage &&
+            curPkg !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(current)) return
         Log.i(TAG, "ensureHome(builtin): default home was '${current?.component}' -> $comp")
         setHomeActivity(comp)
     }
@@ -425,6 +436,33 @@ class SystemController(
                 if (focus.contains("$pkg/")) AppState.FG else AppState.BG
             }
         )?.value ?: AppState.UNKNOWN
+    }
+
+    /** A healthy service is not proof that the panel left Android's HOME chooser. */
+    fun homeUiProof(dashboardPkg: String, adminUiVisible: Boolean): HomeUiProof {
+        val home = env.defaultHome()
+        if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
+            return HomeUiProof("blocked", "home_resolver", "home_resolve")
+        }
+        if (isSystemFallbackHome(home)) {
+            return HomeUiProof("blocked", "home_fallback", "home_resolve")
+        }
+        if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
+        if (home == null) return HomeUiProof("unknown", "home_unresolved", "home_resolve")
+        val target = resolveDashboard(dashboardPkg)
+        val builtin = isBuiltin(target)
+        val expectedHome = if (builtin) env.ownPackage else target
+        // Existing HOME policy preserves a deliberate foreign launcher, but reclaims our own
+        // launcher or an old Companion renderer when the configured dashboard has changed.
+        if (home.pkg != expectedHome && (home.pkg == env.ownPackage || home.pkg in KNOWN_RENDERER_HOMES)) {
+            return HomeUiProof("blocked", "home_mismatch", "home_resolve")
+        }
+        val evidence = if (builtin) "builtin_lifecycle" else "dashboard_appstate"
+        return when (dashboardState(dashboardPkg)) {
+            AppState.FG -> HomeUiProof("ready", "dashboard_foreground", evidence)
+            AppState.BG, AppState.DEAD -> HomeUiProof("blocked", "dashboard_background", evidence)
+            AppState.UNKNOWN -> HomeUiProof("unknown", "dashboard_unobserved", evidence)
+        }
     }
 
     /**

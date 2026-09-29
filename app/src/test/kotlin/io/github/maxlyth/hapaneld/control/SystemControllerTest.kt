@@ -56,6 +56,70 @@ class SystemControllerTest {
     private val BUILTIN = SystemController.BUILTIN_DASHBOARD
     private val DASH_HOME = ActivityRef(OWN, "io.github.maxlyth.hapaneld.DashboardActivity")
 
+    @Test fun homeUiProofRequiresForegroundDashboardAndResolvedHome() {
+        val ready = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = true).first
+            .homeUiProof("", adminUiVisible = false)
+        assertEquals("ready", ready.state)
+        assertEquals("dashboard_foreground", ready.reason)
+
+        val chooser = sc(FakeSystemEnv(default = ActivityRef("android", "com.android.internal.app.ResolverActivity")),
+            builtinForeground = true).first.homeUiProof("", adminUiVisible = false)
+        assertEquals("blocked", chooser.state)
+        assertEquals("home_resolver", chooser.reason)
+        val chooserOverAdmin = sc(FakeSystemEnv(default = ActivityRef("android", "com.android.internal.app.ResolverActivity"))).first
+            .homeUiProof("", adminUiVisible = true)
+        assertEquals("blocked", chooserOverAdmin.state)
+
+        val covered = sc(FakeSystemEnv(default = DASH_HOME), builtinForeground = false).first
+            .homeUiProof("", adminUiVisible = false)
+        assertEquals("blocked", covered.state)
+        assertEquals("dashboard_background", covered.reason)
+
+        val unknown = sc(FakeSystemEnv(default = null), builtinForeground = true).first
+            .homeUiProof("", adminUiVisible = false)
+        assertEquals("unknown", unknown.state)
+        assertEquals("home_unresolved", unknown.reason)
+    }
+
+    @Test fun homeUiProofAllowsOnlyVisibleAdminAsSetup() {
+        val controller = sc(FakeSystemEnv(default = null), builtinForeground = false).first
+        assertEquals("setup", controller.homeUiProof("", adminUiVisible = true).state)
+        assertEquals("unknown", controller.homeUiProof("", adminUiVisible = false).state)
+    }
+
+    @Test fun homeUiProofRejectsFallbackAndMismatchedRendererHome() {
+        val fallback = sc(FakeSystemEnv(default = ActivityRef("com.android.settings", ".FallbackHome")),
+            builtinForeground = true).first
+        assertEquals("blocked", fallback.homeUiProof("", adminUiVisible = false).state)
+        assertEquals("blocked", fallback.homeUiProof("", adminUiVisible = true).state)
+
+        val oldRenderer = sc(FakeSystemEnv(default = ActivityRef(MIN, ".Home")),
+            builtinForeground = true).first
+        assertEquals("blocked", oldRenderer.homeUiProof("", adminUiVisible = false).state)
+
+        val ownHome = sc(FakeSystemEnv(installed = setOf(MIN), default = DASH_HOME),
+            daemon = mapOf("APPSTATE $MIN" to "FG")).first
+        assertEquals("blocked", ownHome.homeUiProof(MIN, adminUiVisible = false).state)
+
+        val deliberateLauncher = sc(FakeSystemEnv(default = ActivityRef(VENDOR, ".Home")),
+            builtinForeground = true).first
+        assertEquals("ready", deliberateLauncher.homeUiProof("", adminUiVisible = false).state)
+
+        val foreignFallbackName = sc(FakeSystemEnv(default = ActivityRef(VENDOR, ".FallbackHome")),
+            builtinForeground = true).first
+        assertEquals("ready", foreignFallbackName.homeUiProof("", adminUiVisible = false).state)
+    }
+
+    @Test fun homeUiProofUsesLiveAppStateForExternalDashboard() {
+        val env = FakeSystemEnv(installed = setOf(MIN), default = ActivityRef(MIN, ".Home"))
+        val foreground = sc(env, daemon = mapOf("APPSTATE $MIN" to "FG")).first
+        assertEquals("ready", foreground.homeUiProof(MIN, adminUiVisible = false).state)
+        val background = sc(env, daemon = mapOf("APPSTATE $MIN" to "BG")).first
+        assertEquals("blocked", background.homeUiProof(MIN, adminUiVisible = false).state)
+        val unobserved = sc(env, daemon = mapOf("APPSTATE $MIN" to "ERR"), su = false).first
+        assertEquals("unknown", unobserved.homeUiProof(MIN, adminUiVisible = false).state)
+    }
+
     // ---------- reboot ----------
     @Test fun nativeActionAvailabilityFollowsExecutableRoutes() {
         val noPrivilege = SystemController(
@@ -576,6 +640,24 @@ class SystemControllerTest {
         val (c, root, _) = sc(env, daemon = null, su = true)
         c.ensureDashboardHome(MIN)
         assertTrue("reclaim from resolver via su", root.ran.contains("cmd package set-home-activity $MIN/Home"))
+    }
+
+    @Test fun fallbackHomeIsReclaimedForBuiltinAndCompanion() {
+        val fallback = ActivityRef("com.android.settings", ".FallbackHome")
+        val builtinEnv = FakeSystemEnv(homes = listOf(DASH_HOME), default = fallback)
+        val (builtin, builtinRoot, _) = sc(builtinEnv, daemon = null)
+        builtin.applyLauncherHomePolicy("", "")
+        assertEquals(listOf("cmd package set-home-activity ${DASH_HOME.component}"), builtinRoot.ran)
+
+        val companionEnv = FakeSystemEnv(installed = setOf(MIN), homes = listOf(ActivityRef(MIN, "Home")), default = fallback)
+        val (companion, companionRoot, _) = sc(companionEnv, daemon = null)
+        companion.applyLauncherHomePolicy("", MIN)
+        assertEquals(listOf("cmd package set-home-activity $MIN/Home"), companionRoot.ran)
+
+        val deliberateLauncherEnv = FakeSystemEnv(homes = listOf(DASH_HOME), default = ActivityRef(VENDOR, ".FallbackHome"))
+        val (deliberateLauncher, launcherRoot, _) = sc(deliberateLauncherEnv, daemon = null)
+        deliberateLauncher.applyLauncherHomePolicy("", "")
+        assertTrue(launcherRoot.ran.isEmpty())
     }
 
     @Test fun ensureHomeReclaimsFromSelfViaDaemon() {
