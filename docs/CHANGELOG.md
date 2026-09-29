@@ -37,6 +37,8 @@
 
 ### Fixed
 
+- Panels with a configured home dashboard return to it after starting or reloading the Companion renderer. Repeating Navigate to the current built-in dashboard reloads it.
+
 - Panels report their current primary and secondary network addresses to Panel Assistant when connecting, allowing it to verify a reachable address after a network change.
 - A saved dashboard displayed while disconnected now shows an outage notice until its live connection returns.
 
