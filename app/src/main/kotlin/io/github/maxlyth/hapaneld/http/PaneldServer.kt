@@ -697,17 +697,7 @@ class PaneldServer internal constructor(
                         invalidateCompanionObservation = { managementObservations.companionServerCache.invalidate() },
                         authorizeSensitive = ::authorizeSensitive,
                     )
-                    // Per-panel Canvas dashboard layout (opaque Gridstack JSON, stored in Config).
-                    get("/ui/layout") {
-                        call.respondText("""{"layout":${jsonStr(config.uiDashboardLayout)}}""", ContentType.Application.Json)
-                    }
-                    post("/ui/layout") {
-                        config.uiDashboardLayout = (receiveBoundedFormParameters(
-                            call,
-                            MAX_CONFIG_POST_BODY_BYTES,
-                        ) ?: return@post)["layout"].orEmpty()
-                        call.respondText("""{"ok":true}""", ContentType.Application.Json)
-                    }
+                    uiLayoutRoutes(config)
                     remoteControlRoutes({ remoteControlRoutes }, ::authorizeSensitive)
                     sensorTraceRoute()
                     screenshotRoutes(screenshots, { interactive.screenshot() }, { admitActiveRead(it) })
