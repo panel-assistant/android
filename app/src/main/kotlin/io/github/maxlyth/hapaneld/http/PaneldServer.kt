@@ -4,17 +4,13 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.canonicalHaOrigin
-import io.github.maxlyth.hapaneld.sameOriginDashboardRoute
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.MigrationNotice
 import io.github.maxlyth.hapaneld.NativeLocale
-import io.github.maxlyth.hapaneld.sensors.HaLifecycle
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleMessage
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime
 import io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime
 import io.github.maxlyth.hapaneld.sensors.PathProbeRuntime
-import io.github.maxlyth.hapaneld.sensors.HaPresenceSourceUpdate
-import io.github.maxlyth.hapaneld.sensors.HaPanelAreaPrerequisite
 import io.github.maxlyth.hapaneld.sensors.HaPanelAreaPrerequisitePhase
 import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.DashboardEntityBackupState
@@ -37,7 +33,6 @@ import io.github.maxlyth.hapaneld.peersJson
 import io.github.maxlyth.hapaneld.stableOwner
 import io.github.maxlyth.hapaneld.config.Capabilities
 import io.github.maxlyth.hapaneld.config.ConfigBundle
-import io.github.maxlyth.hapaneld.config.ConfigDiff
 import io.github.maxlyth.hapaneld.config.Migrations
 import io.github.maxlyth.hapaneld.backup.PanelBackup
 import io.github.maxlyth.hapaneld.backup.CompanionRestore
@@ -57,7 +52,6 @@ import io.github.maxlyth.hapaneld.camera.CameraResolution
 import io.github.maxlyth.hapaneld.camera.CameraState
 import io.github.maxlyth.hapaneld.camera.CameraSurface
 import io.github.maxlyth.hapaneld.camera.SnapshotResult
-import io.github.maxlyth.hapaneld.control.AmbientThemeReport
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.CdpRelay
 import io.github.maxlyth.hapaneld.control.AdbController
@@ -130,7 +124,6 @@ import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningActivationSnapshot
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningReader
-import io.github.maxlyth.hapaneld.security.ApprovalBroker
 import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.sensors.SensorReporter
@@ -139,7 +132,6 @@ import io.github.maxlyth.hapaneld.shizuku.ShizukuBridge
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
 import io.github.maxlyth.hapaneld.util.AccessDenialMemo
-import io.github.maxlyth.hapaneld.util.DashboardPath
 import io.github.maxlyth.hapaneld.util.DashboardTheme
 import io.github.maxlyth.hapaneld.util.Cached
 import io.github.maxlyth.hapaneld.util.AppInstaller
@@ -150,7 +142,6 @@ import io.github.maxlyth.hapaneld.util.BundledHelperInstaller
 import io.github.maxlyth.hapaneld.util.bundledHelperIsCanonical
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
 import io.github.maxlyth.hapaneld.util.CompanionHelperProtocol
-import io.github.maxlyth.hapaneld.util.CompanionOperationStatus
 import io.github.maxlyth.hapaneld.util.HelperClient
 import io.github.maxlyth.hapaneld.util.GuardDbArmCoordinator
 import io.github.maxlyth.hapaneld.util.GuardDbMaintenance
@@ -182,7 +173,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
-import io.ktor.http.parseQueryString
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
@@ -190,7 +180,6 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.receiveStream
 import io.ktor.server.request.receiveText
-import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondRedirect
@@ -217,233 +206,6 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicLong
 
-
-/**
- * Keep app-side launch suppression until the helper affirmatively reports that no Companion-data
- * worker can still be mutating files. An unreachable status socket is not evidence that a worker
- * from an earlier, timed-out connection has stopped; the daemon may merely be temporarily unable to
- * accept or answer the probe. The global Companion gate admits only one lease, so retaining it and
- * one low-frequency polling coroutine is resource-bounded even across a prolonged outage.
- *
- * A legacy `UNSUPPORTED` reply is not affirmative while the app marker is armed: a newer helper may
- * have published a durable journal and then died before an older init-managed helper restarted.
- */
-internal suspend fun retainCompanionLeaseUntilHelperIdle(
-    lease: CompanionDataOperationGate.Lease,
-    operationState: CompanionDataOperationState,
-    afterRelease: () -> Unit,
-    operationStatus: () -> CompanionOperationStatus,
-    pollMs: Long,
-) {
-    try {
-        while (true) {
-            val status = runCatching(operationStatus).getOrDefault(CompanionOperationStatus.UNAVAILABLE)
-            when (status) {
-                CompanionOperationStatus.IDLE -> if (operationState.clear()) break
-                CompanionOperationStatus.BUSY,
-                CompanionOperationStatus.UNSUPPORTED,
-                CompanionOperationStatus.UNAVAILABLE -> delay(pollMs.coerceAtLeast(1L))
-            }
-            if (status == CompanionOperationStatus.IDLE) delay(pollMs.coerceAtLeast(1L))
-        }
-    } finally {
-        lease.close()
-    }
-    afterRelease()
-}
-
-/**
- * Turn what the caller said about the Companion into what this panel will actually put in the archive.
- *
- * [CompanionBackupRequest.REQUIRED] and [CompanionBackupRequest.EXCLUDED] are answered exactly and never
- * consult [companionInstalled], so no probe result can quietly downgrade a request that named the login:
- * an explicit `true` on a Companion-free panel still reaches the capture path and still refuses there,
- * with the reason the operator needs. Only an omitted request asks whether there is anything to include,
- * and it asks about installation alone. A panel that *has* the Companion but cannot capture it — a stale
- * helper, a busy helper, a database that will not checkpoint — is not a panel with nothing to include, so
- * omission keeps failing loudly there rather than handing back an archive that silently lacks the login.
- */
-internal fun resolveCompanionInclusion(
-    request: CompanionBackupRequest,
-    companionInstalled: () -> Boolean,
-): Boolean = when (request) {
-    CompanionBackupRequest.REQUIRED -> true
-    CompanionBackupRequest.EXCLUDED -> false
-    CompanionBackupRequest.OMITTED -> companionInstalled()
-}
-
-/** Conservative disk peak while source entries, archive plaintext and optional ciphertext overlap. */
-internal fun backupStagingRequirement(includeCompanion: Boolean, encrypted: Boolean): Long {
-    val sources = PaneldServer.MAX_BACKUP_MANIFEST_BYTES +
-        2L * PaneldServer.MAX_ENTITY_BACKUP_TEXT_BYTES +
-        PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES +
-        if (includeCompanion) PaneldServer.MAX_COMPANION_BACKUP_BYTES else 0L
-    val archives = PaneldServer.MAX_RESTORE_BYTES * if (encrypted) 2L else 1L
-    val archivePeak = sources + archives
-    val rawCapturePeak = if (includeCompanion) CompanionHelperProtocol.MAX_BACKUP_STREAM_BYTES else 0L
-    return PaneldServer.BACKUP_STORAGE_MARGIN_BYTES + maxOf(archivePeak, rawCapturePeak)
-}
-
-internal class BackupStagingRetainedException : Exception("sensitive backup staging file retained")
-
-/** Attempt one bounded cleanup without allowing it to replace an earlier backup failure. */
-internal inline fun attemptBackupCleanup(primary: Exception?, cleanup: () -> Unit): Exception? = try {
-    cleanup()
-    primary
-} catch (failure: Exception) {
-    if (primary == null) failure else primary.apply {
-        if (failure !== this) addSuppressed(failure)
-    }
-}
-
-internal inline fun <R> withBackupArtifactCleanup(
-    plain: File,
-    sealed: () -> File?,
-    ownedFiles: () -> List<File>,
-    block: () -> R,
-): R {
-    var primary: Exception? = null
-    var failed = false
-    try {
-        return block()
-    } catch (error: Exception) {
-        failed = true
-        primary = error
-        primary = attemptBackupCleanup(primary) { plain.delete() }
-        primary = attemptBackupCleanup(primary) { sealed()?.delete() }
-        throw error
-    } finally {
-        ownedFiles().forEach { file ->
-            primary = attemptBackupCleanup(primary) { file.delete() }
-        }
-        if (!failed) primary?.let { throw it }
-    }
-}
-
-internal inline fun <T : java.io.Closeable, R> withBackupCaptureAndPlaintext(
-    capture: T?,
-    createPlaintext: () -> File,
-    block: (T?, File) -> R,
-): R {
-    var primary: Exception? = null
-    try {
-        return block(capture, createPlaintext())
-    } catch (error: Exception) {
-        primary = error
-        throw error
-    } finally {
-        val failure = attemptBackupCleanup(primary) { capture?.close() }
-        if (primary == null && failure != null) throw failure
-    }
-}
-
-internal fun encryptedBackupArtifact(
-    plain: File,
-    sealed: File,
-    stateUnavailable: Boolean = false,
-): PanelBackup.Artifact {
-    val retained = runCatching {
-        plain.delete()
-        plain.exists()
-    }.getOrDefault(true)
-    if (retained) {
-        // The encrypted temp is never returned, even if its best-effort cleanup also fails.
-        runCatching { sealed.delete() }
-        throw BackupStagingRetainedException()
-    }
-    return PanelBackup.Artifact(sealed, stateUnavailable = stateUnavailable)
-}
-
-/**
- * Ktor CIO HTTP surface on :8888. Serves the TTS-announce contract plus a small panel info/config
- * UI at `/` (the device's `configuration_url`, so HA shows a "Visit" link).
- *
- * Routes:
- *   GET  /         panel info + panel_id config form (HTML)
- *   POST /config   set panel_id (form `panel_id`), then live-reconfigure
- *   GET  /health   200 with version + panel id
- *   POST /play     body has a URL (raw or `{"url":"…"}`) -> 200 "playing", background playback;
- *                  no URL -> 400 "no-url"
- *
- * [managementProjection] returns the facts/live/capability view; [onReconfigure] rebuilds service-owned
- * network integrations after config writes. Both are supplied by the service runtime.
- */
-internal fun shouldSnapshotConfigSetting(key: String, zigbeeRouterConfigured: Boolean): Boolean =
-    key != "zigbee_router" || zigbeeRouterConfigured
-
-/** The Companion-dependent parts of the backup card. Empty throughout when the app is absent. */
-internal data class BackupCompanionCopy(
-    val showLoginChoice: Boolean,
-    val explainHelperRequirement: Boolean,
-)
-
-/**
- * Decides what the backup card may say about the HA Companion.
- *
- * A panel without the Companion installed has nothing to say about it: the include-login checkbox would
- * offer to back up a login that does not exist, and the "needs the current helper" note would advertise a
- * capability for an absent app. So every mention is gated on the app being [installed], and only the
- * *offer* additionally requires the [helper]. Keeping this pure keeps it directly testable.
- */
-internal fun backupCompanionCopy(installed: Boolean, helper: Boolean): BackupCompanionCopy {
-    if (!installed) return BackupCompanionCopy(showLoginChoice = false, explainHelperRequirement = false)
-    return BackupCompanionCopy(showLoginChoice = helper, explainHelperRequirement = !helper)
-}
-
-internal fun projectConfigSnapshot(
-    specs: Iterable<SettingSpec>,
-    zigbeeRouterConfigured: Boolean,
-    excludedKeys: Set<String> = emptySet(),
-    effectiveValue: (SettingSpec) -> String,
-): LinkedHashMap<String, String> {
-    val snapshot = LinkedHashMap<String, String>()
-    specs.forEach { spec ->
-        if (spec.transient || spec.key in excludedKeys) return@forEach
-        if (!shouldSnapshotConfigSetting(spec.key, zigbeeRouterConfigured)) return@forEach
-        snapshot[spec.key] = effectiveValue(spec)
-    }
-    return snapshot
-}
-
-/** One request-scoped status refresh. A failed/incomplete fresh database observation must not fall back
- * to a previously healthy snapshot, because provisioning treats schema + quick_check as admission proof. */
-internal data class RefreshedStatusStorage(
-    val snapshot: StorageHealthSnapshot,
-    val fresh: Boolean,
-)
-
-internal suspend fun refreshedStatusStorage(
-    refreshRequested: Boolean,
-    refreshUpdates: suspend () -> Unit,
-    refreshStorage: suspend () -> StorageHealthSnapshot?,
-    cachedStorage: () -> StorageHealthSnapshot,
-): RefreshedStatusStorage {
-    if (!refreshRequested) return RefreshedStatusStorage(cachedStorage(), fresh = false)
-    refreshUpdates()
-    val fresh = refreshStorage()
-    return RefreshedStatusStorage(fresh ?: StorageHealthSnapshot.UNCHECKED, fresh = fresh != null)
-}
-
-internal fun validDatabaseObservationNonce(raw: String?): String? = raw?.takeIf {
-    it.length == 32 && it.all { char -> char in '0'..'9' || char in 'a'..'f' }
-}
-
-internal fun databaseObservationProof(
-    refreshRequested: Boolean,
-    rawNonce: String?,
-    observation: RefreshedStatusStorage,
-): String? = validDatabaseObservationNonce(rawNonce).takeIf { refreshRequested && observation.fresh }
-
-/** Schema-1 backups made before ownership-aware omission cannot distinguish untouched vendor state
- * from an explicit OFF. On an untouched target, preserve vendor ownership; explicit ON remains safe. */
-internal fun preserveUnconfiguredZigbeeOwnership(
-    values: MutableMap<String, String>,
-    targetConfigured: Boolean,
-): Boolean {
-    if (targetConfigured || values["zigbee_router"] != "false") return false
-    values.remove("zigbee_router")
-    return true
-}
 
 class PaneldServer internal constructor(
     private val config: Config,
@@ -8247,101 +8009,4 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         // GitHub mark (official, CC0 simple-icons) + Material "open in new" glyph — icon links in the UI.
         private const val GH_ICON = "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
     }
-}
-
-/** Keep room for the received envelope, authenticated plaintext, and extracted Companion payloads. */
-internal fun restoreBodyStagingLimit(
-    usableBytes: Long,
-    maxPayloadBytes: Long = PaneldServer.MAX_RESTORE_BYTES,
-    safetyMarginBytes: Long = 64L * 1024L * 1024L,
-): Long {
-    if (usableBytes <= safetyMarginBytes || maxPayloadBytes <= 0L) return 0L
-    return minOf(maxPayloadBytes, (usableBytes - safetyMarginBytes) / 3L)
-}
-
-internal fun fleetImportPreservesTargetLocalValue(fleet: Boolean, key: String, normalized: String): Boolean =
-    fleet && key == "ha_url" && normalized.isEmpty()
-
-/** What an archive's settings would restore to, and why any of them cannot. */
-internal data class RestoreSettingsDecision(
-    val accepted: Map<String, String>,
-    val errors: List<String>,
-)
-
-/**
- * A stored value from an older archive, in the form the current validator can read.
- *
- * `home_dashboard` had no validator before this release, so an archive can hold a whole address. The
- * path canonicalizer refuses a URL scheme, so handing it one returns null and falls back to the
- * original, which then fails validation — and because a restore is all or nothing, that single
- * historical value takes the entire archive with it, precisely when its owner needs it. This panel's
- * own origin is stripped first, exactly as the live store does on upgrade. A route naming a different
- * server is left alone and still refused, rather than silently retargeted at someone else's dashboard.
- */
-internal fun restorableSettingValue(key: String, value: String, configuredOrigin: String?): String =
-    when (key) {
-        "home_dashboard" -> {
-            val candidate = sameOriginDashboardRoute(value, configuredOrigin) ?: value
-            if (DashboardPath.followsAccountDefault(candidate)) ""
-            else DashboardPath.canonical(candidate, preserveRoute = true) ?: value
-        }
-        else -> value
-    }
-
-/** The restore plan's per-setting decision, separated from the transport so it can be asserted. */
-/**
- * Configuration adjustments for a migration-mode restore. The bridge made the successor a kiosk
- * companion of itself so its return loop would leave the successor in the foreground; carried into
- * the successor that entry would exempt the legacy package, and the successor itself, from its own
- * kiosk lock. Every other value is restored exactly as written.
- */
-internal fun migrationRestoreConfig(values: Map<String, String>): Map<String, String> {
-    val restored = LinkedHashMap(values)
-    // A setting that names this app's own package is a sentinel, not a foreign app: the launcher
-    // selection "Panel admin" and the built-in renderer are both stored as the writer's package name.
-    // Left as written they would name the legacy package, which is about to be removed.
-    MIGRATION_OWN_PACKAGE_SETTINGS.forEach { key ->
-        if (restored[key] == io.github.maxlyth.hapaneld.AppIdentity.LEGACY) {
-            restored[key] = io.github.maxlyth.hapaneld.AppIdentity.SUCCESSOR
-        }
-    }
-    restored["kiosk_companion_packages"]?.let { companions ->
-        restored["kiosk_companion_packages"] = io.github.maxlyth.hapaneld.parseKioskCompanionPackages(companions)
-            .filterNot(io.github.maxlyth.hapaneld.AppIdentity::isPanelApp)
-            .joinToString(",")
-    }
-    return if (restored == values) values else restored
-}
-
-internal val MIGRATION_OWN_PACKAGE_SETTINGS: Set<String> = setOf("launcher_package", "dashboard_package")
-
-/** Whether a migration-mode restore wrote back everything its receipt carried. */
-internal fun migrationRestoreComplete(rawPreferencesApplied: Boolean, carriedRows: Int, restoredRows: Int): Boolean =
-    rawPreferencesApplied && restoredRows == carriedRows
-
-internal fun planRestoreSettings(
-    migrated: Map<String, String>,
-    configuredOrigin: String?,
-): RestoreSettingsDecision {
-    val accepted = LinkedHashMap<String, String>()
-    val errors = ArrayList<String>()
-    for ((key, value) in migrated) {
-        val spec = SettingsRegistry.spec(key)
-        val exposedSpec = SettingsRegistry.parseExposure(key)
-        when {
-            exposedSpec != null -> {
-                val normalized = SettingValue.parseBool(value)?.toString()
-                if (normalized == null) errors += "$key: expected a boolean" else accepted[key] = normalized
-            }
-            spec == null -> errors += "$key: unknown setting"
-            spec.readOnly || spec.transient -> errors += "$key: setting cannot be restored"
-            else -> when (
-                val validated = SettingValue.validate(spec, restorableSettingValue(key, value, configuredOrigin))
-            ) {
-                is Validation.Ok -> accepted[key] = validated.normalized
-                is Validation.Bad -> errors += "$key: ${validated.reason}"
-            }
-        }
-    }
-    return RestoreSettingsDecision(accepted, errors)
 }
