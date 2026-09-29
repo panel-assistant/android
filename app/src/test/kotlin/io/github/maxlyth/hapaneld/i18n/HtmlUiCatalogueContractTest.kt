@@ -1,13 +1,12 @@
 package io.github.maxlyth.hapaneld.i18n
 
-import io.github.maxlyth.hapaneld.http.PaneldServer
+import io.github.maxlyth.hapaneld.http.localizedHref
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import sun.misc.Unsafe
 
 class HtmlUiCatalogueContractTest {
     private val assets = File("src/main/assets")
@@ -198,19 +197,13 @@ class HtmlUiCatalogueContractTest {
         assertFalse("the Dashboard shell sentinel must be translated", chinese.get("shell.nav.dashboard") == "Dashboard")
         assertFalse("the Configure shell sentinel must be translated", chinese.get("shell.nav.configure") == "Configure")
 
-        val serverInstance = unsafe().allocateInstance(PaneldServer::class.java) as PaneldServer
-        val localizedHref = PaneldServer::class.java.getDeclaredMethod(
-            "localizedHref",
-            String::class.java,
-            Strings::class.java,
-        ).apply { isAccessible = true }
         assertEquals(
             "/configure?lang=zh-Hans#cfg-camera",
-            localizedHref.invoke(serverInstance, "/configure#cfg-camera", chinese),
+            localizedHref("/configure#cfg-camera", chinese),
         )
         assertEquals(
             "/install?repair=1&lang=zh-Hans#camera",
-            localizedHref.invoke(serverInstance, "/install?repair=1#camera", chinese),
+            localizedHref("/install?repair=1#camera", chinese),
         )
     }
 
@@ -341,9 +334,4 @@ class HtmlUiCatalogueContractTest {
         return strings.getJSONObject(key).getString("text")
     }
 
-    private fun unsafe(): Unsafe {
-        val field = Unsafe::class.java.getDeclaredField("theUnsafe")
-        field.isAccessible = true
-        return field.get(null) as Unsafe
-    }
 }
