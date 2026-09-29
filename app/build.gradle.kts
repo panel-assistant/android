@@ -264,8 +264,8 @@ dependencies {
     // mDNS advertise (_ha-paneld._tcp).
     implementation(libs.jmdns)
 
-    // Ktor/HiveMQ log via SLF4J; route it to Logcat.
-    implementation(libs.slf4j.android)
+    // JmDNS/Ktor/HiveMQ use SLF4J 2; keep their warnings observable in Android's stderr logcat.
+    implementation(libs.slf4j.simple)
 
     // Strict YAML 1.2 parser for runtime-loadable device profiles. ProfileYaml applies tighter
     // byte/depth/alias/key bounds and maps only into the app's closed schema (never Java objects).

@@ -18,7 +18,7 @@ moquette = "0.18.6"
 # JmDNS — cross-API-level mDNS advertise with TXT records (NsdManager TXT handling is weak).
 jmdns = "3.6.3"
 coroutines = "1.11.0"
-slf4jAndroid = "1.7.36"
+slf4j = "2.0.7"
 junit = "4.13.2"
 # Real org.json for JVM unit tests — the android.jar stub returns defaults (returnDefaultValues),
 # which would silently no-op any JSON-building code under test (e.g. the dashboard auth bridge).
@@ -50,7 +50,7 @@ ktor-client-websockets = { group = "io.ktor", name = "ktor-client-websockets", v
 hivemq-mqtt-client = { group = "com.hivemq", name = "hivemq-mqtt-client", version.ref = "hivemq" }
 moquette-broker = { group = "de.fraunhofer.iosb.io.moquette", name = "moquette-broker", version.ref = "moquette" }
 jmdns = { group = "org.jmdns", name = "jmdns", version.ref = "jmdns" }
-slf4j-android = { group = "org.slf4j", name = "slf4j-android", version.ref = "slf4jAndroid" }
+slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4j" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
