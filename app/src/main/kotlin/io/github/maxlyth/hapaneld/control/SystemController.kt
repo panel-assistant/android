@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.RendererResolver
+import io.github.maxlyth.hapaneld.platform.ActivityRef
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.RootShell
@@ -99,6 +100,9 @@ class SystemController(
      *  package (e.g. for perf attribution), and letting it fall through to the foreign-app paths would
      *  `am force-stop` ha-paneld itself — killing the service, MQTT and the web UI. */
     private fun isBuiltin(pkg: String) = isBuiltinSelection(pkg, env.ownPackage)
+
+    private fun isSystemFallbackHome(home: ActivityRef?): Boolean =
+        home?.let { it.pkg == "com.android.settings" && it.cls.endsWith("FallbackHome") } == true
 
     /** Renderer-kind query for recovery policy routing. Resolution stays here so the watchdog cannot
      *  drift from launch/state handling for blank or own-package aliases. */
@@ -324,9 +328,8 @@ class SystemController(
         if (current == target) { missingHomeTarget = null; return }     // already correct
         // Respect a real third-party launcher the user chose. A known Companion HOME is one ha-paneld
         // may previously have assigned, so switching between installed renderer variants must reclaim it.
-        if (current != null && current != "android" && current != "com.android.settings" &&
-            current != env.ownPackage && current !in KNOWN_RENDERER_HOMES &&
-            currentHome?.cls?.endsWith("FallbackHome") != true) {
+        if (current != null && current != "android" && current != env.ownPackage &&
+            current !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(currentHome)) {
             missingHomeTarget = null
             return
         }
@@ -354,9 +357,8 @@ class SystemController(
         val current = env.defaultHome()
         if (current?.component == comp) return                           // already correct
         val curPkg = current?.pkg
-        if (curPkg != null && curPkg != "android" && curPkg != "com.android.settings" &&
-            curPkg != env.ownPackage && curPkg !in KNOWN_RENDERER_HOMES &&
-            current?.cls?.endsWith("FallbackHome") != true) return
+        if (curPkg != null && curPkg != "android" && curPkg != env.ownPackage &&
+            curPkg !in KNOWN_RENDERER_HOMES && !isSystemFallbackHome(current)) return
         Log.i(TAG, "ensureHome(builtin): default home was '${current?.component}' -> $comp")
         setHomeActivity(comp)
     }
@@ -419,7 +421,7 @@ class SystemController(
         if (home?.pkg == "android" || home?.cls?.endsWith("ResolverActivity") == true) {
             return HomeUiProof("blocked", "home_resolver", "home_resolve")
         }
-        if (home?.pkg == "com.android.settings" || home?.cls?.endsWith("FallbackHome") == true) {
+        if (isSystemFallbackHome(home)) {
             return HomeUiProof("blocked", "home_fallback", "home_resolve")
         }
         if (adminUiVisible) return HomeUiProof("setup", "admin_foreground", "admin_lifecycle")
