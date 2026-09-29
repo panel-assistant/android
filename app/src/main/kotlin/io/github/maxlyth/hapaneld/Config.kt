@@ -1497,14 +1497,14 @@ class Config private constructor(
      * re-trigger the write-back side effect.
      */
     var haArea: String
-        get() {
+        get() = synchronized(CONFIG_LOCK) {
             val stored = stringPref("ha_area")
             val invalid = isLiteralNullAreaName(stored)
             if (invalid) editCommit {
                 putString("ha_area", "")
                 putBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
             }
-            return if (invalid) "" else stored
+            if (invalid) "" else stored
         }
         set(value) = synchronized(CONFIG_LOCK) {
             durableCommit { putString("ha_area", normalizedHaAreaName(value)) }
