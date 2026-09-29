@@ -166,7 +166,7 @@ class SetupRoutesHttpTest {
                 get(fixture.server) as android.content.Context
             }
             field("setupState", SetupState(
-                fixture.config, system, learning, profile, context, { "" }, HaOAuthFlow(),
+                fixture.config, system, learning, profile, context, { "" }, { 0 },
                 { DiscoveryResult() }, { false }, { false },
                 { system.resolveDashboard(fixture.config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD },
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job().apply { cancel() }),

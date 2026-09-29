@@ -6,7 +6,7 @@ import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportFacts
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportPhase
-import io.github.maxlyth.hapaneld.sensors.HaCurrentUserClient
+import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.sensors.SensorReporter
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
 import io.ktor.server.application.Application
@@ -96,8 +96,14 @@ internal class PaneldServerHttpFixture(
             PanelAssistantTransportFacts("", "", PanelAssistantTransportPhase.STOPPED, null)
         })
         field("releasePanelAssistantTransport", { error("Unexpected transport release") })
-        field("haOAuthFlow", HaOAuthFlow())
-        field("haCurrentUser", allocate(HaCurrentUserClient::class.java))
+        field("haOAuth", HaOAuthRuntime(
+            config,
+            { CatalogueLoader { name -> File("src/main/assets", name).readText() } },
+            { _, _, _ -> error("Unexpected OAuth exchange") },
+            AutoBrightnessHttpApi.UNAVAILABLE,
+            { _, _, _ -> error("Unexpected OAuth commit") },
+            { error("Unexpected setup evaluation") },
+        ))
         field("sensors", allocate(SensorReporter::class.java))
         field("onProximityCalibration", { _: String, _: String -> false })
         field("autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)
@@ -185,7 +191,7 @@ internal class PaneldServerHttpFixture(
         server.field("setupState", SetupState(
             config, system,
             allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java),
-            profile, context, { "connecting" }, HaOAuthFlow(),
+            profile, context, { "connecting" }, { 0 },
             { io.github.maxlyth.hapaneld.DiscoveryResult() }, { false }, { false },
             { system.resolveDashboard(config.dashboardPackage) == io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD },
             scope, io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator(
