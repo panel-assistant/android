@@ -174,6 +174,16 @@ class ConfigTransactionTest {
         assertNull(config.setAutoSleepIf(true, generation, false))
     }
 
+    @Test fun touchInactivityChoiceAndDelaySurviveRestart() {
+        val prefs = fakePreferences()
+        val config = Config(prefs.instance)
+        assertTrue(config.commitRaw(SettingsRegistry.spec("auto_sleep_source")!!, "touch"))
+        assertTrue(config.commitRaw(SettingsRegistry.spec("auto_sleep_touch_delay_seconds")!!, "45"))
+        val restarted = Config(prefs.instance)
+        assertEquals("touch", restarted.autoSleepSource)
+        assertEquals(45, restarted.autoSleepTouchDelaySeconds)
+    }
+
     @Test fun autoSleepSourceExclusionsPersistByHaInstallationAreaAndEntityId() {
         val prefs = fakePreferences(initial = mapOf("ha_url" to "https://ha.example"))
         val config = Config(prefs.instance)

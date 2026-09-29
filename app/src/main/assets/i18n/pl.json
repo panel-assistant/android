@@ -8994,9 +8994,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
-   "text": "Automatycznie wybudzaj panel po wykryciu aktywności i wyłączaj ekran po wyuczonym czasie opóźnienia. Ręczne sterowanie ekranem pozostaje niezależne.",
-   "sourceHash": "5061de3660a9fc18a43615782f216134dffef4d62725528ce1d72e3927d878c9",
-   "state": "machine-cross-checked"
+   "text": "Wyłącza ekran po wyuczonym opóźnieniu wybranego trybu obecności albo po ustawionym opóźnieniu braku dotyku. Ręczne sterowanie ekranem pozostaje oddzielne.",
+   "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
+   "state": "machine-draft"
   },
   "settings.auto_sleep.label": {
    "text": "Automatyczne uśpienie",
@@ -12189,9 +12189,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.help": {
-   "text": "Użyj skalibrowanego czujnika zbliżeniowego panelu lub wybierz urządzenia obszaru Home Assistant. Jeśli wybrane źródło jest niedostępne, automatyczne uśpienie zostaje wstrzymane, a dotyk pozostaje dostępny.",
-   "sourceHash": "0350776edee98aa7748c83872293309856544907f647121be111047fa868e50b",
-   "state": "machine-cross-checked"
+   "text": "Użyj skalibrowanego czujnika zbliżeniowego panelu, urządzeń obszaru Home Assistant lub braku dotyku. Tryby obecności są wstrzymywane, gdy ich źródło jest niedostępne; brak dotyku nie wymaga konfiguracji obecności.",
+   "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
+   "state": "machine-draft"
   },
   "configure.proximity.setup.stage.wave_baseline": {
    "text": "Sprawdzanie pozycji początkowej dla machnięć dłonią",
@@ -12274,9 +12274,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.label": {
-   "text": "Źródło obecności dla automatycznego uśpienia",
-   "sourceHash": "9a054a7f24e839eacfc5c07281e98e4d5ddf2a0772fe4bc13838166a6eaca289",
-   "state": "machine-cross-checked"
+   "text": "Źródło aktywności automatycznego usypiania",
+   "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
+   "state": "machine-draft"
   },
   "configure.proximity.setup.no_source": {
    "text": "Wybudzanie machnięciem jest niedostępne. Funkcja „Dotknij, by wybudzić” pozostaje dostępna.",
@@ -12362,6 +12362,31 @@
    "text": "Należy to wykonać przed usunięciem aplikacji „ha-paneld”. W przeciwnym razie panel nie będzie posiadał ekranu głównego.",
    "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",
    "state": "machine-cross-checked"
+  },
+  "configure.auto_sleep.fixed_delay": {
+   "text": "Wyłącz ekran po {count} sekundach bez dotyku.",
+   "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
+   "state": "machine-draft"
+  },
+  "configure.auto_sleep.source_touch": {
+   "text": "Brak dotyku",
+   "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
+   "state": "machine-draft"
+  },
+  "configure.auto_sleep.touch_help": {
+   "text": "Wykorzystuje dotyk panelu. Home Assistant i czujniki obecności nie są wymagane.",
+   "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
+   "state": "machine-draft"
+  },
+  "settings.auto_sleep_touch_delay_seconds.help": {
+   "text": "Po wybraniu Brak dotyku całkowicie wyłącza ekran po tej liczbie sekund bez dotyku.",
+   "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+   "state": "machine-draft"
+  },
+  "settings.auto_sleep_touch_delay_seconds.label": {
+   "text": "Opóźnienie przy braku dotyku (sekundy)",
+   "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
+   "state": "machine-draft"
   }
  }
 }

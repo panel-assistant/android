@@ -60,7 +60,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 11
+    const val SCHEMA = 12
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_MQTT_ADDRESS_FAMILY = "Automatic"
@@ -275,16 +275,22 @@ object SettingsRegistry {
         // ---- Behaviour ---------------------------------------------------------------------------
         SettingSpec(
             key = "auto_sleep_source", type = SettingType.ENUM, group = "Behaviour",
-            label = "Auto-sleep presence source", default = "panel", tier = Tier.BASIC, scope = Scope.DEVICE,
-            liveApply = true, options = listOf("panel", "home_assistant"),
-            help = "Use the panel’s calibrated proximity sensor, or choose Home Assistant Area devices. " +
-                "If the selected source is unavailable, automatic sleep pauses and touch remains available.",
+            label = "Auto-sleep activity source", default = "panel", tier = Tier.BASIC, scope = Scope.DEVICE,
+            liveApply = true, options = listOf("panel", "home_assistant", "touch"),
+            help = "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity. " +
+                "Presence modes pause if their source is unavailable; touch inactivity needs no presence setup.",
+        ),
+        SettingSpec(
+            key = "auto_sleep_touch_delay_seconds", type = SettingType.INT, group = "Behaviour",
+            label = "Touch inactivity delay (seconds)", default = "30", min = 5.0, max = 86_400.0,
+            step = 1.0, tier = Tier.BASIC, scope = Scope.DEVICE,
+            help = "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
         ),
         SettingSpec(
             key = "auto_sleep", type = SettingType.BOOL, group = "Behaviour",
             label = "Auto sleep", default = "false", tier = Tier.BASIC, scope = Scope.DEVICE,
             liveApply = true,
-            help = "Automatically wake the panel when activity is detected and switch the screen off after the learned delay. Manual screen control remains separate.",
+            help = "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
             ha = haEntity("switch", "auto_sleep", "Auto sleep") {
                 commandTopic()
                 stateTopic()

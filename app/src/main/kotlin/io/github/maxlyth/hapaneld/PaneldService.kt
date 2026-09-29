@@ -774,7 +774,7 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
     val ha = setOf("ha_url", "ha_token", "ha_refresh_token", "ha_token_expiry", "ha_client_id")
     return ConfigOwnerRefreshPlan(
         adaptiveBrightness = changedKeys.any(ha::contains),
-        autoSleep = changedKeys.any((ha + setOf("panel_id", "auto_sleep_source"))::contains),
+        autoSleep = changedKeys.any((ha + setOf("panel_id", "auto_sleep_source", "auto_sleep_touch_delay_seconds"))::contains),
         logShipping = changedKeys.any(setOf(
             "log_ship_enabled", "log_ship_system_enabled", "log_ship_host", "log_ship_port", "log_ship_protocol",
         )::contains),

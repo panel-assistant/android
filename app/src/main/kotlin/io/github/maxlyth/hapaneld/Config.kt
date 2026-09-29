@@ -1100,7 +1100,8 @@ class Config private constructor(
         prefs.contains("auto_sleep_source") || durableCommit { putString("auto_sleep_source", absentAutoSleepSource) }
     }
     val autoSleepSource: String get() = prefs.getString("auto_sleep_source", null)
-        ?.takeIf { it == "panel" || it == "home_assistant" } ?: absentAutoSleepSource
+        ?.takeIf { it == "panel" || it == "home_assistant" || it == "touch" } ?: absentAutoSleepSource
+    val autoSleepTouchDelaySeconds: Int get() = intPref("auto_sleep_touch_delay_seconds").coerceIn(5, 86_400)
     internal val autoSleepGeneration: Long get() = synchronized(CONFIG_LOCK) {
         prefs.getLong(AUTO_SLEEP_GENERATION_PREF, 0L)
     }
