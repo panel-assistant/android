@@ -427,7 +427,7 @@ class PaneldServer internal constructor(
     private val haOAuth: HaOAuthRuntime = HaOAuthRuntime(
         config, { catalogueLoader }, haOAuthExchange, autoBrightnessHttpApi,
         { accepted, owner, epoch ->
-            applyAccepted(accepted, expectedHaAuthOwner = owner, expectedHaOAuthEpoch = epoch)
+            acceptedConfigTransaction().applyAccepted(accepted, expectedHaAuthOwner = owner, expectedHaOAuthEpoch = epoch)
         },
         { setupState.setupNeedsUser() },
     )
@@ -1415,11 +1415,8 @@ class PaneldServer internal constructor(
         post("/config") { directConfigPost().handle(call, capabilityProvider) }
     }
 
-    private fun directConfigPost() = DirectConfigPost(
-        config = config,
-        revisions = revisions,
+    private fun directConfigPost() = acceptedConfigTransaction().directPost(
         directConfigMutationLock = directConfigMutationLock,
-        rendererPreparation = rendererPreparation,
         autoSleepHttpApi = autoSleepHttpApi,
         autoBrightnessHttpApi = autoBrightnessHttpApi,
         onboarding = DirectConfigOnboarding(
@@ -1429,25 +1426,9 @@ class PaneldServer internal constructor(
             ::effectiveDashboardIsBuiltin,
         ),
         capabilities = { liveCapabilities(managementObservations.snapStaleOk().caps) },
-        directMutationValues = { configValues().directMutationValues() },
-        revisionValues = { revisionValues() },
         authorizeSensitive = ::authorizeSensitive,
         rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
-        applySetting = { key, value -> applySetting(key, value) },
-        applyRendererEffects = ::applyRendererEffects,
-        onEntityTargetChanged = { entityLearning.onTargetConfigurationChanged() },
-        setEntityLearningEnabled = { entityLearning.setEnabled(it) },
-        requestTameReconcileAfterCommit = tameReconciliation::requestAfterCommit,
         onHaAreaCommitted = { haArea.onHaAreaCommitted() },
-        snapInvalidate = ::snapInvalidate,
-        onReconfigure = { onReconfigure(it) },
-        prepareSelfUpdateChannel = { channel, force -> prepareSelfUpdateChannel(channel, force) },
-        onSelfUpdateChannelCommitted = { prepared, ticket, before, after ->
-            onSelfUpdateChannelCommitted(prepared, ticket, before, after)
-        },
-        configJson = { status, applied, pending, rejected, message ->
-            configValues().configJson(status, applied, pending, rejected, message)
-        },
     )
 
 
@@ -1470,8 +1451,6 @@ class PaneldServer internal constructor(
     )
 
 
-    private fun effectiveValue(spec: io.github.maxlyth.hapaneld.config.SettingSpec, live: Map<String, String>): String =
-        configValues().effectiveValue(spec, live)
 
     private fun exposureSpec(key: String) = key.takeIf { it.startsWith("ha_expose_") }
         ?.removePrefix("ha_expose_")
@@ -1480,17 +1459,12 @@ class PaneldServer internal constructor(
 
     // ---- config bundles (export / validated import) + on-panel revision history ----------------
 
-    private fun currentValues(): Map<String, String> = configValues().currentValues()
 
 
 
     private fun renderConfigConcurrencyHash(): String =
         configValues().concurrencyHash()
 
-    private fun revisionValues(
-        values: Map<String, String> = currentValues(),
-        state: DashboardEntityBackupState = config.dashboardEntityBackupState(),
-    ): Map<String, String> = configValues().revisionValues(values, state)
 
 
     internal fun Route.installConfigBundleRoutes() {
@@ -1507,32 +1481,13 @@ class PaneldServer internal constructor(
         }
     }
 
-    private suspend fun applyAccepted(
-        accepted: Map<String, String>,
-        expectedConfig: String? = null,
-        expectedRevision: String? = null,
-        expectedHaAuthOwner: HaAuthOwner? = null,
-        expectedHaOAuthEpoch: Long? = null,
-        entityState: DashboardEntityBackupState? = null,
-        existingOperationTicket: InstallProgress.Ticket? = null,
-        onDurableRevision: (String) -> Unit = {},
-        afterCommitBeforeRenderer: (RendererConfigEffects, String) -> Unit = { _, _ -> },
-        afterApply: () -> Unit = {},
-    ): ApplyAcceptedResult = acceptedConfigTransaction().applyAccepted(
-        accepted, expectedConfig, expectedRevision, expectedHaAuthOwner, expectedHaOAuthEpoch,
-        entityState, existingOperationTicket, onDurableRevision, afterCommitBeforeRenderer, afterApply,
-    )
-
-    private fun applyRendererEffects(effects: RendererConfigEffects) =
-        acceptedConfigTransaction().applyRendererEffects(effects)
 
     private fun acceptedConfigTransaction() = AcceptedConfigTransaction(
         config = config,
         revisions = revisions,
         rendererPreparation = rendererPreparation,
         system = system,
-        currentValues = { currentValues() },
-        revisionValues = { revisionValues() },
+        values = configValues(),
         applySetting = { key, value -> applySetting(key, value) },
         onEntityTargetChanged = { entityLearning.onTargetConfigurationChanged() },
         setEntityLearningEnabled = { entityLearning.setEnabled(it) },
@@ -1573,7 +1528,7 @@ class PaneldServer internal constructor(
             config = config,
             cacheDir = cacheDir,
             configLiveValues = configLiveValues,
-            effectiveValue = ::effectiveValue,
+            effectiveValue = { spec, live -> configValues().effectiveValue(spec, live) },
             profileAdmin = profileAdmin,
             companion = companionBackupOperations(),
             mqttState = mqttState,
@@ -1584,11 +1539,11 @@ class PaneldServer internal constructor(
         val executor = RestoreExecutor(
             appContext = appContext,
             config = config,
-            currentValues = { currentValues() },
-            revisionValues = { values, state -> revisionValues(values, state) },
+            currentValues = { configValues().currentValues() },
+            revisionValues = { values, state -> configValues().revisionValues(values, state) },
             commitConfig = RestoreConfigCommit { accepted, entityState, expectedRevision,
                 existingOperationTicket, onDurableRevision, afterCommitBeforeRenderer, afterApply ->
-                val result = applyAccepted(
+                val result = acceptedConfigTransaction().applyAccepted(
                     accepted,
                     expectedRevision = expectedRevision,
                     entityState = entityState,
@@ -1607,7 +1562,7 @@ class PaneldServer internal constructor(
                 accepted.size
             },
             rollbackConfig = { before, entityState, expectedRevision, ticket ->
-                applyAccepted(
+                acceptedConfigTransaction().applyAccepted(
                     before,
                     expectedRevision = expectedRevision,
                     entityState = entityState,

@@ -7,14 +7,17 @@ import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
 import io.github.maxlyth.hapaneld.normalizeDashboardEntityPath
 import io.github.maxlyth.hapaneld.stableOwner
+import io.github.maxlyth.hapaneld.config.Capabilities
 import io.github.maxlyth.hapaneld.config.ConfigBundle
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.control.SystemController
 import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
+import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
+import io.ktor.server.application.ApplicationCall
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -32,8 +35,7 @@ internal class AcceptedConfigTransaction(
     private val revisions: RevisionStore,
     private val rendererPreparation: RendererPreparationCoordinator,
     private val system: SystemController,
-    private val currentValues: () -> Map<String, String>,
-    private val revisionValues: () -> Map<String, String>,
+    private val values: ConfigValueProjection,
     private val applySetting: (String, String) -> LiveSettingRequestOutcome,
     private val onEntityTargetChanged: () -> Unit,
     private val setEntityLearningEnabled: (Boolean) -> Boolean,
@@ -46,6 +48,48 @@ internal class AcceptedConfigTransaction(
         SelfUpdateChannelPreflight.Ready?, InstallProgress.Ticket?, String, String,
     ) -> Unit,
 ) {
+    /**
+     * Construct direct admission with this transaction's existing commit/effect collaborators.
+     * The direct handler retains its own admission sequence and the shared direct-mutation lock;
+     * it does not delegate its persistence transaction to [applyAccepted].
+     */
+    fun directPost(
+        directConfigMutationLock: Any,
+        autoSleepHttpApi: AutoSleepHttpApi,
+        autoBrightnessHttpApi: AutoBrightnessHttpApi,
+        onboarding: DirectConfigOnboarding,
+        capabilities: () -> Capabilities,
+        authorizeSensitive: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean,
+        rejectHardenedNetworkAdb: suspend (ApplicationCall, String?) -> Boolean,
+        onHaAreaCommitted: () -> Unit,
+    ): DirectConfigPost = DirectConfigPost(
+        config = config,
+        revisions = revisions,
+        directConfigMutationLock = directConfigMutationLock,
+        rendererPreparation = rendererPreparation,
+        autoSleepHttpApi = autoSleepHttpApi,
+        autoBrightnessHttpApi = autoBrightnessHttpApi,
+        onboarding = onboarding,
+        capabilities = capabilities,
+        directMutationValues = { values.directMutationValues() },
+        revisionValues = { values.revisionValues() },
+        authorizeSensitive = authorizeSensitive,
+        rejectHardenedNetworkAdb = rejectHardenedNetworkAdb,
+        applySetting = applySetting,
+        applyRendererEffects = ::applyRendererEffects,
+        onEntityTargetChanged = onEntityTargetChanged,
+        setEntityLearningEnabled = setEntityLearningEnabled,
+        requestTameReconcileAfterCommit = requestTameReconcileAfterCommit,
+        onHaAreaCommitted = onHaAreaCommitted,
+        snapInvalidate = snapInvalidate,
+        onReconfigure = onReconfigure,
+        prepareSelfUpdateChannel = prepareSelfUpdateChannel,
+        onSelfUpdateChannelCommitted = onSelfUpdateChannelCommitted,
+        configJson = { status, applied, pending, rejected, message ->
+            values.configJson(status, applied, pending, rejected, message)
+        },
+    )
+
     /** Apply a validated value set in two ordered phases: snapshot current → atomically commit ordinary
      *  preference fields → run live controller/hardware persistence and side-effects → reconfigure.
      *  External state cannot be rolled back and only starts after a successful preference commit.
@@ -107,13 +151,13 @@ internal class AcceptedConfigTransaction(
             var committed: AcceptedCommit? = null
             config.synchronizedTransaction {
                 if (expectedConfig != null &&
-                    io.github.maxlyth.hapaneld.config.ConfigHash.of(configConcurrencyValues(currentValues())) != expectedConfig
+                    io.github.maxlyth.hapaneld.config.ConfigHash.of(configConcurrencyValues(values.currentValues())) != expectedConfig
                 ) {
                     earlyResult = ApplyAcceptedResult.Stale
                     return@synchronizedTransaction
                 }
                 if (expectedRevision != null &&
-                    io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()) != expectedRevision
+                    io.github.maxlyth.hapaneld.config.ConfigHash.of(values.revisionValues()) != expectedRevision
                 ) {
                     earlyResult = ApplyAcceptedResult.Stale
                     return@synchronizedTransaction
@@ -127,7 +171,7 @@ internal class AcceptedConfigTransaction(
                     return@synchronizedTransaction
                 }
                 val previous = ConfigBundle.fromValues(
-                    revisionValues(), kind = ConfigBundle.KIND_REVISION,
+                    values.revisionValues(), kind = ConfigBundle.KIND_REVISION,
                     exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
                 )
                 val editor = config.editor()
@@ -181,16 +225,16 @@ internal class AcceptedConfigTransaction(
                 // The base transaction deliberately excludes live keys. Publish every actually durable
                 // generation to rollback ownership, then converge all live values before any external
                 // Companion/profile work can fail.
-                onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(values.revisionValues()))
                 val previousHome = phase.previous.values["home_dashboard"].orEmpty()
                 phase.live.firstOrNull { it.first == "home_dashboard" }?.let { (_, value) ->
                     val applied = applySetting("home_dashboard", value).legacyAcknowledged
-                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(values.revisionValues()))
                     check(applied) { "home_dashboard live apply refused" }
                 }
                 for ((k, v) in phase.live) if (k != "home_dashboard") {
                     val applied = applySetting(k, v).legacyAcknowledged
-                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(values.revisionValues()))
                     check(applied) { "$k live apply refused" }
                 }
                 val homeChanged = normalizeDashboardEntityPath(config.homeDashboard) !=
@@ -203,13 +247,13 @@ internal class AcceptedConfigTransaction(
                     if (enabled != config.dashboardEntityLearningEnabled && !setEntityLearningEnabled(enabled)) {
                         error("entity-learning transition failed")
                     }
-                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()))
+                    onDurableRevision(io.github.maxlyth.hapaneld.config.ConfigHash.of(values.revisionValues()))
                 }
                 // All accepted values are now durable. This same fence remains exact if either the
                 // Companion/renderer callback or the later profile callback fails.
                 afterCommitBeforeRenderer(
                     phase.effects,
-                    io.github.maxlyth.hapaneld.config.ConfigHash.of(revisionValues()),
+                    io.github.maxlyth.hapaneld.config.ConfigHash.of(values.revisionValues()),
                 )
                 applyRendererEffects(phase.effects)
             }.onFailure { rendererFailure = it }
