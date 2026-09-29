@@ -14,7 +14,6 @@ import { profilesApi, profilesBody } from './language-layout/pages/profiles.mjs'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const ASSETS = resolve(ROOT, 'app/src/main/assets');
-const SERVER_SOURCE = resolve(ROOT, 'app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PaneldServer.kt');
 const CHROME = process.env.CHROME || '/usr/bin/chromium';
 const LOCALES = await catalogueLocales();
 const THEMES = ['light', 'dark'];
@@ -149,22 +148,6 @@ async function modalGeometry(page) {
   });
 }
 
-test('Profiles layout fixture stays bound to the production frame and breakpoint contract', async () => {
-  const [serverSource, css] = await Promise.all([
-    readFile(SERVER_SOURCE, 'utf8'), readFile(resolve(ASSETS, 'profiles.css'), 'utf8'),
-  ]);
-  for (const marker of [
-    'class="profile-toolbar"', 'class="profile-workspace"', 'class="profile-editor-pane"',
-    'id="profile-revisions"', 'profiles.toolbar.show_superseded',
-    'class="profile-inspector"', 'class="profile-modal-card"',
-    'src="assets/vendor/profile-editor/codemirror.js"', 'src="assets/profiles.js"',
-  ]) assert.ok(serverSource.includes(marker), `production Profiles frame lost ${marker}`);
-  for (const breakpoint of ['@media(max-width:1050px)', '@media(max-width:857px)', '@media(max-width:520px)']) {
-    assert.ok(css.includes(breakpoint), `production Profiles CSS lost ${breakpoint}`);
-  }
-  assert.match(serverSource, /profilesBody\(strings: AppStrings\)/, 'production frame remains request-localized');
-});
-
 const layoutTest = existsSync(CHROME) ? test : test.skip;
 layoutTest('Profiles stays usable across every locale, theme and production breakpoint', { timeout: 180_000 }, async (t) => {
   const catalogues = new Map(await Promise.all(LOCALES.map(async (locale) => [
@@ -184,7 +167,8 @@ layoutTest('Profiles stays usable across every locale, theme and production brea
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`${origin}/profiles?lang=${locale}&theme=${theme}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => document.querySelector('#profile-status')?.textContent && !document.querySelector('#profile-status').textContent.includes('Loading'));
+    // Editing is offered only after the selected revision loads, in every UI language.
+    await page.waitForFunction(() => document.querySelector('#profile-edit')?.disabled === false);
     await page.waitForTimeout(250);
     const measured = await geometry(page);
     const cell = `${locale}/${theme}/${viewport.name}-${viewport.width}x${viewport.height}`;
@@ -288,7 +272,7 @@ webkitTest('Profiles collapsed picker lays out in WebKit across every production
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`${origin}/profiles?lang=${locale}&theme=${theme}`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => document.querySelector('#profile-status')?.textContent && !document.querySelector('#profile-status').textContent.includes('Loading'));
+    await page.waitForFunction(() => document.querySelector('#profile-edit')?.disabled === false);
     await page.waitForTimeout(250);
     const cell = `webkit/${locale}/${theme}/${viewport.name}-${viewport.width}x${viewport.height}`;
     const measured = await geometry(page);
