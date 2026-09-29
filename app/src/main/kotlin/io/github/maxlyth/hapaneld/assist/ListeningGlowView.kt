@@ -100,12 +100,14 @@ class ListeningGlowView(context: Context) : View(context) {
     }
 
     private companion object {
+        // Strong enough to read over a light dashboard, where a paler tint disappears into the white;
+        // the pulse ebbs to 60 % so it never fades out between breaths.
         const val DEPTH_FRACTION = 0.14f
-        const val EDGE_ALPHA = 150
+        const val EDGE_ALPHA = 230
         const val STEPS = 24
         /** The inner edge's corner radius, as a share of the tint's depth: a soft corner, not a curve. */
         const val CORNER_FACTOR = 0.4f
-        const val PULSE_LOW = 0.45f
+        const val PULSE_LOW = 0.6f
         const val PULSE_MS = 900L
 
         /**
