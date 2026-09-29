@@ -2,103 +2,45 @@ package io.github.maxlyth.hapaneld.http
 
 import android.content.Context
 import android.util.Log
-import io.github.maxlyth.hapaneld.canonicalHaOrigin
 import io.github.maxlyth.hapaneld.Config
-import io.github.maxlyth.hapaneld.MigrationNotice
-import io.github.maxlyth.hapaneld.NativeLocale
-import io.github.maxlyth.hapaneld.sensors.HaLifecycleMessage
-import io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime
-import io.github.maxlyth.hapaneld.sensors.HaNetworkPathRuntime
-import io.github.maxlyth.hapaneld.sensors.HaPanelAreaPrerequisitePhase
 import io.github.maxlyth.hapaneld.BuildConfig
-import io.github.maxlyth.hapaneld.DashboardEntityBackupState
 import io.github.maxlyth.hapaneld.DiscoveryResult
-import io.github.maxlyth.hapaneld.HaAuthOwner
-import io.github.maxlyth.hapaneld.HaDiscovery
 import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
-import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
-import io.github.maxlyth.hapaneld.RendererResolver
-import io.github.maxlyth.hapaneld.normalizeDashboardEntityPath
 import io.github.maxlyth.hapaneld.peersJson
 import io.github.maxlyth.hapaneld.config.Capabilities
-import io.github.maxlyth.hapaneld.config.ConfigBundle
-import io.github.maxlyth.hapaneld.config.Migrations
 import io.github.maxlyth.hapaneld.backup.PanelBackup
-import io.github.maxlyth.hapaneld.backup.CompanionRestore
-import io.github.maxlyth.hapaneld.config.Scope
-import io.github.maxlyth.hapaneld.config.SettingType
-import io.github.maxlyth.hapaneld.config.SettingSpec
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
-import io.github.maxlyth.hapaneld.config.TamePackagePolicy
-import io.github.maxlyth.hapaneld.config.Validation
-import io.github.maxlyth.hapaneld.i18n.AppLocale
 import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.github.maxlyth.hapaneld.camera.AbsentCameraSurface
 import io.github.maxlyth.hapaneld.camera.CameraSurface
-import io.github.maxlyth.hapaneld.control.AmbientThemeReport
-import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.CdpRelay
 import io.github.maxlyth.hapaneld.control.AdbController
-import io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve
-import io.github.maxlyth.hapaneld.control.CompanionDataLease
-import io.github.maxlyth.hapaneld.control.CompanionDataOperationGate
 import io.github.maxlyth.hapaneld.control.CompanionDataOperationState
 import io.github.maxlyth.hapaneld.control.DensityController
 import io.github.maxlyth.hapaneld.control.InteractiveController
-import io.github.maxlyth.hapaneld.control.PrivilegeRoute
-import io.github.maxlyth.hapaneld.control.RemoteDebugSecurityTransitionGate
-import io.github.maxlyth.hapaneld.control.RemoteDebugAuthorityResult
 import io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation
 import io.github.maxlyth.hapaneld.control.PowerRepairCapability
-import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisoryAction
 import io.github.maxlyth.hapaneld.control.PowerSafetyAssessment
-import io.github.maxlyth.hapaneld.control.PowerSafetyMutationPolicy
 import io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult
 import io.github.maxlyth.hapaneld.control.Su
 import io.github.maxlyth.hapaneld.control.SystemController
 import io.github.maxlyth.hapaneld.KioskAdminUi
-import io.github.maxlyth.hapaneld.control.HandBackHomeController
-import io.github.maxlyth.hapaneld.control.HandBackHomePolicy
 import io.github.maxlyth.hapaneld.control.TameController
-import io.github.maxlyth.hapaneld.control.TameReconcileResult
 import io.github.maxlyth.hapaneld.control.VolumeController
 import io.github.maxlyth.hapaneld.control.ZigbeeHealthSnapshot
-import io.github.maxlyth.hapaneld.control.ZigbeeHealthState
-import io.github.maxlyth.hapaneld.control.zigbeeHealthPresentation
-import io.github.maxlyth.hapaneld.dashboard.readThenClose
-import io.github.maxlyth.hapaneld.dashboard.EntityFilterProtocol
 import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.device.TameCandidate
 import io.github.maxlyth.hapaneld.device.profile.PassiveProfileDraft
 import io.github.maxlyth.hapaneld.device.profile.PassiveProfileReport
 import io.github.maxlyth.hapaneld.device.profile.ProfileAdmin
-import io.github.maxlyth.hapaneld.device.profile.ProfileBackup
-import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestoreOutcome
-import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestorePlan
-import io.github.maxlyth.hapaneld.device.profile.ProfileBackupRestoreResult
-import io.github.maxlyth.hapaneld.logship.LOG_SHIP_STATUS_OFF
 import io.github.maxlyth.hapaneld.logship.LogCapture
-import io.github.maxlyth.hapaneld.logship.LogShipRecord
 import io.github.maxlyth.hapaneld.logship.LogShipStatusProjection
-import io.github.maxlyth.hapaneld.logship.LogShipTarget
-import io.github.maxlyth.hapaneld.logship.NetworkLogSinkFactory
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
 import io.github.maxlyth.hapaneld.persistence.AppState
-import io.github.maxlyth.hapaneld.persistence.ConfigVault
-import io.github.maxlyth.hapaneld.persistence.StateArchiveSection
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationSurface
-import io.github.maxlyth.hapaneld.migration.MigrationRestoreAdmission
-import io.github.maxlyth.hapaneld.migration.RestoreAttempt
-import io.github.maxlyth.hapaneld.migration.claimsRestoreAttempt
-import io.github.maxlyth.hapaneld.migration.migrationRestoreAdmission
-import io.github.maxlyth.hapaneld.persistence.BackupIdentity
-import io.github.maxlyth.hapaneld.persistence.RawPreferenceBackup
-import io.github.maxlyth.hapaneld.persistence.StateBackupPolicy
-import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
-import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningActivationSnapshot
 import io.github.maxlyth.hapaneld.provisioning.ProvisioningReader
 import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
@@ -106,70 +48,36 @@ import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.sensors.SensorReporter
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot
-import io.github.maxlyth.hapaneld.util.AndroidInput
-import io.github.maxlyth.hapaneld.util.BoundedStreams
-import io.github.maxlyth.hapaneld.util.BoundedDns
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
-import io.github.maxlyth.hapaneld.util.CompanionHelperProtocol
-import io.github.maxlyth.hapaneld.util.HelperClient
-import io.github.maxlyth.hapaneld.util.GuardDbArmCoordinator
-import io.github.maxlyth.hapaneld.util.GuardDbMaintenance
-import io.github.maxlyth.hapaneld.util.guardDbSettingsAuthorityStore
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
-import io.github.maxlyth.hapaneld.util.guardDbBootNonce
-import io.github.maxlyth.hapaneld.util.guardDbSentinelStore
-import io.github.maxlyth.hapaneld.util.guardDbTerminalRetirementStore
-import io.github.maxlyth.hapaneld.util.inspectGuardDbCandidate
 import io.github.maxlyth.hapaneld.util.HaLink
-import io.github.maxlyth.hapaneld.util.LogShipEndpoint
-import io.github.maxlyth.hapaneld.util.isLoopbackPeer
-import io.github.maxlyth.hapaneld.util.isRoutable
-import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
-import io.github.maxlyth.hapaneld.util.InstallOutcome
 import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.Json
-import io.github.maxlyth.hapaneld.util.LatestDispatcher
 import io.github.maxlyth.hapaneld.util.GenerationSingleFlight
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
-import io.github.maxlyth.hapaneld.util.SelfUpdater
 import io.github.maxlyth.hapaneld.util.UpdateChecker
-import io.github.maxlyth.hapaneld.util.withStagedFiles
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.Parameters
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.origin
-import io.ktor.server.request.receiveStream
-import io.ktor.server.request.receiveText
-import io.ktor.server.request.uri
-import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
-import io.ktor.server.response.respondTextWriter
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import org.json.JSONObject
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 import java.security.SecureRandom
-import java.util.concurrent.atomic.AtomicLong
 
 
 class PaneldServer internal constructor(
@@ -909,8 +817,6 @@ class PaneldServer internal constructor(
     private fun effectiveDashboardIsBuiltin(): Boolean =
         system.resolveDashboard(config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD
 
-    /** JSON-quote a string value (escapes backslash + double-quote). */
-    private fun jsonStr(s: String): String = Json.str(s)
 
 
 
@@ -963,10 +869,6 @@ class PaneldServer internal constructor(
 
 
 
-    private fun exposureSpec(key: String) = key.takeIf { it.startsWith("ha_expose_") }
-        ?.removePrefix("ha_expose_")
-        ?.let(SettingsRegistry::spec)
-        ?.takeIf { it.ha != null }
 
     // ---- config bundles (export / validated import) + on-panel revision history ----------------
 
@@ -1121,8 +1023,6 @@ class PaneldServer internal constructor(
 
 
 
-    private fun jarr(items: List<String>): String =
-        "[" + items.joinToString(",") { Json.str(it) } + "]"
 
 
 
@@ -1136,10 +1036,6 @@ class PaneldServer internal constructor(
 
     companion object {
         private const val TAG = "ha-paneld/http"
-        private const val HARDENED_APPROVAL_TEXT =
-            "Requires physical on-panel approval for this action when Hardened mode is enabled."
-        private const val HARDENED_CONDITIONAL_APPROVAL_TEXT =
-            "Changing this setting may require physical on-panel approval when Hardened mode is enabled."
         private const val TAME_SHUTDOWN_MS = 5_000L
         private const val REMOTE_CONTROL_SHUTDOWN_MS = 5_000L
 
