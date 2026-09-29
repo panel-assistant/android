@@ -20,12 +20,6 @@ import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
 import io.github.maxlyth.hapaneld.util.Json
 import io.github.maxlyth.hapaneld.util.withStagedFiles
 import java.io.File
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_RESTORE_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_BACKUP_MANIFEST_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_PROFILE_BACKUP_ENTRY_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_ENTITY_BACKUP_TEXT_BYTES
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.PROFILE_BACKUP_ENTRY
-import io.github.maxlyth.hapaneld.http.PaneldServer.Companion.MAX_STATE_BACKUP_BYTES
 
 internal class PanelBackupBuilder(
     private val appContext: android.content.Context,

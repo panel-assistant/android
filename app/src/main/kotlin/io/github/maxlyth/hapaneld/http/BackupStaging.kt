@@ -6,15 +6,15 @@ import java.io.File
 
 /** Conservative disk peak while source entries, archive plaintext and optional ciphertext overlap. */
 internal fun backupStagingRequirement(includeCompanion: Boolean, encrypted: Boolean): Long {
-    val sources = PaneldServer.MAX_BACKUP_MANIFEST_BYTES +
-        2L * PaneldServer.MAX_ENTITY_BACKUP_TEXT_BYTES +
-        PaneldServer.MAX_PROFILE_BACKUP_ENTRY_BYTES +
+    val sources = MAX_BACKUP_MANIFEST_BYTES +
+        2L * MAX_ENTITY_BACKUP_TEXT_BYTES +
+        MAX_PROFILE_BACKUP_ENTRY_BYTES +
         io.github.maxlyth.hapaneld.backup.WakeWordBackup.MAX_ENTRY_BYTES +
-        if (includeCompanion) PaneldServer.MAX_COMPANION_BACKUP_BYTES else 0L
-    val archives = PaneldServer.MAX_RESTORE_BYTES * if (encrypted) 2L else 1L
+        if (includeCompanion) MAX_COMPANION_BACKUP_BYTES else 0L
+    val archives = MAX_RESTORE_BYTES * if (encrypted) 2L else 1L
     val archivePeak = sources + archives
     val rawCapturePeak = if (includeCompanion) CompanionHelperProtocol.MAX_BACKUP_STREAM_BYTES else 0L
-    return PaneldServer.BACKUP_STORAGE_MARGIN_BYTES + maxOf(archivePeak, rawCapturePeak)
+    return BACKUP_STORAGE_MARGIN_BYTES + maxOf(archivePeak, rawCapturePeak)
 }
 
 internal class BackupStagingRetainedException : Exception("sensitive backup staging file retained")
@@ -90,7 +90,7 @@ internal fun encryptedBackupArtifact(
 /** Keep room for the received envelope, authenticated plaintext, and extracted Companion payloads. */
 internal fun restoreBodyStagingLimit(
     usableBytes: Long,
-    maxPayloadBytes: Long = PaneldServer.MAX_RESTORE_BYTES,
+    maxPayloadBytes: Long = MAX_RESTORE_BYTES,
     safetyMarginBytes: Long = 64L * 1024L * 1024L,
 ): Long {
     if (usableBytes <= safetyMarginBytes || maxPayloadBytes <= 0L) return 0L
