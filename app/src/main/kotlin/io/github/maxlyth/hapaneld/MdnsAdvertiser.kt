@@ -311,12 +311,14 @@ class MdnsAdvertiser(
                             if (recoveryScheduler.scheduleIf(
                                     admitted = {
                                         jmdns === dns && secondaryDns === observedSecondary &&
-                                            topology.matches(current.epoch, current.lanIp) && primaryHealthy()
+                                            topology.matches(current.epoch, current.lanIp) &&
+                                            topology.snapshot().secondaryIp == current.secondaryIp && primaryHealthy()
                                     },
                                     task = {
                                         ownerGate.runIfOpen(Unit) {
                                             if (jmdns === dns && secondaryDns === observedSecondary &&
-                                                topology.matches(current.epoch, current.lanIp) && primaryHealthy()) {
+                                                topology.matches(current.epoch, current.lanIp) &&
+                                                topology.snapshot().secondaryIp == current.secondaryIp && primaryHealthy()) {
                                                 Log.w(TAG, "mDNS secondary responder stopped; rebinding")
                                                 reconcileSecondary(current.secondaryIp)
                                             }
