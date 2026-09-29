@@ -5888,6 +5888,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         }
     }
 
+    private val backupArchiveReader: BackupArchiveReader
+        get() = BackupArchiveReader(cacheDir) { CompanionInstaller.installedPackages(appContext) }
+
     /** Restore endpoint: decrypt + validate; ?dry_run=1 reports contents without writing. A real restore is
      *  DESTRUCTIVE (config rewrite + Companion force-stop/rewrite), run off-thread with InstallProgress. */
     private suspend fun handleRestore(call: ApplicationCall) {
@@ -6067,7 +6070,9 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 ContentType.Application.Json,
                 HttpStatusCode.BadRequest,
             )
-            val configPlan = planRestoreConfig(cfgObj, backupSchema).let { plan ->
+            val configPlan = planRestoreConfig(
+                cfgObj, backupSchema, canonicalHaOrigin(config.haUrl), config.zigbeeRouterConfigured,
+            ).let { plan ->
                 if (migrationRestore) plan.copy(values = migrationRestoreConfig(plan.values)) else plan
             }
             if (configPlan.errors.isNotEmpty()) {
@@ -6155,7 +6160,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             val entityState = entityObj?.let {
                 runCatching {
                     if (archiveManifest != null && it.has("filter_ids_entry")) {
-                        planEntityArchive(it, plainFile, archiveEntries)
+                        backupArchiveReader.planEntityArchive(it, plainFile, archiveEntries)
                     } else {
                         planEntityBackup(it)
                     }
@@ -6221,7 +6226,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                         allowEmpty = false,
                     )
                     val decoded = ConfigVault.decode(
-                        readArchiveText(plainFile, ref, archiveEntries, "app-state-restore-"),
+                        backupArchiveReader.readArchiveText(plainFile, ref, archiveEntries, "app-state-restore-"),
                     ) ?: throw IllegalArgumentException("corrupt app_state payload")
                     StateBackupPolicy.restorableRows(decoded.rows, samePanel) +
                         io.github.maxlyth.hapaneld.migration.migrationNoticeHistoryRows(
@@ -6238,7 +6243,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             } else emptyList()
             val profilePayload = profilesObj?.let {
                 if (archiveManifest != null && it.has("entry")) {
-                    readProfileArchive(it, plainFile, archiveEntries)
+                    backupArchiveReader.readProfileArchive(it, plainFile, archiveEntries)
                 } else {
                     ProfileBackup.fromJson(it)
                 }
@@ -6277,8 +6282,8 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
                 HttpStatusCode.UnprocessableEntity,
             )
             val plannedCompanion = when {
-                comp != null && archiveManifest != null -> planCompanionArchive(comp, plainFile, archiveEntries)
-                comp != null -> planCompanionRestore(comp)
+                comp != null && archiveManifest != null -> backupArchiveReader.planCompanionArchive(comp, plainFile, archiveEntries)
+                comp != null -> backupArchiveReader.planCompanionRestore(comp)
                 else -> null
             }
             if (plannedCompanion is CompanionRestore.PlanResult.Invalid) {
@@ -6594,354 +6599,8 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
     private fun profileIssueText(issue: io.github.maxlyth.hapaneld.device.profile.ProfileIssue): String =
         "${issue.path}: ${issue.message}"
 
-    private data class ArchiveTextRef(
-        val entry: String,
-        val size: Long,
-        val maxBytes: Long,
-        val allowEmpty: Boolean,
-    )
 
-    private fun archiveTextRef(
-        obj: org.json.JSONObject,
-        entryKey: String,
-        sizeKey: String,
-        expectedEntry: String,
-        maxBytes: Long,
-        allowEmpty: Boolean,
-    ): ArchiveTextRef {
-        val entry = obj.opt(entryKey) as? String ?: throw IllegalArgumentException("missing $entryKey")
-        require(entry == expectedEntry) { "unexpected $entryKey" }
-        val rawSize = obj.opt(sizeKey) as? Number ?: throw IllegalArgumentException("missing $sizeKey")
-        val size = rawSize.toLong()
-        require(rawSize.toDouble() == size.toDouble())
-        val minimum = if (allowEmpty) 0L else 1L
-        require(size in minimum..maxBytes)
-        return ArchiveTextRef(entry, size, maxBytes, allowEmpty)
-    }
 
-    private fun declaredArchiveEntries(
-        entity: org.json.JSONObject?,
-        profiles: org.json.JSONObject?,
-        companion: org.json.JSONObject?,
-        state: org.json.JSONObject?,
-    ): Set<String> {
-        val entries = ArrayList<String>(7)
-        if (state?.has("entry") == true) {
-            entries += archiveTextRef(
-                state,
-                "entry",
-                "size",
-                STATE_BACKUP_ENTRY,
-                MAX_STATE_BACKUP_BYTES,
-                allowEmpty = false,
-            ).entry
-        }
-        if (entity?.has("filter_ids_entry") == true || entity?.has("overrides_entry") == true) {
-            entries += archiveTextRef(
-                entity,
-                "filter_ids_entry",
-                "filter_ids_size",
-                ENTITY_FILTER_BACKUP_ENTRY,
-                MAX_ENTITY_BACKUP_TEXT_BYTES,
-                allowEmpty = true,
-            ).entry
-            entries += archiveTextRef(
-                entity,
-                "overrides_entry",
-                "overrides_size",
-                ENTITY_OVERRIDES_BACKUP_ENTRY,
-                MAX_ENTITY_BACKUP_TEXT_BYTES,
-                allowEmpty = true,
-            ).entry
-        }
-        if (profiles?.has("entry") == true) {
-            entries += archiveTextRef(
-                profiles,
-                "entry",
-                "size",
-                PROFILE_BACKUP_ENTRY,
-                MAX_PROFILE_BACKUP_ENTRY_BYTES,
-                allowEmpty = false,
-            ).entry
-        }
-        companion?.optJSONArray("files")?.let { files ->
-            for (index in 0 until files.length()) {
-                val file = files.optJSONObject(index)
-                    ?: throw IllegalArgumentException("invalid Companion file metadata")
-                entries += (file.opt("entry") as? String)
-                    ?: throw IllegalArgumentException("missing Companion entry")
-            }
-        }
-        require(entries.size < PanelBackup.MAX_ARCHIVE_ENTRIES)
-        require(entries.toSet().size == entries.size)
-        return entries.toSet()
-    }
-
-    private fun readArchiveText(
-        archive: File,
-        ref: ArchiveTextRef,
-        allowedEntries: Set<String>,
-        prefix: String,
-    ): String {
-        return withStagedFiles { staged ->
-            val target = staged.stage(File.createTempFile(prefix, ".payload", cacheDir))
-            require(
-                PanelBackup.extractArchive(
-                    archive,
-                    listOf(PanelBackup.ArchiveTarget(ref.entry, target, ref.maxBytes, ref.allowEmpty)),
-                    allowedEntries,
-                ),
-            )
-            require(target.length() == ref.size)
-            val bytes = target.inputStream().use { BoundedStreams.readBytes(it, ref.maxBytes) }
-            Charsets.UTF_8.newDecoder()
-                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                .decode(java.nio.ByteBuffer.wrap(bytes))
-                .toString()
-        }
-    }
-
-    private fun readProfileArchive(
-        metadata: org.json.JSONObject,
-        archive: File,
-        allowedEntries: Set<String>,
-    ): io.github.maxlyth.hapaneld.device.profile.ProfileBackupDecodeResult? = runCatching {
-        val ref = archiveTextRef(
-            metadata,
-            "entry",
-            "size",
-            PROFILE_BACKUP_ENTRY,
-            MAX_PROFILE_BACKUP_ENTRY_BYTES,
-            allowEmpty = false,
-        )
-        ProfileBackup.fromJson(org.json.JSONObject(readArchiveText(archive, ref, allowedEntries, "profile-restore-")))
-    }.getOrNull()
-
-    private fun planEntityArchive(
-        metadata: org.json.JSONObject,
-        archive: File,
-        allowedEntries: Set<String>,
-    ): DashboardEntityBackupState {
-        val filterRef = archiveTextRef(
-            metadata,
-            "filter_ids_entry",
-            "filter_ids_size",
-            ENTITY_FILTER_BACKUP_ENTRY,
-            MAX_ENTITY_BACKUP_TEXT_BYTES,
-            allowEmpty = true,
-        )
-        val overridesRef = archiveTextRef(
-            metadata,
-            "overrides_entry",
-            "overrides_size",
-            ENTITY_OVERRIDES_BACKUP_ENTRY,
-            MAX_ENTITY_BACKUP_TEXT_BYTES,
-            allowEmpty = true,
-        )
-        val filterIds = readArchiveText(archive, filterRef, allowedEntries, "entity-filter-restore-")
-        val overrides = readArchiveText(archive, overridesRef, allowedEntries, "entity-overrides-restore-")
-        return planEntityBackup(
-            org.json.JSONObject(metadata.toString())
-                .put("filter_ids", filterIds)
-                .put("overrides", overrides),
-        )
-    }
-
-    /** Convert untrusted JSON to a completely validated and decoded plan before any config commit or app stop. */
-    private fun planCompanionRestore(comp: org.json.JSONObject): CompanionRestore.PlanResult {
-        val files = comp.optJSONArray("files")
-            ?: return invalidCompanionPayload("Companion restore contains no files")
-        val encoded = ArrayList<CompanionRestore.EncodedFile>(files.length())
-        for (i in 0 until files.length()) {
-            val file = files.optJSONObject(i)
-                ?: return invalidCompanionPayload("Invalid Companion file entry at index $i")
-            encoded += CompanionRestore.EncodedFile(file.optString("rel"), file.optString("b64"))
-        }
-        return CompanionRestore.plan(
-            packageName = comp.optString("pkg"),
-            files = encoded,
-            installedPackages = CompanionInstaller.installedPackages(appContext),
-            stagingDir = cacheDir,
-        )
-    }
-
-    /** Extract a v2 archive's raw Companion entries under per-file and aggregate decoded limits. */
-    private fun planCompanionArchive(
-        comp: org.json.JSONObject,
-        archive: File,
-        allowedEntries: Set<String>,
-    ): CompanionRestore.PlanResult {
-        val files = comp.optJSONArray("files")
-            ?: return invalidCompanionPayload("Companion restore contains no files")
-        if (files.length() !in 1..CompanionRestore.ALLOWED_FILES.size) {
-            return invalidCompanionPayload("Companion restore contains an invalid file count")
-        }
-        data class Pending(val relativePath: String, val entry: String, val size: Long, val target: File)
-        return withStagedFiles { staged ->
-            val pending = ArrayList<Pending>(files.length())
-            for (index in 0 until files.length()) {
-                val file = files.optJSONObject(index)
-                    ?: return@withStagedFiles invalidCompanionPayload("Invalid Companion file entry at index $index")
-                val relativePath = file.optString("rel")
-                val entry = file.optString("entry")
-                val declaredSize = file.optLong("size", -1L)
-                if (relativePath !in CompanionRestore.ALLOWED_FILES ||
-                    declaredSize !in 1..CompanionRestore.maxBytes(relativePath)
-                ) return@withStagedFiles invalidCompanionPayload("Invalid Companion file metadata at index $index")
-                pending += Pending(
-                    relativePath,
-                    entry,
-                    declaredSize,
-                    staged.stage(File.createTempFile("companion-restore-", ".payload", cacheDir)),
-                )
-            }
-            if (pending.map { it.relativePath }.toSet().size != pending.size ||
-                pending.map { it.entry }.toSet().size != pending.size ||
-                pending.sumOf { it.size } > CompanionRestore.MAX_AGGREGATE_BYTES
-            ) return@withStagedFiles invalidCompanionPayload("Duplicate or oversized Companion archive metadata")
-            val extracted = PanelBackup.extractArchive(
-                archive,
-                pending.map { PanelBackup.ArchiveTarget(it.entry, it.target, CompanionRestore.maxBytes(it.relativePath)) },
-                allowedEntries,
-            )
-            if (!extracted || pending.any { it.target.length() != it.size }) {
-                return@withStagedFiles invalidCompanionPayload("Companion archive files are missing, corrupt, or too large")
-            }
-            val result = CompanionRestore.planFiles(
-                packageName = comp.optString("pkg"),
-                files = pending.map { CompanionRestore.FilePayload(it.relativePath, it.target) },
-                installedPackages = CompanionInstaller.installedPackages(appContext),
-            )
-            if (result is CompanionRestore.PlanResult.Valid) staged.commit()
-            result
-        }
-    }
-
-    private fun invalidCompanionPayload(reason: String): CompanionRestore.PlanResult.Invalid =
-        CompanionRestore.PlanResult.Invalid(reason, InstallPresentation("companion-payload-invalid"))
-
-    /** Validate + apply the config half of a backup (reuses the import apply path). Returns keys applied. */
-    private data class RestoreConfigPlan(
-        val values: Map<String, String>,
-        val warnings: List<String>,
-        val errors: List<String>,
-    )
-
-    private fun entityBackupJson(state: DashboardEntityBackupState): String = buildString {
-        append("{\"instance_key\":").append(jsonStr(state.instanceKey))
-        append(",\"instance_origin\":").append(jsonStr(state.instanceOrigin))
-        append(",\"instance_uuid\":").append(jsonStr(state.instanceUuid))
-        append(",\"dashboard_path\":").append(jsonStr(state.dashboardPath))
-        append(",\"filter_ids\":").append(jsonStr(state.filterIds))
-        append(",\"filter_enabled\":").append(state.filterEnabled)
-        append(",\"filter_owner\":").append(jsonStr(state.filterOwner))
-        append(",\"learning_applied\":").append(state.learningApplied)
-        append(",\"applied_owner\":").append(jsonStr(state.appliedOwner))
-        append(",\"overrides\":").append(jsonStr(state.overrides))
-        append(",\"override_owner\":").append(jsonStr(state.overrideOwner))
-        append('}')
-    }
-
-    private fun entityBackupArchiveJson(
-        state: DashboardEntityBackupState,
-        filterBytes: Long,
-        overrideBytes: Long,
-    ): String = buildString {
-        append("{\"instance_key\":").append(jsonStr(state.instanceKey))
-        append(",\"instance_origin\":").append(jsonStr(state.instanceOrigin))
-        append(",\"instance_uuid\":").append(jsonStr(state.instanceUuid))
-        append(",\"dashboard_path\":").append(jsonStr(state.dashboardPath))
-        append(",\"filter_ids_entry\":").append(jsonStr(ENTITY_FILTER_BACKUP_ENTRY))
-        append(",\"filter_ids_size\":").append(filterBytes)
-        append(",\"filter_enabled\":").append(state.filterEnabled)
-        append(",\"filter_owner\":").append(jsonStr(state.filterOwner))
-        append(",\"learning_applied\":").append(state.learningApplied)
-        append(",\"applied_owner\":").append(jsonStr(state.appliedOwner))
-        append(",\"overrides_entry\":").append(jsonStr(ENTITY_OVERRIDES_BACKUP_ENTRY))
-        append(",\"overrides_size\":").append(overrideBytes)
-        append(",\"override_owner\":").append(jsonStr(state.overrideOwner))
-        append('}')
-    }
-
-    private fun planEntityBackup(obj: org.json.JSONObject): DashboardEntityBackupState {
-        fun string(key: String, max: Int, allowNewline: Boolean = false): String {
-            val value = obj.opt(key) as? String ?: throw IllegalArgumentException("$key must be a string")
-            require(value.length <= max && value.none {
-                it.code < 0x20 && !(allowNewline && it == '\n')
-            }) { "$key is invalid" }
-            return value
-        }
-        fun bool(key: String): Boolean = obj.opt(key) as? Boolean
-            ?: throw IllegalArgumentException("$key must be boolean")
-        val ids = EntityFilterProtocol.normalize(
-            string("filter_ids", 13_000_000, allowNewline = true).lineSequence().toList(),
-        )
-            .joinToString("\n")
-        val overrideLines = string("overrides", 13_000_000, allowNewline = true)
-            .lineSequence().filter(String::isNotBlank).toList()
-        val overrideIds = overrideLines.map { line ->
-            require(line.firstOrNull() == '+' || line.firstOrNull() == '-') { "invalid override marker" }
-            line.drop(1).trim()
-        }
-        EntityFilterProtocol.normalize(overrideIds)
-        return DashboardEntityBackupState(
-            instanceKey = string("instance_key", 256),
-            instanceOrigin = string("instance_origin", 2_048),
-            instanceUuid = string("instance_uuid", 256),
-            dashboardPath = string("dashboard_path", 2_048),
-            filterIds = ids,
-            filterEnabled = bool("filter_enabled"),
-            filterOwner = string("filter_owner", 2_560),
-            learningApplied = bool("learning_applied"),
-            appliedOwner = string("applied_owner", 2_560),
-            overrides = overrideLines.sorted().joinToString("\n"),
-            overrideOwner = string("override_owner", 2_560),
-            // A restored archive is established state, never an in-flight first activation.
-            initialActivationPending = false,
-        )
-    }
-
-    /**
-     * A stored value from an older archive, in the form the current validator can read.
-     *
-     * `home_dashboard` had no validator before this release, so a backup taken then can hold anything the
-     * panel was given, including a whole URL. Validating it verbatim now fails, and because a restore is
-     * all-or-nothing that one historical value makes the entire archive unrestorable — precisely when the
-     * owner needs it. Canonicalizing first is the same rule the live store applies on upgrade, so an old
-     * archive restores to exactly what saving it today would produce. A value that cannot be canonicalized
-     * still fails, with its own reason.
-     */
-
-    private fun planRestoreConfig(cfgObj: org.json.JSONObject, schema: Int): RestoreConfigPlan {
-        val raw = LinkedHashMap<String, String>()
-        for (key in cfgObj.keys()) {
-            val value = cfgObj.opt(key)
-            if (value == null || value == org.json.JSONObject.NULL || value is org.json.JSONObject || value is org.json.JSONArray) {
-                return RestoreConfigPlan(emptyMap(), emptyList(), listOf("$key: expected a scalar setting value"))
-            }
-            raw[key] = value.toString()
-        }
-        val (migrated, warnings) = Migrations.migrate(schema, raw)
-        val decided = planRestoreSettings(migrated, canonicalHaOrigin(config.haUrl))
-        val accepted = LinkedHashMap(decided.accepted)
-        val errors = ArrayList(decided.errors)
-        val ownershipPreserved = preserveUnconfiguredZigbeeOwnership(
-            accepted,
-            config.zigbeeRouterConfigured,
-        )
-        if (accepted.isEmpty() && errors.isEmpty()) errors += "config object contains no restorable settings"
-        return RestoreConfigPlan(
-            accepted,
-            buildList {
-                addAll(warnings)
-                if (ownershipPreserved) {
-                    add("legacy zigbee_router=false skipped to preserve untouched vendor gateway ownership")
-                }
-            },
-            errors,
-        )
-    }
 
     private suspend fun applyRestoreConfig(
         accepted: Map<String, String>,
@@ -7319,15 +6978,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         internal const val MAX_LEGACY_BACKUP_JSON_BYTES = 6L * 1024L * 1024L
         internal const val BACKUP_STORAGE_MARGIN_BYTES = 64L * 1024L * 1024L
         internal const val PROFILE_BACKUP_ENTRY = "profiles/catalog.json"
-        private const val ENTITY_FILTER_BACKUP_ENTRY = "entity/filter-ids.txt"
-        private const val ENTITY_OVERRIDES_BACKUP_ENTRY = "entity/overrides.txt"
-
-        /**
-         * The complete `app_state` dump. The manifest's `config` block is a projection of declared
-         * settings, so it cannot represent a namespace that is not a setting; this entry is the whole
-         * table, in the same flat-text codec the config vault uses.
-         */
-        private const val STATE_BACKUP_ENTRY = "state/app-state.txt"
 
         /** Configuration is tens of kilobytes on real panels; this is headroom, not a target. */
         internal const val MAX_STATE_BACKUP_BYTES = 4L * 1024L * 1024L
