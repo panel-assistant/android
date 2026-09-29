@@ -1890,7 +1890,11 @@ internal class MqttBridge(
     internal fun nativeChannelShape(): io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape {
         val learned = runCatching(learnedProximityState).getOrNull()
         val (unsupported, served) = stateConverger.keys().partition { hardwareAvailability(it, learned) == false }
-        return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape(served, unsupported)
+        val actions = listOf("reload" to system.canReloadDashboard(config.dashboardPackage), "reboot" to system.canReboot())
+        return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape(
+            served + actions.filter { it.second }.map { it.first },
+            unsupported + actions.filterNot { it.second }.map { it.first },
+        )
     }
 
     /**
@@ -2817,9 +2821,9 @@ internal class MqttBridge(
     private val nativeAuthorityDropLogged = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
-     * Run one Panel Assistant command on the same ordered authority MQTT commands use, keyed by the same
-     * channel, so a command for one channel conflates identically whichever transport delivered it. [done]
-     * receives exactly one result. Action channels (reload, reboot, updates) are not accepted here.
+     * Run one Panel Assistant command on the same ordered authority MQTT commands use. Stateful commands
+     * conflate by channel; reload and reboot use the action queue. [done] receives exactly one result.
+     * Actions reach the same sensitive handlers as MQTT.
      *
      * A temporary adapter: until the common handlers take a channel identity, it reaches them through the
      * channel's MQTT command topic, with the payload `PanelAssistantCommandTranslation` mapped from the
@@ -2838,7 +2842,7 @@ internal class MqttBridge(
         val topic = "ha-paneld/$panel/${command.channel}/set"
         when (commandKind(topic)) {
             null -> return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL))
-            CommandKind.ACTION ->
+            CommandKind.ACTION -> if (command.channel !in setOf("reload", "reboot"))
                 return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_NOT_COMMANDABLE))
             CommandKind.LATEST -> Unit
         }
@@ -2846,24 +2850,35 @@ internal class MqttBridge(
         if (payload.size > MAX_COMMAND_PAYLOAD_BYTES) {
             return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE))
         }
-        val admission = commandDispatcher.submitLatest(
-            key = command.channel,
-            onSkipped = { execution ->
-                finish(
-                    if (execution == MqttCommandDispatcher.Execution.SUPERSEDED) {
-                        PanelAssistantCommandResult.Superseded
-                    } else {
-                        PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED)
-                    },
-                )
-            },
-        ) {
+        val run = {
             val refusal = command.admit()
             if (refusal != null) {
                 finish(refusal)
+            } else if (command.channel == "reboot" && !system.canReboot() ||
+                command.channel == "reload" && !system.canReloadDashboard(config.dashboardPackage)
+            ) {
+                finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE))
             } else {
                 finish(panelAssistantCommandResult(consumeCommand(topic, payload, PANEL_ASSISTANT_PEER)))
             }
+        }
+        val admission = if (command.channel == "reload" || command.channel == "reboot") {
+            commandDispatcher.submitAction(run)
+        } else {
+            commandDispatcher.submitLatest(
+                key = command.channel,
+                onSkipped = { execution ->
+                    finish(if (execution == MqttCommandDispatcher.Execution.SUPERSEDED) {
+                        PanelAssistantCommandResult.Superseded
+                    } else {
+                        PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED)
+                    })
+                },
+                command = run,
+            )
+        }
+        if (admission == MqttCommandDispatcher.Admission.CLOSED || admission == MqttCommandDispatcher.Admission.REJECTED) {
+            finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED))
         }
         recordCommandAdmission(admission)
     }
@@ -2935,7 +2950,10 @@ internal class MqttBridge(
                     payload,
                     "Reload the dashboard renderer from Home Assistant",
                 )
-                handleReload()
+                val reloaded = handleReload()
+                if (!reloaded && commandPeer.get() == PANEL_ASSISTANT_PEER) {
+                    throw LiveSettingUnavailableException("reload")
+                }
             }
             cmdReboot -> {
                 authorizeRemoteSensitive(
@@ -2943,7 +2961,10 @@ internal class MqttBridge(
                     payload,
                     "Reboot this panel from Home Assistant",
                 )
-                system.reboot()
+                val rebooted = system.reboot()
+                if (!rebooted && commandPeer.get() == PANEL_ASSISTANT_PEER) {
+                    throw LiveSettingUnavailableException("reboot")
+                }
             }
             cmdButtons -> if (hasButtonBacklight) handleButtons(payload)
             cmdUpdateCompanion -> handleSoftwareCommand(SoftwareComponent.COMPANION, payload) {
@@ -3642,15 +3663,14 @@ internal class MqttBridge(
     // Reload: keep the hard restart (the right recovery for a wedged WebView), but if a per-panel home
     // dashboard is set, deep-link back to it once the frontend has cold-started — so reload lands on THIS
     // panel's dashboard, not the Companion's user-default. The delayed nav runs off the MQTT thread.
-    private fun handleReload() {
+    private fun handleReload(): Boolean {
         // Built-in renderer: reload returns to the configured home dashboard (clear any navigate path),
         // and the WebView reloads its own view — no Companion deep-link re-navigation is needed.
         if (config.dashboardPackage.isBlank() || config.dashboardPackage == SystemController.BUILTIN_DASHBOARD) {
             BuiltinDashboard.navPath = null
-            system.reloadDashboard(config.dashboardPackage)
-            return
+            return system.reloadDashboard(config.dashboardPackage)
         }
-        system.reloadDashboard(config.dashboardPackage)
+        if (!system.reloadDashboard(config.dashboardPackage)) return false
         // Already canonical by construction, so it is the local path to deep-link as stored. Re-running
         // it through scheme stripping would corrupt a legal route whose query happens to contain "://".
         val home = config.homeDashboard
@@ -3669,6 +3689,7 @@ internal class MqttBridge(
                 null
             }
         }
+        return true
     }
 
     private fun handleNavigate(payload: String) {

@@ -1,7 +1,6 @@
 package io.github.maxlyth.hapaneld.migration
 
 import android.content.Context
-import android.provider.Settings
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.Config
@@ -58,13 +57,11 @@ internal object SuccessorMigrationRunner {
     ): Job = scope.launch {
         val appContext = context.applicationContext
         val state = MigrationState.of(appContext)
-        val androidId = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
         val ports = AndroidSuccessorMigrationPorts(
             appContext,
             state,
             Environment.PASSIVE,
             httpPort = LegacyPort.of(appContext).read() ?: Config.DEFAULT_PORT,
-            androidId = androidId,
         )
         when (drive(SuccessorMigration(ports, state))) {
             Result.NeedsHeldService -> startHeldService()
@@ -92,7 +89,6 @@ internal class AndroidIdentityMigration(
     context: Context,
     private val scope: CoroutineScope,
     private val httpPort: () -> Int,
-    private val androidId: () -> String,
     private val mqttState: () -> String,
     private val offerHandoff: suspend () -> SuccessorHandoff.Outcome?,
     private val offerInstalledHandoff: suspend () -> SuccessorHandoff.Outcome?,
@@ -149,7 +145,6 @@ internal class AndroidIdentityMigration(
             state,
             if (held) Environment.HELD_SERVICE else Environment.SERVICE,
             httpPort = httpPort(),
-            androidId = androidId(),
             mqttState = mqttState,
             beginRestore = restoreAttempts::begin,
         )
