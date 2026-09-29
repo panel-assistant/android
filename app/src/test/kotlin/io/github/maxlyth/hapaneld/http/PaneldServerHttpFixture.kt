@@ -158,7 +158,7 @@ internal class PaneldServerHttpFixture(
         server.field("catalogueLoader\$delegate", lazy {
             io.github.maxlyth.hapaneld.i18n.CatalogueLoader { name -> File("src/main/assets", name).readText() }
         })
-        server.field("system", io.github.maxlyth.hapaneld.control.SystemController(
+        val system = io.github.maxlyth.hapaneld.control.SystemController(
             object : io.github.maxlyth.hapaneld.platform.SystemEnv {
                 override val ownPackage = "io.github.maxlyth.hapaneld"
                 override fun isInstalled(pkg: String) = pkg == "com.example.dashboard"
@@ -167,8 +167,9 @@ internal class PaneldServerHttpFixture(
                 override fun defaultHome(): io.github.maxlyth.hapaneld.platform.ActivityRef? = null
                 override fun directStart(component: String) = Unit
             },
-        ))
-        server.field("profile", Proxy.newProxyInstance(
+        )
+        server.field("system", system)
+        val profile = Proxy.newProxyInstance(
             io.github.maxlyth.hapaneld.device.DeviceProfile::class.java.classLoader,
             arrayOf(io.github.maxlyth.hapaneld.device.DeviceProfile::class.java),
         ) { _, method, _ ->
@@ -179,7 +180,19 @@ internal class PaneldServerHttpFixture(
                 "getHasRecents" -> false
                 else -> error("Unexpected page profile read: ${method.name}")
             }
-        })
+        } as io.github.maxlyth.hapaneld.device.DeviceProfile
+        server.field("profile", profile)
+        server.field("setupState", SetupState(
+            config, system,
+            allocate(io.github.maxlyth.hapaneld.dashboard.EntityLearningManager::class.java),
+            profile, context, { "connecting" }, HaOAuthFlow(),
+            { io.github.maxlyth.hapaneld.DiscoveryResult() }, { false }, { false },
+            { system.resolveDashboard(config.dashboardPackage) == io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD },
+            scope, io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator(
+                builtinPackage = "builtin", state = { error("Unexpected renderer preparation") },
+                borrow = { null }, persist = { error("Unexpected renderer persistence") },
+            ),
+        ))
     }
 
 
