@@ -11,7 +11,7 @@ import org.junit.Test
 
 class PanelAssistantTransportProtocolTest {
 
-    @Test fun `hello offers schema 2 with schema 1 compatibility and a contract digest`() {
+    @Test fun `hello requires schema 3 so old integrations cannot bind an installation identity`() {
         val bare = JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY))
         assertEquals(0, bare.getJSONArray("capabilities").length())
         assertEquals(0, bare.getJSONArray("channels").length())
@@ -21,8 +21,8 @@ class PanelAssistantTransportProtocolTest {
                 listOfNotNull(PanelAssistantChannelCatalog.describe("relay3")),
             ),
         )
-        assertEquals(1, hello.getJSONObject("protocol").getInt("min"))
-        assertEquals(2, hello.getJSONObject("protocol").getInt("max"))
+        assertEquals(3, hello.getJSONObject("protocol").getInt("min"))
+        assertEquals(3, hello.getJSONObject("protocol").getInt("max"))
         assertTrue(Regex("^[0-9a-f]{64}$").matches(hello.getString("contract_digest")))
         assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "embed_proof", "voice"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         val relay = hello.getJSONArray("channels").getJSONObject(0)
@@ -41,7 +41,7 @@ class PanelAssistantTransportProtocolTest {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.
         assertEquals(
-            "5557a65e4b729110205fd4fefb69d665a08e33218f81521a50094a8bab577dd2",
+            "29d65178c4cd01bd7e5200e4303ca1e61751f78c4e76772b41f07f19197fa479",
             PanelAssistantTransportProtocol.CONTRACT_DIGEST,
         )
     }
@@ -97,7 +97,7 @@ class PanelAssistantTransportProtocolTest {
         val outcome = PanelAssistantTransportProtocol.helloOutcome(accepted(), 1L)
         assertEquals(
             PanelAssistantHelloOutcome.Accepted(
-                PanelAssistantSession(1, "opaque", "shadow", emptyList(), "0.3.0"),
+                PanelAssistantSession(3, "opaque", "shadow", emptyList(), "0.3.0"),
             ),
             outcome,
         )
@@ -252,7 +252,7 @@ class PanelAssistantTransportProtocolTest {
 
     @Test fun `a success result that breaks the contract is a protocol failure`() {
         listOf<(JSONObject) -> Unit>(
-            { it.put("protocol", 3) },
+            { it.put("protocol", 2) },
             { it.put("session", "") },
             { it.remove("authority") },
             { it.put("capabilities", JSONArray().put("commands")) },
@@ -276,7 +276,7 @@ class PanelAssistantTransportProtocolTest {
         .put(
             "result",
             JSONObject()
-                .put("protocol", 1)
+                .put("protocol", 3)
                 .put("session", "opaque")
                 .put("authority", "shadow")
                 .put("capabilities", JSONArray())

@@ -12,6 +12,20 @@ import org.junit.Test
 
 class PanelAssistantShadowReporterTest {
 
+    @Test fun actionDescriptorsAreOfferedWithoutStateObservations() {
+        val reporter = PanelAssistantShadowReporter()
+        reporter.bindShape {
+            PanelAssistantChannelShape(served = listOf("reload"), unsupported = listOf("reboot"))
+        }
+        val offer = reporter.offer()
+        assertEquals(listOf("reload"), offer.descriptors.map { it.channel })
+        assertEquals("button", offer.descriptors.single().platform)
+        assertEquals(listOf("reboot"), offer.unsupported)
+        reporter.open(offer.descriptors)
+        val begin = JSONObject(requireNotNull(reporter.next(1, "session", 0)))
+        assertEquals(0, begin.getJSONArray("observations").length())
+    }
+
     @Test fun fullSyncSendsEveryCachedObservationThenAnEmptyFullEndThenDeltas() {
         val h = Harness()
         h.sink("screen", """{"state":"ON","brightness":40}""")

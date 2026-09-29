@@ -249,6 +249,7 @@ internal abstract class MqttWireRig {
             else -> listOf(org.json.JSONObject().put("on", true).put("brightness", 128) to """{"state":"ON","brightness":128}""")
         }
         PanelAssistantValueKind.UPDATE -> emptyList()
+        PanelAssistantValueKind.BUTTON -> listOf(org.json.JSONObject.NULL to "PRESS")
     }
 
     /** The payload form a command takes on the wire: its value kind, with the three light payloads apart. */

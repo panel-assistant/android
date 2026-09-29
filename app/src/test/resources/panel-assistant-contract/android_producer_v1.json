@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "21e3c51729d4f3d334b8cd6937c846d6e43dac67",
+  "sourceRevision": "6058d769563f599eceb58b9ab6824b40f823c319",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -117,15 +117,15 @@
         "id": 1,
         "type": "panel_assistant/hello",
         "protocol": {
-          "min": 1,
-          "max": 2
+          "min": 3,
+          "max": 3
         },
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "app": {
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "5557a65e4b729110205fd4fefb69d665a08e33218f81521a50094a8bab577dd2",
+        "contract_digest": "29d65178c4cd01bd7e5200e4303ca1e61751f78c4e76772b41f07f19197fa479",
         "capabilities": [
           "state",
           "commands",
@@ -722,6 +722,24 @@
       "step": null
     },
     {
+      "channel": "reboot",
+      "platform": "button",
+      "translation_key": "reboot",
+      "unique_suffix": "reboot",
+      "family": null,
+      "index": null,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": "restart",
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
       "channel": "relay1",
       "platform": "switch",
       "translation_key": "relay",
@@ -746,6 +764,24 @@
       "unique_suffix": "relay64",
       "family": "relay",
       "index": 64,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": null,
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
+      "channel": "reload",
+      "platform": "button",
+      "translation_key": "reload",
+      "unique_suffix": "reload",
+      "family": null,
+      "index": null,
       "entity_category": null,
       "enabled_default": true,
       "device_class": null,

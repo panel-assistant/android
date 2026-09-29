@@ -227,7 +227,7 @@ class PanelAssistantVoiceTest {
             when (frame.getString("type")) {
                 "panel_assistant/hello" -> reply(
                     frame,
-                    JSONObject().put("protocol", 2).put("session", "opaque-session").put("authority", "shadow")
+                    JSONObject().put("protocol", 3).put("session", "opaque-session").put("authority", "shadow")
                         .put("capabilities", JSONArray(if (grantVoice) listOf("voice") else emptyList<String>()))
                         .put("integration", JSONObject().put("version", "0.7.0")),
                 )
