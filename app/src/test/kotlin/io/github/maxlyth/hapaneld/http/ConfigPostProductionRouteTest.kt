@@ -124,7 +124,7 @@ class ConfigPostProductionRouteTest {
                 for (name in listOf(
                     "config", "system", "sensors", "pendingLiveSettings", "stalledLiveSettings",
                     "configLiveValues", "rendererPreparation", "tameReconciliation", "revisions",
-                    "managementObservations", "powerSafety", "stopping", "haArea",
+                    "managementObservations", "powerSafety", "stopping", "haArea", "pageHealth",
                 )) {
                     val value = PaneldServer::class.java.getDeclaredField(name).run {
                         isAccessible = true
@@ -522,6 +522,7 @@ class ConfigPostProductionRouteTest {
         observations.snapCache.set(snap)
 
         setField(server, "managementObservations", observations)
+        setField(server, "pageHealth", PageHealth(object : android.content.ContextWrapper(null) {}, config))
         setField(server, "config", config)
         setField(server, "system", SystemController(object : SystemEnv {
             override val ownPackage = "io.github.maxlyth.hapaneld"
