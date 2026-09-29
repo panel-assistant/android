@@ -23,6 +23,7 @@ internal class PageShell(
     private fun hardenedApprovalKey(top: Boolean = false, strings: AppStrings): String =
         """<p class="hardened-approval-key${if (top) " top" else ""}">${esc(strings.get("shell.hardened.key"))}</p>"""
 
+    /** The shared tab bar; [active] highlights the current page. */
     private fun navBar(
         active: String,
         strings: AppStrings,
@@ -153,9 +154,9 @@ $approvalKeyAfter""",
     }
 
 }
-    /** The GitHub-repository icon link shown in the header of every :8888 surface. */
-    internal fun ghLink(strings: AppStrings): String =
-        """<a class="gh" href="$REPO_URL" target="_blank" rel="noopener" title="${esc(strings.get("shell.github.title"))}" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="$GH_ICON"/></svg></a>"""
+/** The GitHub-repository icon link shown in the header of every :8888 surface. */
+internal fun ghLink(strings: AppStrings): String =
+    """<a class="gh" href="$REPO_URL" target="_blank" rel="noopener" title="${esc(strings.get("shell.github.title"))}" aria-label="GitHub"><svg viewBox="0 0 24 24"><path d="$GH_ICON"/></svg></a>"""
 
 
 internal const val REPO_URL = "https://github.com/panel-assistant/android"

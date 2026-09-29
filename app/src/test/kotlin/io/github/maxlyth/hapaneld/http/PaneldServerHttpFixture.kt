@@ -152,6 +152,57 @@ internal class PaneldServerHttpFixture(
         })
     }
 
+
+    /** Cached management observations keep Configure on the real banner path without Android probes. */
+    fun enableConfigurePage(proximity: Boolean = false) {
+        config.setMqtt("mqtt://contract.invalid:1883", "", "")
+        val sensor = PaneldServer::class.java.getDeclaredField("sensors").run {
+            isAccessible = true
+            get(server)
+        }
+        SensorReporter::class.java.getDeclaredField("proximityAcquisition").apply {
+            isAccessible = true
+        }.set(sensor, if (proximity) io.github.maxlyth.hapaneld.sensors.ProximityAcquisition.ANDROID_HAL
+            else io.github.maxlyth.hapaneld.sensors.ProximityAcquisition.ABSENT)
+        val privilege = io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation(
+            directSuReady = false,
+            helperRootReady = false,
+            shizuku = io.github.maxlyth.hapaneld.shizuku.ShizukuBridge.Snapshot(
+                io.github.maxlyth.hapaneld.shizuku.ShizukuState.DISABLED, ready = false,
+            ),
+        )
+        val snap = PaneldServer::class.java.declaredClasses.single { it.simpleName == "Snap" }
+            .declaredConstructors.single().run {
+                isAccessible = true
+                newInstance(
+                    mapOf("MQTT" to "connecting"), emptyMap<String, String>(),
+                    io.github.maxlyth.hapaneld.config.Capabilities(), emptyList<Any>(),
+                    privilege, null, null, 1.0f, false,
+                )
+            }
+        server.field("snapCache", io.github.maxlyth.hapaneld.util.Cached<Any>(Long.MAX_VALUE) { snap }.also { it.set(snap) })
+        server.field("powerSafety", {
+            io.github.maxlyth.hapaneld.control.PowerSafetyAssessment(
+                level = io.github.maxlyth.hapaneld.control.PowerRiskLevel.SAFE,
+                observation = io.github.maxlyth.hapaneld.control.PowerSafetyObservation(
+                    keepAwakeConfigured = true, wakeLockHeld = true,
+                    wifiLockRequired = false, wifiLockHeld = false,
+                    preventIdleDimConfigured = true, screenOffTimeoutMs = 30_000,
+                    interactive = true, pluggedMask = 1, stayOnWhilePluggedIn = 1,
+                    deviceIdleMode = false, ignoringBatteryOptimizations = true,
+                    screenOffMechanism = "test",
+                ),
+                reasonCodes = emptyList(), summary = "safe", action = "none",
+            )
+        })
+    }
+
+    fun enableEntityPage() {
+        config.setDashboardEntityLearningEnabled(true)
+        config.setDashboardPackage(io.github.maxlyth.hapaneld.control.SystemController.BUILTIN_DASHBOARD)
+        server.field("webViewTooOldOnce\$delegate", lazy { false })
+    }
+
     override fun close() {
         scope.cancel()
         pending.close()

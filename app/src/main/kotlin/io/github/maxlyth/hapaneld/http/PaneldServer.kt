@@ -862,7 +862,7 @@ class PaneldServer internal constructor(
                         pages.page(
                             active = "configure",
                             title = strings.get("shell.nav.configure"),
-                            body = configureBody(strings),
+                            body = configureBody(strings, sensors.hasProximity(), configureSetupBanners(strings)),
                             strings = strings,
                             embed = call.embedMode(),
                         ),
@@ -975,7 +975,7 @@ class PaneldServer internal constructor(
                             .distinct().sorted().joinToString(", "),
                     )
                     call.respondText(
-                        pages.page("entities", strings.get("shell.nav.entities"), entitiesBody(strings), strings, call.embedMode()),
+                        pages.page("entities", strings.get("shell.nav.entities"), entitiesBody(strings, config.dashboardEntityLearningEnabled && effectiveDashboardIsBuiltin()), strings, call.embedMode()),
                         ContentType.Text.Html,
                     )
                 }
@@ -2034,190 +2034,6 @@ class PaneldServer internal constructor(
 
     // ---- tabbed multi-page shell ----
 
-    private fun hardenedApprovalA11yAttrs(
-        conditional: Boolean = false,
-        strings: AppStrings = catalogueLoader.strings(AppLocale.ENGLISH),
-    ): String {
-        val description = if (conditional) "hardened-approval-conditional-description" else "hardened-approval-description"
-        val title = strings.get(
-            if (conditional) "configure.hardened.setting_approval" else "configure.hardened.action_approval",
-        )
-        return """ aria-describedby="$description" title="${esc(title)}""""
-    }
-
-    private fun hardenedApprovalAttrs(
-        conditional: Boolean = false,
-        strings: AppStrings = catalogueLoader.strings(AppLocale.ENGLISH),
-    ): String =
-        """ data-hardened-approval${if (conditional) "=\"conditional\"" else ""}${hardenedApprovalA11yAttrs(conditional, strings)}"""
-
-    private fun hardenedApprovalCardTitle(
-        title: String,
-        badge: String = "",
-        conditional: Boolean = false,
-        strings: AppStrings = catalogueLoader.strings(AppLocale.ENGLISH),
-    ): String {
-        val description = if (conditional) "hardened-approval-section-conditional-description" else "hardened-approval-section-description"
-        val explanation = strings.get(
-            if (conditional) "shell.hardened.section_conditional" else "shell.hardened.section",
-        )
-        val marker = if (conditional) "=\"conditional\"" else ""
-        return """<h2 data-hardened-approval$marker aria-describedby="$description" title="${esc(explanation)}">$title$badge</h2>"""
-    }
-
-    private fun entitiesBody(strings: AppStrings): String = if (!config.dashboardEntityLearningEnabled || !effectiveDashboardIsBuiltin()) {
-        val disabled = entityOwnedMarkup(
-            strings.get("entities.disabled.body"),
-            linkedMapOf(
-                "{setting}" to "<b>${esc(strings.get("settings.dashboard_entity_learning.label"))}</b>",
-                "{configure}" to "<b>${esc(strings.get("shell.nav.configure"))}</b>",
-                "{dashboard}" to "<b>${esc(strings.get("configure.group.dashboard"))}</b>",
-            ),
-        )
-        """<div class="cards"><div class="card"><h2>${esc(strings.get("entities.disabled.title"))} <small>· ${esc(strings.get("entities.disabled.badge"))}</small></h2>
-        <p>$disabled</p></div></div>"""
-    } else """
-        <div class="cards entity-cards">
-          <div class="card"><h2>${esc(strings.get("entities.filter.title"))}</h2>
-            <div id="entity-status">${esc(strings.get("entities.filter.loading"))}</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-              <button class="pbtn" id="entity-sync">${esc(strings.get("entities.filter.scan"))}</button>
-              <button class="pbtn" id="entity-activate" disabled>${esc(strings.get("entities.filter.checking"))}</button>
-              <button class="pbtn" id="entity-reset" type="button">${esc(strings.get("entities.filter.reset"))}</button>
-              <a class="pbtn" href="api/v1/dashboard/entities/export">${esc(strings.get("entities.filter.export"))}</a>
-            </div>
-            <div id="entity-action-result" class="entity-action-result muted" role="status" aria-live="polite"></div>
-            <fieldset class="entity-policy"><legend>${esc(strings.get("entities.policy.legend"))}</legend>
-              <label><input type="checkbox" id="entity-auto-static"> ${esc(strings.get("entities.policy.static"))}</label>
-              <label><input type="checkbox" id="entity-auto-runtime"> ${entityOwnedMarkup(strings.get("entities.policy.runtime"), linkedMapOf("hass.states" to "<code>hass.states</code>"))}</label>
-              <p class="muted">${esc(strings.get("entities.policy.note"))}</p>
-            </fieldset>
-          </div>
-          <div class="entity-search-row">
-            <label class="sr-only" for="entity-search">${esc(strings.get("entities.search.label"))}</label>
-            <input id="entity-search" type="search" autocomplete="off" placeholder="${esc(strings.get("entities.search.placeholder"))}" aria-describedby="entity-search-status">
-            <div id="entity-search-status" class="entity-search-status muted" role="status" aria-live="polite"></div>
-          </div>
-          <div class="card entity-issues" id="entity-issues"><h2>${esc(strings.get("entities.issues.title"))}</h2>
-            <div id="entity-issues-summary" class="muted" role="status" aria-live="polite">${esc(strings.get("entities.issues.checking"))}</div>
-            <div id="entity-issues-list" class="entity-issues-list"></div>
-            <section id="entity-dynamic" class="entity-dynamic" hidden>
-              <h3>${esc(strings.get("entities.dynamic.title"))}</h3>
-              <p class="muted">${entityOwnedMarkup(strings.get("entities.dynamic.body"), linkedMapOf("{{ ... }}" to "<code>{{ ... }}</code>", "{% ... %}" to "<code>{% ... %}</code>"))}</p>
-              <div id="entity-dynamic-list" class="entity-dynamic-list"></div>
-            </section>
-            <button class="pbtn" id="entity-issues-rescan" type="button">${esc(strings.get("entities.issues.rescan"))}</button>
-          </div>
-          ${entityTableHtml("current", "entities.table.current", "subscribed", strings)}
-          ${entityTableHtml("suggested", "entities.table.suggested", "candidate", strings)}
-          ${entityTableHtml("review", "entities.table.review", "review", strings)}
-        </div>
-        <script src="assets/entities.js"></script>
-    """.trimIndent()
-
-    private fun entityTableHtml(
-        id: String,
-        keyPrefix: String,
-        filter: String,
-        strings: AppStrings,
-    ): String {
-        val keys = when (keyPrefix) {
-            "entities.table.current" -> Triple(
-                "entities.table.current.title",
-                "entities.table.current.short",
-                "entities.table.current.note",
-            )
-            "entities.table.suggested" -> Triple(
-                "entities.table.suggested.title",
-                "entities.table.suggested.short",
-                "entities.table.suggested.note",
-            )
-            "entities.table.review" -> Triple(
-                "entities.table.review.title",
-                "entities.table.review.short",
-                "entities.table.review.note",
-            )
-            else -> error("unknown Entities table: $keyPrefix")
-        }
-        return """
-      <div class="card entity-list" data-filter="$filter" data-table="$id" data-short-key="${esc(keys.second)}"><h2>${esc(strings.get(keys.first))}</h2>
-        <p class="muted">${esc(strings.get(keys.third))}</p>
-        <div class="entity-bulk" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="pbtn" data-bulk="pinned">${esc(strings.get("entities.bulk.pin_selected"))}</button><button class="pbtn" data-bulk="auto">${esc(strings.get("entities.bulk.auto_selected"))}</button><button class="pbtn" data-bulk="forced_exclude">${esc(strings.get("entities.bulk.exclude_selected"))}</button>
-          ${if (filter == "candidate") "<button class=\"pbtn\" data-all-candidates=\"true\">${esc(strings.get("entities.bulk.pin_all_suggested"))}</button>" else ""}<span class="muted entity-selected">${esc(strings.get("entities.selection.none"))}</span>
-        </div>
-        <div class="tablewrap"><table class="entity-table"><thead><tr><th class="col-select"><input type="checkbox" class="entity-select-page" aria-label="${esc(strings.get("entities.table.select_page"))}"></th><th class="col-entity"><button data-sort="entity_id">${esc(strings.get("entities.table.entity"))}</button></th><th class="col-access"><button data-sort="access_1h">${esc(strings.get("entities.table.accesses"))} <small>${esc(strings.get("entities.table.period_tooltip"))}</small></button></th><th class="col-rate"><button data-sort="rate_1h_bps">${esc(strings.get("entities.table.data_rate"))} <small>${esc(strings.get("entities.table.bytes_per_second"))} · ${esc(strings.get("entities.table.period_tooltip"))}</small></button></th><th class="col-reason"><button data-sort="reasons">${esc(strings.get("entities.table.reason"))}</button></th><th class="col-last"><button data-sort="last_access_at">${esc(strings.get("entities.table.last_access"))}</button></th><th class="col-override"><button data-sort="override">${esc(strings.get("entities.table.override"))}</button></th></tr></thead><tbody></tbody></table></div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
-          <button class="pbtn entity-prev">${esc(strings.get("entities.pagination.previous"))}</button><button class="pbtn entity-next">${esc(strings.get("entities.pagination.next"))}</button><span class="muted entity-msg">${esc(strings.get("entities.pagination.loading"))}</span>
-        </div>
-      </div>
-    """.trimIndent()
-    }
-
-    /** Insert only server-owned emphasis/code elements while escaping every translated byte around them. */
-    private fun entityOwnedMarkup(text: String, replacements: Map<String, String>): String = buildString {
-        var offset = 0
-        while (offset < text.length) {
-            val next = replacements.keys
-                .mapNotNull { marker -> text.indexOf(marker, offset).takeIf { it >= 0 }?.let { it to marker } }
-                .minByOrNull { it.first }
-            if (next == null) {
-                append(esc(text.substring(offset)))
-                break
-            }
-            append(esc(text.substring(offset, next.first)))
-            append(replacements.getValue(next.second))
-            offset = next.first + next.second.length
-        }
-    }
-
-    /**
-     * The guided setup page — the surface the panel's QR code points at, and the primary way a new panel
-     * is commissioned.
-     *
-     * A separate route rather than a mode of Configure. Configure is a schema-driven wall of every setting
-     * with one save-everything bar, which is the right tool for an owner changing one thing and the wrong
-     * one for somebody who has never seen this product: nothing there says which four fields matter, in
-     * what order, or that a save is required at all. It is also pinned by contract tests that assert its
-     * source text, so folding a wizard into it would put unrelated risk on the page every existing user
-     * relies on.
-     *
-     * The markup here is only a frame. Steps are rendered by setup.js from GET /api/v1/setup, so the panel
-     * and the browser read the same authority and cannot disagree about what comes next.
-     */
-    private fun setupBody(strings: AppStrings, preserveExplicitEnglish: Boolean, embedded: Boolean = false): String = """
-<div class="wiz" id="wiz">
-  <ol class="wiz-dots" id="wiz-dots" aria-label="${esc(strings.get("setup.frame.progress_label"))}"></ol>
-  <div id="wiz-step" class="wiz-step" role="region" aria-live="polite" aria-atomic="false">
-    <p class="muted">${esc(strings.get("setup.frame.loading"))}</p>
-  </div>
-  <p class="wiz-escape"><a href="${setupHref("configure", strings, preserveExplicitEnglish)}"${if (embedded) "" else """ onclick="document.cookie='wiz_escape=1;path=/;max-age=3600'""""}>${esc(strings.get("setup.frame.skip_exit"))}</a></p>
-</div>
-<script src="assets/setup.js"></script>"""
-
-    /** Configure tab — schema-driven, save-together settings only. */
-    private fun configureBody(strings: AppStrings): String {
-        val proximityLearningEnabled = sensors.hasProximity()
-        val proximityMount = if (proximityLearningEnabled) """<div id="proximity-learning-mount" hidden></div>""" else ""
-        val proximityScript = if (proximityLearningEnabled) """<script src="assets/proximity-learning.js"></script>""" else ""
-        val setup = configureSetupBanners(strings)
-        return """
-<!-- Basic/Advanced tab bar hidden until every setting is assigned a Basic/Advanced tier; with it hidden
-     the form shows ALL settings (configure.js defaults `advanced=true`), so nothing is lost. The tier
-     machinery (SettingSpec.tier + cfgTab) stays in place — restore the bar once tiers are curated. -->
-<div class="cfg-tabs" style="display:none"><button id="tab-basic" onclick="cfgTab(false)">${esc(strings.get("configure.tab.basic"))}</button><button id="tab-adv" class="on" onclick="cfgTab(true)">${esc(strings.get("configure.tab.advanced"))}</button></div>
-$setup
-<div id="cfg-status" class="muted" style="margin-bottom:10px">${esc(strings.get("configure.status.loading"))}</div>
-<div id="cfg-all-cards">
-<div id="cfg-groups" class="cards" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1" data-card-size-proximity="${if (proximityLearningEnabled) "1" else "0"}"></div>
-$proximityMount</div>
-<div id="savebar" class="savebar" role="region" aria-label="${esc(strings.get("configure.unsaved.label"))}" hidden><button id="savebtn" type="button" disabled onclick="cfgSave()">${esc(strings.get("configure.action.save"))}</button><span id="cfg-msg" class="muted" role="status" aria-live="polite" aria-atomic="true"></span></div>
-<script src="assets/card-size-memory.js"></script>
-<script src="assets/card-column-alignment.js"></script>
-<script src="assets/configure.js"></script>
-$proximityScript"""
-    }
-
     private fun configureSetupBanners(strings: AppStrings): String {
         val management = snapStaleOk()
         val power = localizedPowerSafetyBanner(
@@ -2255,74 +2071,6 @@ $proximityScript"""
     private fun strategySelectorAllowedBanner(strings: AppStrings): String =
         if (!runCatching { entityLearning.strategySelectorAllowed() }.getOrDefault(false)) "" else
             """<div class="setup info">ℹ <b>${esc(strings.get("configure.setup.strategy_allowed.title"))}</b> ${esc(strings.get("configure.setup.strategy_allowed.body"))} <a href="${localizedHref("entities", strings)}">${esc(strings.get("configure.setup.strategy_allowed.link"))}</a>.</div>"""
-
-    /** Runtime profile authoring. All content is hydrated through the guarded /api/v1/profile routes. */
-    private fun profilesBody(strings: AppStrings): String = """
-<link rel="stylesheet" href="assets/profiles.css">
-<main class="profile-page">
-  <div class="profile-toolbar" aria-label="${esc(strings.get("profiles.toolbar.actions_label"))}">
-    <div class="profile-pickers">
-      <label for="profile-select" class="muted">${esc(strings.get("profiles.toolbar.revision"))}</label>
-      <select id="profile-select" aria-label="${esc(strings.get("profiles.toolbar.revision_label"))}"><option>${esc(strings.get("profiles.status.loading_catalog"))}</option></select>
-      <label class="profile-revisions muted" for="profile-revisions"><input id="profile-revisions" type="checkbox">${esc(strings.get("profiles.toolbar.show_superseded"))}</label>
-    </div>
-    <div class="profile-actions">
-      <div class="profile-action-group" aria-label="${esc(strings.get("profiles.toolbar.editing_label"))}">
-        <button class="pbtn" id="profile-new" type="button">${esc(strings.get("profiles.action.new"))}</button>
-        <button class="pbtn" id="profile-edit" type="button" disabled>${esc(strings.get("profiles.action.edit"))}</button>
-        <button class="pbtn" id="profile-fork" type="button" disabled>${esc(strings.get("profiles.action.fork"))}</button>
-        <label class="pbtn" for="profile-import">${esc(strings.get("profiles.action.import"))}<input id="profile-import" type="file" accept=".yaml,.yml,application/yaml,text/yaml" hidden></label>
-        <button class="pbtn" id="profile-export" type="button">${esc(strings.get("profiles.action.export"))}</button>
-      </div>
-      <span class="profile-action-break" aria-hidden="true"></span>
-      <div class="profile-action-group" aria-label="${esc(strings.get("profiles.toolbar.review_label"))}">
-        <button class="pbtn primary" id="profile-validate" type="button" disabled>${esc(strings.get("profiles.action.validate_yaml"))}</button>
-        <button class="pbtn" id="profile-compare" type="button" disabled>${esc(strings.get("profiles.action.compare"))}</button>
-      </div>
-      <div class="profile-action-group" aria-label="${esc(strings.get("profiles.toolbar.activation_label"))}">
-        <button class="pbtn primary" id="savebtn" type="button" disabled>${esc(strings.get("profiles.action.save_revision"))}</button>
-        <button class="pbtn primary" id="profile-activate" type="button"${hardenedApprovalAttrs(strings = strings)} disabled>${esc(strings.get("profiles.action.activate"))}</button>
-        <button class="pbtn" id="profile-auto" type="button"${hardenedApprovalAttrs(strings = strings)} disabled>${esc(strings.get("profiles.action.use_automatic"))}</button>
-        <button class="pbtn" id="profile-rollback" type="button"${hardenedApprovalAttrs(strings = strings)} disabled>${esc(strings.get("profiles.action.rollback"))}</button>
-        <button class="pbtn danger" id="profile-delete" type="button" disabled>${esc(strings.get("profiles.action.delete"))}</button>
-      </div>
-    </div>
-  </div>
-  <div id="profile-badges" class="profile-badges" aria-label="${esc(strings.get("profiles.state.label"))}"></div>
-  <nav id="profile-links" class="profile-links" aria-label="${esc(strings.get("profiles.references.label"))}" hidden></nav>
-  <div id="profile-status" class="profile-status" role="status" aria-live="polite">${esc(strings.get("profiles.status.loading_catalog"))}</div>
-  <div class="profile-workspace">
-    <section class="profile-editor-pane" aria-labelledby="profile-editor-title">
-      <div class="profile-editor-head"><h2 id="profile-editor-title">${esc(strings.get("profiles.editor.title"))}</h2><span id="profile-editor-meta" class="profile-editor-meta"></span></div>
-      <div id="profile-editor"></div>
-    </section>
-    <aside class="profile-inspector" aria-labelledby="profile-inspector-title">
-      <div class="profile-inspector-head"><h2 id="profile-inspector-title">${esc(strings.get("profiles.inspector.title"))}</h2></div>
-      <div class="profile-inspector-body">
-        <section><h3>${esc(strings.get("profiles.section.catalog_runtime"))}</h3><div id="profile-catalog-issues" class="profile-issues"></div></section>
-        <section><h3>${esc(strings.get("profiles.section.validation"))}</h3><div id="profile-issues" class="profile-issues"></div></section>
-        <div class="profile-guidance" id="profile-shizuku-guidance" hidden>
-          <p><b>${esc(strings.get("profiles.shizuku.title"))}</b></p>
-          <p>${esc(strings.get("profiles.shizuku.body"))}</p>
-          <p><a href="$SHIZUKU_GUIDE_DOC" target="_blank" rel="noopener">${esc(strings.get("profiles.shizuku.guide"))}</a></p>
-        </div>
-        <section><h3>${esc(strings.get("profiles.section.compared_active"))}</h3><div id="profile-diff" class="profile-diff"></div></section>
-        <section><h3>${esc(strings.get("profiles.section.observed"))}</h3><p class="profile-report-note">${esc(strings.get("profiles.observed.note"))}</p><div id="profile-report" class="profile-report"></div></section>
-        <div class="profile-draft" id="profile-generic-draft" hidden>
-          <p><b>${esc(strings.get("profiles.generic.title"))}</b> ${esc(strings.get("profiles.generic.body"))}</p>
-          <p><button class="pbtn" id="profile-draft" type="button">${esc(strings.get("profiles.action.generate_draft"))}</button> <button class="pbtn" id="profile-use-draft" type="button" hidden>${esc(strings.get("profiles.action.copy_draft"))}</button></p>
-        </div>
-      </div>
-    </aside>
-  </div>
-</main>
-<div id="profile-modal" class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" hidden>
-  <div class="profile-modal-card"><h2 id="profile-modal-title">${esc(strings.get("profiles.modal.default_title"))}</h2><pre id="profile-modal-detail"></pre>
-    <div class="profile-modal-actions"><button class="pbtn" id="profile-modal-cancel" type="button">${esc(strings.get("profiles.action.cancel"))}</button><button class="pbtn primary" id="profile-modal-confirm" type="button">${esc(strings.get("profiles.action.confirm"))}</button></div>
-  </div>
-</div>
-<script src="assets/vendor/profile-editor/codemirror.js"></script>
-<script src="assets/profiles.js"></script>"""
 
     /** Request-scoped snapshot of the two health inputs several render surfaces consult — the real WebView
      *  engine status and whether any dashboard renderer is present. Captured ONCE per render so the banner,
@@ -3504,7 +3252,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         when (val w = CompanionDb.warning(config.dashboardPackage, companion, management.privilege.directSuReady)) {
             is CompanionDb.Warning.NeedsRepair -> {
                 val action = if (inlineRepair)
-                    """<div style="margin-top:10px"><button class="pbtn"${hardenedApprovalAttrs()} onclick="repairCompUrl(this)">⚙ ${esc(strings.get("dashboard.banner.companion_url.repair"))}</button> <span id="cu-fix" class="muted"></span></div>"""
+                    """<div style="margin-top:10px"><button class="pbtn"${hardenedApprovalAttrs(strings = catalogueLoader.strings(AppLocale.ENGLISH))} onclick="repairCompUrl(this)">⚙ ${esc(strings.get("dashboard.banner.companion_url.repair"))}</button> <span id="cu-fix" class="muted"></span></div>"""
                 else """ <a href="${localizedHref("install", strings)}">${esc(strings.get("dashboard.banner.companion_url.install_action"))}</a>"""
                 val summaryKey = if (w.affected == 1) {
                     "dashboard.banner.companion_url.summary_one"
@@ -5249,7 +4997,6 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         )
         private const val RELEASES_URL = "https://github.com/panel-assistant/android/releases"
         private const val WEBVIEW_DOC = "https://panel-assistant.io/go/docs?page=hardware/readme"
-        private const val SHIZUKU_GUIDE_DOC = "https://panel-assistant.io/go/docs?page=provisioning"
         private const val DEVICE_PROFILES_DOC = "https://panel-assistant.io/go/docs?page=architecture/device-profiles"
     }
 }
