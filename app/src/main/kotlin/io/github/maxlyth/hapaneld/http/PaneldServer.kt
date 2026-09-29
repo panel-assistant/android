@@ -379,15 +379,6 @@ class PaneldServer internal constructor(
         return true
     }
 
-    private suspend fun rejectHardenedDevToolsRelay(call: ApplicationCall): Boolean {
-        if (!config.hardenedSecurityEnabled) return false
-        call.respondText(
-            """{"ok":false,"error":"devtools-incompatible-with-hardened-mode","message":"Switch to Relaxed mode before exposing WebView developer tools to the LAN."}""",
-            ContentType.Application.Json,
-            HttpStatusCode.Conflict,
-        )
-        return true
-    }
 
 
     // Per-INSTALL build token (changes on every (re)install, not just a version bump) so an open info
@@ -1056,16 +1047,7 @@ class PaneldServer internal constructor(
                         call.respondText("""{"ok":true}""", ContentType.Application.Json)
                     }
                     remoteControlRoutes({ remoteControlRoutes }, ::authorizeSensitive)
-                    // Debug-only sensor trace (RAM ring buffer, on by default) for fit-testing the
-                    // auto-brightness + proximity filters. CSV by default (drop into a plot); ?format=json
-                    // for programmatic use / a future on-panel chart. Not an HA/MQTT surface.
-                    get("/sensortrace") {
-                        if (call.request.queryParameters["format"] == "json") {
-                            call.respondText(io.github.maxlyth.hapaneld.sensors.SensorTrace.toJson(), ContentType.Application.Json)
-                        } else {
-                            call.respondText(io.github.maxlyth.hapaneld.sensors.SensorTrace.toCsv(), ContentType("text", "csv"))
-                        }
-                    }
+                    sensorTraceRoute()
                     screenshotRoutes(screenshots, { interactive.screenshot() }, { admitActiveRead(it) })
                     cameraRoutes(camera, ::admitActiveRead)
                     get("/openapi.json") {
@@ -1233,37 +1215,7 @@ class PaneldServer internal constructor(
                         escapeHtml = ::esc,
                         localizedHref = ::localizedHref,
                     )
-                    // 1-click WebView DevTools: expose the dashboard's CDP socket to the LAN (root relay)
-                    // so the user can chrome://inspect with no adb. See CdpRelay.
-                    get("/inspect") {
-                        val status = when {
-                            CdpRelay.running -> "started"
-                            config.hardenedSecurityEnabled -> "hardened-disabled"
-                            else -> "off"
-                        }
-                        call.respondText(inspectJson(status), ContentType.Application.Json)
-                    }
-                    post("/inspect/start") {
-                        if (rejectHardenedDevToolsRelay(call)) return@post
-                        if (!authorizeSensitive(
-                                call,
-                                SensitiveOperation.DEVTOOLS_ENABLE,
-                                exactHttpApprovalPayload(call, sha256Hex(ByteArray(0))),
-                                "Expose this panel's WebView developer tools to the LAN",
-                            )
-                        ) return@post
-                        val status = synchronized(inspectLock) {
-                            if (stopping) "off" else CdpRelay.start(appContext)
-                        }
-                        call.respondText(inspectJson(status), ContentType.Application.Json)
-                    }
-                    post("/inspect/stop") {
-                        synchronized(inspectLock) {
-                            if (CdpRelay.running) CdpRelay.stop()
-                            if (config.hardenedSecurityEnabled) AdbController(appContext, config).reassert()
-                        }
-                        call.respondText(inspectJson("off"), ContentType.Application.Json)
-                    }
+                    debugInspectionRoutes(appContext, config, inspectLock, { stopping }, ::authorizeSensitive)
                 }
             }
         }
@@ -2471,8 +2423,6 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
     /** JSON-quote a string value (escapes backslash + double-quote). */
     private fun jsonStr(s: String): String = Json.str(s)
 
-    private fun inspectJson(status: String): String =
-        """{"running":${CdpRelay.running},"port":${CdpRelay.PORT},"status":"$status","start_allowed":${!config.hardenedSecurityEnabled}}"""
 
 
 

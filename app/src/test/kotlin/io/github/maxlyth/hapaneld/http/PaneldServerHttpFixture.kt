@@ -135,6 +135,7 @@ internal class PaneldServerHttpFixture(
         val refreshStorage: suspend () -> io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot? = { null }
         field("refreshStorageHealth", refreshStorage)
         field("stopping", false)
+        field("inspectLock", Any())
     }
 
     fun mount(application: Application) = server.mount(application)
