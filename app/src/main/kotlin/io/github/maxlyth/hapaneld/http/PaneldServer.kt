@@ -46,6 +46,7 @@ import io.github.maxlyth.hapaneld.config.SettingType
 import io.github.maxlyth.hapaneld.config.SettingSpec
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
+import io.github.maxlyth.hapaneld.config.isLiteralNullAreaName
 import io.github.maxlyth.hapaneld.config.TamePackagePolicy
 import io.github.maxlyth.hapaneld.config.Validation
 import io.github.maxlyth.hapaneld.i18n.AppLocale
@@ -1503,6 +1504,19 @@ internal fun browserI18nPayload(strings: AppStrings, prefixes: Set<String>): Str
         .replace("\u2029", "\\u2029")
 }
 
+/** Share the area presentation for Configure and Setup while retaining raw rows for repair. */
+internal fun haAreaCatalogPresentationJson(catalog: EntityLearningManager.HaAreaCatalog): String {
+    val areas = catalog.areas.filterNot { isLiteralNullAreaName(it.name) }.joinToString(",") { area ->
+        "{\"area_id\":${Json.str(area.areaId)},\"name\":${Json.str(area.name)}," +
+            "\"icon\":${Json.str(area.icon)}}"
+    }
+    val invalidDeviceArea = HaAreaProtocol.hasLiteralNullAssignment(catalog.device, catalog.areas)
+    return "{\"areas\":[$areas],\"device\":{\"found\":${catalog.device.found}," +
+        "\"area_id\":${Json.str(if (invalidDeviceArea) "" else catalog.device.areaId)}," +
+        "\"area_name\":${Json.str(if (invalidDeviceArea) "" else catalog.device.areaName)}}," +
+        "\"admin\":${catalog.admin},\"queried\":${catalog.queried}}"
+}
+
 class PaneldServer internal constructor(
     private val config: Config,
     private val cacheDir: File,
@@ -2400,17 +2414,11 @@ class PaneldServer internal constructor(
                         // pickers whether editing is honest to offer (moving a device is admin-only).
                         val snapshot = captureHaAreaSnapshot()
                         val catalog = applyHaAreaPrecedence(snapshot, haAreaCatalogFor(snapshot))
-                        val areas = catalog.areas.joinToString(",") { area ->
-                            "{\"area_id\":${jsonStr(area.areaId)},\"name\":${jsonStr(area.name)}," +
-                                "\"icon\":${jsonStr(area.icon)}}"
-                        }
-                        val device = "{\"found\":${catalog.device.found}," +
-                            "\"area_id\":${jsonStr(catalog.device.areaId)}," +
-                            "\"area_name\":${jsonStr(catalog.device.areaName)}}"
                         call.respondText(
-                            "{\"areas\":[$areas],\"device\":$device,\"admin\":${catalog.admin}," +
-                                "\"queried\":${catalog.queried},\"requested\":${jsonStr(config.haArea)}," +
-                                "\"ha_username\":${jsonStr(catalog.haUsername)}}",
+                            JSONObject(haAreaCatalogPresentationJson(catalog))
+                                .put("requested", config.haArea)
+                                .put("ha_username", catalog.haUsername)
+                                .toString(),
                             ContentType.Application.Json,
                         )
                     }
@@ -10681,15 +10689,7 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
             warmHaAreaCatalogInBackground()
             return null
         }
-        val catalog = entry.catalog
-        val areas = catalog.areas.joinToString(",") { area ->
-            "{\"area_id\":${Json.str(area.areaId)},\"name\":${Json.str(area.name)}," +
-                "\"icon\":${Json.str(area.icon)}}"
-        }
-        return "{\"areas\":[$areas],\"device\":{\"found\":${catalog.device.found}," +
-            "\"area_id\":${Json.str(catalog.device.areaId)}," +
-            "\"area_name\":${Json.str(catalog.device.areaName)}}," +
-            "\"admin\":${catalog.admin},\"queried\":true}"
+        return haAreaCatalogPresentationJson(entry.catalog)
     }
 
     /** Full config as JSON for fleet management. The MQTT password is never emitted — only a boolean

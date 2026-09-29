@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
 import io.github.maxlyth.hapaneld.http.HaAreaProtocol.ReconcileAction
+import io.github.maxlyth.hapaneld.dashboard.EntityLearningManager
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -137,6 +138,35 @@ class HaAreaProtocolTest {
             HaAreaProtocol.panelDeviceArea(devicesJson(areaId = "missing"), areas, "abc123", "alpha", emptySet()),
             areas,
         ))
+    }
+
+    @Test fun configAreaCatalogueDoesNotOfferOrReportAnAreaNamedLiteralNull() {
+        val areas = HaAreaProtocol.areas(JSONObject("""{"result":[
+            {"area_id":"bad-area","name":" NuLl ","icon":"mdi:alert"},
+            {"area_id":"study","name":"Study","icon":"mdi:desk"}
+        ]}"""))
+        val badDevice = HaAreaProtocol.panelDeviceArea(
+            devicesJson(areaId = "bad-area"), areas, "abc123", "alpha", emptySet(),
+        )
+        assertTrue(HaAreaProtocol.hasLiteralNullAssignment(badDevice, areas))
+
+        fun response(device: HaAreaProtocol.PanelDeviceArea) = JSONObject(haAreaCatalogPresentationJson(
+            EntityLearningManager.HaAreaCatalog(queried = true, admin = true, areas = areas, device = device),
+        ))
+        val bad = response(badDevice)
+        val choices = bad.getJSONArray("areas")
+        assertEquals(1, choices.length())
+        assertEquals("study", choices.getJSONObject(0).getString("area_id"))
+        assertEquals("Study", choices.getJSONObject(0).getString("name"))
+        assertEquals("", bad.getJSONObject("device").getString("area_id"))
+        assertEquals("", bad.getJSONObject("device").getString("area_name"))
+        assertTrue(bad.getJSONObject("device").getBoolean("found"))
+
+        val named = response(HaAreaProtocol.panelDeviceArea(
+            devicesJson(areaId = "study"), areas, "abc123", "alpha", emptySet(),
+        )).getJSONObject("device")
+        assertEquals("study", named.getString("area_id"))
+        assertEquals("Study", named.getString("area_name"))
     }
 
     @Test fun areaNamesResolveCaseInsensitively() {
