@@ -41,7 +41,7 @@ class HardenedControlContractTest {
         // was absent on the transport an automation actually uses. Approval must precede the reload.
         val reloadArm = dispatch.substring(dispatch.indexOf("cmdReload ->"), dispatch.indexOf("cmdReboot ->"))
         assertTrue(reloadArm.contains("SensitiveOperation.DASHBOARD_RELOAD"))
-        assertTrue(reloadArm.indexOf("authorizeRemoteSensitive(") < reloadArm.indexOf("handleReload()"))
+        assertTrue(reloadArm.indexOf("authorizeRemoteSensitive(") < reloadArm.indexOf("system.reloadDashboard("))
 
         val auto = mqtt.substring(mqtt.indexOf("override fun handleCompanionAuto"), mqtt.indexOf("override fun handleSilenceBootChime"))
         assertTrue(auto.contains("if (on && approvalRequired) authorizeRemoteSensitive("))

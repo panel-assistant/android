@@ -89,8 +89,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.RejectedExecutionException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.security.MessageDigest
 import java.util.Locale
@@ -1353,7 +1351,6 @@ internal class MqttBridge(
     private enum class CommandKind { LATEST, ACTION }
 
     private val haLinkResolutionThread = AtomicReference<Thread?>()
-    @Volatile private var reloadNavigationFuture: ScheduledFuture<*>? = null
     private val discoveryCapabilities = MqttDiscoveryCapabilitySource(
         supplier = capabilities,
         onFailure = { error ->
@@ -2950,7 +2947,7 @@ internal class MqttBridge(
                     payload,
                     "Reload the dashboard renderer from Home Assistant",
                 )
-                val reloaded = handleReload()
+                val reloaded = system.reloadDashboard(config.dashboardPackage)
                 if (!reloaded && commandPeer.get() == PANEL_ASSISTANT_PEER) {
                     throw LiveSettingUnavailableException("reload")
                 }
@@ -3660,44 +3657,17 @@ internal class MqttBridge(
     /** Discovery embeds suggested_area on its next publish; the server owns HA registry write-back. */
     override fun handleHaAreaPublishOnly() = Unit
 
-    // Reload: keep the hard restart (the right recovery for a wedged WebView), but if a per-panel home
-    // dashboard is set, deep-link back to it once the frontend has cold-started — so reload lands on THIS
-    // panel's dashboard, not the Companion's user-default. The delayed nav runs off the MQTT thread.
-    private fun handleReload(): Boolean {
-        // Built-in renderer: reload returns to the configured home dashboard (clear any navigate path),
-        // and the WebView reloads its own view — no Companion deep-link re-navigation is needed.
-        if (config.dashboardPackage.isBlank() || config.dashboardPackage == SystemController.BUILTIN_DASHBOARD) {
-            BuiltinDashboard.navPath = null
-            return system.reloadDashboard(config.dashboardPackage)
-        }
-        if (!system.reloadDashboard(config.dashboardPackage)) return false
-        // Already canonical by construction, so it is the local path to deep-link as stored. Re-running
-        // it through scheme stripping would corrupt a legal route whose query happens to contain "://".
-        val home = config.homeDashboard
-        if (home.isNotBlank() && home != "/") {
-            reloadNavigationFuture?.cancel(false)
-            reloadNavigationFuture = try {
-                authScheduler.schedule({
-                    recordCommandAdmission(commandDispatcher.submitAction {
-                        navigate.navigate("homeassistant://navigate$home")
-                        config.lastNavigate = home
-                        stateConverger.reconcile("navigate", force = true)
-                        Log.i(TAG, "reload -> re-navigated to intended dashboard $home")
-                    })
-                }, RELOAD_NAV_DELAY_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-            } catch (_: RejectedExecutionException) {
-                null
-            }
-        }
-        return true
-    }
-
     private fun handleNavigate(payload: String) {
         // Local navigation only: strip any scheme + host so an external URL can't be pushed (the HA
         // Companion opens a disorienting in-app WebView for those). We keep just the path.
         val path = toLocalPath(payload)
         if (path.isEmpty()) return
         if (config.dashboardPackage.isBlank() || config.dashboardPackage == SystemController.BUILTIN_DASHBOARD) {
+            if (path == config.lastNavigate && config.homeDashboard.isNotBlank() && config.homeDashboard != "/") {
+                BuiltinDashboard.navPath = null
+                system.reloadDashboard(config.dashboardPackage)
+                return
+            }
             // Built-in renderer: set the target path and (re)launch DashboardActivity, which loads it —
             // the deep link targets the Companion and would no-op on a builtin-only panel.
             BuiltinDashboard.navPath = path
@@ -3710,11 +3680,17 @@ internal class MqttBridge(
             // Already on this path — the deeplink is a no-op, so reload the dashboard instead.
             system.reloadDashboard(config.dashboardPackage)
         } else {
-            navigate.navigate("homeassistant://navigate$path")
+            val companion = system.resolveDashboard(config.dashboardPackage)
+                .takeIf { RendererResolver.companionHomeRoute(it, config.homeDashboard) != null }
+            if (companion != null) navigate.navigate("homeassistant://navigate$path", companion)
+            else navigate.navigate("homeassistant://navigate$path")
             config.lastNavigate = path
             stateConverger.reconcile("navigate", force = true)
         }
     }
+
+    /** Publish the service-owned return after the Companion accepted its panel-home deep link. */
+    fun reconcileNavigateState() = stateConverger.reconcile("navigate", force = true)
 
     /** Reduce any posted value to a leading-slash local path: drop `scheme://` and the `host:port`
      *  authority, keep the path (+ query/fragment). `http://ha.local:8123/lovelace/0` → `/lovelace/0`;
@@ -4741,8 +4717,6 @@ internal class MqttBridge(
         haLinkResolutionThread.get()?.interrupt()
         authRecovery.supersedeRetry()
         authScheduler.shutdownNow()
-        reloadNavigationFuture?.cancel(false)
-        reloadNavigationFuture = null
         zigbeeWorker.closeAndJoin(0L)
         adbReassertWorker.closeAndJoin(0L)
         reannounceDispatcher.close()
@@ -4876,9 +4850,6 @@ internal class MqttBridge(
         )
         // Room climate sensors — available only on panels with a CHT8305 (see hasCht8305).
         private val ROOM_KEYS = listOf("room_temp", "room_humidity")
-        // How long to wait after a reload before deep-linking to the intended dashboard — lets the WebView
-        // cold-start + the HA frontend load so the navigate deeplink isn't swallowed.
-        private const val RELOAD_NAV_DELAY_MS = 8_000L
         // MQTT keepalive: PINGREQ every this-many idle seconds. Short enough to detect a dead link within
         // ~1.5× this, well under the service liveness-watchdog's stale threshold.
         private const val KEEPALIVE_SEC = 30

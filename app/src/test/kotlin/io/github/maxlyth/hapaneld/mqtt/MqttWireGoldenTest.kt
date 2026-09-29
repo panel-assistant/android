@@ -19,6 +19,7 @@ import io.github.maxlyth.hapaneld.control.BootChimeController
 import io.github.maxlyth.hapaneld.control.BootChimeHardware
 import io.github.maxlyth.hapaneld.control.BootChimeState
 import io.github.maxlyth.hapaneld.control.BootChimeStateStore
+import io.github.maxlyth.hapaneld.control.BuiltinDashboard
 import io.github.maxlyth.hapaneld.control.BrightnessController
 import io.github.maxlyth.hapaneld.control.ControlApplyOutcome
 import io.github.maxlyth.hapaneld.control.CpuController
@@ -63,6 +64,7 @@ import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -334,6 +336,7 @@ internal abstract class MqttWireRig {
             override fun setRgb(r: Int, g: Int, b: Int) = true
             override fun off() = true
         },
+        companionHomeReturns: MutableList<String>? = null,
         configure: (Config) -> Unit = {},
     ): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
@@ -362,7 +365,12 @@ internal abstract class MqttWireRig {
             FakeBacklight(160), FakeScreenPower(), FakeRootShell(), FakeDaemon(), FakeWakeTap(),
             ScreenOff.BRIGHTNESS_ZERO, nap = {},
         )
-        val system = SystemController(FakeSystemEnv(), FakeRootShell(), FakeDaemon(), builtinForeground = { false })
+        val companion = "io.homeassistant.companion.android.minimal"
+        val system = SystemController(
+            FakeSystemEnv(), FakeRootShell(), FakeDaemon(replies = mapOf("RELOAD $companion" to "OK")),
+            builtinForeground = { false }, homeDashboard = { config.homeDashboard },
+            onCompanionHome = { pkg, path -> companionHomeReturns?.add("$pkg:$path") },
+        )
         val bootChime = BootChimeController(
             configured = { false },
             setConfigured = {},
@@ -1024,6 +1032,50 @@ internal class MqttWireGoldenTest : MqttWireRig() {
 
 /** Command parity between MQTT and the native adapter, split from the fixture so test forks balance. */
 internal class MqttNativeParityTest : MqttWireRig() {
+
+    @Test fun `repeated built-in navigate reloads this panels home`() {
+        val rig = rig(configure = { config ->
+            config.setHomeDashboard("/lovelace/this-panel")
+            config.lastNavigate = "/lovelace/other-view"
+        })
+        try {
+            rig.announce()
+            BuiltinDashboard.navPath = null
+            BuiltinDashboard.consumeReloadRequest()
+
+            assertEquals(
+                PanelAssistantCommandResult.Applied,
+                submitNative(rig, "navigate", "/lovelace/other-view"),
+            )
+
+            assertTrue("same-route Navigate must request a real home reload", BuiltinDashboard.consumeReloadRequest())
+            assertNull("the old view must not override home on reload", BuiltinDashboard.navPath)
+        } finally {
+            BuiltinDashboard.navPath = null
+            BuiltinDashboard.consumeReloadRequest()
+            rig.close()
+        }
+    }
+
+    @Test fun `repeated Companion navigate requests this panels home after reload`() {
+        val returns = mutableListOf<String>()
+        val companion = "io.homeassistant.companion.android.minimal"
+        val rig = rig(configure = { config ->
+            config.setDashboardPackage(companion)
+            config.setHomeDashboard("/kitchen-panel/0")
+            config.lastNavigate = "/kitchen-panel/other"
+        }, companionHomeReturns = returns)
+        try {
+            rig.announce()
+            assertEquals(
+                PanelAssistantCommandResult.Applied,
+                submitNative(rig, "navigate", "/kitchen-panel/other"),
+            )
+            assertEquals(listOf("$companion:/kitchen-panel/0"), returns)
+        } finally {
+            rig.close()
+        }
+    }
 
     /**
      * Every commandable channel the bridge serves: the native value must translate to the exact payload

@@ -44,6 +44,8 @@ class SystemController(
     // This is the real Log.w sink by default; the focused controller test observes the same emitted line.
     private val homeWarning: (String) -> Unit = { Log.w(TAG, it) },
     private val beforeReboot: () -> Unit = {},
+    private val homeDashboard: () -> String = { "" },
+    private val onCompanionHome: (String, String) -> Unit = { _, _ -> },
 ) {
 
     // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
@@ -86,6 +88,10 @@ class SystemController(
         if (started) Log.i(TAG, "$label -> $component")
         return started
     }
+
+    /** The helper opens our own foreground Activity; that Activity alone sends the Companion deep link. */
+    fun launchCompanionHomeReturn(): Boolean =
+        launchComponent(AppIdentity.component(env.ownPackage, ".CompanionHomeReturnActivity"), "Companion home return")
 
     /**
      * Start the other panel-app identity's launcher activity during the application-id migration.
@@ -152,6 +158,7 @@ class SystemController(
         // Built-in renderer: an explicit reload clears any crash latch (deliberate retry consent), flags
         // the relaunch as reload-intent, and reaches onNewIntent → fresh page load.
         if (isBuiltin(pkg)) {
+            BuiltinDashboard.navPath = null
             BuiltinDashboard.requestExplicitReload(reason)
             val started = startBuiltin()
             if (!started) BuiltinDashboard.consumeSupersededReload()
@@ -181,6 +188,7 @@ class SystemController(
             PrivilegeRoute.SU -> Log.i(TAG, "reload via su fallback ($pkg)")
             else -> Log.w(TAG, "reload: helper and su both failed")
         }
+        if (route != null) returnToCompanionHome(pkg)
         return route != null
     }
 
@@ -396,7 +404,11 @@ class SystemController(
         if (isBuiltin(pkg)) { startBuiltin(); return }
         val comp = if (pkg.isNotBlank()) env.launchComponent(pkg) else env.defaultHome()?.component
         if (comp == null) { Log.w(TAG, "home: no target resolved"); return }
-        launchComponent(comp, "home")
+        if (launchComponent(comp, "home")) returnToCompanionHome(pkg)
+    }
+
+    private fun returnToCompanionHome(pkg: String) {
+        RendererResolver.companionHomeRoute(pkg, homeDashboard())?.let { onCompanionHome(pkg, it) }
     }
 
     /**

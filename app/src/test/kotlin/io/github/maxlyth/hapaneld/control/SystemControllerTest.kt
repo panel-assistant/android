@@ -724,6 +724,81 @@ class SystemControllerTest {
         assertTrue(root.ran.contains("am start -n $MIN/.Main"))
     }
 
+    @Test fun companionLaunchAndReloadReturnToThisPanelsHome() {
+        val events = mutableListOf<String>()
+        val home = "/lovelace/this-panel"
+        val env = FakeSystemEnv(installed = setOf(MIN), launchers = mapOf(MIN to "$MIN/.Main"))
+        val controller = SystemController(
+            env, FakeRootShell(), FakeDaemon(replies = mapOf("RELOAD $MIN" to "OK")),
+            homeDashboard = { home },
+            onCompanionHome = { pkg, path -> events += "$pkg$path" },
+        )
+
+        controller.launchHome(MIN) // boot and foreground return use this path
+        controller.reloadDashboard(MIN) // navbar and remote reload use this path
+
+        assertEquals(listOf("$MIN$home", "$MIN$home"), events)
+    }
+
+    @Test fun companionWithoutPanelHomeKeepsItsCurrentLaunchBehavior() {
+        val events = mutableListOf<String>()
+        val env = FakeSystemEnv(installed = setOf(MIN), launchers = mapOf(MIN to "$MIN/.Main"))
+        val controller = SystemController(
+            env, FakeRootShell(), FakeDaemon(replies = mapOf("RELOAD $MIN" to "OK")),
+            homeDashboard = { "" },
+            onCompanionHome = { pkg, path -> events += "$pkg$path" },
+        )
+
+        controller.launchHome(MIN)
+        controller.reloadDashboard(MIN)
+
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun foregroundHomeReturnUsesThePrivilegedOwnActivity() {
+        val component = "$OWN/.CompanionHomeReturnActivity"
+        val (controller, _, daemon) = sc(FakeSystemEnv(), daemon = mapOf("START $component" to "OK"))
+
+        assertTrue(controller.launchCompanionHomeReturn())
+        assertEquals(listOf("START $component"), daemon.sent)
+
+        val denied = sc(FakeSystemEnv(), daemon = mapOf("START $component" to "BUSY"))
+        assertFalse(denied.first.launchCompanionHomeReturn())
+        assertEquals(listOf("START $component"), denied.third.sent)
+
+        val rootless = FakeSystemEnv()
+        val fallback = sc(rootless, daemon = emptyMap(), su = false)
+        assertTrue(fallback.first.launchCompanionHomeReturn())
+        assertEquals(listOf(component), rootless.directStarts)
+    }
+
+    @Test fun failedOrBusyCompanionLaunchNeverRequestsHomeNavigation() {
+        val events = mutableListOf<String>()
+        val env = FakeSystemEnv(installed = setOf(MIN), launchers = mapOf(MIN to "$MIN/.Main"))
+        val controller = SystemController(
+            env, FakeRootShell(), FakeDaemon(replies = mapOf(
+                "START $MIN/.Main" to "BUSY", "RELOAD $MIN" to "BUSY",
+            )),
+            homeDashboard = { "/lovelace/this-panel" },
+            onCompanionHome = { pkg, path -> events += "$pkg$path" },
+        )
+
+        controller.launchHome(MIN)
+        assertFalse(controller.reloadDashboard(MIN))
+
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun builtinReloadDropsAnUnconsumedNavigateAndReturnsHome() {
+        val (controller, _, _) = sc(FakeSystemEnv())
+        BuiltinDashboard.navPath = "/lovelace/old-view"
+
+        assertTrue(controller.reloadDashboard(BUILTIN))
+
+        assertNull("the pending Navigate must not override home on reload", BuiltinDashboard.navPath)
+        assertTrue(BuiltinDashboard.consumeReloadRequest())
+    }
+
     @Test fun bothCompanionVariantsCanBeForegroundedThroughTheirOwnLaunchComponents() {
         listOf(FULL, MIN).forEach { packageName ->
             val component = "$packageName/.Main"
