@@ -116,6 +116,62 @@ class MdnsAdvertiserResponderTest {
         }
     }
 
+    @Test fun closedSecondaryResponderIsReadvertisedWithoutReplacingPrimary() {
+        val advertiser = MdnsAdvertiser(
+            context = ContextWrapper(null),
+            config = Config(readOnlyPreferences()),
+            runtimePanelId = "dual-responder-test-panel",
+            runtimeFriendlyName = "Dual Responder Test Panel",
+            runtimeHttpPort = 8888,
+            acquireMulticastLock = { {} },
+            discoveryId = { "dual-responder-test-did" },
+            refreshIntervalMs = 100,
+        )
+        try {
+            advertiser.start(LOOPBACK, SECONDARY_LOOPBACK)
+            assertTrue("IPv4 never advertised", hasAddress(LOOPBACK, "dual-responder-test-panel", LOOPBACK))
+            assertTrue("secondary never advertised", hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel", SECONDARY_LOOPBACK))
+            val primaryToken = JmDNS.create(InetAddress.getByName(LOOPBACK), "primary-token-browser").use {
+                browse(it, "dual-responder-test-panel")?.getPropertyString("probe")
+            }
+            assertNotNull("primary TXT probe token missing", primaryToken)
+
+            // JmDNS closes its own instance when a Responder.send throws. A second IPv4 loopback
+            // address exercises the same secondary lifecycle on JVMs without IPv6 multicast.
+            val secondary = MdnsAdvertiser::class.java.getDeclaredField("secondaryDns").apply {
+                isAccessible = true
+            }.get(advertiser) as JmDNS
+            secondary.close()
+            assertTrue("IPv4 must remain advertised", hasAddress(LOOPBACK, "dual-responder-test-panel", LOOPBACK))
+
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+            var restored = false
+            while (System.nanoTime() < deadline && !restored) {
+                restored = hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel", SECONDARY_LOOPBACK)
+            }
+            assertTrue("closed secondary responder was never readvertised", restored)
+            assertTrue("primary must survive secondary repair", hasAddress(LOOPBACK, "dual-responder-test-panel", LOOPBACK))
+            assertEquals(
+                MdnsProbeResult.VISIBLE,
+                probeMdnsService(LOOPBACK, "dual-responder-test-panel", Config.MDNS_SERVICE_TYPE, primaryToken!!),
+            )
+            assertEquals(0, advertiser.health().liveness.recoveryAttempts)
+        } finally {
+            advertiser.stop()
+        }
+    }
+
+    private fun hasAddress(binding: String, name: String, address: String): Boolean =
+        JmDNS.create(InetAddress.getByName(binding), "dual-responder-browser").use { browser ->
+            repeat(3) {
+                if (browser.list(Config.MDNS_SERVICE_TYPE, 1_500)
+                        .filter { it.name == name }
+                        .flatMap { it.inetAddresses.toList() }
+                        .any { it.hostAddress == address }) return@use true
+            }
+            false
+        }
+
     private fun browse(browser: JmDNS, name: String = "responder-test-panel"): ServiceInfo? {
         repeat(3) {
             browser.list(Config.MDNS_SERVICE_TYPE, 3_000)
@@ -155,5 +211,6 @@ class MdnsAdvertiserResponderTest {
 
     private companion object {
         const val LOOPBACK = "127.0.0.1"
+        const val SECONDARY_LOOPBACK = "127.0.0.2"
     }
 }
