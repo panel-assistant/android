@@ -12,6 +12,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import org.json.JSONObject
+import io.github.maxlyth.hapaneld.HaAuthOwner
+import io.github.maxlyth.hapaneld.control.AmbientThemeReport
 
 internal suspend fun respondAutoBrightnessAction(call: ApplicationCall, action: AutoBrightnessHttpAction) {
     call.respondText(action.json, ContentType.Application.Json, HttpStatusCode.fromValue(action.statusCode))
@@ -71,4 +73,87 @@ internal fun Route.autoBrightnessRoutes(
     }
     post("/auto-brightness/reset") { respondAutoBrightnessAction(call, api.resetHistory()) }
     post("/auto-brightness/resume") { respondAutoBrightnessAction(call, api.resumeFullAuto()) }
+}
+
+/** Small HTTP boundary over the service-owned adaptive-brightness runtime. The default is deliberately
+ * read-safe and mutation-closed so the UI/API can land before the model, history and HA transport are
+ * wired into the service. JSON is produced by the owner to avoid copying its snapshots here. */
+internal interface AutoBrightnessHttpApi {
+    fun statusJson(): String
+    fun historyJson(hours: Int = 168, sensitivity: Int? = null, minimumPercent: Int? = null): String
+    fun haSourcesJson(query: String, limit: Int): String
+    suspend fun validateHaSource(entityId: String): AutoBrightnessHttpValidation
+    suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction
+    fun resetHistory(): AutoBrightnessHttpAction
+    fun resumeFullAuto(): AutoBrightnessHttpAction
+
+    /** Why the Ambient dashboard theme resolves as it does, or null when the runtime cannot say. */
+    fun ambientTheme(): AmbientThemeReport? = null
+
+    companion object {
+        val UNAVAILABLE: AutoBrightnessHttpApi = object : AutoBrightnessHttpApi {
+            override fun statusJson(): String =
+                """{"available":false,"state":"unavailable","sourceRevision":null,"detail":"Adaptive brightness runtime is not connected."}"""
+
+            override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?): String =
+                """{"available":false,"hours":$hours,"bucket_minutes":0,"sourceRevision":null,"latestEpochMinute":null,"points":[]}"""
+
+            override fun haSourcesJson(query: String, limit: Int): String =
+                """{"available":false,"items":[]}"""
+
+            override suspend fun validateHaSource(entityId: String): AutoBrightnessHttpValidation =
+                AutoBrightnessHttpValidation(AutoBrightnessHttpAction.unavailable())
+
+            override suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction =
+                AutoBrightnessHttpAction.unavailable()
+
+            override fun resetHistory(): AutoBrightnessHttpAction = AutoBrightnessHttpAction.unavailable()
+            override fun resumeFullAuto(): AutoBrightnessHttpAction = AutoBrightnessHttpAction.unavailable()
+        }
+    }
+}
+
+internal data class AutoBrightnessHttpValidation(
+    val action: AutoBrightnessHttpAction,
+    val authOwner: io.github.maxlyth.hapaneld.HaAuthOwner? = null,
+)
+
+internal data class AutoBrightnessHttpAction(val statusCode: Int, val json: String) {
+    init { require(statusCode in 200..599); require(json.isNotBlank()) }
+
+    companion object {
+        fun ok(json: String = """{"ok":true}""") = AutoBrightnessHttpAction(200, json)
+        fun unavailable() = AutoBrightnessHttpAction(
+            503,
+            """{"ok":false,"error":"Adaptive brightness runtime is not connected."}""",
+        )
+    }
+}
+
+internal data class AutoBrightnessHistoryParameters(
+    val hours: Int,
+    val sensitivity: Int?,
+    val minimumPercent: Int?,
+)
+
+internal fun autoBrightnessHistoryParameters(
+    hours: String?,
+    sensitivity: String?,
+    minimumPercent: String? = null,
+): AutoBrightnessHistoryParameters {
+    val boundedHours = if (hours == null) 168 else hours.toIntOrNull()
+        ?: throw IllegalArgumentException("hours must be between 1 and 168")
+    require(boundedHours in 1..168) { "hours must be between 1 and 168" }
+    val boundedSensitivity = sensitivity?.let {
+        it.toIntOrNull()?.takeIf { value -> value in 0..100 }
+            ?: throw IllegalArgumentException("sensitivity must be between 0 and 100")
+    }
+    val minimumRange = SettingsRegistry.MINIMUM_AUTOMATIC_PERCENT..SettingsRegistry.MAX_AUTOMATIC_MINIMUM_PERCENT
+    val boundedMinimum = minimumPercent?.let {
+        it.toIntOrNull()?.takeIf { value -> value in minimumRange }
+            ?: throw IllegalArgumentException(
+                "minimum_percent must be between ${minimumRange.first} and ${minimumRange.last}",
+            )
+    }
+    return AutoBrightnessHistoryParameters(boundedHours, boundedSensitivity, boundedMinimum)
 }

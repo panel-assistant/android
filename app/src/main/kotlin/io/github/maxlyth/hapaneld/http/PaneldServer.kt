@@ -217,130 +217,6 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.atomic.AtomicLong
 
-internal fun panelBrowserTitle(
-    friendlyName: String,
-    section: String? = null,
-    versionName: String = BuildConfig.VERSION_NAME,
-    versionCode: Int = BuildConfig.VERSION_CODE,
-): String {
-    val panel = friendlyName.trim().ifBlank { "ha-paneld" }
-    val suffix = section?.trim().orEmpty()
-    val title = if (suffix.isBlank()) panel else "$panel · $suffix"
-    return if ('-' in versionName) "$versionCode · $title" else title
-}
-
-/**
- * Canonical approval payload for a materialized HTTP request. Distinct query-name order is not
- * semantically significant, but duplicate value order is because Ktor's first-value lookup can
- * affect behavior. Group by name while retaining each value list's order, then length-frame every
- * field and collection count so no name/value grouping can share an approval accidentally.
- */
-internal fun exactHttpApprovalPayload(
-    method: String,
-    path: String,
-    parameters: List<Pair<String, String>>,
-    bodyDigest: String,
-): String = buildString {
-    fun frame(value: String) {
-        append(value.toByteArray(Charsets.UTF_8).size).append(':').append(value)
-    }
-
-    val grouped = parameters.groupBy({ it.first }, { it.second }).toSortedMap()
-    frame(method.uppercase())
-    frame(path)
-    frame(grouped.size.toString())
-    grouped.forEach { (name, values) ->
-        frame(name)
-        frame(values.size.toString())
-        values.forEach(::frame)
-    }
-    frame(bodyDigest)
-}
-
-internal fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
-    .digest(bytes)
-    .joinToString("") { "%02x".format(it) }
-
-/** Shared sensitive-request decision. Hardened policy is intentionally remote-only: trusted loopback
- * callers retain the established exemption while every non-loopback request remains peer-, operation-
- * and payload-bound through the one-shot approval broker. A request Panel Assistant proved was made by a
- * Home Assistant administrator skips approval for the operations [EmbedProof.EXEMPT] names, and only those. */
-internal suspend fun authorizeSensitiveRequest(
-    call: ApplicationCall,
-    hardened: Boolean,
-    peer: String,
-    operation: SensitiveOperation,
-    payload: String,
-    summary: String,
-    broker: ApprovalBroker,
-    audit: (String) -> Unit = { line -> Log.i("ha-paneld/http", line) },
-): Boolean {
-    if (!hardened || isLoopbackPeer(peer)) return true
-    val proven = call.provenEmbedRequest()
-    if (proven != null && proven.exempts(operation)) {
-        audit("approved by Home Assistant administrator ${proven.userId} via Panel Assistant: ${operation.name}")
-        return true
-    }
-    val (decision, id) = broker.request(operation, peer, payload, summary)
-    if (decision == ApprovalBroker.Decision.APPROVED) return true
-    call.respondText(
-        "{\"ok\":false,\"error\":\"approval-required\",\"approval_id\":${Json.str(id)}," +
-            "\"message\":\"Approve this request physically on the panel, then retry it; it cannot be approved remotely.\"}",
-        ContentType.Application.Json,
-        HttpStatusCode.Accepted,
-    )
-    return false
-}
-
-/** User-facing remediation for the renderer-specific recovery authority. */
-internal fun dashboardRecoveryWarning(state: PanelStatus.DashboardRecoveryState): String? = when (state) {
-    PanelStatus.DashboardRecoveryState.NONE -> null
-    PanelStatus.DashboardRecoveryState.BUILTIN_RENDERER ->
-        "⛔ <b>Built-in renderer stopped retrying</b> after repeated WebView failures. " +
-            "Update or repair System WebView, then use Reload dashboard from the panel navbar or Dashboard tab."
-    PanelStatus.DashboardRecoveryState.EXTERNAL_RENDERER ->
-        "⛔ <b>Dashboard app is crash-looping</b> — the watchdog stopped relaunching it to avoid a restart storm. " +
-            "Reinstall or downgrade the dashboard/Companion app (see <a href=\"install\">updates</a>), or reboot the panel."
-}
-
-/** Same-order nullable overlay for `/status`; invalid cardinality omits the whole additive field. */
-internal fun installWarningPresentationsJson(
-    warnings: List<String>,
-    presentations: List<InstallPresentation?>,
-): String? {
-    if (warnings.size != presentations.size || warnings.size > 11) return null
-    return presentations.joinToString(separator = ",", prefix = "[", postfix = "]") { it?.json() ?: "null" }
-}
-
-internal fun Parameters.canonicalDigest(): String {
-    val framed = buildString {
-        fun frame(value: String) {
-            append(value.toByteArray(Charsets.UTF_8).size).append(':').append(value)
-        }
-
-        val fields = entries().sortedBy { it.key }
-        frame(fields.size.toString())
-        fields.forEach { (name, values) ->
-            frame(name)
-            frame(values.size.toString())
-            values.forEach { value ->
-                // Parameters.get(name) consumes the first submitted value, so value order is part
-                // of the request's behavior and must remain part of its approval identity.
-                frame(value)
-            }
-        }
-    }
-    return sha256Hex(framed.toByteArray(Charsets.UTF_8))
-}
-
-internal fun exactHttpApprovalPayload(call: ApplicationCall, bodyDigest: String): String =
-    exactHttpApprovalPayload(
-        method = call.request.httpMethod.value,
-        path = call.request.uri.substringBefore('?'),
-        parameters = call.request.queryParameters.entries()
-            .flatMap { (name, values) -> values.map { name to it } },
-        bodyDigest = bodyDigest,
-    )
 
 /**
  * Keep app-side launch suppression until the helper affirmatively reports that no Companion-data
@@ -376,271 +252,10 @@ internal suspend fun retainCompanionLeaseUntilHelperIdle(
     afterRelease()
 }
 
-/** Bound config mutations before Ktor or JSONObject materializes attacker-controlled form/JSON data. */
-internal suspend fun receiveBoundedConfigParameters(
-    call: ApplicationCall,
-    maxBytes: Long = PaneldServer.MAX_CONFIG_POST_BODY_BYTES,
-): Parameters? {
-    val body = when (val receipt = receiveBoundedBody(call, maxBytes)) {
-        is BoundedBodyReceipt.Received -> String(receipt.bytes, Charsets.UTF_8)
-        BoundedBodyReceipt.TooLarge -> {
-            call.respondText("request too large\n", status = HttpStatusCode.PayloadTooLarge)
-            return null
-        }
-        BoundedBodyReceipt.TimedOut -> {
-            call.respondText("request timeout\n", status = HttpStatusCode.RequestTimeout)
-            return null
-        }
-    }
-    return try {
-        if (call.request.headers["Content-Type"].orEmpty().substringBefore(';').trim()
-                .equals(ContentType.Application.Json.toString(), ignoreCase = true)
-        ) {
-            val json = JSONObject(body)
-            Parameters.build {
-                json.keys().forEach { key ->
-                    val value = json.get(key)
-                    require(value === JSONObject.NULL || value is String || value is Number || value is Boolean)
-                    append(key, if (value === JSONObject.NULL) "" else value.toString())
-                }
-            }
-        } else {
-            parseQueryString(body)
-        }
-    } catch (_: Throwable) {
-        call.respondText("invalid config body\n", status = HttpStatusCode.BadRequest)
-        null
-    }
-}
-
-/** Materialize the many small form-only control posts under one total-body limit. Ktor's default
- * receiveParameters limit is 50 MiB per field, which is disproportionate on low-memory wall panels. */
-internal suspend fun receiveBoundedFormParameters(
-    call: ApplicationCall,
-    maxBytes: Long = PaneldServer.MAX_SMALL_FORM_POST_BODY_BYTES,
-): Parameters? {
-    val body = when (val receipt = receiveBoundedBody(call, maxBytes)) {
-        is BoundedBodyReceipt.Received -> String(receipt.bytes, Charsets.UTF_8)
-        BoundedBodyReceipt.TooLarge -> {
-            call.respondText("request too large\n", status = HttpStatusCode.PayloadTooLarge)
-            return null
-        }
-        BoundedBodyReceipt.TimedOut -> {
-            call.respondText("request timeout\n", status = HttpStatusCode.RequestTimeout)
-            return null
-        }
-    }
-    return parseQueryString(body)
-}
-
-internal data class RemoteActionRouteDependencies(
-    val authorizeSensitive: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean,
-    val admit: suspend (ApplicationCall, String) -> Unit,
-)
-
-/** HTTP handler for the software-navbar actions. Dashboard foregrounding remains routine; Reload
- * deliberately restarts a renderer and therefore shares the exact-request physical-approval policy
- * used by the other sensitive process and power operations. */
-internal suspend fun handleRemoteAction(call: ApplicationCall, dependencies: RemoteActionRouteDependencies) {
-    val parameters = receiveBoundedFormParameters(call) ?: return
-    val action = parameters["a"]
-    if (action !in REMOTE_ACTIONS) {
-        call.respondText("bad-action\n", status = HttpStatusCode.BadRequest)
-        return
-    }
-    val sensitive = when (action) {
-        "reload" -> SensitiveOperation.DASHBOARD_RELOAD to "Reload the dashboard renderer"
-        "reboot" -> SensitiveOperation.DEVICE_REBOOT to "Reboot this panel"
-        else -> null
-    }
-    if (sensitive != null && !dependencies.authorizeSensitive(
-            call,
-            sensitive.first,
-            exactHttpApprovalPayload(call, parameters.canonicalDigest()),
-            sensitive.second,
-        )
-    ) return
-    dependencies.admit(call, action!!)
-}
-
-/** One renderer-sensitive execution seam shared by the live queue and endpoint behavior tests. */
-internal fun executeRemoteDashboardAction(
-    action: String,
-    dashboardPackage: String,
-    launch: (String) -> Unit,
-    reload: (String) -> Unit,
-): Boolean = when (action) {
-    "dashboard" -> { launch(dashboardPackage); true }
-    "reload" -> { reload(dashboardPackage); true }
-    else -> false
-}
-
-internal val REMOTE_ACTIONS = setOf(
-    "back", "recents", "launcher", "admin_launcher", "dashboard", "reload", "reboot", "volup", "voldn",
-)
-
 /** Result of validating a direct config POST before any preference or controller mutation. */
 internal sealed class ConfigPostParameters {
     data class Ok(val values: Parameters) : ConfigPostParameters()
     data class Bad(val reason: String) : ConfigPostParameters()
-}
-
-/** Small HTTP boundary over the service-owned adaptive-brightness runtime. The default is deliberately
- * read-safe and mutation-closed so the UI/API can land before the model, history and HA transport are
- * wired into the service. JSON is produced by the owner to avoid copying its snapshots here. */
-internal interface AutoBrightnessHttpApi {
-    fun statusJson(): String
-    fun historyJson(hours: Int = 168, sensitivity: Int? = null, minimumPercent: Int? = null): String
-    fun haSourcesJson(query: String, limit: Int): String
-    suspend fun validateHaSource(entityId: String): AutoBrightnessHttpValidation
-    suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction
-    fun resetHistory(): AutoBrightnessHttpAction
-    fun resumeFullAuto(): AutoBrightnessHttpAction
-
-    /** Why the Ambient dashboard theme resolves as it does, or null when the runtime cannot say. */
-    fun ambientTheme(): AmbientThemeReport? = null
-
-    companion object {
-        val UNAVAILABLE: AutoBrightnessHttpApi = object : AutoBrightnessHttpApi {
-            override fun statusJson(): String =
-                """{"available":false,"state":"unavailable","sourceRevision":null,"detail":"Adaptive brightness runtime is not connected."}"""
-
-            override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?): String =
-                """{"available":false,"hours":$hours,"bucket_minutes":0,"sourceRevision":null,"latestEpochMinute":null,"points":[]}"""
-
-            override fun haSourcesJson(query: String, limit: Int): String =
-                """{"available":false,"items":[]}"""
-
-            override suspend fun validateHaSource(entityId: String): AutoBrightnessHttpValidation =
-                AutoBrightnessHttpValidation(AutoBrightnessHttpAction.unavailable())
-
-            override suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction =
-                AutoBrightnessHttpAction.unavailable()
-
-            override fun resetHistory(): AutoBrightnessHttpAction = AutoBrightnessHttpAction.unavailable()
-            override fun resumeFullAuto(): AutoBrightnessHttpAction = AutoBrightnessHttpAction.unavailable()
-        }
-    }
-}
-
-internal data class AutoBrightnessHttpValidation(
-    val action: AutoBrightnessHttpAction,
-    val authOwner: io.github.maxlyth.hapaneld.HaAuthOwner? = null,
-)
-
-internal data class AutoBrightnessHttpAction(val statusCode: Int, val json: String) {
-    init { require(statusCode in 200..599); require(json.isNotBlank()) }
-
-    companion object {
-        fun ok(json: String = """{"ok":true}""") = AutoBrightnessHttpAction(200, json)
-        fun unavailable() = AutoBrightnessHttpAction(
-            503,
-            """{"ok":false,"error":"Adaptive brightness runtime is not connected."}""",
-        )
-    }
-}
-
-internal data class AutoBrightnessHistoryParameters(
-    val hours: Int,
-    val sensitivity: Int?,
-    val minimumPercent: Int?,
-)
-
-/** Compact read-only boundary over the service-owned auto-sleep runtime. Configuration continues to
- * use the ordinary schema/config transaction; the runtime owns the coherent bounded status JSON. */
-internal interface AutoSleepHttpApi {
-    fun statusJson(): String
-    suspend fun historyJson(hours: Int = 6): String
-    suspend fun prerequisite(): HaPanelAreaPrerequisite
-    fun setSourceIncluded(areaKey: String, sourceKey: String, included: Boolean): HaPresenceSourceUpdate
-
-    /** The panel's area changed; the runtime must re-read its configuration. Kept abstract so a service
-     * implementation cannot silently compile with a no-op while the running discovery keeps stale room. */
-    fun noteAreaChanged()
-
-    companion object {
-        val UNAVAILABLE: AutoSleepHttpApi = object : AutoSleepHttpApi {
-            override fun statusJson(): String =
-                """{"available":false,"enabled":false,"phase":"unavailable","reason":"runtime_unavailable","learned_lease_ms":null,"source_count":0,"manual_suppression":false,"detail":""}"""
-
-            override suspend fun historyJson(hours: Int): String =
-                """{"available":false,"hours":$hours,"bucket_ms":60000,"window_start_epoch_ms":null,"window_end_epoch_ms":null,"warmup_ms":3600000,"learned_lease_ms":null,"source_scope":"selected_area_sources","area_sources_only":true,"source_count":0,"exclusions":["past_touch","panel_proximity","manual_override_or_suppression","screen_wake","historical_learning_changes"],"segments":[],"detail":"runtime_unavailable"}"""
-
-            override suspend fun prerequisite() = HaPanelAreaPrerequisite(
-                HaPanelAreaPrerequisitePhase.UNAVAILABLE,
-                detail = "Auto-sleep Area discovery is unavailable",
-            )
-
-            override fun noteAreaChanged() {} // no runtime exists to refresh
-
-            override fun setSourceIncluded(areaKey: String, sourceKey: String, included: Boolean) =
-                HaPresenceSourceUpdate.UNAVAILABLE
-        }
-    }
-}
-
-/**
- * The lifecycle suffix on `/health`, rendered from ONE atomic snapshot so the state and its source can
- * never come from different moments. Empty when the panel is not watching or no service owns lifecycle
- * tracking, which keeps the line unchanged for every existing consumer. `ha_src` appears only when a
- * source actually OBSERVED the state: the initial `normal` and a locally noticed `connection_lost` are
- * the panel's own inferences, and naming a source for them would claim an observation nobody made.
- * Pure — unit-tested in `HaLifecycleSurfaceContractTest`.
- */
-internal fun haLifecycleHealthToken(watching: Boolean, snap: HaLifecycle.Snapshot?): String {
-    if (!watching || snap == null) return ""
-    val src = snap.source?.let { " ha_src=${it.name.lowercase()}" }.orEmpty()
-    // The refusal rides the same observation because the diagnostics row explains it and that row is
-    // now refreshed from this line; deriving it from a second read would reintroduce the divergence
-    // between surfaces that the one-shot banner had.
-    val refused = if (snap.refused) " ha_refused=1" else ""
-    return " ha=${snap.state.wireValue}$src$refused"
-}
-
-/** Add Panel Assistant's stable discovery pseudonym without exposing the Android ID itself. */
-internal fun panelAssistantDiscoveryHealthToken(androidId: String): String =
-    panelAssistantDiscoveryId(androidId)?.let { " did=$it" }.orEmpty()
-
-/** Which installed identity answered: during the application-id migration a panel can hold both. */
-internal fun packageHealthToken(packageName: String): String = " pkg=$packageName"
-
-/** The build number beside the version name, so a reader can tell two builds of one release apart. */
-internal fun versionCodeHealthToken(versionCode: Int): String = " vc=$versionCode"
-
-internal fun autoSleepRequiresHaAdmission(
-    currentEnabled: Boolean,
-    currentSource: String,
-    requestedEnabled: Boolean,
-    requestedSource: String,
-): Boolean = requestedEnabled && requestedSource == "home_assistant" &&
-    (!currentEnabled || currentSource != "home_assistant")
-
-internal fun autoSleepConfigErrorJson(error: String, message: String): String = JSONObject()
-    .put("ok", false)
-    .put("error", error)
-    .put("message", message)
-    .toString()
-
-internal fun autoBrightnessHistoryParameters(
-    hours: String?,
-    sensitivity: String?,
-    minimumPercent: String? = null,
-): AutoBrightnessHistoryParameters {
-    val boundedHours = if (hours == null) 168 else hours.toIntOrNull()
-        ?: throw IllegalArgumentException("hours must be between 1 and 168")
-    require(boundedHours in 1..168) { "hours must be between 1 and 168" }
-    val boundedSensitivity = sensitivity?.let {
-        it.toIntOrNull()?.takeIf { value -> value in 0..100 }
-            ?: throw IllegalArgumentException("sensitivity must be between 0 and 100")
-    }
-    val minimumRange = SettingsRegistry.MINIMUM_AUTOMATIC_PERCENT..SettingsRegistry.MAX_AUTOMATIC_MINIMUM_PERCENT
-    val boundedMinimum = minimumPercent?.let {
-        it.toIntOrNull()?.takeIf { value -> value in minimumRange }
-            ?: throw IllegalArgumentException(
-                "minimum_percent must be between ${minimumRange.first} and ${minimumRange.last}",
-            )
-    }
-    return AutoBrightnessHistoryParameters(boundedHours, boundedSensitivity, boundedMinimum)
 }
 
 internal fun builtinRendererNeedsConnection(
@@ -746,55 +361,6 @@ internal fun shouldDiscoverHaUrlForMqttOnboarding(currentHaUrl: String, posted: 
     return posted["mqtt_broker"]?.isNotBlank() == true ||
         posted["mqtt_user"] != null ||
         posted["mqtt_password"] != null
-}
-
-/** Maps an [io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result] to the exact
- *  `GET /api/v1/voice/pipelines` response, pure so every branch is unit-testable without a routed
- *  request. */
-internal fun voicePipelinesResponse(
-    result: io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result,
-): Pair<HttpStatusCode, String> = when (result) {
-    is io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result.Available -> {
-        val pipelines = result.pipelines.joinToString(",") {
-            "{\"id\":${Json.str(it.id)},\"name\":${Json.str(it.name)}}"
-        }
-        HttpStatusCode.OK to "{\"pipelines\":[$pipelines],\"preferred\":${Json.str(result.preferred)}}"
-    }
-    is io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result.NotConfigured ->
-        HttpStatusCode.ServiceUnavailable to "{\"error\":\"not-configured\",\"reason\":${Json.str(result.reason)}}"
-    is io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory.Result.Unavailable ->
-        HttpStatusCode.ServiceUnavailable to "{\"error\":\"unavailable\",\"reason\":${Json.str(result.reason)}}"
-}
-
-/** Refuses `POST /api/v1/voice/test` before the trigger is ever called — returns the 409 reason, or
- *  null to proceed. Checked ahead of [io.github.maxlyth.hapaneld.assist.VoiceTestTrigger] so a disabled
- *  or capability-less panel never depends on whether the coordinator lane happens to be wired up. */
-internal fun voiceTestRefusal(hasMicrophone: Boolean, voiceEnabled: Boolean): String? = when {
-    !hasMicrophone -> "this panel has no microphone capability"
-    !voiceEnabled -> "voice assistant is disabled"
-    else -> null
-}
-
-/** Refuses `GET /api/v1/voice/pipelines` before [io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory]
- *  is ever called — returns the reason to report as the existing `{"error":"unavailable",reason}` 503
- *  shape ([voicePipelinesResponse]'s `Unavailable` branch), or null to proceed to the directory. The
- *  route's docs and OpenAPI both promise this endpoint "requires a microphone-capable panel" — the
- *  directory itself has no live capability signal, so the capability-less case must be checked here,
- *  exactly like [voiceTestRefusal] checks it ahead of the trigger. */
-internal fun voicePipelinesRefusal(hasMicrophone: Boolean): String? =
-    if (!hasMicrophone) "this panel has no microphone capability" else null
-
-/** Maps a [io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result] to the exact
- *  `POST /api/v1/voice/test` response, pure so every branch is unit-testable without a routed request. */
-internal fun voiceTestTriggerResponse(
-    result: io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result,
-): Pair<HttpStatusCode, String> = when (result) {
-    is io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result.Accepted ->
-        HttpStatusCode.Accepted to "{\"accepted\":true}"
-    is io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result.Refused ->
-        HttpStatusCode.Conflict to "{\"reason\":${Json.str(result.reason)}}"
-    is io.github.maxlyth.hapaneld.assist.VoiceTestTrigger.Result.Unavailable ->
-        HttpStatusCode.ServiceUnavailable to "{\"reason\":${Json.str(result.reason)}}"
 }
 
 /**
@@ -1016,22 +582,6 @@ internal fun encryptedBackupArtifact(
     return PanelBackup.Artifact(sealed, stateUnavailable = stateUnavailable)
 }
 
-/** Render one trusted Dashboard control without accepting pre-quoted HTML attribute fragments. */
-internal fun dashboardControlButtonHtml(
-    action: String,
-    labelHtml: String,
-    disabledReason: String?,
-    style: String = "",
-): String {
-    require(action.matches(Regex("[a-z_]+"))) { "invalid Dashboard control action" }
-    fun attr(value: String): String = value
-        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
-    val styleAttr = style.takeIf(String::isNotBlank)?.let { " style=\"${attr(it)}\"" }.orEmpty()
-    val titleAttr = disabledReason?.let { " title=\"${attr(it)}\"" }.orEmpty()
-    val disabledAttr = if (disabledReason != null) " disabled" else ""
-    return "<button class=\"pbtn\"$styleAttr$titleAttr onclick=\"act('$action')\"$disabledAttr>$labelHtml</button>"
-}
-
 /**
  * Ktor CIO HTTP surface on :8888. Serves the TTS-announce contract plus a small panel info/config
  * UI at `/` (the device's `configuration_url`, so HA shows a "Visit" link).
@@ -1048,9 +598,6 @@ internal fun dashboardControlButtonHtml(
  */
 internal fun shouldSnapshotConfigSetting(key: String, zigbeeRouterConfigured: Boolean): Boolean =
     key != "zigbee_router" || zigbeeRouterConfigured
-
-internal fun installFormWantsHtml(accept: String?): Boolean =
-    accept?.contains("text/html", ignoreCase = true) == true
 
 /** The Companion-dependent parts of the backup card. Empty throughout when the app is absent. */
 internal data class BackupCompanionCopy(
@@ -1146,10 +693,6 @@ internal fun stageDirectLogShipping(config: Config, posted: Map<String, String>)
         )
     }
 }
-
-/** One complete log entry, even when its message has embedded newlines, is one SSE event. */
-internal fun logSseEvent(entry: String): String =
-    entry.lineSequence().joinToString(separator = "\n", postfix = "\n\n") { "data: $it" }
 
 /** Stage the direct form's coupled credential groups through their real Config owners. Blank secret
  * placeholders preserve existing credentials except where an owner field is explicitly cleared or the
@@ -1454,18 +997,6 @@ internal fun preserveUnconfiguredZigbeeOwnership(
     return true
 }
 
-/** Service-owned values projected from one coherent set of controller observations. */
-internal data class ManagementProjection(
-    val facts: Map<String, String>,
-    val live: Map<String, String>,
-    val capabilities: Capabilities,
-    val capabilityRows: List<DiagReader.Cap>,
-    /** Whether the Wi-Fi instability behind the `Wi-Fi stability` fact is chronic, decided from the
-     *  SAME outage read that produced the fact — so the `/diag` gate can never disagree with the
-     *  text it is gating. Undefaulted on purpose: a new caller must state it. */
-    val wifiChronic: Boolean,
-)
-
 internal data class ConfigDiscoverySuggestions(
     val mqttBroker: String = "",
     val haUrl: String = "",
@@ -1475,33 +1006,6 @@ internal data class ConfigDiscoverySuggestions(
 
 private const val SETUP_PRESENCE_HEADER = "X-ha-paneld-setup-presence"
 private const val SETUP_PRESENCE_ACTIVE = "active"
-
-internal fun logShipStatusJson(status: LogShipStatusProjection): String =
-    "{\"enabled\":${status.enabled},\"configured\":${status.configured}," +
-        "\"text\":${Json.str(status.text)}}"
-
-/** JSON projected into browser pages. Install, Entities and shared Runtime controls need per-key
- * provenance to distinguish a genuine translation from an English compatibility fallback. */
-internal fun browserI18nPayload(strings: AppStrings, prefixes: Set<String>): String {
-    val resolved = strings.resolved(prefixes)
-    val entries = resolved.entries.joinToString(",") { (key, localized) ->
-        "${Json.str(key)}:${Json.str(localized.text)}"
-    }
-    val provenance = if (
-        "entities." in prefixes || "install." in prefixes || "runtime." in prefixes
-    ) {
-        val languages = resolved.entries.joinToString(",") { (key, localized) ->
-            "${Json.str(key)}:${Json.str(localized.language)}"
-        }
-        ",\"languages\":{$languages}"
-    } else ""
-    return "{\"locale\":${Json.str(strings.requestedLocale)},\"strings\":{$entries}$provenance}"
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
-        .replace("&", "\\u0026")
-        .replace("\u2028", "\\u2028")
-        .replace("\u2029", "\\u2029")
-}
 
 class PaneldServer internal constructor(
     private val config: Config,
@@ -10426,24 +9930,6 @@ internal fun configDryRunJson(
         "\"changes\":[$changes],\"skipped\":${array(skipped)},\"warnings\":${array(warnings)}}"
 }
 
-internal fun zigbeeWarningText(snapshot: ZigbeeHealthSnapshot, configuredOn: Boolean): String? = when {
-    snapshot.state == ZigbeeHealthState.CONTAINED ->
-        "⛔ <b>Zigbee gateway runaway was contained</b> — the router switch was turned OFF after sustained unjoined high CPU or repeated restarts."
-    snapshot.state == ZigbeeHealthState.CONTAINMENT_FAILED ->
-        "⛔ <b>Zigbee gateway containment was incomplete</b> — the respawner was stopped where possible and surviving work was demoted. Review diagnostics before retrying."
-    snapshot.state == ZigbeeHealthState.RUNAWAY ->
-        "⛔ <b>Zigbee gateway is runaway</b> — automatic containment is in progress."
-    snapshot.state == ZigbeeHealthState.DEGRADED_HIGH_CPU ->
-        "⚠ <b>Joined Zigbee gateway has sustained high CPU</b> — it remains running because joined routers are warn-only."
-    snapshot.state == ZigbeeHealthState.DEGRADED_UNJOINED && configuredOn ->
-        "⚠ <b>Zigbee router is enabled but not joined</b> — repeated join retries can consume substantial CPU. " +
-            "Join this panel to your Zigbee coordinator or turn the Zigbee router switch OFF. " +
-            "<a href=\"configure#cfg-zigbee_join\">Resolve Zigbee setup →</a>"
-    snapshot.recursiveWatchdogAssignment ->
-        "⚠ <b>Legacy Zigbee watchdog defect detected</b> — the exact recursive LD_LIBRARY_PATH assignment is present. ha-paneld will not edit the vendor script automatically."
-    else -> null
-}
-
 private const val REDACTED_CONFIG_VALUE = "[redacted]"
 
 /** Public/UI concurrency hashes deliberately exclude credential-bearing settings. */
@@ -10476,65 +9962,6 @@ internal fun restoreBodyStagingLimit(
 ): Long {
     if (usableBytes <= safetyMarginBytes || maxPayloadBytes <= 0L) return 0L
     return minOf(maxPayloadBytes, (usableBytes - safetyMarginBytes) / 3L)
-}
-
-/** Start one HTTP-engine generation. A failed start must release any partially acquired engine resources
- * and close request admission without replacing the original failure that the service lifecycle observes. */
-internal fun startOwnedHttpServer(
-    start: () -> Unit,
-    stop: () -> Unit,
-    closeIngress: () -> Unit,
-) {
-    try {
-        start()
-    } catch (error: Exception) {
-        runCatching(stop)
-        runCatching(closeIngress)
-        throw error
-    }
-}
-
-/**
- * Do not admit a new best-effort startup probe once HTTP teardown has begun. The volatile admission
- * read is the phase boundary: an already-admitted read-only phase may finish while teardown closes
- * HTTP, then the service scope's cancellation/join owns its bounded drain.
- */
-internal fun runPrewarmPhases(
-    isStopping: () -> Boolean,
-    management: () -> Unit,
-    companion: () -> Unit,
-) {
-    if (isStopping()) return
-    management()
-    if (isStopping()) return
-    companion()
-}
-
-/** Close every HTTP-owned admission/resource and retain any ambiguous result while continuing the sweep. */
-internal fun stopHttpOwners(
-    closeOperationAdmission: () -> Unit,
-    closeUploadIngress: () -> Unit,
-    stopEngine: () -> Unit,
-    stopRelay: () -> Boolean,
-    drainTameMutations: () -> Boolean,
-    drainRemoteControls: () -> Boolean,
-    onIncomplete: (step: String, error: Throwable?) -> Unit,
-): Boolean {
-    var complete = true
-    fun prove(step: String, action: () -> Boolean) {
-        val result = runCatching(action)
-        if (result.getOrDefault(false)) return
-        complete = false
-        runCatching { onIncomplete(step, result.exceptionOrNull()) }
-    }
-
-    prove("clear-storage admission") { closeOperationAdmission(); true }
-    prove("pending uploads") { closeUploadIngress(); true }
-    prove("HTTP engine stop request") { stopEngine(); true }
-    prove("CDP relay", stopRelay)
-    prove("vendor mutation", drainTameMutations)
-    prove("remote control", drainRemoteControls)
-    return complete
 }
 
 internal fun fleetImportPreservesTargetLocalValue(fleet: Boolean, key: String, normalized: String): Boolean =
