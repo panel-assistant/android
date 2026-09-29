@@ -22,6 +22,8 @@ import io.github.maxlyth.hapaneld.config.defaultFloat
 import io.github.maxlyth.hapaneld.config.defaultInt
 import io.github.maxlyth.hapaneld.config.defaultLong
 import io.github.maxlyth.hapaneld.config.navbarModeDefault
+import io.github.maxlyth.hapaneld.config.isLiteralNullAreaName
+import io.github.maxlyth.hapaneld.config.normalizedHaAreaName
 import io.github.maxlyth.hapaneld.dashboard.HomeDashboardLaunchCache
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.persistence.AppState
@@ -1495,9 +1497,17 @@ class Config private constructor(
      * re-trigger the write-back side effect.
      */
     var haArea: String
-        get() = stringPref("ha_area")
+        get() {
+            val stored = stringPref("ha_area")
+            val invalid = isLiteralNullAreaName(stored)
+            if (invalid) editCommit {
+                putString("ha_area", "")
+                putBoolean(HA_AREA_USER_OVERRIDE_PREF, false)
+            }
+            return if (invalid) "" else stored
+        }
         set(value) = synchronized(CONFIG_LOCK) {
-            durableCommit { putString("ha_area", value.trim()) }
+            durableCommit { putString("ha_area", normalizedHaAreaName(value)) }
             Unit
         }
 
@@ -1517,9 +1527,10 @@ class Config private constructor(
 
     /** Persist the requested Area and its ownership bit as one live-setting authority. */
     internal fun commitHaArea(value: String, userOverride: Boolean): Boolean = synchronized(CONFIG_LOCK) {
+        val normalized = normalizedHaAreaName(value)
         durableCommit {
-            putString("ha_area", value.trim())
-            putBoolean(HA_AREA_USER_OVERRIDE_PREF, userOverride)
+            putString("ha_area", normalized)
+            putBoolean(HA_AREA_USER_OVERRIDE_PREF, userOverride && normalized.isNotBlank())
         }
     }
 

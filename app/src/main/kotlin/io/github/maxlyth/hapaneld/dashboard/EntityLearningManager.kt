@@ -1768,11 +1768,7 @@ class EntityLearningManager(
     /** Non-secret digest identifying the HA endpoint and credential generation used by area operations. */
     fun haAreaOwnerKey(): String = credentialFingerprint()
 
-    /**
-     * Admin write-back of the requested area: resolve the name (creating the area when it does not
-     * exist), then move this panel's device. Returns true only when the device ends up in the requested
-     * area. Every failure is non-fatal — the caller's reconciliation rule owns the consequences.
-     */
+    /** Admin write-back of an area request; blank clears this panel's device assignment. */
     suspend fun applyRequestedArea(
         deviceUid: String,
         panelId: String,
@@ -1780,8 +1776,7 @@ class EntityLearningManager(
         expectedOwnerKey: String? = null,
     ): Boolean =
         withContext(Dispatchers.IO) {
-            val requested = areaName.trim()
-            if (requested.isBlank()) return@withContext false
+            val requested = io.github.maxlyth.hapaneld.config.normalizedHaAreaName(areaName)
             if (expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey) return@withContext false
             val base = config.haUrl.trim().trimEnd('/')
             if (base.isBlank()) return@withContext false
@@ -1805,13 +1800,16 @@ class EntityLearningManager(
                         panelAssistantEntryIds(request, deviceRegistry),
                     )
                     if (!device.found || device.deviceId.isBlank()) return@withHaSocket
-                    if (device.areaName.equals(requested, ignoreCase = true)) { moved = true; return@withHaSocket }
+                    if (requested.isBlank() && device.areaId.isBlank()) { moved = true; return@withHaSocket }
+                    if (requested.isNotBlank() && device.areaName.equals(requested, ignoreCase = true)) { moved = true; return@withHaSocket }
                     if (expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey) return@withHaSocket
-                    val areaId = io.github.maxlyth.hapaneld.http.HaAreaProtocol.resolveAreaId(areas, requested)
-                        ?: request(
-                            JSONObject().put("type", "config/area_registry/create").put("name", requested),
-                        ).optJSONObject("result")?.optString("area_id")?.trim().takeUnless { it.isNullOrBlank() }
-                        ?: return@withHaSocket
+                    val areaId: Any = if (requested.isBlank()) JSONObject.NULL else {
+                        io.github.maxlyth.hapaneld.http.HaAreaProtocol.resolveAreaId(areas, requested)
+                            ?: request(
+                                JSONObject().put("type", "config/area_registry/create").put("name", requested),
+                            ).optJSONObject("result")?.optString("area_id")?.trim().takeUnless { it.isNullOrBlank() }
+                            ?: return@withHaSocket
+                    }
                     if (expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey) return@withHaSocket
                     val updated = request(
                         JSONObject().put("type", "config/device_registry/update")
