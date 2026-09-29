@@ -17,6 +17,29 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class ConfigTransactionTest {
+    @Test fun storedLiteralNullAreaIsClearedBeforeThePanelCanReportIt() {
+        val stale = fakePreferences(initial = mapOf(
+            "ha_area" to "null",
+            "device_local_ha_area_user_override" to true,
+        ))
+        val config = Config(stale.instance)
+        assertEquals("", config.haArea)
+        assertEquals("", stale.values["ha_area"])
+        assertFalse(config.haAreaUserOverride)
+        assertEquals("", Config(stale.instance).haArea)
+
+        val named = fakePreferences(initial = mapOf("ha_area" to "Office"))
+        assertEquals("Office", Config(named.instance).haArea)
+        assertEquals("Office", named.values["ha_area"])
+
+        val areaSpec = requireNotNull(SettingsRegistry.spec("ha_area"))
+        assertTrue(Config(named.instance).commitRaw(areaSpec, "null"))
+        assertEquals("", named.values["ha_area"])
+        assertEquals(false, named.values["device_local_ha_area_user_override"])
+        assertTrue(Config(named.instance).commitRaw(areaSpec, "Kitchen"))
+        assertEquals("Kitchen", named.values["ha_area"])
+    }
+
     @Test fun dashboardNetworkWarningUpgradeMaterializesDefaultAndPreservesOptOut() {
         val untouched = fakePreferences(initial = mapOf("config_schema" to 10))
         assertTrue(Config(untouched.instance).migrateLiveStore())

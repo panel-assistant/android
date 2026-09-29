@@ -14,6 +14,12 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.util.Locale
 
+/** A legacy serialized JSON null is not an area request. Keep every other name unchanged. */
+internal fun isLiteralNullAreaName(raw: String): Boolean = raw.trim().equals("null", ignoreCase = true)
+
+internal fun normalizedHaAreaName(raw: String): String =
+    raw.trim().takeUnless(::isLiteralNullAreaName).orEmpty()
+
 /**
  * The authoritative, ordered list of ha-paneld settings. Adding a setting here makes it appear in the
  * HTTP config API + generated form, in bundles + revisions, and (when [SettingSpec.ha] is set and the
@@ -234,6 +240,7 @@ object SettingsRegistry {
             // and the HTTP server blip failed the user's next request on hardware.
             liveApply = true,
             maxChars = 128,
+            validate = { Validation.Ok(normalizedHaAreaName(it)) },
             help = "Where this panel lives, by Home Assistant area name. This can only be changed in " +
                 "ha-paneld if your HA user has admin permissions, otherwise change it on your device in HA.",
         ),
