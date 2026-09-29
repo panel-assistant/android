@@ -536,9 +536,7 @@ class PaneldServer internal constructor(
                 // Self-contained REST API explorer (no Swagger-UI CDN bundle) + the OpenAPI spec it
                 // renders — the spec also imports into Swagger/Postman for fleet tooling.
                 apiPageRoute(::requestStrings, asset) { config.friendlyName }
-                get("/health") {
-                    call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
-                }
+                healthRoute(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantRestartHealth() }
                 // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
                 legacyRedirects()
 
@@ -573,17 +571,8 @@ class PaneldServer internal constructor(
                             ),
                         )
                     } ?: unavailableProfileRoutes()
-                    get("/health") {
-                        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(appContext.packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
-                    }
-                    post("/migration-notice/dismiss") {
-                        val persisted = config.dismissMigrationNotice()
-                        call.respondText(
-                            """{"ok":$persisted}""",
-                            ContentType.Application.Json,
-                            if (persisted) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
-                        )
-                    }
+                    healthRoute(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantRestartHealth() }
+                    migrationNoticeRoute(config)
                     configReadRoutes(
                         config = config,
                         values = ::configValues,
@@ -937,21 +926,6 @@ class PaneldServer internal constructor(
             hasLearnedProximity = sensors.hasLearnedProximity(),
         )
 
-    /**
-     * The lifecycle suffix on `/health`. Appended rather than given its own endpoint because every page
-     * already polls `/health` every ten seconds through `buildwatch.js`, so this needs no new route and
-     * no second poll loop. Absent entirely when the panel is not watching, which keeps the line unchanged
-     * for every existing consumer.
-     */
-    private fun haLifecycleHealthToken(): String =
-        haLifecycleHealthToken(HaLifecycleRuntime.watching, HaLifecycleRuntime.snapshot())
-
-    /**
-     * The network-path tokens ride the same `/health` line and the same ten-second poll as the
-     * lifecycle token, so the banner, the diagnostics row and the native chip all render one
-     * observation. Empty while no service owns the monitor or no socket is held.
-     */
-    private fun haNetworkHealthToken(): String = HaNetworkPathRuntime.healthToken()
 
     private fun effectiveDashboardIsBuiltin(): Boolean =
         system.resolveDashboard(config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD
