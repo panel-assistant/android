@@ -27,6 +27,8 @@ import sun.misc.Unsafe
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
 internal class PaneldServerHttpFixture(
+    repairCompanionUrl: () -> Boolean = { error("Unexpected Companion repair") },
+    stopping: Boolean = false,
     installComponent: (String, String, String) -> Boolean = { _, _, _ -> error("Unexpected install") },
     density: io.github.maxlyth.hapaneld.control.DensityController? = null,
     camera: io.github.maxlyth.hapaneld.camera.CameraSurface = io.github.maxlyth.hapaneld.camera.AbsentCameraSurface,
@@ -71,9 +73,15 @@ internal class PaneldServerHttpFixture(
         { false },
     )
     val sizingCache get() = observations.densityCache
+    val clearStorageGate = io.github.maxlyth.hapaneld.util.GenerationSingleFlight()
+    val companionCache get() = observations.companionServerCache
     val server = allocate(PaneldServer::class.java).apply {
         field("config", config)
         field("scope", scope)
+        field("system", allocate(io.github.maxlyth.hapaneld.control.SystemController::class.java))
+        field("clearStorageGate", clearStorageGate)
+        field("onRepairCompanionUrl", repairCompanionUrl)
+        companionCache.set(io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY)
         field("camera", camera)
         field("density", density ?: allocate(io.github.maxlyth.hapaneld.control.DensityController::class.java))
         field("profile", io.github.maxlyth.hapaneld.control.fakeProfile())
@@ -134,7 +142,7 @@ internal class PaneldServerHttpFixture(
         field("storageHealth", { io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot.UNCHECKED })
         val refreshStorage: suspend () -> io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot? = { null }
         field("refreshStorageHealth", refreshStorage)
-        field("stopping", false)
+        field("stopping", stopping)
         field("inspectLock", Any())
     }
 
