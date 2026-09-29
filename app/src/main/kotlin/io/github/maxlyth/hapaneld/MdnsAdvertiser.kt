@@ -2,6 +2,8 @@ package io.github.maxlyth.hapaneld
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.system.ErrnoException
+import android.system.OsConstants
 import android.util.Log
 import io.github.maxlyth.hapaneld.util.Json
 import io.github.maxlyth.hapaneld.util.InstallPresentation
@@ -15,7 +17,9 @@ import io.github.maxlyth.hapaneld.util.submit
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
+import java.io.IOException
 import java.net.InetAddress
+import java.net.SocketException
 import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
@@ -33,7 +37,34 @@ import javax.jmdns.JmDNS
 import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo
 import javax.jmdns.ServiceListener
+import javax.jmdns.impl.DNSOutgoing
 import javax.jmdns.impl.JmDNSImpl
+
+internal open class MdnsSendRetryDns(address: InetAddress, name: String) : JmDNSImpl(address, name) {
+    protected open fun sendPacket(outgoing: DNSOutgoing) = super.send(outgoing)
+
+    // JmDNS closes its whole responder if one response send throws. Android has returned a single
+    // sendto EPERM on live panels; retry that packet once before allowing JmDNS's normal failure path.
+    override fun send(outgoing: DNSOutgoing) {
+        try {
+            sendPacket(outgoing)
+        } catch (failure: IOException) {
+            var cause: Throwable? = failure
+            var permissionDenied = false
+            while (cause != null) {
+                if ((cause is ErrnoException && cause.errno == OsConstants.EPERM) ||
+                    (cause is SocketException && cause.message?.startsWith("sendto failed: EPERM") == true)
+                ) {
+                    permissionDenied = true
+                    break
+                }
+                cause = cause.cause
+            }
+            if (!permissionDenied) throw failure
+            sendPacket(outgoing)
+        }
+    }
+}
 
 /**
  * Advertises `_ha-paneld._tcp.local.` via JmDNS so HA's zeroconf discovery can auto-pair the
@@ -53,6 +84,7 @@ class MdnsAdvertiser(
     private val discoveryId: () -> String? = { panelAssistantDiscoveryId(config.deviceUid) },
     // The production cadence is fixed; a shorter interval lets the real responder recovery run in a JVM test.
     private val refreshIntervalMs: Long = REFRESH_MS,
+    private val createDns: (InetAddress, String) -> JmDNS = ::MdnsSendRetryDns,
 ) {
     private val ownerGate = RetirableMutationGate()
     private var jmdns: JmDNS? = null
@@ -212,7 +244,7 @@ class MdnsAdvertiser(
             try {
                 lock = acquireMulticastLock()
                 val addr = InetAddress.getByName(lanIp)
-                val dns = JmDNS.create(addr, runtimePanelId)
+                val dns = createDns(addr, runtimePanelId)
                 dns.setDelegate { failedDns, _ ->
                     requestRecovery(
                         failedDns,
@@ -354,7 +386,7 @@ class MdnsAdvertiser(
         if (!stopSecondary() || wanted == null) return
         val props = advertisedProps ?: return
         try {
-            val dns = JmDNS.create(InetAddress.getByName(wanted), runtimePanelId)
+            val dns = createDns(InetAddress.getByName(wanted), runtimePanelId)
             secondaryDns = dns
             dns.setDelegate { _, _ -> Log.w(TAG, "mDNS responder at $wanted could not recover its multicast socket") }
             dns.registerService(
