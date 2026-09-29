@@ -5,6 +5,25 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 
+/** Reachability candidates for hello, ordered by default network then other active interfaces. */
+fun localPanelAddresses(
+    primary: Iterable<InetAddress> = emptyList(),
+    secondary: () -> List<InetAddress> = {
+        NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .filter { it.isUp && !it.isLoopback }
+            .flatMap { it.inetAddresses.toList() }
+    },
+): List<String> = (primary.asSequence() + runCatching(secondary).getOrDefault(emptyList()).asSequence())
+    .filter { address ->
+        (address is Inet4Address || address is Inet6Address) &&
+            !address.isAnyLocalAddress && !address.isLoopbackAddress &&
+            !address.isLinkLocalAddress && !address.isMulticastAddress
+    }
+    .mapNotNull { it.hostAddress?.substringBefore('%') }
+    .distinct()
+    .take(16)
+    .toList()
+
 /**
  * First non-loopback IPv4 address of an up interface (works for both Wi-Fi and Ethernet panels),
  * or null if none. Used for the `configuration_url` ("Visit" link) and the info page.

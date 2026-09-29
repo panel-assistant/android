@@ -214,6 +214,7 @@
 
     <string name="ha_shutting_down">Home Assistant si sta arrestando</string>
     <string name="ha_offline">Home Assistant non è in linea</string>
+    <string name="ha_disconnected">Disconnesso da Home Assistant</string>
     <string name="ha_starting">Home Assistant si sta avviando</string>
     <string name="ha_back_online">Home Assistant è di nuovo in linea</string>
     <string name="controls_unavailable_reconnect">Controlli non disponibili. Riconnessione automatica.</string>
