@@ -2410,6 +2410,60 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
   assert.ok(prerequisiteCalls >= 2);
 });
 
+browserTest('Touch inactivity can enable Auto-sleep without an Area and saves a fixed seconds delay', async (t) => {
+  const calls = [];
+  const posts = [];
+  const settings = { auto_sleep_source: 'panel', auto_sleep_touch_delay_seconds: '30', auto_sleep: 'false' };
+  const schema = [
+    { key: 'auto_sleep_source', label: 'Auto-sleep activity source', group: 'Behaviour', type: 'ENUM',
+      available: true, options: ['panel', 'home_assistant', 'touch'] },
+    { key: 'auto_sleep_touch_delay_seconds', label: 'Touch inactivity delay (seconds)', group: 'Behaviour',
+      type: 'INT', available: true, min: 5, max: 86400 },
+    { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true },
+  ];
+  const harness = await startHarness(async (path, request) => {
+    calls.push(path);
+    if (path === '/api/v1/config/schema') return json(schema);
+    if (path === '/api/v1/config') {
+      if (request.method === 'POST') {
+        const posted = Object.fromEntries(new URLSearchParams(await requestBody(request)));
+        posts.push(posted);
+        Object.assign(settings, posted);
+        return json({ status: 'saved' });
+      }
+      return json({ settings, ha_expose: {}, ha_auth: {} });
+    }
+    if (path === '/api/v1/apps') return json({ apps: [] });
+    if (path === '/api/v1/radio') return json({ present: false });
+    if (path === '/api/v1/proximity') return json({ present: false });
+  });
+  const browser = await chromium.launch({ executablePath: chrome, headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(2_000);
+  t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+  await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+
+  const toggle = page.locator('#cfg-auto_sleep [role=switch]');
+  await toggle.waitFor();
+  await page.locator('#cfg-auto_sleep_source select').selectOption('touch');
+  assert.equal(await page.locator('#cfg-auto_sleep_source select').inputValue(), 'touch');
+  assert.equal(await page.locator('#cfg-auto_sleep_touch_delay_seconds input').inputValue(), '30');
+  assert.equal(await toggle.getAttribute('aria-disabled'), 'false');
+  await page.getByText('Home Assistant and presence sensors are not required.', { exact: false }).waitFor();
+  await toggle.click();
+  assert.equal(await toggle.getAttribute('aria-checked'), 'true');
+  const delay = page.locator('#cfg-auto_sleep_touch_delay_seconds input');
+  await delay.fill('45');
+  await page.locator('#savebtn').click();
+  await page.waitForFunction(() => document.querySelector('#cfg-msg')?.textContent === 'Saved.');
+  assert.match(await page.locator('#auto-sleep-summary-announcement').textContent(), /45 seconds without touch/);
+  assert.equal(await page.locator('#auto-sleep-chart').count(), 0);
+  assert.deepEqual(posts, [{ auto_sleep_source: 'touch', auto_sleep_touch_delay_seconds: '45', auto_sleep: 'true' }]);
+  assert.equal(calls.includes('/api/v1/auto-sleep/prerequisite'), false);
+  assert.equal(calls.includes('/api/v1/auto-sleep'), false);
+  assert.equal(calls.includes('/api/v1/auto-sleep/history'), false);
+});
+
 browserTest('Auto-sleep Area focus refresh supersedes a slow prerequisite request', async (t) => {
   const firstPrerequisite = deferred();
   let prerequisiteCalls = 0;
