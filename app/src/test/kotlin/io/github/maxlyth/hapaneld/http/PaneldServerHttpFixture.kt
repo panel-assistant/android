@@ -27,6 +27,7 @@ import sun.misc.Unsafe
  * Keep allocation/reflection here and retire it as each owner gains its normal constructor.
  */
 internal class PaneldServerHttpFixture(
+    camera: io.github.maxlyth.hapaneld.camera.CameraSurface = io.github.maxlyth.hapaneld.camera.AbsentCameraSurface,
     powerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyAssessment = { error("Unexpected power assessment") },
     repairPowerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult = { error("Unexpected power repair") },
     logApp: io.github.maxlyth.hapaneld.logship.LogCapture? = null,
@@ -62,6 +63,7 @@ internal class PaneldServerHttpFixture(
     val server = allocate(PaneldServer::class.java).apply {
         field("config", config)
         field("scope", scope)
+        field("camera", camera)
         field("appContext", context)
         field("cacheDir", directory)
         field("screenshots", ScreenshotCache(directory))
