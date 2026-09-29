@@ -243,6 +243,8 @@ internal class PaneldServerHttpFixture(
                 "getAppCanSu" -> false
                 "getProfileLinks" -> emptyList<Any>()
                 "getHasRecents" -> false
+                "getId" -> "generic"
+                "getSocClass" -> "unknown"
                 else -> error("Unexpected page profile read: ${method.name}")
             }
         } as io.github.maxlyth.hapaneld.device.DeviceProfile
@@ -280,9 +282,9 @@ internal class PaneldServerHttpFixture(
             ),
         )
         observations.snapCache.set(ManagementSnapshot(
-            mapOf("MQTT" to "connecting"), emptyMap(),
+            mapOf("MQTT" to "connecting", "Device" to "Warm <panel>", "Device ID" to "secret-value"), emptyMap(),
             io.github.maxlyth.hapaneld.config.Capabilities(), emptyList(),
-            privilege, null, null, 1.0f, false,
+            privilege, 200, 160, 1.0f, false,
         ))
         server.field("powerSafety", {
             io.github.maxlyth.hapaneld.control.PowerSafetyAssessment(
@@ -334,6 +336,33 @@ internal class PaneldServerHttpFixture(
         )
         server.field("managementObservations", observations)
         server.field("camera", io.github.maxlyth.hapaneld.camera.AbsentCameraSurface)
+    }
+
+    fun enableWarmDashboard() {
+        enableInstallPage()
+        server.field("camera", io.github.maxlyth.hapaneld.camera.AbsentCameraSurface)
+        server.field("storageHealth", { io.github.maxlyth.hapaneld.storage.StorageHealthSnapshot.UNCHECKED })
+        val bridge = TermuxBridgeProbe.State.ABSENT
+        observations.termuxBridgeCache.set(bridge)
+        server.field("effectiveBrightness", { 128 })
+        val volume = allocate(io.github.maxlyth.hapaneld.control.VolumeController::class.java)
+        io.github.maxlyth.hapaneld.control.VolumeController::class.java.getDeclaredField("am").apply {
+            isAccessible = true
+        }.set(volume, allocate(android.media.AudioManager::class.java))
+        io.github.maxlyth.hapaneld.control.VolumeController::class.java.getDeclaredField("stream").apply {
+            isAccessible = true
+        }.set(volume, android.media.AudioManager.STREAM_MUSIC)
+        server.field("volume", volume)
+        server.field("NET_KEYS", listOf("Local IP", "Local IPv6", "HTTP port", "MQTT", "mDNS", "Network ADB"))
+        server.field("HA_LIFECYCLE_FACT", "HA lifecycle")
+        server.field("HA_NETWORK_FACT", "HA network path")
+        server.field("HA_RENDERER_FACT", "HA renderer")
+        server.field("CAMERA_FACT", "Camera")
+        server.field("CONTEXT_KEYS", listOf(
+            "Wi-Fi stability", "HA network path", "HA renderer", "MQTT state", "State convergence", "Local-state sync",
+            "App database", "Security mode", "Audio playback", "Camera", "Log shipping", "HA lifecycle",
+        ))
+        server.field("BEHAVIOUR_FACT_KEYS", setOf("Keep panel responsive", "Prevent idle dim", "Android dashboard lock", "Navbar"))
     }
 
     override fun close() {

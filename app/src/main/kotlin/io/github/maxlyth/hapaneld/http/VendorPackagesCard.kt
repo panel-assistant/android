@@ -4,17 +4,6 @@ import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.github.maxlyth.hapaneld.control.TameController
 import io.github.maxlyth.hapaneld.util.Json
 
-/**
- * Standalone "Vendor packages" card. Taming intrusive firmware apps is a distinct, deploy-time concept
- * — not part of basic configuration — so it gets its own card with **per-package action buttons**, not
- * a checkbox list behind a shared Save (which made "did it apply?" and "how do I remove one?" unclear).
- * Each row acts immediately via `POST /tame`: an active app offers **Tame**, a tamed/disabled one offers
- * **Re-enable**. A free-text box tames any package by name. Hidden where no privileged path exists (taming
- * needs root or the helper daemon). Critical / HA / own packages are never listed.
- */
-/** One Vendor-packages row: label + package id, an optional state badge, and the single action button.
- *  Shared by the card and the picker. [showState] is false on the card — every row there is already
- *  tamed (disabled), so the column is redundant and just crowds the layout. */
 internal fun localizedTameGroupTitle(title: String, strings: AppStrings): String = when (title) {
     "Recommended for this panel" -> strings.get("install.tame.group.recommended")
     "Other apps" -> strings.get("install.tame.group.other")
@@ -31,6 +20,9 @@ internal fun localizedTameGroupHint(hint: String, strings: AppStrings): String =
     else -> hint
 }
 
+/** One Vendor-packages row: label + package id, an optional state badge, and the single action button.
+ *  Shared by the card and the picker. [showState] is false on the card — every row there is already
+ *  tamed (disabled), so the column is redundant and just crowds the layout. */
 internal fun tameRowHtml(
     c: TameController.Candidate,
     showState: Boolean = true,
@@ -76,6 +68,14 @@ internal fun tameRowHtml(
   </div>"""
 }
 
+/**
+ * Standalone "Vendor packages" card. Taming intrusive firmware apps is a distinct, deploy-time concept
+ * — not part of basic configuration — so it gets its own card with **per-package action buttons**, not
+ * a checkbox list behind a shared Save (which made "did it apply?" and "how do I remove one?" unclear).
+ * Each row acts immediately via `POST /tame`: an active app offers **Tame**, a tamed/disabled one offers
+ * **Re-enable**. A free-text box tames any package by name. Hidden where no privileged path exists (taming
+ * needs root or the helper daemon). Critical / HA / own packages are never listed.
+ */
 internal fun tameCardHtml(rootReady: Boolean, strings: AppStrings, candidates: () -> List<TameController.Candidate>): String {
     // Root-gated, but shown (never hidden) so a no-root user sees the feature: the profile's candidate
     // vendor apps are listed greyed with a lock banner, actions disabled. Discovery (PackageManager)
