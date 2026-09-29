@@ -4,28 +4,17 @@ import io.github.maxlyth.hapaneld.RendererAdmissionPresentation
 import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.i18n.Strings
 import java.io.File
-import java.lang.reflect.Method
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import sun.misc.Unsafe
 
 class DashboardRuntimeValueLocalizationTest {
     // Source-text reason: loads the shipped i18n catalogues as input data.
     private val loader = CatalogueLoader { path -> File("src/main/assets", path).readText() }
     private val zh = loader.strings("zh-Hans")
     private val en = loader.strings("en")
-    private val server = (unsafe().allocateInstance(PaneldServer::class.java) as PaneldServer).also {
-        // Unsafe skips the large production constructor, including these two dispatch-key initializers.
-        setField(it, "HA_RENDERER_FACT", "HA renderer")
-        setField(it, "CAMERA_FACT", "Camera")
-    }
-    private val localize: Method = PaneldServer::class.java.getDeclaredMethod(
-        "localizedRuntimeValue", String::class.java, String::class.java, Strings::class.java,
-    ).apply { isAccessible = true }
-
     @Test fun everyOrdinaryBuiltInRendererStateUsesTheSelectedCatalogue() {
         data class Case(val source: String, val key: String, val age: String? = null, val theme: Boolean = false)
         val cases = listOf(
@@ -267,7 +256,7 @@ class DashboardRuntimeValueLocalizationTest {
     }
 
     private fun translated(key: String, value: String, strings: Strings): String =
-        localize.invoke(server, key, value, strings) as String
+        localizedRuntimeValue(key, value, strings)
 
     private fun format(strings: Strings, key: String, vararg values: Pair<String, String>): String =
         values.fold(strings.get(key)) { text, (name, value) -> text.replace("{$name}", value) }
@@ -282,12 +271,4 @@ class DashboardRuntimeValueLocalizationTest {
         }
     }
 
-    private fun unsafe(): Unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").run {
-        isAccessible = true
-        get(null) as Unsafe
-    }
-
-    private fun setField(instance: PaneldServer, name: String, value: String) {
-        PaneldServer::class.java.getDeclaredField(name).apply { isAccessible = true }.set(instance, value)
-    }
 }

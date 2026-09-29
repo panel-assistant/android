@@ -107,7 +107,7 @@ class DiagCapabilityPolicyTest {
     }
 
     @Test fun exactProfileCardOmitsExplicitlyAbsentHardware() {
-        val keys = PaneldServer.profileFactKeys(
+        val keys = profileFactKeys(
             nspanel,
             mapOf(
                 "Platform" to "Sonoff NSPanel Pro",
@@ -130,7 +130,7 @@ class DiagCapabilityPolicyTest {
     }
 
     @Test fun genericProfileCardKeepsCapabilityDiscoveryButOmitsUnknownSoc() {
-        val keys = PaneldServer.profileFactKeys(
+        val keys = profileFactKeys(
             fallback,
             mapOf("LED" to "none", "Relays" to "none", "Zigbee" to "none"),
         )
@@ -142,7 +142,7 @@ class DiagCapabilityPolicyTest {
     }
 
     @Test fun unexpectedObservedHardwareRemainsVisibleForProfileCorrection() {
-        val keys = PaneldServer.profileFactKeys(
+        val keys = profileFactKeys(
             nspanel,
             mapOf("LED" to "RGB", "Relays" to "2"),
         )
