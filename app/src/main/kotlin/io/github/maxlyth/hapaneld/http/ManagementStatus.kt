@@ -17,13 +17,13 @@ import io.github.maxlyth.hapaneld.sensors.PathProbeRuntime
 import io.github.maxlyth.hapaneld.control.zigbeeHealthPresentation
 import org.json.JSONObject
 
-/** Health observations sampled once for the status response. */
+/** Health inputs and live observations read at their original positions in the status response. */
 internal data class StatusHealth(
     val updates: List<UpdateChecker.UpdateInfo>,
     val findings: List<HealthAudit.Finding>,
-    val recovery: PanelStatus.DashboardRecoveryState,
-    val mdns: Pair<String?, InstallPresentation?>?,
-    val rollback: Pair<Int, Int>?,
+    val recovery: () -> PanelStatus.DashboardRecoveryState,
+    val mdns: () -> Pair<String?, InstallPresentation?>,
+    val rollback: () -> Pair<Int, Int>?,
 )
 
 internal fun managementStatusJson(
@@ -51,7 +51,7 @@ internal fun managementStatusJson(
         warns += warning
         warningPresentations += presentation
     }
-    val recoveryState = health.recovery
+    val recoveryState = health.recovery()
     addWarning(dashboardRecoveryWarning(recoveryState), dashboardRecoveryPresentation(recoveryState))
     // Same companion internal-URL decision as the dashboard/Install banner (CompanionDb.warning); this
     // surface presents it as bare JSON strings (no Ignore/repair buttons), so the copy stays distinct.
@@ -79,9 +79,9 @@ internal fun managementStatusJson(
         PowerSafetyPresentation.statusWarningHtml(powerAdvisory),
         PowerSafetyPresentation.warningPresentation(powerAdvisory),
     )
-    val mdns = health.mdns
+    val mdns = runCatching(health.mdns).getOrNull()
     addWarning(mdns?.first, mdns?.second)
-    val rollback = health.rollback
+    val rollback = health.rollback()
     findings.forEach { finding ->
         addWarning(
             statusWarning(finding),

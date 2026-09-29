@@ -1358,8 +1358,8 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         val updates = UpdateChecker.current(appContext)
         val findings = healthFindings(h, h.webView.display, updates)
         val health = StatusHealth(
-            updates, findings, dashboardRecoveryState(),
-            runCatching(mdnsWarningProjection).getOrNull(), schemaRollbackVersions(),
+            updates, findings, ::dashboardRecoveryState,
+            mdnsWarningProjection, ::schemaRollbackVersions,
         )
         return managementStatusJson(
             config, management, companion, powerAdvisory, radio, storage, health,
