@@ -142,15 +142,22 @@ class WakeWordCatalog(
     @Synchronized
     @Throws(IOException::class)
     fun exportImported(): List<ImportedFiles> {
+        recover()
         val bundledIds = bundled.ids()
-        return available().filter { it.id !in bundledIds }.map { config ->
-            val dir = File(importDir, config.id)
-            try {
-                ImportedFiles(config.id, File(dir, "${config.id}$JSON").readBytes(), File(dir, config.modelFile).readBytes())
-            } catch (unreadable: IOException) {
-                throw IOException("imported wake word ${config.id} could not be read", unreadable)
+        // Every imported directory, not only the ones [available] can list: a word whose manifest no longer
+        // reads must refuse the backup, never drop out of it while the settings still select it.
+        return importDir.listFiles { file -> file.isDirectory && ID.matches(file.name) }.orEmpty()
+            .map { it.name }.filter { it !in bundledIds }.sorted()
+            .map { id ->
+                val dir = File(importDir, id)
+                try {
+                    val manifest = File(dir, "$id$JSON").readBytes()
+                    val config = MicroWakeWordModelConfig.parse(id, manifest.toString(Charsets.UTF_8))
+                    ImportedFiles(id, manifest, File(dir, config.modelFile).readBytes())
+                } catch (unreadable: Exception) {
+                    throw IOException("imported wake word $id could not be read", unreadable)
+                }
             }
-        }
     }
 
     /**

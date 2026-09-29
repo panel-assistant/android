@@ -101,6 +101,18 @@ class WakeWordBackupTest {
         assertEquals(InstallProgress.Outcome.SUCCEEDED, restoreOverallStatus(null))
     }
 
+    @Test fun `a word whose manifest is damaged fails the backup instead of being left out`() {
+        val dir = folder.newFolder("source")
+        val source = catalog(dir)
+        source.import("porch", manifest("Porch", "porch.tflite").toByteArray(), byteArrayOf(1, 2, 3))
+        File(dir, "porch/porch.json").writeText("{not json")
+
+        val failure = runCatching { source.exportImported() }.exceptionOrNull()
+
+        assertTrue("expected an IOException, got $failure", failure is java.io.IOException)
+        assertTrue(failure!!.message!!.contains("porch"))
+    }
+
     @Test fun `a model that cannot be read fails the backup instead of being left out`() {
         val dir = folder.newFolder("source")
         val source = catalog(dir)
