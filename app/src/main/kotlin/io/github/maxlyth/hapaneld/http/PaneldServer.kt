@@ -1147,7 +1147,7 @@ class PaneldServer internal constructor(
                     // The response is decided by the pure voicePipelinesResponse() so it is unit-testable
                     // without a routed request.
                     get("/voice/pipelines") {
-                        val caps = liveCapabilities(snapStaleOk().caps)
+                        val caps = liveCapabilities(managementObservations.snapStaleOk().caps)
                         val refusal = voicePipelinesRefusal(hasMicrophone = caps.hasMicrophone)
                         if (refusal != null) {
                             call.respondText(
@@ -1166,7 +1166,7 @@ class PaneldServer internal constructor(
                     // refusal check and the trigger-result mapping are both pure (voiceTestRefusal(),
                     // voiceTestTriggerResponse()) so every branch is unit-testable without a routed request.
                     post("/voice/test") {
-                        val caps = liveCapabilities(snapStaleOk().caps)
+                        val caps = liveCapabilities(managementObservations.snapStaleOk().caps)
                         val refusal = voiceTestRefusal(hasMicrophone = caps.hasMicrophone, voiceEnabled = config.voiceEnabled)
                         if (refusal != null) {
                             call.respondText(
@@ -1195,7 +1195,7 @@ class PaneldServer internal constructor(
                     }
                     get("/diag") {
                         call.respondText(
-                            withContext(Dispatchers.IO) { diagStaleOk() },
+                            withContext(Dispatchers.IO) { managementObservations.diagStaleOk() },
                             ContentType.Text.Plain,
                         )
                     }
@@ -1244,7 +1244,7 @@ class PaneldServer internal constructor(
                     }
                     powerSafetyRoutes(
                         config, powerSafety,
-                        powerSafetyAdvisory = { powerSafetyAdvisory(snapStaleOk().privilege) },
+                        powerSafetyAdvisory = { powerSafetyAdvisory(managementObservations.snapStaleOk().privilege) },
                         onRepairPowerSafety, freshPowerSafetyRepairCapability,
                         snapInvalidate = ::snapInvalidate,
                         authorizeSensitive = ::authorizeSensitive,
@@ -1471,7 +1471,7 @@ class PaneldServer internal constructor(
                             )
                         ) return@post
                         val started = onRepairCompanionUrl()
-                        if (started) companionServerCache.invalidate()
+                        if (started) managementObservations.companionServerCache.invalidate()
                         call.respondText("""{"status":"${if (started) "started" else "busy"}"}""", ContentType.Application.Json)
                     }
                     // Per-panel Canvas dashboard layout (opaque Gridstack JSON, stored in Config).
@@ -1656,7 +1656,7 @@ class PaneldServer internal constructor(
                         call.respondText(recBtn + frag, ContentType.Text.Html)
                     }
                     displayRoutes(
-                        appContext, profile, density, densityCache, recommendedDensity, recommendedFontScale,
+                        appContext, profile, density, managementObservations.densityCache, recommendedDensity, recommendedFontScale,
                         requestStrings = ::requestStrings,
                         snapInvalidate = ::snapInvalidate,
                         authorizeSensitive = ::authorizeSensitive,
@@ -1704,31 +1704,7 @@ class PaneldServer internal constructor(
      * Binding the HTTP control plane itself remains free of privileged or hardware probes.
      * The caller supplies the existing IO scope so post-critical work can remain intentionally ordered.
      */
-    internal fun prewarm() {
-        val startedAt = android.os.SystemClock.elapsedRealtime()
-        var managementSucceeded = false
-        var companionSucceeded = false
-        runPrewarmPhases(
-            isStopping = { stopping },
-            management = {
-                managementSucceeded = runCatching { snapCache.get() }
-                    .onFailure { Log.w(TAG, "management snapshot prewarm failed", it) }
-                    .isSuccess
-            },
-            companion = {
-                companionSucceeded = runCatching {
-                    val observed = companionServerCache.get()
-                    observed.preferredUrl?.let { config.setHaBaseUrl(it) }
-                    check(observed.probe != CompanionDb.Probe.FAILED) { "Companion servers table is unreadable" }
-                }.onFailure { Log.w(TAG, "Companion server observation prewarm failed", it) }
-                    .isSuccess
-            },
-        )
-        if (managementSucceeded && companionSucceeded) {
-            Log.i(TAG, "management prewarm completed in " +
-                "${android.os.SystemClock.elapsedRealtime() - startedAt}ms")
-        }
-    }
+    internal fun prewarm() = managementObservations.prewarm { config.setHaBaseUrl(it) }
 
     /** True when every directly owned HTTP resource proves terminal. Ktor request jobs are children of
      * the service scope and are proved separately by the service's terminal scope drain. */
@@ -1802,7 +1778,7 @@ class PaneldServer internal constructor(
     // ---- tabbed multi-page shell ----
 
     private fun configureSetupBanners(strings: AppStrings): String {
-        val management = snapStaleOk()
+        val management = managementObservations.snapStaleOk()
         val power = localizedPowerSafetyBanner(
             powerSafetyAdvisory(management.privilege),
             inlineRepair = true,
@@ -1910,20 +1886,20 @@ class PaneldServer internal constructor(
     /** Install tab — software-management hub: setup warnings, managed component versions, radio firmware,
      *  on-demand health audit, and config backup. (The Capabilities card lives on the Dashboard.) */
     private fun installBody(strings: AppStrings): String {
-        val management = snapStaleOk()
-        val companion = companionServersStaleOk()
+        val management = managementObservations.snapStaleOk()
+        val companion = managementObservations.companionServersStaleOk()
         // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version).
         val h = healthInputs()
         val wv = h.webView
         val root = management.privilege.rootControlReady
         val installer = management.privilege.typedShellControlReady
         val su = management.privilege.directSuReady
-        val displaySizing = densityCache.peek() ?: DisplaySizingObservation(
+        val displaySizing = managementObservations.densityCache.peek() ?: DisplaySizingObservation(
             current = management.densityCur,
             base = management.densityBase,
             fontScale = management.fontScale,
         )
-        val companionHelper = companionHelperCache.get()
+        val companionHelper = managementObservations.companionHelperCache.get()
         // Same finding set as the dashboard banner (HealthAudit). Update findings are surfaced by the
         // Managed-components card below, so the top warnings show only the render-blocking states.
         val problems = healthFindings(h, wv.display, emptyList())
@@ -2095,9 +2071,9 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         storageSnapshot: StorageHealthSnapshot,
         databaseObservationNonce: String? = null,
     ): String {
-        val management = snapStaleOk()
+        val management = managementObservations.snapStaleOk()
         val powerAdvisory = powerSafetyAdvisory(management.privilege)
-        val companion = companionServersStaleOk()
+        val companion = managementObservations.companionServersStaleOk()
         val radio = radioStatus()
         val storage = HealthAudit.storage(storageSnapshot)
         // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
@@ -2284,97 +2260,13 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     // whatever is last known instantly (placeholders on a cold start). Post-critical prewarm and stale
     // management endpoints all enter the same at-most-once-per-TTL, single-flight cache supplier.
 
-    /** Everything the dashboard shows that costs a root/probe round-trip, gathered once. */
-    private class Snap(
-        val facts: Map<String, String>,
-        val live: Map<String, String>,
-        val caps: Capabilities,
-        val capabilityRows: List<DiagReader.Cap>,
-        val privilege: PrivilegedRouteObservation,
-        val densityCur: Int?,
-        val densityBase: Int?,
-        val fontScale: Float,
-        val wifiChronic: Boolean,
-    )
-
-    // The density trio is shared with the Configure tab's Display card (the bulk of ITS slow render).
-    private val densityCache = Cached(DENSITY_TTL_MS) { density.observeSizing() }
-    private val companionHelperCache = Cached(SU_TTL_MS) {
-        val companionSupported = HelperClient.supportsCompanionData()
-        val bundledBuildMatches = HelperClient.matchesBundledHelper()
-        bundledHelperIsCanonical(
-            bundledBuildMatches = bundledBuildMatches,
-            companionSupported = companionSupported,
-            guardSupported = companionSupported && bundledBuildMatches && GuardDbMaintenance.client.supported(),
-        )
-    }
-    private fun ensureCompanionHelper(): Boolean {
-        val result = BundledHelperInstaller.ensureCurrent(appContext)
-        val ready = result in setOf(
-            BundledHelperInstaller.Result.ALREADY_CURRENT,
-            BundledHelperInstaller.Result.INSTALLED,
-        )
-        if (result == BundledHelperInstaller.Result.REPROVISION_REQUIRED) {
-            Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
-        }
-        if (ready) companionHelperCache.invalidate()
-        return ready
-    }
     private fun rootOk(): Boolean = Su.availableCachedIsolated() || HelperClient.available()
 
     private val screenshots = ScreenshotCache(appContext.filesDir)
 
-    // One servers-table read supplies both the header URL fallback and repair warning. Warm routes use
-    // stale-while-revalidate so an expired SQLite observation never blocks rendering.
-    private val companionServerCache: Cached<CompanionDb.ServerObservation> by lazy {
-        Cached(COMPANION_URL_TTL_MS) {
-            val observed = if (Su.availableCachedIsolated()) {
-                CompanionDb.observeServers(appContext, Su)
-            } else if (CompanionInstaller.installedPkg(appContext) == null) {
-                CompanionDb.ServerObservation.EMPTY
-            } else {
-                CompanionDb.ServerObservation.UNKNOWN
-            }
-            CompanionDb.retainLastKnownServerObservation(companionServerCache.peek(), observed)
-        }
-    }
-
-    private fun privilegeObservation(): PrivilegedRouteObservation = observePrivilegedRoutes(
-        directSuProbe = { Su.availableCachedIsolated() },
-        helperRootProbe = HelperClient::available,
-        shizukuSnapshot = ShizukuBridge::snapshot,
-    ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady, it.shizuku.ready)) }
-
-    private val termuxBridgeCache = Cached(SNAP_TTL_MS) {
-        TermuxBridgeProbe.collect(
-            termuxUid = runCatching<Int?> { appContext.packageManager.getApplicationInfo("com.termux", 0).uid }
-                .recoverCatching { if (it is android.content.pm.PackageManager.NameNotFoundException) null else throw it },
-            routes = { privilegeObservation().let { it.directSuReady to it.helperRootReady } },
-            rootRun = Su::runOutputIsolatedBounded,
-            helperRun = { HelperClient.sendBytes(it)?.toString(Charsets.UTF_8) },
-        )
-    }
-
-    private val snapCache = Cached(SNAP_TTL_MS) {
-        val privilege = privilegeObservation()
-        val management = managementProjection(privilege)
-        val d = densityCache.getWithSupplier { density.observeSizing(privilege) }
-        Snap(
-            facts = management.facts,
-            live = management.live,
-            caps = management.capabilities,
-            capabilityRows = management.capabilityRows,
-            privilege = privilege,
-            densityCur = d.current,
-            densityBase = d.base,
-            fontScale = d.fontScale,
-            wifiChronic = management.wifiChronic,
-        )
-    }
-    private val diagCache = Cached(DIAG_TTL_MS) {
-        val management = checkNotNull(snapCache.peek()) {
-            "diagnostics require the management snapshot to be built first"
-        }
+    private val managementObservations = ManagementObservations(
+        appContext, density, managementProjection,
+        diagnosticReport = { management, termux ->
         DiagReader.dump(
             appContext,
             profile,
@@ -2394,13 +2286,16 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             wifiStabilityChronic = management.wifiChronic,
             haNetwork = HaNetworkPathRuntime.diagnosticLine(),
             haPathProbe = PathProbeRuntime.diagnosticLine(),
-            termuxBridge = termuxBridgeCache.get(),
+            termuxBridge = termux(),
         )
-    }
+        },
+        scope = scope,
+        isStopping = { stopping },
+    )
 
     /**
      * The renderer/Home Assistant admission projection, built LIVE on every read rather than through
-     * [snapCache].
+     * [managementObservations.snapCache].
      *
      * Two reasons, both learned the hard way. The state changes during an outage, so a
      * stale-while-revalidate copy would answer a "is the dashboard up?" question with a value from
@@ -2449,28 +2344,13 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         runCatching { appContext.packageManager.getPackageInfo(appContext.packageName, 0).lastUpdateTime }
             .getOrNull()
 
-    /** Call after any write that changes probed state (config apply/import/restore, density, tame),
-     *  so the next render doesn't show pre-write values for a TTL. */
-    private fun snapInvalidate() {
-        snapCache.invalidate()
-        diagCache.invalidate()
-        densityCache.invalidate()
-    }
+    private fun snapInvalidate() = managementObservations.snapInvalidate()
 
-    /** Empirical proximity mode can change without a config write. Drop the stale capability view so
-     *  the next Configure/dashboard request reflects learned reporting eligibility immediately. */
-    internal fun invalidateCapabilitySnapshot() {
-        snapCache.invalidate()
-        diagCache.invalidate()
-    }
+    internal fun invalidateCapabilitySnapshot() = managementObservations.invalidateCapabilitySnapshot()
 
-    /** Storage is sampled live by status/UI; only the bounded diagnostic dump can retain an old value. */
-    internal fun invalidateStorageHealthDiagnostics() {
-        diagCache.invalidate()
-    }
+    internal fun invalidateStorageHealthDiagnostics() = managementObservations.invalidateStorageHealthDiagnostics()
 
-    /** Last management-request privilege proof for passive safety work. Never starts a fresh probe. */
-    internal fun lastPrivilegeObservation(): PrivilegedRouteObservation? = snapCache.peek()?.privilege
+    internal fun lastPrivilegeObservation(): PrivilegedRouteObservation? = managementObservations.lastPrivilegeObservation()
 
     /** Ranged proximity is learned from live samples and can change between cached hardware probes.
      *  Overlay that cheap live fact so stale-while-revalidate can never expose wake UI for one request
@@ -2480,18 +2360,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             hasProximity = sensors.hasProximity(),
             hasLearnedProximity = sensors.hasLearnedProximity(),
         )
-
-    /** Last-known snapshot with a background refresh when stale — never blocks once built, so the
-     *  Configure endpoints (form values, schema capabilities, Display card) render instantly like
-     *  the dashboard. Blocks only before the start-up pre-warm has ever completed. */
-    private fun snapStaleOk(): Snap {
-        return snapCache.staleWhileRevalidate { refresh, releaseAdmission ->
-            if (stopping) return@staleWhileRevalidate false
-            val job = scope.launch(Dispatchers.IO) { runCatching { refresh() } }
-            job.invokeOnCompletion { releaseAdmission() }
-            !job.isCancelled
-        }
-    }
 
     /** Presentation capability from the existing bounded privilege snapshot. Fresh root probing remains
      * confined to the explicit repair operation, so opening a page cannot add a multi-second su probe. */
@@ -2506,38 +2374,6 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             capability,
             config.powerSafetyAcknowledgementFingerprint,
         )
-    }
-
-    private fun companionServersStaleOk(): CompanionDb.ServerObservation =
-        companionServerCache.staleWhileRevalidate { refresh, releaseAdmission ->
-            if (stopping) return@staleWhileRevalidate false
-            val job = scope.launch(Dispatchers.IO) { runCatching { refresh() } }
-            job.invokeOnCompletion { releaseAdmission() }
-            !job.isCancelled
-        }
-
-    /** Dashboard rendering never performs the cold root/SQLite read; startup prewarm owns that path. */
-    private fun companionServersForRender(): CompanionDb.ServerObservation? =
-        companionServerCache.peek()?.let { companionServersStaleOk() }
-
-    /** Complete last-known support report. Its own expensive probes run only in the single-flight
-     * refresh, never in a warm HTTP response and never by forcing a simultaneous facts refresh. */
-    private fun diagStaleOk(): String {
-        // The documented cold path may block, but builds the facts snapshot first so the first complete
-        // report is coherent. Once a report exists, both refreshes happen sequentially in the background.
-        if (diagCache.peek() == null) {
-            snapCache.get()
-            return diagCache.get()
-        }
-        return diagCache.staleWhileRevalidate { refresh, releaseAdmission ->
-            if (stopping) return@staleWhileRevalidate false
-            val job = scope.launch(Dispatchers.IO) {
-                runCatching { snapCache.get() }
-                runCatching { refresh() }
-            }
-            job.invokeOnCompletion { releaseAdmission() }
-            !job.isCancelled
-        }
     }
 
     private val NET_KEYS = listOf("Local IP", "Local IPv6", "HTTP port", "MQTT", "mDNS", "Network ADB")
@@ -2564,7 +2400,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     // Rows whose values are DECLARED by the DeviceProfile, so wrong data points a contributor straight
     // at the fix: Platform/SoC=profile identity, LED=ledMechanism, sensor tech=proximityTech/lightTech,
     // Zigbee=zigbeeGatewayDir, Relays=relayBase, CPU profile=cpuGovernors.
-    private fun infoKeys(s: Snap): List<String> =
+    private fun infoKeys(s: ManagementSnapshot): List<String> =
         s.facts.keys.filter {
             it !in NET_KEYS && it !in PROFILE_FACT_KEYS && it !in CONTEXT_KEYS && it !in BEHAVIOUR_FACT_KEYS
         }
@@ -2617,7 +2453,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         return strings.get("dashboard.fact.$suffix")
     }
 
-    private fun contextRowsHtml(s: Snap, h: HealthInputs, strings: AppStrings): String {
+    private fun contextRowsHtml(s: ManagementSnapshot, h: HealthInputs, strings: AppStrings): String {
         val rows = CONTEXT_KEYS.mapNotNull { key ->
             // The lifecycle state changes DURING an outage, so this row is rendered from the live
             // snapshot rather than the stale-while-revalidate facts cache AND is then kept current by
@@ -2721,7 +2557,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
      */
     private fun haNetworkHealthToken(): String = HaNetworkPathRuntime.healthToken()
 
-    private fun bannersHtml(s: Snap, h: HealthInputs, strings: AppStrings): String {
+    private fun bannersHtml(s: ManagementSnapshot, h: HealthInputs, strings: AppStrings): String {
         val storage = HealthAudit.storage(storageHealth())
         val mqtt = s.facts["MQTT"] ?: "disabled"
         // Pure decision (unit-tested in SetupBannerTest) — note a CONFIGURED broker that's merely
@@ -2741,7 +2577,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             }.orEmpty()
         }
         val haSetup = if (haSignInNeededForEffectiveDashboard()) haSignInBanner(strings) else ""
-        val termuxBridge = if (termuxBridgeCache.get() == TermuxBridgeProbe.State.RUNNING) {
+        val termuxBridge = if (managementObservations.termuxBridgeCache.get() == TermuxBridgeProbe.State.RUNNING) {
             """<div class="setup">⚠ ${esc(strings.get("dashboard.banner.panel_bridge_running"))}</div>"""
         } else ""
         val proximityState = JSONObject(sensors.proximityJson())
@@ -2772,7 +2608,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
             inlineRepair = true,
             strings = strings,
         ) +
-            adHocWarnings(s, companionServersForRender(), inlineRepair = false, strings = strings) +
+            adHocWarnings(s, managementObservations.companionServersForRender(), inlineRepair = false, strings = strings) +
             findings.joinToString("") { bannerFor(it, strings) } + termuxBridge + proximityLearning + haSetup + mqttProgress + setup
     }
 
@@ -2796,7 +2632,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
      *  banner and the Install tab as high-severity (`crit`). [inlineRepair] adds the one-tap repair button
      *  (Install tab, where install.js is loaded); the dashboard links to the Install tab for the action. */
     private fun adHocWarnings(
-        management: Snap,
+        management: ManagementSnapshot,
         companion: CompanionDb.ServerObservation?,
         inlineRepair: Boolean,
         strings: AppStrings = catalogueLoader.strings(AppLocale.ENGLISH),
@@ -3024,7 +2860,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     }
 
     /** Table rows for one facts card (Panel information / Networking / ha-paneld profile). */
-    private fun factRowsHtml(s: Snap, keys: List<String>, h: HealthInputs, strings: AppStrings): String {
+    private fun factRowsHtml(s: ManagementSnapshot, keys: List<String>, h: HealthInputs, strings: AppStrings): String {
         val webViewTooOld = h.webView.tooOld
         return keys.filter { s.facts.containsKey(it) }.joinToString("\n") { k ->
             val v = s.facts.getValue(k)
@@ -3068,7 +2904,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         ).joinToString("\n") { (k, v) -> """<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>""" }
     }
 
-    private fun behaviourRowsHtml(s: Snap, strings: AppStrings): String = listOf(
+    private fun behaviourRowsHtml(s: ManagementSnapshot, strings: AppStrings): String = listOf(
         "wake_on_wave", "prevent_idle_dim", "watchdog_enabled", "kiosk_lock", "touch_sound",
         "silence_boot_chime", "keep_awake", "navbar_mode", "log_ship_enabled", "log_ship_system_enabled",
         "home_dashboard", "ha_area", "dashboard_package", "launcher_package",
@@ -3091,7 +2927,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     }.joinToString("\n")
 
     // Display and install-backed values, each deep-linking to its owning surface.
-    private fun displayRowsHtml(s: Snap, strings: AppStrings): String {
+    private fun displayRowsHtml(s: ManagementSnapshot, strings: AppStrings): String {
         return listOf(
             "auto_brightness", "auto_brightness_minimum_percent", "auto_brightness_response_percent", "auto_brightness_ha_entity",
         ).mapNotNull { key ->
@@ -3118,7 +2954,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
         ).joinToString("\n")
     }
 
-    private fun updatesRowsHtml(s: Snap, strings: AppStrings): String = listOf("self_update", "update_channel", "companion_auto_update")
+    private fun updatesRowsHtml(s: ManagementSnapshot, strings: AppStrings): String = listOf("self_update", "update_channel", "companion_auto_update")
         .mapNotNull { settingRowHtml(it, s.live, liveCapabilities(s.caps), strings) }.joinToString("\n")
 
     private fun capRowsHtml(capabilities: List<DiagReader.Cap>, strings: AppStrings): String {
@@ -3134,7 +2970,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
      *  no-root user sees the feature and what root would unlock, next to controls rendered disabled. */
     /** The Controls-card button rows. [s] null (cold shell) → everything disabled as "checking…";
      *  hydration swaps in the capability-gated real state. */
-    private fun controlsHtml(s: Snap?, strings: AppStrings): String {
+    private fun controlsHtml(s: ManagementSnapshot?, strings: AppStrings): String {
         // Controls buttons: render but DISABLE (not hide, not silently-broken) when the action's capability
         // is missing — back/recents accept Accessibility or Shizuku input; launcher/reboot need root.
         val a11yOk = s?.facts?.get("Nav actions (a11y)") == "yes"
@@ -3190,7 +3026,7 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
      *  functions as the warm server render so the two paths can't drift. Builds the snapshot (this
      *  is where the probe cost actually lands — once per TTL). */
     private fun infoJson(strings: AppStrings): String {
-        val s = snapCache.get()
+        val s = managementObservations.snapCache.get()
         // One health snapshot for this render — the banner, facts card and diagnostics rows below all read
         // the same WebView/renderer verdict rather than each re-probing (which could otherwise disagree).
         val h = healthInputs()
@@ -3211,11 +3047,11 @@ ${esc(strings.get("fleet.note.discovery_prefix"))} (<code>${esc(Config.MDNS_SERV
     private fun infoHtml(strings: AppStrings, embed: EmbedMode? = null): String {
         // Stale-while-revalidate: render the last-known snapshot instantly (placeholders if none yet)
         // and let the page hydrate/refresh from /api/v1/info when the snapshot is missing or old.
-        val s = snapCache.peek()
+        val s = managementObservations.snapCache.peek()
         // One health snapshot shared by every warm branch below (banner + facts + diagnostics), captured
         // lazily so a cold shell (s == null, nothing rendered warm) still probes nothing.
         val h: HealthInputs by lazy(LazyThreadSafetyMode.NONE) { healthInputs() }
-        val hydrate = s == null || snapCache.ageMs() > SNAP_TTL_MS
+        val hydrate = s == null || managementObservations.snapCache.ageMs() > ManagementObservations.SNAP_TTL_MS
         val placeholder = """<tr><td style="color:#888">${esc(strings.get("dashboard.status.reading"))}</td></tr>"""
         // One facts/value card: cold → placeholder rows (hydration fills or hides); warm → rows, and
         // an EMPTY card is omitted exactly as before.
@@ -3425,7 +3261,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
             { lastHaDiscovery = it },
             ::effectiveDashboardIsBuiltin,
         ),
-        capabilities = { liveCapabilities(snapStaleOk().caps) },
+        capabilities = { liveCapabilities(managementObservations.snapStaleOk().caps) },
         directMutationValues = ::directMutationValues,
         revisionValues = { revisionValues() },
         authorizeSensitive = ::authorizeSensitive,
@@ -3493,11 +3329,11 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
     private fun configValues() = ConfigValueProjection(
         config = config,
         configLiveValues = { configLiveValues() },
-        renderedLiveValues = { snapStaleOk().live },
+        renderedLiveValues = { managementObservations.snapStaleOk().live },
         pendingLiveSettings = { pendingLiveSettings() },
         stalledLiveSettings = { stalledLiveSettings() },
         proximityJson = { sensors.proximityJson() },
-        powerSafetyJson = { PowerSafetyPresentation.json(powerSafetyAdvisory(snapStaleOk().privilege)) },
+        powerSafetyJson = { PowerSafetyPresentation.json(powerSafetyAdvisory(managementObservations.snapStaleOk().privilege)) },
         haAreaCatalogJson = { haArea.haAreaCatalogJson() },
     )
 
@@ -3505,7 +3341,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
 
     private fun configSchemaJson(strings: AppStrings): String = configValues().schemaJson(
         strings,
-        liveCapabilities(snapStaleOk().caps), // learned eligibility is fail-closed and live
+        liveCapabilities(managementObservations.snapStaleOk().caps), // learned eligibility is fail-closed and live
         autoHints(strings), // what blank ("auto") package fields resolve to → field placeholder
         profile.manufacturer,
         profile.model,
@@ -3872,7 +3708,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
     private fun companionBackupOperations() = CompanionBackupOperations(
         installedCompanionPackage = { CompanionInstaller.installedPkg(appContext) },
         cacheDir = cacheDir,
-        ensureCompanionHelper = ::ensureCompanionHelper,
+        ensureCompanionHelper = managementObservations::ensureCompanionHelper,
         companionDataOperationState = companionDataOperationState,
         scope = scope,
         config = config,
@@ -3938,7 +3774,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
             identityMigration = identityMigration,
             reader = BackupArchiveReader(cacheDir) { CompanionInstaller.installedPackages(appContext) },
             profileAdmin = profileAdmin,
-            ensureCompanionHelper = ::ensureCompanionHelper,
+            ensureCompanionHelper = managementObservations::ensureCompanionHelper,
             authorizeSensitive = ::authorizeSensitive,
             rejectHardenedNetworkAdb = ::rejectHardenedNetworkAdb,
             scope = scope,
@@ -3977,7 +3813,7 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
     ): String = configValues().configJson(mutationStatus, applied, pending, rejected, message)
 
     private fun performanceWorkloadValues(): Map<String, String> {
-        val live = snapStaleOk().live
+        val live = managementObservations.snapStaleOk().live
         return PERFORMANCE_WORKLOAD_KEYS.associateWith { key ->
             effectiveValue(requireNotNull(SettingsRegistry.spec(key)), live)
         }
@@ -4035,11 +3871,6 @@ ${tcard("updtbl", strings.get("dashboard.card.updates"), s?.let { updatesRowsHtm
 
         // Probe-cache TTLs: the dashboard renders from the snapshot, so these bound both staleness
         // and how often the su round-trips can run. Density/su flap even less than the rest.
-        private const val SNAP_TTL_MS = 15_000L
-        private const val DIAG_TTL_MS = 15_000L
-        private const val DENSITY_TTL_MS = 30_000L
-        private const val SU_TTL_MS = 60_000L
-        private const val COMPANION_URL_TTL_MS = 60_000L
         internal const val MAX_PLAY_BODY_BYTES = 16L * 1024L
         internal const val MAX_CONFIG_POST_BODY_BYTES = 256L * 1024L
         internal const val MAX_SMALL_FORM_POST_BODY_BYTES = 16L * 1024L

@@ -411,24 +411,21 @@ class ConfigPostProductionRouteTest {
             helperRootReady = false,
             shizuku = ShizukuBridge.Snapshot(ShizukuState.DISABLED, ready = false),
         )
-        val snap = PaneldServer::class.java.declaredClasses
-            .single { it.simpleName == "Snap" }
-            .declaredConstructors.single().run {
-                isAccessible = true
-                newInstance(
-                    emptyMap<String, String>(),
-                    emptyMap<String, String>(),
-                    Capabilities(),
-                    emptyList<DiagReader.Cap>(),
-                    privilege,
-                    null,
-                    null,
-                    1.0f,
-                    false,
-                )
-            }
-        val snapCache = Cached<Any>(Long.MAX_VALUE) { snap }.also { it.set(snap) }
+        val snap = ManagementSnapshot(
+            emptyMap(), emptyMap(), Capabilities(), emptyList(), privilege,
+            null, null, 1.0f, false,
+        )
+        val observations = ManagementObservations(
+            object : android.content.ContextWrapper(null) {},
+            io.github.maxlyth.hapaneld.control.DensityController(canSu = false),
+            { error("Stopped fixture must not probe") },
+            { _, _ -> error("Unexpected diagnostics") },
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+            { true },
+        )
+        observations.snapCache.set(snap)
 
+        setField(server, "managementObservations", observations)
         setField(server, "config", config)
         setField(server, "system", SystemController(object : SystemEnv {
             override val ownPackage = "io.github.maxlyth.hapaneld"
@@ -467,9 +464,6 @@ class ConfigPostProductionRouteTest {
             mutationLock,
         ) { true })
         setField(server, "revisions", RevisionStore(Files.createTempDirectory("config-route-revisions").toFile()))
-        setField(server, "snapCache", snapCache)
-        setField(server, "diagCache", Cached<Any>(Long.MAX_VALUE) { Any() })
-        setField(server, "densityCache", Cached<Any>(Long.MAX_VALUE) { Any() })
         setField(server, "powerSafety", { safePowerAssessment() })
         setField(server, "stopping", true)
         return server
