@@ -8320,6 +8320,20 @@ $lock<p class="note">${esc(strings.get("install.display.description"))}</p>
         if (!catalog.queried || !catalog.device.found || catalog.ownerKey != snapshot.ownerKey ||
             !ownsHaAreaSnapshot(snapshot)
         ) return catalog
+        if (allowWriteBack && catalog.admin &&
+            HaAreaProtocol.hasLiteralNullAssignment(catalog.device, catalog.areas) &&
+            ownsHaAreaSnapshot(snapshot)
+        ) {
+            val cleared = entityLearning.applyRequestedArea(
+                snapshot.deviceUid, snapshot.panelId, "", snapshot.ownerKey,
+            )
+            if (cleared && ownsHaAreaSnapshot(snapshot)) {
+                invalidateHaAreaCatalogCache()
+                val after = entityLearning.haAreaCatalog(snapshot.deviceUid, snapshot.panelId)
+                cacheHaAreaCatalog(snapshot, after)
+                return applyHaAreaPrecedence(snapshot, after, allowWriteBack = false)
+            }
+        }
         when (HaAreaProtocol.reconcile(snapshot.localArea, catalog.device.areaName, catalog.admin, snapshot.userOverride)) {
             HaAreaProtocol.ReconcileAction.ADOPT_HA -> withContext(Dispatchers.IO) {
                 synchronized(directConfigMutationLock) {

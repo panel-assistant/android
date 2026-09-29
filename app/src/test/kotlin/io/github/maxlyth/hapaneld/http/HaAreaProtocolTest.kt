@@ -102,6 +102,43 @@ class HaAreaProtocolTest {
         assertFalse(HaAreaProtocol.panelDeviceArea(null, areas, "abc123", "x", emptySet()).found)
     }
 
+    @Test fun jsonNullDeviceAreaIsUnassigned() {
+        val devices = devicesJson()
+        devices.getJSONArray("result").getJSONObject(1).put("area_id", JSONObject.NULL)
+
+        val area = HaAreaProtocol.panelDeviceArea(
+            devices, HaAreaProtocol.areas(areasJson()), "abc123", "alpha", emptySet(),
+        )
+
+        assertTrue(area.found)
+        assertEquals("", area.areaId)
+        assertEquals("", area.areaName)
+        assertEquals(
+            "a stored literal must be cleared rather than written back as a new HA area",
+            ReconcileAction.ADOPT_HA,
+            HaAreaProtocol.reconcile("null", area.areaName, admin = true),
+        )
+    }
+
+    @Test fun existingAreaNamedLiteralNullIsNotAdoptedAsThePanelsArea() {
+        val areas = HaAreaProtocol.areas(JSONObject("""{"result":[{"area_id":"bad-area","name":"null"}]}"""))
+        val area = HaAreaProtocol.panelDeviceArea(
+            devicesJson(areaId = "bad-area"), areas, "abc123", "alpha", emptySet(),
+        )
+        assertTrue(area.found)
+        assertEquals("", area.areaName)
+        assertTrue(HaAreaProtocol.hasLiteralNullAssignment(area, areas))
+        assertEquals(ReconcileAction.KEEP, HaAreaProtocol.reconcile("", area.areaName, admin = true))
+        val officeAreas = HaAreaProtocol.areas(areasJson())
+        assertFalse(HaAreaProtocol.hasLiteralNullAssignment(
+            HaAreaProtocol.panelDeviceArea(devicesJson(), officeAreas, "abc123", "alpha", emptySet()), officeAreas,
+        ))
+        assertFalse(HaAreaProtocol.hasLiteralNullAssignment(
+            HaAreaProtocol.panelDeviceArea(devicesJson(areaId = "missing"), areas, "abc123", "alpha", emptySet()),
+            areas,
+        ))
+    }
+
     @Test fun areaNamesResolveCaseInsensitively() {
         val areas = HaAreaProtocol.areas(areasJson())
         assertEquals("office", HaAreaProtocol.resolveAreaId(areas, "  oFFiCe "))
