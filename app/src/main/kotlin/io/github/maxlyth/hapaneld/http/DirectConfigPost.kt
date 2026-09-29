@@ -56,7 +56,6 @@ internal class DirectConfigPost(
         SelfUpdateChannelPreflight.Ready?, InstallProgress.Ticket?, String, String,
     ) -> Unit,
     private val configJson: (String, List<String>, List<String>, List<String>, String) -> String,
-    private val configMutationHtml: (String) -> String,
 ) {
     /**
      * Apply a POSTed config form/JSON (partial-merge), then live-reconfigure. Shared by the legacy
