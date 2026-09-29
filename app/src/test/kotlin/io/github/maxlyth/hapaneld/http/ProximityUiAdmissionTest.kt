@@ -15,4 +15,10 @@ class ProximityUiAdmissionTest {
         assertFalse(proximityUiRequestAllowed("http://192.168.1.2:8888", null, "192.168.1.2:8888", "same-origin", null))
         assertFalse(proximityUiRequestAllowed("null", null, "192.168.1.2:8888", null, "1"))
     }
+    @Test fun sidebarEmbedIsAdmittedOnlyWithTheProxyAssertedMetadata() {
+        assertTrue(proximityUiRequestAllowed(null, null, "192.168.1.2:8888", "same-origin", null, "v=1"))
+        assertFalse(proximityUiRequestAllowed(null, null, "192.168.1.2:8888", null, null, "v=1"))
+        assertFalse(proximityUiRequestAllowed(null, null, "192.168.1.2:8888", "same-origin", null, "bogus"))
+        assertFalse(proximityUiRequestAllowed("http://untrusted.test", null, "192.168.1.2:8888", "same-origin", null, "v=1"))
+    }
 }

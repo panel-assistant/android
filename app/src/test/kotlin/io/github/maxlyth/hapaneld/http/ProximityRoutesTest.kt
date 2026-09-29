@@ -37,7 +37,7 @@ class ProximityRoutesTest {
         assertEquals("{\"present\":false}", client.get("/api/v1/proximity").bodyAsText())
         val unmarked = client.post("/api/v1/proximity/calibration")
         assertEquals(HttpStatusCode.Forbidden, unmarked.status)
-        assertEquals("Start proximity setup from this panel's HTML UI.\n", unmarked.bodyAsText())
+        assertEquals("{\"error\":\"Start proximity setup from this panel's HTML UI.\"}", unmarked.bodyAsText())
 
         suspend fun submit(action: String) = client.submitForm(
             "/api/v1/proximity/calibration",
@@ -50,7 +50,7 @@ class ProximityRoutesTest {
 
         val invalid = submit("unknown")
         assertEquals(HttpStatusCode.BadRequest, invalid.status)
-        assertEquals("Unsupported calibration action.\n", invalid.bodyAsText())
+        assertEquals("{\"error\":\"Unsupported calibration action.\"}", invalid.bodyAsText())
         val absent = submit("start")
         assertEquals(HttpStatusCode.Conflict, absent.status)
         assertEquals("{\"error\":\"proximity_source_required\"}", absent.bodyAsText())
@@ -66,6 +66,20 @@ class ProximityRoutesTest {
         val started = submit("start")
         assertEquals(HttpStatusCode.Accepted, started.status)
         assertEquals("start/session-1", received)
+
+        // Exactly the headers the Panel Assistant sidebar proxy forwards: no Origin, Referer or marker.
+        received = ""
+        val embedded = client.submitForm(
+            "/api/v1/proximity/calibration",
+            Parameters.build { append("action", "start"); append("sessionId", "session-2") },
+        ) {
+            header(HttpHeaders.Host, "localhost")
+            header(HttpHeaders.Accept, "application/json")
+            header("Sec-Fetch-Site", "same-origin")
+            header(EmbedMode.HEADER, "v=1;lang=en")
+        }
+        assertEquals(HttpStatusCode.Accepted, embedded.status)
+        assertEquals("start/session-2", received)
 
         for (path in listOf("teach", "test", "relearn", "capture", "threshold", "sensitivity", "reset")) {
             val retired = client.post("/api/v1/proximity/$path")
