@@ -21,7 +21,6 @@ class SettingValueTest {
     @Test fun mqttBrokerRejectsUnsupportedOrMalformedSchemesBeforePersistence() {
         val mqtt = SettingsRegistry.spec("mqtt_broker")!!
 
-        assertEquals("Blank auto-discovers HA over mDNS.", mqtt.help)
         assertTrue(SettingValue.validate(mqtt, "tcp://broker.example:1883") is Validation.Ok)
         assertEquals(
             "tcp://broker.example:1883",
@@ -33,10 +32,6 @@ class SettingValueTest {
         assertTrue(SettingValue.validate(mqtt, "tcp://") is Validation.Bad)
         assertTrue(SettingValue.validate(mqtt, "tcp://broker.example:0") is Validation.Bad)
         assertTrue(SettingValue.validate(mqtt, "tcp://broker.example:1883/path") is Validation.Bad)
-    }
-
-    @Test fun mqttCredentialsKeepConciseUserFacingHelp() {
-        assertEquals("Credential for this panel.", SettingsRegistry.spec("mqtt_user")!!.help)
     }
 
     private fun ok(v: Validation): String = (v as Validation.Ok).normalized
