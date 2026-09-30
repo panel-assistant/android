@@ -13,6 +13,7 @@ import io.github.maxlyth.hapaneld.util.CompanionInstaller
 import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.Json
+import io.github.maxlyth.hapaneld.util.ReleaseCatalog
 import io.github.maxlyth.hapaneld.util.SelfUpdater
 import io.github.maxlyth.hapaneld.util.UpdateChecker
 import io.ktor.http.ContentType
@@ -32,6 +33,13 @@ internal fun Route.installationRoutes(
     profile: DeviceProfile,
     pendingApks: PendingUploadStore,
     authorizeSensitive: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean,
+    versionCatalogue: (String, String) -> List<ReleaseCatalog.Version> = { name, channel ->
+        when (name) {
+            "paneld" -> SelfUpdater.versions(channel)
+            "companion" -> CompanionInstaller.versions(channel, maxVersion = profile.companionMaxVersion)
+            else -> emptyList()
+        }
+    },
 ) {
     // Dismiss a component update from the DASHBOARD banner only (per-version; re-surfaces when
     // a newer release ships). The Install tab still lists it. See Config.ignoreUpdate.
@@ -44,20 +52,11 @@ internal fun Route.installationRoutes(
         else { config.ignoreUpdate(label, version); call.respondText("""{"ok":true}""", ContentType.Application.Json) }
     }
     // Recent installable versions for a component's picker (name ∈ {paneld,companion};
-    // channel ∈ {stable,prerelease}). Up to 10, newest first, each with a release-notes URL.
+    // channel ∈ {stable,prerelease}). Up to 10 choices plus one unavailable explanation on capped panels.
     get("/install/versions") {
         val name = call.request.queryParameters["name"]?.trim().orEmpty()
         val channel = call.request.queryParameters["channel"]?.trim()?.ifEmpty { "stable" } ?: "stable"
-        val vers = withContext(Dispatchers.IO) {
-            when (name) {
-                "paneld" -> SelfUpdater.versions(channel)
-                "companion" -> CompanionInstaller.versions(
-                    channel,
-                    maxVersion = profile.companionMaxVersion,
-                )
-                else -> emptyList()
-            }
-        }
+        val vers = withContext(Dispatchers.IO) { versionCatalogue(name, channel) }
         val installedVersion = when (name) {
             "paneld" -> Config.VERSION
             "companion" -> CompanionInstaller.installedPkg(appContext)?.let {
@@ -79,7 +78,7 @@ internal fun Route.installationRoutes(
                 else ->
                     "Downgrade" to InstallPresentation("version-downgrade")
             }
-            """{"version":${Json.str(v.version)},"tag":${Json.str(v.tag)},"notes":${Json.str(v.notesUrl)},"installable":${v.installable},"action":${Json.str(action)},"apk":${Json.str(v.apkUrl ?: "")},"presentations":{"action":${presentation.json()}}}"""
+            """{"version":${Json.str(v.version)},"tag":${Json.str(v.tag)},"notes":${Json.str(v.notesUrl)},"installable":${v.installable},"unavailableReason":${v.unavailableReason?.let(Json::str) ?: "null"},"maxVersion":${v.maxVersion?.let(Json::str) ?: "null"},"action":${Json.str(action)},"apk":${Json.str(v.apkUrl ?: "")},"presentations":{"action":${presentation.json()}}}"""
         }
         call.respondText("""{"channel":${Json.str(channel)},"versions":[$arr]}""", ContentType.Application.Json)
     }

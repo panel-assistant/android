@@ -251,7 +251,13 @@
         var firstInstallable = -1, installedIndex = -1;
         vs.forEach(function (v, i) {
           var o = document.createElement('option');
-          o.value = v.tag; o.textContent = v.version + (v.installable ? '' : ' ' + t('install.progress.no_apk', '(no APK)'));
+          var unavailable = '';
+          if (!v.installable) {
+            if (v.unavailableReason === 'above_panel_limit') unavailable = t('install.progress.above_panel_limit', '(not supported by this panel; limit {version})', { version: v.maxVersion || '' });
+            else if (v.unavailableReason === 'older_app_id') unavailable = t('install.progress.older_app_id', '(older app, cannot replace this one)');
+            else unavailable = t('install.progress.no_matching_asset', '(no compatible download)');
+          }
+          o.value = v.tag; o.textContent = v.version + (unavailable ? ' ' + unavailable : '');
           o.setAttribute('data-notes', v.notes || ''); o.setAttribute('data-installable', v.installable ? '1' : '0');
           o.setAttribute('data-action', presentation(v.presentations && v.presentations.action, v.action || 'Install').text);
           o.setAttribute('data-apk', v.apk || '');
