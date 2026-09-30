@@ -35,7 +35,7 @@ class MdnsAdvertiserResponderTest {
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
             config = Config(readOnlyPreferences()),
-            runtimePanelId = "transient-send-panel",
+            runtimePanelId = "transient-send-panel-$RUN",
             runtimeFriendlyName = "Transient Send Panel",
             runtimeHttpPort = 8888,
             acquireMulticastLock = { {} },
@@ -58,14 +58,14 @@ class MdnsAdvertiserResponderTest {
         try {
             advertiser.start(LOOPBACK)
             val original = JmDNS.create(InetAddress.getByName(LOOPBACK), "initial-send-browser").use {
-                browse(it, "transient-send-panel")
+                browse(it, "transient-send-panel-$RUN")
             }
             assertNotNull("the original service never appeared", original)
             val token = original!!.getPropertyString("probe")
 
             failNext.set(true)
             val afterFault = JmDNS.create(InetAddress.getByName(LOOPBACK), "fault-send-browser").use {
-                browse(it, "transient-send-panel")
+                browse(it, "transient-send-panel-$RUN")
             }
             assertTrue("the browser never triggered a response send", sendFailed.await(5, TimeUnit.SECONDS))
             assertNotNull("one failed send withdrew the real advertisement", afterFault)
@@ -82,7 +82,7 @@ class MdnsAdvertiserResponderTest {
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
             config = Config(readOnlyPreferences()),
-            runtimePanelId = "responder-test-panel",
+            runtimePanelId = "responder-test-panel-$RUN",
             runtimeFriendlyName = "Responder Test Panel",
             runtimeHttpPort = 8888,
             acquireMulticastLock = {
@@ -124,7 +124,7 @@ class MdnsAdvertiserResponderTest {
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
             config = Config(readOnlyPreferences()),
-            runtimePanelId = "responder-recovery-panel",
+            runtimePanelId = "responder-recovery-panel-$RUN",
             runtimeFriendlyName = "Responder Recovery Panel",
             runtimeHttpPort = 8888,
             acquireMulticastLock = {
@@ -148,7 +148,7 @@ class MdnsAdvertiserResponderTest {
         val ipv4Browser = JmDNS.create(InetAddress.getByName(LOOPBACK), "recovery-ipv4-browser")
         try {
             advertiser.start(LOOPBACK)
-            val original = browse(ipv4Browser, "responder-recovery-panel")
+            val original = browse(ipv4Browser, "responder-recovery-panel-$RUN")
             assertNotNull("the primary never advertised", original)
             val oldToken = original!!.getPropertyString("probe")
 
@@ -157,7 +157,7 @@ class MdnsAdvertiserResponderTest {
             assertEquals(
                 "the production probe must see the withdrawn responder",
                 MdnsProbeResult.MISSING,
-                probeMdnsService(LOOPBACK, "responder-recovery-panel", Config.MDNS_SERVICE_TYPE, oldToken),
+                probeMdnsService(LOOPBACK, "responder-recovery-panel-$RUN", Config.MDNS_SERVICE_TYPE, oldToken),
             )
             assertTrue("the response did not fail twice", failedSends.await(5, TimeUnit.SECONDS))
 
@@ -170,7 +170,7 @@ class MdnsAdvertiserResponderTest {
                     state.reasonCode != MdnsReasonCode.TEARDOWN_FAILED,
                 )
                 JmDNS.create(InetAddress.getByName(LOOPBACK), "recovery-check-browser").use { fresh ->
-                    replacement = browse(fresh, "responder-recovery-panel")
+                    replacement = browse(fresh, "responder-recovery-panel-$RUN")
                 }
                 val replacementToken = replacement?.getPropertyString("probe")
                 if (replacementToken != null && replacementToken != oldToken) break
@@ -187,7 +187,7 @@ class MdnsAdvertiserResponderTest {
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
             config = Config(readOnlyPreferences()),
-            runtimePanelId = "dual-responder-test-panel",
+            runtimePanelId = "dual-responder-test-panel-$RUN",
             runtimeFriendlyName = "Dual Responder Test Panel",
             runtimeHttpPort = 8888,
             acquireMulticastLock = { {} },
@@ -196,10 +196,10 @@ class MdnsAdvertiserResponderTest {
         )
         try {
             advertiser.start(LOOPBACK, SECONDARY_LOOPBACK)
-            assertTrue("IPv4 never advertised", hasAddress(LOOPBACK, "dual-responder-test-panel", LOOPBACK))
-            assertTrue("secondary never advertised", hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel", SECONDARY_LOOPBACK))
+            assertTrue("IPv4 never advertised", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK))
+            assertTrue("secondary never advertised", hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel-$RUN", SECONDARY_LOOPBACK))
             val primaryToken = JmDNS.create(InetAddress.getByName(LOOPBACK), "primary-token-browser").use {
-                browse(it, "dual-responder-test-panel")?.getPropertyString("probe")
+                browse(it, "dual-responder-test-panel-$RUN")?.getPropertyString("probe")
             }
             assertNotNull("primary TXT probe token missing", primaryToken)
 
@@ -209,18 +209,18 @@ class MdnsAdvertiserResponderTest {
                 isAccessible = true
             }.get(advertiser) as JmDNS
             secondary.close()
-            assertTrue("IPv4 must remain advertised", hasAddress(LOOPBACK, "dual-responder-test-panel", LOOPBACK))
+            assertTrue("IPv4 must remain advertised", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK))
 
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
             var restored = false
             while (System.nanoTime() < deadline && !restored) {
-                restored = hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel", SECONDARY_LOOPBACK)
+                restored = hasAddress(SECONDARY_LOOPBACK, "dual-responder-test-panel-$RUN", SECONDARY_LOOPBACK)
             }
             assertTrue("closed secondary responder was never readvertised", restored)
-            assertTrue("primary must survive secondary repair", hasAddress(LOOPBACK, "dual-responder-test-panel", LOOPBACK))
+            assertTrue("primary must survive secondary repair", hasAddress(LOOPBACK, "dual-responder-test-panel-$RUN", LOOPBACK))
             assertEquals(
                 MdnsProbeResult.VISIBLE,
-                probeMdnsService(LOOPBACK, "dual-responder-test-panel", Config.MDNS_SERVICE_TYPE, primaryToken!!),
+                probeMdnsService(LOOPBACK, "dual-responder-test-panel-$RUN", Config.MDNS_SERVICE_TYPE, primaryToken!!),
             )
             assertEquals(0, advertiser.health().liveness.recoveryAttempts)
         } finally {
@@ -232,7 +232,7 @@ class MdnsAdvertiserResponderTest {
         val advertiser = MdnsAdvertiser(
             context = ContextWrapper(null),
             config = Config(readOnlyPreferences()),
-            runtimePanelId = "removed-secondary-test-panel",
+            runtimePanelId = "removed-secondary-test-panel-$RUN",
             runtimeFriendlyName = "Removed Secondary Test Panel",
             acquireMulticastLock = { {} },
             discoveryId = { "removed-secondary-test-did" },
@@ -249,7 +249,7 @@ class MdnsAdvertiserResponderTest {
         var holder: Thread? = null
         try {
             advertiser.start(LOOPBACK, SECONDARY_LOOPBACK)
-            assertTrue(hasAddress(SECONDARY_LOOPBACK, "removed-secondary-test-panel", SECONDARY_LOOPBACK))
+            assertTrue(hasAddress(SECONDARY_LOOPBACK, "removed-secondary-test-panel-$RUN", SECONDARY_LOOPBACK))
             holder = Thread {
                 gate.runExclusive {
                     entered.countDown()
@@ -283,10 +283,10 @@ class MdnsAdvertiserResponderTest {
             assertTrue("queued repair did not finish", recoveryWorker!!.stackTrace.none {
                 it.className.endsWith("RetirableMutationGate")
             })
-            assertTrue("primary vanished", hasAddress(LOOPBACK, "removed-secondary-test-panel", LOOPBACK))
+            assertTrue("primary vanished", hasAddress(LOOPBACK, "removed-secondary-test-panel-$RUN", LOOPBACK))
             assertTrue(
                 "queued repair restored an address removed by the network callback",
-                !hasAddress(SECONDARY_LOOPBACK, "removed-secondary-test-panel", SECONDARY_LOOPBACK),
+                !hasAddress(SECONDARY_LOOPBACK, "removed-secondary-test-panel-$RUN", SECONDARY_LOOPBACK),
             )
         } finally {
             release.countDown()
@@ -306,7 +306,7 @@ class MdnsAdvertiserResponderTest {
             false
         }
 
-    private fun browse(browser: JmDNS, name: String = "responder-test-panel"): ServiceInfo? {
+    private fun browse(browser: JmDNS, name: String = "responder-test-panel-$RUN"): ServiceInfo? {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(9)
         while (System.nanoTime() < deadline) {
             val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()).coerceAtLeast(1)
@@ -354,5 +354,7 @@ class MdnsAdvertiserResponderTest {
     private companion object {
         const val LOOPBACK = "127.0.0.1"
         const val SECONDARY_LOOPBACK = "127.0.0.2"
+        /** Per-JVM suffix: concurrent debug and release test JVMs share the loopback multicast group. */
+        val RUN = ProcessHandle.current().pid()
     }
 }
