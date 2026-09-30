@@ -14,7 +14,7 @@ class SettingValueTest {
         options: List<String> = emptyList(),
         validate: (String) -> Validation = { Validation.Ok(it) },
     ) = SettingSpec(
-        key = "k", type = type, group = "g", label = "l", default = "",
+        key = "k", type = type, group = "g", label = "l", default = "", tier = Tier.ADVANCED, summary = "s",
         min = min, max = max, maxChars = maxChars, options = options, validate = validate,
     )
 

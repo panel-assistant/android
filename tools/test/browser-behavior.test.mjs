@@ -9,6 +9,11 @@ import { chromium, webkit } from 'playwright-core';
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 
+// These journeys exercise every setting, advanced ones included, so their Configure stubs open in the
+// Advanced view the way a returning user's browser would; configure-density.test.mjs covers Basic.
+const HELP_POPOVER = '<div id="cfg-help" class="cfg-help" popover="manual"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" type="button">x</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more"></a></div></div>';
+const ADVANCED_VIEW = `<script>try{localStorage.getItem('ha-paneld.configure.view.v1')||localStorage.setItem('ha-paneld.configure.view.v1','{"advanced":true}')}catch(e){}</script>`;
+
 function json(body, status = 200) {
   return { status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
 }
@@ -18,12 +23,12 @@ function fixture(translations = {}, locale = 'en') {
     <span id="hardened-approval-description"></span><span id="hardened-approval-conditional-description"></span>
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups"></div>
-    <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn" onclick="cfgSave()"></button></div>
+    <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn" onclick="cfgSave()"></button></div>${HELP_POPOVER}
     <script>window.CardColumnAlignment={attach:()=>()=>{}};window.HaI18n={locale:${JSON.stringify(locale)},t:(key,fallback,values)=>{
       var catalogue=${JSON.stringify(translations)},text=Object.prototype.hasOwnProperty.call(catalogue,key)?catalogue[key]:fallback;
       return String(text).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
     }};</script>
-    <script src="/configure.js"></script><script src="/proximity-learning.js"></script>
+    ${ADVANCED_VIEW}<script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
 }
 
@@ -34,9 +39,9 @@ function configureVisualFixture() {
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p>
     <div id="cfg-groups" class="cards" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1"></div>
-    <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn" onclick="cfgSave()"></button></div>
+    <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn" onclick="cfgSave()"></button></div>${HELP_POPOVER}
     <script src="/assets/card-size-memory.js"></script><script src="/assets/card-column-alignment.js"></script>
-    <script src="/configure.js"></script><script src="/proximity-learning.js"></script>
+    ${ADVANCED_VIEW}<script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
 }
 
@@ -314,8 +319,10 @@ browserTest('Configure consumes a locale reload message exactly once when initia
   }), storageKey), { stored: null, removals: 1 });
 });
 
+// The row's supporting line is the summary; each string carries its own language, as the server resolves
+// them independently.
 function localizedField(key, label, labelLanguage, help, helpLanguage, group = 'Identity') {
-  return { key, label, labelLanguage, help, helpLanguage, group, type: 'STRING', available: true };
+  return { key, label, labelLanguage, summary: help, summaryLanguage: helpLanguage, group, type: 'STRING', available: true };
 }
 
 browserTest('Configure renders translated, fallback and mixed schema fields with per-string language tags', async (t) => {
@@ -881,7 +888,7 @@ function configureCardMemoryFixture(compact) {
     <div id="cfg-groups" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1" data-card-size-proximity="0"></div>
     <div id="savebar" hidden><button id="savebtn"></button></div>
     <script src="/assets/card-size-memory.js"></script><script>window.__alignmentCalls=0;window.CardColumnAlignment={attach:()=>()=>window.__alignmentCalls++};</script>
-    <script src="/configure.js"></script></body></html>`;
+    ${ADVANCED_VIEW}<script src="/configure.js"></script></body></html>`;
 }
 
 function installCardMemoryFixture(compact) {
@@ -1344,7 +1351,8 @@ browserTest('Configure help wraps a frozen URL without applying break-all global
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
 
   await page.goto(harness.url, { waitUntil: 'domcontentloaded' });
-  const helpNode = page.locator('.frow .flabel small', { hasText: help });
+  await page.locator('#cfg-ha_url .info-btn').click();
+  const helpNode = page.locator('#cfg-help-body', { hasText: help });
   await helpNode.waitFor();
   const layout = await helpNode.evaluate((node) => {
     const ordinary = document.createElement('p');
@@ -1682,6 +1690,7 @@ browserTest('Configure preserves the selected locale in its Display Sizing deep 
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
 
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+  await page.locator('#cfg-dashboard_zoom .info-btn').click();
   assert.equal(await page.getByRole('link', { name: '显示尺寸' }).getAttribute('href'), 'install?lang=zh-Hans#cfg-display');
 });
 
@@ -1876,14 +1885,14 @@ browserTest('Configure reapplies remembered card heights across its client-side 
   const page = await browser.newPage({ viewport: { width: 900, height: 700 } });
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem('ha-paneld.card-sizes.v1.configure') || '{}').cards?.['configure-display'] === 220);
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('ha-paneld.card-sizes.v1.configure.advanced') || '{}').cards?.['configure-display'] === 220);
   compact = true; coldGate = new Promise((resolve) => { releaseCold = resolve; });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('[data-layout-key="configure-display"]').waitFor();
   assert.equal(await page.locator('[data-layout-key="configure-display"]').evaluate((card) => card.style.minHeight), '220px');
   releaseCold();
   await page.waitForFunction(() => document.querySelector('[data-layout-key="configure-display"]').style.minHeight === '');
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem('ha-paneld.card-sizes.v1.configure')).cards['configure-display'] === 100);
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('ha-paneld.card-sizes.v1.configure.advanced')).cards['configure-display'] === 100);
 });
 
 browserTest('Install holds remembered heights until its initial version and radio loads settle', async (t) => {
@@ -2479,6 +2488,7 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
   const schema = [{
     key: 'auto_sleep', label: 'Auto sleep',
     help: 'Automatically wake the panel when activity is detected and switch the screen off after the learned delay. Manual screen control remains separate.',
+    summary: 'Turn the screen off when nobody is around or after inactivity.',
     group: 'Behaviour',
     type: 'BOOL', available: true,
   }];
@@ -2514,7 +2524,7 @@ browserTest('Auto-sleep requires an assigned Area before OFF can be switched ON'
   firstPrerequisite.resolve(json({ eligible: false, phase: 'unassigned', area_name: null }));
   await page.getByText('Assign this panel to a Home Assistant Area before enabling Auto sleep.').waitFor();
   assert.equal(await toggle.getAttribute('aria-disabled'), 'true');
-  assert.match(await page.locator('#cfg-auto_sleep').innerText(), /Automatically wake the panel when activity is detected and switch the screen off/);
+  assert.match(await page.locator('#cfg-auto_sleep').innerText(), /Turn the screen off when nobody is around/);
   assert.doesNotMatch(await page.locator('[data-config-group="Auto-sleep"] h2').innerText(), /Android\/app behaviour/);
 
   prerequisiteAssigned = true;
