@@ -26,7 +26,7 @@ class RuntimeLocaleRegistrationContractTest {
         assertExactMembers("catalogue assets", release, catalogueLocales)
         assertEquals(listOf(SettingsRegistry.DEFAULT_UI_LANGUAGE) + release, SettingsRegistry.UI_LANGUAGES)
 
-        val configure = assets.resolve("configure.js").readText()
+        val configure = assets.resolve("configure-state.js").readText()
         val labels = jsObjectKeys(configure, "UI_LANGUAGE_LABELS")
         assertEquals(SettingsRegistry.UI_LANGUAGES, labels)
     }
@@ -62,7 +62,7 @@ class RuntimeLocaleRegistrationContractTest {
     private fun registrationSnapshot(): Registration {
         val catalogues = assets.resolve("i18n").listFiles { file -> file.isFile && file.extension == "json" }
             .orEmpty().map { JSONObject(it.readText()).getString("locale") }
-        val configure = jsObjectKeys(assets.resolve("configure.js").readText(), "UI_LANGUAGE_LABELS")
+        val configure = jsObjectKeys(assets.resolve("configure-state.js").readText(), "UI_LANGUAGE_LABELS")
         return Registration(
             release = release,
             catalogues = catalogues,

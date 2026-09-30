@@ -86,7 +86,12 @@ class PageRoutesHttpTest {
                     val html = response.bodyAsText()
                     assertTrue(html.contains("id=\"cfg-groups\""))
                     assertTrue(html.contains("id=\"savebar\""))
-                    assertTrue(html.contains("src=\"assets/configure.js\""))
+                    val scripts = Regex("""<script src="assets/(configure[^"]*\.js)"></script>""").findAll(html)
+                        .map { it.groupValues[1] }.toList()
+                    assertEquals(listOf(
+                        "configure-state.js", "configure-view.js", "configure-help.js", "configure-controls.js",
+                        "configure-brightness.js", "configure-auto-sleep.js", "configure-cards.js", "configure-render.js", "configure.js",
+                    ), scripts)
                     assertEquals(proximity, html.contains("id=\"proximity-learning-mount\""))
                     assertEquals(proximity, html.contains("src=\"assets/proximity-learning.js\""))
                     val refused = client.get("/configure") {
