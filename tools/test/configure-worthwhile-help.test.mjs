@@ -38,8 +38,11 @@ const SCHEMA = [
   field('missing_flag', '', undefined),
   field('dashboard_zoom', '', false, { displaySizingAvailable: true }),
   field('advanced', HELP, false, { tier: 'ADVANCED' }),
+  field('test_secret', '', false, { type: 'PASSWORD', secret: true }),
 ];
 async function harness() {
+  const posts = [];
+  const settings = Object.fromEntries(SCHEMA.map(f => [f.key, f.secret ? "" : "false"]));
   const server = createServer(async (request, response) => {
     const path = new URL(request.url, 'http://panel.test').pathname;
     const send = (body, type = 'application/json') => { response.setHeader('content-type', type); response.end(body); };
@@ -47,14 +50,22 @@ async function harness() {
     if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js', '/card-size-memory.js'].includes(path)) return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
     if (path === '/api/v1/config/schema') return send(JSON.stringify(SCHEMA));
-    if (path === '/api/v1/config') return send(JSON.stringify({ settings: Object.fromEntries(SCHEMA.map((f) => [f.key, 'false'])), ha_expose: {}, ha_auth: { configured: false } }));
+    if (path === '/api/v1/config' && request.method === 'POST') {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const values = Object.fromEntries(new URLSearchParams(body));
+      posts.push(values);
+      for (const [key, value] of Object.entries(values)) if (key !== 'test_secret') settings[key] = value;
+      return send(JSON.stringify({ status: 'saved', pending: [] }));
+    }
+    if (path === '/api/v1/config') return send(JSON.stringify({ settings, ha_expose: {}, ha_auth: { configured: false } }));
     if (path === '/api/v1/apps') return send(JSON.stringify({ apps: [] }));
     if (['/api/v1/radio', '/api/v1/proximity'].includes(path)) return send(JSON.stringify({ present: false }));
     if (path === '/api/v1/config/discovery' || path === '/api/v1/config/home-dashboards') return send('{}');
     response.statusCode = 404; response.end('not found');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { server, url: `http://127.0.0.1:${server.address().port}` };
+  return { server, posts, url: `http://127.0.0.1:${server.address().port}` };
 }
 
 const engines = [
@@ -132,4 +143,31 @@ for (const engine of engines) {
     assert.equal(await p.locator('#cfg-desc').isChecked(), false, 'view preference persists');
     assert.equal(await p.locator('#tier-adv').isChecked(), true);
   });
+  test(`${engine.name}: descriptions preserve an unsaved password and save its visible draft`, async t => {
+    assert.equal(engine.available, true, `${engine.name} must run`);
+    const h = await harness();
+    const browser = await engine.type.launch(engine.launch);
+    t.after(async () => { await browser.close(); await new Promise(resolve => h.server.close(resolve)); });
+    const p = await browser.newPage({ viewport: { width: 480, height: 480 } });
+    await p.goto(h.url);
+    const secret = p.locator('#cfg-test_secret input');
+    await secret.waitFor();
+    assert.equal(await secret.inputValue(), '', 'initial saved secrets stay masked');
+    await secret.fill('new owner draft & symbols=kept');
+    await p.locator('.cfg-desc-switch').click();
+    assert.equal(await secret.inputValue(), 'new owner draft & symbols=kept', 'description toggle retains the visible unsaved password');
+    await p.locator('.cfg-desc-switch').click();
+    assert.equal(await secret.inputValue(), 'new owner draft & symbols=kept');
+    const submitted = p.waitForResponse(response => response.url().endsWith('/api/v1/config') && response.request().method() === 'POST');
+    await p.evaluate(() => window.cfgSave());
+    await submitted;
+    assert.equal(h.posts.length, 1);
+    assert.equal(h.posts[0].test_secret, 'new owner draft & symbols=kept', 'production save posts the actual visible draft');
+    await p.waitForFunction(() => document.getElementById('cfg-msg').textContent === 'Saved.');
+    assert.equal(await secret.inputValue(), '', 'acknowledged secret is masked after server reload');
+    assert.equal(await p.locator('#savebar').isHidden(), true);
+    await p.locator('.cfg-desc-switch').click();
+    assert.equal(await secret.inputValue(), '', 'clean render does not redisplay an acknowledged secret');
+  });
+
 }
