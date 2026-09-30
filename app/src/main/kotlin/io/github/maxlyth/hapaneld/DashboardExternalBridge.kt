@@ -104,6 +104,7 @@ internal sealed interface DashboardV2ProbeResult {
     data class Unavailable(
         val detail: String,
         val evidence: HaTransportEvidence = HaTransportEvidence.UNKNOWN,
+        val allowCachedVersion: Boolean = true,
     ) : DashboardV2ProbeResult
 }
 
@@ -115,7 +116,7 @@ internal sealed interface DashboardV2Admission {
         fun resolve(result: DashboardV2ProbeResult, cachedVersion: String?): DashboardV2Admission = when (result) {
             is DashboardV2ProbeResult.Compatible -> Compatible(result.version, live = true)
             is DashboardV2ProbeResult.Unavailable -> if (
-                DashboardV2Compatibility.eligible(cachedVersion, webMessageListenerSupported = true)
+                result.allowCachedVersion && DashboardV2Compatibility.eligible(cachedVersion, webMessageListenerSupported = true)
             ) Compatible(requireNotNull(cachedVersion), live = false) else Blocked(result)
             else -> Blocked(result)
         }
@@ -125,6 +126,7 @@ internal sealed interface DashboardV2Admission {
 internal data class DashboardV2CompatibilityOwner(
     val normalizedUrl: String,
     val authOwner: HaAuthOwner,
+    val routeEpoch: Long = 0L,
 )
 
 /** Owns the one compatibility attempt whose result may currently admit a renderer. */
@@ -150,6 +152,7 @@ internal class DashboardV2CompatibilityProbe(
     private val auth: HaApiSessionProvider,
     private val transport: HaAmbientTransport,
     private val workerDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val requiresProvenRoute: () -> Boolean = { false },
 ) {
     constructor(
         config: Config,
@@ -159,6 +162,7 @@ internal class DashboardV2CompatibilityProbe(
         DashboardHaApiSessionProvider(config, stillCurrent),
         KtorHaAmbientTransport(),
         workerDispatcher,
+        { HaConnectionRoutes.hasLearned(config) },
     )
 
     suspend fun check(): DashboardV2ProbeResult = withContext(workerDispatcher) {
@@ -198,6 +202,9 @@ internal class DashboardV2CompatibilityProbe(
      *  screen it cannot clear even though a later retry succeeds with the same credential. */
     private fun blockedBy(session: HaApiSession): DashboardV2ProbeResult? = when {
         session.rejected -> DashboardV2ProbeResult.AuthenticationFailed
+        requiresProvenRoute() && session.route == null -> DashboardV2ProbeResult.Unavailable(
+            "Home Assistant connection is not verified", allowCachedVersion = false,
+        )
         !session.accessToken.isNullOrBlank() -> null
         // A session reporting a transient detail HAS failed in transport, so its evidence can never
         // be `NONE` here however it was constructed — an unclassified failure degrades to UNKNOWN.

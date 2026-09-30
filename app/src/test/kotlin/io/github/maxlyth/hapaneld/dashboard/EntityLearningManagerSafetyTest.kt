@@ -322,6 +322,7 @@ class EntityLearningManagerSafetyTest {
 
         assertTrue(snapshot.matchesCurrent(7, original))
         assertFalse(snapshot.matchesCurrent(8, original))
+        assertFalse(snapshot.matchesCurrent(7, original.copy(routeEpoch = 1)))
         assertFalse(snapshot.matchesCurrent(7, original.copy(origin = "https://other.example")))
         assertFalse(snapshot.matchesCurrent(7, original.copy(instanceKey = "instance-b")))
         assertFalse(snapshot.matchesCurrent(7, original.copy(targetKey = "instance-a:dashboard-b")))

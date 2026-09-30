@@ -600,6 +600,14 @@ class Config private constructor(
             }
         }
 
+        val oldAuth = haAuthSnapshot()
+        if (accepted.any { (key, value) -> when (key) {
+                "ha_url" -> value.trim().trimEnd('/') != oldAuth.url.trim().trimEnd('/')
+                "ha_refresh_token" -> value != oldAuth.refreshToken
+                "ha_client_id" -> value != oldAuth.clientId
+                "ha_token" -> value != oldAuth.accessToken
+                else -> false
+            } }) forgetHaRoutes(editor)
         val haUrl = accepted["ha_url"]
         if (haUrl != null) {
             val normalized = haUrl.trimEnd('/')
@@ -974,6 +982,24 @@ class Config private constructor(
      *  `https://home-assistant.io/android` to reuse an HA Companion refresh token. */
     val haClientId: String get() = stringPref("ha_client_id")
 
+    internal val haEffectiveUrl: String get() = HaConnectionRoutes.current(this).url
+
+    internal fun haConnectionRecord(): String = prefs.getString(HaConnectionRoutes.RECORD_KEY, "").orEmpty()
+    internal fun haRouteEpoch(): Long = prefs.getLong(HaConnectionRoutes.EPOCH_KEY, 0L)
+    internal fun commitHaConnectionRecord(expected: HaConnectionRoute, value: String, changedRoute: Boolean): Boolean =
+        synchronized(CONFIG_LOCK) {
+            if (!HaConnectionRoutes.isCurrent(this, expected)) return@synchronized false
+            durableCommit {
+                putString(HaConnectionRoutes.RECORD_KEY, value)
+                if (changedRoute) putLong(HaConnectionRoutes.EPOCH_KEY, expected.epoch + 1)
+            }
+        }
+
+    private fun forgetHaRoutes(editor: SharedPreferences.Editor) {
+        editor.remove(HaConnectionRoutes.RECORD_KEY)
+        editor.putLong(HaConnectionRoutes.EPOCH_KEY, haRouteEpoch() + 1)
+    }
+
     /** One immutable durable-state generation for renderer authentication and refresh. */
     internal fun haAuthSnapshot(): HaAuthSnapshot = synchronized(CONFIG_LOCK) {
         val all = prefs.all
@@ -1002,6 +1028,7 @@ class Config private constructor(
     fun setHaConnection(url: String, token: String?) {
         edit {
             val normalized = url.trim().trimEnd('/')
+            if (normalized != haUrl.trim().trimEnd('/') || (token != null && token != haToken)) forgetHaRoutes(this)
             putString("ha_url", normalized)
             stageDashboardEntityHaUrlChange(this, normalized)
             if (token != null) putString("ha_token", token)
@@ -1023,13 +1050,13 @@ class Config private constructor(
     }
 
     /** Set (or clear, with "") the OAuth refresh token — provisioning path. */
-    fun setHaRefreshToken(refresh: String) { edit { putString("ha_refresh_token", refresh) } }
+    fun setHaRefreshToken(refresh: String) { edit { if (refresh != haRefreshToken) forgetHaRoutes(this); putString("ha_refresh_token", refresh) } }
 
     /** Set the current access-token expiry (epoch seconds) — provisioning path. */
     fun setHaTokenExpiry(epochSec: Long) { edit { putLong("ha_token_expiry", epochSec) } }
 
     /** Set (or clear, with "") the OAuth client_id used for token refresh. */
-    fun setHaClientId(clientId: String) { edit { putString("ha_client_id", clientId) } }
+    fun setHaClientId(clientId: String) { edit { if (clientId != haClientId) forgetHaRoutes(this); putString("ha_client_id", clientId) } }
 
     /** Atomically persist every value borrowed from the Companion for a built-in renderer switch. */
     fun setBorrowedRendererSettings(
@@ -2519,6 +2546,9 @@ class Config private constructor(
 
     /** Stage a typed write into [editor] (no commit) — used by the transactional bundle import. */
     fun stage(editor: SharedPreferences.Editor, spec: SettingSpec, normalized: String) {
+        if (spec.key in setOf("ha_url", "ha_token", "ha_refresh_token", "ha_client_id") && normalized != getRaw(spec)) {
+            forgetHaRoutes(editor)
+        }
         if (spec.key == "auto_sleep_source" && normalized != autoSleepSource)
             editor.putLong(AUTO_SLEEP_GENERATION_PREF, nextAutoSleepGenerationLocked())
         when (spec.type) {

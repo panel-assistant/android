@@ -2654,16 +2654,17 @@ internal class MqttBridge(
                             lifecycle.isOpen() &&
                                 config.haUrl.trim().trimEnd('/') == nativeBase && config.panelId == panel
                         }
-                        val token = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
-                            .session?.accessToken ?: return@Thread
+                        val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
+                        val token = auth.session?.accessToken ?: return@Thread
+                        val route = auth.route ?: return@Thread
                         val familyPolicy = MqttAddressFamilyPolicy.fromConfig(config.mqttAddressFamily)
                         val link = HaLink.resolveWithAccessToken(
-                            nativeBase, token, listOf(panel, runtimeFriendlyName),
+                            route.url, token, listOf(panel, runtimeFriendlyName),
                             preferIpv4 = familyPolicy.initialPreferIpv4,
                             ipv4Only = familyPolicy.ipv4Only,
                         ) ?: return@Thread
                         lifecycle.runIfOpen(Unit) {
-                            if (stillCurrent()) config.setHaDeviceUrl(link, target)
+                            if (stillCurrent() && HaConnectionRoutes.isCurrent(config, route)) config.setHaDeviceUrl(link, target)
                         }
                         return@Thread
                     }

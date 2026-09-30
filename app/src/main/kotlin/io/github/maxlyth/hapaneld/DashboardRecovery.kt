@@ -184,13 +184,14 @@ internal fun javascriptIntResult(result: String?): Int? =
  * when both URLs use scheme defaults or preserve the same explicit port. An HTTPS configuration never
  * downgrades to HTTP: cleartext content must not inherit the renderer's external-auth bridge.
  */
-internal fun dashboardNavigationAllowed(configuredUrl: String, candidateUrl: String): Boolean = runCatching {
+internal fun dashboardNavigationAllowed(configuredUrl: String, candidateUrl: String, allowHttpsUpgrade: Boolean = true): Boolean = runCatching {
     val configured = URI(configuredUrl.trim())
     val candidate = URI(candidateUrl.trim())
     val configuredScheme = configured.scheme?.lowercase() ?: return@runCatching false
     val candidateScheme = candidate.scheme?.lowercase() ?: return@runCatching false
     if (configuredScheme !in setOf("http", "https") || candidateScheme !in setOf("http", "https")) return@runCatching false
     if (!configured.host.equals(candidate.host, ignoreCase = true)) return@runCatching false
+    if (configuredScheme != candidateScheme && !allowHttpsUpgrade) return@runCatching false
     if (configuredScheme == "https" && candidateScheme != "https") return@runCatching false
     if (configuredScheme == candidateScheme) {
         fun effectivePort(uri: URI, scheme: String): Int =
@@ -326,10 +327,10 @@ internal fun isPanelHaOAuthCallback(candidateUrl: String): Boolean = runCatching
  * HTTPS is restricted to its configured origin, while an HTTP configuration also admits only the same-host
  * HTTPS upgrade using the same explicit port (or the HTTPS default when neither URL has one).
  */
-internal fun dashboardDocumentStartOrigins(configuredUrl: String): Set<String> {
+internal fun dashboardDocumentStartOrigins(configuredUrl: String, allowHttpsUpgrade: Boolean = true): Set<String> {
     val configured = URI(configuredUrl.trim())
     val configuredOrigin = EntityFilterProtocol.origin(configuredUrl)
-    if (!configured.scheme.equals("http", ignoreCase = true)) return setOf(configuredOrigin)
+    if (!allowHttpsUpgrade || !configured.scheme.equals("http", ignoreCase = true)) return setOf(configuredOrigin)
     val https = URI(
         "https",
         null,

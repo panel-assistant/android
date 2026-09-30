@@ -6,6 +6,8 @@ import android.util.Log
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.dashboardEntityScopePath
 import io.github.maxlyth.hapaneld.DashboardEntityDefaultResolverMigration
+import io.github.maxlyth.hapaneld.HaConnectionRoute
+import io.github.maxlyth.hapaneld.HaConnectionRoutes
 import io.github.maxlyth.hapaneld.HaCredentialManager
 import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.HaAuthSnapshot
@@ -705,7 +707,7 @@ class EntityLearningManager(
         val target = captureAuthenticatedTarget()
         val snapshot = captureSyncSnapshot(target)
         var outcome = DashboardProbeOutcome.UNCHANGED
-        withHaSocket(snapshot.baseUrl, snapshot.authToken) { request ->
+        withHaSocket(snapshot.baseUrl, snapshot.authToken, checkNotNull(snapshot.route)) { request ->
             val resolved = homeDashboardAuthority.resolve(
                 snapshot.homeDashboardAuthorityKey,
                 stillCurrent = {
@@ -797,13 +799,13 @@ class EntityLearningManager(
         var syncWork = 0L
         try {
         val target = captureAuthenticatedTarget()
-        val states = fetchStates(target.baseUrl, target.authToken)
+        val states = fetchStates(target.baseUrl, target.authToken, target.route)
         syncWork += states.size
         require(states.isNotEmpty()) { "Home Assistant returned no visible states" }
 
         val identityCandidates = haInstanceCandidateUrls(
             target.baseUrl,
-            runCatching { fetchHaConfig(target.baseUrl, target.authToken) }.getOrNull(),
+            runCatching { fetchHaConfig(target.baseUrl, target.authToken, target.route) }.getOrNull(),
         )
         val resolvedUuid = resolveInstanceUuid(identityCandidates)
         val adoptedTarget = if (resolvedUuid.isNullOrBlank()) target else adoptStableTarget(target, resolvedUuid)
@@ -841,7 +843,7 @@ class EntityLearningManager(
         } finally {
             scanCost.close()
         }
-        val expanded = expandTargets(snapshot.baseUrl, snapshot.authToken, scan.targets)
+        val expanded = expandTargets(snapshot.baseUrl, snapshot.authToken, scan.targets, checkNotNull(snapshot.route))
         val catalogIds = states.asSequence().map { it.entityId.lowercase() }.toHashSet()
         val friendlyNames = states.asSequence().filter { it.friendlyName.isNotBlank() }
             .associate { it.entityId.lowercase() to it.friendlyName }
@@ -1577,7 +1579,7 @@ class EntityLearningManager(
      */
     private fun reconcileResolvedScope(snapshot: EntityLearningSyncSnapshot, resolved: String): Boolean {
         if (!resolvedScopeRequiresRebind(snapshot.dashboardPath, resolved)) return false
-        val origin = normalizedOrigin(snapshot.baseUrl)
+        val origin = snapshot.state.origin
         // The currency checks inside the resolve above guard the READ. This is a durable write, and it
         // happens later: between the two, the endpoint or the configured dashboard can change under a
         // cooperatively cancelled pass, and rebinding on a stale snapshot would overwrite the newer
@@ -1641,16 +1643,18 @@ class EntityLearningManager(
         stillCurrent: () -> Boolean = { true },
     ): HomeDashboardCatalog = withContext(Dispatchers.IO) {
         if (!stillCurrent()) return@withContext HomeDashboardCatalog()
-        val base = config.haUrl.trim().trimEnd('/')
-        if (base.isBlank()) return@withContext HomeDashboardCatalog()
+        val configuredBase = config.haUrl.trim().trimEnd('/')
+        if (configuredBase.isBlank()) return@withContext HomeDashboardCatalog()
         val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
         val token = auth.session?.accessToken ?: return@withContext HomeDashboardCatalog()
+        val route = auth.route ?: return@withContext HomeDashboardCatalog()
+        val base = route.url
         runCatching {
             var catalog = HomeDashboardCatalog()
-            withHaSocket(base, token) { request ->
+            withHaSocket(base, token, route) { request ->
                 catalog = readHomeDashboardCatalog(request)
             }
-            check(stillCurrent()) { "home-dashboard authority changed during catalog read" }
+            check(stillCurrent() && HaConnectionRoutes.isCurrent(config, route)) { "home-dashboard authority changed during catalog read" }
             catalog
         }.getOrDefault(HomeDashboardCatalog())
     }
@@ -1673,16 +1677,18 @@ class EntityLearningManager(
         stillCurrent: () -> Boolean,
     ): EntityLearningProtocol.HomeDashboardResolution? = withContext(Dispatchers.IO) {
         if (!stillCurrent()) return@withContext null
-        val base = config.haUrl.trim().trimEnd('/')
-        if (base.isBlank()) return@withContext null
+        val configuredBase = config.haUrl.trim().trimEnd('/')
+        if (configuredBase.isBlank()) return@withContext null
         val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
         val token = auth.session?.accessToken ?: return@withContext null
+        val route = auth.route ?: return@withContext null
+        val base = route.url
         runCatching {
             var resolution: EntityLearningProtocol.HomeDashboardResolution? = null
-            withHaSocket(base, token) { request ->
+            withHaSocket(base, token, route) { request ->
                 resolution = readHomeDashboardResolution(request, homeDashboard)
             }
-            check(stillCurrent()) { "home-dashboard authority changed during resolution" }
+            check(stillCurrent() && HaConnectionRoutes.isCurrent(config, route)) { "home-dashboard authority changed during resolution" }
             resolution
         }.getOrNull()
     }
@@ -1716,13 +1722,15 @@ class EntityLearningManager(
      */
     suspend fun haAreaCatalog(deviceUid: String, panelId: String): HaAreaCatalog = withContext(Dispatchers.IO) {
         val ownerKey = credentialFingerprint()
-        val base = config.haUrl.trim().trimEnd('/')
-        if (base.isBlank()) return@withContext HaAreaCatalog(ownerKey = ownerKey)
+        val configuredBase = config.haUrl.trim().trimEnd('/')
+        if (configuredBase.isBlank()) return@withContext HaAreaCatalog(ownerKey = ownerKey)
         val auth = HaCredentialManager.resolve(config)
         val token = auth.session?.accessToken ?: return@withContext HaAreaCatalog(ownerKey = ownerKey)
+        val route = auth.route ?: return@withContext HaAreaCatalog(ownerKey = ownerKey)
+        val base = route.url
         runCatching {
             var catalog = HaAreaCatalog()
-            withHaSocket(base, token) { request ->
+            withHaSocket(base, token, route) { request ->
                 val user = request(JSONObject().put("type", "auth/current_user")).optJSONObject("result")
                 val isAdmin = user?.optBoolean("is_admin") == true || user?.optBoolean("is_owner") == true
                 val areas = io.github.maxlyth.hapaneld.http.HaAreaProtocol.areas(
@@ -1752,6 +1760,7 @@ class EntityLearningManager(
                     device = device, haUsername = haUsername,
                 )
             }
+            check(HaConnectionRoutes.isCurrent(config, route)) { "Home Assistant route changed during catalog read" }
             catalog
         }.getOrDefault(HaAreaCatalog(ownerKey = ownerKey))
     }
@@ -1778,13 +1787,15 @@ class EntityLearningManager(
         withContext(Dispatchers.IO) {
             val requested = io.github.maxlyth.hapaneld.config.normalizedHaAreaName(areaName)
             if (expectedOwnerKey != null && credentialFingerprint() != expectedOwnerKey) return@withContext false
-            val base = config.haUrl.trim().trimEnd('/')
-            if (base.isBlank()) return@withContext false
+            val configuredBase = config.haUrl.trim().trimEnd('/')
+            if (configuredBase.isBlank()) return@withContext false
             val auth = HaCredentialManager.resolve(config)
             val token = auth.session?.accessToken ?: return@withContext false
+            val route = auth.route ?: return@withContext false
+            val base = route.url
             runCatching {
                 var moved = false
-                withHaSocket(base, token) { request ->
+                withHaSocket(base, token, route) { request ->
                     val user = request(JSONObject().put("type", "auth/current_user")).optJSONObject("result")
                     val isAdmin = user?.optBoolean("is_admin") == true || user?.optBoolean("is_owner") == true
                     if (!isAdmin) return@withHaSocket
@@ -1823,6 +1834,7 @@ class EntityLearningManager(
                     )
                     moved = updated.optJSONObject("result") != null
                 }
+                check(HaConnectionRoutes.isCurrent(config, route)) { "Home Assistant route changed during area update" }
                 moved
             }.getOrDefault(false)
         }
@@ -1840,6 +1852,7 @@ class EntityLearningManager(
 
     private fun currentEffectState(): EntityLearningEffectState = EntityLearningEffectState(
         origin = runCatching { normalizedOrigin(config.haUrl) }.getOrDefault(""),
+        routeEpoch = HaConnectionRoutes.current(config).epoch,
         instanceKey = instance(),
         targetKey = config.dashboardEntityTargetKey,
         dashboardPath = dashboardPath(),
@@ -1877,9 +1890,10 @@ class EntityLearningManager(
                 config.dashboardEntityTargetKey == targetKey
         }
         val auth = HaCredentialManager.resolve(config, stillCurrent = stillCurrent)
+        val route = auth.route ?: error("Home Assistant route unavailable")
         val token = auth.session?.accessToken
             ?: error(if (auth.rejected) "Home Assistant credential rejected" else "Home Assistant token unavailable")
-        check(stillCurrent()) { "entity-learning target changed during authentication" }
+        check(stillCurrent() && HaConnectionRoutes.isCurrent(config, route)) { "entity-learning target changed during authentication" }
         val ownedAuthSnapshot = config.haAuthSnapshot()
         val authenticatedAuthority = ownedAuthenticatedHomeDashboardAuthority(
             base,
@@ -1892,12 +1906,13 @@ class EntityLearningManager(
             "Home Assistant credential changed after authentication"
         }
         return AuthenticatedTarget(
-            generation, base, origin, configuredHomeDashboard, path, legacyKey, selected, targetKey,
-            token, authenticatedAuthority.credentialFingerprint, authenticatedAuthority.key,
+            generation, route.url, origin, configuredHomeDashboard, path, legacyKey, selected, targetKey,
+            token, authenticatedAuthority.credentialFingerprint, authenticatedAuthority.key, route,
         )
     }
 
     private fun adoptStableTarget(target: AuthenticatedTarget, uuid: String): AuthenticatedTarget {
+        check(HaConnectionRoutes.isCurrent(config, target.route)) { "Home Assistant route changed" }
         check(target.generation == effectGeneration.get()) { "entity-learning target changed during discovery" }
         check(normalizedOrigin(config.haUrl) == target.origin && dashboardPath() == target.dashboardPath) {
             "entity-learning target changed during discovery"
@@ -1914,6 +1929,7 @@ class EntityLearningManager(
     }
 
     private fun captureSyncSnapshot(target: AuthenticatedTarget): EntityLearningSyncSnapshot {
+        check(HaConnectionRoutes.isCurrent(config, target.route)) { "Home Assistant route changed" }
         check(target.generation == effectGeneration.get()) { "entity-learning target changed before scan" }
         val state = currentEffectState()
         check(state.origin == target.origin && state.instanceKey == target.instanceKey &&
@@ -1927,6 +1943,7 @@ class EntityLearningManager(
             target.configuredHomeDashboard,
             target.homeDashboardAuthorityKey,
             state,
+            target.route,
         )
     }
 
@@ -1949,6 +1966,7 @@ class EntityLearningManager(
         val authToken: String,
         val credentialFingerprint: String,
         val homeDashboardAuthorityKey: HomeDashboardResolutionAuthority.Key,
+        val route: HaConnectionRoute,
     )
 
     private data class WsSnapshot(
@@ -1958,10 +1976,12 @@ class EntityLearningManager(
         val registryMetadataComplete: Boolean,
     )
 
-    private suspend fun fetchStates(base: String, token: String): List<EntityCatalogStore.StateRow> =
+    private suspend fun fetchStates(base: String, token: String, route: HaConnectionRoute): List<EntityCatalogStore.StateRow> =
         runInterruptible(Dispatchers.IO) {
+            requireCurrentHaRoute(base, token, route)
             val cost = FeatureCosts.registry.span(FeatureCostOperation.ENTITY_STATES_FETCH_PARSE)
             val c = (URL(base.trimEnd('/') + "/api/states").openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
                 connectTimeout = HTTP_TIMEOUT_MS; readTimeout = HTTP_TIMEOUT_MS
                 setRequestProperty("Authorization", "Bearer $token"); setRequestProperty("Accept", "application/json")
             }
@@ -1989,8 +2009,10 @@ class EntityLearningManager(
             }
         }
 
-    private fun fetchHaConfig(base: String, token: String): String {
+    private fun fetchHaConfig(base: String, token: String, route: HaConnectionRoute): String {
+        requireCurrentHaRoute(base, token, route)
         val c = (URL(base.trimEnd('/') + "/api/config").openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = false
             connectTimeout = HA_CONFIG_TIMEOUT_MS
             readTimeout = HA_CONFIG_TIMEOUT_MS
             setRequestProperty("Authorization", "Bearer $token")
@@ -2014,7 +2036,7 @@ class EntityLearningManager(
         val metadata = mutableMapOf<String, String>()
         var areaRegistryEntities: Map<String, Set<String>> = emptyMap()
         var registryMetadataComplete = false
-        withHaSocket(base, token) { request ->
+        withHaSocket(base, token, checkNotNull(snapshot.route)) { request ->
             // The scanner and renderer must never independently choose different defaults. The first
             // complete authenticated resolution owns this HA/config authority until that authority
             // changes; every scan consumes the exact same legal dashboard path.
@@ -2084,10 +2106,10 @@ class EntityLearningManager(
         )
     }
 
-    private suspend fun expandTargets(base: String, token: String, targets: List<String>): Set<String> {
+    private suspend fun expandTargets(base: String, token: String, targets: List<String>, route: HaConnectionRoute): Set<String> {
         if (targets.isEmpty()) return emptySet()
         val out = linkedSetOf<String>()
-        withHaSocket(base, token) { request ->
+        withHaSocket(base, token, route) { request ->
             for (target in targets.take(MAX_TARGETS)) {
                 // Dashboard configuration is extensible and third-party cards sometimes put selector
                 // syntax in target-shaped fields. A single target rejected by HA must not discard the
@@ -2108,11 +2130,19 @@ class EntityLearningManager(
         return out
     }
 
+    private fun requireCurrentHaRoute(base: String, token: String, route: HaConnectionRoute) {
+        check(route.url == base && HaConnectionRoutes.isCurrent(config, route) &&
+            config.haAuthSnapshot().accessToken == token) { "Home Assistant route or credential changed" }
+    }
+
     private suspend fun withHaSocket(
         base: String,
         token: String,
+        route: HaConnectionRoute,
         block: suspend (suspend (JSONObject) -> JSONObject) -> Unit,
     ) {
+        requireCurrentHaRoute(base, token, route)
+        check(HaConnectionRoutes.verify(config, route)) { "Home Assistant instance unavailable" }
         val ws = EntityFilterProtocol.upstreamWebSocketUrl(base)
         val policy = MqttAddressFamilyPolicy.fromConfig(config.mqttAddressFamily)
         val client = HaWebSocketClients.client(
@@ -2127,12 +2157,14 @@ class EntityLearningManager(
                 with(activeSession) {
                     withEntityLearningDeadline(WS_AUTH_TIMEOUT_MS) {
                         (incoming.receive() as? Frame.Text)?.readText()
+                        requireCurrentHaRoute(base, token, route)
                         send(Frame.Text(JSONObject().put("type", "auth").put("access_token", token).toString()))
                         val auth = (incoming.receive() as? Frame.Text)?.readText().orEmpty()
                         require(auth.contains("\"type\":\"auth_ok\"")) { "Home Assistant WebSocket authentication failed" }
                     }
                     var id = 0
                     suspend fun request(command: JSONObject): JSONObject = withEntityLearningDeadline(WS_REQUEST_TIMEOUT_MS) {
+                        requireCurrentHaRoute(base, token, route)
                         val current = ++id; command.put("id", current); send(Frame.Text(command.toString()))
                         repeat(MAX_RESPONSE_FRAMES) {
                             val frame = incoming.receive() as? Frame.Text ?: return@repeat
@@ -2762,6 +2794,7 @@ internal data class EntityLearningEffectState(
     val initialActivationPending: Boolean = false,
     /** The default-resolver migration disabled a running filter and owes this target a re-bootstrap. */
     val upgradeRebootstrapPending: Boolean = false,
+    val routeEpoch: Long = 0L,
 )
 
 /**
@@ -2781,6 +2814,7 @@ internal data class EntityLearningSyncSnapshot(
     val configuredHomeDashboard: String,
     val homeDashboardAuthorityKey: HomeDashboardResolutionAuthority.Key,
     val state: EntityLearningEffectState,
+    val route: HaConnectionRoute? = null,
 ) {
     val instanceKey get() = state.instanceKey
     val dashboardPath get() = state.dashboardPath
