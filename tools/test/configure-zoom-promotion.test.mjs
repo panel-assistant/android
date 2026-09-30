@@ -23,7 +23,7 @@ function page() {
     <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div>
     <div id="cfg-help" class="cfg-help" popover="manual"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" type="button">x</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more"></a></div></div>
     <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>
-    <script src="/configure.js"></script><script src="/proximity-learning.js"></script>
+    <script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
 }
 
@@ -49,7 +49,7 @@ async function harness(promoted) {
     const path = new URL(request.url, 'http://panel.test').pathname;
     const send = (body, type = 'application/json') => { response.setHeader('content-type', type); response.end(body); };
     if (path === '/') return send(page(), 'text/html');
-    if (path === '/configure.js' || path === '/proximity-learning.js') return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
+    if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js'].includes(path) || path === '/proximity-learning.js') return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
     if (path === '/api/v1/config/schema') return send(JSON.stringify(schema(promoted)));
     if (path === '/api/v1/config') return send(JSON.stringify({ settings: { dashboard_zoom: 100, dashboard_package: 'builtin' }, ha_expose: {}, ha_auth: { configured: false } }));

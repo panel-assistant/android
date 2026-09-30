@@ -67,26 +67,9 @@ class AssetSyntaxTest {
         assumeTrue("node not available (skipping)", nodeAvailable())
         val script = """
             const fs=require('fs'),vm=require('vm');
-            const source=fs.readFileSync(process.argv[1],'utf8');
-            function take(name){
-              const start=source.indexOf('function '+name+'(');if(start<0)throw new Error('missing '+name);
-              const open=source.indexOf('{',start);let depth=0,quote='',escaped=false;
-              for(let i=open;i<source.length;i++){
-                const c=source[i];
-                if(quote){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c===quote)quote='';continue}
-                if(c==='"'||c==="'"||c==='`'){quote=c;continue}
-                if(c==='{')depth++;else if(c==='}'&&--depth===0)return source.slice(start,i+1);
-              }
-              throw new Error('unterminated '+name);
-            }
-            const labelsStart=source.indexOf('var UI_LANGUAGE_LABELS = {');
-            const labelsEnd=source.indexOf('\n  };',labelsStart);
-            if(labelsStart<0||labelsEnd<0)throw new Error('missing UI_LANGUAGE_LABELS');
-            const labels=source.slice(labelsStart,labelsEnd+5);
             const data={};
             const location={search:'?lang=zh_CN&theme=dark',pathname:'/configure',hash:'#language'};
             global.document={baseURI:'http://panel.test/',body:{hasAttribute:function(){return false}}};
-            global.EMBEDDED=false;
             global.window={location,localStorage:{
               setItem(k,v){data[k]=v},getItem(k){return Object.prototype.hasOwnProperty.call(data,k)?data[k]:null},removeItem(k){delete data[k]}
             },history:{replaceState(_a,_b,url){
@@ -94,28 +77,34 @@ class AssetSyntaxTest {
               location.search=q<0?'':url.slice(q,h<0?url.length:h);location.hash=h<0?'':url.slice(h);
             }}};
             global.URLSearchParams=URLSearchParams;
-            vm.runInThisContext(labels+'\n'+['validLanguageTag','admittedBrowserLanguage','storeBrowserLanguage','stripLanguageQuery','browserLanguageChoice','configSchemaUrl'].map(take).join('\n'));
-            if(browserLanguageChoice()!=='zh_CN'||data.selectedLanguage!=='"zh_CN"')process.exit(2);
-            if(configSchemaUrl('fr')!=='api/v1/config/schema?lang=zh_CN&ha_lang=fr')process.exit(3);
+            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            const cfg=window.ConfigurePage;
+            if(cfg.configSchemaUrl('fr')!=='api/v1/config/schema?lang=zh_CN&ha_lang=fr'||data.selectedLanguage!=='"zh_CN"')process.exit(2);
             location.search='?lang=auto&theme=dark';
-            if(browserLanguageChoice()!==''||data.selectedLanguage!==undefined||location.search!=='?theme=dark')process.exit(4);
+            if(cfg.configSchemaUrl('fr')!=='api/v1/config/schema?ha_lang=fr'||data.selectedLanguage!==undefined||location.search!=='?theme=dark')process.exit(4);
             data.selectedLanguage='"fr"';location.search='';
-            if(browserLanguageChoice()!=='fr'||configSchemaUrl('de')!=='api/v1/config/schema?lang=fr&ha_lang=de')process.exit(5);
+            if(cfg.configSchemaUrl('de')!=='api/v1/config/schema?lang=fr&ha_lang=de')process.exit(5);
             delete data.selectedLanguage;
-            if(configSchemaUrl('zh-Hans')!=='api/v1/config/schema?ha_lang=zh-Hans')process.exit(6);
+            if(cfg.configSchemaUrl('zh-Hans')!=='api/v1/config/schema?ha_lang=zh-Hans')process.exit(6);
             data.selectedLanguage='"bad language"';
-            if(configSchemaUrl('de')!=='api/v1/config/schema?ha_lang=de')process.exit(7);
-            data.selectedLanguage='"sv-SE"';
-            if(browserLanguageChoice()!=='sv-SE'||admittedBrowserLanguage(browserLanguageChoice())!==false||
-               configSchemaUrl('de')!=='api/v1/config/schema?lang=sv-SE&ha_lang=de')process.exit(8);
-            data.selectedLanguage='"de-DE"';
-            if(admittedBrowserLanguage(browserLanguageChoice())!==true)process.exit(9);
-            for(const locale of Object.keys(UI_LANGUAGE_LABELS).filter((value)=>value!=='auto')){
-              if(admittedBrowserLanguage(locale)!==true||admittedBrowserLanguage(locale+'-Test')!==true)process.exit(10);
+            if(cfg.configSchemaUrl('de')!=='api/v1/config/schema?ha_lang=de')process.exit(7);
+            let requests=0;
+            global.fetch=()=>{requests++;return Promise.resolve({json:()=>Promise.resolve([])})};
+            cfg.values.ui_language='auto';cfg.haUserStatus={phase:'connected',language:'de'};
+            cfg.render=()=>{};cfg.configCardGeometryChanged=()=>{};
+            function usesHaLanguage(tag){
+              data.selectedLanguage=JSON.stringify(tag);const before=requests;
+              cfg.reloadSchemaForHaLanguage();return requests>before;
             }
-            if(admittedBrowserLanguage('zh-Hant')!==false||admittedBrowserLanguage('zz-ZZ')!==false)process.exit(11);
+            data.selectedLanguage='"sv-SE"';
+            if(cfg.configSchemaUrl('de')!=='api/v1/config/schema?lang=sv-SE&ha_lang=de'||!usesHaLanguage('sv-SE'))process.exit(8);
+            if(usesHaLanguage('de-DE'))process.exit(9);
+            for(const locale of ['en','de','fr','it','es','zh-Hans','nl','pl','uk']){
+              if(usesHaLanguage(locale)||usesHaLanguage(locale+'-Test'))process.exit(10);
+            }
+            if(!usesHaLanguage('zh-Hant')||!usesHaLanguage('zz-ZZ'))process.exit(11);
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure.js").absolutePath))
+        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure-state.js").absolutePath))
         assertEquals("Configure language signal contract failed:\n$out", 0, code)
     }
 
@@ -125,36 +114,23 @@ class AssetSyntaxTest {
         assumeTrue("node not available (skipping)", nodeAvailable())
         val script = """
             const fs=require('fs'),vm=require('vm');
-            const source=fs.readFileSync(process.argv[1],'utf8');
-            function take(name){
-              const start=source.indexOf('function '+name+'(');if(start<0)throw new Error('missing '+name);
-              const open=source.indexOf('{',start);let depth=0,quote='',escaped=false;
-              for(let i=open;i<source.length;i++){
-                const c=source[i];
-                if(quote){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c===quote)quote='';continue}
-                if(c==='"'||c==="'"||c==='`'){quote=c;continue}
-                if(c==='{')depth++;else if(c==='}'&&--depth===0)return source.slice(start,i+1);
-              }
-              throw new Error('unterminated '+name);
-            }
-            vm.runInThisContext([
-              'autoSleepUsesPanel','autoSleepUsesTouch','autoSleepSummaryModel','autoSleepHuman',
-              'autoSleepAreaMatchesName','autoSleepAreaMatches','autoSleepAreaTransitioning','autoSleepHistoryReady','autoSleepHistoryPreparing','autoSleepStatusRetryable','autoSleepHistoryTerminalMessage',
-              'scheduleAutoSleepReadiness','loadAutoSleepHistory','invalidateAutoSleepHistory',
-              'invalidateAutoSleepData','autoSleepDisplayedHours','loadAutoSleepData'
-            ].map(take).join('\n'));
-            // The extracted functions normally inherit the page helper. This harness deliberately
-            // exercises their English behavior without loading the complete Configure document.
-            global.i18nText=(key,fallback,values)=>String(fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
+            global.window=global;
+            const cfg=window.ConfigurePage={};
+            cfg.i18nText=(key,fallback,values)=>String(fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
               (placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
-            global.values={auto_sleep:'true',auto_sleep_source:'home_assistant'};
-            global.autoSleepStatus=null;global.autoSleepLoading=false;global.autoSleepRequest=0;
-            global.autoSleepHistory=null;global.autoSleepHistoryLoading=false;global.autoSleepHistoryError='';
-            global.autoSleepHistoryRequest=0;global.autoSleepHistoryHours=6;global.autoSleepHistoryWaiting=false;
-            global.autoSleepHistoryWaitingMessage='';global.autoSleepHistoryReadyTimer=null;
-            global.autoSleepAssignedAreaName='';
-            global.autoSleepReadinessDelayMs=1000;global.autoSleepHistoryRetryDelayMs=5000;
-            global.updateAutoSleepSummary=()=>{};global.updateAutoSleepHistory=()=>{};
+            cfg.values={auto_sleep:'true',auto_sleep_source:'home_assistant'};
+            cfg.autoSleepStatus=null;cfg.autoSleepLoading=false;cfg.autoSleepRequest=0;
+            cfg.autoSleepHistory=null;cfg.autoSleepHistoryLoading=false;cfg.autoSleepHistoryError='';
+            cfg.autoSleepHistoryRequest=0;cfg.autoSleepHistoryHours=6;cfg.autoSleepHistoryWaiting=false;
+            cfg.autoSleepHistoryWaitingMessage='';cfg.autoSleepHistoryReadyTimer=null;
+            cfg.autoSleepAssignedAreaName='';
+            cfg.autoSleepReadinessDelayMs=1000;cfg.autoSleepHistoryRetryDelayMs=5000;
+            const lines=Array.from({length:5},()=>({textContent:''}));
+            const summary={querySelectorAll:()=>lines,getAttribute(key){return this[key]},setAttribute(key,value){this[key]=value}};
+            const announcement={textContent:''};
+            global.document={getElementById:id=>id==='auto-sleep-summary'?summary:id==='auto-sleep-summary-announcement'?announcement:null,
+              querySelector:()=>null,querySelectorAll:()=>[]};
+            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             const timers=[];let timerId=0;
             global.setTimeout=(fn,ms)=>{const timer={id:++timerId,fn,ms,cancelled:false};timers.push(timer);return timer.id};
             global.clearTimeout=id=>{const timer=timers.find(candidate=>candidate.id===id);if(timer)timer.cancelled=true};
@@ -181,74 +157,72 @@ class AssetSyntaxTest {
             };
             const flush=()=>new Promise(resolve=>setImmediate(()=>setImmediate(resolve)));
             (async()=>{
-              loadAutoSleepData();await flush();
+              cfg.loadAutoSleepData();await flush();
               while(statusCalls<13){
                 const timer=timers.find(candidate=>!candidate.cancelled);if(!timer)process.exit(2);
                 timer.cancelled=true;readinessDelayMs+=timer.ms;timer.fn();await flush();
                 if(historyCalls!==0&&statusCalls<13)process.exit(3);
-                if(autoSleepHistoryError)process.exit(4);
+                if(cfg.autoSleepHistoryError)process.exit(4);
               }
               await flush();
-              if(readinessDelayMs<=26000||historyCalls!==1||!autoSleepHistory||autoSleepHistoryWaiting||autoSleepHistoryError||timers.some(timer=>!timer.cancelled))process.exit(5);
+              if(readinessDelayMs<=26000||historyCalls!==1||!cfg.autoSleepHistory||cfg.autoSleepHistoryWaiting||cfg.autoSleepHistoryError||timers.some(timer=>!timer.cancelled))process.exit(5);
               // A temporary history failure recovers automatically using the slower failure path.
               timers.splice(0);statuses=[live,live];historyResults=[{available:false,detail:'history_transport'}];
-              const beforeRecovery=historyCalls;invalidateAutoSleepData();loadAutoSleepData();await flush();
+              const beforeRecovery=historyCalls;cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
               const recoveryTimer=timers.find(candidate=>!candidate.cancelled);
-              if(!recoveryTimer||recoveryTimer.ms!==5000||historyCalls!==beforeRecovery+1||autoSleepHistoryError)process.exit(6);
+              if(!recoveryTimer||recoveryTimer.ms!==5000||historyCalls!==beforeRecovery+1||cfg.autoSleepHistoryError)process.exit(6);
               recoveryTimer.cancelled=true;recoveryTimer.fn();await flush();
-              if(historyCalls!==beforeRecovery+2||!autoSleepHistory||timers.some(timer=>!timer.cancelled))process.exit(7);
+              if(historyCalls!==beforeRecovery+2||!cfg.autoSleepHistory||timers.some(timer=>!timer.cancelled))process.exit(7);
               // Invalidation cancels pending recovery and fences a response already in flight.
               timers.splice(0);statuses=[live];historyResults=[{available:false,detail:'runtime_unavailable'}];
-              invalidateAutoSleepData();loadAutoSleepData();await flush();
+              cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
               if(!timers.some(timer=>!timer.cancelled))process.exit(8);
-              invalidateAutoSleepData(true);
+              cfg.invalidateAutoSleepData(true);
               if(timers.some(timer=>!timer.cancelled))process.exit(9);
-              statuses=[live];historyResults=[{deferred:true}];loadAutoSleepData();await flush();
+              statuses=[live];historyResults=[{deferred:true}];cfg.loadAutoSleepData();await flush();
               if(!historyResolve)process.exit(10);
-              invalidateAutoSleepData(true);historyResolve({ok:true,json:()=>Promise.resolve({available:true,segments:[],source_lanes:[]})});await flush();
-              if(autoSleepHistory!==null)process.exit(11);
+              cfg.invalidateAutoSleepData(true);historyResolve({ok:true,json:()=>Promise.resolve({available:true,segments:[],source_lanes:[]})});await flush();
+              if(cfg.autoSleepHistory!==null)process.exit(11);
               // Stable HTTP client errors are terminal and never enter automatic recovery.
-              timers.splice(0);statuses=[live];historyResults=[{status:403}];invalidateAutoSleepData();loadAutoSleepData();await flush();
-              if(!autoSleepHistoryError.includes('HTTP 403')||timers.some(timer=>!timer.cancelled))process.exit(12);
+              timers.splice(0);statuses=[live];historyResults=[{status:403}];cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
+              if(!cfg.autoSleepHistoryError.includes('HTTP 403')||timers.some(timer=>!timer.cancelled))process.exit(12);
               // A stable status client error is also terminal.
-              timers.splice(0);statuses=[{httpStatus:403}];invalidateAutoSleepData();loadAutoSleepData();await flush();
-              if(!autoSleepHistoryError.includes('HTTP 403')||timers.some(timer=>!timer.cancelled))process.exit(13);
+              timers.splice(0);statuses=[{httpStatus:403}];cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
+              if(!cfg.autoSleepHistoryError.includes('HTTP 403')||timers.some(timer=>!timer.cancelled))process.exit(13);
               // A stable failure must be truthful and terminal, not silently polled forever.
               timers.splice(0);statuses=[{available:false,enabled:true,phase:'no_credible_sources',reason:'no_credible_sources',source_count:0}];
-              invalidateAutoSleepData();
-              loadAutoSleepData();await flush();
-              if(!autoSleepHistoryError.includes('No credible device-backed')||timers.some(timer=>!timer.cancelled))process.exit(14);
+              cfg.invalidateAutoSleepData();
+              cfg.loadAutoSleepData();await flush();
+              if(!cfg.autoSleepHistoryError.includes('No credible device-backed')||timers.some(timer=>!timer.cancelled))process.exit(14);
               // Typed parser failure copy must not falsely blame the HA connection.
               timers.splice(0);statuses=[{available:false,enabled:true,phase:'discovery_failed',reason:'discovery_failed',detail:'history_parse',source_count:0}];
-              invalidateAutoSleepData();loadAutoSleepData();await flush();
-              if(!autoSleepHistoryError.includes('activity timestamps')||autoSleepHistoryError.includes('connection')||timers.some(timer=>!timer.cancelled))process.exit(15);
+              cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
+              if(!cfg.autoSleepHistoryError.includes('activity timestamps')||cfg.autoSleepHistoryError.includes('connection')||timers.some(timer=>!timer.cancelled))process.exit(15);
               // A known prerequisite Area plus a blank-Area terminal failure is not an Area transition.
-              timers.splice(0);autoSleepAssignedAreaName='Office';statuses=[{available:false,enabled:true,phase:'discovery_failed',reason:'discovery_failed',detail:'registry_projection',area_name:'',source_count:0}];
-              invalidateAutoSleepData();loadAutoSleepData();await flush();
-              if(!autoSleepHistoryError.includes('source discovery failed')||timers.some(timer=>!timer.cancelled))process.exit(16);
+              timers.splice(0);cfg.autoSleepAssignedAreaName='Office';statuses=[{available:false,enabled:true,phase:'discovery_failed',reason:'discovery_failed',detail:'registry_projection',area_name:'',source_count:0}];
+              cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
+              if(!cfg.autoSleepHistoryError.includes('source discovery failed')||timers.some(timer=>!timer.cancelled))process.exit(16);
               // A transport failure remains observable on the slow retry path and converges when live.
               timers.splice(0);const beforeTransportRecovery=historyCalls;
               statuses=[{available:false,enabled:true,phase:'discovery_failed',reason:'discovery_failed',detail:'registry_transport',area_name:'',source_count:0},{...live,area_name:'Office'}];
-              historyResults=[{available:true,area_name:'Office',segments:[{start_epoch_ms:1,end_epoch_ms:2,output:'hold_awake'}],source_lanes:[]}];invalidateAutoSleepData();loadAutoSleepData();await flush();
+              historyResults=[{available:true,area_name:'Office',segments:[{start_epoch_ms:1,end_epoch_ms:2,output:'hold_awake'}],source_lanes:[]}];cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
               const transportTimer=timers.find(candidate=>!candidate.cancelled);
-              if(!transportTimer||transportTimer.ms!==5000||autoSleepHistoryError)process.exit(17);
+              if(!transportTimer||transportTimer.ms!==5000||cfg.autoSleepHistoryError)process.exit(17);
               transportTimer.cancelled=true;transportTimer.fn();await flush();await flush();
               if(historyCalls!==beforeTransportRecovery+1)process.exit(18);
-              if(!autoSleepHistory)process.exit(19);
+              if(!cfg.autoSleepHistory)process.exit(19);
               if(timers.some(timer=>!timer.cancelled))process.exit(20);
-              const haSummary=autoSleepSummaryModel({...live,area_name:'Office'});
-              if(haSummary.lines[0]!=='Home Assistant Area: Office')process.exit(22);
+              if(lines[0].textContent!=='Home Assistant Area: Office')process.exit(22);
               // Panel presence observes its own live status without requesting HA history.
-              values.auto_sleep_source='panel';
+              cfg.values.auto_sleep_source='panel';
               const beforePanelHistory=historyCalls;
               statuses=[{enabled:true,source:'panel',phase:'source_unavailable',reason:'all_sources_unavailable'}];
-              invalidateAutoSleepData();loadAutoSleepData();await flush();
+              cfg.invalidateAutoSleepData();cfg.loadAutoSleepData();await flush();
               if(historyCalls!==beforePanelHistory||!timers.some(timer=>!timer.cancelled))process.exit(23);
-              const panelSummary=autoSleepSummaryModel(autoSleepStatus);
-              if(panelSummary.lines[0]!=='This panel’s proximity sensor'||panelSummary.accessible.includes('Home Assistant Area:'))process.exit(24);
+              if(lines[0].textContent!=='This panel’s proximity sensor'||announcement.textContent.includes('Home Assistant Area:'))process.exit(24);
             })().catch(error=>{console.error(error);process.exit(21)});
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure.js").absolutePath))
+        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure-auto-sleep.js").absolutePath))
         assertEquals("Configure auto-sleep readiness lifecycle failed:\n$out", 0, code)
     }
 
@@ -427,7 +401,9 @@ class AssetSyntaxTest {
               if(url==='health')return Promise.resolve({text:()=>Promise.resolve('ok cfg=entity-tab-test')});
               return Promise.reject(new Error('unexpected fetch '+url));
             };
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            for(const name of ['configure-state.js','configure-view.js','configure-help.js','configure-controls.js','configure-brightness.js','configure-auto-sleep.js','configure-cards.js','configure-render.js','configure.js']){
+              vm.runInThisContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]),name),'utf8'));
+            }
             setImmediate(()=>setImmediate(()=>{
               const toggle=made.find(e=>e.role==='switch');
               if(!toggle||!toggle.handlers.click)process.exit(2);
@@ -494,7 +470,9 @@ class AssetSyntaxTest {
               if(url==='health')return Promise.resolve({text:()=>Promise.resolve('ok cfg=new-baseline')});
               return Promise.reject(new Error('unexpected fetch '+url));
             };
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            for(const name of ['configure-state.js','configure-view.js','configure-help.js','configure-controls.js','configure-brightness.js','configure-auto-sleep.js','configure-cards.js','configure-render.js','configure.js']){
+              vm.runInThisContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]),name),'utf8'));
+            }
             setImmediate(()=>setImmediate(()=>{
               const toggle=made.find(e=>e.role==='switch');if(!toggle)process.exit(2);
               toggle.handlers.click();global.cfgSave();
