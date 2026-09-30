@@ -48,7 +48,10 @@ object SelfUpdater {
 
     /** Up to [limit] recent versions on [channel] for the Install-tab picker (version + release-notes URL). */
     fun versions(channel: String, limit: Int = 10): List<ReleaseCatalog.Version> =
-        ReleaseCatalog.list(REPO, channel, limit, APK_MATCH) { it.removePrefix("v") }
+        ReleaseCatalog.list(REPO, channel, limit, APK_MATCH,
+            olderAppMatch = if (AppIdentity.IS_BRIDGE) null else { name ->
+                name.startsWith("ha-paneld-", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true)
+            }) { it.removePrefix("v") }
 
     internal sealed interface ChannelPreparation {
         val message: String

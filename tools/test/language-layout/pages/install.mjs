@@ -12,7 +12,10 @@ export const hostile = HOSTILE_ONE.repeat(3);
 export function payload(url, method) {
   const path = url.pathname;
   if (path === '/api/v1/packages') return { packages: [{ pkg: 'io.example.hostile', label: HOSTILE_ONE }] };
-  if (path === '/api/v1/install/versions') return { versions: [{ tag: 'v2026.9.4-long', version: '2026.9.4-expanded-release-candidate', installable: true, action: 'Upgrade', presentations: { action: { code: 'version-upgrade', params: {} } }, notes: 'https://example.invalid/releases', apk: 'https://example.invalid/releases/download/test/app.apk' }] };
+  if (path === '/api/v1/install/versions') return { versions: [
+    { tag: 'v2026.10.0', version: '2026.10.0', installable: false, unavailableReason: 'above_panel_limit', maxVersion: '2026.9.4', action: 'Upgrade' },
+    { tag: 'v2026.9.4-long', version: '2026.9.4-expanded-release-candidate', installable: true, action: 'Upgrade', presentations: { action: { code: 'version-upgrade', params: {} } }, notes: 'https://example.invalid/releases', apk: 'https://example.invalid/releases/download/test/app.apk' },
+  ] };
   if (path === '/api/v1/install/apk/pending') return { pending: true, package: 'io.example.pending_application_with_a_very_long_identifier', version: '2026.9.4-expanded-release-candidate', discard: 'discard-reference' };
   if (path === '/api/v1/radio') return { present: true, status: 'Radio firmware 9.9.9', state: 'degraded_high_cpu', presentations: { status: null } };
   if (path === '/api/v1/status') return { warnings: ['System WebView compatibility warning', 'Storage is critically constrained with a deliberately long exact diagnostic value'], warning_presentations: [{ code: 'status-webview-old', params: { current_engine: '<img src=x onerror=window.__hostileOwned=1>', target_chromium: '130' } }, { code: 'status-storage-critical', params: { usable_bytes: '1024', total_bytes: '999999999999', used_percent: '99.9' } }] };
@@ -43,7 +46,11 @@ async function press(page, selector, pointer) {
 export async function exerciseStates(page, { pointer = true } = {}) {
   // The real page asks confirm() before uninstall and restore; Playwright would dismiss it.
   await page.evaluate(() => { window.confirm = () => true; });
-  await page.waitForFunction(() => document.querySelectorAll('.cvsel option').length === 2 && document.querySelector('#apk-preview button'));
+  await page.waitForFunction(() => document.querySelectorAll('.cvsel option').length === 4 && document.querySelector('#apk-preview button'));
+  await page.evaluate(() => {
+    const row = document.querySelector('.comprow[data-name="paneld"]');
+    if (row.querySelector('.cvsel').value !== 'v2026.9.4-long' || row.querySelector('.cinstall').disabled) throw new Error('Allowed picker choice must remain installable');
+  });
   await page.evaluate(() => window.installComp('paneld', 'update', document.querySelector('.cinstall')));
   // End states are recognised by their localized text or control state, never by length: a CJK
   // message is short, and the qualification fixture pads every string.
@@ -74,6 +81,12 @@ export async function exerciseStates(page, { pointer = true } = {}) {
   await page.waitForFunction(() => {
     const text = document.querySelector('.power-safety-acknowledge-result')?.textContent || '';
     return text.length > 0 && text !== (window.HaI18n ? window.HaI18n.t('runtime.power_safety.ack.saving', 'Saving acknowledgement…') : 'Saving acknowledgement…');
+  });
+  await page.evaluate(() => {
+    const row = document.querySelector('.comprow[data-name="paneld"]');
+    const picker = row.querySelector('.cvsel'); picker.value = 'v2026.10.0'; window.verChanged('paneld');
+    const expected = window.HaI18n.t('install.progress.above_panel_limit', '(not supported by this panel; limit {version})', { version: '2026.9.4' });
+    if (picker.selectedOptions[0].textContent !== '2026.10.0 ' + expected || !row.querySelector('.cinstall').disabled) throw new Error('Capped picker choice must explain the panel limit and stay unavailable');
   });
   await page.waitForTimeout(180);
 }
@@ -295,7 +308,7 @@ ${backupCard(s, b)}
   },
   api(url, method) { return payload(url, method); },
   async ready(frame) {
-    await frame.waitForFunction(() => document.querySelectorAll('.cvsel option').length === 2
+    await frame.waitForFunction(() => document.querySelectorAll('.cvsel option').length === 4
       && document.querySelector('#uninst-pkg option[value]') && document.querySelector('#apk-preview button')
       && getComputedStyle(document.querySelector('#radiocard')).display !== 'none'
       && document.querySelector('#radio-status').textContent !== '…');

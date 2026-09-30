@@ -98,6 +98,37 @@ class ReleaseCatalogTest {
         }
     }
 
+    @Test fun cappedPrereleasePickerSearchesPastBlockedPagesBeforeLimitingChoices() {
+        val pages = mutableListOf<Int>()
+        val versions = ReleaseCatalog.listPages("prerelease", 10, "2026.5.4", strip) { page, size ->
+            pages += page
+            assertEquals(50, size)
+            if (page == 1) (1..40).map { Raw("2026.8.$it", true, "notes-$it", "unsafe-$it") } +
+                (1..10).map { Raw("2026.4.$it", true, "missing-$it", null) }
+            else (4 downTo 0).map { Raw("2026.5.$it", true, "safe-notes-$it", "safe-$it") }
+        }
+        assertEquals(listOf(1, 2), pages)
+        assertEquals(6, versions.size)
+        assertEquals("above_panel_limit", versions.first().unavailableReason)
+        assertEquals("2026.5.4", versions.first().maxVersion)
+        assertFalse(versions.first().installable)
+        assertNull(versions.first().apkUrl)
+        assertEquals("2026.5.4", versions[1].tag)
+        assertEquals("safe-4", versions[1].apkUrl)
+        assertTrue(versions.drop(1).all { it.installable })
+    }
+
+    @Test fun parsedReleaseDistinguishesOlderIdentityFromMissingCompatibleDownload() {
+        val legacy = org.json.JSONObject("""{"tag_name":"v0.9.7","assets":[{"name":"ha-paneld-v0.9.7.apk","browser_download_url":"legacy"}]}""")
+        val noAsset = org.json.JSONObject("""{"tag_name":"v0.9.9","assets":[]}""")
+        val parsed = listOf(legacy, noAsset).map {
+            ReleaseCatalog.raw(it, SelfUpdater::isSuccessorAsset) { name -> name.startsWith("ha-paneld-") && name.endsWith(".apk") }
+        }
+        val versions = ReleaseCatalog.select(parsed, "stable", 10, strip)
+        assertEquals(listOf("older_app_id", "no_matching_asset"), versions.map { it.unavailableReason })
+        assertTrue(versions.all { !it.installable && it.apkUrl == null })
+    }
+
     private fun assertThrowsByteLimit(block: () -> Unit) {
         try {
             block()

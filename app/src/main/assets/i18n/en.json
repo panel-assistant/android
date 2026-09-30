@@ -6264,7 +6264,10 @@
       "risk": "consequential",
       "siblings": [],
       "placeholders": [],
-      "frozen": ["Termux", "Zigbee"],
+      "frozen": [
+        "Termux",
+        "Zigbee"
+      ],
       "softMaxChars": 170,
       "hardMaxChars": 230
     },
@@ -21453,6 +21456,23 @@
       "softMaxChars": 20,
       "hardMaxChars": 40
     },
+    "install.progress.above_panel_limit": {
+      "text": "(not supported by this panel; limit {version})",
+      "sourceHash": "a14c1aa4a6cb78d026bbe5e8505b15a7cbfd968c4f66ddee74979f2f024ca2fd",
+      "surface": "install",
+      "context": "Version-picker suffix: this release is unsupported by the panel profile; version is the maximum supported release.",
+      "risk": "ordinary",
+      "siblings": [
+        "install.progress.no_matching_asset",
+        "install.progress.older_app_id"
+      ],
+      "placeholders": [
+        "{version}"
+      ],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 100
+    },
     "install.progress.approval_retry": {
       "text": "Approve this request on the panel, then retry it.",
       "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
@@ -21602,19 +21622,20 @@
       "softMaxChars": 31,
       "hardMaxChars": 56
     },
-    "install.progress.no_apk": {
-      "text": "(no APK)",
-      "sourceHash": "0f10f590a397a5a0da926e9bfcd1fef3ccfadeba12684a9a0ad08eb0dc6b8814",
+    "install.progress.no_matching_asset": {
+      "text": "(no compatible download)",
+      "sourceHash": "9d806c9d5fa601707407b587c6224339b52d90444e6ddfac6d573e0975f9b36c",
       "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
+      "context": "Version-picker suffix: this release has no downloadable APK compatible with the panel.",
       "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "APK"
+      "siblings": [
+        "install.progress.older_app_id",
+        "install.progress.above_panel_limit"
       ],
-      "softMaxChars": 20,
-      "hardMaxChars": 40
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 100
     },
     "install.progress.no_versions": {
       "text": "no versions found",
@@ -21627,6 +21648,21 @@
       "frozen": [],
       "softMaxChars": 20,
       "hardMaxChars": 40
+    },
+    "install.progress.older_app_id": {
+      "text": "(older app, cannot replace this one)",
+      "sourceHash": "04157b3e1449c93f40152094fd704bbea344bedfd3bfac1f3c385e0dab56ed2b",
+      "surface": "install",
+      "context": "Version-picker suffix: this release uses an older application identity and cannot replace the installed application.",
+      "risk": "ordinary",
+      "siblings": [
+        "install.progress.no_matching_asset",
+        "install.progress.above_panel_limit"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 100
     },
     "install.progress.operation_busy": {
       "text": "Another operation is running — try again shortly.",

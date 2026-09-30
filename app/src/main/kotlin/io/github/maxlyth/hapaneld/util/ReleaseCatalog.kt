@@ -19,7 +19,7 @@ object ReleaseCatalog {
     internal const val MAX_API_RESPONSE_BYTES = 2L * 1024L * 1024L
 
     /** A raw release as read from the API, before channel filtering. */
-    data class Raw(val tag: String, val prerelease: Boolean, val notesUrl: String, val apkUrl: String?)
+    data class Raw(val tag: String, val prerelease: Boolean, val notesUrl: String, val apkUrl: String?, val olderAppId: Boolean = false)
 
     /** A pickable version for the UI: [version] is the display label, [tag] the API/install key. */
     data class Version(
@@ -30,6 +30,8 @@ object ReleaseCatalog {
         // Direct APK asset URL (null when the release ships none) — surfaced so a NO-ROOT panel's
         // Install tab can offer the download for a manual `adb install -r` from the admin machine.
         val apkUrl: String? = null,
+        val unavailableReason: String? = if (installable) null else "no_matching_asset",
+        val maxVersion: String? = null,
     )
 
     /** One installable release, retaining the source tag alongside its normalised display version.
@@ -58,7 +60,8 @@ object ReleaseCatalog {
         raw.asSequence()
             .filter { channel == "prerelease" || !it.prerelease }
             .take(limit)
-            .map { Version(normalize(it.tag), it.tag, it.notesUrl, it.apkUrl != null, it.apkUrl) }
+            .map { Version(normalize(it.tag), it.tag, it.notesUrl, it.apkUrl != null, it.apkUrl,
+                if (it.apkUrl != null) null else if (it.olderAppId) "older_app_id" else "no_matching_asset") }
             .toList()
 
     /** The newest release on [channel], preserving the release object as the authority boundary. Keeping
@@ -74,10 +77,47 @@ object ReleaseCatalog {
      *  (home-assistant/android) publish many betas between stable tags, so the last [limit] releases may
      *  hold only a couple of stable ones. Fetch a larger page for the stable channel so [limit] stable
      *  versions still surface; the prerelease channel keeps everything, so one page of [limit] is enough. */
-    fun list(repo: String, channel: String, limit: Int, apkMatch: (String) -> Boolean, normalize: (String) -> String): List<Version> {
-        val perPage = pageSize(channel, limit)
-        return runCatching { select(fetch(repo, perPage, apkMatch), channel, limit, normalize) }
-            .getOrElse { Log.w(TAG, "list $repo failed", it); emptyList() }
+    fun list(
+        repo: String,
+        channel: String,
+        limit: Int,
+        apkMatch: (String) -> Boolean,
+        olderAppMatch: ((String) -> Boolean)? = null,
+        maxVersion: String? = null,
+        normalize: (String) -> String,
+    ): List<Version> = runCatching {
+        listPages(channel, limit, maxVersion, normalize) { page, perPage ->
+            fetch(repo, perPage, apkMatch, page, olderAppMatch)
+        }
+    }.getOrElse { Log.w(TAG, "list $repo failed", it); emptyList() }
+
+    /** Capped pickers keep one recent blocked release and apply the limit to compliant releases.
+     * Paging is bounded; the Companion caller retains its exact known-good cap fallback. */
+    internal fun listPages(
+        channel: String,
+        limit: Int,
+        maxVersion: String?,
+        normalize: (String) -> String,
+        fetchPage: (Int, Int) -> List<Raw>,
+    ): List<Version> {
+        if (limit <= 0) return emptyList()
+        if (maxVersion == null) return select(fetchPage(1, pageSize(channel, limit)), channel, limit, normalize)
+        val compliant = mutableListOf<Version>()
+        var blocked: Version? = null
+        for (page in 1..4) {
+            val raw = fetchPage(page, MAX_STABLE_PAGE)
+            for (version in select(raw, channel, raw.size, normalize)) {
+                if (CompanionInstaller.withinCap(version.version, maxVersion) && version.installable) {
+                    if (compliant.size < limit) compliant += version
+                } else if (blocked == null) {
+                    blocked = if (CompanionInstaller.withinCap(version.version, maxVersion)) version else
+                        version.copy(installable = false, apkUrl = null,
+                            unavailableReason = "above_panel_limit", maxVersion = maxVersion)
+                }
+            }
+            if (compliant.size >= limit || raw.size < MAX_STABLE_PAGE) break
+        }
+        return listOfNotNull(blocked) + compliant
     }
 
     /**
@@ -134,17 +174,19 @@ object ReleaseCatalog {
             ApkTarget(normalize(release.tag), release.tag, apk, release.prerelease)
         }
 
-    private fun fetch(repo: String, limit: Int, apkMatch: (String) -> Boolean): List<Raw> {
-        val json = get("https://api.github.com/repos/$repo/releases?per_page=$limit") ?: return emptyList()
+    private fun fetch(repo: String, limit: Int, apkMatch: (String) -> Boolean,
+        page: Int = 1, olderAppMatch: ((String) -> Boolean)? = null): List<Raw> {
+        val json = get("https://api.github.com/repos/$repo/releases?per_page=$limit&page=$page") ?: return emptyList()
         val arr = JSONArray(json)
-        return (0 until arr.length()).map { i -> raw(arr.getJSONObject(i), apkMatch) }
+        return (0 until arr.length()).map { i -> raw(arr.getJSONObject(i), apkMatch, olderAppMatch) }
     }
 
-    private fun raw(release: JSONObject, apkMatch: (String) -> Boolean): Raw = Raw(
+    internal fun raw(release: JSONObject, apkMatch: (String) -> Boolean, olderAppMatch: ((String) -> Boolean)? = null): Raw = Raw(
         release.getString("tag_name"),
         release.optBoolean("prerelease", false),
         release.optString("html_url", ""),
         assetUrl(release, apkMatch),
+        olderAppMatch?.let { assetUrl(release, it) != null } ?: false,
     )
 
     private fun assetUrl(release: JSONObject, apkMatch: (String) -> Boolean): String? {
