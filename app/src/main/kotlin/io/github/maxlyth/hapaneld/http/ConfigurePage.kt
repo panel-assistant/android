@@ -18,6 +18,14 @@ $proximityMount</div>
 <div id="cfg-help" class="cfg-help" popover="manual" role="dialog" aria-labelledby="cfg-help-title"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" class="cfg-help-close" type="button" aria-label="${esc(strings.get("configure.help.close"))}">×</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more" target="_blank" rel="noopener">${esc(strings.get("configure.help.more"))}</a></div></div>
 <script src="assets/card-size-memory.js"></script>
 <script src="assets/card-column-alignment.js"></script>
+<script src="assets/configure-state.js"></script>
+<script src="assets/configure-view.js"></script>
+<script src="assets/configure-help.js"></script>
+<script src="assets/configure-controls.js"></script>
+<script src="assets/configure-brightness.js"></script>
+<script src="assets/configure-auto-sleep.js"></script>
+<script src="assets/configure-cards.js"></script>
+<script src="assets/configure-render.js"></script>
 <script src="assets/configure.js"></script>
 $proximityScript"""
 }

@@ -28,7 +28,7 @@ function fixture(translations = {}, locale = 'en') {
       var catalogue=${JSON.stringify(translations)},text=Object.prototype.hasOwnProperty.call(catalogue,key)?catalogue[key]:fallback;
       return String(text).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
     }};</script>
-    ${ADVANCED_VIEW}<script src="/configure.js"></script><script src="/proximity-learning.js"></script>
+    ${ADVANCED_VIEW}<script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
 }
 
@@ -41,7 +41,7 @@ function configureVisualFixture() {
     <div id="cfg-groups" class="cards" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1"></div>
     <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn" onclick="cfgSave()"></button></div>${HELP_POPOVER}
     <script src="/assets/card-size-memory.js"></script><script src="/assets/card-column-alignment.js"></script>
-    ${ADVANCED_VIEW}<script src="/configure.js"></script><script src="/proximity-learning.js"></script>
+    ${ADVANCED_VIEW}<script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
 }
 
@@ -51,7 +51,7 @@ async function startHarness(routes, pageFixture = fixture, assetDelayMs = 0) {
   const server = createServer(async (request, response) => {
     const path = new URL(request.url, 'http://panel.test').pathname;
     if (path === '/') return response.end(pageFixture());
-    if (['/configure.js', '/proximity-learning.js', '/install.js', '/info.js', '/power-safety.js'].includes(path)) {
+    if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js', '/proximity-learning.js', '/install.js', '/info.js', '/power-safety.js'].includes(path)) {
       response.setHeader('content-type', 'application/javascript; charset=utf-8');
       return response.end(await readFile(join(root, path.slice(1)), 'utf8'));
     }
@@ -888,7 +888,7 @@ function configureCardMemoryFixture(compact) {
     <div id="cfg-groups" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1" data-card-size-proximity="0"></div>
     <div id="savebar" hidden><button id="savebtn"></button></div>
     <script src="/assets/card-size-memory.js"></script><script>window.__alignmentCalls=0;window.CardColumnAlignment={attach:()=>()=>window.__alignmentCalls++};</script>
-    ${ADVANCED_VIEW}<script src="/configure.js"></script></body></html>`;
+    ${ADVANCED_VIEW}<script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script></body></html>`;
 }
 
 function installCardMemoryFixture(compact) {
