@@ -6688,9 +6688,19 @@
    "sourceHash": "01a4ff5d87ed48050e644839b4a4f605a5e38cb16e9efd286fe4aa633e68618e",
    "state": "machine-cross-checked"
   },
-  "install.progress.no_apk": {
-   "text": "(brak APK)",
-   "sourceHash": "0f10f590a397a5a0da926e9bfcd1fef3ccfadeba12684a9a0ad08eb0dc6b8814",
+  "install.progress.no_matching_asset": {
+   "text": "(brak zgodnego pliku do pobrania)",
+   "sourceHash": "9d806c9d5fa601707407b587c6224339b52d90444e6ddfac6d573e0975f9b36c",
+   "state": "machine-cross-checked"
+  },
+  "install.progress.older_app_id": {
+   "text": "(starsza aplikacja, nie może zastąpić tej)",
+   "sourceHash": "04157b3e1449c93f40152094fd704bbea344bedfd3bfac1f3c385e0dab56ed2b",
+   "state": "machine-cross-checked"
+  },
+  "install.progress.above_panel_limit": {
+   "text": "(ten panel nie obsługuje tej wersji; limit {version})",
+   "sourceHash": "a14c1aa4a6cb78d026bbe5e8505b15a7cbfd968c4f66ddee74979f2f024ca2fd",
    "state": "machine-cross-checked"
   },
   "install.progress.no_versions": {
