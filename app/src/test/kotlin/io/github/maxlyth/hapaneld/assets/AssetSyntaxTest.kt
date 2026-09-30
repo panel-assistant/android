@@ -409,7 +409,7 @@ class AssetSyntaxTest {
             const ids={};['cfg-groups','cfg-status','cfg-msg','savebtn','savebar','tab-basic','tab-adv'].forEach(k=>ids[k]=element(k));
             global.document={
               body:element('body'),
-              getElementById:k=>ids[k]||(ids[k]=element(k)),createElement:tag=>element(tag),
+              getElementById:k=>ids[k]||(ids[k]=element(k)),createElement:tag=>element(tag),createTextNode:text=>({nodeType:3,textContent:text}),
               querySelector(sel){if(sel==='.nav a[href^="/entities"]')return navEnabled?navNode:null;if(sel==='.nav span.disabled-tab')return navEnabled?null:navNode;return null}
             };
             global.location={hash:'',reload(){reloads++}};
@@ -477,7 +477,7 @@ class AssetSyntaxTest {
             const nav=element('div');navNode=element('a');nav.appendChild(navNode);navEnabled=true;
             const ids={};['cfg-groups','cfg-status','cfg-msg','savebtn','savebar','tab-basic','tab-adv'].forEach(k=>ids[k]=element(k));
             const body=element('body');
-            global.document={body,title:'Panel · Configure',getElementById:k=>ids[k]||(ids[k]=element(k)),createElement:tag=>element(tag),
+            global.document={body,title:'Panel · Configure',getElementById:k=>ids[k]||(ids[k]=element(k)),createElement:tag=>element(tag),createTextNode:text=>({nodeType:3,textContent:text}),
               querySelector(sel){if(sel==='.nav a[href^="/entities"]')return navEnabled?navNode:null;if(sel==='.nav span.disabled-tab')return navEnabled?null:navNode;return null}};
             global.location={hash:'',reload(){reloads++}};global.window=global;
             global.setTimeout=fn=>{setImmediate(fn);return 1};global.clearTimeout=()=>{};

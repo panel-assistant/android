@@ -213,6 +213,8 @@ internal class ConfigValueProjection(
             val help = helpKey?.let(strings::resolve)
             val helpKeyJson = helpKey?.let(::s) ?: nullJson
             val helpLanguageJson = help?.language?.let(::s) ?: nullJson
+            val summary = spec.summary.takeIf { it.isNotEmpty() }?.let { strings.resolve(spec.summaryKey) }
+            val summaryLanguageJson = summary?.language?.let(::s) ?: nullJson
             "{" +
                 "\"key\":${s(spec.key)}," +
                 "\"type\":${s(spec.type.name)}," +
@@ -223,6 +225,8 @@ internal class ConfigValueProjection(
                 "\"labelLanguage\":${s(label.language)}," +
                 "\"help\":${s(help?.text.orEmpty())}," +
                 "\"helpLanguage\":$helpLanguageJson," +
+                "\"summary\":${s(summary?.text.orEmpty())}," +
+                "\"summaryLanguage\":$summaryLanguageJson," +
                 "\"default\":${s(spec.default)}," +
                 "\"tier\":${s(spec.tierFor(caps).name)}," +
                 "\"scope\":${s(spec.scope.name)}," +

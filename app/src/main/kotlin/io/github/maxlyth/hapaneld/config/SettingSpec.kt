@@ -264,6 +264,9 @@ class HaDiscovery internal constructor(private val channel: String) {
     }
 }
 
+/** Hard length budget for [SettingSpec.summary]; the catalogue carries the same budget to every locale. */
+const val SUMMARY_HARD_MAX_CHARS = 90
+
 /**
  * One configuration setting. [key] is the durable-state key, the `/api/v1/config` field name,
  * and the bundle key. [default] is the canonical string form (typed reads coerce it).
@@ -274,8 +277,12 @@ data class SettingSpec(
     val group: String,                       // UI grouping ("Identity", "MQTT", "Behaviour", "Display", "System", "Logging")
     val label: String,
     val help: String = "",
+    // One line under the label on Configure; [help] opens behind the info button. Every visible
+    // setting needs one; hidden API-only settings never render and carry none.
+    val summary: String = "",
     val default: String,
-    val tier: Tier = Tier.ADVANCED,
+    // No default: every setting states whether it belongs on the basic view.
+    val tier: Tier,
     // Fleet imports are intentionally fail-closed: a new setting stays local until its author
     // explicitly confirms that copying it to every panel is safe.
     val scope: Scope = Scope.DEVICE,
@@ -333,7 +340,13 @@ data class SettingSpec(
     /** Stable catalogue ids derived from the durable setting key, never from editable English copy. */
     val labelKey: String get() = "settings.$key.label"
     val helpKey: String get() = "settings.$key.help"
+    val summaryKey: String get() = "settings.$key.summary"
     val promotedHelpKey: String get() = "settings.$key.promoted_help"
+
+    init {
+        require(hidden || summary.isNotBlank()) { "$key: a visible setting needs a summary" }
+        require(summary.length <= SUMMARY_HARD_MAX_CHARS) { "$key: summary over $SUMMARY_HARD_MAX_CHARS characters" }
+    }
 
     /** True for publish-only sensor entities that have no settable value. */
     val readOnly: Boolean get() = ha?.readOnly == true

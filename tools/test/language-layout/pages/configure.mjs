@@ -55,6 +55,8 @@ function schema(s) {
     labelLanguage: s.locale,
     help: spec.help && s.has(`settings.${spec.key}.help`) ? s.text(`settings.${spec.key}.help`) : '',
     helpLanguage: spec.help ? s.locale : null,
+    summary: s.has(`settings.${spec.key}.summary`) ? s.text(`settings.${spec.key}.summary`) : '',
+    summaryLanguage: s.locale,
     default: '', tier: 'ADVANCED', scope: 'DEVICE', secret: spec.secret, readOnly: false, available: true,
     displaySizingAvailable: spec.key === 'dashboard_zoom',
     options: spec.options.length ? spec.options : (spec.type === 'ENUM' ? ['auto'] : []),
@@ -128,12 +130,13 @@ export default {
   html(context) {
     const { s } = context;
     const body = `
-<div class="cfg-tabs" style="display:none"><button id="tab-basic" onclick="cfgTab(false)">${s.t('configure.tab.basic')}</button><button id="tab-adv" class="on" onclick="cfgTab(true)">${s.t('configure.tab.advanced')}</button></div>
+<div id="cfg-tools" class="cfg-tools" data-app-version="0.0.0"><input id="cfg-filter" class="cfg-filter" type="search" autocomplete="off" placeholder="${s.t('configure.filter.placeholder')}" aria-label="${s.t('configure.filter.label')}"><div class="cfg-seg" role="radiogroup" aria-label="${s.t('configure.tier.label')}"><label><input type="radio" name="cfg-tier" id="tier-basic" value="basic" checked>${s.t('configure.tab.basic')}</label><label><input type="radio" name="cfg-tier" id="tier-adv" value="advanced">${s.t('configure.tab.advanced')}</label></div><label class="cfg-desc-switch"><input type="checkbox" id="cfg-desc" checked><span class="cfg-desc-track" aria-hidden="true"></span>${s.t('configure.descriptions')}</label><span id="cfg-count" class="muted cfg-count" aria-live="polite"></span></div>
 <div id="cfg-status" class="muted" style="margin-bottom:10px">${s.t('configure.status.loading')}</div>
 <div id="cfg-all-cards">
 <div id="cfg-groups" class="cards" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1" data-card-size-proximity="0"></div>
 </div>
 <div id="savebar" class="savebar" role="region" aria-label="${s.t('configure.unsaved.label')}" hidden><button id="savebtn" type="button" disabled onclick="cfgSave()">${s.t('configure.action.save')}</button><span id="cfg-msg" class="muted" role="status" aria-live="polite" aria-atomic="true"></span></div>
+<div id="cfg-help" class="cfg-help" popover="manual" role="dialog" aria-labelledby="cfg-help-title"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" class="cfg-help-close" type="button" aria-label="${s.t('configure.help.close')}">×</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more" target="_blank" rel="noopener">${s.t('configure.help.more')}</a></div></div>
 <script src="assets/card-size-memory.js"></script>
 <script src="assets/card-column-alignment.js"></script>
 <script src="assets/configure.js"></script>`;
@@ -141,6 +144,9 @@ export default {
   },
   api(url, method, context) { return api.call(context.s, url); },
   async ready(frame) {
+    // Measure every row in every locale: the gate reads the Advanced view, which holds all of them.
+    await frame.waitForFunction(() => typeof window.cfgTab === 'function');
+    await frame.evaluate(() => window.cfgTab(true));
     await frame.waitForFunction(() => document.querySelectorAll('#cfg-groups .card').length >= 6 && document.querySelector('.auto-sleep-lane.source'));
   },
 };
