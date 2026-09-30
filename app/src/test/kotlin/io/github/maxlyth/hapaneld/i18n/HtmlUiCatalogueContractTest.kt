@@ -32,7 +32,7 @@ class HtmlUiCatalogueContractTest {
                 ).filterTo(sortedSetOf()) { it.startsWith("dashboard.") },
             "configure" to (
                 literalKeys(serverSource, "strings\\.get") +
-                    literalKeys(File(assets, "configure.js").readText(), "i18nText") +
+                    assets.listFiles { file -> file.name == "configure.js" || (file.name.startsWith("configure-") && file.extension == "js") }!!.flatMap { file -> literalKeys(file.readText(), "i18nText") } +
                     literalKeys(File(assets, "proximity-learning.js").readText(), "t").filterNot { it.endsWith(".") }
                 ).filterTo(sortedSetOf()) { it.startsWith("configure.") },
             "profiles" to (

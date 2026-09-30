@@ -25,7 +25,10 @@ class BaseRelativeUrlContractTest {
         "profiles.js" to setOf("/", "/revisions/", "/report", "/probe", "/import", "/template", "/device-draft", "/rollback", "/select", "/delete", "/schema"),
         // Home Assistant dashboard routes and their placeholder, not panel URLs.
         "setup.js" to setOf("/", "/dashboard-name/tab-name"),
-        "configure.js" to setOf("/", "/dashboard-name/tab-name", "/live"),
+        "configure-state.js" to setOf("/"),
+        "configure-controls.js" to setOf("/dashboard-name/tab-name"),
+        // RTSP stream path appended to the page host, not a panel HTTP URL.
+        "configure-help.js" to setOf("/live"),
     )
 
     private val scriptLiteral = Regex("""(?<![\w\\])(["'`])(/(?:[A-Za-z_?#][^"'`\s]*)?)\1""")

@@ -25,7 +25,7 @@ function page() {
     <div id="cfg-help" class="cfg-help" popover="manual" role="dialog"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" class="cfg-help-close" type="button">x</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more">More on the website</a></div></div>
     </div>
     <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>
-    <script src="/card-size-memory.js"></script><script src="/configure.js"></script>
+    <script src="/card-size-memory.js"></script><script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script>
   </body></html>`;
 }
 
@@ -50,7 +50,7 @@ async function harness() {
     const path = new URL(request.url, 'http://panel.test').pathname;
     const send = (body, type = 'application/json') => { response.setHeader('content-type', type); response.end(body); };
     if (path === '/') return send(page(), 'text/html');
-    if (['/configure.js', '/card-size-memory.js'].includes(path)) return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
+    if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js', '/card-size-memory.js'].includes(path)) return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
     if (path === '/api/v1/config/schema') return send(JSON.stringify(SCHEMA));
     if (path === '/api/v1/config') return send(JSON.stringify({ settings: Object.fromEntries(SCHEMA.map((f) => [f.key, 'false'])), ha_expose: {}, ha_auth: { configured: false } }));

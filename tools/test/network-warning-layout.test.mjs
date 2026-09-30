@@ -19,7 +19,7 @@ function page(kind) {
       <div id="cfg-groups" class="cards"></div><div id="proximity-learning-mount"></div>
       <div id="savebar" hidden><button id="savebtn"></button></div>
       <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>
-      <script src="/configure.js"></script><script src="/proximity-learning.js"></script>`
+      <script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script><script src="/proximity-learning.js"></script>`
     : `<div class="cards"><section class="card" id="nettbl"><h2>${wording('dashboard.card.networking')}</h2>
       <table><tbody><tr><th>HA network path</th><td>warning</td></tr></tbody></table>
       <p class="note" id="guidance">${wording('dashboard.networking.warning_guidance')}</p></section></div>`;
@@ -32,7 +32,7 @@ async function harness() {
     const path = new URL(request.url, 'http://panel.test').pathname;
     const send = (body, type = 'application/json') => { response.setHeader('content-type', type); response.end(body); };
     if (path === '/configure' || path === '/status') return send(page(path.slice(1)), 'text/html');
-    if (path === '/configure.js' || path === '/proximity-learning.js')
+    if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js'].includes(path) || path === '/proximity-learning.js')
       return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
     if (path === '/api/v1/config/schema') return send(JSON.stringify([{

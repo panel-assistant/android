@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
 
-const asset = fileURLToPath(new URL('../../app/src/main/assets/configure.js', import.meta.url));
+const assets = fileURLToPath(new URL('../../app/src/main/assets/', import.meta.url));
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const browserTest = existsSync(chrome) ? test : test.skip;
 const authorizationUrl = 'http://ha.local:8123/auth/authorize?client_id=http%3A%2F%2Fpanel.local%3A8888%2F&state=one-use';
@@ -17,12 +17,12 @@ browserTest('embedded Configure gives a copyable panel-owned authorization URL a
     const path = new URL(request.url, 'http://panel.test').pathname;
     if (path === '/') {
       response.setHeader('content-type', 'text/html');
-      response.end(`<!doctype html><html><body data-embedded><button id="tab-basic"></button><button id="tab-adv"></button><p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups"></div><div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div><script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/configure.js"></script></body></html>`);
+      response.end(`<!doctype html><html><body data-embedded><button id="tab-basic"></button><button id="tab-adv"></button><p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups"></div><div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div><script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script></body></html>`);
       return;
     }
-    if (path === '/configure.js') {
+    if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js'].includes(path)) {
       response.setHeader('content-type', 'application/javascript');
-      response.end(await readFile(asset, 'utf8'));
+      response.end(await readFile(assets + path.slice(1), 'utf8'));
       return;
     }
     if (path === '/api/v1/config/schema') {
