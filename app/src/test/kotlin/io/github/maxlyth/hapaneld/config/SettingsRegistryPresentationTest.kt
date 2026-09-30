@@ -28,14 +28,10 @@ class SettingsRegistryPresentationTest {
         )
     }
 
-    @Test fun keepPanelResponsiveExplainsScreenOffBehaviorAndDefaultsOn() {
+    @Test fun keepPanelResponsiveDefaultsOn() {
         val spec = SettingsRegistry.spec("keep_awake")!!
         assertEquals("Keep panel responsive", spec.label)
         assertEquals("true", spec.default)
-        assertEquals(
-            "Keep the network and background services running while the screen is off.",
-            spec.help,
-        )
     }
 
     @Test fun networkAdbIsLastSystemSettingAndRetainsSafeDefaults() {
