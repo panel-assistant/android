@@ -78,12 +78,12 @@ for (const engine of engines) {
           await view.evaluate((isAdvanced) => window.cfgTab(isAdvanced), advanced);
           await view.locator('#cfg-friendly_name').waitFor();
           const viewName = advanced ? 'Advanced' : 'Basic';
-          if (mqttVisible) {
+          if (mqttVisible && advanced) {
             assert.equal(await view.locator('[data-config-group="MQTT"]').count(), 1, `${authority} retains the MQTT card in ${viewName}`);
-            if (advanced) await view.locator('#cfg-mqtt_address_family').waitFor();
-            else await view.locator('#cfg-mqtt_broker').waitFor();
+            await view.locator('#cfg-mqtt_address_family').waitFor();
+            await view.locator('#cfg-mqtt_broker').waitFor();
           } else {
-            assert.equal(await view.locator('[data-config-group="MQTT"]').count(), 0, `${authority} removes the MQTT card in ${viewName} despite its saved broker`);
+            assert.equal(await view.locator('[data-config-group="MQTT"]').count(), 0, `${authority} hides the MQTT card in ${viewName}`);
             assert.equal(await view.locator('#cfg-mqtt_broker').count(), 0, `${authority} does not leave the broker row behind in ${viewName}`);
             assert.equal(await view.locator('#cfg-mqtt_address_family').count(), 0, `${authority} does not leave the address-family row behind in ${viewName}`);
           }
