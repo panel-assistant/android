@@ -209,6 +209,56 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.advanced.hide": {
+      "text": "Hide advanced settings",
+      "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
+      "surface": "configure",
+      "context": "Configure card footer button hiding the card's advanced settings again",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 28,
+      "hardMaxChars": 40
+    },
+    "configure.advanced.marker": {
+      "text": "Advanced setting",
+      "sourceHash": "1ecce239dd12663aefa9aca6f9af9ded4bbd836f31b92c0d7ee13fa8be70863c",
+      "surface": "configure",
+      "context": "Tooltip on the small diamond marking an advanced setting",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 20,
+      "hardMaxChars": 32
+    },
+    "configure.advanced.show": {
+      "text": "Show {count} advanced settings",
+      "sourceHash": "9434fab91d8b47be7204cbac457ef3d8a6deb989c492c3a3fd07cd7fc3f234a1",
+      "surface": "configure",
+      "context": "Configure card footer button revealing the card's hidden advanced settings",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{count}"
+      ],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 44
+    },
+    "configure.advanced.show_one": {
+      "text": "Show 1 advanced setting",
+      "sourceHash": "4ced5c73c9386e299ffb7140a1e4bfd886389649307b9e6b3be1986ca73433fd",
+      "surface": "configure",
+      "context": "Configure card footer button revealing the card's single hidden advanced setting",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 28,
+      "hardMaxChars": 40
+    },
     "configure.approval.retry": {
       "text": "Approve this request on the panel, then retry it.",
       "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
@@ -2165,6 +2215,21 @@
       "softMaxChars": 137,
       "hardMaxChars": 196
     },
+    "configure.count": {
+      "text": "{shown} of {total} settings",
+      "sourceHash": "008c615d1450fdf967b53f126d4ebbd4e9c56c0d94579bc390414704d627d2dc",
+      "surface": "configure",
+      "context": "Configure tools row: how many settings are visible after the tier and filter",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{shown}",
+        "{total}"
+      ],
+      "frozen": [],
+      "softMaxChars": 28,
+      "hardMaxChars": 40
+    },
     "configure.dashboard.auto_account_default": {
       "text": "Auto — follow this account’s default",
       "sourceHash": "b049c63a3b2b17956fa93993993be49fef42b7b5be21a0272ee5fa4c2a8f1eef",
@@ -2335,6 +2400,18 @@
       ],
       "softMaxChars": 175,
       "hardMaxChars": 252
+    },
+    "configure.descriptions": {
+      "text": "Descriptions",
+      "sourceHash": "bfdc0de709bad8dae81cdf3af8d97f1d6e5b2510af3c97befd5efdf06d144e3b",
+      "surface": "configure",
+      "context": "Configure tools row: switch that shows or hides the one-line summary under every setting label",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 16,
+      "hardMaxChars": 24
     },
     "configure.display.recommend_prefix": {
       "text": " Recommend use ",
@@ -2952,6 +3029,30 @@
       "softMaxChars": 52,
       "hardMaxChars": 74
     },
+    "configure.filter.label": {
+      "text": "Find a setting",
+      "sourceHash": "556e14934a4a4550aa43766e0f576030549cd26062f8817fd77da448fd5a7df9",
+      "surface": "configure",
+      "context": "Configure tools row: accessible name of the settings filter box",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 36
+    },
+    "configure.filter.placeholder": {
+      "text": "Find a setting…",
+      "sourceHash": "ca4431193303dd52b89f68f0bf95e20f84c566ee4e39fadaaaa8c4b063646118",
+      "surface": "configure",
+      "context": "Configure tools row: placeholder in the box that filters settings by label, summary and help",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 36
+    },
     "configure.group.auto_sleep": {
       "text": "Auto-sleep",
       "sourceHash": "ffa395b8fc89398516172e390d9e37039d65a7421abeeafd6d7c1931dbaaa084",
@@ -3147,6 +3248,44 @@
       "frozen": [],
       "softMaxChars": 114,
       "hardMaxChars": 164
+    },
+    "configure.help.about": {
+      "text": "About {label}",
+      "sourceHash": "865cb604bf97d2ebd9a36bc4166170c23c9c36bd26c9da89e9d909e15d83df11",
+      "surface": "configure",
+      "context": "Accessible name of the info button that opens a setting's full help; {label} is the setting label",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{label}"
+      ],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 48
+    },
+    "configure.help.close": {
+      "text": "Close",
+      "sourceHash": "7d9eb7acb13e24625c404401d8e88b2350e32162455885f18276cf802f7701ed",
+      "surface": "configure",
+      "context": "Close button on a setting's full-help popover",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 10,
+      "hardMaxChars": 16
+    },
+    "configure.help.more": {
+      "text": "More on the website",
+      "sourceHash": "85a7086e3ef77e8a6ffe36a45b39c3847e3b5e2c5a307cf4e2ca831f78969c87",
+      "surface": "configure",
+      "context": "Link at the end of a setting's full help, to the settings reference on the project website",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 36
     },
     "configure.language.automatic": {
       "text": "Automatic",
@@ -5236,6 +5375,18 @@
       "frozen": [],
       "softMaxChars": 12,
       "hardMaxChars": 24
+    },
+    "configure.tier.label": {
+      "text": "Settings shown",
+      "sourceHash": "9179eb2ff402a88c959d3ab86fe0ac1c7e4e5705c04c29ccc3a57f9c24a02cec",
+      "surface": "configure",
+      "context": "Configure tools row: accessible name of the Basic/Advanced switch",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 36
     },
     "configure.time.days_ago": {
       "text": "{count} days ago",
@@ -30982,6 +31133,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.auto_brightness.summary": {
+      "text": "Let the panel set the backlight from ambient light.",
+      "sourceHash": "57d522af96e04b4db48e8fb5fb8f7ed33385a068a93cd941a026b89fa3fee539",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the auto_brightness setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness.label",
+        "settings.auto_brightness.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.auto_brightness_ha_entity.help": {
       "text": "Blank uses the panel light sensor. Select a Home Assistant illuminance sensor when the panel has no suitable sensor.",
       "sourceHash": "6880e1fea6dee81c8f92542ee7bca6f70b62aecb909cf29b8b43fc5843fb5f9d",
@@ -31012,6 +31178,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 36
     },
+    "settings.auto_brightness_ha_entity.summary": {
+      "text": "Use a Home Assistant light sensor instead of the panel's.",
+      "sourceHash": "703710414afe74c55e969564e23cc7c7f0647d059ffa3237463fa03739902567",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the auto_brightness_ha_entity setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness_ha_entity.label",
+        "settings.auto_brightness_ha_entity.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.auto_brightness_minimum_percent.help": {
       "text": "Lowest automatic screen level as a percentage. Proposals scale from this floor to full brightness; manual brightness can still go lower.",
       "sourceHash": "f867987f4c5e28c720153d3438f9dd602c01a40c89539c5baab444d34bad0ce8",
@@ -31040,9 +31224,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.auto_brightness_minimum_percent.summary": {
+      "text": "Lowest level auto-brightness will choose.",
+      "sourceHash": "766c3d61ea08f66c252698b4d3b14f05cde1e4a97c64e8c4fc112b23557a8fb5",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the auto_brightness_minimum_percent setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness_minimum_percent.label",
+        "settings.auto_brightness_minimum_percent.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.auto_brightness_response_percent.help": {
-      "text": "How much of the difference from the learned ambient-light pattern is applied to the screen, once the engine has decided a change is real. Lower values keep the screen closer to its learned daily pattern. While the pattern is still being learned the screen follows the measured light directly.",
-      "sourceHash": "00483dd404b761c8ab8824f086f8b625edccd837f60da21feb5c8c04c0ca4333",
+      "text": "How much of the difference from the learned ambient-light pattern is applied to the screen, once the engine has decided a change is real.\n\n- Lower values keep the screen closer to its learned daily pattern.\n- While the pattern is still being learned the screen follows the measured light directly.",
+      "sourceHash": "ff745f90fe6123b0741034697f8808ef61f561c1ef46629a5f49540dcda4661b",
       "surface": "settings",
       "context": "Configure > Display > Sensitivity: supporting help for the auto_brightness_response_percent setting.",
       "risk": "ordinary",
@@ -31067,6 +31266,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.auto_brightness_response_percent.summary": {
+      "text": "How strongly the screen follows a real change in room light.",
+      "sourceHash": "264844be6dcbd529b02d2f956995dc97d031228c0590f6018240bdab1a91db0c",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the auto_brightness_response_percent setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness_response_percent.label",
+        "settings.auto_brightness_response_percent.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.auto_sleep.help": {
       "text": "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
@@ -31095,6 +31309,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.auto_sleep.summary": {
+      "text": "Turn the screen off when nobody is around or after inactivity.",
+      "sourceHash": "6ca654fd4bb061b43620b620223404c0befcf61fa2ef2f1318e9d108b2f33b9c",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the auto_sleep setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_sleep.label",
+        "settings.auto_sleep.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.auto_sleep_activity.help": {
       "text": "Whether the auto-sleep policy is currently holding the panel awake. The Home Assistant entity provides the activity history timeline.",
@@ -31126,9 +31355,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 35
     },
+    "settings.auto_sleep_activity.summary": {
+      "text": "Whether auto-sleep is holding the panel awake.",
+      "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the auto_sleep_activity setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_sleep_activity.label",
+        "settings.auto_sleep_activity.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.auto_sleep_source.help": {
-      "text": "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity. Presence modes pause if their source is unavailable; touch inactivity needs no presence setup.",
-      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
+      "text": "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity.\n\n- Presence modes pause if their source is unavailable.\n- Touch inactivity needs no presence setup.",
+      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
       "surface": "settings",
       "context": "Panel proximity presence and Auto-sleep source selection.",
       "risk": "ordinary",
@@ -31151,6 +31395,21 @@
       "frozen": [],
       "softMaxChars": 52,
       "hardMaxChars": 80
+    },
+    "settings.auto_sleep_source.summary": {
+      "text": "What counts as presence: proximity sensor, area or touch.",
+      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
+      "surface": "settings",
+      "context": "Auto-sleep source selection, including panel, Home Assistant Area and touch inactivity.: one-line summary shown under the auto_sleep_source setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_sleep_source.label",
+        "settings.auto_sleep_source.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.auto_sleep_touch_delay_seconds.help": {
       "text": "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
@@ -31175,6 +31434,21 @@
       "frozen": [],
       "softMaxChars": 48,
       "hardMaxChars": 80
+    },
+    "settings.auto_sleep_touch_delay_seconds.summary": {
+      "text": "Seconds without a touch before the screen goes off.",
+      "sourceHash": "ac4a72aa8108adf757c92d42ab1fa992256f3b7cb01929428b463ad75080bf23",
+      "surface": "settings",
+      "context": "Auto-sleep touch inactivity source and fixed delay.: one-line summary shown under the auto_sleep_touch_delay_seconds setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_sleep_touch_delay_seconds.label",
+        "settings.auto_sleep_touch_delay_seconds.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.camera_enabled.help": {
       "text": "Off by default. Serves the panel's camera as a video-only RTSP stream and as a JPEG snapshot for Home Assistant to pull; no frames leave the panel unless a client is connected, and the panel shows a red light whenever the camera is open.",
@@ -31208,6 +31482,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.camera_enabled.summary": {
+      "text": "Serve the panel camera as an RTSP stream and JPEG snapshot.",
+      "sourceHash": "e65ab34035912691390aca7ec68d80e2400983b2ef83350e51ea36c4095a25a2",
+      "surface": "settings",
+      "context": "Configure > Camera: one-line summary shown under the camera_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.camera_enabled.label",
+        "settings.camera_enabled.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "RTSP",
+        "JPEG"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.camera_exposure.help": {
       "text": "Exposure bias in stops, for a camera that reads a room darker or brighter than it looks. 0 leaves the camera's own automatic exposure alone; the panel clamps this to whatever range the sensor actually supports.",
       "sourceHash": "d4e4bf5fd6847ee7dd6f270be1d2caebac7f390231c8208ac96f2f43cb921169",
@@ -31235,6 +31527,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.camera_exposure.summary": {
+      "text": "Exposure bias in stops. 0 leaves auto exposure alone.",
+      "sourceHash": "7c89abca8ecf2cddbc62fe9d25eb4bae95570852ed99f39254e2d008a17f0e5a",
+      "surface": "settings",
+      "context": "Configure > Camera: one-line summary shown under the camera_exposure setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.camera_exposure.label",
+        "settings.camera_exposure.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.camera_fps.help": {
       "text": "What a stream gets when its URL does not ask for something else. A stream URL can override it with ?fps=, in either direction.",
@@ -31266,6 +31573,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.camera_fps.summary": {
+      "text": "Default frame rate; a stream URL can override it.",
+      "sourceHash": "c1101605aebb6489964e7eadeb38593db279b596f2f0d1481853ada2f73c60b8",
+      "surface": "settings",
+      "context": "Configure > Camera: one-line summary shown under the camera_fps setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.camera_fps.label",
+        "settings.camera_fps.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.camera_kbps.help": {
       "text": "What a stream gets when its URL does not ask for something else. A stream URL can override it with ?kbps=, in either direction.",
@@ -31300,6 +31622,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.camera_kbps.summary": {
+      "text": "Default bitrate; a stream URL can override it.",
+      "sourceHash": "ea235ad59bb583ce8b30cb510f4e2d8661a304e9ba6cddd0e2943032d618c971",
+      "surface": "settings",
+      "context": "Configure > Camera: one-line summary shown under the camera_kbps setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.camera_kbps.label",
+        "settings.camera_kbps.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.camera_resolution.help": {
       "text": "What a stream gets when its URL does not ask for something else. A stream URL can override it with ?res=, in either direction.",
       "sourceHash": "5f4cfc2712419d0f122198dfeae6c49d3b6cb094a2a090f14ab1b590963de5fb",
@@ -31330,6 +31667,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.camera_resolution.summary": {
+      "text": "Default stream resolution; a stream URL can override it.",
+      "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
+      "surface": "settings",
+      "context": "Configure > Camera: one-line summary shown under the camera_resolution setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.camera_resolution.label",
+        "settings.camera_resolution.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.companion_auto_update.help": {
       "text": "Install/update the minimal HA Companion over root when missing or out of date.",
@@ -31364,6 +31716,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 38
     },
+    "settings.companion_auto_update.summary": {
+      "text": "Keep the minimal Companion app installed and current (root).",
+      "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the companion_auto_update setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.companion_auto_update.label",
+        "settings.companion_auto_update.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.companion_update_channel.help": {
       "text": "Release channel the Companion auto-updater follows.",
       "sourceHash": "8ed36e3abe564c24ab183ca333b4ad8dbe6bd2119e1ba3bf939f4c7c8dc9a580",
@@ -31395,6 +31762,21 @@
       ],
       "softMaxChars": 40,
       "hardMaxChars": 53
+    },
+    "settings.companion_update_channel.summary": {
+      "text": "Release channel the Companion updater follows.",
+      "sourceHash": "c4186e872750bd0f6d99fc0d00cae01246232c253e74acea5adcda004d12feed",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the companion_update_channel setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.companion_update_channel.label",
+        "settings.companion_update_channel.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.cpu_governor.help": {
       "text": "Live CPU scaling profile until reboot; Auto = the SoC's dynamic governor.",
@@ -31429,9 +31811,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.cpu_governor.summary": {
+      "text": "CPU scaling profile until the next reboot.",
+      "sourceHash": "899d9bfb9f86429bc13165fe8a45bfc78f59149c7a49418b9783f3dc43d63b47",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the cpu_governor setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.cpu_governor.label",
+        "settings.cpu_governor.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.dark_mode.help": {
-      "text": "Themes ha-paneld's own screens and sets the dashboard's default colour scheme on panels without a system dark-mode setting (Android 9 and older). A theme picked inside Home Assistant overrides the dashboard default; this web UI always follows the viewing browser's own preference.",
-      "sourceHash": "a3effc79661edffd5a38a30d82b89c8069d1ddb58c9eeeb0d543995d753333eb",
+      "text": "Themes ha-paneld's own screens and sets the dashboard's default colour scheme on panels without a system dark-mode setting (Android 9 and older).\n\nA theme picked inside Home Assistant overrides the dashboard default; this web UI always follows the viewing browser's own preference.",
+      "sourceHash": "853ed1512986d08ad813002d9cb672dbfcb1261b3b2447bfc4b52301b163c2eb",
       "surface": "settings",
       "context": "Configure > Display > Dark mode: supporting help for the dark_mode setting.",
       "risk": "ordinary",
@@ -31462,6 +31859,23 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.dark_mode.summary": {
+      "text": "Dark theme for ha-paneld's own screens and the dashboard default.",
+      "sourceHash": "796ecaff6531067757b7a3ac15e2483dcd43e3a85af57f0090224ef0c9f5f22a",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the dark_mode setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dark_mode.label",
+        "settings.dark_mode.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ha-paneld"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.dashboard_entity_auto_runtime.help": {
       "text": "Missing entities read through hass.states may be added automatically. Evidence remains visible when disabled.",
@@ -31551,6 +31965,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.dashboard_entity_learning.summary": {
+      "text": "Only stream the entities this dashboard uses.",
+      "sourceHash": "66be8978b2f2634a9b30dc43beeae293aa0d8a0fc4c7c4aa4a8e0186bb9dbf9c",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_entity_learning setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_entity_learning.label",
+        "settings.dashboard_entity_learning.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.dashboard_entity_learning_applied.help": {
       "text": "Backup-safe activation latch. Set after a safe empty-install bootstrap or an explicit apply from the Entities API or tab.",
       "sourceHash": "052ab9a70854284704fadbbe085ea13ef085793d374e851978fa36b1797119a7",
@@ -31610,8 +32039,8 @@
       "hardMaxChars": 42
     },
     "settings.dashboard_fullscreen.help": {
-      "text": "Built-in renderer only. Hides Android's status and navigation bars while the dashboard is in front; swipe from an edge to reveal them temporarily. It does not lock the panel or hide Home Assistant navigation.",
-      "sourceHash": "12e06707302926f7af77d4589d668001ca7bfe463212db6755390a8770a106c8",
+      "text": "Built-in renderer only. Hides Android's status and navigation bars while the dashboard is in front; swipe from an edge to reveal them temporarily.\n\nIt does not lock the panel or hide Home Assistant navigation.",
+      "sourceHash": "c410a8d3eb3474145a680214c11fac9bb2e096eeae2742daf1e0fbdd74726f8e",
       "surface": "settings",
       "context": "Configure > Dashboard > Hide Android system bars: supporting help for the dashboard_fullscreen setting.",
       "risk": "ordinary",
@@ -31641,6 +32070,21 @@
       ],
       "softMaxChars": 33,
       "hardMaxChars": 44
+    },
+    "settings.dashboard_fullscreen.summary": {
+      "text": "Hide Android's status and navigation bars behind the dashboard.",
+      "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_fullscreen setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_fullscreen.label",
+        "settings.dashboard_fullscreen.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.dashboard_idle_return_min.help": {
       "text": "Built-in renderer: return to Home dashboard after this many idle minutes. 0 = off.",
@@ -31672,9 +32116,24 @@
       "softMaxChars": 34,
       "hardMaxChars": 45
     },
+    "settings.dashboard_idle_return_min.summary": {
+      "text": "Minutes idle before returning home. 0 turns it off.",
+      "sourceHash": "c09a7ad02ecc153c31c694acf64312f9b69bc920fad09a62091730ac4f61d05c",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_idle_return_min setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_idle_return_min.label",
+        "settings.dashboard_idle_return_min.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.dashboard_native_kiosk.help": {
-      "text": "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation. On by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
-      "sourceHash": "c7c7b287676967b4f202d48b383452f6bd7acf953131a2bb702b5bd6bbc59723",
+      "text": "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOn by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
+      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
       "surface": "settings",
       "context": "Configure > Dashboard > Hide Home Assistant navigation (native): supporting help for the dashboard_native_kiosk setting.",
       "risk": "ordinary",
@@ -31707,6 +32166,24 @@
       "softMaxChars": 53,
       "hardMaxChars": 71
     },
+    "settings.dashboard_native_kiosk.summary": {
+      "text": "Ask Home Assistant to hide its own navigation.",
+      "sourceHash": "5fd4788997717aea56fb4c039aa40bcb0cb04c128c7cb5b19fc102b439bf486b",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_native_kiosk setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_native_kiosk.label",
+        "settings.dashboard_native_kiosk.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.dashboard_network_warning.help": {
       "text": "Show the network connection warning on this panel's dashboard. Network checks and status remain available when this is off.",
       "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
@@ -31734,6 +32211,21 @@
       "frozen": [],
       "softMaxChars": 48,
       "hardMaxChars": 64
+    },
+    "settings.dashboard_network_warning.summary": {
+      "text": "Warn on the dashboard when the network drops.",
+      "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the dashboard_network_warning setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_network_warning.label",
+        "settings.dashboard_network_warning.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.dashboard_overscroll.help": {
       "text": "Built-in renderer: allow Android's overscroll stretch/glow when a drag runs past the top or bottom of the dashboard. Off by default (a wall panel rarely scrolls, and the bounce looks out of place). API-only — set true to restore the native effect.",
@@ -31797,9 +32289,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.dashboard_package.summary": {
+      "text": "App that shows the dashboard. Blank uses the built-in renderer.",
+      "sourceHash": "968f7a73a5e8876febb8b8f254404f502bedf77b3df100cb14a52a40dc823a6e",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_package setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_package.label",
+        "settings.dashboard_package.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.dashboard_theme.help": {
-      "text": "Built-in renderer only. Follow Home Assistant leaves the dashboard's light/dark choice to Home Assistant, which is what the Dark mode setting supplies a default for. Dark and Light choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from. Ambient chooses Dark or Light from the room's light as the auto-brightness model sees it, and changes only after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and follows Home Assistant until it has a reading. An explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
-      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "text": "Built-in renderer only.\n\n- **Follow Home Assistant** leaves the dashboard's light/dark choice to Home Assistant, which is what the Dark mode setting supplies a default for.\n- **Dark** and **Light** choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from.\n- **Ambient** chooses Dark or Light from the room's light as the auto-brightness model sees it, and changes only after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and follows Home Assistant until it has a reading.\n\nAn explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
+      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
       "surface": "settings",
       "context": "Configure > Dashboard > Dashboard theme: supporting help for the dashboard_theme setting.",
       "risk": "ordinary",
@@ -31826,6 +32333,24 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.dashboard_theme.summary": {
+      "text": "Who picks light or dark: Home Assistant, this panel or the room.",
+      "sourceHash": "45c7a962327b3b7de0ff2853bb28d7053772e39f164b809e3aacba83e170862f",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_theme setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_theme.label",
+        "settings.dashboard_theme.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.dashboard_zoom.help": {
       "text": "Browser zoom.",
@@ -31871,6 +32396,21 @@
       "softMaxChars": 160,
       "hardMaxChars": 160
     },
+    "settings.dashboard_zoom.summary": {
+      "text": "Browser zoom for the dashboard.",
+      "sourceHash": "ffca38a9cb226e6a7726957fdcb1ff0b2999887bed938e40573cdd3abc418106",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the dashboard_zoom setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.dashboard_zoom.label",
+        "settings.dashboard_zoom.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.diag_boot.help": {
       "text": "When the panel last booted (a timestamp — HA shows the elapsed uptime).",
       "sourceHash": "c2def446a0798101bd52a56491c2a741ee0e71ada93bc7c42212f294b5911289",
@@ -31900,6 +32440,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.diag_boot.summary": {
+      "text": "When the panel last started.",
+      "sourceHash": "de15195916f3c5747fa14f3b2810cceed59f39c51f1717898c2a287bef43cd92",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_boot setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_boot.label",
+        "settings.diag_boot.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.diag_cpu.help": {
       "text": "Overall CPU busy percentage (root/su panels; unavailable on sandbox-walled panels).",
@@ -31934,6 +32489,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.diag_cpu.summary": {
+      "text": "Overall CPU busy percentage.",
+      "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_cpu setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_cpu.label",
+        "settings.diag_cpu.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.diag_ip.help": {
       "text": "This panel's LAN IPv4 address as a sensor.",
       "sourceHash": "fc9c7eae6335fbf8f889d417b99e3b85420b0414b520df400826ab7d3ba203c9",
@@ -31967,6 +32537,23 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.diag_ip.summary": {
+      "text": "This panel's local IPv4 address.",
+      "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_ip setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_ip.label",
+        "settings.diag_ip.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "IPv4"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.diag_memory.help": {
       "text": "Used RAM as a percentage.",
       "sourceHash": "05f4f5d827bac7d3320fec7a9bd9454ad0865273ade60012498733ab1cf4661a",
@@ -31996,6 +32583,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.diag_memory.summary": {
+      "text": "Used memory as a percentage.",
+      "sourceHash": "cdfa125d539f4dbd775d6872fb7c09f4eccb57ecfc832d8c8d22bf7c4beaee21",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_memory setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_memory.label",
+        "settings.diag_memory.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.diag_soc_temp.help": {
       "text": "System-on-chip temperature (root/su panels; unavailable on sandbox-walled panels).",
@@ -32028,6 +32630,21 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.diag_soc_temp.summary": {
+      "text": "Processor temperature.",
+      "sourceHash": "3c5a5ff799d7c2ac91c8b0896b2bd4e161d39613309f07a989c4922dc1b53c96",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_soc_temp setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_soc_temp.label",
+        "settings.diag_soc_temp.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.diag_wifi_outages_24h.help": {
       "text": "Short Wi-Fi dropouts in the rolling last 24 hours. Counts loss of the panel's active Wi-Fi connection only — Home Assistant or broker outages are never counted. If the panel had to cap what it stores, the sensor's is_lower_bound attribute says the value is a floor.",
@@ -32065,6 +32682,23 @@
       "softMaxChars": 32,
       "hardMaxChars": 36
     },
+    "settings.diag_wifi_outages_24h.summary": {
+      "text": "Short Wi-Fi dropouts in the last 24 hours.",
+      "sourceHash": "f5d1698495507bfc32ba9f00f003aafee8008708a5cef312282931996d3db135",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_wifi_outages_24h setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_wifi_outages_24h.label",
+        "settings.diag_wifi_outages_24h.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Wi-Fi"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.diag_wifi_rssi.help": {
       "text": "Current Wi-Fi received signal strength in dBm while Wi-Fi is the active connection.",
       "sourceHash": "b26ea034a2da2f7ca7713ccd7d5a8119c1d328fa74ef0f1379a2f95e646be0ca",
@@ -32098,6 +32732,23 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 38
+    },
+    "settings.diag_wifi_rssi.summary": {
+      "text": "Current Wi-Fi signal strength.",
+      "sourceHash": "8fb8466dfbc5f1f6fa620e4c7775d8e07e4087bb47bbbd22f9ffc523fa0546d6",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_wifi_rssi setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_wifi_rssi.label",
+        "settings.diag_wifi_rssi.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Wi-Fi"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.diag_wifi_ssid.help": {
       "text": "Current Wi-Fi network name while Wi-Fi is the active connection. This can identify a location and enters HA history when exposed; Android may hide it unless network-information permission is available.",
@@ -32133,6 +32784,23 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.diag_wifi_ssid.summary": {
+      "text": "Current Wi-Fi network name.",
+      "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
+      "surface": "settings",
+      "context": "Configure > Diagnostics: one-line summary shown under the diag_wifi_ssid setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.diag_wifi_ssid.label",
+        "settings.diag_wifi_ssid.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Wi-Fi"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.friendly_name.help": {
       "text": "HA device display name.",
       "sourceHash": "d609f0f1edaa79506d9619abcdf33f07bfb89b26a70c83c9e6f41e631f4e428f",
@@ -32162,6 +32830,24 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.friendly_name.summary": {
+      "text": "Name Home Assistant shows for this panel.",
+      "sourceHash": "2b7babb55807e9fe58ad6ec530965e8511d1259bf99e459ceafe9073ec479f92",
+      "surface": "settings",
+      "context": "Configure > Identity: one-line summary shown under the friendly_name setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.friendly_name.label",
+        "settings.friendly_name.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.ha_area.help": {
       "text": "Where this panel lives, by Home Assistant area name. This can only be changed in ha-paneld if your HA user has admin permissions, otherwise change it on your device in HA.",
@@ -32196,6 +32882,24 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 40
+    },
+    "settings.ha_area.summary": {
+      "text": "Home Assistant area this panel belongs to.",
+      "sourceHash": "992b9c57355acf08ce839cbf4c2c66e2652cf5c0597bf380cc777b54e40833ef",
+      "surface": "settings",
+      "context": "Configure > Identity: one-line summary shown under the ha_area setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.ha_area.label",
+        "settings.ha_area.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.ha_client_id.help": {
       "text": "Internal token provenance retained for API/config import compatibility. Borrowed Companion tokens use the Android Companion client; ha-paneld browser sign-ins use the panel HTTP origin. Not a user preference.",
@@ -32300,6 +33004,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 42
     },
+    "settings.ha_token.summary": {
+      "text": "Fallback token when browser sign-in is not possible.",
+      "sourceHash": "d9d6c0fd8bc2c8048adf70c2de740fde6e68907c21575ecf8d6583374d3a80dd",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the ha_token setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.ha_token.label",
+        "settings.ha_token.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.ha_token_expiry.help": {
       "text": "Internal OAuth access-token expiry retained with its matching access and refresh tokens during private backup and restore.",
       "sourceHash": "8ef8a848b4d7ee74a9472f0570994f379f5a7ac2f43e9b3e93201169c94a583e",
@@ -32367,9 +33086,27 @@
       "softMaxChars": 32,
       "hardMaxChars": 33
     },
+    "settings.ha_url.summary": {
+      "text": "Address of your Home Assistant server.",
+      "sourceHash": "292a8aafd3c78ab22bb939061885d5acdedc69c6b75019b4c9d34cc6ec1c8c13",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the ha_url setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.ha_url.label",
+        "settings.ha_url.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.home_dashboard.help": {
-      "text": "Dashboard used by reload and idle return. Auto lets Home Assistant choose. Custom accepts a specific view, e.g. /dashboard-name/tab-name.",
-      "sourceHash": "a7ce869a298f35b4b61c1d1c2a6bde203ec6348fcfa91bf838ae882065bfd150",
+      "text": "Dashboard used by reload and idle return.\n\n- **Auto** lets Home Assistant choose.\n- **Custom** accepts a specific view, e.g. `/dashboard-name/tab-name`.",
+      "sourceHash": "8f44a63324b05223da2292e2fd4a8b080d40c67ec0a1faca36b8b6c237a8febe",
       "surface": "settings",
       "context": "Configure > Dashboard > Home dashboard: supporting help for the home_dashboard setting.",
       "risk": "ordinary",
@@ -32397,6 +33134,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.home_dashboard.summary": {
+      "text": "Dashboard opened on reload and idle return.",
+      "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
+      "surface": "settings",
+      "context": "Configure > Dashboard: one-line summary shown under the home_dashboard setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.home_dashboard.label",
+        "settings.home_dashboard.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.humidity.help": {
       "text": "Relative humidity reported by Android's panel sensor.",
@@ -32428,6 +33180,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.humidity.summary": {
+      "text": "Humidity from Android's panel sensor.",
+      "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the humidity setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.humidity.label",
+        "settings.humidity.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.illuminance.help": {
       "text": "Ambient illuminance measured by the panel light sensor.",
       "sourceHash": "99fb3d41f1634e9edd6c6c7540968106d44b7e01899f09cfe1fb98865347cae8",
@@ -32456,6 +33223,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.illuminance.summary": {
+      "text": "Ambient light from the panel sensor.",
+      "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the illuminance setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.illuminance.label",
+        "settings.illuminance.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.keep_awake.help": {
       "text": "Keep the network and background services running while the screen is off.",
       "sourceHash": "d3b70b40884db042b1874360834630a2a5534a76840fb833374917dd2cb9ed92",
@@ -32483,6 +33265,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 38
+    },
+    "settings.keep_awake.summary": {
+      "text": "Keep network and services running while the screen is off.",
+      "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the keep_awake setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.keep_awake.label",
+        "settings.keep_awake.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.kiosk_companion_packages.help": {
       "text": "Android package names, separated by commas, that the dashboard lock leaves in front instead of returning to the dashboard. Use it to reach a companion app's own screens. Needs root.",
@@ -32514,9 +33311,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 36
     },
+    "settings.kiosk_companion_packages.summary": {
+      "text": "Apps the lock leaves in front, by package name.",
+      "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the kiosk_companion_packages setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.kiosk_companion_packages.label",
+        "settings.kiosk_companion_packages.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.kiosk_lock.help": {
-      "text": "Root-only casual-use lock. Hides Android system bars and returns to the selected dashboard within about 3 seconds when another app or Recents opens. It does not hide Home Assistant navigation. Release it here, from Home Assistant, through adb, with 7 rapid top-left taps, or during the 60-second unlocked window after reboot.",
-      "sourceHash": "cb15071d31c33a73f5da36aef5a30c385125f3429136e556131067a9cdebd2a8",
+      "text": "Root-only casual-use lock. Hides Android system bars and returns to the selected dashboard within about 3 seconds when another app or Recents opens. It does not hide Home Assistant navigation.\n\nRelease it:\n\n- here, or from Home Assistant\n- through adb\n- with 7 rapid top-left taps\n- during the 60-second unlocked window after reboot",
+      "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",
       "surface": "settings",
       "context": "Configure > Behaviour > Lock Android to dashboard (experimental): supporting help for the kiosk_lock setting.",
       "risk": "ordinary",
@@ -32551,6 +33363,21 @@
       "softMaxChars": 54,
       "hardMaxChars": 72
     },
+    "settings.kiosk_lock.summary": {
+      "text": "Root only. Bring the dashboard back when another app opens.",
+      "sourceHash": "e9055e43b4f6a114f2d4e789b65ea17fc24fecfbc2b5fb1417b1ba9e54f628fd",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the kiosk_lock setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.kiosk_lock.label",
+        "settings.kiosk_lock.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.launcher_package.help": {
       "text": "App the Launcher button brings forward. Blank auto-picks an app. Selecting Panel admin (ha-paneld) also makes and keeps ha-paneld the Android Home app.",
       "sourceHash": "524f589af2ebe612083fd20f1b6f487d59e929aae5a24cf9cd6bd4792e448395",
@@ -32582,6 +33409,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.launcher_package.summary": {
+      "text": "App the Launcher button opens.",
+      "sourceHash": "b2dadcf62b45755d46bca03a6522073177068495b10956c04c39699194956d04",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the launcher_package setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.launcher_package.label",
+        "settings.launcher_package.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.log_ship_enabled.help": {
       "text": "Forward ha-paneld's own process log — not the full system log — to a central sink (LAN-only, tokens and passwords redacted).",
       "sourceHash": "01fd4a6f75c8d1eba5b4765db5c8eb1c9ebc1220b0639982525ab92b2f43e5d7",
@@ -32612,6 +33454,23 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.log_ship_enabled.summary": {
+      "text": "Send ha-paneld's own log to a collector on your network.",
+      "sourceHash": "d9d0543772220c0f2d59b7a38f1fe26075b0ac588c1534434ec2644c1fac6b98",
+      "surface": "settings",
+      "context": "Configure > Logging: one-line summary shown under the log_ship_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_enabled.label",
+        "settings.log_ship_enabled.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ha-paneld"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.log_ship_host.help": {
       "text": "Log-collector host; blank keeps shipping inert. A scheme or :port here is honoured (udp://collector, collector:1514).",
@@ -32645,6 +33504,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.log_ship_host.summary": {
+      "text": "Log collector address. Blank turns shipping off.",
+      "sourceHash": "2de7304ca6cbdb82707a94e19b7e94df4ae18b8d408730c04fe716f554625fba",
+      "surface": "settings",
+      "context": "Configure > Logging: one-line summary shown under the log_ship_host setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_host.label",
+        "settings.log_ship_host.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.log_ship_port.label": {
       "text": "Sink port",
       "sourceHash": "7bc8673ba2ab424916e4f1189b75faf4b4c9af8ef0d731852c09e6a660e77cd3",
@@ -32656,6 +33530,20 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.log_ship_port.summary": {
+      "text": "Log collector port.",
+      "sourceHash": "4cf403c3eedb4aae0bc497387596f2a6d1bcc5908d9b883f821e381e733cc4a3",
+      "surface": "settings",
+      "context": "Configure > Logging: one-line summary shown under the log_ship_port setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_port.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.log_ship_protocol.help": {
       "text": "TCP is the default because it reports a sink that is refusing or unreachable; UDP cannot, so a wrong setting there fails silently. Port 514 serves both.",
@@ -32689,9 +33577,26 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.log_ship_protocol.summary": {
+      "text": "Transport to the collector. TCP reports a refused sink.",
+      "sourceHash": "db01cfc12070a7e72e1bee1187e7e24fa38984e742a19b523dc6bb2a3ca6cbc3",
+      "surface": "settings",
+      "context": "Configure > Logging: one-line summary shown under the log_ship_protocol setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_protocol.label",
+        "settings.log_ship_protocol.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "TCP"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.log_ship_system_enabled.help": {
-      "text": "Forward Android system logs to the same sink when Ship logs is on. Off by default; requires TCP or HTTP and root or the installed helper. Entries are redacted; high-volume output may be dropped.",
-      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
+      "text": "Forward Android system logs to the same sink when Ship logs is on.\n\n- Off by default.\n- Requires TCP or HTTP, and root or the installed helper.\n- Entries are redacted; high-volume output may be dropped.",
+      "sourceHash": "bfc7f5d141f83c2cf7f2c168f8e492af3f7fe3b50efff70a0435d15bb0524fa2",
       "surface": "settings",
       "context": "Configure > Logging > Ship system logs: supporting help for the log_ship_system_enabled setting.",
       "risk": "ordinary",
@@ -32721,6 +33626,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.log_ship_system_enabled.summary": {
+      "text": "Also send Android system logs to the collector.",
+      "sourceHash": "a172f1f97d43da721b10903ca5c2268afbd25f6b77048716ceb1c9526bdf13da",
+      "surface": "settings",
+      "context": "Configure > Logging: one-line summary shown under the log_ship_system_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.log_ship_system_enabled.label",
+        "settings.log_ship_system_enabled.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.manufacturer.help": {
       "text": "HA device-card manufacturer override (blank = profile/auto).",
@@ -32752,6 +33672,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.manufacturer.summary": {
+      "text": "Override the manufacturer on the Home Assistant device card.",
+      "sourceHash": "3228d0bdc49534bc5cb89d049c2c41fd1a0015338b353ca03a442f71fa7a33f6",
+      "surface": "settings",
+      "context": "Configure > Identity: one-line summary shown under the manufacturer setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.manufacturer.label",
+        "settings.manufacturer.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.model.help": {
       "text": "HA device-card model override (blank = profile/auto).",
       "sourceHash": "50dab8203d43b63ace9d3f98dc51ab87d675f41a61746e4b00fadf216b5d56ec",
@@ -32781,6 +33719,24 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.model.summary": {
+      "text": "Override the model on the Home Assistant device card.",
+      "sourceHash": "ca6b303ae590f03bc698654dc1506b6ab7ae9ace6609b91d5f37a427f69d985f",
+      "surface": "settings",
+      "context": "Configure > Identity: one-line summary shown under the model setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.model.label",
+        "settings.model.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.mqtt_address_family.help": {
       "text": "Applies to the MQTT broker connection and the panel's Home Assistant WebSocket connections; plain HTTPS reads always try every published address. Automatic learns a working route and falls back between IPv6 and IPv4. Prefer IPv4 keeps IPv6 as a fallback; Force IPv4 rejects endpoints with no IPv4 address.",
@@ -32822,6 +33778,27 @@
       "softMaxChars": 63,
       "hardMaxChars": 83
     },
+    "settings.mqtt_address_family.summary": {
+      "text": "Use IPv4, IPv6 or both to reach MQTT and Home Assistant.",
+      "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
+      "surface": "settings",
+      "context": "Configure > MQTT: one-line summary shown under the mqtt_address_family setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.mqtt_address_family.label",
+        "settings.mqtt_address_family.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "MQTT",
+        "IPv4",
+        "IPv6",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.mqtt_broker.help": {
       "text": "Blank auto-discovers HA over mDNS.",
       "sourceHash": "aa8b8bb7adffa5c6d19213a7bc1fe500bf2a6d948bb57dbd7c2290f14f985600",
@@ -32855,6 +33832,25 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.mqtt_broker.summary": {
+      "text": "MQTT broker address. Blank finds Home Assistant automatically.",
+      "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
+      "surface": "settings",
+      "context": "Configure > MQTT: one-line summary shown under the mqtt_broker setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.mqtt_broker.label",
+        "settings.mqtt_broker.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "MQTT",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.mqtt_password.help": {
       "text": "Blank on save keeps the current password.",
       "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
@@ -32882,6 +33878,23 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.mqtt_password.summary": {
+      "text": "MQTT password. Blank keeps the current one.",
+      "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
+      "surface": "settings",
+      "context": "Configure > MQTT: one-line summary shown under the mqtt_password setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.mqtt_password.label",
+        "settings.mqtt_password.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "MQTT"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.mqtt_user.help": {
       "text": "Credential for this panel.",
@@ -32911,9 +33924,26 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.mqtt_user.summary": {
+      "text": "MQTT username for this panel.",
+      "sourceHash": "c9051f2d3306c556507ff4d4d714230ec1201407135b13f6acad7f1541d4502e",
+      "surface": "settings",
+      "context": "Configure > MQTT: one-line summary shown under the mqtt_user setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.mqtt_user.label",
+        "settings.mqtt_user.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "MQTT"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.navbar_mode.help": {
-      "text": "Soft on-screen navigation bar for panels with no native navbar. Native leaves navigation to the panel's own Android bar and draws nothing. Note that hiding the Android system bars, from the built-in renderer's fullscreen setting or the Android dashboard lock, still hides a native bar.",
-      "sourceHash": "f795e458995a66ea6439ea9536c23b144a51d9604ebdb7d4a1aee0aab776b551",
+      "text": "Soft on-screen navigation bar for panels with no native navbar. **Native** leaves navigation to the panel's own Android bar and draws nothing.\n\nHiding the Android system bars, from the built-in renderer's fullscreen setting or the Android dashboard lock, still hides a native bar.",
+      "sourceHash": "5a6df2f1452dcbc4734840f9f5cef12eacdb2ecb12bd2d00c3107b445a069d36",
       "surface": "settings",
       "context": "Configure > Behaviour > Navbar mode: supporting help for the navbar_mode setting.",
       "risk": "ordinary",
@@ -32941,9 +33971,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.navbar_mode.summary": {
+      "text": "Show a soft navigation bar on panels without a native one.",
+      "sourceHash": "e9b0b88a61249c1cc28487059a0851afaf93717cbd41388bdb56d685812ea033",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the navbar_mode setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.navbar_mode.label",
+        "settings.navbar_mode.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.network_adb.help": {
-      "text": "Security risk: keeps classic ADB listening on TCP port 5555 across boots and reconnects. Enable only during active maintenance on a trusted network. If ADB was enabled outside ha-paneld, it must also be disabled there.",
-      "sourceHash": "09613eac91f1ca4d5abdc8ac3c450d38c097a1050bf088881b34ca7b0a17e97e",
+      "text": "**Security risk:** keeps classic ADB listening on TCP port 5555 across boots and reconnects.\n\nEnable only during active maintenance on a trusted network. If ADB was enabled outside ha-paneld, it must also be disabled there.",
+      "sourceHash": "c1d223177697675bf4eec7603bd73ba99fd866f002410c92177c1e8ee1bca48b",
       "surface": "settings",
       "context": "Configure > System > Network ADB: supporting help for the network_adb setting.",
       "risk": "consequential",
@@ -32975,6 +34020,23 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.network_adb.summary": {
+      "text": "Security risk. Keep ADB listening on port 5555 across boots.",
+      "sourceHash": "08712f193dc3e77aff305d6dfe706466ed3bcaa53f85c48c5519a6d30a39a924",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the network_adb setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.network_adb.label",
+        "settings.network_adb.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ADB"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.panel_id.help": {
       "text": "Stable id used in entity IDs and MQTT topics (lowercase, digits, underscores; 63 characters maximum).",
@@ -33010,6 +34072,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.panel_id.summary": {
+      "text": "Stable id used in this panel's entity IDs.",
+      "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
+      "surface": "settings",
+      "context": "Configure > Identity: one-line summary shown under the panel_id setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.panel_id.label",
+        "settings.panel_id.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.prevent_idle_dim.help": {
       "text": "Stop the vendor firmware dimming the backlight at the screen-off timeout.",
       "sourceHash": "e65c72cf163d6535f1c4b8a7bc5edd3731b1f404128861e1889004e1eda20f8d",
@@ -33038,6 +34115,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.prevent_idle_dim.summary": {
+      "text": "Stop the vendor firmware dimming the backlight at screen-off.",
+      "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the prevent_idle_dim setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.prevent_idle_dim.label",
+        "settings.prevent_idle_dim.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.proximity.help": {
       "text": "Learned near/far occupancy from a supported proximity source.",
       "sourceHash": "1302fe79949d5f3c6152bd67f6988f2be92ce9a134c49172b2a3c3212d24ab6b",
@@ -33065,6 +34157,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.proximity.summary": {
+      "text": "Learned near or far occupancy.",
+      "sourceHash": "9caab10a7b9b275d97c49aa0f3c65e4a7a4f40c09a933c814c7d9f91024ecc4c",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the proximity setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.proximity.label",
+        "settings.proximity.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.proximity_level.help": {
       "text": "Normalized learned proximity level from 0 to 100 percent; binary sources report 0 or 100.",
@@ -33097,6 +34204,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.proximity_level.summary": {
+      "text": "Learned proximity level, 0 to 100 percent.",
+      "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the proximity_level setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.proximity_level.label",
+        "settings.proximity_level.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.room_humidity.help": {
       "text": "Relative humidity from the panel's supported climate sensor.",
       "sourceHash": "7615cfe25fea88ea327f766a4aba84edf4d0eed4c45b5d85cea3ca805b73e0ea",
@@ -33124,6 +34246,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.room_humidity.summary": {
+      "text": "Room humidity from the climate sensor.",
+      "sourceHash": "bbd12dbcdf9562005a6f6db920aef531ee0cdf0286244dec929a88e66f6a678d",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the room_humidity setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.room_humidity.label",
+        "settings.room_humidity.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.room_temp.help": {
       "text": "Room air temperature from the panel's supported climate sensor (calibration offset applied).",
@@ -33153,6 +34290,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.room_temp.summary": {
+      "text": "Room temperature from the climate sensor.",
+      "sourceHash": "6787d9ec7159d5f8da89bd45f9c7219f3ef8895cf31c16047e636690857fd732",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the room_temp setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.room_temp.label",
+        "settings.room_temp.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.room_temp_offset.help": {
       "text": "Correction (°C) added to the reported room temperature — usually negative, since panel self-heating reads high. Per-panel (depends on mounting), so not cloned by a fleet push.",
       "sourceHash": "5fe73fe33fc51a45ebf874038937c91f4907eacbfb1f3ba4d0e05f04bce4ff62",
@@ -33180,6 +34332,23 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 42
+    },
+    "settings.room_temp_offset.summary": {
+      "text": "Correction added to the room temperature, in °C.",
+      "sourceHash": "978e73e423dcd1a2a8ca227b4dd989ed509d34483ebcc548af7160cc6e52d546",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the room_temp_offset setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.room_temp_offset.label",
+        "settings.room_temp_offset.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "°C"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.screen.help": {
       "text": "Current screen state and brightness. Home Assistant presents the light's native 0–255 brightness as a percentage.",
@@ -33211,6 +34380,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.screen.summary": {
+      "text": "Screen state and brightness.",
+      "sourceHash": "6ba9e68bcfcfc58c954fe6a202ed4f6c8d9df1a8788b1431583756c0740bd43e",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the screen setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.screen.label",
+        "settings.screen.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.self_update.help": {
       "text": "ha-paneld updates itself from GitHub releases on the selected channel. Only shown where verified app install is available.",
@@ -33245,6 +34429,23 @@
       "softMaxChars": 32,
       "hardMaxChars": 38
     },
+    "settings.self_update.summary": {
+      "text": "Install ha-paneld releases automatically.",
+      "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the self_update setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.self_update.label",
+        "settings.self_update.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ha-paneld"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.silence_boot_chime.help": {
       "text": "Mute the firmware startup chime.",
       "sourceHash": "9398fcca9e28cc1f8615e89611f2b8e0637d01262f46bdc42e4467db67e64c9a",
@@ -33272,6 +34473,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 33
+    },
+    "settings.silence_boot_chime.summary": {
+      "text": "Mute the firmware start-up chime.",
+      "sourceHash": "57dde483cc0e08a27cd85277831bd12459ec0e78b4672942353d031c00022f6f",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the silence_boot_chime setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.silence_boot_chime.label",
+        "settings.silence_boot_chime.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.tame_vendor_packages.help": {
       "text": "Backup-only storage for package selections managed by the Vendor packages card.",
@@ -33331,6 +34547,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.temperature.summary": {
+      "text": "Temperature from Android's panel sensor.",
+      "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the temperature setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.temperature.label",
+        "settings.temperature.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.touch_sound.help": {
       "text": "Audible tap feedback (system touch sounds).",
       "sourceHash": "8b2ce13af0b77b1da73765d226b4370107b48b7119670490cf9ece1522b6349b",
@@ -33359,9 +34590,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.touch_sound.summary": {
+      "text": "Play the system tap sound.",
+      "sourceHash": "45864ba285306a16cdb22e54405c63a9968f8747466cf66b1c0a5381c0b6626a",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the touch_sound setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.touch_sound.label",
+        "settings.touch_sound.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.ui_language.help": {
-      "text": "Language used by ha-paneld's own interface. Automatic uses an explicit page override first. Configure setting labels and help can then follow the connected Home Assistant user's language; browser, device and English are the remaining fallbacks.",
-      "sourceHash": "6b6157ee7e853009150f5dfc3839a2bc7dbb8f06285ad87d580c87e16daa2550",
+      "text": "Language used by ha-paneld's own interface.\n\n**Automatic** uses an explicit page override first. Configure setting labels and help can then follow the connected Home Assistant user's language; browser, device and English are the remaining fallbacks.",
+      "sourceHash": "b7fc0eadebf67c70928a78036d93798c57776e075ff3bf5172197dd40238be34",
       "surface": "settings",
       "context": "Configure > System > Interface language: supporting help for the ui_language setting.",
       "risk": "ordinary",
@@ -33389,6 +34635,23 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.ui_language.summary": {
+      "text": "Language of ha-paneld's own interface.",
+      "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the ui_language setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.ui_language.label",
+        "settings.ui_language.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "ha-paneld"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.update_channel.help": {
       "text": "Release channel the self-updater follows.",
@@ -33420,6 +34683,21 @@
       "softMaxChars": 40,
       "hardMaxChars": 53
     },
+    "settings.update_channel.summary": {
+      "text": "Release channel the self-updater follows.",
+      "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the update_channel setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.update_channel.label",
+        "settings.update_channel.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.voice_audio_source.help": {
       "text": "Android audio source the wake-word listener records from.",
       "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
@@ -33449,6 +34727,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.voice_audio_source.summary": {
+      "text": "Android audio source for the listener.",
+      "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_audio_source setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_audio_source.label",
+        "settings.voice_audio_source.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.voice_enabled.help": {
       "text": "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
@@ -33480,9 +34773,26 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.voice_enabled.summary": {
+      "text": "Listen for a wake word and send speech to Assist.",
+      "sourceHash": "d44107963fc54351bd582d47825aad5651566129424d90819e0b7c51a413e4e4",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_enabled.label",
+        "settings.voice_enabled.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.voice_mic_gain_db.help": {
-      "text": "Amplifies the audio sent to Home Assistant for transcription. These panels expose no platform noise suppression or automatic gain control, so a panel heard from across the room may wake reliably and still transcribe poorly — wake-word detection adapts to a quiet signal on its own and speech-to-text does not. Raise this if commands are missed or mistranscribed while the wake word works. Wake-word detection is deliberately left on the unamplified signal.",
-      "sourceHash": "57348c1118f9fba6177e8afa32f8b8674508d0af983d33e952cc03f95f0af645",
+      "text": "Amplifies the audio sent to Home Assistant for transcription.\n\nThese panels expose no platform noise suppression or automatic gain control, so a panel heard from across the room may wake reliably and still transcribe poorly: wake-word detection adapts to a quiet signal on its own and speech-to-text does not.\n\n**Raise this** if commands are missed or mistranscribed while the wake word works. Wake-word detection is deliberately left on the unamplified signal.",
+      "sourceHash": "11daf40ebcb01e6a2b996011eb081e6f150b1e83d5d4aa877ba1c3fc3b089312",
       "surface": "settings",
       "context": "Configure > Voice > Microphone gain (dB): supporting help for the voice_mic_gain_db setting.",
       "risk": "ordinary",
@@ -33511,6 +34821,24 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 36
+    },
+    "settings.voice_mic_gain_db.summary": {
+      "text": "Amplify speech sent to Home Assistant for transcription.",
+      "sourceHash": "065410cb2e71f90414f869a5e9aedf1be3845e0c26cccacf89d64b6ff54d40b2",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_mic_gain_db setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_mic_gain_db.label",
+        "settings.voice_mic_gain_db.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Home Assistant",
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.voice_pipelines.help": {
       "text": "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred pipeline follows whichever pipeline Home Assistant prefers.",
@@ -33543,9 +34871,26 @@
       "softMaxChars": 32,
       "hardMaxChars": 35
     },
+    "settings.voice_pipelines.summary": {
+      "text": "Which Assist pipeline each wake word runs.",
+      "sourceHash": "e37ef99d1d4df2fb268353f7f179ee12d4802df0a4993748331b6d83a91dcde4",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_pipelines setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_pipelines.label",
+        "settings.voice_pipelines.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Assist"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.voice_sensitivity.help": {
-      "text": "Wake-word detector threshold, applied as an offset to the model's cutoff score. Low requires a clearer match (fewer false wakes, more likely to miss a quiet or distant call); High matches more readily (faster to wake, more false triggers). Normal applies no offset.",
-      "sourceHash": "cc3e95fea8fe5a298bf5ce799bbc15d7b44576010646691059f0c19df31aeec3",
+      "text": "Wake-word detector threshold, applied as an offset to the model's cutoff score.\n\n- **Low** requires a clearer match: fewer false wakes, more likely to miss a quiet or distant call.\n- **Normal** applies no offset.\n- **High** matches more readily: faster to wake, more false triggers.",
+      "sourceHash": "af00b05309556a3c5631dfe2830065406d0db55c255a8fd1819e6657623235c9",
       "surface": "settings",
       "context": "Configure > Voice > Wake sensitivity: supporting help for the voice_sensitivity setting.",
       "risk": "ordinary",
@@ -33570,6 +34915,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.voice_sensitivity.summary": {
+      "text": "How readily the wake word triggers.",
+      "sourceHash": "0fa08145c04a8e1391ac642c5536fa2f26f69556c521db192e7f9d7fafe11538",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_sensitivity setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_sensitivity.label",
+        "settings.voice_sensitivity.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.voice_wake_words.help": {
       "text": "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, and any you import below.",
@@ -33604,6 +34964,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.voice_wake_words.summary": {
+      "text": "Wake words to listen for.",
+      "sourceHash": "d1d5a37611625d7925ca3e794540612919d66f7a7e37a748fa1f6c235a8e75ff",
+      "surface": "settings",
+      "context": "Configure > Voice: one-line summary shown under the voice_wake_words setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.voice_wake_words.label",
+        "settings.voice_wake_words.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.volume.help": {
       "text": "Current panel media volume reported on its native 0–100 percent scale.",
       "sourceHash": "b3940799e32ad4927181340553f34418c4093c7aeea2bf1c6d21e8c401c3f657",
@@ -33634,6 +35009,21 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.volume.summary": {
+      "text": "Panel media volume.",
+      "sourceHash": "49e5264db4cd107fb5245caa45d7007829d46e17465bda5b3099e115ecfda28f",
+      "surface": "settings",
+      "context": "Configure > Sensors: one-line summary shown under the volume setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.volume.label",
+        "settings.volume.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.wake_on_wave.help": {
       "text": "Wake after a calibrated clear-to-near-to-clear wave. Set up proximity on the panel; touch-to-wake remains available.",
       "sourceHash": "71dd28fb047a8aae73292b1975f5d7b6cbe3ccf7ec49d6c32bc992e4b7596bf7",
@@ -33661,6 +35051,21 @@
       "frozen": [],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.wake_on_wave.summary": {
+      "text": "Wave a hand near the panel to wake it.",
+      "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the wake_on_wave setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.wake_on_wave.label",
+        "settings.wake_on_wave.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.watchdog_enabled.help": {
       "text": "Self-heal the dashboard app: relaunch if it dies, return if backgrounded too long.",
@@ -33690,9 +35095,24 @@
       "softMaxChars": 32,
       "hardMaxChars": 32
     },
+    "settings.watchdog_enabled.summary": {
+      "text": "Relaunch the dashboard app if it dies or stays backgrounded.",
+      "sourceHash": "bf85bf3bed1a0bda4d001d6d73a8b2196aec288be92fa7aba1cb27cbd9ccf105",
+      "surface": "settings",
+      "context": "Configure > Behaviour: one-line summary shown under the watchdog_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.watchdog_enabled.label",
+        "settings.watchdog_enabled.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.webview_auto_update.help": {
-      "text": "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check. Off by default — a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
-      "sourceHash": "c213f4530d508c6c3ae53fc24f3ab6654dd3e1618bd68609031c298bf8e903ee",
+      "text": "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check.\n\nOff by default: a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
+      "sourceHash": "cf8035f05ef4490931648028eb8cb8f4629814ec89f0a4d6747af8b9ddd1315d",
       "surface": "settings",
       "context": "Configure > System > WebView auto-update: supporting help for the webview_auto_update setting.",
       "risk": "consequential",
@@ -33722,6 +35142,23 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 35
+    },
+    "settings.webview_auto_update.summary": {
+      "text": "Keep the System WebView on the recommended build (root).",
+      "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the webview_auto_update setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.webview_auto_update.label",
+        "settings.webview_auto_update.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "WebView"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "settings.zigbee_router.help": {
       "text": "Run the on-board Zigbee gateway as a router/repeater (NSPanel Pro).",
@@ -33755,6 +35192,23 @@
       ],
       "softMaxChars": 32,
       "hardMaxChars": 32
+    },
+    "settings.zigbee_router.summary": {
+      "text": "Use the on-board Zigbee radio as a router.",
+      "sourceHash": "ad4a9c9f2cdb17eaa7c15c04aac14c932e2e95cf53eba3f3fa4d0a9c4a225331",
+      "surface": "settings",
+      "context": "Configure > System: one-line summary shown under the zigbee_router setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.zigbee_router.label",
+        "settings.zigbee_router.help"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "Zigbee"
+      ],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
     },
     "setup.action.panel_dashboard": {
       "text": "Panel dashboard",

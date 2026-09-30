@@ -133,6 +133,7 @@ UNCHANGED_TARGET_EXCEPTIONS = {
     ("fr", "profiles.section.validation"): "Validation",
     ("fr", "shell.runtime.duration_minutes"): "{count} min",
     ("fr", "shell.runtime.duration_seconds"): "{count} s",
+    ("fr", "configure.descriptions"): "Descriptions",
     ("fr", "settings.dashboard_zoom.label"): "Zoom (%)",
     ("it", "configure.group.dashboard"): "Dashboard",
     ("it", "configure.option.auto_detail"): "auto ({value})",
@@ -373,6 +374,21 @@ TARGET_LITERAL_EXCEPTIONS = {
     ("zh-Hans", "entities.issue.kio\u0073k-mode-dynamic-javascript.recommendation"): ("Kiosk",),
     ("zh-Hans", "entities.status.unresolved_help"): ("ID",),
     ("zh-Hans", "settings.camera_exposure.help"): ("EV",),
+    ("zh-Hans", "settings.camera_exposure.summary"): ("EV",),
+    ("zh-Hans", "settings.companion_auto_update.summary"): ("Companion",),
+    ("zh-Hans", "settings.companion_update_channel.summary"): ("Companion",),
+    ("zh-Hans", "settings.cpu_governor.summary"): ("CPU",),
+    ("zh-Hans", "settings.dashboard_fullscreen.summary"): ("Android",),
+    ("zh-Hans", "settings.diag_cpu.summary"): ("CPU",),
+    ("zh-Hans", "settings.humidity.summary"): ("Android",),
+    ("zh-Hans", "settings.kiosk_lock.summary"): ("root",),
+    ("zh-Hans", "settings.log_ship_system_enabled.summary"): ("Android",),
+    ("zh-Hans", "settings.panel_id.summary"): ("ID",),
+    ("zh-Hans", "settings.temperature.summary"): ("Android",),
+    ("zh-Hans", "settings.voice_audio_source.summary"): ("Android",),
+    ("zh-Hans", "settings.camera_fps.summary"): ("URL",),
+    ("zh-Hans", "settings.camera_kbps.summary"): ("URL",),
+    ("zh-Hans", "settings.camera_resolution.summary"): ("URL",),
     ("zh-Hans", "settings.kiosk_companion_packages.help"): ("root",),
     ("zh-Hans", "settings.kiosk_lock.help"): ("root",),
     ("zh-Hans", "settings.voice_enabled.help"): ("Assist",),
@@ -510,7 +526,40 @@ def validate_target_language(key: str, text: str, locale: str, source_record: di
             raise CatalogueError(f"{key}: {locale} target has unexpected script: {codepoints}")
 
 
-def validate_target_text_hygiene(key: str, text: str) -> None:
+# Settings help carries a small markdown subset (paragraphs, "- " lists, **bold**, *italic*, `code`,
+# [text](url)) that Configure renders into text nodes. A translation keeps every marker, the code
+# spans and link targets verbatim, and the paragraph and list structure; only words change.
+MARKUP_KEY_RE = re.compile(r"settings\.[a-z0-9_]+\.(?:help|promoted_help)\Z")
+CODE_SPAN_RE = re.compile(r"`([^`]+)`")
+LINK_TARGET_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+
+
+def markup_signature(text: str) -> tuple[Any, ...]:
+    without_code = CODE_SPAN_RE.sub("", text)
+    return (
+        without_code.count("**"),
+        without_code.replace("**", "").count("*"),
+        sorted(CODE_SPAN_RE.findall(text)),
+        sorted(LINK_TARGET_RE.findall(without_code)),
+        sum(1 for line in text.split("\n") if re.match(r"\s*- ", line)),
+        len(re.findall(r"\n\s*\n", text)),
+    )
+
+
+def changed_markup(key: str, translation: str, source_text: str) -> bool:
+    return bool(MARKUP_KEY_RE.fullmatch(key)) and markup_signature(translation) != markup_signature(source_text)
+
+
+def validate_target_text_hygiene(key: str, text: str, source_text: str | None = None) -> None:
+    newline_runs = tuple(len(run) for run in re.findall(r"\n+", text))
+    # Settings help keeps its markdown paragraphs and list lines: a translation may break lines
+    # exactly where the English does, never elsewhere.
+    allows_markup_breaks = (
+        source_text is not None
+        and bool(MARKUP_KEY_RE.fullmatch(key))
+        and newline_runs == tuple(len(run) for run in re.findall(r"\n+", source_text))
+        and all(re.split(r"\n+", text))
+    )
     paragraphs = text.split("\n\n")
     allows_paragraph_breaks = (
         len(paragraphs) == TARGET_PARAGRAPH_COUNTS.get(key)
@@ -527,7 +576,7 @@ def validate_target_text_hygiene(key: str, text: str) -> None:
         f"U+{ord(character):04X}"
         for character in text
         if unicodedata.category(character) in {"Cc", "Cf"}
-        and not (character == "\n" and (allows_paragraph_breaks or allows_structured_breaks))
+        and not (character == "\n" and (allows_paragraph_breaks or allows_structured_breaks or allows_markup_breaks))
     })
     if unsafe:
         raise CatalogueError(f"{key}: target contains unsafe control or format characters: {', '.join(unsafe)}")
@@ -616,7 +665,7 @@ def validate_target(
         text = record["text"]
         if not isinstance(text, str) or not text:
             raise CatalogueError(f"{key}: target text must be non-empty")
-        validate_target_text_hygiene(key, text)
+        validate_target_text_hygiene(key, text, source["strings"].get(key, {}).get("text"))
         if len(text) > MAX_TARGET_TEXT_CHARS:
             raise CatalogueError(f"{key}: target text is unreasonably large")
         if not isinstance(record["sourceHash"], str) or not SHA_RE.fullmatch(record["sourceHash"]):
@@ -632,6 +681,8 @@ def validate_target(
             raise CatalogueError(f"{key}: changed placeholders")
         if any(text.count(token) != source_record["text"].count(token) for token in source_record["frozen"]):
             raise CatalogueError(f"{key}: changed frozen literal")
+        if changed_markup(key, text, source_record["text"]):
+            raise CatalogueError(f"{key}: changed markup")
         if len(text) > source_record["hardMaxChars"]:
             raise CatalogueError(f"{key}: hard length budget exceeded")
         if record["state"] != "english-fallback":
@@ -769,6 +820,8 @@ def candidate_to_target(source_path: Path, candidate_path: Path, output: Path) -
             raise CatalogueError(f"{expected_key}: changed placeholders")
         if any(translation.count(token) != source_record["text"].count(token) for token in source_record["frozen"]):
             raise CatalogueError(f"{expected_key}: changed frozen literal")
+        if changed_markup(expected_key, translation, source_record["text"]):
+            raise CatalogueError(f"{expected_key}: changed markup")
         if len(translation) > source_record["hardMaxChars"]:
             raise CatalogueError(f"{expected_key}: hard length budget exceeded")
         validate_target_language(expected_key, translation, locale, source_record)
@@ -835,6 +888,8 @@ def merge_candidate(
             raise CatalogueError(f"{key}: changed placeholders")
         if any(translation.count(token) != source_record["text"].count(token) for token in source_record["frozen"]):
             raise CatalogueError(f"{key}: changed frozen literal")
+        if changed_markup(key, translation, source_record["text"]):
+            raise CatalogueError(f"{key}: changed markup")
         if len(translation) > source_record["hardMaxChars"]:
             raise CatalogueError(f"{key}: hard length budget exceeded")
         validate_target_language(key, translation, locale, source_record)
