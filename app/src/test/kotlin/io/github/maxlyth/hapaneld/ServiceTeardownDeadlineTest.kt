@@ -148,6 +148,7 @@ class ServiceTeardownDeadlineTest {
 
     private companion object {
         const val LOOPBACK = "127.0.0.1"
-        const val PANEL = "teardown-test-panel"
+        /** Per-JVM suffix: concurrent debug and release test JVMs share the loopback multicast group. */
+        val PANEL = "teardown-test-panel-${ProcessHandle.current().pid()}"
     }
 }
