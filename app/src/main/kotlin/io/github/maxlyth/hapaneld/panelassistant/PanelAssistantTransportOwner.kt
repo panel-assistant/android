@@ -59,6 +59,7 @@ internal data class PanelAssistantTransportDemand(
      */
     val credential: HaAuthOwner,
     val identity: PanelAssistantHelloIdentity,
+    val routeEpoch: Long = 0L,
 )
 
 /**
@@ -188,6 +189,9 @@ internal class PanelAssistantTransportOwner(
     private val voice: PanelAssistantVoice? = null,
     /** Fresh interface addresses for each hello; independent of demand identity. */
     private val addresses: () -> List<String> = { emptyList() },
+    private val onConnection: (io.github.maxlyth.hapaneld.sensors.HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
+    private val checkPreferred: suspend () -> Boolean = { false },
+    private val onTransportFailure: (io.github.maxlyth.hapaneld.HaConnectionRoute) -> Unit = {},
 ) : AutoCloseable {
     private val lock = Any()
     private val releaseLock = Any()
@@ -312,6 +316,7 @@ internal class PanelAssistantTransportOwner(
         while (generation.get() == run) {
             var hadSession = false
             var connection: PanelAssistantTransportConnection? = null
+            var attemptedRoute: io.github.maxlyth.hapaneld.HaConnectionRoute? = null
             val retry: Retry = try {
                 publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.CONNECTING, attempt))
                 val session = auth.resolve(forceAuth)
@@ -324,6 +329,7 @@ internal class PanelAssistantTransportOwner(
                     // demand for the new credential; until then this generation does not use it.
                     session.owner != demand.credential -> Retry.Fast(REFUSAL_CREDENTIAL_UNAVAILABLE)
                     else -> {
+                        attemptedRoute = session.route
                         val opened = connector.connect(session.baseUrl, token)
                         connection = opened
                         publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.HANDSHAKING, attempt))
@@ -342,6 +348,9 @@ internal class PanelAssistantTransportOwner(
                         val described = offer?.descriptors.orEmpty()
                         when (val outcome = handshake(opened, demand.identity, offered, described, offer?.unsupported.orEmpty())) {
                             is PanelAssistantHelloOutcome.Accepted -> {
+                                if (generation.get() != run || !onConnection(session, outcome.session)) {
+                                    throw PanelAssistantProtocolException("Home Assistant connection owner changed")
+                                }
                                 onConnected()
                                 attempt = 0
                                 authRefreshed = false
@@ -426,6 +435,7 @@ internal class PanelAssistantTransportOwner(
                 // just closed. Only this coroutine's own cancellation ends the owner; anything else is
                 // a lost socket and retries like one.
                 currentCoroutineContext().ensureActive()
+                attemptedRoute?.let(onTransportFailure)
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${cancelled.javaClass.simpleName}")
                 }
@@ -438,6 +448,7 @@ internal class PanelAssistantTransportOwner(
                     Retry.Fast(REFUSAL_AUTH_INVALID)
                 }
             } catch (failure: Exception) {
+                attemptedRoute?.let(onTransportFailure)
                 // Network, TLS, frame bound, closed socket, malformed reply or liveness: never parks.
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${failure.javaClass.simpleName}")
@@ -583,9 +594,10 @@ internal class PanelAssistantTransportOwner(
                 throw PanelAssistantProtocolException("Home Assistant stopped answering pings")
             }
             if (awaiting == null && now >= nextPingAt) {
+                if (checkPreferred()) return "preferred_route"
                 connection.send(PanelAssistantTransportProtocol.ping(nextMessageId++))
-                pongDeadline = now + pongTimeoutMs
-                nextPingAt = now + pingIntervalMs
+                pongDeadline = monotonicMillis() + pongTimeoutMs
+                nextPingAt = monotonicMillis() + pingIntervalMs
                 continue
             }
             if (commanding != null) {

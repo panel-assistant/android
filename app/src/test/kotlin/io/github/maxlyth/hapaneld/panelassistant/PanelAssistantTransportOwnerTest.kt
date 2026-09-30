@@ -33,6 +33,65 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PanelAssistantTransportOwnerTest {
 
+    @Test fun `route epoch change reopens native connection without replacing credential`() = runTest {
+        val first = FakeConnection(Ha.accepting())
+        val second = FakeConnection(Ha.accepting())
+        val harness = harness(first, second)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            harness.owner.replaceDemand(DEMAND.copy(routeEpoch = 1))
+            runCurrent()
+            assertTrue(first.closed)
+            assertFalse(second.closed)
+            assertEquals(listOf("https://ha.example" to "token", "https://ha.example" to "token"), harness.connector.connects)
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+        } finally { harness.owner.close() }
+    }
+
+    @Test fun `hello losing connection ownership cannot publish connected or authority`() = runTest {
+        val connection = FakeConnection(Ha.accepting(authority = "native"))
+        var connected = 0
+        val authorities = mutableListOf<String>()
+        val harness = harness(connection, onConnection = { _, _ -> false },
+            onConnected = { connected++ }, onAuthority = { authorities += it })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertTrue(connection.closed)
+            assertEquals(0, connected)
+            assertTrue(authorities.isEmpty())
+            assertFalse(harness.owner.status.phase == PanelAssistantTransportPhase.CONNECTED)
+        } finally { harness.owner.close() }
+    }
+
+    @Test fun `preferred route only retires a working session after check succeeds at ping cadence`() = runTest {
+        val connection = FakeConnection(Ha.accepting())
+        var preferredReady = false
+        var checks = 0
+        val harness = harness(connection, checkPreferred = { checks++; preferredReady })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            advanceTimeBy(29_999)
+            runCurrent()
+            assertEquals(0, checks)
+            advanceTimeBy(1)
+            runCurrent()
+            assertEquals(1, checks)
+            assertFalse(connection.closed)
+            assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+            assertEquals(1, connection.sent.map(::JSONObject).count { it.optString("type") == "ping" })
+            preferredReady = true
+            advanceTimeBy(30_000)
+            runCurrent()
+            assertEquals(2, checks)
+            assertTrue(connection.closed)
+            assertEquals(1, connection.sent.map(::JSONObject).count { it.optString("type") == "ping" })
+        } finally { harness.owner.close() }
+    }
+
     @Test fun `native activation waits for predecessor teardown and successful core startup`() = runTest {
         val harness = harness(FakeConnection(Ha.accepting()), FakeConnection(Ha.accepting()))
         val barrier = ServiceRestartBarrier()
@@ -1120,6 +1179,8 @@ class PanelAssistantTransportOwnerTest {
         embedKeys: io.github.maxlyth.hapaneld.http.EmbedProofKeyring? = null,
         clock: (() -> Long)? = null,
         addresses: () -> List<String> = { emptyList() },
+        onConnection: (HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
+        checkPreferred: suspend () -> Boolean = { false },
     ): Harness {
         val connector = FakeConnector(this, script.toMutableList(), repeating, repeatingFailure)
         val forces = mutableListOf<Boolean>()
@@ -1140,6 +1201,8 @@ class PanelAssistantTransportOwnerTest {
             commands = commands,
             embedKeys = embedKeys,
             addresses = addresses,
+            onConnection = onConnection,
+            checkPreferred = checkPreferred,
             onAuthority = persisted?.let { store -> { value: String -> store.events += "authority:$value"; store.authority = value } } ?: onAuthority,
             onConnected = onConnected,
             authority = persisted?.let { store -> { store.authority } } ?: { "" },

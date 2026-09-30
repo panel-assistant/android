@@ -168,9 +168,12 @@ internal object HaWebSocketClients {
         // start ("Max frame size switch is not supported"), pinned by HaWebSocketClientsFailoverTest.
         // The former per-site inbound bounds are enforced instead by [open], which every caller
         // uses: an oversized frame fails the session with [FrameTooBigException] before delivery.
+        followRedirects = false
         install(WebSockets)
         engine {
             config {
+                followRedirects(false)
+                followSslRedirects(false)
                 connectTimeout(routeConnectTimeoutMs, TimeUnit.MILLISECONDS)
                 // Default-on in OkHttp 5; pinned so a future engine bump cannot silently drop the
                 // concurrent-family race this lane exists to provide.
