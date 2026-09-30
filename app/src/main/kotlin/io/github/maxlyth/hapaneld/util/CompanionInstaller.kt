@@ -58,7 +58,17 @@ object CompanionInstaller {
         channel: String,
         limit: Int = 10,
         maxVersion: String?,
-    ): List<ReleaseCatalog.Version> = applyCap(catalog(channel, limit), maxVersion)
+    ): List<ReleaseCatalog.Version> {
+        val versions = ReleaseCatalog.list(REPO, channel, limit, APK_MATCH, maxVersion = maxVersion) {
+            UpdateChecker.stripVariant(it.removePrefix("v"))
+        }
+        // The known-good ceiling may age beyond the bounded recent pages. Reuse the installer's
+        // exact-cap lookup so the picker still offers that release when it is published.
+        if (maxVersion == null || versions.any { it.installable }) return versions
+        val target = chooseTargetWithExact(versions, maxVersion) { tag -> ReleaseCatalog.apkUrl(REPO, tag, APK_MATCH) }
+            ?: return versions
+        return versions + ReleaseCatalog.Version(target.version, target.tag, target.releaseUrl, true, target.apkUrl)
+    }
 
     /** A release chosen for installation. [newestVersion] remains the channel head even when [version]
      *  is an older, profile-capped target, so callers can explain why the pin applied. */
@@ -74,14 +84,6 @@ object CompanionInstaller {
 
     private fun catalog(channel: String, limit: Int): List<ReleaseCatalog.Version> =
         ReleaseCatalog.list(REPO, channel, limit, APK_MATCH) { UpdateChecker.stripVariant(it.removePrefix("v")) }
-
-    /** Mark releases above a device's safety ceiling as non-installable while retaining their notes. */
-    internal fun applyCap(
-        versions: List<ReleaseCatalog.Version>,
-        maxVersion: String?,
-    ): List<ReleaseCatalog.Version> = if (maxVersion == null) versions else versions.map { version ->
-        if (withinCap(version.version, maxVersion)) version else version.copy(installable = false, apkUrl = null)
-    }
 
     /** Pick one coherent release/asset target. If the channel head is within the cap but lacks its APK,
      *  fail rather than silently falling back. When the head exceeds the cap, select the newest complete

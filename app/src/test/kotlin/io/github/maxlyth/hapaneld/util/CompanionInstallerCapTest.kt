@@ -82,14 +82,6 @@ class CompanionInstallerCapTest {
         assertTrue(target?.capped == true)
     }
 
-    @Test fun pickerLeavesUnsafeReleaseVisibleButNotInstallable() {
-        val versions = listOf(version("2026.6.5", "u665"), version("2026.5.4", "u554"))
-        val capped = CompanionInstaller.applyCap(versions, "2026.5.4")
-        assertFalse(capped[0].installable)
-        assertNull(capped[0].apkUrl)
-        assertTrue(capped[1].installable)
-    }
-
     @Test fun committedPresentationIsClassifiedFromVersionStateNotEnglishProse() {
         assertEquals(
             "managed-install-committed",
