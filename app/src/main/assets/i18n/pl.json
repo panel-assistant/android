@@ -9213,11 +9213,6 @@
    "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
    "state": "machine-draft"
   },
-  "settings.companion_auto_update.help": {
-   "text": "Instaluj lub aktualizuj minimalną aplikację HA Companion przez root, gdy jej brakuje lub jest nieaktualna.",
-   "sourceHash": "fc52865ccfdacefd48405d55bf867dd77a99eb0b2aaf0ac7b44e888abd5c0de7",
-   "state": "machine-cross-checked"
-  },
   "settings.companion_auto_update.label": {
    "text": "Automatyczna aktualizacja Companion",
    "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
@@ -9227,11 +9222,6 @@
    "text": "Utrzymuj minimalną aplikację Companion zainstalowaną i aktualną (root).",
    "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
    "state": "machine-draft"
-  },
-  "settings.companion_update_channel.help": {
-   "text": "Kanał wydań, z którego korzysta automatyczna aktualizacja aplikacji Companion.",
-   "sourceHash": "8ed36e3abe564c24ab183ca333b4ad8dbe6bd2119e1ba3bf939f4c7c8dc9a580",
-   "state": "machine-cross-checked"
   },
   "settings.companion_update_channel.label": {
    "text": "Kanał automatycznych aktualizacji Companion",
@@ -9343,11 +9333,6 @@
    "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
    "state": "machine-draft"
   },
-  "settings.dashboard_idle_return_min.help": {
-   "text": "Wbudowany renderer: powrót do pulpitu głównego po upływie tej liczby minut bezczynności. 0 = wyłączone.",
-   "sourceHash": "7bd07d2e5514d51ce900f99bfdb8a476ad60f0313ac603f2931db1f95bf914cf",
-   "state": "machine-cross-checked"
-  },
   "settings.dashboard_idle_return_min.label": {
    "text": "Powrót do strony gł. po bezczynności (min)",
    "sourceHash": "0e630948da2c2c3cab7aa9c66088ab0e33197e11038e6cc2c96acbfcf7bd871d",
@@ -9396,11 +9381,6 @@
   "settings.dashboard_overscroll.label": {
    "text": "Efekt przewinięcia poza krawędź pulpitu",
    "sourceHash": "6bb0a7d9220faa711c6dea3a7ce31f2007a53547d329f6951a5d0589873ac865",
-   "state": "machine-cross-checked"
-  },
-  "settings.dashboard_package.help": {
-   "text": "Aplikacja używana do wyświetlania pulpitu nawigacyjnego. Puste pole oznacza wbudowany renderer ha-paneld.",
-   "sourceHash": "fdd2579969365f5f618bd91b0d967c0586df1834c5d3b7ca2136345cf0412143",
    "state": "machine-cross-checked"
   },
   "settings.dashboard_package.label": {
@@ -9478,11 +9458,6 @@
    "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
    "state": "machine-draft"
   },
-  "settings.diag_ip.help": {
-   "text": "Adres IPv4 tego panelu w sieci LAN jako czujnik.",
-   "sourceHash": "fc9c7eae6335fbf8f889d417b99e3b85420b0414b520df400826ab7d3ba203c9",
-   "state": "machine-cross-checked"
-  },
   "settings.diag_ip.label": {
    "text": "Adres IP",
    "sourceHash": "0302a467885abfdd4772c9e16c57edab91b02231248202d63170f1c669d13303",
@@ -9492,11 +9467,6 @@
    "text": "Lokalny adres IPv4 tego panelu.",
    "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
    "state": "machine-draft"
-  },
-  "settings.diag_memory.help": {
-   "text": "Użycie pamięci RAM w procentach.",
-   "sourceHash": "05f4f5d827bac7d3320fec7a9bd9454ad0865273ade60012498733ab1cf4661a",
-   "state": "machine-cross-checked"
   },
   "settings.diag_memory.label": {
    "text": "Wykorzystanie pamięci",
@@ -9567,11 +9537,6 @@
    "text": "Wi-Fi – aktualna nazwa sieci.",
    "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
    "state": "machine-draft"
-  },
-  "settings.friendly_name.help": {
-   "text": "Nazwa wyświetlana urządzenia w HA.",
-   "sourceHash": "d609f0f1edaa79506d9619abcdf33f07bfb89b26a70c83c9e6f41e631f4e428f",
-   "state": "machine-cross-checked"
   },
   "settings.friendly_name.label": {
    "text": "Przyjazna nazwa",
@@ -9673,11 +9638,6 @@
    "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
    "state": "machine-draft"
   },
-  "settings.humidity.help": {
-   "text": "Wilgotność względna zgłaszana przez czujnik panelu w systemie Android.",
-   "sourceHash": "0dcd9954f745cb22242cfd4b0ca708d96a89b5b3dd3a3d407cfebee0b9b0679e",
-   "state": "machine-cross-checked"
-  },
   "settings.humidity.label": {
    "text": "Wilgotność",
    "sourceHash": "46819ccb5e6dec74b34710a4fcfc45d995bcb7c5d9a9c87e92afb9342810e92d",
@@ -9688,11 +9648,6 @@
    "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
    "state": "machine-draft"
   },
-  "settings.illuminance.help": {
-   "text": "Natężenie oświetlenia otoczenia mierzone przez czujnik światła w panelu.",
-   "sourceHash": "99fb3d41f1634e9edd6c6c7540968106d44b7e01899f09cfe1fb98865347cae8",
-   "state": "machine-cross-checked"
-  },
   "settings.illuminance.label": {
    "text": "Światło otoczenia",
    "sourceHash": "bd754dd6ed86a26c4bdccfdd47a912232bae26b86fd38ad063f8f725bb7b8f97",
@@ -9702,11 +9657,6 @@
    "text": "Oświetlenie otoczenia z czujnika panelu.",
    "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
    "state": "machine-draft"
-  },
-  "settings.keep_awake.help": {
-   "text": "Utrzymuj działanie sieci i usług działających w tle, gdy ekran jest wyłączony.",
-   "sourceHash": "d3b70b40884db042b1874360834630a2a5534a76840fb833374917dd2cb9ed92",
-   "state": "machine-cross-checked"
   },
   "settings.keep_awake.label": {
    "text": "Utrzymuj responsywność panelu",
@@ -9878,11 +9828,6 @@
    "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
    "state": "machine-draft"
   },
-  "settings.mqtt_broker.help": {
-   "text": "Puste pole: automatyczne wykrywanie HA przez mDNS.",
-   "sourceHash": "aa8b8bb7adffa5c6d19213a7bc1fe500bf2a6d948bb57dbd7c2290f14f985600",
-   "state": "machine-cross-checked"
-  },
   "settings.mqtt_broker.label": {
    "text": "URL brokera",
    "sourceHash": "cad88e3df28153445c8d1c488bc534a1f3e191acf3d636d9c1a5cc734c0f1675",
@@ -9893,11 +9838,6 @@
    "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
    "state": "machine-draft"
   },
-  "settings.mqtt_password.help": {
-   "text": "Puste pole przy zapisywaniu zachowuje aktualne hasło.",
-   "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
-   "state": "machine-cross-checked"
-  },
   "settings.mqtt_password.label": {
    "text": "Hasło",
    "sourceHash": "e7cf3ef4f17c3999a94f2c6f612e8a888e5b1026878e4e19398b23bd38ec221a",
@@ -9907,11 +9847,6 @@
    "text": "MQTT hasło. Puste pole powoduje zachowanie obecnego hasła.",
    "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
    "state": "machine-draft"
-  },
-  "settings.mqtt_user.help": {
-   "text": "Dane uwierzytelniające dla tego panelu.",
-   "sourceHash": "95c922291a9f7fa89f1135d8b5e750a1a32c2c17d26b556012d6c3d939b35bc0",
-   "state": "machine-cross-checked"
   },
   "settings.mqtt_user.label": {
    "text": "Nazwa użytkownika",
@@ -9968,11 +9903,6 @@
    "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
    "state": "machine-draft"
   },
-  "settings.prevent_idle_dim.help": {
-   "text": "Zablokuj oprogramowanie producenta, które przyciemnia podświetlenie po upływie czasu wygaszenia ekranu.",
-   "sourceHash": "e65c72cf163d6535f1c4b8a7bc5edd3731b1f404128861e1889004e1eda20f8d",
-   "state": "machine-cross-checked"
-  },
   "settings.prevent_idle_dim.label": {
    "text": "Blokada przyciemniania ekranu",
    "sourceHash": "ab4e8ab5e353c0f7a2772ea83b880bba96a671c022dfc853aee0833b5bd2a62f",
@@ -9982,11 +9912,6 @@
    "text": "Blokuje przyciemnianie podświetlenia przez firmware producenta po wygaszeniu.",
    "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
    "state": "machine-draft"
-  },
-  "settings.proximity.help": {
-   "text": "Wyuczona obecność blisko/daleko na podstawie obsługiwanego źródła zbliżeniowego.",
-   "sourceHash": "1302fe79949d5f3c6152bd67f6988f2be92ce9a134c49172b2a3c3212d24ab6b",
-   "state": "machine-cross-checked"
   },
   "settings.proximity.label": {
    "text": "Zbliżenie",
@@ -10012,11 +9937,6 @@
    "text": "Wynikowy poziom zbliżeniowości, od 0 do 100 procent.",
    "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
    "state": "machine-draft"
-  },
-  "settings.room_humidity.help": {
-   "text": "Wilgotność względna z obsługiwanych przez panel czujników klimatycznych.",
-   "sourceHash": "7615cfe25fea88ea327f766a4aba84edf4d0eed4c45b5d85cea3ca805b73e0ea",
-   "state": "machine-cross-checked"
   },
   "settings.room_humidity.label": {
    "text": "Wilgotność w pomieszczeniu",
@@ -10088,11 +10008,6 @@
    "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
    "state": "machine-draft"
   },
-  "settings.silence_boot_chime.help": {
-   "text": "Wycisz sygnał dźwiękowy uruchamiania oprogramowania układowego.",
-   "sourceHash": "9398fcca9e28cc1f8615e89611f2b8e0637d01262f46bdc42e4467db67e64c9a",
-   "state": "machine-cross-checked"
-  },
   "settings.silence_boot_chime.label": {
    "text": "Wycisz sygnał startowy",
    "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
@@ -10113,11 +10028,6 @@
    "sourceHash": "456cfdbba7347a8ee69662a573af218198e6a6d7cf3362bee5c6b4c8043b60cb",
    "state": "machine-cross-checked"
   },
-  "settings.temperature.help": {
-   "text": "Temperatura otoczenia zgłaszana przez czujnik panelu w systemie Android.",
-   "sourceHash": "e87468640915b6e8f0bedc5b16628b3ea8f3177793f2410c3a27fc5947ec0581",
-   "state": "machine-cross-checked"
-  },
   "settings.temperature.label": {
    "text": "Temperatura",
    "sourceHash": "b958ce8b871ab36b3ceee0e0f012b6182962b2db7926be0a670149f9fbd00b84",
@@ -10127,11 +10037,6 @@
    "text": "Temperatura z czujnika panelu systemu Android.",
    "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
    "state": "machine-draft"
-  },
-  "settings.touch_sound.help": {
-   "text": "Dźwiękowe potwierdzenie dotknięcia (systemowe dźwięki dotykowe).",
-   "sourceHash": "8b2ce13af0b77b1da73765d226b4370107b48b7119670490cf9ece1522b6349b",
-   "state": "machine-cross-checked"
   },
   "settings.touch_sound.label": {
    "text": "Dźwięk dotykowy",
@@ -10158,11 +10063,6 @@
    "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
    "state": "machine-draft"
   },
-  "settings.update_channel.help": {
-   "text": "Kanał wydań, z którego korzysta mechanizm automatycznej aktualizacji.",
-   "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
-   "state": "machine-cross-checked"
-  },
   "settings.update_channel.label": {
    "text": "Kanał automatycznych aktualizacji ha-paneld",
    "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
@@ -10173,11 +10073,6 @@
    "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
    "state": "machine-draft"
   },
-  "settings.voice_audio_source.help": {
-   "text": "Źródło dźwięku systemu Android, z którego nagrywa detektor słowa budzącego.",
-   "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
-   "state": "machine-cross-checked"
-  },
   "settings.voice_audio_source.label": {
    "text": "Źródło dźwięku",
    "sourceHash": "f6479eb15e423313ae0db8583d077b47191a41c16bc97a9d85dec35f16ad5431",
@@ -10187,11 +10082,6 @@
    "text": "Źródło dźwięku w systemie Android dla słuchacza.",
    "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
    "state": "machine-draft"
-  },
-  "settings.voice_enabled.help": {
-   "text": "Uruchom na panelu nasłuchiwanie słowa budzącego i wysyłaj rozpoznaną mowę do Home Assistant Assist.",
-   "sourceHash": "ba296e73d5537bc8180f5abaf4109da9a48797078e1447b71194a0aeec451f2f",
-   "state": "machine-cross-checked"
   },
   "settings.voice_enabled.label": {
    "text": "Asystent głosowy",
@@ -10293,11 +10183,6 @@
    "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
    "state": "machine-draft"
   },
-  "settings.watchdog_enabled.help": {
-   "text": "Samoczynna naprawa aplikacji pulpitu: uruchom ją ponownie, jeśli się zawiesi, i przywróć, jeśli zbyt długo działa w tle.",
-   "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",
-   "state": "machine-cross-checked"
-  },
   "settings.watchdog_enabled.label": {
    "text": "Nadzór aplikacji",
    "sourceHash": "b26bc7ffa70ab7160d62be62a315160fdf6e8e5b2c000e081cc9fcfd1b17c00d",
@@ -10322,11 +10207,6 @@
    "text": "Proszę utrzymywać systemowy plik `WebView` w zalecanej wersji (root).",
    "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
    "state": "machine-draft"
-  },
-  "settings.zigbee_router.help": {
-   "text": "Uruchom wbudowaną bramkę Zigbee jako router/przekaźnik (NSPanel Pro).",
-   "sourceHash": "0e45c24d90c69895031bb89e0360f16e94f3ef89262456cfef82c2ab024e5824",
-   "state": "machine-cross-checked"
   },
   "settings.zigbee_router.label": {
    "text": "Router sieci Zigbee",

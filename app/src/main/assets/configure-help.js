@@ -75,7 +75,11 @@
   var helpPop = document.getElementById("cfg-help");
   var helpAnchor = null, helpPinned = false, helpHoverTimer = null;
   var helpHover = !!(window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches);
-  function helpAvailable(f) { return !!(f.help || f.key === "dashboard_zoom"); }
+  function hasLongHelp(f) { return !!String(f.help || "").trim(); }
+  function includeHiddenSummary(f) {
+    return !cfg.descriptions && f.shortDescriptionUsefulInPopover === true && !!String(f.summary || "").trim();
+  }
+  function helpAvailable(f) { return hasLongHelp(f) || includeHiddenSummary(f); }
   function helpWebsiteUrl(f) {
     var tools = document.getElementById("cfg-tools");
     var version = tools && tools.getAttribute("data-app-version") || "";
@@ -109,8 +113,13 @@
     document.getElementById("cfg-help-title").textContent = f.label;
     var body = document.getElementById("cfg-help-body");
     body.textContent = "";
-    if (f.helpLanguage) body.setAttribute("lang", f.helpLanguage); else body.removeAttribute("lang");
-    helpBodyNodes(f).forEach(function (node) { body.appendChild(node); });
+    if (hasLongHelp(f) && f.helpLanguage) body.setAttribute("lang", f.helpLanguage); else body.removeAttribute("lang");
+    if (includeHiddenSummary(f)) {
+      var summary = cfg.el("p", { text: f.summary });
+      if (f.summaryLanguage) summary.setAttribute("lang", f.summaryLanguage);
+      body.appendChild(summary);
+    }
+    if (hasLongHelp(f)) helpBodyNodes(f).forEach(function (node) { body.appendChild(node); });
     document.getElementById("cfg-help-more").setAttribute("href", helpWebsiteUrl(f));
     helpAnchor = button; helpPinned = !!pin;
     button.setAttribute("aria-expanded", "true");
