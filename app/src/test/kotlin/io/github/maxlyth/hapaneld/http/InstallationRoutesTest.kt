@@ -7,6 +7,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import java.io.File
 import org.json.JSONObject
@@ -17,6 +18,37 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstallationRoutesTest {
+    @Test fun versionEndpointExplainsEveryUnavailableChoiceAndPreservesAllowedDownload() {
+        PaneldServerHttpFixture().use { fixture ->
+            testApplication {
+                application {
+                    routing {
+                        installationRoutes(fixture.context, fixture.config,
+                            io.github.maxlyth.hapaneld.control.fakeProfile(), fixture.pending,
+                            authorizeSensitive = { _, _, _, _ -> true },
+                            versionCatalogue = { _, _ -> listOf(
+                                io.github.maxlyth.hapaneld.util.ReleaseCatalog.Version("1", "v1", "notes1", false),
+                                io.github.maxlyth.hapaneld.util.ReleaseCatalog.Version("2", "v2", "notes2", false,
+                                    unavailableReason = "older_app_id"),
+                                io.github.maxlyth.hapaneld.util.ReleaseCatalog.Version("3", "v3", "notes3", false,
+                                    unavailableReason = "above_panel_limit", maxVersion = "2026.5.4"),
+                                io.github.maxlyth.hapaneld.util.ReleaseCatalog.Version("4", "v4", "notes4", true, "download4"),
+                            ) })
+                    }
+                }
+                val response = client.get("/install/versions?name=paneld&channel=prerelease")
+                assertEquals(HttpStatusCode.OK, response.status)
+                val versions = JSONObject(response.bodyAsText()).getJSONArray("versions")
+                assertEquals(listOf("no_matching_asset", "older_app_id", "above_panel_limit"),
+                    (0..2).map { versions.getJSONObject(it).optString("unavailableReason") })
+                assertEquals("2026.5.4", versions.getJSONObject(2).optString("maxVersion"))
+                assertTrue(versions.getJSONObject(3).getBoolean("installable"))
+                assertEquals("download4", versions.getJSONObject(3).optString("apk"))
+                assertTrue(versions.getJSONObject(3).isNull("unavailableReason"))
+            }
+        }
+    }
+
     @Test fun `full mount preserves install choices admission toggles and callback ownership`() {
         val requests = mutableListOf<Triple<String, String, String>>()
         var admit = true
