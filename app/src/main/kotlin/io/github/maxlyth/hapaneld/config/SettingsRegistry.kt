@@ -221,10 +221,10 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "friendly_name", type = SettingType.STRING, group = "Identity",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Name Home Assistant shows for this panel.",
             label = "Friendly name", default = "", scope = Scope.IDENTITY,
             maxChars = 128,
-            help = "HA device display name.",
         ),
         SettingSpec(
             key = "manufacturer", type = SettingType.STRING, group = "Identity",
@@ -262,10 +262,10 @@ object SettingsRegistry {
         // ---- MQTT --------------------------------------------------------------------------------
         SettingSpec(
             key = "mqtt_broker", type = SettingType.STRING, group = "MQTT",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "MQTT broker address. Blank finds Home Assistant automatically.",
             label = "Broker URL", default = "", scope = Scope.PORTABLE,
             maxChars = 2_048,
-            help = "Blank auto-discovers HA over mDNS.",
             validate = { raw ->
                 if (raw.isBlank()) Validation.Ok(raw)
                 else BrokerEndpoint.normalize(raw)?.let(Validation::Ok)
@@ -277,14 +277,12 @@ object SettingsRegistry {
             tier = Tier.ADVANCED, summary = "MQTT username for this panel.",
             label = "Username", default = "", scope = Scope.DEVICE,
             maxChars = 256,
-            help = "Credential for this panel.",
         ),
         SettingSpec(
             key = "mqtt_password", type = SettingType.PASSWORD, group = "MQTT",
             tier = Tier.ADVANCED, summary = "MQTT password. Blank keeps the current one.",
             label = "Password", default = "", scope = Scope.DEVICE, secret = true,
             maxChars = 4_096,
-            help = "Blank on save keeps the current password.",
         ),
         SettingSpec(
             key = "mqtt_address_family", type = SettingType.ENUM, group = "MQTT",
@@ -374,10 +372,10 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "watchdog_enabled", type = SettingType.BOOL, group = "Behaviour",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "Relaunch the dashboard app if it dies or stays backgrounded.",
             label = "App watchdog", default = "false", scope = Scope.PORTABLE,
             liveApply = true,
-            help = "Self-heal the dashboard app: relaunch if it dies, return if backgrounded too long.",
         ),
         SettingSpec(
             key = "kiosk_companion_packages", type = SettingType.STRING, group = "Behaviour",
@@ -400,7 +398,6 @@ object SettingsRegistry {
             tier = Tier.BASIC, summary = "Play the system tap sound.",
             label = "Touch sound", default = "true", scope = Scope.PORTABLE,
             liveApply = true,
-            help = "Audible tap feedback (system touch sounds).",
             ha = haEntity("switch", "touch_sound", "Touch sound") {
                 commandTopic()
                 stateTopic()
@@ -413,7 +410,6 @@ object SettingsRegistry {
             tier = Tier.BASIC, summary = "Mute the firmware start-up chime.",
             label = "Silence boot chime", default = DEFAULT_SILENCE_BOOT_CHIME.toString(), scope = Scope.DEVICE,
             liveApply = true,
-            help = "Mute the firmware startup chime.",
         ),
         // ---- Display -----------------------------------------------------------------------------
         SettingSpec(
@@ -505,21 +501,20 @@ object SettingsRegistry {
             tier = Tier.ADVANCED, summary = "Use the on-board Zigbee radio as a router.",
             label = "Zigbee router", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            help = "Run the on-board Zigbee gateway as a router/repeater (NSPanel Pro).",
             availableWhen = { it.zigbeePresent },
         ),
         SettingSpec(
             key = "prevent_idle_dim", type = SettingType.BOOL, group = "Behaviour",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Stop the vendor firmware dimming the backlight at screen-off.",
             label = "Prevent idle dim", default = "true", scope = Scope.PORTABLE,
             liveApply = true,
-            help = "Stop the vendor firmware dimming the backlight at the screen-off timeout.",
         ),
         SettingSpec(
             key = "keep_awake", type = SettingType.BOOL, group = "Behaviour",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "Keep network and services running while the screen is off.",
             label = "Keep panel responsive", default = "true", scope = Scope.PORTABLE,
-            help = "Keep the network and background services running while the screen is off.",
         ),
         // Camera is off by default and offered where the device profile declares a camera or Android
         // enumerates one. Only the master switch reaches Home Assistant; the three caps stay local
@@ -587,10 +582,10 @@ object SettingsRegistry {
         // Which app renders the dashboard + how the built-in renderer connects to HA.
         SettingSpec(
             key = "dashboard_package", type = SettingType.STRING, group = "Dashboard",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "App that shows the dashboard. Blank uses the built-in renderer.",
             label = "Dashboard app", default = "", picker = "renderer", scope = Scope.DEVICE,
             maxChars = 255,
-            help = "App used for the dashboard. Blank uses ha-paneld's built-in renderer.",
             validate = { value ->
                 if (AndroidInput.isDashboardTarget(value)) Validation.Ok(value)
                 else Validation.Bad("dashboard_package: expected blank, builtin, or an Android package name")
@@ -659,10 +654,10 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "dashboard_idle_return_min", type = SettingType.INT, group = "Dashboard",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Minutes idle before returning home. 0 turns it off.",
             label = "Idle return to home (min)", default = "0", min = 0.0, max = 1440.0,
             scope = Scope.PORTABLE,
-            help = "Built-in renderer: return to Home dashboard after this many idle minutes. 0 = off.",
         ),
         SettingSpec(
             key = "ha_url", type = SettingType.STRING, group = "Dashboard",
@@ -768,15 +763,14 @@ object SettingsRegistry {
             label = "ha-paneld auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
             liveApply = true,
             scope = Scope.DEVICE,
-            help = "Release channel the self-updater follows.",
             availableWhen = { it.canInstallVerifiedApps },
         ),
         SettingSpec(
             key = "companion_auto_update", type = SettingType.BOOL, group = "System",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "Keep the minimal Companion app installed and current (root).",
             label = "Companion auto-update", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            help = "Install/update the minimal HA Companion over root when missing or out of date.",
             availableWhen = { it.companionInstalled },
             ha = haEntity("switch", "companion_auto_update", "Companion auto-update") {
                 commandTopic()
@@ -791,7 +785,6 @@ object SettingsRegistry {
             label = "Companion auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
             liveApply = true,
             scope = Scope.DEVICE,
-            help = "Release channel the Companion auto-updater follows.",
             ha = haEntity("select", "companion_update_channel", "Companion auto-update channel") {
                 commandTopic()
                 stateTopic()
@@ -850,10 +843,10 @@ object SettingsRegistry {
         // requires a microphone, which the device profile declares only for proven capture.
         SettingSpec(
             key = "voice_enabled", type = SettingType.BOOL, group = "Voice",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Listen for a wake word and send speech to Assist.",
             label = "Voice assistant", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            help = "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
             availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
@@ -878,11 +871,11 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "voice_audio_source", type = SettingType.ENUM, group = "Voice",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "Android audio source for the listener.",
             label = "Audio source", default = "voice_recognition",
             options = listOf("voice_recognition", "mic", "voice_communication"),
             scope = Scope.DEVICE,
-            help = "Android audio source the wake-word listener records from.",
             availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
@@ -977,9 +970,9 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "illuminance", type = SettingType.INT, group = "Sensors",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Ambient light from the panel sensor.",
             label = "Ambient light", default = "",
-            help = "Ambient illuminance measured by the panel light sensor.",
             haExposedByDefault = true,
             availableWhen = { it.hasLight },
             ha = haEntity("sensor", "illuminance", "Illuminance", readOnly = true, periodicRefresh = true) {
@@ -991,9 +984,9 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "proximity", type = SettingType.BOOL, group = "Sensors",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Learned near or far occupancy.",
             label = "Proximity", default = "",
-            help = "Learned near/far occupancy from a supported proximity source.",
             haExposedByDefault = true,
             availableWhen = { it.hasLearnedProximity },
             ha = haEntity("binary_sensor", "proximity", "Proximity", readOnly = true) {
@@ -1031,9 +1024,9 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "temperature", type = SettingType.FLOAT, group = "Sensors",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Temperature from Android's panel sensor.",
             label = "Temperature", default = "",
-            help = "Environmental temperature reported by Android's panel sensor.",
             haExposedByDefault = true,
             availableWhen = { it.hasTemperature },
             ha = haEntity("sensor", "temperature", "Temperature", readOnly = true, periodicRefresh = true) {
@@ -1045,9 +1038,9 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "humidity", type = SettingType.FLOAT, group = "Sensors",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Humidity from Android's panel sensor.",
             label = "Humidity", default = "",
-            help = "Relative humidity reported by Android's panel sensor.",
             haExposedByDefault = true,
             availableWhen = { it.hasHumidity },
             ha = haEntity("sensor", "humidity", "Humidity", readOnly = true, periodicRefresh = true) {
@@ -1064,9 +1057,9 @@ object SettingsRegistry {
         // are pushed on the heartbeat tick with a deadband so they never flap the broker. (Issue #19)
         SettingSpec(
             key = "diag_ip", type = SettingType.STRING, group = "Diagnostics",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "This panel's local IPv4 address.",
             label = "IP address", default = "",
-            help = "This panel's LAN IPv4 address as a sensor.",
             haExposedByDefault = false,
             ha = haEntity("sensor", "diag_ip", "IP address", readOnly = true) {
                 stateTopic()
@@ -1093,7 +1086,6 @@ object SettingsRegistry {
             key = "diag_memory", type = SettingType.INT, group = "Diagnostics",
             tier = Tier.BASIC, summary = "Used memory as a percentage.",
             label = "Memory usage", default = "",
-            help = "Used RAM as a percentage.",
             haExposedByDefault = false,
             ha = haEntity("sensor", "diag_memory", "Memory usage", readOnly = true, periodicRefresh = true) {
                 stateTopic()
@@ -1209,9 +1201,9 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "room_humidity", type = SettingType.INT, group = "Sensors",
+            shortDescriptionUsefulInPopover = true,
             tier = Tier.ADVANCED, summary = "Room humidity from the climate sensor.",
             label = "Room humidity", default = "",
-            help = "Relative humidity from the panel's supported climate sensor.",
             haExposedByDefault = true, availableWhen = { it.hasCht8305 },
             ha = haEntity("sensor", "room_humidity", "Room humidity", readOnly = true, periodicRefresh = true) {
                 stateTopic()

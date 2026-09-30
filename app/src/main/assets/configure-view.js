@@ -209,6 +209,7 @@
   cfg.configCardGeometryInvalid = configCardGeometryInvalid;
   cfg.readConfigView = readConfigView;
   cfg.writeConfigView = writeConfigView;
+  cfg.configViewChanged = configViewChanged;
   cfg.syncConfigViewUi = syncConfigViewUi;
   cfg.advancedField = advancedField;
   cfg.fieldMatchesFilter = fieldMatchesFilter;

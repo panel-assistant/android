@@ -10463,11 +10463,6 @@
       "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
       "state": "machine-cross-checked"
     },
-    "settings.companion_auto_update.help": {
-      "sourceHash": "fc52865ccfdacefd48405d55bf867dd77a99eb0b2aaf0ac7b44e888abd5c0de7",
-      "state": "machine-cross-checked",
-      "text": "Installiert oder aktualisiert den minimalen HA Companion über root, wenn er fehlt oder veraltet ist."
-    },
     "settings.companion_auto_update.label": {
       "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
       "state": "machine-cross-checked",
@@ -10477,11 +10472,6 @@
       "text": "Hält die minimale Companion-App installiert und aktuell (root).",
       "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
       "state": "machine-cross-checked"
-    },
-    "settings.companion_update_channel.help": {
-      "sourceHash": "8ed36e3abe564c24ab183ca333b4ad8dbe6bd2119e1ba3bf939f4c7c8dc9a580",
-      "state": "machine-cross-checked",
-      "text": "Veröffentlichungskanal, dem der automatische Companion-Updater folgt."
     },
     "settings.companion_update_channel.label": {
       "sourceHash": "80740dfa19b24df111ff9aa4791044aebc4b956662b02f33d8ca0d0a3f71da8f",
@@ -10593,11 +10583,6 @@
       "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
       "state": "machine-cross-checked"
     },
-    "settings.dashboard_idle_return_min.help": {
-      "sourceHash": "7bd07d2e5514d51ce900f99bfdb8a476ad60f0313ac603f2931db1f95bf914cf",
-      "state": "machine-cross-checked",
-      "text": "Integrierter Renderer: Kehrt nach dieser Anzahl inaktiver Minuten zum Start-Dashboard zurück. 0 = aus."
-    },
     "settings.dashboard_idle_return_min.label": {
       "sourceHash": "0e630948da2c2c3cab7aa9c66088ab0e33197e11038e6cc2c96acbfcf7bd871d",
       "state": "machine-cross-checked",
@@ -10647,11 +10632,6 @@
       "sourceHash": "6bb0a7d9220faa711c6dea3a7ce31f2007a53547d329f6951a5d0589873ac865",
       "state": "machine-cross-checked",
       "text": "Overscroll-Effekt des Dashboards"
-    },
-    "settings.dashboard_package.help": {
-      "sourceHash": "fdd2579969365f5f618bd91b0d967c0586df1834c5d3b7ca2136345cf0412143",
-      "state": "machine-cross-checked",
-      "text": "Für das Dashboard verwendete App. Wenn leer, wird der integrierte Renderer von ha-paneld verwendet."
     },
     "settings.dashboard_package.label": {
       "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
@@ -10728,11 +10708,6 @@
       "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
       "state": "machine-cross-checked"
     },
-    "settings.diag_ip.help": {
-      "sourceHash": "fc9c7eae6335fbf8f889d417b99e3b85420b0414b520df400826ab7d3ba203c9",
-      "state": "machine-cross-checked",
-      "text": "Die LAN-IPv4-Adresse dieses Panels als Sensor."
-    },
     "settings.diag_ip.label": {
       "sourceHash": "0302a467885abfdd4772c9e16c57edab91b02231248202d63170f1c669d13303",
       "state": "machine-cross-checked",
@@ -10742,11 +10717,6 @@
       "text": "Lokale IPv4-Adresse dieses Panels.",
       "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
       "state": "machine-cross-checked"
-    },
-    "settings.diag_memory.help": {
-      "sourceHash": "05f4f5d827bac7d3320fec7a9bd9454ad0865273ade60012498733ab1cf4661a",
-      "state": "machine-cross-checked",
-      "text": "Belegter RAM in Prozent."
     },
     "settings.diag_memory.label": {
       "sourceHash": "46e2c42a0c19ddf30ba473d20d61e77aa70357a3ce2e24acd8ce118cc93091b4",
@@ -10817,11 +10787,6 @@
       "text": "Aktueller Wi-Fi-Netzwerkname.",
       "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
       "state": "machine-cross-checked"
-    },
-    "settings.friendly_name.help": {
-      "sourceHash": "d609f0f1edaa79506d9619abcdf33f07bfb89b26a70c83c9e6f41e631f4e428f",
-      "state": "machine-cross-checked",
-      "text": "HA-Anzeigename des Geräts."
     },
     "settings.friendly_name.label": {
       "sourceHash": "d25d7b3edd1c0e6896d2e5754a0a21bb11c3614972d11cc421bb194442e0394d",
@@ -10923,11 +10888,6 @@
       "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
       "state": "machine-cross-checked"
     },
-    "settings.humidity.help": {
-      "sourceHash": "0dcd9954f745cb22242cfd4b0ca708d96a89b5b3dd3a3d407cfebee0b9b0679e",
-      "state": "machine-cross-checked",
-      "text": "Vom Panelsensor unter Android gemeldete relative Luftfeuchtigkeit."
-    },
     "settings.humidity.label": {
       "sourceHash": "46819ccb5e6dec74b34710a4fcfc45d995bcb7c5d9a9c87e92afb9342810e92d",
       "state": "machine-cross-checked",
@@ -10938,11 +10898,6 @@
       "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
       "state": "machine-cross-checked"
     },
-    "settings.illuminance.help": {
-      "sourceHash": "99fb3d41f1634e9edd6c6c7540968106d44b7e01899f09cfe1fb98865347cae8",
-      "state": "machine-cross-checked",
-      "text": "Vom Lichtsensor des Panels gemessene Umgebungsbeleuchtungsstärke."
-    },
     "settings.illuminance.label": {
       "sourceHash": "bd754dd6ed86a26c4bdccfdd47a912232bae26b86fd38ad063f8f725bb7b8f97",
       "state": "machine-cross-checked",
@@ -10952,11 +10907,6 @@
       "text": "Umgebungslicht vom Panelsensor.",
       "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
       "state": "machine-cross-checked"
-    },
-    "settings.keep_awake.help": {
-      "sourceHash": "d3b70b40884db042b1874360834630a2a5534a76840fb833374917dd2cb9ed92",
-      "state": "machine-cross-checked",
-      "text": "Hält das Netzwerk und die Hintergrunddienste bei ausgeschaltetem Bildschirm aktiv."
     },
     "settings.keep_awake.label": {
       "sourceHash": "a7ec7e771773b541ddbd2cc8b80bcb7c777cfacca8b8a8b4251f37d51c30e366",
@@ -11128,11 +11078,6 @@
       "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
       "state": "machine-cross-checked"
     },
-    "settings.mqtt_broker.help": {
-      "sourceHash": "aa8b8bb7adffa5c6d19213a7bc1fe500bf2a6d948bb57dbd7c2290f14f985600",
-      "state": "machine-cross-checked",
-      "text": "Bei leerem Feld wird HA automatisch über mDNS erkannt."
-    },
     "settings.mqtt_broker.label": {
       "sourceHash": "cad88e3df28153445c8d1c488bc534a1f3e191acf3d636d9c1a5cc734c0f1675",
       "state": "machine-cross-checked",
@@ -11143,11 +11088,6 @@
       "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
       "state": "machine-cross-checked"
     },
-    "settings.mqtt_password.help": {
-      "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
-      "state": "machine-cross-checked",
-      "text": "Ein leeres Feld beim Speichern behält das aktuelle Passwort bei."
-    },
     "settings.mqtt_password.label": {
       "sourceHash": "e7cf3ef4f17c3999a94f2c6f612e8a888e5b1026878e4e19398b23bd38ec221a",
       "state": "machine-cross-checked",
@@ -11157,11 +11097,6 @@
       "text": "MQTT-Passwort. Leer behält das aktuelle Passwort bei.",
       "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
       "state": "machine-cross-checked"
-    },
-    "settings.mqtt_user.help": {
-      "sourceHash": "95c922291a9f7fa89f1135d8b5e750a1a32c2c17d26b556012d6c3d939b35bc0",
-      "state": "machine-cross-checked",
-      "text": "Anmeldedaten für dieses Panel."
     },
     "settings.mqtt_user.label": {
       "sourceHash": "e3b89e9d33f88e523083d8b4436adcc3726c89e97fd3179a2e102d765d1b16ed",
@@ -11218,11 +11153,6 @@
       "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
       "state": "machine-cross-checked"
     },
-    "settings.prevent_idle_dim.help": {
-      "sourceHash": "e65c72cf163d6535f1c4b8a7bc5edd3731b1f404128861e1889004e1eda20f8d",
-      "state": "machine-cross-checked",
-      "text": "Verhindert, dass die Hersteller-Firmware die Hintergrundbeleuchtung bei Ablauf der Bildschirm-Abschaltzeit dimmt."
-    },
     "settings.prevent_idle_dim.label": {
       "sourceHash": "ab4e8ab5e353c0f7a2772ea83b880bba96a671c022dfc853aee0833b5bd2a62f",
       "state": "machine-cross-checked",
@@ -11232,11 +11162,6 @@
       "text": "Hindert die Hersteller-Firmware, beim Bildschirm-Aus die Displaybeleuchtung zu dimmen.",
       "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
       "state": "machine-cross-checked"
-    },
-    "settings.proximity.help": {
-      "sourceHash": "1302fe79949d5f3c6152bd67f6988f2be92ce9a134c49172b2a3c3212d24ab6b",
-      "state": "machine-cross-checked",
-      "text": "Erlernte Belegung „nah/fern“ aus einer unterstützten Näherungsquelle."
     },
     "settings.proximity.label": {
       "sourceHash": "101194f3e33d01133851120bc7bab9967d2d8988266a7c07ae800f7127e7e3e2",
@@ -11262,11 +11187,6 @@
       "text": "Erlernter Näherungsgrad, 0 bis 100 Prozent.",
       "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
       "state": "machine-cross-checked"
-    },
-    "settings.room_humidity.help": {
-      "sourceHash": "7615cfe25fea88ea327f766a4aba84edf4d0eed4c45b5d85cea3ca805b73e0ea",
-      "state": "machine-cross-checked",
-      "text": "Relative Luftfeuchtigkeit vom unterstützten Klimasensor des Panels."
     },
     "settings.room_humidity.label": {
       "sourceHash": "b5b23b83711c932f7584f48ce893840e7febe392151c3bdd1e23d2271ee983c5",
@@ -11338,11 +11258,6 @@
       "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
       "state": "machine-cross-checked"
     },
-    "settings.silence_boot_chime.help": {
-      "sourceHash": "9398fcca9e28cc1f8615e89611f2b8e0637d01262f46bdc42e4467db67e64c9a",
-      "state": "machine-cross-checked",
-      "text": "Schaltet den Startton der Firmware stumm."
-    },
     "settings.silence_boot_chime.label": {
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
       "state": "machine-cross-checked",
@@ -11363,11 +11278,6 @@
       "state": "machine-cross-checked",
       "text": "Herstellerpaketauswahl"
     },
-    "settings.temperature.help": {
-      "sourceHash": "e87468640915b6e8f0bedc5b16628b3ea8f3177793f2410c3a27fc5947ec0581",
-      "state": "machine-cross-checked",
-      "text": "Vom Panelsensor unter Android gemeldete Umgebungstemperatur."
-    },
     "settings.temperature.label": {
       "sourceHash": "b958ce8b871ab36b3ceee0e0f012b6182962b2db7926be0a670149f9fbd00b84",
       "state": "machine-cross-checked",
@@ -11377,11 +11287,6 @@
       "text": "Temperatur vom Sensor des Android-Panels.",
       "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
       "state": "machine-cross-checked"
-    },
-    "settings.touch_sound.help": {
-      "sourceHash": "8b2ce13af0b77b1da73765d226b4370107b48b7119670490cf9ece1522b6349b",
-      "state": "machine-cross-checked",
-      "text": "Akustische Rückmeldung beim Tippen (Systemtöne bei Berührung)."
     },
     "settings.touch_sound.label": {
       "sourceHash": "1cf019342ad6e734637911c1f747d0c7ddcf97c109418991c59ff08657215589",
@@ -11408,11 +11313,6 @@
       "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
       "state": "machine-cross-checked"
     },
-    "settings.update_channel.help": {
-      "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
-      "state": "machine-cross-checked",
-      "text": "Veröffentlichungskanal, dem der automatische Updater folgt."
-    },
     "settings.update_channel.label": {
       "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
       "state": "machine-cross-checked",
@@ -11423,11 +11323,6 @@
       "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
       "state": "machine-cross-checked"
     },
-    "settings.voice_audio_source.help": {
-      "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
-      "state": "machine-cross-checked",
-      "text": "Android-Audioquelle, über die die Aktivierungswort-Erkennung aufnimmt."
-    },
     "settings.voice_audio_source.label": {
       "sourceHash": "f6479eb15e423313ae0db8583d077b47191a41c16bc97a9d85dec35f16ad5431",
       "state": "machine-cross-checked",
@@ -11437,11 +11332,6 @@
       "text": "Android-Audioquelle für die Aktivierungswort-Erkennung.",
       "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
       "state": "machine-cross-checked"
-    },
-    "settings.voice_enabled.help": {
-      "sourceHash": "ba296e73d5537bc8180f5abaf4109da9a48797078e1447b71194a0aeec451f2f",
-      "state": "machine-cross-checked",
-      "text": "Führt die Aktivierungswort-Erkennung auf dem Panel aus und sendet erkannte Sprache an Home Assistant Assist."
     },
     "settings.voice_enabled.label": {
       "sourceHash": "290b79b6acea4aeba750f9bbe47409feb5ebad3516fb66d4532e577d4d9ae40f",
@@ -11543,11 +11433,6 @@
       "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
       "state": "machine-cross-checked"
     },
-    "settings.watchdog_enabled.help": {
-      "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",
-      "state": "machine-cross-checked",
-      "text": "Behebt Probleme der Dashboard-App selbstständig: startet sie neu, wenn sie nicht mehr läuft, und holt sie zurück, wenn sie zu lange im Hintergrund war."
-    },
     "settings.watchdog_enabled.label": {
       "sourceHash": "b26bc7ffa70ab7160d62be62a315160fdf6e8e5b2c000e081cc9fcfd1b17c00d",
       "state": "machine-cross-checked",
@@ -11572,11 +11457,6 @@
       "text": "System WebView auf dem empfohlenen Build halten (root).",
       "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
       "state": "machine-cross-checked"
-    },
-    "settings.zigbee_router.help": {
-      "sourceHash": "0e45c24d90c69895031bb89e0360f16e94f3ef89262456cfef82c2ab024e5824",
-      "state": "machine-cross-checked",
-      "text": "Betreibt das integrierte Zigbee-Gateway als Router/Repeater (NSPanel Pro)."
     },
     "settings.zigbee_router.label": {
       "sourceHash": "76c68d99b8cb9505d0771ff7291ab23f70e4fcba5fa81daa256c4e50461286f5",

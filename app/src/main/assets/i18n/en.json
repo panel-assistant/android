@@ -31719,32 +31719,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.companion_auto_update.help": {
-      "text": "Install/update the minimal HA Companion over root when missing or out of date.",
-      "sourceHash": "fc52865ccfdacefd48405d55bf867dd77a99eb0b2aaf0ac7b44e888abd5c0de7",
-      "surface": "settings",
-      "context": "Configure > System > Companion auto-update: supporting help for the companion_auto_update setting.",
-      "risk": "consequential",
-      "siblings": [
-        "settings.companion_auto_update.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "HA",
-        "Companion"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.companion_auto_update.label": {
       "text": "Companion auto-update",
       "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
       "surface": "settings",
       "context": "Configure > System: label for the companion_auto_update setting.",
       "risk": "consequential",
-      "siblings": [
-        "settings.companion_auto_update.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [
         "Companion"
@@ -31759,29 +31740,12 @@
       "context": "Configure > System: one-line summary shown under the companion_auto_update setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.companion_auto_update.label",
-        "settings.companion_auto_update.help"
+        "settings.companion_auto_update.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.companion_update_channel.help": {
-      "text": "Release channel the Companion auto-updater follows.",
-      "sourceHash": "8ed36e3abe564c24ab183ca333b4ad8dbe6bd2119e1ba3bf939f4c7c8dc9a580",
-      "surface": "settings",
-      "context": "Configure > System > Companion auto-update channel: supporting help for the companion_update_channel setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.companion_update_channel.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Companion"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.companion_update_channel.label": {
       "text": "Companion auto-update channel",
@@ -31789,9 +31753,7 @@
       "surface": "settings",
       "context": "Configure > System: label for the companion_update_channel setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.companion_update_channel.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [
         "Companion"
@@ -31806,8 +31768,7 @@
       "context": "Configure > System: one-line summary shown under the companion_update_channel setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.companion_update_channel.label",
-        "settings.companion_update_channel.help"
+        "settings.companion_update_channel.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -32122,31 +32083,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.dashboard_idle_return_min.help": {
-      "text": "Built-in renderer: return to Home dashboard after this many idle minutes. 0 = off.",
-      "sourceHash": "7bd07d2e5514d51ce900f99bfdb8a476ad60f0313ac603f2931db1f95bf914cf",
-      "surface": "settings",
-      "context": "Configure > Dashboard > Idle return to home (min): supporting help for the dashboard_idle_return_min setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.dashboard_idle_return_min.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "0"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.dashboard_idle_return_min.label": {
       "text": "Idle return to home (min)",
       "sourceHash": "0e630948da2c2c3cab7aa9c66088ab0e33197e11038e6cc2c96acbfcf7bd871d",
       "surface": "settings",
       "context": "Configure > Dashboard: label for the dashboard_idle_return_min setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.dashboard_idle_return_min.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 34,
@@ -32159,8 +32102,7 @@
       "context": "Configure > Dashboard: one-line summary shown under the dashboard_idle_return_min setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.dashboard_idle_return_min.label",
-        "settings.dashboard_idle_return_min.help"
+        "settings.dashboard_idle_return_min.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -32295,31 +32237,13 @@
       "softMaxChars": 37,
       "hardMaxChars": 49
     },
-    "settings.dashboard_package.help": {
-      "text": "App used for the dashboard. Blank uses ha-paneld's built-in renderer.",
-      "sourceHash": "fdd2579969365f5f618bd91b0d967c0586df1834c5d3b7ca2136345cf0412143",
-      "surface": "settings",
-      "context": "Configure > Dashboard > Dashboard app: supporting help for the dashboard_package setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.dashboard_package.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.dashboard_package.label": {
       "text": "Dashboard app",
       "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
       "surface": "settings",
       "context": "Configure > Dashboard: label for the dashboard_package setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.dashboard_package.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -32332,8 +32256,7 @@
       "context": "Configure > Dashboard: one-line summary shown under the dashboard_package setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.dashboard_package.label",
-        "settings.dashboard_package.help"
+        "settings.dashboard_package.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -32540,32 +32463,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.diag_ip.help": {
-      "text": "This panel's LAN IPv4 address as a sensor.",
-      "sourceHash": "fc9c7eae6335fbf8f889d417b99e3b85420b0414b520df400826ab7d3ba203c9",
-      "surface": "settings",
-      "context": "Configure > Diagnostics > IP address: supporting help for the diag_ip setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.diag_ip.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "LAN",
-        "IPv4"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.diag_ip.label": {
       "text": "IP address",
       "sourceHash": "0302a467885abfdd4772c9e16c57edab91b02231248202d63170f1c669d13303",
       "surface": "settings",
       "context": "Configure > Diagnostics: label for the diag_ip setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.diag_ip.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [
         "IP"
@@ -32580,8 +32484,7 @@
       "context": "Configure > Diagnostics: one-line summary shown under the diag_ip setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.diag_ip.label",
-        "settings.diag_ip.help"
+        "settings.diag_ip.label"
       ],
       "placeholders": [],
       "frozen": [
@@ -32590,31 +32493,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.diag_memory.help": {
-      "text": "Used RAM as a percentage.",
-      "sourceHash": "05f4f5d827bac7d3320fec7a9bd9454ad0865273ade60012498733ab1cf4661a",
-      "surface": "settings",
-      "context": "Configure > Diagnostics > Memory usage: supporting help for the diag_memory setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.diag_memory.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "RAM"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.diag_memory.label": {
       "text": "Memory usage",
       "sourceHash": "46e2c42a0c19ddf30ba473d20d61e77aa70357a3ce2e24acd8ce118cc93091b4",
       "surface": "settings",
       "context": "Configure > Diagnostics: label for the diag_memory setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.diag_memory.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -32627,8 +32512,7 @@
       "context": "Configure > Diagnostics: one-line summary shown under the diag_memory setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.diag_memory.label",
-        "settings.diag_memory.help"
+        "settings.diag_memory.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -32837,31 +32721,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.friendly_name.help": {
-      "text": "HA device display name.",
-      "sourceHash": "d609f0f1edaa79506d9619abcdf33f07bfb89b26a70c83c9e6f41e631f4e428f",
-      "surface": "settings",
-      "context": "Configure > Identity > Friendly name: supporting help for the friendly_name setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.friendly_name.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "HA"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.friendly_name.label": {
       "text": "Friendly name",
       "sourceHash": "d25d7b3edd1c0e6896d2e5754a0a21bb11c3614972d11cc421bb194442e0394d",
       "surface": "settings",
       "context": "Configure > Identity: label for the friendly_name setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.friendly_name.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -32874,8 +32740,7 @@
       "context": "Configure > Identity: one-line summary shown under the friendly_name setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.friendly_name.label",
-        "settings.friendly_name.help"
+        "settings.friendly_name.label"
       ],
       "placeholders": [],
       "frozen": [
@@ -33186,31 +33051,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.humidity.help": {
-      "text": "Relative humidity reported by Android's panel sensor.",
-      "sourceHash": "0dcd9954f745cb22242cfd4b0ca708d96a89b5b3dd3a3d407cfebee0b9b0679e",
-      "surface": "settings",
-      "context": "Configure > Sensors > Humidity: supporting help for the humidity setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.humidity.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Android"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.humidity.label": {
       "text": "Humidity",
       "sourceHash": "46819ccb5e6dec74b34710a4fcfc45d995bcb7c5d9a9c87e92afb9342810e92d",
       "surface": "settings",
       "context": "Configure > Sensors: label for the humidity setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.humidity.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -33223,27 +33070,12 @@
       "context": "Configure > Sensors: one-line summary shown under the humidity setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.humidity.label",
-        "settings.humidity.help"
+        "settings.humidity.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.illuminance.help": {
-      "text": "Ambient illuminance measured by the panel light sensor.",
-      "sourceHash": "99fb3d41f1634e9edd6c6c7540968106d44b7e01899f09cfe1fb98865347cae8",
-      "surface": "settings",
-      "context": "Configure > Sensors > Ambient light: supporting help for the illuminance setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.illuminance.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.illuminance.label": {
       "text": "Ambient light",
@@ -33251,9 +33083,7 @@
       "surface": "settings",
       "context": "Configure > Sensors: label for the illuminance setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.illuminance.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -33266,27 +33096,12 @@
       "context": "Configure > Sensors: one-line summary shown under the illuminance setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.illuminance.label",
-        "settings.illuminance.help"
+        "settings.illuminance.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.keep_awake.help": {
-      "text": "Keep the network and background services running while the screen is off.",
-      "sourceHash": "d3b70b40884db042b1874360834630a2a5534a76840fb833374917dd2cb9ed92",
-      "surface": "settings",
-      "context": "Configure > Behaviour > Keep panel responsive: supporting help for the keep_awake setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.keep_awake.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.keep_awake.label": {
       "text": "Keep panel responsive",
@@ -33294,9 +33109,7 @@
       "surface": "settings",
       "context": "Configure > Behaviour: label for the keep_awake setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.keep_awake.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -33309,8 +33122,7 @@
       "context": "Configure > Behaviour: one-line summary shown under the keep_awake setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.keep_awake.label",
-        "settings.keep_awake.help"
+        "settings.keep_awake.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -33835,32 +33647,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.mqtt_broker.help": {
-      "text": "Blank auto-discovers HA over mDNS.",
-      "sourceHash": "aa8b8bb7adffa5c6d19213a7bc1fe500bf2a6d948bb57dbd7c2290f14f985600",
-      "surface": "settings",
-      "context": "Configure > MQTT > Broker URL: supporting help for the mqtt_broker setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.mqtt_broker.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "HA",
-        "mDNS"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.mqtt_broker.label": {
       "text": "Broker URL",
       "sourceHash": "cad88e3df28153445c8d1c488bc534a1f3e191acf3d636d9c1a5cc734c0f1675",
       "surface": "settings",
       "context": "Configure > MQTT: label for the mqtt_broker setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.mqtt_broker.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [
         "URL"
@@ -33875,8 +33668,7 @@
       "context": "Configure > MQTT: one-line summary shown under the mqtt_broker setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.mqtt_broker.label",
-        "settings.mqtt_broker.help"
+        "settings.mqtt_broker.label"
       ],
       "placeholders": [],
       "frozen": [
@@ -33887,29 +33679,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.mqtt_password.help": {
-      "text": "Blank on save keeps the current password.",
-      "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
-      "surface": "settings",
-      "context": "Configure > MQTT > Password: supporting help for the mqtt_password setting.",
-      "risk": "consequential",
-      "siblings": [
-        "settings.mqtt_password.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.mqtt_password.label": {
       "text": "Password",
       "sourceHash": "e7cf3ef4f17c3999a94f2c6f612e8a888e5b1026878e4e19398b23bd38ec221a",
       "surface": "settings",
       "context": "Configure > MQTT: label for the mqtt_password setting.",
       "risk": "consequential",
-      "siblings": [
-        "settings.mqtt_password.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -33922,8 +33698,7 @@
       "context": "Configure > MQTT: one-line summary shown under the mqtt_password setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.mqtt_password.label",
-        "settings.mqtt_password.help"
+        "settings.mqtt_password.label"
       ],
       "placeholders": [],
       "frozen": [
@@ -33932,29 +33707,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.mqtt_user.help": {
-      "text": "Credential for this panel.",
-      "sourceHash": "95c922291a9f7fa89f1135d8b5e750a1a32c2c17d26b556012d6c3d939b35bc0",
-      "surface": "settings",
-      "context": "Configure > MQTT > Username: supporting help for the mqtt_user setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.mqtt_user.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.mqtt_user.label": {
       "text": "Username",
       "sourceHash": "e3b89e9d33f88e523083d8b4436adcc3726c89e97fd3179a2e102d765d1b16ed",
       "surface": "settings",
       "context": "Configure > MQTT: label for the mqtt_user setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.mqtt_user.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -33967,8 +33726,7 @@
       "context": "Configure > MQTT: one-line summary shown under the mqtt_user setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.mqtt_user.label",
-        "settings.mqtt_user.help"
+        "settings.mqtt_user.label"
       ],
       "placeholders": [],
       "frozen": [
@@ -34123,29 +33881,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.prevent_idle_dim.help": {
-      "text": "Stop the vendor firmware dimming the backlight at the screen-off timeout.",
-      "sourceHash": "e65c72cf163d6535f1c4b8a7bc5edd3731b1f404128861e1889004e1eda20f8d",
-      "surface": "settings",
-      "context": "Configure > Behaviour > Prevent idle dim: supporting help for the prevent_idle_dim setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.prevent_idle_dim.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.prevent_idle_dim.label": {
       "text": "Prevent idle dim",
       "sourceHash": "ab4e8ab5e353c0f7a2772ea83b880bba96a671c022dfc853aee0833b5bd2a62f",
       "surface": "settings",
       "context": "Configure > Behaviour: label for the prevent_idle_dim setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.prevent_idle_dim.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34158,27 +33900,12 @@
       "context": "Configure > Behaviour: one-line summary shown under the prevent_idle_dim setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.prevent_idle_dim.label",
-        "settings.prevent_idle_dim.help"
+        "settings.prevent_idle_dim.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.proximity.help": {
-      "text": "Learned near/far occupancy from a supported proximity source.",
-      "sourceHash": "1302fe79949d5f3c6152bd67f6988f2be92ce9a134c49172b2a3c3212d24ab6b",
-      "surface": "settings",
-      "context": "Configure > Sensors > Proximity: supporting help for the proximity setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.proximity.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.proximity.label": {
       "text": "Proximity",
@@ -34186,9 +33913,7 @@
       "surface": "settings",
       "context": "Configure > Sensors: label for the proximity setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.proximity.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34201,8 +33926,7 @@
       "context": "Configure > Sensors: one-line summary shown under the proximity setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.proximity.label",
-        "settings.proximity.help"
+        "settings.proximity.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -34255,29 +33979,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.room_humidity.help": {
-      "text": "Relative humidity from the panel's supported climate sensor.",
-      "sourceHash": "7615cfe25fea88ea327f766a4aba84edf4d0eed4c45b5d85cea3ca805b73e0ea",
-      "surface": "settings",
-      "context": "Configure > Sensors > Room humidity: supporting help for the room_humidity setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.room_humidity.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.room_humidity.label": {
       "text": "Room humidity",
       "sourceHash": "b5b23b83711c932f7584f48ce893840e7febe392151c3bdd1e23d2271ee983c5",
       "surface": "settings",
       "context": "Configure > Sensors: label for the room_humidity setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.room_humidity.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34290,8 +33998,7 @@
       "context": "Configure > Sensors: one-line summary shown under the room_humidity setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.room_humidity.label",
-        "settings.room_humidity.help"
+        "settings.room_humidity.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -34482,29 +34189,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.silence_boot_chime.help": {
-      "text": "Mute the firmware startup chime.",
-      "sourceHash": "9398fcca9e28cc1f8615e89611f2b8e0637d01262f46bdc42e4467db67e64c9a",
-      "surface": "settings",
-      "context": "Configure > Behaviour > Silence boot chime: supporting help for the silence_boot_chime setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.silence_boot_chime.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.silence_boot_chime.label": {
       "text": "Silence boot chime",
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
       "surface": "settings",
       "context": "Configure > Behaviour: label for the silence_boot_chime setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.silence_boot_chime.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34517,8 +34208,7 @@
       "context": "Configure > Behaviour: one-line summary shown under the silence_boot_chime setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.silence_boot_chime.label",
-        "settings.silence_boot_chime.help"
+        "settings.silence_boot_chime.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -34553,31 +34243,13 @@
       "softMaxChars": 34,
       "hardMaxChars": 45
     },
-    "settings.temperature.help": {
-      "text": "Environmental temperature reported by Android's panel sensor.",
-      "sourceHash": "e87468640915b6e8f0bedc5b16628b3ea8f3177793f2410c3a27fc5947ec0581",
-      "surface": "settings",
-      "context": "Configure > Sensors > Temperature: supporting help for the temperature setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.temperature.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Android"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.temperature.label": {
       "text": "Temperature",
       "sourceHash": "b958ce8b871ab36b3ceee0e0f012b6182962b2db7926be0a670149f9fbd00b84",
       "surface": "settings",
       "context": "Configure > Sensors: label for the temperature setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.temperature.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34590,27 +34262,12 @@
       "context": "Configure > Sensors: one-line summary shown under the temperature setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.temperature.label",
-        "settings.temperature.help"
+        "settings.temperature.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.touch_sound.help": {
-      "text": "Audible tap feedback (system touch sounds).",
-      "sourceHash": "8b2ce13af0b77b1da73765d226b4370107b48b7119670490cf9ece1522b6349b",
-      "surface": "settings",
-      "context": "Configure > Behaviour > Touch sound: supporting help for the touch_sound setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.touch_sound.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.touch_sound.label": {
       "text": "Touch sound",
@@ -34618,9 +34275,7 @@
       "surface": "settings",
       "context": "Configure > Behaviour: label for the touch_sound setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.touch_sound.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34633,8 +34288,7 @@
       "context": "Configure > Behaviour: one-line summary shown under the touch_sound setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.touch_sound.label",
-        "settings.touch_sound.help"
+        "settings.touch_sound.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -34689,29 +34343,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.update_channel.help": {
-      "text": "Release channel the self-updater follows.",
-      "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
-      "surface": "settings",
-      "context": "Configure > System > ha-paneld auto-update channel: supporting help for the update_channel setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.update_channel.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.update_channel.label": {
       "text": "ha-paneld auto-update channel",
       "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
       "surface": "settings",
       "context": "Configure > System: label for the update_channel setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.update_channel.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [
         "ha-paneld"
@@ -34726,29 +34364,12 @@
       "context": "Configure > System: one-line summary shown under the update_channel setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.update_channel.label",
-        "settings.update_channel.help"
+        "settings.update_channel.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.voice_audio_source.help": {
-      "text": "Android audio source the wake-word listener records from.",
-      "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
-      "surface": "settings",
-      "context": "Configure > Voice > Audio source: supporting help for the voice_audio_source setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.voice_audio_source.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Android"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.voice_audio_source.label": {
       "text": "Audio source",
@@ -34756,9 +34377,7 @@
       "surface": "settings",
       "context": "Configure > Voice: label for the voice_audio_source setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.voice_audio_source.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34771,29 +34390,12 @@
       "context": "Configure > Voice: one-line summary shown under the voice_audio_source setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.voice_audio_source.label",
-        "settings.voice_audio_source.help"
+        "settings.voice_audio_source.label"
       ],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
-    },
-    "settings.voice_enabled.help": {
-      "text": "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
-      "sourceHash": "ba296e73d5537bc8180f5abaf4109da9a48797078e1447b71194a0aeec451f2f",
-      "surface": "settings",
-      "context": "Configure > Voice > Voice assistant: supporting help for the voice_enabled setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.voice_enabled.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Home Assistant"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
     },
     "settings.voice_enabled.label": {
       "text": "Voice assistant",
@@ -34801,9 +34403,7 @@
       "surface": "settings",
       "context": "Configure > Voice: label for the voice_enabled setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.voice_enabled.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -34816,8 +34416,7 @@
       "context": "Configure > Voice: one-line summary shown under the voice_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.voice_enabled.label",
-        "settings.voice_enabled.help"
+        "settings.voice_enabled.label"
       ],
       "placeholders": [],
       "frozen": [
@@ -35103,29 +34702,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.watchdog_enabled.help": {
-      "text": "Self-heal the dashboard app: relaunch if it dies, return if backgrounded too long.",
-      "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",
-      "surface": "settings",
-      "context": "Configure > Behaviour > App watchdog: supporting help for the watchdog_enabled setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.watchdog_enabled.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.watchdog_enabled.label": {
       "text": "App watchdog",
       "sourceHash": "b26bc7ffa70ab7160d62be62a315160fdf6e8e5b2c000e081cc9fcfd1b17c00d",
       "surface": "settings",
       "context": "Configure > Behaviour: label for the watchdog_enabled setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.watchdog_enabled.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [],
       "softMaxChars": 32,
@@ -35138,8 +34721,7 @@
       "context": "Configure > Behaviour: one-line summary shown under the watchdog_enabled setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.watchdog_enabled.label",
-        "settings.watchdog_enabled.help"
+        "settings.watchdog_enabled.label"
       ],
       "placeholders": [],
       "frozen": [],
@@ -35196,32 +34778,13 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.zigbee_router.help": {
-      "text": "Run the on-board Zigbee gateway as a router/repeater (NSPanel Pro).",
-      "sourceHash": "0e45c24d90c69895031bb89e0360f16e94f3ef89262456cfef82c2ab024e5824",
-      "surface": "settings",
-      "context": "Configure > System > Zigbee router: supporting help for the zigbee_router setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.zigbee_router.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Zigbee",
-        "NSPanel Pro"
-      ],
-      "softMaxChars": 160,
-      "hardMaxChars": 160
-    },
     "settings.zigbee_router.label": {
       "text": "Zigbee router",
       "sourceHash": "76c68d99b8cb9505d0771ff7291ab23f70e4fcba5fa81daa256c4e50461286f5",
       "surface": "settings",
       "context": "Configure > System: label for the zigbee_router setting.",
       "risk": "ordinary",
-      "siblings": [
-        "settings.zigbee_router.help"
-      ],
+      "siblings": [],
       "placeholders": [],
       "frozen": [
         "Zigbee"
@@ -35236,8 +34799,7 @@
       "context": "Configure > System: one-line summary shown under the zigbee_router setting's label; the full help opens behind an info button. Plain text, one line.",
       "risk": "ordinary",
       "siblings": [
-        "settings.zigbee_router.label",
-        "settings.zigbee_router.help"
+        "settings.zigbee_router.label"
       ],
       "placeholders": [],
       "frozen": [

@@ -479,9 +479,7 @@
     var desc = document.getElementById("cfg-desc");
     if (desc) desc.addEventListener("change", function () {
       cfg.descriptions = desc.checked;
-      cfg.writeConfigView();
-      cfg.syncConfigViewUi();
-      if (!cfg.filterText) cfg.configCardGeometryChanged();
+      cfg.configViewChanged();
     });
     var filter = document.getElementById("cfg-filter");
     if (!filter) return;

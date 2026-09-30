@@ -280,6 +280,8 @@ data class SettingSpec(
     // One line under the label on Configure; [help] opens behind the info button. Every visible
     // setting needs one; hidden API-only settings never render and carry none.
     val summary: String = "",
+    // Include the hidden summary only when it adds useful information to this popover.
+    val shortDescriptionUsefulInPopover: Boolean = false,
     val default: String,
     // No default: every setting states whether it belongs on the basic view.
     val tier: Tier,
