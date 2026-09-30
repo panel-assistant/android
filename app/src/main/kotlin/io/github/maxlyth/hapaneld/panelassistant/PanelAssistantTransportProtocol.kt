@@ -27,6 +27,7 @@ internal data class PanelAssistantSession(
     val mqttDiscovery: String? = null,
     /** The sidebar proof key, present exactly when the session granted `embed_proof`. Never logged. */
     val embed: PanelAssistantEmbedGrant? = null,
+    val connection: io.github.maxlyth.hapaneld.HaConnectionAdvertisement? = null,
 ) {
     /** The session token is a bearer for this session's requests, and the embed key a secret; keep both out of logs. */
     override fun toString(): String =
@@ -335,7 +336,8 @@ internal object PanelAssistantTransportProtocol {
             null
         }
         return PanelAssistantHelloOutcome.Accepted(
-            PanelAssistantSession(protocol, token, authority, capabilities, integrationVersion, mqttDiscovery, embed),
+            PanelAssistantSession(protocol, token, authority, capabilities, integrationVersion, mqttDiscovery, embed,
+                io.github.maxlyth.hapaneld.HaConnectionAdvertisement.parse(result.optJSONObject("connection"))),
         )
     }
 

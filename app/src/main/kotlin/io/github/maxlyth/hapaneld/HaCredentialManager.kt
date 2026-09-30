@@ -46,6 +46,10 @@ internal object HaCredentialManager {
         if (!stillCurrent()) return NOT_ATTEMPTED
         val snapshot = config.haAuthSnapshot()
         val owner = snapshot.stableOwner()
+        val route = HaConnectionRoutes.resolve(config) ?: return DashboardAuth.Result(
+            null, transientDetail = "Home Assistant connection unavailable",
+        )
+        if (route.owner != owner || !stillCurrent()) return NOT_ATTEMPTED
         if (snapshot.url.isNotBlank() && snapshot.refreshToken.isNotBlank() && isRefused(owner)) {
             return DashboardAuth.Result(null, rejected = true)
         }
@@ -53,13 +57,13 @@ internal object HaCredentialManager {
         val result = DashboardAuth.resolve(
             snapshot.url, snapshot.accessToken, snapshot.refreshToken, snapshot.tokenExpiry, nowSec, force,
         ) { _, _ ->
-            refresh(config, snapshot, nowSec).also { committed = it.committed }.refresh
+            refresh(config, snapshot, route, nowSec).also { committed = it.committed }.refresh
         }
         // A caller whose own authority lapsed, or whose credential generation was replaced while the
         // request was in flight, is told nothing was judged; the old generation's answer is not its.
-        if (!stillCurrent() || config.haAuthSnapshot().stableOwner() != owner) return NOT_ATTEMPTED
-        if (result.persist != null && !committed) return NOT_ATTEMPTED
-        return result
+        if (!stillCurrent() || !HaConnectionRoutes.isCurrent(config, route)) return NOT_ATTEMPTED
+        if (!committed) return NOT_ATTEMPTED
+        return result.copy(route = route)
     }
 
     /** The operator asked to try again: let the next caller put the refused credential to Home Assistant. */
@@ -69,7 +73,7 @@ internal object HaCredentialManager {
 
     private fun isRefused(owner: HaAuthOwner): Boolean = synchronized(lock) { refused == owner }
 
-    private fun refresh(config: Config, snapshot: HaAuthSnapshot, nowSec: Long): Outcome {
+    private fun refresh(config: Config, snapshot: HaAuthSnapshot, route: HaConnectionRoute, nowSec: Long): Outcome {
         val owner = snapshot.stableOwner()
         val future = CompletableFuture<Outcome>()
         val running = synchronized(lock) {
@@ -80,7 +84,8 @@ internal object HaCredentialManager {
         if (running != null) return join(running)
         var outcome = Outcome(HaLink.Refresh.Transient("Home Assistant token refresh failed"), committed = false)
         try {
-            val fresh = HaLink.refreshAccessToken(snapshot.url, snapshot.refreshToken, snapshot.clientId)
+            val fresh = HaLink.refreshAccessToken(route.url, snapshot.refreshToken, snapshot.clientId.ifBlank { "${snapshot.url.trimEnd('/')}/" })
+            if (!HaConnectionRoutes.isCurrent(config, route)) return Outcome(fresh, committed = false)
             outcome = when (fresh) {
                 is HaLink.Refresh.Success -> Outcome(
                     fresh,
@@ -94,7 +99,10 @@ internal object HaCredentialManager {
                     synchronized(lock) { refused = owner }
                     Outcome(fresh, committed = true)
                 }
-                is HaLink.Refresh.Transient -> Outcome(fresh, committed = true)
+                is HaLink.Refresh.Transient -> {
+                    HaConnectionRoutes.failed(config, route)
+                    Outcome(fresh, committed = true)
+                }
             }
         } finally {
             synchronized(lock) { inFlight.remove(owner, future) }

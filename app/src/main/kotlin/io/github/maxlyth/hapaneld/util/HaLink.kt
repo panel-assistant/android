@@ -395,6 +395,7 @@ object HaLink {
         maxResponseBytes: Long = MAX_HTTP_RESPONSE_BYTES,
     ): String {
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = false
             requestMethod = method; connectTimeout = 5000; readTimeout = 5000
             token?.let { setRequestProperty("Authorization", "Bearer $it") }
             if (body != null) { doOutput = true; ctype?.let { setRequestProperty("Content-Type", it) } }

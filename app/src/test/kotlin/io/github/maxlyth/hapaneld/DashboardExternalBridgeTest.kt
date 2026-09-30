@@ -217,6 +217,19 @@ class DashboardV2CompatibilityProbeTest {
         )
     }
 
+    @Test fun `missing required instance proof cannot admit renderer from cached version`() = runTest {
+        var configReads = 0
+        val result = DashboardV2CompatibilityProbe(
+            HaApiSessionProvider { HaApiSession(URL, null, transientDetail = "Home Assistant connection unavailable") },
+            ConfigTransport { configReads++; JSONObject().put("version", "2026.5.0") },
+            Dispatchers.Unconfined,
+            requiresProvenRoute = { true },
+        ).check()
+        assertEquals(0, configReads)
+        assertTrue(result is DashboardV2ProbeResult.Unavailable)
+        assertEquals(DashboardV2Admission.Blocked(result), DashboardV2Admission.resolve(result, "2026.5.0"))
+    }
+
     private fun probe(sessions: List<HaApiSession>, response: JSONObject): DashboardV2CompatibilityProbe {
         val remaining = ArrayDeque(sessions)
         return DashboardV2CompatibilityProbe(
@@ -243,6 +256,7 @@ class DashboardV2AttemptGateTest {
         val firstOwner = owner("https://first.example", "first-refresh")
         val first = gate.start(firstOwner)
         assertTrue(gate.owns(first, firstOwner))
+        assertFalse(gate.owns(first, firstOwner.copy(routeEpoch = firstOwner.routeEpoch + 1)))
         assertFalse(gate.owns(first, owner("https://changed.example", "first-refresh")))
         assertFalse(gate.owns(first, owner("https://first.example", "replacement-refresh")))
 

@@ -771,7 +771,7 @@ internal data class ConfigOwnerRefreshPlan(
 )
 
 internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefreshPlan {
-    val ha = setOf("ha_url", "ha_token", "ha_refresh_token", "ha_token_expiry", "ha_client_id")
+    val ha = setOf("ha_url", "ha_token", "ha_refresh_token", "ha_token_expiry", "ha_client_id", HaConnectionRoutes.EPOCH_KEY)
     return ConfigOwnerRefreshPlan(
         adaptiveBrightness = changedKeys.any(ha::contains),
         autoSleep = changedKeys.any((ha + setOf("panel_id", "auto_sleep_source", "auto_sleep_touch_delay_seconds"))::contains),
@@ -820,6 +820,7 @@ internal data class NetworkConfigurationSnapshot(
     val projection: MqttProjectionIdentity,
     /** The credential generation, not the derived access token: a refresh must not look like a change. */
     val haLink: HaAuthOwner,
+    val haRouteEpoch: Long = 0L,
 )
 
 internal fun configRefreshEffects(
@@ -1086,6 +1087,7 @@ class PaneldService : Service() {
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null
     private val voicePrefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == HaConnectionRoutes.EPOCH_KEY) reconfigure(setOf(key))
         if (key != null && key.startsWith("voice_")) {
             voiceRestart?.cancel()
             voiceRestart = scope.launch {
@@ -1471,6 +1473,27 @@ class PaneldService : Service() {
             },
             embedKeys = io.github.maxlyth.hapaneld.http.PanelAssistantEmbedKeys.instance,
             voice = panelAssistantVoice,
+            onTransportFailure = { route -> HaConnectionRoutes.failed(config, route) },
+            onConnection = { session, accepted ->
+                val route = session.route
+                route != null && HaConnectionRoutes.isCurrent(config, route) &&
+                    (accepted.connection?.let { HaConnectionRoutes.learn(config, route, it) } ?: true)
+            },
+            checkPreferred = {
+                val route = HaConnectionRoutes.preferredCandidate(config)
+                if (route == null) false else {
+                    val session = DashboardHaApiSessionProvider(config).resolve(false)
+                    val token = session.accessToken
+                    val authenticated = if (token != null && session.route == route) {
+                        try {
+                            val probe = KtorPanelAssistantTransportConnector { MqttAddressFamilyPolicy.fromConfig(config.mqttAddressFamily) }.connect(route.owner.url, token)
+                            probe.close()
+                            true
+                        } catch (_: Exception) { false }
+                    } else false
+                    HaConnectionRoutes.preferredResult(config, route, authenticated)
+                }
+            },
         )
         haLifecycle = HaLifecycleCoordinator(
             // elapsedRealtime, not wall clock: a Home Assistant restart is exactly when NTP is likely to
@@ -2567,7 +2590,8 @@ class PaneldService : Service() {
             val replacementRequired =
                 desired.runtime != appliedNetworkConfiguration.runtime || !mutation.isRunning
             val adaptiveSourceRestartRequired =
-                replacementRequired || desired.haLink != appliedNetworkConfiguration.haLink
+                replacementRequired || desired.haLink != appliedNetworkConfiguration.haLink ||
+                    desired.haRouteEpoch != appliedNetworkConfiguration.haRouteEpoch
             val operation = if (replacementRequired) FeatureCostOperation.NETWORK_RECONFIGURE
                 else FeatureCostOperation.CONFIG_LIVE_REFRESH
             val operationCost = FeatureCosts.registry.span(operation)
@@ -2762,6 +2786,7 @@ class PaneldService : Service() {
                 runtime = currentNetworkIdentity(),
                 projection = currentMqttProjection(),
                 haLink = currentHaLinkIdentity(),
+                haRouteEpoch = config.haRouteEpoch(),
             )
         }
 
@@ -2820,7 +2845,7 @@ class PaneldService : Service() {
                 appVersion = BuildConfig.VERSION_NAME,
                 appVersionCode = BuildConfig.VERSION_CODE,
             ),
-        )
+        )?.copy(routeEpoch = config.haRouteEpoch())
     }
 
     /** Start, keep or stop native transport only on the successfully started, admitted service owner. */
@@ -2835,7 +2860,7 @@ class PaneldService : Service() {
     /** Rebind a changed link, then match lifecycle demand after renderer settlement. */
     private fun refreshHaLifecycleWatch() {
         if (!::haExactEntityStream.isInitialized || !::system.isInitialized) return
-        haExactEntityStream.replaceHaLink(currentHaLinkIdentity())
+        haExactEntityStream.replaceHaLink(currentHaLinkIdentity(), config.haRouteEpoch())
         val wanted = haLifecycleWatchWanted(
             builtinRendererSelected = system.isBuiltinDashboardTarget(config.dashboardPackage),
             credentialsPresent = config.haUrl.isNotBlank() &&

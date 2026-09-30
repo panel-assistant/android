@@ -29,6 +29,7 @@ internal data class HaApiSession(
     val transientEvidence: HaTransportEvidence = HaTransportEvidence.NONE,
     /** Set when no credential attempt was made at all — see [DashboardAuth.Result.notAttempted]. */
     val notAttempted: Boolean = false,
+    val route: io.github.maxlyth.hapaneld.HaConnectionRoute? = null,
 )
 
 internal fun interface HaApiSessionProvider {
@@ -49,15 +50,17 @@ internal class DashboardHaApiSessionProvider(
         )
         val current = config.haAuthSnapshot()
         val ownsSession = result.session?.accessToken != null &&
-            current.url.trim().trimEnd('/') == expectedUrl && current.accessToken == result.session.accessToken
+            current.url.trim().trimEnd('/') == expectedUrl && current.accessToken == result.session.accessToken &&
+            result.route?.let { io.github.maxlyth.hapaneld.HaConnectionRoutes.isCurrent(config, it) } == true
         return HaApiSession(
-            expectedUrl,
-            result.session?.accessToken,
+            result.route?.url ?: expectedUrl,
+            result.session?.accessToken.takeIf { ownsSession },
             result.rejected,
             current.takeIf { ownsSession }?.stableOwner(),
             result.transientDetail,
             result.transientEvidence,
-            result.notAttempted,
+            result.notAttempted || (result.session != null && !ownsSession),
+            result.route.takeIf { ownsSession },
         )
     }
 }
@@ -118,6 +121,7 @@ internal class KtorHaAmbientTransport : HaAmbientTransport {
         readTimeoutMs: Int = HTTP_READ_TIMEOUT_MS,
     ): String? = withContext(Dispatchers.IO) {
         val connection = (URL(baseUrl.trim().trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = false
             requestMethod = "GET"
             connectTimeout = HTTP_CONNECT_TIMEOUT_MS
             readTimeout = readTimeoutMs
