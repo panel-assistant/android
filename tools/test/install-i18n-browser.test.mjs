@@ -109,7 +109,7 @@ async function rig(t, options = {}) {
     if (path === '/api/v1/radio') { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(options.radio || { present: false })); return; }
     if (path === '/api/v1/status') { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(status)); return; }
     const helper = options.noHelper ? '' : `<script>window.HaI18n={locale:${JSON.stringify(projectedLocale)},t:(key,fallback,values)=>{const all=${JSON.stringify(projectedStrings)};return String(Object.prototype.hasOwnProperty.call(all,key)?all[key]:fallback).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(token,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):token);}};</script>`;
-    response.writeHead(200, { 'content-type': 'text/html' });
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(`<!doctype html><html lang="${projectedLocale}"><body><script id="ha-i18n" type="application/json">${payload}</script>${helper}${options.html || '<div id="audit-out"></div><div id="bk-msg"></div>'}<script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/install.js"></script></body></html>`);
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
@@ -119,6 +119,62 @@ async function rig(t, options = {}) {
   await page.goto(`http://127.0.0.1:${server.address().port}/${options.query || ''}`, { waitUntil: 'domcontentloaded' });
   return { page, presentations, params };
 }
+
+browserTest('Version picker explains unavailable releases and keeps permitted choices usable', async (t) => {
+  const versions = [
+    { tag: 'v4', version: '4.0', installable: false, unavailableReason: 'above_panel_limit', maxVersion: '2.0' },
+    { tag: 'v3', version: '3.0', installable: false, unavailableReason: 'older_app_id' },
+    { tag: 'v2', version: '2.0', installable: true, action: 'Upgrade', apk: 'https://github.com/example/app/releases/download/v2/app.apk' },
+    { tag: 'v1', version: '1.0', installable: false, unavailableReason: 'no_matching_asset' },
+    { tag: 'legacy', version: '0.9', installable: false },
+  ];
+  const { page } = await rig(t, {
+    noHelper: true,
+    html: '<div class="comprow" data-name="paneld"><span class="cver">1.0</span><select class="cchan"><option>stable</option></select><select class="cvsel"></select><a class="cnotes"></a><button class="cinstall" data-root="1"></button><a class="cdl">Download</a></div>',
+    route(request, response, url) {
+      if (url.pathname !== '/api/v1/install/versions') return false;
+      response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ versions })); return true;
+    },
+  });
+  await page.evaluate(() => window.loadVersions('paneld'));
+  assert.deepEqual(await page.locator('.cvsel option').allTextContents(), [
+    '4.0 (not supported by this panel; limit 2.0)', '3.0 (older app, cannot replace this one)', '2.0', '1.0 (no compatible download)', '0.9 (no compatible download)',
+  ]);
+  assert.equal(await page.locator('.cvsel').inputValue(), 'v2');
+  assert.equal(await page.locator('.cinstall').isDisabled(), false);
+  assert.equal(await page.locator('.cdl').isVisible(), true);
+  for (const tag of ['v4', 'v3', 'v1', 'legacy']) {
+    await page.selectOption('.cvsel', tag);
+    await page.evaluate(() => window.verChanged('paneld'));
+    assert.equal(await page.locator('.cinstall').isDisabled(), true, tag);
+    assert.equal(await page.locator('.cdl').isVisible(), false, tag);
+  }
+  await page.selectOption('.cvsel', 'v2');
+  await page.evaluate(() => window.verChanged('paneld'));
+  assert.equal(await page.locator('.cinstall').isDisabled(), false);
+});
+
+browserTest('Version picker uses every shipped locale for all unavailable reasons', async (t) => {
+  for (const locale of ['de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'zh-Hans']) {
+    const projection = await realCatalogueProjection(locale, ['install.']);
+    const { page } = await rig(t, {
+      projection,
+      html: '<div class="comprow" data-name="paneld"><select class="cchan"><option>stable</option></select><select class="cvsel"></select></div>',
+      route(request, response, url) {
+        if (url.pathname !== '/api/v1/install/versions') return false;
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ versions: ['no_matching_asset', 'older_app_id', 'above_panel_limit'].map((reason) => ({ tag: reason, version: '4.0', installable: false, unavailableReason: reason, maxVersion: '2.0' })) }));
+        return true;
+      },
+    });
+    await page.evaluate(() => window.loadVersions('paneld'));
+    assert.deepEqual(await page.locator('.cvsel option').allTextContents(), ['no_matching_asset', 'older_app_id', 'above_panel_limit'].map((reason) => {
+      const key = `install.progress.${reason}`;
+      assert.equal(projection.languages[key], locale, `${locale}/${key}: reviewed translation required`);
+      return '4.0 ' + projection.strings[key].replace('{version}', '2.0');
+    }));
+  }
+});
 
 browserTest('Install localizes closed wire tokens from the real German catalogue projection', async (t) => {
   const projection = await realCatalogueProjection('de', ['shell.', 'install.']);

@@ -7458,10 +7458,20 @@
       "state": "machine-cross-checked",
       "text": "连接已中断 — 请重新加载以检查状态。"
     },
-    "install.progress.no_apk": {
-      "sourceHash": "0f10f590a397a5a0da926e9bfcd1fef3ccfadeba12684a9a0ad08eb0dc6b8814",
-      "state": "machine-cross-checked",
-      "text": "（无 APK）"
+    "install.progress.no_matching_asset": {
+      "text": "（没有兼容的下载文件）",
+      "sourceHash": "9d806c9d5fa601707407b587c6224339b52d90444e6ddfac6d573e0975f9b36c",
+      "state": "machine-cross-checked"
+    },
+    "install.progress.older_app_id": {
+      "text": "（旧版应用，无法替换此应用）",
+      "sourceHash": "04157b3e1449c93f40152094fd704bbea344bedfd3bfac1f3c385e0dab56ed2b",
+      "state": "machine-cross-checked"
+    },
+    "install.progress.above_panel_limit": {
+      "text": "（此面板不支持；版本上限 {version}）",
+      "sourceHash": "a14c1aa4a6cb78d026bbe5e8505b15a7cbfd968c4f66ddee74979f2f024ca2fd",
+      "state": "machine-cross-checked"
     },
     "install.progress.no_versions": {
       "sourceHash": "9951218352e8274cb230343e99f457c76b845f808b2679eb52dc5e51f808a4c1",
