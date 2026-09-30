@@ -204,7 +204,8 @@ object SettingsRegistry {
         // ---- Identity ----------------------------------------------------------------------------
         SettingSpec(
             key = "panel_id", type = SettingType.STRING, group = "Identity",
-            label = "Panel ID", default = "", tier = Tier.BASIC, scope = Scope.IDENTITY,
+            tier = Tier.BASIC, summary = "Stable id used in this panel's entity IDs.",
+            label = "Panel ID", default = "", scope = Scope.IDENTITY,
             help = "Stable id used in entity IDs and MQTT topics (lowercase, digits, underscores; 63 characters maximum).",
             validate = { raw ->
                 if (raw.length > MAX_PANEL_ID_INPUT_CHARS) {
@@ -220,18 +221,21 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "friendly_name", type = SettingType.STRING, group = "Identity",
-            label = "Friendly name", default = "", tier = Tier.BASIC, scope = Scope.IDENTITY,
+            tier = Tier.BASIC, summary = "Name Home Assistant shows for this panel.",
+            label = "Friendly name", default = "", scope = Scope.IDENTITY,
             maxChars = 128,
             help = "HA device display name.",
         ),
         SettingSpec(
             key = "manufacturer", type = SettingType.STRING, group = "Identity",
+            tier = Tier.ADVANCED, summary = "Override the manufacturer on the Home Assistant device card.",
             label = "Manufacturer", default = "", scope = Scope.DEVICE,
             maxChars = 128,
             help = "HA device-card manufacturer override (blank = profile/auto).",
         ),
         SettingSpec(
             key = "model", type = SettingType.STRING, group = "Identity",
+            tier = Tier.ADVANCED, summary = "Override the model on the Home Assistant device card.",
             label = "Model", default = "", scope = Scope.DEVICE,
             maxChars = 128,
             help = "HA device-card model override (blank = profile/auto).",
@@ -243,6 +247,7 @@ object SettingsRegistry {
         // columns themselves are deliberately left alone for now; only the order changed.
         SettingSpec(
             key = "ha_area", type = SettingType.STRING, group = "Identity",
+            tier = Tier.BASIC, summary = "Home Assistant area this panel belongs to.",
             label = "Area in Home Assistant", default = "", picker = "ha_area", scope = Scope.DEVICE,
             // liveApply with a no-op dispatcher on purpose: this key needs NO runtime rebuild (discovery
             // reads it at next publish; the HA write-back is a post-commit server side effect) — but as
@@ -257,7 +262,8 @@ object SettingsRegistry {
         // ---- MQTT --------------------------------------------------------------------------------
         SettingSpec(
             key = "mqtt_broker", type = SettingType.STRING, group = "MQTT",
-            label = "Broker URL", default = "", tier = Tier.BASIC, scope = Scope.PORTABLE,
+            tier = Tier.ADVANCED, summary = "MQTT broker address. Blank finds Home Assistant automatically.",
+            label = "Broker URL", default = "", scope = Scope.PORTABLE,
             maxChars = 2_048,
             help = "Blank auto-discovers HA over mDNS.",
             validate = { raw ->
@@ -268,19 +274,22 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "mqtt_user", type = SettingType.STRING, group = "MQTT",
-            label = "Username", default = "", tier = Tier.BASIC, scope = Scope.DEVICE,
+            tier = Tier.ADVANCED, summary = "MQTT username for this panel.",
+            label = "Username", default = "", scope = Scope.DEVICE,
             maxChars = 256,
             help = "Credential for this panel.",
         ),
         SettingSpec(
             key = "mqtt_password", type = SettingType.PASSWORD, group = "MQTT",
-            label = "Password", default = "", tier = Tier.BASIC, scope = Scope.DEVICE, secret = true,
+            tier = Tier.ADVANCED, summary = "MQTT password. Blank keeps the current one.",
+            label = "Password", default = "", scope = Scope.DEVICE, secret = true,
             maxChars = 4_096,
             help = "Blank on save keeps the current password.",
         ),
         SettingSpec(
             key = "mqtt_address_family", type = SettingType.ENUM, group = "MQTT",
-            label = "MQTT + Home Assistant WebSocket address family", default = DEFAULT_MQTT_ADDRESS_FAMILY, tier = Tier.ADVANCED,
+            tier = Tier.ADVANCED, summary = "Use IPv4, IPv6 or both to reach MQTT and Home Assistant.",
+            label = "MQTT + Home Assistant WebSocket address family", default = DEFAULT_MQTT_ADDRESS_FAMILY,
             scope = Scope.DEVICE,
             options = listOf(DEFAULT_MQTT_ADDRESS_FAMILY, "Prefer IPv4", "Force IPv4"),
             help = "Applies to the MQTT broker connection and the panel's Home Assistant WebSocket " +
@@ -292,20 +301,22 @@ object SettingsRegistry {
         // ---- Behaviour ---------------------------------------------------------------------------
         SettingSpec(
             key = "auto_sleep_source", type = SettingType.ENUM, group = "Behaviour",
-            label = "Auto-sleep activity source", default = "panel", tier = Tier.BASIC, scope = Scope.DEVICE,
+            tier = Tier.BASIC, summary = "What counts as presence: proximity sensor, area or touch.",
+            label = "Auto-sleep activity source", default = "panel", scope = Scope.DEVICE,
             liveApply = true, options = listOf("panel", "home_assistant", "touch"),
-            help = "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity. " +
-                "Presence modes pause if their source is unavailable; touch inactivity needs no presence setup.",
+            help = "Use the panel’s calibrated proximity sensor, Home Assistant Area devices, or touch inactivity.\n\n- Presence modes pause if their source is unavailable.\n- Touch inactivity needs no presence setup.",
         ),
         SettingSpec(
             key = "auto_sleep_touch_delay_seconds", type = SettingType.INT, group = "Behaviour",
+            tier = Tier.BASIC, summary = "Seconds without a touch before the screen goes off.",
             label = "Touch inactivity delay (seconds)", default = "30", min = 5.0, max = 86_400.0,
-            step = 1.0, tier = Tier.BASIC, scope = Scope.DEVICE,
+            step = 1.0, scope = Scope.DEVICE,
             help = "When Touch inactivity is selected, switch the screen fully off after this many seconds without a touch.",
         ),
         SettingSpec(
             key = "auto_sleep", type = SettingType.BOOL, group = "Behaviour",
-            label = "Auto sleep", default = "false", tier = Tier.BASIC, scope = Scope.DEVICE,
+            tier = Tier.BASIC, summary = "Turn the screen off when nobody is around or after inactivity.",
+            label = "Auto sleep", default = "false", scope = Scope.DEVICE,
             liveApply = true,
             help = "Switch the screen off after the selected presence mode’s learned delay or the chosen touch inactivity delay. Manual screen control remains separate.",
             ha = haEntity("switch", "auto_sleep", "Auto sleep") {
@@ -317,6 +328,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "navbar_mode", type = SettingType.ENUM, group = "Behaviour",
+            tier = Tier.BASIC, summary = "Show a soft navigation bar on panels without a native one.",
             label = "Navbar mode", default = "Off",
             liveApply = true,
             options = NAVBAR_OPTIONS.map { it.label },
@@ -324,10 +336,7 @@ object SettingsRegistry {
             // a way to end up with no navigation at all, so it is withheld rather than merely discouraged.
             optionRequires = mapOf("Native" to { caps: Capabilities -> caps.hasNativeNavbar }),
             derivedDefault = ::navbarModeDefault,
-            help = "Soft on-screen navigation bar for panels with no native navbar. Native leaves " +
-                "navigation to the panel's own Android bar and draws nothing. Note that hiding the " +
-                "Android system bars, from the built-in renderer's fullscreen setting or the Android " +
-                "dashboard lock, still hides a native bar.",
+            help = "Soft on-screen navigation bar for panels with no native navbar. **Native** leaves navigation to the panel's own Android bar and draws nothing.\n\nHiding the Android system bars, from the built-in renderer's fullscreen setting or the Android dashboard lock, still hides a native bar.",
             ha = haEntity("select", "navbar", "Navbar") {
                 commandTopic()
                 stateTopic()
@@ -338,7 +347,8 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "wake_on_wave", type = SettingType.BOOL, group = "Behaviour",
-            label = "Wake on wave", default = "false", tier = Tier.BASIC, scope = Scope.PORTABLE,
+            tier = Tier.BASIC, summary = "Wave a hand near the panel to wake it.",
+            label = "Wake on wave", default = "false", scope = Scope.PORTABLE,
             liveApply = true,
             help = "Wake after a calibrated clear-to-near-to-clear wave. Set up proximity on the panel; touch-to-wake remains available.",
             availableWhen = { it.hasProximity },
@@ -351,12 +361,10 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "kiosk_lock", type = SettingType.BOOL, group = "Behaviour",
+            tier = Tier.ADVANCED, summary = "Root only. Bring the dashboard back when another app opens.",
             label = "Lock Android to dashboard (experimental)", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            help = "Root-only casual-use lock. Hides Android system bars and returns to the selected dashboard " +
-                "within about 3 seconds when another app or Recents opens. It does not hide Home Assistant " +
-                "navigation. Release it here, from Home Assistant, through adb, with 7 rapid top-left taps, " +
-                "or during the 60-second unlocked window after reboot.",
+            help = "Root-only casual-use lock. Hides Android system bars and returns to the selected dashboard within about 3 seconds when another app or Recents opens. It does not hide Home Assistant navigation.\n\nRelease it:\n\n- here, or from Home Assistant\n- through adb\n- with 7 rapid top-left taps\n- during the 60-second unlocked window after reboot",
             ha = haEntity("switch", "kiosk_lock", "Android dashboard lock") {
                 commandTopic()
                 stateTopic()
@@ -366,12 +374,14 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "watchdog_enabled", type = SettingType.BOOL, group = "Behaviour",
+            tier = Tier.ADVANCED, summary = "Relaunch the dashboard app if it dies or stays backgrounded.",
             label = "App watchdog", default = "false", scope = Scope.PORTABLE,
             liveApply = true,
             help = "Self-heal the dashboard app: relaunch if it dies, return if backgrounded too long.",
         ),
         SettingSpec(
             key = "kiosk_companion_packages", type = SettingType.STRING, group = "Behaviour",
+            tier = Tier.ADVANCED, summary = "Apps the lock leaves in front, by package name.",
             label = "Apps the lock allows", default = "", scope = Scope.DEVICE,
             maxChars = 512,
             // Not liveApply: there is no side effect to route. The return loop reads this value on
@@ -387,6 +397,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "touch_sound", type = SettingType.BOOL, group = "Behaviour",
+            tier = Tier.BASIC, summary = "Play the system tap sound.",
             label = "Touch sound", default = "true", scope = Scope.PORTABLE,
             liveApply = true,
             help = "Audible tap feedback (system touch sounds).",
@@ -399,6 +410,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "silence_boot_chime", type = SettingType.BOOL, group = "Behaviour",
+            tier = Tier.BASIC, summary = "Mute the firmware start-up chime.",
             label = "Silence boot chime", default = DEFAULT_SILENCE_BOOT_CHIME.toString(), scope = Scope.DEVICE,
             liveApply = true,
             help = "Mute the firmware startup chime.",
@@ -406,14 +418,16 @@ object SettingsRegistry {
         // ---- Display -----------------------------------------------------------------------------
         SettingSpec(
             key = "dark_mode", type = SettingType.BOOL, group = "Display",
+            tier = Tier.BASIC, summary = "Dark theme for ha-paneld's own screens and the dashboard default.",
             label = "Dark mode", default = "true", scope = Scope.PORTABLE,
-            help = "Themes ha-paneld's own screens and sets the dashboard's default colour scheme on panels without a system dark-mode setting (Android 9 and older). A theme picked inside Home Assistant overrides the dashboard default; this web UI always follows the viewing browser's own preference.",
+            help = "Themes ha-paneld's own screens and sets the dashboard's default colour scheme on panels without a system dark-mode setting (Android 9 and older).\n\nA theme picked inside Home Assistant overrides the dashboard default; this web UI always follows the viewing browser's own preference.",
             // Panels with a native system dark/light control (Android 10+) follow the OS setting for
             // everything, so the toggle is hidden there.
             availableWhen = { !it.hasSystemDarkMode },
         ),
         SettingSpec(
             key = "auto_brightness_ha_entity", type = SettingType.STRING, group = "Display",
+            tier = Tier.ADVANCED, summary = "Use a Home Assistant light sensor instead of the panel's.",
             label = "Ambient light source", default = "", picker = "ha_illuminance", scope = Scope.DEVICE,
             liveApply = true,
             maxChars = 255,
@@ -430,11 +444,13 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "dashboard_network_warning", type = SettingType.BOOL, group = "Display",
+            tier = Tier.ADVANCED, summary = "Warn on the dashboard when the network drops.",
             label = "Show network warning on dashboard", default = "true", scope = Scope.DEVICE,
             help = "Show the network connection warning on this panel's dashboard. Network checks and status remain available when this is off.",
         ),
         SettingSpec(
             key = "auto_brightness", type = SettingType.BOOL, group = "Display",
+            tier = Tier.BASIC, summary = "Let the panel set the backlight from ambient light.",
             label = "Auto-brightness", default = "false", scope = Scope.PORTABLE,
             liveApply = true,
             help = "On-panel engine maps a lux stream to the backlight (off = HA drives the screen).",
@@ -447,6 +463,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "auto_brightness_minimum_percent", type = SettingType.INT, group = "Display",
+            tier = Tier.ADVANCED, summary = "Lowest level auto-brightness will choose.",
             label = "Minimum level",
             default = MINIMUM_AUTOMATIC_PERCENT.toString(),
             min = MINIMUM_AUTOMATIC_PERCENT.toDouble(),
@@ -458,16 +475,16 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = RESPONSE_PERCENT_KEY, type = SettingType.INT, group = "Display",
+            tier = Tier.ADVANCED, summary = "How strongly the screen follows a real change in room light.",
             label = "Sensitivity", default = "50", min = 0.0, max = 100.0, step = 1.0,
             liveApply = true,
             scope = Scope.DEVICE,
-            help = "How much of the difference from the learned ambient-light pattern is applied to the screen, " +
-                "once the engine has decided a change is real. Lower values keep the screen closer to its learned " +
-                "daily pattern. While the pattern is still being learned the screen follows the measured light directly.",
+            help = "How much of the difference from the learned ambient-light pattern is applied to the screen, once the engine has decided a change is real.\n\n- Lower values keep the screen closer to its learned daily pattern.\n- While the pattern is still being learned the screen follows the measured light directly.",
         ),
 
         SettingSpec(
             key = "cpu_governor", type = SettingType.ENUM, group = "System",
+            tier = Tier.ADVANCED, summary = "CPU scaling profile until the next reboot.",
             label = "CPU profile", default = "Auto", scope = Scope.DEVICE,
             liveApply = true,
             // Mirrors CpuController.TIERS (kept literal — this package is pure/Android-free).
@@ -485,6 +502,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "zigbee_router", type = SettingType.BOOL, group = "System",
+            tier = Tier.ADVANCED, summary = "Use the on-board Zigbee radio as a router.",
             label = "Zigbee router", default = "false", scope = Scope.DEVICE,
             liveApply = true,
             help = "Run the on-board Zigbee gateway as a router/repeater (NSPanel Pro).",
@@ -492,12 +510,14 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "prevent_idle_dim", type = SettingType.BOOL, group = "Behaviour",
+            tier = Tier.BASIC, summary = "Stop the vendor firmware dimming the backlight at screen-off.",
             label = "Prevent idle dim", default = "true", scope = Scope.PORTABLE,
             liveApply = true,
             help = "Stop the vendor firmware dimming the backlight at the screen-off timeout.",
         ),
         SettingSpec(
             key = "keep_awake", type = SettingType.BOOL, group = "Behaviour",
+            tier = Tier.ADVANCED, summary = "Keep network and services running while the screen is off.",
             label = "Keep panel responsive", default = "true", scope = Scope.PORTABLE,
             help = "Keep the network and background services running while the screen is off.",
         ),
@@ -506,6 +526,7 @@ object SettingsRegistry {
         // because they bound what a stream URL may ask for rather than being things to operate.
         SettingSpec(
             key = "camera_enabled", type = SettingType.BOOL, group = "Camera",
+            tier = Tier.BASIC, summary = "Serve the panel camera as an RTSP stream and JPEG snapshot.",
             label = "Camera", default = "false", scope = Scope.DEVICE,
             // The Configure page turns the words RTSP and JPEG into links to the two addresses; the text is
             // written so it still reads correctly where those links are not rendered.
@@ -522,6 +543,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "camera_resolution", type = SettingType.ENUM, group = "Camera",
+            tier = Tier.BASIC, summary = "Default stream resolution; a stream URL can override it.",
             label = "Resolution", default = "720p", scope = Scope.DEVICE,
             options = listOf("480p", "720p", "1080p"),
             help = "What a stream gets when its URL does not ask for something else. A stream URL can " +
@@ -530,6 +552,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "camera_fps", type = SettingType.INT, group = "Camera",
+            tier = Tier.ADVANCED, summary = "Default frame rate; a stream URL can override it.",
             label = "Frame rate", default = "15", min = 1.0, max = 30.0, step = 1.0,
             scope = Scope.DEVICE,
             help = "What a stream gets when its URL does not ask for something else. A stream URL can " +
@@ -538,6 +561,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "camera_kbps", type = SettingType.INT, group = "Camera",
+            tier = Tier.ADVANCED, summary = "Default bitrate; a stream URL can override it.",
             label = "Bitrate (kbps)", default = "2000", min = 250.0, max = 8000.0, step = 250.0,
             scope = Scope.DEVICE,
             help = "What a stream gets when its URL does not ask for something else. A stream URL can " +
@@ -546,6 +570,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "camera_exposure", type = SettingType.FLOAT, group = "Camera",
+            tier = Tier.ADVANCED, summary = "Exposure bias in stops. 0 leaves auto exposure alone.",
             // Half a stop, not a third. The sensor counts in thirds, but the browser applies this step
             // as a validity grid from `min`, and a third-stop grid starting at -2 does not contain 0 —
             // so the documented default, and +/-1 and +/-2, were all rejected before the form could save.
@@ -562,6 +587,7 @@ object SettingsRegistry {
         // Which app renders the dashboard + how the built-in renderer connects to HA.
         SettingSpec(
             key = "dashboard_package", type = SettingType.STRING, group = "Dashboard",
+            tier = Tier.ADVANCED, summary = "App that shows the dashboard. Blank uses the built-in renderer.",
             label = "Dashboard app", default = "", picker = "renderer", scope = Scope.DEVICE,
             maxChars = 255,
             help = "App used for the dashboard. Blank uses ha-paneld's built-in renderer.",
@@ -572,16 +598,17 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "dashboard_entity_learning", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.BASIC, summary = "Only stream the entities this dashboard uses.",
             label = "Entity filtering", default = "false", scope = Scope.PORTABLE,
             help = "Built-in renderer: limit Home Assistant's state stream to dashboard-used entities and learn runtime dependencies. Manage sources and pins in Entities.",
         ),
         SettingSpec(
             key = "home_dashboard", type = SettingType.STRING, group = "Dashboard",
+            tier = Tier.BASIC, summary = "Dashboard opened on reload and idle return.",
             label = "Home dashboard", default = "", picker = "ha_dashboard", scope = Scope.DEVICE,
             liveApply = true,
             maxChars = 2_048,
-            help = "Dashboard used by reload and idle return. Auto lets Home Assistant choose. " +
-                "Custom accepts a specific view, e.g. /dashboard-name/tab-name.",
+            help = "Dashboard used by reload and idle return.\n\n- **Auto** lets Home Assistant choose.\n- **Custom** accepts a specific view, e.g. `/dashboard-name/tab-name`.",
             validate = { raw ->
                 // Blank and bare-root spellings mean "follow the account default" and name no dashboard,
                 // so they carry nothing to check. Everything else is canonicalized through the SAME rule
@@ -604,35 +631,27 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "dashboard_theme", type = SettingType.ENUM, group = "Dashboard",
+            tier = Tier.BASIC, summary = "Who picks light or dark: Home Assistant, this panel or the room.",
             label = "Dashboard theme", default = DashboardTheme.DEFAULT,
             options = DashboardTheme.OPTIONS, aliases = DashboardTheme.ALIASES,
             scope = Scope.PORTABLE,
-            help = "Built-in renderer only. Follow Home Assistant leaves the dashboard's light/dark " +
-                "choice to Home Assistant, which is what the Dark mode setting supplies a default for. " +
-                "Dark and Light choose it on this panel when Home Assistant is set to Auto, for a kiosk " +
-                "dashboard with no sidebar to reach the Home Assistant profile page from. Ambient chooses " +
-                "Dark or Light from the room's light as the auto-brightness model sees it, and changes only " +
-                "after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and " +
-                "follows Home Assistant until it has a reading. An explicit " +
-                "Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. " +
-                "Returning to Follow Home Assistant hands the choice back exactly as it was found.",
+            help = "Built-in renderer only.\n\n- **Follow Home Assistant** leaves the dashboard's light/dark choice to Home Assistant, which is what the Dark mode setting supplies a default for.\n- **Dark** and **Light** choose it on this panel when Home Assistant is set to Auto, for a kiosk dashboard with no sidebar to reach the Home Assistant profile page from.\n- **Ambient** chooses Dark or Light from the room's light as the auto-brightness model sees it, and changes only after the room has stayed darker or lighter for a minute; it needs Auto-brightness on, and follows Home Assistant until it has a reading.\n\nAn explicit Light or Dark choice in Home Assistant still wins; use Auto or a separate panel user. Returning to Follow Home Assistant hands the choice back exactly as it was found.",
         ),
         SettingSpec(
             key = "dashboard_fullscreen", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.ADVANCED, summary = "Hide Android's status and navigation bars behind the dashboard.",
             label = "Hide Android system bars", default = "true", scope = Scope.PORTABLE,
-            help = "Built-in renderer only. Hides Android's status and navigation bars while the dashboard is " +
-                "in front; swipe from an edge to reveal them temporarily. It does not lock the panel or hide " +
-                "Home Assistant navigation.",
+            help = "Built-in renderer only. Hides Android's status and navigation bars while the dashboard is in front; swipe from an edge to reveal them temporarily.\n\nIt does not lock the panel or hide Home Assistant navigation.",
         ),
         SettingSpec(
             key = "dashboard_native_kiosk", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.ADVANCED, summary = "Ask Home Assistant to hide its own navigation.",
             label = "Hide Home Assistant navigation (native)", default = "true", scope = Scope.PORTABLE,
-            help = "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend " +
-                "to hide its navigation. On by default; an unsupported or failed request leaves the dashboard " +
-                "unchanged. It does not lock Android or inject CSS into the dashboard.",
+            help = "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOn by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
         ),
         SettingSpec(
             key = "dashboard_overscroll", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "Dashboard overscroll effect", default = "false", scope = Scope.PORTABLE, hidden = true,
             help = "Built-in renderer: allow Android's overscroll stretch/glow when a drag runs past " +
                 "the top or bottom of the dashboard. Off by default (a wall panel rarely scrolls, and " +
@@ -640,12 +659,14 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "dashboard_idle_return_min", type = SettingType.INT, group = "Dashboard",
+            tier = Tier.BASIC, summary = "Minutes idle before returning home. 0 turns it off.",
             label = "Idle return to home (min)", default = "0", min = 0.0, max = 1440.0,
             scope = Scope.PORTABLE,
             help = "Built-in renderer: return to Home dashboard after this many idle minutes. 0 = off.",
         ),
         SettingSpec(
             key = "ha_url", type = SettingType.STRING, group = "Dashboard",
+            tier = Tier.BASIC, summary = "Address of your Home Assistant server.",
             label = "Home Assistant URL", default = "", scope = Scope.PORTABLE,
             maxChars = 2_048,
             help = "Built-in renderer: Home Assistant base URL, e.g. http://homeassistant.local:8123. Blank disables it.",
@@ -657,29 +678,34 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "ha_token", type = SettingType.PASSWORD, group = "Dashboard",
+            tier = Tier.ADVANCED, summary = "Fallback token when browser sign-in is not possible.",
             label = "Long-lived access token", default = "", scope = Scope.DEVICE,
             secret = true,
             help = "Use browser sign-in when possible. This fallback can be created in your Home Assistant user profile.",
         ),
         SettingSpec(
             key = "ha_refresh_token", type = SettingType.PASSWORD, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "HA refresh token", default = "", scope = Scope.DEVICE, secret = true, hidden = true,
             help = "Internal token state retained for API/config import compatibility. Borrowed Companion and ha-paneld-issued OAuth logins manage it automatically.",
         ),
         SettingSpec(
             key = "ha_token_expiry", type = SettingType.LONG, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "HA access-token expiry", default = "0", scope = Scope.DEVICE, secret = true, hidden = true,
             min = 0.0,
             help = "Internal OAuth access-token expiry retained with its matching access and refresh tokens during private backup and restore.",
         ),
         SettingSpec(
             key = "ha_client_id", type = SettingType.STRING, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "HA OAuth client_id", default = "", scope = Scope.DEVICE, hidden = true,
             maxChars = 2_048,
             help = "Internal token provenance retained for API/config import compatibility. Borrowed Companion tokens use the Android Companion client; ha-paneld browser sign-ins use the panel HTTP origin. Not a user preference.",
         ),
         SettingSpec(
             key = "dashboard_entity_overrides", type = SettingType.STRING, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "Entity filter overrides", default = "", scope = Scope.DEVICE, hidden = true,
             // Explicit pins/exclusions may legitimately cover a large installation. This remains
             // bounded by the config/import envelope, but must not inherit the ordinary text limit.
@@ -688,16 +714,19 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "dashboard_entity_learning_applied", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "Apply learned entity filter", default = "false", scope = Scope.DEVICE, hidden = true,
             help = "Backup-safe activation latch. Set after a safe empty-install bootstrap or an explicit apply from the Entities API or tab.",
         ),
         SettingSpec(
             key = "dashboard_entity_auto_static", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "Auto-subscribe dashboard references", default = "true", scope = Scope.PORTABLE, hidden = true,
             help = "Entities found by parsing dashboard configuration may be added automatically. Evidence remains visible when disabled.",
         ),
         SettingSpec(
             key = "dashboard_entity_auto_runtime", type = SettingType.BOOL, group = "Dashboard",
+            tier = Tier.ADVANCED,
             label = "Auto-subscribe runtime accesses", default = "true", scope = Scope.PORTABLE, hidden = true,
             help = "Missing entities read through hass.states may be added automatically. Evidence remains visible when disabled.",
         ),
@@ -707,6 +736,7 @@ object SettingsRegistry {
         // the only sizing lever, so it is promoted into that place with help that says so.
         SettingSpec(
             key = "dashboard_zoom", type = SettingType.INT, group = "Dashboard",
+            tier = Tier.ADVANCED, summary = "Browser zoom for the dashboard.",
             label = "Zoom (%)", default = "100", min = 50.0, max = 300.0, step = 10.0,
             scope = Scope.DEVICE,
             help = "Browser zoom.",
@@ -718,15 +748,15 @@ object SettingsRegistry {
         // ---- System ------------------------------------------------------------------------------
         SettingSpec(
             key = "ui_language", type = SettingType.ENUM, group = "System",
-            label = "Interface language", default = DEFAULT_UI_LANGUAGE, tier = Tier.BASIC,
+            tier = Tier.BASIC, summary = "Language of ha-paneld's own interface.",
+            label = "Interface language", default = DEFAULT_UI_LANGUAGE,
             scope = Scope.DEVICE,
             options = UI_LANGUAGES,
-            help = "Language used by ha-paneld's own interface. Automatic uses an explicit page override first. " +
-                "Configure setting labels and help can then follow the connected Home Assistant user's language; " +
-                "browser, device and English are the remaining fallbacks.",
+            help = "Language used by ha-paneld's own interface.\n\n**Automatic** uses an explicit page override first. Configure setting labels and help can then follow the connected Home Assistant user's language; browser, device and English are the remaining fallbacks.",
         ),
         SettingSpec(
             key = "self_update", type = SettingType.BOOL, group = "System",
+            tier = Tier.BASIC, summary = "Install ha-paneld releases automatically.",
             label = "ha-paneld auto-update", default = "true", scope = Scope.DEVICE,
             liveApply = true,
             help = "ha-paneld updates itself from GitHub releases on the selected channel. Only shown where verified app install is available.",
@@ -734,6 +764,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "update_channel", type = SettingType.ENUM, group = "System",
+            tier = Tier.ADVANCED, summary = "Release channel the self-updater follows.",
             label = "ha-paneld auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
             liveApply = true,
             scope = Scope.DEVICE,
@@ -742,6 +773,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "companion_auto_update", type = SettingType.BOOL, group = "System",
+            tier = Tier.ADVANCED, summary = "Keep the minimal Companion app installed and current (root).",
             label = "Companion auto-update", default = "false", scope = Scope.DEVICE,
             liveApply = true,
             help = "Install/update the minimal HA Companion over root when missing or out of date.",
@@ -755,6 +787,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "companion_update_channel", type = SettingType.ENUM, group = "System",
+            tier = Tier.ADVANCED, summary = "Release channel the Companion updater follows.",
             label = "Companion auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
             liveApply = true,
             scope = Scope.DEVICE,
@@ -770,9 +803,10 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "webview_auto_update", type = SettingType.BOOL, group = "System",
+            tier = Tier.ADVANCED, summary = "Keep the System WebView on the recommended build (root).",
             label = "WebView auto-update", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            help = "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check. Off by default — a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
+            help = "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check.\n\nOff by default: a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
             availableWhen = { it.webViewManaged },
             ha = haEntity("switch", "webview_auto_update", "WebView auto-update") {
                 commandTopic()
@@ -783,12 +817,14 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "launcher_package", type = SettingType.STRING, group = "System",
+            tier = Tier.ADVANCED, summary = "App the Launcher button opens.",
             label = "Launcher app", default = "", picker = "package", scope = Scope.DEVICE,
             maxChars = 255,
             help = "App the Launcher button brings forward. Blank auto-picks an app. Selecting Panel admin (ha-paneld) also makes and keeps ha-paneld the Android Home app.",
         ),
         SettingSpec(
             key = "tame_vendor_packages", type = SettingType.STRING, group = "System",
+            tier = Tier.ADVANCED,
             label = "Vendor package selections", default = "", scope = Scope.DEVICE, hidden = true,
             maxChars = TamePackagePolicy.MAX_BYTES,
             help = "Backup-only storage for package selections managed by the Vendor packages card.",
@@ -796,9 +832,10 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "network_adb", type = SettingType.BOOL, group = "System",
+            tier = Tier.ADVANCED, summary = "Security risk. Keep ADB listening on port 5555 across boots.",
             label = "Network ADB", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            help = "Security risk: keeps classic ADB listening on TCP port 5555 across boots and reconnects. Enable only during active maintenance on a trusted network. If ADB was enabled outside ha-paneld, it must also be disabled there.",
+            help = "**Security risk:** keeps classic ADB listening on TCP port 5555 across boots and reconnects.\n\nEnable only during active maintenance on a trusted network. If ADB was enabled outside ha-paneld, it must also be disabled there.",
             availableWhen = { it.networkAdb },
             ha = haEntity("switch", "network_adb", "Network ADB") {
                 commandTopic()
@@ -813,14 +850,16 @@ object SettingsRegistry {
         // requires a microphone, which the device profile declares only for proven capture.
         SettingSpec(
             key = "voice_enabled", type = SettingType.BOOL, group = "Voice",
-            label = "Voice assistant", default = "false", tier = Tier.ADVANCED, scope = Scope.DEVICE,
+            tier = Tier.BASIC, summary = "Listen for a wake word and send speech to Assist.",
+            label = "Voice assistant", default = "false", scope = Scope.DEVICE,
             liveApply = true,
             help = "Run the on-panel wake-word listener and send recognised speech to Home Assistant Assist.",
             availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_wake_words", type = SettingType.STRING, group = "Voice", picker = "voice_wake_words",
-            label = "Wake words", default = "[\"okay_nabu\"]", tier = Tier.ADVANCED, scope = Scope.DEVICE,
+            tier = Tier.BASIC, summary = "Wake words to listen for.",
+            label = "Wake words", default = "[\"okay_nabu\"]", scope = Scope.DEVICE,
             maxChars = 512,
             help = "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, " +
                 "and any you import below.",
@@ -829,7 +868,8 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "voice_pipelines", type = SettingType.STRING, group = "Voice", picker = "voice_pipelines",
-            label = "Wake word pipelines", default = "{}", tier = Tier.ADVANCED, scope = Scope.DEVICE,
+            tier = Tier.ADVANCED, summary = "Which Assist pipeline each wake word runs.",
+            label = "Wake word pipelines", default = "{}", scope = Scope.DEVICE,
             maxChars = 2_048,
             help = "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred " +
                 "pipeline follows whichever pipeline Home Assistant prefers.",
@@ -838,38 +878,35 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "voice_audio_source", type = SettingType.ENUM, group = "Voice",
+            tier = Tier.ADVANCED, summary = "Android audio source for the listener.",
             label = "Audio source", default = "voice_recognition",
             options = listOf("voice_recognition", "mic", "voice_communication"),
-            tier = Tier.ADVANCED, scope = Scope.DEVICE,
+            scope = Scope.DEVICE,
             help = "Android audio source the wake-word listener records from.",
             availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_sensitivity", type = SettingType.ENUM, group = "Voice",
+            tier = Tier.ADVANCED, summary = "How readily the wake word triggers.",
             label = "Wake sensitivity", default = "normal",
             options = listOf("low", "normal", "high"),
-            tier = Tier.ADVANCED, scope = Scope.DEVICE,
-            help = "Wake-word detector threshold, applied as an offset to the model's cutoff score. Low " +
-                "requires a clearer match (fewer false wakes, more likely to miss a quiet or distant call); " +
-                "High matches more readily (faster to wake, more false triggers). Normal applies no offset.",
+            scope = Scope.DEVICE,
+            help = "Wake-word detector threshold, applied as an offset to the model's cutoff score.\n\n- **Low** requires a clearer match: fewer false wakes, more likely to miss a quiet or distant call.\n- **Normal** applies no offset.\n- **High** matches more readily: faster to wake, more false triggers.",
             availableWhen = { it.hasMicrophone },
         ),
         SettingSpec(
             key = "voice_mic_gain_db", type = SettingType.INT, group = "Voice",
+            tier = Tier.ADVANCED, summary = "Amplify speech sent to Home Assistant for transcription.",
             label = "Microphone gain (dB)", default = "0",
             min = MicrophoneGain.MIN_DB.toDouble(), max = MicrophoneGain.MAX_DB.toDouble(), step = 1.0,
-            tier = Tier.ADVANCED, scope = Scope.DEVICE,
-            help = "Amplifies the audio sent to Home Assistant for transcription. These panels expose no " +
-                "platform noise suppression or automatic gain control, so a panel heard from across the " +
-                "room may wake reliably and still transcribe poorly \u2014 wake-word detection adapts to a " +
-                "quiet signal on its own and speech-to-text does not. Raise this if commands are missed " +
-                "or mistranscribed while the wake word works. Wake-word detection is deliberately left " +
-                "on the unamplified signal.",
+            scope = Scope.DEVICE,
+            help = "Amplifies the audio sent to Home Assistant for transcription.\n\nThese panels expose no platform noise suppression or automatic gain control, so a panel heard from across the room may wake reliably and still transcribe poorly: wake-word detection adapts to a quiet signal on its own and speech-to-text does not.\n\n**Raise this** if commands are missed or mistranscribed while the wake word works. Wake-word detection is deliberately left on the unamplified signal.",
             availableWhen = { it.hasMicrophone },
         ),
         // ---- Logging -----------------------------------------------------------------------------
         SettingSpec(
             key = "log_ship_enabled", type = SettingType.BOOL, group = "Logging",
+            tier = Tier.ADVANCED, summary = "Send ha-paneld's own log to a collector on your network.",
             label = "Ship logs", default = "false", scope = Scope.DEVICE,
             // "its own logcat" was ambiguous: the Logs tab offers App and System sources, so it read
             // as though both were shipped. Only ha-paneld's own process log leaves the panel.
@@ -878,13 +915,13 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "log_ship_system_enabled", type = SettingType.BOOL, group = "Logging",
+            tier = Tier.ADVANCED, summary = "Also send Android system logs to the collector.",
             label = "Ship system logs", default = "false", scope = Scope.DEVICE,
-            help = "Forward Android system logs to the same sink when Ship logs is on. Off by default; " +
-                "requires TCP or HTTP and root or the installed helper. Entries are redacted; " +
-                "high-volume output may be dropped.",
+            help = "Forward Android system logs to the same sink when Ship logs is on.\n\n- Off by default.\n- Requires TCP or HTTP, and root or the installed helper.\n- Entries are redacted; high-volume output may be dropped.",
         ),
         SettingSpec(
             key = "log_ship_host", type = SettingType.STRING, group = "Logging",
+            tier = Tier.ADVANCED, summary = "Log collector address. Blank turns shipping off.",
             label = "Sink host", default = "", scope = Scope.DEVICE,
             maxChars = 253,
             help = "Log-collector host; blank keeps shipping inert. A scheme or :port here is honoured " +
@@ -892,10 +929,12 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "log_ship_port", type = SettingType.INT, group = "Logging",
+            tier = Tier.ADVANCED, summary = "Log collector port.",
             label = "Sink port", default = "514", min = 1.0, max = 65535.0, scope = Scope.DEVICE,
         ),
         SettingSpec(
             key = "log_ship_protocol", type = SettingType.ENUM, group = "Logging",
+            tier = Tier.ADVANCED, summary = "Transport to the collector. TCP reports a refused sink.",
             label = "Protocol", default = LogShipEndpoint.DEFAULT_PROTOCOL,
             options = LogShipEndpoint.PROTOCOLS,
             aliases = LogShipEndpoint.ALIASES,
@@ -911,6 +950,7 @@ object SettingsRegistry {
         // numeric sensors: HA natively presents light brightness as a percentage and volume is 0..100%.
         SettingSpec(
             key = "screen", type = SettingType.INT, group = "Sensors",
+            tier = Tier.BASIC, summary = "Screen state and brightness.",
             label = "Screen brightness", default = "",
             help = "Current screen state and brightness. Home Assistant presents the light's native 0–255 brightness as a percentage.",
             haExposedByDefault = true,
@@ -922,6 +962,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "volume", type = SettingType.INT, group = "Sensors",
+            tier = Tier.ADVANCED, summary = "Panel media volume.",
             label = "Panel volume", default = "",
             help = "Current panel media volume reported on its native 0–100 percent scale.",
             haExposedByDefault = true,
@@ -936,6 +977,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "illuminance", type = SettingType.INT, group = "Sensors",
+            tier = Tier.BASIC, summary = "Ambient light from the panel sensor.",
             label = "Ambient light", default = "",
             help = "Ambient illuminance measured by the panel light sensor.",
             haExposedByDefault = true,
@@ -949,6 +991,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "proximity", type = SettingType.BOOL, group = "Sensors",
+            tier = Tier.BASIC, summary = "Learned near or far occupancy.",
             label = "Proximity", default = "",
             help = "Learned near/far occupancy from a supported proximity source.",
             haExposedByDefault = true,
@@ -961,6 +1004,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "proximity_level", type = SettingType.INT, group = "Sensors",
+            tier = Tier.BASIC, summary = "Learned proximity level, 0 to 100 percent.",
             label = "Proximity level", default = "",
             help = "Normalized learned proximity level from 0 to 100 percent; binary sources report 0 or 100.",
             haExposedByDefault = true,
@@ -974,6 +1018,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "auto_sleep_activity", type = SettingType.BOOL, group = "Sensors",
+            tier = Tier.ADVANCED, summary = "Whether auto-sleep is holding the panel awake.",
             label = "Auto-sleep activity", default = "",
             help = "Whether the auto-sleep policy is currently holding the panel awake. The Home Assistant entity provides the activity history timeline.",
             haExposedByDefault = false,
@@ -986,6 +1031,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "temperature", type = SettingType.FLOAT, group = "Sensors",
+            tier = Tier.BASIC, summary = "Temperature from Android's panel sensor.",
             label = "Temperature", default = "",
             help = "Environmental temperature reported by Android's panel sensor.",
             haExposedByDefault = true,
@@ -999,6 +1045,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "humidity", type = SettingType.FLOAT, group = "Sensors",
+            tier = Tier.BASIC, summary = "Humidity from Android's panel sensor.",
             label = "Humidity", default = "",
             help = "Relative humidity reported by Android's panel sensor.",
             haExposedByDefault = true,
@@ -1017,6 +1064,7 @@ object SettingsRegistry {
         // are pushed on the heartbeat tick with a deadband so they never flap the broker. (Issue #19)
         SettingSpec(
             key = "diag_ip", type = SettingType.STRING, group = "Diagnostics",
+            tier = Tier.BASIC, summary = "This panel's local IPv4 address.",
             label = "IP address", default = "",
             help = "This panel's LAN IPv4 address as a sensor.",
             haExposedByDefault = false,
@@ -1029,6 +1077,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "diag_cpu", type = SettingType.INT, group = "Diagnostics",
+            tier = Tier.BASIC, summary = "Overall CPU busy percentage.",
             label = "CPU usage", default = "",
             help = "Overall CPU busy percentage (root/su panels; unavailable on sandbox-walled panels).",
             haExposedByDefault = false,
@@ -1042,6 +1091,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "diag_memory", type = SettingType.INT, group = "Diagnostics",
+            tier = Tier.BASIC, summary = "Used memory as a percentage.",
             label = "Memory usage", default = "",
             help = "Used RAM as a percentage.",
             haExposedByDefault = false,
@@ -1055,6 +1105,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "diag_soc_temp", type = SettingType.FLOAT, group = "Diagnostics",
+            tier = Tier.BASIC, summary = "Processor temperature.",
             label = "SoC temperature", default = "",
             help = "System-on-chip temperature (root/su panels; unavailable on sandbox-walled panels).",
             haExposedByDefault = false,
@@ -1068,6 +1119,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "diag_boot", type = SettingType.STRING, group = "Diagnostics",
+            tier = Tier.ADVANCED, summary = "When the panel last started.",
             label = "Last boot time", default = "",
             help = "When the panel last booted (a timestamp — HA shows the elapsed uptime).",
             haExposedByDefault = false,
@@ -1081,6 +1133,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "diag_wifi_ssid", type = SettingType.STRING, group = "Diagnostics",
+            tier = Tier.ADVANCED, summary = "Current Wi-Fi network name.",
             label = "Wi-Fi network", default = "",
             help = "Current Wi-Fi network name while Wi-Fi is the active connection. This can identify a location and enters HA history when exposed; Android may hide it unless network-information permission is available.",
             haExposedByDefault = false,
@@ -1094,6 +1147,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "diag_wifi_rssi", type = SettingType.INT, group = "Diagnostics",
+            tier = Tier.ADVANCED, summary = "Current Wi-Fi signal strength.",
             label = "Wi-Fi signal strength", default = "",
             help = "Current Wi-Fi received signal strength in dBm while Wi-Fi is the active connection.",
             haExposedByDefault = false,
@@ -1117,6 +1171,7 @@ object SettingsRegistry {
         // broker, whose restarts are not the network's fault. See control/WifiOutageTracker.kt.
         SettingSpec(
             key = "diag_wifi_outages_24h", type = SettingType.INT, group = "Diagnostics",
+            tier = Tier.ADVANCED, summary = "Short Wi-Fi dropouts in the last 24 hours.",
             label = "Wi-Fi outages (24 h)", default = "",
             help = "Short Wi-Fi dropouts in the rolling last 24 hours. Counts loss of the panel's active Wi-Fi connection only — Home Assistant or broker outages are never counted. If the panel had to cap what it stores, the sensor's is_lower_bound attribute says the value is a floor.",
             haExposedByDefault = false,
@@ -1141,6 +1196,7 @@ object SettingsRegistry {
         // Read through the helper or a fixed Shizuku operation; only offered where the layout is proven.
         SettingSpec(
             key = "room_temp", type = SettingType.FLOAT, group = "Sensors",
+            tier = Tier.ADVANCED, summary = "Room temperature from the climate sensor.",
             label = "Room temperature", default = "",
             help = "Room air temperature from the panel's supported climate sensor (calibration offset applied).",
             haExposedByDefault = true, availableWhen = { it.hasCht8305 },
@@ -1153,6 +1209,7 @@ object SettingsRegistry {
         ),
         SettingSpec(
             key = "room_humidity", type = SettingType.INT, group = "Sensors",
+            tier = Tier.ADVANCED, summary = "Room humidity from the climate sensor.",
             label = "Room humidity", default = "",
             help = "Relative humidity from the panel's supported climate sensor.",
             haExposedByDefault = true, availableWhen = { it.hasCht8305 },
@@ -1167,7 +1224,8 @@ object SettingsRegistry {
         // (no HA entity); the profile carries a baseline and this is an additional user trim. API-settable.
         SettingSpec(
             key = "room_temp_offset", type = SettingType.FLOAT, group = "Sensors",
-            label = "Room temperature offset", default = "0", tier = Tier.ADVANCED, scope = Scope.DEVICE,
+            tier = Tier.ADVANCED, summary = "Correction added to the room temperature, in °C.",
+            label = "Room temperature offset", default = "0", scope = Scope.DEVICE,
             min = -20.0, max = 20.0, step = 0.1, availableWhen = { it.hasCht8305 },
             help = "Correction (°C) added to the reported room temperature — usually negative, since panel " +
                 "self-heating reads high. Per-panel (depends on mounting), so not cloned by a fleet push.",

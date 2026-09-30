@@ -73,6 +73,26 @@
       "state": "machine-cross-checked",
       "text": "处理中…"
     },
+    "configure.advanced.hide": {
+      "text": "隐藏高级设置",
+      "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
+      "state": "machine-cross-checked"
+    },
+    "configure.advanced.marker": {
+      "text": "高级设置",
+      "sourceHash": "1ecce239dd12663aefa9aca6f9af9ded4bbd836f31b92c0d7ee13fa8be70863c",
+      "state": "machine-cross-checked"
+    },
+    "configure.advanced.show": {
+      "text": "显示 {count} 个高级设置",
+      "sourceHash": "9434fab91d8b47be7204cbac457ef3d8a6deb989c492c3a3fd07cd7fc3f234a1",
+      "state": "machine-cross-checked"
+    },
+    "configure.advanced.show_one": {
+      "text": "显示 1 个高级设置",
+      "sourceHash": "4ced5c73c9386e299ffb7140a1e4bfd886389649307b9e6b3be1986ca73433fd",
+      "state": "machine-cross-checked"
+    },
     "configure.approval.retry": {
       "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
       "state": "machine-cross-checked",
@@ -803,6 +823,11 @@
       "sourceHash": "49b599f864427b27005cc385b12d1452365117ad90a6b4d51a335bfae6165520",
       "state": "machine-cross-checked"
     },
+    "configure.count": {
+      "text": "{shown}/{total} 项设置",
+      "sourceHash": "008c615d1450fdf967b53f126d4ebbd4e9c56c0d94579bc390414704d627d2dc",
+      "state": "machine-cross-checked"
+    },
     "configure.dashboard.auto_account_default": {
       "sourceHash": "b049c63a3b2b17956fa93993993be49fef42b7b5be21a0272ee5fa4c2a8f1eef",
       "state": "machine-cross-checked",
@@ -867,6 +892,11 @@
       "sourceHash": "7464a115e40c5a97c3999bdc9f2dbf984f4298a406b10766470f28e15667bcae",
       "state": "machine-cross-checked",
       "text": "此面板的 Home Assistant 账号看不到 {path} 对应的仪表板 — 在该仪表板存在之前，面板将回退到默认仪表板。"
+    },
+    "configure.descriptions": {
+      "text": "说明",
+      "sourceHash": "bfdc0de709bad8dae81cdf3af8d97f1d6e5b2510af3c97befd5efdf06d144e3b",
+      "state": "machine-cross-checked"
     },
     "configure.display.recommend_prefix": {
       "sourceHash": "4d979ffba01fc73a7ac81c32b38e5cbf5e4cfe0baaaa103108e6182da71c9442",
@@ -1068,6 +1098,16 @@
       "state": "machine-cross-checked",
       "text": "已向 Home Assistant 公开 — 点击隐藏"
     },
+    "configure.filter.label": {
+      "text": "查找设置",
+      "sourceHash": "556e14934a4a4550aa43766e0f576030549cd26062f8817fd77da448fd5a7df9",
+      "state": "machine-cross-checked"
+    },
+    "configure.filter.placeholder": {
+      "text": "查找设置…",
+      "sourceHash": "ca4431193303dd52b89f68f0bf95e20f84c566ee4e39fadaaaa8c4b063646118",
+      "state": "machine-cross-checked"
+    },
     "configure.group.behaviour": {
       "sourceHash": "12b98040fac50b169837bb79f5a07579e361a23f9cee4f31ce46080c58b1d07d",
       "state": "machine-cross-checked",
@@ -1147,6 +1187,21 @@
       "sourceHash": "945c00063ff9caeec6ab547988a7285b401de138fdd0090be0531f103d74f5f9",
       "state": "machine-cross-checked",
       "text": "启用强化模式时，更改此设置可能需在面板上亲自批准。"
+    },
+    "configure.help.about": {
+      "text": "关于{label}",
+      "sourceHash": "865cb604bf97d2ebd9a36bc4166170c23c9c36bd26c9da89e9d909e15d83df11",
+      "state": "machine-cross-checked"
+    },
+    "configure.help.close": {
+      "text": "关闭",
+      "sourceHash": "7d9eb7acb13e24625c404401d8e88b2350e32162455885f18276cf802f7701ed",
+      "state": "machine-cross-checked"
+    },
+    "configure.help.more": {
+      "text": "在网站上了解更多",
+      "sourceHash": "85a7086e3ef77e8a6ffe36a45b39c3847e3b5e2c5a307cf4e2ca831f78969c87",
+      "state": "machine-cross-checked"
     },
     "configure.language.automatic": {
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
@@ -1977,6 +2032,11 @@
       "sourceHash": "0e35f6e9742e074dfd62e874de3c242c6d9b64c21bf9afbaf3d11f05579b4495",
       "state": "machine-cross-checked",
       "text": "基本"
+    },
+    "configure.tier.label": {
+      "text": "显示的设置",
+      "sourceHash": "9179eb2ff402a88c959d3ab86fe0ac1c7e4e5705c04c29ccc3a57f9c24a02cec",
+      "state": "machine-cross-checked"
     },
     "configure.time.days_ago": {
       "sourceHash": "b9724f3a20eef5c65ae4af50856f38f0338d73fc80f01b8829d5faa2477ef331",
@@ -10223,6 +10283,11 @@
       "state": "machine-cross-checked",
       "text": "自动亮度"
     },
+    "settings.auto_brightness.summary": {
+      "text": "让面板根据环境光调节背光。",
+      "sourceHash": "57d522af96e04b4db48e8fb5fb8f7ed33385a068a93cd941a026b89fa3fee539",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_brightness_ha_entity.help": {
       "sourceHash": "6880e1fea6dee81c8f92542ee7bca6f70b62aecb909cf29b8b43fc5843fb5f9d",
       "state": "machine-cross-checked",
@@ -10232,6 +10297,11 @@
       "sourceHash": "6d14150bee5d9bdc380ca70414b5d8690a2f65b9563e2e0cf7b8ecd08821882c",
       "state": "machine-cross-checked",
       "text": "环境光源"
+    },
+    "settings.auto_brightness_ha_entity.summary": {
+      "text": "使用 Home Assistant 光线传感器代替面板自带的传感器。",
+      "sourceHash": "703710414afe74c55e969564e23cc7c7f0647d059ffa3237463fa03739902567",
+      "state": "machine-cross-checked"
     },
     "settings.auto_brightness_minimum_percent.help": {
       "sourceHash": "f867987f4c5e28c720153d3438f9dd602c01a40c89539c5baab444d34bad0ce8",
@@ -10243,15 +10313,25 @@
       "state": "machine-cross-checked",
       "text": "最低亮度"
     },
+    "settings.auto_brightness_minimum_percent.summary": {
+      "text": "自动亮度可选择的最低亮度。",
+      "sourceHash": "766c3d61ea08f66c252698b4d3b14f05cde1e4a97c64e8c4fc112b23557a8fb5",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_brightness_response_percent.help": {
-      "sourceHash": "00483dd404b761c8ab8824f086f8b625edccd837f60da21feb5c8c04c0ca4333",
-      "state": "machine-cross-checked",
-      "text": "引擎判定变化确实存在后，将已学习的环境光规律与当前环境光之间的差异按多大比例应用于屏幕。值越低，屏幕亮度越接近已学习的每日规律。规律仍在学习时，屏幕会直接跟随实测光线。"
+      "text": "引擎判定变化确实存在后，将已学习的环境光规律与当前环境光之间的差异按多大比例应用于屏幕。\n\n- 值越低，屏幕亮度越接近已学习的每日规律。\n- 规律仍在学习时，屏幕会直接跟随实测光线。",
+      "sourceHash": "ff745f90fe6123b0741034697f8808ef61f561c1ef46629a5f49540dcda4661b",
+      "state": "machine-cross-checked"
     },
     "settings.auto_brightness_response_percent.label": {
       "sourceHash": "ebb57a260d58207c3cce2e12e8663ecdc0c74147d138655d6714bc577a0768f6",
       "state": "machine-cross-checked",
       "text": "灵敏度"
+    },
+    "settings.auto_brightness_response_percent.summary": {
+      "text": "屏幕对房间光线实际变化的响应灵敏度。",
+      "sourceHash": "264844be6dcbd529b02d2f956995dc97d031228c0590f6018240bdab1a91db0c",
+      "state": "machine-cross-checked"
     },
     "settings.auto_sleep.help": {
       "text": "在所选存在模式学习到的延迟或设定的触摸空闲延迟后关闭屏幕。手动屏幕控制保持独立。",
@@ -10263,6 +10343,11 @@
       "state": "machine-cross-checked",
       "text": "自动休眠"
     },
+    "settings.auto_sleep.summary": {
+      "text": "当周围无人或处于闲置状态时关闭屏幕。",
+      "sourceHash": "6ca654fd4bb061b43620b620223404c0befcf61fa2ef2f1318e9d108b2f33b9c",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_sleep_activity.help": {
       "sourceHash": "d4482427fd42a99657d1319b5e54e58cd2fff9da6a24d62bc131d2b1da951b78",
       "state": "machine-cross-checked",
@@ -10273,14 +10358,24 @@
       "state": "machine-cross-checked",
       "text": "自动休眠活动"
     },
+    "settings.auto_sleep_activity.summary": {
+      "text": "自动休眠功能是否保持面板处于唤醒状态。",
+      "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_sleep_source.help": {
-      "text": "使用面板已校准的接近传感器、Home Assistant 区域设备或触摸空闲。如果存在模式的来源不可用，该模式会暂停；触摸空闲无需设置存在检测。",
-      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
+      "text": "使用面板已校准的接近传感器、Home Assistant 区域设备或触摸空闲。\n\n- 存在检测模式的来源不可用时，该模式会暂停。\n- 触摸空闲无需设置存在检测。",
+      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_source.label": {
       "text": "自动休眠活动来源",
       "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_source.summary": {
+      "text": "存在检测来源：接近传感器、区域或触摸。",
+      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
@@ -10293,6 +10388,11 @@
       "state": "machine-cross-checked",
       "text": "摄像头"
     },
+    "settings.camera_enabled.summary": {
+      "text": "将面板摄像头作为 RTSP 流和 JPEG 快照提供。",
+      "sourceHash": "e65ab34035912691390aca7ec68d80e2400983b2ef83350e51ea36c4095a25a2",
+      "state": "machine-cross-checked"
+    },
     "settings.camera_exposure.help": {
       "sourceHash": "d4e4bf5fd6847ee7dd6f270be1d2caebac7f390231c8208ac96f2f43cb921169",
       "state": "machine-cross-checked",
@@ -10302,6 +10402,11 @@
       "sourceHash": "cc5454a4b7ce211370dcd2aa0ae58d6b564eee7940b42de516d05f5b269c414b",
       "state": "machine-cross-checked",
       "text": "曝光"
+    },
+    "settings.camera_exposure.summary": {
+      "text": "曝光补偿，以档（EV）为单位。0 表示保持自动曝光不变。",
+      "sourceHash": "7c89abca8ecf2cddbc62fe9d25eb4bae95570852ed99f39254e2d008a17f0e5a",
+      "state": "machine-cross-checked"
     },
     "settings.camera_fps.help": {
       "sourceHash": "194e9997f15b4e317b0e0ac24fa823fd48ebe5c87df022fc116d669f7468b631",
@@ -10313,6 +10418,11 @@
       "state": "machine-cross-checked",
       "text": "帧率"
     },
+    "settings.camera_fps.summary": {
+      "text": "默认帧率；流 URL 可以覆盖该设置。",
+      "sourceHash": "c1101605aebb6489964e7eadeb38593db279b596f2f0d1481853ada2f73c60b8",
+      "state": "machine-cross-checked"
+    },
     "settings.camera_kbps.help": {
       "sourceHash": "6b72a5351e3c9d9317300876ebf0431307b3107808e50ba5d1d3a8d87a1c3ebe",
       "state": "machine-cross-checked",
@@ -10322,6 +10432,11 @@
       "sourceHash": "e901b7730f20569b41c76c2b2fd8154a99fec441983ab7950c36be206a2edadc",
       "state": "machine-cross-checked",
       "text": "比特率（kbps）"
+    },
+    "settings.camera_kbps.summary": {
+      "text": "默认比特率；流 URL 可以覆盖此值。",
+      "sourceHash": "ea235ad59bb583ce8b30cb510f4e2d8661a304e9ba6cddd0e2943032d618c971",
+      "state": "machine-cross-checked"
     },
     "settings.camera_resolution.help": {
       "sourceHash": "5f4cfc2712419d0f122198dfeae6c49d3b6cb094a2a090f14ab1b590963de5fb",
@@ -10333,6 +10448,11 @@
       "state": "machine-cross-checked",
       "text": "分辨率"
     },
+    "settings.camera_resolution.summary": {
+      "text": "默认的流分辨率；流 URL 可以覆盖此值。",
+      "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
+      "state": "machine-cross-checked"
+    },
     "settings.companion_auto_update.help": {
       "sourceHash": "fc52865ccfdacefd48405d55bf867dd77a99eb0b2aaf0ac7b44e888abd5c0de7",
       "state": "machine-cross-checked",
@@ -10342,6 +10462,11 @@
       "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
       "state": "machine-cross-checked",
       "text": "Companion 自动更新"
+    },
+    "settings.companion_auto_update.summary": {
+      "text": "使精简版 Companion 应用保持已安装且为最新（需超级用户权限）。",
+      "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
+      "state": "machine-cross-checked"
     },
     "settings.companion_update_channel.help": {
       "sourceHash": "8ed36e3abe564c24ab183ca333b4ad8dbe6bd2119e1ba3bf939f4c7c8dc9a580",
@@ -10353,6 +10478,11 @@
       "state": "machine-cross-checked",
       "text": "Companion 自动更新通道"
     },
+    "settings.companion_update_channel.summary": {
+      "text": "Companion 更新程序所遵循的发布通道。",
+      "sourceHash": "c4186e872750bd0f6d99fc0d00cae01246232c253e74acea5adcda004d12feed",
+      "state": "machine-cross-checked"
+    },
     "settings.cpu_governor.help": {
       "sourceHash": "44ede54df63e6b90033e3356275332934cdd2b19bf681ea7d3b65fd69a333aa9",
       "state": "machine-cross-checked",
@@ -10363,15 +10493,25 @@
       "state": "machine-cross-checked",
       "text": "CPU 调频方案"
     },
+    "settings.cpu_governor.summary": {
+      "text": "CPU 调频方案，在下次重启前生效。",
+      "sourceHash": "899d9bfb9f86429bc13165fe8a45bfc78f59149c7a49418b9783f3dc43d63b47",
+      "state": "machine-cross-checked"
+    },
     "settings.dark_mode.help": {
-      "sourceHash": "a3effc79661edffd5a38a30d82b89c8069d1ddb58c9eeeb0d543995d753333eb",
-      "state": "machine-cross-checked",
-      "text": "设置 ha-paneld 自身界面的主题，并在没有系统深色模式设置的面板（Android 9 及更早版本）上设定仪表盘的默认配色方案。在 Home Assistant 中选择的主题会覆盖仪表盘默认值；此网页 UI 始终跟随当前浏览器的偏好。"
+      "text": "设置 ha-paneld 自身界面的主题，并在没有系统深色模式设置的面板（Android 9 及更早版本）上设定仪表盘的默认配色方案。\n\n在 Home Assistant 中选择的主题会覆盖仪表盘默认值；此网页 UI 始终跟随当前浏览器的偏好。",
+      "sourceHash": "853ed1512986d08ad813002d9cb672dbfcb1261b3b2447bfc4b52301b163c2eb",
+      "state": "machine-cross-checked"
     },
     "settings.dark_mode.label": {
       "sourceHash": "9b7878aef90b527c22be169ed4ab97a5e216b6a1c719dc779883ef64eb85520b",
       "state": "machine-cross-checked",
       "text": "深色模式"
+    },
+    "settings.dark_mode.summary": {
+      "text": "为 ha-paneld 自身界面启用深色主题，并作为仪表盘的默认主题。",
+      "sourceHash": "796ecaff6531067757b7a3ac15e2483dcd43e3a85af57f0090224ef0c9f5f22a",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_entity_auto_runtime.help": {
       "sourceHash": "14cbd01dfb904597dd78103c2703215c494ce80ee3da9b8e104e95ed7fe84ff8",
@@ -10403,6 +10543,11 @@
       "state": "machine-cross-checked",
       "text": "实体筛选"
     },
+    "settings.dashboard_entity_learning.summary": {
+      "text": "仅流式传输该仪表盘所使用的实体。",
+      "sourceHash": "66be8978b2f2634a9b30dc43beeae293aa0d8a0fc4c7c4aa4a8e0186bb9dbf9c",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_entity_learning_applied.help": {
       "sourceHash": "052ab9a70854284704fadbbe085ea13ef085793d374e851978fa36b1797119a7",
       "state": "machine-cross-checked",
@@ -10424,14 +10569,19 @@
       "text": "实体筛选器覆盖项"
     },
     "settings.dashboard_fullscreen.help": {
-      "sourceHash": "12e06707302926f7af77d4589d668001ca7bfe463212db6755390a8770a106c8",
-      "state": "machine-cross-checked",
-      "text": "仅限内置渲染器。仪表盘位于前台时隐藏 Android 状态栏和导航栏；从屏幕边缘滑动可暂时显示。此设置不会锁定面板，也不会隐藏 Home Assistant 导航。"
+      "text": "仅限内置渲染器。仪表盘位于前台时隐藏 Android 状态栏和导航栏；从屏幕边缘滑动可暂时显示。\n\n此设置不会锁定面板，也不会隐藏 Home Assistant 导航。",
+      "sourceHash": "c410a8d3eb3474145a680214c11fac9bb2e096eeae2742daf1e0fbdd74726f8e",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_fullscreen.label": {
       "sourceHash": "dbe81c811b381f69648e4c685e1d7c4262df9e3aebd4788d05eeebf7f4d1c2cf",
       "state": "machine-cross-checked",
       "text": "隐藏 Android 系统栏"
+    },
+    "settings.dashboard_fullscreen.summary": {
+      "text": "将 Android 状态栏和导航栏隐藏在仪表盘后方。",
+      "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_idle_return_min.help": {
       "sourceHash": "7bd07d2e5514d51ce900f99bfdb8a476ad60f0313ac603f2931db1f95bf914cf",
@@ -10443,15 +10593,25 @@
       "state": "machine-cross-checked",
       "text": "闲置后返回主仪表盘（分钟）"
     },
+    "settings.dashboard_idle_return_min.summary": {
+      "text": "闲置多少分钟后返回主仪表盘。0 表示关闭。",
+      "sourceHash": "c09a7ad02ecc153c31c694acf64312f9b69bc920fad09a62091730ac4f61d05c",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_native_kiosk.help": {
-      "sourceHash": "c7c7b287676967b4f202d48b383452f6bd7acf953131a2bb702b5bd6bbc59723",
-      "state": "machine-cross-checked",
-      "text": "仅限内置渲染器。Home Assistant 2026.4.2+ 连接后，请求其原生前端隐藏导航。默认开启；不支持或请求失败时，仪表盘保持不变。此设置不会锁定 Android，也不会向仪表盘注入 CSS。"
+      "text": "仅限内置渲染器。Home Assistant 2026.4.2+ 连接后，请求其原生前端隐藏导航。\n\n默认开启；不支持或请求失败时，仪表盘保持不变。此设置不会锁定 Android，也不会向仪表盘注入 CSS。",
+      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {
       "sourceHash": "a305339fcfa063612b7ae7bbb7369fec0ca25ee457ccfcb3df53c9b52060b106",
       "state": "machine-cross-checked",
       "text": "隐藏 Home Assistant 导航（原生）"
+    },
+    "settings.dashboard_native_kiosk.summary": {
+      "text": "请求 Home Assistant 隐藏其自身的导航。",
+      "sourceHash": "5fd4788997717aea56fb4c039aa40bcb0cb04c128c7cb5b19fc102b439bf486b",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_network_warning.help": {
       "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
@@ -10462,6 +10622,11 @@
       "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
       "state": "machine-cross-checked",
       "text": "在仪表盘上显示网络警告"
+    },
+    "settings.dashboard_network_warning.summary": {
+      "text": "当网络断开时，在仪表盘上发出警告。",
+      "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_overscroll.help": {
       "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
@@ -10483,15 +10648,25 @@
       "state": "machine-cross-checked",
       "text": "仪表盘应用"
     },
+    "settings.dashboard_package.summary": {
+      "text": "显示仪表盘的应用。留空则使用内置渲染器。",
+      "sourceHash": "968f7a73a5e8876febb8b8f254404f502bedf77b3df100cb14a52a40dc823a6e",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_theme.help": {
-      "text": "仅限内置渲染器。“跟随 Home Assistant”会将仪表盘的明暗选择交给 Home Assistant，“深色模式”设置则为该选择提供默认值。当 Home Assistant 设为“自动”时，可用“深色”或“浅色”在此面板上指定主题；这适用于没有侧边栏、无法从中进入 Home Assistant 个人资料页的信息亭仪表盘。“环境”会根据自动亮度模型所感知的室内光线在“深色”和“浅色”之间选择，且只有当房间保持较暗或较亮的状态一分钟后才切换；需开启“自动亮度”，且在获得读数之前会跟随 Home Assistant。Home Assistant 中明确选择的“浅色”或“深色”仍然优先；请使用“自动”或单独的面板用户。恢复为“跟随 Home Assistant”后，选择权会按原样交还。",
-      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "text": "仅限内置渲染器。\n\n- **跟随 Home Assistant**会将仪表盘的明暗选择交给 Home Assistant，深色模式设置则为该选择提供默认值。\n- **深色**和**浅色**在 Home Assistant 设为自动时于此面板上指定主题；这适用于没有侧边栏、无法从中进入 Home Assistant 个人资料页的信息亭仪表盘。\n- **环境**会根据自动亮度模型所感知的室内光线在深色和浅色之间选择，且只有当房间保持较暗或较亮的状态一分钟后才切换；需开启自动亮度，且在获得读数之前会跟随 Home Assistant。\n\nHome Assistant 中明确选择的浅色或深色仍然优先；请使用自动或单独的面板用户。恢复为跟随 Home Assistant 后，选择权会按原样交还。",
+      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
       "sourceHash": "bf3c175b44e9bb6505851bf08a6a0c9f30320a493a6cdff8af55e3cdb85c1e44",
       "state": "machine-cross-checked",
       "text": "仪表盘主题"
+    },
+    "settings.dashboard_theme.summary": {
+      "text": "谁决定使用浅色或深色主题：Home Assistant、此面板还是该房间。",
+      "sourceHash": "45c7a962327b3b7de0ff2853bb28d7053772e39f164b809e3aacba83e170862f",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_zoom.help": {
       "sourceHash": "965650a061c0a7446538a192b6e4d3b508432d79ab95bb7604cec7ee9dbb3b4a",
@@ -10508,6 +10683,11 @@
       "sourceHash": "60fde4ecb0300f4e39d073c0ed282652965ca6e4803dbbe47e5a08917352afdd",
       "state": "machine-cross-checked"
     },
+    "settings.dashboard_zoom.summary": {
+      "text": "仪表盘的浏览器缩放比例。",
+      "sourceHash": "ffca38a9cb226e6a7726957fdcb1ff0b2999887bed938e40573cdd3abc418106",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_boot.help": {
       "sourceHash": "c2def446a0798101bd52a56491c2a741ee0e71ada93bc7c42212f294b5911289",
       "state": "machine-cross-checked",
@@ -10517,6 +10697,11 @@
       "sourceHash": "53aa51076571d5aa8285983a369c9ae68b9059d22b139c7a5572b48dc6e0b1c5",
       "state": "machine-cross-checked",
       "text": "上次启动时间"
+    },
+    "settings.diag_boot.summary": {
+      "text": "面板上次启动的时间。",
+      "sourceHash": "de15195916f3c5747fa14f3b2810cceed59f39c51f1717898c2a287bef43cd92",
+      "state": "machine-cross-checked"
     },
     "settings.diag_cpu.help": {
       "sourceHash": "fffec696a134f27adbe345fbb21cdc73242616e106d18556cdc780d39f69fd37",
@@ -10528,6 +10713,11 @@
       "state": "machine-cross-checked",
       "text": "CPU 使用率"
     },
+    "settings.diag_cpu.summary": {
+      "text": "CPU 总体占用百分比。",
+      "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_ip.help": {
       "sourceHash": "fc9c7eae6335fbf8f889d417b99e3b85420b0414b520df400826ab7d3ba203c9",
       "state": "machine-cross-checked",
@@ -10537,6 +10727,11 @@
       "sourceHash": "0302a467885abfdd4772c9e16c57edab91b02231248202d63170f1c669d13303",
       "state": "machine-cross-checked",
       "text": "IP 地址"
+    },
+    "settings.diag_ip.summary": {
+      "text": "此面板的本地 IPv4 地址。",
+      "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
+      "state": "machine-cross-checked"
     },
     "settings.diag_memory.help": {
       "sourceHash": "05f4f5d827bac7d3320fec7a9bd9454ad0865273ade60012498733ab1cf4661a",
@@ -10548,6 +10743,11 @@
       "state": "machine-cross-checked",
       "text": "内存使用率"
     },
+    "settings.diag_memory.summary": {
+      "text": "已用内存的百分比。",
+      "sourceHash": "cdfa125d539f4dbd775d6872fb7c09f4eccb57ecfc832d8c8d22bf7c4beaee21",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_soc_temp.help": {
       "sourceHash": "5c638158a17adc55068c2fede38efe6a81cc16b4ece0d4f80fa0f9d61281601e",
       "state": "machine-cross-checked",
@@ -10557,6 +10757,11 @@
       "sourceHash": "9f56b79622b6e3c9b5a678aebaf91708a1eec8921955e86d68a171be2b1e6bbd",
       "state": "machine-cross-checked",
       "text": "SoC 温度"
+    },
+    "settings.diag_soc_temp.summary": {
+      "text": "处理器温度。",
+      "sourceHash": "3c5a5ff799d7c2ac91c8b0896b2bd4e161d39613309f07a989c4922dc1b53c96",
+      "state": "machine-cross-checked"
     },
     "settings.diag_wifi_outages_24h.help": {
       "sourceHash": "cde65f42ed6eec37fb9bb3e2c9d160b951cfc99f8fb7c1f041efe21be3080cfb",
@@ -10568,6 +10773,11 @@
       "state": "machine-cross-checked",
       "text": "Wi-Fi 中断（24 小时）"
     },
+    "settings.diag_wifi_outages_24h.summary": {
+      "text": "过去 24 小时内 Wi-Fi 的短暂中断。",
+      "sourceHash": "f5d1698495507bfc32ba9f00f003aafee8008708a5cef312282931996d3db135",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_wifi_rssi.help": {
       "sourceHash": "b26ea034a2da2f7ca7713ccd7d5a8119c1d328fa74ef0f1379a2f95e646be0ca",
       "state": "machine-cross-checked",
@@ -10577,6 +10787,11 @@
       "sourceHash": "82472695ceaca9503f2d5465578036f5c4f58ec2b0ac0fa43d4cd621f481151b",
       "state": "machine-cross-checked",
       "text": "Wi-Fi 信号强度"
+    },
+    "settings.diag_wifi_rssi.summary": {
+      "text": "当前 Wi-Fi 信号强度。",
+      "sourceHash": "8fb8466dfbc5f1f6fa620e4c7775d8e07e4087bb47bbbd22f9ffc523fa0546d6",
+      "state": "machine-cross-checked"
     },
     "settings.diag_wifi_ssid.help": {
       "sourceHash": "218448fba3e098e17a621bde50f139bfaa2320e24d8d61dc3891cc5b622e7933",
@@ -10588,6 +10803,11 @@
       "state": "machine-cross-checked",
       "text": "Wi-Fi 网络"
     },
+    "settings.diag_wifi_ssid.summary": {
+      "text": "当前 Wi-Fi 网络名称。",
+      "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
+      "state": "machine-cross-checked"
+    },
     "settings.friendly_name.help": {
       "sourceHash": "d609f0f1edaa79506d9619abcdf33f07bfb89b26a70c83c9e6f41e631f4e428f",
       "state": "machine-cross-checked",
@@ -10598,6 +10818,11 @@
       "state": "machine-cross-checked",
       "text": "友好名称"
     },
+    "settings.friendly_name.summary": {
+      "text": "Home Assistant 为此面板显示的名称。",
+      "sourceHash": "2b7babb55807e9fe58ad6ec530965e8511d1259bf99e459ceafe9073ec479f92",
+      "state": "machine-cross-checked"
+    },
     "settings.ha_area.help": {
       "sourceHash": "92582fd766a9559435e08ee57ca2f1bb48d508a6c2af9ec792e6e3c45a0d1ece",
       "state": "machine-cross-checked",
@@ -10607,6 +10832,11 @@
       "sourceHash": "df4a2a5c31455ff3f9226ec4e43b6fc965fc5aa1b12539b97c2282ba3174bce1",
       "state": "machine-cross-checked",
       "text": "Home Assistant 中的区域"
+    },
+    "settings.ha_area.summary": {
+      "text": "此面板所属的 Home Assistant 区域。",
+      "sourceHash": "992b9c57355acf08ce839cbf4c2c66e2652cf5c0597bf380cc777b54e40833ef",
+      "state": "machine-cross-checked"
     },
     "settings.ha_client_id.help": {
       "sourceHash": "ffae29400af4eb9ec15c30c66a9432dd116ddda13f627652a3a57144c0c5f209",
@@ -10638,6 +10868,11 @@
       "state": "machine-cross-checked",
       "text": "长期访问令牌"
     },
+    "settings.ha_token.summary": {
+      "text": "当无法通过浏览器登录时使用的备用令牌。",
+      "sourceHash": "d9d6c0fd8bc2c8048adf70c2de740fde6e68907c21575ecf8d6583374d3a80dd",
+      "state": "machine-cross-checked"
+    },
     "settings.ha_token_expiry.help": {
       "sourceHash": "8ef8a848b4d7ee74a9472f0570994f379f5a7ac2f43e9b3e93201169c94a583e",
       "state": "machine-cross-checked",
@@ -10658,15 +10893,25 @@
       "state": "machine-cross-checked",
       "text": "Home Assistant URL"
     },
+    "settings.ha_url.summary": {
+      "text": "您的 Home Assistant 服务器地址。",
+      "sourceHash": "292a8aafd3c78ab22bb939061885d5acdedc69c6b75019b4c9d34cc6ec1c8c13",
+      "state": "machine-cross-checked"
+    },
     "settings.home_dashboard.help": {
-      "sourceHash": "a7ce869a298f35b4b61c1d1c2a6bde203ec6348fcfa91bf838ae882065bfd150",
-      "state": "machine-cross-checked",
-      "text": "重新加载和闲置返回时使用的仪表盘。自动模式下由 Home Assistant 选择；自定义模式可指定特定视图，例如 /dashboard-name/tab-name。"
+      "text": "重新加载和闲置返回时使用的仪表盘。\n\n- **自动**模式下由 Home Assistant 选择。\n- **自定义**模式可指定特定视图，例如 `/dashboard-name/tab-name`。",
+      "sourceHash": "8f44a63324b05223da2292e2fd4a8b080d40c67ec0a1faca36b8b6c237a8febe",
+      "state": "machine-cross-checked"
     },
     "settings.home_dashboard.label": {
       "sourceHash": "17cb7ca6c1fc811e633c9e1fbb1fab6a5d6cc097c937405d8cb49c8cab77c1d4",
       "state": "machine-cross-checked",
       "text": "主仪表盘"
+    },
+    "settings.home_dashboard.summary": {
+      "text": "重新加载和闲置返回时打开的仪表盘。",
+      "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
+      "state": "machine-cross-checked"
     },
     "settings.humidity.help": {
       "sourceHash": "0dcd9954f745cb22242cfd4b0ca708d96a89b5b3dd3a3d407cfebee0b9b0679e",
@@ -10678,6 +10923,11 @@
       "state": "machine-cross-checked",
       "text": "湿度"
     },
+    "settings.humidity.summary": {
+      "text": "来自 Android 面板传感器的湿度。",
+      "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
+      "state": "machine-cross-checked"
+    },
     "settings.illuminance.help": {
       "sourceHash": "99fb3d41f1634e9edd6c6c7540968106d44b7e01899f09cfe1fb98865347cae8",
       "state": "machine-cross-checked",
@@ -10687,6 +10937,11 @@
       "sourceHash": "bd754dd6ed86a26c4bdccfdd47a912232bae26b86fd38ad063f8f725bb7b8f97",
       "state": "machine-cross-checked",
       "text": "环境光"
+    },
+    "settings.illuminance.summary": {
+      "text": "来自面板传感器的环境光。",
+      "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
+      "state": "machine-cross-checked"
     },
     "settings.keep_awake.help": {
       "sourceHash": "d3b70b40884db042b1874360834630a2a5534a76840fb833374917dd2cb9ed92",
@@ -10698,6 +10953,11 @@
       "state": "machine-cross-checked",
       "text": "保持面板响应"
     },
+    "settings.keep_awake.summary": {
+      "text": "在屏幕关闭时保持网络和服务运行。",
+      "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
+      "state": "machine-cross-checked"
+    },
     "settings.kiosk_companion_packages.help": {
       "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
       "state": "machine-cross-checked",
@@ -10708,15 +10968,25 @@
       "state": "machine-cross-checked",
       "text": "锁定允许的应用"
     },
+    "settings.kiosk_companion_packages.summary": {
+      "text": "锁定时保留在前台的应用，按包名指定。",
+      "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
+      "state": "machine-cross-checked"
+    },
     "settings.kiosk_lock.help": {
-      "sourceHash": "cb15071d31c33a73f5da36aef5a30c385125f3429136e556131067a9cdebd2a8",
-      "state": "machine-cross-checked",
-      "text": "仅限已 root 设备使用的轻量级锁定。隐藏 Android 系统栏；打开其他应用或最近任务时，会在约 3 秒内返回所选仪表盘。它不会隐藏 Home Assistant 导航。可在此处或 Home Assistant 中解除，也可通过 adb、快速点击左上角 7 次，或在重启后 60 秒的解锁窗口内解除。"
+      "text": "仅限已 root 设备使用的轻量级锁定。隐藏 Android 系统栏；打开其他应用或最近任务时，会在约 3 秒内返回所选仪表盘。它不会隐藏 Home Assistant 导航。\n\n解除方式：\n\n- 在此处或 Home Assistant 中\n- 通过 adb\n- 快速点击左上角 7 次\n- 在重启后 60 秒的解锁窗口内",
+      "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",
+      "state": "machine-cross-checked"
     },
     "settings.kiosk_lock.label": {
       "sourceHash": "d8de0e2c0913e951dbe60ae09b03614c48b5b8a495c69ca0c45fa2798de27c63",
       "state": "machine-cross-checked",
       "text": "将 Android 锁定到仪表盘（实验性）"
+    },
+    "settings.kiosk_lock.summary": {
+      "text": "仅限已 root 设备。其他应用打开时返回仪表盘。",
+      "sourceHash": "e9055e43b4f6a114f2d4e789b65ea17fc24fecfbc2b5fb1417b1ba9e54f628fd",
+      "state": "machine-cross-checked"
     },
     "settings.launcher_package.help": {
       "sourceHash": "524f589af2ebe612083fd20f1b6f487d59e929aae5a24cf9cd6bd4792e448395",
@@ -10728,6 +10998,11 @@
       "state": "machine-cross-checked",
       "text": "启动器应用"
     },
+    "settings.launcher_package.summary": {
+      "text": "“启动器”按钮打开的应用。",
+      "sourceHash": "b2dadcf62b45755d46bca03a6522073177068495b10956c04c39699194956d04",
+      "state": "machine-cross-checked"
+    },
     "settings.log_ship_enabled.help": {
       "sourceHash": "01fd4a6f75c8d1eba5b4765db5c8eb1c9ebc1220b0639982525ab92b2f43e5d7",
       "state": "machine-cross-checked",
@@ -10737,6 +11012,11 @@
       "sourceHash": "ee4fd7d2333c7de7c8d74fd95cfb065c2be72bd2e52dc3b58cf06c0e1d3d3634",
       "state": "machine-cross-checked",
       "text": "转发日志"
+    },
+    "settings.log_ship_enabled.summary": {
+      "text": "将 ha-paneld 自身的日志发送至您网络上的收集器。",
+      "sourceHash": "d9d0543772220c0f2d59b7a38f1fe26075b0ac588c1534434ec2644c1fac6b98",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_host.help": {
       "sourceHash": "0294f7fbe925135c5f7f310e2a92a2078b168792888dd39d6e41976875b3afaa",
@@ -10748,10 +11028,20 @@
       "state": "machine-cross-checked",
       "text": "接收端主机"
     },
+    "settings.log_ship_host.summary": {
+      "text": "日志收集器地址。留空将关闭日志发送功能。",
+      "sourceHash": "2de7304ca6cbdb82707a94e19b7e94df4ae18b8d408730c04fe716f554625fba",
+      "state": "machine-cross-checked"
+    },
     "settings.log_ship_port.label": {
       "sourceHash": "7bc8673ba2ab424916e4f1189b75faf4b4c9af8ef0d731852c09e6a660e77cd3",
       "state": "machine-cross-checked",
       "text": "接收端端口"
+    },
+    "settings.log_ship_port.summary": {
+      "text": "日志收集器端口。",
+      "sourceHash": "4cf403c3eedb4aae0bc497387596f2a6d1bcc5908d9b883f821e381e733cc4a3",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_protocol.help": {
       "sourceHash": "8721aa729601cd5bf1612b97a578b3a1ef385564447d250f440e162c7dbf2bfb",
@@ -10763,15 +11053,25 @@
       "state": "machine-cross-checked",
       "text": "协议"
     },
+    "settings.log_ship_protocol.summary": {
+      "text": "到收集器的传输协议。TCP 会报告接收端拒绝连接。",
+      "sourceHash": "db01cfc12070a7e72e1bee1187e7e24fa38984e742a19b523dc6bb2a3ca6cbc3",
+      "state": "machine-cross-checked"
+    },
     "settings.log_ship_system_enabled.help": {
-      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
-      "state": "machine-cross-checked",
-      "text": "启用“转发日志”后，将 Android 系统日志转发到同一接收端。默认关闭；需要 TCP 或 HTTP，以及超级用户权限或已安装的辅助程序。日志条目会脱敏，高流量时部分条目可能被丢弃。"
+      "text": "启用“转发日志”后，将 Android 系统日志转发到同一接收端。\n\n- 默认关闭。\n- 需要 TCP 或 HTTP，以及超级用户权限或已安装的辅助程序。\n- 日志条目会脱敏，高流量时部分条目可能被丢弃。",
+      "sourceHash": "bfc7f5d141f83c2cf7f2c168f8e492af3f7fe3b50efff70a0435d15bb0524fa2",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_system_enabled.label": {
       "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
       "state": "machine-cross-checked",
       "text": "转发系统日志"
+    },
+    "settings.log_ship_system_enabled.summary": {
+      "text": "同时将 Android 系统日志发送至收集器。",
+      "sourceHash": "a172f1f97d43da721b10903ca5c2268afbd25f6b77048716ceb1c9526bdf13da",
+      "state": "machine-cross-checked"
     },
     "settings.manufacturer.help": {
       "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",
@@ -10783,6 +11083,11 @@
       "state": "machine-cross-checked",
       "text": "制造商"
     },
+    "settings.manufacturer.summary": {
+      "text": "覆盖 Home Assistant 设备卡片上的制造商。",
+      "sourceHash": "3228d0bdc49534bc5cb89d049c2c41fd1a0015338b353ca03a442f71fa7a33f6",
+      "state": "machine-cross-checked"
+    },
     "settings.model.help": {
       "sourceHash": "50dab8203d43b63ace9d3f98dc51ab87d675f41a61746e4b00fadf216b5d56ec",
       "state": "machine-cross-checked",
@@ -10792,6 +11097,11 @@
       "sourceHash": "5e2c614c23f02239bc03c6c04fcb681950f9e72bf8fdff6be79c79841cbb10c0",
       "state": "machine-cross-checked",
       "text": "型号"
+    },
+    "settings.model.summary": {
+      "text": "覆盖 Home Assistant 设备卡片上的型号。",
+      "sourceHash": "ca6b303ae590f03bc698654dc1506b6ab7ae9ace6609b91d5f37a427f69d985f",
+      "state": "machine-cross-checked"
     },
     "settings.mqtt_address_family.help": {
       "sourceHash": "fc6094bdf2f4455a719947c9c42ebded23bf17f38e19215fb5e210c8e46b2747",
@@ -10803,6 +11113,11 @@
       "state": "machine-cross-checked",
       "text": "MQTT 与 Home Assistant WebSocket 地址族"
     },
+    "settings.mqtt_address_family.summary": {
+      "text": "使用 IPv4、IPv6 或两者连接 MQTT 和 Home Assistant。",
+      "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
+      "state": "machine-cross-checked"
+    },
     "settings.mqtt_broker.help": {
       "sourceHash": "aa8b8bb7adffa5c6d19213a7bc1fe500bf2a6d948bb57dbd7c2290f14f985600",
       "state": "machine-cross-checked",
@@ -10812,6 +11127,11 @@
       "sourceHash": "cad88e3df28153445c8d1c488bc534a1f3e191acf3d636d9c1a5cc734c0f1675",
       "state": "machine-cross-checked",
       "text": "消息代理 URL"
+    },
+    "settings.mqtt_broker.summary": {
+      "text": "MQTT 消息代理地址。留空将自动查找 Home Assistant。",
+      "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
+      "state": "machine-cross-checked"
     },
     "settings.mqtt_password.help": {
       "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
@@ -10823,6 +11143,11 @@
       "state": "machine-cross-checked",
       "text": "密码"
     },
+    "settings.mqtt_password.summary": {
+      "text": "MQTT 密码。留空则保留当前密码。",
+      "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
+      "state": "machine-cross-checked"
+    },
     "settings.mqtt_user.help": {
       "sourceHash": "95c922291a9f7fa89f1135d8b5e750a1a32c2c17d26b556012d6c3d939b35bc0",
       "state": "machine-cross-checked",
@@ -10833,25 +11158,40 @@
       "state": "machine-cross-checked",
       "text": "用户名"
     },
+    "settings.mqtt_user.summary": {
+      "text": "此面板的 MQTT 用户名。",
+      "sourceHash": "c9051f2d3306c556507ff4d4d714230ec1201407135b13f6acad7f1541d4502e",
+      "state": "machine-cross-checked"
+    },
     "settings.navbar_mode.help": {
-      "sourceHash": "f795e458995a66ea6439ea9536c23b144a51d9604ebdb7d4a1aee0aab776b551",
-      "state": "machine-cross-checked",
-      "text": "为没有原生导航栏的面板提供屏幕上的软导航栏。原生模式会将导航交给面板自身的 Android 导航栏，不绘制任何内容。请注意，通过内置渲染器的全屏设置或 Android 仪表盘锁隐藏 Android 系统栏时，原生导航栏仍会被隐藏。"
+      "text": "为没有原生导航栏的面板提供屏幕上的软导航栏。**原生**模式会将导航交给面板自身的 Android 导航栏，不绘制任何内容。\n\n通过内置渲染器的全屏设置或 Android 仪表盘锁隐藏 Android 系统栏时，原生导航栏仍会被隐藏。",
+      "sourceHash": "5a6df2f1452dcbc4734840f9f5cef12eacdb2ecb12bd2d00c3107b445a069d36",
+      "state": "machine-cross-checked"
     },
     "settings.navbar_mode.label": {
       "sourceHash": "2fd20a36857a818323c2b8ff2d46809e566ad5e13f5e7f1ffb9f0750a82cbc83",
       "state": "machine-cross-checked",
       "text": "导航栏模式"
     },
+    "settings.navbar_mode.summary": {
+      "text": "在没有原生导航栏的面板上显示软导航栏。",
+      "sourceHash": "e9b0b88a61249c1cc28487059a0851afaf93717cbd41388bdb56d685812ea033",
+      "state": "machine-cross-checked"
+    },
     "settings.network_adb.help": {
-      "sourceHash": "09613eac91f1ca4d5abdc8ac3c450d38c097a1050bf088881b34ca7b0a17e97e",
-      "state": "machine-cross-checked",
-      "text": "安全风险：让传统 ADB 在 TCP 端口 5555 上持续监听，重启和重新连接后仍然有效。仅在可信网络上进行维护操作期间启用。如果 ADB 是在 ha-paneld 之外启用的，也必须在那里将其禁用。"
+      "text": "**安全风险**：让传统 ADB 在 TCP 端口 5555 上持续监听，重启和重新连接后仍然有效。\n\n仅在可信网络上进行维护操作期间启用。如果 ADB 是在 ha-paneld 之外启用的，也必须在那里将其禁用。",
+      "sourceHash": "c1d223177697675bf4eec7603bd73ba99fd866f002410c92177c1e8ee1bca48b",
+      "state": "machine-cross-checked"
     },
     "settings.network_adb.label": {
       "sourceHash": "468304e24dd01a9c3ac85163a7ea7bb83e11644a2d5b632c817863337454701b",
       "state": "machine-cross-checked",
       "text": "网络 ADB"
+    },
+    "settings.network_adb.summary": {
+      "text": "安全风险。让 ADB 在重启后仍监听端口 5555。",
+      "sourceHash": "08712f193dc3e77aff305d6dfe706466ed3bcaa53f85c48c5519a6d30a39a924",
+      "state": "machine-cross-checked"
     },
     "settings.panel_id.help": {
       "sourceHash": "c32f09aa8a5756c4cfde370f42fc7ce62bb040feb0b9e0375f2932c08988554e",
@@ -10863,6 +11203,11 @@
       "state": "machine-cross-checked",
       "text": "面板 ID"
     },
+    "settings.panel_id.summary": {
+      "text": "用于此面板实体 ID 的稳定标识符。",
+      "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
+      "state": "machine-cross-checked"
+    },
     "settings.prevent_idle_dim.help": {
       "sourceHash": "e65c72cf163d6535f1c4b8a7bc5edd3731b1f404128861e1889004e1eda20f8d",
       "state": "machine-cross-checked",
@@ -10872,6 +11217,11 @@
       "sourceHash": "ab4e8ab5e353c0f7a2772ea83b880bba96a671c022dfc853aee0833b5bd2a62f",
       "state": "machine-cross-checked",
       "text": "防止闲置变暗"
+    },
+    "settings.prevent_idle_dim.summary": {
+      "text": "阻止厂商固件在屏幕关闭时调暗背光。",
+      "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
+      "state": "machine-cross-checked"
     },
     "settings.proximity.help": {
       "sourceHash": "1302fe79949d5f3c6152bd67f6988f2be92ce9a134c49172b2a3c3212d24ab6b",
@@ -10883,6 +11233,11 @@
       "state": "machine-cross-checked",
       "text": "接近状态"
     },
+    "settings.proximity.summary": {
+      "text": "学习到的近/远占用状态。",
+      "sourceHash": "9caab10a7b9b275d97c49aa0f3c65e4a7a4f40c09a933c814c7d9f91024ecc4c",
+      "state": "machine-cross-checked"
+    },
     "settings.proximity_level.help": {
       "sourceHash": "b3f0f1e997f952599577ed72fe6a1cdd3b1f9be8ffe6104d131cc52226d1a02e",
       "state": "machine-cross-checked",
@@ -10892,6 +11247,11 @@
       "sourceHash": "2e718ad3caebfe4bab8ffb0d2946b9fddd9c1e4e10dbc58057102e5ddc61f645",
       "state": "machine-cross-checked",
       "text": "接近程度"
+    },
+    "settings.proximity_level.summary": {
+      "text": "学习到的接近程度，范围为 0 到 100%。",
+      "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
+      "state": "machine-cross-checked"
     },
     "settings.room_humidity.help": {
       "sourceHash": "7615cfe25fea88ea327f766a4aba84edf4d0eed4c45b5d85cea3ca805b73e0ea",
@@ -10903,6 +11263,11 @@
       "state": "machine-cross-checked",
       "text": "室内湿度"
     },
+    "settings.room_humidity.summary": {
+      "text": "来自环境传感器的室内湿度。",
+      "sourceHash": "bbd12dbcdf9562005a6f6db920aef531ee0cdf0286244dec929a88e66f6a678d",
+      "state": "machine-cross-checked"
+    },
     "settings.room_temp.help": {
       "sourceHash": "2a8c03beb176b893b0247b5d18d1686427c619d12d605beebf824c1e8fbcb79c",
       "state": "machine-cross-checked",
@@ -10912,6 +11277,11 @@
       "sourceHash": "7c417c9119c8cfeb5011b7cba570d356852ae485f9cb5797e10d596141631c6b",
       "state": "machine-cross-checked",
       "text": "室内温度"
+    },
+    "settings.room_temp.summary": {
+      "text": "来自环境传感器的室内温度。",
+      "sourceHash": "6787d9ec7159d5f8da89bd45f9c7219f3ef8895cf31c16047e636690857fd732",
+      "state": "machine-cross-checked"
     },
     "settings.room_temp_offset.help": {
       "sourceHash": "5fe73fe33fc51a45ebf874038937c91f4907eacbfb1f3ba4d0e05f04bce4ff62",
@@ -10923,6 +11293,11 @@
       "state": "machine-cross-checked",
       "text": "室内温度偏移"
     },
+    "settings.room_temp_offset.summary": {
+      "text": "加到室内温度上的修正值，单位为 °C。",
+      "sourceHash": "978e73e423dcd1a2a8ca227b4dd989ed509d34483ebcc548af7160cc6e52d546",
+      "state": "machine-cross-checked"
+    },
     "settings.screen.help": {
       "sourceHash": "31433baf205387576ed50ea97527a7fb292903036d7bfc216f994965316dcb9d",
       "state": "machine-cross-checked",
@@ -10932,6 +11307,11 @@
       "sourceHash": "694cb749771a50b425951ffbdc7b070db7350d4280f98d321ef946b6a7292a68",
       "state": "machine-cross-checked",
       "text": "屏幕亮度"
+    },
+    "settings.screen.summary": {
+      "text": "屏幕状态和亮度。",
+      "sourceHash": "6ba9e68bcfcfc58c954fe6a202ed4f6c8d9df1a8788b1431583756c0740bd43e",
+      "state": "machine-cross-checked"
     },
     "settings.self_update.help": {
       "sourceHash": "97ae88f8b39157c43fe24ab26c47ceaa5d57769b0fdfce270f4eb1456c3919ec",
@@ -10943,6 +11323,11 @@
       "state": "machine-cross-checked",
       "text": "ha-paneld 自动更新"
     },
+    "settings.self_update.summary": {
+      "text": "自动安装 ha-paneld 的发布版本。",
+      "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
+      "state": "machine-cross-checked"
+    },
     "settings.silence_boot_chime.help": {
       "sourceHash": "9398fcca9e28cc1f8615e89611f2b8e0637d01262f46bdc42e4467db67e64c9a",
       "state": "machine-cross-checked",
@@ -10952,6 +11337,11 @@
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
       "state": "machine-cross-checked",
       "text": "静音启动提示音"
+    },
+    "settings.silence_boot_chime.summary": {
+      "text": "静音固件启动提示音。",
+      "sourceHash": "57dde483cc0e08a27cd85277831bd12459ec0e78b4672942353d031c00022f6f",
+      "state": "machine-cross-checked"
     },
     "settings.tame_vendor_packages.help": {
       "sourceHash": "9e5114f2319b4a394da900d05306035a7d83aba15ac1d66dcd705004814ced95",
@@ -10973,6 +11363,11 @@
       "state": "machine-cross-checked",
       "text": "温度"
     },
+    "settings.temperature.summary": {
+      "text": "来自 Android 面板传感器的温度。",
+      "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
+      "state": "machine-cross-checked"
+    },
     "settings.touch_sound.help": {
       "sourceHash": "8b2ce13af0b77b1da73765d226b4370107b48b7119670490cf9ece1522b6349b",
       "state": "machine-cross-checked",
@@ -10983,15 +11378,25 @@
       "state": "machine-cross-checked",
       "text": "触摸音效"
     },
+    "settings.touch_sound.summary": {
+      "text": "播放系统点击音效。",
+      "sourceHash": "45864ba285306a16cdb22e54405c63a9968f8747466cf66b1c0a5381c0b6626a",
+      "state": "machine-cross-checked"
+    },
     "settings.ui_language.help": {
-      "sourceHash": "6b6157ee7e853009150f5dfc3839a2bc7dbb8f06285ad87d580c87e16daa2550",
-      "state": "machine-cross-checked",
-      "text": "ha-paneld 自身界面使用的语言。自动模式会优先使用页面明确指定的语言。随后，“设置”页面的设置标签和帮助文本可以跟随已连接的 Home Assistant 用户的语言；其余回退项依次为浏览器语言、设备语言和英语。"
+      "text": "ha-paneld 自身界面使用的语言。\n\n**自动**模式会优先使用页面明确指定的语言。随后，配置页面的设置标签和帮助文本可以跟随已连接的 Home Assistant 用户的语言；其余回退项依次为浏览器语言、设备语言和英语。",
+      "sourceHash": "b7fc0eadebf67c70928a78036d93798c57776e075ff3bf5172197dd40238be34",
+      "state": "machine-cross-checked"
     },
     "settings.ui_language.label": {
       "sourceHash": "8027f432a7fb7c273a1a0fde87de4212b6738673e1d06213c02b5a191eaf8ab4",
       "state": "machine-cross-checked",
       "text": "界面语言"
+    },
+    "settings.ui_language.summary": {
+      "text": "ha-paneld 自身界面的语言。",
+      "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
+      "state": "machine-cross-checked"
     },
     "settings.update_channel.help": {
       "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
@@ -11003,6 +11408,11 @@
       "state": "machine-cross-checked",
       "text": "ha-paneld 自动更新通道"
     },
+    "settings.update_channel.summary": {
+      "text": "自动更新程序遵循的发布通道。",
+      "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
+      "state": "machine-cross-checked"
+    },
     "settings.voice_audio_source.help": {
       "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
       "state": "machine-cross-checked",
@@ -11012,6 +11422,11 @@
       "sourceHash": "f6479eb15e423313ae0db8583d077b47191a41c16bc97a9d85dec35f16ad5431",
       "state": "machine-cross-checked",
       "text": "音频源"
+    },
+    "settings.voice_audio_source.summary": {
+      "text": "唤醒词监听器所用的 Android 音频源。",
+      "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
+      "state": "machine-cross-checked"
     },
     "settings.voice_enabled.help": {
       "sourceHash": "ba296e73d5537bc8180f5abaf4109da9a48797078e1447b71194a0aeec451f2f",
@@ -11023,15 +11438,25 @@
       "state": "machine-cross-checked",
       "text": "语音助理"
     },
+    "settings.voice_enabled.summary": {
+      "text": "监听唤醒词并将语音发送至 Assist。",
+      "sourceHash": "d44107963fc54351bd582d47825aad5651566129424d90819e0b7c51a413e4e4",
+      "state": "machine-cross-checked"
+    },
     "settings.voice_mic_gain_db.help": {
-      "sourceHash": "57348c1118f9fba6177e8afa32f8b8674508d0af983d33e952cc03f95f0af645",
-      "state": "machine-cross-checked",
-      "text": "放大发送到 Home Assistant 进行转录的音频。这些面板不提供平台级降噪或自动增益控制，因此即使面板能可靠地听到房间另一端的唤醒词，转录效果仍可能不佳——唤醒词检测会自行适应微弱信号，而语音转文本不会。如果唤醒词正常工作，但命令仍被漏掉或错误转录，请提高此值。唤醒词检测有意继续使用未经放大的信号。"
+      "text": "放大发送到 Home Assistant 进行转录的音频。\n\n这些面板不提供平台级降噪或自动增益控制，因此从房间另一端呼唤面板时，它可能可靠唤醒，但转录效果仍然不佳：唤醒词检测会自行适应微弱信号，而语音转文本不会。\n\n如果唤醒词正常工作，但命令被漏掉或转录错误，请**提高此值**。唤醒词检测有意保留在未经放大的信号上。",
+      "sourceHash": "11daf40ebcb01e6a2b996011eb081e6f150b1e83d5d4aa877ba1c3fc3b089312",
+      "state": "machine-cross-checked"
     },
     "settings.voice_mic_gain_db.label": {
       "sourceHash": "a7a629b565b5b9af548257a8fc82ad7df360f3d32c88e48f12f4cadd365a34c8",
       "state": "machine-cross-checked",
       "text": "麦克风增益（dB）"
+    },
+    "settings.voice_mic_gain_db.summary": {
+      "text": "放大发送至 Home Assistant 进行转录的语音。",
+      "sourceHash": "065410cb2e71f90414f869a5e9aedf1be3845e0c26cccacf89d64b6ff54d40b2",
+      "state": "machine-cross-checked"
     },
     "settings.voice_pipelines.help": {
       "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
@@ -11043,15 +11468,25 @@
       "state": "machine-cross-checked",
       "text": "唤醒词流水线"
     },
+    "settings.voice_pipelines.summary": {
+      "text": "每个唤醒词所运行的 Assist 流水线。",
+      "sourceHash": "e37ef99d1d4df2fb268353f7f179ee12d4802df0a4993748331b6d83a91dcde4",
+      "state": "machine-cross-checked"
+    },
     "settings.voice_sensitivity.help": {
-      "sourceHash": "cc3e95fea8fe5a298bf5ce799bbc15d7b44576010646691059f0c19df31aeec3",
-      "state": "machine-cross-checked",
-      "text": "唤醒词检测器阈值，以偏移量形式应用于模型的截止分数。低灵敏度需要更明确的匹配（误唤醒更少，但更容易漏掉轻声或远处呼唤）；高灵敏度更容易匹配（唤醒更快，但误触发更多）。正常不应用偏移。"
+      "text": "唤醒词检测器阈值，以偏移量形式应用于模型的截止分数。\n\n- **低**灵敏度需要更明确的匹配：误唤醒更少，但更容易漏掉轻声或远处呼唤。\n- **正常**不应用偏移。\n- **高**灵敏度更容易匹配：唤醒更快，但误触发更多。",
+      "sourceHash": "af00b05309556a3c5631dfe2830065406d0db55c255a8fd1819e6657623235c9",
+      "state": "machine-cross-checked"
     },
     "settings.voice_sensitivity.label": {
       "sourceHash": "5df43abc6ac192d8e244aa63b84795d5fff6bce32f84f7014212a9719cf654c8",
       "state": "machine-cross-checked",
       "text": "唤醒灵敏度"
+    },
+    "settings.voice_sensitivity.summary": {
+      "text": "唤醒词的触发灵敏度。",
+      "sourceHash": "0fa08145c04a8e1391ac642c5536fa2f26f69556c521db192e7f9d7fafe11538",
+      "state": "machine-cross-checked"
     },
     "settings.voice_wake_words.help": {
       "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
@@ -11063,6 +11498,11 @@
       "state": "machine-cross-checked",
       "text": "唤醒词"
     },
+    "settings.voice_wake_words.summary": {
+      "text": "需要监听的唤醒词。",
+      "sourceHash": "d1d5a37611625d7925ca3e794540612919d66f7a7e37a748fa1f6c235a8e75ff",
+      "state": "machine-cross-checked"
+    },
     "settings.volume.help": {
       "sourceHash": "b3940799e32ad4927181340553f34418c4093c7aeea2bf1c6d21e8c401c3f657",
       "state": "machine-cross-checked",
@@ -11072,6 +11512,11 @@
       "sourceHash": "3169f38cc19fe300136470c6f970c8ddd36116f6935957ab67f3918624b3bf3c",
       "state": "machine-cross-checked",
       "text": "面板音量"
+    },
+    "settings.volume.summary": {
+      "text": "面板媒体音量。",
+      "sourceHash": "49e5264db4cd107fb5245caa45d7007829d46e17465bda5b3099e115ecfda28f",
+      "state": "machine-cross-checked"
     },
     "settings.wake_on_wave.help": {
       "sourceHash": "71dd28fb047a8aae73292b1975f5d7b6cbe3ccf7ec49d6c32bc992e4b7596bf7",
@@ -11083,6 +11528,11 @@
       "state": "machine-cross-checked",
       "text": "挥手唤醒"
     },
+    "settings.wake_on_wave.summary": {
+      "text": "在面板附近挥手即可将其唤醒。",
+      "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
+      "state": "machine-cross-checked"
+    },
     "settings.watchdog_enabled.help": {
       "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",
       "state": "machine-cross-checked",
@@ -11093,15 +11543,25 @@
       "state": "machine-cross-checked",
       "text": "应用看门狗"
     },
+    "settings.watchdog_enabled.summary": {
+      "text": "仪表盘应用终止或长时间处于后台时自动重新启动该应用。",
+      "sourceHash": "bf85bf3bed1a0bda4d001d6d73a8b2196aec288be92fa7aba1cb27cbd9ccf105",
+      "state": "machine-cross-checked"
+    },
     "settings.webview_auto_update.help": {
-      "sourceHash": "c213f4530d508c6c3ae53fc24f3ab6654dd3e1618bd68609031c298bf8e903ee",
-      "state": "machine-cross-checked",
-      "text": "将系统 WebView 保持在此面板的推荐版本（来自 ha-paneld 镜像），检查更新时通过超级用户权限安装较新版本。默认关闭；更换 WebView 后需要重启才能生效。仅在存在推荐版本时显示（通过 Google Play 更新的面板上不显示）。"
+      "text": "将系统 WebView 保持在此面板的推荐版本（来自 ha-paneld 镜像），检查更新时通过超级用户权限安装较新版本。\n\n默认关闭：更换 WebView 后需要重启才能生效。仅在存在推荐版本时显示（通过 Google Play 更新的面板上不显示）。",
+      "sourceHash": "cf8035f05ef4490931648028eb8cb8f4629814ec89f0a4d6747af8b9ddd1315d",
+      "state": "machine-cross-checked"
     },
     "settings.webview_auto_update.label": {
       "sourceHash": "20c3526cc6dbf1a8fc781ed1e7594a2c71d88903a33862fac77aa849984e2e1d",
       "state": "machine-cross-checked",
       "text": "WebView 自动更新"
+    },
+    "settings.webview_auto_update.summary": {
+      "text": "将系统 WebView 保持在推荐版本（需要超级用户权限）。",
+      "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
+      "state": "machine-cross-checked"
     },
     "settings.zigbee_router.help": {
       "sourceHash": "0e45c24d90c69895031bb89e0360f16e94f3ef89262456cfef82c2ab024e5824",
@@ -11112,6 +11572,11 @@
       "sourceHash": "76c68d99b8cb9505d0771ff7291ab23f70e4fcba5fa81daa256c4e50461286f5",
       "state": "machine-cross-checked",
       "text": "Zigbee 路由器"
+    },
+    "settings.zigbee_router.summary": {
+      "text": "将板载 Zigbee 无线模块用作路由器。",
+      "sourceHash": "ad4a9c9f2cdb17eaa7c15c04aac14c932e2e95cf53eba3f3fa4d0a9c4a225331",
+      "state": "machine-cross-checked"
     },
     "setup.action.panel_dashboard": {
       "sourceHash": "3db3c314463f71ee6dfd052b3b46cdd2851593ad49f19dcac17289eae7969c00",
@@ -12401,6 +12866,11 @@
     "settings.auto_sleep_touch_delay_seconds.help": {
       "text": "选择触摸空闲后，连续指定秒数未触摸时完全关闭屏幕。",
       "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_touch_delay_seconds.summary": {
+      "text": "屏幕在无触摸状态下保持亮起的时间（以秒为单位）。",
+      "sourceHash": "ac4a72aa8108adf757c92d42ab1fa992256f3b7cb01929428b463ad75080bf23",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_touch_delay_seconds.label": {

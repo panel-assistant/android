@@ -21,7 +21,7 @@ class SettingsRegistryPresentationTest {
         }
         assertTrue(SettingValue.validate(spec, "pt-BR") is Validation.Bad)
         assertEquals(
-            "Language used by ha-paneld's own interface. Automatic uses an explicit page override first. " +
+            "Language used by ha-paneld's own interface.\n\n**Automatic** uses an explicit page override first. " +
                 "Configure setting labels and help can then follow the connected Home Assistant user's language; " +
                 "browser, device and English are the remaining fallbacks.",
             spec.help,
@@ -45,7 +45,7 @@ class SettingsRegistryPresentationTest {
         assertEquals(Tier.ADVANCED, spec.tier)
         assertFalse(spec.haExposedByDefault)
         assertEquals(
-            "Security risk: keeps classic ADB listening on TCP port 5555 across boots and reconnects. " +
+            "**Security risk:** keeps classic ADB listening on TCP port 5555 across boots and reconnects.\n\n" +
                 "Enable only during active maintenance on a trusted network. If ADB was enabled outside " +
                 "ha-paneld, it must also be disabled there.",
             spec.help,
@@ -68,7 +68,7 @@ class SettingsRegistryPresentationTest {
         val system = SettingsRegistry.spec("log_ship_system_enabled")!!
         assertEquals("false", system.default)
         assertTrue(system.help.contains("when Ship logs is on"))
-        assertTrue(system.help.contains("requires TCP or HTTP"))
+        assertTrue(system.help.contains("Requires TCP or HTTP"))
     }
 
     @Test fun navbarModeIsAHomeAssistantSelectWithAConfigureSyncControl() {
