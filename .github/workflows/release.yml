@@ -146,11 +146,9 @@ jobs:
             "Host contracts"
             "Dependency integrity"
             "Privileged helper"
-            "CodeQL · actions"
+            "CodeQL · actions, javascript-typescript, python"
             "CodeQL · c-cpp"
             "CodeQL · java-kotlin"
-            "CodeQL · javascript-typescript"
-            "CodeQL · python"
           )
           max_attempts=60
           sleep_seconds=10
@@ -242,13 +240,13 @@ jobs:
           npm run sbom -- --output ../../release-input/profile-editor-runtime.cdx.json
 
       - name: Set up JDK 17
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           # The action's default package list includes the retired `tools` package, which sdkmanager
           # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
@@ -414,15 +412,9 @@ jobs:
           changelog_body="$(mktemp)"
           mv release-input/release-body.md "$changelog_body"
           cat > release-input/release-body.md <<EOF
-          ## Recommended installation
+          ## Installation
 
-          **Do not use \`adb install\` directly.** It installs the APK but does not complete ha-paneld's permissions, startup, configuration, and verification.
-
-          From macOS, Linux, Git Bash, or WSL, run:
-
-          \`\`\`sh
-          curl -fsSL https://github.com/$RELEASE_REPOSITORY/releases/download/$RELEASE_TAG/ha-paneld-installer-$RELEASE_TAG.sh | bash
-          \`\`\`
+          Install and update ha-paneld through the [Panel Assistant integration](https://github.com/panel-assistant/ha-integration) for Home Assistant: add a panel from Settings, Devices & services, and Panel Assistant installs the right app for it. Installing an APK by hand with \`adb install\` skips the permissions, startup and checks that Panel Assistant completes for you.
 
           ## Which APK
 
@@ -524,13 +516,13 @@ jobs:
           (cd release-input && sha256sum --check MANIFEST.sha256)
 
       - name: Set up JDK 17
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           # The action's default package list includes the retired `tools` package, which sdkmanager
           # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
