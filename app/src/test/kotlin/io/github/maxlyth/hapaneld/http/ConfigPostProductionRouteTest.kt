@@ -83,6 +83,10 @@ class ConfigPostProductionRouteTest {
                 val friendly = (0 until entries.length()).map(entries::getJSONObject)
                     .single { it.getString("key") == "friendly_name" }
                 assertEquals("de", friendly.getString("labelLanguage"))
+                val byKey = (0 until entries.length()).map(entries::getJSONObject)
+                    .associateBy { it.getString("key") }
+                assertTrue(byKey.getValue("watchdog_enabled").getBoolean("shortDescriptionUsefulInPopover"))
+                assertEquals(false, byKey.getValue("silence_boot_chime").getBoolean("shortDescriptionUsefulInPopover"))
                 val refused = client.get("/api/v1/config") { header(HttpHeaders.Host, "foreign.example") }
                 assertEquals(HttpStatusCode.Forbidden, refused.status)
             }
