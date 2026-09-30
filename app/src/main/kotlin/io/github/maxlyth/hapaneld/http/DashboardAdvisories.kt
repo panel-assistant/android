@@ -22,7 +22,6 @@ internal class DashboardAdvisories(
     private val setupState: SetupState,
     private val pageHealth: PageHealth,
     private val mqttState: () -> String,
-    private val panelAssistantNative: () -> Boolean,
     private val haSignInNeededForEffectiveDashboard: () -> Boolean,
     private val powerSafetyAdvisory: (PrivilegedRouteObservation) -> PowerSafetyAdvisory,
     private val storageHealth: () -> StorageHealthSnapshot,
@@ -34,10 +33,11 @@ internal class DashboardAdvisories(
      *  state), so on a cold start it hydrates with the rest. */
     fun render(s: ManagementSnapshot, h: PageHealth.Inputs, strings: AppStrings): String {
         val storage = HealthAudit.storage(storageHealth())
+        val mqttSetupRequired = SetupBanner.mqttSetupRequired(config.panelAssistantAuthority)
         val mqtt = s.facts["MQTT"] ?: "disabled"
         // Pure decision (unit-tested in SetupBannerTest) — note a CONFIGURED broker that's merely
         // mid-(re)connect must not be reported as missing.
-        val needs = SetupBanner.needs(mqtt, config.mqttBroker.isNotBlank(), config.mqttUser.isNotBlank(), panelAssistantNative())
+        val needs = SetupBanner.needs(mqtt, config.mqttBroker.isNotBlank(), config.mqttUser.isNotBlank(), mqttSetupRequired)
         val setup = if (needs.isNotEmpty())
             dashboardSetupNeedsBanner(needs, strings)
         else ""
@@ -47,7 +47,7 @@ internal class DashboardAdvisories(
         // deployed panels. The Configure tab keeps it unconditionally: there it is feedback for a save the user just
         // made, which is the reason it was added.
         val mqttProgress = if (!setupState.setupNeedsUser()) "" else {
-            SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState())?.let {
+            SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState(), mqttSetupRequired)?.let {
                 setupProgressBanner(it, strings)
             }.orEmpty()
         }

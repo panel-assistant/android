@@ -38,8 +38,9 @@ internal class ConfigurePageHandler(
         // user actually is while it happens — but it showed nothing, so a save that was still being checked
         // looked like a save that had done nothing. SetupBanner already derives this state and is already
         // rendered on the dashboard; surfacing it here too costs nothing and keeps one authority.
+        val mqttSetupRequired = SetupBanner.mqttSetupRequired(config.panelAssistantAuthority)
         val mqtt = management.facts["MQTT"] ?: "disabled"
-        SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState())?.let { progress ->
+        SetupBanner.progress(mqtt, config.mqttBroker.isNotBlank(), setupState.dashboardSetupStepPending(), mqttState(), mqttSetupRequired)?.let { progress ->
             return power + resume + setupProgressBanner(progress, strings)
         }
         if (haSignInNeededForEffectiveDashboard()) {
