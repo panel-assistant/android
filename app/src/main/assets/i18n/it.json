@@ -73,6 +73,26 @@
       "state": "machine-cross-checked",
       "text": "Operazione in corso…"
     },
+    "configure.advanced.hide": {
+      "text": "Nascondi impostazioni avanzate",
+      "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
+      "state": "machine-cross-checked"
+    },
+    "configure.advanced.marker": {
+      "text": "Impostazione avanzata",
+      "sourceHash": "1ecce239dd12663aefa9aca6f9af9ded4bbd836f31b92c0d7ee13fa8be70863c",
+      "state": "machine-cross-checked"
+    },
+    "configure.advanced.show": {
+      "text": "Mostra {count} impostazioni avanzate",
+      "sourceHash": "9434fab91d8b47be7204cbac457ef3d8a6deb989c492c3a3fd07cd7fc3f234a1",
+      "state": "machine-cross-checked"
+    },
+    "configure.advanced.show_one": {
+      "text": "Mostra 1 impostazione avanzata",
+      "sourceHash": "4ced5c73c9386e299ffb7140a1e4bfd886389649307b9e6b3be1986ca73433fd",
+      "state": "machine-cross-checked"
+    },
     "configure.approval.retry": {
       "sourceHash": "be7545a353d7b786a59ce8893679e105d9fe23794cee284b5127c4037408f353",
       "state": "machine-cross-checked",
@@ -803,6 +823,11 @@
       "sourceHash": "49b599f864427b27005cc385b12d1452365117ad90a6b4d51a335bfae6165520",
       "state": "machine-cross-checked"
     },
+    "configure.count": {
+      "text": "{shown} di {total} impostazioni",
+      "sourceHash": "008c615d1450fdf967b53f126d4ebbd4e9c56c0d94579bc390414704d627d2dc",
+      "state": "machine-cross-checked"
+    },
     "configure.dashboard.auto_account_default": {
       "sourceHash": "b049c63a3b2b17956fa93993993be49fef42b7b5be21a0272ee5fa4c2a8f1eef",
       "state": "machine-cross-checked",
@@ -867,6 +892,11 @@
       "sourceHash": "7464a115e40c5a97c3999bdc9f2dbf984f4298a406b10766470f28e15667bcae",
       "state": "machine-cross-checked",
       "text": "{path} non è una dashboard visibile all'account Home Assistant del pannello: il pannello userà quella predefinita finché la dashboard non sarà disponibile."
+    },
+    "configure.descriptions": {
+      "text": "Descrizioni",
+      "sourceHash": "bfdc0de709bad8dae81cdf3af8d97f1d6e5b2510af3c97befd5efdf06d144e3b",
+      "state": "machine-cross-checked"
     },
     "configure.display.recommend_prefix": {
       "sourceHash": "4d979ffba01fc73a7ac81c32b38e5cbf5e4cfe0baaaa103108e6182da71c9442",
@@ -1068,6 +1098,16 @@
       "state": "machine-cross-checked",
       "text": "Esposto a Home Assistant — fai clic per nascondere"
     },
+    "configure.filter.label": {
+      "text": "Trova un’impostazione",
+      "sourceHash": "556e14934a4a4550aa43766e0f576030549cd26062f8817fd77da448fd5a7df9",
+      "state": "machine-cross-checked"
+    },
+    "configure.filter.placeholder": {
+      "text": "Trova un’impostazione…",
+      "sourceHash": "ca4431193303dd52b89f68f0bf95e20f84c566ee4e39fadaaaa8c4b063646118",
+      "state": "machine-cross-checked"
+    },
     "configure.group.behaviour": {
       "sourceHash": "12b98040fac50b169837bb79f5a07579e361a23f9cee4f31ce46080c58b1d07d",
       "state": "machine-cross-checked",
@@ -1147,6 +1187,21 @@
       "sourceHash": "945c00063ff9caeec6ab547988a7285b401de138fdd0090be0531f103d74f5f9",
       "state": "machine-cross-checked",
       "text": "Quando è attiva la modalità protetta, la modifica di questa impostazione può richiedere l'approvazione fisica sul pannello."
+    },
+    "configure.help.about": {
+      "text": "Informazioni su {label}",
+      "sourceHash": "865cb604bf97d2ebd9a36bc4166170c23c9c36bd26c9da89e9d909e15d83df11",
+      "state": "machine-cross-checked"
+    },
+    "configure.help.close": {
+      "text": "Chiudi",
+      "sourceHash": "7d9eb7acb13e24625c404401d8e88b2350e32162455885f18276cf802f7701ed",
+      "state": "machine-cross-checked"
+    },
+    "configure.help.more": {
+      "text": "Altro sul sito web",
+      "sourceHash": "85a7086e3ef77e8a6ffe36a45b39c3847e3b5e2c5a307cf4e2ca831f78969c87",
+      "state": "machine-cross-checked"
     },
     "configure.language.automatic": {
       "sourceHash": "d461a493a3753877c9486cffa3444265a33370af8a7fff242fb119b71750839c",
@@ -1977,6 +2032,11 @@
       "sourceHash": "0e35f6e9742e074dfd62e874de3c242c6d9b64c21bf9afbaf3d11f05579b4495",
       "state": "machine-cross-checked",
       "text": "Principali"
+    },
+    "configure.tier.label": {
+      "text": "Impostazioni visualizzate",
+      "sourceHash": "9179eb2ff402a88c959d3ab86fe0ac1c7e4e5705c04c29ccc3a57f9c24a02cec",
+      "state": "machine-cross-checked"
     },
     "configure.time.days_ago": {
       "sourceHash": "b9724f3a20eef5c65ae4af50856f38f0338d73fc80f01b8829d5faa2477ef331",
@@ -10223,6 +10283,11 @@
       "state": "machine-cross-checked",
       "text": "Luminosità auto"
     },
+    "settings.auto_brightness.summary": {
+      "text": "Lascia che il pannello regoli la retroilluminazione in base alla luce ambientale.",
+      "sourceHash": "57d522af96e04b4db48e8fb5fb8f7ed33385a068a93cd941a026b89fa3fee539",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_brightness_ha_entity.help": {
       "sourceHash": "6880e1fea6dee81c8f92542ee7bca6f70b62aecb909cf29b8b43fc5843fb5f9d",
       "state": "machine-cross-checked",
@@ -10232,6 +10297,11 @@
       "sourceHash": "6d14150bee5d9bdc380ca70414b5d8690a2f65b9563e2e0cf7b8ecd08821882c",
       "state": "machine-cross-checked",
       "text": "Fonte luce ambientale"
+    },
+    "settings.auto_brightness_ha_entity.summary": {
+      "text": "Usa un sensore di luce di Home Assistant invece di quello del pannello.",
+      "sourceHash": "703710414afe74c55e969564e23cc7c7f0647d059ffa3237463fa03739902567",
+      "state": "machine-cross-checked"
     },
     "settings.auto_brightness_minimum_percent.help": {
       "sourceHash": "f867987f4c5e28c720153d3438f9dd602c01a40c89539c5baab444d34bad0ce8",
@@ -10243,15 +10313,25 @@
       "state": "machine-cross-checked",
       "text": "Livello minimo"
     },
+    "settings.auto_brightness_minimum_percent.summary": {
+      "text": "Livello più basso che la luminosità automatica sceglierà.",
+      "sourceHash": "766c3d61ea08f66c252698b4d3b14f05cde1e4a97c64e8c4fc112b23557a8fb5",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_brightness_response_percent.help": {
-      "sourceHash": "00483dd404b761c8ab8824f086f8b625edccd837f60da21feb5c8c04c0ca4333",
-      "state": "machine-cross-checked",
-      "text": "Determina quanta parte della differenza rispetto all'andamento appreso della luce ambientale viene applicata allo schermo, dopo che il motore ha stabilito che la variazione è reale. Valori più bassi mantengono lo schermo più vicino all'andamento giornaliero appreso. Durante l'apprendimento, lo schermo segue direttamente la luce misurata."
+      "text": "Determina quanta parte della differenza rispetto all'andamento appreso della luce ambientale viene applicata allo schermo, dopo che il motore ha stabilito che la variazione è reale.\n\n- Valori più bassi mantengono lo schermo più vicino all'andamento giornaliero appreso.\n- Durante l'apprendimento, lo schermo segue direttamente la luce misurata.",
+      "sourceHash": "ff745f90fe6123b0741034697f8808ef61f561c1ef46629a5f49540dcda4661b",
+      "state": "machine-cross-checked"
     },
     "settings.auto_brightness_response_percent.label": {
       "sourceHash": "ebb57a260d58207c3cce2e12e8663ecdc0c74147d138655d6714bc577a0768f6",
       "state": "machine-cross-checked",
       "text": "Sensibilità"
+    },
+    "settings.auto_brightness_response_percent.summary": {
+      "text": "Quanto lo schermo segue una variazione reale della luce nella stanza.",
+      "sourceHash": "264844be6dcbd529b02d2f956995dc97d031228c0590f6018240bdab1a91db0c",
+      "state": "machine-cross-checked"
     },
     "settings.auto_sleep.help": {
       "text": "Spegne lo schermo dopo il ritardo appreso della modalità di presenza selezionata o il ritardo scelto per l’inattività del tocco. Il controllo manuale dello schermo resta separato.",
@@ -10263,6 +10343,11 @@
       "state": "machine-cross-checked",
       "text": "Sospensione automatica"
     },
+    "settings.auto_sleep.summary": {
+      "text": "Spegni lo schermo quando non c’è nessuno o dopo un periodo di inattività.",
+      "sourceHash": "6ca654fd4bb061b43620b620223404c0befcf61fa2ef2f1318e9d108b2f33b9c",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_sleep_activity.help": {
       "sourceHash": "d4482427fd42a99657d1319b5e54e58cd2fff9da6a24d62bc131d2b1da951b78",
       "state": "machine-cross-checked",
@@ -10273,14 +10358,24 @@
       "state": "machine-cross-checked",
       "text": "Attività sospensione automatica"
     },
+    "settings.auto_sleep_activity.summary": {
+      "text": "Se la sospensione automatica sta mantenendo attivo il pannello.",
+      "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
+      "state": "machine-cross-checked"
+    },
     "settings.auto_sleep_source.help": {
-      "text": "Usa il sensore di prossimità calibrato del pannello, i dispositivi dell’area Home Assistant o l’inattività del tocco. Le modalità di presenza si interrompono se la sorgente non è disponibile; l’inattività del tocco non richiede la configurazione della presenza.",
-      "sourceHash": "4880a1f6555240c6ae59dae0cb5ba20000c0d87e1b2ec5f6b2d527f6828a2df1",
+      "text": "Usa il sensore di prossimità calibrato del pannello, i dispositivi di un'Area di Home Assistant o l'inattività del tocco.\n\n- Le modalità di presenza si sospendono se la loro sorgente non è disponibile.\n- L'inattività del tocco non richiede alcuna configurazione della presenza.",
+      "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_source.label": {
       "text": "Sorgente di attività per la sospensione automatica",
       "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_source.summary": {
+      "text": "Cosa conta come presenza: sensore di prossimità, area o tocco.",
+      "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
@@ -10293,6 +10388,11 @@
       "state": "machine-cross-checked",
       "text": "Videocamera"
     },
+    "settings.camera_enabled.summary": {
+      "text": "Fornisce la videocamera del pannello come flusso RTSP e istantanea JPEG.",
+      "sourceHash": "e65ab34035912691390aca7ec68d80e2400983b2ef83350e51ea36c4095a25a2",
+      "state": "machine-cross-checked"
+    },
     "settings.camera_exposure.help": {
       "sourceHash": "d4e4bf5fd6847ee7dd6f270be1d2caebac7f390231c8208ac96f2f43cb921169",
       "state": "machine-cross-checked",
@@ -10302,6 +10402,11 @@
       "sourceHash": "cc5454a4b7ce211370dcd2aa0ae58d6b564eee7940b42de516d05f5b269c414b",
       "state": "machine-cross-checked",
       "text": "Esposizione"
+    },
+    "settings.camera_exposure.summary": {
+      "text": "Compensazione dell’esposizione in stop. 0 mantiene l’esposizione automatica.",
+      "sourceHash": "7c89abca8ecf2cddbc62fe9d25eb4bae95570852ed99f39254e2d008a17f0e5a",
+      "state": "machine-cross-checked"
     },
     "settings.camera_fps.help": {
       "sourceHash": "194e9997f15b4e317b0e0ac24fa823fd48ebe5c87df022fc116d669f7468b631",
@@ -10313,6 +10418,11 @@
       "state": "machine-cross-checked",
       "text": "Frequenza fotogrammi"
     },
+    "settings.camera_fps.summary": {
+      "text": "Frequenza fotogrammi predefinita; l’URL di un flusso può sovrascriverla.",
+      "sourceHash": "c1101605aebb6489964e7eadeb38593db279b596f2f0d1481853ada2f73c60b8",
+      "state": "machine-cross-checked"
+    },
     "settings.camera_kbps.help": {
       "sourceHash": "6b72a5351e3c9d9317300876ebf0431307b3107808e50ba5d1d3a8d87a1c3ebe",
       "state": "machine-cross-checked",
@@ -10322,6 +10432,11 @@
       "sourceHash": "e901b7730f20569b41c76c2b2fd8154a99fec441983ab7950c36be206a2edadc",
       "state": "machine-cross-checked",
       "text": "Bitrate (kbps)"
+    },
+    "settings.camera_kbps.summary": {
+      "text": "Bitrate predefinito; l'URL dello stream può sovrascriverlo.",
+      "sourceHash": "ea235ad59bb583ce8b30cb510f4e2d8661a304e9ba6cddd0e2943032d618c971",
+      "state": "machine-cross-checked"
     },
     "settings.camera_resolution.help": {
       "sourceHash": "5f4cfc2712419d0f122198dfeae6c49d3b6cb094a2a090f14ab1b590963de5fb",
@@ -10333,6 +10448,11 @@
       "state": "machine-cross-checked",
       "text": "Risoluzione"
     },
+    "settings.camera_resolution.summary": {
+      "text": "Risoluzione stream predefinita; l'URL dello stream può sovrascriverla.",
+      "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
+      "state": "machine-cross-checked"
+    },
     "settings.companion_auto_update.help": {
       "sourceHash": "fc52865ccfdacefd48405d55bf867dd77a99eb0b2aaf0ac7b44e888abd5c0de7",
       "state": "machine-cross-checked",
@@ -10342,6 +10462,11 @@
       "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
       "state": "machine-cross-checked",
       "text": "Autoaggiornamento di Companion"
+    },
+    "settings.companion_auto_update.summary": {
+      "text": "Tieni installata e aggiornata l'app Companion minimale (root).",
+      "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
+      "state": "machine-cross-checked"
     },
     "settings.companion_update_channel.help": {
       "sourceHash": "8ed36e3abe564c24ab183ca333b4ad8dbe6bd2119e1ba3bf939f4c7c8dc9a580",
@@ -10353,6 +10478,11 @@
       "state": "machine-cross-checked",
       "text": "Canale aggiornamenti automatici Companion"
     },
+    "settings.companion_update_channel.summary": {
+      "text": "Canale di rilascio seguito dall'aggiornamento automatico di Companion.",
+      "sourceHash": "c4186e872750bd0f6d99fc0d00cae01246232c253e74acea5adcda004d12feed",
+      "state": "machine-cross-checked"
+    },
     "settings.cpu_governor.help": {
       "sourceHash": "44ede54df63e6b90033e3356275332934cdd2b19bf681ea7d3b65fd69a333aa9",
       "state": "machine-cross-checked",
@@ -10363,15 +10493,25 @@
       "state": "machine-cross-checked",
       "text": "Profilo CPU"
     },
+    "settings.cpu_governor.summary": {
+      "text": "Profilo di scaling della CPU fino al prossimo riavvio.",
+      "sourceHash": "899d9bfb9f86429bc13165fe8a45bfc78f59149c7a49418b9783f3dc43d63b47",
+      "state": "machine-cross-checked"
+    },
     "settings.dark_mode.help": {
-      "sourceHash": "a3effc79661edffd5a38a30d82b89c8069d1ddb58c9eeeb0d543995d753333eb",
-      "state": "machine-cross-checked",
-      "text": "Applica il tema alle schermate di ha-paneld e imposta lo schema colori predefinito della dashboard sui pannelli privi di un'impostazione di sistema per la modalità scura (Android 9 e versioni precedenti). Un tema scelto in Home Assistant sostituisce quello predefinito della dashboard; questa UI web segue sempre la preferenza del browser da cui viene visualizzata."
+      "text": "Applica il tema alle schermate di ha-paneld stesso e imposta lo schema colori predefinito della plancia sui pannelli privi di un'impostazione di sistema per la modalità scura (Android 9 e versioni precedenti).\n\nUn tema scelto in Home Assistant sostituisce quello predefinito della plancia; questa UI web segue sempre la preferenza del browser da cui viene visualizzata.",
+      "sourceHash": "853ed1512986d08ad813002d9cb672dbfcb1261b3b2447bfc4b52301b163c2eb",
+      "state": "machine-cross-checked"
     },
     "settings.dark_mode.label": {
       "sourceHash": "9b7878aef90b527c22be169ed4ab97a5e216b6a1c719dc779883ef64eb85520b",
       "state": "machine-cross-checked",
       "text": "Modalità scura"
+    },
+    "settings.dark_mode.summary": {
+      "text": "Tema scuro per le schermate di ha-paneld e predefinito della dashboard.",
+      "sourceHash": "796ecaff6531067757b7a3ac15e2483dcd43e3a85af57f0090224ef0c9f5f22a",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_entity_auto_runtime.help": {
       "sourceHash": "14cbd01dfb904597dd78103c2703215c494ce80ee3da9b8e104e95ed7fe84ff8",
@@ -10403,6 +10543,11 @@
       "state": "machine-cross-checked",
       "text": "Filtro entità"
     },
+    "settings.dashboard_entity_learning.summary": {
+      "text": "Trasmetti solo le entità che questa dashboard usa.",
+      "sourceHash": "66be8978b2f2634a9b30dc43beeae293aa0d8a0fc4c7c4aa4a8e0186bb9dbf9c",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_entity_learning_applied.help": {
       "sourceHash": "052ab9a70854284704fadbbe085ea13ef085793d374e851978fa36b1797119a7",
       "state": "machine-cross-checked",
@@ -10424,14 +10569,19 @@
       "text": "Override del filtro entità"
     },
     "settings.dashboard_fullscreen.help": {
-      "sourceHash": "12e06707302926f7af77d4589d668001ca7bfe463212db6755390a8770a106c8",
-      "state": "machine-cross-checked",
-      "text": "Solo renderer integrato. Nasconde le barre di stato e di navigazione di Android mentre la dashboard è in primo piano; scorri da un bordo per mostrarle temporaneamente. Non blocca il pannello né nasconde la navigazione di Home Assistant."
+      "text": "Solo renderer integrato. Nasconde le barre di stato e di navigazione di Android mentre la plancia è in primo piano; scorri da un bordo per mostrarle temporaneamente.\n\nNon blocca il pannello né nasconde la navigazione di Home Assistant.",
+      "sourceHash": "c410a8d3eb3474145a680214c11fac9bb2e096eeae2742daf1e0fbdd74726f8e",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_fullscreen.label": {
       "sourceHash": "dbe81c811b381f69648e4c685e1d7c4262df9e3aebd4788d05eeebf7f4d1c2cf",
       "state": "machine-cross-checked",
       "text": "Nascondi barre di sistema Android"
+    },
+    "settings.dashboard_fullscreen.summary": {
+      "text": "Nascondi le barre di stato e navigazione Android dietro la dashboard.",
+      "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_idle_return_min.help": {
       "sourceHash": "7bd07d2e5514d51ce900f99bfdb8a476ad60f0313ac603f2931db1f95bf914cf",
@@ -10443,15 +10593,25 @@
       "state": "machine-cross-checked",
       "text": "Ritorno a Home per inattività (min)"
     },
+    "settings.dashboard_idle_return_min.summary": {
+      "text": "Minuti di inattività prima di tornare a Home. 0 = disattivato.",
+      "sourceHash": "c09a7ad02ecc153c31c694acf64312f9b69bc920fad09a62091730ac4f61d05c",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_native_kiosk.help": {
-      "sourceHash": "c7c7b287676967b4f202d48b383452f6bd7acf953131a2bb702b5bd6bbc59723",
-      "state": "machine-cross-checked",
-      "text": "Solo renderer integrato. Dopo la connessione di Home Assistant 2026.4.2+, chiede al frontend nativo di nascondere la navigazione. Attiva per impostazione predefinita; se la richiesta non è supportata o non riesce, la dashboard non cambia. Non blocca Android né inserisce CSS nella dashboard."
+      "text": "Solo renderer integrato. Dopo la connessione di Home Assistant 2026.4.2+, chiede al frontend nativo di nascondere la propria navigazione.\n\nAttivo per impostazione predefinita; se la richiesta non è supportata o non riesce, la plancia resta invariata. Non blocca Android né inserisce CSS nella plancia.",
+      "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_native_kiosk.label": {
       "sourceHash": "a305339fcfa063612b7ae7bbb7369fec0ca25ee457ccfcb3df53c9b52060b106",
       "state": "machine-cross-checked",
       "text": "Nascondi navigazione Home Assistant (nativa)"
+    },
+    "settings.dashboard_native_kiosk.summary": {
+      "text": "Chiedi a Home Assistant di nascondere la propria navigazione.",
+      "sourceHash": "5fd4788997717aea56fb4c039aa40bcb0cb04c128c7cb5b19fc102b439bf486b",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_network_warning.help": {
       "sourceHash": "12b2dd909289df4b3fbfde774673197f8ac3bee049b45b35456ea11e1fc2eaf7",
@@ -10462,6 +10622,11 @@
       "sourceHash": "32464638ee22325ad7545e8b02b7b906d678e9445591ec9b2989adcbb479b034",
       "state": "machine-cross-checked",
       "text": "Mostra avviso di rete sulla dashboard"
+    },
+    "settings.dashboard_network_warning.summary": {
+      "text": "Avvisa sulla dashboard quando la connessione di rete si interrompe.",
+      "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_overscroll.help": {
       "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
@@ -10483,15 +10648,25 @@
       "state": "machine-cross-checked",
       "text": "App della dashboard"
     },
+    "settings.dashboard_package.summary": {
+      "text": "App che mostra la dashboard. Se vuoto, usa il renderer integrato.",
+      "sourceHash": "968f7a73a5e8876febb8b8f254404f502bedf77b3df100cb14a52a40dc823a6e",
+      "state": "machine-cross-checked"
+    },
     "settings.dashboard_theme.help": {
-      "text": "Solo renderer integrato. Segui Home Assistant lascia a Home Assistant la scelta tra modalità chiara e scura della dashboard, per la quale l'impostazione Modalità scura fornisce il valore predefinito. Scuro e Chiaro impostano la modalità su questo pannello quando Home Assistant è impostato su Automatico, per una dashboard in modalità chiosco priva della barra laterale da cui raggiungere la pagina del profilo di Home Assistant. Ambiente sceglie Scuro o Chiaro in base alla luce della stanza rilevata dal modello di luminosità automatica e cambia solo dopo che la stanza è rimasta più buia o più luminosa per un minuto; richiede che la luminosità automatica sia attiva e segue Home Assistant finché non ottiene una lettura. Una scelta esplicita di Chiaro o Scuro in Home Assistant ha comunque la precedenza; usa Automatico o un utente separato per il pannello. Tornando a Segui Home Assistant, la scelta viene restituita esattamente allo stato in cui è stata trovata.",
-      "sourceHash": "2a8ea94fdfe53b018f2cb7f51eedc69e1b169db67697b57d97df2bba7258a83e",
+      "text": "Solo renderer integrato.\n\n- **Segui Home Assistant** lascia a Home Assistant la scelta tra modalità chiara e scura della plancia, per la quale l'impostazione Modalità scura fornisce il valore predefinito.\n- **Scuro** e **Chiaro** impostano la modalità su questo pannello quando Home Assistant è impostato su Automatico, per una plancia in modalità chiosco priva della barra laterale da cui raggiungere la pagina del profilo di Home Assistant.\n- **Ambiente** sceglie Scuro o Chiaro in base alla luce della stanza rilevata dal modello di luminosità automatica e cambia solo dopo che la stanza è rimasta più buia o più luminosa per un minuto; richiede che la luminosità automatica sia attiva e segue Home Assistant finché non ottiene una lettura.\n\nUna scelta esplicita di Chiaro o Scuro in Home Assistant ha comunque la precedenza; usa Automatico o un utente separato per il pannello. Tornando a Segui Home Assistant, la scelta viene restituita esattamente allo stato in cui è stata trovata.",
+      "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
       "state": "machine-cross-checked"
     },
     "settings.dashboard_theme.label": {
       "sourceHash": "bf3c175b44e9bb6505851bf08a6a0c9f30320a493a6cdff8af55e3cdb85c1e44",
       "state": "machine-cross-checked",
       "text": "Tema della plancia"
+    },
+    "settings.dashboard_theme.summary": {
+      "text": "Chi sceglie chiaro o scuro: Home Assistant, questo pannello o la stanza.",
+      "sourceHash": "45c7a962327b3b7de0ff2853bb28d7053772e39f164b809e3aacba83e170862f",
+      "state": "machine-cross-checked"
     },
     "settings.dashboard_zoom.help": {
       "sourceHash": "965650a061c0a7446538a192b6e4d3b508432d79ab95bb7604cec7ee9dbb3b4a",
@@ -10508,6 +10683,11 @@
       "sourceHash": "60fde4ecb0300f4e39d073c0ed282652965ca6e4803dbbe47e5a08917352afdd",
       "state": "machine-cross-checked"
     },
+    "settings.dashboard_zoom.summary": {
+      "text": "Zoom del browser per la dashboard.",
+      "sourceHash": "ffca38a9cb226e6a7726957fdcb1ff0b2999887bed938e40573cdd3abc418106",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_boot.help": {
       "sourceHash": "c2def446a0798101bd52a56491c2a741ee0e71ada93bc7c42212f294b5911289",
       "state": "machine-cross-checked",
@@ -10517,6 +10697,11 @@
       "sourceHash": "53aa51076571d5aa8285983a369c9ae68b9059d22b139c7a5572b48dc6e0b1c5",
       "state": "machine-cross-checked",
       "text": "Ultimo avvio"
+    },
+    "settings.diag_boot.summary": {
+      "text": "Quando il pannello è stato avviato l'ultima volta.",
+      "sourceHash": "de15195916f3c5747fa14f3b2810cceed59f39c51f1717898c2a287bef43cd92",
+      "state": "machine-cross-checked"
     },
     "settings.diag_cpu.help": {
       "sourceHash": "fffec696a134f27adbe345fbb21cdc73242616e106d18556cdc780d39f69fd37",
@@ -10528,6 +10713,11 @@
       "state": "machine-cross-checked",
       "text": "Utilizzo CPU"
     },
+    "settings.diag_cpu.summary": {
+      "text": "Percentuale complessiva di utilizzo della CPU.",
+      "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_ip.help": {
       "sourceHash": "fc9c7eae6335fbf8f889d417b99e3b85420b0414b520df400826ab7d3ba203c9",
       "state": "machine-cross-checked",
@@ -10537,6 +10727,11 @@
       "sourceHash": "0302a467885abfdd4772c9e16c57edab91b02231248202d63170f1c669d13303",
       "state": "machine-cross-checked",
       "text": "Indirizzo IP"
+    },
+    "settings.diag_ip.summary": {
+      "text": "Indirizzo IPv4 locale di questo pannello.",
+      "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
+      "state": "machine-cross-checked"
     },
     "settings.diag_memory.help": {
       "sourceHash": "05f4f5d827bac7d3320fec7a9bd9454ad0865273ade60012498733ab1cf4661a",
@@ -10548,6 +10743,11 @@
       "state": "machine-cross-checked",
       "text": "Utilizzo memoria"
     },
+    "settings.diag_memory.summary": {
+      "text": "Memoria utilizzata in percentuale.",
+      "sourceHash": "cdfa125d539f4dbd775d6872fb7c09f4eccb57ecfc832d8c8d22bf7c4beaee21",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_soc_temp.help": {
       "sourceHash": "5c638158a17adc55068c2fede38efe6a81cc16b4ece0d4f80fa0f9d61281601e",
       "state": "machine-cross-checked",
@@ -10557,6 +10757,11 @@
       "sourceHash": "9f56b79622b6e3c9b5a678aebaf91708a1eec8921955e86d68a171be2b1e6bbd",
       "state": "machine-cross-checked",
       "text": "Temperatura SoC"
+    },
+    "settings.diag_soc_temp.summary": {
+      "text": "Temperatura del processore.",
+      "sourceHash": "3c5a5ff799d7c2ac91c8b0896b2bd4e161d39613309f07a989c4922dc1b53c96",
+      "state": "machine-cross-checked"
     },
     "settings.diag_wifi_outages_24h.help": {
       "sourceHash": "cde65f42ed6eec37fb9bb3e2c9d160b951cfc99f8fb7c1f041efe21be3080cfb",
@@ -10568,6 +10773,11 @@
       "state": "machine-cross-checked",
       "text": "Interruzioni Wi-Fi (24 h)"
     },
+    "settings.diag_wifi_outages_24h.summary": {
+      "text": "Brevi interruzioni del Wi-Fi nelle ultime 24 ore.",
+      "sourceHash": "f5d1698495507bfc32ba9f00f003aafee8008708a5cef312282931996d3db135",
+      "state": "machine-cross-checked"
+    },
     "settings.diag_wifi_rssi.help": {
       "sourceHash": "b26ea034a2da2f7ca7713ccd7d5a8119c1d328fa74ef0f1379a2f95e646be0ca",
       "state": "machine-cross-checked",
@@ -10577,6 +10787,11 @@
       "sourceHash": "82472695ceaca9503f2d5465578036f5c4f58ec2b0ac0fa43d4cd621f481151b",
       "state": "machine-cross-checked",
       "text": "Potenza segnale Wi-Fi"
+    },
+    "settings.diag_wifi_rssi.summary": {
+      "text": "Potenza attuale del segnale Wi-Fi.",
+      "sourceHash": "8fb8466dfbc5f1f6fa620e4c7775d8e07e4087bb47bbbd22f9ffc523fa0546d6",
+      "state": "machine-cross-checked"
     },
     "settings.diag_wifi_ssid.help": {
       "sourceHash": "218448fba3e098e17a621bde50f139bfaa2320e24d8d61dc3891cc5b622e7933",
@@ -10588,6 +10803,11 @@
       "state": "machine-cross-checked",
       "text": "Rete Wi-Fi"
     },
+    "settings.diag_wifi_ssid.summary": {
+      "text": "Nome della rete Wi-Fi attuale.",
+      "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
+      "state": "machine-cross-checked"
+    },
     "settings.friendly_name.help": {
       "sourceHash": "d609f0f1edaa79506d9619abcdf33f07bfb89b26a70c83c9e6f41e631f4e428f",
       "state": "machine-cross-checked",
@@ -10598,6 +10818,11 @@
       "state": "machine-cross-checked",
       "text": "Nome descrittivo"
     },
+    "settings.friendly_name.summary": {
+      "text": "Nome mostrato da Home Assistant per questo pannello.",
+      "sourceHash": "2b7babb55807e9fe58ad6ec530965e8511d1259bf99e459ceafe9073ec479f92",
+      "state": "machine-cross-checked"
+    },
     "settings.ha_area.help": {
       "sourceHash": "92582fd766a9559435e08ee57ca2f1bb48d508a6c2af9ec792e6e3c45a0d1ece",
       "state": "machine-cross-checked",
@@ -10607,6 +10832,11 @@
       "sourceHash": "df4a2a5c31455ff3f9226ec4e43b6fc965fc5aa1b12539b97c2282ba3174bce1",
       "state": "machine-cross-checked",
       "text": "Area di Home Assistant"
+    },
+    "settings.ha_area.summary": {
+      "text": "Area di Home Assistant a cui appartiene questo pannello.",
+      "sourceHash": "992b9c57355acf08ce839cbf4c2c66e2652cf5c0597bf380cc777b54e40833ef",
+      "state": "machine-cross-checked"
     },
     "settings.ha_client_id.help": {
       "sourceHash": "ffae29400af4eb9ec15c30c66a9432dd116ddda13f627652a3a57144c0c5f209",
@@ -10638,6 +10868,11 @@
       "state": "machine-cross-checked",
       "text": "Token di accesso a lunga durata"
     },
+    "settings.ha_token.summary": {
+      "text": "Token di riserva quando l'accesso dal browser non è possibile.",
+      "sourceHash": "d9d6c0fd8bc2c8048adf70c2de740fde6e68907c21575ecf8d6583374d3a80dd",
+      "state": "machine-cross-checked"
+    },
     "settings.ha_token_expiry.help": {
       "sourceHash": "8ef8a848b4d7ee74a9472f0570994f379f5a7ac2f43e9b3e93201169c94a583e",
       "state": "machine-cross-checked",
@@ -10658,15 +10893,25 @@
       "state": "machine-cross-checked",
       "text": "URL di Home Assistant"
     },
+    "settings.ha_url.summary": {
+      "text": "Indirizzo del tuo server Home Assistant.",
+      "sourceHash": "292a8aafd3c78ab22bb939061885d5acdedc69c6b75019b4c9d34cc6ec1c8c13",
+      "state": "machine-cross-checked"
+    },
     "settings.home_dashboard.help": {
-      "sourceHash": "a7ce869a298f35b4b61c1d1c2a6bde203ec6348fcfa91bf838ae882065bfd150",
-      "state": "machine-cross-checked",
-      "text": "Plancia usata per il ricaricamento e il ritorno dopo l'inattività. Automatico lascia scegliere Home Assistant. Personalizzato accetta una vista specifica, ad es. /dashboard-name/tab-name."
+      "text": "Plancia usata da ricarica e ritorno da inattività.\n\n- **Automatico** lascia scegliere a Home Assistant.\n- **Personalizzato** accetta una vista specifica, es. `/dashboard-name/tab-name`.",
+      "sourceHash": "8f44a63324b05223da2292e2fd4a8b080d40c67ec0a1faca36b8b6c237a8febe",
+      "state": "machine-cross-checked"
     },
     "settings.home_dashboard.label": {
       "sourceHash": "17cb7ca6c1fc811e633c9e1fbb1fab6a5d6cc097c937405d8cb49c8cab77c1d4",
       "state": "machine-cross-checked",
       "text": "Plancia principale"
+    },
+    "settings.home_dashboard.summary": {
+      "text": "Plancia aperta al ricaricamento e al ritorno dall'inattività.",
+      "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
+      "state": "machine-cross-checked"
     },
     "settings.humidity.help": {
       "sourceHash": "0dcd9954f745cb22242cfd4b0ca708d96a89b5b3dd3a3d407cfebee0b9b0679e",
@@ -10678,6 +10923,11 @@
       "state": "machine-cross-checked",
       "text": "Umidità"
     },
+    "settings.humidity.summary": {
+      "text": "Umidità dal sensore del pannello di Android.",
+      "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
+      "state": "machine-cross-checked"
+    },
     "settings.illuminance.help": {
       "sourceHash": "99fb3d41f1634e9edd6c6c7540968106d44b7e01899f09cfe1fb98865347cae8",
       "state": "machine-cross-checked",
@@ -10687,6 +10937,11 @@
       "sourceHash": "bd754dd6ed86a26c4bdccfdd47a912232bae26b86fd38ad063f8f725bb7b8f97",
       "state": "machine-cross-checked",
       "text": "Luce ambientale"
+    },
+    "settings.illuminance.summary": {
+      "text": "Luce ambientale rilevata dal sensore del pannello.",
+      "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
+      "state": "machine-cross-checked"
     },
     "settings.keep_awake.help": {
       "sourceHash": "d3b70b40884db042b1874360834630a2a5534a76840fb833374917dd2cb9ed92",
@@ -10698,6 +10953,11 @@
       "state": "machine-cross-checked",
       "text": "Pannello sempre reattivo"
     },
+    "settings.keep_awake.summary": {
+      "text": "Mantieni la rete e i servizi attivi anche quando lo schermo è spento.",
+      "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
+      "state": "machine-cross-checked"
+    },
     "settings.kiosk_companion_packages.help": {
       "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
       "state": "machine-cross-checked",
@@ -10708,15 +10968,25 @@
       "state": "machine-cross-checked",
       "text": "App consentite dal blocco"
     },
+    "settings.kiosk_companion_packages.summary": {
+      "text": "App che il blocco lascia in primo piano, per nome del pacchetto.",
+      "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
+      "state": "machine-cross-checked"
+    },
     "settings.kiosk_lock.help": {
-      "sourceHash": "cb15071d31c33a73f5da36aef5a30c385125f3429136e556131067a9cdebd2a8",
-      "state": "machine-cross-checked",
-      "text": "Blocco per uso non critico, disponibile solo con root. Nasconde le barre di sistema di Android e torna alla plancia selezionata entro circa 3 secondi quando viene aperta un'altra app o la schermata Recenti. Non nasconde la navigazione di Home Assistant. Disattivalo qui, da Home Assistant, tramite adb, con 7 tocchi rapidi nell'angolo superiore sinistro o durante la finestra di 60 secondi senza blocco dopo il riavvio."
+      "text": "Blocco per uso non critico, disponibile solo con root. Nasconde le barre di sistema di Android e torna alla plancia selezionata entro circa 3 secondi quando viene aperta un'altra app o la schermata Recenti. Non nasconde la navigazione di Home Assistant.\n\nPer disattivarlo:\n\n- qui, oppure da Home Assistant\n- tramite adb\n- con 7 tocchi rapidi nell'angolo superiore sinistro\n- durante la finestra di 60 secondi senza blocco dopo il riavvio",
+      "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",
+      "state": "machine-cross-checked"
     },
     "settings.kiosk_lock.label": {
       "sourceHash": "d8de0e2c0913e951dbe60ae09b03614c48b5b8a495c69ca0c45fa2798de27c63",
       "state": "machine-cross-checked",
       "text": "Blocca Android sulla plancia (sperimentale)"
+    },
+    "settings.kiosk_lock.summary": {
+      "text": "Solo con root. Torna alla plancia quando si apre un'altra app.",
+      "sourceHash": "e9055e43b4f6a114f2d4e789b65ea17fc24fecfbc2b5fb1417b1ba9e54f628fd",
+      "state": "machine-cross-checked"
     },
     "settings.launcher_package.help": {
       "sourceHash": "524f589af2ebe612083fd20f1b6f487d59e929aae5a24cf9cd6bd4792e448395",
@@ -10728,6 +10998,11 @@
       "state": "machine-cross-checked",
       "text": "App di avvio"
     },
+    "settings.launcher_package.summary": {
+      "text": "App aperta dal pulsante di avvio.",
+      "sourceHash": "b2dadcf62b45755d46bca03a6522073177068495b10956c04c39699194956d04",
+      "state": "machine-cross-checked"
+    },
     "settings.log_ship_enabled.help": {
       "sourceHash": "01fd4a6f75c8d1eba5b4765db5c8eb1c9ebc1220b0639982525ab92b2f43e5d7",
       "state": "machine-cross-checked",
@@ -10737,6 +11012,11 @@
       "sourceHash": "ee4fd7d2333c7de7c8d74fd95cfb065c2be72bd2e52dc3b58cf06c0e1d3d3634",
       "state": "machine-cross-checked",
       "text": "Invia log"
+    },
+    "settings.log_ship_enabled.summary": {
+      "text": "Invia il log di ha-paneld a un collettore sulla tua rete.",
+      "sourceHash": "d9d0543772220c0f2d59b7a38f1fe26075b0ac588c1534434ec2644c1fac6b98",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_host.help": {
       "sourceHash": "0294f7fbe925135c5f7f310e2a92a2078b168792888dd39d6e41976875b3afaa",
@@ -10748,10 +11028,20 @@
       "state": "machine-cross-checked",
       "text": "Host di destinazione"
     },
+    "settings.log_ship_host.summary": {
+      "text": "Indirizzo del collettore di log. Se vuoto, l'invio è disattivato.",
+      "sourceHash": "2de7304ca6cbdb82707a94e19b7e94df4ae18b8d408730c04fe716f554625fba",
+      "state": "machine-cross-checked"
+    },
     "settings.log_ship_port.label": {
       "sourceHash": "7bc8673ba2ab424916e4f1189b75faf4b4c9af8ef0d731852c09e6a660e77cd3",
       "state": "machine-cross-checked",
       "text": "Porta di destinazione"
+    },
+    "settings.log_ship_port.summary": {
+      "text": "Porta del collettore di log.",
+      "sourceHash": "4cf403c3eedb4aae0bc497387596f2a6d1bcc5908d9b883f821e381e733cc4a3",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_protocol.help": {
       "sourceHash": "8721aa729601cd5bf1612b97a578b3a1ef385564447d250f440e162c7dbf2bfb",
@@ -10763,15 +11053,25 @@
       "state": "machine-cross-checked",
       "text": "Protocollo"
     },
+    "settings.log_ship_protocol.summary": {
+      "text": "Trasporto al collettore. TCP segnala se la destinazione rifiuta.",
+      "sourceHash": "db01cfc12070a7e72e1bee1187e7e24fa38984e742a19b523dc6bb2a3ca6cbc3",
+      "state": "machine-cross-checked"
+    },
     "settings.log_ship_system_enabled.help": {
-      "sourceHash": "ab71887b010994ab61f54fe559dacf34cee6e78a1538f4a3b0ec7dc51defd6bd",
-      "state": "machine-cross-checked",
-      "text": "Inoltra i log di sistema Android allo stesso collettore quando «Invia log» è attivo. Disattivato per impostazione predefinita; richiede TCP o HTTP e root o l'helper installato. Le voci vengono oscurate e quelle in eccesso possono essere scartate."
+      "text": "Inoltra i log di sistema Android allo stesso collettore se Invia log è attivo.\n\n- Predefinito: disattivato.\n- Richiede TCP o HTTP e root o l'helper installato.\n- Voci oscurate; sotto carico può scartarne.",
+      "sourceHash": "bfc7f5d141f83c2cf7f2c168f8e492af3f7fe3b50efff70a0435d15bb0524fa2",
+      "state": "machine-cross-checked"
     },
     "settings.log_ship_system_enabled.label": {
       "sourceHash": "a70c0a4788dfe35c2e82417373e842d10e46c33ac5754a61f524905a418470d6",
       "state": "machine-cross-checked",
       "text": "Invia log di sistema"
+    },
+    "settings.log_ship_system_enabled.summary": {
+      "text": "Invia anche i log di sistema di Android al collettore.",
+      "sourceHash": "a172f1f97d43da721b10903ca5c2268afbd25f6b77048716ceb1c9526bdf13da",
+      "state": "machine-cross-checked"
     },
     "settings.manufacturer.help": {
       "sourceHash": "8bc18ea3fa4542ad27907e0ee82537e8430e18693d4465fa6021b045b19e5a6f",
@@ -10783,6 +11083,11 @@
       "state": "machine-cross-checked",
       "text": "Produttore"
     },
+    "settings.manufacturer.summary": {
+      "text": "Sostituisci il produttore nella scheda dispositivo di Home Assistant.",
+      "sourceHash": "3228d0bdc49534bc5cb89d049c2c41fd1a0015338b353ca03a442f71fa7a33f6",
+      "state": "machine-cross-checked"
+    },
     "settings.model.help": {
       "sourceHash": "50dab8203d43b63ace9d3f98dc51ab87d675f41a61746e4b00fadf216b5d56ec",
       "state": "machine-cross-checked",
@@ -10792,6 +11097,11 @@
       "sourceHash": "5e2c614c23f02239bc03c6c04fcb681950f9e72bf8fdff6be79c79841cbb10c0",
       "state": "machine-cross-checked",
       "text": "Modello"
+    },
+    "settings.model.summary": {
+      "text": "Sostituisci il modello nella scheda dispositivo di Home Assistant.",
+      "sourceHash": "ca6b303ae590f03bc698654dc1506b6ab7ae9ace6609b91d5f37a427f69d985f",
+      "state": "machine-cross-checked"
     },
     "settings.mqtt_address_family.help": {
       "sourceHash": "fc6094bdf2f4455a719947c9c42ebded23bf17f38e19215fb5e210c8e46b2747",
@@ -10803,6 +11113,11 @@
       "state": "machine-cross-checked",
       "text": "Famiglia di indirizzi MQTT + WebSocket di Home Assistant"
     },
+    "settings.mqtt_address_family.summary": {
+      "text": "Usa IPv4, IPv6 o entrambi per raggiungere MQTT e Home Assistant.",
+      "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
+      "state": "machine-cross-checked"
+    },
     "settings.mqtt_broker.help": {
       "sourceHash": "aa8b8bb7adffa5c6d19213a7bc1fe500bf2a6d948bb57dbd7c2290f14f985600",
       "state": "machine-cross-checked",
@@ -10812,6 +11127,11 @@
       "sourceHash": "cad88e3df28153445c8d1c488bc534a1f3e191acf3d636d9c1a5cc734c0f1675",
       "state": "machine-cross-checked",
       "text": "URL del broker"
+    },
+    "settings.mqtt_broker.summary": {
+      "text": "Indirizzo del broker MQTT. Se vuoto, trova Home Assistant da solo.",
+      "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
+      "state": "machine-cross-checked"
     },
     "settings.mqtt_password.help": {
       "sourceHash": "fa026b3e7e1e7b868ee6d7e1cc9a9bca0fb6934fce229eb36b7a494a8f41e34f",
@@ -10823,6 +11143,11 @@
       "state": "machine-cross-checked",
       "text": "Password"
     },
+    "settings.mqtt_password.summary": {
+      "text": "Password MQTT. Se vuota, mantiene quella attuale.",
+      "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
+      "state": "machine-cross-checked"
+    },
     "settings.mqtt_user.help": {
       "sourceHash": "95c922291a9f7fa89f1135d8b5e750a1a32c2c17d26b556012d6c3d939b35bc0",
       "state": "machine-cross-checked",
@@ -10833,25 +11158,40 @@
       "state": "machine-cross-checked",
       "text": "Nome utente"
     },
+    "settings.mqtt_user.summary": {
+      "text": "Nome utente MQTT per questo pannello.",
+      "sourceHash": "c9051f2d3306c556507ff4d4d714230ec1201407135b13f6acad7f1541d4502e",
+      "state": "machine-cross-checked"
+    },
     "settings.navbar_mode.help": {
-      "sourceHash": "f795e458995a66ea6439ea9536c23b144a51d9604ebdb7d4a1aee0aab776b551",
-      "state": "machine-cross-checked",
-      "text": "Barra di navigazione software sullo schermo per pannelli privi di una barra nativa. Nativa affida la navigazione alla barra Android del pannello e non disegna nulla. Tieni presente che nascondere le barre di sistema Android, mediante l'impostazione a schermo intero del renderer integrato o il blocco della plancia Android, nasconde comunque la barra nativa."
+      "text": "Barra di navigazione software sullo schermo per pannelli privi di una barra nativa. **Nativa** affida la navigazione alla barra Android del pannello e non disegna nulla.\n\nNascondere le barre di sistema Android, mediante l'impostazione a schermo intero del renderer integrato o il blocco di Android sulla plancia, nasconde comunque la barra nativa.",
+      "sourceHash": "5a6df2f1452dcbc4734840f9f5cef12eacdb2ecb12bd2d00c3107b445a069d36",
+      "state": "machine-cross-checked"
     },
     "settings.navbar_mode.label": {
       "sourceHash": "2fd20a36857a818323c2b8ff2d46809e566ad5e13f5e7f1ffb9f0750a82cbc83",
       "state": "machine-cross-checked",
       "text": "Modalità barra di navigazione"
     },
+    "settings.navbar_mode.summary": {
+      "text": "Mostra una barra di navigazione software dove manca quella nativa.",
+      "sourceHash": "e9b0b88a61249c1cc28487059a0851afaf93717cbd41388bdb56d685812ea033",
+      "state": "machine-cross-checked"
+    },
     "settings.network_adb.help": {
-      "sourceHash": "09613eac91f1ca4d5abdc8ac3c450d38c097a1050bf088881b34ca7b0a17e97e",
-      "state": "machine-cross-checked",
-      "text": "Rischio per la sicurezza: mantiene l'ADB classico in ascolto sulla porta TCP 5555 anche dopo riavvii e riconnessioni. Abilitalo solo durante interventi di manutenzione attiva su una rete attendibile. Se ADB è stato abilitato al di fuori di ha-paneld, deve essere disabilitato anche da lì."
+      "text": "**Rischio per la sicurezza:** mantiene l'ADB classico in ascolto sulla porta TCP 5555 anche dopo riavvii e riconnessioni.\n\nAbilitalo solo durante interventi di manutenzione attiva su una rete attendibile. Se ADB è stato abilitato al di fuori di ha-paneld, deve essere disabilitato anche da lì.",
+      "sourceHash": "c1d223177697675bf4eec7603bd73ba99fd866f002410c92177c1e8ee1bca48b",
+      "state": "machine-cross-checked"
     },
     "settings.network_adb.label": {
       "sourceHash": "468304e24dd01a9c3ac85163a7ea7bb83e11644a2d5b632c817863337454701b",
       "state": "machine-cross-checked",
       "text": "ADB di rete"
+    },
+    "settings.network_adb.summary": {
+      "text": "Rischio di sicurezza. ADB in ascolto sulla porta 5555 a ogni riavvio.",
+      "sourceHash": "08712f193dc3e77aff305d6dfe706466ed3bcaa53f85c48c5519a6d30a39a924",
+      "state": "machine-cross-checked"
     },
     "settings.panel_id.help": {
       "sourceHash": "c32f09aa8a5756c4cfde370f42fc7ce62bb040feb0b9e0375f2932c08988554e",
@@ -10863,6 +11203,11 @@
       "state": "machine-cross-checked",
       "text": "ID pannello"
     },
+    "settings.panel_id.summary": {
+      "text": "ID stabile utilizzato negli ID delle entità di questo pannello.",
+      "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
+      "state": "machine-cross-checked"
+    },
     "settings.prevent_idle_dim.help": {
       "sourceHash": "e65c72cf163d6535f1c4b8a7bc5edd3731b1f404128861e1889004e1eda20f8d",
       "state": "machine-cross-checked",
@@ -10872,6 +11217,11 @@
       "sourceHash": "ab4e8ab5e353c0f7a2772ea83b880bba96a671c022dfc853aee0833b5bd2a62f",
       "state": "machine-cross-checked",
       "text": "Evita attenuazione da inattività"
+    },
+    "settings.prevent_idle_dim.summary": {
+      "text": "Evita che il firmware attenui la retroilluminazione a schermo spento.",
+      "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
+      "state": "machine-cross-checked"
     },
     "settings.proximity.help": {
       "sourceHash": "1302fe79949d5f3c6152bd67f6988f2be92ce9a134c49172b2a3c3212d24ab6b",
@@ -10883,6 +11233,11 @@
       "state": "machine-cross-checked",
       "text": "Prossimità"
     },
+    "settings.proximity.summary": {
+      "text": "Occupazione appresa, vicino o lontano.",
+      "sourceHash": "9caab10a7b9b275d97c49aa0f3c65e4a7a4f40c09a933c814c7d9f91024ecc4c",
+      "state": "machine-cross-checked"
+    },
     "settings.proximity_level.help": {
       "sourceHash": "b3f0f1e997f952599577ed72fe6a1cdd3b1f9be8ffe6104d131cc52226d1a02e",
       "state": "machine-cross-checked",
@@ -10892,6 +11247,11 @@
       "sourceHash": "2e718ad3caebfe4bab8ffb0d2946b9fddd9c1e4e10dbc58057102e5ddc61f645",
       "state": "machine-cross-checked",
       "text": "Livello di prossimità"
+    },
+    "settings.proximity_level.summary": {
+      "text": "Livello di prossimità appreso, da 0 a 100 per cento.",
+      "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
+      "state": "machine-cross-checked"
     },
     "settings.room_humidity.help": {
       "sourceHash": "7615cfe25fea88ea327f766a4aba84edf4d0eed4c45b5d85cea3ca805b73e0ea",
@@ -10903,6 +11263,11 @@
       "state": "machine-cross-checked",
       "text": "Umidità ambiente"
     },
+    "settings.room_humidity.summary": {
+      "text": "Umidità ambiente rilevata dal sensore climatico.",
+      "sourceHash": "bbd12dbcdf9562005a6f6db920aef531ee0cdf0286244dec929a88e66f6a678d",
+      "state": "machine-cross-checked"
+    },
     "settings.room_temp.help": {
       "sourceHash": "2a8c03beb176b893b0247b5d18d1686427c619d12d605beebf824c1e8fbcb79c",
       "state": "machine-cross-checked",
@@ -10912,6 +11277,11 @@
       "sourceHash": "7c417c9119c8cfeb5011b7cba570d356852ae485f9cb5797e10d596141631c6b",
       "state": "machine-cross-checked",
       "text": "Temperatura ambiente"
+    },
+    "settings.room_temp.summary": {
+      "text": "Temperatura ambiente rilevata dal sensore climatico.",
+      "sourceHash": "6787d9ec7159d5f8da89bd45f9c7219f3ef8895cf31c16047e636690857fd732",
+      "state": "machine-cross-checked"
     },
     "settings.room_temp_offset.help": {
       "sourceHash": "5fe73fe33fc51a45ebf874038937c91f4907eacbfb1f3ba4d0e05f04bce4ff62",
@@ -10923,6 +11293,11 @@
       "state": "machine-cross-checked",
       "text": "Correzione temperatura ambiente"
     },
+    "settings.room_temp_offset.summary": {
+      "text": "Correzione aggiunta alla temperatura ambiente, in °C.",
+      "sourceHash": "978e73e423dcd1a2a8ca227b4dd989ed509d34483ebcc548af7160cc6e52d546",
+      "state": "machine-cross-checked"
+    },
     "settings.screen.help": {
       "sourceHash": "31433baf205387576ed50ea97527a7fb292903036d7bfc216f994965316dcb9d",
       "state": "machine-cross-checked",
@@ -10932,6 +11307,11 @@
       "sourceHash": "694cb749771a50b425951ffbdc7b070db7350d4280f98d321ef946b6a7292a68",
       "state": "machine-cross-checked",
       "text": "Luminosità schermo"
+    },
+    "settings.screen.summary": {
+      "text": "Stato e luminosità dello schermo.",
+      "sourceHash": "6ba9e68bcfcfc58c954fe6a202ed4f6c8d9df1a8788b1431583756c0740bd43e",
+      "state": "machine-cross-checked"
     },
     "settings.self_update.help": {
       "sourceHash": "97ae88f8b39157c43fe24ab26c47ceaa5d57769b0fdfce270f4eb1456c3919ec",
@@ -10943,6 +11323,11 @@
       "state": "machine-cross-checked",
       "text": "Autoaggiornamento di ha-paneld"
     },
+    "settings.self_update.summary": {
+      "text": "Installa automaticamente le release di ha-paneld.",
+      "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
+      "state": "machine-cross-checked"
+    },
     "settings.silence_boot_chime.help": {
       "sourceHash": "9398fcca9e28cc1f8615e89611f2b8e0637d01262f46bdc42e4467db67e64c9a",
       "state": "machine-cross-checked",
@@ -10952,6 +11337,11 @@
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
       "state": "machine-cross-checked",
       "text": "Silenzia suono di avvio"
+    },
+    "settings.silence_boot_chime.summary": {
+      "text": "Silenzia il suono di avvio del firmware.",
+      "sourceHash": "57dde483cc0e08a27cd85277831bd12459ec0e78b4672942353d031c00022f6f",
+      "state": "machine-cross-checked"
     },
     "settings.tame_vendor_packages.help": {
       "sourceHash": "9e5114f2319b4a394da900d05306035a7d83aba15ac1d66dcd705004814ced95",
@@ -10973,6 +11363,11 @@
       "state": "machine-cross-checked",
       "text": "Temperatura"
     },
+    "settings.temperature.summary": {
+      "text": "Temperatura dal sensore del pannello di Android.",
+      "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
+      "state": "machine-cross-checked"
+    },
     "settings.touch_sound.help": {
       "sourceHash": "8b2ce13af0b77b1da73765d226b4370107b48b7119670490cf9ece1522b6349b",
       "state": "machine-cross-checked",
@@ -10983,15 +11378,25 @@
       "state": "machine-cross-checked",
       "text": "Suono al tocco"
     },
+    "settings.touch_sound.summary": {
+      "text": "Riproduce il suono di sistema al tocco.",
+      "sourceHash": "45864ba285306a16cdb22e54405c63a9968f8747466cf66b1c0a5381c0b6626a",
+      "state": "machine-cross-checked"
+    },
     "settings.ui_language.help": {
-      "sourceHash": "6b6157ee7e853009150f5dfc3839a2bc7dbb8f06285ad87d580c87e16daa2550",
-      "state": "machine-cross-checked",
-      "text": "Lingua usata dall'interfaccia di ha-paneld. Automatica usa prima la lingua impostata esplicitamente per la pagina. Le etichette e i testi di aiuto delle impostazioni in Configura possono poi seguire la lingua dell'utente connesso a Home Assistant; seguono, nell'ordine, la lingua del browser, quella del dispositivo e l'inglese."
+      "text": "Lingua dell'interfaccia di ha-paneld.\n\n**Automatica** usa prima la lingua forzata per la pagina. Etichette e aiuti delle impostazioni in Configura possono poi seguire la lingua dell'utente Home Assistant connesso; seguono browser, dispositivo e inglese.",
+      "sourceHash": "b7fc0eadebf67c70928a78036d93798c57776e075ff3bf5172197dd40238be34",
+      "state": "machine-cross-checked"
     },
     "settings.ui_language.label": {
       "sourceHash": "8027f432a7fb7c273a1a0fde87de4212b6738673e1d06213c02b5a191eaf8ab4",
       "state": "machine-cross-checked",
       "text": "Lingua dell'interfaccia"
+    },
+    "settings.ui_language.summary": {
+      "text": "Lingua dell'interfaccia di ha-paneld.",
+      "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
+      "state": "machine-cross-checked"
     },
     "settings.update_channel.help": {
       "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
@@ -11003,6 +11408,11 @@
       "state": "machine-cross-checked",
       "text": "Canale autoaggiornamento ha-paneld"
     },
+    "settings.update_channel.summary": {
+      "text": "Canale di rilascio seguito dall'aggiornamento automatico.",
+      "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
+      "state": "machine-cross-checked"
+    },
     "settings.voice_audio_source.help": {
       "sourceHash": "b0cbc651a16e7976e67bb8e4a4821cf11b8b7ad3c4bcbabb1643a28aec5ddde9",
       "state": "machine-cross-checked",
@@ -11012,6 +11422,11 @@
       "sourceHash": "f6479eb15e423313ae0db8583d077b47191a41c16bc97a9d85dec35f16ad5431",
       "state": "machine-cross-checked",
       "text": "Sorgente audio"
+    },
+    "settings.voice_audio_source.summary": {
+      "text": "Sorgente audio Android per il rilevatore della parola di attivazione.",
+      "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
+      "state": "machine-cross-checked"
     },
     "settings.voice_enabled.help": {
       "sourceHash": "ba296e73d5537bc8180f5abaf4109da9a48797078e1447b71194a0aeec451f2f",
@@ -11023,15 +11438,25 @@
       "state": "machine-cross-checked",
       "text": "Assistente vocale"
     },
+    "settings.voice_enabled.summary": {
+      "text": "Ascolta una parola di attivazione e invia il parlato ad Assist.",
+      "sourceHash": "d44107963fc54351bd582d47825aad5651566129424d90819e0b7c51a413e4e4",
+      "state": "machine-cross-checked"
+    },
     "settings.voice_mic_gain_db.help": {
-      "sourceHash": "57348c1118f9fba6177e8afa32f8b8674508d0af983d33e952cc03f95f0af645",
-      "state": "machine-cross-checked",
-      "text": "Amplifica l’audio inviato a Home Assistant per la trascrizione. Questi pannelli non offrono né soppressione del rumore a livello di piattaforma né controllo automatico del guadagno: un pannello che ascolta dall’altro lato della stanza può attivarsi in modo affidabile e trascrivere comunque male, perché il rilevamento della parola di attivazione si adatta da solo a un segnale debole, mentre la conversione voce-testo no. Aumenta il valore se i comandi vengono persi o trascritti male mentre la parola di attivazione funziona. Il rilevamento della parola di attivazione resta deliberatamente sul segnale non amplificato."
+      "text": "Amplifica l'audio inviato a Home Assistant per la trascrizione.\n\nQuesti pannelli non offrono né soppressione del rumore a livello di piattaforma né controllo automatico del guadagno: un pannello che ascolta dall'altro lato della stanza può attivarsi in modo affidabile e trascrivere comunque male, perché il rilevamento della parola di attivazione si adatta da solo a un segnale debole, mentre la conversione voce-testo no.\n\n**Aumentalo** se i comandi vengono persi o trascritti male mentre la parola di attivazione funziona. Il rilevamento della parola di attivazione usa deliberatamente il segnale non amplificato.",
+      "sourceHash": "11daf40ebcb01e6a2b996011eb081e6f150b1e83d5d4aa877ba1c3fc3b089312",
+      "state": "machine-cross-checked"
     },
     "settings.voice_mic_gain_db.label": {
       "sourceHash": "a7a629b565b5b9af548257a8fc82ad7df360f3d32c88e48f12f4cadd365a34c8",
       "state": "machine-cross-checked",
       "text": "Guadagno del microfono (dB)"
+    },
+    "settings.voice_mic_gain_db.summary": {
+      "text": "Amplifica il parlato inviato a Home Assistant per la trascrizione.",
+      "sourceHash": "065410cb2e71f90414f869a5e9aedf1be3845e0c26cccacf89d64b6ff54d40b2",
+      "state": "machine-cross-checked"
     },
     "settings.voice_pipelines.help": {
       "sourceHash": "048f133bd09da047dfdb6c25f49155b2caf589396677d147ed64e8d45cf132e0",
@@ -11043,15 +11468,25 @@
       "state": "machine-cross-checked",
       "text": "Pipeline per parole di attivazione"
     },
+    "settings.voice_pipelines.summary": {
+      "text": "Pipeline di Assist eseguita da ciascuna parola di attivazione.",
+      "sourceHash": "e37ef99d1d4df2fb268353f7f179ee12d4802df0a4993748331b6d83a91dcde4",
+      "state": "machine-cross-checked"
+    },
     "settings.voice_sensitivity.help": {
-      "sourceHash": "cc3e95fea8fe5a298bf5ce799bbc15d7b44576010646691059f0c19df31aeec3",
-      "state": "machine-cross-checked",
-      "text": "Soglia del rilevatore della parola di attivazione, applicata come scostamento al punteggio limite del modello. Bassa richiede una corrispondenza più netta (meno attivazioni false, ma più probabilità di non cogliere un richiamo debole o lontano); Alta rileva più facilmente (attivazione più rapida, ma più falsi positivi). Normale non applica alcuno scostamento."
+      "text": "Soglia del rilevatore della parola di attivazione, applicata come scostamento al punteggio limite del modello.\n\n- **Bassa** richiede una corrispondenza più netta: meno attivazioni false, ma più rischio di perdere un richiamo debole o lontano.\n- **Normale** non applica scostamenti.\n- **Alta** rileva più facilmente: si attiva prima, ma più falsi positivi.",
+      "sourceHash": "af00b05309556a3c5631dfe2830065406d0db55c255a8fd1819e6657623235c9",
+      "state": "machine-cross-checked"
     },
     "settings.voice_sensitivity.label": {
       "sourceHash": "5df43abc6ac192d8e244aa63b84795d5fff6bce32f84f7014212a9719cf654c8",
       "state": "machine-cross-checked",
       "text": "Sensibilità di attivazione"
+    },
+    "settings.voice_sensitivity.summary": {
+      "text": "Con quanta facilità si attiva la parola di attivazione.",
+      "sourceHash": "0fa08145c04a8e1391ac642c5536fa2f26f69556c521db192e7f9d7fafe11538",
+      "state": "machine-cross-checked"
     },
     "settings.voice_wake_words.help": {
       "sourceHash": "37cd4d65e9c9c982c2c938663ae0863a2a8545f81d0b5165e73d5ad0f56cfbc2",
@@ -11063,6 +11498,11 @@
       "state": "machine-cross-checked",
       "text": "Parole di attivazione"
     },
+    "settings.voice_wake_words.summary": {
+      "text": "Parole di attivazione da ascoltare.",
+      "sourceHash": "d1d5a37611625d7925ca3e794540612919d66f7a7e37a748fa1f6c235a8e75ff",
+      "state": "machine-cross-checked"
+    },
     "settings.volume.help": {
       "sourceHash": "b3940799e32ad4927181340553f34418c4093c7aeea2bf1c6d21e8c401c3f657",
       "state": "machine-cross-checked",
@@ -11072,6 +11512,11 @@
       "sourceHash": "3169f38cc19fe300136470c6f970c8ddd36116f6935957ab67f3918624b3bf3c",
       "state": "machine-cross-checked",
       "text": "Volume pannello"
+    },
+    "settings.volume.summary": {
+      "text": "Volume multimediale del pannello.",
+      "sourceHash": "49e5264db4cd107fb5245caa45d7007829d46e17465bda5b3099e115ecfda28f",
+      "state": "machine-cross-checked"
     },
     "settings.wake_on_wave.help": {
       "sourceHash": "71dd28fb047a8aae73292b1975f5d7b6cbe3ccf7ec49d6c32bc992e4b7596bf7",
@@ -11083,6 +11528,11 @@
       "state": "machine-cross-checked",
       "text": "Riattiva con la mano"
     },
+    "settings.wake_on_wave.summary": {
+      "text": "Agita una mano vicino al pannello per riattivarlo.",
+      "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
+      "state": "machine-cross-checked"
+    },
     "settings.watchdog_enabled.help": {
       "sourceHash": "4c6259a10ffcaacc62ea104f7a887c65884fce170f7b02d9256476b93035a2c0",
       "state": "machine-cross-checked",
@@ -11093,15 +11543,25 @@
       "state": "machine-cross-checked",
       "text": "Watchdog dell'app"
     },
+    "settings.watchdog_enabled.summary": {
+      "text": "Riavvia l'app della plancia se si arresta o resta in secondo piano.",
+      "sourceHash": "bf85bf3bed1a0bda4d001d6d73a8b2196aec288be92fa7aba1cb27cbd9ccf105",
+      "state": "machine-cross-checked"
+    },
     "settings.webview_auto_update.help": {
-      "sourceHash": "c213f4530d508c6c3ae53fc24f3ab6654dd3e1618bd68609031c298bf8e903ee",
-      "state": "machine-cross-checked",
-      "text": "Mantiene il System WebView di questo pannello alla versione consigliata (dal mirror di ha-paneld), installandone una più recente tramite root durante il controllo degli aggiornamenti. Disattivato per impostazione predefinita: la sostituzione di WebView richiede un riavvio. Viene mostrato solo dove esiste una versione consigliata (non sui pannelli aggiornati tramite Play)."
+      "text": "Mantiene il System WebView alla versione consigliata per questo pannello (dal mirror di ha-paneld), installandone una più recente tramite root al controllo degli aggiornamenti.\n\nDisattivato per impostazione predefinita: la sostituzione di WebView richiede un riavvio per avere effetto. Mostrato solo dove esiste una versione consigliata (non sui pannelli aggiornati da Play).",
+      "sourceHash": "cf8035f05ef4490931648028eb8cb8f4629814ec89f0a4d6747af8b9ddd1315d",
+      "state": "machine-cross-checked"
     },
     "settings.webview_auto_update.label": {
       "sourceHash": "20c3526cc6dbf1a8fc781ed1e7594a2c71d88903a33862fac77aa849984e2e1d",
       "state": "machine-cross-checked",
       "text": "Autoaggiornamento di WebView"
+    },
+    "settings.webview_auto_update.summary": {
+      "text": "Mantiene il System WebView sulla build consigliata (root).",
+      "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
+      "state": "machine-cross-checked"
     },
     "settings.zigbee_router.help": {
       "sourceHash": "0e45c24d90c69895031bb89e0360f16e94f3ef89262456cfef82c2ab024e5824",
@@ -11112,6 +11572,11 @@
       "sourceHash": "76c68d99b8cb9505d0771ff7291ab23f70e4fcba5fa81daa256c4e50461286f5",
       "state": "machine-cross-checked",
       "text": "Router Zigbee"
+    },
+    "settings.zigbee_router.summary": {
+      "text": "Usa la radio Zigbee integrata come router.",
+      "sourceHash": "ad4a9c9f2cdb17eaa7c15c04aac14c932e2e95cf53eba3f3fa4d0a9c4a225331",
+      "state": "machine-cross-checked"
     },
     "setup.action.panel_dashboard": {
       "sourceHash": "3db3c314463f71ee6dfd052b3b46cdd2851593ad49f19dcac17289eae7969c00",
@@ -12401,6 +12866,11 @@
     "settings.auto_sleep_touch_delay_seconds.help": {
       "text": "Quando è selezionata l’inattività del tocco, spegne completamente lo schermo dopo questi secondi senza tocchi.",
       "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
+      "state": "machine-cross-checked"
+    },
+    "settings.auto_sleep_touch_delay_seconds.summary": {
+      "text": "Secondi senza alcun tocco prima che lo schermo si spenga.",
+      "sourceHash": "ac4a72aa8108adf757c92d42ab1fa992256f3b7cb01929428b463ad75080bf23",
       "state": "machine-cross-checked"
     },
     "settings.auto_sleep_touch_delay_seconds.label": {

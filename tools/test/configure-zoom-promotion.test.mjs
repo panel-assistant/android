@@ -21,6 +21,7 @@ function page() {
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups" class="cards"></div>
     <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div>
+    <div id="cfg-help" class="cfg-help" popover="manual"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" type="button">x</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more"></a></div></div>
     <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>
     <script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
@@ -67,14 +68,23 @@ const engines = [
   { name: 'webkit', type: webkit, launch: {}, available: existsSync(webkit.executablePath()) },
 ];
 
+// Each row's full help is read from the help popover its info button opens.
 async function card(pageHandle) {
   const rows = pageHandle.locator('[data-config-group="Built-in renderer"] .frow');
   await rows.first().waitFor();
-  return rows.evaluateAll((els) => els.filter((el) => el.id.startsWith('cfg-')).map((el) => ({
+  const found = await rows.evaluateAll((els) => els.filter((el) => el.id.startsWith('cfg-')).map((el) => ({
     id: el.id,
-    help: el.querySelector('.flabel small')?.textContent || '',
     overflow: el.scrollWidth > el.clientWidth + 1,
   })));
+  for (const row of found) {
+    const button = pageHandle.locator(`#${row.id} .info-btn`);
+    row.help = '';
+    if (!(await button.count())) continue;
+    await button.click();
+    row.help = await pageHandle.locator('#cfg-help-body').textContent();
+    await pageHandle.keyboard.press('Escape');
+  }
+  return found;
 }
 
 for (const engine of engines) {
