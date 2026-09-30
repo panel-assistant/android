@@ -13,6 +13,8 @@ class FleetScopeSpecTest {
             group = "Test",
             label = "New setting",
             default = "false",
+            tier = Tier.ADVANCED,
+            summary = "New setting.",
         )
 
         assertEquals(Scope.DEVICE, spec.scope)

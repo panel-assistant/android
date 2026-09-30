@@ -38,7 +38,8 @@ async function harness() {
     if (path === '/api/v1/config/schema') return send(JSON.stringify([{
       key: 'dashboard_network_warning', type: 'BOOL', group: 'Display', tier: 'BASIC', available: true,
       label: wording('settings.dashboard_network_warning.label'),
-      help: wording('settings.dashboard_network_warning.help'), default: 'true',
+      help: wording('settings.dashboard_network_warning.help'),
+      summary: wording('settings.dashboard_network_warning.summary'), default: 'true',
     }]));
     if (path === '/api/v1/config') return send(JSON.stringify({
       settings: { dashboard_network_warning: false, dashboard_package: 'builtin' },
@@ -72,7 +73,7 @@ for (const engine of [
         await target.waitFor();
         if (kind === 'configure') {
           assert.equal(await target.locator('[role=switch]').getAttribute('aria-checked'), 'false');
-          assert.ok((await target.textContent()).includes(wording('settings.dashboard_network_warning.help')));
+          assert.ok((await target.textContent()).includes(wording('settings.dashboard_network_warning.summary')));
         } else {
           assert.equal(await target.textContent(), wording('dashboard.networking.warning_guidance'));
         }

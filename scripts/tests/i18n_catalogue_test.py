@@ -130,6 +130,39 @@ class CatalogueTest(unittest.TestCase):
             parsed = i18n.validate_source(source_path)
             i18n.validate_target(target_path, parsed)
 
+    def test_settings_help_translation_keeps_markup(self):
+        english = "Keep **{name}** on MQTT.\n\n- Use `mqtt://host` or [the guide](https://example.invalid/g)."
+        kept = "**{name}** auf MQTT behalten.\n\n- `mqtt://host` oder [die Anleitung](https://example.invalid/g) nutzen."
+        broken = {
+            "bold dropped": "{name} auf MQTT behalten.\n\n- `mqtt://host` oder [die Anleitung](https://example.invalid/g) nutzen.",
+            "code translated": "**{name}** auf MQTT behalten.\n\n- `mqtt://Rechner` oder [die Anleitung](https://example.invalid/g) nutzen.",
+            "link moved": "**{name}** auf MQTT behalten.\n\n- `mqtt://host` oder [die Anleitung](https://example.invalid/de) nutzen.",
+            "list flattened": "**{name}** auf MQTT behalten.\n\n`mqtt://host` oder [die Anleitung](https://example.invalid/g) nutzen.",
+            "paragraphs joined": "**{name}** auf MQTT behalten.\n- `mqtt://host` oder [die Anleitung](https://example.invalid/g) nutzen.",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_path, target_path = root / "en.json", root / "de.json"
+            source = self.source()
+            record = source["strings"]["settings.example.help"]
+            record.update(text=english, sourceHash=i18n.source_hash(english), hardMaxChars=200)
+            self.write(source_path, source)
+            parsed = i18n.validate_source(source_path)
+
+            def target(text):
+                self.write(target_path, {
+                    "schema": 1, "locale": "de", "sourceRevision": "e" * 40,
+                    "strings": {"settings.example.help": {
+                        "text": text, "sourceHash": record["sourceHash"], "state": "machine-draft",
+                    }},
+                })
+                return i18n.validate_target(target_path, parsed)
+
+            target(kept)
+            for name, text in broken.items():
+                with self.subTest(name), self.assertRaisesRegex(i18n.CatalogueError, "changed markup|unsafe control"):
+                    target(text)
+
     def test_target_script_policy_is_unique_complete_and_mutation_sensitive(self):
         tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
         assignment = next(

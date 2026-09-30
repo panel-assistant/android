@@ -310,14 +310,56 @@ body.hdr-hide-gh .hdr .gh{display:none}
 body.hdr-hide-brand .hdr .brand{display:none}
 
 /* ---- Configure page ---- */
-.cfg-tabs{display:flex;gap:8px;margin-bottom:14px}
-.cfg-tabs button{background:var(--input-bg);border:1px solid var(--border);color:var(--tab);padding:6px 18px;border-radius:8px;cursor:pointer;font-size:.9rem}
-.cfg-tabs button.on{background:#2557a7;border-color:#2557a7;color:#fff}
+/* Tools row above the card wall: filter, Basic/Advanced, Descriptions and the shown count. */
+.cfg-tools{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin:0 0 14px}
+.cfg-filter{flex:1 1 220px;min-width:0;box-sizing:border-box;height:34px;background:var(--input-bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font:inherit}
+.cfg-seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden}
+.cfg-seg label{position:relative;padding:6px 14px;cursor:pointer;color:var(--dim);font-size:.88rem}
+.cfg-seg label:has(input:checked){background:#2557a7;color:#fff}
+.cfg-seg input{position:absolute;opacity:0;width:0;height:0;margin:0}
+.cfg-seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:-2px}
+.cfg-desc-switch{display:inline-flex;flex-direction:row;white-space:nowrap;margin:0;align-items:center;gap:8px;font-size:.88rem;color:var(--text);cursor:pointer}
+.cfg-desc-switch input{position:absolute;opacity:0;width:0;height:0;margin:0}
+.cfg-desc-track{position:relative;width:36px;height:20px;border-radius:10px;background:var(--border);border:1px solid var(--border-strong);transition:.15s;flex:0 0 auto}
+.cfg-desc-track::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--knob);transition:.15s}
+.cfg-desc-switch input:checked+.cfg-desc-track{background:#2557a7;border-color:#2557a7}
+.cfg-desc-switch input:checked+.cfg-desc-track::after{left:18px}
+.cfg-desc-switch input:focus-visible+.cfg-desc-track{outline:2px solid var(--accent);outline-offset:2px}
+.cfg-count{font-size:.8rem;font-variant-numeric:tabular-nums}
+/* A label's last word, the advanced diamond and the help button never wrap apart. */
+.flabel-tail{white-space:nowrap}
+.adv-mark{display:inline-block;margin-left:.3rem;font-size:.55em;line-height:1;color:var(--dim);vertical-align:middle}
+.info-btn{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:.4rem;padding:0;vertical-align:middle;position:relative;top:-.1em;border-radius:50%;border:1px solid var(--border-strong);background:transparent;color:var(--accent2);font:italic 700 .72rem/1 Georgia,serif;cursor:pointer}
+.info-btn::before{content:"i"}
+.info-btn:hover,.info-btn[aria-expanded=true]{background:var(--info-bg);border-color:var(--info-bd)}
+#cfg-groups.cfg-nosum .fsum{display:none}
+.cfg-more{display:block;width:100%;margin:8px 0 0;padding:8px 0 0;border:0;border-top:1px solid var(--config-divider);background:none;color:var(--accent2);font:inherit;font-size:.8rem;text-align:left;cursor:pointer}
+/* One help popover per page, in the top layer where supported, fixed otherwise. It scrolls within
+   itself and never hands a scroll on to the page. */
+.cfg-help{display:none;position:fixed;inset:auto;margin:0;z-index:40;box-sizing:border-box;width:min(360px,calc(100vw - 32px));max-height:min(60vh,420px);overflow:auto;overscroll-behavior:contain;background:var(--card);color:var(--text);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 18px 55px var(--shadow);padding:12px 14px}
+.cfg-help.open{display:block}
+.cfg-help::backdrop{background:transparent}
+.cfg-help-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
+.cfg-help-head b{flex:1;min-width:0;font-size:.9rem;color:var(--accent)}
+.cfg-help-close{flex:0 0 auto;width:26px;height:26px;line-height:1;background:none;border:1px solid var(--border);border-radius:6px;color:var(--dim);cursor:pointer;font-size:1rem}
+.cfg-help-body{font-size:.84rem;line-height:1.45;overflow-wrap:anywhere}
+.cfg-help-body p{margin:0 0 8px}.cfg-help-body p:last-child{margin-bottom:0}
+.cfg-help-body ul{margin:0 0 8px;padding-left:18px}.cfg-help-body li{margin:2px 0}
+.cfg-help-body a,.cfg-help-foot a{color:var(--accent2)}
+.cfg-help-body code{font-size:.92em}
+.cfg-help-foot{margin-top:8px;padding-top:8px;border-top:1px solid var(--divider);font-size:.76rem}
+@media (max-width:600px){.cfg-help{left:16px;right:16px;top:auto;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:auto;max-height:55vh}}
 /* Configure dividers get a slightly stronger dark-only token than dense tables; light mode retains its
    existing divider colour. Compact subgroups and each card's first row still remove their rule below. */
-.frow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--config-divider)}
+.frow{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid var(--config-divider)}
+/* Labels start level with the top of their control rather than centring on a tall one. */
+.frow .flabel>span:first-child{display:block;min-height:24px;line-height:24px}
 .card>h2+.frow{border-top:0}
-.frow .flabel{flex:1;min-width:0}
+/* The label keeps room for its last word and help button; a control that no longer fits beside it
+   wraps below instead of covering the button. */
+.frow{flex-wrap:wrap}
+.frow .flabel{flex:1;min-width:min-content;max-width:100%}
+.frow .fctl{margin-left:auto}
 .frow .flabel small{display:block;color:var(--dim);font-weight:400;font-size:.8em;margin-top:2px;overflow-wrap:anywhere}
 .frow .fctl{flex:0 0 auto;display:flex;align-items:center;gap:12px;max-width:50%}
 /* An action row keeps its button on one line: when a translation no longer fits beside the label, the

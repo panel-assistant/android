@@ -53,10 +53,10 @@ class VoiceSettingsSpecTest {
         }
     }
 
-    @Test fun `voice_enabled is an advanced live-apply switch, off by default and not a Home Assistant entity`() {
+    @Test fun `voice_enabled is a basic live-apply switch, off by default and not a Home Assistant entity`() {
         assertEquals(SettingType.BOOL, voiceEnabled.type)
         assertEquals("false", voiceEnabled.default)
-        assertEquals(Tier.ADVANCED, voiceEnabled.tier)
+        assertEquals(Tier.BASIC, voiceEnabled.tier)
         assertTrue(voiceEnabled.liveApply)
         assertNull(voiceEnabled.ha)
     }

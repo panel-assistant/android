@@ -3,11 +3,14 @@
 // "expose to HA" pip on each HA-capable row, and saves via partial-merge POST. Vanilla, no build.
 (function () {
   "use strict";
-  // Advanced is the DEFAULT view until the reduced Basic set is settled.
-  var schema = [], values = {}, expose = {}, haAuth = {}, applyPending = {}, applyStalled = {}, applyPendingTimer = null, advanced = true, dirty = false, saving = false, editGeneration = 0, configDiscoveryRequest = 0, schemaLanguageRequest = 0, apps = [], rendererChoices = [], radio = null;
+  // Basic is the default view: each card shows its BASIC rows and offers its own advanced rows.
+  var schema = [], values = {}, expose = {}, haAuth = {}, applyPending = {}, applyStalled = {}, applyPendingTimer = null, advanced = false, dirty = false, saving = false, editGeneration = 0, configDiscoveryRequest = 0, schemaLanguageRequest = 0, apps = [], rendererChoices = [], radio = null;
   var savedValues = {}, savedExpose = {};
   var dirtyValues = Object.create(null), dirtyExpose = Object.create(null);
   var joinCooldownUntil = 0, joinPollTimer = null, hashJumpUntil = 0;
+  // Viewer-local presentation state. None of it is a setting, so none of it marks the form dirty.
+  var descriptions = true, revealedGroups = Object.create(null), filterText = "";
+  var CONFIG_VIEW_STORAGE_KEY = "ha-paneld.configure.view.v1";
   var haSourceItems = [];
   var homeDashboardItems = [], homeDashboardRequest = 0, homeDashboardQueried = false;
   // Assist pipeline catalogue for the voice_pipelines picker. null = not fetched yet, false = the
@@ -2026,9 +2029,7 @@
       .then(function () { cameraCapabilityLoading = false; });
   }
 
-  // True only when the panel does not offer the camera at all. A camera-bearing panel on the Basic tab
-  // also shows an empty Camera group — every camera setting is ADVANCED — and must not be told it has no
-  // camera. That case has available:true fields filtered out by tier, so it is excluded here.
+  // True only when the panel does not offer the camera at all.
   function cameraGroupUnavailable() {
     var camera = schema.filter(function (f) { return presentationGroup(f) === "Camera"; });
     return camera.length > 0 && camera.every(function (f) { return !f.available; });
@@ -2778,29 +2779,217 @@
     return nodes;
   }
 
-  function row(f) {
-    var help = null;
-    if (f.key === "dashboard_zoom") {
-      var helpKids = [el("span", { lang: f.helpLanguage, text: f.help })];
-      if (f.displaySizingAvailable === true) {
-        helpKids.push(document.createTextNode(i18nText("configure.display.recommend_prefix", " Recommend use ")));
-        helpKids.push(el("a", { href: localizedPageHref("install#cfg-display"), text: i18nText("configure.display.sizing", "Display Sizing") }));
-        helpKids.push(document.createTextNode(i18nText("configure.display.recommend_suffix", " for better results")));
+  // Markdown subset carried by settings help: blank-line paragraphs, "- " list lines, **bold**, *italic*,
+  // `code` and [text](url). Output is built only from elements and text nodes, never from HTML, and a
+  // link keeps its target only for http(s) or a scheme-less page path.
+  var HELP_INLINE_RE = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/g;
+  function helpInline(text) {
+    var nodes = [], last = 0, match;
+    HELP_INLINE_RE.lastIndex = 0;
+    while ((match = HELP_INLINE_RE.exec(text))) {
+      if (match.index > last) nodes.push(document.createTextNode(text.slice(last, match.index)));
+      var token = match[0], node;
+      if (token.indexOf("**") === 0) node = el("strong", { text: token.slice(2, -2) });
+      else if (token.charAt(0) === "`") node = el("code", { text: token.slice(1, -1) });
+      else if (token.charAt(0) === "*") node = el("em", { text: token.slice(1, -1) });
+      else {
+        var link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
+        var safe = /^https?:\/\//i.test(link[2]) || !/^[a-z][a-z0-9+.-]*:/i.test(link[2]);
+        node = safe ? el("a", { href: link[2], text: link[1] }) : document.createTextNode(link[1]);
+        if (safe && /^https?:\/\//i.test(link[2])) { node.setAttribute("target", "_blank"); node.setAttribute("rel", "noopener"); }
       }
-      help = el("small", {}, helpKids);
-    } else if (f.key === "camera_enabled") {
-      // Name the two addresses the help text already talks about, so they can be opened or copied
-      // rather than retyped. The RTSP link uses whatever host this page was reached on, which is the
-      // address that will also work from Home Assistant.
-      help = el("small", { lang: f.helpLanguage }, linkifyWords(f.help, [
+      nodes.push(node);
+      last = match.index + token.length;
+    }
+    if (last < text.length) nodes.push(document.createTextNode(text.slice(last)));
+    return nodes;
+  }
+  function renderHelpMarkdown(text) {
+    return String(text || "").split(/\n\s*\n/).filter(function (block) { return block.trim(); }).map(function (block) {
+      var lines = block.split("\n");
+      if (lines.every(function (line) { return /^\s*- /.test(line); })) {
+        return el("ul", {}, lines.map(function (line) { return el("li", {}, helpInline(line.replace(/^\s*- /, ""))); }));
+      }
+      return el("p", {}, helpInline(lines.join(" ")));
+    });
+  }
+  function helpPlainText(text) {
+    return String(text || "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*`]/g, "").replace(/^\s*- /gm, "");
+  }
+
+  // One help popover for the whole page, outside the card wall so it never changes a card's height.
+  // Native `popover` puts it in the top layer; older WebViews get the same element as a fixed box.
+  var helpPop = document.getElementById("cfg-help");
+  var helpAnchor = null, helpPinned = false, helpHoverTimer = null;
+  var helpHover = !!(window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches);
+  function helpAvailable(f) { return !!(f.help || f.key === "dashboard_zoom"); }
+  function helpWebsiteUrl(f) {
+    var tools = document.getElementById("cfg-tools");
+    var version = tools && tools.getAttribute("data-app-version") || "";
+    var locale = window.HaI18n && typeof window.HaI18n.locale === "string" ? window.HaI18n.locale : (document.documentElement.lang || "en");
+    return "https://panel-assistant.io/go/settings?v=" + encodeURIComponent(version) +
+      "&lang=" + encodeURIComponent(locale) + "&section=" + encodeURIComponent(f.key);
+  }
+  function placeHelp() {
+    if (!helpPop || !helpAnchor) return;
+    if (window.innerWidth <= 600) { helpPop.style.left = ""; helpPop.style.top = ""; return; }
+    var rect = helpAnchor.getBoundingClientRect(), width = helpPop.offsetWidth, height = helpPop.offsetHeight;
+    var left = Math.min(Math.max(16, rect.left - 8), window.innerWidth - width - 16);
+    var top = rect.bottom + 8;
+    if (top + height > window.innerHeight - 16) top = Math.max(16, rect.top - height - 8);
+    helpPop.style.left = Math.round(left) + "px";
+    helpPop.style.top = Math.round(top) + "px";
+  }
+  function closeHelp() {
+    if (helpHoverTimer) clearTimeout(helpHoverTimer);
+    helpHoverTimer = null;
+    if (helpAnchor) helpAnchor.setAttribute("aria-expanded", "false");
+    helpAnchor = null; helpPinned = false;
+    if (!helpPop) return;
+    helpPop.classList.remove("open");
+    if (typeof helpPop.hidePopover === "function") { try { helpPop.hidePopover(); } catch (_) {} }
+  }
+  function openHelp(button, f, pin) {
+    if (!helpPop) return;
+    if (helpAnchor === button && pin && helpPinned) { closeHelp(); return; }
+    if (helpAnchor && helpAnchor !== button) helpAnchor.setAttribute("aria-expanded", "false");
+    document.getElementById("cfg-help-title").textContent = f.label;
+    var body = document.getElementById("cfg-help-body");
+    body.textContent = "";
+    if (f.helpLanguage) body.setAttribute("lang", f.helpLanguage); else body.removeAttribute("lang");
+    helpBodyNodes(f).forEach(function (node) { body.appendChild(node); });
+    document.getElementById("cfg-help-more").setAttribute("href", helpWebsiteUrl(f));
+    helpAnchor = button; helpPinned = !!pin;
+    button.setAttribute("aria-expanded", "true");
+    helpPop.classList.add("open");
+    if (typeof helpPop.showPopover === "function") { try { helpPop.showPopover(); } catch (_) {} }
+    body.scrollTop = 0;
+    placeHelp();
+    if (pin) {
+      var close = document.getElementById("cfg-help-close");
+      try { close.focus({ preventScroll: true }); } catch (_) { close.focus(); }
+    }
+  }
+  function helpButton(f) {
+    if (!helpAvailable(f)) return null;
+    var button = el("button", {
+      class: "info-btn", type: "button", "aria-expanded": "false", "aria-controls": "cfg-help",
+      "aria-label": i18nText("configure.help.about", "About {label}", { label: f.label })
+    });
+    button.addEventListener("click", function (event) { event.stopPropagation(); openHelp(button, f, true); });
+    if (helpHover) {
+      button.addEventListener("mouseenter", function () {
+        if (helpPinned) return;
+        helpHoverTimer = setTimeout(function () { openHelp(button, f, false); }, 180);
+      });
+      button.addEventListener("mouseleave", function () {
+        if (helpHoverTimer) clearTimeout(helpHoverTimer);
+        helpHoverTimer = setTimeout(function () { if (!helpPinned && helpAnchor === button) closeHelp(); }, 120);
+      });
+    }
+    return button;
+  }
+  if (helpPop && document.addEventListener) {
+    document.getElementById("cfg-help-close").addEventListener("click", function () {
+      var anchor = helpAnchor;
+      closeHelp();
+      if (anchor && anchor.isConnected) { try { anchor.focus({ preventScroll: true }); } catch (_) { anchor.focus(); } }
+    });
+    helpPop.addEventListener("mouseenter", function () { if (helpHoverTimer) clearTimeout(helpHoverTimer); });
+    helpPop.addEventListener("mouseleave", function () { if (!helpPinned) closeHelp(); });
+    document.addEventListener("click", function (event) {
+      if (helpPinned && !helpPop.contains(event.target)) closeHelp();
+    });
+    document.addEventListener("keydown", function (event) { if (event.key === "Escape" && helpAnchor) closeHelp(); });
+    window.addEventListener("scroll", function () { if (helpAnchor && !helpAnchor.isConnected) closeHelp(); else placeHelp(); }, { passive: true });
+    window.addEventListener("resize", placeHelp);
+  }
+
+  // Tier, Descriptions and each card's advanced reveal are remembered per browser. The filter is not.
+  function readConfigView() {
+    try {
+      var stored = JSON.parse(window.localStorage.getItem(CONFIG_VIEW_STORAGE_KEY) || "null");
+      if (!stored || typeof stored !== "object") return;
+      advanced = stored.advanced === true;
+      descriptions = stored.descriptions !== false;
+      if (Array.isArray(stored.revealed)) stored.revealed.forEach(function (group) {
+        if (typeof group === "string") revealedGroups[group] = true;
+      });
+    } catch (_) {}
+  }
+  function writeConfigView() {
+    try {
+      window.localStorage.setItem(CONFIG_VIEW_STORAGE_KEY, JSON.stringify({
+        advanced: advanced, descriptions: descriptions, revealed: Object.keys(revealedGroups)
+      }));
+    } catch (_) {}
+  }
+  // The view is part of the card-height memory's layout context, so each combination keeps its own
+  // remembered heights.
+  function syncConfigViewUi() {
+    var root = document.getElementById("cfg-groups");
+    if (root) {
+      root.classList.toggle("cfg-nosum", !descriptions);
+      root.setAttribute("data-card-size-context", (advanced ? "advanced" : "basic") + (descriptions ? "" : ".labels"));
+    }
+    var basic = document.getElementById("tier-basic"), adv = document.getElementById("tier-adv");
+    if (basic && basic.type === "radio") basic.checked = !advanced;
+    if (adv && adv.type === "radio") adv.checked = advanced;
+    var desc = document.getElementById("cfg-desc");
+    if (desc) desc.checked = descriptions;
+  }
+  function configViewChanged() {
+    writeConfigView();
+    syncConfigViewUi();
+    closeHelp();
+    render();
+    if (!filterText) configCardGeometryChanged();
+  }
+  // Only an explicit ADVANCED tier hides a row from Basic, so missing metadata never makes a setting
+  // unreachable.
+  function advancedField(f) { return f.tier === "ADVANCED"; }
+  function fieldMatchesFilter(f, terms) {
+    var haystack = (f.key + " " + f.label + " " + (f.summary || "") + " " + helpPlainText(f.help)).toLowerCase();
+    return terms.every(function (term) { return haystack.indexOf(term) >= 0; });
+  }
+  function filterTerms() {
+    return filterText.toLowerCase().split(/\s+/).filter(Boolean);
+  }
+  // A deep link to a setting the current view hides reveals that setting's card first.
+  function revealHashTarget() {
+    if (hashJumpUntil !== 0 || !location.hash || location.hash.indexOf("#cfg-") !== 0) return;
+    var key = location.hash.slice(5);
+    var field = schema.find(function (f) { return f.key === key; });
+    if (field && advancedField(field) && !advanced) revealedGroups[presentationGroup(field)] = true;
+  }
+
+  // The full help of one setting, for the help popover. Two settings name things the reader may want
+  // to open or copy, so their words become links; every other help renders its markdown subset.
+  function helpBodyNodes(f) {
+    if (f.key === "dashboard_zoom") {
+      var zoomKids = renderHelpMarkdown(f.help);
+      if (f.displaySizingAvailable === true) {
+        if (!zoomKids.length) zoomKids.push(el("p"));
+        var last = zoomKids[zoomKids.length - 1];
+        last.appendChild(document.createTextNode(i18nText("configure.display.recommend_prefix", " Recommend use ")));
+        last.appendChild(el("a", { href: localizedPageHref("install#cfg-display"), text: i18nText("configure.display.sizing", "Display Sizing") }));
+        last.appendChild(document.createTextNode(i18nText("configure.display.recommend_suffix", " for better results")));
+      }
+      return zoomKids;
+    }
+    if (f.key === "camera_enabled") {
+      // The RTSP link uses whatever host this page was reached on, which is the address that will
+      // also work from Home Assistant.
+      return [el("p", {}, linkifyWords(f.help, [
         ["RTSP", "rtsp://" + location.hostname + ":" + CAMERA_RTSP_PORT + "/live"],
         ["JPEG", "api/v1/camera/snapshot.jpg"],
-      ]));
-    } else if (f.key === "auto_sleep") {
-      help = el("small", { lang: f.helpLanguage, text: f.help });
-    } else if (f.help) {
-      help = el("small", { lang: f.helpLanguage, text: f.help });
+      ]))];
     }
+    return renderHelpMarkdown(f.help);
+  }
+
+  function row(f) {
+    var summary = f.summary ? el("small", { class: "fsum", lang: f.summaryLanguage, text: f.summary }) : null;
     var companionRendererHint = f.key === "dashboard_package" && rendererChoices.some(function (renderer) {
       return renderer && renderer.pkg === values.dashboard_package;
     }) ? el("small", {
@@ -2808,21 +2997,29 @@
       text: i18nText("configure.renderer.companion_launcher_hint", "Turn on the Companion app's launcher option for it to take Home.")
     }) : null;
     var protectedSetting = !!HARDENED_APPROVAL_SETTING_KEYS[f.key];
+    var isAdvanced = advancedField(f);
     var labelText = el("span", { lang: f.labelLanguage });
+    // The last word of the label, the hardened shield, the advanced diamond and the help button share
+    // one non-wrapping run, so a wrapped label takes its last word to the new line with them and the
+    // button never sits on a line by itself. The shield is a pseudo-element, so a non-breaking space
+    // alone would not bind it in older WebViews.
+    var words = f.label.trim().split(/\s+/);
+    if (words.length > 1) labelText.appendChild(document.createTextNode(words.slice(0, -1).join(" ") + " "));
+    var lastWord = el("span", { class: protectedSetting ? "hardened-label-tail" : "flabel-word", text: words[words.length - 1] || f.label });
     if (protectedSetting) {
-      // The shield is a pseudo-element, so a non-breaking space alone does not reliably bind it to
-      // the label in older WebViews. Keep the final word and the shield in one non-wrapping inline run.
-      var words = f.label.trim().split(/\s+/);
-      if (words.length > 1) labelText.appendChild(document.createTextNode(words.slice(0, -1).join(" ") + " "));
-      var shieldTail = el("span", { class: "hardened-label-tail", text: words[words.length - 1] || f.label });
-      shieldTail.setAttribute("data-hardened-approval", "conditional");
-      shieldTail.setAttribute("aria-describedby", "hardened-approval-conditional-description");
-      shieldTail.setAttribute("title", i18nText("configure.hardened.setting_approval", "Changing this setting may require physical on-panel approval when Hardened mode is enabled."));
-      labelText.appendChild(shieldTail);
-    } else labelText.textContent = f.label;
+      lastWord.setAttribute("data-hardened-approval", "conditional");
+      lastWord.setAttribute("aria-describedby", "hardened-approval-conditional-description");
+      lastWord.setAttribute("title", i18nText("configure.hardened.setting_approval", "Changing this setting may require physical on-panel approval when Hardened mode is enabled."));
+    }
+    var advancedMark = isAdvanced ? el("span", {
+      class: "adv-mark", role: "img", text: "\u25C6",
+      title: i18nText("configure.advanced.marker", "Advanced setting"),
+      "aria-label": i18nText("configure.advanced.marker", "Advanced setting")
+    }) : null;
+    labelText.appendChild(el("span", { class: "flabel-tail" }, [lastWord, advancedMark, helpButton(f)]));
     var label = el("div", { class: "flabel" }, [
       labelText,
-      help,
+      summary,
       companionRendererHint,
       Object.prototype.hasOwnProperty.call(applyPending, f.key) ?
         el("small", { class: "apply-pending-status", text: applyPendingStatusText(f.key) }) : null,
@@ -2841,7 +3038,7 @@
     // Anchor id so dashboard "edit" icons can deep-link straight to this setting.
     var dependencyDisabled = (f.key === "auto_brightness" || f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") && !ambientLightSourceReady();
     return el("div", {
-      class: "frow" + (f.available ? "" : " muted") + (dependencyDisabled ? " dependency-disabled" : ""),
+      class: "frow" + (isAdvanced ? " adv" : "") + (f.available ? "" : " muted") + (dependencyDisabled ? " dependency-disabled" : ""),
       id: "cfg-" + f.key
     }, [label, ctl]);
   }
@@ -2988,20 +3185,23 @@
   function fieldsForConfigGroup(group) {
     return schema.filter(function (field) {
       return presentationGroup(field) === group && field.available &&
-        (!BUILTIN_RENDERER_ONLY_KEYS[field.key] || !values.dashboard_package || values.dashboard_package === "builtin") &&
-        (advanced || field.tier === "BASIC");
+        (!BUILTIN_RENDERER_ONLY_KEYS[field.key] || !values.dashboard_package || values.dashboard_package === "builtin");
     });
   }
 
   function autoSleepCardSignature(fields) {
     return JSON.stringify([
       advanced,
+      revealedGroups["Auto-sleep"] === true,
+      filterText,
       values.auto_sleep === "true",
       fields.map(function (field) {
         return [
           field.key,
           field.label,
           field.help,
+          field.summary,
+          field.tier,
           field.type,
           field.picker,
           field.readOnly,
@@ -3163,13 +3363,16 @@
     }
     if (haPickerCleanup) haPickerCleanup();
     haOauthButton = null; haOauthStatus = null; haOauthLinks = null;
-    var shown = 0, explained = 0, desiredCards = [];
+    var shown = 0, total = 0, explained = 0, desiredCards = [];
+    var terms = filterTerms();
+    revealHashTarget();
     groups.forEach(function (g) {
       var fields = fieldsForConfigGroup(g);
       if (!fields.length) {
         // The one group that explains itself when it has nothing to show: a missing Camera card is the
         // documented complaint, because nothing connected "my panel has a camera" to "set the flag".
-        if (g !== "Camera" || !cameraGroupUnavailable()) return;
+        // Every camera setting is advanced, so the explanation belongs to the Advanced view.
+        if (g !== "Camera" || !cameraGroupUnavailable() || !advanced || terms.length) return;
         loadCameraCapability();
         var absent = el("div", { class: "card" }, [
           el("h2", {}, [el("span", { text: groupTitle(g) })]),
@@ -3181,7 +3384,18 @@
         explained += 1;
         return;
       }
-      shown += fields.length;
+      var rows = fields.filter(shouldRenderRow);
+      var basicRows = rows.filter(function (f) { return !advancedField(f); }).length;
+      var advancedRows = rows.length - basicRows;
+      // Basic shows a card's BASIC rows and offers its own advanced rows; a card with no BASIC row is
+      // not shown at all. A filter searches every row whatever the view.
+      var revealed = !advanced && !terms.length && basicRows > 0 && revealedGroups[g] === true;
+      var visibleFields = terms.length ? rows.filter(function (f) { return fieldMatchesFilter(f, terms); })
+        : advanced || revealed ? rows
+        : rows.filter(function (f) { return !advancedField(f); });
+      total += rows.length;
+      if (!visibleFields.length) return;
+      shown += visibleFields.length;
       if (g === "Auto-sleep" && retainedAutoSleepCard) {
         desiredCards.push(retainedAutoSleepCard);
         return;
@@ -3193,10 +3407,9 @@
       if (badge) h2kids.push(el("span", { class: "cardbadge " + badge[1], text: i18nText("configure.badge.experimental", "experimental") }));
       var card = el("div", { class: "card" }, [el("h2", {}, h2kids)]);
       card.setAttribute("data-config-group", g);
-      card.setAttribute("data-layout-key", configLayoutKey(g));
+      card.setAttribute("data-layout-key", configLayoutKey(g) + (revealed ? ".adv" : ""));
       if (g === "Auto-sleep") card.setAttribute("data-render-signature", nextAutoSleepSignature);
-      fields.forEach(function (f) {
-        if (!shouldRenderRow(f)) return;
+      visibleFields.forEach(function (f) {
         card.appendChild(row(f));
         if (g === "Auto-sleep" && f.key === "auto_sleep") card.appendChild(autoSleepPrerequisiteNode());
         if (g === "Auto-sleep" && f.key === "auto_sleep" && values.auto_sleep === "true") {
@@ -3211,13 +3424,13 @@
         }
       });
       if (g === "Display") {
-        if (values.auto_brightness === "true" && ambientLightSourceConfigured()) card.appendChild(autoBrightnessPanel());
+        if (!terms.length && values.auto_brightness === "true" && ambientLightSourceConfigured()) card.appendChild(autoBrightnessPanel());
         if (!autoBrightStatus && !autoBrightLoading) loadAutoBrightnessData(false);
       }
       // Dashboard card action: clear the built-in renderer's browsing storage — the heal for a
       // corrupted localStorage/IndexedDB that survives reloads. Never logs the panel out (auth lives
       // in ha-paneld's config, not the WebView).
-      if (g === "Built-in renderer") {
+      if (g === "Built-in renderer" && !terms.length) {
         var st = el("span", { class: "muted" });
         var clearStatusTimer = null;
         function setClearStatus(text, transient) {
@@ -3253,8 +3466,11 @@
           el("div", { class: "fctl" }, [btn, st]),
         ]));
       }
+      if (!advanced && !terms.length && basicRows && advancedRows) card.appendChild(advancedRevealButton(g, revealed, advancedRows));
       desiredCards.push(card);
     });
+    var countNode = document.getElementById("cfg-count");
+    if (countNode) countNode.textContent = i18nText("configure.count", "{shown} of {total} settings", { shown: shown, total: total });
     var autoSleepCard = desiredCards.find(function (card) {
       return card.getAttribute("data-config-group") === "Auto-sleep";
     });
@@ -3294,7 +3510,8 @@
     if (retainedAutoSleepScroll && retainedAutoSleepScroll.isConnected) retainedAutoSleepScroll.scrollTop = retainedAutoSleepScrollTop;
     if (autoSleepParking) autoSleepParking.remove();
     if (window.CardSizeMemory) {
-      if (retainedAutoSleepViewportAnchor) window.CardSizeMemory.invalidate("cfg-groups");
+      // Filtered heights describe no layout worth remembering.
+      if (retainedAutoSleepViewportAnchor || terms.length) window.CardSizeMemory.invalidate("cfg-groups");
       else window.CardSizeMemory.restore("cfg-groups");
     }
     restoreConfigViewportAnchor(retainedAutoSleepViewportAnchor);
@@ -3306,11 +3523,25 @@
     scheduleConfigColumnAlignment();
   }
 
+  function advancedRevealButton(group, revealed, count) {
+    var button = el("button", {
+      class: "cfg-more", type: "button", "aria-expanded": revealed ? "true" : "false",
+      text: revealed ? i18nText("configure.advanced.hide", "Hide advanced settings")
+        : count === 1 ? i18nText("configure.advanced.show_one", "Show 1 advanced setting")
+        : i18nText("configure.advanced.show", "Show {count} advanced settings", { count: count })
+    });
+    button.addEventListener("click", function () {
+      if (revealedGroups[group]) delete revealedGroups[group]; else revealedGroups[group] = true;
+      configViewChanged();
+      var next = document.querySelector('[data-config-group="' + group + '"] > .cfg-more');
+      if (next) { try { next.focus({ preventScroll: true }); } catch (_) { next.focus(); } }
+    });
+    return button;
+  }
+
   window.cfgTab = function (adv) {
-    advanced = adv;
-    document.getElementById("tab-basic").classList.toggle("on", !adv);
-    document.getElementById("tab-adv").classList.toggle("on", adv);
-    render();
+    advanced = !!adv;
+    configViewChanged();
   };
 
   function restampConfigWatchBaseline() {
@@ -3891,6 +4122,46 @@
       if (document.visibilityState === "visible") scheduleAutoSleepPrerequisite();
     });
   }
+
+  readConfigView();
+  syncConfigViewUi();
+  (function wireConfigTools() {
+    ["tier-basic", "tier-adv"].forEach(function (id) {
+      var radio = document.getElementById(id);
+      if (radio && radio.type === "radio") radio.addEventListener("change", function () {
+        if (radio.checked) window.cfgTab(id === "tier-adv");
+      });
+    });
+    var desc = document.getElementById("cfg-desc");
+    if (desc) desc.addEventListener("change", function () {
+      descriptions = desc.checked;
+      writeConfigView();
+      syncConfigViewUi();
+      if (!filterText) configCardGeometryChanged();
+    });
+    var filter = document.getElementById("cfg-filter");
+    if (!filter) return;
+    var filterTimer = null;
+    function applyFilter() {
+      filterTimer = null;
+      var next = filter.value.trim();
+      if (next === filterText) return;
+      var wasFiltering = !!filterText;
+      filterText = next;
+      closeHelp();
+      render();
+      if (wasFiltering && !filterText) configCardGeometryChanged();
+    }
+    filter.addEventListener("input", function () {
+      if (filterTimer) clearTimeout(filterTimer);
+      filterTimer = setTimeout(applyFilter, 120);
+    });
+    filter.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" || !filter.value) return;
+      filter.value = "";
+      applyFilter();
+    });
+  })();
 
   load(null, true);
   loadRadio();

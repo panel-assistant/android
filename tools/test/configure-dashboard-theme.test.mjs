@@ -1,7 +1,8 @@
 // Dashboard theme on the Configure page, in both engines and every release locale. The Ambient choice
 // adds a fourth option and a longer help paragraph; this checks the select offers all four choices with
-// their catalogued labels, keeps the stored wire values, and that neither the option nor the help makes
-// the Built-in renderer row overflow at panel and desktop widths or large text.
+// their catalogued labels, keeps the stored wire values, that neither the option nor the one-line summary
+// makes the row overflow at panel and desktop widths or large text, and that the full help opens in the
+// help popover inside the viewport without moving the page.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -42,6 +43,7 @@ function page(strings, locale) {
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups" class="cards"></div>
     <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div>
+    <div id="cfg-help" class="cfg-help" popover="manual"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" type="button">x</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more"></a></div></div>
     <script>window.CardColumnAlignment={attach:()=>()=>{}};
       window.HaI18n={t:function(k,f){var s=${JSON.stringify(strings)};return Object.prototype.hasOwnProperty.call(s,k)?s[k]:f;}};</script>
     <script src="/configure.js"></script><script src="/proximity-learning.js"></script>
@@ -53,6 +55,7 @@ function schema(strings, locale) {
     key: 'dashboard_theme', type: 'ENUM', group: 'Dashboard', tier: 'ADVANCED', available: true,
     label: text(strings, 'settings.dashboard_theme.label'), labelLanguage: locale,
     help: text(strings, 'settings.dashboard_theme.help'), helpLanguage: locale,
+    summary: text(strings, 'settings.dashboard_theme.summary'), summaryLanguage: locale,
     default: 'Follow Home Assistant', options: OPTIONS,
   }, {
     key: 'dashboard_fullscreen', type: 'BOOL', group: 'Dashboard', tier: 'BASIC', available: true,
@@ -90,7 +93,7 @@ async function themeRow(p) {
   await row.waitFor();
   return row.evaluate((el) => {
     const select = el.querySelector('select');
-    const help = el.querySelector('.flabel small');
+    const help = el.querySelector('.flabel .fsum');
     const box = el.getBoundingClientRect();
     const helpBox = help.getBoundingClientRect();
     const selectBox = select.getBoundingClientRect();
@@ -130,6 +133,18 @@ for (const engine of engines) {
             await p.locator('#cfg-dashboard_fullscreen').waitFor();
             await p.evaluate(() => window.cfgTab(true));
             const r = await themeRow(p);
+            const before = await p.evaluate(() => ({ y: scrollY, top: document.getElementById('cfg-dashboard_theme').getBoundingClientRect().top }));
+            await p.locator('#cfg-dashboard_theme .info-btn').click();
+            const pop = await p.evaluate(() => {
+              const box = document.getElementById('cfg-help').getBoundingClientRect();
+              return {
+                text: document.getElementById('cfg-help-body').textContent,
+                items: document.querySelectorAll('#cfg-help-body li').length,
+                bold: document.querySelectorAll('#cfg-help-body strong').length,
+                inside: box.width > 0 && box.left >= 0 && box.top >= 0 && box.right <= innerWidth + 0.5 && box.bottom <= innerHeight + 0.5,
+                y: scrollY, top: document.getElementById('cfg-dashboard_theme').getBoundingClientRect().top,
+              };
+            });
             const where = `${locale} ${width}px ${font}px`;
             assert.deepEqual(r.values, OPTIONS, `${where}: wire values`);
             assert.equal(r.selected, 'Ambient', `${where}: the stored Ambient value is selected`);
@@ -139,9 +154,18 @@ for (const engine of engines) {
               text(h.strings, 'configure.enum.dashboard_theme.light'),
               text(h.strings, 'configure.enum.dashboard_theme.ambient'),
             ], `${where}: catalogued labels`);
-            assert.equal(r.help, text(h.strings, 'settings.dashboard_theme.help'), `${where}: help`);
+            assert.equal(r.help, text(h.strings, 'settings.dashboard_theme.summary'), `${where}: summary`);
+            // The help's markdown renders as structure: one list item per "- " line, one bold span per
+            // **…** pair, and no marker left in the text a reader sees.
+            const help = text(h.strings, 'settings.dashboard_theme.help');
+            assert.equal(pop.items, (help.match(/^- /gm) || []).length, `${where}: help list items`);
+            assert.equal(pop.bold, (help.match(/\*\*/g) || []).length / 2, `${where}: help bold option names`);
+            assert.equal(/\*\*|^- /m.test(pop.text), false, `${where}: no markdown markers in the help`);
+            assert.ok(pop.items > 0, `${where}: the theme help is a list`);
+            assert.equal(pop.inside, true, `${where}: the help popover stays inside the viewport`);
+            assert.deepEqual([pop.y, pop.top], [before.y, before.top], `${where}: opening the help does not move the page`);
             assert.equal(r.rowOverflow, false, `${where}: the row must not overflow`);
-            assert.equal(r.helpInside, true, `${where}: the help stays inside its row`);
+            assert.equal(r.helpInside, true, `${where}: the summary stays inside its row`);
             assert.equal(r.selectInside, true, `${where}: the select stays inside its row`);
             assert.equal(r.pageOverflow, false, `${where}: no horizontal page scroll`);
             await p.close();
