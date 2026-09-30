@@ -653,7 +653,7 @@ class PaneldServer internal constructor(
 
     /** Panel Assistant granted native authority, so this panel reaches Home Assistant without MQTT. */
     private fun panelAssistantNative(): Boolean =
-        config.panelAssistantAuthority == PanelAssistantTransportProtocol.AUTHORITY_NATIVE
+        !SetupBanner.mqttSetupRequired(config.panelAssistantAuthority)
 
 
     private fun statusJson(
@@ -717,7 +717,6 @@ class PaneldServer internal constructor(
     private fun dashboardAdvisories() = DashboardAdvisories(
         config, appContext, sensors, managementObservations, setupState, pageHealth,
         mqttState,
-        panelAssistantNative = ::panelAssistantNative,
         haSignInNeededForEffectiveDashboard = setupState::haSignInNeededForEffectiveDashboard,
         powerSafetyAdvisory = { privilege ->
             pageHealth.powerSafetyAdvisory(privilege, { profile.appCanSu }, powerSafety)

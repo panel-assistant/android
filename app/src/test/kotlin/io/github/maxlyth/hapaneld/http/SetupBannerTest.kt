@@ -159,7 +159,13 @@ class SetupBannerTest {
 
     /** Panel Assistant carries a natively run panel, so no broker is not a setup need. */
     @Test fun panelAssistantNative_withoutBroker_needsNothing() {
-        assertTrue(SetupBanner.needs("disabled", brokerConfigured = false, panelAssistantNative = true).isEmpty())
+        assertTrue(SetupBanner.needs("disabled", brokerConfigured = false, mqttSetupRequired = false).isEmpty())
         assertEquals(listOf("MQTT configuration"), SetupBanner.needs("disabled", brokerConfigured = false))
+    }
+    @Test fun migratedPanelIgnoresSavedBrokerFailuresAndProgress() {
+        for (status in listOf("host · unreachable", "host · auth rejected", "host · connecting…", "host · connected, announcing…")) {
+            assertTrue(SetupBanner.needs(status, brokerConfigured = true, mqttSetupRequired = false).isEmpty())
+            assertEquals(null, SetupBanner.progress(status, brokerConfigured = true, mqttSetupRequired = false))
+        }
     }
 }
