@@ -70,6 +70,7 @@ class EntityLearningAreaWriteTest {
             ) { _, method, args ->
                 when (method.name) {
                     "contains" -> false
+                    "getLong" -> args!![1]
                     "getString" -> when (args?.get(0)) {
                         "ha_url" -> "http://127.0.0.1:$port"
                         "ha_token" -> "test-token"

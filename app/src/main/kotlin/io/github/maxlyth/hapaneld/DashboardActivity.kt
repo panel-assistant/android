@@ -317,7 +317,19 @@ class DashboardActivity : AppCompatActivity() {
     // land AFTER onDestroy's removeCallbacksAndMessages and re-arm the self-perpetuating watchdog on a
     // dead activity. Every posted handler checks this first so nothing runs (or re-schedules) post-destroy.
     @Volatile private var destroyed = false
+    private var rendererRoute: HaConnectionRoute? = null
     private val rendererPowerListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == HaConnectionRoutes.EPOCH_KEY) runOnUiThread {
+            if (!destroyed && ::activityConfig.isInitialized && BuiltinDashboard.ownsActivity(activityOwner)) {
+                compatibilityJob?.cancel()
+                compatibilityCheckingOwner = null
+                compatibilityReadyUrl = null
+                compatibilityAttempts.invalidate()
+                invalidateHomeDashboardResolution()
+                teardownWeb()
+                buildAndLoad(activityConfig)
+            }
+        }
         if (key == "dashboard_network_warning") runOnUiThread { if (!destroyed) redrawLifecycleBar() }
         if (key == "prevent_idle_dim") {
             runOnUiThread {
@@ -864,6 +876,7 @@ class DashboardActivity : AppCompatActivity() {
      *  called on a screen-off — without this, an activity destroyed while dark would leave JS timers
      *  frozen for every future WebView in this forever process (a never-blank violation). */
     private fun teardownWeb() {
+        rendererRoute = null
         signInShownForUrl = null // the sign-in WebView is going away; a later call must rebuild it
         wakeMediaRecovery.invalidate()
         rendererGate.invalidate()
@@ -899,7 +912,8 @@ class DashboardActivity : AppCompatActivity() {
             rendererGate.owns(generation) && (view == null || web === view)
 
     private fun bridgeCurrent(generation: Long, session: ExternalBusController.Session): Boolean =
-        rendererCurrent(generation) && externalBus.owns(session)
+        rendererCurrent(generation) && externalBus.owns(session) &&
+            rendererRoute?.let { HaConnectionRoutes.isCurrent(activityConfig, it) } == true
 
     /** Rotate the bounded per-document controller before navigation. The listeners themselves stay
      * attached across ordinary HA reloads/redirects, as in upstream Android; their callback resolves
@@ -968,7 +982,7 @@ class DashboardActivity : AppCompatActivity() {
         config: Config,
     ) {
         check(webViewFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))
-        val allowedOrigins = dashboardDocumentStartOrigins(config.haUrl)
+        val allowedOrigins = dashboardDocumentStartOrigins(config.haEffectiveUrl, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))
         view.removeJavascriptInterface("externalApp")
         // Installation happens only before an HA navigation, never during an ordinary reload. Remove
         // defensively so a provider-restored name cannot make add fail or retain an unknown callback.
@@ -1136,13 +1150,13 @@ class DashboardActivity : AppCompatActivity() {
 
     private suspend fun prepareEntityFilter(config: Config): PreparedEntityFilter = prepareEntityFilterOffMain(read = {
         val enabled = config.dashboardEntityFilterEnabled
-        val haUrl = config.haUrl
+        val haUrl = config.haEffectiveUrl
         EntityFilterPreparationInput(
             enabled = enabled,
             learningEnabled = config.dashboardEntityLearningEnabled,
             ids = if (enabled) config.dashboardEntityFilterIds else emptyList(),
             haUrl = haUrl,
-            origins = if (enabled) dashboardDocumentStartOrigins(haUrl) else emptySet(),
+            origins = if (enabled) dashboardDocumentStartOrigins(haUrl, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config)) else emptySet(),
         )
     })
 
@@ -1484,7 +1498,7 @@ class DashboardActivity : AppCompatActivity() {
         }
         val prepared = prepareEntityFilter(config)
         if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner) || filterEpoch != filterPreparationEpoch) return
-        val normalizedUrl = config.haUrl.trim().trimEnd('/')
+        val normalizedUrl = config.haEffectiveUrl.trim().trimEnd('/')
         if (haSignInPending(config.haUrl, config.haToken, config.haRefreshToken)) {
             if (signInShownForUrl == normalizedUrl && web != null) {
                 Log.i(TAG, "on-panel sign-in still pending — keeping the live sign-in WebView")
@@ -1606,7 +1620,7 @@ class DashboardActivity : AppCompatActivity() {
         applyForceDark(w)
         val targetPath = nav ?: resolvedHomeDashboard(config)
             ?: return readmitForHomeDashboard(if (reload) "reload" else "relaunch")
-        val url = ExternalAuthProtocol.dashboardUrl(config.haUrl, targetPath)
+        val url = ExternalAuthProtocol.dashboardUrl(config.haEffectiveUrl, targetPath)
         noteDeliberateDashboardNavigation()
         noteAppNavigationTarget(targetPath)
         val generation = rendererGeneration
@@ -2205,7 +2219,7 @@ class DashboardActivity : AppCompatActivity() {
     private fun reloadTarget(): Boolean {
         val w = web ?: return false
         val config = Config(this)
-        val fresh = shownPage.needsFreshLoad(config.haUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)
+        val fresh = shownPage.needsFreshLoad(config.haEffectiveUrl, interstitialShown, dashboardRenderer = signInShownForUrl == null)
         // Only a fresh load needs the home dashboard; unresolved, admission loads it instead.
         val home = if (fresh) {
             resolvedHomeDashboard(config) ?: run {
@@ -2284,7 +2298,7 @@ class DashboardActivity : AppCompatActivity() {
      *  interstitial recoveries return to home rather than replaying a stale navigate), else the
      *  resolved [home] dashboard. */
     private fun currentUrl(config: Config, home: String): String = ExternalAuthProtocol.dashboardUrl(
-        config.haUrl,
+        config.haEffectiveUrl,
         BuiltinDashboard.consumeNavPath() ?: home,
     )
 
@@ -2831,7 +2845,7 @@ class DashboardActivity : AppCompatActivity() {
         // entered unconditionally and never left — the bootstrap it waits for needs an authenticated
         // Home Assistant connection that only the sign-in below can produce. Ordered the other way this
         // is a second, quieter deadlock sitting directly behind the readiness gate.
-        val url = config.haUrl.trim().trimEnd('/')
+        val url = config.haEffectiveUrl.trim().trimEnd('/')
         if (haSignInPending(url, config.haToken, config.haRefreshToken)) {
             showPhysicalHaSignIn(url)
             return
@@ -2857,7 +2871,7 @@ class DashboardActivity : AppCompatActivity() {
             showWaitingForEntityBootstrap()
             return
         }
-        val owner = DashboardV2CompatibilityOwner(url, config.haAuthSnapshot().stableOwner())
+        val owner = DashboardV2CompatibilityOwner(url, config.haAuthSnapshot().stableOwner(), config.haRouteEpoch())
         if (secureBridgeAdmission() == AdmissionOutcome.BRIDGE_UNAVAILABLE) {
             showBlockedAdmissionScreen(
                 getString(R.string.web_viewer_too_old_title),
@@ -2892,7 +2906,7 @@ class DashboardActivity : AppCompatActivity() {
                 !compatibilityAttempts.owns(compatibilityTicket, currentOwner)
             ) return@launch
             compatibilityCheckingOwner = null
-            when (val admission = DashboardV2Admission.resolve(result, config.cachedHaServerVersion(url))) {
+            when (val admission = DashboardV2Admission.resolve(result, config.cachedHaServerVersion(config.haUrl))) {
                 is DashboardV2Admission.Compatible -> {
                     // Admitted on a cached version is recorded DISTINCTLY from a live pass. The panel
                     // starts, but nothing about the server was confirmed this time — and when the
@@ -2907,7 +2921,7 @@ class DashboardActivity : AppCompatActivity() {
                             ?: HaTransportEvidence.NONE,
                     )
                     if (admission.live) {
-                        config.setHaServerVersionIfOwned(url, admission.version)
+                        config.setHaServerVersionIfOwned(config.haUrl, admission.version)
                     } else {
                         val detail = (result as DashboardV2ProbeResult.Unavailable).detail
                         Log.w(TAG, "HA version check unavailable; using previously verified ${admission.version} ($detail)")
@@ -2918,7 +2932,7 @@ class DashboardActivity : AppCompatActivity() {
                 }
                 is DashboardV2Admission.Blocked -> when (val blocked = admission.result) {
                     is DashboardV2ProbeResult.UnsupportedHa -> {
-                        config.setHaServerVersionIfOwned(url, blocked.version)
+                        config.setHaServerVersionIfOwned(config.haUrl, blocked.version)
                         showBlockedAdmissionScreen(
                             getString(R.string.ha_upgrade_required),
                             getString(R.string.ha_upgrade_required_detail, blocked.version),
@@ -3073,8 +3087,9 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun compatibilityOwner(config: Config): DashboardV2CompatibilityOwner =
         DashboardV2CompatibilityOwner(
-            normalizedUrl = config.haUrl.trim().trimEnd('/'),
+            normalizedUrl = config.haEffectiveUrl.trim().trimEnd('/'),
             authOwner = config.haAuthSnapshot().stableOwner(),
+            routeEpoch = config.haRouteEpoch(),
         )
 
     private fun homeDashboardOwner(config: Config): HomeDashboardResolutionOwner =
@@ -3404,7 +3419,7 @@ class DashboardActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun buildCompatibleAndLoad(config: Config, homePath: String) {
         if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
-        if (compatibilityReadyUrl != config.haUrl.trim().trimEnd('/')) return
+        if (compatibilityReadyUrl != config.haEffectiveUrl.trim().trimEnd('/')) return
         if (holdForEntityBootstrap(config) || entityFilterNativeHold != null) {
             showWaitingForEntityBootstrap()
             return
@@ -3417,6 +3432,7 @@ class DashboardActivity : AppCompatActivity() {
         entityBootstrapBlockedCount = -1
         val generation = rendererGate.open()
         rendererGeneration = generation
+        rendererRoute = HaConnectionRoutes.current(config)
         // The page carries a live HA session, so only expose the WebView's DevTools socket when network
         // adb is deliberately on (a debug posture) — not by default. The CDP relay (also off by default)
         // is the LAN publisher on top of this.
@@ -3751,7 +3767,7 @@ class DashboardActivity : AppCompatActivity() {
         config: Config,
         generation: Long,
     ): WebView = WebView(this).apply {
-        val documentStartOrigins = dashboardDocumentStartOrigins(config.haUrl)
+        val documentStartOrigins = dashboardDocumentStartOrigins(config.haEffectiveUrl, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.allowContentAccess = false
@@ -3851,7 +3867,7 @@ class DashboardActivity : AppCompatActivity() {
             if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
-                    EntityFilterProtocol.trafficObserverDocumentStartScript(config.haUrl, documentStartOrigins),
+                    EntityFilterProtocol.trafficObserverDocumentStartScript(config.haEffectiveUrl, documentStartOrigins),
                     documentStartOrigins,
                 )
                 EntityFilterTelemetry.trafficObserverInstalled(requireNotNull(filterLease))
@@ -3862,7 +3878,7 @@ class DashboardActivity : AppCompatActivity() {
                 androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
                     this,
                     EntityLearningProtocol.documentStartScript(
-                        config.haUrl,
+                        config.haEffectiveUrl,
                         documentStartOrigins,
                         BuildConfig.FEATURE_COSTS_ENABLED,
                     ),
@@ -3925,7 +3941,7 @@ class DashboardActivity : AppCompatActivity() {
             // downgrade and hand its external-auth bridge to cleartext content.
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!rendererCurrent(generation, view)) return true
-                val allowed = dashboardNavigationAllowed(config.haUrl, request.url.toString())
+                val allowed = dashboardNavigationAllowed(config.haEffectiveUrl, request.url.toString(), allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))
                 if (allowed && request.isForMainFrame) {
                     // Ownership transfers when the navigation BEGINS. doUpdateVisitedHistory alone is
                     // too late: a correction completing between these two callbacks would overwrite a
@@ -3943,9 +3959,9 @@ class DashboardActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
                 shownPage.onLoadStarted(url)
-                Log.d(TAG, "page load started (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
+                Log.d(TAG, "page load started (ha=${dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))})")
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
-                if (!dashboardNavigationAllowed(config.haUrl, url)) {
+                if (!dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))) {
                     // Native recovery/auth-latch documents are intentionally bridge-free. Their
                     // loadData navigation also reaches this callback, so never let the redirect
                     // backstop reattach either V2 object to an opaque/local document.
@@ -3981,7 +3997,7 @@ class DashboardActivity : AppCompatActivity() {
                 // Non-HA documents (the reconnecting page) suspended the bus session in onPageStarted, so
                 // only a Home Assistant document can commit here.
                 externalBusSession?.takeIf { bridgeCurrent(generation, it) }?.let(v2Handshake::commit)
-                Log.d(TAG, "page shown (ha=${dashboardNavigationAllowed(config.haUrl, url)})")
+                Log.d(TAG, "page shown (ha=${dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))})")
             }
 
             // Real navigation inside Home Assistant's own frontend — a tapped link, a back gesture,
