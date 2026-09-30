@@ -19,7 +19,7 @@ import io.github.maxlyth.hapaneld.util.HaTransportEvidence
  * persisting and the one shared refresh request belong to [HaCredentialManager], which every consumer
  * goes through.
  */
-object DashboardAuth {
+internal object DashboardAuth {
 
     /** The reply material for one external-auth handshake. */
     data class Session(val accessToken: String, val expiresInSec: Long)
@@ -44,6 +44,7 @@ object DashboardAuth {
          *  distinction, a cold-boot race or abandoned refresh is indistinguishable from a server
          *  refusal, and the panel parks on a credential screen for a credential HA never rejected. */
         val notAttempted: Boolean = false,
+        val route: HaConnectionRoute? = null,
     )
 
     /** Comfortable life a cached access token must have left to be reused rather than refreshed. */
