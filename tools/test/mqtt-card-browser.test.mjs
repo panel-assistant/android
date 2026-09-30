@@ -70,8 +70,9 @@ for (const engine of engines) {
     ];
     for (const [authority, response, mqttVisible] of cases) {
       const rig = await harness(response);
+      let view;
       try {
-        const view = await browser.newPage({ viewport: { width: 480, height: 800 } });
+        view = await browser.newPage({ viewport: { width: 480, height: 800 } });
         await view.goto(rig.url, { waitUntil: 'domcontentloaded' });
         for (const advanced of [false, true]) {
           await view.evaluate((isAdvanced) => window.cfgTab(isAdvanced), advanced);
@@ -87,8 +88,8 @@ for (const engine of engines) {
             assert.equal(await view.locator('#cfg-mqtt_address_family').count(), 0, `${authority} does not leave the address-family row behind in ${viewName}`);
           }
         }
-        await view.close();
       } finally {
+        await view?.close();
         await new Promise((resolve) => rig.server.close(resolve));
       }
     }
