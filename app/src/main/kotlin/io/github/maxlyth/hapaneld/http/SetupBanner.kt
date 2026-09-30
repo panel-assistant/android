@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld.http
 
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
+
 /**
  * Pure decision for the info-page setup banner: what the panel still needs configured, derived from the
  * live MQTT status string and whether a broker is configured. Generated panel identities are complete
@@ -10,16 +12,20 @@ package io.github.maxlyth.hapaneld.http
  * status is transient/blank, and a configured broker must NOT be reported as missing then.
  */
 object SetupBanner {
+    /** Saved MQTT settings do not make MQTT part of a panel already migrated to native authority. */
+    fun mqttSetupRequired(authority: String): Boolean =
+        authority != PanelAssistantTransportProtocol.AUTHORITY_NATIVE
+
     fun needs(
         mqttStatus: String,
         brokerConfigured: Boolean,
         mqttUserConfigured: Boolean = false,
-        panelAssistantNative: Boolean = false,
+        mqttSetupRequired: Boolean = true,
     ): List<String> {
         val needs = mutableListOf<String>()
         when {
             // Panel Assistant carries this panel's entities and commands, so MQTT is not something it needs.
-            panelAssistantNative && !brokerConfigured -> {}
+            !mqttSetupRequired -> {}
             mqttStatus.contains("connected") || mqttStatus.contains("connecting") ||
                 mqttStatus.contains("auth retrying") -> {} // connected / transient — fine
             !brokerConfigured -> needs.add("MQTT configuration") // discovery / broker setup is not proven yet
@@ -50,13 +56,14 @@ object SetupBanner {
         brokerConfigured: Boolean,
         dashboardStepPending: Boolean = false,
         liveState: String = "",
+        mqttSetupRequired: Boolean = true,
     ): String? {
         // The status string comes from a stale-while-revalidate snapshot; the canonical live state arrives
         // separately precisely so a FINISHED transition clears this banner within one poll cycle. Without
         // it, "publishing Home Assistant discovery" kept narrating a publish that had completed — the
         // bridge flips announcing→connected on the discovery PUBACK, but the snapshot can lag behind.
         // Blank means the caller has no live reading; trust the snapshot.
-        if (liveState == "connected") return null
+        if (!mqttSetupRequired || liveState == "connected") return null
         val next = if (dashboardStepPending) " The dashboard setup step appears next." else ""
         return when {
             !brokerConfigured -> null

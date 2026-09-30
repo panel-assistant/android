@@ -178,7 +178,9 @@ internal class ConfigValueProjection(
         val displaySizingAvailable = caps.canSetDisplay
         // Include the settable settings PLUS the read-only HA sensors (diagnostics): the latter carry
         // no editable value but still render an expose pip, so the user can opt them into HA.
+        val mqttSetupRequired = SetupBanner.mqttSetupRequired(config.panelAssistantAuthority)
         val schemaSpecs = SettingsRegistry.schemaVisibleSpecs(caps)
+            .filter { it.group != "MQTT" || mqttSetupRequired }
         val items = schemaSpecs.joinToString(",") { spec ->
             val opts = spec.optionsFor(caps).joinToString(",") { s(it) }
             val isHa = spec.ha != null
