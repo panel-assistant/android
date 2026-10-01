@@ -121,12 +121,16 @@ internal class PanelAssistantShadowReporter(
 
     /**
      * The `hello` offer, read from one shape: the descriptors, and the describable wire channels the bridge
-     * states it cannot serve. A channel in neither list is merely omitted, which changes nothing.
+     * states it cannot serve, including known retired channels. A channel in neither list is merely
+     * omitted, which changes nothing.
      */
     fun offer(): PanelAssistantHelloOffer {
         val shape = synchronized(lock) { source }.invoke()
         val descriptors = describable(shape.served)
-        return PanelAssistantHelloOffer(descriptors.values.toList(), describable(shape.unsupported).keys.toList())
+        val unsupported = shape.unsupported.mapNotNull(PanelAssistantChannelCatalog::wireChannel)
+            .filter { describe(it) != null || it in PanelAssistantChannelCatalog.RETIRED_CHANNELS }
+            .distinct().sorted()
+        return PanelAssistantHelloOffer(descriptors.values.toList(), unsupported)
     }
 
     /** Start reporting on an accepted shadow session described by [channels]. */

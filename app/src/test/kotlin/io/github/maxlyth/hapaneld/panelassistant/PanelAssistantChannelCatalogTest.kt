@@ -70,7 +70,7 @@ class PanelAssistantChannelCatalogTest {
         // beyond the fixture's hardware, so the cross-check covers the hand-written literals too.
         assertTrue("only $checked were cross-checked", checked.containsAll(listOf(
             "screen", "led", "buttons", "navigate", "home_dashboard", "storage_health", "update_paneld",
-            "update_companion", "navbar", "relay1", "button_led1", "watchdog", "update_channel",
+            "update_companion", "navbar", "relay1", "button_led1", "watchdog",
             "zigbee_router", "cpu_governor", "network_adb", "room_temp", "diag_wifi_outages_24h", "volume",
         )))
     }
@@ -110,7 +110,7 @@ class PanelAssistantChannelCatalogTest {
 
     @Test fun renamingADisplayLabelChangesNoWireCode() {
         val renamedSelects = SettingsRegistry.haCapable().filter { it.ha!!.facts.options != null }
-        assertTrue(renamedSelects.map { it.key }.containsAll(listOf("navbar_mode", "cpu_governor", "companion_update_channel")))
+        assertTrue(renamedSelects.map { it.key }.containsAll(listOf("navbar_mode", "cpu_governor")))
         for (spec in renamedSelects) {
             val entity = spec.ha!!
             val renamed = entity.facts.options!!.map { ChannelOption(it.code, "${it.label} (renamed)") }
@@ -146,10 +146,16 @@ class PanelAssistantChannelCatalogTest {
         assertNull(PanelAssistantChannelCatalog.describe("relay0"))
     }
 
+    @Test fun retiredAutoUpdateSettingsAreAbsentWhileExplicitUpdateDescriptorsRemain() {
+        listOf("self_update", "update_channel", "companion_auto_update", "companion_update_channel", "webview_auto_update").forEach { channel ->
+            assertNull(channel, PanelAssistantChannelCatalog.describe(channel))
+        }
+        assertEquals(PanelAssistantValueKind.UPDATE, PanelAssistantChannelCatalog.describe("update_paneld")?.kind)
+        assertEquals(PanelAssistantValueKind.UPDATE, PanelAssistantChannelCatalog.describe("update_companion")?.kind)
+    }
+
     @Test fun selectsAndClosedSensorsCarrySnakeCaseOptionCodes() {
         assertEquals(listOf("off", "always_on", "swipe_reveal", "native"), PanelAssistantChannelCatalog.describe("navbar")?.options)
-        assertEquals(listOf("stable", "prerelease"), PanelAssistantChannelCatalog.describe("update_channel")?.options)
-        assertEquals(listOf("stable", "prerelease"), PanelAssistantChannelCatalog.describe("companion_update_channel")?.options)
         assertEquals(listOf("performance", "efficiency", "auto"), PanelAssistantChannelCatalog.describe("cpu_governor")?.options)
         assertEquals(listOf("unchecked", "healthy", "warning", "critical", "database_failure"), PanelAssistantChannelCatalog.describe("storage_health")?.options)
         assertEquals(PanelAssistantValueKind.TEXT, PanelAssistantChannelCatalog.describe("diag_wifi_ssid")?.kind)

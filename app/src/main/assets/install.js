@@ -332,16 +332,6 @@
     });
   }
 
-  // Top-of-tab WebView too-old heal button.
-  window.healWebView = function (btn) {
-    btn.disabled = true; var s = document.getElementById('wv-heal');
-    if (s) s.textContent = t('install.progress.webview_installing', 'Downloading + installing… this takes a minute.');
-    fetch('api/v1/webview/heal', { method: 'POST' }).then(approvalAwareJson).then(function (d) {
-      if (d.status === 'busy') { if (s) s.textContent = t('install.progress.operation_busy', 'Another operation is running — try again shortly.'); btn.disabled = false; return; }
-      if (s) setPresented(s, d.presentation, t('install.progress.webview_started', 'Installing WebView — reload the dashboard, then refresh this page to confirm the new version.'));
-    }).catch(function (error) { if (s) s.textContent = requestFailure(error, t('install.progress.start_failed', 'Failed to start — check root/daemon.')); btn.disabled = false; });
-  };
-
   // Companion internal-URL repair (HA 2026.7 "Missing 'Host' header"): copy external_url into a blank
   // internal_url, then force-stop + relaunch the Companion.
   window.repairCompUrl = function (btn) {

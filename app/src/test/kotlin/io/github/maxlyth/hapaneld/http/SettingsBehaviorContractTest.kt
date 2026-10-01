@@ -332,12 +332,6 @@ class SettingsBehaviorContractTest {
         }
     }
 
-    @Test fun `special update channel outcome requires committed read-back`() {
-        assertTrue(directUpdateChannelCommitted(true, setOf("update_channel"), "prerelease", "prerelease"))
-        assertFalse(directUpdateChannelCommitted(true, setOf("update_channel"), "prerelease", "stable"))
-        assertFalse(directUpdateChannelCommitted(false, setOf("update_channel"), "stable", "stable"))
-    }
-
     @Test fun `a durable delegated value is separate from its failed effect receipt`() {
         assertEquals("dashboard_entity_learning_effect", directConfigEffectFailureOwner(true))
         assertEquals("renderer", directConfigEffectFailureOwner(false))

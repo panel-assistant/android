@@ -11,11 +11,11 @@ class PaneldServerConfigWiringTest {
         val registryKeys = SettingsRegistry.liveApplyKeys()
         val expectedKeys = setOf(
             "auto_brightness", "auto_brightness_ha_entity", "auto_brightness_minimum_percent", "auto_brightness_maximum_percent",
-            "auto_brightness_response_percent", "auto_sleep", "auto_sleep_source", "companion_auto_update",
-            "companion_update_channel", "cpu_governor", "ha_area", "home_dashboard", "kiosk_lock",
-            "navbar_mode", "network_adb", "prevent_idle_dim", "self_update", "silence_boot_chime",
-            "touch_sound", "update_channel", "voice_enabled", "wake_on_wave", "watchdog_enabled",
-            "webview_auto_update", "zigbee_router",
+            "auto_brightness_response_percent", "auto_sleep", "auto_sleep_source",
+            "cpu_governor", "ha_area", "home_dashboard", "kiosk_lock",
+            "navbar_mode", "network_adb", "prevent_idle_dim", "silence_boot_chime",
+            "touch_sound", "voice_enabled", "wake_on_wave", "watchdog_enabled",
+            "zigbee_router",
         )
 
         assertEquals(expectedKeys, registryKeys.toSet())

@@ -72,6 +72,11 @@ internal data class PanelAssistantChannelDescriptor(
  * renamed to their wire ids.
  */
 internal object PanelAssistantChannelCatalog {
+    /** Known former channels: hello states their retirement so existing native entities are removed. */
+    val RETIRED_CHANNELS: Set<String> = setOf(
+        "self_update", "update_channel", "companion_auto_update", "companion_update_channel", "webview_auto_update",
+    )
+
     /** Attribute channel → the channel whose observation carries its attributes. */
     val FOLDED: Map<String, String> = mapOf(
         "storage_health_attributes" to "storage_health",
@@ -207,9 +212,7 @@ internal object PanelAssistantChannelCatalog {
         wireOnly("watchdog", "switch"),
         wireOnly("silence_boot_chime", "switch"),
         wireOnly("prevent_idle_dim", "switch"),
-        wireOnly("self_update", "switch"),
         wireOnly("zigbee_router", "switch"),
-        wireOnly("update_channel", "select", SettingsRegistry.RELEASE_CHANNEL_OPTIONS),
     ).associateBy { it.channel } + SoftwareComponent.entries.associate { component ->
         val wire = "update_${component.wire}"
         wire to PanelAssistantChannelDescriptor(

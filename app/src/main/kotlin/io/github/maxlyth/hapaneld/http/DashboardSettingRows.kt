@@ -100,12 +100,6 @@ internal class DashboardSettingRows(private val config: Config) {
         ).joinToString("\n")
     }
 
-    fun updatesRowsHtml(
-        live: Map<String, String>,
-        strings: AppStrings,
-        capabilities: () -> Capabilities,
-    ): String = listOf("self_update", "update_channel", "companion_auto_update")
-        .mapNotNull { settingRowHtml(it, live, capabilities(), strings) }.joinToString("\n")
 
 }
 

@@ -73,7 +73,7 @@ object SettingsRegistry {
     }
 
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 13
+    const val SCHEMA = 14
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_MQTT_ADDRESS_FAMILY = "Automatic"
@@ -112,14 +112,21 @@ object SettingsRegistry {
 
     /**
      * Keys earlier builds wrote into backups and bundles that no current setting owns. A restore drops
-     * them rather than refusing the whole backup: the voice assistant's MQTT switch and state sensor
-     * were removed without a schema change, so a backup from the build before still carries them.
+     * them rather than refusing the whole backup, including automatic update preferences and their
+     * old HA exposure flags. Applying any bundle must never resurrect a retired update owner.
      */
     val RETIRED_KEYS: Set<String> = setOf(
         "voice_state",
         "${HA_EXPOSE_PREFIX}voice_enabled",
         "${HA_EXPOSE_PREFIX}voice_state",
-    )
+        "webview_auto_last_version",
+    ) + setOf(
+        "self_update",
+        "update_channel",
+        "companion_auto_update",
+        "companion_update_channel",
+        "webview_auto_update",
+    ).let { keys -> keys + keys.map { "$HA_EXPOSE_PREFIX$it" } }
 
     /** The retired schema-5 key. Read only by migration, and never registered as a current setting. */
     const val LEGACY_SENSITIVITY_KEY = "auto_brightness_sensitivity"
@@ -204,9 +211,6 @@ object SettingsRegistry {
         ChannelOption("efficiency", "Efficiency"),
         ChannelOption("auto", "Auto"),
     )
-
-    /** Release channels: the stored setting holds the code, MQTT shows the label. */
-    val RELEASE_CHANNEL_OPTIONS = listOf(ChannelOption("stable", "Stable"), ChannelOption("prerelease", "Pre-release"))
 
     val SPECS: List<SettingSpec> = listOf(
         // ---- Identity ----------------------------------------------------------------------------
@@ -765,65 +769,6 @@ object SettingsRegistry {
             scope = Scope.DEVICE,
             options = UI_LANGUAGES,
             help = "Language used by ha-paneld's own interface.\n\n**Automatic** uses an explicit page override first. Configure setting labels and help can then follow the connected Home Assistant user's language; browser, device and English are the remaining fallbacks.",
-        ),
-        SettingSpec(
-            key = "self_update", type = SettingType.BOOL, group = "System",
-            tier = Tier.BASIC, summary = "Install ha-paneld releases automatically.",
-            label = "ha-paneld auto-update", default = "true", scope = Scope.DEVICE,
-            liveApply = true,
-            help = "ha-paneld updates itself from GitHub releases on the selected channel. Only shown where verified app install is available.",
-            availableWhen = { it.canInstallVerifiedApps },
-        ),
-        SettingSpec(
-            key = "update_channel", type = SettingType.ENUM, group = "System",
-            tier = Tier.ADVANCED, summary = "Release channel the self-updater follows.",
-            label = "ha-paneld auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
-            liveApply = true,
-            scope = Scope.DEVICE,
-            availableWhen = { it.canInstallVerifiedApps },
-        ),
-        SettingSpec(
-            key = "companion_auto_update", type = SettingType.BOOL, group = "System",
-            shortDescriptionUsefulInPopover = true,
-            tier = Tier.ADVANCED, summary = "Keep the minimal Companion app installed and current (root).",
-            label = "Companion auto-update", default = "false", scope = Scope.DEVICE,
-            liveApply = true,
-            availableWhen = { it.companionInstalled },
-            ha = haEntity("switch", "companion_auto_update", "Companion auto-update") {
-                commandTopic()
-                stateTopic()
-                icon("mdi:cellphone-arrow-down")
-                entityCategory("config")
-            },
-        ),
-        SettingSpec(
-            key = "companion_update_channel", type = SettingType.ENUM, group = "System",
-            tier = Tier.ADVANCED, summary = "Release channel the Companion updater follows.",
-            label = "Companion auto-update channel", default = "stable", options = RELEASE_CHANNEL_OPTIONS.map { it.code },
-            liveApply = true,
-            scope = Scope.DEVICE,
-            ha = haEntity("select", "companion_update_channel", "Companion auto-update channel") {
-                commandTopic()
-                stateTopic()
-                options(RELEASE_CHANNEL_OPTIONS)
-                icon("mdi:source-branch")
-                entityCategory("config")
-            },
-            availableWhen = { it.companionInstalled },
-        ),
-        SettingSpec(
-            key = "webview_auto_update", type = SettingType.BOOL, group = "System",
-            tier = Tier.ADVANCED, summary = "Keep the System WebView on the recommended build (root).",
-            label = "WebView auto-update", default = "false", scope = Scope.DEVICE,
-            liveApply = true,
-            help = "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check.\n\nOff by default: a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
-            availableWhen = { it.webViewManaged },
-            ha = haEntity("switch", "webview_auto_update", "WebView auto-update") {
-                commandTopic()
-                stateTopic()
-                icon("mdi:web-sync")
-                entityCategory("config")
-            },
         ),
         SettingSpec(
             key = "launcher_package", type = SettingType.STRING, group = "System",

@@ -52,7 +52,6 @@ import io.github.maxlyth.hapaneld.util.CompanionInstaller
 import io.github.maxlyth.hapaneld.util.guardDbAppStaging
 import io.github.maxlyth.hapaneld.util.HaLink
 import io.github.maxlyth.hapaneld.util.InstallPresentation
-import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.Json
 import io.github.maxlyth.hapaneld.util.GenerationSingleFlight
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
@@ -130,28 +129,12 @@ class PaneldServer internal constructor(
     // Repair a Companion server row with an empty internal_url (the HA 2026.7 "Missing Host header"
     // incident). False means the shared destructive-operation lane is busy.
     private val onRepairCompanionUrl: () -> Boolean = { false },
-    // Install/update a managed component from the Install tab. name ∈ {paneld, companion, webview};
+    // Install/update a managed component from the Install tab. name ∈ {paneld, companion};
     // action ∈ {update, reinstall}; version = a specific release tag to install (blank = channel newest).
     // Runs off-thread; progress is reported via InstallProgress. Injected by the service.
     private val onInstallComponent: (String, String, String) -> Boolean = { _, _, _ -> false },
     // A Panel Assistant entry declared on its status poll that it owns the ha-paneld update entity.
     private val onPanelAssistantUpdateOwner: () -> Unit = {},
-    // Active channel changes are two-phase: prepare authenticates and database-admits one exact APK
-    // without mutation; the server then commits the whole config transaction and hands that same
-    // capability back to the service. Null means the admitted change had no APK to install (up to date,
-    // or self-update disabled) and still needs its MQTT state re-projected after commit.
-    private val prepareSelfUpdateChannel: suspend (String, Boolean) -> SelfUpdateChannelPreflight = { _, _ ->
-        SelfUpdateChannelPreflight.Unresolved("self-update channel preflight unavailable")
-    },
-    private val onSelfUpdateChannelCommitted: (
-        SelfUpdateChannelPreflight.Ready?,
-        InstallProgress.Ticket?,
-        String,
-        String,
-    ) -> Unit = { prepared, ticket, _, _ ->
-        prepared?.close()
-        ticket?.let { InstallProgress.finish(it, "self-update handoff unavailable") }
-    },
     // One read-only Android power assessment shared by every user and diagnostic surface.
     private val powerSafety: () -> PowerSafetyAssessment,
     // Uncached harmless direct-root capability probe. Explicit acknowledgement and repair paths only;
@@ -546,8 +529,8 @@ class PaneldServer internal constructor(
                         admitActiveRead = ::admitActiveRead,
                         refreshUpdates = {
                             UpdateChecker.check(
-                                appContext, config.updateChannel,
-                                config.companionUpdateChannel, profile.companionMaxVersion,
+                                appContext, "stable",
+                                "stable", profile.companionMaxVersion,
                             )
                         },
                         refreshStorage = refreshStorageHealth,
@@ -571,7 +554,6 @@ class PaneldServer internal constructor(
                         enabled = { config.zigbeeRouterEnabled },
                         join = onZigbeeJoinRetry,
                     )
-                    webViewHealRoute(onInstallComponent, ::authorizeSensitive)
                     rendererMaintenanceRoutes(
                         appContext, config, system, scope, clearStorageGate, { stopping },
                         onRepairCompanionUrl,
@@ -866,10 +848,6 @@ class PaneldServer internal constructor(
         requestTameReconcileAfterCommit = tameReconciliation::requestAfterCommit,
         snapInvalidate = ::snapInvalidate,
         onReconfigure = { onReconfigure(it) },
-        prepareSelfUpdateChannel = { channel, force -> prepareSelfUpdateChannel(channel, force) },
-        onSelfUpdateChannelCommitted = { prepared, ticket, before, after ->
-            onSelfUpdateChannelCommitted(prepared, ticket, before, after)
-        },
     )
 
     // ---- Full panel backup / restore (device-state bundle) ------------------------------------------

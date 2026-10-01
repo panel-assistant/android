@@ -189,6 +189,80 @@ class ConfigPostProductionRouteTest {
             }
         }
 
+    @Test fun `retired updater form and JSON posts cannot persist settings or start work`() =
+        withRouteConfig { config, persistence, server, live ->
+            setField(server, "onInstallComponent", { _: String, _: String, _: String ->
+                error("A configuration request must not install a package")
+            })
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } }
+                    }
+                }
+                for ((key, value) in retiredUpdaterValues) {
+                    val form = client.submitForm("/api/v1/config", Parameters.build {
+                        append(key, value)
+                        append("friendly_name", "Must not commit")
+                    }) { accept(ContentType.Application.Json) }
+                    assertEquals(HttpStatusCode.BadRequest, form.status, key)
+                    assertEquals("$key: unknown setting\n", form.bodyAsText())
+                    val json = client.post("/api/v1/config") {
+                        header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                        setBody(JSONObject(mapOf(key to value, "friendly_name" to "Must not commit")).toString())
+                    }
+                    assertEquals(HttpStatusCode.BadRequest, json.status, key)
+                    assertEquals("$key: unknown setting\n", json.bodyAsText())
+                }
+            }
+            assertEquals("Contract panel", config.friendlyName)
+            assertTrue(retiredUpdaterValues.keys.none { it in persistence.initialize() })
+            assertTrue(live.isEmpty(), "Retired settings must start no live apply or reconfigure")
+            assertTrue(!InstallProgress.running, "Retired settings must start no package operation")
+        }
+
+    @Test fun `legacy bundle updater settings are retired while ordinary settings still import`() =
+        withRouteConfig { config, persistence, server, live ->
+            setField(server, "onInstallComponent", { _: String, _: String, _: String ->
+                error("An imported configuration must not install a package")
+            })
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installConfigBundleRoutes() } }
+                    }
+                }
+                val legacy = ConfigBundle.fromValues(
+                    retiredUpdaterValues + mapOf("update_channel" to "stable", "friendly_name" to "Imported panel"),
+                ).copy(schema = 13)
+                val response = client.post("/api/v1/config/import") {
+                    header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                    setBody(legacy.serialize())
+                }
+                assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+                val receipt = JSONObject(response.bodyAsText())
+                assertEquals("applied", receipt.getString("status"))
+                assertEquals(listOf("friendly_name"), receipt.getJSONArray("applied").let { applied ->
+                    (0 until applied.length()).map(applied::getString)
+                })
+                assertEquals("Imported panel", config.friendlyName)
+                assertEquals("Imported panel", persistence.initialize()["friendly_name"])
+                assertTrue(retiredUpdaterValues.keys.none { it in persistence.initialize() })
+                val exported = requireNotNull(ConfigBundle.parse(client.get("/api/v1/config/export").bodyAsText()))
+                assertTrue(retiredUpdaterValues.keys.none { it in exported.values })
+            }
+            assertEquals(listOf("reconfigure"), live)
+            assertTrue(!InstallProgress.running, "Legacy updater settings must start no package operation")
+        }
+
+    private val retiredUpdaterValues = linkedMapOf(
+        "self_update" to "true",
+        "update_channel" to "prerelease",
+        "companion_auto_update" to "true",
+        "companion_update_channel" to "prerelease",
+        "webview_auto_update" to "true",
+    )
+
     @Test fun `failed production bundle commit records no revision and starts no live effects`() =
         withRouteConfig { config, persistence, server, live ->
             persistence.failWrites = true
@@ -598,10 +672,6 @@ class ConfigPostProductionRouteTest {
         setField(server, "stalledLiveSettings", { emptySet<String>() })
         setField(server, "configLiveValues", { emptyMap<String, String>() })
         setField(server, "onReconfigure", { _: Set<String> -> })
-        setField(server, "onSelfUpdateChannelCommitted", {
-            _: SelfUpdateChannelPreflight.Ready?, _: InstallProgress.Ticket?, before: String, after: String ->
-            assertEquals(before, after, "Route fixture must not switch update channels")
-        })
         setField(server, "rendererPreparation", renderer)
         setField(server, "autoSleepHttpApi", AutoSleepHttpApi.UNAVAILABLE)
         setField(server, "autoBrightnessHttpApi", AutoBrightnessHttpApi.UNAVAILABLE)

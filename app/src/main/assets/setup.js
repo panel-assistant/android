@@ -753,41 +753,16 @@
    * correct configuration produces a working dashboard. Raised at the renderer step — before the Home
    * Assistant address and sign-in — because the alternative is letting someone complete the whole journey
    * for a panel that was never going to render. */
-  function webViewCard(fixable) {
+  function webViewCard() {
     var body = [
       el("p", { class: "wiz-lead", text: i18nText("setup.webview.explanation", "This panel’s browser engine is too old to show a current Home Assistant dashboard. Everything else can be set up perfectly and the dashboard will still come up blank or broken, so this is worth fixing first.") }),
       // Said plainly because it is the wrong turn people take next: both renderers draw the dashboard in the
       // panel's one system WebView, so switching to the Home Assistant app does not avoid this.
       el("p", { class: "wiz-consequence", text: i18nText("setup.webview.companion_does_not_help", "Choosing the Home Assistant app instead will not help — it draws the dashboard using the same engine.") }),
     ];
-    if (fixable) {
-      body.push(primary(i18nText("setup.webview.action.update", "Update the panel’s browser engine"), function (e) {
-        e.target.disabled = true;
-        e.target.textContent = i18nText("setup.webview.state.installing_short", "Installing…");
-        postForm("api/v1/webview/heal", {})
-          .then(function (body) {
-            if (body.status !== "started") {
-              e.target.disabled = false;
-              e.target.textContent = i18nText("setup.webview.action.update", "Update the panel’s browser engine");
-              refresh();
-              return;
-            }
-            setLive(i18nText("setup.webview.state.installing", "Installing the recommended engine on the panel. It restarts once when it finishes, then this page continues by itself."));
-          })
-          .catch(function (err) {
-            e.target.disabled = false;
-            e.target.textContent = i18nText("setup.webview.action.update", "Update the panel’s browser engine");
-            stepErr(err.message);
-          });
-      }));
-      body.push(el("p", { class: "muted", text: i18nText("setup.webview.fixable_note", "ha-paneld installs the build known to work on this hardware. The panel restarts once to switch to it, which takes a minute or two.") }));
-    } else {
-      // No pinned build for this panel: say so rather than offering a button that cannot work.
-      body.push(el("p", { class: "wiz-consequence", text: i18nText("setup.webview.manual_note", "There is no known-good engine bundled for this panel model, so this one needs updating by hand — usually through the panel’s own system update, or by installing a current Android System WebView.") }));
-      body.push(el("p", { class: "wiz-cta" }, [
-        el("a", { class: "pbtn", href: internalHref("./"), text: i18nText("setup.action.panel_dashboard", "Panel dashboard") }),
-      ]));
-    }
+    body.push(el("p", { class: "wiz-cta" }, [
+      el("a", { class: "pbtn", href: internalHref("./"), text: i18nText("setup.action.panel_dashboard", "Panel dashboard") }),
+    ]));
     body.push(el("p", { class: "muted", id: "wiz-err", role: "alert" }));
     show([card(i18nText("setup.webview.title", "The panel’s browser engine needs updating"), null, body)], "webview");
   }
@@ -1373,7 +1348,7 @@
       case "mqtt:fail":
         // A rejected login routes `next` to CREDENTIALS while the detail lives on CONNECTION.
         return mqttCard(mqttFailure(step("mqtt_connection").detail, brokerHost(typed.mqtt_broker || "") || i18nText("setup.mqtt.host_fallback", "the broker"), false));
-      case "webview": return webViewCard(step("renderer").detail === "webview_too_old_fixable");
+      case "webview": return webViewCard();
       case "renderer": return rendererCard();
       case "ha_url": return haUrlCard();
       case "signin": return signinCard(step("ha_credentials").status === "in_flight");

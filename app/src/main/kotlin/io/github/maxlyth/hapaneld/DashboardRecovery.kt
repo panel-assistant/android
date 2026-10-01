@@ -620,8 +620,7 @@ internal enum class WebViewRebindDecision {
  * Decide whether a package install should hand the panel a fresh WebView engine.
  *
  * **Why a re-check cannot be the answer, and a new process must be.** A WebView provider binds once per
- * process — the same fact `PaneldService.activateWebView` already restarts on after ha-paneld installs an
- * engine itself. The capability verdict behind "Secure dashboard bridge unavailable" is read from the
+ * process. The capability verdict behind "Secure dashboard bridge unavailable" is read from the
  * bound engine's feature set, which is resolved once and held for the life of the process, so asking
  * again in the same process returns the same answer no matter what has since been installed on disk.
  * That is also why the manual Retry button cannot clear this particular screen. The only re-run that can
