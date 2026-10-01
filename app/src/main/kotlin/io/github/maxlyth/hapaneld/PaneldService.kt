@@ -1227,7 +1227,7 @@ class PaneldService : Service() {
             if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
                 PanelPermissionRepair.repair(
                     this@PaneldService, resolvedProfile.profile.hasMicrophone,
-                    cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()).capable,
+                    cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()),
                 )
             }
             withContext(Dispatchers.Main.immediate) {

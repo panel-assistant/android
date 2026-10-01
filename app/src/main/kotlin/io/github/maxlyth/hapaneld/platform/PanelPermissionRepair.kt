@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
+import io.github.maxlyth.hapaneld.camera.CameraCapabilityReason
 import io.github.maxlyth.hapaneld.util.HelperClient
 
 /** Repair installer omissions before the service constructs its feature owners. */
@@ -23,7 +24,12 @@ internal object PanelPermissionRepair {
         return enabled && services.orEmpty().split(':').any { it == component || it == fullComponent }
     }
 
-    fun repair(context: Context, hasMicrophone: Boolean, hasCamera: Boolean) {
+    /** Feature metadata can prove hardware while early camera enumeration is still unavailable. */
+    fun cameraRequired(reason: CameraCapabilityReason, hardwareFeature: Boolean): Boolean =
+        reason.capable || (reason == CameraCapabilityReason.UNDETERMINED && hardwareFeature)
+
+    fun repair(context: Context, hasMicrophone: Boolean, cameraReason: CameraCapabilityReason) {
+        val hasCamera = cameraRequired(cameraReason, context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY))
         repair(Build.VERSION.SDK_INT, hasMicrophone, hasCamera, { grant ->
             when (grant) {
                 Grant.NOTIFICATIONS -> context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

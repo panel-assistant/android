@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.platform
 
 import io.github.maxlyth.hapaneld.AppIdentity
+import io.github.maxlyth.hapaneld.camera.CameraCapabilityReason
 import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.Grant
 import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.Outcome
 import org.junit.Assert.assertEquals
@@ -92,6 +93,14 @@ class PanelPermissionRepairTest {
         assertEquals(Outcome.UNREADABLE, outcomes[Grant.CAMERA])
         assertEquals(5, outcomes.values.count { it == Outcome.HELD })
         assertTrue(panel.submitted.isEmpty())
+    }
+
+    @Test fun cameraMetadataCoversDelayedEnumerationWithoutOverridingTheProfile() {
+        for (reason in CameraCapabilityReason.entries) for (hardware in listOf(false, true)) {
+            val expected = reason == CameraCapabilityReason.PRESENT || reason == CameraCapabilityReason.MISDECLARED ||
+                (reason == CameraCapabilityReason.UNDETERMINED && hardware)
+            assertEquals(expected, PanelPermissionRepair.cameraRequired(reason, hardware))
+        }
     }
 
     @Test fun accessibilityRequiresOurExactComponentAndTheGlobalEnableFlag() {
