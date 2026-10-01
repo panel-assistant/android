@@ -12034,9 +12034,9 @@
       "text": "Nome descrittivo"
     },
     "setup.identity.lead": {
-      "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+      "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
       "state": "machine-cross-checked",
-      "text": "Un nome, il server Home Assistant e l’accesso, la plancia da mostrare e poi il broker MQTT: poche domande rapide e hai finito. Puoi interrompere e riprendere senza perdere nulla."
+      "text": "Un nome, il server Home Assistant e l’accesso, e poi la plancia da mostrare: poche domande rapide e hai finito. Puoi interrompere e riprendere senza perdere nulla."
     },
     "setup.identity.panel_id.consequence": {
       "sourceHash": "11391c9e4db33e3d19c5a78512029ed387422d250909887f45dc4564c19d14a4",
