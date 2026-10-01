@@ -43,6 +43,22 @@ class RtspProtocolTest {
 
     private val tcp = mapOf("Transport" to "RTP/AVP/TCP;unicast;interleaved=0-1")
 
+    @Test fun audioAndVideoSetupKeepIndependentChannelsAndRejectOverlap() {
+        val dual = sdp + "m=audio 0 RTP/AVP 97\r\na=control:trackID=1\r\n"
+        val session = RtspSession("77", FakeDescriber(Described.Ready(dual)))
+        assertEquals(200, session.handle(req("SETUP", url = "rtsp://panel:8554/live/trackID=0", headers = tcp)).response.status)
+        assertEquals(461, session.handle(req("SETUP", url = "rtsp://panel:8554/live/trackID=1", headers = tcp + ("Session" to "77"))).response.status)
+        assertEquals(200, session.handle(req("SETUP", url = "rtsp://panel:8554/live/trackID=1", headers = mapOf("Transport" to "RTP/AVP/TCP;interleaved=2-3", "Session" to "77"))).response.status)
+        assertEquals("audio SETUP must preserve the video channel", 0, session.rtpChannel)
+    }
+
+    @Test fun anAudioTrackAloneCannotStartRoomCapture() {
+        val dual = sdp + "m=audio 0 RTP/AVP 97\r\na=control:trackID=1\r\n"
+        val session = RtspSession("77", FakeDescriber(Described.Ready(dual)))
+        assertEquals(200, session.handle(req("SETUP", url = "rtsp://panel:8554/live/trackID=1", headers = tcp)).response.status)
+        assertEquals(455, session.handle(req("PLAY", headers = mapOf("Session" to "77"))).response.status)
+    }
+
     @Test fun theRequestParserReadsTheRequestLineAndCaseInsensitiveHeaders() {
         val parsed = requireNotNull(
             RtspRequest.parse("DESCRIBE rtsp://panel:8554/live?res=480p RTSP/1.0\r\nCSeq: 3\r\nAccept: application/sdp\r\nUser-Agent: go2rtc\r\n"),
@@ -186,11 +202,11 @@ class RtspProtocolTest {
         assertEquals(406, wrongType.response.status)
     }
 
-    @Test fun theDescriptionHasOneVideoTrackWithTheParameterSetsAndNoAudio() {
+    @Test fun theDescriptionWithoutAnAdmittedMicrophoneHasOneVideoTrackWithTheParameterSets() {
         val lines = sdp.split("\r\n")
         assertEquals(1, lines.count { it.startsWith("m=") })
         assertEquals("m=video 0 RTP/AVP 96", lines.first { it.startsWith("m=") })
-        assertTrue("video only: the trial never opens the microphone", lines.none { it.startsWith("m=audio") })
+        assertTrue("no audio without an admitted microphone", lines.none { it.startsWith("m=audio") })
         assertTrue(lines.contains("a=rtpmap:96 H264/90000"))
         assertTrue(lines.contains("a=fmtp:96 packetization-mode=1;profile-level-id=42C01F;sprop-parameter-sets=Z0LAH9oBQA==,aM4G4g=="))
         assertTrue(lines.contains("a=control:trackID=0"))

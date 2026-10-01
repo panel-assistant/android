@@ -201,9 +201,9 @@ internal class PanelBackupBuilder(
             excludedKeys = ENTITY_STATE_CONFIG_KEYS,
             effectiveValue = { effectiveValue(it, live) },
         ).entries.joinToString(",") { (key, value) -> "${Json.str(key)}:${Json.str(value)}" }
-        val exposures = SettingsRegistry.SPECS.filter { it.ha != null }
-            .joinToString(",") { spec ->
-                "${Json.str(SettingsRegistry.exposureKey(spec))}:${Json.str(config.haExposed(spec.key, spec.haExposedByDefault).toString())}"
+        val exposures = persistedExposureValues(config)
+            .entries.joinToString(",") { (key, value) ->
+                "${Json.str(key)}:${Json.str(value)}"
             }
         val sb = StringBuilder("{\"kind\":\"ha-paneld-backup\",\"schema\":${SettingsRegistry.SCHEMA}")
         sb.append(",\"panel_id\":${Json.str(config.panelId)},\"created\":${Json.str(System.currentTimeMillis().toString())}")

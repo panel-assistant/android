@@ -10339,9 +10339,9 @@
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
-      "sourceHash": "7cdea3db240f425db9be12ceb307b9cb3986e5466981f26156d853e842ab2c9f",
+      "sourceHash": "26cbf74a17b8917bdc37624458a557520a5289f5902c34ffba20f4c5fa408a0f",
       "state": "machine-cross-checked",
-      "text": "Disattivata per impostazione predefinita. Fornisce la videocamera del pannello come flusso RTSP solo video e come istantanea JPEG acquisibile da Home Assistant; nessun fotogramma lascia il pannello a meno che non sia connesso un client e, quando la videocamera è aperta, sul pannello si accende una spia rossa."
+      "text": "Disattivata per impostazione predefinita. Fornisce video RTSP con audio della stanza se un microfono è disponibile e autorizzato, e istantanee JPEG per Home Assistant. La cattura inizia solo quando un client richiede contenuti multimediali e il pannello mostra una spia rossa mentre la videocamera è aperta."
     },
     "settings.camera_enabled.label": {
       "sourceHash": "03494b0d1f803522a3497d751eaaf6f987883cd4fe0b0e66baf67a662ae231b2",

@@ -42,6 +42,10 @@ class CameraRtspServer(
      * DESCRIBE returns; a seam for tests that place a stream end exactly there. Production passes nothing.
      */
     private val afterAdoption: () -> Unit = {},
+    private val audio: CameraAudioSource? = null,
+    /** Same monotonic origin as encoder PTS; Android supplies elapsed realtime. */
+    private val clockUs: () -> Long = { System.nanoTime() / 1_000L },
+    private val wallMs: () -> Long = System::currentTimeMillis,
 ) : CameraStreamTransport {
 
     private val lock = Any()
@@ -53,6 +57,29 @@ class CameraRtspServer(
     private var attaching = 0
     private var nextClientId = 1
     private var stopped = false
+    private val audioLock = Any()
+    private val audioEpoch = java.util.concurrent.atomic.AtomicLong()
+    private var audioLease: AutoCloseable? = null
+
+    /** Foreign capture calls never run under the client lock. One STREAM lease serves all viewers. */
+    private fun refreshAudio() = synchronized(audioLock) {
+        val wanted = synchronized(lock) { !stopped && advertised.get() != null && clients.any { it.playing && it.session.audioRtpChannel != null } }
+        if (!wanted) {
+            synchronized(lock) { audioEpoch.incrementAndGet() }
+            val retiring = audioLease
+            audioLease = null
+            runCatching { retiring?.close() }
+        } else if (audioLease == null) {
+            val epoch = synchronized(lock) { audioEpoch.incrementAndGet() }
+            val started = runCatching { audio?.start { unit, ptsUs ->
+                val targets = synchronized(lock) {
+                    if (audioEpoch.get() == epoch) clients.filter { it.playing && it.session.audioRtpChannel != null } else emptyList()
+                }
+                targets.forEach { it.sendAudio(unit, ptsUs, epoch) }
+            } }.onFailure { log("camera audio could not start: ${it.javaClass.simpleName}") }.getOrNull()
+            if (audioEpoch.get() == epoch) audioLease = started else runCatching { started?.close() }
+        }
+    }
 
     /**
      * The parameter sets a DESCRIBE is answered with and the encoder attempt that published them, as
@@ -102,6 +129,7 @@ class CameraRtspServer(
     override fun stop() {
         synchronized(lock) { stopped = true }
         stopListening(joinMs = JOIN_MS)
+        refreshAudio()
     }
 
     override fun facts(): StreamTransportFacts = synchronized(lock) {
@@ -150,6 +178,7 @@ class CameraRtspServer(
 
     override fun onParameterSets(sets: ParameterSets, attempt: Long) {
         advertised.set(Advertised(sets, attempt))
+        refreshAudio()
     }
 
     override fun onAccessUnit(nals: List<ByteArray>, keyFrame: Boolean, ptsUs: Long, attempt: Long) {
@@ -161,7 +190,7 @@ class CameraRtspServer(
         val timestamp = RtpH264Packetizer.rtpTimestamp(ptsUs)
         lastRtpTimestamp = timestamp
         val playing = synchronized(lock) { clients.filter { it.playing } }
-        playing.forEach { it.send(wire, timestamp) }
+        playing.forEach { it.send(wire, timestamp, ptsUs) }
     }
 
     override fun onEncoderStopped(attempt: Long) {
@@ -170,6 +199,9 @@ class CameraRtspServer(
         // with the previous encoder's sets. Only [attempt]'s own sets are retracted: a newer encoder
         // may have published between the camera deciding to retract and this call.
         advertised.updateAndGet { current -> current?.takeUnless { it.attempt == attempt } }
+        // The owner may remove its indication during a bounded camera reopen. No microphone
+        // capture crosses that gap; fresh video sets restart audio only after indication returns.
+        refreshAudio()
     }
 
     override fun onStreamEnded(through: Long) {
@@ -206,8 +238,11 @@ class CameraRtspServer(
 
     /** One connection: its RTSP session, its lease on the camera, and its two threads. */
     private inner class Client(private val socket: Socket, id: Int) : StreamDescriber {
-        private val session = RtspSession(sessionId(), this)
+        val session = RtspSession(sessionId(), this)
         private val packetizer = RtpH264Packetizer(ssrc = random.nextInt(), firstSequence = random.nextInt(0x10000))
+        private val audioPacketizer = RtpAacPacketizer(random.nextInt(), random.nextInt(0x10000))
+        private val videoRtcp = RtcpSender(packetizer.ssrc)
+        private val audioRtcp = RtcpSender(audioPacketizer.ssrc)
         private val queue = ArrayBlockingQueue<ByteArray>(queuePackets)
         private val reader = Thread(::readLoop, "camera-rtsp-client-$id").apply { isDaemon = true }
         private val writer = Thread(::writeLoop, "camera-rtsp-send-$id").apply { isDaemon = true }
@@ -314,19 +349,44 @@ class CameraRtspServer(
          */
         private fun sdpOrRefusal(params: StreamParams): Described {
             val current = advertised.get()?.sets ?: return Described.Refused(CameraRefusal.STARVED)
-            return Described.Ready(Sdp.video(session.id, current, params.fps, params.width, params.height))
+            return Described.Ready(Sdp.video(session.id, current, params.fps, params.width, params.height, audio = audio?.available() == true))
         }
 
         /** From the encoder's thread: packetise for this client and queue; overflow drops the client, never blocks. */
-        fun send(wire: List<ByteArray>, rtpTimestamp: Long) {
+        fun send(wire: List<ByteArray>, rtpTimestamp: Long, ptsUs: Long) {
             val channel = session.rtpChannel
             for (packet in packetizer.packetize(wire, rtpTimestamp)) {
+                videoRtcp.sent(packet)
                 if (!offerOrDrop(RtspInterleaved.frame(channel, packet))) {
                     log("rtsp client dropped: it cannot keep up with the stream")
                     close()
                     return
                 }
             }
+            if (session.audioRtpChannel != null) session.videoRtcpChannel?.let { channelRtcp ->
+                videoRtcp.report(rtpTimestamp, ptsUs, clockUs(), wallMs())?.let { enqueue(RtspInterleaved.frame(channelRtcp, it)) }
+            }
+        }
+
+        fun sendAudio(unit: ByteArray, ptsUs: Long, epoch: Long) {
+            val accepted = synchronized(lock) {
+                if (closed || !playing || audioEpoch.get() != epoch) return
+                val channel = session.audioRtpChannel ?: return
+                val timestamp = RtpAacPacketizer.rtpTimestamp(ptsUs)
+                var fits = true
+                for (packet in audioPacketizer.packetize(unit, timestamp)) {
+                    audioRtcp.sent(packet)
+                    if (!offerOrDrop(RtspInterleaved.frame(channel, packet))) { fits = false; break }
+                }
+                if (fits) session.audioRtcpChannel?.let { channelRtcp ->
+                    audioRtcp.report(timestamp, ptsUs, clockUs(), wallMs())?.let {
+                        fits = offerOrDrop(RtspInterleaved.frame(channelRtcp, it))
+                    }
+                }
+                fits
+            }
+            // A close enters capture lifetime management, so never call it under the client lock.
+            if (!accepted) close()
         }
 
         /** Never waits: a full queue means this client is behind, and the encoder's thread is not the one to pay for it. */
@@ -355,7 +415,10 @@ class CameraRtspServer(
                     }
                     if (bodyLength > 0) skip(input, bodyLength)
                     val outcome = session.handle(request, packetizer.nextSequence, lastRtpTimestamp)
-                    if (outcome.stopPlaying) playing = false
+                    if (outcome.stopPlaying) {
+                        playing = false
+                        refreshAudio()
+                    }
                     // The 200 PLAY is queued BEFORE media delivery is enabled, so on the one ordered
                     // byte stream the response always precedes the first interleaved frame; the sync
                     // frame is requested right after so the picture the client needs is on its way.
@@ -363,6 +426,7 @@ class CameraRtspServer(
                     if (outcome.startPlaying) {
                         playing = true
                         source().requestKeyFrame()
+                        refreshAudio()
                     }
                     if (outcome.close) {
                         graceful = true
@@ -417,6 +481,7 @@ class CameraRtspServer(
             runCatching { socket.close() }
             queue.clear()
             queue.offer(POISON)
+            refreshAudio()
             toRelease?.let { runCatching { it.close() } }
         }
 

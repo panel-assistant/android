@@ -361,6 +361,44 @@ class VoiceAssistantCoordinatorTest {
     }
 
     @Test
+    fun `Assist shutdown leaves room stream capture alive on the shared fanout`() {
+        val frames = java.util.concurrent.LinkedBlockingQueue<ShortArray>()
+        val delivered = java.util.concurrent.CountDownLatch(1)
+        val fanout = io.github.maxlyth.hapaneld.audio.MicrophoneFanOut(deviceFactory = {
+            object : io.github.maxlyth.hapaneld.audio.PcmCaptureDevice {
+                override fun open() = true
+                override fun read(buffer: ShortArray, offset: Int, count: Int): Int {
+                    val frame = frames.take()
+                    if (frame.isEmpty()) return 0
+                    frame.copyInto(buffer, offset, 0, count)
+                    return count
+                }
+                override fun stop() { frames.offer(shortArrayOf()) }
+                override fun close() {}
+            }
+        })
+        val room = fanout.lease(MicPurpose.STREAM, consumer = object : PcmConsumer {
+            override fun onFrame(frame: PcmFrame) { delivered.countDown() }
+        })
+        val c = VoiceAssistantCoordinator(
+            scope = scope, settings = { settings }, microphoneAvailable = { true },
+            source = { fanout }, engineFactory = engineFactory,
+            runnerFactory = { ScriptedRunner() }, playback = playback,
+            foregroundMicrophone = { true }, state = state,
+        )
+        try {
+            c.start()
+            assertTrue(c.shutdown(1_000))
+            frames.offer(ShortArray(160) { 42 })
+            assertTrue("room audio still arrives after Assist shuts down", delivered.await(1, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(room.active)
+        } finally {
+            room.close()
+            fanout.shutdown(1_000)
+        }
+    }
+
+    @Test
     fun `shutdown never asks for a microphone source that was never obtained`() {
         settings = settings.copy(enabled = false)
         val c = coordinator()

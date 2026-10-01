@@ -13,22 +13,9 @@ import org.junit.Test
  * reach which piece of hardware. Two facts now hold at once, and it is worth being explicit about
  * why, because at first glance they look like they contradict each other.
  *
- * The camera trial still ships video only. It never records audio. But the microphone permissions
- * *are* declared, because a different feature owns them: the panel has one microphone and Android
- * grants one capture client, so the boot-started agent owns capture and leases it out to whatever
- * needs it. Declaring those permissions says something about that agent and nothing at all about the
- * camera.
- *
- * What stops those two facts from blurring into each other is where the foreground-service types
- * live. Android grants while-in-use access by type, so a service without the microphone type cannot
- * reach the microphone however the application-level permissions read. The camera type therefore
- * lives on the dedicated camera service and nowhere else — so the boot-started agent never inherits
- * a type Android would refuse it — and the microphone type lives on that agent and nowhere else, so
- * the camera service cannot reach the microphone.
- *
- * That is what the assertions below pin. Not "the microphone is absent", which was true when the
- * trial shipped alone and is not true now, but "the microphone is not the camera's", which is what
- * the trial actually promised and what still has to hold.
+ * Camera video standing belongs to the dedicated camera service. Microphone standing belongs
+ * to the boot-started agent that owns shared capture and combines voice/camera STREAM claims.
+ * The camera service itself remains camera-only and never owns a second recorder.
  */
 class CameraManifestContractTest {
 
@@ -85,7 +72,7 @@ class CameraManifestContractTest {
             servicesDeclaringType("microphone"),
         )
         assertEquals(
-            "the camera service is camera-typed and nothing more, so the trial cannot reach the microphone",
+            "the camera service owns video standing; shared microphone standing stays on the agent",
             listOf("camera"),
             serviceTypes(CAMERA_SERVICE),
         )

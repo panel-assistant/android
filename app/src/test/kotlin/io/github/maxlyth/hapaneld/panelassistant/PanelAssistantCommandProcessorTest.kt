@@ -8,6 +8,22 @@ import org.junit.Test
 
 class PanelAssistantCommandProcessorTest {
 
+    @Test fun `standard camera power commands reach the shared panel control`() {
+        val descriptor = PanelAssistantChannelDescriptor(
+            channel = "camera_enabled", platform = "camera", translationKey = "camera",
+            uniqueSuffix = "camera", kind = PanelAssistantValueKind.BOOLEAN,
+        )
+        val fixture = Fixture(channels = listOf(descriptor))
+        fixture.processor.onCommand(command("off", "camera_enabled", false))
+        assertEquals(1, fixture.sink.submitted.size)
+        assertEquals("camera_enabled", fixture.sink.submitted.single().command.channel)
+        assertEquals("OFF", fixture.sink.submitted.single().command.payload)
+        fixture.sink.submitted.single().done(PanelAssistantCommandResult.Applied)
+        assertEquals("applied" to null, outcome(fixture.answers()))
+        fixture.processor.onCommand(command("on", "camera_enabled", true))
+        assertEquals("ON", fixture.sink.submitted.last().command.payload)
+    }
+
     @Test fun `an applied command is answered once with its session and id`() {
         val fixture = Fixture()
         fixture.processor.onCommand(command("c1", "relay1", true))

@@ -175,12 +175,16 @@ internal class PaneldServerHttpFixture(
         ))
     }
 
-    fun backupBuilder(wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog?) = PanelBackupBuilder(
+    fun backupBuilder(
+        wakeWords: io.github.maxlyth.hapaneld.assist.wakeword.WakeWordCatalog?,
+        config: Config = this.config,
+        effectiveValue: (io.github.maxlyth.hapaneld.config.SettingSpec, Map<String, String>) -> String = { spec, _ -> spec.default },
+    ) = PanelBackupBuilder(
         appContext = context,
         config = config,
         cacheDir = directory,
         configLiveValues = { emptyMap() },
-        effectiveValue = { spec, _ -> spec.default },
+        effectiveValue = effectiveValue,
         profileAdmin = null,
         companion = CompanionBackupOperations(
             installedCompanionPackage = { error("Companion explicitly excluded") },

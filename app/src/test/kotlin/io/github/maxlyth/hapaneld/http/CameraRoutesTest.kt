@@ -18,6 +18,26 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class CameraRoutesTest {
+    @Test fun `switching off during a snapshot refuses the completed frame`() {
+        var presentation = CameraPresentation.absent()
+        val camera = object : CameraSurface {
+            override fun presentation() = presentation
+            override fun snapshot(requested: CameraResolution?): SnapshotResult {
+                presentation = CameraPresentation.disabled()
+                return SnapshotResult.Jpeg(byteArrayOf(1, 2, 3))
+            }
+        }
+        PaneldServerHttpFixture(camera = camera).use { fixture ->
+            testApplication {
+                application { fixture.mount(this) }
+                val response = client.get("/api/v1/camera/snapshot.jpg")
+                assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+                assertEquals("camera-disabled\n", response.bodyAsText())
+                assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            }
+        }
+    }
+
     @Test fun `full mount preserves passive status active snapshot and refusal mapping`() {
         val requests = mutableListOf<CameraResolution?>()
         var result: SnapshotResult = SnapshotResult.Jpeg(byteArrayOf(1, 2, 3))
