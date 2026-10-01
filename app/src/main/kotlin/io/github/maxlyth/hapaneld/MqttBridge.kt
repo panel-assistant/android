@@ -1909,6 +1909,7 @@ internal class MqttBridge(
     private fun hardwareAvailability(key: String, learnedProximity: Boolean?): Boolean? = when (key) {
         "temperature" -> hasTemperature
         "humidity" -> hasHumidity
+        "camera_enabled" -> hasCamera()
         "proximity", "proximity_level" -> learnedProximity
         // LedFactory returns the no-op controller only for a profile declaring no LED. A declared LED stays
         // described even when its probe fails: a daemon-driven one reads false until the helper answers.
@@ -4222,20 +4223,16 @@ internal class MqttBridge(
         registryExposable("auto_brightness") {
             stateConverger.reconcile("auto_brightness", force = true)
         }
-        // Camera is off by default and offered where the profile declares one or Android enumerates one.
-        // The switch is the master privacy stop: with it off the hardware does not open for anything, and
-        // turning it on here arms nothing more — Android still withholds the camera until the permission
-        // is granted at the panel.
-        registryExposable("camera_enabled") {
-            stateConverger.reconcile("camera_enabled", force = true)
-        }
+        // The native camera now owns this setting; withdraw its redundant legacy switch.
+        publishConfig("switch", "${panel}_camera_enabled", "")
+        stateConverger.reconcile("camera_enabled", force = true)
         // The snapshot as an `image` entity carrying a URL. Home Assistant stores the URL and fetches a
         // frame only when somebody looks at the card, so a still exists without the panel ever taking one
         // — and no frame is parked on the broker, which the camera contract forbids outright. Its own
         // availability topic carries the master switch, so an off camera reads `unavailable` instead of
         // showing a stale frame that would imply the panel is still watching.
-        // The master switch is opt-in, so the image follows it rather than the hardware. Announcing on
-        // capability alone published a permanently unavailable image beside no control able to arm it.
+        // Keep the saved legacy exposure preference for existing snapshot entities until their
+        // retirement is evaluated. The setting no longer exposes a separate HA switch.
         cameraSnapshotAnnounced = capabilitySnapshot?.hasCamera == true &&
             config.haExposed("camera_enabled", false)
         // Published unconditionally: the empty payload is the retained tombstone that actually removes

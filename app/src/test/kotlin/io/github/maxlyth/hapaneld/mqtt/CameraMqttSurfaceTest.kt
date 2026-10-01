@@ -50,26 +50,12 @@ class CameraMqttSurfaceTest {
         return payload.optString(key)
     }
 
-    @Test fun theCameraSwitchIsCapabilityGatedAndStaysLocalUntilItIsExposed() {
-        val spec = SettingsRegistry.spec("camera_enabled")
-        assertNotNull("camera_enabled must stay in the settings registry", spec)
-        val entity = spec!!.ha
-        assertNotNull("camera_enabled must carry a Home Assistant entity descriptor", entity)
-        assertEquals("switch", entity!!.component)
-        assertEquals("camera_enabled", entity.objectSuffix)
-        // A camera switch nobody asked for must not appear in Home Assistant by default.
-        assertFalse(spec.haExposedByDefault)
+    @Test fun cameraSettingStaysLocalAndCapabilityGatedWhileTheNativeCameraControlsIt() {
+        val spec = SettingsRegistry.spec("camera_enabled")!!
+        assertNull("a native camera replaces the redundant configuration switch", spec.ha)
         assertTrue(spec.availableWhen(Capabilities(hasCamera = true)))
         assertFalse(spec.availableWhen(Capabilities()))
-
-        val payload = JSONObject(
-            entity.buildDiscoveryJson(panel, """"availability_topic":"$panelAvailability"""", device),
-        )
-        assertEquals("test_camera_enabled", field(payload, "object_id"))
-        assertEquals("test_camera_enabled", field(payload, "unique_id"))
-        assertEquals("ha-paneld/test/camera_enabled/set", field(payload, "command_topic"))
-        assertEquals("ha-paneld/test/camera_enabled/state", field(payload, "state_topic"))
-        assertEquals("config", field(payload, "entity_category"))
+        assertEquals("false", spec.default)
     }
 
     @Test fun theCameraCeilingsStayOnThePanelAndNeverBecomeEntities() {
@@ -209,7 +195,6 @@ class CameraMqttSurfaceTest {
         )
 
         val discovery = slice(mqtt, "private fun publishDiscovery", "private fun jsonEsc")
-        assertTrue(discovery.contains("""registryExposable("camera_enabled")"""))
         assertTrue(discovery.contains("cameraSnapshotDiscoveryJson(panel, cameraSnapshotAvail, device)"))
 
         // The switch is opt-in by the assertion above, so the image has to follow the same decision.

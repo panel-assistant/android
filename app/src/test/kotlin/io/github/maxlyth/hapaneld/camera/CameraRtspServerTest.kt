@@ -75,11 +75,12 @@ class CameraRtspServerTest {
         maxConnections: Int = 8,
         maxBodyBytes: Int = 16 * 1024,
         afterAdoption: () -> Unit = {},
+        audio: CameraAudioSource? = null,
     ): CameraRtspServer {
         val s = CameraRtspServer(
             port = 0, source = { source }, maxClients = maxClients, queuePackets = queuePackets,
             readTimeoutMs = readTimeoutMs, maxConnections = maxConnections, maxBodyBytes = maxBodyBytes,
-            afterAdoption = afterAdoption,
+            afterAdoption = afterAdoption, audio = audio,
         )
         servers += s
         s.setListening(true)
@@ -246,6 +247,132 @@ class CameraRtspServerTest {
             assertEquals(200, teardown.status)
             await("lease release") { source.released.get() == 1 }
             await("client gone") { server.facts().clients == 0 }
+        }
+    }
+
+    @Test fun anUnadvertisedAudioTrackCannotBeNegotiatedAsAnotherVideoTrack() {
+        val source = FakeSource()
+        val server = server(source)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { client ->
+            assertEquals(200, client.request("DESCRIBE", url).status)
+            assertEquals(404, client.request("SETUP", "$url/trackID=1", "Transport: RTP/AVP/TCP;interleaved=2-3").status)
+        }
+    }
+
+    private class FakeAudio : CameraAudioSource {
+        var permitted = true
+        val starts = AtomicInteger()
+        val closes = AtomicInteger()
+        val outputs = java.util.concurrent.CopyOnWriteArrayList<(ByteArray, Long) -> Unit>()
+        override fun available() = permitted
+        override fun start(output: (ByteArray, Long) -> Unit): AutoCloseable {
+            starts.incrementAndGet()
+            outputs += output
+            return AutoCloseable { closes.incrementAndGet() }
+        }
+    }
+
+    private fun Client.playBoth(url: String): String {
+        val describe = request("DESCRIBE", url)
+        assertEquals(200, describe.status)
+        assertTrue(describe.body.contains("m=audio 0 RTP/AVP 97"))
+        assertTrue(describe.body.contains("config=1408"))
+        val video = request("SETUP", "$url/trackID=0", "Transport: RTP/AVP/TCP;interleaved=0-1")
+        val session = requireNotNull(video.headers["Session"]).substringBefore(';')
+        assertEquals(200, request("SETUP", "$url/trackID=1", "Transport: RTP/AVP/TCP;interleaved=2-3", "Session: $session").status)
+        assertEquals(200, request("PLAY", url, "Session: $session").status)
+        return session
+    }
+
+    @Test fun audioUsesOneOnDemandEncodeAndNegotiatedChannelsWithVideoOnlyViewersUnaffected() {
+        val source = FakeSource()
+        val audio = FakeAudio()
+        val server = server(source, audio = audio)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { videoOnly ->
+            val videoSession = videoOnly.play(url)
+            assertEquals("video PLAY never opens the microphone", 0, audio.starts.get())
+            Client(server.boundPort!!).use { first ->
+                val firstSession = first.playBoth(url)
+                await("first audio encode") { audio.starts.get() == 1 }
+                Client(server.boundPort!!).use { second ->
+                    val secondSession = second.playBoth(url)
+                    await("second viewer PLAY") { source.keyFrames.get() == 3 }
+                    assertEquals(1, audio.starts.get())
+                    val unit = byteArrayOf(1, 2, 3, 4)
+                    audio.outputs.single()(unit, 1_000_000L)
+                    for (client in listOf(first, second)) {
+                        val (channel, packet) = client.readFrame()
+                        assertEquals(2, channel)
+                        assertEquals(97, packet[1].toInt() and 0x7F)
+                        assertEquals(listOf<Byte>(0, 16, 0, 32), packet.copyOfRange(12, 16).toList())
+                        assertEquals(unit.toList(), packet.copyOfRange(16, packet.size).toList())
+                        assertEquals("audio sender report follows on audio RTCP", 3, client.readFrame().first)
+                    }
+                    assertEquals(200, first.request("PAUSE", url, "Session: $firstSession").status)
+                    assertEquals("the other audio viewer retains capture", 0, audio.closes.get())
+                    assertEquals(200, second.request("TEARDOWN", url, "Session: $secondSession").status)
+                    await("last audio viewer closes encode") { audio.closes.get() == 1 }
+                    assertEquals("the video-only viewer remains controllable", 200, videoOnly.request("GET_PARAMETER", url, "Session: $videoSession").status)
+                }
+            }
+        }
+    }
+
+    @Test fun offClosesAudioAndAnOldEncoderCallbackCannotFeedAReplacementSession() {
+        val source = FakeSource()
+        val audio = FakeAudio()
+        val server = server(source, audio = audio)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { old ->
+            old.playBoth(url)
+            await("old audio started") { audio.starts.get() == 1 }
+            server.setListening(false)
+            assertTrue(old.ended())
+            assertEquals(1, audio.closes.get())
+        }
+        server.setListening(true)
+        Client(server.boundPort!!).use { replacement ->
+            val freshUrl = "rtsp://127.0.0.1:${server.boundPort}/live"
+            replacement.playBoth(freshUrl)
+            await("new audio started") { audio.starts.get() == 2 }
+            audio.outputs[0](byteArrayOf(99), 0L)
+            audio.outputs[1](byteArrayOf(42), 0L)
+            assertEquals(listOf<Byte>(42), replacement.readFrame().second.drop(16))
+        }
+    }
+
+    @Test fun cameraReopenDropsAudioUntilIndicatedVideoReturnsAndRejectsThePriorAacCallback() {
+        val source = FakeSource()
+        val audio = FakeAudio()
+        val server = server(source, audio = audio)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { client ->
+            client.playBoth(url)
+            await("initial audio") { audio.starts.get() == 1 }
+            server.onEncoderStopped(1L)
+            assertEquals("mic capture ends before indication can disappear", 1, audio.closes.get())
+            server.onParameterSets(sets, 2L)
+            await("audio resumes with live video") { audio.starts.get() == 2 }
+            server.onEncoderStopped(1L)
+            assertEquals("old video stop cannot revoke replacement audio", 1, audio.closes.get())
+            audio.outputs[0](byteArrayOf(99), 0L)
+            audio.outputs[1](byteArrayOf(42), 0L)
+            assertEquals(listOf<Byte>(42), client.readFrame().second.drop(16))
+        }
+    }
+
+    @Test fun permissionAbsenceAdvertisesOnlyVideoAndTakesNoAudioLease() {
+        val source = FakeSource()
+        val audio = FakeAudio().apply { permitted = false }
+        val server = server(source, audio = audio)
+        val url = "rtsp://127.0.0.1:${server.boundPort}/live"
+        Client(server.boundPort!!).use { client ->
+            assertFalse(client.request("DESCRIBE", url).body.contains("m=audio"))
+            assertEquals(404, client.request("SETUP", "$url/trackID=1", "Transport: RTP/AVP/TCP;interleaved=2-3").status)
+            client.play(url)
+            assertEquals(0, audio.starts.get())
         }
     }
 
