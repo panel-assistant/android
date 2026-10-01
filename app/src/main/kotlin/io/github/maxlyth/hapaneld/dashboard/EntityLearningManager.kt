@@ -157,18 +157,6 @@ private data class AuthenticatedHomeDashboardChoices(
     val items: List<EntityLearningProtocol.HomeDashboardChoice>,
 )
 
-/** The resolved dashboard's configuration JSON, as the scan and the change probe both analyse it. */
-internal suspend fun readDashboardConfig(
-    request: suspend (JSONObject) -> JSONObject,
-    resolved: String,
-): String? {
-    val urlPath = EntityLearningProtocol.dashboardUrlPath(resolved)
-    EntityLearningProtocol.panelDashboardConfig(urlPath)?.let { return it.toString() }
-    val command = JSONObject().put("type", "lovelace/config")
-    if (urlPath.isNotBlank()) command.put("url_path", urlPath)
-    return (request(command).opt("result") as? JSONObject)?.toString()
-}
-
 /** Read only the authenticated legal set shared by catalog display and renderer resolution. */
 private suspend fun readAuthenticatedHomeDashboardChoices(
     request: suspend (JSONObject) -> JSONObject,
