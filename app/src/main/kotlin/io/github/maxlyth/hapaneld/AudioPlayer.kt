@@ -7,6 +7,7 @@ import android.os.Looper
 import io.github.maxlyth.hapaneld.media.AudioPlaybackRun
 import io.github.maxlyth.hapaneld.media.AudioPlaybackRunFactory
 import io.github.maxlyth.hapaneld.util.BoundedStreams
+import io.github.maxlyth.hapaneld.util.closeBody
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -133,8 +134,16 @@ internal class HttpAudioTransfer(
             conn.instanceFollowRedirects = true
             if (cancelled.get()) throw CancellationException("audio transfer cancelled")
             val declared = conn.contentLengthLong
-            if (declared > maxBytes) throw io.github.maxlyth.hapaneld.util.ByteLimitExceeded(maxBytes)
-            val stream = conn.inputStream
+            if (declared > maxBytes) {
+                conn.closeBody()
+                throw io.github.maxlyth.hapaneld.util.ByteLimitExceeded(maxBytes)
+            }
+            val stream = try {
+                conn.inputStream
+            } catch (refused: java.io.IOException) {
+                conn.closeBody()
+                throw refused
+            }
             input.set(stream)
             if (cancelled.get()) throw CancellationException("audio transfer cancelled")
             val deadlineNanos = nanoTime() + downloadTimeoutMs * 1_000_000L

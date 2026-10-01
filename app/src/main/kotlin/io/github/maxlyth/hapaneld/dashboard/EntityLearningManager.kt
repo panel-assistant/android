@@ -24,6 +24,7 @@ import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.ByteLimitExceeded
 import io.github.maxlyth.hapaneld.util.HaWebSocketClients
 import io.github.maxlyth.hapaneld.mqtt.MqttAddressFamilyPolicy
+import io.github.maxlyth.hapaneld.util.closeBody
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.websocket.Frame
@@ -1986,16 +1987,21 @@ class EntityLearningManager(
                 setRequestProperty("Authorization", "Bearer $token"); setRequestProperty("Accept", "application/json")
             }
             try {
-                if (c.responseCode !in 200..299) error("states request failed: HTTP ${c.responseCode}")
+                if (c.responseCode !in 200..299) {
+                    c.closeBody()
+                    error("states request failed: HTTP ${c.responseCode}")
+                }
                 // /api/states includes every attribute payload. Stream over it without hydrating the
                 // attributes, but reject a response that exceeds any resource or wall-clock bound.
                 val limits = HaStatesReadLimits()
-                if (c.contentLengthLong > limits.maxBytes) throw ByteLimitExceeded(limits.maxBytes)
-                val counted = CountingInputStream(c.inputStream)
-                scanCountedRows = 0
-                scanCounting = true
-                readHaStates(counted, limits, onProgress = { scanCountedRows = it }).also {
-                    cost.work(units = it.size.toLong(), bytes = counted.bytesRead)
+                c.inputStream.use { body ->
+                    if (c.contentLengthLong > limits.maxBytes) throw ByteLimitExceeded(limits.maxBytes)
+                    val counted = CountingInputStream(body)
+                    scanCountedRows = 0
+                    scanCounting = true
+                    readHaStates(counted, limits, onProgress = { scanCountedRows = it }).also {
+                        cost.work(units = it.size.toLong(), bytes = counted.bytesRead)
+                    }
                 }
             } catch (failure: Throwable) {
                 cost.outcome(failure.featureCostOutcome())
@@ -2019,7 +2025,10 @@ class EntityLearningManager(
             setRequestProperty("Accept", "application/json")
         }
         try {
-            if (c.responseCode !in 200..299) error("config request failed: HTTP ${c.responseCode}")
+            if (c.responseCode !in 200..299) {
+                c.closeBody()
+                error("config request failed: HTTP ${c.responseCode}")
+            }
             return c.inputStream.use {
                 String(BoundedStreams.readBytes(it, MAX_HA_CONFIG_BYTES), Charsets.UTF_8)
             }

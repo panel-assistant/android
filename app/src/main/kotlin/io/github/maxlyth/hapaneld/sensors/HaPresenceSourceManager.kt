@@ -6,6 +6,7 @@ import io.github.maxlyth.hapaneld.dashboard.EntityFilterProtocol
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.mqtt.MqttAddressFamilyPolicy
 import io.github.maxlyth.hapaneld.util.HaWebSocketClients
+import io.github.maxlyth.hapaneld.util.closeBody
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -993,7 +994,9 @@ internal class KtorHaPresenceTransport(
             setRequestProperty("Accept", "application/json")
         }
         try {
-            when (val code = connection.responseCode) {
+            val code = connection.responseCode
+            if (code !in 200..299) connection.closeBody()
+            when (code) {
                 HttpURLConnection.HTTP_UNAUTHORIZED, HttpURLConnection.HTTP_FORBIDDEN ->
                     throw HaAuthenticationException("Home Assistant rejected the REST access token")
                 !in 200..299 -> throw HaProtocolException("Home Assistant REST request failed (HTTP $code)")

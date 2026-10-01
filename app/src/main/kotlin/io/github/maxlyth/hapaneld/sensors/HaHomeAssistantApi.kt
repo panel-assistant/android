@@ -7,6 +7,7 @@ import io.github.maxlyth.hapaneld.HaCredentialManager
 import io.github.maxlyth.hapaneld.stableOwner
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.HaTransportEvidence
+import io.github.maxlyth.hapaneld.util.closeBody
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -90,7 +91,9 @@ internal fun haHistoryPath(entityId: String, startEpochMs: Long, endEpochMs: Lon
     return "/api/history/period/$start?end_time=$end&filter_entity_id=$entity&minimal_response&no_attributes&significant_changes_only=0"
 }
 
-internal class KtorHaAmbientTransport : HaAmbientTransport {
+internal class KtorHaAmbientTransport(
+    private val openConnection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+) : HaAmbientTransport {
     override suspend fun state(baseUrl: String, accessToken: String, entityId: String): JSONObject? =
         restGet(baseUrl, accessToken, "/api/states/$entityId", MAX_STATE_BYTES, missingIsNull = true)
             ?.let(::JSONObject)
@@ -120,7 +123,7 @@ internal class KtorHaAmbientTransport : HaAmbientTransport {
         missingIsNull: Boolean = false,
         readTimeoutMs: Int = HTTP_READ_TIMEOUT_MS,
     ): String? = withContext(Dispatchers.IO) {
-        val connection = (URL(baseUrl.trim().trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+        val connection = openConnection(URL(baseUrl.trim().trimEnd('/') + path)).apply {
             instanceFollowRedirects = false
             requestMethod = "GET"
             connectTimeout = HTTP_CONNECT_TIMEOUT_MS
@@ -130,6 +133,7 @@ internal class KtorHaAmbientTransport : HaAmbientTransport {
         }
         try {
             val code = connection.responseCode
+            if (code !in 200..299) connection.closeBody()
             when {
                 code == HttpURLConnection.HTTP_NOT_FOUND && missingIsNull -> null
                 code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN ->
