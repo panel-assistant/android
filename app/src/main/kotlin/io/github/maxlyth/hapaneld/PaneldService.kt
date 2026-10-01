@@ -2815,10 +2815,10 @@ class PaneldService : Service() {
     private fun currentMqttProjection(): MqttProjectionIdentity = MqttProjectionIdentity(
         manufacturer = config.manufacturer,
         model = config.model,
-        exposures = SettingsRegistry.SPECS.asSequence()
-            .filter { it.ha != null }
-            .map { it.key to config.haExposed(it.key, it.haExposedByDefault) }
-            .toList(),
+        exposures = SettingsRegistry.persistedExposureDefaults().map { (key, default) ->
+            val settingKey = key.removePrefix(SettingsRegistry.HA_EXPOSE_PREFIX)
+            settingKey to config.haExposed(settingKey, default)
+        },
     )
 
     private fun currentHaLinkIdentity(): HaAuthOwner = config.haAuthSnapshot().stableOwner()

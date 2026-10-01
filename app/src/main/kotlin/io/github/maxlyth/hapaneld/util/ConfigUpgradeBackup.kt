@@ -15,8 +15,8 @@ internal object ConfigUpgradeBackup {
         val config = Config(context)
         val values = LinkedHashMap<String, String>()
         SettingsRegistry.settable().forEach { spec -> values[spec.key] = config.getRaw(spec) }
-        SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-            values[SettingsRegistry.exposureKey(spec)] = config.haExposed(spec.key, spec.haExposedByDefault).toString()
+        SettingsRegistry.persistedExposureDefaults().forEach { (key, default) ->
+            values[key] = config.haExposed(key.removePrefix(SettingsRegistry.HA_EXPOSE_PREFIX), default).toString()
         }
         val directory = File(context.filesDir, "config-revisions")
         check(directory.isDirectory || directory.mkdirs())

@@ -61,6 +61,7 @@ import io.github.maxlyth.hapaneld.storage.StorageQuickCheck
 import io.github.maxlyth.hapaneld.testsupport.TestSources
 import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -338,6 +339,7 @@ internal abstract class MqttWireRig {
         runtimeBroker: String = "tcp://127.0.0.1:1883",
         hasTemperature: Boolean = true,
         hasHumidity: Boolean = true,
+        hasCamera: Boolean = false,
         learnedProximityState: () -> Boolean? = { null },
         led: LedController = object : LedController {
             override fun available() = true
@@ -402,6 +404,7 @@ internal abstract class MqttWireRig {
             hasHumidity = true,
             hasButtonBacklight = true,
             hasMicrophone = true,
+            hasCamera = hasCamera,
             relays = 2,
             buttonLeds = 1,
             canInstallVerifiedApps = true,
@@ -446,6 +449,7 @@ internal abstract class MqttWireRig {
             hasCht8305 = false,
             hasButtonBacklight = true,
             hasMicrophone = true,
+            hasCamera = { hasCamera },
             // Never reached: no screen brightness or auto-brightness command is sent.
             autoBright = allocate(AutoBrightnessController::class.java),
             configUrl = { "http://192.0.2.10:8888/" },
@@ -1340,7 +1344,7 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val offer = native.offer()
-            val absent = listOf("humidity", "led", "proximity", "proximity_level", "temperature", "update_companion")
+            val absent = listOf("camera_enabled", "humidity", "led", "proximity", "proximity_level", "temperature", "update_companion")
             assertEquals(absent, offer.unsupported)
             val described = offer.descriptors.map { it.channel }
             absent.forEach { assertFalse("$it must not be described", it in described) }
@@ -1348,6 +1352,28 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             assertEquals("the plain descriptor list agrees with the offer", described, native.descriptors().map { it.channel })
         } finally {
             rig.close()
+        }
+    }
+
+    @Test(timeout = 90_000) fun nativeCameraReportsItsSharedControlWhileOnAndOff() {
+        for (enabled in listOf(false, true)) {
+            val rig = rig(hasCamera = true, configure = { it.setCameraEnabled(enabled) })
+            try {
+                val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+                rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
+                rig.announce()
+                val offer = native.offer()
+                assertFalse("camera_enabled" in offer.unsupported)
+                val camera = offer.descriptors.single { it.channel == "camera_enabled" }
+                assertEquals("camera", camera.platform)
+                native.open(offer.descriptors)
+                val observations = JSONObject(requireNotNull(native.next(1, "camera-session", 0))).getJSONArray("observations")
+                val report = (0 until observations.length()).map(observations::getJSONObject).single { it.getString("channel") == "camera_enabled" }
+                assertEquals("known", report.getString("state"))
+                assertEquals(enabled, report.getBoolean("value"))
+            } finally {
+                rig.close()
+            }
         }
     }
 
@@ -1379,13 +1405,13 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val before = native.offer()
-            assertEquals(listOf("proximity", "proximity_level"), before.unsupported)
+            assertEquals(listOf("camera_enabled", "proximity", "proximity_level"), before.unsupported)
             native.open(before.descriptors)
             assertFalse(native.descriptorsChanged())
             learned.set(true)
             assertTrue("gaining the reading ends the session so it is described again", native.descriptorsChanged())
             val after = native.offer()
-            assertEquals(emptyList<String>(), after.unsupported)
+            assertEquals(listOf("camera_enabled"), after.unsupported)
             assertTrue(after.descriptors.map { it.channel }.containsAll(listOf("proximity", "proximity_level")))
         } finally {
             rig.close()
@@ -1395,7 +1421,7 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
     @Test fun nativeNeverStatesAnUnsettledOrPresentChannelUnsupported() {
         // Proximity not yet loaded (or closed), temperature and humidity present, a Companion installed: every
         // one is described as before and nothing is stated unsupported, so no entity can be removed.
-        val rig = rig(learnedProximityState = { null })
+        val rig = rig(hasCamera = true, learnedProximityState = { null })
         try {
             val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
