@@ -28,7 +28,7 @@
     <string name="unable_stop_remote_debugging">Неможливо зупинити віддалене налагодження</string>
     <string name="unable_stop_remote_debugging_detail">Режим «Hardened» не ввімкнено, оскільки панель не змогла перевірити, що ретранслятор LAN DevTools і його слухач зупинені. Перезапустіть панель, а потім спробуйте ще раз.</string>
     <string name="unable_stop_remote_adb">Не вдається зупинити віддалений ADB</string>
-    <string name="unable_stop_remote_adb_detail">Режим «Hardened» не ввімкнено, оскільки ha-paneld не вдалося надійно очистити й перевірити весь стан мережевого ADB (класичного і TLS), яким він керує. Перехід до вимкнення залишається в очікуванні, тож під час запуску буде повторна спроба; перевірте «Параметри розробника», а потім спробуйте ще раз.</string>
+    <string name="unable_stop_remote_adb_detail">Режим «Hardened» не ввімкнено, оскільки ha-paneld не вдалося очистити зі збереженням результату й перевірити весь стан мережевого ADB (класичного і TLS), яким він керує. Перехід до вимкнення залишається в очікуванні, тож під час запуску буде повторна спроба; перевірте «Параметри розробника», а потім спробуйте ще раз.</string>
     <string name="unable_verify_remote_adb">Не вдається перевірити віддалений ADB</string>
     <string name="unable_verify_remote_adb_detail">Режим «Hardened» не ввімкнено, оскільки панель не змогла перевірити, що класичний мережевий ADB і бездротове налагодження Android вимкнено. Вимкніть обидва способи дистанційного керування в параметрах розробника Android, а потім спробуйте ще раз.</string>
     <string name="turn_off_remote_adb_first">Спочатку вимкніть віддалений ADB</string>
@@ -99,7 +99,7 @@
     <string name="dashboard_restart_announcement">ha-paneld перезапускає інформаційну панель — %1$s</string>
     <string name="applying_changes">застосування змін</string>
     <string name="applying_dashboard_theme">застосування теми вашої інформаційної панелі</string>
-    <string name="optimizing_entities_restart">оптимізація сутностей, які вона використовує (вона може знову перезавантажитися, поки панель навчається)</string>
+    <string name="optimizing_entities_restart">оптимізація вибору сутностей, які вона використовує (вона може знову перезавантажитися, поки панель навчається)</string>
     <string name="service_running_caption">працює</string>
     <string name="panel_service_running">Служба панелі працює.</string>
     <string name="ha_opens_automatically">Home Assistant відкриється автоматично</string>
@@ -211,7 +211,7 @@
     <string name="guard_db_outcome">" · результат %1$s"</string>
     <string name="guard_db_deadline">Жорсткий кінцевий термін: %1$d мс від завантаження</string>
     <string name="guard_db_forward_deadline">" · вперед: %1$d"</string>
-    <string name="guard_db_unreachable">Допоміжна програма для отримання прав суперкористувача перезапускається або недоступна. Зміни не допускаються.</string>
+    <string name="guard_db_unreachable">Допоміжна служба з правами суперкористувача перезапускається або недоступна. Зміни не допускаються.</string>
     <string name="guard_db_malformed">Відповідь журналу root має неправильний формат. Відновлення призупинено.</string>
     <string name="guard_db_unsupported">Встановлений допоміжний модуль не може виконати це відновлення. Відновлення призупинено.</string>
     <string name="no_pending_physical_approval">Немає фізичних схвалень в очікуванні.</string>
@@ -223,7 +223,7 @@
     <string name="disable">Вимкнути</string>
     <string name="shizuku_title">Розширений доступ (Shizuku)</string>
     <string name="shizuku_scope">Він не дозволяє довільне завантаження APK, заміну WebView, загальну оболонку, доступ root до даних застосунків, перезавантаження, журнали чи керування застосунками виробника.\n\nПісля ввімкнення підтримувані операції можна викликати через наявні елементи керування ha-paneld для довіреної LAN на цій панелі.</string>
-    <string name="shizuku_grant_scope">Це дозволяє лише оновлення ha-paneld із перевіреним підписом і мінімальні оновлення Companion, знімки екрана, введення клавіш і дотиків, а також операції зі щільністю та розміром тексту. %1$s</string>
+    <string name="shizuku_grant_scope">Це дозволяє лише оновлення ha-paneld із перевіреним підписувачем і мінімальні оновлення Companion, знімки екрана, введення клавіш і дотиків, а також операції зі щільністю та розміром тексту. %1$s</string>
     <string name="shizuku_not_installed">Shizuku не встановлено. Один раз запустіть скрипт підготовки ha-paneld через ADB, а потім схваліть доступ тут, на панелі.</string>
     <string name="shizuku_untrusted">Пакет із назвою Shizuku встановлено, але його сертифікат підпису не є надійним. ha-paneld не підключатиметься до нього.</string>
     <string name="shizuku_disabled">Розширений доступ вимкнено в ha-paneld. Оберіть «Увімкнути» тут, на цій панелі, щоб почати локальне схвалення.</string>

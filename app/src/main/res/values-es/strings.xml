@@ -59,8 +59,8 @@
     <string name="approval_op_companion_repair">Reparar la configuración de Companion</string>
     <string name="approval_op_dashboard_storage_clear">Borrar los datos de navegación del panel de control</string>
     <string name="approval_op_display_configuration">Cambiar el tamaño de la pantalla</string>
-    <string name="approval_op_power_configuration">Cambiar las protecciones de seguridad eléctrica del panel</string>
-    <string name="approval_op_power_safety_ack">Ocultar un aviso concreto de seguridad eléctrica</string>
+    <string name="approval_op_power_configuration">Cambiar las protecciones de seguridad de alimentación del panel</string>
+    <string name="approval_op_power_safety_ack">Ocultar una precaución concreta de seguridad de alimentación</string>
     <string name="approval_op_guard_db">Avanzar la recuperación de la base de datos</string>
     <string name="approval_op_camera_enable">Activar la cámara del panel</string>
     <string name="approval_op_transport_release">Devolver el control del panel a MQTT</string>
@@ -231,8 +231,8 @@
     <string name="shizuku_open">Abrir Shizuku</string>
     <string name="disable">Deshabilitar</string>
     <string name="shizuku_title">Acceso mejorado (Shizuku)</string>
-    <string name="shizuku_scope">No permite cargar APK arbitrarios, sustituir WebView, acceder a un shell general, acceder a los datos de aplicaciones como root, reiniciar, consultar registros ni controlar aplicaciones del fabricante.\n\nUna vez habilitadas, las operaciones compatibles pueden invocarse mediante los controles existentes de ha-paneld para la LAN de confianza de este panel.</string>
-    <string name="shizuku_grant_scope">Esto concede únicamente actualizaciones de ha-paneld con firma verificada y actualizaciones mínimas de Companion, capturas de pantalla, entrada de teclas/toques y operaciones de densidad y tamaño del texto. %1$s</string>
+    <string name="shizuku_scope">No permite cargar APK arbitrarios, sustituir WebView, acceder a un shell general, acceder a los datos de aplicaciones como root, reiniciar, consultar registros ni controlar aplicaciones del fabricante.\n\nUna vez habilitado el acceso, las operaciones compatibles pueden invocarse mediante los controles existentes de ha-paneld para la LAN de confianza de este panel.</string>
+    <string name="shizuku_grant_scope">Esto concede únicamente actualizaciones con firma verificada de ha-paneld y actualizaciones mínimas con firma verificada de Companion, capturas de pantalla, entrada de teclas/toques y operaciones de densidad y tamaño del texto. %1$s</string>
     <string name="shizuku_not_installed">Shizuku no está instalado. Ejecuta una vez el script de aprovisionamiento de ha-paneld mediante ADB y aprueba aquí el acceso en el panel.</string>
     <string name="shizuku_untrusted">Hay instalado un paquete llamado Shizuku, pero su certificado de firma no es de confianza. ha-paneld no se conectará a él.</string>
     <string name="shizuku_disabled">El acceso mejorado está deshabilitado en ha-paneld. Elige Habilitar aquí, en este panel, para iniciar la aprobación local.</string>

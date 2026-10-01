@@ -27,7 +27,7 @@
     <string name="proximity_wizard_observing">Esperando</string>
     <string name="proximity_wizard_waiting_symbol">…</string>
     <string name="proximity_wizard_review_verified">Presencia verificada.\nGesto verificado.</string>
-    <string name="proximity_wizard_review_presence_only">Presencia verificada.\nGesto no disponible.</string>
+    <string name="proximity_wizard_review_presence_only">Presencia verificada.\nGesto de agitar la mano no disponible.</string>
     <string name="proximity_wizard_saved_presence_only">Ajustes de presencia guardados.\nLa activación por gesto no está disponible.</string>
     <string name="proximity_wizard_waiting_reading">Acerca la mano,\nluego aléjala</string>
     <string name="proximity_wizard_waiting_reading_hint">Esperando la respuesta del sensor.</string>

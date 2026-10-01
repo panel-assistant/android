@@ -35,7 +35,7 @@
     <string name="proximity_wizard_intro">Skonfiguruj obecność i machnięcie</string>
     <string name="proximity_wizard_intro_hint">Postępuj zgodnie z krokami na tym panelu.\nDotknij Start, gdy będziesz gotowy.</string>
     <string name="proximity_wizard_clear">Odsuń rękę</string>
-    <string name="proximity_wizard_clear_hint">Opuść rękę. Pozostań nieruchomo do kolejnej kontroli.</string>
+    <string name="proximity_wizard_clear_hint">Opuść rękę. Podczas kolejnej kontroli pozostań nieruchomo.</string>
     <string name="proximity_wizard_near">Zbliż rękę do czujnika</string>
     <string name="proximity_wizard_near_hint">Trzymaj rękę nieruchomo przy czujniku, aż pojawi się kolejny krok.</string>
     <string name="proximity_wizard_return_clear">Ponownie odsuń rękę</string>

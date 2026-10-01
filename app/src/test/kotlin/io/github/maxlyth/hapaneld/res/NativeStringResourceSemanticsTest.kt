@@ -47,7 +47,7 @@ class NativeStringResourceSemanticsTest {
             ),
             "values-zh-rCN" to linkedMapOf(
                 "guard_db_outcome" to " · 结果 %1\$s",
-                "guard_db_forward_deadline" to " · 推进操作已用时：%1\$d 毫秒",
+                "guard_db_forward_deadline" to " · 推进截止时间：%1\$d",
                 "storage_capacity_suffix" to "（文件系统可用空间 %1\$d MiB）",
                 "database_during_suffix" to "（%1\$s期间）",
             ),

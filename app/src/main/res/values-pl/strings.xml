@@ -122,7 +122,7 @@
     <string name="retrying_seconds">Automatyczna ponowna próba za %1$d s</string>
     <string name="retrying_minutes_seconds">Automatyczna ponowna próba za %1$d min %2$d s</string>
     <string name="web_viewer_too_old_title">Przeglądarka internetowa tego panelu jest zbyt stara</string>
-    <string name="web_viewer_too_old_detail">Wbudowany pulpit wymaga nowszej wersji Android System WebView niż ten panel. Inna aplikacja z pulpitem nawigacyjnym na tym panelu może nadal działać.</string>
+    <string name="web_viewer_too_old_detail">Wbudowany pulpit wymaga nowszej wersji Android System WebView niż zainstalowana na tym panelu. Inna aplikacja pulpitu nawigacyjnego na tym panelu może nadal działać.</string>
     <string name="checking_ha_compatibility">Sprawdzanie zgodności z Home Assistant</string>
     <string name="checking_ha_compatibility_detail">Sprawdzanie, czy ta wersja Home Assistant współpracuje z pulpitem nawigacyjnym panelu, przed jego otwarciem.</string>
     <string name="ha_upgrade_required">Wymagana aktualizacja Home Assistant</string>
@@ -146,7 +146,7 @@
     <string name="ha_transport_unreachable">Sieć nie ma trasy do Home Assistant. Sprawdź ustawienia sieciowe i rodzinę adresów na panelu.</string>
     <string name="ha_transport_http_status">Home Assistant lub serwer proxy zwrócił błąd HTTP zamiast konfiguracji.</string>
     <string name="ha_transport_protocol">Odpowiedź nie zawierała prawidłowych danych konfiguracyjnych Home Assistant. Sprawdź, czy nie pośredniczy serwer proxy lub portal przechwytujący.</string>
-    <string name="ha_transport_unknown">Połączenie nie powiodło się z powodu, którego panel nie potrafił zidentyfikować.</string>
+    <string name="ha_transport_unknown">Połączenie nie powiodło się z powodu, którego panel nie potrafił sklasyfikować.</string>
     <string name="ha_sign_in_page_failed">Nie można załadować strony logowania Home Assistant</string>
     <string name="ha_sign_in_page_failed_detail">Przycisk „Skonfiguruj” otwiera ustawienia tego panelu. Sprawdź tam adres Home Assistant albo użyj opcji „Logowanie przez przeglądarkę” na tej samej stronie.</string>
     <string name="no_dashboard_title">To konto nie ma pulpitu nawigacyjnego, który można by otworzyć</string>
@@ -205,7 +205,7 @@
     <string name="nav_volume_up">Zwiększ głośność</string>
     <string name="nav_brightness">Jasność</string>
     <string name="nav_volume">Głośność</string>
-    <string name="guard_db_intro">Standardowe usługi panelu i procesy zapisujące do bazy danych są wstrzymane. Nie wyłączaj tego panelu; przywrócenie systemu jest gwarantowane tylko dla tego uruchomienia. Zatwierdzaj tylko dokładnie ten kolejny krok, o który poprosiłeś.</string>
+    <string name="guard_db_intro">Standardowe usługi panelu i procesy zapisujące do bazy danych są wstrzymane. Nie wyłączaj tego panelu; odzyskiwanie jest gwarantowane tylko w ramach tego uruchomienia. Zatwierdzaj tylko dokładnie ten kolejny krok, o który poprosiłeś.</string>
     <string name="guard_db_reading_journal">Odczytuję dziennik root…</string>
     <string name="guard_db_journal_status">Dziennik root: %1$s · generacja %2$d</string>
     <string name="guard_db_outcome">" · wynik %1$s"</string>
@@ -222,8 +222,8 @@
     <string name="shizuku_open">Otwórz Shizuku</string>
     <string name="disable">Wyłącz</string>
     <string name="shizuku_title">Rozszerzony dostęp (Shizuku)</string>
-    <string name="shizuku_scope">Nie pozwala na dowolne przesyłanie plików APK, zastępowanie WebView, ogólną powłokę, dane aplikacji root, ponowne uruchamianie, logi ani sterowanie aplikacjami dostawcy.\n\nPo włączeniu obsługiwane operacje można wywoływać za pomocą istniejących elementów sterujących ha-paneld dla zaufanej sieci LAN na tym panelu.</string>
-    <string name="shizuku_grant_scope">Przyznaje to tylko aktualizacje ha-paneld zweryfikowane podpisem i minimalne aktualizacje Companion, zrzuty ekranu, wprowadzanie klawiszy/dotknięć oraz operacje gęstości i rozmiaru tekstu. %1$s</string>
+    <string name="shizuku_scope">Nie pozwala na dowolne przesyłanie plików APK, zastępowanie WebView, ogólną powłokę, dostęp przez root do danych aplikacji, ponowne uruchamianie, logi ani sterowanie aplikacjami dostawcy.\n\nPo włączeniu obsługiwane operacje można wywoływać za pomocą istniejących elementów sterujących ha-paneld dla zaufanej sieci LAN na tym panelu.</string>
+    <string name="shizuku_grant_scope">Przyznaje to tylko aktualizacje ha-paneld ze zweryfikowaną tożsamością podpisującego i minimalne aktualizacje Companion, zrzuty ekranu, wprowadzanie klawiszy/dotknięć oraz operacje gęstości i rozmiaru tekstu. %1$s</string>
     <string name="shizuku_not_installed">Shizuku nie jest zainstalowane. Uruchom raz skrypt konfiguracyjny ha-paneld przez ADB, a potem zatwierdź dostęp tutaj, na panelu.</string>
     <string name="shizuku_untrusted">Pakiet o nazwie Shizuku jest zainstalowany, ale jego certyfikat podpisu nie jest zaufany. ha-paneld nie połączy się z nim.</string>
     <string name="shizuku_disabled">Rozszerzony dostęp jest wyłączony w ha-paneld. Wybierz opcję „Włącz” na tym panelu, aby rozpocząć lokalny proces zatwierdzania.</string>
