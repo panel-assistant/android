@@ -32,8 +32,8 @@ class ScheduledInstallInstrumentedTest {
     @Test fun theRealDailyCheckNeverClaimsAnInstallWithLegacyFlagsEnabled() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val preferences = AppState.preferences(context, "config", "ha-paneld")
-        val original = LEGACY_VALUES.keys.associateWith { preferences.all[it] }
-        val port = Config(context).httpPort
+        val original = (LEGACY_VALUES.keys + "http_port").associateWith { preferences.all[it] }
+        val port = 18888
         assertFalse("requires a cold service process", health(port).contains(" pkg=${context.packageName}"))
         assertNull("pending authorized WebView recovery requires a separate test", WebViewInstaller.pendingRollback(context))
         assertFalse("another operation owns the install lane", InstallProgress.running)
@@ -44,6 +44,7 @@ class ScheduledInstallInstrumentedTest {
         var checkedObserver: (() -> Unit)? = null
         var progressObserver: (() -> Unit)? = null
         try {
+            assertTrue("test HTTP port did not commit", preferences.edit().putInt("http_port", port).commit())
             writeLegacy(preferences)
             PaneldService.start(context)
             val startupDeadline = SystemClock.elapsedRealtime() + 30_000L
@@ -96,6 +97,7 @@ class ScheduledInstallInstrumentedTest {
                 when (value) {
                     null -> restore.remove(key)
                     is Boolean -> restore.putBoolean(key, value)
+                    is Int -> restore.putInt(key, value)
                     is String -> restore.putString(key, value)
                     else -> error("unexpected legacy setting type: $key")
                 }
