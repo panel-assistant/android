@@ -3786,6 +3786,17 @@ class DashboardActivity : AppCompatActivity() {
         // stays off (no builtInZoomControls) — the zoom is a deliberate per-panel value (see applyZoom).
         setInitialScale((resources.displayMetrics.density * config.dashboardZoom).toInt())
         applyForceDark(this)
+        runCatching {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                    this,
+                    InjectionScript.rejectionLoggingJs(),
+                    documentStartOrigins,
+                )
+            } else {
+                Log.w(TAG, "no document-start support — dashboard rejection logging unavailable")
+            }
+        }.onFailure { Log.w(TAG, "dashboard rejection logging unavailable", it) }
         // The colour-scheme policy runs on every panel and every Android version, and the signature is
         // recorded HERE rather than at the call site because this is the WebView it is baked into:
         // onNewIntent compares that signature against config to decide whether to rebuild.
