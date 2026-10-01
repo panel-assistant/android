@@ -563,10 +563,10 @@
    "sourceHash": "b764cdc0eab7137467211272fa539f1260d1bf2e71bcf6ff3bdc960f5c16aa14",
    "state": "machine-cross-checked"
   },
-  "configure.badge.experimental": {
-   "text": "experimenteel",
-   "sourceHash": "748be63c87c9fad252fbd0a2e16d0bdd446d2f7acb456b820ed417e9b1f451df",
-   "state": "machine-cross-checked"
+  "configure.badge.preview": {
+    "text": "Voorproefje",
+    "sourceHash": "5975cf1bba432391c94667f5886225f69377c0aa8b9fa21fddfb21c89bcf9092",
+    "state": "machine-cross-checked"
   },
   "configure.brightness.chart_label": {
    "text": "24-uurs patroon van het omgevingslicht: de drie meest recente dagen worden afzonderlijk weergegeven, terwijl de rest van de week wordt getoond als een gearceerd bereik van minimum tot maximum",
