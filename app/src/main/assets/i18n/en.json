@@ -36703,8 +36703,8 @@
       "hardMaxChars": 40
     },
     "setup.identity.lead": {
-      "text": "A name, your Home Assistant server and sign-in, the dashboard to show, then your MQTT broker — a few quick questions and you’re done. You can stop and come back; nothing is lost.",
-      "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+      "text": "A name, your Home Assistant server and sign-in, and the dashboard to show — a few quick questions and you’re done. You can stop and come back; nothing is lost.",
+      "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
       "surface": "setup",
       "context": "Setup wizard panel identity step; introductory guidance.",
       "risk": "setup",
@@ -36714,8 +36714,7 @@
       ],
       "placeholders": [],
       "frozen": [
-        "Home Assistant",
-        "MQTT"
+        "Home Assistant"
       ],
       "softMaxChars": 220,
       "hardMaxChars": 300

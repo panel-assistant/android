@@ -32,6 +32,12 @@ class MigrationNoticeConfigTest {
         assertFalse(Config(state.preferences).migrationNoticeVisible(101))
     }
 
+    @Test fun `a panel Panel Assistant is adding does not tell its owner to install Panel Assistant`() {
+        val state = Preferences()
+        Config(state.preferences).setHaSetupHandover(true)
+        assertFalse(Config(state.preferences).migrationNoticeVisible(100))
+    }
+
     @Test fun `dismissal survives restart and notice returns after an update`() {
         val state = Preferences()
         val config = Config(state.preferences)

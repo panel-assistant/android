@@ -10784,8 +10784,8 @@
    "state": "machine-cross-checked"
   },
   "setup.identity.lead": {
-   "text": "Назва, ваш сервер Home Assistant і вхід, інформаційна панель для показу, потім ваш брокер MQTT — кілька швидких запитань, і готово. Можна зупинитися й повернутися пізніше; нічого не втратиться.",
-   "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+   "text": "Назва, ваш сервер Home Assistant і вхід, потім інформаційна панель для показу — кілька швидких запитань, і готово. Можна зупинитися й повернутися пізніше; нічого не втратиться.",
+   "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
    "state": "machine-cross-checked"
   },
   "setup.identity.panel_id.consequence": {

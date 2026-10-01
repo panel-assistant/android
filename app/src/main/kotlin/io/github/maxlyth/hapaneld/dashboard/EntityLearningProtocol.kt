@@ -5,6 +5,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 
+/** The resolved dashboard's configuration JSON, as the scan and the change probe both analyse it. */
+internal suspend fun readDashboardConfig(
+    request: suspend (JSONObject) -> JSONObject,
+    resolved: String,
+): String? {
+    val urlPath = EntityLearningProtocol.dashboardUrlPath(resolved)
+    EntityLearningProtocol.panelDashboardConfig(urlPath)?.let { return it.toString() }
+    val command = JSONObject().put("type", "lovelace/config")
+    if (urlPath.isNotBlank()) command.put("url_path", urlPath)
+    return (request(command).opt("result") as? JSONObject)?.toString()
+}
+
 /** Pure dashboard-analysis and document-start helpers for automatic entity learning. */
 object EntityLearningProtocol {
     /**
@@ -294,6 +306,15 @@ object EntityLearningProtocol {
             HomeDashboardChoice("/$key", title, sanitizedIconName(panel.optString("icon")), group = "panel")
         }
     }
+
+    /**
+     * The configuration a built-in panel dashboard stands for, or null for a stored Lovelace dashboard.
+     * Built-in panels (`get_panels` registers them with no config) are frontend strategies, so
+     * `lovelace/config` rejects their key ("Unknown config specified"); a root strategy document is the
+     * honest equivalent. Stored Lovelace url_paths must contain a hyphen, so these keys cannot collide.
+     */
+    fun panelDashboardConfig(urlPath: String): JSONObject? =
+        if (urlPath in PANEL_DASHBOARD_ORDER) JSONObject().put("strategy", JSONObject().put("type", urlPath)) else null
 
     /**
      * Reduce the account's server-side default-panel reads (`frontend/get_user_data` then

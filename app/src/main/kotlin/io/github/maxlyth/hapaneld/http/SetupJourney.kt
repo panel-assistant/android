@@ -228,8 +228,9 @@ object SetupJourney {
         /** Fingerprint of the CURRENT configuration, compared against [RenderProof.fingerprint]. */
         val currentFingerprint: String = "",
         /**
-         * Panel Assistant granted this panel native authority: its entities and commands travel over Panel
-         * Assistant's connection, so the MQTT steps do not apply unless the owner configured a broker anyway.
+         * Panel Assistant granted this panel native authority, or is setting it up now: its entities and
+         * commands travel over Panel Assistant's connection, so the MQTT steps do not apply unless the owner
+         * configured a broker anyway.
          */
         val panelAssistantNative: Boolean = false,
     )
