@@ -198,6 +198,8 @@ internal class AutoSleepController private constructor(
     private var inheritedEpoch: AutomaticOffEpoch? = null
     /** Set once by [start]; consumed by the first configuration the owner accepts, whichever epoch it is. */
     private val adoptionPending = AtomicBoolean(false)
+    /** Startup holds the main thread, so the first touch-wake attach can time out; a dark panel gets two more tries. */
+    private var adoptionRetriesLeft = 2
     private var provedTapGeneration: Long? = null
     private var manualSuppression = false
     private var suppressionSawAllOff = false
@@ -619,6 +621,13 @@ internal class AutoSleepController private constructor(
                 automaticEpoch = adopted
                 inheritedEpoch = adopted
                 onScreenChanged(false)
+            } else if (adoptionRetriesLeft > 0 && screen.looksDark()) {
+                adoptionRetriesLeft--
+                scope.launch(workerDispatcher) {
+                    delay(ADOPTION_RETRY_MS)
+                    adoptionPending.set(true)
+                    configureLatest()
+                }
             }
         }
         manager.configure(HaPresenceRequest(
@@ -1033,3 +1042,6 @@ internal class AutoSleepController private constructor(
         val projectionRevision: Long = 0L,
     )
 }
+
+/** Gap between startup adoption attempts; two retries still land before the never-blank guard's 15 s first check. */
+internal const val ADOPTION_RETRY_MS = 4_000L
