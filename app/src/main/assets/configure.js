@@ -81,6 +81,17 @@
   }
 
   function firstInvalidDirtySetting() {
+    var minimumKey = "auto_brightness_minimum_percent";
+    var maximumKey = "auto_brightness_maximum_percent";
+    if ((cfg.dirtyValues[minimumKey] || cfg.dirtyValues[maximumKey]) &&
+        Number(cfg.values[minimumKey]) >= Number(cfg.values[maximumKey])) {
+      for (var b = 0; b < cfg.schema.length; b++) {
+        var bound = cfg.schema[b];
+        if (bound.key !== maximumKey) continue;
+        return { field: bound, control: document.querySelector("#cfg-" + maximumKey + " input"),
+          message: cfg.i18nText("configure.validation.invalid", "{label} has an invalid value.", { label: bound.label }) };
+      }
+    }
     for (var i = 0; i < cfg.schema.length; i++) {
       var field = cfg.schema[i];
       if (!cfg.dirtyValues[field.key]) continue;
@@ -111,8 +122,8 @@
     var invalid = firstInvalidDirtySetting();
     if (invalid) {
       msg.textContent = invalid.message;
-      if (invalid.control.reportValidity) invalid.control.reportValidity();
-      if (invalid.control.focus) invalid.control.focus();
+      if (invalid.control && invalid.control.reportValidity) invalid.control.reportValidity();
+      if (invalid.control && invalid.control.focus) invalid.control.focus();
       return;
     }
     cfg.saving = true;
@@ -204,6 +215,7 @@
           msg.textContent = ok ? outcomeMessage : cfg.i18nText("configure.save.reload_failed", "Saved (reload failed — refresh the page).");
           var autoBrightnessSettingChanged = Object.prototype.hasOwnProperty.call(submittedValues, "auto_brightness") ||
               Object.prototype.hasOwnProperty.call(submittedValues, "auto_brightness_minimum_percent") ||
+              Object.prototype.hasOwnProperty.call(submittedValues, "auto_brightness_maximum_percent") ||
               Object.prototype.hasOwnProperty.call(submittedValues, "auto_brightness_response_percent") ||
               autoBrightnessSourceChanged;
           if (autoBrightnessSourceChanged || (ok && autoBrightnessSettingChanged)) {

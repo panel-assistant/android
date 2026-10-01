@@ -39,18 +39,27 @@ class AutoBrightnessHttpApiTest {
         // an escaped IllegalArgumentException is an error, not a failure — a mutation battery cannot
         // credit it, and neither should a reader.
         assertEquals(
-            AutoBrightnessHistoryParameters(168, null, null),
+            AutoBrightnessHistoryParameters(168, null, null, null),
             runCatching { autoBrightnessHistoryParameters(null, null) }.getOrNull(),
         )
         assertEquals(
-            AutoBrightnessHistoryParameters(1, 0, 4),
+            AutoBrightnessHistoryParameters(1, 0, 4, null),
             runCatching { autoBrightnessHistoryParameters("1", "0", "4") }.getOrNull(),
         )
         assertEquals(
             "the published ceiling must be accepted, not merely not-rejected",
-            AutoBrightnessHistoryParameters(168, 100, 99),
+            AutoBrightnessHistoryParameters(168, 100, 99, null),
             runCatching { autoBrightnessHistoryParameters("168", "100", "99") }.getOrNull(),
         )
+
+        assertEquals(AutoBrightnessHistoryParameters(168, null, 20, 60),
+            autoBrightnessHistoryParameters(null, null, "20", "60"))
+        listOf("4", "101", "bright").forEach { maximum ->
+            assertTrue(runCatching { autoBrightnessHistoryParameters(null, null, null, maximum) }.isFailure)
+        }
+        listOf("20", "19").forEach { maximum ->
+            assertTrue(runCatching { autoBrightnessHistoryParameters(null, null, "20", maximum) }.isFailure)
+        }
 
         listOf("0", "169", "not-a-number").forEach { hours ->
             assertTrue(runCatching { autoBrightnessHistoryParameters(hours, null) }.isFailure)

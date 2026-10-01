@@ -16,7 +16,7 @@ class PerformanceBindingTest {
     @Test fun workloadBindingIncludesEveryCurrentAdaptiveBrightnessControl() {
         val adaptiveKeys = setOf(
             "auto_brightness",
-            "auto_brightness_minimum_percent",
+            "auto_brightness_minimum_percent", "auto_brightness_maximum_percent",
             "auto_brightness_response_percent",
             "auto_brightness_ha_entity",
         )

@@ -332,11 +332,13 @@ internal class AutoBrightnessController(
     @Synchronized internal fun chartPoints(
         sensitivity: Int = config.autoBrightnessResponsePercent,
         minimumPercent: Int = config.autoBrightnessMinimumPercent,
-    ): List<AdaptiveChartPoint> = chartSnapshot(sensitivity, minimumPercent).points
+        maximumPercent: Int = config.autoBrightnessMaximumPercent,
+    ): List<AdaptiveChartPoint> = chartSnapshot(sensitivity, minimumPercent, maximumPercent).points
 
     @Synchronized internal fun chartSnapshot(
         sensitivity: Int = config.autoBrightnessResponsePercent,
         minimumPercent: Int = config.autoBrightnessMinimumPercent,
+        maximumPercent: Int = config.autoBrightnessMaximumPercent,
     ): AutoBrightnessChartSnapshot {
         reconcileHistorySource()
         val rows = history.history()
@@ -355,6 +357,7 @@ internal class AutoBrightnessController(
                 sensitivity = sensitivity,
                 brightnessRange = lookup.brightnessRange,
                 minimumBrightness = AdaptiveLuxCurve.percentToBrightness(minimumPercent),
+                maximumBrightness = AdaptiveLuxCurve.percentToBrightness(maximumPercent),
                 expectedLogLux = lookup::expectedLogLux,
             ),
         )
@@ -498,6 +501,7 @@ internal class AutoBrightnessController(
             sensitivity = config.autoBrightnessResponsePercent,
             conditionElapsedMs = conditionElapsed,
             minimumBrightness = AdaptiveLuxCurve.percentToBrightness(config.autoBrightnessMinimumPercent),
+            maximumBrightness = AdaptiveLuxCurve.percentToBrightness(config.autoBrightnessMaximumPercent),
         ) ?: run {
             requestEvaluationLocked(CALM_EVALUATION_MS)
             return null

@@ -9078,9 +9078,24 @@
    "sourceHash": "703710414afe74c55e969564e23cc7c7f0647d059ffa3237463fa03739902567",
    "state": "machine-draft"
   },
+  "settings.auto_brightness_maximum_percent.help": {
+   "text": "Hoogste automatische schermhelderheid als percentage. Voorgestelde niveaus liggen tussen het minimum en maximum; de helderheid kan handmatig nog hoger worden ingesteld.",
+   "sourceHash": "807d354b83f70e5cf04cc085fcecd83d1eacb3229b71f3283eff2d493d4b7b80",
+   "state": "machine-cross-checked"
+  },
+  "settings.auto_brightness_maximum_percent.label": {
+   "text": "Maximaal niveau",
+   "sourceHash": "777774aaf270918df6b044e180ba81a0b314fa376c8a1d03d63a2630e7346080",
+   "state": "machine-cross-checked"
+  },
+  "settings.auto_brightness_maximum_percent.summary": {
+   "text": "Hoogste niveau dat automatische helderheid kiest.",
+   "sourceHash": "0294ec80681fa7af8d9a5ff54658eac7252a87c3dc8a913e5bf88513fbe4d8e0",
+   "state": "machine-cross-checked"
+  },
   "settings.auto_brightness_minimum_percent.help": {
-   "text": "Laagste automatische schermhelderheid in procenten. Voorstellen variëren van dit minimum tot volledige helderheid; handmatig kun je de helderheid nog lager instellen.",
-   "sourceHash": "f867987f4c5e28c720153d3438f9dd602c01a40c89539c5baab444d34bad0ce8",
+   "text": "Laagste automatische schermhelderheid als percentage. Voorgestelde niveaus liggen tussen het minimum en maximum; de helderheid kan handmatig nog lager worden ingesteld.",
+   "sourceHash": "78f0ab03232ebba54ad06c901f3a8c4dd10bd96d991b2fbf05c20ae248a6b68c",
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness_minimum_percent.label": {

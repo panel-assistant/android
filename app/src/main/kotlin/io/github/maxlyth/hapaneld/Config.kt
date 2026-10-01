@@ -2307,6 +2307,13 @@ class Config private constructor(
         }
     }
 
+    /** Highest automatic target; 100 preserves the uncapped curve. Manual authority is separate. */
+    val autoBrightnessMaximumPercent: Int
+        get() = intPref("auto_brightness_maximum_percent").coerceIn(SettingsRegistry.MINIMUM_AUTOMATIC_PERCENT + 1, 100)
+    fun setAutoBrightnessMaximumPercent(value: Int) {
+        edit { putInt("auto_brightness_maximum_percent", value.coerceIn(SettingsRegistry.MINIMUM_AUTOMATIC_PERCENT + 1, 100)) }
+    }
+
     /** Exact HA illuminance entity selected instead of the local ALS; blank uses the panel sensor. */
     val autoBrightnessHaEntity: String
         get() = stringPref("auto_brightness_ha_entity")

@@ -173,6 +173,12 @@ internal class AcceptedConfigTransaction(
                     earlyResult = ApplyAcceptedResult.Stale
                     return@synchronizedTransaction
                 }
+                SettingsRegistry.automaticBrightnessBoundsError(
+                    accepted, config.autoBrightnessMinimumPercent, config.autoBrightnessMaximumPercent,
+                )?.let { reason ->
+                    earlyResult = ApplyAcceptedResult.CompatibilityRefused(reason)
+                    return@synchronizedTransaction
+                }
                 val previous = ConfigBundle.fromValues(
                     values.revisionValues(), kind = ConfigBundle.KIND_REVISION,
                     exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
@@ -187,7 +193,12 @@ internal class AcceptedConfigTransaction(
                         // preference after the ordinary bundle transaction succeeds.
                         key == "dashboard_entity_learning" -> Unit
                         key == "update_channel" -> SettingsRegistry.spec(key)?.let { config.stage(editor, it, value) }
-                        key in liveKeys -> live.add(key to value)
+                        key in liveKeys -> {
+                            if (key == "auto_brightness_minimum_percent" || key == "auto_brightness_maximum_percent") {
+                                config.stage(editor, requireNotNull(SettingsRegistry.spec(key)), value)
+                            }
+                            live.add(key to value)
+                        }
                         else -> SettingsRegistry.spec(key)?.let { spec ->
                             config.stage(editor, spec, value)
                         }

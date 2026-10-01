@@ -49,6 +49,19 @@ class ManualBrightnessAuthorityTest {
         assertEquals(0.20, subject.evaluate(200, "ctx", "src").autoAuthority, 0.0001)
     }
 
+    @Test fun automaticMaximumDoesNotRestrictExplicitManualPreference() {
+        val cappedAutomatic = AdaptiveLuxCurve.rawBrightness(10_000.0,
+            maximumBrightness = AdaptiveLuxCurve.percentToBrightness(40))
+        val subject = authority()
+        assertTrue(subject.capture(255, cappedAutomatic, cappedAutomatic,
+            BrightnessPreferenceOrigin.PANEL_CONTROLS, "ctx", "src"))
+        val captured = subject.evaluate(cappedAutomatic, "ctx", "src")
+        assertEquals(255, captured.finalTarget)
+        assertEquals(cappedAutomatic, captured.automaticTarget)
+        elapsed += ManualBrightnessAuthority.DURATION_MS
+        assertEquals(cappedAutomatic, subject.evaluate(cappedAutomatic, "ctx", "src").finalTarget)
+    }
+
     @Test fun smoothFadeHasSixtyPercentAuthorityAtTwoHoursAndFullAtFour() {
         val store = Store()
         val subject = authority(store)

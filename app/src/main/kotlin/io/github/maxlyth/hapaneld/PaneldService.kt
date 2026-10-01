@@ -2413,6 +2413,8 @@ class PaneldService : Service() {
                 put("automaticTarget", runtime.automaticTarget ?: JSONObject.NULL)
                 put("appliedTarget", runtime.appliedTarget ?: JSONObject.NULL)
                 put("minimumPercent", config.autoBrightnessMinimumPercent)
+                put("maximumPercent", config.autoBrightnessMaximumPercent)
+                put("maximumBrightness", io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve.percentToBrightness(config.autoBrightnessMaximumPercent))
                 put(
                     "minimumBrightness",
                     io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve.percentToBrightness(
@@ -2425,14 +2427,17 @@ class PaneldService : Service() {
             }.toString()
         }
 
-        override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?): String {
+        override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?, maximumPercent: Int?): String {
             val nowEpochMinute = System.currentTimeMillis() / 60_000L
             val cutoffMinute = nowEpochMinute - hours * 60L
             val previewSensitivity = sensitivity ?: config.autoBrightnessResponsePercent
             val previewMinimum = minimumPercent ?: config.autoBrightnessMinimumPercent
+            val previewMaximum = maximumPercent ?: config.autoBrightnessMaximumPercent
+            require(previewMaximum > previewMinimum) { "maximum_percent must be above minimum_percent" }
             val snapshot = autoBright.chartSnapshot(
                 previewSensitivity,
                 previewMinimum,
+                previewMaximum,
             )
             val points = snapshot.points
                 .filter { it.epochMinute >= cutoffMinute }
@@ -2450,6 +2455,8 @@ class PaneldService : Service() {
                 put("bucket_minutes", 5)
                 put("sensitivity", previewSensitivity)
                 put("minimum_percent", previewMinimum)
+                put("maximum_percent", previewMaximum)
+                put("maximum_brightness", io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve.percentToBrightness(previewMaximum))
                 put("minimum_brightness", io.github.maxlyth.hapaneld.control.AdaptiveLuxCurve.percentToBrightness(previewMinimum))
                 put("now_epoch_minute", nowEpochMinute)
                 put("sourceRevision", snapshot.sourceRevision)

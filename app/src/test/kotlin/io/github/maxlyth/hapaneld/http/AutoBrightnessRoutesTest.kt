@@ -20,8 +20,8 @@ class AutoBrightnessRoutesTest {
         var selected = "unset"
         val api = object : AutoBrightnessHttpApi {
             override fun statusJson() = """{"state":"live"}"""
-            override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?) =
-                """{"hours":$hours,"sensitivity":$sensitivity,"minimum":$minimumPercent}"""
+            override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?, maximumPercent: Int?) =
+                """{"hours":$hours,"sensitivity":$sensitivity,"minimum":$minimumPercent,"maximum":$maximumPercent}"""
             override fun haSourcesJson(query: String, limit: Int) = """{"query":"$query","limit":$limit}"""
             override suspend fun validateHaSource(entityId: String) = AutoBrightnessHttpValidation(AutoBrightnessHttpAction.ok())
             override suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction {
@@ -46,9 +46,9 @@ class AutoBrightnessRoutesTest {
         val status = client.get("/api/v1/auto-brightness")
         assertEquals("no-store", status.headers[HttpHeaders.CacheControl])
         assertEquals("""{"state":"live"}""", status.bodyAsText())
-        val history = client.get("/api/v1/auto-brightness/history?hours=24&sensitivity=40&minimum_percent=10")
+        val history = client.get("/api/v1/auto-brightness/history?hours=24&sensitivity=40&minimum_percent=10&maximum_percent=60")
         assertEquals("no-store", history.headers[HttpHeaders.CacheControl])
-        assertEquals("""{"hours":24,"sensitivity":40,"minimum":10}""", history.bodyAsText())
+        assertEquals("""{"hours":24,"sensitivity":40,"minimum":10,"maximum":60}""", history.bodyAsText())
         val invalid = client.get("/api/v1/auto-brightness/history?hours=169")
         assertEquals(HttpStatusCode.BadRequest, invalid.status)
         assertEquals("hours must be between 1 and 168\n", invalid.bodyAsText())

@@ -51,7 +51,7 @@
     }
     var ctl = cfg.el("div", { class: "fctl" }, f.readOnly ? [cfg.pip(f)] : [cfg.pip(f), valueControl]);
     // Anchor id so dashboard "edit" icons can deep-link straight to this setting.
-    var dependencyDisabled = (f.key === "auto_brightness" || f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") && !cfg.ambientLightSourceReady();
+    var dependencyDisabled = (f.key === "auto_brightness" || f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") && !cfg.ambientLightSourceReady();
     return cfg.el("div", {
       class: "frow" + (isAdvanced ? " adv" : "") + (f.available ? "" : " muted") + (dependencyDisabled ? " dependency-disabled" : ""),
       id: "cfg-" + f.key
@@ -59,7 +59,7 @@
   }
 
   function shouldRenderRow(f) {
-    if ((f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") && cfg.values.auto_brightness !== "true") return false;
+    if ((f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") && cfg.values.auto_brightness !== "true") return false;
     return true;
   }
   var CARD_BADGES = {

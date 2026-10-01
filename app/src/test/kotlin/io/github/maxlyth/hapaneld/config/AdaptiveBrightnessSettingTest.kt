@@ -41,6 +41,22 @@ class AdaptiveBrightnessSettingTest {
         assertTrue(SettingValue.validate(spec, "100") is Validation.Bad)
     }
 
+    @Test fun `maximum automatic level defaults to full brightness and validates usable range`() {
+        val spec = requireNotNull(SettingsRegistry.spec("auto_brightness_maximum_percent"))
+        assertEquals("100", spec.default)
+        assertEquals(SettingType.INT, spec.type)
+        assertEquals(5.0, spec.min)
+        assertEquals(100.0, spec.max)
+        assertEquals(Scope.DEVICE, spec.scope)
+        assertNull(spec.ha)
+        listOf("5", "60", "100").forEach {
+            assertTrue(SettingValue.validate(spec, it) is Validation.Ok)
+        }
+        listOf("4", "101").forEach {
+            assertTrue(SettingValue.validate(spec, it) is Validation.Bad)
+        }
+    }
+
     /**
      * The floor is not a taste decision: raw brightness is clamped to the actuator's never-blank
      * minimum, so every percentage below this one drives the same raw level and the control would

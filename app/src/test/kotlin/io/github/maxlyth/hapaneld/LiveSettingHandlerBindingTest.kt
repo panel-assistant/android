@@ -27,6 +27,8 @@ class LiveSettingHandlerBindingTest {
         override fun handleVoiceEnabled(payload: String) = record("handleVoiceEnabled", payload)
         override fun handleNetAdb(payload: String) = record("handleNetAdb", payload)
         override fun handleZigbee(payload: String) = record("handleZigbee", payload)
+        override fun handleAutoBrightnessMaximum(payload: String) =
+            record("handleAutoBrightnessMaximum", payload)
         override fun handleAutoBrightnessMinimum(payload: String) =
             record("handleAutoBrightnessMinimum", payload)
         override fun handleAutoBrightnessSensitivity(payload: String) =
@@ -87,6 +89,11 @@ class LiveSettingHandlerBindingTest {
                 "auto_brightness_minimum_percent",
                 "23",
                 expected = invocation("handleAutoBrightnessMinimum", "23"),
+            ),
+            Case(
+                "auto_brightness_maximum_percent",
+                "73",
+                expected = invocation("handleAutoBrightnessMaximum", "73"),
             ),
             Case(
                 "auto_brightness_response_percent",
@@ -247,6 +254,7 @@ class LiveSettingHandlerBindingTest {
             // The voice assistant is a Home Assistant satellite, never an MQTT switch.
             "voice_enabled",
             "auto_brightness_minimum_percent",
+            "auto_brightness_maximum_percent",
             "auto_brightness_response_percent",
             "auto_brightness_ha_entity",
             "ha_area",
