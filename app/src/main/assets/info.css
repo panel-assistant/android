@@ -94,6 +94,7 @@ h2 small{text-transform:none;letter-spacing:0;color:var(--ok-dim);font-weight:40
 .card-title-action{float:right;color:var(--accent2);font-size:.78rem;text-transform:none;letter-spacing:0;text-decoration:none;font-weight:500}
 .card-title-action:hover{color:var(--text-bright);text-decoration:underline}
 .cardbadge{float:right;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:1px 8px;border-radius:10px;margin-top:1px}
+.cardbadge.preview{background:var(--info-bg);color:var(--info-fg);border:1px solid var(--info-bd)}
 .cardbadge.exp{background:var(--bexp-bg);color:var(--bexp-fg);border:1px solid var(--bexp-bd)}
 /* Tighter card spacing on a narrow screen. VERTICAL only, so unlike the page gutter it cannot change a
    content box and cannot cost a column — this literal is a spacing preference, never a layout threshold,

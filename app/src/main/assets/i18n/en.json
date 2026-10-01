@@ -1591,11 +1591,11 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
-    "configure.badge.experimental": {
-      "text": "experimental",
-      "sourceHash": "748be63c87c9fad252fbd0a2e16d0bdd446d2f7acb456b820ed417e9b1f451df",
+    "configure.badge.preview": {
+      "text": "preview",
+      "sourceHash": "5975cf1bba432391c94667f5886225f69377c0aa8b9fa21fddfb21c89bcf9092",
       "surface": "configure",
-      "context": "badge",
+      "context": "Voice card maturity badge: an early preview of the feature.",
       "risk": "ordinary",
       "siblings": [],
       "placeholders": [],
