@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.http
 
 import io.github.maxlyth.hapaneld.canonicalHaOrigin
 import io.github.maxlyth.hapaneld.Config
+import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import io.github.maxlyth.hapaneld.backup.PanelBackup
 import io.github.maxlyth.hapaneld.backup.CompanionRestore
@@ -237,6 +238,10 @@ internal class RestoreRoutes(
                 cfgObj, backupSchema, { canonicalHaOrigin(config.haUrl) }, { config.zigbeeRouterConfigured },
             ).let { plan ->
                 if (migrationRestore) plan.copy(values = migrationRestoreConfig(plan.values)) else plan
+            }.let { plan ->
+                SettingsRegistry.automaticBrightnessBoundsError(
+                    plan.values, config.autoBrightnessMinimumPercent, config.autoBrightnessMaximumPercent,
+                )?.let { plan.copy(errors = plan.errors + it) } ?: plan
             }
             if (configPlan.errors.isNotEmpty()) {
                 return call.respondText(

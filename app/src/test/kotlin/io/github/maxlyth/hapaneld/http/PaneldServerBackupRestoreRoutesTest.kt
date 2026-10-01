@@ -68,6 +68,35 @@ class PaneldServerBackupRestoreRoutesTest {
         }
     }
 
+    @Test fun `full mount refuses inverted automatic bounds before restore side effects`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.config.setFriendlyName("Contract panel")
+            fixture.config.setAutoBrightnessMinimumPercent(20)
+            fixture.config.setAutoBrightnessMaximumPercent(60)
+            testApplication {
+                application { fixture.mount(this) }
+                val invalidConfigs = listOf(
+                    "\"auto_brightness_minimum_percent\":\"70\",\"auto_brightness_maximum_percent\":\"60\"",
+                    "\"auto_brightness_minimum_percent\":\"70\"",
+                    "\"auto_brightness_maximum_percent\":\"20\"",
+                )
+                for (suffix in listOf("?dry_run=1", "")) {
+                    for (bounds in invalidConfigs) {
+                        val response = client.post("/api/v1/restore$suffix") {
+                            setBody("""{"kind":"ha-paneld-backup","schema":13,"config":{"friendly_name":"Must not apply",$bounds}}""")
+                        }
+                        val text = response.bodyAsText()
+                        assertEquals(text, HttpStatusCode.UnprocessableEntity, response.status)
+                        assertEquals("invalid backup config", JSONObject(text).getString("error"))
+                        assertEquals(20, fixture.config.autoBrightnessMinimumPercent)
+                        assertEquals(60, fixture.config.autoBrightnessMaximumPercent)
+                        assertEquals("Contract panel", fixture.config.friendlyName)
+                    }
+                }
+            }
+        }
+    }
+
     @Test fun `full mount refuses malformed restore then releases admission for another request`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {
