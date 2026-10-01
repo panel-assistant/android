@@ -31359,8 +31359,8 @@
       "hardMaxChars": 90
     },
     "settings.camera_enabled.help": {
-      "text": "Off by default. Serves the panel's camera as a video-only RTSP stream and as a JPEG snapshot for Home Assistant to pull; no frames leave the panel unless a client is connected, and the panel shows a red light whenever the camera is open.",
-      "sourceHash": "7cdea3db240f425db9be12ceb307b9cb3986e5466981f26156d853e842ab2c9f",
+      "text": "Off by default. Serves RTSP video with room audio where a microphone is available and permitted, and JPEG snapshots for Home Assistant. Capture starts only when a client requests media, and the panel shows a red light while the camera is open.",
+      "sourceHash": "26cbf74a17b8917bdc37624458a557520a5289f5902c34ffba20f4c5fa408a0f",
       "surface": "settings",
       "context": "Configure > Camera > Camera: supporting help for the camera_enabled setting.",
       "risk": "ordinary",

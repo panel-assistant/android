@@ -546,16 +546,10 @@ object SettingsRegistry {
             label = "Camera", default = "false", scope = Scope.DEVICE,
             // The Configure page turns the words RTSP and JPEG into links to the two addresses; the text is
             // written so it still reads correctly where those links are not rendered.
-            help = "Off by default. Serves the panel's camera as a video-only RTSP stream and as a JPEG " +
-                "snapshot for Home Assistant to pull; no frames leave the panel unless a client is " +
-                "connected, and the panel shows a red light whenever the camera is open.",
+            help = "Off by default. Serves RTSP video with room audio where a microphone is available " +
+                "and permitted, and JPEG snapshots for Home Assistant. Capture starts only when a " +
+                "client requests media, and the panel shows a red light while the camera is open.",
             availableWhen = { it.hasCamera },
-            ha = haEntity("switch", "camera_enabled", "Camera") {
-                commandTopic()
-                stateTopic()
-                icon("mdi:cctv")
-                entityCategory("config")
-            },
         ),
         SettingSpec(
             key = "camera_resolution", type = SettingType.ENUM, group = "Camera",
@@ -1221,6 +1215,18 @@ object SettingsRegistry {
      *  SharedPreferences and travel in config bundles, so the string is a stored-format contract —
      *  the sole owner of the parse/construct convention lives here rather than at each call site. */
     const val HA_EXPOSE_PREFIX = "ha_expose_"
+    // Keep the existing MQTT image preference through backup/restore until that image is retired.
+    // It no longer has an HA switch or Configure exposure pip.
+    const val LEGACY_CAMERA_EXPOSURE_KEY = "${HA_EXPOSE_PREFIX}camera_enabled"
+    const val LEGACY_CAMERA_EXPOSURE_DEFAULT = false
+
+    fun persistedExposureDefaults(): Map<String, Boolean> =
+        haCapable().associate { exposureKey(it) to it.haExposedByDefault } +
+            (LEGACY_CAMERA_EXPOSURE_KEY to LEGACY_CAMERA_EXPOSURE_DEFAULT)
+
+    fun isPersistedExposure(key: String): Boolean =
+        key == LEGACY_CAMERA_EXPOSURE_KEY || parseExposure(key) != null
+
     /** Config entities that were implicitly exposed before schema 4; used only to preserve upgrades. */
     val LEGACY_DEFAULT_ON_HA_EXPOSURES: Set<String> = setOf(
         "wake_on_wave", "auto_sleep", "navbar_mode",

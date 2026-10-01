@@ -181,6 +181,10 @@ internal object PanelAssistantChannelCatalog {
 
     private val HAND_WRITTEN: Map<String, PanelAssistantChannelDescriptor> = listOf(
         PanelAssistantChannelDescriptor(
+            channel = "camera_enabled", platform = "camera", translationKey = "camera",
+            uniqueSuffix = "camera", kind = PanelAssistantValueKind.BOOLEAN,
+        ),
+        PanelAssistantChannelDescriptor(
             channel = "led", platform = "light", translationKey = "led", uniqueSuffix = "led",
             kind = PanelAssistantValueKind.LIGHT, choices = sameAsCode(listOf("none", "strobe", "blink", "pulse")),
         ),

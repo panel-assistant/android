@@ -10339,9 +10339,9 @@
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
-      "sourceHash": "7cdea3db240f425db9be12ceb307b9cb3986e5466981f26156d853e842ab2c9f",
+      "sourceHash": "26cbf74a17b8917bdc37624458a557520a5289f5902c34ffba20f4c5fa408a0f",
       "state": "machine-cross-checked",
-      "text": "Standardmäßig aus. Stellt die Kamera des Panels als reinen RTSP-Videostream und als JPEG-Schnappschuss zum Abruf durch Home Assistant bereit. Bilder verlassen das Panel nur, wenn ein Client verbunden ist; bei geöffneter Kamera leuchtet am Panel ein rotes Licht."
+      "text": "Standardmäßig aus. Stellt RTSP-Video mit Ton aus dem Raum bereit, wenn ein Mikrofon verfügbar und seine Nutzung erlaubt ist, sowie JPEG-Schnappschüsse für Home Assistant. Die Aufnahme beginnt erst, wenn ein Client Medien anfordert. Solange die Kamera geöffnet ist, zeigt das Panel ein rotes Licht."
     },
     "settings.camera_enabled.label": {
       "sourceHash": "03494b0d1f803522a3497d751eaaf6f987883cd4fe0b0e66baf67a662ae231b2",

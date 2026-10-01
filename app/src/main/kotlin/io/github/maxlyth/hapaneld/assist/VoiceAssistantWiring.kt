@@ -102,9 +102,11 @@ internal class ConfiguredMicrophoneSource(
 ) {
     private var current: AndroidMicrophoneSource? = null
     private var currentSource: Int = -1
+    private var closed = false
 
     @Synchronized
     fun get(): MicrophoneSource {
+        check(!closed) { "microphone source is shut down" }
         val wanted = audioSourceFor(config.voiceAudioSource)
         val existing = current
         if (existing != null && (currentSource == wanted || existing.state.value !is MicState.Closed)) return existing
@@ -114,6 +116,12 @@ internal class ConfiguredMicrophoneSource(
         currentSource = wanted
         MicrophoneAdmission.observe(built)
         return built
+    }
+
+    @Synchronized
+    fun shutdown(timeoutMs: Long): Boolean {
+        closed = true
+        return current?.shutdown(timeoutMs) ?: true
     }
 
     companion object {
@@ -136,8 +144,8 @@ internal fun voiceAssistantCoordinator(
     state: VoiceStateAuthority,
     engineFactory: WakeWordEngineFactory,
     runner: AssistRunner,
+    source: () -> MicrophoneSource,
 ): VoiceAssistantCoordinator {
-    val source = ConfiguredMicrophoneSource(context.applicationContext, config)
     return VoiceAssistantCoordinator(
         scope = scope,
         settings = {
@@ -149,7 +157,7 @@ internal fun voiceAssistantCoordinator(
             )
         },
         microphoneAvailable = microphoneAvailable,
-        source = { source.get() },
+        source = source,
         engineFactory = engineFactory,
         runnerFactory = { runner },
         playback = AnnouncementLanePlayback(audio, onStarted = { state.set(VoiceState.RESPONDING) }),

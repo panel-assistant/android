@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.http
 import io.github.maxlyth.hapaneld.camera.CameraRefusal
 import io.github.maxlyth.hapaneld.camera.CameraResolution
 import io.github.maxlyth.hapaneld.camera.CameraSurface
+import io.github.maxlyth.hapaneld.camera.CameraState
 import io.github.maxlyth.hapaneld.camera.SnapshotResult
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -36,7 +37,11 @@ internal fun Route.cameraRoutes(
             }
         }
         call.response.headers.append("Cache-Control", "no-store")
-        when (val result = withContext(Dispatchers.IO) { camera.snapshot(requested) }) {
+        val captured = withContext(Dispatchers.IO) { camera.snapshot(requested) }
+        val result = if (captured is SnapshotResult.Jpeg && camera.presentation().state == CameraState.DISABLED) {
+            SnapshotResult.Refused(CameraRefusal.DISABLED)
+        } else captured
+        when (result) {
             is SnapshotResult.Jpeg -> call.respondBytes(result.bytes, ContentType.Image.JPEG)
             is SnapshotResult.Refused -> call.respondText(
                 "${result.reason.token}\n",
