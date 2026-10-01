@@ -9139,8 +9139,8 @@
    "state": "machine-draft"
   },
   "settings.camera_enabled.help": {
-   "text": "Domyślnie wyłączone. Udostępnia kamerę panelu jako strumień RTSP (tylko wideo) oraz jako zdjęcie JPEG, które Home Assistant może pobierać; żadne klatki nie opuszczają panelu, dopóki nie połączy się klient, a panel pokazuje czerwone światło za każdym razem, gdy kamera jest otwarta.",
-   "sourceHash": "7cdea3db240f425db9be12ceb307b9cb3986e5466981f26156d853e842ab2c9f",
+   "text": "Domyślnie wyłączone. Udostępnia wideo RTSP z dźwiękiem z pomieszczenia, gdy mikrofon jest dostępny i udzielono zgody na jego użycie, oraz zdjęcia JPEG dla Home Assistant. Przechwytywanie rozpoczyna się tylko wtedy, gdy klient żąda multimediów, a panel pokazuje czerwone światło, gdy kamera jest otwarta.",
+   "sourceHash": "26cbf74a17b8917bdc37624458a557520a5289f5902c34ffba20f4c5fa408a0f",
    "state": "machine-cross-checked"
   },
   "settings.camera_enabled.label": {

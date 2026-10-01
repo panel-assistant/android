@@ -129,6 +129,7 @@ class ConfigPostProductionRouteTest {
                     "config", "system", "sensors", "pendingLiveSettings", "stalledLiveSettings",
                     "configLiveValues", "rendererPreparation", "tameReconciliation", "revisions",
                     "managementObservations", "powerSafety", "stopping", "haArea", "pageHealth",
+                    "onSelfUpdateChannelCommitted",
                 )) {
                     val value = PaneldServer::class.java.getDeclaredField(name).run {
                         isAccessible = true
@@ -161,6 +162,7 @@ class ConfigPostProductionRouteTest {
     @Test fun `production bundle import exports redacted values and revision restore undoes the commit`() =
         withRouteConfig { config, _, server, _ ->
             assertTrue(config.applyBatch { config.setMqtt("", "test-user", "private-test-value") })
+            config.setHaExposed("camera_enabled", true)
             testApplication {
                 application {
                     paneldRoot({ emptySet() }, { false }, { "/setup" }) {
@@ -172,19 +174,26 @@ class ConfigPostProductionRouteTest {
                 val bundle = requireNotNull(ConfigBundle.parse(exported.bodyAsText()))
                 assertEquals("Contract panel", bundle.values["friendly_name"])
                 assertTrue("mqtt_password" !in bundle.values)
+                assertEquals("true", bundle.values["ha_expose_camera_enabled"])
+                assertEquals(null, SettingsRegistry.parseExposure("ha_expose_camera_enabled"))
                 val imported = client.post("/api/v1/config/import") {
                     header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                    setBody(ConfigBundle.fromValues(mapOf("friendly_name" to "Imported panel")).serialize())
+                    setBody(ConfigBundle.fromValues(mapOf(
+                        "friendly_name" to "Imported panel", "ha_expose_camera_enabled" to "false",
+                    )).serialize())
                 }
                 assertEquals(HttpStatusCode.OK, imported.status, imported.bodyAsText())
                 assertEquals("applied", JSONObject(imported.bodyAsText()).getString("status"))
                 assertEquals("Imported panel", config.friendlyName)
+                assertEquals(false, config.haExposed("camera_enabled", false))
                 val revisions = JSONArray(client.get("/api/v1/config/revisions").bodyAsText())
                 assertEquals(1, revisions.length())
                 val restored = client.post("/api/v1/config/revisions/${revisions.getJSONObject(0).getLong("id")}/restore")
                 assertEquals(HttpStatusCode.OK, restored.status, restored.bodyAsText())
                 assertEquals("restored", JSONObject(restored.bodyAsText()).getString("status"))
                 assertEquals("Contract panel", config.friendlyName)
+                assertEquals(true, config.haExposed("camera_enabled", false))
+                assertEquals("test-user", config.mqttUser)
                 assertEquals(2, JSONArray(client.get("/api/v1/config/revisions").bodyAsText()).length())
             }
         }
@@ -262,6 +271,40 @@ class ConfigPostProductionRouteTest {
         "companion_update_channel" to "prerelease",
         "webview_auto_update" to "true",
     )
+
+    @Test fun `production backup restores retained camera exposure and ordinary stored values`() =
+        withFullReadServer { config, fixture ->
+            config.setHaExposed("camera_enabled", true)
+            config.setPanelId("retained_panel")
+            config.setFriendlyName("Original panel")
+            config.setMqtt("", "retained-user", "retained-password")
+            val panelId = config.panelId
+            val builder = fixture.backupBuilder(null, config) { spec, live -> effectiveSettingValue(config, spec, live) }
+            builder.build(CompanionBackupRequest.EXCLUDED, "").use { artifact ->
+                val manifest = JSONObject(io.github.maxlyth.hapaneld.backup.PanelBackup.readManifest(artifact.file, 1024 * 1024)!!)
+                assertTrue(manifest.getJSONObject("config").has("ha_expose_camera_enabled"))
+                assertEquals("true", manifest.getJSONObject("config").getString("ha_expose_camera_enabled"))
+                config.setHaExposed("camera_enabled", false)
+                config.setFriendlyName("Changed panel")
+                setField(fixture.server, "applySetting", { _: String, _: String -> LiveSettingRequestOutcome.APPLIED })
+                setField(fixture.server, "onReconfigure", { _: Set<String> -> })
+                testApplication {
+                    application { fixture.mount(this) }
+                    val restored = client.post("/api/v1/restore") { setBody(artifact.file.readBytes()) }
+                    assertEquals(HttpStatusCode.OK, restored.status, restored.bodyAsText())
+                    kotlinx.coroutines.withTimeout(5_000) {
+                        while (InstallProgress.running) kotlinx.coroutines.delay(10)
+                    }
+                    val result = JSONObject(InstallProgress.json()).getJSONObject("result")
+                    assertEquals("succeeded", result.getString("status"), result.toString())
+                    assertEquals(true, config.haExposed("camera_enabled", false))
+                    assertEquals("Original panel", config.friendlyName)
+                    assertEquals("retained-user", config.mqttUser)
+                    assertEquals("retained-password", config.mqttPassword)
+                    assertEquals(panelId, config.panelId)
+                }
+            }
+        }
 
     @Test fun `failed production bundle commit records no revision and starts no live effects`() =
         withRouteConfig { config, persistence, server, live ->

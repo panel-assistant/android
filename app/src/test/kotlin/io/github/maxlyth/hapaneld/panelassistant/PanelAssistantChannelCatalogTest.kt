@@ -15,6 +15,18 @@ import org.junit.Test
 import java.util.Base64
 
 class PanelAssistantChannelCatalogTest {
+    @Test fun cameraControlDescribesAnOrdinaryEnabledCameraAndReportsBothPowerStates() {
+        val descriptor = PanelAssistantChannelCatalog.describe("camera_enabled")!!
+        val json = descriptor.toJson()
+        assertEquals("camera", json.getString("platform"))
+        assertEquals("camera", json.getString("translation_key"))
+        assertEquals("camera", json.getString("unique_suffix"))
+        assertTrue(json.getBoolean("enabled_default"))
+        assertTrue(json.isNull("entity_category"))
+        assertEquals(PanelAssistantWireValue.Known(false), PanelAssistantValueTranslation.translate(descriptor, StateConverger.Observation.Known("OFF")))
+        assertEquals(PanelAssistantWireValue.Known(true), PanelAssistantValueTranslation.translate(descriptor, StateConverger.Observation.Known("ON")))
+    }
+
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
 
     @Test fun everyConvergerChannelIsDescribedOrFolded() {
@@ -164,7 +176,6 @@ class PanelAssistantChannelCatalogTest {
 
     @Test fun enabledDefaultFollowsTheExposureDefaultAndWireOnlySettingsStartDisabled() {
         assertEquals(false, PanelAssistantChannelCatalog.describe("diag_cpu")?.enabledDefault)
-        assertEquals(false, PanelAssistantChannelCatalog.describe("camera_enabled")?.enabledDefault)
         assertEquals(false, PanelAssistantChannelCatalog.describe("watchdog")?.enabledDefault)
         assertEquals(true, PanelAssistantChannelCatalog.describe("relay1")?.enabledDefault)
         assertNotNull(PanelAssistantChannelCatalog.describe("illuminance")?.takeIf { it.enabledDefault })

@@ -9139,8 +9139,8 @@
    "state": "machine-draft"
   },
   "settings.camera_enabled.help": {
-   "text": "Standaard uitgeschakeld. Biedt de camera van het paneel aan als RTSP-stream met alleen video en als JPEG-momentopname die Home Assistant kan ophalen; er verlaten geen beelden het paneel tenzij er een client is verbonden, en het paneel toont een rood lampje zolang de camera open is.",
-   "sourceHash": "7cdea3db240f425db9be12ceb307b9cb3986e5466981f26156d853e842ab2c9f",
+   "text": "Standaard uitgeschakeld. Biedt RTSP-video met geluid uit de kamer wanneer een microfoon beschikbaar is en het gebruik ervan is toegestaan, en JPEG-momentopnamen voor Home Assistant. De opname begint alleen wanneer een client media opvraagt, en het paneel toont een rood lampje zolang de camera open is.",
+   "sourceHash": "26cbf74a17b8917bdc37624458a557520a5289f5902c34ffba20f4c5fa408a0f",
    "state": "machine-cross-checked"
   },
   "settings.camera_enabled.label": {

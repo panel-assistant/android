@@ -293,7 +293,13 @@ class CameraSessionOwner(
         try {
             synchronized(lock) { state.addWaiter(waiter, nowMs()) }
             val bytes = runCatching { waiter.get(SNAPSHOT_WAIT_MS, TimeUnit.MILLISECONDS) }.getOrNull()
-            if (bytes != null) return SnapshotResult.Jpeg(bytes)
+            if (bytes != null) return synchronized(lock) {
+                when {
+                    state.phase == Phase.STOPPING -> SnapshotResult.Refused(CameraRefusal.STOPPING)
+                    !enabled() || lease.generation != state.generation -> SnapshotResult.Refused(CameraRefusal.DISABLED)
+                    else -> SnapshotResult.Jpeg(bytes)
+                }
+            }
             // Null means one of three things, told apart by what the session did meanwhile: a teardown
             // that drained the waiter (report the teardown's own refusal), a frame that arrived but would
             // not encode (the encoder's fault, not the camera's), or genuinely no frame in time.

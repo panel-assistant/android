@@ -95,6 +95,16 @@ class AppStateSemanticProofTest {
         assertArrayEquals(expected, checkedIn)
     }
 
+    @Test fun `legacy camera snapshot exposure keeps its absent false and opted in semantics`() {
+        val absent = canonicalAppStateSemanticProof(listOf(runtime))
+        fun withExposure(value: String) = canonicalAppStateSemanticProof(
+            listOf(runtime, AppStateDigestRow("config", "ha_expose_camera_enabled", "boolean", value, 99L)),
+        )
+        assertEquals(absent.settingsSha256, withExposure("0").settingsSha256)
+        assertNotEquals(absent.settingsSha256, withExposure("1").settingsSha256)
+        assertNotEquals(absent.orderedSha256, withExposure("0").orderedSha256)
+    }
+
     @Test fun `present ordinary override remains exact instead of collapsing to its default`() {
         fun proof(value: String) = canonicalAppStateSemanticProof(
             listOf(runtime, AppStateDigestRow("config", ordinaryDefault.key, ordinaryDefault.type, value, 10L)),
