@@ -510,12 +510,12 @@ internal fun authoritativeGuardDbSettingDefaults(): List<GuardDbSettingDefault> 
         } else spec.default
         add(GuardDbSettingDefault(spec.key, type, canonicalDefault))
     }
-    SettingsRegistry.haCapable().forEach { spec ->
+    SettingsRegistry.persistedExposureDefaults().forEach { (key, default) ->
         add(
             GuardDbSettingDefault(
-                SettingsRegistry.exposureKey(spec),
+                key,
                 "boolean",
-                if (spec.haExposedByDefault) "1" else "0",
+                if (default) "1" else "0",
             ),
         )
     }

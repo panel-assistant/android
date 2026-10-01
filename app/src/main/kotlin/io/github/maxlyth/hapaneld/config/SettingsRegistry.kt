@@ -1270,6 +1270,18 @@ object SettingsRegistry {
      *  SharedPreferences and travel in config bundles, so the string is a stored-format contract —
      *  the sole owner of the parse/construct convention lives here rather than at each call site. */
     const val HA_EXPOSE_PREFIX = "ha_expose_"
+    // Keep the existing MQTT image preference through backup/restore until that image is retired.
+    // It no longer has an HA switch or Configure exposure pip.
+    const val LEGACY_CAMERA_EXPOSURE_KEY = "${HA_EXPOSE_PREFIX}camera_enabled"
+    const val LEGACY_CAMERA_EXPOSURE_DEFAULT = false
+
+    fun persistedExposureDefaults(): Map<String, Boolean> =
+        haCapable().associate { exposureKey(it) to it.haExposedByDefault } +
+            (LEGACY_CAMERA_EXPOSURE_KEY to LEGACY_CAMERA_EXPOSURE_DEFAULT)
+
+    fun isPersistedExposure(key: String): Boolean =
+        key == LEGACY_CAMERA_EXPOSURE_KEY || parseExposure(key) != null
+
     /** Config entities that were implicitly exposed before schema 4; used only to preserve upgrades. */
     val LEGACY_DEFAULT_ON_HA_EXPOSURES: Set<String> = setOf(
         "wake_on_wave", "auto_sleep", "navbar_mode",

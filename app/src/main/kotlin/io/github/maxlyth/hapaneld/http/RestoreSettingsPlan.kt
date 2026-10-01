@@ -71,9 +71,8 @@ internal fun planRestoreSettings(
     val errors = ArrayList<String>()
     for ((key, value) in migrated) {
         val spec = SettingsRegistry.spec(key)
-        val exposedSpec = SettingsRegistry.parseExposure(key)
         when {
-            exposedSpec != null -> {
+            SettingsRegistry.isPersistedExposure(key) -> {
                 val normalized = SettingValue.parseBool(value)?.toString()
                 if (normalized == null) errors += "$key: expected a boolean" else accepted[key] = normalized
             }

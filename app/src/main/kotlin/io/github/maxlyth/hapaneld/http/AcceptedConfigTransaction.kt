@@ -188,7 +188,7 @@ internal class AcceptedConfigTransaction(
                 for ((key, value) in accepted) {
                     when {
                         key == "panel_id" -> config.stagePanelId(editor, value)
-                        SettingsRegistry.parseExposure(key) != null -> editor.putBoolean(key, SettingValue.parseBool(value) == true)
+                        SettingsRegistry.isPersistedExposure(key) -> editor.putBoolean(key, SettingValue.parseBool(value) == true)
                         // EntityLearningManager owns enable/disable transition semantics and commits this
                         // preference after the ordinary bundle transaction succeeds.
                         key == "dashboard_entity_learning" -> Unit
