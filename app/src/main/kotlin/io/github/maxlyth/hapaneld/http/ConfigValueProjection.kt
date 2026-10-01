@@ -9,6 +9,11 @@ import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.util.Json
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 
+internal fun persistedExposureValues(config: Config): Map<String, String> =
+    SettingsRegistry.persistedExposureDefaults().mapValues { (key, default) ->
+        config.haExposed(key.removePrefix(SettingsRegistry.HA_EXPOSE_PREFIX), default).toString()
+    }
+
 /** Registry-backed effective values and Configure response projection; owns no mutable state. */
 internal class ConfigValueProjection(
     private val config: Config,
@@ -64,9 +69,7 @@ internal class ConfigValueProjection(
             zigbeeRouterConfigured = config.zigbeeRouterConfigured,
             effectiveValue = { effectiveValue(it, live) },
         )
-        SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-            m[SettingsRegistry.exposureKey(spec)] = config.haExposed(spec.key, spec.haExposedByDefault).toString()
-        }
+        m.putAll(persistedExposureValues(config))
         return m
     }
 
@@ -76,9 +79,7 @@ internal class ConfigValueProjection(
         val live = configLiveValues()
         return LinkedHashMap<String, String>().apply {
             SettingsRegistry.settable().forEach { spec -> put(spec.key, effectiveValue(spec, live)) }
-            SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-                put(SettingsRegistry.exposureKey(spec), config.haExposed(spec.key, spec.haExposedByDefault).toString())
-            }
+            putAll(persistedExposureValues(config))
             putAll(pendingLiveSettings())
         }
     }

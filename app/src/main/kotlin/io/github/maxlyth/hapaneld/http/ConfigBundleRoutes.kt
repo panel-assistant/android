@@ -49,9 +49,7 @@ internal class ConfigBundleRoutes(
             zigbeeRouterConfigured = config.zigbeeRouterConfigured,
             effectiveValue = { values.effectiveValue(it, live) },
         )
-        SettingsRegistry.SPECS.filter { it.ha != null }.forEach { spec ->
-            values[SettingsRegistry.exposureKey(spec)] = config.haExposed(spec.key, spec.haExposedByDefault).toString()
-        }
+        values.putAll(persistedExposureValues(config))
         val bundle = ConfigBundle.fromValues(
             values, exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
         )
@@ -112,8 +110,7 @@ internal class ConfigBundleRoutes(
         val warn = warnings.toMutableList()
         for ((key, raw) in migrated) {
             val spec = SettingsRegistry.spec(key)
-            val exposedSpec = SettingsRegistry.parseExposure(key)
-            if (exposedSpec != null) {
+            if (SettingsRegistry.isPersistedExposure(key)) {
                 val normalized = SettingValue.parseBool(raw)?.toString()
                 if (normalized == null) errors.add("$key: expected a boolean") else accepted[key] = normalized
                 continue
@@ -237,7 +234,7 @@ internal class ConfigBundleRoutes(
         val (migrated, _) = Migrations.migrate(bundle.schema, ordinaryValues)
         val accepted = LinkedHashMap<String, String>()
         for ((key, raw) in migrated) {
-            if (SettingsRegistry.parseExposure(key) != null) {
+            if (SettingsRegistry.isPersistedExposure(key)) {
                 SettingValue.parseBool(raw)?.let { accepted[key] = it.toString() }
                 continue
             }
