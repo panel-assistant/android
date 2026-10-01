@@ -46,7 +46,7 @@ internal interface PanelAssistantCommandSink {
 /** Typed wire values back to the payloads the command handlers already parse. */
 internal object PanelAssistantCommandTranslation {
     /** Platforms that take commands. Sensors, updates, events and images are read-only. */
-    val COMMANDABLE_PLATFORMS: Set<String> = setOf("switch", "light", "number", "select", "text", "button")
+    val COMMANDABLE_PLATFORMS: Set<String> = setOf("switch", "camera", "light", "number", "select", "text", "button")
 
     private val CODE = Regex("^[a-z][a-z0-9_]{0,63}$")
     private val CONTROL = Regex("[\\x00-\\x1f\\x7f]")

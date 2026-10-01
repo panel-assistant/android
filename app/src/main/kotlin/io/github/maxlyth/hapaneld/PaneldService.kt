@@ -1083,6 +1083,8 @@ class PaneldService : Service() {
     private lateinit var volume: VolumeController
     private lateinit var audio: AudioPlaybackCoordinator
     private lateinit var voice: io.github.maxlyth.hapaneld.assist.VoiceAssistantCoordinator
+    private lateinit var sharedMicrophone: io.github.maxlyth.hapaneld.assist.ConfiguredMicrophoneSource
+    private val microphoneClaims = io.github.maxlyth.hapaneld.audio.MicrophoneForegroundClaims(::updateMicrophoneForeground)
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null
@@ -1554,9 +1556,21 @@ class PaneldService : Service() {
         // The stream transport reads the owner through the FIELD so construction order does not matter:
         // it only asks for the camera once a client connects, which cannot happen before the owner
         // exists because the owner is what turns listening on.
+        sharedMicrophone = io.github.maxlyth.hapaneld.assist.ConfiguredMicrophoneSource(applicationContext, config)
         cameraStream = io.github.maxlyth.hapaneld.camera.CameraRtspServer(
             source = { camera },
             log = { Log.w(TAG, "camera stream: $it") },
+            clockUs = { android.os.SystemClock.elapsedRealtimeNanos() / 1_000L },
+            audio = io.github.maxlyth.hapaneld.camera.AndroidCameraAudioSource(
+                source = { sharedMicrophone.get() },
+                admitted = {
+                    profile.hasMicrophone && config.cameraEnabled && !teardownBoundary.isStopping &&
+                        androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                },
+                foreground = { active -> microphoneClaims.set("camera", active) },
+                log = { message, error -> Log.w(TAG, message, error) },
+            ),
         )
         camera = io.github.maxlyth.hapaneld.camera.CameraSessionOwner(
             context = this,
@@ -1596,6 +1610,7 @@ class PaneldService : Service() {
             scope = scope,
             audio = audio,
             microphoneAvailable = { profile.hasMicrophone },
+            source = { sharedMicrophone.get() },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
             engineFactory = io.github.maxlyth.hapaneld.assist.MicroWakeWordEngineFactory(
@@ -5034,7 +5049,9 @@ class PaneldService : Service() {
      * leases, not here: this method reports the failure and leaves the service running with the
      * types it already had.
      */
-    internal fun setMicrophoneForegroundActive(active: Boolean): Boolean {
+    internal fun setMicrophoneForegroundActive(active: Boolean): Boolean = microphoneClaims.set("voice", active)
+
+    private fun updateMicrophoneForeground(active: Boolean): Boolean {
         if (standingDown || teardownBoundary.isStopping) return false
         if (microphoneForeground == active) return true
         val silent = if (::config.isInitialized) config.silenceBootChime else true
@@ -5310,6 +5327,9 @@ class PaneldService : Service() {
             // The stream transport before the camera: every client is disconnected and its lease
             // returned before the owner tears the session down, and no new client can reattach.
             if (::cameraStream.isInitialized) closeOwner("camera stream") { cameraStream.stop() }
+            if (::sharedMicrophone.isInitialized) closeOwnerResult("shared microphone") {
+                sharedMicrophone.shutdown(asyncTeardownDeadline.remainingMs())
+            }
             // Before the LED: a session may hold it for indication and gives it back on close.
             if (::camera.isInitialized) {
                 closeOwnerResult("camera") {

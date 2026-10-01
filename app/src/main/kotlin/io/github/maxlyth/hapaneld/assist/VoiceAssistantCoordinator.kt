@@ -5,7 +5,6 @@ import io.github.maxlyth.hapaneld.audio.MicLease
 import io.github.maxlyth.hapaneld.audio.MicPurpose
 import io.github.maxlyth.hapaneld.audio.MicrophoneGain
 import io.github.maxlyth.hapaneld.audio.MicrophoneSource
-import io.github.maxlyth.hapaneld.audio.MicrophoneSourceLifecycle
 import io.github.maxlyth.hapaneld.audio.PcmConsumer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -189,11 +188,6 @@ class VoiceAssistantCoordinator internal constructor(
     // owner at a time is what makes the shared microphone claim, the phase the panel reports and the
     // capture attachment unambiguous, without any of them needing to be reasoned about separately.
 
-    // The source this coordinator actually obtained. Teardown shuts down what was opened and never
-    // asks for a source: the supplier builds one on demand, so calling it here would open the
-    // microphone on a panel that never used it, purely to close it again.
-    private var obtainedSource: MicrophoneSource? = null
-
     /** True while the wake-word engine holds the microphone. */
     val listening: Boolean get() = synchronized(lock) { wakeLease != null }
 
@@ -268,10 +262,8 @@ class VoiceAssistantCoordinator internal constructor(
     private enum class RunAdmission { STARTED, BUSY, FOREGROUND_REFUSED, NOT_ELIGIBLE }
 
     /**
-     * Proves teardown for the service boundary. Cancels any run and waits, within [timeoutMs], first
-     * for that run to finish unwinding and then for the capture thread to release the device.
-     * Reports whether both actually completed, because a boundary that is told teardown finished
-     * while a coroutine is still running is the case the boundary exists to catch.
+     * Cancels this feature and waits within [timeoutMs] for its run to release its capture lease.
+     * The service separately drains the shared source after every feature has stopped.
      */
     fun shutdown(timeoutMs: Long): Boolean {
         if (!closed.compareAndSet(false, true)) return true
@@ -281,9 +273,9 @@ class VoiceAssistantCoordinator internal constructor(
         val drained = job == null || runBlocking {
             withTimeoutOrNull(remainingMs(deadline)) { job.join() } != null
         }
-        val lifecycle = synchronized(lock) { obtainedSource } as? MicrophoneSourceLifecycle
-        val released = lifecycle?.shutdown(remainingMs(deadline)) ?: true
-        return drained && released
+        // The service owns the source. Only this feature's wake-word/Assist leases are ours to
+        // release; a camera STREAM lease must survive a voice restart or stand-down.
+        return drained
     }
 
     private fun remainingMs(deadlineNanos: Long): Long =
@@ -422,7 +414,7 @@ class VoiceAssistantCoordinator internal constructor(
         }
     }
 
-    private fun obtainSource(): MicrophoneSource? = source()?.also { synchronized(lock) { obtainedSource = it } }
+    private fun obtainSource(): MicrophoneSource? = source()
 
     private fun armEngineLocked(current: VoiceSettings) {
         val mic = obtainSource()
