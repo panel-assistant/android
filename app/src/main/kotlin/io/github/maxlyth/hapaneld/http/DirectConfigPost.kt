@@ -17,7 +17,6 @@ import io.github.maxlyth.hapaneld.control.SystemController
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
 import io.github.maxlyth.hapaneld.util.DashboardTheme
 import io.github.maxlyth.hapaneld.util.isLoopbackPeer
-import io.github.maxlyth.hapaneld.util.InstallPresentation
 import io.github.maxlyth.hapaneld.util.InstallProgress
 import io.github.maxlyth.hapaneld.util.Json
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
@@ -51,10 +50,6 @@ internal class DirectConfigPost(
     private val onHaAreaCommitted: () -> Unit,
     private val snapInvalidate: () -> Unit,
     private val onReconfigure: (Set<String>) -> Unit,
-    private val prepareSelfUpdateChannel: suspend (String, Boolean) -> SelfUpdateChannelPreflight,
-    private val onSelfUpdateChannelCommitted: (
-        SelfUpdateChannelPreflight.Ready?, InstallProgress.Ticket?, String, String,
-    ) -> Unit,
     private val configJson: (String, List<String>, List<String>, List<String>, String) -> String,
 ) {
     /**
@@ -220,21 +215,15 @@ internal class DirectConfigPost(
         }
         val tamePackagesChanged = p["tame_vendor_packages"]?.split(' ')?.filter(String::isNotBlank)?.toSet()
             ?.let { requested -> requested != config.tameVendorPackages.toSet() } == true
-        val softwareAuthorityChanged = requestsSoftwareInstallAuthority { p[it] }
         val powerSafetyReduction = PowerSafetyMutationPolicy.requestsSafetyReduction(
             keepAwake = config.keepAwake,
             requestedKeepAwake = p["keep_awake"]?.let(SettingValue::parseBool),
             preventIdleDim = config.preventIdleDim,
             requestedPreventIdleDim = p["prevent_idle_dim"]?.let(SettingValue::parseBool),
         )
-        val privilegedOperation = when {
-            tamePackagesChanged -> SensitiveOperation.PACKAGE_TAME
-            softwareAuthorityChanged -> SensitiveOperation.APK_INSTALL
-            else -> null
-        }
         val sensitiveOperations = buildList {
             if (powerSafetyReduction) add(SensitiveOperation.POWER_CONFIGURATION)
-            privilegedOperation?.let(::add)
+            if (tamePackagesChanged) add(SensitiveOperation.PACKAGE_TAME)
         }
         val approvalPayload = exactHttpApprovalPayload(call, p.canonicalDigest())
         when (ConfigSensitiveAdmission.authorize(
@@ -248,19 +237,15 @@ internal class DirectConfigPost(
                     approvalPayload,
                     when (operation) {
                         SensitiveOperation.POWER_CONFIGURATION -> "Disable a panel power-safety guard"
-                        SensitiveOperation.PACKAGE_TAME -> when {
-                            tamePackagesChanged && softwareAuthorityChanged ->
-                                "Change vendor package state and software installation policy"
-                            else -> "Change the persistent vendor package blocklist"
-                        }
-                        else -> "Allow automatic software installation or apply an active update channel"
+                        SensitiveOperation.PACKAGE_TAME -> "Change the persistent vendor package blocklist"
+                        else -> error("Unexpected Configure approval operation")
                     },
                 )
             },
         )) {
             ConfigSensitiveAdmissionResult.SEPARATE_SENSITIVE_CHANGES -> {
                 call.respondText(
-                    """{"ok":false,"error":"separate-sensitive-changes","message":"Save power-safety reductions separately from vendor-package or software-installation policy changes."}""",
+                    """{"ok":false,"error":"separate-sensitive-changes","message":"Save power-safety reductions separately from vendor-package changes."}""",
                     ContentType.Application.Json,
                     HttpStatusCode.Conflict,
                 )
@@ -282,49 +267,7 @@ internal class DirectConfigPost(
             )
             return
         }
-        var preparedChannel: SelfUpdateChannelPreflight.Ready? = null
-        var committedChannel = false
-        val previousChannel = config.updateChannel
         try {
-        val requestedChannelChanged = p["update_channel"]?.let { it != config.updateChannel } == true
-        selfUpdateChannelMutation(
-            currentChannel = config.updateChannel,
-            currentSelfUpdate = config.selfUpdate,
-            requestedValues = postedValues,
-        )?.let { request ->
-            when (val preflight = prepareSelfUpdateChannel(request.requested, request.force)) {
-                is SelfUpdateChannelPreflight.Ready -> {
-                    if (preflight.requiresRecovery) {
-                        preflight.close()
-                        respondConfigMutation(
-                            call,
-                            "database-compatibility-refused",
-                            emptyList(),
-                            emptyList(),
-                            listOf("update_channel"),
-                            "An update-channel change cannot recover an older database snapshot.",
-                            HttpStatusCode.Conflict,
-                        )
-                        return
-                    }
-                    preparedChannel = preflight
-                }
-                is SelfUpdateChannelPreflight.UpToDate -> Unit
-                is SelfUpdateChannelPreflight.Refused,
-                is SelfUpdateChannelPreflight.Unresolved -> {
-                    respondConfigMutation(
-                        call,
-                        "database-compatibility-refused",
-                        emptyList(),
-                        emptyList(),
-                        listOf("update_channel"),
-                        preflight.message,
-                        HttpStatusCode.Conflict,
-                    )
-                    return
-                }
-            }
-        }
         lateinit var mutationPlan: DirectConfigMutationPlan
         lateinit var expectedReadBack: Map<String, String>
         // Partial-merge: apply ONLY keys present, so a fleet tool can set one field without clobbering
@@ -357,7 +300,6 @@ internal class DirectConfigPost(
         var ambientSourceValidationStale = false
         var autoSleepPrerequisiteStale = false
         var directAdmissionStale = false
-        var channelCompatibilityRefusal: String? = null
         var previous: ConfigBundle? = null
         val committed = withContext(Dispatchers.IO) {
             synchronized(directConfigMutationLock) {
@@ -395,14 +337,6 @@ internal class DirectConfigPost(
                         revisionValues(), kind = ConfigBundle.KIND_REVISION,
                         exportedAt = System.currentTimeMillis().toString(), exportedBy = config.panelId,
                     )
-                    // DB_COMPAT_MUTATION_ANCHOR: HTTP_DIRECT_CONFIG_COMMIT
-                    preparedChannel?.revalidateForConfigCommit()?.let { refusal ->
-                        // The prepared APK and live database can change while HTTP admission is doing
-                        // unrelated validation. No preference in this request may commit unless the
-                        // exact candidate is still authenticated and the current database is DIRECT.
-                        channelCompatibilityRefusal = refusal
-                        return@synchronizedTransaction false
-                    }
                     config.applyBatch(
                         afterCommit = {
                             if ("tame_vendor_packages" in p) requestTameReconcileAfterCommit()
@@ -436,11 +370,6 @@ internal class DirectConfigPost(
                     p["ha_url_handover_reason"]?.let { config.setHaUrlHandoverReason(it) }
                     // Live keys are deliberately excluded from this batch. Their handlers must observe
                     // the previous value before the live-setting authority persists the applied value.
-                    // update_channel is the exception: its exact APK was admitted above, and putting it
-                    // in this same batch prevents any other setting in the request from becoming visible
-                    // before compatibility proof. Its live handler is suppressed below to avoid resolving
-                    // a second candidate.
-                    p["update_channel"]?.let { config.setUpdateChannel(it) }
                     // Keep-awake (partial wakelock so SoC/network never suspend). Applied live by reconfigure().
                     p["keep_awake"]?.let { config.setKeepAwake(it.trim().equals("true", ignoreCase = true) || it.trim() == "1") }
                     // Room-temperature calibration trim (°C) — a plain local pref with no MQTT command, so it
@@ -527,14 +456,6 @@ internal class DirectConfigPost(
                     }
                     }
                 }
-                if (persisted) {
-                    committedChannel = directUpdateChannelCommitted(
-                        requestedChannelChanged,
-                        mutationPlan.changedKeys,
-                        postedValues["update_channel"],
-                        config.updateChannel,
-                    )
-                }
                 if (persisted && !mutationPlan.isNoOp) {
                     revisions.snapshot(requireNotNull(previous))
                     runCatching {
@@ -593,7 +514,6 @@ internal class DirectConfigPost(
                         if (key == "home_dashboard" && homeDashboardAppliedEarly) {
                             return@dispatchDirectConfigLiveSettings
                         }
-                        if (key == "update_channel") return@dispatchDirectConfigLiveSettings
                         val spec = SettingsRegistry.spec(key)
                         val value = if (spec != null) {
                             when (val validated = SettingValue.validate(spec, raw)) {
@@ -673,18 +593,6 @@ internal class DirectConfigPost(
             )
             return
         }
-        channelCompatibilityRefusal?.let { refusal ->
-            respondConfigMutation(
-                call,
-                "database-compatibility-refused",
-                emptyList(),
-                emptyList(),
-                listOf("update_channel"),
-                refusal,
-                HttpStatusCode.Conflict,
-            )
-            return
-        }
         if (!committed) {
             call.respondText("configuration commit failed\n", status = HttpStatusCode.InternalServerError)
             return
@@ -704,10 +612,6 @@ internal class DirectConfigPost(
         )
         liveApplied.addAll(0, ordinaryOutcomes.applied)
         ordinaryOutcomes.rejected.filterNot(liveRejected::contains).forEach(liveRejected::add)
-        if (committedChannel) liveApplied.add(0, "update_channel")
-        if ("update_channel" in mutationPlan.changedKeys && !committedChannel && "update_channel" !in liveRejected) {
-            liveRejected += "update_channel"
-        }
         snapInvalidate()
         val reconfigureKeys = ordinaryOutcomes.applied.toCollection(linkedSetOf()).apply {
             if ("home_dashboard" in liveApplied || "home_dashboard" in livePending) add("home_dashboard")
@@ -773,43 +677,8 @@ internal class DirectConfigPost(
             if (livePending.isEmpty()) HttpStatusCode.OK else HttpStatusCode.Accepted,
         )
         } finally {
-            val promotedChannelTicket = if (committedChannel && preparedChannel != null) {
-                checkNotNull(
-                    InstallProgress.promoteConfigMutation(
-                        configMutationTicket,
-                        "ha-paneld",
-                        InstallPresentation("operation-working", mapOf("owner" to "paneld")),
-                    ),
-                ) {
-                    "committed self-update channel lost its configuration owner"
-                }
-            } else null
             InstallProgress.finishConfigMutation(configMutationTicket)
-            if (committedChannel) {
-                onSelfUpdateChannelCommitted(
-                    preparedChannel,
-                    promotedChannelTicket,
-                    previousChannel,
-                    config.updateChannel,
-                )
-                preparedChannel = null
-            }
-            preparedChannel?.close()
         }
-    }
-
-    private fun requestsSoftwareInstallAuthority(value: (String) -> String?): Boolean {
-        if (listOf(
-                "self_update" to config.selfUpdate,
-                "companion_auto_update" to config.companionAutoUpdate,
-                "webview_auto_update" to config.webViewAutoUpdate,
-            ).any { (key, enabled) -> SettingValue.parseBool(value(key).orEmpty()) == true && !enabled }
-        ) return true
-        val selfUpdate = SettingValue.parseBool(value("self_update").orEmpty()) ?: config.selfUpdate
-        val companionUpdate = SettingValue.parseBool(value("companion_auto_update").orEmpty())
-            ?: config.companionAutoUpdate
-        return (selfUpdate && value("update_channel")?.let { it != config.updateChannel } == true) ||
-            (companionUpdate && value("companion_update_channel")?.let { it != config.companionUpdateChannel } == true)
     }
 
     private fun recordLiveApplyOutcome(

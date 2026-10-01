@@ -4,18 +4,14 @@ import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 
 internal const val WEBVIEW_DOC = "https://panel-assistant.io/go/docs?page=hardware/readme"
 
-/** One top-of-tab warning for a render-blocking finding (WebView old / no dashboard app). WebView gets
- *  the inline "Update WebView now" heal button when [canHeal]; a missing renderer gets a one-tap
- *  "Install HA Companion" button when [canInstallCompanion]. */
+/** A render-blocking warning; a missing renderer can offer an explicit Companion install. */
 internal fun installWarning(
     f: HealthAudit.Finding,
-    canHeal: Boolean,
     canInstallCompanion: Boolean,
     strings: AppStrings,
 ): String = when (f.kind) {
     HealthAudit.Kind.WEBVIEW_OLD ->
         """<div class="setup crit">⚠ <b>${esc(strings.get("install.warning.webview_old.title"))}</b> (${esc(f.detail)}) — ${esc(strings.get("install.warning.webview_old.body"))} <a href="$WEBVIEW_DOC" target="_blank" rel="noopener">${esc(strings.get("install.warning.webview_old.help"))}</a> (${esc(formattedString(strings, "install.warning.webview_old.target", "version" to PanelHealth.MIN_CHROMIUM.toString()))}).""" +
-            (if (canHeal) """<div style="margin-top:10px"><button class="pbtn"${hardenedApprovalAttrs(strings = strings)} onclick="healWebView(this)">⬇ ${esc(strings.get("install.warning.webview_old.update"))}</button> <span id="wv-heal" class="muted"></span></div>""" else "") +
             """</div>"""
     HealthAudit.Kind.NO_RENDERER ->
         """<div class="setup">ℹ <b>${esc(strings.get("install.warning.no_renderer.title"))}</b> ${esc(strings.get("install.warning.no_renderer.prefix"))} <a href="${localizedHref("configure", strings)}">${esc(strings.get("shell.nav.configure"))}</a>${esc(strings.get("install.warning.no_renderer.suffix"))}""" +

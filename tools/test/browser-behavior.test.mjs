@@ -237,8 +237,6 @@ browserTest('Configure enum labels fit a 1361px viewport at large text in every 
     ['cpu_governor', 'System', ['Performance', 'Efficiency', 'Auto']],
     ['camera_resolution', 'Camera', ['480p', '720p', '1080p']],
     ['dashboard_theme', 'Dashboard', ['Follow Home Assistant', 'Dark', 'Light']],
-    ['update_channel', 'System', ['stable', 'prerelease']],
-    ['companion_update_channel', 'System', ['stable', 'prerelease']],
     ['voice_audio_source', 'Voice', ['voice_recognition', 'mic', 'voice_communication']],
     ['voice_sensitivity', 'Voice', ['low', 'normal', 'high']],
     ['log_ship_protocol', 'Logging', ['syslog-udp', 'syslog-tcp', 'http']],
@@ -794,8 +792,7 @@ function autoSleepHydrationSchema() {
     field('dashboard_fullscreen', 'Dashboard', 'BOOL'), field('dashboard_native_kiosk', 'Dashboard', 'BOOL'),
     field('dashboard_idle_return_min', 'Dashboard', 'INT'), field('ha_url', 'Dashboard'),
     field('ha_token', 'Dashboard', 'PASSWORD'), field('dashboard_zoom', 'Dashboard', 'INT'),
-    field('self_update', 'System', 'BOOL'), field('update_channel', 'System', 'ENUM'),
-    field('webview_auto_update', 'System', 'BOOL'), field('launcher_package', 'System'),
+    field('launcher_package', 'System'),
     field('network_adb', 'System', 'BOOL'),
     field('log_ship_enabled', 'Logging', 'BOOL'), field('log_ship_host', 'Logging'),
     field('log_ship_port', 'Logging', 'INT'), field('log_ship_protocol', 'Logging', 'ENUM'),
@@ -1651,12 +1648,12 @@ browserTest('Sensitivity preview survives transient HA source loss during save',
   assert.equal(sensitivity, '10');
 });
 browserTest('Configure keeps a localized approval challenge visible instead of treating it as a save', async (t) => {
-  const schema = [{ key: 'update_channel', label: 'Update channel', group: 'Updates', type: 'STRING', available: true }];
+  const schema = [{ key: 'ha_url', label: 'Home Assistant URL', group: 'Dashboard', type: 'STRING', available: true }];
   const harness = await startHarness((path, request) => {
     if (path === '/api/v1/config/schema') return json(schema);
     if (path === '/api/v1/config') {
       if (request.method === 'POST') return json({ error: 'approval-required', message: 'Approve this change on the panel.' }, 202);
-      return json({ settings: { update_channel: 'stable' }, ha_expose: {}, ha_auth: {} });
+      return json({ settings: { ha_url: 'http://ha.local:8123' }, ha_expose: {}, ha_auth: {} });
     }
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio') return json({ present: false });
@@ -1667,7 +1664,7 @@ browserTest('Configure keeps a localized approval challenge visible instead of t
   page.setDefaultTimeout(1_500);
   t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-  await page.locator('#cfg-update_channel input').fill('beta');
+  await page.locator('#cfg-ha_url input').fill('http://new-ha.local:8123');
   await page.locator('#savebtn').click();
   await assert.doesNotReject(page.locator('#cfg-msg').getByText('请在面板上批准此请求，然后重试。').waitFor());
   await assert.doesNotReject(page.locator('#savebtn').isEnabled());

@@ -29,7 +29,6 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -2643,15 +2642,12 @@ class DashboardActivity : AppCompatActivity() {
         val carriedDeadlineMs = if (rearm) null else admissionCountdown.deadlineAtMs
         if (web != null) teardownWeb()
         val surface = statusSurface()
-        // What this particular screen can offer beyond Retry, decided from the verdict it is showing
-        // rather than from the call site's copy. Both answers are pure and tested away from the views.
-        val repair = webViewRepairOffer(outcome, WebViewRepairRuntime.capability())
+        // Credential failures can offer sign-in on a phone instead of opening the local browser.
         val phoneUrl = configureQrPath(outcome)?.let { path ->
             scannableHost(localIpv4(), localIpv6())?.let { host ->
                 LocalAdminEndpoint.url(host, Config(this).httpPort, path)
             }
         }
-        val repairNote = webViewRepairNote(repair)?.let { surface.detail(it) }
         val qr = phoneUrl?.let { surface.qr(it, getString(R.string.config_qr_description, it)) }
         val phoneAddress = phoneUrl?.takeIf { qr != null }?.let { surface.caption(it, accent = true) }
         // A code replaces the explanation as well as the button, because at this size it cannot sit
@@ -2661,11 +2657,6 @@ class DashboardActivity : AppCompatActivity() {
             retryLabel?.let { label ->
                 add(surface.action(label) {
                     retryAdmission(resetBackoff = true)
-                })
-            }
-            if (repair == WebViewRepairOffer.OFFER) {
-                add(surface.action(getString(R.string.update_web_viewer), primary = true) { button ->
-                    startWebViewRepair(button, repairNote)
                 })
             }
             // The code replaces Configure rather than joining it: both open the same page, and the
@@ -2688,15 +2679,11 @@ class DashboardActivity : AppCompatActivity() {
                 surface.detail(shown),
                 qr,
                 phoneAddress,
-                repairNote,
                 surface.actionRow(*buttons.toTypedArray()),
                 countdown,
             ).toTypedArray(),
         )
-        // The outcome travels with the redraw, so a rotation or a theme flip rebuilds the same offer
-        // rather than a bare Retry screen. An in-flight repair is deliberately NOT carried: the poll
-        // holds the views it updates, both die with the discarded tree, and the installer's own single
-        // slot is still the authority the redrawn screen reads.
+        // Preserve the outcome so a rotation or theme change keeps the same sign-in guidance.
         showStatusSurface(surface) {
             paintV2CompatibilityScreen(title, detail, retryLabel, autoRetry, outcome, rearm = false)
         }
@@ -2706,73 +2693,10 @@ class DashboardActivity : AppCompatActivity() {
         Log.w(TAG, "$title: $detail")
     }
 
-    /**
-     * What the screen says about repairing itself, in the person's terms rather than the installer's.
-     *
-     * The copy lives here rather than beside the decision so that it stays inside the file the plain
-     * language gate reads; the decision it renders is pure and tested on its own.
-     */
-    private fun webViewRepairNote(offer: WebViewRepairOffer): String? = when (offer) {
-        WebViewRepairOffer.OFFER ->
-            getString(R.string.web_view_repair_known_good)
-        WebViewRepairOffer.NEEDS_PRIVILEGE ->
-            getString(R.string.web_view_repair_needs_privilege)
-        WebViewRepairOffer.NO_KNOWN_GOOD_BUILD ->
-            getString(R.string.web_view_repair_no_build)
-        WebViewRepairOffer.MANAGED_ELSEWHERE ->
-            getString(R.string.web_view_repair_managed_elsewhere)
-        // Nothing extra to say in either case: one is a screen about something else, and the other
-        // is a screen whose panel has not finished working out what it can do.
-        WebViewRepairOffer.NOT_REPAIRABLE,
-        WebViewRepairOffer.UNKNOWN_CAPABILITY,
-        -> null
-    }
-
     private fun localizedConfigureQrDetail(outcome: AdmissionOutcome?): String? = when (outcome) {
         AdmissionOutcome.SIGN_IN_REQUIRED -> getString(R.string.ha_sign_in_needed_qr)
         AdmissionOutcome.CREDENTIAL_REFUSED -> getString(R.string.ha_sign_in_rejected_qr)
         else -> null
-    }
-
-    /**
-     * Run the repair, and report it where the person is already looking.
-     *
-     * **There is no success branch, and its absence is the design.** Installing an engine is only half of
-     * the repair: a provider binds once per process, so the panel cannot use what it just installed until
-     * it restarts, and the service takes that restart a few seconds later. The ordinary end of a
-     * successful repair is therefore this screen disappearing with the process that drew it, and the
-     * panel returning through the normal admission sequence. Everything below describes the paths where
-     * nothing was installed.
-     */
-    private fun startWebViewRepair(button: Button, note: TextView?) {
-        button.isEnabled = false
-        button.setText(R.string.installing)
-        when (WebViewRepairRuntime.request()) {
-            WebViewRepairRequest.STARTED -> {
-                note?.setText(R.string.downloading_installing)
-                pollWebViewRepair(button, note)
-            }
-            // Both refusals hand the button back, because both are states that lapse: another install
-            // finishes, and a service that has not attached yet attaches. A disabled button here would
-            // be a dead end on a screen whose whole purpose is to stop being one.
-            WebViewRepairRequest.BUSY -> releaseWebViewRepair(
-                button,
-                note,
-                getString(R.string.install_busy),
-            )
-            WebViewRepairRequest.UNAVAILABLE -> releaseWebViewRepair(
-                button,
-                note,
-                getString(R.string.panel_service_not_ready_install),
-            )
-        }
-    }
-
-    /** Hand the offer back after an attempt that installed nothing, saying why. */
-    private fun releaseWebViewRepair(button: Button, note: TextView?, reason: String) {
-        button.isEnabled = true
-        button.setText(R.string.update_web_viewer)
-        note?.text = reason
     }
 
     private fun localizedHaUnavailableDetail(blocked: DashboardV2ProbeResult.Unavailable): String =
@@ -2781,61 +2705,6 @@ class DashboardActivity : AppCompatActivity() {
             localizedHaTransportFault(blocked.evidence.fault),
             blocked.detail,
         )
-
-    private fun localizedWebViewRepairFailure(progress: WebViewRepairProgress): String {
-        val explanation = when (webViewRepairFailureKind(progress)) {
-            WebViewRepairFailureKind.NO_RECOMMENDATION -> getString(R.string.web_view_repair_no_build)
-            WebViewRepairFailureKind.NO_CHANGE -> getString(R.string.web_view_repair_no_change)
-            WebViewRepairFailureKind.NO_INSTALL_ROUTE -> getString(R.string.web_view_repair_no_install_route)
-            WebViewRepairFailureKind.DOWNLOAD -> getString(R.string.web_view_repair_download_failed)
-            WebViewRepairFailureKind.DOWNLOAD_TOO_LARGE -> getString(R.string.web_view_repair_download_too_large)
-            WebViewRepairFailureKind.RETRYABLE -> getString(R.string.web_view_repair_retryable)
-            WebViewRepairFailureKind.STORAGE -> getString(R.string.web_view_repair_storage_failed)
-            WebViewRepairFailureKind.STAGING -> getString(R.string.web_view_repair_staging_failed)
-            WebViewRepairFailureKind.DEFERRED -> getString(R.string.web_view_repair_deferred)
-            WebViewRepairFailureKind.REJECTED -> getString(R.string.web_view_repair_rejected)
-            WebViewRepairFailureKind.CANCELLED -> getString(R.string.web_view_repair_cancelled)
-            null -> return progress.message.takeIf { it.isNotBlank() }
-                ?: getString(R.string.update_stopped_unknown)
-        }
-        return progress.message.takeIf { it.isNotBlank() }
-            ?.let { getString(R.string.web_view_repair_failure_detail, explanation, it) }
-            ?: explanation
-    }
-
-    /**
-     * Follow the running install and retitle the note as it goes.
-     *
-     * The installer publishes one process-wide slot and no event, so this reads it on a timer — the same
-     * shape the Install page uses over HTTP. Both views are re-tested for attachment on every tick, which
-     * is this activity's existing idiom for a callback that outlives the screen it was created for: a
-     * replaced screen's poll finds a detached button and stops, without a teardown hook to forget.
-     */
-    private fun pollWebViewRepair(button: Button, note: TextView?) {
-        main.postDelayed({
-            if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return@postDelayed
-            if (!button.isAttachedToWindow) return@postDelayed
-            val progress = WebViewRepairRuntime.progress()
-            // A RUNNING install is deliberately not narrated by the installer's own words. Measured on a
-            // panel: it publishes the placeholder "Working…" for the whole download and never updates it,
-            // because the installer reports one terminal string and has no progress callback. Adopting
-            // that would replace a sentence that tells somebody what is happening and roughly how long
-            // with a word that tells them neither.
-            if (progress.running) {
-                pollWebViewRepair(button, note)
-                return@postDelayed
-            }
-            // Nothing running and this screen is still here, so the engine was not replaced — replacing
-            // it takes this process with it. An EMPTY message is not a failure report: the installer's
-            // slot lives in this process and a restart clears it, so blank means "no information", and
-            // the honest sentence for that is not "it failed".
-            releaseWebViewRepair(
-                button,
-                note,
-                localizedWebViewRepairFailure(progress),
-            )
-        }, WEB_VIEW_REPAIR_POLL_MS)
-    }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun buildAndLoad(config: Config) {
@@ -4124,12 +3993,6 @@ class DashboardActivity : AppCompatActivity() {
         // Tightened once commit-from-catalog made the happy bootstrap take milliseconds: the net now
         // assumes seconds are normal and anything past twenty is a fault.
         private const val BOOTSTRAP_HOLD_HONESTY_MS = 20_000L
-        /** Named once so the button that offers the repair and the button that is handed back
-         *  after a refusal cannot drift apart. */
-        /** Slow on purpose: the installer publishes a string, not an event, and a download that
-         *  runs for minutes gains nothing from being asked about more often than the person
-         *  watching would notice. */
-        private const val WEB_VIEW_REPAIR_POLL_MS = 2_500L
         private const val BOOTSTRAP_WATCHDOG_RETRY_MS = 30_000L
         private const val BOOTSTRAP_WATCHDOG_PROBLEM_MS = 90_000L
         /** The widening retry never idles longer than this, so a panel converges once HA answers. */

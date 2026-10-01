@@ -403,9 +403,7 @@ body.hdr-hide-brand .hdr .brand{display:none}
 #cfg-auto_brightness_ha_entity + #cfg-auto_brightness,
 #cfg-auto_brightness + #cfg-auto_brightness_minimum_percent,
 #cfg-auto_brightness_minimum_percent + #cfg-auto_brightness_maximum_percent,
-#cfg-auto_brightness_maximum_percent + #cfg-auto_brightness_response_percent,
-#cfg-self_update + #cfg-update_channel,
-#cfg-companion_auto_update + #cfg-companion_update_channel{border-top:0;padding-top:0}
+#cfg-auto_brightness_maximum_percent + #cfg-auto_brightness_response_percent{border-top:0;padding-top:0}
 /* Seven-day adaptive-light preview lives with its Display settings. It is diagnostic and local: the
    canvas shows bounded illuminance aggregates, never dashboard/entity history or location metadata. */
 .autobright-panel{margin-top:0;padding-top:0;border-top:0}

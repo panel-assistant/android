@@ -26,6 +26,21 @@ class PanelAssistantShadowReporterTest {
         assertEquals(0, begin.getJSONArray("observations").length())
     }
 
+    @Test fun knownRetiredChannelsStayUnsupportedWithoutDescriptorsWhileUnknownNamesAreOmitted() {
+        val retired = listOf("self_update", "update_channel", "companion_auto_update", "companion_update_channel", "webview_auto_update")
+        val reporter = PanelAssistantShadowReporter()
+        reporter.bindShape {
+            PanelAssistantChannelShape(
+                served = listOf("update_paneld", "update_companion"),
+                unsupported = retired + "future_channel",
+            )
+        }
+        val offer = reporter.offer()
+        assertEquals(retired.sorted(), offer.unsupported)
+        assertEquals(listOf("update_companion", "update_paneld"), offer.descriptors.map { it.channel })
+        retired.forEach { assertNull(it, PanelAssistantChannelCatalog.describe(it)) }
+    }
+
     @Test fun fullSyncSendsEveryCachedObservationThenAnEmptyFullEndThenDeltas() {
         val h = Harness()
         h.sink("screen", """{"state":"ON","brightness":40}""")

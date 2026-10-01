@@ -62,6 +62,8 @@ data class Capabilities(
     val hasMicrophone: Boolean = false,
     val hasEvdevButtons: Boolean = false,
     val appCanSu: Boolean = false,
+    /** A verified privileged install route exists for explicitly requested software updates. */
+    val canInstallVerifiedApps: Boolean = false,
     val hasRecents: Boolean = false,
     // The firmware draws Android's own navigation bar, so the soft overlay is unnecessary. Profile-declared
     // only (see DeviceProfile.hasNativeNavbar) — the generic Android signals lie in both directions, and this
@@ -93,16 +95,9 @@ data class Capabilities(
     // Android 10+ ships a system-wide dark/light setting; panels that have it follow the OS and hide
     // ha-paneld's own dark_mode toggle (Android 9- panels have no such control, so ours fills the gap).
     val hasSystemDarkMode: Boolean = false,
-    // HA Companion (full or minimal) present on the panel — gates the Companion auto-update settings
-    // (meaningless without it) and their HA entities.
-    val companionInstalled: Boolean = false,
-    // The profile pins a known-good System WebView build in the webview-mirror release — gates the
-    // webview_auto_update setting (there's nothing to update to without a pin; e.g. Play-updated panels).
-    val webViewManaged: Boolean = false,
     // Runtime-only privilege routes. These describe what the panel can do now; they are never config
     // switches and therefore cannot be imported or changed through MQTT/HTTP.
     val shizukuReady: Boolean = false,
-    val canInstallVerifiedApps: Boolean = false,
     val canCaptureAndInput: Boolean = false,
     val canSetDisplay: Boolean = false,
 )

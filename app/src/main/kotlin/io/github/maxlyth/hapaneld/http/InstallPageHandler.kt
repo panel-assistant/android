@@ -51,9 +51,6 @@ internal class InstallPageHandler(
         // Same finding set as the dashboard banner (HealthAudit). Update findings are surfaced by the
         // Managed-components card below, so the top warnings show only the render-blocking states.
         val problems = pageHealth.healthFindings(h, wv.display, emptyList())
-        // Auto-heal offer: if the profile ships a known-good WebView and we have root/daemon to install it,
-        // the too-old warning gets a one-tap "Update WebView now" button (POST /api/v1/webview/heal).
-        val canHeal = wv.tooOld && profile.recommendedWebView != null && root
         // A missing dashboard app can be self-healed by installing the minimal HA Companion over root — a
         // Play-managed full Companion would already count as a renderer, so NO_RENDERER + root ⇒ safe.
         val canInstallCompanion = installer
@@ -70,7 +67,7 @@ internal class InstallPageHandler(
                 radioStatus, dashboardRecoveryState,
                 companion, inlineRepair = true, strings = strings,
             )
-        val warnings = extra + problems.joinToString("") { installWarning(it, canHeal, canInstallCompanion, strings) }
+        val warnings = extra + problems.joinToString("") { installWarning(it, canInstallCompanion, strings) }
         val allGood = if (h.brokerConfigured && problems.isEmpty() && extra.isEmpty() && !powerAdvisory.assessment.warning) """<div class="card" data-layout-key="ready"><p class="note">✓ ${esc(strings.get("install.ready"))}</p></div>""" else ""
         val compPkg = CompanionInstaller.installedPkg(appContext)
         val compCur = compPkg?.let { AppInstaller.installedVersion(appContext, it) }?.takeIf { it.isNotBlank() }
@@ -78,7 +75,7 @@ internal class InstallPageHandler(
             strings = strings,
             warnings = warnings,
             allGood = allGood,
-            components = componentsCardHtml(wv, root, installer, strings, config, compPkg, compCur, profile.recommendedWebView != null),
+            components = componentsCardHtml(installer, strings, compPkg, compCur),
             apk = apkCardHtml(root, strings, config),
             uninstall = uninstallCardHtml(su, strings),
             vendor = tameCardHtml(root, strings) { tame.cardCandidates(config.tameVendorPackages, tameProfileCandidates) },

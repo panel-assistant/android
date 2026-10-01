@@ -30,14 +30,13 @@ class PanelAssistantCommandTranslationTest {
 
     @Test fun `select codes become the labels the handlers already take`() {
         assertEquals("Performance", payload("cpu_governor", "performance"))
-        assertEquals("Pre-release", payload("update_channel", "prerelease"))
         assertEquals("Swipe reveal", payload("navbar", "swipe_reveal"))
         assertNull(payload("cpu_governor", "Performance"))
         assertNull(payload("cpu_governor", "turbo"))
     }
 
     @Test fun `every option code of every select round-trips to a label`() {
-        listOf("cpu_governor", "navbar", "update_channel", "companion_update_channel").forEach { channel ->
+        listOf("cpu_governor", "navbar").forEach { channel ->
             val descriptor = describe(channel)
             requireNotNull(descriptor.options).forEach { code ->
                 val label = requireNotNull(PanelAssistantCommandTranslation.payload(descriptor, code)) { "$channel $code" }

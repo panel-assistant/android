@@ -1386,64 +1386,10 @@ class Config private constructor(
         } ?: deviceStatePrefs.edit().putString(POWER_SAFETY_ACKNOWLEDGEMENT_PREF, fingerprint).commit()
     }
 
-    // HA Companion app auto-manage: when on, ha-paneld installs the minimal Companion if it's
-    // missing and updates it when a newer release exists (root panels; the minimal variant has no Play
-    // auto-update, so ha-paneld is the only update path). Default off — installing/updating an app is
-    // invasive, AND an upstream Companion release can be incompatible with a panel's old Android (e.g.
-    // 2026.6.5-minimal crash-loops on Android 8.1/PX30 — a missing android.car class — blanking the
-    // dashboard fleet-wide when auto-update was on). Opt in per panel (provision --companion-auto or the
-    // MQTT switch); a per-profile known-good version pin is the planned safer gate.
-    val companionAutoUpdate: Boolean get() = boolPref("companion_auto_update")
-    fun setCompanionAutoUpdate(on: Boolean) {
-        edit { putBoolean("companion_auto_update", on) }
-    }
-    /** Release channel the Companion auto-updater follows — mirrors [updateChannel] for ha-paneld. */
-    val companionUpdateChannel: String get() = stringPref("companion_update_channel")
-    fun setCompanionUpdateChannel(ch: String) {
-        val v = if (ch.trim().lowercase().startsWith("pre")) "prerelease" else "stable"
-        edit { putString("companion_update_channel", v) }
-    }
-
     /** Language used by ha-paneld's own interface; `auto` delegates to the locale resolver. */
     val uiLanguage: String get() = stringPref("ui_language")
     fun setUiLanguage(language: String) {
         edit { putString("ui_language", language) }
-    }
-
-    // ha-paneld self-update: when on, ha-paneld installs a newer build of ITSELF from GitHub releases on
-    // the selected [updateChannel] (root/Shizuku verified-install route; no Play Store on these panels).
-    // Default ON only where the runtime exposes verified app install; the Configure schema hides it and
-    // PaneldService rechecks capability before any automatic install on unsupported panels. It never
-    // auto-DOWNGRADES: running a pre-release while on the stable channel simply waits ("suspended") until
-    // stable catches up; the one deliberate move off an rc is an explicit channel switch pre-release→stable.
-    val selfUpdate: Boolean get() = boolPref("self_update")
-    fun setSelfUpdate(on: Boolean) {
-        edit { putBoolean("self_update", on) }
-    }
-    val updateChannel: String get() = stringPref("update_channel")
-    fun setUpdateChannel(ch: String) {
-        val v = if (ch.trim().lowercase().startsWith("pre")) "prerelease" else "stable"
-        edit { putString("update_channel", v) }
-    }
-
-    // System WebView auto-update: when on, ha-paneld advances the WebView to the profile's pinned
-    // recommended build (from the webview-mirror release) on the update tick — the same curated pin the
-    // too-old auto-heal installs, but proactively rather than only when the engine is broken. **Default
-    // OFF**: a provider swap binds per-process (needs a restart) and is more invasive than an app update,
-    // and the pin is advanced deliberately by the maintainer (there is no clean upstream feed to chase).
-    val webViewAutoUpdate: Boolean get() = boolPref("webview_auto_update")
-    fun setWebViewAutoUpdate(on: Boolean) {
-        // commit() (not apply()): the natural workflow is "enable, then reboot to let it run", and an
-        // async write can be lost if the reboot lands before it flushes to disk.
-        editCommit { putBoolean("webview_auto_update", on) }
-    }
-    // Loop guard: the exact recommended version last auto-installed. If a later tick still doesn't see it
-    // as the engine, the provider isn't switching (variant hardware) — don't re-download it daily; a pin
-    // bump (new version string) clears the guard. commit() (not apply): must persist across the restart
-    // the successful install triggers.
-    val webViewAutoLastVersion: String get() = prefs.getString("webview_auto_last_version", "") ?: ""
-    fun setWebViewAutoLastVersion(v: String) {
-        prefs.edit().putString("webview_auto_last_version", v).commit()
     }
 
     // Network-adb persist INTENT (the switch). ha-paneld re-asserts adb-tcp at boot/reconnect when this
@@ -2643,9 +2589,9 @@ class Config private constructor(
 
     /**
      * Migrate the live config store to the current [SettingsRegistry.SCHEMA] when it was
-     * written by an older shape, using the same [Migrations] chain as bundle import. A fleet self-updates
-     * unattended, so the first time a key is renamed or retyped the persisted value must be carried
-     * forward, not silently reset to its default. No-op (and cheap) while already current; call once at
+     * written by an older shape, using the same [Migrations] chain as bundle import. When a key is renamed
+     * or retyped its persisted value must be carried forward, not silently reset to its default.
+     * A current store is a no-op unless it contains retired records from a legacy restore; call once at
      * startup before the store is read. Committed synchronously so a reboot can't race the write.
      */
     /**
@@ -2716,11 +2662,17 @@ class Config private constructor(
     private fun sameOriginDashboardRoute(raw: String): String? =
         sameOriginDashboardRoute(raw, canonicalHaOrigin(haUrl))
 
-    fun migrateLiveStore(): Boolean {
+    fun migrateLiveStore(): Boolean = synchronized(CONFIG_LOCK) {
         rerootDashboardEntityOwners()
         canonicalizeStoredHomeDashboard()
         val from = storedSchema
-        if (from == SettingsRegistry.SCHEMA) return true
+        if (from == SettingsRegistry.SCHEMA) {
+            if (SettingsRegistry.RETIRED_KEYS.none(prefs::contains)) return@synchronized true
+            return@synchronized durableCommit {
+                SettingsRegistry.RETIRED_KEYS.forEach(::remove)
+                putInt("config_schema", SettingsRegistry.SCHEMA)
+            }
+        }
         val specs = SettingsRegistry.SPECS.filterNot { it.readOnly || it.transient }
         val current = specs.associate { it.key to getRaw(it) }
         val (migrated, warnings) = Migrations.migrate(from, current)
@@ -2762,6 +2714,9 @@ class Config private constructor(
                 if (!prefs.contains(exposureKey)) ed.putBoolean(exposureKey, true)
             }
         }
+        // Also clean a current-schema store dirtied by a raw legacy restore. Removal and the marker
+        // share one commit, so a failed migration leaves everything available for the next retry.
+        SettingsRegistry.RETIRED_KEYS.forEach(ed::remove)
         ed.putInt("config_schema", SettingsRegistry.SCHEMA)
         // The schema marker moves in the SAME transaction as the values it describes, so a failed commit
         // leaves the store wholly at its old schema and the migration is simply retried at the next
@@ -2779,7 +2734,7 @@ class Config private constructor(
                     "the store remains at schema $from and the migration will be retried",
             )
         }
-        return committed
+        committed
     }
 
     /**
