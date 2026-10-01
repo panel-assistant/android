@@ -3,6 +3,7 @@ package io.github.maxlyth.hapaneld.logship
 import android.util.Log
 import io.github.maxlyth.hapaneld.control.CdpRelay
 import io.github.maxlyth.hapaneld.util.HaWebSocketClients
+import io.github.maxlyth.hapaneld.util.closeBody
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.WebSockets
@@ -287,7 +288,10 @@ internal class WebViewConsoleStream(
             connection.connectTimeout = CONNECT_TIMEOUT_MS.toInt()
             connection.readTimeout = READ_TIMEOUT_MS
             try {
-                if (connection.responseCode != 200) return null
+                if (connection.responseCode != 200) {
+                    connection.closeBody()
+                    return null
+                }
                 connection.inputStream.use { input ->
                     val bytes = input.readNBytesCompat(MAX_LIST_BYTES)
                     String(bytes, Charsets.UTF_8)

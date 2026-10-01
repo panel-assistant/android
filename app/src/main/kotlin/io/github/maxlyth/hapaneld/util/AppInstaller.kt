@@ -883,6 +883,7 @@ object AppInstaller {
                 try {
                     when (conn.responseCode) {
                         in 300..399 -> {
+                            conn.closeBody()
                             val loc = conn.getHeaderField("Location") ?: return DownloadResult.Failed
                             val next = httpsRedirect(current, loc)
                                 ?: run { Log.w(TAG, "refusing non-HTTPS redirect"); return DownloadResult.Failed }
@@ -892,6 +893,7 @@ object AppInstaller {
                             val declared = conn.contentLengthLong
                             if (declared > maxBytes) {
                                 Log.w(TAG, "refusing oversized APK response: $declared bytes")
+                                conn.closeBody()
                                 return DownloadResult.TooLarge
                             }
                             conn.inputStream.use { input ->
@@ -901,7 +903,10 @@ object AppInstaller {
                             }
                             return if (dest.length() > 0) DownloadResult.Succeeded else DownloadResult.Failed
                         }
-                        else -> return DownloadResult.Failed
+                        else -> {
+                            conn.closeBody()
+                            return DownloadResult.Failed
+                        }
                     }
                 } finally {
                     abort?.detach()
