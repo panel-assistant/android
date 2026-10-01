@@ -62,7 +62,7 @@ internal class PageHealth(
      *
      * `GET /api/v1/setup` is polled every two seconds during setup, and reading the true engine version can
      * load the WebView provider to get its user agent — far too expensive to repeat on a poll. Caching is
-     * exactly right rather than merely cheap: a WebView swap restarts this process (see `autoUpdateWebView`),
+     * exactly right rather than merely cheap: a WebView swap restarts this process,
      * so the value cannot change underneath the cache, and the answer after a successful update is read by
      * the new process. Routed through [healthInputs] so the probe keeps its single call site — surfaces
      * that probe independently drift.

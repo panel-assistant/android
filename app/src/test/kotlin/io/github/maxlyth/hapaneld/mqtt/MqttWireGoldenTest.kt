@@ -178,7 +178,6 @@ internal abstract class MqttWireRig {
             command("screen", """{"state":"OFF"}""", transport)
             command("volume", "35", transport)
             command("auto_sleep", "OFF", transport)
-            command("update_channel", "Pre-release", transport)
             // This panel has no native navigation bar: the refusal republishes the canonical mode.
             command("navbar", "Native", transport)
             command("relay1", "ON", transport)
@@ -209,7 +208,7 @@ internal abstract class MqttWireRig {
             // is the ordering barrier.
             val actionMark = transport.size()
             transport.deliver("ha-paneld/$PANEL/update_companion/set", "PRESS")
-            command("companion_update_channel", "Pre-release", transport, from = actionMark)
+            command("volume", "36", transport, from = actionMark)
 
             // Local producers reconciled through the bridge's public update methods.
             local(transport, "ha-paneld/$PANEL/illuminance/state") { bridge.publishLight(120) }
@@ -319,6 +318,7 @@ internal abstract class MqttWireRig {
         val updateSources: java.util.concurrent.atomic.AtomicReference<SoftwareUpdateSources>,
         val autoSleepConfigChanges: AtomicInteger,
         val companionUpdateRequests: AtomicInteger,
+        val selfUpdateRequests: AtomicInteger,
     ) {
         fun announce() {
             bridge.start()
@@ -359,7 +359,6 @@ internal abstract class MqttWireRig {
         listOf(
             "diag_wifi_outages_24h", "wake_on_wave", "auto_sleep",
             "auto_sleep_activity", "touch_sound", "kiosk_lock", "auto_brightness", "navbar_mode",
-            "companion_auto_update", "companion_update_channel", "webview_auto_update",
         ).forEach { config.setHaExposed(it, true) }
         configure(config)
 
@@ -406,8 +405,6 @@ internal abstract class MqttWireRig {
             buttonLeds = 1,
             canInstallVerifiedApps = true,
             hasWifi = true,
-            companionInstalled = true,
-            webViewManaged = true,
         )
         val storage = java.util.concurrent.atomic.AtomicReference(storageSnapshot(StorageHealthSeverity.HEALTHY, walBytes = 4_096))
         val storageReads = AtomicInteger()
@@ -415,6 +412,7 @@ internal abstract class MqttWireRig {
         val english = CatalogueLoader { path -> File("src/main/assets/$path").readText() }
         val autoSleepConfigChanges = AtomicInteger()
         val companionUpdateRequests = AtomicInteger()
+        val selfUpdateRequests = AtomicInteger()
 
         val bridge = MqttBridge(
             config = config,
@@ -450,7 +448,7 @@ internal abstract class MqttWireRig {
             autoBright = allocate(AutoBrightnessController::class.java),
             configUrl = { "http://192.0.2.10:8888/" },
             onUpdateCompanion = { companionUpdateRequests.incrementAndGet() },
-            onSelfUpdateChannelChange = { _, _ -> false },
+            onSelfUpdate = { selfUpdateRequests.incrementAndGet() },
             softwareUpdateSources = { updateSources.get() },
             onDirectKioskSetting = { true },
             migrationNoticeEnglish = { key -> english.strings(AppLocale.ENGLISH).get(key) },
@@ -467,7 +465,7 @@ internal abstract class MqttWireRig {
             runtimeMqttAddressFamily = "Automatic",
             transport = transport,
         )
-        return Rig(tmp, config, transport, sysfs, bridge, storage, storageReads, updateSources, autoSleepConfigChanges, companionUpdateRequests)
+        return Rig(tmp, config, transport, sysfs, bridge, storage, storageReads, updateSources, autoSleepConfigChanges, companionUpdateRequests, selfUpdateRequests)
     }
 
     protected fun command(
@@ -791,16 +789,14 @@ internal abstract class MqttWireRig {
         val LEGACY_LABELS: Map<String, Map<Any, String>> = mapOf(
             "navbar" to mapOf("off" to "Off", "always_on" to "Always on", "swipe_reveal" to "Swipe reveal", "native" to "Native"),
             "cpu_governor" to mapOf("performance" to "Performance", "efficiency" to "Efficiency", "auto" to "Auto"),
-            "update_channel" to mapOf("stable" to "Stable", "prerelease" to "Pre-release"),
-            "companion_update_channel" to mapOf("stable" to "Stable", "prerelease" to "Pre-release"),
         )
 
         /** Everything commandable except `cpu_governor`, `network_adb` and `zigbee_router`, which need hardware this rig lacks. */
         val COMMANDABLE_IN_RIG = setOf(
-            "auto_brightness", "auto_sleep", "button_led1", "buttons", "camera_enabled", "companion_auto_update",
-            "companion_update_channel", "home_dashboard", "kiosk_lock", "led", "navbar", "navigate", "prevent_idle_dim",
-            "relay1", "relay2", "screen", "self_update", "silence_boot_chime", "touch_sound", "update_channel",
-            "volume", "wake_on_wave", "watchdog", "webview_auto_update",
+            "auto_brightness", "auto_sleep", "button_led1", "buttons", "camera_enabled",
+            "home_dashboard", "kiosk_lock", "led", "navbar", "navigate", "prevent_idle_dim",
+            "relay1", "relay2", "screen", "silence_boot_chime", "touch_sound",
+            "volume", "wake_on_wave", "watchdog",
         )
         const val RELAY_BASE = "/sys/class/strelay"
         const val LED_GPIO_BASE = 147
@@ -1031,8 +1027,9 @@ internal class MqttWireGoldenTest : MqttWireRig() {
                         translated += wire
                     }
             }
-            assertTrue("only $translated were announced", translated.size >= 30)
-            assertTrue(translated.containsAll(listOf("navbar", "update_channel", "companion_update_channel", "storage_health")))
+            assertTrue("retained state channels were announced: $translated", translated.containsAll(
+                listOf("screen", "led", "navigate", "home_dashboard", "volume", "relay1", "navbar", "storage_health"),
+            ))
         } finally {
             rig.close()
         }
@@ -1041,6 +1038,60 @@ internal class MqttWireGoldenTest : MqttWireRig() {
 
 /** Command parity between MQTT and the native adapter, split from the fixture so test forks balance. */
 internal class MqttNativeParityTest : MqttWireRig() {
+
+    @Test fun `retired update settings are tombstoned and cannot install through either transport`() {
+        val retired = mapOf(
+            "self_update" to "switch", "update_channel" to "select",
+            "companion_auto_update" to "switch", "companion_update_channel" to "select",
+            "webview_auto_update" to "switch",
+        )
+        val rig = rig()
+        try {
+            rig.announce()
+            val announcement = rig.transport.snapshot()
+            val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
+            rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
+            assertEquals(retired.keys.sorted(), native.offer().unsupported)
+            assertTrue(native.offer().descriptors.map { it.channel }.containsAll(listOf("update_paneld", "update_companion")))
+            retired.forEach { (channel, platform) ->
+                assertFalse(channel, channel in rig.bridge.stateChannelKeys())
+                assertNull(channel, PanelAssistantChannelCatalog.describe(channel))
+                val discovery = "homeassistant/$platform/${PANEL}_${channel}/config"
+                val state = "ha-paneld/$PANEL/$channel/state"
+                for (topic in listOf(discovery, state)) {
+                    val publications = announcement.filter { it.isPublication() && it.topic() == topic }
+                    assertTrue("$topic was cleared", publications.isNotEmpty())
+                    assertTrue("$topic has only retained tombstones", publications.all { it.startsWith("true\t") && it.decodedPayload().isEmpty() })
+                }
+            }
+            val mark = rig.transport.size()
+            repeat(2) {
+                retired.keys.forEach { channel ->
+                    val payload = if (channel.endsWith("channel")) "Pre-release" else "ON"
+                    rig.transport.deliver("ha-paneld/$PANEL/$channel/set", payload)
+                    assertEquals(channel,
+                        PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL),
+                        submitNative(rig, channel, payload))
+                }
+                barrier(rig, "retired")
+            }
+            rig.transport.drain()
+            assertEquals(0, rig.companionUpdateRequests.get())
+            assertEquals(0, rig.selfUpdateRequests.get())
+            assertTrue(rig.transport.snapshot().drop(mark).none { line ->
+                line.isPublication() && retired.keys.any { line.topic() == "ha-paneld/$PANEL/$it/state" } && line.decodedPayload().isNotEmpty()
+            })
+
+            rig.transport.deliver("ha-paneld/$PANEL/update_companion/set", "PRESS")
+            rig.transport.deliver("ha-paneld/$PANEL/update_paneld/set", "PRESS")
+            barrier(rig, "explicit")
+            assertEquals(1, rig.companionUpdateRequests.get())
+            assertEquals(1, rig.selfUpdateRequests.get())
+        } finally {
+            rig.close()
+        }
+    }
+
 
     @Test fun `repeated built-in navigate reloads this panels home`() {
         val rig = rig(configure = { config ->
@@ -1341,7 +1392,7 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val offer = native.offer()
             val absent = listOf("humidity", "led", "proximity", "proximity_level", "temperature", "update_companion")
-            assertEquals(absent, offer.unsupported)
+            assertEquals((absent + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), offer.unsupported)
             val described = offer.descriptors.map { it.channel }
             absent.forEach { assertFalse("$it must not be described", it in described) }
             assertTrue("a channel the panel fills stays described", "screen" in described && "update_paneld" in described)
@@ -1379,13 +1430,13 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val before = native.offer()
-            assertEquals(listOf("proximity", "proximity_level"), before.unsupported)
+            assertEquals((listOf("proximity", "proximity_level") + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), before.unsupported)
             native.open(before.descriptors)
             assertFalse(native.descriptorsChanged())
             learned.set(true)
             assertTrue("gaining the reading ends the session so it is described again", native.descriptorsChanged())
             val after = native.offer()
-            assertEquals(emptyList<String>(), after.unsupported)
+            assertEquals(PanelAssistantChannelCatalog.RETIRED_CHANNELS.sorted(), after.unsupported)
             assertTrue(after.descriptors.map { it.channel }.containsAll(listOf("proximity", "proximity_level")))
         } finally {
             rig.close()
@@ -1394,24 +1445,24 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
 
     @Test fun nativeNeverStatesAnUnsettledOrPresentChannelUnsupported() {
         // Proximity not yet loaded (or closed), temperature and humidity present, a Companion installed: every
-        // one is described as before and nothing is stated unsupported, so no entity can be removed.
+        // one is described as before; only retired settings are stated unsupported.
         val rig = rig(learnedProximityState = { null })
         try {
             val native = io.github.maxlyth.hapaneld.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val offer = native.offer()
-            assertEquals(emptyList<String>(), offer.unsupported)
+            assertEquals(PanelAssistantChannelCatalog.RETIRED_CHANNELS.sorted(), offer.unsupported)
             assertTrue(offer.descriptors.map { it.channel }.containsAll(
                 listOf("humidity", "led", "proximity", "proximity_level", "temperature", "update_companion"),
             ))
             rig.updateSources.set(updateSources().copy(companionMinimalVersion = null, companionFullVersion = null))
-            assertEquals("only the Companion's settled absence is stated", listOf("update_companion"), native.offer().unsupported)
+            assertEquals("only retired settings and Companion settled absence are stated", (listOf("update_companion") + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), native.offer().unsupported)
             // A failed package lookup is not an absence: the update channel stays described and is never stated.
             rig.updateSources.set(updateSources().copy(
                 companionMinimalVersion = null, companionFullVersion = null, companionPresenceUnknown = true,
             ))
             val unknown = native.offer()
-            assertEquals(emptyList<String>(), unknown.unsupported)
+            assertEquals(PanelAssistantChannelCatalog.RETIRED_CHANNELS.sorted(), unknown.unsupported)
             assertTrue("update_companion" in unknown.descriptors.map { it.channel })
         } finally {
             rig.close()

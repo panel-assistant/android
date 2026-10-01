@@ -51,10 +51,9 @@ class InstallationRoutesTest {
 
     @Test fun `full mount preserves install choices admission toggles and callback ownership`() {
         val requests = mutableListOf<Triple<String, String, String>>()
-        var admit = true
         PaneldServerHttpFixture(installComponent = { name, action, version ->
             requests += Triple(name, action, version)
-            admit
+            true
         }).use { fixture ->
             val staged = File.createTempFile("http-install-test", ".apk")
             val lease = (fixture.pending.begin() as PendingUploadStore.BeginResult.Granted).lease
@@ -86,16 +85,16 @@ class InstallationRoutesTest {
                 assertNull(fixture.pending.pendingSummary())
                 assertFalse(staged.exists())
                 val heal = client.post("/api/v1/webview/heal")
-                assertEquals(HttpStatusCode.OK, heal.status)
-                assertEquals("""{"status":"started"}""", heal.bodyAsText())
-                assertEquals(listOf(Triple("webview", "reinstall", "")), requests)
-                admit = false
-                val busy = client.post("/api/v1/webview/heal")
-                assertEquals(HttpStatusCode.OK, busy.status)
-                assertEquals("""{"status":"busy"}""", busy.bodyAsText())
+                assertEquals(HttpStatusCode.NotFound, heal.status)
+                val webview = client.post("/api/v1/install/component") {
+                    header(HttpHeaders.ContentType, "application/x-www-form-urlencoded")
+                    setBody("name=webview&action=reinstall")
+                }
+                assertEquals(HttpStatusCode.BadRequest, webview.status)
+                assertTrue(requests.isEmpty())
                 val forbidden = client.post("/api/v1/uninstall") { header(HttpHeaders.Origin, "http://elsewhere.example") }
                 assertEquals(HttpStatusCode.Forbidden, forbidden.status)
-                assertEquals(2, requests.size)
+                assertTrue(requests.isEmpty())
                 val status = client.get("/api/v1/install/status")
                 assertEquals(HttpStatusCode.OK, status.status)
                 assertTrue(JSONObject(status.bodyAsText()).has("running"))

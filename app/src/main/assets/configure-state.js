@@ -159,14 +159,6 @@ window.ConfigurePage = {};
       "Light": ["configure.enum.dashboard_theme.light", "Light"],
       "Ambient": ["configure.enum.dashboard_theme.ambient", "Ambient"]
     },
-    update_channel: {
-      "stable": ["configure.enum.update_channel.stable", "Stable"],
-      "prerelease": ["configure.enum.update_channel.prerelease", "Prerelease"]
-    },
-    companion_update_channel: {
-      "stable": ["configure.enum.update_channel.stable", "Stable"],
-      "prerelease": ["configure.enum.update_channel.prerelease", "Prerelease"]
-    },
     voice_audio_source: {
       "voice_recognition": ["configure.enum.voice_audio_source.voice_recognition", "Voice recognition"],
       "mic": ["configure.enum.voice_audio_source.mic", "Microphone"],
@@ -356,8 +348,6 @@ window.ConfigurePage = {};
       .catch(function () {});
   }
   cfg.HARDENED_APPROVAL_SETTING_KEYS = {
-    self_update: true, update_channel: true, companion_auto_update: true,
-    companion_update_channel: true, webview_auto_update: true,
     keep_awake: true, prevent_idle_dim: true
   };
 

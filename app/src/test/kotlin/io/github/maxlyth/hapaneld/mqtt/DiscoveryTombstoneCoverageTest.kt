@@ -92,6 +92,25 @@ class DiscoveryTombstoneCoverageTest {
         assertTrue("ha-paneld/old/diag_wifi_outages_7d/attributes" in cleanup)
     }
 
+    @Test fun retiredAutoUpdateSettingsKeepDiscoveryAndStateCleanupAfterPanelRename() {
+        val retired = mapOf(
+            "self_update" to "switch", "update_channel" to "select",
+            "companion_auto_update" to "switch", "companion_update_channel" to "select",
+            "webview_auto_update" to "switch",
+        )
+        val known = mqttKnownConfigTopics("old")
+        val cleanup = mqttStalePanelCleanup("old", "new")
+        retired.forEach { (channel, platform) ->
+            val discovery = "homeassistant/$platform/old_$channel/config"
+            val state = "ha-paneld/old/$channel/state"
+            assertTrue(discovery in known)
+            assertTrue(state in mqttRetiredStateTopics("old"))
+            for (topic in listOf(discovery, state)) {
+                assertTrue(topic, cleanup.any { it.topic == topic && it.payload.isEmpty() && it.retain })
+            }
+        }
+    }
+
     @Test fun unchangedPanelIdNeedsNoReplacementCleanup() {
         assertTrue(mqttStalePanelCleanup("same", "same").isEmpty())
         assertTrue(mqttStalePanelCleanup(null, "same").isEmpty())

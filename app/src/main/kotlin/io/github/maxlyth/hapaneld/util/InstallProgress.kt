@@ -101,36 +101,6 @@ object InstallProgress {
         if (activeConfigMutation == ticket) activeConfigMutation = null
     }
 
-    /**
-     * Atomically turn the current Configure owner into a visible destructive-operation owner. There is
-     * deliberately no release/reacquire window: a channel transaction can commit its admitted target,
-     * promote this ticket under the same monitor, and then consume the exact staged APK while every
-     * competing install/restore caller continues to observe the lane as owned.
-     */
-    fun promoteConfigMutation(
-        ticket: ConfigMutationTicket,
-        component: String,
-        presentation: InstallPresentation? = null,
-    ): Ticket? = promoteConfigMutationLocked(ticket, component, presentation)?.also { notifyObserver() }
-
-    @Synchronized
-    private fun promoteConfigMutationLocked(
-        ticket: ConfigMutationTicket,
-        component: String,
-        presentation: InstallPresentation?,
-    ): Ticket? {
-        if (activeConfigMutation != ticket || running || active != null) return null
-        val promoted = Ticket(ticket.id)
-        activeConfigMutation = null
-        active = promoted
-        this.component = component
-        this.message = "Working…"
-        this.presentation = presentation
-        this.result = null
-        this.running = true
-        return promoted
-    }
-
     /** Verify an explicitly threaded operation ticket without exposing the current owner. */
     @Synchronized
     fun owns(ticket: Ticket): Boolean = running && active == ticket

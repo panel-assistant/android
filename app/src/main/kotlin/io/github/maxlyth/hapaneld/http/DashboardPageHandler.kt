@@ -47,7 +47,6 @@ internal class DashboardPageHandler(
             "livetbl",
             "behavtbl",
             "disptbl",
-            "updtbl",
             "infotbl",
             "nettbl",
             "proftbl",

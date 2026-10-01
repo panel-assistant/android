@@ -41,9 +41,8 @@ internal fun qrBitmap(text: String, sizePx: Int): Bitmap? = try {
  * a feature.** It is worth the space only where the repair genuinely means working through a page that is
  * awkward on a 480-pixel screen — here, finding the Home Assistant connection settings among everything
  * else on the Configure page and typing a password into a panel with no keyboard. Every other blocked
- * verdict either repairs itself, repairs on the Home Assistant server rather than on the panel, or — for
- * a missing WebView capability — is now repaired by the panel itself one button away, and adding a code
- * to those screens would be adding clutter in place of an answer.
+ * verdict needs automatic recovery, a Home Assistant server change, or a WebView provider change;
+ * opening Configure on a phone does not resolve those conditions.
  */
 internal fun configureQrPath(outcome: AdmissionOutcome?): String? = when (outcome) {
     // The sign-in row itself, not the top of the page: the anchor scrolls and flashes the exact control,

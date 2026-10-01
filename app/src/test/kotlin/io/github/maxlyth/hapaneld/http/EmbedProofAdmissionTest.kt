@@ -27,6 +27,7 @@ import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.SecureRandom
@@ -202,27 +203,11 @@ class EmbedProofAdmissionTest {
         assertTrue(rig.audit.isEmpty())
     }
 
-    @Test fun `each config key that needs approval maps to an operation of the stated class`() {
-        // key → operation, as the Configure save builds its sensitive operations.
-        val classes = mapOf(
-            "keep_awake" to SensitiveOperation.POWER_CONFIGURATION,
-            "prevent_idle_dim" to SensitiveOperation.POWER_CONFIGURATION,
-            "tame_vendor_packages" to SensitiveOperation.PACKAGE_TAME,
-            "self_update" to SensitiveOperation.APK_INSTALL,
-            "companion_auto_update" to SensitiveOperation.APK_INSTALL,
-            "webview_auto_update" to SensitiveOperation.APK_INSTALL,
-            "update_channel" to SensitiveOperation.APK_INSTALL,
-            "companion_update_channel" to SensitiveOperation.APK_INSTALL,
-        )
+    @Test fun `administrator proof exempts sensitive configuration but installation still requires approval`() {
         val proven = ProvenEmbedRequest(USER)
-        assertEquals(
-            mapOf(
-                "keep_awake" to true, "prevent_idle_dim" to true, "tame_vendor_packages" to true,
-                "self_update" to false, "companion_auto_update" to false, "webview_auto_update" to false,
-                "update_channel" to false, "companion_update_channel" to false,
-            ),
-            classes.mapValues { (_, operation) -> proven.exempts(operation) },
-        )
+        assertTrue(proven.exempts(SensitiveOperation.POWER_CONFIGURATION))
+        assertTrue(proven.exempts(SensitiveOperation.PACKAGE_TAME))
+        assertFalse(proven.exempts(SensitiveOperation.APK_INSTALL))
     }
 
     private companion object {

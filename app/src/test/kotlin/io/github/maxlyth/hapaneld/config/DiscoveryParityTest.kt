@@ -152,10 +152,6 @@ class DiscoveryParityTest {
         val expected = mapOf(
             "touch_sound" to
                 """{"name":"Touch sound","object_id":"test_touch_sound","unique_id":"test_touch_sound","command_topic":"ha-paneld/test/touch_sound/set","state_topic":"ha-paneld/test/touch_sound/state","icon":"mdi:volume-high","entity_category":"config",$avail,$device}""",
-            "companion_auto_update" to
-                """{"name":"Companion auto-update","object_id":"test_companion_auto_update","unique_id":"test_companion_auto_update","command_topic":"ha-paneld/test/companion_auto_update/set","state_topic":"ha-paneld/test/companion_auto_update/state","icon":"mdi:cellphone-arrow-down","entity_category":"config",$avail,$device}""",
-            "companion_update_channel" to
-                """{"name":"Companion auto-update channel","object_id":"test_companion_update_channel","unique_id":"test_companion_update_channel","command_topic":"ha-paneld/test/companion_update_channel/set","state_topic":"ha-paneld/test/companion_update_channel/state","options":["Stable","Pre-release"],"icon":"mdi:source-branch","entity_category":"config",$avail,$device}""",
             "cpu_governor" to
                 """{"name":"CPU profile","object_id":"test_cpu_governor","unique_id":"test_cpu_governor","command_topic":"ha-paneld/test/cpu_governor/set","state_topic":"ha-paneld/test/cpu_governor/state","options":["Performance","Efficiency","Auto"],"icon":"mdi:speedometer","entity_category":"config",$avail,$device}""",
             "network_adb" to
@@ -192,8 +188,6 @@ class DiscoveryParityTest {
             "prevent_idle_dim",
             "watchdog_enabled",
             "zigbee_router",
-            "self_update",
-            "update_channel",
         ).forEach { key ->
             assertNull("$key must not expose a Configure HA sync pip", SettingsRegistry.spec(key)!!.ha)
         }

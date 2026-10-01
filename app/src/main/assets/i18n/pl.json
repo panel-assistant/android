@@ -2878,11 +2878,6 @@
    "sourceHash": "c176917bb20cd5997638eed66e15bf50d0354d51dab563e1d015b6dab0ad0b43",
    "state": "machine-cross-checked"
   },
-  "dashboard.card.updates": {
-   "text": "Aktualizacje",
-   "sourceHash": "22e2bada8f1c65cd83f4ba976f0027c5dd7cb81d5d2199cd1b0130792841eef4",
-   "state": "machine-cross-checked"
-  },
   "dashboard.cause.collecting": {
    "text": "Zbieranie danych diagnostycznych",
    "sourceHash": "0e9bfc2f92df2a36fd2a3c5c2155b67977c1caf6e8a4deb1c0b773c7d65f546d",
@@ -6723,16 +6718,6 @@
    "sourceHash": "ca256bf73937fc7875b0920ff33652ea6c36b66cdefef1012b3a4d2eb09b6b72",
    "state": "machine-cross-checked"
   },
-  "install.progress.webview_installing": {
-   "text": "Pobieranie i instalowanie… to potrwa około minuty.",
-   "sourceHash": "5050d01630df63bb3f9698161feb000f5c01842de55bae1e5ff0daaf1b70501a",
-   "state": "machine-cross-checked"
-  },
-  "install.progress.webview_started": {
-   "text": "Instalacja WebView — przeładuj pulpit nawigacyjny, a potem odśwież tę stronę, żeby sprawdzić nową wersję.",
-   "sourceHash": "1ba2a713c79ac4d74904c59b80a3191b16e97dd3240a3b06ef9df9e3288a65ea",
-   "state": "machine-cross-checked"
-  },
   "install.progress.working": {
    "text": "{component}: trwa…",
    "sourceHash": "a99604834124e176f8c1dae30419f4a3fa9b1f3ce5b3481533166e789bb85275",
@@ -9228,26 +9213,6 @@
    "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
    "state": "machine-draft"
   },
-  "settings.companion_auto_update.label": {
-   "text": "Automatyczna aktualizacja Companion",
-   "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
-   "state": "machine-cross-checked"
-  },
-  "settings.companion_auto_update.summary": {
-   "text": "Utrzymuj minimalną aplikację Companion zainstalowaną i aktualną (root).",
-   "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
-   "state": "machine-draft"
-  },
-  "settings.companion_update_channel.label": {
-   "text": "Kanał automatycznych aktualizacji Companion",
-   "sourceHash": "80740dfa19b24df111ff9aa4791044aebc4b956662b02f33d8ca0d0a3f71da8f",
-   "state": "machine-cross-checked"
-  },
-  "settings.companion_update_channel.summary": {
-   "text": "Kanał aktualizacji, z którego korzysta narzędzie Companion Updater.",
-   "sourceHash": "c4186e872750bd0f6d99fc0d00cae01246232c253e74acea5adcda004d12feed",
-   "state": "machine-draft"
-  },
   "settings.cpu_governor.help": {
    "text": "Profil skalowania CPU stosowany od razu, do czasu ponownego uruchomienia; Auto = dynamiczny regulator układu SoC.",
    "sourceHash": "44ede54df63e6b90033e3356275332934cdd2b19bf681ea7d3b65fd69a333aa9",
@@ -10008,21 +9973,6 @@
    "sourceHash": "6ba9e68bcfcfc58c954fe6a202ed4f6c8d9df1a8788b1431583756c0740bd43e",
    "state": "machine-draft"
   },
-  "settings.self_update.help": {
-   "text": "ha-paneld aktualizuje się z wydań GitHub w wybranym kanale. Widoczne tylko tam, gdzie dostępna jest zweryfikowana instalacja aplikacji.",
-   "sourceHash": "97ae88f8b39157c43fe24ab26c47ceaa5d57769b0fdfce270f4eb1456c3919ec",
-   "state": "machine-cross-checked"
-  },
-  "settings.self_update.label": {
-   "text": "Automatyczna aktualizacja ha-paneld",
-   "sourceHash": "60970f1d12342ad3487ecf8b0ea233cde2e58a13d677e8e52007dbdc52aed108",
-   "state": "machine-cross-checked"
-  },
-  "settings.self_update.summary": {
-   "text": "Automatycznie instaluj wersje ha-paneld.",
-   "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
-   "state": "machine-draft"
-  },
   "settings.silence_boot_chime.label": {
    "text": "Wycisz sygnał startowy",
    "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
@@ -10076,16 +10026,6 @@
   "settings.ui_language.summary": {
    "text": "Język interfejsu użytkownika aplikacji „ha-paneld”.",
    "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
-   "state": "machine-draft"
-  },
-  "settings.update_channel.label": {
-   "text": "Kanał automatycznych aktualizacji ha-paneld",
-   "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
-   "state": "machine-cross-checked"
-  },
-  "settings.update_channel.summary": {
-   "text": "Kanał aktualizacji, z którego korzysta funkcja automatycznej aktualizacji.",
-   "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
    "state": "machine-draft"
   },
   "settings.voice_audio_source.label": {
@@ -10206,21 +10146,6 @@
   "settings.watchdog_enabled.summary": {
    "text": "Uruchom ponownie pulpit, jeśli ulegnie awarii lub zostanie w tle.",
    "sourceHash": "bf85bf3bed1a0bda4d001d6d73a8b2196aec288be92fa7aba1cb27cbd9ccf105",
-   "state": "machine-draft"
-  },
-  "settings.webview_auto_update.help": {
-   "text": "Utrzymuj systemowy WebView tego panelu w zalecanej wersji (z serwera lustrzanego ha-paneld), instalując nowszą przez root podczas sprawdzania aktualizacji.\n\nDomyślnie wyłączone: zamiana WebView wymaga ponownego uruchomienia, aby zadziałała. Widoczne tylko tam, gdzie istnieje zalecana wersja (nie na panelach aktualizowanych przez Play).",
-   "sourceHash": "cf8035f05ef4490931648028eb8cb8f4629814ec89f0a4d6747af8b9ddd1315d",
-   "state": "machine-draft"
-  },
-  "settings.webview_auto_update.label": {
-   "text": "Automatyczna aktualizacja WebView",
-   "sourceHash": "20c3526cc6dbf1a8fc781ed1e7594a2c71d88903a33862fac77aa849984e2e1d",
-   "state": "machine-cross-checked"
-  },
-  "settings.webview_auto_update.summary": {
-   "text": "Proszę utrzymywać systemowy plik `WebView` w zalecanej wersji (root).",
-   "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
    "state": "machine-draft"
   },
   "settings.zigbee_router.label": {
@@ -11218,11 +11143,6 @@
    "sourceHash": "23e39291d6135814ed7c936e278974544b0df5fbf0eb0427b6700979b7472a93",
    "state": "machine-cross-checked"
   },
-  "setup.webview.action.update": {
-   "text": "Zaktualizuj silnik przeglądarki panelu",
-   "sourceHash": "314e0cd759cc66a9ddbb26e2b1eab85935143c012e8d2f309bdf0c80f757d131",
-   "state": "machine-cross-checked"
-  },
   "setup.webview.companion_does_not_help": {
    "text": "Wybranie zamiast tego aplikacji Home Assistant nie pomoże — rysuje ona pulpit przy użyciu tego samego silnika.",
    "sourceHash": "4171f88e5b4a771642eb0eb6f9f3b801f333f3770ccaea54ee59339ced8b07fe",
@@ -11231,26 +11151,6 @@
   "setup.webview.explanation": {
    "text": "Silnik przeglądarki tego panelu jest zbyt stary, by wyświetlić aktualny pulpit Home Assistant. Nawet jeśli wszystko inne skonfigurujesz idealnie, pulpit i tak będzie pusty lub uszkodzony, więc warto to naprawić w pierwszej kolejności.",
    "sourceHash": "8e3d6c18386c6ca7d5aff8cfc2a6b145770278275ba6d881c421e2b9afa01e0f",
-   "state": "machine-cross-checked"
-  },
-  "setup.webview.fixable_note": {
-   "text": "ha-paneld instaluje wersję, o której wiadomo, że działa na tym sprzęcie. Panel uruchomi się ponownie jeden raz, żeby się na nią przełączyć, co zajmuje minutę lub dwie.",
-   "sourceHash": "8a3b1bb25e78c03726a64b0b02054e389a04cf19850680c62b4e004cb348562c",
-   "state": "machine-cross-checked"
-  },
-  "setup.webview.manual_note": {
-   "text": "Nie ma żadnego sprawdzonego silnika dołączonego do tego modelu panelu, więc trzeba go zaktualizować ręcznie — zazwyczaj przez aktualizację systemu panelu albo przez zainstalowanie aktualnej wersji Android System WebView.",
-   "sourceHash": "464dc553f785e31bb4878a421d52a46a91c913d436bd9b65f5fbd4a0ff59c885",
-   "state": "machine-cross-checked"
-  },
-  "setup.webview.state.installing": {
-   "text": "Instalowanie zalecanego silnika na panelu. Po zakończeniu nastąpi jedno ponowne uruchomienie, a potem strona sama przejdzie dalej.",
-   "sourceHash": "0e6b5fc4b901e48f22008eee43a344913908974aa311394b77abc5dadac92bc8",
-   "state": "machine-cross-checked"
-  },
-  "setup.webview.state.installing_short": {
-   "text": "Instalowanie…",
-   "sourceHash": "530bcc355f0a3cd6a75a5216f1648e3dc48da5615ee41f56e033f4732982a3df",
    "state": "machine-cross-checked"
   },
   "setup.webview.title": {
@@ -11558,16 +11458,6 @@
    "sourceHash": "09d51331b616bdd52b2e76eaec3d72b1f5906627266dd577ca0bcd49c29222d1",
    "state": "machine-cross-checked"
   },
-  "configure.enum.update_channel.prerelease": {
-   "text": "Wersja przedpremierowa",
-   "sourceHash": "c284b3eee860bb803c22ec02d974f6a1c587aac1b7f6f362823477328de40a04",
-   "state": "machine-cross-checked"
-  },
-  "configure.enum.update_channel.stable": {
-   "text": "Stabilna",
-   "sourceHash": "90ee305714d7103317705bfffd734c654b78807e5a0f51fcc61bc1d81105ebd1",
-   "state": "machine-cross-checked"
-  },
   "configure.enum.voice_audio_source.mic": {
    "text": "Mikrofon",
    "sourceHash": "186352a881d0550e2da1f74e5c317770702bc2a0f9c3da69a10e27c14a217bac",
@@ -11828,16 +11718,6 @@
    "sourceHash": "ce4683e7013a18cdf3d224bfcb4e9594ea8f559e946a837c633defe7d3c32172",
    "state": "machine-cross-checked"
   },
-  "install.components.channel_prefix": {
-   "text": "Domyślny kanał ustawia się w zakładce",
-   "sourceHash": "30d6848424f391846957a9495afa1f13e3bf40f325aca8e47b0ead771fb8287a",
-   "state": "machine-cross-checked"
-  },
-  "install.components.channel_suffix": {
-   "text": "; zmiana tutaj wpływa tylko na ten selektor.",
-   "sourceHash": "8b7d827c3ce2ad662c8c8d9306b48e692d582b6399c5935ec3944baee29c987e",
-   "state": "machine-cross-checked"
-  },
   "install.components.download_apk": {
    "text": "Pobierz APK",
    "sourceHash": "3182bf9f023a412f0dd6d9e422436aa2fe66e5d93dbce33f1cc76a1f265fba72",
@@ -11846,16 +11726,6 @@
   "install.components.download_apk_help": {
    "text": "Ten panel nie ma uprzywilejowanego instalatora, więc ha-paneld nie może sam instalować plików APK — pobierz APK, a potem zainstaluj go ze swojego komputera administratora: adb install -r <file>",
    "sourceHash": "19393a12c42c93a084c32c1d815cf5f654f4611413757b29b2ae0d9d5f0969fa",
-   "state": "machine-cross-checked"
-  },
-  "install.components.google_play_managed": {
-   "text": "Zarządzane przez Google Play — aktualizacje poprzez Play Store",
-   "sourceHash": "9dc31793c17a510887425b5313c313480f05dde4694dd3113b02e1eb38b364f6",
-   "state": "machine-cross-checked"
-  },
-  "install.components.no_known_build": {
-   "text": "brak sprawdzonej kompilacji dla tego panelu",
-   "sourceHash": "81ea415d8bdb2fb5ec23f053de58c6ca10d217d15c0c3e962a59d938ae8044fb",
    "state": "machine-cross-checked"
   },
   "install.components.play_managed": {
@@ -11878,11 +11748,6 @@
    "sourceHash": "2d3813e25ffaf552dffc724814881a1e40138bab741d700e95ffc5cac29e726d",
    "state": "machine-cross-checked"
   },
-  "install.components.root_update_required": {
-   "text": "do aktualizacji wymaga root/demona",
-   "sourceHash": "eb5c65ee970f6d856220974f20da3feb9c55907fb04590447fc75d0ce3d99d2f",
-   "state": "machine-cross-checked"
-  },
   "install.components.stable": {
    "text": "Stabilna",
    "sourceHash": "90ee305714d7103317705bfffd734c654b78807e5a0f51fcc61bc1d81105ebd1",
@@ -11891,16 +11756,6 @@
   "install.components.title": {
    "text": "Komponenty zarządzane",
    "sourceHash": "e07e232bf8cd226074afb4dfd24b3bbb453dc406667505ac39beeb7f716c4516",
-   "state": "machine-cross-checked"
-  },
-  "install.components.up_to_date": {
-   "text": "aktualne",
-   "sourceHash": "bef6a4bb30a9d489f3b5dbb5d2e43b64a72e4ec04109629d0a158d33aba64c59",
-   "state": "machine-cross-checked"
-  },
-  "install.components.update_webview": {
-   "text": "Zaktualizuj WebView",
-   "sourceHash": "76b51b5359e778d9a937a60808678b07dfe6270b8641f40a04a79e211d5123a2",
    "state": "machine-cross-checked"
   },
   "install.display.apply": {
@@ -12341,11 +12196,6 @@
   "install.warning.webview_old.title": {
    "text": "Systemowy WebView jest zbyt stary",
    "sourceHash": "32f9602603cf386e8accd721782721ab0c29ff77a86e739370a819d2c2ae5d59",
-   "state": "machine-cross-checked"
-  },
-  "install.warning.webview_old.update": {
-   "text": "Zaktualizuj WebView teraz",
-   "sourceHash": "71d8ebe0fdc7922d4dc02071672fdd8aee2e27c8af3694a32166ff337dbd52eb",
    "state": "machine-cross-checked"
   },
   "profiles.editor.codemirror.all": {

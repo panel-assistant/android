@@ -36,7 +36,6 @@ class SetupJourneyTest {
         // Same reasoning: a working panel has made its dashboard choice.
         homeDashboardChosen: Boolean = true,
         webViewTooOld: Boolean = false,
-        webViewFixable: Boolean = false,
         proof: RenderProof = RenderProof(ProofSource.BUILTIN_FRONTEND_CONNECTED, certain = true, observedAtMs = 1L),
         currentFingerprint: String = "",
         panelAssistantNative: Boolean = false,
@@ -55,7 +54,6 @@ class SetupJourneyTest {
         entityFilterAnswered = entityFilterAnswered,
         homeDashboardChosen = homeDashboardChosen,
         webViewTooOld = webViewTooOld,
-        webViewFixable = webViewFixable,
         proof = proof,
         currentFingerprint = currentFingerprint,
         panelAssistantNative = panelAssistantNative,
@@ -359,16 +357,13 @@ class SetupJourneyTest {
     @Test fun aTooOldBrowserEngineBlocksBeforeAnythingIsAskedOfHomeAssistant() {
         // The failure this prevents: complete the whole journey — address, sign-in, filter — then discover the
         // panel could never render. Raised at the renderer step so it comes before HA_URL and HA_CREDENTIALS.
-        val ancient = inputs(webViewTooOld = true, webViewFixable = true, proof = RenderProof())
+        val ancient = inputs(webViewTooOld = true, proof = RenderProof())
         val j = SetupJourney.evaluate(ancient)
         assertEquals(Stage.RENDERER, j.next)
-        assertEquals("webview_too_old_fixable", j.step(Stage.RENDERER).detail)
+        assertEquals("webview_too_old", j.step(Stage.RENDERER).detail)
         assertFalse(j.complete)
 
-        // Without a pinned build the block stands but the detail says the offer cannot be made, so the UI
-        // explains instead of showing a button that would fail.
-        val unfixable = SetupJourney.evaluate(ancient.copy(webViewFixable = false))
-        assertEquals("webview_too_old", unfixable.step(Stage.RENDERER).detail)
+
     }
 
     @Test fun aForeignRenderersEngineIsNotOursToDeclareBroken() {

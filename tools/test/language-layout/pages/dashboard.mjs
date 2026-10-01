@@ -1,6 +1,6 @@
 // Dashboard: mirror of PaneldServer.infoHtml() as the cold shell (snapshot absent, data-hydrate="1"), which
 // info.js then hydrates from /api/v1/info. The hydration fragments mirror infoJson(): factRowsHtml,
-// contextRowsHtml, capRowsHtml, liveRowsHtml, behaviourRowsHtml, displayRowsHtml, updatesRowsHtml,
+// contextRowsHtml, capRowsHtml, liveRowsHtml, behaviourRowsHtml, displayRowsHtml,
 // controlsHtml and bannersHtml, with every row label family present. The polled endpoints (perf, sensors,
 // camera/status, inspect, screenshot) answer with plausible live data so their tables render too.
 import { deflateSync } from 'node:zlib';
@@ -64,7 +64,6 @@ ${cameraCard}
 ${tcard('livetbl', 'dashboard.card.live_state', '', `<p class="note">${s.t('dashboard.live_state.note')}</p>`)}
 ${tcard('behavtbl', 'dashboard.card.behaviour')}
 ${tcard('disptbl', 'dashboard.card.display_tuning')}
-${tcard('updtbl', 'dashboard.card.updates')}
 </div>
 <p class="note" style="text-align:center;margin-top:18px"><a href="${href(s, 'api')}" style="color:#9cf">${s.t('dashboard.footer.api_explorer')}</a>
  · <a href="api/v1/diag" target="_blank" style="color:#9cf">${s.t('dashboard.footer.diagnostics')}</a> · <a href="${REPO}" target="_blank" rel="noopener" style="color:#9cf">GitHub</a></p>`;
@@ -213,14 +212,6 @@ function displayRows(s) {
   ].join('\n');
 }
 
-function updatesRows(s) {
-  return [
-    settingRow(s, 'self_update', s.text('dashboard.value.on')),
-    settingRow(s, 'update_channel', 'stable'),
-    settingRow(s, 'companion_auto_update', s.text('dashboard.value.off')),
-  ].join('\n');
-}
-
 function bannersHtml(s) {
   const t = s.t;
   return [
@@ -238,7 +229,7 @@ function infoJson(s) {
     banners: bannersHtml(s), shot: true, shotCached: '', versionCode: 908, package: 'io.github.maxlyth.hapaneld',
     controls: controlsHtml(s, false),
     cards: {
-      livetbl: liveRows(s), behavtbl: behaviourRows(s), disptbl: displayRows(s), updtbl: updatesRows(s),
+      livetbl: liveRows(s), behavtbl: behaviourRows(s), disptbl: displayRows(s),
       infotbl: infoRows(s), nettbl: netRows(s), proftbl: profileRows(s), contexttbl: contextRows(s), captbl: capRows(s),
     },
   };
@@ -331,7 +322,7 @@ export default {
   async ready(frame) {
     await frame.waitForFunction(() => {
       const filled = (id) => { const t = document.getElementById(id); return t && t.querySelector('th') && !/color:#888/.test(t.rows[0]?.cells[0]?.getAttribute('style') || ''); };
-      return ['infotbl', 'nettbl', 'proftbl', 'contexttbl', 'captbl', 'livetbl', 'behavtbl', 'disptbl', 'updtbl', 'perf', 'smtbl', 'streamtbl', 'senstbl', 'camtbl'].every(filled)
+      return ['infotbl', 'nettbl', 'proftbl', 'contexttbl', 'captbl', 'livetbl', 'behavtbl', 'disptbl', 'perf', 'smtbl', 'streamtbl', 'senstbl', 'camtbl'].every(filled)
         && document.querySelectorAll('#topproc tr').length > 2 && document.querySelectorAll('#noisyentities tr').length > 2
         && document.querySelector('#bannerzone .setup') && document.querySelector('#ctlzone button:not([disabled])')
         && document.getElementById('insthint').textContent.length > 0

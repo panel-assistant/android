@@ -206,8 +206,6 @@ object SetupJourney {
          * discovers this afterwards has done the whole journey for a panel that was never going to render.
          */
         val webViewTooOld: Boolean = false,
-        /** A known-good build is pinned for this panel, so setup can offer to install it rather than only explain. */
-        val webViewFixable: Boolean = false,
         /**
          * The user has answered the entity-filter question — either way. Enabling it is observable from
          * config, but *declining* is not distinguishable from never having been asked, so like
@@ -357,7 +355,7 @@ object SetupJourney {
                     Stage.RENDERER,
                     Status.BLOCKED,
                     blocking = true,
-                    detail = if (inputs.webViewFixable) "webview_too_old_fixable" else "webview_too_old",
+                    detail = "webview_too_old",
                 )
             } else {
                 Step(Stage.RENDERER, Status.SATISFIED, blocking = true, detail = "builtin")

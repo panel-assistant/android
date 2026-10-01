@@ -1087,7 +1087,7 @@ private fun withInstallPresentation(legacyJson: String, presentation: InstallPre
 }
 
 private val PLAY_URL = Regex("""https?://[^\s"']+""")
-private val COMPONENT_NAMES = setOf("paneld", "companion", "webview")
+private val COMPONENT_NAMES = setOf("paneld", "companion")
 private val COMPONENT_ACTIONS = setOf("update", "reinstall")
 internal const val RESTORE_BODY_RECEIPT_DEADLINE_MS = 120_000L
 internal const val STANDARD_BODY_RECEIPT_DEADLINE_MS = 30_000L

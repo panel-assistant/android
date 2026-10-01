@@ -270,55 +270,6 @@ import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/** A failed candidate may undo only the channel it committed; a newer concurrent choice is preserved. */
-internal fun failedSelfUpdateChannelRollback(
-    currentChannel: String,
-    failedChannel: String,
-    previousChannel: String,
-): String? = previousChannel.takeIf { currentChannel == failedChannel }
-
-/** A committed channel is retained only when the exact prepared APK reports package installation. */
-internal suspend fun installCommittedSelfUpdateChannel(
-    install: suspend () -> io.github.maxlyth.hapaneld.http.SelfUpdateChannelInstallResult,
-    rollback: () -> Unit,
-    onInstalled: () -> Unit = {},
-): io.github.maxlyth.hapaneld.http.SelfUpdateChannelInstallResult {
-    var installed = false
-    try {
-        return install().also {
-            installed = it.installed
-            if (installed) onInstalled()
-        }
-    } finally {
-        if (!installed) rollback()
-    }
-}
-
-/** Preserve producer-selected metadata while adapting the server-owned channel result to progress. */
-internal fun selfUpdateChannelOperationResult(
-    result: io.github.maxlyth.hapaneld.http.SelfUpdateChannelInstallResult,
-): InstallOperationResult = InstallOperationResult(result.message, result.presentation)
-
-/** A scope canceled before the promoted install body starts still owes cleanup before ticket release. */
-internal fun cleanupCanceledCommittedSelfUpdateChannel(
-    cause: Throwable?,
-    installed: Boolean = false,
-    discardPrepared: () -> Unit,
-    rollback: () -> Unit,
-    finishProgress: () -> Unit,
-) {
-    if (cause == null) return
-    try {
-        discardPrepared()
-    } finally {
-        try {
-            if (!installed) rollback()
-        } finally {
-            finishProgress()
-        }
-    }
-}
-
 internal fun shouldDisableAutoBrightnessForMissingSource(
     enabled: Boolean,
     haEntity: String,
@@ -1005,7 +956,6 @@ class PaneldService : Service() {
      * being drawn on the main thread. Null until the first answer lands, which the screen renders as
      * saying nothing rather than as a confident "this panel cannot".
      */
-    @Volatile private var webViewRepairCapability: WebViewRepairCapability? = null
     private val lightMqttPublisher = SensorLightPublisher(
         publish = { lux ->
             if (!teardownBoundary.isStopping) {
@@ -1320,7 +1270,7 @@ class PaneldService : Service() {
         )
         // A WebView provider binds once per process, so the only way a panel parked on "Secure dashboard
         // bridge unavailable" can ever see a newly installed engine is on the far side of a process
-        // boundary — the same route activateWebView already takes for the installs ha-paneld performs
+        // boundary — the provider is bound once per app process
         // itself. Single-flight, so one provider install asks exactly once, and it survives the wait:
         // see webViewRebindRestartCoordinator for why nothing except teardown may discard it.
         webViewRebindRestart = webViewRebindRestartCoordinator(
@@ -1886,8 +1836,6 @@ class PaneldService : Service() {
             onPanelAssistantUpdateOwner = {
                 if (panelAssistantUpdateLease.observe()) runCatching { mqtt.publishSoftwareUpdates() }
             },
-            prepareSelfUpdateChannel = ::prepareSelfUpdateChannel,
-            onSelfUpdateChannelCommitted = ::completeSelfUpdateChannelChange,
             powerSafety = { powerSafety.assess(config.keepAwake, config.preventIdleDim) },
             freshPowerSafetyRepairCapability = powerSafety::repairCapabilityFresh,
             onRepairPowerSafety = ::repairPowerSafety,
@@ -2077,7 +2025,6 @@ class PaneldService : Service() {
                     Log.w(TAG, "self-update skipped: another destructive operation is running")
                 }
             },
-            onSelfUpdateChannelChange = ::launchSelfUpdateChannelChange,
             softwareUpdateSources = ::softwareUpdateSources,
             // An admitted update-entity install names one exact catalog tag, so it runs the same
             // signer-pinned, database-admitted exact-version path as the Install page's version picker.
@@ -2166,12 +2113,6 @@ class PaneldService : Service() {
         val spec = SettingsRegistry.spec(key)
             ?: return LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
         val previous = previousValue ?: config.getRaw(spec)
-        // update_channel owns a two-phase candidate transaction. Its bridge handler starts the exact
-        // preflight and the service commits only after compatibility admission; the ordinary live-setting
-        // rule (persist before actuation) would create the forbidden configuration-mutation bypass.
-        if (key == "update_channel") {
-            return bridge.applySettingObserved(key, value, previous.takeUnless { spec.transient })
-        }
         // Network ADB must retain its durable ownership marker until the controller has cleared every
         // classic/TLS property and authoritatively read them all inactive. Persisting false here first
         // made AdbController.set(false) conclude that the listener was external and skip teardown.
@@ -3177,10 +3118,6 @@ class PaneldService : Service() {
                 relays = controllers?.relayCount ?: relay.count(),
                 buttonLeds = controllers?.buttonLedCount ?: relay.ledCount(),
                 hasSystemDarkMode = Build.VERSION.SDK_INT >= 29,   // Android 10+ has the system dark/light setting
-                companionInstalled = UpdateChecker.COMPANION_PKGS.any {
-                    runCatching { packageManager.getPackageInfo(it, 0) }.isSuccess
-                },
-                webViewManaged = profile.recommendedWebView != null,
                 shizukuReady = shizukuReady,
                 canInstallVerifiedApps = typedShellControlReady,
                 canCaptureAndInput = typedShellControlReady,
@@ -3247,14 +3184,12 @@ class PaneldService : Service() {
         return true
     }
 
-    /** Run a scheduled destructive operation inline, or skip it when another owner holds the lane. */
     private val successorHandoffGate = kotlinx.coroutines.sync.Mutex()
     @Volatile private var lastSuccessorHandoffDetail: String? = null
 
     /**
      * Bridge build only: install and start the successor identity. One offer at a time, whether the
-     * periodic pass or the HTTP trigger asked; the outcome is logged only when it changes, because a
-     * panel that never migrates repeats the same refusal on every pass.
+     * explicit HTTP trigger asked; the outcome is logged only when it changes.
      */
     internal suspend fun offerSuccessorHandoff(allowInstall: Boolean = true): SuccessorHandoff.Outcome? {
         if (!AppIdentity.IS_BRIDGE) return null
@@ -3312,78 +3247,6 @@ class PaneldService : Service() {
             return null
         }
         return completeOperation(progress, logLabel, operation, after)
-    }
-
-    /** Bind the new provider after a confirmed or uncertain install reply. */
-    private suspend fun activateWebView(result: WebViewInstaller.HealResult, verb: String) {
-        if (result !is WebViewInstaller.HealResult.Installed && result !is WebViewInstaller.HealResult.Uncertain) return
-        kotlinx.coroutines.delay(2_000)
-        if (WebViewInstaller.pendingRollback(this) != null || system.isBuiltinDashboardTarget(config.dashboardPackage)) {
-            // A WebView provider binds once per process. The asynchronous trigger has already replied,
-            // while the operation ticket stays owned until this boundary is requested; START_STICKY
-            // then restarts the service and HOME on the new provider.
-            Log.i(TAG, "WebView $verb — restarting process to verify the new provider")
-            kotlinx.coroutines.delay(1_000)
-            requestSafeProcessBoundary("binding the $verb WebView provider", "update")
-            return
-        }
-        system.reloadDashboard(config.dashboardPackage)
-    }
-
-    /** Scheduled WebView auto-update (opt-in, update tick): advance the System WebView to the profile's
-     *  pinned build when it's newer than the running engine. A loop guard skips re-downloading a version
-     *  that already installed but never became the provider; it clears when the pinned version advances. */
-    private suspend fun autoUpdateWebView(): WebViewInstaller.HealResult {
-        val builtinRenderer = system.isBuiltinDashboardTarget(config.dashboardPackage)
-        if (builtinRenderer && !config.builtInRendererReady()) return WebViewInstaller.HealResult.Failed(
-            "skipped: built-in dashboard has no connection to verify after a WebView swap", terminal = false,
-        )
-        if (builtinRenderer && (!BuiltinDashboard.rendererSettled || !BuiltinDashboard.foreground ||
-                !BuiltinDashboard.screenAwakeNow)
-        ) return WebViewInstaller.HealResult.Failed(
-            "skipped: built-in dashboard is not visibly rendered for a WebView health check", terminal = false,
-        )
-        val rec = profile.recommendedWebView
-            ?: return WebViewInstaller.HealResult.NoAction(
-                "skipped: no managed WebView",
-                InstallPresentation("managed-no-recommendation", mapOf("component" to "webview")),
-            )
-        if (WebViewInstaller.alreadyRolledBackPin(this, rec.version)) return WebViewInstaller.HealResult.Failed(
-            "skipped: WebView ${rec.version} already failed the dashboard health check", terminal = false,
-        )
-        val engineVersion = PanelInfo.engineVersion(this@PaneldService)
-        if (io.github.maxlyth.hapaneld.util.WebViewInstaller.shouldSkipAutoUpdate(config.webViewAutoLastVersion, rec.version, engineVersion)) {
-            val skipped = "skipped: ${rec.version} already attempted but engine is ${engineVersion ?: "?"}; manual heal may be needed"
-            Log.w(TAG, "WebView auto-update: $skipped")
-            return WebViewInstaller.HealResult.NoAction(
-                skipped,
-                InstallPresentation(
-                    "managed-attempt-recorded",
-                    mapOf(
-                        "component" to "webview",
-                        "version" to rec.version,
-                        "current" to (engineVersion ?: "?"),
-                    ),
-                ),
-            )
-        }
-        val r = WebViewInstaller.heal(
-            this@PaneldService, profile, engineVersion, autoUpdate = true,
-            builtinRenderer = builtinRenderer,
-            stillBuiltin = {
-                !teardownBoundary.isStopping && system.isBuiltinDashboardTarget(config.dashboardPackage) &&
-                    config.builtInRendererReady() && BuiltinDashboard.rendererSettled &&
-                    BuiltinDashboard.foreground && BuiltinDashboard.screenAwakeNow
-            },
-        )
-        // Persist only terminal evidence. A signature-locked provider rejection should not re-download
-        // forever, but a transient network/staging/storage/root failure must retry on the next daily tick.
-        // A pin bump clears the guard; the manual button always retries regardless of the marker. The
-        // caller owns successful provider activation so manual, component, and scheduled paths cannot drift.
-        if (WebViewInstaller.shouldRecordAutoAttempt(r, engineVersion)) {
-            config.setWebViewAutoLastVersion(rec.version)
-        }
-        return r
     }
 
     /** A new process and dashboard generation must earn the connection handshake before the saved
@@ -3537,8 +3400,6 @@ class PaneldService : Service() {
                         WebViewInstaller.recordRollbackDiagnostic(this@PaneldService, "$reason; $detail")
                         return@runOperation InstallOperationResult("WebView rollback: $detail")
                     }
-                    // The durable claim survives a crash even if the legacy auto marker write does not.
-                    config.setWebViewAutoLastVersion(receipt.pinVersion)
                     val readback = WebViewInstaller.installedApkMatches(this@PaneldService, receipt.previousSha256)
                     bindProvider = readback || outcome == InstallOutcome.Succeeded ||
                         (outcome is InstallOutcome.Retryable && outcome.mayHaveCommitted)
@@ -3576,187 +3437,6 @@ class PaneldService : Service() {
         )
     }
 
-    private suspend fun prepareSelfUpdateChannel(
-        requested: String,
-        force: Boolean,
-    ): io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight =
-        when (val prepared = SelfUpdater.admitConfigCoupledChannel(
-            SelfUpdater.prepareChannelUpdate(this@PaneldService, requested, force),
-        )) {
-            is SelfUpdater.ChannelPreparation.Unresolved ->
-                io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Unresolved(
-                    prepared.message,
-                    prepared.presentation,
-                )
-            is SelfUpdater.ChannelPreparation.UpToDate ->
-                io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.UpToDate(
-                    prepared.message,
-                    prepared.presentation,
-                )
-            is SelfUpdater.ChannelPreparation.Refused ->
-                io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Refused(
-                    prepared.message,
-                    prepared.presentation,
-                )
-            is SelfUpdater.ChannelPreparation.Ready -> {
-                val candidate = prepared.prepared
-                io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Ready(
-                    message = prepared.message,
-                    requiresRecovery = prepared.databaseDisposition ==
-                        AppInstaller.SelfInstallDatabaseDisposition.RECOVER,
-                    revalidateForConfigCommit = {
-                        AppInstaller.revalidatePreparedDirectForConfigCommit(
-                            this@PaneldService,
-                            candidate,
-                        )
-                    },
-                    install = {
-                        SelfUpdater.installPreparedOutcome(this@PaneldService, candidate).let {
-                            io.github.maxlyth.hapaneld.http.SelfUpdateChannelInstallResult(
-                                message = it.message,
-                                installed = it.installed,
-                                presentation = it.presentation,
-                            )
-                        }
-                    },
-                    discardPrepared = candidate::close,
-                    presentation = prepared.presentation,
-                )
-            }
-        }
-
-    /** MQTT channel switches own the install lane from preflight through the exact prepared install. */
-    private fun launchSelfUpdateChannelChange(requested: String, previous: String): Boolean = launchOperation(
-        component = "ha-paneld",
-        owner = "paneld",
-        logLabel = "self-update channel $previous -> $requested",
-        operation = {
-            when (val preflight = prepareSelfUpdateChannel(
-                requested,
-                force = previous == "prerelease" && requested == "stable",
-            )) {
-                is io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Ready -> preflight.use {
-                    if (it.requiresRecovery) {
-                        return@launchOperation InstallOperationResult(
-                            "refused: an update-channel change cannot recover an older database snapshot",
-                            InstallPresentation(
-                                "install-durable-rejection",
-                                mapOf("component" to "paneld"),
-                            ),
-                        )
-                    }
-                    var commitRefusal: String? = null
-                    if (!config.synchronizedTransaction {
-                            if (config.updateChannel != previous || !config.selfUpdate) {
-                                false
-                            } else {
-                                // Revalidate the exact bytes, signer, boundary and current database as
-                                // DIRECT at the final boundary before this channel preference mutates.
-                                // DB_COMPAT_MUTATION_ANCHOR: MQTT_CONFIG_COMMIT
-                                commitRefusal = it.revalidateForConfigCommit()
-                                if (commitRefusal != null) false
-                                else config.applyBatch { config.setUpdateChannel(requested) }
-                            }
-                        }
-                    ) {
-                        return@launchOperation InstallOperationResult(
-                            commitRefusal?.let { refusal -> "refused: $refusal" }
-                                ?: "refused: update channel changed during compatibility preflight",
-                            InstallPresentation(
-                                "install-durable-rejection",
-                                mapOf("component" to "paneld"),
-                            ),
-                        )
-                    }
-                    mqtt.publishSelfUpdateChannelState()
-                    val result = installCommittedSelfUpdateChannel(
-                        install = it.install,
-                        rollback = { rollbackSelfUpdateChannel(requested, previous) },
-                    )
-                    selfUpdateChannelOperationResult(result)
-                }
-                is io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.UpToDate -> {
-                    if (!config.synchronizedTransaction {
-                            if (config.updateChannel != previous || !config.selfUpdate) false
-                            else config.applyBatch { config.setUpdateChannel(requested) }
-                        }
-                    ) InstallOperationResult(
-                        "refused: update channel changed during compatibility preflight",
-                        InstallPresentation(
-                            "install-durable-rejection",
-                            mapOf("component" to "paneld"),
-                        ),
-                    )
-                    else {
-                        mqtt.publishSelfUpdateChannelState()
-                        InstallOperationResult(preflight.message, preflight.presentation)
-                    }
-                }
-                is io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Refused ->
-                    InstallOperationResult(preflight.message, preflight.presentation)
-                is io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Unresolved ->
-                    InstallOperationResult(preflight.message, preflight.presentation)
-            }
-        },
-        after = { mqtt.publishSelfUpdateChannelState() },
-    )
-
-    /** Direct HTTP/import saves promote their config claim without releasing the shared lane. */
-    private fun completeSelfUpdateChannelChange(
-        preflight: io.github.maxlyth.hapaneld.http.SelfUpdateChannelPreflight.Ready?,
-        progress: InstallProgress.Ticket?,
-        previous: String,
-        committed: String,
-    ) {
-        liveSettingAuthority.discard("update_channel")
-        mqtt.publishSelfUpdateChannelState()
-        if (preflight == null) {
-            progress?.let { InstallProgress.finish(it, "self-update candidate absent") }
-            return
-        }
-        val promoted = requireNotNull(progress) { "prepared channel install requires promoted ownership" }
-        val installed = AtomicBoolean(false)
-        val job = scope.launch {
-            completeOperation(
-                promoted,
-                "self-update committed channel",
-                operation = {
-                    val result = preflight.use { ready ->
-                        installCommittedSelfUpdateChannel(
-                            install = ready.install,
-                            rollback = { rollbackSelfUpdateChannel(committed, previous) },
-                            onInstalled = { installed.set(true) },
-                        )
-                    }
-                    selfUpdateChannelOperationResult(result)
-                },
-            )
-        }
-        job.invokeOnCompletion { cause ->
-            cleanupCanceledCommittedSelfUpdateChannel(
-                cause = cause,
-                installed = installed.get(),
-                discardPrepared = preflight::close,
-                rollback = { rollbackSelfUpdateChannel(committed, previous) },
-                finishProgress = { InstallProgress.finish(promoted, "cancelled") },
-            )
-        }
-    }
-
-    /** Roll back only the channel this failed exact candidate committed; a newer user choice wins. */
-    private fun rollbackSelfUpdateChannel(failedChannel: String, previousChannel: String) {
-        config.synchronizedTransaction {
-            val rollback = failedSelfUpdateChannelRollback(
-                config.updateChannel,
-                failedChannel,
-                previousChannel,
-            ) ?: return@synchronizedTransaction false
-            config.applyBatch { config.setUpdateChannel(rollback) }
-        }
-        liveSettingAuthority.discard("update_channel")
-        mqtt.publishSelfUpdateChannelState()
-    }
-
     private fun attachSoftwareUpdateObservers() {
         // Targets persisted by an earlier process: a restart keeps reporting the last known release.
         config.softwareUpdateTargets.let { (paneld, companion) -> UpdateChecker.restoreTargets(paneld, companion) }
@@ -3771,8 +3451,8 @@ class PaneldService : Service() {
 
     /** One coherent read of everything the MQTT update entities report, taken on MQTT workers. */
     private fun softwareUpdateSources(): SoftwareUpdateSources {
-        val paneldChannel = config.updateChannel
-        val companionChannel = config.companionUpdateChannel
+        val paneldChannel = "stable"
+        val companionChannel = "stable"
         val cap = profile.companionMaxVersion
         val progress = InstallProgress.presentationSnapshot()
         // Only "not installed" is an answer; any other failure leaves presence unknown rather than absent.
@@ -3816,19 +3496,15 @@ class PaneldService : Service() {
         onStarted: (InstallProgress.Ticket) -> Unit = {},
     ): Boolean {
         val label = when (name) {
-            "paneld" -> "ha-paneld"; "companion" -> "HA Companion"; "webview" -> "System WebView"; else -> name
+            "paneld" -> "ha-paneld"; "companion" -> "HA Companion"; else -> name
         }
         val force = action == "reinstall"
         val tag = version.takeIf { it.isNotBlank() }
-        // The WebView heal returns a typed result; capture it so `after` can reactivate the provider on
-        // the typed success variant while the operation still surfaces its status string to InstallProgress.
-        var webViewHeal: WebViewInstaller.HealResult? = null
         return launchOperation(
             component = label,
             owner = when (name) {
                 "paneld" -> "paneld"
                 "companion" -> "companion"
-                "webview" -> "webview"
                 else -> "apk"
             },
             logLabel = "install $name",
@@ -3836,7 +3512,7 @@ class PaneldService : Service() {
                 when (name) {
                     // A specific picked version installs that exact tag; otherwise the channel's newest.
                     "paneld" -> if (tag != null) SelfUpdater.installVersionResult(this@PaneldService, tag)
-                        else SelfUpdater.checkAndUpdateResult(this@PaneldService, config.updateChannel, force = force)
+                        else SelfUpdater.checkAndUpdateResult(this@PaneldService, "stable", force = force)
                     "companion" -> if (tag != null) CompanionInstaller.installVersionResult(
                         this@PaneldService,
                         tag,
@@ -3845,26 +3521,19 @@ class PaneldService : Service() {
                         else CompanionInstaller.installOrUpdateResult(
                             this@PaneldService,
                             force = force,
-                            channel = config.companionUpdateChannel,
+                            channel = "stable",
                             maxVersion = profile.companionMaxVersion,
                         )
-                    "webview" -> WebViewInstaller.heal(
-                        this@PaneldService, profile, PanelInfo.engineVersion(this@PaneldService),
-                        force = true,
-                    )
-                        .also { webViewHeal = it }
-                        .let { InstallOperationResult(it.status, it.presentation) }
                     else -> InstallOperationResult("unknown component")
                 }
             },
             after = {
-                webViewHeal?.let { activateWebView(it, "healed") }
                 // Refresh the available-update list so the banner + Install tab reflect the new state.
                 runCatching {
                     UpdateChecker.check(
                         this@PaneldService,
-                        config.updateChannel,
-                        config.companionUpdateChannel,
+                        "stable",
+                        "stable",
                         profile.companionMaxVersion,
                     )
                 }
@@ -4129,7 +3798,6 @@ class PaneldService : Service() {
             runCatching { adb.reassert() }
             startScreenOnReconciliation()
             startWebViewRebindWatch()
-            startWebViewRepairOffer()
             sensors.start(
                 onLux = { lux ->
                     submitIlluminanceIfExposed(
@@ -4199,61 +3867,14 @@ class PaneldService : Service() {
                 tag = TAG,
                 name = "update-check",
             ) {
-                // Each sub-step is isolated so one failing doesn't skip the others; the periodic boundary
-                // is the outer net that keeps the loop alive across an unexpected throw.
+                // Refresh release observations only; installation requires an explicit request.
                 runCatching {
                     UpdateChecker.check(
                         this@PaneldService,
-                        config.updateChannel,
-                        config.companionUpdateChannel,
+                        "stable",
+                        "stable",
                         profile.companionMaxVersion,
                     )
-                }
-                // Companion self-heal: when enabled, install a missing Companion / update an out-of-date one.
-                if (config.companionAutoUpdate) {
-                    runOperation(
-                        component = "HA Companion",
-                        owner = "companion",
-                        logLabel = "Companion auto",
-                        operation = {
-                            CompanionInstaller.installOrUpdateResult(
-                                this@PaneldService,
-                                channel = config.companionUpdateChannel,
-                                maxVersion = profile.companionMaxVersion,
-                            )
-                        },
-                    )
-                }
-                // System WebView auto-update (opt-in): advance to the profile's pinned build. BEFORE
-                // self-update because a successful WebView install also restarts the process.
-                refreshWebViewRepairCapability()
-            if (config.webViewAutoUpdate) {
-                    var webViewHeal: WebViewInstaller.HealResult? = null
-                    runOperation(
-                        component = "System WebView",
-                        owner = "webview",
-                        logLabel = "WebView auto-update",
-                        operation = {
-                            autoUpdateWebView().also { webViewHeal = it }
-                                .let { InstallOperationResult(it.status, it.presentation) }
-                        },
-                        after = { webViewHeal?.let { activateWebView(it, "auto-updated") } },
-                    )
-                }
-                // ha-paneld self-update LAST — a successful install restarts this process (and this loop).
-                // The setting defaults on only for capable panels; keep the runtime guard too so an
-                // imported/restored true value cannot make an unsupported panel attempt an app install.
-                if (config.selfUpdate && capabilitiesSnapshot().canInstallVerifiedApps) {
-                    runOperation(
-                        component = "ha-paneld",
-                        owner = "paneld",
-                        logLabel = "self-update auto",
-                        operation = { SelfUpdater.checkAndUpdateResult(this@PaneldService, config.updateChannel) },
-                    )
-                    // Identity migration, bridge build only, and only once this build is the one its
-                    // channel wants (a successful self-update above restarts the process first). Every
-                    // refusal leaves the panel on the bridge; the next pass offers again.
-                    offerSuccessorHandoff()
                 }
             }
             startMqttWatchdog()
@@ -5227,7 +4848,6 @@ class PaneldService : Service() {
             // terminal before that runtime is retired. Its receiver is already unregistered, so no new
             // work can be posted; join the worker so a reconciliation already in flight cannot publish
             // through a retired client. Ordered before the retirement fence below for exactly that reason.
-            closeOwner("WebView repair offer") { WebViewRepairRuntime.detach() }
             closeOwner("update entity observers") { detachSoftwareUpdateObservers() }
             closeOwnerResult("screen reconcile worker") {
                 screenWakeWorker.closeAndJoin(
@@ -5667,50 +5287,6 @@ class PaneldService : Service() {
      * update tick because both of its inputs can change while the panel sits on the blocked screen:
      * a root helper can finish installing, and a profile can arrive with a build pinned for this model.
      */
-    private fun startWebViewRepairOffer() {
-        refreshWebViewRepairCapability()
-        WebViewRepairRuntime.attach(
-            capability = { webViewRepairCapability },
-            // Once activation has requested the process boundary, no new destructive work may enter
-            // the process that is being torn down, even if the progress slot has just gone terminal.
-            start = start@{
-                if (teardownBoundary.isStopping) return@start null
-                var generation: Long? = null
-                val accepted = installComponent("webview", "reinstall", "") { ticket ->
-                    generation = ticket.id
-                }
-                if (accepted) generation else null
-            },
-            progress = {
-                val snapshot = InstallProgress.presentationSnapshot()
-                WebViewRepairProgress(
-                    generation = snapshot.generation,
-                    running = snapshot.running,
-                    component = snapshot.component,
-                    message = snapshot.message,
-                    presentation = snapshot.presentation,
-                )
-            },
-        )
-    }
-
-    /** Ask the two privileged questions once, off the drawing thread, and publish the answer. */
-    private fun refreshWebViewRepairCapability() {
-        scope.launch {
-            val capability = runCatching {
-                WebViewRepairCapability(
-                    hasKnownGoodBuild = profile.recommendedWebView != null,
-                    // The same route test the Install page's own offer uses, and deliberately not the
-                    // wider typed-shell one: `WebViewInstaller.heal` refuses Shizuku, so a panel with
-                    // only Shizuku would be offered a button that cannot finish.
-                    privileged = Su.availableCachedIsolated() || HelperClient.available(),
-                    managedElsewhere = PanelInfo.webViewPlayManaged(this@PaneldService),
-                )
-            }.getOrNull()
-            if (capability != null) webViewRepairCapability = capability
-        }
-    }
-
     private fun startWebViewRebindWatch() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
