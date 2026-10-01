@@ -3786,6 +3786,8 @@ preflight_target() {
     echo "INSTALL_UNCHANGED $preflight_verb target_read_only"
     return 1
   fi
+  # Removal-only targets need a read-write mount, not room; a full /system is what hybrid is for.
+  [ "$preflight_need" = 0 ] && [ "$diag_state" = rw ] && return 0
   case "$diag_availkb" in
     ''|*[!0-9]*) ;;
     *)
@@ -5351,7 +5353,7 @@ install_hybrid() {
   preflight_target install_hybrid /vendor/etc/init "$vendor_init_need" || return 1
   # This route removes an old system-layout helper from /system/bin after retirement and fails the
   # transaction if that removal is refused, so a read-only /system/bin must be caught here rather
-  # than there. No headroom is needed for a removal; the write probe alone proves writability.
+  # than there. No headroom is needed for a removal, so a mount resolved read-write is enough.
   preflight_target install_hybrid /system/bin 0 || return 1
 
   candidate=/data/local/.hapaneld-helper.provision-$transaction_id
@@ -5995,6 +5997,8 @@ EOF
       if printf hapaneld-system-init-write-probe > "$system_init_probe" 2>/dev/null &&
          [ -s "$system_init_probe" ]; then
         system_init_writable=1
+      elif [ -e "$system_init_probe" ]; then
+        system_init_writable=full # created but empty: full (read-only refuses the create)
       fi
     fi
     rm -f "$system_init_probe" 2>/dev/null
@@ -6025,6 +6029,11 @@ EOF
       fi
       if [ -n "$available" ]; then echo SYSTEM_AVAIL_KB=$available; else echo SYSTEM_CAPACITY_UNKNOWN; fi
       # HAPANELD_CAPACITY_PROBE_END
+    elif [ "$system_init_writable" = full ]; then
+      # Full, not read-only: ext4 reserves clusters root cannot write (16 MB on an NSPanel Pro 120)
+      # while df counts them. No room routes to the hybrid layout instead of a pointless remount.
+      echo SYSTEM_RW
+      echo SYSTEM_AVAIL_KB=0
     else
       echo SYSTEM_RO
       if command -v magisk >/dev/null 2>&1 || [ -x /data/adb/magisk/busybox ] || [ -x /data/adb/ksu/bin/busybox ] || [ -x /data/adb/ap/bin/busybox ]; then
