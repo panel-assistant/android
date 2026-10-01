@@ -6,6 +6,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.Log
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
+import io.github.maxlyth.hapaneld.util.closeBody
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -58,7 +59,10 @@ internal object HaBrandIcon {
                 requestMethod = "GET"
             }
             try {
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                    connection.closeBody()
+                    return
+                }
                 // Read with a hard cap so a wrong URL cannot stream an unbounded body into the cache.
                 val bytes = connection.inputStream.use { input ->
                     val buffer = ByteArray(MAX_BYTES + 1)

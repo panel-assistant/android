@@ -70,7 +70,10 @@ class LocalAdminReadiness(
             }
             return try {
                 val status = connection.responseCode
-                if (status != HttpURLConnection.HTTP_OK) false else {
+                if (status != HttpURLConnection.HTTP_OK) {
+                    connection.closeBody()
+                    false
+                } else {
                     val body = connection.inputStream.use { input ->
                         String(BoundedStreams.readBytes(input, MAX_HEALTH_RESPONSE_BYTES), Charsets.UTF_8)
                     }

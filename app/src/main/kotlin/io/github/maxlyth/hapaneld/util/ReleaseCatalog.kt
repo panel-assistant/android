@@ -205,7 +205,10 @@ object ReleaseCatalog {
         return try {
             if (conn.responseCode == 200) {
                 conn.inputStream.use { readResponse(it, conn.contentLengthLong) }
-            } else null
+            } else {
+                conn.closeBody()
+                null
+            }
         } finally {
             conn.disconnect()
         }

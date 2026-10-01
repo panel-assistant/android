@@ -7,6 +7,7 @@ import io.github.maxlyth.hapaneld.HaDiscovery
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.config.Validation
+import io.github.maxlyth.hapaneld.util.closeBody
 import io.ktor.http.Parameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -67,7 +68,7 @@ internal class DirectConfigOnboarding(
                 connection.readTimeout = HaUrlHandover.READ_TIMEOUT_MS
                 connection.instanceFollowRedirects = false
                 connection.setRequestProperty("Accept", "application/json")
-                HaUrlHandover.classifyStatus(connection.responseCode)
+                HaUrlHandover.classifyStatus(connection.responseCode).also { connection.closeBody() }
             } finally {
                 connection.disconnect()
             }
