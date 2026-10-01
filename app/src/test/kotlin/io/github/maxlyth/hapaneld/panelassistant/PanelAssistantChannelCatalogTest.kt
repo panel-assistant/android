@@ -77,7 +77,7 @@ class PanelAssistantChannelCatalogTest {
 
     @Test fun everyRegistryEntitysFactsAreExactlyTheFieldsItsDiscoveryCarries() {
         val specs = SettingsRegistry.haCapable()
-        assertTrue("only ${specs.size} registry entities", specs.size >= 30)
+        assertTrue("retained entity settings were not exercised", specs.map { it.key }.containsAll(listOf("home_dashboard", "network_adb", "volume")))
         for (spec in specs) {
             val entity = spec.ha!!
             val facts = entity.facts
