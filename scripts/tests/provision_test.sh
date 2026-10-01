@@ -8041,6 +8041,61 @@ else
   fail_test "a filesystem that does not count inodes is not read as having run out of them"
 fi
 
+# A /system that remounted read-write but has no room left: an NSPanel Pro 120 keeps 16 MB of ext4
+# reserved clusters that even root cannot write, while df still counts them. The layout probe called
+# it read-only and sent the owner to a remount that had already succeeded, and the hybrid route it
+# belongs on then refused a directory it only removes from, for want of 4096 bytes. A file-size
+# limit of zero, with SIGXFSZ ignored, gives the same shape on any host without mount privileges: a
+# read-write directory that takes a create and refuses every byte.
+FULL_ROOT="$TMP/full-system"
+mkdir -p "$FULL_ROOT/system/etc/init" "$FULL_ROOT/system/bin"
+FULL_LIMIT="trap '' XFSZ; ulimit -f 0"
+# Only the paths move: the probe's own create, write, capacity and runner logic run as shipped.
+full_probe="$(sed -n '/^    system_init_probe=\/system\/etc\/init/,/^  '"'"' 2>&1)" || layout_status=\$?$/p' "$PROVISION" |
+  sed -e '$d' -e "s|/system|$FULL_ROOT/system|g" -e 's/@TRANSACTION_ID@/full/g')"
+full_out="$(PATH=/usr/bin:/bin /bin/sh -c "$FULL_LIMIT
+$full_probe" 2>&1)"
+if [ -n "$full_probe" ] && [ "$full_out" = "$(printf '%s\n' SYSTEM_RW SYSTEM_AVAIL_KB=0)" ]; then
+  pass "a read-write /system with no room is reported writable with no space, never read-only"
+else
+  fail_test "a read-write /system with no room is reported writable with no space, never read-only"
+fi
+# The opposite case must not ride along: /system takes the create but its boot directory refuses one,
+# as a read-only overmount there does. Hybrid would then fail late removing the old boot file, so this
+# stays the read-only refusal it always was.
+rm -rf "$FULL_ROOT/system/etc/init"
+: > "$FULL_ROOT/system/etc/init"
+full_out="$(PATH=/usr/bin:/bin /bin/sh -c "$full_probe" 2>&1)"
+if printf '%s\n' "$full_out" | grep -qx SYSTEM_RO && ! printf '%s\n' "$full_out" | grep -qx SYSTEM_RW; then
+  pass "a boot directory that refuses the create is still reported read-only"
+else
+  fail_test "a boot directory that refuses the create is still reported read-only"
+fi
+preflight_out="$(run_preflight "$FULL_LIMIT
+preflight_target install_hybrid '$FULL_ROOT/system/bin' 0")"
+if [ -z "$preflight_out" ]; then
+  pass "a full read-write directory the hybrid route only removes from passes its preflight"
+else
+  fail_test "a full read-write directory the hybrid route only removes from passes its preflight"
+fi
+preflight_out="$(run_preflight "$FULL_LIMIT
+preflight_target install_hybrid '$FULL_ROOT/system/bin' 1")"
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_hybrid target_not_writable'; then
+  pass "a full read-write directory that must take bytes still refuses"
+else
+  fail_test "a full read-write directory that must take bytes still refuses"
+fi
+# Removal-only is admitted on a mount known to be read-write, never on one the walk could not place.
+printf '%s\n' "elsewhere $TMP/elsewhere ext4 rw 0 0" > "$MOUNT_TABLE"
+preflight_out="$(PATH=/usr/bin:/bin /bin/sh -c ". '$MOUNT_FN'
+$FULL_LIMIT
+preflight_target install_hybrid '$FULL_ROOT/system/bin' 0" 2>&1)"
+if printf '%s' "$preflight_out" 2>/dev/null | grep -Fqx 'INSTALL_UNCHANGED install_hybrid target_not_writable'; then
+  pass "a removal-only directory on an unplaced mount is still write-probed"
+else
+  fail_test "a removal-only directory on an unplaced mount is still write-probed"
+fi
+
 # A destination the caller genuinely cannot write, on a filesystem that is not read-only and not
 # full. This is the catch-all, and it must stay distinguishable from the three named causes above.
 if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null 2>&1; then
