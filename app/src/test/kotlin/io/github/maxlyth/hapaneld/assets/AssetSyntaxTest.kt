@@ -371,7 +371,7 @@ class AssetSyntaxTest {
             const made=[];
             function element(tag){
               const e={tag:tag||'',style:{},dataset:{},handlers:{},children:[],className:'',textContent:'',innerHTML:'',value:'',disabled:false,parentNode:null,
-                classList:{toggle(){},add(){},remove(){}},
+                classList:{toggle(){},add(){},remove(){},contains(name){return e.className.split(/\s+/).includes(name)}},
                 setAttribute(k,v){this[k]=v},getAttribute(k){return this[k]??null},hasAttribute(k){return this[k]!=null},addEventListener(k,v){this.handlers[k]=v},appendChild(v){v.parentNode=this;this.children.push(v);return v},
                 insertBefore(v,current){v.parentNode=this;const i=current?this.children.indexOf(current):-1;if(i<0)this.children.push(v);else this.children.splice(i,0,v);return v},
                 remove(){if(!this.parentNode)return;const i=this.parentNode.children.indexOf(this);if(i>=0)this.parentNode.children.splice(i,1);this.parentNode=null},
@@ -441,7 +441,7 @@ class AssetSyntaxTest {
             const made=[];
             function element(tag){
               const e={tag:tag||'',style:{},dataset:{},handlers:{},children:[],className:'',textContent:'',innerHTML:'',value:'',disabled:false,parentNode:null,
-                classList:{toggle(){},add(){},remove(){}},
+                classList:{toggle(){},add(){},remove(){},contains(name){return e.className.split(/\s+/).includes(name)}},
                 setAttribute(k,v){this[k]=v},getAttribute(k){return this[k]},hasAttribute(k){return this[k]!=null},addEventListener(k,v){this.handlers[k]=v},
                 appendChild(v){v.parentNode=this;this.children.push(v);return v},
                 insertBefore(v,current){v.parentNode=this;const i=current?this.children.indexOf(current):-1;if(i<0)this.children.push(v);else this.children.splice(i,0,v);return v},
