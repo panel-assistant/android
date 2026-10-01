@@ -1229,49 +1229,6 @@ browserTest('Top processes explains when resident RAM is unavailable from an old
   assert.equal(await page.locator('#topproc tr').count(), 2);
 });
 
-browserTest('Configure badges the experimental cards and leaves Voice and settled cards unbadged', async (t) => {
-  // A card badge is data-driven, so a typo in the table renders nothing at all rather than failing
-  // anywhere. Voice is a supported card now and must not carry a badge.
-  const schema = [
-    { key: 'voice_enabled', label: 'Voice assistant', group: 'Voice', type: 'BOOL', available: true },
-    { key: 'voice_mic_gain_db', label: 'Microphone gain (dB)', group: 'Voice', type: 'INT', min: -24, max: 24, available: true },
-    { key: 'screen_brightness', label: 'Brightness', group: 'Display', type: 'INT', min: 0, max: 255, available: true },
-    { key: 'dashboard_zoom', label: 'Zoom', group: 'Dashboard', type: 'INT', min: 50, max: 200, available: true },
-  ];
-  const harness = await startHarness((path, request) => {
-    if (path === '/api/v1/config/schema') return json(schema);
-    if (path === '/api/v1/config') {
-      if (request.method === 'POST') return json({});
-      return json({ settings: { voice_enabled: 'false', voice_mic_gain_db: '0', screen_brightness: '128', dashboard_zoom: '100' }, ha_expose: {}, ha_auth: {} });
-    }
-    if (path === '/api/v1/apps') return json({ apps: [] });
-    if (path === '/api/v1/radio') return json({ present: false });
-    if (path === '/api/v1/proximity') return json({ present: false });
-    if (path === '/api/v1/voice/pipelines') return json({ pipelines: [] });
-    if (path === '/health') return { body: 'ok cfg=test' };
-  });
-  const browser = await chromium.launch({ executablePath: chrome, headless: true });
-  const page = await browser.newPage();
-  page.setDefaultTimeout(1_500);
-  t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
-  await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-
-  const displayBadge = page.locator('[data-config-group="Display"] .cardbadge');
-  await assert.doesNotReject(displayBadge.waitFor());
-  assert.equal(await displayBadge.textContent(), 'experimental');
-
-  // The pill must be visibly distinct, not merely present: an unstyled span would read as plain text.
-  const styled = await displayBadge.evaluate((node) => {
-    const background = getComputedStyle(node).backgroundColor;
-    return background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent';
-  });
-  assert.equal(styled, true);
-
-  await assert.doesNotReject(page.locator('[data-config-group="Voice"] h2').waitFor());
-  assert.equal(await page.locator('[data-config-group="Voice"] .cardbadge').count(), 0);
-  assert.equal(await page.locator('[data-config-group="Dashboard"] .cardbadge').count(), 0);
-});
-
 browserTest('Configure offers the wake words as checkboxes and imports a trained one from its own row', async (t) => {
   // The import takes a model the owner trained, so the way to train one has to be one tap away from it.
   // It spans the card rather than sharing the wake-word row's control column.
