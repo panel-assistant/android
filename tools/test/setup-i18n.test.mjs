@@ -581,3 +581,22 @@ browserTest('Setup reports WebView installation only when the stable response to
   assert.equal(await started.page.locator('button.wiz-primary').textContent(), '正在安装…');
   assert.equal(await started.page.locator('button.wiz-primary').isDisabled(), true);
 });
+
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  run(`a panel Panel Assistant carries is never told about a broker in ${engine}`, async (t) => {
+    const skipped = { status: 'skipped' };
+    const rig = await openRig(t, {
+      initialJourney: journey('identity', {
+        statuses: { mqtt_broker: skipped, mqtt_credentials: skipped, mqtt_connection: skipped },
+      }),
+      withHelper: false,
+      locale: 'en',
+    }, '/', browserType);
+    assert.doesNotMatch(await rig.page.locator('#wiz-dots').textContent(), /MQTT/);
+    assert.doesNotMatch(await rig.page.locator('#wiz-step').textContent(), /MQTT|broker/i);
+
+    await reloadJourney(rig, journey('identity'), '/');
+    assert.match(await rig.page.locator('#wiz-dots').textContent(), /MQTT/);
+  });
+}

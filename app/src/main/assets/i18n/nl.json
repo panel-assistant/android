@@ -10769,8 +10769,8 @@
    "state": "machine-cross-checked"
   },
   "setup.identity.lead": {
-   "text": "Een naam, je Home Assistant-server en aanmelding, het dashboard dat je wilt weergeven en daarna je MQTT-broker — een paar snelle vragen en je bent klaar. Je kunt stoppen en later verdergaan; er gaat niets verloren.",
-   "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+   "text": "Een naam, je Home Assistant-server en aanmelding, en het dashboard dat je wilt weergeven — een paar snelle vragen en je bent klaar. Je kunt stoppen en later verdergaan; er gaat niets verloren.",
+   "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
    "state": "machine-cross-checked"
   },
   "setup.identity.panel_id.consequence": {
