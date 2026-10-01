@@ -12019,8 +12019,8 @@
       "state": "machine-cross-checked"
     },
     "setup.identity.lead": {
-      "text": "Ein Name, dein Home Assistant-Server samt Anmeldung, das anzuzeigende Dashboard und dann dein MQTT-Broker — nach ein paar kurzen Fragen bist du fertig. Du kannst unterbrechen und zurückkommen; nichts geht verloren.",
-      "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+      "text": "Ein Name, dein Home Assistant-Server samt Anmeldung und das anzuzeigende Dashboard — nach ein paar kurzen Fragen bist du fertig. Du kannst unterbrechen und zurückkommen; nichts geht verloren.",
+      "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
       "state": "machine-cross-checked"
     },
     "setup.identity.panel_id.consequence": {

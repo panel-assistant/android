@@ -1698,8 +1698,7 @@ internal class MqttBridge(
     // observation needs to remove this notice from HA.
     private val migrationConnectionSeen = AtomicBoolean(config.panelAssistantConnectionSeen)
     private val migrationConnectionListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if ((key == "panel_assistant_authority" || key == "panel_assistant_update_owner_seen_ms" ||
-                key == "migration_notice_connection_seen") &&
+        if (key in Config.PANEL_ASSISTANT_CONNECTION_KEYS &&
             config.panelAssistantConnectionSeen && migrationConnectionSeen.compareAndSet(false, true)
         ) requestReAnnounce()
     }

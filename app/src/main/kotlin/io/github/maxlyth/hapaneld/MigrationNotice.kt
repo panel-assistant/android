@@ -138,9 +138,7 @@ internal class MigrationNotice(private val context: Context, private val config:
         // 29 payload modules plus the QR-standard four-module quiet zone on each edge.
         private const val GUIDE_QR_SIZE_DP = 37
         private const val TAG = "ha-paneld/migration-notice"
-        private val OBSERVED_KEYS = setOf(
-            "panel_assistant_authority", "panel_assistant_update_owner_seen_ms",
-            "migration_notice_connection_seen", "migration_notice_dismissed_version", "ui_language",
-        )
+        private val OBSERVED_KEYS = Config.PANEL_ASSISTANT_CONNECTION_KEYS +
+            setOf("migration_notice_dismissed_version", "ui_language")
     }
 }
