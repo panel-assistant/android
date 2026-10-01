@@ -1015,6 +1015,59 @@ else
   fail_test "release builds only read main's Gradle cache and publication waits on lint from main"
 fi
 
+# Each job starts from a clean checkout of the tag, or none at all. A step may read a repository path
+# only if Git tracks it (generated files such as the bundled helper assets are ignored and absent), and
+# a build output only after a Gradle run in the same job. `seal` has no checkout, so it reads no
+# repository path. A job that reads a file another job generated fails on every clean release.
+if python3 - "$WORKFLOW" "$ROOT" <<'PY'
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+lines = Path(sys.argv[1]).read_text().splitlines()
+tracked = set(subprocess.run(["git", "-C", sys.argv[2], "ls-files"], check=True, capture_output=True, text=True).stdout.splitlines())
+headers = [index for index, line in enumerate(lines) if re.fullmatch(r"  [\w-]+:", line)]
+problems = []
+for start, end in zip(headers, [*headers[1:], len(lines)]):
+    job = lines[start].strip().rstrip(":")
+    if job not in {"package", "package-apk", "seal"}:
+        continue
+    gradle_ran = False
+    for line in lines[start:end]:
+        if line.lstrip().startswith("#"):
+            continue
+        for path in re.findall(r"app/[\w./-]+", line):
+            path = path.rstrip(".")
+            if job == "seal":
+                problems.append(f"{job}: reads {path} without a checkout")
+            elif path.startswith("app/build/"):
+                if not gradle_ran:
+                    problems.append(f"{job}: reads {path} before any Gradle run")
+            elif path not in tracked and not any(name.startswith(path.rstrip("/") + "/") for name in tracked):
+                problems.append(f"{job}: reads untracked {path}")
+        if "./gradlew " in line:
+            gradle_ran = True
+for problem in problems:
+    print(problem, file=sys.stderr)
+sys.exit(1 if problems else 0)
+PY
+then
+  pass "package, identity and seal jobs read only tracked files or outputs they built themselves"
+else
+  fail_test "package, identity and seal jobs read only tracked files or outputs they built themselves"
+fi
+
+seal_helper_step="$(extract_named_step 'Verify standalone helpers match APK-bundled helpers')"
+if grep -Fq 'unzip -p "$apk" assets/hapaneld-helper-arm | cmp release-input/hapaneld-helper-armeabi-v7a -' <<<"$seal_helper_step" && \
+   grep -Fq 'unzip -p "$apk" assets/hapaneld-helper-arm64 | cmp release-input/hapaneld-helper-arm64-v8a -' <<<"$seal_helper_step" && \
+   grep -Fq 'for apk in release-input/ha-paneld-unsigned.apk release-input/panel-assistant-unsigned.apk; do' <<<"$seal_helper_step" && \
+   grep -Fq 'set -euo pipefail' <<<"$seal_helper_step"; then
+  pass "standalone helpers are compared with the helper packaged in both APKs"
+else
+  fail_test "standalone helpers are compared with the helper packaged in both APKs"
+fi
+
 # The descriptor names the successor and the installer pins it, while the bridge asset name is
 # frozen at what every earlier release published.
 if grep -Fq 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"' <<<"$descriptor_step" && \
