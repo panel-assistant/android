@@ -509,6 +509,30 @@ class AutoSleepControllerTest {
         } finally { h.closeWithVirtualTime(::runCurrent) }
     }
 
+    @Test fun `a retried adoption after presence went live is not woken by the startup lease`() = runTest {
+        val h = virtualHarness(inheritedDark = true)
+        try {
+            h.wakeTap.armSucceeds = false
+            val request = h.start()
+            // Presence reaches LIVE before the retry, so the policy already holds a fresh startup lease.
+            assertTrue(h.offer(aggregate(request, 0L, HaPresenceValue.OFF)))
+            h.await { h.status().getString("phase") == "live" }
+            assertFalse(h.screen.isIntendedOff())
+            h.wakeTap.armSucceeds = true
+            advanceTimeBy(ADOPTION_RETRY_MS)
+            runCurrent()
+            assertTrue(h.screen.isIntendedOff())
+            // The retry is a refresh, so presence resumes at the new configuration epoch.
+            val resumed = h.awaitRequest(2)
+            assertTrue(h.offer(aggregate(resumed, 1L, HaPresenceValue.OFF, manager = 2L)))
+            h.settle()
+            assertTrue(h.screen.isIntendedOff())
+            assertFalse(h.backlightPowered())
+            assertTrue(h.offer(aggregate(resumed, 2L, HaPresenceValue.ON, manager = 2L)))
+            h.await { !h.screen.isIntendedOff() }
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
     @Test fun `an inherited dark screen with no touch wake is left for the never-blank guard`() =
         Harness(inheritedDark = true, wakeTapAvailable = false).use { h ->
             h.start()
