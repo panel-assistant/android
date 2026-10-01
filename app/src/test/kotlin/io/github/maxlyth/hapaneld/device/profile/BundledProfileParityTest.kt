@@ -70,7 +70,7 @@ class BundledProfileParityTest {
      */
     @Test fun onlyHardwareWithProvenCaptureDeclaresAMicrophone() {
         assertEquals(
-            setOf("wf1589t", "nspanel-pro"),
+            setOf("wf1589t", "nspanel-pro", "shelly-wall-display-x2i"),
             bundled.filter { it.document.hardware.hasMicrophone }.map { it.document.id }.toSet(),
         )
         // Unknown hardware stays conservative: a profile earns the declaration by capture, never by
@@ -79,6 +79,7 @@ class BundledProfileParityTest {
         // The declaration reaches the capability the voice settings gate on, not just the parsed document.
         assertTrue(bundledById.getValue("wf1589t").profile().hasMicrophone)
         assertTrue(bundledById.getValue("nspanel-pro").profile().hasMicrophone)
+        assertTrue(bundledById.getValue("shelly-wall-display-x2i").profile().hasMicrophone)
         // A camera is not a microphone. The WF1589T now declares both, so the witness that the two
         // keys are independent on real catalog content is the TPA10: it carries a camera, and its
         // capture chain has never produced audio, so it must declare the one and not the other.
@@ -875,7 +876,7 @@ class BundledProfileParityTest {
             "nspanel-pro.yaml" to "3ac087a5305d2b884c346ebb602aac1c77b9db90905b83b88d365b0149f17588",
             "s9e.yaml" to "23874b2a79cb674d77c8b0ad0703ad1ee2cf4db925414e3e12b38354169f7a3f",
             "shelly-wall-display-v2.yaml" to "0b3141fc867e55905090d41773698c1638308bd78892a6487e04f0b07747dac9",
-            "shelly-wall-display-x2i.yaml" to "58b24f7f4f06921113f0c264ca83699d9882fbf02301c2688bc1567e699ab59b",
+            "shelly-wall-display-x2i.yaml" to "0d4d70c40998432f526cdb36b6518a37aefc87ad5ef2ccbc1c65cb8327ac0d82",
             "shelly-wall-display.yaml" to "f2f6c59a9885321a2afd8e4bf37d803b041c0e5a2de004d1c4ee99566cbea7c3",
             "smt1019.yaml" to "5167bcf071a944c997ea5e496352791eae06a943345d38a5feb6db66ec7c5d61",
             "tpa10.yaml" to "a3bb5b60bfba70571bb24ed26fe18f4a565a37e30dbae9d8993df0184c31b421",
