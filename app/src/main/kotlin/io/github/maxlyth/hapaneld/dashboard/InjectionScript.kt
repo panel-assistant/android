@@ -21,6 +21,25 @@ internal object InjectionScript {
      *  (never inside an embedded iframe). */
     const val TOP_FRAME_GUARD = "if(window.top&&window.top!==window)return;"
 
+    /** Keep rejection details as strings: Chromium/CDP otherwise expose plain objects as #<Object>. */
+    fun rejectionLoggingJs(): String = """
+        (function(){
+            $TOP_FRAME_GUARD
+            window.addEventListener('unhandledrejection',function(event){
+                var reason=event.reason,detail='',stack='';
+                try{detail=typeof reason==='object'&&reason!==null?JSON.stringify(reason):String(reason)}catch(e){}
+                if(!detail||detail==='{}'){
+                    try{detail=String(reason)}catch(e){detail='[unprintable rejection reason]'}
+                    try{if(reason&&reason.message)detail+=': '+String(reason.message)}catch(e){}
+                    try{if(reason&&reason.code)detail+=' (code: '+String(reason.code)+')'}catch(e){}
+                }
+                try{stack=reason&&reason.stack?String(reason.stack):''}catch(e){}
+                if(!stack)stack='Handler observation stack (rejection origin unavailable):\n'+new Error().stack;
+                console.error('Unhandled promise rejection: '+detail.slice(0,1500)+'\n'+stack.slice(0,2000));
+            });
+        })();
+    """.trimIndent()
+
     /** HA's own per-device theme store key in `localStorage` — exactly what the profile page's
      *  Auto/Light/Dark radio writes, and the only lever that actually re-renders HA's theme. */
     const val SELECTED_THEME_KEY = "selectedTheme"
