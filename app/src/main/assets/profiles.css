@@ -63,7 +63,7 @@
 .profile-issue.error{border-left-color:#d05248}.profile-issue.warning{border-left-color:#c6952d}.profile-issue.info{border-left-color:#4284bb}
 .profile-issue-loc{display:block;color:var(--dim);font-size:.74rem;margin-bottom:2px}
 .profile-diff-row{display:grid;grid-template-columns:minmax(90px,.8fr) minmax(0,1.2fr);gap:8px;padding:6px 0;border-bottom:1px solid var(--divider);font-size:.82rem}
-.profile-diff-row:last-child{border-bottom:0}.profile-diff-path{color:var(--accent);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.profile-diff-value{overflow-wrap:anywhere}
+.profile-diff-row:last-child{border-bottom:0}.profile-diff-path{color:var(--accent);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;min-width:0;overflow-wrap:anywhere}.profile-diff-value{overflow-wrap:anywhere}
 .profile-empty{font-size:.84rem;color:var(--dim)}
 .profile-report-note{margin:0 0 8px;color:var(--dim);font-size:.78rem;line-height:1.35}
 .profile-draft{grid-column:1/-1;margin-top:0;padding:11px 12px;border:1px solid var(--info-bd);border-radius:9px;background:var(--info-bg);color:var(--info-fg)}
@@ -77,3 +77,6 @@
 @media(max-width:1050px){.profile-actions{display:contents}.profile-action-break{display:block;flex:0 0 100%;height:0}#profile-catalog-issues,.profile-report{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-inspector{min-height:0}}
 @media(max-width:857px){.profile-toolbar{margin:0 -2px;padding:8px}.profile-actions .pbtn{text-align:center;padding-left:5px;padding-right:5px}.profile-workspace{grid-template-rows:auto auto;height:auto;min-height:0;gap:8px}.profile-editor-pane{min-height:0}.profile-badges{margin-top:8px}#profile-editor,#profile-source-fallback{height:52vh;min-height:226px;flex:none}.profile-editor-meta{display:none}}
 @media(max-width:520px){.profile-toolbar .profile-pickers{min-width:100%;max-width:none}.profile-actions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-left:0}.profile-action-group{display:contents}.profile-action-group+.profile-action-group{padding-left:0;border-left:0}.profile-action-break{display:none}.profile-toolbar select{font-size:.82rem}.profile-editor-head,.profile-inspector-head{padding:8px 10px}.profile-inspector-body,#profile-catalog-issues,.profile-report{grid-template-columns:1fr}}
+/* Phone width: the mode and validation actions carry the longest translated labels, so they take the full row;
+   no dense packing, so the visual order stays the DOM and keyboard order. */
+@media(max-width:520px){#profile-auto,#profile-validate{grid-column:1/-1}}

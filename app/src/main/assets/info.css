@@ -285,7 +285,7 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 .entity-table .col-rate{width:215px}
 .entity-table .col-last{width:135px}
 .entity-table .col-override{width:140px}
-@media(max-width:600px){.entity-table .col-reason{width:72px}.entity-table .col-override{width:96px}
+@media(max-width:600px){.entity-table .col-reason{width:72px}.entity-table .col-override{width:132px}
   /* The entity id is the row's identity: wrap it rather than cut it to a few characters. */
   .entity-table td.col-entity,.entity-table td.col-entity code{white-space:normal;overflow-wrap:anywhere}}
 /* Responsive tab bar -> header hamburger: when the tabs can't fit one line, switcher.js sets
@@ -678,3 +678,12 @@ body.commissioning.cfg-dirty #savebtn{animation:wiz-throb 2s ease-in-out infinit
   .ef-counting::before{animation:none;opacity:.85}
   .ef-verdict-head,.ef-dot{transition:none}
 }
+/* Phone width, last so it wins over the base rules above. Phone width (Panel Assistant sidebar on a phone): a card title keeps one line in every locale, so the uppercase
+   tracking goes and the type steps down; its lowercase status suffix drops onto its own line beneath. */
+@media (max-width:479px){.card h2{font-size:.8rem;letter-spacing:0}.card h2 small{display:block}
+  /* Long translated action labels keep one line: tighter side padding, never wider than the card. */
+  .pbtn{font-size:.75rem;padding-left:8px;padding-right:8px;max-width:100%;box-sizing:border-box}.entity-issue{padding-left:7px;padding-right:7px}
+  #noisyentities th{white-space:nowrap}.log-source{flex-wrap:wrap;min-width:0;max-width:100%}
+  /* The entity table's sortable headers are single words that cannot wrap: smaller header type lets the
+     Override column fit its longest translation while the entity column keeps its own header whole. */
+  .entity-table th{font-size:.72rem}.entity-table .col-override{width:124px}}
