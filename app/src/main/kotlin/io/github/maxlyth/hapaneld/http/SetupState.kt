@@ -173,7 +173,9 @@ internal class SetupState(
             mqttPasswordConfigured = config.mqttPassword.isNotEmpty(),
             mqtt = SetupJourney.MqttSetupState.of(mqttState()),
             renderer = renderer,
-            panelAssistantNative = panelAssistantNative(),
+            // A handed-over panel is joining Panel Assistant, which grants native authority only after this
+            // setup completes; waiting for that grant before dropping the broker step deadlocked first run.
+            panelAssistantNative = panelAssistantNative() || config.haSetupHandover,
             haUrl = config.haUrl,
             haCredentialed = config.haToken.isNotBlank() || config.haRefreshToken.isNotBlank(),
             haOAuthInFlight = haOAuthPending() > 0,

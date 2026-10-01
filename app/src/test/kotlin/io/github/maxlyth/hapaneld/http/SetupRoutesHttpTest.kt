@@ -124,6 +124,40 @@ class SetupRoutesHttpTest {
         }
     }
 
+    @Test fun `a panel Panel Assistant handed over finishes setup without an MQTT step`() = withSetup { fixture ->
+        // Panel Assistant grants native authority only after setup completes, so a handed-over panel
+        // that waited for that grant before dropping the broker step could never finish (2026-09-30).
+        fixture.config.setHaSetupHandover(true)
+        fixture.config.setHaConnection("http://ha.example", "fixture-token")
+        testApplication {
+            application { fixture.mount(this) }
+            client.post("/api/v1/setup/identity")
+            val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
+            assertEquals(listOf("skipped", "skipped", "skipped"), mqttStatuses(state))
+            assertEquals("render_proof", state.getString("next"))
+            client.post("/api/v1/setup/attest")
+            assertTrue(JSONObject(client.get("/api/v1/setup").bodyAsText()).getBoolean("complete"))
+        }
+    }
+
+    @Test fun `a panel set up without Panel Assistant is still asked for its broker`() = withSetup { fixture ->
+        fixture.config.setHaConnection("http://ha.example", "fixture-token")
+        testApplication {
+            application { fixture.mount(this) }
+            client.post("/api/v1/setup/identity")
+            val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
+            assertEquals("blocked", mqttStatuses(state).first())
+            assertEquals("mqtt_broker", state.getString("next"))
+        }
+    }
+
+    private fun mqttStatuses(state: JSONObject): List<String> {
+        val steps = state.getJSONArray("steps")
+        return (0 until steps.length()).map { steps.getJSONObject(it) }
+            .filter { it.getString("stage").startsWith("mqtt_") }
+            .map { it.getString("status") }
+    }
+
     private fun withSetup(block: (PaneldServerHttpFixture) -> Unit) {
         PaneldServerHttpFixture().use { fixture ->
             fixture.config.setDashboardPackage("com.example.dashboard")

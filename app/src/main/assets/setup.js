@@ -180,6 +180,8 @@
       if (i === 2 && step("ha_credentials").status === "skipped") return; // foreign renderer signs itself in
       // A foreign renderer navigates itself, so there is no dashboard choice to promise either.
       if (i === 3 && step("home_dashboard").status === "skipped") return;
+      // A panel Panel Assistant carries has no broker to ask about.
+      if (i === 4 && step("mqtt_broker").status === "skipped") return;
       // A foreign renderer owns its own subscription, so there is no filter question to promise.
       if (i === 5 && step("entity_filter").status === "skipped") return;
       var done = i < currentIdx || journey.complete;
@@ -311,10 +313,10 @@
     }
     paint(id);
     var body = card(i18nText("setup.identity.title", "Name this panel"),
-      // Matches the real journey (the six dots above): name, what the screen shows, the sign-in, the
-      // dashboard, then the broker and the entity question. Kept loose ("a few quick questions") rather
-      // than a count, because several steps are skipped for a Companion-app renderer.
-      i18nText("setup.identity.lead", "A name, your Home Assistant server and sign-in, the dashboard to show, then your MQTT broker — a few quick questions and you’re done. You can stop and come back; nothing is lost."), [
+      // Matches the real journey (the dots above): name, what the screen shows, the sign-in and the
+      // dashboard. Kept loose ("a few quick questions") rather than a count, because steps are skipped for
+      // a Companion-app renderer, and the broker is never promised: a panel Panel Assistant sets up has none.
+      i18nText("setup.identity.lead", "A name, your Home Assistant server and sign-in, and the dashboard to show — a few quick questions and you’re done. You can stop and come back; nothing is lost."), [
       el("fieldset", { id: "wiz-fs", style: "border:0;padding:0;margin:0" }, [
         field("panel_id", i18nText("setup.identity.panel_id.label", "Panel ID"),
           i18nText("setup.identity.panel_id.help", "Pick something you’ll recognise in a long list — where it is, usually. Lowercase letters, digits and underscores."),

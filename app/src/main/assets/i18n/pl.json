@@ -10769,8 +10769,8 @@
    "state": "machine-cross-checked"
   },
   "setup.identity.lead": {
-   "text": "Nazwa, twój serwer Home Assistant i logowanie, pulpit do wyświetlania, a potem twój broker MQTT — kilka szybkich pytań i gotowe. Możesz przerwać i wrócić później; nic nie przepadnie.",
-   "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+   "text": "Nazwa, twój serwer Home Assistant i logowanie, a potem pulpit do wyświetlania — kilka szybkich pytań i gotowe. Możesz przerwać i wrócić później; nic nie przepadnie.",
+   "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
    "state": "machine-cross-checked"
   },
   "setup.identity.panel_id.consequence": {
