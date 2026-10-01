@@ -479,6 +479,19 @@ class AutoSleepControllerTest {
             assertTrue(h.backlightPowered())
         }
 
+    @Test fun `a refresh landing after the start is dequeued still adopts the inherited dark`() = runTest {
+        val h = virtualHarness(inheritedDark = true)
+        try {
+            assertTrue(h.controller.start())
+            // The owner has taken the start's configuration; a refresh now makes it stale before handling.
+            h.controller.drainForTest { assertTrue(h.controller.refresh()) }
+            h.awaitRequest(1)
+            assertTrue(h.screen.isIntendedOff())
+            assertFalse(h.screen.recoverUnexpectedDark())
+            assertFalse(h.backlightPowered())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
     @Test fun `an inherited dark screen with no touch wake is left for the never-blank guard`() =
         Harness(inheritedDark = true, wakeTapAvailable = false).use { h ->
             h.start()
@@ -899,8 +912,9 @@ class AutoSleepControllerTest {
         enabled: Boolean = true,
         onNoArea: (Long) -> Unit = {},
         source: String = "home_assistant",
+        inheritedDark: Boolean = false,
     ) = Harness(this, StandardTestDispatcher(testScheduler), enabled = enabled, source = source,
-        onNoArea = onNoArea, drive = { runCurrent() })
+        onNoArea = onNoArea, drive = { runCurrent() }, inheritedDark = inheritedDark)
 
     private class Harness(
         scopeOverride: CoroutineScope? = null,

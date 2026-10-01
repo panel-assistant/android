@@ -34,6 +34,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 internal data class AutoSleepManagerHandle(
@@ -103,11 +104,7 @@ internal class AutoSleepController private constructor(
     }
     private enum class Admission { OPEN, CLOSING, CLOSED }
     private data class Entry(val sequence: Long, val slot: Slot, val value: Any?)
-    private data class Configuration(
-        val epoch: Long,
-        val value: AutoSleepRuntimeConfig,
-        val adoptInheritedDark: Boolean = false,
-    )
+    private data class Configuration(val epoch: Long, val value: AutoSleepRuntimeConfig)
     private data class Touch(val atMs: Long, val expectedOffGeneration: Long?)
     private data class TapWake(val atMs: Long, val epoch: AutomaticOffEpoch)
     private data class Proximity(val atMs: Long, val near: Boolean?)
@@ -199,6 +196,8 @@ internal class AutoSleepController private constructor(
     private var automaticEpoch: AutomaticOffEpoch? = null
     /** An off adopted from a replaced process; Home Assistant reconnecting is not a reason to wake it. */
     private var inheritedEpoch: AutomaticOffEpoch? = null
+    /** Set once by [start]; consumed by the first configuration the owner accepts, whichever epoch it is. */
+    private val adoptionPending = AtomicBoolean(false)
     private var provedTapGeneration: Long? = null
     private var manualSuppression = false
     private var suppressionSawAllOff = false
@@ -216,7 +215,10 @@ internal class AutoSleepController private constructor(
     /** Set by [wakeOwnedScreen] so the wake it causes is not booked as a touch. */
     private var ownWakePending = false
 
-    fun start(): Boolean = configureLatest(adoptInheritedDark = true)
+    fun start(): Boolean {
+        adoptionPending.set(true)
+        return configureLatest()
+    }
     fun refresh(): Boolean = configureLatest()
     fun isCurrentConfigurationEpoch(expectedEpoch: Long): Boolean =
         admission == Admission.OPEN && controllerEpoch.get() == expectedEpoch
@@ -444,6 +446,13 @@ internal class AutoSleepController private constructor(
 
     internal fun deadlineTokenForTest(): Long = deadlineToken
 
+    /** One owner drain split at its dequeue, so a test can land ingress between taking and handling. */
+    internal fun drainForTest(afterTake: () -> Unit) {
+        val batch = takeBatch()
+        afterTake()
+        batch.forEach(::handle)
+    }
+
     internal fun feedPositionForTest(): AutoSleepFeedPosition? = policy?.feed
 
     internal fun noteTouchForTest(atMs: Long, expectedOffGeneration: Long?): Boolean =
@@ -475,11 +484,9 @@ internal class AutoSleepController private constructor(
         return joined
     }
 
-    private fun configureLatest(adoptInheritedDark: Boolean = false): Boolean = synchronized(ingressLock) {
+    private fun configureLatest(): Boolean = synchronized(ingressLock) {
         if (admission != Admission.OPEN) return false
-        // A refresh coalescing over a pending start must not drop the start's one adoption.
-        val pending = (slots[Slot.CONFIGURE.ordinal]?.value as? Configuration)?.adoptInheritedDark == true
-        val next = Configuration(controllerEpoch.incrementAndGet(), configuration(), adoptInheritedDark || pending)
+        val next = Configuration(controllerEpoch.incrementAndGet(), configuration())
         putLocked(Slot.CONFIGURE, next)
         wake.trySend(Unit)
         true
@@ -606,7 +613,7 @@ internal class AutoSleepController private constructor(
                 admit(Slot.TOUCH, Touch(elapsedRealtime(), screen.currentOffGeneration()))
             }
         }
-        if (next.adoptInheritedDark && automaticEpoch == null) {
+        if (adoptionPending.getAndSet(false) && automaticEpoch == null) {
             val adopted = screen.adoptInheritedDark(automatic = next.value.enabled)
             if (screen.isIntendedOff()) {
                 automaticEpoch = adopted
