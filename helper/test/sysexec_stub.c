@@ -16,7 +16,7 @@
 #define MAX_RUN_BYTES 4096
 #define MAX_ARGV_HISTORY 32
 #define MAX_ARGV_ARGS 8
-#define MAX_ARGV_BYTES 128
+#define MAX_ARGV_BYTES 1280
 
 typedef struct {
     char needle[128];

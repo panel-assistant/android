@@ -248,7 +248,7 @@ import io.github.maxlyth.hapaneld.mqtt.SoftwareUpdateSources
 import io.github.maxlyth.hapaneld.util.PanelAssistantUpdateLease
 import io.github.maxlyth.hapaneld.platform.AndroidScreenPower
 import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
-import io.github.maxlyth.hapaneld.platform.NotificationPermissionRepair
+import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair
 import io.github.maxlyth.hapaneld.util.periodic
 import io.github.maxlyth.hapaneld.util.SystemProps
 import io.github.maxlyth.hapaneld.dashboard.shouldReloadBuiltinAfterEntityFilterChange
@@ -1207,6 +1207,29 @@ class PaneldService : Service() {
             AppState.preferences(this@PaneldService, "auto-brightness-runtime", "ha-paneld-auto-brightness-runtime")
             AppState.preferences(this@PaneldService, "auto-sleep-learning", "ha-paneld-auto-sleep-learning")
             AppState.preferences(this@PaneldService, "startup-recovery", "ha-paneld-startup-recovery")
+            // Settle privileged startup before controllers cache grants or replay saved settings.
+            // An older same-process service must finish teardown before this generation changes them.
+            restartLease.awaitPredecessor()
+            if (teardownBoundary.isStopping ||
+                IdentityMigrationGate.disposition(this@PaneldService) == StartDisposition.RETIRED_BRIDGE
+            ) return@launch
+            when (BundledHelperInstaller.ensureCurrent(this@PaneldService)) {
+                BundledHelperInstaller.Result.INSTALLED -> Log.i(TAG, "migrated bundled root helper for this release")
+                BundledHelperInstaller.Result.FAILED ->
+                    Log.w(TAG, "root helper migration failed; versioned helper features remain unavailable")
+                BundledHelperInstaller.Result.BLOCKED_ACTIVE ->
+                    Log.i(TAG, "retaining current root helper while Guard DB maintenance owns recovery")
+                BundledHelperInstaller.Result.REPROVISION_REQUIRED ->
+                    Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
+                BundledHelperInstaller.Result.ALREADY_CURRENT,
+                BundledHelperInstaller.Result.SKIPPED -> Unit
+            }
+            if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
+                PanelPermissionRepair.repair(
+                    this@PaneldService, resolvedProfile.profile.hasMicrophone,
+                    cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()).capable,
+                )
+            }
             withContext(Dispatchers.Main.immediate) {
                 if (teardownBoundary.isStopping) return@withContext
                 config = preparedConfig
@@ -3567,11 +3590,11 @@ class PaneldService : Service() {
 
     /** Advertise the button-event entity only if our a11y service is actually enabled. */
     private fun accessibilityEnabled(): Boolean {
-        val enabled = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        return PanelPermissionRepair.accessibilityHeld(
+            packageName,
+            Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
+            Settings.Secure.getInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1,
         )
-        return enabled?.contains(packageName) == true
     }
 
     /** Whether SYSTEM_ALERT_WINDOW is held — required to draw the soft-navbar overlay. */
@@ -3609,10 +3632,8 @@ class PaneldService : Service() {
         val startupActivationGeneration = profileActivationGeneration
         var initialNativeDemand: PanelAssistantTransportDemand? = null
         val startup = runtime.start(block = runtimeStart@{ activeRuntime ->
-            // A prior START_STICKY instance may still be draining after its bounded main-thread wait. It
-            // never releases this in-process fence: completed teardown exits the process, guaranteeing
-            // that no old hardware owner can overlap the replacement generation.
-            restartLease.awaitPredecessor()
+            // Initialization already waited for the prior service's teardown before repairing grants
+            // and constructing feature owners. Recheck admission before starting those owners.
             if (teardownBoundary.isStopping) return@runtimeStart
             // The predecessor this generation waited behind may have been the one that retired the
             // bridge. A retired bridge starts nothing, however its start was queued.
@@ -3648,7 +3669,6 @@ class PaneldService : Service() {
             scope.launch { if (!teardownBoundary.isStopping) voice.start() }
             startStorageHealthChecks()
             reconcileHelperInstallStaging()
-            scope.launch(Dispatchers.IO) { repairNotificationPermission() }
             registerBrightnessPreferenceObserver()
             refreshAdaptiveBrightnessInputs(restartSource = false)
             autoBright.activate()
@@ -3710,17 +3730,6 @@ class PaneldService : Service() {
                     )
                 }, stopPlayback = { generation -> audio.cancelGeneration(generation) }),
             )
-            when (BundledHelperInstaller.ensureCurrent(this@PaneldService)) {
-                BundledHelperInstaller.Result.INSTALLED -> Log.i(TAG, "migrated bundled root helper for this release")
-                BundledHelperInstaller.Result.FAILED ->
-                    Log.w(TAG, "root helper migration failed; versioned helper features remain unavailable")
-                BundledHelperInstaller.Result.BLOCKED_ACTIVE ->
-                    Log.i(TAG, "retaining current root helper while Guard DB maintenance owns recovery")
-                BundledHelperInstaller.Result.REPROVISION_REQUIRED ->
-                    Log.w(TAG, "root helper matches this release but is not canonical; reprovision required")
-                BundledHelperInstaller.Result.ALREADY_CURRENT,
-                BundledHelperInstaller.Result.SKIPPED -> Unit
-            }
             val startupCompanionPackage = CompanionInstaller.installedPkg(this)
                 ?: system.resolveDashboard(config.dashboardPackage)
             restoreCompanionLaunchSuppression(
@@ -5620,22 +5629,6 @@ class PaneldService : Service() {
     private fun stopMqttWatchdog(joinMs: Long) {
         mqttWatchdogAlive = false
         mqttWatchdog?.stop(joinMs)
-    }
-
-    private fun repairNotificationPermission() {
-        val outcome = NotificationPermissionRepair.repair(
-            sdkInt = Build.VERSION.SDK_INT,
-            granted = {
-                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-            },
-            helper = HelperClient,
-            packageName = packageName,
-        )
-        when (outcome) {
-            NotificationPermissionRepair.Outcome.HELD -> Unit
-            NotificationPermissionRepair.Outcome.CLAIMED -> Log.i(TAG, "notification permission claimed through the root helper")
-            else -> Log.w(TAG, "notification permission missing and not claimed (${outcome.name.lowercase()}); the service notification stays hidden")
-        }
     }
 
     private fun reconcileHelperInstallStaging() {

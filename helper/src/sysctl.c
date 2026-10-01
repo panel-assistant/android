@@ -618,6 +618,7 @@ static const struct {
 } GRANTS[] = {
     { "NOTIFICATIONS",  GRANT_PERMISSION,    "android.permission.POST_NOTIFICATIONS" },
     { "MICROPHONE",     GRANT_PERMISSION,    "android.permission.RECORD_AUDIO" },
+    { "CAMERA",         GRANT_PERMISSION,    "android.permission.CAMERA" },
     { "WRITESETTINGS",  GRANT_APPOP,         "WRITE_SETTINGS" },
     { "OVERLAY",        GRANT_APPOP,         "SYSTEM_ALERT_WINDOW" },
     { "BATTERY",        GRANT_BATTERY,       NULL },
@@ -658,6 +659,9 @@ static int grant_accessibility(const char *pkg) {
         return -1;
     if (snprintf(shorthand, sizeof shorthand, "%s/.input.PanelAccessibilityService", pkg) >= (int)sizeof shorthand)
         return -1;
+    size_t pkg_length = strlen(pkg);
+    int shorthand_matches = strncmp(APP_ACCESSIBILITY_CLASS, pkg, pkg_length) == 0 &&
+        strcmp(&APP_ACCESSIBILITY_CLASS[pkg_length], ".input.PanelAccessibilityService") == 0;
 
     char existing[1024];
     const char *const get[] = { "settings", "get", "secure", "enabled_accessibility_services", NULL };
@@ -669,14 +673,14 @@ static int grant_accessibility(const char *pkg) {
     if (strcmp(existing, "null") == 0) existing[0] = '\0', length = 0;
     if (!accessibility_list_plausible(existing)) return -1;
 
-    // Already enabled in either spelling: nothing to write. A retry of an interrupted grant must
-    // converge rather than append the component a second time.
+    // Accept shorthand only when it resolves to the actual class. A retry of an interrupted grant
+    // must converge rather than append the component a second time.
     int present = 0;
     char scan[sizeof existing];
     memcpy(scan, existing, length + 1);
     char *save = NULL;
     for (char *entry = strtok_r(scan, ":", &save); entry && !present; entry = strtok_r(NULL, ":", &save))
-        present = strcmp(entry, component) == 0 || strcmp(entry, shorthand) == 0;
+        present = strcmp(entry, component) == 0 || (shorthand_matches && strcmp(entry, shorthand) == 0);
 
     if (!present) {
         char updated[sizeof existing + sizeof component];

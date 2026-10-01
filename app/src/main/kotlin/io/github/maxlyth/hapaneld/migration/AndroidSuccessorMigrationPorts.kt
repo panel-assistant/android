@@ -13,7 +13,7 @@ import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Environment
 import io.github.maxlyth.hapaneld.panelAssistantDiscoveryId
 import io.github.maxlyth.hapaneld.platform.AndroidSystemEnv
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
-import io.github.maxlyth.hapaneld.platform.NotificationPermissionRepair
+import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair
 import io.github.maxlyth.hapaneld.util.AppInstaller
 import io.github.maxlyth.hapaneld.util.BoundedStreams
 import io.github.maxlyth.hapaneld.util.HelperClient
@@ -250,7 +250,7 @@ internal class AndroidSuccessorMigrationPorts(
          */
         fun missingGrants(sdkInt: Int, own: String, legacy: String, held: (grant: String, pkg: String) -> Boolean): Set<String> =
             GRANTS.filterTo(linkedSetOf()) { grant ->
-                if (grant == "NOTIFICATIONS") !NotificationPermissionRepair.held(sdkInt) { held(grant, own) }
+                if (grant == "NOTIFICATIONS") !PanelPermissionRepair.notificationsHeld(sdkInt) { held(grant, own) }
                 else held(grant, legacy) && !held(grant, own)
             }
 
