@@ -129,7 +129,6 @@ class ConfigPostProductionRouteTest {
                     "config", "system", "sensors", "pendingLiveSettings", "stalledLiveSettings",
                     "configLiveValues", "rendererPreparation", "tameReconciliation", "revisions",
                     "managementObservations", "powerSafety", "stopping", "haArea", "pageHealth",
-                    "onSelfUpdateChannelCommitted",
                 )) {
                     val value = PaneldServer::class.java.getDeclaredField(name).run {
                         isAccessible = true
