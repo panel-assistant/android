@@ -203,8 +203,7 @@ object CompanionInstaller {
         else "refused: HA Companion $version exceeds this panel's $maxVersion safety cap"
     }
 
-    /** Pure install decision. Downgrades, including remediation to a newly activated profile ceiling,
-     *  require the explicit/manual [force] path; scheduled automatic updates never downgrade. */
+    /** Explicit install decision. Downgrades require [force]; the device safety cap still applies. */
     internal fun shouldInstallTarget(installed: String, targetVersion: String, force: Boolean, maxVersion: String?): Boolean =
         installed.isBlank() ||
             ComponentUpdater.isUpdate(targetVersion, installed, force, UpdateChecker::stripVariant)

@@ -541,46 +541,21 @@ browserTest('Setup maps discovery and probe codes to translated messages without
   assert.equal(await found.page.locator('#wiz-mqtt_broker').inputValue(), discoveredBroker);
 });
 
-browserTest('Setup reports WebView installation only when the stable response token says it started', async (t) => {
-  const translations = {
-    'setup.webview.title': '更新浏览器引擎',
-    'setup.webview.action.update': '更新引擎',
-    'setup.webview.state.installing_short': '正在安装…',
-    'setup.webview.state.installing': '推荐的引擎正在面板上安装。',
-  };
-  const webviewJourney = journey('renderer', {
-    statuses: { renderer: { status: 'blocked', detail: 'webview_too_old_fixable' } },
+for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
+  run(`Setup keeps the old WebView warning without offering an engine installation in ${engine}`, async (t) => {
+    const rig = await openRig(t, {
+      initialJourney: journey('renderer', {
+        statuses: { renderer: { status: 'blocked', detail: 'webview_too_old_fixable' } },
+      }),
+      translations: { 'setup.webview.title': '浏览器引擎需要更新' },
+    }, '/', browserType);
+    assert.equal(await rig.page.locator('.card h2').textContent(), '浏览器引擎需要更新');
+    assert.equal(await rig.page.locator('button').count(), 0);
+    assert.equal(await rig.page.locator('.wiz-cta a').getAttribute('href'), './');
+    assert.equal(rig.state.requests.filter((request) => request.method === 'POST').length, 0);
   });
-  const busy = await openRig(t, {
-    initialJourney: webviewJourney,
-    translations,
-    route(url, request) {
-      if (url.pathname === '/api/v1/webview/heal' && request.method === 'POST') return json({ status: 'busy' });
-    },
-  });
-  const busyButton = busy.page.locator('button.wiz-primary');
-  await busyButton.click();
-  assert.deepEqual(await eventually(
-    async () => ({ disabled: await busyButton.isDisabled(), text: await busyButton.textContent() }),
-    (value) => !value.disabled && value.text === '更新引擎',
-  ), { disabled: false, text: '更新引擎' });
-  assert.doesNotMatch(await busy.page.locator('#wiz-step').textContent(), /推荐的引擎正在面板上安装/);
-
-  const started = await openRig(t, {
-    initialJourney: webviewJourney,
-    translations,
-    route(url, request) {
-      if (url.pathname === '/api/v1/webview/heal' && request.method === 'POST') return json({ status: 'started' });
-    },
-  });
-  await started.page.locator('button.wiz-primary').click();
-  assert.match(await eventually(
-    () => started.page.locator('#wiz-step').textContent(),
-    (value) => value.includes('推荐的引擎正在面板上安装。'),
-  ), /推荐的引擎正在面板上安装。/);
-  assert.equal(await started.page.locator('button.wiz-primary').textContent(), '正在安装…');
-  assert.equal(await started.page.locator('button.wiz-primary').isDisabled(), true);
-});
+}
 
 for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]) {
   const run = existsSync(browserType === chromium ? chrome : browserType.executablePath()) ? test : test.skip;
@@ -599,4 +574,5 @@ for (const [engine, browserType] of [['Chromium', chromium], ['WebKit', webkit]]
     await reloadJourney(rig, journey('identity'), '/');
     assert.match(await rig.page.locator('#wiz-dots').textContent(), /MQTT/);
   });
+
 }

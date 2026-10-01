@@ -3,7 +3,6 @@ package io.github.maxlyth.hapaneld.util
 import android.content.Context
 import android.os.SystemClock
 import io.github.maxlyth.hapaneld.BuildConfig
-import io.github.maxlyth.hapaneld.Config
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -92,7 +91,7 @@ object UpdateChecker {
         context: Context,
         channel: String = "stable",
         staleMs: Long = 3_600_000L,
-        companionChannel: String = Config(context).companionUpdateChannel,
+        companionChannel: String = "stable",
         companionMaxVersion: String?,
     ) {
         val key = CacheKey(channel, companionChannel, companionMaxVersion)
@@ -107,7 +106,7 @@ object UpdateChecker {
     suspend fun check(
         context: Context,
         channel: String = "stable",
-        companionChannel: String = Config(context).companionUpdateChannel,
+        companionChannel: String = "stable",
         companionMaxVersion: String?,
     ) = withContext(Dispatchers.IO) {
         checkMutex.withLock {

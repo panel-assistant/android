@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.config
 
 import io.github.maxlyth.hapaneld.http.shouldSnapshotConfigSetting
+import io.github.maxlyth.hapaneld.http.planRestoreSettings
 import io.github.maxlyth.hapaneld.http.projectConfigSnapshot
 import io.github.maxlyth.hapaneld.http.preserveUnconfiguredZigbeeOwnership
 import org.junit.Assert.assertEquals
@@ -11,6 +12,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfigBundleTest {
+    @Test fun exportedConfigSnapshotContainsNoAutomaticUpdateControls() {
+        val snapshot = projectConfigSnapshot(
+            specs = SettingsRegistry.settable(),
+            zigbeeRouterConfigured = true,
+            effectiveValue = { it.default },
+        )
+        listOf(
+            "self_update", "update_channel", "companion_auto_update", "companion_update_channel",
+            "webview_auto_update",
+        ).forEach { key -> assertFalse("export still carries $key", key in snapshot) }
+        assertTrue("retained ordinary settings still export", "keep_awake" in snapshot)
+    }
+
     @Test fun transientSettingsAreSkippedBeforeTheirLiveValueIsEvaluated() {
         val evaluated = mutableListOf<String>()
 
@@ -143,6 +157,29 @@ class ConfigBundleTest {
 }
 
 class MigrationsTest {
+    @Test fun updatePreferencesCannotReturnThroughOlderCurrentOrNewerBundles() {
+        val keys = listOf(
+            "self_update", "update_channel", "companion_auto_update", "companion_update_channel",
+            "webview_auto_update",
+        )
+        val retired = keys.associateWith { key -> if (key.endsWith("channel")) "prerelease" else "true" } +
+            keys.associate { key -> "ha_expose_$key" to "true" } +
+            mapOf("webview_auto_last_version" to "137.0.7151.119")
+        for (schema in listOf(13, SettingsRegistry.SCHEMA, SettingsRegistry.SCHEMA + 1)) {
+            val bundle = ConfigBundle.fromValues(retired + ("friendly_name" to "My panel"), schema = schema)
+            val parsed = requireNotNull(ConfigBundle.parse(bundle.serialize()))
+            val (migrated, warnings) = Migrations.migrate(parsed.schema, parsed.values)
+
+            retired.keys.forEach { key -> assertFalse("schema $schema retained $key", key in migrated) }
+            assertEquals("My panel", migrated["friendly_name"])
+            val restore = planRestoreSettings(migrated, null)
+            assertTrue("legacy updates must not reject a whole backup: ${restore.errors}", restore.errors.isEmpty())
+            assertEquals(mapOf("friendly_name" to "My panel"), restore.accepted)
+            assertEquals("only future bundles warn", schema > SettingsRegistry.SCHEMA, warnings.isNotEmpty())
+            assertEquals(migrated, Migrations.migrate(SettingsRegistry.SCHEMA, migrated).first)
+        }
+    }
+
     @Test fun migrationChainHasExactlyOneTransformPerSchemaBoundary() {
         assertEquals(SettingsRegistry.SCHEMA - 1, Migrations.CHAIN.size)
     }
@@ -159,10 +196,8 @@ class MigrationsTest {
         val (migrated, warnings) = Migrations.migrate(bundle.schema, bundle.values)
 
         assertTrue("public 0.9.5 must migrate directly without an unknown intermediate step", warnings.isEmpty())
-        // Every value is carried forward untouched EXCEPT the retired sensitivity key, which schema 6
-        // replaces with a differently-scaled key rather than redefining in place. Named and asserted
-        // rather than loosening the preservation rule for everything.
-        val retired = setOf(SettingsRegistry.LEGACY_SENSITIVITY_KEY)
+        // Current settings carry forward unchanged; retired sensitivity and updater ownership do not.
+        val retired = SettingsRegistry.RETIRED_KEYS + SettingsRegistry.LEGACY_SENSITIVITY_KEY
         bundle.values.forEach { (key, value) ->
             if (key !in retired) assertEquals("value changed for $key", value, migrated[key])
         }

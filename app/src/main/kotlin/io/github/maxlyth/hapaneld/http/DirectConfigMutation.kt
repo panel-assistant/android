@@ -164,15 +164,6 @@ internal fun directConfigExpectedReadBack(
     )?.forEach { (key, value) -> if (key in posted) put(key, value) }
 }
 
-/** The compatibility preflight proves a plan is admissible; only committed read-back proves its
- * special in-batch writer actually ran. */
-internal fun directUpdateChannelCommitted(
-    requestedChanged: Boolean,
-    changedKeys: Set<String>,
-    requested: String?,
-    actual: String,
-): Boolean = requestedChanged && "update_channel" in changedKeys && requested == actual
-
 /**
  * Describe durable outcomes from committed read-back, never from the planned changed-key set. This is
  * intentionally independent of which writer claimed a key: a read-then-drop handler and a setter whose

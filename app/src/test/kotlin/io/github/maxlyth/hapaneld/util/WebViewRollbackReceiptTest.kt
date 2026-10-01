@@ -2,20 +2,15 @@ package io.github.maxlyth.hapaneld.util
 
 import android.content.Context
 import android.content.ContextWrapper
-import io.github.maxlyth.hapaneld.device.DeviceProfile
-import io.github.maxlyth.hapaneld.device.WebViewSpec
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
-import java.lang.reflect.Proxy
 
 class WebViewRollbackReceiptTest {
     @get:Rule val files = TemporaryFolder()
@@ -28,22 +23,6 @@ class WebViewRollbackReceiptTest {
             override fun getFilesDir() = dir
             override fun getCacheDir() = dir
         }
-    }
-
-    private fun profile(pin: String): DeviceProfile {
-        val recommendation = WebViewSpec("https://example.invalid/webview.apk", pin, signer, "c".repeat(64))
-        return Proxy.newProxyInstance(DeviceProfile::class.java.classLoader, arrayOf(DeviceProfile::class.java)) {
-            _, method, _ ->
-            if (method.name == "getRecommendedWebView") recommendation else error("unexpected profile read: ${method.name}")
-        } as DeviceProfile
-    }
-
-    private fun preparedReceipt(ctx: Context, pin: String): String? {
-        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, WebViewInstaller.PendingRollback(
-            pin, "c".repeat(64), sha, signer, 0, installMayHaveStarted = false,
-        )))
-        WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
-        return null
     }
 
     @Test fun healthyHandshakeConsumesTheSavedProviderWithoutMarkingThePinBad() {
@@ -129,87 +108,55 @@ class WebViewRollbackReceiptTest {
         assertFalse(WebViewInstaller.alreadyRolledBackPin(ctx, pin))
     }
 
-    @Test fun admittedInstallKeepsItsReceiptAndBackupAcrossProcessDeath() {
-        val ctx = context()
-        val pin = "150.0.7871.63"
+    @Test fun builtInSwapKeepsAConnectedPageAndRestoresAfterBlankOrCrashingTimeout() {
+        val pending = WebViewInstaller.PendingRollback("150.0.7871.63", "c".repeat(64), "a".repeat(64), "b".repeat(64), 1_000L)
+        data class Case(
+            val scene: String, val receipt: WebViewInstaller.PendingRollback?, val connected: Boolean,
+            val foreground: Boolean, val now: Long, val alreadyRolledBack: Boolean,
+            val expected: WebViewInstaller.SwapHealthDecision,
+        )
+        val cases = listOf(
+            Case("waiting", pending, false, true, 999, false, WebViewInstaller.SwapHealthDecision.WAIT),
+            Case("healthy", pending, true, true, 999, false, WebViewInstaller.SwapHealthDecision.KEEP),
+            Case("connected behind launcher", pending, true, false, 999, false, WebViewInstaller.SwapHealthDecision.WAIT),
+            Case("old-process handshake", pending.copy(deadlineWallMs = 0), true, true, 999, false, WebViewInstaller.SwapHealthDecision.WAIT),
+            Case("blank timeout", pending, false, true, 1_000, false, WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS),
+            Case("crash-loop timeout", pending, false, true, 1_001, false, WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS),
+            Case("late handshake", pending, true, true, 1_001, false, WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS),
+            Case("one attempt per pin", pending, false, true, 1_001, true, WebViewInstaller.SwapHealthDecision.NO_ACTION),
+            Case("receipt consumed", null, false, true, 1_001, false, WebViewInstaller.SwapHealthDecision.NO_ACTION),
+        )
+        cases.forEach { case ->
+            assertEquals(
+                case.scene, case.expected,
+                WebViewInstaller.postSwapDecision(case.receipt, case.connected, case.foreground, case.now, case.alreadyRolledBack),
+            )
+        }
+    }
+
+    @Test fun anOldProcessCannotCertifyItsOwnInstalledProvider() {
         val pending = WebViewInstaller.PendingRollback(
-            pin, "c".repeat(64), sha, signer, 0,
-            originProcess = "process-that-died", installMayHaveStarted = false,
+            "150.0.7871.63", "c".repeat(64), "a".repeat(64), "b".repeat(64), 0,
+            originProcess = "installer-process",
+        )
+        assertTrue(WebViewInstaller.sameProcess(pending, "installer-process"))
+        assertFalse(WebViewInstaller.sameProcess(pending, "new-process"))
+        assertEquals(
+            WebViewInstaller.SwapHealthDecision.WAIT,
+            WebViewInstaller.postSwapDecision(pending, true, true, 999, alreadyRolledBack = false),
+        )
+    }
+    @Test fun admittedLegacySwapKeepsItsReceiptAcrossProcessDeath() {
+        val ctx = context()
+        val pending = WebViewInstaller.PendingRollback(
+            "150.0.7871.63", "c".repeat(64), sha, signer, 0,
+            originProcess = "earlier-app-process", installMayHaveStarted = true,
         )
         assertTrue(WebViewInstaller.writeRollbackRecord(ctx, pending))
         WebViewInstaller.previousApk(ctx).writeText("previous signed APK")
-
-        assertFalse(WebViewInstaller.markInstallMayHaveStarted(ctx, "different pin"))
-        assertTrue(WebViewInstaller.markInstallMayHaveStarted(ctx, pin))
         assertFalse(WebViewInstaller.discardUnsubmittedRollback(ctx))
+        assertEquals(pending, WebViewInstaller.pendingRollback(ctx))
         assertTrue(WebViewInstaller.previousApk(ctx).exists())
-        assertTrue(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
-        assertEquals("another WebView swap is awaiting health verification", WebViewInstaller.prepareRollback(ctx, pin, "c".repeat(64)))
-    }
-
-    @Test fun aMissingBackupCannotAdmitAnInstall() {
-        val ctx = context()
-        val pin = "150.0.7871.63"
-        val pending = WebViewInstaller.PendingRollback(
-            pin, "c".repeat(64), sha, signer, 0, installMayHaveStarted = false,
-        )
-        assertTrue(WebViewInstaller.writeRollbackRecord(ctx, pending))
-
-        assertFalse(WebViewInstaller.markInstallMayHaveStarted(ctx, pin))
-        assertFalse(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
-    }
-
-    @Test fun scheduledDownloadFailureClearsThePreInstallReceipt() = runBlocking {
-        val ctx = context()
-        val pin = "150.0.7871.63"
-        val result = WebViewInstaller.heal(
-            ctx, profile(pin), "147.0.7727.56", autoUpdate = true, stillBuiltin = { true },
-            prepareAutoRollback = { _, _, _ -> preparedReceipt(ctx, pin) },
-            installPinned = { _, _, _, _ ->
-                assertFalse(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
-                InstallOutcome.Retryable("download failed")
-            },
-        )
-
-        assertEquals(WebViewInstaller.HealResult.Failed("download failed", terminal = false), result)
-        assertNull(WebViewInstaller.pendingRollback(ctx))
-        assertFalse(WebViewInstaller.previousApk(ctx).exists())
-        assertFalse(WebViewInstaller.alreadyRolledBackPin(ctx, pin))
-    }
-
-    @Test fun scheduledInstallAdmissionDurablyKeepsAnUncertainReceipt() = runBlocking {
-        val ctx = context()
-        val pin = "150.0.7871.63"
-        val result = WebViewInstaller.heal(
-            ctx, profile(pin), "147.0.7727.56", autoUpdate = true, stillBuiltin = { true },
-            prepareAutoRollback = { _, _, _ -> preparedReceipt(ctx, pin) },
-            installPinned = { _, _, _, gate ->
-                assertNotNull("scheduled installer must receive the receipt admission gate", gate)
-                assertTrue(AppInstaller.mayCommitPinnedInstall(gate))
-                InstallOutcome.Retryable("pm reply lost", mayHaveCommitted = true)
-            },
-        )
-
-        assertEquals(WebViewInstaller.HealResult.Uncertain("pm reply lost"), result)
-        assertTrue(WebViewInstaller.pendingRollback(ctx)!!.installMayHaveStarted)
-        assertFalse(WebViewInstaller.discardUnsubmittedRollback(ctx))
-        assertTrue(WebViewInstaller.previousApk(ctx).exists())
-    }
-
-    @Test fun interruptedDownloadExceptionAlsoReleasesItsReceipt() = runBlocking {
-        val ctx = context()
-        val pin = "150.0.7871.63"
-        try {
-            WebViewInstaller.heal(
-                ctx, profile(pin), "147.0.7727.56", autoUpdate = true, stillBuiltin = { true },
-                prepareAutoRollback = { _, _, _ -> preparedReceipt(ctx, pin) },
-                installPinned = { _, _, _, _ -> throw IllegalStateException("download interrupted") },
-            )
-            fail("download exception must escape")
-        } catch (expected: IllegalStateException) {
-            assertEquals("download interrupted", expected.message)
-        }
-        assertNull(WebViewInstaller.pendingRollback(ctx))
-        assertFalse(WebViewInstaller.previousApk(ctx).exists())
+        assertNotNull(WebViewInstaller.armRollback(ctx, 1_000L))
     }
 }

@@ -128,19 +128,16 @@ function powerBanner(s) {
 function warnings(s, b) {
   // adHocWarnings(): Companion internal URL needing repair, with the inline repair button.
   const companion = `<div class="setup crit">⚠ <b>${s.t('dashboard.banner.companion_url.title')}</b> ${s.t('dashboard.banner.companion_url.summary_many', { count: 2 })} <i>"Missing 'Host' header"</i>. ${s.t('dashboard.banner.companion_url.explanation')}<div style="margin-top:10px"><button class="pbtn"${b.approval()} onclick="repairCompUrl(this)">⚙ ${s.t('dashboard.banner.companion_url.repair')}</button> <span id="cu-fix" class="muted"></span></div></div>`;
-  // installWarning(WEBVIEW_OLD, canHeal = true)
-  const webview = `<div class="setup crit">⚠ <b>${s.t('install.warning.webview_old.title')}</b> (Chromium 95.0.4638.74) — ${s.t('install.warning.webview_old.body')} <a href="https://example.invalid/webview" target="_blank" rel="noopener">${s.t('install.warning.webview_old.help')}</a> (${s.t('install.warning.webview_old.target', { version: 120 })}).<div style="margin-top:10px"><button class="pbtn"${b.approval()} onclick="healWebView(this)">⬇ ${s.t('install.warning.webview_old.update')}</button> <span id="wv-heal" class="muted"></span></div></div>`;
+  // installWarning(WEBVIEW_OLD)
+  const webview = `<div class="setup crit">⚠ <b>${s.t('install.warning.webview_old.title')}</b> (Chromium 95.0.4638.74) — ${s.t('install.warning.webview_old.body')} <a href="https://example.invalid/webview" target="_blank" rel="noopener">${s.t('install.warning.webview_old.help')}</a> (${s.t('install.warning.webview_old.target', { version: 120 })}).</div>`;
   return powerBanner(s) + companion + webview;
 }
 
 function componentsCard(s, b) {
-  const wvAction = `<button class="pbtn"${b.a11y()} onclick="installComp('webview','update',this)">⬇ ${s.t('install.components.update_webview')}</button>`;
   return `<div class="card" data-layout-key="managed-components">${b.cardTitle(s.t('install.components.title'), '', true)}
 ${b.pickerRow('paneld', 'ha-paneld', '0.9.8-rc4')}
 ${b.pickerRow('companion', 'HA Companion', '2026.9.4-minimal')}
-${b.simpleRow('System WebView', 'Chromium 95.0.4638.74', wvAction)}
 
-<p class="note">${s.t('install.components.channel_prefix')} <a href="${b.href('configure')}">${s.t('shell.nav.configure')}</a>${s.t('install.components.channel_suffix')}</p>
 <p class="note" id="comp-msg"></p></div>`;
 }
 

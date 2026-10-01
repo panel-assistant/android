@@ -53,17 +53,17 @@ class MqttCapabilitySnapshotTest {
         var calls = 0
         val source = MqttDiscoveryCapabilitySource(supplier = {
             calls += 1
-            Capabilities(companionInstalled = calls == 1)
+            Capabilities(shizukuReady = calls == 1)
         })
 
         val connectAnnouncement = source.snapshot()
         assertEquals(1, calls)
-        assertTrue(connectAnnouncement!!.companionInstalled)
+        assertTrue(connectAnnouncement!!.shizukuReady)
         assertEquals(connectAnnouncement, source.initialSnapshot())
 
         val reannouncement = source.snapshot()
         assertEquals(2, calls)
-        assertFalse(reannouncement!!.companionInstalled)
+        assertFalse(reannouncement!!.shizukuReady)
         assertEquals(connectAnnouncement, source.initialSnapshot())
     }
 
@@ -179,7 +179,7 @@ class MqttCapabilitySnapshotTest {
         var now = 1_000L
         var calls = 0
         val source = MqttDiscoveryCapabilitySource(
-            supplier = { Capabilities(companionInstalled = ++calls % 2 == 1) },
+            supplier = { Capabilities(shizukuReady = ++calls % 2 == 1) },
             nowMs = { now },
         )
 
@@ -191,7 +191,7 @@ class MqttCapabilitySnapshotTest {
 
         now += 5_001L
         val refreshed = source.snapshot(maxAgeMs = 5_000L)
-        assertFalse(refreshed!!.companionInstalled)
+        assertFalse(refreshed!!.shizukuReady)
         assertEquals(2, calls)
     }
 
@@ -219,7 +219,7 @@ class MqttCapabilitySnapshotTest {
         var now = 1_000L
         var calls = 0
         val source = MqttDiscoveryCapabilitySource(
-            supplier = { Capabilities(companionInstalled = ++calls == 1) },
+            supplier = { Capabilities(shizukuReady = ++calls == 1) },
             nowMs = { now },
         )
 
@@ -227,7 +227,7 @@ class MqttCapabilitySnapshotTest {
         now = 999L
         val refreshed = source.snapshot(maxAgeMs = 30_000L)
 
-        assertFalse(refreshed!!.companionInstalled)
+        assertFalse(refreshed!!.shizukuReady)
         assertEquals(2, calls)
     }
 

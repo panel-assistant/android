@@ -454,6 +454,7 @@ val unitTestRuntimeReadFiles = listOf(
     "build.gradle.kts",
     "version.properties", // ReleaseIdentityContractTest compares BuildConfig with the declared release identity
     "src/main/AndroidManifest.xml",
+    "src/test/resources/panel-assistant-contract/android_producer_v1.json", // producer recorder reads the checked-in corpus
     "../settings.gradle.kts",
     "../gradle/libs.versions.toml",
     "../docs/api.md",

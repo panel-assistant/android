@@ -184,7 +184,6 @@ internal class SetupState(
             // already swapped to a LineageOS/Cromite build is not accused of being ancient because the
             // provider still reports the OEM version.
             webViewTooOld = builtin && webViewTooOldOnce(),
-            webViewFixable = profile.recommendedWebView != null,
             entityFilterAnswered = config.setupEntityFilterAnswered || preTracking,
             homeDashboardChosen = config.setupHomeDashboardChosen || preTracking,
             proof = proof,
