@@ -170,14 +170,14 @@ jobs:
           npm run sbom
 
       - name: Set up JDK 17
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
         if: runner.environment == 'github-hosted'
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           # The action's default package list includes the retired `tools` package, which sdkmanager
           # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
@@ -499,7 +499,6 @@ jobs:
             scripts/tests/hardware_collector_test.sh
             scripts/tests/consumer_docs_test.sh
             scripts/tests/gitbash_path_conversion_test.sh
-            scripts/tests/fdroid_workflow_test.sh
             scripts/tests/release_workflow_test.sh
             scripts/tests/provision_gate_parallel_test.sh
           '
@@ -524,21 +523,31 @@ jobs:
     name: Provisioning ${{ matrix.group }}
     needs: changes
     if: needs.changes.outputs.host == 'true'
-    runs-on: ubuntu-24.04
+    # Pushes and manual runs use Blacksmith's 4-vCPU Ubuntu 24.04 runners, which have no concurrency
+    # limit, so these twelve CPU-bound jobs no longer queue behind GitHub's twenty. Pull requests stay on
+    # GitHub-hosted runners, and setting the repository variable CI_PROVISIONING_RUNNER to `hosted` moves
+    # every run back without a commit.
+    runs-on: ${{ github.event_name != 'pull_request' && vars.CI_PROVISIONING_RUNNER != 'hosted' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          # The five longest shards run alone, install-export runs beside install-probe (the two halves
-          # of what was one shard), and the rest pair a medium shard with a short one. Three
-          # CPU-heavy shards on one four-core runner slowed each by about 60% and broke
-          # release-integrity's timing-bounded Shizuku cases. Ten groups keep CI and CodeQL under
-          # GitHub's twenty concurrent jobs when the Android build runs as one job.
+          # The longest shards run alone and the rest are grouped with shorter ones. Three CPU-heavy
+          # shards on one four-core runner slowed each by about 60% and broke release-integrity's
+          # timing-bounded Shizuku cases, so no group runs more than two heavy shards at once. backup,
+          # publication and host-reclamation own their process-group signals and run one after another
+          # before a group's other shards start, so each signal owner shares a group only with a short
+          # shard. Twelve hosted groups stay under GitHub's twenty concurrent jobs when Android runs on the
+          # project runner.
           - group: install-runtime
             shards: install-runtime
+          - group: helper-release-install
+            shards: helper-release-install
           - group: database-authority
-            shards: database-authority
+            shards: database-authority renderer-seeding
+          - group: database-capture
+            shards: database-capture
           - group: fleet-installer
             shards: fleet-installer
           - group: database-host
@@ -548,13 +557,13 @@ jobs:
           - group: helper-transaction
             shards: helper-transaction
           - group: release-integrity
-            shards: release-integrity publication
+            shards: release-integrity git-bash
           - group: install-finish
-            shards: install-finish git-bash
+            shards: install-finish
           - group: backup
-            shards: backup database-runtime
-          - group: renderer-seeding
-            shards: renderer-seeding host-reclamation
+            shards: backup publication
+          - group: host-reclamation
+            shards: host-reclamation database-runtime
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -623,14 +632,14 @@ jobs:
 
       - name: Set up JDK 17
         if: runner.environment == 'github-hosted'
-        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
         if: runner.environment == 'github-hosted'
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           # The action's default package list includes the retired `tools` package, which sdkmanager
           # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.

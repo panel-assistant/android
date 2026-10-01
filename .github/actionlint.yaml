@@ -1,4 +1,6 @@
 self-hosted-runner:
-  # The project runner label used by the self-hosted Android job in ci.yml.
+  # The project runner label used by the self-hosted Android job, and the Blacksmith runner used by
+  # the provisioning jobs.
   labels:
     - ms01-i9
+    - blacksmith-4vcpu-ubuntu-2404

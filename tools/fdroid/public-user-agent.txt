@@ -1,1 +1,0 @@
-ha-paneld-fdroid-public-verifier/1 (+https://github.com/maxlyth/ha-paneld)

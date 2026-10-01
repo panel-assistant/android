@@ -1,90 +1,189 @@
 # Changelog
 
-## Unreleased
+## v0.9.9-rc2 - 2026-10-01
 
-### Added
+The second release candidate for 0.9.9 fixes the setup problem from rc1 and makes Panel Assistant the one way your panels update. Reminder: 0.9.9 is the last ha-paneld release that supports MQTT and the last that moves MQTT panels over to Panel Assistant. Pairs with Panel Assistant 0.7.0-rc2.
 
-- **A panel with a microphone can be a Home Assistant voice assistant.** Turn on **Voice assistant** on the Configure page's Voice card, tick the wake words to listen for and choose the Assist pipeline each one runs. The panel listens for the wake word itself and sends audio to Home Assistant only after hearing it, over its existing Panel Assistant connection, so it appears in Home Assistant as an Assist satellite on the panel's own device, with no ESPHome or MQTT involved. It chimes, ripples and tints the screen edges while it listens, in a colour Panel Assistant gives each pipeline so a pipeline looks the same on every panel. Home Assistant can send it announcements and start conversations. Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa are built in, and you can import a wake word you trained; the Voice card links to a guide. It needs Panel Assistant 0.7.0 or later and is available on the Sonoff NSPanel Pro and the Electron WF1589T.
+### New
 
-- **Diagnostics and the info page can warn when a panel-side Zigbee bridge is running.** On panels with Termux, the app checks for a recognized Zigbee2MQTT or CUBE process owned by Termux. Diagnostics distinguishes running, absent, and unknown; the info page warns only when a running bridge is confirmed. The check does not stop or change the bridge.
+- **Your panel's camera appears in Home Assistant as a camera.** Panels with a camera now show up as a native camera entity through Panel Assistant, with no MQTT needed. Your snapshot preferences carry over through backups and restores.
+- **Voice on the Shelly Wall Display X2i.** The X2i can now be a Home Assistant voice assistant, listening for its wake word and replying through Assist.
+- **Set a ceiling for automatic brightness.** A new **Maximum level** setting under Display stops automatic brightness from going brighter than you want, while it still dims as the room darkens. You can still turn the brightness up by hand.
 
-- **Configure now explains a Companion renderer that cannot take Home.** When a chosen Companion app has its launcher option off, Configure tells you to turn it on. The panel logs the missing Home option once until that state changes, rather than repeating the warning on every check.
+### Improved
 
-- **A panel short of storage now frees what it safely can before it asks you to.** Until now a panel whose storage ran low could only keep warning. It now cleans up once a day when storage or database pressure is raised, in order of what each step costs before it gives anything back. First it deletes temporary files and folders that the app left behind from before it last started, such as an interrupted update download, backup or database check, and old screenshot copies; it recognises each one by the exact name the app gives it, and never touches settings, the database or another app's files. Setting the panel's clock back does not make anything the app is still using look left behind. At a warning it also removes history that is already past its own retention limit, and empties the database's write-ahead log if there is room for that. A full database rebuild runs only when nothing cheaper can reach the wasted space, there is at least twice the database's size free, a fresh copy of the settings has been written and read back, and nothing else is using the database; it never runs when storage is critical. The status page, `/api/v1/status` and the support report show what the last cleanup did and how many bytes it freed, measured rather than estimated. If nothing safe is left and storage is still short, the warning stays and tells you that automatic cleanup is spent and that space has to be freed by hand. Separately, history that is only trimmed when new data of the same kind arrives, such as dashboard performance minutes on a panel whose dashboard has stopped reporting, is now trimmed every day as well.
-
-- **The camera status now says how a snapshot got its picture.** A snapshot waits up to 1.2 seconds for the camera's exposure to settle instead of returning the first frame, which is usually dark, and answers with the picture it has if the exposure has not settled by then. That fallback was invisible from outside the panel, so a panel quietly taking it looked exactly like one that never needed to. The camera status now reports how the last snapshot got its frame, either a settled exposure or the fallback, together with a count of the snapshots the fallback answered. Both appear on the dashboard's camera card, at `/api/v1/camera/status` and `/api/v1/status`, and in the support dump. Nothing about how snapshots are taken has changed.
-
-- **The Shelly Wall Display X2i has its own panel profile.** The X2i used to share one profile with the other modern Wall Displays, which meant its details were a set of guesses that had to hold for five different models at once. A unit has now been examined, so the X2i gets a profile describing that unit: its processor, the firmware it was tested on, and its proximity and ambient light sensors, all of which work without root. The profile also stops offering the Recents control, because this firmware ignores it. The shared profile for the remaining modern models is unchanged apart from no longer claiming the X2i's hardware, and it no longer says the onboard relays have no known local control path — they do, but ha-paneld cannot yet reach them on a panel without root.
-
-- **The dashboard theme can follow the room's light.** Dashboard theme has a fourth choice, Ambient, beside Follow Home Assistant, Dark and Light. It is for a panel where the time of day says little about the light, such as one in a basement. Ambient turns the built-in dashboard, and the panel's own screens, dark when the room goes dark and light again when it brightens. It judges the light with the same model auto-brightness uses, so a room is dark or light by its own standards rather than against a fixed lux number. A change has to last a minute before the theme follows it, and there is a gap between the dark and light levels, so a light switched on for a moment or a room sitting near the boundary does not make the dashboard flick back and forth. Ambient needs auto-brightness to be on. Until the room has been judged, or on a panel with no light sensor, it follows Home Assistant, and the renderer status says which and why. As with Dark and Light, an explicit Light or Dark theme chosen in Home Assistant still wins. [Issue #143](https://github.com/maxlyth/ha-paneld/issues/143)
-
-### Changed
-
-- **The Panel Assistant device card no longer shows the Android release as its hardware.** The panel used to send Home Assistant its Android version and firmware build string, which appeared as the device's Hardware line and told nobody anything they could act on; it is no longer sent. The `/health` line now also carries the app's build number as `vc=<number>`, so Home Assistant can name the exact build a panel runs even when the panel is not connected to it.
-
-- **Shipped log records now say which build wrote them.** When several panels send logs to one collector, a log line could not be tied to the app version that produced it. Every syslog record now carries a structured-data element, `[hapaneld@32473 versionCode="…" package="…"]`, and every HTTP (NDJSON) record carries `versionCode` and `package` keys. The message text is unchanged, so a collector that ignores structured data sees the same line as before; Vector's syslog parser exposes the two values as the fields `hapaneld@32473.versionCode` and `hapaneld@32473.package`. `/api/v1/info` also reports `versionCode` and `package`.
-- **The app never asks for notification permission; it is always granted instead.** On Android 13 and later the app asked for it every time it opened without it, and waited for an answer before showing anything. Its notification is part of keeping the panel working, and a "Don't allow" may have been a mis-tap or a prompt nobody saw, so the request is gone. Every install, upgrade and migration now grants the permission whatever was answered before. A panel with the root helper claims it for itself when the service starts, and `provision.sh --verify` reports it on Android 13 and later.
-
-- **Display details now separate physical size from rendering density.** NSPanel Pro profiles identify the display's active size by model and pixel dimensions, while `/api/v1/display` reports that physical size alongside the current logical density and viewport. Changing the display scaling no longer changes the reported physical size. Older profiles that specify only an approximate pixel density still load.
-
-- **A panel on an IPv6-only network can now be discovered.** The panel announced itself on the local network only at an IPv4 address, so on a network with no IPv4 it announced nothing Home Assistant could find. It now announces the addresses it actually has: its IPv4 address as before, plus its IPv6 address when the network has both, or its IPv6 address alone when that is all there is. It prefers a stable IPv6 address to a temporary one, so Home Assistant is not left holding an address that changes within a day. A panel with only IPv4 announces exactly what it did before. Panel Assistant 0.5.1 is needed to set up a panel found at an IPv6 address.
-
-- **Setup no longer asks where Home Assistant is when Home Assistant installed the panel.** The Panel Assistant integration can now tell a panel its own address while installing or adopting it. The panel checks that address from its own network first — a wall panel often cannot reach the address Home Assistant knows for itself, such as one inside a container or behind a reverse proxy — and only then uses it and skips the question. If the address does not answer, setup still asks, but shows the address that was tried and why it did not work instead of an empty box. This needs a matching Panel Assistant release that sends the address; panels installed from the command line, and panels Home Assistant did not install, are unaffected and behave exactly as before.
-
-- **A panel without the Home Assistant Companion app no longer offers a Companion update.** The MQTT "Companion app" update entity exists only while a Companion app is installed on the panel. Panels without one used to list a permanent "not installed" update under Settings, Updates in Home Assistant; a first Companion install stays on the panel's Install page.
-
-- **All Dutch, Polish and Ukrainian text has been checked against the English.** These three languages are early access and machine translated. Every approval, permission, security setting, destructive action and recovery step (441 strings per language), and every setup and install string (366 per language), was read against the English source and corrected where the meaning had changed; several drafts had reversed an instruction or named the wrong thing. The rest of the web interface (about 1,640 strings per language) and the app's own Android screens, notifications and approval prompts (361 strings per language) have now been checked against the English the same way. English remains authoritative, and no text has been reviewed by a speaker of the language. German, French, Italian, Spanish and Simplified Chinese are unchanged.
+- **Updates now come only through Panel Assistant.** The app no longer updates itself. Home Assistant offers each panel's update, and a panel only updates when you ask it to.
+- **The web interface reads well on a phone.** Every tab, card and dialog now fits a portrait phone screen.
 
 ### Fixed
 
-- Panels with a configured home dashboard return to it after starting or reloading the Companion renderer. Repeating Navigate to the current built-in dashboard reloads it.
+- **New panels can finish setup without MQTT.** In rc1 a panel added by Panel Assistant on a system without MQTT could get stuck before setup finished. It now completes normally.
+- **A sleeping screen stays asleep after an update or restart.** The screen used to light up again when the app restarted, even though it had gone to sleep on purpose. It now stays dark until you touch it or someone arrives.
+- **Panels on a fresh Home Assistant account find their dashboard.** A panel using Home Assistant's built-in dashboard could fail to read it. It now reads it correctly.
+- **Full system storage is no longer reported as read-only.** Setup on a panel whose system storage was writable but full gave the wrong advice. It now takes the right install path.
+- **Fewer stray connection warnings in the logs.** The app now closes every network reply it opens.
 
-- Panels report their current primary and secondary network addresses to Panel Assistant when connecting, allowing it to verify a reachable address after a network change.
-- A saved dashboard displayed while disconnected now shows an outage notice until its live connection returns.
+## v0.9.9-rc1 - 2026-09-30
 
-- **The note under the Logs tab now names all three log sources.** It described App and System only, and the new Browser console source was missing from it. The Dutch and Polish versions of the note were also garbled and have been rewritten in every language.
-- **Turning the camera off and straight back on no longer disturbs the new stream.** The camera finishes a session a moment after the session ends, and a stream that started in that moment could be caught by the old session's finish: its viewers could be disconnected or refused, or its first viewer handed the encoding details of the stream before, which a player cannot decode the new picture with. Each part of that finish now reaches only the session it belongs to. A viewer of the session that ended is still disconnected, as before, even when a new session has already started.
+This is the last release of ha-paneld that supports MQTT, and the last version that can move an older MQTT panel over to the Panel Assistant connection. If your panels still use MQTT, please move them now, using this release. Future feature releases will need the Panel Assistant integration and its connection, so MQTT set-ups will not get new features after this. MQTT still works in this release.
 
-- **Entity-filter learning no longer looks like a crashing dashboard.** When entity filtering is first set up, the panel reloads the dashboard a few times as it learns which entities the dashboard uses, and every reload put up its own brief notice at the bottom of the screen. From across a room that read as a dashboard that kept crashing. The screen shown while the first filtered set is prepared now says the dashboard may reload a few times while the panel learns, and the reloads that follow stay quiet. A learning reload with no earlier notice is still announced once, and every other deliberate restart is announced as before. A reload could also leave its request pending and reload the fresh page a second time the next time the dashboard came to the front; that no longer happens.
-- **Native entities no longer appear for sensors a panel does not have.** Over the Panel Assistant transport, a panel described every sensor it could in principle report, so a panel without a temperature, humidity or trained proximity reading, or without the Companion app, left entities in Home Assistant that stayed unavailable for good. It now describes only what it can fill, as MQTT discovery already did, and tells Panel Assistant which ones it cannot, so the integration removes those entities. A panel that is still starting up, or cannot read its stored calibration, never says a sensor is missing, and a sensor that later starts reporting gets its entity back.
+### Moving off MQTT
 
-- **The provisioner no longer mistakes a check that got no answer for an answer.** Three of its checks treated "the panel did not reply" as a reply. If the adb connection dropped while it was checking whether `/system` is writable, it reported a read-only `/system` and suggested steps to disable dm-verity, one of which reboots the panel. That panel was never locked. On a slower panel, the check for whether the app is already installed ran out of time and was reported as "could not determine whether ha-paneld is already installed". A panel without root whose status reply omitted one field made the provisioner stop without any message. Each case now has its own message. An empty or unreadable `/system` check says so and shows what came back, without the reboot advice. The installed-app check gets a time limit based on how quickly the panel answers, and says when it ran out of time. The missing field is named. A genuinely read-only `/system`, a genuinely missing field and a genuinely unknown install state are all still refused.
+- **Move now, while this release can still do it for you.** Install or update the Panel Assistant integration (0.7.0-rc1 pairs with this release), add your panel to it, then choose **Configure** on the panel and set **Control** to **Panel Assistant**. Its sensors and controls then come through Panel Assistant instead of MQTT.
 
-- **A panel whose profile update once rolled back can now move to the new app.** When an automatic update to a new revision of a built-in panel profile does not start healthily, the panel goes back to the revision it had and stays pinned to it. The new app does not ship that older revision, so restoring the panel's settings into it was refused outright, and because that restore runs after the old app has handed the panel over, the panel was left running on default settings. The restore now moves such a pin to the profile's current built-in revision, reports that it did so, and applies it through the usual health check, which returns the panel to its previous profile selection if it does not start healthily. The new app also checks that the old app's settings will restore before the old app is asked to hand over, so a panel whose settings still cannot restore keeps running the old app with everything intact. A restore that is refused now says why, instead of only that it did not complete.
+### New
 
-- **The camera stream now keeps to the bitrate it was given.** At 1080p the stream ignored its bitrate limit and sent roughly two to four times what it was told, whatever that limit was: a stream capped at 2000 kbps delivered about 4700. The panel asked its encoder for a constant bitrate only when the encoder declared it supported one, and on at least one common chipset that declaration is wrong, so the request was never made and the encoder spent what it liked. Every encoder is now asked for a constant bitrate, and the panel falls back to the encoder's own mode only if the encoder genuinely refuses, saying so in the log when it does. Measured on the panel this was diagnosed on, a 1080p stream capped at 2000 kbps now delivers about 1880, and 720p keeps to its cap too, which it had only appeared to do before. One consequence is worth knowing: a cap set well above what the picture needs will now be spent rather than quietly saved, so it is worth setting the limit to what you actually want to use.
+- **A dashboard theme that follows the room's light.** The new Ambient theme turns the dashboard and the panel's own screens dark when the room goes dark and light again when it brightens, which suits a panel where the time of day says little about the light.
+- **Screen off when nobody touches it.** Auto-sleep can now switch the screen off after a set time without a touch.
+- **A shorter, easier Configure page.** Every setting has a one-line summary, the basics show first, and the full help opens from an info button.
+- **Low storage gets cleaned up for you.** A panel running short of space now deletes its own leftover temporary files before it asks you to do anything, and never touches your settings, database or other apps.
+- **The Shelly Wall Display X2i has its own profile.** It now gets accurate details for its processor and sensors instead of sharing guesses with other models.
+- **Voice assistant preview.** Panels with a microphone can try out being a Home Assistant Assist satellite: turn on Voice assistant on the Configure page and pick your wake words. This is an early preview that may change, needs Panel Assistant 0.7.0-rc1 or later, and is available on the Sonoff NSPanel Pro and the Electron WF1589T.
 
-- **Importing an edited profile no longer fills the list with look-alike copies.** Every import of a profile was listed as its own entry, so editing one profile and importing it four times left four entries with the same name, distinguished only by a short code, in no order that said which was newest. The list now shows one entry per profile, the most recently imported one, and the earlier versions are hidden behind a "Show superseded revisions" tick box next to the picker. Nothing is deleted: the older versions are still there, still selectable once the box is ticked, and the built-in profiles are unaffected. [Issue #138](https://github.com/maxlyth/ha-paneld/issues/138)
+### Improved
 
-- **Panels flashed from the same image no longer merge into a single Home Assistant device.** Each panel told Home Assistant who it was using Android's own device id. On some panels that value is baked into the factory image instead of being generated when the panel is first set up, so every panel flashed from that image reports the same one. Home Assistant treats two devices that share any identifier as the same device, so those panels collapsed into one: a single device page, a single room, a single set of device automations, and entities named after whichever panel happened to register first. Deleting the device did not help, because the next panel to connect recreated the same merge, and there was nothing you could change on the panel to avoid it. Each panel now makes up its own identity the first time it runs and uses that instead. The Android device id is still reported as the panel's serial number, where two panels sharing a value is untidy rather than harmful. The made-up identity is deliberately left out of the settings export, so restoring one panel's settings onto another cannot copy it across. [Issue #155](https://github.com/maxlyth/ha-paneld/issues/155)
+- **Home Assistant sets the panel up without asking where it is.** When Panel Assistant installs or adopts a panel, the panel checks it can reach the address it is given and skips the question. If it cannot, setup shows the address it tried and why.
+- **Panels on IPv6-only networks can be discovered.** The panel now announces its IPv6 address as well as, or instead of, IPv4.
+- **Reconnects when Home Assistant's address changes.** The panel can fall back to other trusted addresses for your Home Assistant and tells Panel Assistant its current network addresses.
+- **No more notification permission prompt.** The app no longer stops to ask on Android 13 and later; the permission it needs to keep running is simply granted.
+- **Less clutter in Home Assistant.** The device card no longer shows the Android version as hardware, and sensors a panel does not have no longer leave unavailable entities behind.
+- **Entity filter setup no longer looks like crashes.** While the panel learns which entities your dashboard uses, it says the dashboard may reload a few times and keeps those reloads quiet.
+- **The camera stream keeps to the bitrate you set.** It no longer sends two to four times the limit at 1080p.
 
-- **Panels that have already merged need one deletion to come apart.** Home Assistant only ever adds identifiers to a device and never removes one, so a device that has already merged keeps every panel's old identity and stays merged whatever the panels report from now on. The update cannot undo that on its own. To separate them: update every affected panel, let each one connect to Home Assistant at least once, then delete the merged device under Settings, Devices and services, and restart the panels. Each panel registers its own device again on its next connection, with its own name, its own room and its own entities. A panel still on an older version only merges with other panels still on an older version, so leaving one behind does not undo the ones you have already separated — but when you do update it, delete its merged device once more. If the panels also share a panel id, which happens when they are the same model, report the same cloned Android id and have no distinct device name, deleting the device is not enough, because they still share every MQTT topic and entity id; give each of them a distinct panel id first. A panel that was never merged with another needs none of this.
+### Fixed
 
-- **Going back to an earlier version re-merges the panels it is installed on.** A panel downgraded to v0.9.8-rc1 or earlier reports the shared Android device id again on every connection, so it rejoins any device that still carries that identifier, and two downgraded panels merge with each other again. The identity it made up is kept while it is downgraded and is used again as soon as it is updated, so an update after a downgrade does not create a second device — but the merge a downgrade causes needs the same one-time deletion to undo.
+- **Back to the dashboard after a restart or update.** The panel now takes back the home screen when it starts, instead of leaving Android's fallback screen up, and confirms the dashboard is showing after an update.
+- **The app no longer disappears for hours after an update or restart.** Slow panels could miss Android's startup deadline and stay silent until restarted by hand.
+- **Panels flashed from the same image stay separate in Home Assistant.** Each panel now has its own identity. Panels that already merged need the merged device deleted once, after every affected panel has updated and connected. Going back to v0.9.8-rc1 or earlier merges them again.
+- **Updates no longer stall on busy or unusual panels.** Panels with lots of stored history, overlay system areas or no earlier helper files now update cleanly.
+- **A missing or broken web viewer shows how to fix it.** Instead of a black screen, the panel offers to repair Android System WebView.
+- **Panels with no navigation keys get an on-screen bar.** So Android Settings stays reachable when it is needed most.
+- **A saved dashboard shown while offline now says so.** An outage notice stays up until the live connection returns.
 
-- **A panel with no navigation of its own now starts with an on-screen navigation bar.** The on-screen navigation bar has always been off unless you turned it on. On most panels that is right, because they have a navigation bar of their own, a Recents key or physical buttons. A few have none of the three, and on one of those the setting left no way to reach Android's own Settings at all once ha-paneld was the home screen — which matters most when something else needs fixing first, such as the panel being joined to the wrong network. A panel whose profile says it has no navigation bar, no working Recents and no physical buttons now starts with the always-on bar instead. Nothing changes on a panel that already has a way to navigate, and nothing changes on a panel where the setting was ever chosen, including one left off on purpose; the new starting value applies only where the setting has never been set.
+## v0.9.8 - 2026-09-27
 
-- **A panel whose ambient light sensor never starts no longer reports illuminance.** Some panels declare a light part that the hardware never answers for; Home Assistant used to show an illuminance sensor for them that only ever recorded empty values. The entity now appears once the sensor has actually delivered a reading, and comes back on its own if a slow sensor reports later. Panels with a working light sensor are unaffected. [Issue #138](https://github.com/maxlyth/ha-paneld/issues/138)
+This is a big one, and it changes how ha-paneld fits into your home. Two things happen at once: the app moves to its new application id, `io.panelassistant.android`, and the Panel Assistant integration for Home Assistant becomes the way you install, update and manage your panels. Nothing you rely on today stops working in this release, but if you run ha-paneld on its own with MQTT, please read the next section.
 
-- **A panel whose web viewer is missing or broken shows what to fix instead of a black screen.** When Android System WebView cannot be resolved at all, checking what it supports could fail outright and take the dashboard down with it; because the dashboard is the panel's home screen, Android restarted it straight back into the same fault, so the panel showed nothing and gave no way to diagnose it. A web viewer that cannot answer is now treated as one that lacks the feature, which reaches the existing screen naming Android System WebView and offering to repair it.
+### Panel Assistant is the way forward
 
-- **The web interface's cards no longer lose a column as the window gets wider.** On a narrow window the page switched to a tighter page margin at one fixed width, and with an ordinary desktop scrollbar that step cost more width than it bought, so widening the window by a single pixel could drop a card wall from two columns to one. Just below that width the page also drew a genuinely two-column wall using the height estimates meant only for a single column, which left the columns badly balanced. The page margin now grows gradually across that range instead of stepping, and the card wall and the header's Reveal button work out what fits from the width they are actually given — including inside the Panel Assistant sidebar, where the browser window is not the frame.
+**What changes.** Until now ha-paneld talked to Home Assistant through MQTT, and you set each panel up by hand. Panel Assistant, the integration for Home Assistant, now does that work: it finds panels on your network, installs and updates them, and puts each panel's own interface in your Home Assistant sidebar. Going forward, panels are installed and managed through Panel Assistant.
 
-- **A panel no longer loses the app for hours after an update or a restart.** Starting up could take longer than Android allows a background service to come up in, because that limit also covers creating the process, and the app was opening its own database before the service existed. When Android stopped the app for missing the deadline, nothing brought it back: the panel went quiet — no web interface, no updates in Home Assistant, no logs — until someone restarted it by hand. The slowest panels were the most affected, and a fresh install was the likeliest moment to hit it. Startup no longer reads the database that early, and a panel that is stopped this way now starts the app again by itself.
+**A direct connection instead of MQTT.** A panel can now talk to Home Assistant over its own connection, with Panel Assistant looking after its entities directly, rather than through your MQTT broker. This release carries the panel's side of that. You switch a panel over from Panel Assistant 0.6.0 or later, one panel at a time, and your entity IDs, history and customisations come with it. MQTT keeps working exactly as before until you choose to switch.
 
-- **Updating a panel no longer stops partway through installing its privileged helper.** The installer clears out older helper files before putting the new one in place, and on a panel where one of those files had never existed the removal reported a failure instead of nothing to do. The update stopped there and the panel kept the helper it already had, which affected every panel that had never carried a vendor-specific helper file.
+**What to do.** Install Panel Assistant 0.6.1 from HACS and add your panels to it. Its release notes walk through moving a panel off MQTT, what to watch for and how to go back.
 
-- **The privileged helper can run the Android commands it depends on again.** Installing and removing apps, granting permissions and changing system settings are handled on the panel by small system scripts, and those scripts need two pieces of environment to start at all. The helper was not passing them, so each command stopped the instant it ran and anything that relied on one quietly did nothing.
+**Your panel will remind you.** A panel that isn't connected to Panel Assistant now shows a "Panel Assistant is required" notice on its screen and its web page, with a QR code to the setup guide. You can hide it, but it comes back after the next update until Panel Assistant connects.
 
-- **A panel whose system area is mounted through an overlay is no longer refused as read-only.** Before writing anything the installer asked the operating system which filesystem held the directory it was about to use, and on these panels the answer named an unrelated read-only area. The install was refused as read-only although the directory was perfectly writable. It now checks the directory it is actually going to write to.
+### Moving to the new app
 
-- **A panel with more stored history no longer refuses its own update.** The installer takes a consistent copy of the panel's database before changing anything and confirms it did not change while being copied. Copying takes longer the more you have stored, so on a busy panel the check could never succeed and panels with more history were refused while otherwise identical panels with less went through. The copy is retried now instead of being abandoned at the first write.
+**What happens.** A panel already running ha-paneld updates in place as usual. That update installs the new app beside the old one, carries your settings across, hands over the home screen and then removes the old app, all by itself. A new panel simply installs the new app.
 
-- **An update held up by a busy database now says that, rather than calling the database unreadable.** A database being written to while it was read reported itself as unreadable or not a file at all, which pointed at the stored data instead of at the app that was still writing to it.
+**What carries over.** Your settings, the panel's identity, its devices and entities in Home Assistant, and its sign-in, so nothing needs setting up again.
 
-- **A computer without sha256sum is now told so, instead of the installer stopping without a reason.** The installer checks every file it works with by its SHA-256 digest. On a computer with neither `sha256sum` nor `shasum` it used to stop right after the time zone check without printing why. It now says that neither tool is installed, names what it was hashing, and says which one to install.
+**What you need to do.** Update the Panel Assistant integration to 0.5.0 or later first (0.6.1 is recommended); older versions refuse the new app. After that, update your panels the way you normally do.
 
-- **When the pre-update database backup cannot be taken, the installer now says why for each cause, and no longer claims the panel was left clean when it cannot know.** Every reason the backup on the panel could stop used to end with the same advice, that the panel "left nothing behind" and the named stage should be fixed, even when the connection had dropped and no answer came back at all. Each reason now has its own advice, and a lost answer is reported as exactly that: nothing is known about what the panel did, and the installer asks it to remove the backup's working files. The update carries on either way, as before.
+**Panels without internet access.** A panel that can't reach GitHub can still move to the new app: with Panel Assistant 0.6.1, Home Assistant hands the new app to it over your local network.
+
+**If something goes wrong.** The update the panel installs first is a complete app in its own right, so a panel whose move to the new app is interrupted keeps working on it and tries again on its next update. We've moved our own panels across this way.
+
+### New
+
+- **Each panel's own interface in the Panel Assistant sidebar.** Pick a panel in Home Assistant's sidebar and you get its full web interface, following your Home Assistant language and theme.
+- **A warning when a Zigbee bridge runs on the panel.** On panels with Termux, the info page warns when a Zigbee2MQTT or CUBE bridge is running there. It doesn't stop or change the bridge.
+- **An Ambient dashboard theme** that follows the room's light rather than the time of day, for panels in rooms where the clock says little about how bright it is.
+- **Panels tidy up when storage runs low.** A panel short of space now frees what it safely can once a day before it asks you to step in.
+- **The Shelly Wall Display X2i has its own profile**, describing its hardware and sensors properly instead of sharing guesses with other models.
+- **IPv6-only networks.** A panel on a network without IPv4 can now be discovered.
+- **No more address prompt when Panel Assistant installs a panel.** It tells the panel where Home Assistant is, and the panel checks the address works before using it.
+
+### Improved
+
+- **You can hide the network warning.** The dashboard's network warning now has a close button, and a display setting turns it off altogether; the status page explains how to troubleshoot instead.
+- **A clearer message about the Companion app.** When the Companion app you chose can't act as the home screen, Configure tells you which option to turn on.
+- **No notification prompt.** The app no longer asks for notification permission; it's granted, because its notification is part of keeping the panel running.
+- **A cleaner device page.** The panel no longer sends its Android release as its hardware, and reports its exact build instead.
+- **Only the entities a panel can fill.** Over the native connection a panel no longer creates entities for sensors it doesn't have, and a panel without the Companion app no longer shows a Companion update.
+- **A navigation bar where there's none.** Panels without navigation buttons of their own now start with the on-screen navigation bar turned on.
+- **Clearer camera and display details.** The camera status says when a snapshot didn't wait for the exposure to settle, and display details separate physical size from scaling.
+- **Log records name the build** that wrote them, which helps when several panels send logs to one place.
+- **Profile imports stay tidy.** Re-importing an edited profile replaces it in the list instead of adding a look-alike copy.
+- **Dutch, Polish and Ukrainian** have been checked against the English throughout, including every setup, approval and recovery step.
+
+### Fixed
+
+- **Panels flashed from the same image no longer merge into one Home Assistant device.** A device that already merged needs deleting once to come apart; going back to rc1 or earlier merges it again.
+- **Updates no longer stall partway.** The privileged helper installs and runs its Android commands again, panels whose system area is mounted through an overlay are no longer refused as read-only, and panels with lots of stored history no longer refuse their own update.
+- **Clearer installer messages.** A busy database is reported as busy, not unreadable; a missing `sha256sum` is named; each reason a pre-update backup fails gets its own advice; and a check that got no answer is no longer treated as a real answer.
+- **The app no longer disappears for hours after an update or restart** on slower panels.
+- **A broken web viewer shows what to fix** instead of a black screen.
+- **A panel that once rolled back a profile update can move to the new app.**
+- **The camera stream keeps to its bitrate limit**, and turning the camera off and straight back on no longer disturbs the new stream.
+- **Setting up entity filtering no longer looks like a crashing dashboard.**
+- **No illuminance sensor from light sensors that never start.**
+- **The web interface keeps its columns** as the window widens, and the Logs tab note names all three log sources.
+- **Zigbee gateways with the 4.x layout are recognised** and handled like the earlier ones.
+- **A pinned Android System WebView build is compared by its full version number** before it is installed.
+- **Reconnecting to Home Assistant is more reliable** when the panel's connection to it is replaced.
+
+## v0.9.8-rc2 - 2026-09-26
+
+This is a big one, and it changes how ha-paneld fits into your home. Two things happen at once: the app moves to its new application id, `io.panelassistant.android`, and the Panel Assistant integration for Home Assistant becomes the way you install, update and manage your panels. Nothing you rely on today stops working in this release, but if you run ha-paneld on its own with MQTT, please read the next section.
+
+### Panel Assistant is the way forward
+
+**What changes.** Until now ha-paneld talked to Home Assistant through MQTT, and you set each panel up by hand. Panel Assistant, the integration for Home Assistant, now does that work: it finds panels on your network, installs and updates them, and puts each panel's own interface in your Home Assistant sidebar. Going forward, panels are installed and managed through Panel Assistant.
+
+**A direct connection instead of MQTT.** A panel can now talk to Home Assistant over its own connection, with Panel Assistant looking after its entities directly, rather than through your MQTT broker. This release carries the panel's side of that. You switch a panel over from Panel Assistant 0.6.0, one panel at a time, and your entity IDs, history and customisations come with it. MQTT keeps working exactly as before until you choose to switch.
+
+**What to do.** Install Panel Assistant 0.6.0 from HACS and add your panels to it. Its release notes walk through moving a panel off MQTT, what to watch for and how to go back.
+
+**Your panel will remind you.** A panel that isn't connected to Panel Assistant now shows a "Panel Assistant is required" notice on its screen and its web page, with a QR code to the setup guide. You can hide it, but it comes back after the next update until Panel Assistant connects.
+
+### Moving to the new app
+
+**What happens.** A panel already running ha-paneld updates in place as usual. That update installs the new app beside the old one, carries your settings across, hands over the home screen and then removes the old app, all by itself. A new panel simply installs the new app.
+
+**What carries over.** Your settings, the panel's identity, its devices and entities in Home Assistant, and its sign-in, so nothing needs setting up again.
+
+**What you need to do.** Update the Panel Assistant integration to 0.5.0 or later first (0.6.0 is recommended); older versions refuse the new app. After that, update your panels the way you normally do.
+
+**Panels without internet access.** A panel that can't reach GitHub can still move to the new app: with Panel Assistant 0.6.1, Home Assistant hands the new app to it over your local network.
+
+**If something goes wrong.** The update the panel installs first is a complete app in its own right, so a panel whose move to the new app is interrupted keeps working on it and tries again on its next update. We've moved our own panels across this way, which is why this is a release candidate before 0.9.8 goes out to everyone.
+
+### New
+
+- **An Ambient dashboard theme** that follows the room's light rather than the time of day, for panels in rooms where the clock says little about how bright it is.
+- **Panels tidy up when storage runs low.** A panel short of space now frees what it safely can once a day before it asks you to step in.
+- **The Shelly Wall Display X2i has its own profile**, describing its hardware and sensors properly instead of sharing guesses with other models.
+- **IPv6-only networks.** A panel on a network without IPv4 can now be discovered.
+- **No more address prompt when Panel Assistant installs a panel.** It tells the panel where Home Assistant is, and the panel checks the address works before using it.
+
+### Improved
+
+- **No notification prompt.** The app no longer asks for notification permission; it's granted, because its notification is part of keeping the panel running.
+- **A cleaner device page.** The panel no longer sends its Android release as its hardware, and reports its exact build instead.
+- **Only the entities a panel can fill.** Over the native connection a panel no longer creates entities for sensors it doesn't have, and a panel without the Companion app no longer shows a Companion update.
+- **A navigation bar where there's none.** Panels without navigation buttons of their own now start with the on-screen navigation bar turned on.
+- **Clearer camera and display details.** The camera status says when a snapshot didn't wait for the exposure to settle, and display details separate physical size from scaling.
+- **Log records name the build** that wrote them, which helps when several panels send logs to one place.
+- **Profile imports stay tidy.** Re-importing an edited profile replaces it in the list instead of adding a look-alike copy.
+- **Dutch, Polish and Ukrainian** have been checked against the English throughout, including every setup, approval and recovery step.
+
+### Fixed
+
+- **Panels flashed from the same image no longer merge into one Home Assistant device.** A device that already merged needs deleting once to come apart; going back to rc1 or earlier merges it again.
+- **Updates no longer stall partway.** The privileged helper installs and runs its Android commands again, panels whose system area is mounted through an overlay are no longer refused as read-only, and panels with lots of stored history no longer refuse their own update.
+- **Clearer installer messages.** A busy database is reported as busy, not unreadable; a missing `sha256sum` is named; each reason a pre-update backup fails gets its own advice; and a check that got no answer is no longer treated as a real answer.
+- **The app no longer disappears for hours after an update or restart** on slower panels.
+- **A broken web viewer shows what to fix** instead of a black screen.
+- **A panel that once rolled back a profile update can move to the new app.**
+- **The camera stream keeps to its bitrate limit**, and turning the camera off and straight back on no longer disturbs the new stream.
+- **Setting up entity filtering no longer looks like a crashing dashboard.**
+- **No illuminance sensor from light sensors that never start.**
+- **The web interface keeps its columns** as the window widens, and the Logs tab note names all three log sources.
+- **Zigbee gateways with the 4.x layout are recognised** and handled like the earlier ones.
+- **A pinned Android System WebView build is compared by its full version number** before it is installed.
 
 ## v0.9.8-rc1 - 2026-09-15
 

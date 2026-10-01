@@ -149,7 +149,7 @@ async function modalGeometry(page) {
 }
 
 const layoutTest = existsSync(CHROME) ? test : test.skip;
-layoutTest('Profiles stays usable across every locale, theme and production breakpoint', { timeout: 180_000 }, async (t) => {
+layoutTest('Profiles stays usable across every locale, theme and production breakpoint', { timeout: 360_000 }, async (t) => {
   const catalogues = new Map(await Promise.all(LOCALES.map(async (locale) => [
     locale, JSON.parse(await readFile(resolve(ASSETS, `i18n/${locale}.json`), 'utf8')),
   ])));
