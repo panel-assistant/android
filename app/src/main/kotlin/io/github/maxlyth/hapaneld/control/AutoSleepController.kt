@@ -620,6 +620,12 @@ internal class AutoSleepController private constructor(
             if (screen.isIntendedOff()) {
                 automaticEpoch = adopted
                 inheritedEpoch = adopted
+                // A retried adoption can land after presence went live and granted its startup lease;
+                // drop that policy so the next feed rebuilds it starting asleep.
+                if (adopted != null && next.value.source == "home_assistant") {
+                    policy = null
+                    decision = null
+                }
                 onScreenChanged(false)
             } else if (adoptionRetriesLeft > 0 && screen.looksDark()) {
                 adoptionRetriesLeft--
