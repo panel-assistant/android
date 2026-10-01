@@ -255,9 +255,6 @@
   }
 
   // Per-card maturity badges: [text, css-modifier]. Applied to the card heading by render().
-  // Logging lost its experimental badge after all three transports delivered marked probe records
-  // AND real shipped log lines into a collector addressed by hostname. Display keeps its badge — that
-  // work is still unvalidated.
   // The custom wake word guide, through the site's own redirect so the page can move.
   var WAKE_WORD_GUIDE_URL = "https://panel-assistant.io/go/custom-wake-words";
 

@@ -583,10 +583,10 @@
       "state": "machine-cross-checked",
       "text": "未知"
     },
-    "configure.badge.experimental": {
-      "sourceHash": "748be63c87c9fad252fbd0a2e16d0bdd446d2f7acb456b820ed417e9b1f451df",
+    "configure.badge.preview": {
+      "sourceHash": "5975cf1bba432391c94667f5886225f69377c0aa8b9fa21fddfb21c89bcf9092",
       "state": "machine-cross-checked",
-      "text": "实验性"
+      "text": "预览"
     },
     "configure.brightness.chart_label": {
       "sourceHash": "de769cd44d5e548e3985585296f2a48b20eba114b6696b24fb84400fbb5b2579",
