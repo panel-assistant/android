@@ -1,6 +1,6 @@
 schema: 2
 id: shelly-wall-display-x2i
-version: 2.0.1
+version: 2.0.2
 display_name: Shelly Wall Display X2i
 soc_class: rk3326
 soc:
@@ -19,11 +19,12 @@ metadata:
   maturity: experimental
   tested_firmware:
     - Jenna 2.5.4-9893aafa, build vJenna.9a5979d, Android 11
+    - Jenna 2.7.4-b7b6bc07, build vJenna.9a5979d, Android 11
   limitations:
     - Recents is declared absent because the firmware ignores the Recents key from both a foreground app and Settings; only Back and Home are offered.
     - On-board relays are present at /sys/class/strelay and switch real contacts, but ha-paneld drives relays through its privileged route, so no relay capability is offered on this unprivileged panel.
     - Relay terminals are inert while the panel is powered over USB instead of mains, so any future relay support must state that condition.
-    - Evidence comes from one unit on factory firmware 2.5.4. Later firmware installs a device-owner policy that changes which vendor packages can be disabled, and the update is one-way.
+    - Evidence comes from one unit, exercised on factory firmware 2.5.4 and again after updating it to 2.7.4. The update is one-way and installs a Shelly device-owner policy, which was measured to leave the launcher, the sensors and the adb posture alone; the vendor launcher is a protected package that cannot be disabled on either firmware.
     - The panel declares camera features that no camera backs; ha-paneld offers the camera only when Android enumerates one, so no suppression is declared here.
 requires:
   min_core_version: 0.9.5-rc1
