@@ -397,6 +397,62 @@ class ConfigPostProductionRouteTest {
         }
     }
 
+    @Test fun `automatic bounds POST validates effective pair and persists accepted range`() {
+        val directory = Files.createTempDirectory("config-post-auto-bounds").toFile()
+        val database = File(directory, "ha-paneld.db")
+        val writer = Executors.newSingleThreadExecutor()
+        val reopenedWriter = Executors.newSingleThreadExecutor()
+        try {
+            val config = Config(SqliteStatePreferences(JdbcStatePersistence(database), writer))
+            assertTrue(config.applyBatch {
+                config.setPanelId("contract-panel")
+                config.setFriendlyName("Contract panel")
+                config.setHardware("Contract manufacturer", "Contract model")
+                config.setDashboardPackage("com.example.dashboard")
+            })
+            val minimum = requireNotNull(SettingsRegistry.spec("auto_brightness_minimum_percent"))
+            val maximum = requireNotNull(SettingsRegistry.spec("auto_brightness_maximum_percent"))
+            assertEquals("100", config.getRaw(maximum), "older stores default to full range")
+            val server = routeServer(config) { key, value ->
+                when (key) {
+                    minimum.key -> config.setAutoBrightnessMinimumPercent(value.toInt())
+                    maximum.key -> config.setAutoBrightnessMaximumPercent(value.toInt())
+                    else -> config.setRaw(requireNotNull(SettingsRegistry.spec(key)), value)
+                }
+                LiveSettingRequestOutcome.APPLIED
+            }
+            testApplication {
+                application { routing { route("/api/v1") {
+                    with(server) { installDirectConfigPostRoute { Capabilities() } }
+                } } }
+                suspend fun postBounds(values: Map<String, String>) = client.submitForm(
+                    "/api/v1/config", Parameters.build { values.forEach { (key, value) -> append(key, value) } },
+                ) { accept(ContentType.Application.Json) }
+                val accepted = postBounds(mapOf(minimum.key to "20", maximum.key to "60"))
+                assertEquals(HttpStatusCode.OK, accepted.status, accepted.bodyAsText())
+                assertEquals("20", config.getRaw(minimum))
+                assertEquals("60", config.getRaw(maximum))
+                listOf(mapOf(maximum.key to "20"), mapOf(maximum.key to "10"),
+                    mapOf(minimum.key to "60"), mapOf(minimum.key to "70"),
+                    mapOf(minimum.key to "40", maximum.key to "40")).forEach { values ->
+                    val refused = postBounds(values)
+                    assertEquals(HttpStatusCode.BadRequest, refused.status, refused.bodyAsText())
+                    assertEquals("20", config.getRaw(minimum))
+                    assertEquals("60", config.getRaw(maximum))
+                }
+                val moved = postBounds(mapOf(minimum.key to "70", maximum.key to "80"))
+                assertEquals(HttpStatusCode.OK, moved.status, moved.bodyAsText())
+            }
+            val reopened = Config(SqliteStatePreferences(JdbcStatePersistence(database), reopenedWriter))
+            assertEquals("70", reopened.getRaw(minimum))
+            assertEquals("80", reopened.getRaw(maximum))
+        } finally {
+            writer.shutdownNow()
+            reopenedWriter.shutdownNow()
+            directory.deleteRecursively()
+        }
+    }
+
     /**
      * These settings have no typed setter on the direct route: the registry writer is their only owner.
      * Each once shipped reported saved and silently discarded, so the whole production route must commit

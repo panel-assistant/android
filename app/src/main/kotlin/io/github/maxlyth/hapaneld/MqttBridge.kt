@@ -113,6 +113,7 @@ internal enum class LiveSettingEffectOwner(val settingKey: String) {
     NETWORK_ADB("network_adb"),
     ZIGBEE("zigbee_router"),
     AUTO_BRIGHTNESS_MINIMUM("auto_brightness_minimum_percent"),
+    AUTO_BRIGHTNESS_MAXIMUM("auto_brightness_maximum_percent"),
     AUTO_BRIGHTNESS_RESPONSE("auto_brightness_response_percent"),
     AUTO_BRIGHTNESS_HA_ENTITY("auto_brightness_ha_entity"),
     CPU_GOVERNOR("cpu_governor"),
@@ -205,6 +206,7 @@ internal interface LiveSettingHandlers {
     fun handleVoiceEnabled(payload: String)
     fun handleNetAdb(payload: String)
     fun handleZigbee(payload: String)
+    fun handleAutoBrightnessMaximum(payload: String)
     fun handleAutoBrightnessMinimum(payload: String)
     fun handleAutoBrightnessSensitivity(payload: String)
     fun handleAutoBrightnessHaEntity(payload: String)
@@ -255,6 +257,10 @@ internal fun dispatchLiveSetting(
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_MINIMUM -> {
             requireNotNull(value.toIntOrNull()) { "$key requires a normalized integer" }
             handlers.handleAutoBrightnessMinimum(value)
+        }
+        LiveSettingEffectOwner.AUTO_BRIGHTNESS_MAXIMUM -> {
+            requireNotNull(value.toIntOrNull()) { "$key requires a normalized integer" }
+            handlers.handleAutoBrightnessMaximum(value)
         }
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_RESPONSE -> {
             requireNotNull(value.toIntOrNull()) { "$key requires a normalized integer" }
@@ -3416,6 +3422,12 @@ internal class MqttBridge(
     override fun handleAutoBrightnessSensitivity(payload: String) {
         val value = payload.trim().trim('"').toIntOrNull() ?: return
         config.setAutoBrightnessResponsePercent(value)
+        autoBright.reapplyLatest()
+    }
+
+    override fun handleAutoBrightnessMaximum(payload: String) {
+        val value = payload.trim().trim('"').toIntOrNull() ?: return
+        config.setAutoBrightnessMaximumPercent(value)
         autoBright.reapplyLatest()
     }
 

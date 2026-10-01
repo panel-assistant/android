@@ -75,10 +75,10 @@ internal class DashboardSettingRows(private val config: Config) {
         proximity: () -> String?,
     ): String {
         return listOf(
-            "auto_brightness", "auto_brightness_minimum_percent", "auto_brightness_response_percent", "auto_brightness_ha_entity",
+            "auto_brightness", "auto_brightness_minimum_percent", "auto_brightness_maximum_percent", "auto_brightness_response_percent", "auto_brightness_ha_entity",
         ).mapNotNull { key ->
             val formatter: SettingRowFormatter? = when (key) {
-                "auto_brightness_minimum_percent" -> SettingRowFormatter.of(key) { raw ->
+                "auto_brightness_minimum_percent", "auto_brightness_maximum_percent" -> SettingRowFormatter.of(key) { raw ->
                     raw.toIntOrNull()?.coerceIn(0, 100)?.let { percent ->
                         "$percent% (${AdaptiveLuxCurve.percentToBrightness(percent)})"
                     } ?: raw

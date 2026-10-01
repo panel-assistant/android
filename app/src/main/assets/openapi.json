@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "ha-paneld",
-    "version": "0.9.9-rc1",
+    "version": "0.9.9-rc2",
     "description": "Local HTTP control API for the ha-paneld Home Assistant dashboard app. Plain HTTP on the LAN. Relaxed mode keeps the trusted-LAN workflow. Optional Hardened mode requires physical access for selected high-impact remote requests: someone must approve them on the panel's screen, and they cannot be approved remotely. The canonical machine API lives under /api/v1; the pre-0.8.5 flat paths respond 308 Permanent Redirect to their /api/v1 homes (method + body preserved). Exceptions: GET /health and POST /play are also served directly at the root for plain-curl automations and monitors."
   },
   "servers": [{ "url": "/" }],
@@ -496,7 +496,8 @@
           "watchdog_enabled": { "type": "boolean" }, "touch_sound": { "type": "boolean" },
           "silence_boot_chime": { "type": "boolean", "default": true, "description": "Mute the firmware startup chime; enabled by default so panels reboot silently" }, "keep_awake": { "type": "boolean", "description": "Disabling an enabled guard requires physical POWER_CONFIGURATION approval for a remote Hardened-mode Config request" },
           "auto_brightness": { "type": "boolean" },
-          "auto_brightness_minimum_percent": { "type": "integer", "minimum": 4, "maximum": 99, "default": 4, "description": "Lowest automatic screen level as a percentage; proposals scale from this floor to full brightness. The floor of 4 is the first percentage the backlight can distinguish from its never-blank minimum" },
+          "auto_brightness_minimum_percent": { "type": "integer", "minimum": 4, "maximum": 99, "default": 4, "description": "Lowest automatic screen level as a percentage; proposals scale between this floor and the configured maximum. The floor of 4 is the first percentage the backlight can distinguish from its never-blank minimum" },
+          "auto_brightness_maximum_percent": { "type": "integer", "minimum": 5, "maximum": 100, "default": 100, "description": "Highest automatic screen level as a percentage; must be strictly above the minimum. Manual brightness can still go higher" },
           "auto_brightness_response_percent": { "type": "integer", "minimum": 0, "maximum": 100, "default": 50, "description": "Percent of an admitted deviation from the learned ambient pattern that is applied to the screen; 0 uses the learned pattern alone. Replaces the retired auto_brightness_sensitivity, whose scale is not comparable" },
           "auto_brightness_ha_entity": { "type": "string", "pattern": "^(|sensor\\.[a-z0-9_]+)$", "description": "Home Assistant illuminance entity; blank uses the panel ambient-light sensor" },
           "dashboard_theme": { "type": "string", "enum": ["Follow Home Assistant", "Dark", "Light", "Ambient"], "default": "Follow Home Assistant", "description": "Built-in renderer colour scheme. Follow Home Assistant leaves the choice to Home Assistant. Dark and Light choose it on this panel when Home Assistant is set to Auto; an explicit Light or Dark choice in Home Assistant still wins. Ambient chooses Dark or Light from the room's light through the auto-brightness model, after the level has held for 60 seconds; it needs auto_brightness on and follows Home Assistant until it has a verdict (see renderer.theme_ambient_reason in /api/v1/status). Returning to Follow hands the panel-local choice back unchanged. The aliases \"follow\", \"auto\", \"follow_home_assistant\" and \"follow-home-assistant\" are accepted." },
@@ -667,9 +668,10 @@
         "parameters": [
           { "name": "hours", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 168, "default": 168 } },
           { "name": "sensitivity", "in": "query", "schema": { "type": "integer", "minimum": 0, "maximum": 100 }, "description": "Optional what-if preview; the percent of an admitted deviation that is applied" },
-          { "name": "minimum_percent", "in": "query", "schema": { "type": "integer", "minimum": 4, "maximum": 99 }, "description": "Optional minimum automatic brightness percentage for what-if preview" }
+          { "name": "minimum_percent", "in": "query", "schema": { "type": "integer", "minimum": 4, "maximum": 99 }, "description": "Optional minimum automatic brightness percentage for what-if preview" },
+          { "name": "maximum_percent", "in": "query", "schema": { "type": "integer", "minimum": 5, "maximum": 100 }, "description": "Optional maximum automatic brightness percentage for what-if preview; must be strictly above the minimum" }
         ],
-        "responses": { "200": { "description": "{available,hours,bucket_minutes,sensitivity,minimum_percent,minimum_brightness,now_epoch_minute,sourceRevision,latestEpochMinute,time_zone,points:[{epochMinute,localDay,minuteOfDay,dayAge,observedMeanLux,minLux,maxLux,expectedLux,proposedBrightness}]} (sensitivity and minimum_percent identify the projection inputs; sourceRevision is an opaque partition identity; latestEpochMinute is the newest returned five-minute point; localDay, minuteOfDay, and dayAge use the panel timezone)" }, "400": { "description": "hours, sensitivity, or minimum_percent outside the public bounds" }, "403": { "description": "Cross-origin or unverifiable browser request refused; headerless LAN automation remains supported" } }
+        "responses": { "200": { "description": "{available,hours,bucket_minutes,sensitivity,minimum_percent,minimum_brightness,maximum_percent,maximum_brightness,now_epoch_minute,sourceRevision,latestEpochMinute,time_zone,points:[{epochMinute,localDay,minuteOfDay,dayAge,observedMeanLux,minLux,maxLux,expectedLux,proposedBrightness}]} (sensitivity, minimum_percent and maximum_percent identify the projection inputs; sourceRevision is an opaque partition identity; latestEpochMinute is the newest returned five-minute point; localDay, minuteOfDay, and dayAge use the panel timezone)" }, "400": { "description": "hours, sensitivity, minimum_percent or maximum_percent outside the public bounds, or minimum_percent not strictly below maximum_percent" }, "403": { "description": "Cross-origin or unverifiable browser request refused; headerless LAN automation remains supported" } }
       }
     },
     "/api/v1/auto-brightness/sources": {

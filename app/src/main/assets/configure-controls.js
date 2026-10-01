@@ -691,14 +691,14 @@
     if (f.maxLength != null) inp.maxLength = f.maxLength;
     if (f.step != null) inp.step = f.step;
     if (f.type === "FLOAT" && f.step == null) inp.step = "any";
-    if ((f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") && !cfg.ambientLightSourceReady()) {
+    if ((f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") && !cfg.ambientLightSourceReady()) {
       inp.disabled = true;
       inp.title = cfg.i18nText("configure.brightness.select_source_first", "Select an ambient light source first.");
     }
     inp.addEventListener("input", function () {
       cfg.values[f.key] = inp.value; cfg.setDirty(f.key);
       if (f.key === "auto_sleep_touch_delay_seconds") cfg.updateAutoSleepSummary();
-      if (f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_response_percent") cfg.queueAutoBrightnessHistory();
+      if (f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") cfg.queueAutoBrightnessHistory();
     });
     return inp;
   }

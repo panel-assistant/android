@@ -10,7 +10,7 @@ class PaneldServerConfigWiringTest {
     @Test fun httpRoutesEveryApplicableLiveSettingThroughTheSharedDispatcher() {
         val registryKeys = SettingsRegistry.liveApplyKeys()
         val expectedKeys = setOf(
-            "auto_brightness", "auto_brightness_ha_entity", "auto_brightness_minimum_percent",
+            "auto_brightness", "auto_brightness_ha_entity", "auto_brightness_minimum_percent", "auto_brightness_maximum_percent",
             "auto_brightness_response_percent", "auto_sleep", "auto_sleep_source", "companion_auto_update",
             "companion_update_channel", "cpu_governor", "ha_area", "home_dashboard", "kiosk_lock",
             "navbar_mode", "network_adb", "prevent_idle_dim", "self_update", "silence_boot_chime",

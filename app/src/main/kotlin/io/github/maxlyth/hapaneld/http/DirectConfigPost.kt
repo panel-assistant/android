@@ -86,6 +86,12 @@ internal class DirectConfigPost(
         val onboardingPost = onboarding.augmentPostWithDiscoveredHaUrlForMqttOnboarding(handoverPost.parameters)
         val p = onboardingPost.parameters
         val postedValues = p.names().associateWith { p[it].orEmpty() }
+        SettingsRegistry.automaticBrightnessBoundsError(
+            postedValues, config.autoBrightnessMinimumPercent, config.autoBrightnessMaximumPercent,
+        )?.let { reason ->
+            call.respondText("$reason\n", status = HttpStatusCode.BadRequest)
+            return
+        }
         if (rejectHardenedNetworkAdb(call, p["network_adb"])) return
         // Fence every baseline-dependent admission decision below. The direct mutation lane rechecks
         // this complete effective snapshot before persistence, so a concurrent save cannot bypass an
@@ -357,7 +363,11 @@ internal class DirectConfigPost(
             synchronized(directConfigMutationLock) {
                 val saved = rendererPreparation.transaction {
                     val persisted = config.synchronizedTransaction {
-                    if (io.github.maxlyth.hapaneld.config.ConfigHash.of(directMutationValues()) != admissionBaselineHash) {
+                    if (io.github.maxlyth.hapaneld.config.ConfigHash.of(directMutationValues()) != admissionBaselineHash ||
+                        SettingsRegistry.automaticBrightnessBoundsError(
+                            postedValues, config.autoBrightnessMinimumPercent, config.autoBrightnessMaximumPercent,
+                        ) != null
+                    ) {
                         directAdmissionStale = true
                         return@synchronizedTransaction false
                     }
@@ -400,6 +410,9 @@ internal class DirectConfigPost(
                         },
                     ) {
                     stageDirectConfigRegistryValues(config, postedValues, mutationPlan.changedKeys)
+                    // Commit the coupled range before either live handler schedules a new evaluation.
+                    p["auto_brightness_minimum_percent"]?.toInt()?.let(config::setAutoBrightnessMinimumPercent)
+                    p["auto_brightness_maximum_percent"]?.toInt()?.let(config::setAutoBrightnessMaximumPercent)
                     panelId?.let { config.setPanelId(it) }
                     p["friendly_name"]?.let { config.setFriendlyName(it.trim()) }
                     p["ui_language"]?.let { config.setUiLanguage(it) }
