@@ -263,7 +263,7 @@
       var h2kids = [cfg.el("span", { text: groupTitle(g) })];
       if (CARD_NOTES[g]) h2kids.push(cfg.el("small", { text: cfg.i18nText("configure.group.ha_reporting_note", " · Home Assistant reporting") }));
       var badge = CARD_BADGES[g];
-      if (badge) h2kids.push(cfg.el("span", { class: "cardbadge " + badge[1], text: cfg.i18nText("configure.badge." + badge[0], badge[0]) }));
+      if (badge) h2kids.push(cfg.el("span", { class: "cardbadge " + badge[1], text: cfg.i18nText("configure.badge.preview", "preview") }));
       var card = cfg.el("div", { class: "card" }, [cfg.el("h2", {}, h2kids)]);
       card.setAttribute("data-config-group", g);
       card.setAttribute("data-layout-key", configLayoutKey(g) + (revealed ? ".adv" : ""));
