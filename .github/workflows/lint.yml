@@ -1,21 +1,27 @@
 name: Lint
 run-name: Lint · ${{ github.event_name == 'schedule' && 'nightly' || github.ref_name }}
 
-# Full Android lint takes about seven minutes on a hosted runner, the longest part of CI, so it runs out of
-# band: nightly, on demand, and on every release tag, where it runs beside the Release workflow without
-# blocking it. CI keeps the release build's fatal lint pass. Review the latest run before tagging.
+# Full Android lint takes about seven minutes on a hosted runner, so it runs beside CI rather than inside
+# it: on every push to main, on pull requests, nightly and on demand. It replaces the release build's
+# fatal-only lint pass, which CI and the Release workflow skip. The Release workflow requires this
+# check to have passed on main for the exact commit it publishes, so it must run on every push to main
+# without a path filter, and not on tags, where a newer run would hold the release until it finished.
 on:
   schedule:
     - cron: '23 2 * * *'
   push:
-    tags: ['v*']
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A pull request cancels its own superseded run. A push to main never does, so every commit on main
+# keeps a completed lint check that a release of that commit can consume.
 concurrency:
-  group: lint-${{ github.ref }}
+  group: lint-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.run_id }}
   cancel-in-progress: true
 
 jobs:

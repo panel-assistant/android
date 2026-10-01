@@ -133,9 +133,10 @@ jobs:
       - name: Test release workflow contracts
         run: scripts/tests/release_workflow_test.sh
 
-      # Expensive app, host, dependency-integrity and security analysis run when the exact source
+      # Expensive app, lint, host, dependency-integrity and security analysis run when the exact source
       # lands on main. The tag workflow consumes their latest results instead of rerunning them, while
-      # the package job independently creates release inputs from a clean checkout of the exact tag.
+      # the package jobs independently create release inputs from a clean checkout of the exact tag. They
+      # restore, read-only, the basic Gradle cache that CI writes on main for the same build files.
       - name: Require clean integrated checks for the source commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -143,6 +144,7 @@ jobs:
           set -euo pipefail
           required_checks=(
             "Android build"
+            "Android lint"
             "Host contracts"
             "Dependency integrity"
             "Privileged helper"
@@ -190,12 +192,12 @@ jobs:
           fi
 
   package:
+    # Everything except the two APKs: helpers, SBOMs, installer, provisioner and release notes. It runs
+    # beside the identity builds; the seal job joins the three.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
-    outputs:
-      input-manifest-sha256: ${{ steps.manifest.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -227,20 +229,6 @@ jobs:
           fi
           echo "SOURCE_COMMIT=$source_commit" >> "$GITHUB_ENV"
 
-      - name: Set up Node.js 22.23.2
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22.23.2
-
-      - name: Verify profile-editor dependency graph and bundle
-        working-directory: tools/profile-editor
-        run: |
-          expected_npm=$(node -p 'require("./package.json").packageManager.split("@").at(-1)')
-          test "$(npm --version)" = "$expected_npm"
-          npm ci --ignore-scripts --audit=false --fund=false
-          npm run check
-          npm run sbom -- --output ../../release-input/profile-editor-runtime.cdx.json
-
       - name: Set up JDK 17
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -256,6 +244,29 @@ jobs:
 
       - name: Install Android build toolchain
         run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      # Basic (open-source) caching only: the release workflow handles signing secrets. Restore the Gradle
+      # home that CI's "Release Gradle cache" job writes on main for the same build files, and never write
+      # one: a tag run only reads. PR-scoped cache entries are not readable from a tag run.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Set up Node.js 22.23.2
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.2
+
+      - name: Verify profile-editor dependency graph and bundle
+        working-directory: tools/profile-editor
+        run: |
+          expected_npm=$(node -p 'require("./package.json").packageManager.split("@").at(-1)')
+          test "$(npm --version)" = "$expected_npm"
+          npm ci --ignore-scripts --audit=false --fund=false
+          npm run check
+          npm run sbom -- --output ../../release-input/profile-editor-runtime.cdx.json
 
       - name: Build root helper release assets
         run: |
@@ -277,31 +288,6 @@ jobs:
           file release-input/hapaneld-helper-armeabi-v7a | grep -Fq 'ELF 32-bit'
           file release-input/hapaneld-helper-arm64-v8a | grep -Fq 'ELF 64-bit'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-        with:
-          cache-provider: basic
-
-      # One tree, two installable identities. The default build is the `bridge`, which keeps the
-      # legacy applicationId so a shipped 0.9.7 or rc1 updater can still update in place; the
-      # successor carries the new id. A Gradle property rather than a product flavour, because a
-      # flavour dimension renames every variant task and output directory that CI, the release
-      # workflow and the sidecar tools address by name. The two builds therefore write to the same
-      # output directory in turn, so the first is copied out before the second starts.
-      - name: Build release APKs for both identities
-        run: |
-          set -euo pipefail
-          ./gradlew :app:assembleRelease --stacktrace
-          /usr/bin/install -d -m 0755 release-build/bridge
-          cp app/build/outputs/apk/release/output-metadata.json release-build/bridge/
-          find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' \
-            -exec cp -t release-build/bridge {} +
-          ./gradlew :app:assembleRelease -PappIdentity=successor --stacktrace
-          /usr/bin/install -d -m 0755 release-build/successor
-          cp app/build/outputs/apk/release/output-metadata.json release-build/successor/
-          find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' \
-            -exec cp -t release-build/successor {} +
-
       - name: Verify standalone helpers match APK-bundled helpers
         run: |
           cmp release-input/hapaneld-helper-armeabi-v7a app/src/main/assets/hapaneld-helper-arm
@@ -310,43 +296,10 @@ jobs:
       - name: Generate release dependency SBOM
         run: ./gradlew :app:cyclonedxDirectBom --stacktrace
 
-      - name: Collect unsigned release inputs
+      - name: Stage shared release inputs
         run: |
           set -euo pipefail
           mkdir -p release-input
-          expected_version_name="${RELEASE_TAG#v}"
-          # The applicationId is asserted per artifact, from the build's own metadata. That is what
-          # catches a forgotten `-PappIdentity` property: without it both builds would be the bridge
-          # and the release would publish the same identity twice under two names.
-          collect_identity() {
-            identity=$1
-            staged=$2
-            expected_application_id=$3
-            mapfile -t unsigned_apks < <(find "release-build/$identity" -maxdepth 1 -type f -name '*-unsigned.apk' -print)
-            if [ "${#unsigned_apks[@]}" -ne 1 ]; then
-              echo "::error::Expected exactly one unsigned $identity release APK, found ${#unsigned_apks[@]}."
-              exit 1
-            fi
-            cp "${unsigned_apks[0]}" "release-input/$staged"
-            metadata="release-build/$identity/output-metadata.json"
-            test -s "$metadata"
-            application_id=$(node -e 'const m=require("./"+process.argv[1]); process.stdout.write(m.applicationId || "")' "$metadata")
-            version_name=$(node -e 'const m=require("./"+process.argv[1]); const e=m.elements || []; process.stdout.write(e.length === 1 ? (e[0].versionName || "") : "")' "$metadata")
-            if [ "$application_id" != "$expected_application_id" ]; then
-              echo "::error::Unsigned $identity APK package is '$application_id', expected '$expected_application_id'."
-              exit 1
-            fi
-            if [ "$version_name" != "$expected_version_name" ]; then
-              echo "::error::Unsigned $identity APK versionName is '$version_name', expected '$expected_version_name' from the candidate release tag."
-              exit 1
-            fi
-          }
-          collect_identity bridge ha-paneld-unsigned.apk io.github.maxlyth.hapaneld
-          collect_identity successor panel-assistant-unsigned.apk io.panelassistant.android
-          if cmp --silent release-input/ha-paneld-unsigned.apk release-input/panel-assistant-unsigned.apk; then
-            echo "::error::The bridge and successor APKs are byte-identical; the identity property did not take effect."
-            exit 1
-          fi
           # One SBOM for both artifacts: it describes `releaseRuntimeClasspath`, which does not vary
           # with the applicationId, and its component fields are build-script constants.
           test -s app/build/reports/cyclonedx-direct/bom.json
@@ -435,6 +388,158 @@ jobs:
           cat "$changelog_body" >> release-input/release-body.md
           echo "----- release body -----"; cat release-input/release-body.md
 
+      - name: Upload shared release inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ha-paneld-release-shared-${{ github.run_id }}
+          path: release-input/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          include-hidden-files: false
+
+  package-apk:
+    # Each identity builds in its own job from the same exact-tag checkout as `package`, which validates
+    # the tag and its source; the seal job asserts each APK's application id and versionName against the tag.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        identity: [bridge, successor]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
+
+      - name: Install Android build toolchain
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      # Basic (open-source) caching only: the release workflow handles signing secrets. Restore the Gradle
+      # home that CI's "Release Gradle cache" job writes on main for the same build files, and never write
+      # one: a tag run only reads. PR-scoped cache entries are not readable from a tag run.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      # One tree, two installable identities. The default build is the `bridge`, which keeps the
+      # legacy applicationId so a shipped 0.9.7 or rc1 updater can still update in place; the
+      # successor carries the new id. A Gradle property rather than a product flavour, because a
+      # flavour dimension renames every variant task and output directory that CI, the release
+      # workflow and the sidecar tools address by name. Each identity builds in its own job from the
+      # same exact-tag checkout, so the two builds run side by side and never share an output directory.
+      # The fatal-only release lint pass is skipped: the Lint workflow lints this exact commit on main,
+      # and the verify job refuses to publish unless that check passed.
+      - name: Build release APKs for both identities
+        env:
+          IDENTITY: ${{ matrix.identity }}
+        run: |
+          set -euo pipefail
+          case "$IDENTITY" in
+            bridge) ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace ;;
+            successor) ./gradlew :app:assembleRelease -x lintVitalRelease -PappIdentity=successor --stacktrace ;;
+            *) echo "::error::Unknown release identity: $IDENTITY"; exit 1 ;;
+          esac
+          /usr/bin/install -d -m 0755 "release-build/$IDENTITY"
+          cp app/build/outputs/apk/release/output-metadata.json "release-build/$IDENTITY/"
+          find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' \
+            -exec cp -t "release-build/$IDENTITY" {} +
+
+      - name: Upload unsigned identity build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ha-paneld-release-${{ matrix.identity }}-${{ github.run_id }}
+          path: release-build/${{ matrix.identity }}/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          include-hidden-files: false
+
+  seal:
+    # Joins the shared inputs and both identity builds from this run, asserts each identity, and seals
+    # the exact input set that sign-and-publish verifies.
+    needs: [package, package-apk]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      input-manifest-sha256: ${{ steps.manifest.outputs.sha256 }}
+    steps:
+      - name: Download shared release inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ha-paneld-release-shared-${{ github.run_id }}
+          path: release-input
+
+      - name: Download bridge build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ha-paneld-release-bridge-${{ github.run_id }}
+          path: release-build/bridge
+
+      - name: Download successor build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ha-paneld-release-successor-${{ github.run_id }}
+          path: release-build/successor
+
+      - name: Collect unsigned release inputs
+        run: |
+          set -euo pipefail
+          mkdir -p release-input
+          expected_version_name="${RELEASE_TAG#v}"
+          # The applicationId is asserted per artifact, from the build's own metadata. That is what
+          # catches a forgotten `-PappIdentity` property: without it both builds would be the bridge
+          # and the release would publish the same identity twice under two names.
+          collect_identity() {
+            identity=$1
+            staged=$2
+            expected_application_id=$3
+            mapfile -t unsigned_apks < <(find "release-build/$identity" -maxdepth 1 -type f -name '*-unsigned.apk' -print)
+            if [ "${#unsigned_apks[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one unsigned $identity release APK, found ${#unsigned_apks[@]}."
+              exit 1
+            fi
+            cp "${unsigned_apks[0]}" "release-input/$staged"
+            metadata="release-build/$identity/output-metadata.json"
+            test -s "$metadata"
+            application_id=$(node -e 'const m=require("./"+process.argv[1]); process.stdout.write(m.applicationId || "")' "$metadata")
+            version_name=$(node -e 'const m=require("./"+process.argv[1]); const e=m.elements || []; process.stdout.write(e.length === 1 ? (e[0].versionName || "") : "")' "$metadata")
+            if [ "$application_id" != "$expected_application_id" ]; then
+              echo "::error::Unsigned $identity APK package is '$application_id', expected '$expected_application_id'."
+              exit 1
+            fi
+            if [ "$version_name" != "$expected_version_name" ]; then
+              echo "::error::Unsigned $identity APK versionName is '$version_name', expected '$expected_version_name' from the candidate release tag."
+              exit 1
+            fi
+          }
+          collect_identity bridge ha-paneld-unsigned.apk io.github.maxlyth.hapaneld
+          collect_identity successor panel-assistant-unsigned.apk io.panelassistant.android
+          if cmp --silent release-input/ha-paneld-unsigned.apk release-input/panel-assistant-unsigned.apk; then
+            echo "::error::The bridge and successor APKs are byte-identical; the identity property did not take effect."
+            exit 1
+          fi
+
       - name: Seal exact release inputs
         id: manifest
         run: |
@@ -474,7 +579,7 @@ jobs:
 
   sign-and-publish:
     if: github.event_name == 'push'
-    needs: [verify, package]
+    needs: [verify, seal]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: release
@@ -492,7 +597,7 @@ jobs:
 
       - name: Verify exact release inputs
         env:
-          EXPECTED_MANIFEST_SHA256: ${{ needs.package.outputs.input-manifest-sha256 }}
+          EXPECTED_MANIFEST_SHA256: ${{ needs.seal.outputs.input-manifest-sha256 }}
         run: |
           if [[ ! "$EXPECTED_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
             echo "::error::Build job did not provide a valid release-input manifest digest."
@@ -541,7 +646,7 @@ jobs:
 
       - name: Reverify release inputs after tool setup
         env:
-          EXPECTED_MANIFEST_SHA256: ${{ needs.package.outputs.input-manifest-sha256 }}
+          EXPECTED_MANIFEST_SHA256: ${{ needs.seal.outputs.input-manifest-sha256 }}
         run: |
           test "$(sha256sum release-input/MANIFEST.sha256 | cut -d' ' -f1)" = "$EXPECTED_MANIFEST_SHA256"
           (cd release-input && sha256sum --check MANIFEST.sha256)
