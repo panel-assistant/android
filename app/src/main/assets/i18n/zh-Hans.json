@@ -7106,7 +7106,7 @@
     "install.presentation.restore_app_state_invalid": {
       "sourceHash": "ebe236ea5430ffd9de73f7ff34091f03da5ab8502f86ff15c5a8ef97b82d1b1f",
       "state": "machine-cross-checked",
-      "text": "应用状态负载无效"
+      "text": "app_state 负载无效"
     },
     "install.presentation.restore_archive_entries_invalid": {
       "sourceHash": "05160b8fa6ac6f7af161dc55f176491aae6c19ec889c921e906f10882782e671",
@@ -7151,7 +7151,7 @@
     "install.presentation.restore_entity_object_invalid": {
       "sourceHash": "77e8c96b9b8843a8d9dbcbda9e8422437bef98c7b05d1ee8074d6ad9b61423d9",
       "state": "machine-cross-checked",
-      "text": "实体状态对象无效"
+      "text": "entity_state 对象无效"
     },
     "install.presentation.restore_entity_owner_missing": {
       "sourceHash": "096f93b1f5118c353e29476ce665665086492a82560caf94b3cfeeedd10f9886",

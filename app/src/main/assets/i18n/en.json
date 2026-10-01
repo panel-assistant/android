@@ -20690,7 +20690,7 @@
       "risk": "consequential",
       "siblings": [],
       "placeholders": [],
-      "frozen": [],
+      "frozen": ["app_state"],
       "softMaxChars": 25,
       "hardMaxChars": 45
     },
@@ -20800,7 +20800,7 @@
       "risk": "consequential",
       "siblings": [],
       "placeholders": [],
-      "frozen": [],
+      "frozen": ["entity_state"],
       "softMaxChars": 27,
       "hardMaxChars": 49
     },
