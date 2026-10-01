@@ -284,7 +284,9 @@ body.revealed input.secret,input.secret:focus,input.secret.shown{color:var(--tex
 .entity-table .col-rate{width:215px}
 .entity-table .col-last{width:135px}
 .entity-table .col-override{width:140px}
-@media(max-width:600px){.entity-table .col-reason{width:72px}.entity-table .col-override{width:126px}}
+@media(max-width:600px){.entity-table .col-reason{width:72px}.entity-table .col-override{width:96px}
+  /* The entity id is the row's identity: wrap it rather than cut it to a few characters. */
+  .entity-table td.col-entity,.entity-table td.col-entity code{white-space:normal;overflow-wrap:anywhere}}
 /* Responsive tab bar -> header hamburger: when the tabs can't fit one line, switcher.js sets
    body.nav-collapsed; the #navburger (first item in .hdr, before the logo) then replaces the inline bar,
    and tapping it (body.nav-open) drops the tabs as a vertical menu in flow below the header. */
@@ -341,7 +343,7 @@ body.hdr-hide-brand .hdr .brand{display:none}
 .cfg-help::backdrop{background:transparent}
 .cfg-help-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
 .cfg-help-head b{flex:1;min-width:0;font-size:.9rem;color:var(--accent)}
-.cfg-help-close{flex:0 0 auto;width:26px;height:26px;line-height:1;background:none;border:1px solid var(--border);border-radius:6px;color:var(--dim);cursor:pointer;font-size:1rem}
+.cfg-help-close{flex:0 0 auto;width:26px;height:26px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;background:none;border:1px solid var(--border);border-radius:6px;color:var(--dim);cursor:pointer;font-size:1rem}
 .cfg-help-body{font-size:.84rem;line-height:1.45;overflow-wrap:anywhere}
 .cfg-help-body p{margin:0 0 8px}.cfg-help-body p:last-child{margin-bottom:0}
 .cfg-help-body ul{margin:0 0 8px;padding-left:18px}.cfg-help-body li{margin:2px 0}
@@ -376,6 +378,11 @@ body.hdr-hide-brand .hdr .brand{display:none}
    its 170px preferred width inside the 50% control column instead of spilling the exact button+gap
    excess beyond a 400px masonry card. Wrapped pickers retain their narrower dedicated rules below. */
 .frow .fctl>select{min-width:0;max-width:100%}
+/* WebKit keeps a select's vertical padding inside the fixed 34px box and clips the value text; the
+   browser centres select text itself, so only the horizontal padding is needed. */
+.frow select{padding-top:0;padding-bottom:0}
+/* The package picker's inline 92% width excludes its padding and border; on a phone that runs past the edge. */
+#pkgdlg{box-sizing:border-box}
 .ha-oauth-status{display:block;color:var(--dim);font-size:.9em;margin:5px 0 3px}
 .ha-oauth-status.connected{color:var(--ok-dim);font-weight:700}
 .ha-oauth-status.connected::before{content:"";display:inline-block;width:7px;height:7px;margin:0 7px 1px 1px;border-radius:50%;background:var(--ok-dim)}
@@ -501,12 +508,18 @@ body.hdr-hide-brand .hdr .brand{display:none}
 @media(max-width:600px){
   .frow{flex-direction:column;align-items:stretch;gap:8px}
   .frow .fctl{width:100%;max-width:none;justify-content:flex-end}
+  .frow.frow-compact{flex-direction:row;align-items:flex-start}
+  .frow.frow-compact .flabel{flex:1 1 0;min-width:0}
+  .frow.frow-compact .fctl{width:auto}
   .frow.frow-action .flabel{flex:0 0 auto}
   .frow .fctl input[type=text],.frow .fctl input[type=password],.frow .fctl input[type=number],.frow .fctl select{
     flex:1 1 auto;width:100%;min-width:0;box-sizing:border-box
   }
   .ha-entity-picker{width:100%;min-width:0}
   .ha-area-picker{width:100%;min-width:0}
+  .frow .fctl .ha-area-picker,.frow .fctl .hd-picker{width:100%}
+  /* Seven axis times collide on a phone-width track; keep every other one. */
+  .auto-sleep-axis-track span:nth-child(even){display:none}
   .ha-oauth-actions,.ha-oauth-links{width:100%}
   .ha-oauth-actions .pbtn{flex:1 1 auto;text-align:center}
   .autobright-head{flex-direction:column}
@@ -533,6 +546,8 @@ body.hdr-hide-brand .hdr .brand{display:none}
 .log-actions{margin-left:auto}
 .log-toolbar .log-follow{display:flex;flex-direction:row;align-items:center;gap:4px;margin:0;white-space:nowrap}
 .logview{height:60vh;overflow-y:auto;background:#0d0d0d;border:1px solid var(--divider);border-radius:8px;padding:8px 10px;font:.78rem/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
+/* On a phone, wrap log lines at spaces before splitting a word. */
+@media(max-width:600px){.logview{word-break:normal;overflow-wrap:anywhere}}
 .lg-line{min-height:1em}
 .lg-V,.lg-D{color:#777}
 .lg-I{color:#cfcfcf}
