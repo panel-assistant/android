@@ -77,7 +77,7 @@
     <string name="checking_mqtt_connection">Verifica della connessione MQTT…</string>
     <string name="takes_few_seconds_hint">Richiede alcuni secondi. Non devi fare nulla qui.</string>
     <string name="browser_engine_too_old">Il motore del browser di questo pannello è troppo vecchio.</string>
-    <string name="browser_engine_too_old_hint">Le dashboard di Home Assistant ne richiedono uno più recente. Aggiornalo nella pagina di configurazione in un browser.</string>
+    <string name="browser_engine_too_old_hint">Le dashboard di Home Assistant ne richiedono uno più recente. Risolvi il problema nella pagina di configurazione in un browser.</string>
     <string name="choose_dashboard_app">Scegli un’app per la dashboard.</string>
     <string name="continue_setup_browser">Continua nella pagina di configurazione in un browser.</string>
     <string name="connected_next_ha_address">Connesso. Passaggio successivo: l’indirizzo di Home Assistant.</string>
@@ -181,7 +181,7 @@
     <string name="entity_filter_attention_detail">Non c’è alcun problema con Home Assistant. Prima di aprire la dashboard, il pannello richiede una risposta sui controlli di sicurezza rilevati durante la lettura delle entità. Numero da esaminare: %1$d.</string>
     <string name="entity_filter_attention_remote">Non c’è alcun problema con Home Assistant. Prima di aprire la dashboard, il pannello richiede una risposta sui controlli di sicurezza rilevati durante la lettura delle entità. Numero da esaminare: %1$d. Le stesse opzioni sono disponibili da un altro dispositivo all’indirizzo %2$s.</string>
     <string name="too_many_flagged_entities">Non c’è alcun problema con Home Assistant. Sono state contrassegnate troppe entità da esaminare sul pannello. Apri le impostazioni delle entità per semplificare la dashboard oppure tocca Disattiva filtro entità.</string>
-    <string name="entity_scan_auth_rejected">Home Assistant ha rifiutato l’accesso del pannello quando il pannello ha richiesto quali entità mostrare. La dashboard non è stata aperta. Configura apre le impostazioni di questo pannello, dove Connessione Home Assistant contiene l’accesso; la dashboard tornerà automaticamente non appena funzionerà.</string>
+    <string name="entity_scan_auth_rejected">Home Assistant ha rifiutato l’accesso del pannello quando il pannello ha richiesto quali entità mostrare. La dashboard non è stata aperta. Configura apre le impostazioni di questo pannello, dove Connessione Home Assistant contiene l’accesso; la dashboard tornerà automaticamente non appena l’accesso funzionerà.</string>
     <string name="entity_scan_failed_detail">La scansione delle entità non è terminata, quindi la dashboard non è stata aperta. Verifica che Home Assistant sia in esecuzione e che il pannello sia connesso alla rete, quindi riprova.</string>
     <string name="entity_scan_preparing_detail">Home Assistant si aprirà quando il primo set di entità filtrate sarà pronto.</string>
     <string name="entity_learning_reload_notice">Una volta aperto, Home Assistant potrebbe ricaricarsi alcune volte mentre il pannello apprende. È normale.</string>
@@ -220,7 +220,7 @@
     <string name="guard_db_deadline">Scadenza non prorogabile: %1$d ms trascorsi</string>
     <string name="guard_db_forward_deadline">" · avanzamento: %1$d"</string>
     <string name="guard_db_unreachable">L’helper root si sta riavviando o non è raggiungibile. Non è consentita alcuna modifica.</string>
-    <string name="guard_db_malformed">La risposta del registro root non è valida. Il ripristino è sospeso.</string>
+    <string name="guard_db_malformed">La risposta del registro root è malformata. Il ripristino è sospeso.</string>
     <string name="guard_db_unsupported">L’helper installato non può eseguire questo ripristino. Il ripristino è sospeso.</string>
     <string name="no_pending_physical_approval">Nessuna approvazione fisica in attesa.</string>
     <string name="pending_physical_approval">Approvazione fisica in attesa</string>
@@ -231,8 +231,8 @@
     <string name="shizuku_open">Apri Shizuku</string>
     <string name="disable">Disattiva</string>
     <string name="shizuku_title">Accesso avanzato (Shizuku)</string>
-    <string name="shizuku_scope">Non consente caricamenti APK arbitrari, la sostituzione di WebView, una shell generica, dati root delle app, il riavvio, log o controlli sulle app del produttore.\n\nUna volta attivate, le operazioni supportate possono essere richiamate tramite i controlli LAN attendibili esistenti di ha-paneld su questo pannello.</string>
-    <string name="shizuku_grant_scope">Concede solo a ha-paneld con firma verificata aggiornamenti minimi di Companion, acquisizioni dello schermo, input di tasti e tocchi, densità e dimensioni del testo. %1$s</string>
+    <string name="shizuku_scope">Non consente caricamenti APK arbitrari, la sostituzione di WebView, una shell generica, l’accesso root ai dati delle app, il riavvio, log o controlli sulle app del produttore.\n\nUna volta attivato l’accesso avanzato, le operazioni supportate possono essere richiamate tramite i controlli LAN attendibili esistenti di ha-paneld su questo pannello.</string>
+    <string name="shizuku_grant_scope">Consente solo aggiornamenti di ha-paneld con firma verificata e aggiornamenti minimi di Companion, acquisizioni dello schermo, input di tasti e tocchi, operazioni su densità e dimensioni del testo. %1$s</string>
     <string name="shizuku_not_installed">Shizuku non è installato. Esegui una volta lo script di provisioning di ha-paneld tramite ADB, quindi approva qui l’accesso sul pannello.</string>
     <string name="shizuku_untrusted">È installato un pacchetto denominato Shizuku, ma il relativo certificato di firma non è attendibile. ha-paneld non si connetterà.</string>
     <string name="shizuku_disabled">L’accesso avanzato è disattivato in ha-paneld. Scegli Attiva qui sul pannello per iniziare l’approvazione locale.</string>
@@ -246,7 +246,7 @@
 
     <string name="camera_channel">Fotocamera</string>
     <string name="camera_in_use">Fotocamera in uso</string>
-    <string name="storage_health_channel">Integrità archiviazione</string>
+    <string name="storage_health_channel">Stato dell’archiviazione</string>
     <string name="storage_health_channel_description">Errori critici dell’archiviazione del pannello e di SQLite</string>
     <string name="panel_agent_channel_description">Agente hardware del pannello per Home Assistant</string>
     <string name="storage_pressure_title">Pressione critica sull’archiviazione/database del pannello</string>

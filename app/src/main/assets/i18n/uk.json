@@ -76,22 +76,22 @@
   "configure.advanced.hide": {
    "text": "Приховати розширені налаштування",
    "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.advanced.marker": {
-   "text": "Розширені налаштування",
+   "text": "Розширений параметр",
    "sourceHash": "1ecce239dd12663aefa9aca6f9af9ded4bbd836f31b92c0d7ee13fa8be70863c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.advanced.show": {
-   "text": "Показати розширені налаштування{count}",
+   "text": "Показати {count} розширених налаштувань",
    "sourceHash": "9434fab91d8b47be7204cbac457ef3d8a6deb989c492c3a3fd07cd7fc3f234a1",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.advanced.show_one": {
    "text": "Показати 1 розширений параметр",
    "sourceHash": "4ced5c73c9386e299ffb7140a1e4bfd886389649307b9e6b3be1986ca73433fd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.approval.retry": {
    "text": "Схваліть цей запит на панелі, а потім повторіть спробу.",
@@ -856,7 +856,7 @@
   "configure.descriptions": {
    "text": "Описи",
    "sourceHash": "bfdc0de709bad8dae81cdf3af8d97f1d6e5b2510af3c97befd5efdf06d144e3b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.display.recommend_prefix": {
    "text": " Рекомендовано використовувати ",
@@ -921,12 +921,12 @@
   "configure.filter.label": {
    "text": "Знайти налаштування",
    "sourceHash": "556e14934a4a4550aa43766e0f576030549cd26062f8817fd77da448fd5a7df9",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.filter.placeholder": {
    "text": "Знайти налаштування…",
    "sourceHash": "ca4431193303dd52b89f68f0bf95e20f84c566ee4e39fadaaaa8c4b063646118",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.group.behaviour": {
    "text": "Поведінка",
@@ -1006,17 +1006,17 @@
   "configure.help.about": {
    "text": "Про {label}",
    "sourceHash": "865cb604bf97d2ebd9a36bc4166170c23c9c36bd26c9da89e9d909e15d83df11",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.help.close": {
    "text": "Закрити",
    "sourceHash": "7d9eb7acb13e24625c404401d8e88b2350e32162455885f18276cf802f7701ed",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.help.more": {
    "text": "Детальніше на веб-сайті",
    "sourceHash": "85a7086e3ef77e8a6ffe36a45b39c3847e3b5e2c5a307cf4e2ca831f78969c87",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.language.automatic": {
    "text": "Автоматично",
@@ -1514,7 +1514,7 @@
    "state": "machine-cross-checked"
   },
   "configure.renderer.companion_launcher_hint": {
-   "text": "Увімкніть параметр запуску в застосунку Companion, щоб він міг стати головним екраном.",
+   "text": "Увімкніть у застосунку Companion опцію лаунчера, щоб він став головним екраном.",
    "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
    "state": "machine-draft"
   },
@@ -1681,7 +1681,7 @@
   "configure.tier.label": {
    "text": "Показані налаштування",
    "sourceHash": "9179eb2ff402a88c959d3ab86fe0ac1c7e4e5705c04c29ccc3a57f9c24a02cec",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.time.days_ago": {
    "text": "{count} дн. тому",
@@ -4524,7 +4524,7 @@
    "state": "machine-cross-checked"
   },
   "entities.control.apply_policy": {
-   "text": "Застосувати політику ({current} → {desired})",
+   "text": "Застосувати набір за політикою ({current} → {desired})",
    "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
    "state": "machine-cross-checked"
   },
@@ -6149,7 +6149,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_restored_selection_staged": {
-   "text": "Каталог профілів відновлено; вибір підготовлено для перезапуску з перевіркою працездатності.",
+   "text": "Каталог профілів відновлено; вибір підготовлено для перезапуску з контролем результату за перевіркою працездатності.",
    "sourceHash": "71d179990d3bdbab24c8dc55c8ab5a9cd6af24ed3707703477c00ea94c59c9f7",
    "state": "machine-cross-checked"
   },
@@ -8959,7 +8959,7 @@
    "state": "machine-cross-checked"
   },
   "runtime.power_safety.repair.partial": {
-   "text": "Відновлення безпеки живлення виконано частково. Перезавантаження не виконувалося.",
+   "text": "Відновлення безпеки живлення виконано частково. Спроби перезавантаження не було.",
    "sourceHash": "bb01ca3de49cb0c0aaa0b86eda7c04f16fe98dddeceaefaea5934fe75b07d374",
    "state": "machine-cross-checked"
   },
@@ -9046,7 +9046,7 @@
   "settings.auto_brightness.summary": {
    "text": "Дозволити панелі налаштовувати підсвічування залежно від рівня навколишнього освітлення.",
    "sourceHash": "57d522af96e04b4db48e8fb5fb8f7ed33385a068a93cd941a026b89fa3fee539",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_ha_entity.help": {
    "text": "Порожнє значення: використовується датчик освітлення панелі. Якщо панель не має придатного датчика, виберіть датчик освітленості з Home Assistant.",
@@ -9061,7 +9061,7 @@
   "settings.auto_brightness_ha_entity.summary": {
    "text": "Використовуйте датчик освітленості «Home Assistant» замість вбудованого в панель.",
    "sourceHash": "703710414afe74c55e969564e23cc7c7f0647d059ffa3237463fa03739902567",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_maximum_percent.help": {
    "text": "Найвищий автоматичний рівень яскравості екрана у відсотках. Запропоновані рівні лежать між мінімумом і максимумом; вручну яскравість можна підвищити ще більше.",
@@ -9089,14 +9089,14 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness_minimum_percent.summary": {
-   "text": "Буде обрано найнижчий рівень автоматичної яскравості.",
+   "text": "Найнижчий рівень, який може обрати автояскравість.",
    "sourceHash": "766c3d61ea08f66c252698b4d3b14f05cde1e4a97c64e8c4fc112b23557a8fb5",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_response_percent.help": {
    "text": "Яка частка відхилення від вивченого шаблону навколишнього освітлення застосовується до екрана, щойно механізм вирішив, що зміна справжня.\n\n- Нижчі значення тримають екран ближче до вивченого щоденного шаблону.\n- Поки шаблон ще вивчається, екран безпосередньо слідує за виміряним освітленням.",
    "sourceHash": "ff745f90fe6123b0741034697f8808ef61f561c1ef46629a5f49540dcda4661b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_response_percent.label": {
    "text": "Чутливість",
@@ -9104,9 +9104,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness_response_percent.summary": {
-   "text": "Наскільки точно екран відстежує реальні зміни освітлення в кімнаті.",
+   "text": "Наскільки сильно екран реагує на реальну зміну освітлення в кімнаті.",
    "sourceHash": "264844be6dcbd529b02d2f956995dc97d031228c0590f6018240bdab1a91db0c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
    "text": "Вимикає екран після вивченої затримки вибраного режиму присутності або заданої затримки за відсутності дотику. Ручне керування екраном залишається окремим.",
@@ -9121,7 +9121,7 @@
   "settings.auto_sleep.summary": {
    "text": "Вимкнути екран, коли нікого немає поруч або після періоду бездіяльності.",
    "sourceHash": "6ca654fd4bb061b43620b620223404c0befcf61fa2ef2f1318e9d108b2f33b9c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_activity.help": {
    "text": "Чи утримує зараз політика автоматичного сну панель в активному стані. Сутність Home Assistant надає хронологію історії активності.",
@@ -9136,7 +9136,7 @@
   "settings.auto_sleep_activity.summary": {
    "text": "Чи утримує функція автоматичного переходу в режим сну панель у активному стані.",
    "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_enabled.help": {
    "text": "За замовчуванням вимкнено. Надає відео RTSP зі звуком із кімнати, якщо мікрофон доступний і є дозвіл на його використання, а також знімки JPEG для Home Assistant. Захоплення починається лише тоді, коли клієнт запитує медіа, а панель показує червоний індикатор, поки камера відкрита.",
@@ -9151,7 +9151,7 @@
   "settings.camera_enabled.summary": {
    "text": "Використовувати камеру панелі як потік «RTSP» та знімок «JPEG».",
    "sourceHash": "e65ab34035912691390aca7ec68d80e2400983b2ef83350e51ea36c4095a25a2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_exposure.help": {
    "text": "Зсув експозиції в ступенях для камери, яка сприймає приміщення темнішим або світлішим, ніж воно є насправді. Значення 0 залишає автоматичну експозицію камери без змін; панель обмежує це значення діапазоном, який фактично підтримує датчик.",
@@ -9166,7 +9166,7 @@
   "settings.camera_exposure.summary": {
    "text": "Зсув експозиції в стопах. Значення 0 залишає автоматичну експозицію без змін.",
    "sourceHash": "7c89abca8ecf2cddbc62fe9d25eb4bae95570852ed99f39254e2d008a17f0e5a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_fps.help": {
    "text": "Що отримує потік, коли його URL не вимагає іншого. URL потоку може перевизначити це значення за допомогою ?fps= в будь-який бік.",
@@ -9181,7 +9181,7 @@
   "settings.camera_fps.summary": {
    "text": "Стандартна частота кадрів; адреса потоку може її замінити.",
    "sourceHash": "c1101605aebb6489964e7eadeb38593db279b596f2f0d1481853ada2f73c60b8",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_kbps.help": {
    "text": "Що отримує потік, коли його URL не вимагає іншого. URL потоку може перевизначити це значення за допомогою ?kbps= в будь-який бік.",
@@ -9196,7 +9196,7 @@
   "settings.camera_kbps.summary": {
    "text": "Стандартна швидкість передавання; адреса потоку може її замінити.",
    "sourceHash": "ea235ad59bb583ce8b30cb510f4e2d8661a304e9ba6cddd0e2943032d618c971",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_resolution.help": {
    "text": "Що отримує потік, коли його URL не вимагає іншого. URL потоку може перевизначити це значення за допомогою ?res= в будь-який бік.",
@@ -9211,7 +9211,7 @@
   "settings.camera_resolution.summary": {
    "text": "Роздільна здатність потоку за замовчуванням; адреса потоку може її замінити.",
    "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.cpu_governor.help": {
    "text": "Профіль масштабування CPU, що застосовується одразу й діє до перезавантаження; Авто = динамічний регулятор SoC.",
@@ -9226,12 +9226,12 @@
   "settings.cpu_governor.summary": {
    "text": "Профіль масштабування процесора до наступного перезавантаження.",
    "sourceHash": "899d9bfb9f86429bc13165fe8a45bfc78f59149c7a49418b9783f3dc43d63b47",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dark_mode.help": {
    "text": "Задає тему власних екранів ha-paneld і стандартну колірну схему інформаційної панелі на панелях без системного налаштування темного режиму (Android 9 і старіші).\n\nТема, обрана в Home Assistant, перевизначає стандартну схему інформаційної панелі; цей веб-UI завжди дотримується налаштувань браузера, у якому його переглядають.",
    "sourceHash": "853ed1512986d08ad813002d9cb672dbfcb1261b3b2447bfc4b52301b163c2eb",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dark_mode.label": {
    "text": "Темний режим",
@@ -9239,9 +9239,9 @@
    "state": "machine-cross-checked"
   },
   "settings.dark_mode.summary": {
-   "text": "Темна тема для власних екранів «ha-paneld» та панелі управління за замовчуванням.",
+   "text": "Темна тема для власних екранів ha-paneld і типова тема інформаційної панелі.",
    "sourceHash": "796ecaff6531067757b7a3ac15e2483dcd43e3a85af57f0090224ef0c9f5f22a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_entity_auto_runtime.help": {
    "text": "Відсутні сутності, прочитані через hass.states, можуть додаватися автоматично. Докази залишаються видимими, навіть коли функцію вимкнено.",
@@ -9276,7 +9276,7 @@
   "settings.dashboard_entity_learning.summary": {
    "text": "Транслюйте лише сутності, які використовує ця інформаційна панель.",
    "sourceHash": "66be8978b2f2634a9b30dc43beeae293aa0d8a0fc4c7c4aa4a8e0186bb9dbf9c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_entity_learning_applied.help": {
    "text": "Прапорець активації, безпечний для резервних копій. Встановлюється після безпечного початкового налаштування з порожньої інсталяції або явного застосування через API сутностей чи вкладку «Сутності».",
@@ -9301,7 +9301,7 @@
   "settings.dashboard_fullscreen.help": {
    "text": "Лише для вбудованого рендерера. Приховує панелі стану й навігації Android, поки інформаційна панель на передньому плані; щоб тимчасово їх показати, проведіть пальцем від краю.\n\nЦе не блокує панель і не приховує навігацію Home Assistant.",
    "sourceHash": "c410a8d3eb3474145a680214c11fac9bb2e096eeae2742daf1e0fbdd74726f8e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_fullscreen.label": {
    "text": "Приховати системні панелі Android",
@@ -9311,7 +9311,7 @@
   "settings.dashboard_fullscreen.summary": {
    "text": "Приховати системні панелі стану та навігації за панеллю приладів.",
    "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_idle_return_min.label": {
    "text": "Повернення на головну після простою (хв)",
@@ -9319,14 +9319,14 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_idle_return_min.summary": {
-   "text": "Кількість хвилин бездіяльності перед поверненням додому. Значення 0 вимикає цю функцію.",
+   "text": "Хвилини бездіяльності перед поверненням на головну. 0 вимикає цю функцію.",
    "sourceHash": "c09a7ad02ecc153c31c694acf64312f9b69bc920fad09a62091730ac4f61d05c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.help": {
    "text": "Лише для вбудованого рендерера. Після підключення Home Assistant 2026.4.2+ просить його власний інтерфейс приховати навігацію.\n\nУвімкнено за замовчуванням; якщо запит не підтримується або не вдається, інформаційна панель залишається без змін. Це не блокує Android і не вставляє CSS в інформаційну панель.",
    "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.label": {
    "text": "Приховати навігацію Home Assistant (нативно)",
@@ -9336,7 +9336,7 @@
   "settings.dashboard_native_kiosk.summary": {
    "text": "Попросіть Home Assistant приховати власну навігацію.",
    "sourceHash": "5fd4788997717aea56fb4c039aa40bcb0cb04c128c7cb5b19fc102b439bf486b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_network_warning.help": {
    "text": "Показувати попередження про мережеве з’єднання на цій інформаційній панелі. Якщо вимкнути цю опцію, перевірки та стан мережі залишаться доступними.",
@@ -9349,9 +9349,9 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_network_warning.summary": {
-   "text": "Показувати попередження на панелі інструментів у разі зникнення мережевого з’єднання.",
+   "text": "Показувати попередження на інформаційній панелі в разі втрати мережевого з’єднання.",
    "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_overscroll.help": {
    "text": "Вбудований рендерер: дозволити ефект розтягування/світіння Android під час прокручування за верхній або нижній край інформаційної панелі. За замовчуванням вимкнено (настінна панель рідко прокручується, і такий відскок виглядає недоречно). Лише через API — встановіть true, щоб відновити стандартний ефект.",
@@ -9371,12 +9371,12 @@
   "settings.dashboard_package.summary": {
    "text": "Застосунок, що показує панель приладів. Порожнє поле — вбудований рендерер.",
    "sourceHash": "968f7a73a5e8876febb8b8f254404f502bedf77b3df100cb14a52a40dc823a6e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.help": {
    "text": "Лише для вбудованого рендерера.\n\n- **Як у Home Assistant** залишає вибір світлої/темної теми інформаційної панелі за Home Assistant, для якого налаштування Темний режим задає значення за замовчуванням.\n- **Темна** і **Світла** обирають тему на цій панелі, коли в Home Assistant встановлено Авто, для кіоскової інформаційної панелі без бічної панелі, з якої можна відкрити сторінку профілю Home Assistant.\n- **За освітленням** обирає Темна або Світла за освітленням кімнати, як його бачить модель автоматичної яскравості, і змінює тему лише після того, як кімната протягом хвилини залишалася темнішою або світлішою; для цього потрібно ввімкнути Автояскравість, а доки немає показань, тема відповідає Home Assistant.\n\nЯвний вибір Світла або Темна в Home Assistant усе одно має пріоритет; використовуйте Авто або окремого користувача для панелі. Повернення до Як у Home Assistant повертає вибір точно в тому стані, в якому його було знайдено.",
    "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.label": {
    "text": "Тема інформаційної панелі",
@@ -9386,7 +9386,7 @@
   "settings.dashboard_theme.summary": {
    "text": "Хто вибирає світлий або темний режим: Home Assistant, ця панель чи кімната.",
    "sourceHash": "45c7a962327b3b7de0ff2853bb28d7053772e39f164b809e3aacba83e170862f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_zoom.help": {
    "text": "Масштабування браузера.",
@@ -9404,9 +9404,9 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_zoom.summary": {
-   "text": "Масштабування браузера для панелі інструментів.",
+   "text": "Масштабування браузера для інформаційної панелі.",
    "sourceHash": "ffca38a9cb226e6a7726957fdcb1ff0b2999887bed938e40573cdd3abc418106",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_boot.help": {
    "text": "Коли панель востаннє завантажилася (мітка часу — HA показує час безперервної роботи).",
@@ -9421,7 +9421,7 @@
   "settings.diag_boot.summary": {
    "text": "Коли панель запускалася востаннє.",
    "sourceHash": "de15195916f3c5747fa14f3b2810cceed59f39c51f1717898c2a287bef43cd92",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_cpu.help": {
    "text": "Загальний відсоток завантаженості CPU (панелі з root/su; недоступно на панелях, ізольованих пісочницею).",
@@ -9436,7 +9436,7 @@
   "settings.diag_cpu.summary": {
    "text": "Загальний відсоток завантаженості процесора.",
    "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_ip.label": {
    "text": "IP-адреса",
@@ -9446,7 +9446,7 @@
   "settings.diag_ip.summary": {
    "text": "Локальна адреса цієї панелі: IPv4.",
    "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_memory.label": {
    "text": "Використання пам'яті",
@@ -9456,7 +9456,7 @@
   "settings.diag_memory.summary": {
    "text": "Використана пам’ять у відсотках.",
    "sourceHash": "cdfa125d539f4dbd775d6872fb7c09f4eccb57ecfc832d8c8d22bf7c4beaee21",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_soc_temp.help": {
    "text": "Температура системи на кристалі (панелі з root/su; недоступно на панелях, ізольованих пісочницею).",
@@ -9471,7 +9471,7 @@
   "settings.diag_soc_temp.summary": {
    "text": "Температура процесора.",
    "sourceHash": "3c5a5ff799d7c2ac91c8b0896b2bd4e161d39613309f07a989c4922dc1b53c96",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_wifi_outages_24h.help": {
    "text": "Короткі розриви Wi-Fi за останні 24 години (ковзне вікно). Враховується лише втрата активного з’єднання Wi-Fi панелі — збої Home Assistant або брокера ніколи не враховуються. Якщо панелі довелося обмежити обсяг збережених даних, атрибут датчика is_lower_bound вказує, що значення є нижньою межею.",
@@ -9484,9 +9484,9 @@
    "state": "machine-cross-checked"
   },
   "settings.diag_wifi_outages_24h.summary": {
-   "text": "Короткі перебої в роботі сервера Wi-Fi за останні 24 години.",
+   "text": "Короткі розриви Wi-Fi за останні 24 години.",
    "sourceHash": "f5d1698495507bfc32ba9f00f003aafee8008708a5cef312282931996d3db135",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_wifi_rssi.help": {
    "text": "Поточна потужність прийнятого сигналу Wi-Fi у dBm, коли Wi-Fi є активним з’єднанням.",
@@ -9501,7 +9501,7 @@
   "settings.diag_wifi_rssi.summary": {
    "text": "Поточна сила сигналу «Wi-Fi».",
    "sourceHash": "8fb8466dfbc5f1f6fa620e4c7775d8e07e4087bb47bbbd22f9ffc523fa0546d6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_wifi_ssid.help": {
    "text": "Назва поточної мережі Wi-Fi, коли Wi-Fi є активним з’єднанням. Вона може вказувати на місцезнаходження й потрапляє в історію HA, якщо її відкрито; Android може приховувати її, якщо немає дозволу на інформацію про мережу.",
@@ -9514,9 +9514,9 @@
    "state": "machine-cross-checked"
   },
   "settings.diag_wifi_ssid.summary": {
-   "text": "Поточна мережа «Wi-Fi».",
+   "text": "Назва поточної мережі Wi-Fi.",
    "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.friendly_name.label": {
    "text": "Зручна назва",
@@ -9524,9 +9524,9 @@
    "state": "machine-cross-checked"
   },
   "settings.friendly_name.summary": {
-   "text": "Назва «Home Assistant» відображається для цієї панелі.",
+   "text": "Назва, яку Home Assistant показує для цієї панелі.",
    "sourceHash": "2b7babb55807e9fe58ad6ec530965e8511d1259bf99e459ceafe9073ec479f92",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ha_area.help": {
    "text": "Де розташована ця панель — назва приміщення в Home Assistant. Змінити її в ha-paneld можна лише тоді, коли ваш користувач HA має права адміністратора; інакше змініть її у своєму пристрої в HA.",
@@ -9541,7 +9541,7 @@
   "settings.ha_area.summary": {
    "text": "Home Assistant Область, до якої належить ця панель.",
    "sourceHash": "992b9c57355acf08ce839cbf4c2c66e2652cf5c0597bf380cc777b54e40833ef",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ha_client_id.help": {
    "text": "Походження внутрішнього токена зберігається для сумісності з імпортом API/config. Позичені токени Companion використовують клієнт Android Companion; вхід через браузер ha-paneld використовує джерело HTTP панелі. Це не налаштування користувача.",
@@ -9576,7 +9576,7 @@
   "settings.ha_token.summary": {
    "text": "Резервний токен, коли вхід через браузер неможливий.",
    "sourceHash": "d9d6c0fd8bc2c8048adf70c2de740fde6e68907c21575ecf8d6583374d3a80dd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ha_token_expiry.help": {
    "text": "Термін дії внутрішнього токена доступу OAuth, що зберігається разом із відповідними токенами доступу й оновлення під час приватного резервного копіювання та відновлення.",
@@ -9601,12 +9601,12 @@
   "settings.ha_url.summary": {
    "text": "Адреса вашого сервера Home Assistant.",
    "sourceHash": "292a8aafd3c78ab22bb939061885d5acdedc69c6b75019b4c9d34cc6ec1c8c13",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.home_dashboard.help": {
-   "text": "Інформаційна панель, яку використовують перезавантаження та повернення після простою.\n\n- **Авто** дозволяє вибрати Home Assistant.\n- **Власна** приймає конкретне подання, наприклад `/dashboard-name/tab-name`.",
+   "text": "Інформаційна панель, яку використовують перезавантаження та повернення після простою.\n\n- **Авто** дозволяє Home Assistant зробити вибір.\n- **Власна** приймає конкретне подання, наприклад `/dashboard-name/tab-name`.",
    "sourceHash": "8f44a63324b05223da2292e2fd4a8b080d40c67ec0a1faca36b8b6c237a8febe",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.home_dashboard.label": {
    "text": "Головна інформаційна панель",
@@ -9614,9 +9614,9 @@
    "state": "machine-cross-checked"
   },
   "settings.home_dashboard.summary": {
-   "text": "Панель інструментів відкривається після перезавантаження та повернення в режим очікування.",
+   "text": "Інформаційна панель, що відкривається після перезавантаження та повернення після простою.",
    "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.humidity.label": {
    "text": "Вологість",
@@ -9626,7 +9626,7 @@
   "settings.humidity.summary": {
    "text": "Вологість за даними системного датчика панелі.",
    "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.illuminance.label": {
    "text": "Навколишнє освітлення",
@@ -9636,7 +9636,7 @@
   "settings.illuminance.summary": {
    "text": "Рівень навколишнього освітлення, визначений датчиком панелі.",
    "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.keep_awake.label": {
    "text": "Швидка реакція панелі",
@@ -9646,7 +9646,7 @@
   "settings.keep_awake.summary": {
    "text": "Забезпечити роботу мережі та служб, коли екран вимкнений.",
    "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.kiosk_companion_packages.help": {
    "text": "Імена пакетів Android, розділені комами, які блокування інформаційної панелі залишає на передньому плані замість повернення до інформаційної панелі. Використовуйте цю опцію для переходу до екранів супутнього додатка. Потрібні права root.",
@@ -9661,12 +9661,12 @@
   "settings.kiosk_companion_packages.summary": {
    "text": "Додатки, які блокування залишає на передньому плані, за назвою пакета.",
    "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.kiosk_lock.help": {
    "text": "Блокування для повсякденного використання, лише з root. Приховує системні панелі Android і повертає до вибраної інформаційної панелі приблизно за 3 секунди, коли відкривається інший застосунок або «Недавні». Воно не приховує навігацію Home Assistant.\n\nЗняти його можна:\n\n- тут або з Home Assistant\n- через adb\n- 7 швидкими натисканнями у верхньому лівому куті\n- протягом 60-секундного вікна без блокування після перезавантаження",
    "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.kiosk_lock.label": {
    "text": "Режим кіоску Android (експериментально)",
@@ -9676,7 +9676,7 @@
   "settings.kiosk_lock.summary": {
    "text": "Лише для суперкористувача. Повернути панель приладів після відкриття іншого застосунку.",
    "sourceHash": "e9055e43b4f6a114f2d4e789b65ea17fc24fecfbc2b5fb1417b1ba9e54f628fd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.launcher_package.help": {
    "text": "Застосунок, який виводить на передній план кнопка «Програма запуску». Якщо порожньо, застосунок вибирається автоматично. Вибір «Panel admin» (ha-paneld) також робить ha-paneld домашнім застосунком Android і утримує його таким.",
@@ -9689,9 +9689,9 @@
    "state": "machine-cross-checked"
   },
   "settings.launcher_package.summary": {
-   "text": "Відкривається кнопка запуску програми.",
+   "text": "Застосунок, який відкриває кнопка «Програма запуску».",
    "sourceHash": "b2dadcf62b45755d46bca03a6522073177068495b10956c04c39699194956d04",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_enabled.help": {
    "text": "Пересилати власний журнал процесу ha-paneld — а не повний системний журнал — до центрального приймача (LAN-only, токени й паролі приховано).",
@@ -9706,7 +9706,7 @@
   "settings.log_ship_enabled.summary": {
    "text": "Надіслати власний журнал ha-paneld до колектора у вашій мережі.",
    "sourceHash": "d9d0543772220c0f2d59b7a38f1fe26075b0ac588c1534434ec2644c1fac6b98",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_host.help": {
    "text": "Хост збирача журналів; якщо поле залишити порожнім, відправка залишається неактивною. Схема або :port тут враховується (udp://collector, collector:1514).",
@@ -9721,7 +9721,7 @@
   "settings.log_ship_host.summary": {
    "text": "Адреса колектора журналів. Порожнє поле вимикає передачу даних.",
    "sourceHash": "2de7304ca6cbdb82707a94e19b7e94df4ae18b8d408730c04fe716f554625fba",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_port.label": {
    "text": "Порт приймача",
@@ -9731,7 +9731,7 @@
   "settings.log_ship_port.summary": {
    "text": "Порт колектора журналів.",
    "sourceHash": "4cf403c3eedb4aae0bc497387596f2a6d1bcc5908d9b883f821e381e733cc4a3",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_protocol.help": {
    "text": "TCP використовується за замовчуванням, бо він повідомляє про приймач, який відмовляє або недоступний; UDP цього не вміє, тому помилкове налаштування там не дає жодної помилки. Порт 514 обслуговує обидва.",
@@ -9744,14 +9744,14 @@
    "state": "machine-cross-checked"
   },
   "settings.log_ship_protocol.summary": {
-   "text": "Передача даних до колектора. Повідомлення «TCP» означає відмову приймача.",
+   "text": "Транспорт до збирача журналів. TCP повідомляє про відмову приймача.",
    "sourceHash": "db01cfc12070a7e72e1bee1187e7e24fa38984e742a19b523dc6bb2a3ca6cbc3",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_system_enabled.help": {
    "text": "Пересилає системні журнали Android до того самого приймача, коли ввімкнено «Пересилати журнали».\n\n- Типово вимкнено.\n- Потрібні TCP або HTTP та права суперкористувача або встановлений допоміжний компонент.\n- Записи маскуються, а за великого потоку деякі можуть бути пропущені.",
    "sourceHash": "bfc7f5d141f83c2cf7f2c168f8e492af3f7fe3b50efff70a0435d15bb0524fa2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_system_enabled.label": {
    "text": "Пересилати системні журнали",
@@ -9761,7 +9761,7 @@
   "settings.log_ship_system_enabled.summary": {
    "text": "Також надсилайте системні журнали пристрою до колектора.",
    "sourceHash": "a172f1f97d43da721b10903ca5c2268afbd25f6b77048716ceb1c9526bdf13da",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.manufacturer.help": {
    "text": "Перевизначення виробника на картці пристрою HA (порожньо = профіль/авто).",
@@ -9776,7 +9776,7 @@
   "settings.manufacturer.summary": {
    "text": "Перезаписати виробника на картці пристрою «Home Assistant».",
    "sourceHash": "3228d0bdc49534bc5cb89d049c2c41fd1a0015338b353ca03a442f71fa7a33f6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.model.help": {
    "text": "Перевизначення моделі на картці пристрою HA (порожньо = профіль/авто).",
@@ -9791,7 +9791,7 @@
   "settings.model.summary": {
    "text": "Перезаписати модель на картці пристрою «Home Assistant».",
    "sourceHash": "ca6b303ae590f03bc698654dc1506b6ab7ae9ace6609b91d5f37a427f69d985f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_address_family.help": {
    "text": "Застосовується до з’єднання з брокером MQTT і з’єднань WebSocket панелі з Home Assistant; звичайні запити HTTPS завжди пробують кожну опубліковану адресу. «Автоматично» вивчає робочий маршрут і перемикається між IPv6 та IPv4. «Надавати перевагу IPv4» залишає IPv6 як резервний варіант; «Примусово IPv4» відхиляє кінцеві точки без адреси IPv4.",
@@ -9804,9 +9804,9 @@
    "state": "machine-cross-checked"
   },
   "settings.mqtt_address_family.summary": {
-   "text": "Використовуйте IPv4, IPv6 або обидва, щоб перейти на MQTT та Home Assistant.",
+   "text": "Використовуйте IPv4, IPv6 або обидва для з’єднання з MQTT та Home Assistant.",
    "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_broker.label": {
    "text": "URL брокера",
@@ -9816,7 +9816,7 @@
   "settings.mqtt_broker.summary": {
    "text": "Адреса брокера MQTT. Якщо порожньо, Home Assistant знайдеться автоматично.",
    "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_password.label": {
    "text": "Пароль",
@@ -9826,7 +9826,7 @@
   "settings.mqtt_password.summary": {
    "text": "MQTT пароль. Якщо залишити поле порожнім, буде збережено поточний пароль.",
    "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_user.label": {
    "text": "Ім'я користувача",
@@ -9836,12 +9836,12 @@
   "settings.mqtt_user.summary": {
    "text": "MQTT Ім’я користувача для цієї панелі.",
    "sourceHash": "c9051f2d3306c556507ff4d4d714230ec1201407135b13f6acad7f1541d4502e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.navbar_mode.help": {
    "text": "Програмна екранна панель навігації для панелей без власної панелі навігації. **Вбудований** режим залишає навігацію власній панелі Android пристрою й нічого не малює.\n\nПриховування системних панелей Android — через налаштування повноекранного режиму вбудованого рендерера або блокування Android на інформаційній панелі — все одно приховує власну панель.",
    "sourceHash": "5a6df2f1452dcbc4734840f9f5cef12eacdb2ecb12bd2d00c3107b445a069d36",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.navbar_mode.label": {
    "text": "Режим навігаційної панелі",
@@ -9851,12 +9851,12 @@
   "settings.navbar_mode.summary": {
    "text": "Показати програмну панель навігації на панелях, які не мають вбудованої.",
    "sourceHash": "e9b0b88a61249c1cc28487059a0851afaf93717cbd41388bdb56d685812ea033",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.network_adb.help": {
    "text": "**Ризик безпеки:** ADB залишається в класичному режимі прослуховування на TCP-порту 5555 після перезавантажень і повторних під’єднань.\n\nВмикайте лише під час активного обслуговування в довіреній мережі. Якщо ADB було ввімкнено поза ha-paneld, його також потрібно вимкнути там.",
    "sourceHash": "c1d223177697675bf4eec7603bd73ba99fd866f002410c92177c1e8ee1bca48b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.network_adb.label": {
    "text": "ADB через мережу",
@@ -9866,7 +9866,7 @@
   "settings.network_adb.summary": {
    "text": "Ризик безпеки. ADB прослуховує порт 5555 після кожного перезавантаження.",
    "sourceHash": "08712f193dc3e77aff305d6dfe706466ed3bcaa53f85c48c5519a6d30a39a924",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.panel_id.help": {
    "text": "Стабільний ідентифікатор, що використовується в IDs сутностей і темах MQTT (малі літери, цифри, підкреслення; не більше 63 символів).",
@@ -9881,7 +9881,7 @@
   "settings.panel_id.summary": {
    "text": "Стабільний ідентифікатор, що використовується в ідентифікаторах сутностей цієї панелі.",
    "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.prevent_idle_dim.label": {
    "text": "Не затемнювати екран",
@@ -9889,9 +9889,9 @@
    "state": "machine-cross-checked"
   },
   "settings.prevent_idle_dim.summary": {
-   "text": "Зупиніть прошивку виробника, яка зменшує яскравість підсвічування при вимкненому екрані.",
+   "text": "Не дозволяти прошивці виробника зменшувати яскравість підсвічування при вимкненні екрана.",
    "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.proximity.label": {
    "text": "Наближення",
@@ -9901,7 +9901,7 @@
   "settings.proximity.summary": {
    "text": "Навчено розпізнавати присутність поблизу або далеко.",
    "sourceHash": "9caab10a7b9b275d97c49aa0f3c65e4a7a4f40c09a933c814c7d9f91024ecc4c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.proximity_level.help": {
    "text": "Нормалізований вивчений рівень наближення від 0 до 100 відсотків; бінарні джерела повідомляють 0 або 100.",
@@ -9914,9 +9914,9 @@
    "state": "machine-cross-checked"
   },
   "settings.proximity_level.summary": {
-   "text": "Визначений рівень близькості, від 0 до 100 відсотків.",
+   "text": "Вивчений рівень наближення, від 0 до 100 відсотків.",
    "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.room_humidity.label": {
    "text": "Вологість у приміщенні",
@@ -9926,7 +9926,7 @@
   "settings.room_humidity.summary": {
    "text": "Вологість у кімнаті за даними датчика клімату.",
    "sourceHash": "bbd12dbcdf9562005a6f6db920aef531ee0cdf0286244dec929a88e66f6a678d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.room_temp.help": {
    "text": "Температура повітря в приміщенні, виміряна підтримуваним панеллю датчиком клімату (з урахуванням калібрувального зміщення).",
@@ -9941,7 +9941,7 @@
   "settings.room_temp.summary": {
    "text": "Температура в кімнаті за даними датчика клімату.",
    "sourceHash": "6787d9ec7159d5f8da89bd45f9c7219f3ef8895cf31c16047e636690857fd732",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.room_temp_offset.help": {
    "text": "Корекція (°C), що додається до показаної температури в приміщенні — зазвичай від’ємна, оскільки самонагрівання панелі призводить до завищених показань. Застосовується до кожної панелі окремо (залежить від способу кріплення), тому не копіюється під час масового оновлення.",
@@ -9954,9 +9954,9 @@
    "state": "machine-cross-checked"
   },
   "settings.room_temp_offset.summary": {
-   "text": "Додано виправлення до температури в приміщенні, у файлі °C.",
+   "text": "Поправка, що додається до температури в приміщенні, у °C.",
    "sourceHash": "978e73e423dcd1a2a8ca227b4dd989ed509d34483ebcc548af7160cc6e52d546",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.screen.help": {
    "text": "Поточний стан і яскравість екрана. Home Assistant показує власну яскравість світла в діапазоні 0–255 у відсотках.",
@@ -9971,7 +9971,7 @@
   "settings.screen.summary": {
    "text": "Стан екрану та яскравість.",
    "sourceHash": "6ba9e68bcfcfc58c954fe6a202ed4f6c8d9df1a8788b1431583756c0740bd43e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.silence_boot_chime.label": {
    "text": "Вимкнути звук завантаження",
@@ -9981,7 +9981,7 @@
   "settings.silence_boot_chime.summary": {
    "text": "Вимкнути звуковий сигнал запуску прошивки.",
    "sourceHash": "57dde483cc0e08a27cd85277831bd12459ec0e78b4672942353d031c00022f6f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.tame_vendor_packages.help": {
    "text": "Сховище лише для резервного копіювання, що містить вибір пакетів, яким керує картка «Пакети постачальника».",
@@ -10001,7 +10001,7 @@
   "settings.temperature.summary": {
    "text": "Температура за даними системного датчика панелі.",
    "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.touch_sound.label": {
    "text": "Звук дотику",
@@ -10009,14 +10009,14 @@
    "state": "machine-cross-checked"
   },
   "settings.touch_sound.summary": {
-   "text": "Відтворити звук натискання кнопки системи.",
+   "text": "Відтворювати системний звук дотику.",
    "sourceHash": "45864ba285306a16cdb22e54405c63a9968f8747466cf66b1c0a5381c0b6626a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ui_language.help": {
    "text": "Мова власного інтерфейсу ha-paneld.\n\n**Автоматично** спершу використовує явне перевизначення сторінки. Потім мітки й довідка налаштувань на вкладці «Налаштування» можуть відповідати мові підключеного користувача Home Assistant; решта резервних варіантів — браузер, пристрій і англійська.",
    "sourceHash": "b7fc0eadebf67c70928a78036d93798c57776e075ff3bf5172197dd40238be34",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ui_language.label": {
    "text": "Мова інтерфейсу",
@@ -10026,7 +10026,7 @@
   "settings.ui_language.summary": {
    "text": "Мова власного інтерфейсу «ha-paneld».",
    "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_audio_source.label": {
    "text": "Джерело звуку",
@@ -10036,7 +10036,7 @@
   "settings.voice_audio_source.summary": {
    "text": "Джерело аудіо системи для прослуховування.",
    "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_enabled.label": {
    "text": "Голосовий помічник",
@@ -10046,12 +10046,12 @@
   "settings.voice_enabled.summary": {
    "text": "Слухайте слово-активатор і надсилайте мовлення на Assist.",
    "sourceHash": "d44107963fc54351bd582d47825aad5651566129424d90819e0b7c51a413e4e4",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_mic_gain_db.help": {
-   "text": "Підсилює аудіо, що надсилається до Home Assistant для транскрипції.\n\nЦі панелі не мають платформного придушення шумів чи автоматичного регулювання підсилення, тому панель, яку чути з іншого кінця кімнати, може надійно пробуджуватися й усе одно погано транскрибувати: розпізнавання слова активації саме адаптується до тихого сигналу, а перетворення мовлення на текст — ні.\n\n**Збільште це значення**, якщо команди пропускаються або неправильно транскрибуються, хоча слово активації працює. Розпізнавання слова активації навмисно працює з непідсиленим сигналом.",
+   "text": "Підсилює аудіо, що надсилається до Home Assistant для транскрипції.\n\nЦі панелі не надають доступу до платформного придушення шумів чи автоматичного регулювання підсилення, тому панель, що чує вас з іншого кінця кімнати, може надійно пробуджуватися й усе одно погано транскрибувати: розпізнавання слова активації саме адаптується до тихого сигналу, а перетворення мовлення на текст — ні.\n\n**Збільште це значення**, якщо команди пропускаються або неправильно транскрибуються, хоча слово активації працює. Розпізнавання слова активації навмисно працює з непідсиленим сигналом.",
    "sourceHash": "11daf40ebcb01e6a2b996011eb081e6f150b1e83d5d4aa877ba1c3fc3b089312",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_mic_gain_db.label": {
    "text": "Підсилення мікрофона (dB)",
@@ -10061,7 +10061,7 @@
   "settings.voice_mic_gain_db.summary": {
    "text": "Підсилення мовлення, що надсилається на Home Assistant для транскрипції.",
    "sourceHash": "065410cb2e71f90414f869a5e9aedf1be3845e0c26cccacf89d64b6ff54d40b2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.help": {
    "text": "Який конвеєр Assist у Home Assistant запускає кожне слово активації. Слово, залишене на бажаному конвеєрі, використовує конвеєр, який Home Assistant позначив як бажаний.",
@@ -10076,12 +10076,12 @@
   "settings.voice_pipelines.summary": {
    "text": "Який конвеєр «Assist» запускає кожне слово-активатор.",
    "sourceHash": "e37ef99d1d4df2fb268353f7f179ee12d4802df0a4993748331b6d83a91dcde4",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_sensitivity.help": {
-   "text": "Поріг детектора активаційного слова, що застосовується як зміщення до порогового балу моделі.\n\n- **Низька** вимагає чіткішого збігу: менше помилкових активацій, більша ймовірність пропустити тихий або віддалений виклик.\n- **Нормальна** не застосовує жодного зміщення.\n- **Висока** забезпечує швидший збіг: швидше пробудження, більше помилкових спрацьовувань.",
+   "text": "Поріг детектора активаційного слова, що застосовується як зміщення до порогового балу моделі.\n\n- **Низька** вимагає чіткішого збігу: менше помилкових активацій, більша ймовірність пропустити тихий або віддалений виклик.\n- **Нормальна** не застосовує жодного зміщення.\n- **Висока** легше приймає збіг: швидше пробудження, більше помилкових спрацьовувань.",
    "sourceHash": "af00b05309556a3c5631dfe2830065406d0db55c255a8fd1819e6657623235c9",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_sensitivity.label": {
    "text": "Чутливість пробудження",
@@ -10091,7 +10091,7 @@
   "settings.voice_sensitivity.summary": {
    "text": "Наскільки легко спрацьовує слово-активатор.",
    "sourceHash": "0fa08145c04a8e1391ac642c5536fa2f26f69556c521db192e7f9d7fafe11538",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.help": {
    "text": "Слова активації, які слухає панель: вбудовані «Okay Nabu», «Hey Jarvis», «Hey Mycroft» і «Alexa», а також ті, що ви імпортуєте нижче.",
@@ -10106,7 +10106,7 @@
   "settings.voice_wake_words.summary": {
    "text": "Слова-активатори, на які слід звертати увагу.",
    "sourceHash": "d1d5a37611625d7925ca3e794540612919d66f7a7e37a748fa1f6c235a8e75ff",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.volume.help": {
    "text": "Поточна гучність медіа панелі за її власною шкалою 0–100 відсотків.",
@@ -10121,7 +10121,7 @@
   "settings.volume.summary": {
    "text": "Гучність медіа на панелі.",
    "sourceHash": "49e5264db4cd107fb5245caa45d7007829d46e17465bda5b3099e115ecfda28f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.wake_on_wave.help": {
    "text": "Пробудження після відкаліброваного помаху «вільно — близько — вільно». Налаштуйте наближення на панелі; «Пробудження дотиком» залишається доступним.",
@@ -10136,7 +10136,7 @@
   "settings.wake_on_wave.summary": {
    "text": "Проведіть рукою біля панелі, щоб активувати її.",
    "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.watchdog_enabled.label": {
    "text": "Сторожовий таймер",
@@ -10144,9 +10144,9 @@
    "state": "machine-cross-checked"
   },
   "settings.watchdog_enabled.summary": {
-   "text": "Перезапустіть додаток панелі керування, якщо він завис або залишається у фоновому режимі.",
+   "text": "Перезапускати застосунок інформаційної панелі, якщо він завершується або лишається у фоні.",
    "sourceHash": "bf85bf3bed1a0bda4d001d6d73a8b2196aec288be92fa7aba1cb27cbd9ccf105",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.zigbee_router.label": {
    "text": "Маршрутизатор Zigbee",
@@ -10154,9 +10154,9 @@
    "state": "machine-cross-checked"
   },
   "settings.zigbee_router.summary": {
-   "text": "Використовуйте вбудований радіоприймач «Zigbee» як маршрутизатор.",
+   "text": "Використовуйте вбудований радіомодуль Zigbee як маршрутизатор.",
    "sourceHash": "ad4a9c9f2cdb17eaa7c15c04aac14c932e2e95cf53eba3f3fa4d0a9c4a225331",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "setup.action.panel_dashboard": {
    "text": "Інформаційна панель на панелі",
@@ -12354,7 +12354,7 @@
    "state": "machine-cross-checked"
   },
   "dashboard.camera.action.misdeclared_profile": {
-   "text": "профіль оголошує камеру, якої ця плата не має; виправте hardware.camera в профілі",
+   "text": "Профіль оголошує камеру, до якої ця плата не надає доступу; виправте hardware.camera в профілі",
    "sourceHash": "a21c61954e1a191d0d9a3e4864a132a68878650930555cc74a9e99653099bd48",
    "state": "machine-cross-checked"
   },
@@ -12509,9 +12509,9 @@
    "state": "machine-draft"
   },
   "settings.auto_sleep_source.summary": {
-   "text": "Що вважається присутністю: датчик наближення, зона або дотик.",
+   "text": "Що вважається присутністю: датчик наближення, приміщення або дотик.",
    "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.no_source": {
    "text": "«Пробудження помахом» недоступне. «Пробудження дотиком» залишається доступним.",
@@ -12534,9 +12534,9 @@
    "state": "machine-cross-checked"
   },
   "configure.count": {
-   "text": "{shown} налаштувань {total}",
+   "text": "{shown} із {total} налаштувань",
    "sourceHash": "008c615d1450fdf967b53f126d4ebbd4e9c56c0d94579bc390414704d627d2dc",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.ready_both": {
    "text": "Присутність і помах готові",
@@ -12626,7 +12626,7 @@
   "settings.auto_sleep_touch_delay_seconds.summary": {
    "text": "Кількість секунд без дотику, після яких екран вимикається.",
    "sourceHash": "ac4a72aa8108adf757c92d42ab1fa992256f3b7cb01929428b463ad75080bf23",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.label": {
    "text": "Затримка за відсутності дотику (секунди)",
