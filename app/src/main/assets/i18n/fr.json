@@ -12034,8 +12034,8 @@
       "state": "machine-cross-checked"
     },
     "setup.identity.lead": {
-      "text": "Un nom, votre serveur Home Assistant et vos identifiants, le tableau de bord à afficher, puis votre broker MQTT : quelques questions rapides et c’est terminé. Vous pouvez interrompre et reprendre sans rien perdre.",
-      "sourceHash": "bfc7d286a61350637080e535e4000818caaa3edd74b0ab385f530f0201743e55",
+      "text": "Un nom, votre serveur Home Assistant et vos identifiants, puis le tableau de bord à afficher : quelques questions rapides et c’est terminé. Vous pouvez interrompre et reprendre sans rien perdre.",
+      "sourceHash": "74ba1c98c447c04e11b8cf8f2267499b2b36c74fd4cc326eff68383bbe7c2f62",
       "state": "machine-cross-checked"
     },
     "setup.identity.panel_id.consequence": {

@@ -1504,9 +1504,9 @@ class Config private constructor(
         prefs.edit().putLong("panel_assistant_update_owner_seen_ms", wallMs).apply()
     }
 
-    /** Either accepted transport or a declared integration poll proves this panel has been managed. */
+    /** Accepted transport, a declared integration poll or a setup handover proves Panel Assistant manages this panel. */
     val panelAssistantConnectionSeen: Boolean
-        get() = panelAssistantAuthority in setOf("shadow", "native") ||
+        get() = panelAssistantAuthority in setOf("shadow", "native") || haSetupHandover ||
             panelAssistantUpdateOwnerSeenMs > 0L || prefs.getBoolean("migration_notice_connection_seen", false)
 
     fun markPanelAssistantConnected() {
@@ -2810,6 +2810,11 @@ class Config private constructor(
 
     companion object {
         private const val TAG = "ha-paneld/config"
+        /** The stored keys [panelAssistantConnectionSeen] reads, for listeners that must notice it turning true. */
+        val PANEL_ASSISTANT_CONNECTION_KEYS = setOf(
+            "panel_assistant_authority", "panel_assistant_update_owner_seen_ms",
+            "migration_notice_connection_seen", "ha_setup_handover",
+        )
         /** Every Config wrapper addresses one process-wide SQLite namespace, so transaction ownership
          * must be process-wide as well. */
         private val CONFIG_LOCK = Any()
