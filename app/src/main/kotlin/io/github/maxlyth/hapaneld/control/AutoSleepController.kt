@@ -34,6 +34,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 internal data class AutoSleepManagerHandle(
@@ -193,6 +194,10 @@ internal class AutoSleepController private constructor(
     private var partition = ""
     private var acceptedManagerGeneration = -1L
     private var automaticEpoch: AutomaticOffEpoch? = null
+    /** An off adopted from a replaced process; Home Assistant reconnecting is not a reason to wake it. */
+    private var inheritedEpoch: AutomaticOffEpoch? = null
+    /** Set once by [start]; consumed by the first configuration the owner accepts, whichever epoch it is. */
+    private val adoptionPending = AtomicBoolean(false)
     private var provedTapGeneration: Long? = null
     private var manualSuppression = false
     private var suppressionSawAllOff = false
@@ -210,7 +215,10 @@ internal class AutoSleepController private constructor(
     /** Set by [wakeOwnedScreen] so the wake it causes is not booked as a touch. */
     private var ownWakePending = false
 
-    fun start(): Boolean = configureLatest()
+    fun start(): Boolean {
+        adoptionPending.set(true)
+        return configureLatest()
+    }
     fun refresh(): Boolean = configureLatest()
     fun isCurrentConfigurationEpoch(expectedEpoch: Long): Boolean =
         admission == Admission.OPEN && controllerEpoch.get() == expectedEpoch
@@ -438,6 +446,13 @@ internal class AutoSleepController private constructor(
 
     internal fun deadlineTokenForTest(): Long = deadlineToken
 
+    /** One owner drain split at its dequeue, so a test can land ingress between taking and handling. */
+    internal fun drainForTest(afterTake: () -> Unit) {
+        val batch = takeBatch()
+        afterTake()
+        batch.forEach(::handle)
+    }
+
     internal fun feedPositionForTest(): AutoSleepFeedPosition? = policy?.feed
 
     internal fun noteTouchForTest(atMs: Long, expectedOffGeneration: Long?): Boolean =
@@ -598,6 +613,14 @@ internal class AutoSleepController private constructor(
                 admit(Slot.TOUCH, Touch(elapsedRealtime(), screen.currentOffGeneration()))
             }
         }
+        if (adoptionPending.getAndSet(false) && automaticEpoch == null) {
+            val adopted = screen.adoptInheritedDark(automatic = next.value.enabled)
+            if (screen.isIntendedOff()) {
+                automaticEpoch = adopted
+                inheritedEpoch = adopted
+                onScreenChanged(false)
+            }
+        }
         manager.configure(HaPresenceRequest(
             enabled = next.value.enabled && next.value.source == "home_assistant",
             deviceUid = next.value.deviceUid,
@@ -663,7 +686,9 @@ internal class AutoSleepController private constructor(
             aggregate = next
             deadlineJob?.cancel()
             deadlineToken++
-            wakeOwnedScreen()
+            // The stream reports DISABLED before it subscribes, so only a resolved missing Area releases an
+            // adopted off here; turning auto-sleep off goes through configure(), which always releases it.
+            wakeOwnedScreen(transient = next.phase != HaPresencePhase.NO_AREA)
             publishProjection()
             if (configured.enabled && next.phase == HaPresencePhase.NO_AREA && !noAreaFailOffRequested) {
                 noAreaFailOffRequested = true
@@ -691,6 +716,8 @@ internal class AutoSleepController private constructor(
         ) return
         acceptedManagerGeneration = next.managerGeneration
         aggregate = next
+        val startsAsleep = inheritedEpoch != null && inheritedEpoch == automaticEpoch && screen.isIntendedOff()
+        inheritedEpoch = null
         if (sourceChanged) {
             partition = buildString {
                 append(configured.haUrl.trim().lowercase(Locale.ROOT).trimEnd('/'))
@@ -699,7 +726,9 @@ internal class AutoSleepController private constructor(
                 append("|v1")
             }
             val learned = learning.learnedLease(partition, next.learnedLeaseMs)
-            policy = AutoSleepPolicyReducer.initial(states.keys, AutoSleepPolicyConfig(learnedLeaseMs = learned.leaseMs))
+            policy = AutoSleepPolicyReducer.initial(
+                states.keys, AutoSleepPolicyConfig(learnedLeaseMs = learned.leaseMs, startsAsleep = startsAsleep),
+            )
             decision = null
             manualSuppression = false
             suppressionSawAllOff = false
@@ -804,7 +833,7 @@ internal class AutoSleepController private constructor(
             eventTime(atMs), mapOf(LOCAL_SOURCE to state),
             AutoSleepFeedPosition(controllerEpoch.get(), ++localRevision),
         ), actuate = false)
-        if (near == null) wakeOwnedScreen()
+        if (near == null) wakeOwnedScreen(transient = true)
         else decision?.let(::actuate)
     }
 
@@ -912,8 +941,9 @@ internal class AutoSleepController private constructor(
         }
     }
 
-    private fun wakeOwnedScreen() {
+    private fun wakeOwnedScreen(transient: Boolean = false) {
         val epoch = automaticEpoch ?: return
+        if (transient && epoch == inheritedEpoch) return
         if (admission == Admission.OPEN && screen.wakeAutomaticallyIfOwned(epoch) == WakeOutcome.WOKEN) {
             ownWakePending = true
             onScreenChanged(true)

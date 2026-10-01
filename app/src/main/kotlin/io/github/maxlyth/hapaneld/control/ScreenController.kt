@@ -225,6 +225,28 @@ class ScreenController(
         return true
     }
 
+    /**
+     * Startup only: take ownership of a backlight that a replaced process left powered off. An update
+     * install kills the old process without [close], so its deliberate off survives in the hardware but
+     * not in [intendedOff], and the never-blank guard would relight a panel nobody asked to wake. Only
+     * the bl_power routes can be inherited this way, and only with a touch wake to arm; anything less
+     * is left to the guard. Returns the automatic epoch when [automatic], else null.
+     */
+    @Synchronized
+    fun adoptInheritedDark(automatic: Boolean): AutomaticOffEpoch? {
+        if (route != ScreenOff.DAEMON_BLPOWER && route != ScreenOff.SU_BLPOWER) return null
+        if (intendedOff || admissionClosed.get() || !wakeTap.canArm() || !power.isInteractive()) return null
+        if (observedDark() != true) return null
+        val epoch = sleepInternal(automatic)
+        // A refused or degraded off would leave a dark backlight marked intended with no way back.
+        if (appliedOffRoute != ScreenOff.DAEMON_BLPOWER && appliedOffRoute != ScreenOff.SU_BLPOWER) {
+            if (intendedOff) wake()
+            return null
+        }
+        Log.i(TAG, "adopted a dark screen left by a replaced process (automatic=$automatic)")
+        return epoch
+    }
+
     /** Record an explicit brightness so the fallback off/on restores to it. */
     fun noteLevel(level: Int) {
         if (level > 0) savedLevel = level.coerceIn(1, 255)
