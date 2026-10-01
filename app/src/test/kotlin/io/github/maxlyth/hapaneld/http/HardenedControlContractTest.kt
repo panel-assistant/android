@@ -28,7 +28,7 @@ class HardenedControlContractTest {
         return englishStrings.substringAfter(marker).substringBefore("</string>")
     }
 
-    @Test fun mqttFreshInstallsRebootAndPolicyExpansionRemainApprovalGated() {
+    @Test fun mqttExplicitInstallsAndRebootRemainApprovalGated() {
         val dispatch = mqtt.substring(mqtt.indexOf("private fun dispatchCommand"), mqtt.indexOf("fun publishScreenOn"))
         assertTrue(dispatch.contains("cmdUpdateCompanion ->"))
         assertTrue(dispatch.contains("cmdUpdatePaneld ->"))
@@ -42,11 +42,6 @@ class HardenedControlContractTest {
         val reloadArm = dispatch.substring(dispatch.indexOf("cmdReload ->"), dispatch.indexOf("cmdReboot ->"))
         assertTrue(reloadArm.contains("SensitiveOperation.DASHBOARD_RELOAD"))
         assertTrue(reloadArm.indexOf("authorizeRemoteSensitive(") < reloadArm.indexOf("system.reloadDashboard("))
-
-        val auto = mqtt.substring(mqtt.indexOf("override fun handleCompanionAuto"), mqtt.indexOf("override fun handleSilenceBootChime"))
-        assertTrue(auto.contains("if (on && approvalRequired) authorizeRemoteSensitive("))
-        assertTrue(auto.contains("approvalRequired && config.selfUpdate && requested != was"))
-        assertTrue(auto.contains("approvalRequired && config.companionAutoUpdate && requested != was"))
 
         val serviceApply = mqtt.substring(mqtt.indexOf("internal fun applySetting"), mqtt.indexOf("// ---- discovery ----"))
         assertTrue(serviceApply.contains("sensitiveApprovalRequired = false"))

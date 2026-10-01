@@ -115,6 +115,69 @@ class ConfigTransactionTest {
         assertTrue(config.haAreaUserOverride)
     }
 
+    @Test fun liveMigrationRemovesUpdateOwnersAndExposureFlagsWithoutChangingOtherSettings() {
+        for (schema in listOf(13, SettingsRegistry.SCHEMA)) {
+            val retired = retiredUpdatePreferences()
+            val prefs = fakePreferences(initial = retired + mapOf(
+                "config_schema" to schema,
+                "panel_id" to "existing-panel",
+                "mqtt_broker" to "tcp://ha:1883",
+                "dashboard_package" to CompanionInstaller.MINIMAL_PKG,
+                "ha_expose_wake_on_wave" to true,
+            ))
+            val config = Config(prefs.instance)
+
+            assertTrue("migration from schema $schema", config.migrateLiveStore())
+            retired.keys.forEach { key ->
+                assertFalse("$key survived schema $schema migration", prefs.values.containsKey(key))
+            }
+            assertEquals(SettingsRegistry.SCHEMA, prefs.values["config_schema"])
+            assertEquals("existing-panel", config.panelId)
+            assertEquals("tcp://ha:1883", config.mqttBroker)
+            assertEquals(CompanionInstaller.MINIMAL_PKG, config.dashboardPackage)
+            assertEquals(true, prefs.values["ha_expose_wake_on_wave"])
+            if (schema == SettingsRegistry.SCHEMA) {
+                assertFalse("current-schema cleanup must preserve absent defaults", prefs.values.containsKey(SettingsRegistry.RESPONSE_PERCENT_KEY))
+                assertEquals(50, config.autoBrightnessResponsePercent)
+            }
+            val committed = prefs.values.toMap()
+            assertTrue(Config(prefs.instance).migrateLiveStore())
+            assertEquals("a second startup must be a no-op", committed, prefs.values)
+        }
+    }
+
+    @Test fun failedUpdateOwnerRemovalLeavesTheCompleteStoreForTheNextStartupToRetry() {
+        for (schema in listOf(13, SettingsRegistry.SCHEMA)) {
+            val initial = retiredUpdatePreferences() + mapOf(
+                "config_schema" to schema,
+                "panel_id" to "existing-panel",
+                "ha_expose_wake_on_wave" to false,
+            )
+            val prefs = fakePreferences(initial = initial, commitSucceeds = false)
+
+            assertFalse(Config(prefs.instance).migrateLiveStore())
+            assertEquals("failed commit must remove nothing or advance no marker", initial, prefs.values)
+            prefs.commitsSucceed.set(true)
+            assertTrue(Config(prefs.instance).migrateLiveStore())
+            retiredUpdatePreferences().keys.forEach { key ->
+                assertFalse("retry left $key", prefs.values.containsKey(key))
+            }
+            assertEquals(SettingsRegistry.SCHEMA, prefs.values["config_schema"])
+            assertEquals("existing-panel", prefs.values["panel_id"])
+            assertEquals(false, prefs.values["ha_expose_wake_on_wave"])
+        }
+    }
+
+    private fun retiredUpdatePreferences(): Map<String, Any?> {
+        val keys = listOf(
+            "self_update", "update_channel", "companion_auto_update", "companion_update_channel",
+            "webview_auto_update",
+        )
+        return keys.associateWith { key -> if (key.endsWith("channel")) "prerelease" else true } +
+            keys.associate { key -> "ha_expose_$key" to true } +
+            mapOf("webview_auto_last_version" to "137.0.7151.119")
+    }
+
     @Test fun dashboardNetworkWarningUpgradeMaterializesDefaultAndPreservesOptOut() {
         val untouched = fakePreferences(initial = mapOf("config_schema" to 10))
         assertTrue(Config(untouched.instance).migrateLiveStore())
@@ -623,14 +686,11 @@ class ConfigTransactionTest {
 
         val committed = config.applyBatch {
             config.setWakeOnWave(true)
-            config.setCompanionUpdateChannel("pre-release")
             assertFalse(config.wakeOnWave)
-            assertEquals("stable", config.companionUpdateChannel)
         }
 
         assertTrue(committed)
         assertTrue(config.wakeOnWave)
-        assertEquals("prerelease", config.companionUpdateChannel)
     }
 
     @Test fun explicitWakeOnWaveChoicesOverrideTheOptInDefault() {

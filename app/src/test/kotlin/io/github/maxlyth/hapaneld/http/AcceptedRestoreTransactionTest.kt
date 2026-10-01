@@ -80,8 +80,6 @@ class AcceptedRestoreTransactionTest {
                         onReconfigure = {
                             if (supersede) config.setPanelId("newer-panel")
                         },
-                        prepareSelfUpdateChannel = { _, _ -> error("No channel change") },
-                        onSelfUpdateChannelCommitted = { _, _, before, after -> assertEquals(before, after) },
                     )
                 },
                 restoreCompanion = { error("No Companion payload") },

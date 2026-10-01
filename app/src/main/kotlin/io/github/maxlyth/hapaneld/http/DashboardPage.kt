@@ -113,7 +113,6 @@ $cameraCard
 ${tcard("livetbl", strings.get("dashboard.card.live_state"), rowHtml("livetbl"), pre = """<p class="note">${esc(strings.get("dashboard.live_state.note"))}</p>""")}
 ${tcard("behavtbl", strings.get("dashboard.card.behaviour"), rowHtml("behavtbl"))}
 ${tcard("disptbl", strings.get("dashboard.card.display_tuning"), rowHtml("disptbl"))}
-${tcard("updtbl", strings.get("dashboard.card.updates"), rowHtml("updtbl"))}
 </div>
 <p class="note" style="text-align:center;margin-top:18px"><a href="${localizedHref("api", strings)}" style="color:#9cf">${esc(strings.get("dashboard.footer.api_explorer"))}</a>
  · <a href="api/v1/diag" target="_blank" style="color:#9cf">${esc(strings.get("dashboard.footer.diagnostics"))}</a> · <a href="$REPO_URL" target="_blank" rel="noopener" style="color:#9cf">GitHub</a></p>"""

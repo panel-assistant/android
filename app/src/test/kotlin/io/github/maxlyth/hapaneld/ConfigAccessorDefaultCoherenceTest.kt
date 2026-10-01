@@ -57,8 +57,6 @@ class ConfigAccessorDefaultCoherenceTest {
 
         // Non-empty string defaults.
         assertEquals("Off", c.navbarMode)
-        assertEquals("stable", c.companionUpdateChannel)
-        assertEquals("stable", c.updateChannel)
         assertEquals("auto", c.uiLanguage)
         assertEquals("syslog-tcp", c.logShipProtocol)
         assertEquals("720p", c.cameraResolution.wire)
@@ -67,13 +65,12 @@ class ConfigAccessorDefaultCoherenceTest {
         listOf(
             c.darkMode, c.preventIdleDim, c.keepAwake, c.dashboardFullscreen, c.dashboardNetworkWarning,
             c.dashboardEntityAutoStatic, c.dashboardEntityAutoRuntime, c.dashboardNativeKiosk,
-            c.silenceBootChime, c.selfUpdate,
+            c.silenceBootChime,
         ).forEach { assertTrue(it) }
 
         // Booleans that default false.
         listOf(
-            c.wakeOnWave, c.autoSleep, c.watchdogEnabled, c.kioskLock, c.companionAutoUpdate,
-            c.webViewAutoUpdate, c.dashboardOverscroll,
+            c.wakeOnWave, c.autoSleep, c.watchdogEnabled, c.kioskLock, c.dashboardOverscroll,
             c.dashboardEntityLearningEnabled, c.dashboardEntityLearningApplied, c.logShipEnabled,
             c.autoBrightness, c.cameraEnabled,
         ).forEach { assertEquals(false, it) }
@@ -129,8 +126,6 @@ class ConfigAccessorDefaultCoherenceTest {
             "manufacturer" to c.manufacturerRaw,
             "model" to c.modelRaw,
             "navbar_mode" to c.navbarMode,
-            "companion_update_channel" to c.companionUpdateChannel,
-            "update_channel" to c.updateChannel,
             "ui_language" to c.uiLanguage,
             "log_ship_protocol" to c.logShipProtocol,
             "dark_mode" to c.darkMode.toString(),
@@ -144,9 +139,6 @@ class ConfigAccessorDefaultCoherenceTest {
             "auto_sleep" to c.autoSleep.toString(),
             "watchdog_enabled" to c.watchdogEnabled.toString(),
             "kiosk_lock" to c.kioskLock.toString(),
-            "companion_auto_update" to c.companionAutoUpdate.toString(),
-            "self_update" to c.selfUpdate.toString(),
-            "webview_auto_update" to c.webViewAutoUpdate.toString(),
             "dashboard_native_kiosk" to c.dashboardNativeKiosk.toString(),
             "dashboard_overscroll" to c.dashboardOverscroll.toString(),
             "dashboard_entity_learning" to c.dashboardEntityLearningEnabled.toString(),

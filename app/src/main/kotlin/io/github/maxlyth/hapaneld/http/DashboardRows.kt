@@ -54,7 +54,6 @@ internal class DashboardRows(
             capabilities = { liveCapabilities(s.caps) },
             proximity = { sensors.proximitySummary().takeIf { sensors.hasProximity() } },
         )
-        "updtbl" -> settingRows.updatesRowsHtml(s.live, strings) { liveCapabilities(s.caps) }
         else -> error("Unknown dashboard table: $id")
     }
 

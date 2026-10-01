@@ -39,7 +39,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 object AppInstaller {
     data class Pin(val pkg: String, val certSha256: String, val apkSha256: String? = null)
     internal enum class InstallRoute { SU, DAEMON, SHIZUKU, NONE }
-    internal enum class SelfInstallDatabaseDisposition { DIRECT, RECOVER }
 
     // Pinned signers (public certificate fingerprints — NOT secrets).
     private const val RELEASE_SIGNER = "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
@@ -87,23 +86,9 @@ object AppInstaller {
         private val expectedSha256: String,
         internal val version: String,
         internal val boundary: DatabaseCompatibilityApkContract.Boundary,
-        internal val databaseDisposition: SelfInstallDatabaseDisposition,
         internal val allowShizuku: Boolean,
     ) : AutoCloseable {
         private val consumed = AtomicBoolean(false)
-        private val requireDirectAtConsumption = AtomicBoolean(false)
-
-        internal fun restrictToDirectConsumption() {
-            check(!consumed.get()) { "prepared install already consumed" }
-            requireDirectAtConsumption.set(true)
-        }
-
-        internal fun requiresDirectAtConsumption(): Boolean = requireDirectAtConsumption.get()
-
-        internal fun isAvailable(): Boolean = !consumed.get()
-
-        internal fun apkPath(): String = apk.absolutePath
-
         internal fun consume(): File? = if (consumed.compareAndSet(false, true)) apk else null
 
         internal fun bytesUnchanged(): Boolean = apk.isFile && sha256(apk) == expectedSha256
@@ -237,21 +222,15 @@ object AppInstaller {
             }
             val info = inspect(context, apk.absolutePath)
             var admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null
-            var admittedDisposition: SelfInstallDatabaseDisposition? = null
             val refusal = selfReplacementRefusal(info) { boundary ->
                 val decision = compatibilityDecision(context, boundary)
                 compatibilityDecisionRefusal(decision).also { why ->
                     if (why == null) {
                         admittedBoundary = boundary
-                        admittedDisposition = when (decision) {
-                            is DatabaseCompatibilityDecision.Direct -> SelfInstallDatabaseDisposition.DIRECT
-                            is DatabaseCompatibilityDecision.Recover -> SelfInstallDatabaseDisposition.RECOVER
-                            else -> null
-                        }
                     }
                 }
             }
-            if (refusal != null || admittedBoundary == null || admittedDisposition == null) {
+            if (refusal != null || admittedBoundary == null) {
                 return@withStagedFiles SelfInstallPreparation.Failed(
                     rejected(
                         "refused (${refusal ?: "database compatibility could not be proven"})",
@@ -264,7 +243,6 @@ object AppInstaller {
                 expectedSha256 = sha256(apk),
                 version = requireNotNull(info).version,
                 boundary = requireNotNull(admittedBoundary),
-                databaseDisposition = requireNotNull(admittedDisposition),
                 allowShizuku = allowShizuku,
             )
             staged.commit()
@@ -291,7 +269,6 @@ object AppInstaller {
                 apk = apk,
                 allowShizuku = prepared.allowShizuku,
                 admittedBoundary = prepared.boundary,
-                requireDirectDatabase = prepared.requiresDirectAtConsumption(),
                 component = "paneld",
             )
         } finally {
@@ -407,60 +384,10 @@ object AppInstaller {
         return selfReplacementRefusal(info, decideCurrentCompatibility)
     }
 
-    /** Pure fail-closed seam for the final config-commit admission of a prepared candidate. */
-    internal fun preparedDirectConfigCommitRefusal(
-        available: Boolean,
-        bytesUnchanged: Boolean,
-        info: ApkInfo?,
-        admittedBoundary: DatabaseCompatibilityApkContract.Boundary,
-        decideCurrentCompatibility: (DatabaseCompatibilityApkContract.Boundary) -> String?,
-    ): String? {
-        if (!available) return "prepared install already consumed"
-        if (!bytesUnchanged) return "prepared APK changed after admission"
-        return preparedSelfReplacementRefusal(
-            info,
-            admittedBoundary,
-            decideCurrentCompatibility,
-        )
-    }
-
-    /**
-     * Re-hash and re-authenticate the exact staged APK, then observe the current database and require a
-     * DIRECT decision. This is deliberately synchronous so a config transaction can call it immediately
-     * before its atomic commit. The install-consumption gate repeats the same proof later.
-     */
-    internal fun revalidatePreparedDirectForConfigCommit(
-        context: Context,
-        prepared: PreparedSelfInstall,
-    ): String? = try {
-        if (!prepared.requiresDirectAtConsumption()) {
-            "prepared install is not restricted to direct database consumption"
-        } else {
-            val available = prepared.isAvailable()
-            val bytesUnchanged = available && prepared.bytesUnchanged()
-            val info = if (bytesUnchanged) inspect(context, prepared.apkPath()) else null
-            // DB_COMPAT_MUTATION_ANCHOR: CONFIG_COMMIT_REVALIDATE
-            preparedDirectConfigCommitRefusal(
-                available = available,
-                bytesUnchanged = bytesUnchanged,
-                info = info,
-                admittedBoundary = prepared.boundary,
-            ) { exactBoundary ->
-                compatibilityRefusal(context, exactBoundary, requireDirect = true)
-            }
-        }
-    } catch (_: Exception) {
-        "prepared APK and database compatibility could not be proven"
-    }
-
     private fun compatibilityRefusal(
         context: Context,
         boundary: DatabaseCompatibilityApkContract.Boundary,
-        requireDirect: Boolean = false,
-    ): String? = compatibilityDecisionRefusal(
-        compatibilityDecision(context, boundary),
-        requireDirect = requireDirect,
-    )
+    ): String? = compatibilityDecisionRefusal(compatibilityDecision(context, boundary))
 
     private fun compatibilityDecision(
         context: Context,
@@ -479,13 +406,10 @@ object AppInstaller {
 
     internal fun compatibilityDecisionRefusal(
         decision: DatabaseCompatibilityDecision,
-        requireDirect: Boolean = false,
     ): String? =
         when (decision) {
             is DatabaseCompatibilityDecision.Direct -> null
-            is DatabaseCompatibilityDecision.Recover -> if (requireDirect) {
-                "database compatibility changed from direct to recovery after configuration admission"
-            } else null
+            is DatabaseCompatibilityDecision.Recover -> null
             DatabaseCompatibilityDecision.Fresh -> "installed package database is not proven present"
             is DatabaseCompatibilityDecision.Refuse ->
                 "database compatibility ${decision.reason.name.lowercase().replace('_', ' ')}"
@@ -530,7 +454,6 @@ object AppInstaller {
         apk: File,
         allowShizuku: Boolean,
         admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null,
-        requireDirectDatabase: Boolean = false,
         component: String,
         beforeInstall: (() -> Boolean)? = null,
     ): InstallOutcome = withContext(Dispatchers.IO) {
@@ -544,14 +467,9 @@ object AppInstaller {
             runningPackage = context.packageName,
             admittedBoundary = admittedBoundary,
         ) { exactBoundary ->
-            // Preparation protects configuration commit ordering, but database/recovery state
-            // can change while the staged capability is held. Re-observe immediately before
-            // the first self-replacement mutation; matching APK bytes are not current DB proof.
-            compatibilityRefusal(
-                context,
-                exactBoundary,
-                requireDirect = admittedBoundary != null && requireDirectDatabase,
-            )
+            // Database/recovery state can change while the staged capability is held. Re-observe
+            // before the first self-replacement mutation; matching APK bytes are not current DB proof.
+            compatibilityRefusal(context, exactBoundary)
         }
         if (refusal != null) {
             apk.delete()

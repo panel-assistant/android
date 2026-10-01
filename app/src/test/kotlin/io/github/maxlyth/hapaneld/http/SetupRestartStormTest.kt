@@ -466,7 +466,6 @@ class SetupRestartStormTest {
             entityFilterAnswered = config.setupEntityFilterAnswered || preTracking,
             homeDashboardChosen = config.setupHomeDashboardChosen || preTracking,
             webViewTooOld = webViewTooOld && renderer == RendererChoice.Builtin,
-            webViewFixable = true,
             proof = proof,
             currentFingerprint = "",
         )

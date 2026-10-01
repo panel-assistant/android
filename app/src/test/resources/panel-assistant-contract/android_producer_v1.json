@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "f4e17d2a63f6918511904b5ed6d6bacf4c59e2c2",
+  "sourceRevision": "fc4d41bba3d906b5a289fe6771ff81aae9e4f48c",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -155,8 +155,13 @@
           }
         ],
         "unsupported": [
+          "companion_auto_update",
+          "companion_update_channel",
           "humidity",
-          "temperature"
+          "self_update",
+          "temperature",
+          "update_channel",
+          "webview_auto_update"
         ]
       }
     },
@@ -309,45 +314,6 @@
       "step": null
     },
     {
-      "channel": "companion_auto_update",
-      "platform": "switch",
-      "translation_key": "companion_auto_update",
-      "unique_suffix": "companion_auto_update",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "companion_update_channel",
-      "platform": "select",
-      "translation_key": "companion_update_channel",
-      "unique_suffix": "companion_update_channel",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": [
-        "stable",
-        "prerelease"
-      ],
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
       "channel": "cpu_governor",
       "platform": "select",
       "translation_key": "cpu_governor",
@@ -451,7 +417,7 @@
       "entity_category": "diagnostic",
       "enabled_default": false,
       "device_class": "temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "state_class": "measurement",
       "force_update": true,
       "options": null,
@@ -821,7 +787,7 @@
       "entity_category": null,
       "enabled_default": true,
       "device_class": "temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "state_class": "measurement",
       "force_update": true,
       "options": null,
@@ -838,24 +804,6 @@
       "index": null,
       "entity_category": null,
       "enabled_default": true,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "self_update",
-      "platform": "switch",
-      "translation_key": "self_update",
-      "unique_suffix": "self_update",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
       "device_class": null,
       "unit": null,
       "state_class": null,
@@ -917,7 +865,7 @@
       "entity_category": null,
       "enabled_default": true,
       "device_class": "temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "state_class": "measurement",
       "force_update": true,
       "options": null,
@@ -939,27 +887,6 @@
       "state_class": null,
       "force_update": false,
       "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "update_channel",
-      "platform": "select",
-      "translation_key": "update_channel",
-      "unique_suffix": "update_channel",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": [
-        "stable",
-        "prerelease"
-      ],
       "min": null,
       "max": null,
       "step": null
@@ -1041,24 +968,6 @@
       "platform": "switch",
       "translation_key": "watchdog",
       "unique_suffix": "watchdog",
-      "family": null,
-      "index": null,
-      "entity_category": "config",
-      "enabled_default": false,
-      "device_class": null,
-      "unit": null,
-      "state_class": null,
-      "force_update": false,
-      "options": null,
-      "min": null,
-      "max": null,
-      "step": null
-    },
-    {
-      "channel": "webview_auto_update",
-      "platform": "switch",
-      "translation_key": "webview_auto_update",
-      "unique_suffix": "webview_auto_update",
       "family": null,
       "index": null,
       "entity_category": "config",

@@ -124,7 +124,7 @@ class PanelAssistantCommandProcessorTest {
     @Test fun `a denied approval is refused and an expired one times out, neither running`() {
         val fixture = Fixture()
         fixture.processor.onCommand(command("c1", "camera_enabled", true))
-        fixture.processor.onCommand(command("c2", "self_update", true))
+        fixture.processor.onCommand(command("c2", "watchdog", true))
         fixture.sink.submitted[0].done(PanelAssistantCommandResult.ApprovalPending("denied"))
         fixture.now = 1_000L
         fixture.sink.submitted[1].done(PanelAssistantCommandResult.ApprovalPending("expired"))
@@ -274,7 +274,7 @@ class PanelAssistantCommandProcessorTest {
 
         val SESSION = session()
 
-        val CHANNELS = listOf("relay1", "camera_enabled", "self_update", "diag_cpu").map {
+        val CHANNELS = listOf("relay1", "camera_enabled", "watchdog", "diag_cpu").map {
             requireNotNull(PanelAssistantChannelCatalog.describe(it)) { it }
         }
 
