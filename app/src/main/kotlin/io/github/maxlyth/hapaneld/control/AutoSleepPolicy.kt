@@ -18,6 +18,8 @@ internal data class AutoSleepPolicyConfig(
     val learnedLeaseMs: Long = MIN_AUTO_SLEEP_LEASE_MS,
     val qualifiedProximityExtensionMs: Long = DEFAULT_PROXIMITY_EXTENSION_MS,
     val fixedLeaseMs: Long? = null,
+    /** The screen is already asleep when the first feed arrives, so that feed is not activity. */
+    val startsAsleep: Boolean = false,
 )
 internal data class AutoSleepFeedPosition(val generation: Long, val revision: Long)
 internal data class AutoSleepActivityMarker(val sequence: Long, val atMs: Long)
@@ -60,6 +62,7 @@ internal data class AutoSleepPolicyState(
     val feed: AutoSleepFeedPosition? = null,
     val activityMarker: AutoSleepActivityMarker? = null,
     val lastEventAtMs: Long? = null,
+    val startsAsleep: Boolean = false,
 )
 internal data class AutoSleepTransition(val state: AutoSleepPolicyState, val decision: AutoSleepDecision)
 /** Pure policy authority: the returned state is the complete memory of the next reduction. */
@@ -71,6 +74,7 @@ internal object AutoSleepPolicyReducer {
             learnedLeaseMs = config.learnedLeaseMs.coerceIn(MIN_AUTO_SLEEP_LEASE_MS, MAX_AUTO_SLEEP_LEASE_MS),
             proximityExtensionMs = config.qualifiedProximityExtensionMs.coerceIn(0L, MAX_PROXIMITY_EXTENSION_MS),
             fixedLeaseMs = config.fixedLeaseMs?.coerceIn(5_000L, 86_400_000L),
+            startsAsleep = config.startsAsleep,
         )
     }
     fun reduce(previous: AutoSleepPolicyState, event: AutoSleepEvent): AutoSleepTransition {
@@ -128,6 +132,7 @@ internal object AutoSleepPolicyReducer {
             return next.copy(awakeUntilMs = null)
         }
         val anchor = when {
+            current.startsAsleep && current.feed == null -> null
             newGeneration || changed -> current.lastEventAtMs
             activityChanged -> marker.atMs
             else -> null
