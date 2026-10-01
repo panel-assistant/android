@@ -3786,6 +3786,9 @@ preflight_target() {
     echo "INSTALL_UNCHANGED $preflight_verb target_read_only"
     return 1
   fi
+  # A target that is only removed from needs a read-write mount, not room: a full /system is exactly
+  # the panel the hybrid route exists for, and a 4096-byte probe there would refuse it.
+  [ "$preflight_need" = 0 ] && [ "$diag_state" = rw ] && return 0
   case "$diag_availkb" in
     ''|*[!0-9]*) ;;
     *)
@@ -5351,7 +5354,7 @@ install_hybrid() {
   preflight_target install_hybrid /vendor/etc/init "$vendor_init_need" || return 1
   # This route removes an old system-layout helper from /system/bin after retirement and fails the
   # transaction if that removal is refused, so a read-only /system/bin must be caught here rather
-  # than there. No headroom is needed for a removal; the write probe alone proves writability.
+  # than there. No headroom is needed for a removal, so a mount resolved read-write is enough.
   preflight_target install_hybrid /system/bin 0 || return 1
 
   candidate=/data/local/.hapaneld-helper.provision-$transaction_id
@@ -5991,10 +5994,15 @@ EOF
     system_init_probe=/system/etc/init/.hapaneld-rw-probe-@TRANSACTION_ID@
     rm -f "$system_init_probe" 2>/dev/null
     system_init_writable=0
+    system_init_full=0
     if touch /system/.rw_probe 2>/dev/null && rm /system/.rw_probe 2>/dev/null; then
       if printf hapaneld-system-init-write-probe > "$system_init_probe" 2>/dev/null &&
          [ -s "$system_init_probe" ]; then
         system_init_writable=1
+      elif [ -e "$system_init_probe" ]; then
+        # Created but holding no bytes: the directory is writable and the partition is full. A
+        # read-only overmount refuses the create itself and leaves nothing here.
+        system_init_full=1
       fi
     fi
     rm -f "$system_init_probe" 2>/dev/null
@@ -6025,6 +6033,13 @@ EOF
       fi
       if [ -n "$available" ]; then echo SYSTEM_AVAIL_KB=$available; else echo SYSTEM_CAPACITY_UNKNOWN; fi
       # HAPANELD_CAPACITY_PROBE_END
+    elif [ "$system_init_full" = 1 ]; then
+      # The boot directory took a create but not 32 bytes: /system is full, not read-only. ext4
+      # keeps reserved clusters (16 MB on an NSPanel Pro 120) that root cannot write while df still
+      # counts them, so df is no answer either. Reporting this as read-only sent owners to a remount
+      # that had already succeeded. A writable /system with no room is routed to the hybrid layout.
+      echo SYSTEM_RW
+      echo SYSTEM_AVAIL_KB=0
     else
       echo SYSTEM_RO
       if command -v magisk >/dev/null 2>&1 || [ -x /data/adb/magisk/busybox ] || [ -x /data/adb/ksu/bin/busybox ] || [ -x /data/adb/ap/bin/busybox ]; then
