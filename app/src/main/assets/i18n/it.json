@@ -1881,10 +1881,10 @@
     "configure.save.hardware_pending": {
       "sourceHash": "9bd2748bda208a2e6c2bac42067692436f2f9189a3f7e197e5b338bdba1c44ef",
       "state": "machine-cross-checked",
-      "text": "Salvate; le modifiche hardware sono in attesa di applicazione."
+      "text": "Valore desiderato salvato; applicazione hardware in attesa."
     },
     "configure.save.hardware_unavailable": {
-      "text": "Salvato. Questo pannello non può ancora applicare l'impostazione; verrà applicata appena sarà possibile.",
+      "text": "Salvato. Questo pannello non può ancora applicarlo; verrà applicato se la situazione cambia.",
       "sourceHash": "67b5afeafe3ae46c4d5fe55a308ba88d39ff45f61c663e5fae47d17317334f3b",
       "state": "machine-cross-checked"
     },
@@ -6191,7 +6191,7 @@
     "install.apk_status.invalid_url": {
       "sourceHash": "5eb237ea5f1be950341465cf5f0c7314d0464884c3b95bdafb75124d48949a51",
       "state": "machine-cross-checked",
-      "text": "il link https:// non è valido"
+      "text": "Non è un link https:// valido"
     },
     "install.apk_status.no_root": {
       "sourceHash": "ccacf47c8e35732eeb3c5a32f4bb40643b3bcaf95b27c22a8e5b39134e10412d",
@@ -6871,7 +6871,7 @@
     "install.presentation.backup_restored_selection_staged": {
       "sourceHash": "71d179990d3bdbab24c8dc55c8ab5a9cd6af24ed3707703477c00ea94c59c9f7",
       "state": "machine-cross-checked",
-      "text": "Catalogo dei profili ripristinato; selezione predisposta per un riavvio subordinato al controllo di integrità."
+      "text": "Catalogo dei profili ripristinato; selezione predisposta per un riavvio subordinato a una verifica di funzionamento."
     },
     "install.presentation.backup_restored_selection_unchanged": {
       "sourceHash": "785d68796453312b3f246617dd55d45a7cafb201ade8aa0eb89657a2b5b4a270",
@@ -6886,7 +6886,7 @@
     "install.presentation.backup_staging_retained": {
       "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
       "state": "machine-cross-checked",
-      "text": "Impossibile rimuovere i dati temporanei sensibili del backup. Controlla lo spazio del pannello e riprova; nessun backup è stato scaricato."
+      "text": "Impossibile rimuovere i dati temporanei sensibili del backup. Controlla la memoria del pannello e riprova; nessun backup è stato scaricato."
     },
     "install.presentation.companion_helper_busy": {
       "sourceHash": "bd72fd8b3124959c616cb91ed361f86344f27fdf37bc90faf023768f701dac29",
@@ -7281,12 +7281,12 @@
     "install.presentation.status_storage_critical": {
       "sourceHash": "295fe783455c31f34bc6b768f65d3186ddd758063b80d481ff37778dcf1b096d",
       "state": "machine-cross-checked",
-      "text": "⛔ Pressione sullo spazio di archiviazione: critica — la pressione sullo spazio o sui file del database è critica. Libera subito spazio o risolvi la crescita del WAL ed evita aggiornamenti o modifiche delle impostazioni finché l’integrità non viene ripristinata."
+      "text": "⛔ Pressione sullo spazio di archiviazione: critica — la pressione sullo spazio o sui file del database è critica. Libera subito spazio o risolvi la crescita del WAL ed evita aggiornamenti o modifiche delle impostazioni finché il corretto funzionamento non viene ripristinato."
     },
     "install.presentation.status_storage_database_failure": {
       "sourceHash": "083234acb19d795bc53258a435bc2da8d7461c6cae434d8c50439f545a26eca8",
       "state": "machine-cross-checked",
-      "text": "⛔ Errore di archiviazione del database — si è verificato un errore {failure} del database durante {operation}; il recupero non è ancora verificato. Conserva il database, risolvi il problema di archiviazione e attendi un controllo di integrità riuscito prima di riprovare."
+      "text": "⛔ Errore di archiviazione del database — si è verificato un errore {failure} del database durante {operation}; il recupero non è ancora verificato. Conserva il database, risolvi il problema di archiviazione e attendi una verifica del corretto funzionamento senza problemi prima di riprovare."
     },
     "install.presentation.status_storage_warning": {
       "sourceHash": "39871e542befdb986c95c290b2a6ba66c318d7dcdf7ca65f15480d49200c5b69",
@@ -7311,7 +7311,7 @@
     "install.presentation.status_zigbee_containment_incomplete": {
       "sourceHash": "d905a90accb9cb4861e2e1d676e0f0865201e2a7f15272754ddd9d2044347e38",
       "state": "machine-cross-checked",
-      "text": "⛔ Il contenimento del gateway Zigbee non è stato completato — il processo di riavvio è stato fermato dove possibile e le attività ancora in esecuzione sono state declassate. Controlla la diagnostica prima di riprovare."
+      "text": "⛔ Il contenimento del gateway Zigbee non è stato completato — il processo che rilancia le attività è stato fermato dove possibile e le attività ancora in esecuzione sono state declassate. Controlla la diagnostica prima di riprovare."
     },
     "install.presentation.status_zigbee_high_cpu": {
       "sourceHash": "fb0d9f1ae1e44847a3da28752f6aae197cb7932443060bb89d57cd90e25e9f7e",
@@ -7626,7 +7626,7 @@
     "install.tame.approval.recommended": {
       "sourceHash": "3a77da60cbcfc809f72b7fd8d18d38f88119734d8ec517da65b2653c1bdcc833",
       "state": "machine-cross-checked",
-      "text": "Controlla i pacchetti del produttore consigliati dal profilo"
+      "text": "Metti sotto controllo i pacchetti del produttore consigliati dal profilo"
     },
     "install.tame.badge.recommended": {
       "sourceHash": "dd6d876548037ec722252b45795206575e7040eba1ca076cf1732a4a903cadba",
@@ -8481,7 +8481,7 @@
     "profiles.error.auto_rollback": {
       "sourceHash": "9351181f754e82d7edb3b3c89c24d2e7f67fd4688e1c17983f4bc1a79818e666",
       "state": "machine-cross-checked",
-      "text": "Il candidato non è diventato integro; ha-paneld ha ripristinato automaticamente l'ultimo profilo funzionante noto."
+      "text": "Il candidato non è diventato funzionante; ha-paneld ha ripristinato automaticamente l'ultimo profilo funzionante noto."
     },
     "profiles.error.build_draft": {
       "sourceHash": "c8b730122d1ca3eaf1f0e9667215ce13d2fe469876be1a98b97a36f0367c151d",
@@ -9271,7 +9271,7 @@
     "profiles.modal.restart_warning": {
       "sourceHash": "fe3149830ccece16addc3efceb6139b7a5982b1735829871567c1bff519f544b",
       "state": "machine-cross-checked",
-      "text": "Il servizio del pannello verrà riavviato. Se la revisione non risulterà integra, ha-paneld tornerà all'ultimo profilo funzionante noto."
+      "text": "Il servizio del pannello verrà riavviato. Se la revisione non risulterà funzionante, ha-paneld tornerà all'ultimo profilo funzionante noto."
     },
     "profiles.modal.revision_auto_line": {
       "sourceHash": "6b0bbe1c04809906049a2a7ee0be7e25513a77b63f482220f338e57e52b47f06",
@@ -9451,17 +9451,17 @@
     "profiles.result.activation-rolled-back-incompatible": {
       "sourceHash": "f693f5afa79729e2869e2eba6e2bc2ef5745b7602b47d89becba4dd10a7257cc",
       "state": "machine-cross-checked",
-      "text": "Il profilo attivo è diventato incompatibile dopo una modifica del core; è stata ripristinata l'ultima selezione valida nota."
+      "text": "Il profilo attivo è diventato incompatibile dopo una modifica del core; è stata ripristinata l'ultima selezione funzionante nota."
     },
     "profiles.result.activation-rolled-back-unhealthy-auto": {
       "sourceHash": "5ce98d100de2c6f69c59ec8254a4f99dfcbdaf70b7fb7146c2a50b3d17156831",
       "state": "machine-cross-checked",
-      "text": "L'attivazione precedente non ha segnalato uno stato integro; è stata ripristinata la corrispondenza automatica."
+      "text": "L'attivazione precedente non ha segnalato uno stato funzionante; è stata ripristinata la corrispondenza automatica."
     },
     "profiles.result.activation-rolled-back-unhealthy-pinned": {
       "sourceHash": "bc731fb23c29c28dee9fee3be8917414dfbc75e2050abb1f86a5f24e71b33637",
       "state": "machine-cross-checked",
-      "text": "L'attivazione precedente non ha segnalato uno stato integro; è stato ripristinato {id}@{revision}."
+      "text": "L'attivazione precedente non ha segnalato uno stato funzionante; è stato ripristinato {id}@{revision}."
     },
     "profiles.result.activation-rolled-back-unresolved": {
       "sourceHash": "8b837640804bd7c728bc2b49109329b4df4b4aba221a92fbfe05b9c5713925bf",
@@ -9856,7 +9856,7 @@
     "profiles.status.active_healthy": {
       "sourceHash": "d096359d35956b7ee6fa95e303fb32ec41f4ca116a5dee0333b61917c5ffd393",
       "state": "machine-cross-checked",
-      "text": "Il profilo è attivo e integro."
+      "text": "Il profilo è attivo e funzionante."
     },
     "profiles.status.deleted": {
       "sourceHash": "b9a52154180b4282c4b65837593c33c8dd0c2c5b552b5ef36ab2367d1882888c",
@@ -10756,7 +10756,7 @@
     "settings.ha_refresh_token.help": {
       "sourceHash": "6366b03a354de30d09782192cf07b058b689b63e893c4b6d2c6ca6178ed23795",
       "state": "machine-cross-checked",
-      "text": "Stato interno del token conservato per compatibilità con l'importazione via API o configurazione. Gli accessi OAuth in prestito da Companion o emessi da ha-paneld lo gestiscono automaticamente."
+      "text": "Stato interno del token conservato per compatibilità con l'API e l'importazione della configurazione. Gli accessi OAuth in prestito da Companion o emessi da ha-paneld lo gestiscono automaticamente."
     },
     "settings.ha_refresh_token.label": {
       "sourceHash": "9807017e2526d55ffd3ea99555ab867dcfdc6ab59dc56de7d1be68600ea75cc2",
@@ -10766,7 +10766,7 @@
     "settings.ha_token.help": {
       "sourceHash": "2a751871e7f1239703cb7b4c6b11ec965ebcff7f5b208e61824d91d3fd7be35f",
       "state": "machine-cross-checked",
-      "text": "Quando possibile, usa l'accesso dal browser. Questo metodo alternativo può essere creato nel profilo utente di Home Assistant."
+      "text": "Quando possibile, usa l'accesso dal browser. Questo token alternativo può essere creato nel tuo profilo utente di Home Assistant."
     },
     "settings.ha_token.label": {
       "sourceHash": "764baf10051fe1cd66c024f9ae090ad0eb54f33b4880951fb0df0fb56fc31c41",

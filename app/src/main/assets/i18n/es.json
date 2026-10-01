@@ -2331,7 +2331,7 @@
     "dashboard.banner.proximity_learning.title": {
       "sourceHash": "13fee9fb24fd087f47f147bc51dec39d5c598dd73006d3c8417b837a5128ca7f",
       "state": "machine-cross-checked",
-      "text": "Activación con la mano no disponible"
+      "text": "Activación al agitar la mano no disponible"
     },
     "dashboard.banner.proximity_learning.touch_available": {
       "sourceHash": "903915dd8ee56238ac39ddd50edf407ff66796e29173afbeb3da700f6838c234",

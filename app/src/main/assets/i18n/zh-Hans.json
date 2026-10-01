@@ -1494,7 +1494,7 @@
       "state": "machine-cross-checked"
     },
     "configure.proximity.message.safety_reset_failed": {
-      "text": "无法保存安全重置，因此挥手唤醒已禁用。",
+      "text": "无法保存唤醒手势的安全重置，因此唤醒手势已禁用。",
       "sourceHash": "55bb82eb35b87d2b225546553ab840b4f2334c5dd08eabf69f717560cf3e5ead",
       "state": "machine-cross-checked"
     },
@@ -6881,7 +6881,7 @@
     "install.presentation.backup_selection_restore_failed": {
       "sourceHash": "da5f008eb582e2ffe71c82bd960c0b56ddae151f9cdc697f7a864798f4390c15",
       "state": "machine-cross-checked",
-      "text": "无法恢复所选配置文件。"
+      "text": "无法恢复配置文件的选择状态。"
     },
     "install.presentation.backup_staging_retained": {
       "sourceHash": "ac442bd0592e6dc5bdd5116ed7abb908d496d12e7cd1ae6a15ff94234dfb7945",
@@ -7311,7 +7311,7 @@
     "install.presentation.status_zigbee_containment_incomplete": {
       "sourceHash": "d905a90accb9cb4861e2e1d676e0f0865201e2a7f15272754ddd9d2044347e38",
       "state": "machine-cross-checked",
-      "text": "⛔ Zigbee 网关控制未完全成功 — 已尽可能停止重启程序，并降低仍在运行的任务优先级。请检查诊断信息后再重试。"
+      "text": "⛔ Zigbee 网关遏制措施未完全奏效 — 已尽可能停止负责重新启动进程的程序，并降低仍在运行的任务优先级。请检查诊断信息后再重试。"
     },
     "install.presentation.status_zigbee_high_cpu": {
       "sourceHash": "fb0d9f1ae1e44847a3da28752f6aae197cb7932443060bb89d57cd90e25e9f7e",
@@ -11971,7 +11971,7 @@
     "setup.mqtt.error.invalid_address": {
       "sourceHash": "b9add1e3ccf51bf66889b0971c892221981c071133811735c8f221fbd798ee27",
       "state": "machine-cross-checked",
-      "text": "该地址不是面板可用的消息代理 URL——必须包含 tcp://（或 ssl://）和主机名。"
+      "text": "该地址不是面板可用的消息代理 URL——必须包含 tcp://（或 ssl://）和主机地址。"
     },
     "setup.mqtt.error.nothing_listening": {
       "sourceHash": "1033c7bfa571cbb694463132fd61755a77712535237c1d9263a51eec29295cfe",
@@ -12596,7 +12596,7 @@
     "install.tame.hand_back.title": {
       "sourceHash": "aea932da8de9b14e3d0bd8578a8d6dce0071fe01600cc5ea3369129dbe1f48ab",
       "state": "machine-cross-checked",
-      "text": "恢复此面板的起始屏幕"
+      "text": "恢复此面板自带的主屏幕"
     },
     "install.tame.hand_back.warning": {
       "sourceHash": "059846970a24d71fe999c618df5a47bc22630aa1d7df17d52250adf65c8e8571",

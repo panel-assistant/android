@@ -76,22 +76,22 @@
   "configure.advanced.hide": {
    "text": "Geavanceerde instellingen verbergen",
    "sourceHash": "82557c7e15d55184ae10aa64a264e4f03235e662d398d48b1fd3f1d24a515911",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.advanced.marker": {
-   "text": "Geavanceerde instellingen",
+   "text": "Geavanceerde instelling",
    "sourceHash": "1ecce239dd12663aefa9aca6f9af9ded4bbd836f31b92c0d7ee13fa8be70863c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.advanced.show": {
-   "text": "{count}-geavanceerde instellingen weergeven",
+   "text": "{count} geavanceerde instellingen weergeven",
    "sourceHash": "9434fab91d8b47be7204cbac457ef3d8a6deb989c492c3a3fd07cd7fc3f234a1",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.advanced.show_one": {
    "text": "1 geavanceerde instelling weergeven",
    "sourceHash": "4ced5c73c9386e299ffb7140a1e4bfd886389649307b9e6b3be1986ca73433fd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.approval.retry": {
    "text": "Keur dit verzoek goed op het paneel en probeer het daarna opnieuw.",
@@ -856,7 +856,7 @@
   "configure.descriptions": {
    "text": "Beschrijvingen",
    "sourceHash": "bfdc0de709bad8dae81cdf3af8d97f1d6e5b2510af3c97befd5efdf06d144e3b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.display.recommend_prefix": {
    "text": " Gebruik bij voorkeur ",
@@ -921,12 +921,12 @@
   "configure.filter.label": {
    "text": "Zoek een instelling",
    "sourceHash": "556e14934a4a4550aa43766e0f576030549cd26062f8817fd77da448fd5a7df9",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.filter.placeholder": {
    "text": "Zoek een instelling…",
    "sourceHash": "ca4431193303dd52b89f68f0bf95e20f84c566ee4e39fadaaaa8c4b063646118",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.group.behaviour": {
    "text": "Gedrag",
@@ -1006,17 +1006,17 @@
   "configure.help.about": {
    "text": "Over {label}",
    "sourceHash": "865cb604bf97d2ebd9a36bc4166170c23c9c36bd26c9da89e9d909e15d83df11",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.help.close": {
    "text": "Sluiten",
    "sourceHash": "7d9eb7acb13e24625c404401d8e88b2350e32162455885f18276cf802f7701ed",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.help.more": {
    "text": "Meer op de website",
    "sourceHash": "85a7086e3ef77e8a6ffe36a45b39c3847e3b5e2c5a307cf4e2ca831f78969c87",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.language.automatic": {
    "text": "Automatisch",
@@ -1681,7 +1681,7 @@
   "configure.tier.label": {
    "text": "Weergegeven instellingen",
    "sourceHash": "9179eb2ff402a88c959d3ab86fe0ac1c7e4e5705c04c29ccc3a57f9c24a02cec",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.time.days_ago": {
    "text": "{count} dagen geleden",
@@ -4859,7 +4859,7 @@
    "state": "machine-cross-checked"
   },
   "entities.issue.kiosk-mode-limited-support.recommendation": {
-   "text": "Gebruik voor het automatisch filteren van entiteiten letterlijke entiteits-ID’s in JavaScript van HACS Kiosk Mode en vermijd opsommingen; instellingen in Jinja die door de server worden gerenderd, hebben geen afhankelijkheden van de hoofdstream nodig.",
+   "text": "Gebruik voor het automatisch filteren van entiteiten letterlijke entiteits-ID’s in JavaScript van HACS Kiosk Mode en vermijd enumeratie; instellingen in Jinja die door de server worden gerenderd, hebben geen afhankelijkheden van de hoofdstream nodig.",
    "sourceHash": "6722add1f9e7bd22036c91f7c5cdb90df36db9da4f5c444dd3db697dc862c2a7",
    "state": "machine-cross-checked"
   },
@@ -6149,7 +6149,7 @@
    "state": "machine-cross-checked"
   },
   "install.presentation.backup_restored_selection_staged": {
-   "text": "Profielcatalogus hersteld; selectie klaargezet voor herstart en pas na een geslaagde gezondheidscontrole behouden.",
+   "text": "Profielcatalogus hersteld; selectie klaargezet voor een herstart met gezondheidscontrole als voorwaarde.",
    "sourceHash": "71d179990d3bdbab24c8dc55c8ab5a9cd6af24ed3707703477c00ea94c59c9f7",
    "state": "machine-cross-checked"
   },
@@ -9046,7 +9046,7 @@
   "settings.auto_brightness.summary": {
    "text": "Laat het paneel de achtergrondverlichting aanpassen aan het omgevingslicht.",
    "sourceHash": "57d522af96e04b4db48e8fb5fb8f7ed33385a068a93cd941a026b89fa3fee539",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_ha_entity.help": {
    "text": "Leeg laten gebruikt de lichtsensor van het paneel. Selecteer een lichtsterktesensor uit Home Assistant als het paneel geen geschikte sensor heeft.",
@@ -9059,9 +9059,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness_ha_entity.summary": {
-   "text": "Gebruik een lichtHome Assistant-lichtsensor in plaats van die van het paneel.",
+   "text": "Gebruik een Home Assistant-lichtsensor in plaats van die van het paneel.",
    "sourceHash": "703710414afe74c55e969564e23cc7c7f0647d059ffa3237463fa03739902567",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_maximum_percent.help": {
    "text": "Hoogste automatische schermhelderheid als percentage. Voorgestelde niveaus liggen tussen het minimum en maximum; de helderheid kan handmatig nog hoger worden ingesteld.",
@@ -9089,14 +9089,14 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_brightness_minimum_percent.summary": {
-   "text": "Het laagste niveau voor automatische helderheid wordt gekozen.",
+   "text": "Laagste niveau dat automatische helderheid zal kiezen.",
    "sourceHash": "766c3d61ea08f66c252698b4d3b14f05cde1e4a97c64e8c4fc112b23557a8fb5",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_response_percent.help": {
    "text": "Hoeveel van het verschil ten opzichte van het aangeleerde omgevingslichtpatroon wordt op het scherm toegepast, zodra de engine heeft vastgesteld dat een verandering echt is.\n\n- Lagere waarden zorgen ervoor dat het scherm dichter bij het aangeleerde dagelijkse patroon blijft.\n- Terwijl het patroon nog wordt aangeleerd, volgt het scherm direct het gemeten licht.",
    "sourceHash": "ff745f90fe6123b0741034697f8808ef61f561c1ef46629a5f49540dcda4661b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_brightness_response_percent.label": {
    "text": "Gevoeligheid",
@@ -9106,7 +9106,7 @@
   "settings.auto_brightness_response_percent.summary": {
    "text": "Hoe sterk het scherm een echte verandering in het licht in de kamer volgt.",
    "sourceHash": "264844be6dcbd529b02d2f956995dc97d031228c0590f6018240bdab1a91db0c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
    "text": "Schakelt het scherm uit na de aangeleerde vertraging van de gekozen aanwezigheidsmodus of de ingestelde vertraging bij geen aanraakactiviteit. Handmatige schermbediening blijft apart.",
@@ -9121,7 +9121,7 @@
   "settings.auto_sleep.summary": {
    "text": "Schakel het scherm uit als er niemand in de buurt is of na een periode van inactiviteit.",
    "sourceHash": "6ca654fd4bb061b43620b620223404c0befcf61fa2ef2f1318e9d108b2f33b9c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_activity.help": {
    "text": "Of het beleid voor automatische slaapstand het paneel momenteel wakker houdt. De Home Assistant-entiteit biedt de tijdlijn van de activiteitengeschiedenis.",
@@ -9136,7 +9136,7 @@
   "settings.auto_sleep_activity.summary": {
    "text": "Of de automatische slaapstand het paneel wakker houdt.",
    "sourceHash": "505de923eb7e143bb6607cc1871c1616f853d12d28fc40a81d3198e0c6477af3",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_enabled.help": {
    "text": "Standaard uitgeschakeld. Biedt RTSP-video met geluid uit de kamer wanneer een microfoon beschikbaar is en het gebruik ervan is toegestaan, en JPEG-momentopnamen voor Home Assistant. De opname begint alleen wanneer een client media opvraagt, en het paneel toont een rood lampje zolang de camera open is.",
@@ -9149,9 +9149,9 @@
    "state": "machine-cross-checked"
   },
   "settings.camera_enabled.summary": {
-   "text": "Zet de panelcamera in als een RTSP-stream en JPEG-snapshot.",
+   "text": "Bied de paneelcamera aan als RTSP-stream en JPEG-snapshot.",
    "sourceHash": "e65ab34035912691390aca7ec68d80e2400983b2ef83350e51ea36c4095a25a2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_exposure.help": {
    "text": "Belichtingscorrectie in stops, voor een camera die een ruimte donkerder of lichter waarneemt dan hij eruitziet. Bij 0 blijft de automatische belichting van de camera ongewijzigd; het paneel beperkt dit tot het bereik dat de sensor daadwerkelijk ondersteunt.",
@@ -9166,7 +9166,7 @@
   "settings.camera_exposure.summary": {
    "text": "Belichtingscorrectie in stops. Bij 0 blijft de automatische belichting ongewijzigd.",
    "sourceHash": "7c89abca8ecf2cddbc62fe9d25eb4bae95570852ed99f39254e2d008a17f0e5a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_fps.help": {
    "text": "Wat een stream krijgt als de URL niet om iets anders vraagt. Een stream-URL kan dit in beide richtingen overschrijven met ?fps=.",
@@ -9181,7 +9181,7 @@
   "settings.camera_fps.summary": {
    "text": "Standaard framerate; een stream-URL kan dit overschrijven.",
    "sourceHash": "c1101605aebb6489964e7eadeb38593db279b596f2f0d1481853ada2f73c60b8",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_kbps.help": {
    "text": "Wat een stream krijgt als de URL niet om iets anders vraagt. Een stream-URL kan dit in beide richtingen overschrijven met ?kbps=.",
@@ -9196,7 +9196,7 @@
   "settings.camera_kbps.summary": {
    "text": "Standaard bitrate; een stream-URL kan dit overschrijven.",
    "sourceHash": "ea235ad59bb583ce8b30cb510f4e2d8661a304e9ba6cddd0e2943032d618c971",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.camera_resolution.help": {
    "text": "Wat een stream krijgt als de URL niet om iets anders vraagt. Een stream-URL kan dit in beide richtingen overschrijven met ?res=.",
@@ -9211,7 +9211,7 @@
   "settings.camera_resolution.summary": {
    "text": "Standaard streamresolutie; een stream-URL kan dit overschrijven.",
    "sourceHash": "19aa707dbde995ad2e9c0df8b6f2e62cf34c781b108671b611e395a9b4d8c9f4",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.cpu_governor.help": {
    "text": "Live CPU-schaalprofiel tot de volgende herstart; Auto = de dynamische governor van de SoC.",
@@ -9226,12 +9226,12 @@
   "settings.cpu_governor.summary": {
    "text": "CPU-schaalprofiel tot de volgende herstart.",
    "sourceHash": "899d9bfb9f86429bc13165fe8a45bfc78f59149c7a49418b9783f3dc43d63b47",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dark_mode.help": {
    "text": "Past het thema toe op de eigen schermen van ha-paneld en stelt het standaardkleurenschema van het dashboard in op panelen zonder systeeminstelling voor donkere modus (Android 9 en ouder).\n\nEen thema dat je in Home Assistant kiest, overschrijft de standaardinstelling van het dashboard; deze web-UI volgt altijd de eigen voorkeur van de browser waarmee je kijkt.",
    "sourceHash": "853ed1512986d08ad813002d9cb672dbfcb1261b3b2447bfc4b52301b163c2eb",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dark_mode.label": {
    "text": "Donkere modus",
@@ -9239,9 +9239,9 @@
    "state": "machine-cross-checked"
   },
   "settings.dark_mode.summary": {
-   "text": "Donker thema voor de schermen van ha-paneld zelf en het standaarddashboard.",
+   "text": "Donker thema voor de schermen van ha-paneld zelf en als dashboardstandaard.",
    "sourceHash": "796ecaff6531067757b7a3ac15e2483dcd43e3a85af57f0090224ef0c9f5f22a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_entity_auto_runtime.help": {
    "text": "Ontbrekende entiteiten die via hass.states worden gelezen, kunnen automatisch worden toegevoegd. Het bewijs blijft zichtbaar als dit is uitgeschakeld.",
@@ -9276,7 +9276,7 @@
   "settings.dashboard_entity_learning.summary": {
    "text": "Stream alleen de entiteiten die dit dashboard gebruikt.",
    "sourceHash": "66be8978b2f2634a9b30dc43beeae293aa0d8a0fc4c7c4aa4a8e0186bb9dbf9c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_entity_learning_applied.help": {
    "text": "Back-upveilige activeringsvergrendeling. Wordt ingesteld na een veilige bootstrap bij een lege installatie of een expliciete toepassing vanuit de Entiteiten-API of het tabblad.",
@@ -9301,7 +9301,7 @@
   "settings.dashboard_fullscreen.help": {
    "text": "Alleen ingebouwde renderer. Verbergt de status- en navigatiebalken van Android terwijl het dashboard op de voorgrond staat; veeg vanaf een rand om ze tijdelijk te tonen.\n\nHet vergrendelt het paneel niet en verbergt de navigatie van Home Assistant niet.",
    "sourceHash": "c410a8d3eb3474145a680214c11fac9bb2e096eeae2742daf1e0fbdd74726f8e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_fullscreen.label": {
    "text": "Android-systeembalken verbergen",
@@ -9311,7 +9311,7 @@
   "settings.dashboard_fullscreen.summary": {
    "text": "Verberg de status- en navigatiebalken van Android achter het dashboard.",
    "sourceHash": "c3144c9c243f42a1b24d1ff2eada033dcc3b626c5ec603b00aafc8b2f3b2f63d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_idle_return_min.label": {
    "text": "Terug naar startpunt bij inactiviteit (min)",
@@ -9319,14 +9319,14 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_idle_return_min.summary": {
-   "text": "Aantal minuten inactief voordat je naar huis gaat. 0 schakelt het uit.",
+   "text": "Minuten inactief vóór terugkeer naar het startpunt. 0 schakelt dit uit.",
    "sourceHash": "c09a7ad02ecc153c31c694acf64312f9b69bc920fad09a62091730ac4f61d05c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.help": {
    "text": "Alleen ingebouwde renderer. Nadat er verbinding is met Home Assistant 2026.4.2+, wordt de eigen frontend daarvan gevraagd de navigatie te verbergen.\n\nStandaard ingeschakeld; bij een niet-ondersteund of mislukt verzoek blijft het dashboard ongewijzigd. Het vergrendelt Android niet en injecteert geen CSS in het dashboard.",
    "sourceHash": "693cd97f26d4d60d16c4242e8a199bb2fd202edee948efab4880e41313b05e29",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_native_kiosk.label": {
    "text": "Navigatie van Home Assistant verbergen (native)",
@@ -9336,7 +9336,7 @@
   "settings.dashboard_native_kiosk.summary": {
    "text": "Vraag Home Assistant om de eigen navigatie te verbergen.",
    "sourceHash": "5fd4788997717aea56fb4c039aa40bcb0cb04c128c7cb5b19fc102b439bf486b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_network_warning.help": {
    "text": "Toon de waarschuwing voor de netwerkverbinding op het dashboard van dit paneel. Netwerkcontroles en de status blijven beschikbaar als deze optie uitstaat.",
@@ -9351,7 +9351,7 @@
   "settings.dashboard_network_warning.summary": {
    "text": "Geef een waarschuwing op het dashboard als de netwerkverbinding wegvalt.",
    "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_overscroll.help": {
    "text": "Ingebouwde renderer: sta het overscroll-effect (uitrekken/gloed) van Android toe wanneer een sleepbeweging voorbij de boven- of onderkant van het dashboard gaat. Standaard uit (een wandpaneel scrollt zelden en het terugveren ziet er misplaatst uit). Alleen via de API — stel in op true om het native effect te herstellen.",
@@ -9369,14 +9369,14 @@
    "state": "machine-cross-checked"
   },
   "settings.dashboard_package.summary": {
-   "text": "App die het dashboard weergeeft. Bij ‘Blank’ wordt de ingebouwde renderer gebruikt.",
+   "text": "App die het dashboard weergeeft. Leeg laten gebruikt de ingebouwde renderer.",
    "sourceHash": "968f7a73a5e8876febb8b8f254404f502bedf77b3df100cb14a52a40dc823a6e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.help": {
    "text": "Alleen ingebouwde renderer.\n\n- **Volg Home Assistant** laat de licht/donker-keuze van het dashboard over aan Home Assistant, waarvoor de instelling Donkere modus een standaardwaarde levert.\n- **Donker** en **Licht** kiezen die op dit paneel wanneer Home Assistant op Auto staat, voor een kioskdashboard zonder zijbalk om de profielpagina van Home Assistant te bereiken.\n- **Omgevingslicht** kiest Donker of Licht op basis van het licht in de kamer zoals het model voor automatische helderheid dat ziet, en wisselt pas nadat de kamer een minuut lang donkerder of lichter is gebleven; dit vereist dat Automatische helderheid aanstaat, en het volgt Home Assistant totdat er een meting is.\n\nEen expliciete keuze voor Licht of Donker in Home Assistant wint nog steeds; gebruik Auto of een aparte paneelgebruiker. Terugkeren naar Volg Home Assistant geeft de keuze precies terug zoals die werd aangetroffen.",
    "sourceHash": "a50cd5d79a729b0c1fb8d39afa1f2cd03b65577d0d206cdc95b79e2a3512c08a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_theme.label": {
    "text": "Dashboard-thema",
@@ -9386,7 +9386,7 @@
   "settings.dashboard_theme.summary": {
    "text": "Wie kiest voor licht of donker: Home Assistant, dit paneel of de kamer.",
    "sourceHash": "45c7a962327b3b7de0ff2853bb28d7053772e39f164b809e3aacba83e170862f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.dashboard_zoom.help": {
    "text": "Zoomfunctie in de browser.",
@@ -9406,7 +9406,7 @@
   "settings.dashboard_zoom.summary": {
    "text": "Browserzoom voor het dashboard.",
    "sourceHash": "ffca38a9cb226e6a7726957fdcb1ff0b2999887bed938e40573cdd3abc418106",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_boot.help": {
    "text": "Wanneer het paneel voor het laatst is opgestart (een tijdstempel — HA toont de verstreken uptime).",
@@ -9421,7 +9421,7 @@
   "settings.diag_boot.summary": {
    "text": "Wanneer het paneel voor het laatst is gestart.",
    "sourceHash": "de15195916f3c5747fa14f3b2810cceed59f39c51f1717898c2a287bef43cd92",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_cpu.help": {
    "text": "Totaal CPU-bezettingspercentage (panelen met root/su; niet beschikbaar op panelen die door de sandbox zijn afgeschermd).",
@@ -9436,7 +9436,7 @@
   "settings.diag_cpu.summary": {
    "text": "Totaal percentage CPU-bezetting.",
    "sourceHash": "4cc932a11c854d36f47035e321293c7ccfe0512292baa5d432d30a651b97b242",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_ip.label": {
    "text": "IP-adres",
@@ -9446,7 +9446,7 @@
   "settings.diag_ip.summary": {
    "text": "Het lokale IPv4-adres van dit paneel.",
    "sourceHash": "ac85e3cacaf4ac9f078b4db44ddb318ba6582381943ae732afcfd33459315a9c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_memory.label": {
    "text": "Geheugengebruik",
@@ -9456,7 +9456,7 @@
   "settings.diag_memory.summary": {
    "text": "Gebruikt geheugen in procenten.",
    "sourceHash": "cdfa125d539f4dbd775d6872fb7c09f4eccb57ecfc832d8c8d22bf7c4beaee21",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_soc_temp.help": {
    "text": "Temperatuur van de systeem-op-chip (panelen met root/su; niet beschikbaar op panelen die door de sandbox zijn afgeschermd).",
@@ -9471,7 +9471,7 @@
   "settings.diag_soc_temp.summary": {
    "text": "Processortemperatuur.",
    "sourceHash": "3c5a5ff799d7c2ac91c8b0896b2bd4e161d39613309f07a989c4922dc1b53c96",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_wifi_outages_24h.help": {
    "text": "Korte Wi-Fi-onderbrekingen in de voortschrijdende laatste 24 uur. Telt alleen verlies van de actieve Wi-Fi-verbinding van het paneel — storingen van Home Assistant of de broker worden nooit meegeteld. Als het paneel moest beperken wat het opslaat, geeft het attribuut is_lower_bound van de sensor aan dat de waarde een ondergrens is.",
@@ -9484,9 +9484,9 @@
    "state": "machine-cross-checked"
   },
   "settings.diag_wifi_outages_24h.summary": {
-   "text": "KortWi-Fi-uitval in de afgelopen 24 uur.",
+   "text": "Korte Wi-Fi-uitval in de afgelopen 24 uur.",
    "sourceHash": "f5d1698495507bfc32ba9f00f003aafee8008708a5cef312282931996d3db135",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_wifi_rssi.help": {
    "text": "Huidige ontvangen Wi-Fi-signaalsterkte in dBm zolang Wi-Fi de actieve verbinding is.",
@@ -9501,7 +9501,7 @@
   "settings.diag_wifi_rssi.summary": {
    "text": "Wi-Fi-signaalsterkte.",
    "sourceHash": "8fb8466dfbc5f1f6fa620e4c7775d8e07e4087bb47bbbd22f9ffc523fa0546d6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.diag_wifi_ssid.help": {
    "text": "Huidige naam van het Wi-Fi-netwerk zolang Wi-Fi de actieve verbinding is. Dit kan een locatie identificeren en komt in de HA-geschiedenis terecht als het wordt blootgesteld; Android kan het verbergen tenzij toestemming voor netwerkinformatie beschikbaar is.",
@@ -9514,9 +9514,9 @@
    "state": "machine-cross-checked"
   },
   "settings.diag_wifi_ssid.summary": {
-   "text": "HuidigeWi-Fi-netwerknaam.",
+   "text": "Huidige Wi-Fi-netwerknaam.",
    "sourceHash": "550e9f6c142dec51bcd26c8b6c90c1e7cec0f805505f61ad7cca56a4fcea7d34",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.friendly_name.label": {
    "text": "Vriendelijke naam",
@@ -9524,9 +9524,9 @@
    "state": "machine-cross-checked"
   },
   "settings.friendly_name.summary": {
-   "text": "NaamHome Assistantma wordt voor dit paneel weergegeven.",
+   "text": "Naam die Home Assistant voor dit paneel weergeeft.",
    "sourceHash": "2b7babb55807e9fe58ad6ec530965e8511d1259bf99e459ceafe9073ec479f92",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ha_area.help": {
    "text": "Waar dit paneel zich bevindt, op basis van de gebiedsnaam in Home Assistant. Dit kan alleen in ha-paneld worden gewijzigd als je HA-gebruiker beheerdersrechten heeft; wijzig het anders bij je apparaat in HA.",
@@ -9541,7 +9541,7 @@
   "settings.ha_area.summary": {
    "text": "Home Assistant gebied waartoe dit paneel behoort.",
    "sourceHash": "992b9c57355acf08ce839cbf4c2c66e2652cf5c0597bf380cc777b54e40833ef",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ha_client_id.help": {
    "text": "Interne tokenherkomst, bewaard voor compatibiliteit met API-/config-import. Geleende Companion-tokens gebruiken de Android Companion-client; browseraanmeldingen van ha-paneld gebruiken de HTTP-oorsprong van het paneel. Geen gebruikersvoorkeur.",
@@ -9576,7 +9576,7 @@
   "settings.ha_token.summary": {
    "text": "Fallback-token voor als inloggen via de browser niet lukt.",
    "sourceHash": "d9d6c0fd8bc2c8048adf70c2de740fde6e68907c21575ecf8d6583374d3a80dd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ha_token_expiry.help": {
    "text": "Interne vervaldatum van het OAuth-toegangstoken, bewaard samen met de bijbehorende toegangs- en vernieuwingstokens tijdens privéback-up en herstel.",
@@ -9601,12 +9601,12 @@
   "settings.ha_url.summary": {
    "text": "Het adres van je Home Assistant-server.",
    "sourceHash": "292a8aafd3c78ab22bb939061885d5acdedc69c6b75019b4c9d34cc6ec1c8c13",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.home_dashboard.help": {
    "text": "Dashboard dat wordt gebruikt bij herladen en terugkeer bij inactiviteit.\n\n- **Auto** laat Home Assistant kiezen.\n- **Aangepast** accepteert een specifieke weergave, bijv. `/dashboard-name/tab-name`.",
    "sourceHash": "8f44a63324b05223da2292e2fd4a8b080d40c67ec0a1faca36b8b6c237a8febe",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.home_dashboard.label": {
    "text": "Startdashboard",
@@ -9614,9 +9614,9 @@
    "state": "machine-cross-checked"
   },
   "settings.home_dashboard.summary": {
-   "text": "Het dashboard wordt geopend bij het herladen en bij terugkeer uit de ruststand.",
+   "text": "Dashboard dat wordt geopend bij herladen en terugkeer na inactiviteit.",
    "sourceHash": "e35d791d1aa6593172cf8dc764b108664089dcd6688eb60a7dd551543fbb272c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.humidity.label": {
    "text": "Luchtvochtigheid",
@@ -9624,9 +9624,9 @@
    "state": "machine-cross-checked"
   },
   "settings.humidity.summary": {
-   "text": "Luchtvochtigheid via de panelsensor van Android.",
+   "text": "Luchtvochtigheid via de paneelsensor van Android.",
    "sourceHash": "0b5d5be5c4ed42841da9bf3c30f05726024a6e48db0a691a9fbaea66c7e94304",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.illuminance.label": {
    "text": "Omgevingslicht",
@@ -9634,9 +9634,9 @@
    "state": "machine-cross-checked"
   },
   "settings.illuminance.summary": {
-   "text": "Omgevingslicht van de panelsensor.",
+   "text": "Omgevingslicht van de paneelsensor.",
    "sourceHash": "79e3ea29041e2856688dc831cb91286fc59489365697bd191b407647eeccac5a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.keep_awake.label": {
    "text": "Paneel responsief houden",
@@ -9646,7 +9646,7 @@
   "settings.keep_awake.summary": {
    "text": "Zorg ervoor dat het netwerk en de diensten blijven draaien terwijl het scherm uit is.",
    "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.kiosk_companion_packages.help": {
    "text": "Android-pakketnamen, gescheiden door komma’s, die de dashboardvergrendeling vooraan laat staan in plaats van terug te keren naar het dashboard. Gebruik dit om de eigen schermen van een bijbehorende app te openen. Vereist root-toegang.",
@@ -9659,14 +9659,14 @@
    "state": "machine-cross-checked"
   },
   "settings.kiosk_companion_packages.summary": {
-   "text": "Apps die het slot voor zich laat staan, op pakketnaam.",
+   "text": "Apps die de vergrendeling op de voorgrond laat, op pakketnaam.",
    "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.kiosk_lock.help": {
    "text": "Vergrendeling voor informeel gebruik, alleen met root. Verbergt de Android-systeembalken en keert binnen ongeveer 3 seconden terug naar het geselecteerde dashboard wanneer een andere app of het overzicht van recente apps wordt geopend. De navigatie van Home Assistant wordt niet verborgen.\n\nZo hef je de vergrendeling op:\n\n- hier, of vanuit Home Assistant\n- via adb\n- met 7 snelle tikken linksboven\n- tijdens het ontgrendelde venster van 60 seconden na een herstart",
    "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.kiosk_lock.label": {
    "text": "Android vergrendelen op het dashboard (experimenteel)",
@@ -9676,7 +9676,7 @@
   "settings.kiosk_lock.summary": {
    "text": "Alleen voor root. Breng het dashboard terug als er een andere app wordt geopend.",
    "sourceHash": "e9055e43b4f6a114f2d4e789b65ea17fc24fecfbc2b5fb1417b1ba9e54f628fd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.launcher_package.help": {
    "text": "App die de Launcher-knop naar voren haalt. Leeg laten kiest automatisch een app. Als je Panel admin (ha-paneld) selecteert, wordt ha-paneld ook de Home-app van Android en blijft dat.",
@@ -9691,7 +9691,7 @@
   "settings.launcher_package.summary": {
    "text": "De Launcher-knop opent de app.",
    "sourceHash": "b2dadcf62b45755d46bca03a6522073177068495b10956c04c39699194956d04",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_enabled.help": {
    "text": "Stuur het eigen proceslogboek van ha-paneld — niet het volledige systeemlogboek — door naar een centrale sink (LAN-only, tokens en wachtwoorden worden onleesbaar gemaakt).",
@@ -9706,7 +9706,7 @@
   "settings.log_ship_enabled.summary": {
    "text": "Verzend het logboek van de 'ha-paneld' naar een collector op je netwerk.",
    "sourceHash": "d9d0543772220c0f2d59b7a38f1fe26075b0ac588c1534434ec2644c1fac6b98",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_host.help": {
    "text": "Host van de log-collector; als je dit leeg laat, blijft de verzending inactief. Een schema of :port hier wordt in acht genomen (udp://collector, collector:1514).",
@@ -9721,7 +9721,7 @@
   "settings.log_ship_host.summary": {
    "text": "Adres van de logverzamelaar. Als je dit leeg laat, wordt het verzenden uitgeschakeld.",
    "sourceHash": "2de7304ca6cbdb82707a94e19b7e94df4ae18b8d408730c04fe716f554625fba",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_port.label": {
    "text": "Sink-poort",
@@ -9731,7 +9731,7 @@
   "settings.log_ship_port.summary": {
    "text": "Poort van de logverzamelaar.",
    "sourceHash": "4cf403c3eedb4aae0bc497387596f2a6d1bcc5908d9b883f821e381e733cc4a3",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_protocol.help": {
    "text": "TCP is de standaardinstelling omdat het aangeeft dat een sink weigert of onbereikbaar is; UDP dat kan niet, dus een verkeerde instelling daar leidt tot een stille fout. Poort 514 geldt voor beide.",
@@ -9746,12 +9746,12 @@
   "settings.log_ship_protocol.summary": {
    "text": "Verzenden naar de collector. TCP meldt een geweigerde sink.",
    "sourceHash": "db01cfc12070a7e72e1bee1187e7e24fa38984e742a19b523dc6bb2a3ca6cbc3",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_system_enabled.help": {
-   "text": "Stuur Android-systeemlogs naar dezelfde ontvanger door wanneer 'Logs doorsturen' aan staat.\n\n- Standaard uit.\n- Vereist TCP of HTTP en root of de geïnstalleerde helper.\n- Vermeldingen worden afgeschermd en bij veel logverkeer kunnen sommige wegvallen.",
+   "text": "Stuur Android-systeemlogs naar dezelfde ontvanger door wanneer 'Logs doorsturen' aan staat.\n\n- Standaard uit.\n- Vereist TCP of HTTP en root of de geïnstalleerde helper.\n- Gevoelige gegevens worden afgeschermd; bij veel logverkeer kunnen vermeldingen wegvallen.",
    "sourceHash": "bfc7f5d141f83c2cf7f2c168f8e492af3f7fe3b50efff70a0435d15bb0524fa2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.log_ship_system_enabled.label": {
    "text": "Systeemlogs doorsturen",
@@ -9761,7 +9761,7 @@
   "settings.log_ship_system_enabled.summary": {
    "text": "Stuur ook Android-systeemlogs naar de collector.",
    "sourceHash": "a172f1f97d43da721b10903ca5c2268afbd25f6b77048716ceb1c9526bdf13da",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.manufacturer.help": {
    "text": "Fabrikant op de HA-apparaatkaart overschrijven (leeg = profiel/auto).",
@@ -9774,9 +9774,9 @@
    "state": "machine-cross-checked"
   },
   "settings.manufacturer.summary": {
-   "text": "Overschrijf de fabrikant op de apparaatkaart 'Home Assistant'.",
+   "text": "Overschrijf de fabrikant op de apparaatkaart in Home Assistant.",
    "sourceHash": "3228d0bdc49534bc5cb89d049c2c41fd1a0015338b353ca03a442f71fa7a33f6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.model.help": {
    "text": "Model op de HA-apparaatkaart overschrijven (leeg = profiel/auto).",
@@ -9789,9 +9789,9 @@
    "state": "machine-cross-checked"
   },
   "settings.model.summary": {
-   "text": "Overschrijf het model op de apparaatkaart ‘Home Assistant’.",
+   "text": "Overschrijf het model op de apparaatkaart in Home Assistant.",
    "sourceHash": "ca6b303ae590f03bc698654dc1506b6ab7ae9ace6609b91d5f37a427f69d985f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_address_family.help": {
    "text": "Geldt voor de verbinding met de MQTT-broker en de Home Assistant WebSocket-verbindingen van het paneel; gewone HTTPS-leesacties proberen altijd elk gepubliceerd adres. Automatisch leert een werkende route en valt terug tussen IPv6 en IPv4. Geef de voorkeur aan IPv4 behoudt IPv6 als terugval; Forceer IPv4 weigert eindpunten zonder IPv4-adres.",
@@ -9806,7 +9806,7 @@
   "settings.mqtt_address_family.summary": {
    "text": "Gebruik IPv4, IPv6 of beide om naar MQTT en Home Assistant te gaan.",
    "sourceHash": "a90e653c938c8ab32ed28f2a4da6e70b54beb5814d7a21b7647926fc3709ff5f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_broker.label": {
    "text": "Broker-URL",
@@ -9816,7 +9816,7 @@
   "settings.mqtt_broker.summary": {
    "text": "MQTT broker-adres. Als je dit leeg laat, wordt Home Assistant automatisch gevonden.",
    "sourceHash": "044adf15a77d5bb058f4805811e03bbdd500014b03e4ebef2e688ed516ccb3ee",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_password.label": {
    "text": "Wachtwoord",
@@ -9826,7 +9826,7 @@
   "settings.mqtt_password.summary": {
    "text": "MQTT wachtwoord. Als je dit leeg laat, blijft het huidige wachtwoord behouden.",
    "sourceHash": "7fed95c1c70ef7755667c50ec3e5e1c5bf1b2644ba1dbb1cd6afdfce07939bb2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.mqtt_user.label": {
    "text": "Gebruikersnaam",
@@ -9836,12 +9836,12 @@
   "settings.mqtt_user.summary": {
    "text": "MQTT gebruikersnaam voor dit paneel.",
    "sourceHash": "c9051f2d3306c556507ff4d4d714230ec1201407135b13f6acad7f1541d4502e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.navbar_mode.help": {
    "text": "Software-navigatiebalk op het scherm voor panelen zonder eigen navigatiebalk. **Native** laat de navigatie over aan de eigen Android-balk van het paneel en tekent niets.\n\nHet verbergen van de Android-systeembalken, via de volledig-scherminstelling van de ingebouwde renderer of de Android-dashboardvergrendeling, verbergt nog steeds een native balk.",
    "sourceHash": "5a6df2f1452dcbc4734840f9f5cef12eacdb2ecb12bd2d00c3107b445a069d36",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.navbar_mode.label": {
    "text": "Navbar-modus",
@@ -9849,14 +9849,14 @@
    "state": "machine-cross-checked"
   },
   "settings.navbar_mode.summary": {
-   "text": "Toon een zachte navigatiebalk op panelen die er zelf geen hebben.",
+   "text": "Toon een software-navigatiebalk op panelen zonder eigen navigatiebalk.",
    "sourceHash": "e9b0b88a61249c1cc28487059a0851afaf93717cbd41388bdb56d685812ea033",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.network_adb.help": {
    "text": "**Beveiligingsrisico:** houdt klassieke ADB na herstarts en herverbindingen luisterend op TCP-poort 5555.\n\nSchakel dit alleen in tijdens actief onderhoud op een vertrouwd netwerk. Als ADB buiten ha-paneld is ingeschakeld, moet het daar ook worden uitgeschakeld.",
    "sourceHash": "c1d223177697675bf4eec7603bd73ba99fd866f002410c92177c1e8ee1bca48b",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.network_adb.label": {
    "text": "Netwerk-ADB",
@@ -9866,7 +9866,7 @@
   "settings.network_adb.summary": {
    "text": "Beveiligingsrisico. Zorg ervoor dat ADB bij elke herstart op poort 5555 blijft luisteren.",
    "sourceHash": "08712f193dc3e77aff305d6dfe706466ed3bcaa53f85c48c5519a6d30a39a924",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.panel_id.help": {
    "text": "Stabiele id die wordt gebruikt in entiteit-IDs en MQTT-topics (kleine letters, cijfers, underscores; maximaal 63 tekens).",
@@ -9881,7 +9881,7 @@
   "settings.panel_id.summary": {
    "text": "Stabiele id die wordt gebruikt in de entiteits-ID’s van dit paneel.",
    "sourceHash": "c5e1f07b36269495d41932f08dfe0e841910759a9471c8ec5cc1f0ddc5a3248d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.prevent_idle_dim.label": {
    "text": "Voorkom dimmen bij inactiviteit",
@@ -9889,9 +9889,9 @@
    "state": "machine-cross-checked"
   },
   "settings.prevent_idle_dim.summary": {
-   "text": "Voorkomt dat de fabrieksfirmware de achtergrondverlichting dimt bij uitschakelen.",
+   "text": "Voorkom dat de fabrieksfirmware de achtergrondverlichting dimt bij schermuitschakeling.",
    "sourceHash": "8780a4d1af7ed5ca4a3b673fb67d9b1b171b3a0f8dc35b5913e83473984e55e7",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.proximity.label": {
    "text": "Nabijheid",
@@ -9901,7 +9901,7 @@
   "settings.proximity.summary": {
    "text": "Aanwezigheid dichtbij of ver weg aangeleerd.",
    "sourceHash": "9caab10a7b9b275d97c49aa0f3c65e4a7a4f40c09a933c814c7d9f91024ecc4c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.proximity_level.help": {
    "text": "Genormaliseerd aangeleerd nabijheidsniveau van 0 tot 100 procent; binaire bronnen melden 0 of 100.",
@@ -9916,7 +9916,7 @@
   "settings.proximity_level.summary": {
    "text": "Aangeleerd nabijheidsniveau, 0 tot 100 procent.",
    "sourceHash": "45bda834ac56f2428579800f7db2e0f91139109a5142820b5eeee4e605880831",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.room_humidity.label": {
    "text": "Luchtvochtigheid in de kamer",
@@ -9926,7 +9926,7 @@
   "settings.room_humidity.summary": {
    "text": "Luchtvochtigheid in de kamer, afkomstig van de klimaatsensor.",
    "sourceHash": "bbd12dbcdf9562005a6f6db920aef531ee0cdf0286244dec929a88e66f6a678d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.room_temp.help": {
    "text": "Kamertemperatuur afkomstig van de door het paneel ondersteunde klimaatsensor (kalibratie-offset toegepast).",
@@ -9941,7 +9941,7 @@
   "settings.room_temp.summary": {
    "text": "Kamertemperatuur van de klimaatsensor.",
    "sourceHash": "6787d9ec7159d5f8da89bd45f9c7219f3ef8895cf31c16047e636690857fd732",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.room_temp_offset.help": {
    "text": "Correctie (°C) toegevoegd aan de gerapporteerde kamertemperatuur — meestal negatief, omdat de zelfopwarming van het paneel een te hoge waarde aangeeft. Per paneel (afhankelijk van de montage), dus wordt niet gekloond door een fleet-push.",
@@ -9956,7 +9956,7 @@
   "settings.room_temp_offset.summary": {
    "text": "Correctie toegevoegd aan de kamertemperatuur, in °C.",
    "sourceHash": "978e73e423dcd1a2a8ca227b4dd989ed509d34483ebcc548af7160cc6e52d546",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.screen.help": {
    "text": "Huidige schermstatus en helderheid. Home Assistant toont de native helderheid 0–255 van het lampje als percentage.",
@@ -9971,7 +9971,7 @@
   "settings.screen.summary": {
    "text": "Schermstatus en helderheid.",
    "sourceHash": "6ba9e68bcfcfc58c954fe6a202ed4f6c8d9df1a8788b1431583756c0740bd43e",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.silence_boot_chime.label": {
    "text": "Opstartgeluid dempen",
@@ -9981,7 +9981,7 @@
   "settings.silence_boot_chime.summary": {
    "text": "Zet het opstartgeluid van de firmware op stil.",
    "sourceHash": "57dde483cc0e08a27cd85277831bd12459ec0e78b4672942353d031c00022f6f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.tame_vendor_packages.help": {
    "text": "Opslag van pakketselecties uitsluitend voor back-ups; de selecties worden beheerd via de kaart ‘Pakketten van leveranciers’.",
@@ -9999,9 +9999,9 @@
    "state": "machine-cross-checked"
   },
   "settings.temperature.summary": {
-   "text": "Temperatuur van de panelsensor van Android.",
+   "text": "Temperatuur van de paneelsensor van Android.",
    "sourceHash": "5850eb7acbd08369bdfeee39d974da5d25e0c18dd567b6b6420f7f719df5ca4f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.touch_sound.label": {
    "text": "Aanraakgeluid",
@@ -10009,14 +10009,14 @@
    "state": "machine-cross-checked"
   },
   "settings.touch_sound.summary": {
-   "text": "Speel het systeemgeluid af.",
+   "text": "Speel het tikgeluid van het systeem af.",
    "sourceHash": "45864ba285306a16cdb22e54405c63a9968f8747466cf66b1c0a5381c0b6626a",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ui_language.help": {
    "text": "Taal die de eigen interface van ha-paneld gebruikt.\n\n**Automatisch** gebruikt eerst een expliciete pagina-overschrijving. Instellingslabels en helpteksten in Configureren kunnen daarna de taal van de verbonden Home Assistant-gebruiker volgen; browser, apparaat en Engels zijn de overige terugvalopties.",
    "sourceHash": "b7fc0eadebf67c70928a78036d93798c57776e075ff3bf5172197dd40238be34",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.ui_language.label": {
    "text": "Taal van de interface",
@@ -10024,9 +10024,9 @@
    "state": "machine-cross-checked"
   },
   "settings.ui_language.summary": {
-   "text": "Taal van de interface vha-paneld zelf.",
+   "text": "Taal van de interface van ha-paneld zelf.",
    "sourceHash": "fc20faa643f8c9106b287f7179cd85e837766146f59d184785573bdb4bf28d9f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_audio_source.label": {
    "text": "Audiobron",
@@ -10036,7 +10036,7 @@
   "settings.voice_audio_source.summary": {
    "text": "Android-audiobron voor de luisteraar.",
    "sourceHash": "a04c96b3883f2a61916c36f5a3f1987b16a9ef4bb82eca78c897d85471f918f6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_enabled.label": {
    "text": "Spraakassistent",
@@ -10046,12 +10046,12 @@
   "settings.voice_enabled.summary": {
    "text": "Luister naar een activeringswoord en stuur spraak naar Assist.",
    "sourceHash": "d44107963fc54351bd582d47825aad5651566129424d90819e0b7c51a413e4e4",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_mic_gain_db.help": {
-   "text": "Versterkt het geluid dat naar Home Assistant wordt verzonden voor transcriptie.\n\nDeze panelen bieden geen ruisonderdrukking of automatische versterkingsregeling op platformniveau, dus een paneel dat je van de andere kant van de kamer hoort, kan betrouwbaar activeren en toch slecht transcriberen: activeringswoorddetectie past zich vanzelf aan een zacht signaal aan, spraak-naar-tekst niet.\n\n**Verhoog dit** als commando’s worden gemist of verkeerd worden getranscribeerd terwijl het activeringswoord wel werkt. Activeringswoorddetectie blijft bewust op het onversterkte signaal.",
+   "text": "Versterkt het geluid dat naar Home Assistant wordt verzonden voor transcriptie.\n\nDeze panelen bieden geen ruisonderdrukking of automatische versterkingsregeling op platformniveau, dus als je het paneel van de andere kant van de kamer aanspreekt, kan het betrouwbaar activeren en toch slecht transcriberen: activeringswoorddetectie past zich vanzelf aan een zacht signaal aan, spraak-naar-tekst niet.\n\n**Verhoog dit** als commando’s worden gemist of verkeerd worden getranscribeerd terwijl het activeringswoord wel werkt. Activeringswoorddetectie blijft bewust op het onversterkte signaal.",
    "sourceHash": "11daf40ebcb01e6a2b996011eb081e6f150b1e83d5d4aa877ba1c3fc3b089312",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_mic_gain_db.label": {
    "text": "Microfoonversterking (dB)",
@@ -10061,7 +10061,7 @@
   "settings.voice_mic_gain_db.summary": {
    "text": "Versterk spraak die naar Home Assistant wordt gestuurd voor transcriptie.",
    "sourceHash": "065410cb2e71f90414f869a5e9aedf1be3845e0c26cccacf89d64b6ff54d40b2",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_pipelines.help": {
    "text": "Welke Home Assistant Assist-pipeline elk activeringswoord uitvoert. Een woord dat op de voorkeurspipeline blijft staan, volgt de pipeline die Home Assistant als voorkeur heeft.",
@@ -10076,12 +10076,12 @@
   "settings.voice_pipelines.summary": {
    "text": "Welke Assist-pijplijn wordt door elk activeringswoord uitgevoerd.",
    "sourceHash": "e37ef99d1d4df2fb268353f7f179ee12d4802df0a4993748331b6d83a91dcde4",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_sensitivity.help": {
    "text": "Drempelwaarde voor de activeringswoorddetector, toegepast als offset op de afkapscore van het model.\n\n- **Laag** vereist een duidelijkere overeenkomst: minder valse activeringen, grotere kans dat een zachte of verre oproep wordt gemist.\n- **Normaal** past geen offset toe.\n- **Hoog** geeft sneller een overeenkomst: sneller activeren, meer valse activeringen.",
    "sourceHash": "af00b05309556a3c5631dfe2830065406d0db55c255a8fd1819e6657623235c9",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_sensitivity.label": {
    "text": "Activeringsgevoeligheid",
@@ -10089,9 +10089,9 @@
    "state": "machine-cross-checked"
   },
   "settings.voice_sensitivity.summary": {
-   "text": "Hoe snel het activeringswoord reageert.",
+   "text": "Hoe gemakkelijk het activeringswoord een activering uitlokt.",
    "sourceHash": "0fa08145c04a8e1391ac642c5536fa2f26f69556c521db192e7f9d7fafe11538",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.voice_wake_words.help": {
    "text": "De activeringswoorden waarnaar wordt geluisterd: de meegeleverde ‘Okay Nabu’, ‘Hey Jarvis’, ‘Hey Mycroft’ en ‘Alexa’, en de woorden die je hieronder importeert.",
@@ -10106,7 +10106,7 @@
   "settings.voice_wake_words.summary": {
    "text": "Activeringswoorden waarnaar geluisterd moet worden.",
    "sourceHash": "d1d5a37611625d7925ca3e794540612919d66f7a7e37a748fa1f6c235a8e75ff",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.volume.help": {
    "text": "Huidig mediavolume van het paneel, gemeld op de eigen schaal van 0–100 procent.",
@@ -10119,9 +10119,9 @@
    "state": "machine-cross-checked"
   },
   "settings.volume.summary": {
-   "text": "Volume van het paneel.",
+   "text": "Mediavolume van het paneel.",
    "sourceHash": "49e5264db4cd107fb5245caa45d7007829d46e17465bda5b3099e115ecfda28f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.wake_on_wave.help": {
    "text": "Wekken na een gekalibreerde zwaaibeweging van vrij naar dichtbij naar vrij. Stel nabijheid in op het paneel; aanraken om te wekken blijft beschikbaar.",
@@ -10136,7 +10136,7 @@
   "settings.wake_on_wave.summary": {
    "text": "Zwaai even met je hand in de buurt van het paneel om het te activeren.",
    "sourceHash": "69808152282353a25a95777883f5259746c303b9faf42b518433be62d83452be",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.watchdog_enabled.label": {
    "text": "App-watchdog",
@@ -10144,9 +10144,9 @@
    "state": "machine-cross-checked"
   },
   "settings.watchdog_enabled.summary": {
-   "text": "Start de dashboard-app opnieuw op als hij vastloopt of op de achtergrond blijft draaien.",
+   "text": "Start de dashboard-app opnieuw als hij stopt of op de achtergrond blijft.",
    "sourceHash": "bf85bf3bed1a0bda4d001d6d73a8b2196aec288be92fa7aba1cb27cbd9ccf105",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.zigbee_router.label": {
    "text": "Zigbee-router",
@@ -10156,7 +10156,7 @@
   "settings.zigbee_router.summary": {
    "text": "Gebruik de ingebouwde ‘Zigbee’-radio als router.",
    "sourceHash": "ad4a9c9f2cdb17eaa7c15c04aac14c932e2e95cf53eba3f3fa4d0a9c4a225331",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "setup.action.panel_dashboard": {
    "text": "Paneeldashboard",
@@ -12511,7 +12511,7 @@
   "settings.auto_sleep_source.summary": {
    "text": "Wat telt als aanwezigheid: nabijheidssensor, gebied of aanraking.",
    "sourceHash": "010e147baf066c010fda07e439cca24c3f59a22a7564b8450354fa5e8f716b33",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.no_source": {
    "text": "Wekken door zwaaien is niet beschikbaar. Aanraken om te wekken blijft beschikbaar.",
@@ -12534,9 +12534,9 @@
    "state": "machine-cross-checked"
   },
   "configure.count": {
-   "text": "{shown} {total}-instellingen",
+   "text": "{shown} van {total} instellingen",
    "sourceHash": "008c615d1450fdf967b53f126d4ebbd4e9c56c0d94579bc390414704d627d2dc",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.ready_both": {
    "text": "Aanwezigheid en zwaai zijn gereed",
@@ -12626,7 +12626,7 @@
   "settings.auto_sleep_touch_delay_seconds.summary": {
    "text": "Aantal seconden zonder aanraking voordat het scherm uitschakelt.",
    "sourceHash": "ac4a72aa8108adf757c92d42ab1fa992256f3b7cb01929428b463ad75080bf23",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.label": {
    "text": "Vertraging bij geen aanraakactiviteit (seconden)",
