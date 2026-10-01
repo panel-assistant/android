@@ -83,20 +83,14 @@ class InstallProgressObserverTest {
         assertEquals("a stale finish must not notify again", 1, seen.size)
     }
 
-    @Test fun anInvisibleConfigureClaimIsSilentUntilItBecomesAnInstall() {
+    @Test fun anOrdinaryConfigureClaimAndReleasePublishNoInstallProgress() {
         observe()
         val configure = InstallProgress.startConfigMutation()
-        val afterConfigure = seen.toList()
-        val promoted = configure?.let { InstallProgress.promoteConfigMutation(it, "ha-paneld") }
-        promoted?.let { claimed += it }
-        val afterPromotion = seen.toList()
-        promoted?.let { InstallProgress.finish(it, "done") }
-        if (promoted == null) configure?.let(InstallProgress::finishConfigMutation)
+        val afterClaim = seen.toList()
+        configure?.let(InstallProgress::finishConfigMutation)
         assertNotNull(configure)
-        assertNotNull(promoted)
-        assertTrue(afterConfigure.isEmpty())
-        assertEquals(listOf(true to "ha-paneld"), afterPromotion)
-        assertEquals(false to "ha-paneld", seen.lastOrNull())
+        assertTrue(afterClaim.isEmpty())
+        assertTrue(seen.isEmpty())
     }
 
     @Test fun theObserverRunsOutsideTheMonitor() {

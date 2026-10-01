@@ -45,7 +45,7 @@ class ConfigSensitiveRouteAdmissionTest {
             val result = executeRoute(
                 hardened,
                 loopback,
-                listOf(SensitiveOperation.POWER_CONFIGURATION, SensitiveOperation.APK_INSTALL),
+                listOf(SensitiveOperation.POWER_CONFIGURATION, SensitiveOperation.PACKAGE_TAME),
                 events,
                 approve = { error("Exempt request attempted physical approval") },
             )

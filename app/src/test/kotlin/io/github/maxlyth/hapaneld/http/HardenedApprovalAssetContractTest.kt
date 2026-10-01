@@ -66,7 +66,6 @@ class HardenedApprovalAssetContractTest {
             "POST /api/v1/guard-db/action",
             "POST /api/v1/backup",
             "POST /api/v1/uninstall",
-            "POST /api/v1/webview/heal",
             "POST /api/v1/dashboard/clear-storage",
             "POST /api/v1/companion/repair-url",
             "POST /api/v1/action",

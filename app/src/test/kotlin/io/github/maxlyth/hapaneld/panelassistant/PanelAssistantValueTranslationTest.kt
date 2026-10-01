@@ -36,8 +36,6 @@ class PanelAssistantValueTranslationTest {
     }
 
     @Test fun selectsAndEnumSensorsBecomeOptionCodes() {
-        assertEquals(known("prerelease"), translate("update_channel", "Pre-release"))
-        assertEquals(known("stable"), translate("companion_update_channel", "Stable"))
         assertEquals(known("swipe_reveal"), translate("navbar", "Swipe reveal"))
         assertEquals(known("performance"), translate("cpu_governor", "Performance"))
         assertEquals(known("database_failure"), translate("storage_health", "database_failure"))

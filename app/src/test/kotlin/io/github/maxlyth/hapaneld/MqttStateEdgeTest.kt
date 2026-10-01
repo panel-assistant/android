@@ -21,7 +21,7 @@ class MqttStateEdgeTest {
         assertEquals("screen", mqttCommandChannel("p", "ha-paneld/p/screen/set"))
         assertEquals("relay3", mqttCommandChannel("p", "ha-paneld/p/relay3/set"))
         assertEquals("button_led3", mqttCommandChannel("p", "ha-paneld/p/button_led3/set"))
-        assertEquals("companion_update_channel", mqttCommandChannel("alpha", "ha-paneld/alpha/companion_update_channel/set"))
+        assertEquals("home_dashboard", mqttCommandChannel("alpha", "ha-paneld/alpha/home_dashboard/set"))
     }
 
     @Test fun topicsOutsideTheCommandShapeHaveNoChannel() {

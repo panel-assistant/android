@@ -40,6 +40,7 @@ import io.github.maxlyth.hapaneld.input.ButtonBus
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome
 import io.github.maxlyth.hapaneld.metrics.FeatureCosts
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelCatalog
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommand
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandProcessor
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantCommandResult
@@ -118,11 +119,6 @@ internal enum class LiveSettingEffectOwner(val settingKey: String) {
     AUTO_BRIGHTNESS_HA_ENTITY("auto_brightness_ha_entity"),
     CPU_GOVERNOR("cpu_governor"),
     NAVBAR("navbar_mode"),
-    COMPANION_AUTO_UPDATE("companion_auto_update"),
-    COMPANION_UPDATE_CHANNEL("companion_update_channel"),
-    SELF_UPDATE("self_update"),
-    WEBVIEW_AUTO_UPDATE("webview_auto_update"),
-    UPDATE_CHANNEL("update_channel"),
     HOME_DASHBOARD("home_dashboard"),
     HA_AREA_PUBLISH_ONLY("ha_area"),
     ;
@@ -154,11 +150,6 @@ internal val externalMqttLiveSettingOwners: Map<String, String> = linkedMapOf(
     "touch_sound" to "touch_sound",
     "watchdog" to "watchdog_enabled",
     "kiosk_lock" to "kiosk_lock",
-    "companion_auto_update" to "companion_auto_update",
-    "companion_update_channel" to "companion_update_channel",
-    "self_update" to "self_update",
-    "webview_auto_update" to "webview_auto_update",
-    "update_channel" to "update_channel",
     "silence_boot_chime" to "silence_boot_chime",
     "prevent_idle_dim" to "prevent_idle_dim",
     "zigbee_router" to "zigbee_router",
@@ -212,19 +203,6 @@ internal interface LiveSettingHandlers {
     fun handleAutoBrightnessHaEntity(payload: String)
     fun handleCpuGov(payload: String)
     fun handleNavbar(payload: String)
-    fun handleCompanionAuto(payload: String, approvalRequired: Boolean = true)
-    fun handleCompanionChannel(
-        payload: String,
-        previousValue: String? = null,
-        approvalRequired: Boolean = true,
-    )
-    fun handleSelfUpdate(payload: String, approvalRequired: Boolean = true)
-    fun handleWebViewAuto(payload: String, approvalRequired: Boolean = true)
-    fun handleUpdateChannel(
-        payload: String,
-        previousValue: String? = null,
-        approvalRequired: Boolean = true,
-    )
     fun handleHomeDashboard(payload: String, previousValue: String? = null)
     fun handleHaAreaPublishOnly()
 }
@@ -269,15 +247,6 @@ internal fun dispatchLiveSetting(
         LiveSettingEffectOwner.AUTO_BRIGHTNESS_HA_ENTITY -> handlers.handleAutoBrightnessHaEntity(value)
         LiveSettingEffectOwner.CPU_GOVERNOR -> handlers.handleCpuGov(value)
         LiveSettingEffectOwner.NAVBAR -> handlers.handleNavbar(value)
-        LiveSettingEffectOwner.COMPANION_AUTO_UPDATE ->
-            handlers.handleCompanionAuto(onOff, sensitiveApprovalRequired)
-        LiveSettingEffectOwner.COMPANION_UPDATE_CHANNEL ->
-            handlers.handleCompanionChannel(value, previousValue, sensitiveApprovalRequired)
-        LiveSettingEffectOwner.SELF_UPDATE -> handlers.handleSelfUpdate(onOff, sensitiveApprovalRequired)
-        LiveSettingEffectOwner.WEBVIEW_AUTO_UPDATE ->
-            handlers.handleWebViewAuto(onOff, sensitiveApprovalRequired)
-        LiveSettingEffectOwner.UPDATE_CHANNEL ->
-            handlers.handleUpdateChannel(value, previousValue, sensitiveApprovalRequired)
         LiveSettingEffectOwner.HOME_DASHBOARD -> handlers.handleHomeDashboard(value, previousValue)
         LiveSettingEffectOwner.HA_AREA_PUBLISH_ONLY -> handlers.handleHaAreaPublishOnly()
     }
@@ -1164,38 +1133,6 @@ internal class MqttAnnouncementReadiness {
     }
 }
 
-internal fun normalizeSelfUpdateChannel(raw: String): String =
-    if (raw.trim().trim('"').lowercase(Locale.ROOT).startsWith("pre")) "prerelease" else "stable"
-
-/**
- * Keep an active self-update channel switch out of durable configuration until the service has acquired
- * the operation lane and started the exact-candidate preflight. The service owns the later order:
- * authenticate + database-admit exact staged APK -> commit channel -> consume that same staged APK.
- * With auto-update disabled there is no candidate or package replacement, so the preference is ordinary
- * configuration and may be committed immediately.
- */
-internal fun stageSelfUpdateChannelChange(
-    current: String,
-    requested: String,
-    selfUpdateEnabled: Boolean,
-    requestAdmittedInstall: (requested: String, previous: String) -> Boolean,
-    persist: (String) -> Unit,
-    publishCurrent: () -> Unit,
-) {
-    if (requested == current) {
-        publishCurrent()
-        return
-    }
-    if (!selfUpdateEnabled) {
-        persist(requested)
-        publishCurrent()
-        return
-    }
-    // Starting work is not compatibility proof. The asynchronous owner commits only after the prepared
-    // candidate is authenticated and admitted; a busy refusal re-projects unchanged durable truth.
-    if (!requestAdmittedInstall(requested, current)) publishCurrent()
-}
-
 /**
  * The helper `BTN` command for a key-backlight [level] on the Home Assistant scale. The node takes the level
  * raw, so the profile [curve] is applied here; the state published back stays [level] itself.
@@ -1290,14 +1227,8 @@ internal class MqttBridge(
     // Trigger an HA Companion app install/update. Injected by the service (needs Context + a
     // coroutine); runs off the MQTT thread. Fired by the update_companion button.
     private val onUpdateCompanion: () -> Unit = {},
-    // Trigger a ha-paneld self-update on the configured channel. force=true installs the channel's newest
-    // regardless of the version check (the update_paneld button + a pre-release→stable channel switch).
+    // Trigger an explicit ha-paneld update. force=true installs the stable catalogue's newest build.
     private val onSelfUpdate: (force: Boolean) -> Unit = {},
-    // A channel switch with self-update enabled is a staged install transaction. The service resolves,
-    // authenticates and database-admits the exact APK before it durably commits the requested channel;
-    // this bridge must not make the preference visible ahead of that proof. False means the shared
-    // operation lane was busy, in which case the current state is re-published immediately.
-    private val onSelfUpdateChannelChange: (requested: String, previous: String) -> Boolean,
     // Inputs for the MQTT update entities, sampled on this bridge's workers: installed versions,
     // same-policy catalog targets, install-lane ownership and Panel Assistant ownership. Install
     // capability comes from this bridge's own capability snapshot. Null publishes no update entities.
@@ -1575,17 +1506,7 @@ internal class MqttBridge(
     private val cmdKiosk = "ha-paneld/$panel/kiosk_lock/set"
     private val stateKiosk = "ha-paneld/$panel/kiosk_lock/state"
     private val cmdUpdateCompanion = "ha-paneld/$panel/update_companion/set"
-    private val cmdCompanionAuto = "ha-paneld/$panel/companion_auto_update/set"
-    private val stateCompanionAuto = "ha-paneld/$panel/companion_auto_update/state"
     private val cmdUpdatePaneld = "ha-paneld/$panel/update_paneld/set"
-    private val cmdCompanionChannel = "ha-paneld/$panel/companion_update_channel/set"
-    private val stateCompanionChannel = "ha-paneld/$panel/companion_update_channel/state"
-    private val cmdSelfUpdate = "ha-paneld/$panel/self_update/set"
-    private val stateSelfUpdate = "ha-paneld/$panel/self_update/state"
-    private val cmdWebViewAuto = "ha-paneld/$panel/webview_auto_update/set"
-    private val stateWebViewAuto = "ha-paneld/$panel/webview_auto_update/state"
-    private val cmdUpdateChannel = "ha-paneld/$panel/update_channel/set"
-    private val stateUpdateChannel = "ha-paneld/$panel/update_channel/state"
     private val cmdSilenceBootChime = "ha-paneld/$panel/silence_boot_chime/set"
     private val stateSilenceBootChime = "ha-paneld/$panel/silence_boot_chime/state"
     private val cmdPreventIdleDim = "ha-paneld/$panel/prevent_idle_dim/set"
@@ -1642,7 +1563,6 @@ internal class MqttBridge(
         setOf(
             cmdCpuGov, cmdNetAdb, cmdScreen, cmdLed, cmdNavigate, cmdVolume, cmdHomeDashboard,
             cmdButtons, cmdNavbar, cmdWakeOnWave, cmdAutoSleep, cmdTouchSound, cmdWatchdog, cmdKiosk,
-            cmdCompanionAuto, cmdCompanionChannel, cmdSelfUpdate, cmdWebViewAuto, cmdUpdateChannel,
             cmdSilenceBootChime, cmdPreventIdleDim, cmdZigbee, cmdAutoBright,
             cmdCameraEnabled,
         )
@@ -1798,11 +1718,6 @@ internal class MqttBridge(
         channel("touch_sound", stateTouchSound) { known(if (config.touchSound) "ON" else "OFF") }
         channel("watchdog", stateWatchdog) { known(if (config.watchdogEnabled) "ON" else "OFF") }
         channel("kiosk_lock", stateKiosk) { known(if (config.kioskLock) "ON" else "OFF") }
-        channel("companion_auto_update", stateCompanionAuto) { known(if (config.companionAutoUpdate) "ON" else "OFF") }
-        channel("companion_update_channel", stateCompanionChannel) { known(companionChannelLabel()) }
-        channel("self_update", stateSelfUpdate) { known(if (config.selfUpdate) "ON" else "OFF") }
-        channel("webview_auto_update", stateWebViewAuto) { known(if (config.webViewAutoUpdate) "ON" else "OFF") }
-        channel("update_channel", stateUpdateChannel) { known(updateChannelLabel()) }
         channel("silence_boot_chime", stateSilenceBootChime) { known(if (bootChime.isEnabled()) "ON" else "OFF") }
         channel("prevent_idle_dim", statePreventIdleDim) { known(if (config.preventIdleDim) "ON" else "OFF") }
         channel("auto_brightness", stateAutoBright) { known(if (config.autoBrightness) "ON" else "OFF") }
@@ -1896,7 +1811,7 @@ internal class MqttBridge(
         val actions = listOf("reload" to system.canReloadDashboard(config.dashboardPackage), "reboot" to system.canReboot())
         return io.github.maxlyth.hapaneld.panelassistant.PanelAssistantChannelShape(
             served + actions.filter { it.second }.map { it.first },
-            unsupported + actions.filterNot { it.second }.map { it.first },
+            unsupported + actions.filterNot { it.second }.map { it.first } + PanelAssistantChannelCatalog.RETIRED_CHANNELS,
         )
     }
 
@@ -3275,45 +3190,6 @@ internal class MqttBridge(
         dispatchStateWork { stateConverger.reconcile("kiosk_lock", force = true) }
     }
 
-    /** Publish only the already-committed channel. Staged self-update transactions call this after the
-     * exact candidate has passed compatibility admission, never while the preference is still pending. */
-    fun publishSelfUpdateChannelState() {
-        dispatchStateWork { stateConverger.reconcile("update_channel", force = true) }
-    }
-
-    override fun handleCompanionAuto(payload: String, approvalRequired: Boolean) {
-        val on = payload.trim().equals("ON", ignoreCase = true)
-        if (on && approvalRequired) authorizeRemoteSensitive(
-            SensitiveOperation.APK_INSTALL,
-            "companion_auto_update\u0000enable",
-            "Allow automatic Home Assistant Companion updates",
-        )
-        config.setCompanionAutoUpdate(on)
-        stateConverger.reconcile("companion_auto_update", force = true)
-    }
-
-    override fun handleSelfUpdate(payload: String, approvalRequired: Boolean) {
-        val on = payload.trim().equals("ON", ignoreCase = true)
-        if (on && approvalRequired) authorizeRemoteSensitive(
-            SensitiveOperation.APK_INSTALL,
-            "self_update\u0000enable",
-            "Allow automatic ha-paneld updates",
-        )
-        config.setSelfUpdate(on)
-        stateConverger.reconcile("self_update", force = true)
-    }
-
-    override fun handleWebViewAuto(payload: String, approvalRequired: Boolean) {
-        val on = payload.trim().equals("ON", ignoreCase = true)
-        if (on && approvalRequired) authorizeRemoteSensitive(
-            SensitiveOperation.APK_INSTALL,
-            "webview_auto_update\u0000enable",
-            "Allow automatic System WebView updates",
-        )
-        config.setWebViewAutoUpdate(on)
-        stateConverger.reconcile("webview_auto_update", force = true)
-    }
-
     /** The camera master switch, commanded from Home Assistant. Enabling arms the camera and nothing more:
      *  Android still withholds the camera until somebody grants the permission at the panel, and every
      *  enable direction waits for a local approval first, so no remote message alone can put this panel's
@@ -3359,51 +3235,6 @@ internal class MqttBridge(
             publishCameraSnapshot(refreshUrl = config.cameraEnabled)
         }
     }
-
-    override fun handleUpdateChannel(
-        payload: String,
-        previousValue: String?,
-        approvalRequired: Boolean,
-    ) {
-        val was = previousValue ?: config.updateChannel
-        val requested = normalizeSelfUpdateChannel(payload)
-        if (approvalRequired && config.selfUpdate && requested != was) authorizeRemoteSensitive(
-            SensitiveOperation.APK_INSTALL,
-            "update_channel\u0000$requested",
-            "Change the ha-paneld update channel and check for an update",
-        )
-        stageSelfUpdateChannelChange(
-            current = was,
-            requested = requested,
-            selfUpdateEnabled = config.selfUpdate,
-            requestAdmittedInstall = onSelfUpdateChannelChange,
-            persist = config::setUpdateChannel,
-            publishCurrent = { stateConverger.reconcile("update_channel", force = true) },
-        )
-    }
-
-    override fun handleCompanionChannel(
-        payload: String,
-        previousValue: String?,
-        approvalRequired: Boolean,
-    ) {
-        val was = previousValue ?: config.companionUpdateChannel
-        val requested = payload.trim().trim('"')
-        if (approvalRequired && config.companionAutoUpdate && requested != was) authorizeRemoteSensitive(
-            SensitiveOperation.APK_INSTALL,
-            "companion_update_channel\u0000$requested",
-            "Change the Companion update channel and check for an update",
-        )
-        config.setCompanionUpdateChannel(requested)
-        val now = config.companionUpdateChannel
-        stateConverger.reconcile("companion_update_channel", force = true)
-        // Apply the new channel now when auto-update is on (a forced check via the existing callback).
-        if (config.companionAutoUpdate && now != was) onUpdateCompanion()
-    }
-
-    // HA select uses the capitalised labels; Config stores "stable"/"prerelease".
-    private fun updateChannelLabel(): String = if (config.updateChannel == "prerelease") "Pre-release" else "Stable"
-    private fun companionChannelLabel(): String = if (config.companionUpdateChannel == "prerelease") "Pre-release" else "Stable"
 
     override fun handleSilenceBootChime(payload: String) {
         val on = payload.trim().equals("ON", ignoreCase = true)
@@ -4186,21 +4017,11 @@ internal class MqttBridge(
             stateConverger.reconcile("touch_sound", force = true)
         }
 
-        // HA Companion app auto-update — installs/updates the minimal Companion over root (the
-        // only update path on these no-Play panels). Off by default; the button forces it on demand.
-        registryExposable("companion_auto_update") {
-            stateConverger.reconcile("companion_auto_update", force = true)
-        }
         publishConfig(
             "button", "${panel}_update_companion",
             """{"name":"Update Companion app","object_id":"${panel}_update_companion","unique_id":"${panel}_update_companion","command_topic":"$cmdUpdateCompanion","icon":"mdi:home-assistant","entity_category":"config",$avail,$device}""",
         )
 
-        // ha-paneld self-update — follows the update channel; installs a newer build of itself over root.
-        // Off by default; the update_paneld button forces it on demand.
-        registryExposable("companion_update_channel") {
-            stateConverger.reconcile("companion_update_channel", force = true)
-        }
         publishConfig(
             "button", "${panel}_update_paneld",
             """{"name":"Update ha-paneld","object_id":"${panel}_update_paneld","unique_id":"${panel}_update_paneld","command_topic":"$cmdUpdatePaneld","icon":"mdi:package-up","entity_category":"config",$avail,$device}""",
@@ -4209,12 +4030,6 @@ internal class MqttBridge(
         // and share these command topics; see SoftwareUpdateEntities.
         softwareUpdateDiscovery = SoftwareUpdateDiscoveryContext(avail, device)
         reconcileSoftwareUpdates(announcing = true)
-        // System WebView auto-update — advances to the profile's pinned build (webview-mirror) over root.
-        // Auto-gated on webViewManaged (removed on Play-updated panels with no recommended pin).
-        registryExposable("webview_auto_update") {
-            stateConverger.reconcile("webview_auto_update", force = true)
-        }
-
         registryExposable("kiosk_lock") {
             stateConverger.reconcile("kiosk_lock", force = true)
         }
@@ -5143,7 +4958,7 @@ internal fun mqttDiscoveryCleanupMarker(
     return if (profileIdentity.isEmpty()) shape else "$shape|p${profileIdentity.length}:$profileIdentity"
 }
 
-private const val MQTT_DISCOVERY_SHAPE_REVISION = 5
+private const val MQTT_DISCOVERY_SHAPE_REVISION = 6
 
 /** Cleanup for a renamed panel is owned by the replacement connection and therefore retries with it. */
 internal fun mqttStalePanelCleanup(stalePanel: String?, currentPanel: String): List<MqttCleanupPublication> {
@@ -5156,6 +4971,12 @@ internal fun mqttStalePanelCleanup(stalePanel: String?, currentPanel: String): L
 }
 
 internal fun mqttRetiredStateTopics(panel: String): Set<String> = setOf(
+    // Auto-update preferences no longer have current producers or command handlers.
+    "ha-paneld/$panel/companion_auto_update/state",
+    "ha-paneld/$panel/companion_update_channel/state",
+    "ha-paneld/$panel/self_update/state",
+    "ha-paneld/$panel/webview_auto_update/state",
+    "ha-paneld/$panel/update_channel/state",
     "ha-paneld/$panel/diag_schema_reconcile/state",
     // Retired before release; its retained state must be cleared too, or a same-version upgrade
     // leaves a ghost entity holding a stale count.

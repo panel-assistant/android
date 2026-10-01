@@ -156,38 +156,4 @@ class InstallProgressTest {
         InstallProgress.finish(restore, "done")
     }
 
-    @Test fun configureOwnerPromotesWithoutObservableReleaseReacquireGap() {
-        val configure = InstallProgress.startConfigMutation()!!
-
-        val promoted = InstallProgress.promoteConfigMutation(configure, "ha-paneld")!!
-
-        assertTrue(InstallProgress.running)
-        assertEquals("ha-paneld", InstallProgress.component)
-        assertNull("a competing operation must not win between commit and install", InstallProgress.start("race"))
-        assertNull(InstallProgress.startConfigMutation())
-        InstallProgress.finishConfigMutation(configure)
-        assertTrue("the obsolete config release must not clear the promoted owner", InstallProgress.running)
-        InstallProgress.finish(promoted, "installed")
-        assertFalse(InstallProgress.running)
-    }
-
-    @Test fun staleConfigureTicketCannotPromoteOrDisturbCurrentOwner() {
-        val stale = InstallProgress.startConfigMutation()!!
-        InstallProgress.finishConfigMutation(stale)
-        val current = InstallProgress.startConfigMutation()!!
-        var promoted: InstallProgress.Ticket? = null
-        try {
-            promoted = InstallProgress.promoteConfigMutation(stale, "ha-paneld")
-            assertNull(promoted)
-            assertNull(InstallProgress.start("race"))
-        } finally {
-            // Keep the process-global test seam isolated even when a mutant wrongly promotes the
-            // stale ticket and the assertion above fails. The mutation battery should credit that
-            // assertion failure, not unrelated NPEs in tests that run afterward.
-            if (promoted != null) InstallProgress.finish(promoted, "mutant cleanup")
-            else InstallProgress.finishConfigMutation(current)
-        }
-        val next = InstallProgress.start("next")!!
-        InstallProgress.finish(next, "done")
-    }
 }

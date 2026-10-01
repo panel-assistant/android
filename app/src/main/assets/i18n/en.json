@@ -2826,34 +2826,6 @@
       "softMaxChars": 44,
       "hardMaxChars": 72
     },
-    "configure.enum.update_channel.prerelease": {
-      "text": "Prerelease",
-      "sourceHash": "c284b3eee860bb803c22ec02d974f6a1c587aac1b7f6f362823477328de40a04",
-      "surface": "configure",
-      "context": "Visible label for the exact update_channel setting wire option; translate display text only and preserve the submitted/stored wire value.",
-      "risk": "ordinary",
-      "siblings": [
-        "configure.enum.update_channel.stable"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 44,
-      "hardMaxChars": 72
-    },
-    "configure.enum.update_channel.stable": {
-      "text": "Stable",
-      "sourceHash": "90ee305714d7103317705bfffd734c654b78807e5a0f51fcc61bc1d81105ebd1",
-      "surface": "configure",
-      "context": "Visible label for the exact update_channel setting wire option; translate display text only and preserve the submitted/stored wire value.",
-      "risk": "ordinary",
-      "siblings": [
-        "configure.enum.update_channel.prerelease"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 44,
-      "hardMaxChars": 72
-    },
     "configure.enum.voice_audio_source.mic": {
       "text": "Microphone",
       "sourceHash": "186352a881d0550e2da1f74e5c317770702bc2a0f9c3da69a10e27c14a217bac",
@@ -9147,18 +9119,6 @@
       "frozen": [],
       "softMaxChars": 22,
       "hardMaxChars": 44
-    },
-    "dashboard.card.updates": {
-      "text": "Updates",
-      "sourceHash": "22e2bada8f1c65cd83f4ba976f0027c5dd7cb81d5d2199cd1b0130792841eef4",
-      "surface": "dashboard",
-      "context": "Updates card heading",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 14,
-      "hardMaxChars": 28
     },
     "dashboard.cause.collecting": {
       "text": "Collecting evidence",
@@ -19392,30 +19352,6 @@
       "softMaxChars": 14,
       "hardMaxChars": 28
     },
-    "install.components.channel_prefix": {
-      "text": "The default channel is set on the",
-      "sourceHash": "30d6848424f391846957a9495afa1f13e3bf40f325aca8e47b0ead771fb8287a",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 66,
-      "hardMaxChars": 132
-    },
-    "install.components.channel_suffix": {
-      "text": " tab; changing it here only affects this picker.",
-      "sourceHash": "8b7d827c3ce2ad662c8c8d9306b48e692d582b6399c5935ec3944baee29c987e",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 96,
-      "hardMaxChars": 192
-    },
     "install.components.download_apk": {
       "text": "Download APK",
       "sourceHash": "3182bf9f023a412f0dd6d9e422436aa2fe66e5d93dbce33f1cc76a1f265fba72",
@@ -19446,21 +19382,6 @@
       "softMaxChars": 322,
       "hardMaxChars": 644
     },
-    "install.components.google_play_managed": {
-      "text": "Managed by Google Play — updates via the Play Store",
-      "sourceHash": "9dc31793c17a510887425b5313c313480f05dde4694dd3113b02e1eb38b364f6",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Google Play",
-        "Play Store"
-      ],
-      "softMaxChars": 102,
-      "hardMaxChars": 204
-    },
     "install.components.install": {
       "text": "Install",
       "sourceHash": "569ca49f4aaf7846e952c1d4aeca72febd0b79fa1c4f9db08fd3127551218572",
@@ -19472,18 +19393,6 @@
       "frozen": [],
       "softMaxChars": 20,
       "hardMaxChars": 40
-    },
-    "install.components.no_known_build": {
-      "text": "no known-good build for this panel",
-      "sourceHash": "81ea415d8bdb2fb5ec23f053de58c6ca10d217d15c0c3e962a59d938ae8044fb",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 68,
-      "hardMaxChars": 136
     },
     "install.components.play_managed": {
       "text": "Play-managed — updates via the Play Store",
@@ -19537,20 +19446,6 @@
       "softMaxChars": 46,
       "hardMaxChars": 92
     },
-    "install.components.root_update_required": {
-      "text": "needs root/daemon to update",
-      "sourceHash": "eb5c65ee970f6d856220974f20da3feb9c55907fb04590447fc75d0ce3d99d2f",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "root"
-      ],
-      "softMaxChars": 54,
-      "hardMaxChars": 108
-    },
     "install.components.stable": {
       "text": "Stable",
       "sourceHash": "90ee305714d7103317705bfffd734c654b78807e5a0f51fcc61bc1d81105ebd1",
@@ -19574,32 +19469,6 @@
       "frozen": [],
       "softMaxChars": 36,
       "hardMaxChars": 72
-    },
-    "install.components.up_to_date": {
-      "text": "up to date",
-      "sourceHash": "bef6a4bb30a9d489f3b5dbb5d2e43b64a72e4ec04109629d0a158d33aba64c59",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 20,
-      "hardMaxChars": 40
-    },
-    "install.components.update_webview": {
-      "text": "Update WebView",
-      "sourceHash": "76b51b5359e778d9a937a60808678b07dfe6270b8641f40a04a79e211d5123a2",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "WebView"
-      ],
-      "softMaxChars": 28,
-      "hardMaxChars": 56
     },
     "install.config_import_status.applied": {
       "text": "applied",
@@ -21702,32 +21571,6 @@
       "softMaxChars": 21,
       "hardMaxChars": 40
     },
-    "install.progress.webview_installing": {
-      "text": "Downloading + installing… this takes a minute.",
-      "sourceHash": "5050d01630df63bb3f9698161feb000f5c01842de55bae1e5ff0daaf1b70501a",
-      "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 46,
-      "hardMaxChars": 83
-    },
-    "install.progress.webview_started": {
-      "text": "Installing WebView — reload the dashboard, then refresh this page to confirm the new version.",
-      "sourceHash": "1ba2a713c79ac4d74904c59b80a3191b16e97dd3240a3b06ef9df9e3288a65ea",
-      "surface": "install",
-      "context": "Install operation result shown to the panel administrator.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "WebView"
-      ],
-      "softMaxChars": 93,
-      "hardMaxChars": 168
-    },
     "install.progress.working": {
       "text": "{component}: working…",
       "sourceHash": "a99604834124e176f8c1dae30419f4a3fa9b1f3ce5b3481533166e789bb85275",
@@ -23031,20 +22874,6 @@
       ],
       "softMaxChars": 50,
       "hardMaxChars": 100
-    },
-    "install.warning.webview_old.update": {
-      "text": "Update WebView now",
-      "sourceHash": "71d8ebe0fdc7922d4dc02071672fdd8aee2e27c8af3694a32166ff337dbd52eb",
-      "surface": "install",
-      "context": "Static panel administration interface copy.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "WebView"
-      ],
-      "softMaxChars": 36,
-      "hardMaxChars": 72
     },
     "logs.action.clear": {
       "text": "Clear",
@@ -31762,62 +31591,6 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.companion_auto_update.label": {
-      "text": "Companion auto-update",
-      "sourceHash": "f81e3e21eddf2ac46d2afd74f1c975d218d54b65c701383c72561ef103c2e26a",
-      "surface": "settings",
-      "context": "Configure > System: label for the companion_auto_update setting.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Companion"
-      ],
-      "softMaxChars": 32,
-      "hardMaxChars": 38
-    },
-    "settings.companion_auto_update.summary": {
-      "text": "Keep the minimal Companion app installed and current (root).",
-      "sourceHash": "1c32bf05a909093a48f161b78d86a2168adf615543c62fd15973aab91f1c8705",
-      "surface": "settings",
-      "context": "Configure > System: one-line summary shown under the companion_auto_update setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.companion_auto_update.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
-    "settings.companion_update_channel.label": {
-      "text": "Companion auto-update channel",
-      "sourceHash": "80740dfa19b24df111ff9aa4791044aebc4b956662b02f33d8ca0d0a3f71da8f",
-      "surface": "settings",
-      "context": "Configure > System: label for the companion_update_channel setting.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Companion"
-      ],
-      "softMaxChars": 40,
-      "hardMaxChars": 53
-    },
-    "settings.companion_update_channel.summary": {
-      "text": "Release channel the Companion updater follows.",
-      "sourceHash": "c4186e872750bd0f6d99fc0d00cae01246232c253e74acea5adcda004d12feed",
-      "surface": "settings",
-      "context": "Configure > System: one-line summary shown under the companion_update_channel setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.companion_update_channel.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
     "settings.cpu_governor.help": {
       "text": "Live CPU scaling profile until reboot; Auto = the SoC's dynamic governor.",
       "sourceHash": "44ede54df63e6b90033e3356275332934cdd2b19bf681ea7d3b65fd69a333aa9",
@@ -34182,56 +33955,6 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.self_update.help": {
-      "text": "ha-paneld updates itself from GitHub releases on the selected channel. Only shown where verified app install is available.",
-      "sourceHash": "97ae88f8b39157c43fe24ab26c47ceaa5d57769b0fdfce270f4eb1456c3919ec",
-      "surface": "settings",
-      "context": "Configure > System > ha-paneld auto-update: supporting help for the self_update setting.",
-      "risk": "consequential",
-      "siblings": [
-        "settings.self_update.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld",
-        "GitHub"
-      ],
-      "softMaxChars": 165,
-      "hardMaxChars": 220
-    },
-    "settings.self_update.label": {
-      "text": "ha-paneld auto-update",
-      "sourceHash": "60970f1d12342ad3487ecf8b0ea233cde2e58a13d677e8e52007dbdc52aed108",
-      "surface": "settings",
-      "context": "Configure > System: label for the self_update setting.",
-      "risk": "consequential",
-      "siblings": [
-        "settings.self_update.help"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 32,
-      "hardMaxChars": 38
-    },
-    "settings.self_update.summary": {
-      "text": "Install ha-paneld releases automatically.",
-      "sourceHash": "3d278436cb2111344f161d8203dd06342c5d42304c4a5ae1cea72107f5605b10",
-      "surface": "settings",
-      "context": "Configure > System: one-line summary shown under the self_update setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.self_update.label",
-        "settings.self_update.help"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
     "settings.silence_boot_chime.label": {
       "text": "Silence boot chime",
       "sourceHash": "402c4a157e6de7c2740e1fb700551f2558ab61be196ac81bf44f6b78cf8abc34",
@@ -34383,34 +34106,6 @@
       "frozen": [
         "ha-paneld"
       ],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
-    "settings.update_channel.label": {
-      "text": "ha-paneld auto-update channel",
-      "sourceHash": "02a57c7f1f9bdd9cb4265f02adfeb4657e42075bb7476df9b814d980b29a097d",
-      "surface": "settings",
-      "context": "Configure > System: label for the update_channel setting.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 40,
-      "hardMaxChars": 53
-    },
-    "settings.update_channel.summary": {
-      "text": "Release channel the self-updater follows.",
-      "sourceHash": "94f997f29022159182d70c30f02990b3efdd5aa3350e8b7c7748da01d55785df",
-      "surface": "settings",
-      "context": "Configure > System: one-line summary shown under the update_channel setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.update_channel.label"
-      ],
-      "placeholders": [],
-      "frozen": [],
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
@@ -34768,56 +34463,6 @@
       ],
       "placeholders": [],
       "frozen": [],
-      "softMaxChars": 70,
-      "hardMaxChars": 90
-    },
-    "settings.webview_auto_update.help": {
-      "text": "Keep the System WebView on this panel's recommended build (from the ha-paneld mirror), installing a newer one over root on the update check.\n\nOff by default: a WebView swap needs a restart to take effect. Only shown where a recommended build exists (not on Play-updated panels).",
-      "sourceHash": "cf8035f05ef4490931648028eb8cb8f4629814ec89f0a4d6747af8b9ddd1315d",
-      "surface": "settings",
-      "context": "Configure > System > WebView auto-update: supporting help for the webview_auto_update setting.",
-      "risk": "consequential",
-      "siblings": [
-        "settings.webview_auto_update.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld",
-        "WebView"
-      ],
-      "softMaxChars": 376,
-      "hardMaxChars": 501
-    },
-    "settings.webview_auto_update.label": {
-      "text": "WebView auto-update",
-      "sourceHash": "20c3526cc6dbf1a8fc781ed1e7594a2c71d88903a33862fac77aa849984e2e1d",
-      "surface": "settings",
-      "context": "Configure > System: label for the webview_auto_update setting.",
-      "risk": "consequential",
-      "siblings": [
-        "settings.webview_auto_update.help"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "WebView"
-      ],
-      "softMaxChars": 32,
-      "hardMaxChars": 35
-    },
-    "settings.webview_auto_update.summary": {
-      "text": "Keep the System WebView on the recommended build (root).",
-      "sourceHash": "5d610552b249b69259fc0dde4c1ff25d37eeb2049a6f09ac14affed7dadc20d6",
-      "surface": "settings",
-      "context": "Configure > System: one-line summary shown under the webview_auto_update setting's label; the full help opens behind an info button. Plain text, one line.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.webview_auto_update.label",
-        "settings.webview_auto_update.help"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "WebView"
-      ],
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
@@ -38235,18 +37880,6 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
-    "setup.webview.action.update": {
-      "text": "Update the panel’s browser engine",
-      "sourceHash": "314e0cd759cc66a9ddbb26e2b1eab85935143c012e8d2f309bdf0c80f757d131",
-      "surface": "setup",
-      "context": "Setup wizard WebView compatibility blocker; action label.",
-      "risk": "consequential",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 62,
-      "hardMaxChars": 89
-    },
     "setup.webview.companion_does_not_help": {
       "text": "Choosing the Home Assistant app instead will not help — it draws the dashboard using the same engine.",
       "sourceHash": "4171f88e5b4a771642eb0eb6f9f3b801f333f3770ccaea54ee59339ced8b07fe",
@@ -38255,8 +37888,6 @@
       "risk": "setup",
       "siblings": [
         "setup.webview.explanation",
-        "setup.webview.fixable_note",
-        "setup.webview.manual_note",
         "setup.webview.title"
       ],
       "placeholders": [],
@@ -38274,8 +37905,6 @@
       "risk": "setup",
       "siblings": [
         "setup.webview.companion_does_not_help",
-        "setup.webview.fixable_note",
-        "setup.webview.manual_note",
         "setup.webview.title"
       ],
       "placeholders": [],
@@ -38285,72 +37914,6 @@
       "softMaxChars": 320,
       "hardMaxChars": 440
     },
-    "setup.webview.fixable_note": {
-      "text": "ha-paneld installs the build known to work on this hardware. The panel restarts once to switch to it, which takes a minute or two.",
-      "sourceHash": "8a3b1bb25e78c03726a64b0b02054e389a04cf19850680c62b4e004cb348562c",
-      "surface": "setup",
-      "context": "Setup wizard WebView compatibility blocker; user-visible copy.",
-      "risk": "setup",
-      "siblings": [
-        "setup.webview.companion_does_not_help",
-        "setup.webview.explanation",
-        "setup.webview.manual_note",
-        "setup.webview.title"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 220,
-      "hardMaxChars": 300
-    },
-    "setup.webview.manual_note": {
-      "text": "There is no known-good engine bundled for this panel model, so this one needs updating by hand — usually through the panel’s own system update, or by installing a current Android System WebView.",
-      "sourceHash": "464dc553f785e31bb4878a421d52a46a91c913d436bd9b65f5fbd4a0ff59c885",
-      "surface": "setup",
-      "context": "Setup wizard WebView compatibility blocker; user-visible copy.",
-      "risk": "setup",
-      "siblings": [
-        "setup.webview.companion_does_not_help",
-        "setup.webview.explanation",
-        "setup.webview.fixable_note",
-        "setup.webview.title"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Android System WebView"
-      ],
-      "softMaxChars": 320,
-      "hardMaxChars": 440
-    },
-    "setup.webview.state.installing": {
-      "text": "Installing the recommended engine on the panel. It restarts once when it finishes, then this page continues by itself.",
-      "sourceHash": "0e6b5fc4b901e48f22008eee43a344913908974aa311394b77abc5dadac92bc8",
-      "surface": "setup",
-      "context": "Setup wizard WebView compatibility blocker; live status.",
-      "risk": "ordinary",
-      "siblings": [
-        "setup.webview.state.installing_short"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 150,
-      "hardMaxChars": 210
-    },
-    "setup.webview.state.installing_short": {
-      "text": "Installing…",
-      "sourceHash": "530bcc355f0a3cd6a75a5216f1648e3dc48da5615ee41f56e033f4732982a3df",
-      "surface": "setup",
-      "context": "Setup wizard WebView compatibility blocker; live status.",
-      "risk": "ordinary",
-      "siblings": [
-        "setup.webview.state.installing"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 24,
-      "hardMaxChars": 40
-    },
     "setup.webview.title": {
       "text": "The panel’s browser engine needs updating",
       "sourceHash": "c408def35c0373230b7dd6da75056046236ddd96415495d4935697de526844fa",
@@ -38359,9 +37922,7 @@
       "risk": "setup",
       "siblings": [
         "setup.webview.companion_does_not_help",
-        "setup.webview.explanation",
-        "setup.webview.fixable_note",
-        "setup.webview.manual_note"
+        "setup.webview.explanation"
       ],
       "placeholders": [],
       "frozen": [],

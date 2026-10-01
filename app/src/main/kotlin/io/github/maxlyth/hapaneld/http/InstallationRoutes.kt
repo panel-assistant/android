@@ -148,26 +148,6 @@ internal fun Route.installationRoutes(
 
 }
 
-internal fun Route.webViewHealRoute(
-    onInstallComponent: (String, String, String) -> Boolean,
-    authorizeSensitive: suspend (ApplicationCall, SensitiveOperation, String, String) -> Boolean,
-) {
-    // Auto-heal the System WebView (download + install the profile's recommended build).
-    // Fire-and-forget: the install runs off-thread (large download); the client refreshes.
-    post("/webview/heal") {
-        if (!authorizeSensitive(
-                call,
-                SensitiveOperation.APK_INSTALL,
-                exactHttpApprovalPayload(call, sha256Hex(ByteArray(0))),
-                "Reinstall the recommended System WebView",
-            )
-        ) return@post
-        val status = if (onInstallComponent("webview", "reinstall", "")) "started" else "busy"
-        call.respondText("""{"status":"$status"}""", ContentType.Application.Json)
-    }
-
-}
-
 /** Removable apps (third-party or updated-system) for the Uninstall picker, sorted by label. Stock
  *  system apps + ha-paneld are excluded — pm can't uninstall stock system apps (only disable), and
  *  self-uninstall would kill the tool. */

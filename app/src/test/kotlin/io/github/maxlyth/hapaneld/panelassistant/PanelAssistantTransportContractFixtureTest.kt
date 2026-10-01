@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.panelassistant
 
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
@@ -13,7 +14,7 @@ class PanelAssistantTransportContractFixtureTest {
     @Test
     fun `Android producer messages match the source-stamped golden`() {
         val fixture = JSONObject(resource(PRODUCER_FIXTURE))
-        assertTrue(fixture.getString("sourceRevision").matches(Regex("^[0-9a-f]{40}$")))
+        if (!recordingProducer()) assertTrue(fixture.getString("sourceRevision").matches(Regex("^[0-9a-f]{40}$")))
         val descriptor = PanelAssistantChannelCatalog.describe("relay1")
         assertNotNull("relay1 must remain describable", descriptor)
         val messages = listOf(
@@ -23,7 +24,7 @@ class PanelAssistantTransportContractFixtureTest {
                     PanelAssistantHelloIdentity("d".repeat(64), "0.9.8-rc2", 801),
                     PanelAssistantTransportProtocol.CAPABILITIES,
                     listOf(descriptor!!),
-                    listOf("humidity", "temperature"),
+                    (PanelAssistantChannelCatalog.RETIRED_CHANNELS + listOf("humidity", "temperature")).sorted(),
                 ),
             ),
             JSONObject(
@@ -52,7 +53,15 @@ class PanelAssistantTransportContractFixtureTest {
         )
         val expected = fixture.getJSONArray("transportMessages").objects()
         assertEquals(expected.map { it.getString("name") }, listOf("hello", "report_state", "command_result", "restart_notice"))
-        assertEquals(expected.map { it.getJSONObject("message").toString() }, messages.map(JSONObject::toString))
+        if (recordingProducer()) {
+            recordProducer("transportMessages", JSONArray().apply {
+                listOf("hello", "report_state", "command_result", "restart_notice").zip(messages).forEach { (name, message) ->
+                    put(JSONObject().put("name", name).put("message", message))
+                }
+            })
+        } else {
+            assertEquals(expected.map { it.getJSONObject("message").toString() }, messages.map(JSONObject::toString))
+        }
     }
 
     @Test
@@ -66,8 +75,12 @@ class PanelAssistantTransportContractFixtureTest {
             descriptor!!.toJson().toString()
         }
         val exported = fixture.getJSONArray("channelDescriptors").objects()
-        assertEquals(wires, exported.map { it.getString("channel") })
-        assertEquals(exported.map(JSONObject::toString), described)
+        if (recordingProducer()) {
+            recordProducer("channelDescriptors", JSONArray().apply { described.forEach { put(JSONObject(it)) } })
+        } else {
+            assertEquals(wires, exported.map { it.getString("channel") })
+            assertEquals(exported.map(JSONObject::toString), described)
+        }
     }
 
     @Test
@@ -109,6 +122,22 @@ class PanelAssistantTransportContractFixtureTest {
                 )
             }
         }
+    }
+
+    private fun recordingProducer(): Boolean = System.getenv("HAPANELD_RECORD_ANDROID_PRODUCER") == "1"
+
+    /** Record actual producer values; the owner stamps a real code commit before submission. */
+    private fun recordProducer(field: String, value: JSONArray) {
+        val target = listOf(
+            File("src/test/resources/panel-assistant-contract/android_producer_v1.json"),
+            File("app/src/test/resources/panel-assistant-contract/android_producer_v1.json"),
+        ).first { it.isFile }
+        val fixture = JSONObject(target.readText())
+        val revision = System.getenv("HAPANELD_ANDROID_PRODUCER_REVISION") ?: "pending"
+        require(revision == "pending" || revision.matches(Regex("^[0-9a-f]{40}$")))
+        fixture.put("sourceRevision", revision).put(field, value)
+        target.writeText(fixture.toString(2) + "\n")
+        println("recorded $field to ${target.absolutePath}; sourceRevision=$revision")
     }
 
     private fun resource(name: String): String =

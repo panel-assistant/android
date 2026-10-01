@@ -8,8 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * ha-paneld self-update — the panels have no Play Store, so ha-paneld is its own update path (same
- * pinned-signer install as the Companion updater, via [AppInstaller.HA_PANELD]). A per-panel **channel** selects which
+ * Explicit ha-paneld installation — uses the same
+ * pinned-signer install as the Companion installer, via [AppInstaller.HA_PANELD]. A request-local channel selects which
  * releases to follow: `stable` (GitHub releases/latest — non-prerelease) or `prerelease` (the newest
  * published release, incl. rc builds). Installing a newer build restarts the service (the package's
  * MY_PACKAGE_REPLACED receiver relaunches it); a channel switch may move down a version — allowed by
@@ -73,10 +73,7 @@ object SelfUpdater {
             val prepared: AppInstaller.PreparedSelfInstall,
             override val message: String,
             override val presentation: InstallPresentation? = null,
-        ) : ChannelPreparation {
-            val databaseDisposition: AppInstaller.SelfInstallDatabaseDisposition
-                get() = prepared.databaseDisposition
-        }
+        ) : ChannelPreparation
     }
 
     /** Install a specific ha-paneld release by its [tag]. The tag is validated and resolved back through
@@ -161,56 +158,22 @@ object SelfUpdater {
         }
     }
 
-    /**
-     * A database recovery replaces the live database with its pre-migration snapshot. It is safe for a
-     * package-only update, but a config-coupled channel transaction would write its new channel (and any
-     * mixed settings) into the database that recovery then discards. Reject and destroy that capability
-     * before the caller can commit configuration; exact/manual/periodic package-only callers intentionally
-     * do not pass through this adapter.
-     */
-    internal fun admitConfigCoupledChannel(preparation: ChannelPreparation): ChannelPreparation =
-        if (preparation is ChannelPreparation.Ready &&
-            preparation.databaseDisposition == AppInstaller.SelfInstallDatabaseDisposition.RECOVER
-        ) {
-            preparation.prepared.close()
-            ChannelPreparation.Refused(
-                "An update-channel change cannot recover an older database snapshot.",
-                presentation("install-durable-rejection"),
-            )
-        } else preparation.also {
-            if (it is ChannelPreparation.Ready) it.prepared.restrictToDirectConsumption()
-        }
-
-    internal data class PreparedInstallOutcome(
-        val message: String,
-        val installed: Boolean,
-        val presentation: InstallPresentation? = null,
-    )
-
     internal suspend fun installPreparedOutcome(
         context: Context,
         prepared: AppInstaller.PreparedSelfInstall,
-    ): PreparedInstallOutcome = when (val outcome = AppInstaller.installPrepared(context, prepared)) {
-        InstallOutcome.Succeeded -> PreparedInstallOutcome(
+    ): InstallOperationResult = when (val outcome = AppInstaller.installPrepared(context, prepared)) {
+        InstallOutcome.Succeeded -> InstallOperationResult(
             "updating ha-paneld -> ${prepared.version}",
-            installed = true,
             presentation = presentation(
                 committedCode(prepared.version),
                 "version" to prepared.version,
             ),
         )
-        is InstallOutcome.Failure -> PreparedInstallOutcome(
+        is InstallOutcome.Failure -> InstallOperationResult(
             outcome.message,
-            installed = false,
             presentation = outcome.presentation,
         )
     }
-
-    /** Consume a previously admitted exact channel candidate without resolving or observing it again. */
-    internal suspend fun installPrepared(
-        context: Context,
-        prepared: AppInstaller.PreparedSelfInstall,
-    ): String = installPreparedOutcome(context, prepared).message
 
     internal suspend fun checkAndUpdateResult(
         context: Context,
@@ -233,9 +196,7 @@ object SelfUpdater {
                 )
                 is ChannelPreparation.Ready -> preparation.prepared.use { prepared ->
                     Log.i(TAG, "self-update ${BuildConfig.VERSION_NAME} -> ${prepared.version} ($channel)")
-                    installPreparedOutcome(context, prepared).let {
-                        InstallOperationResult(it.message, it.presentation)
-                    }
+                    installPreparedOutcome(context, prepared)
                 }
             }
         }
