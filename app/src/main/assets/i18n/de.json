@@ -7259,7 +7259,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.status_power_at_risk": {
-      "text": "⛔ Energiesparschutz des Panels: gefährdet — das Panel kann nach dem Ausschalten des Bildschirms in den Ruhezustand oder Doze wechseln, sodass HTTP und MQTT nicht mehr erreichbar sind und Hintergrundprozesse nicht mehr ausgeführt werden.",
+      "text": "⛔ Energiesparschutz des Panels: gefährdet — das Panel kann nach dem Ausschalten des Bildschirms in den Ruhezustand oder Doze wechseln, sodass HTTP, MQTT und Hintergrundaufgaben nicht mehr erreichbar sind.",
       "sourceHash": "a74da057925352acddd3dd33fbb3024de2c565cbcb5410079024512fbe9ad1ab",
       "state": "machine-cross-checked"
     },
@@ -10114,7 +10114,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.level.caution": {
-      "text": "Energiesparschutz des Panels: eingeschränkt",
+      "text": "Energiesparschutz des Panels: Vorsicht",
       "sourceHash": "1b4a977ac895145657b74b05e3d7b4be0f28479237055bcf2abd21e047ffd802",
       "state": "machine-cross-checked"
     },
@@ -10159,7 +10159,7 @@
       "state": "machine-cross-checked"
     },
     "runtime.power_safety.summary.at_risk": {
-      "text": "Das Panel kann nach dem Ausschalten des Bildschirms in den Ruhezustand oder Doze wechseln, sodass HTTP und MQTT nicht mehr erreichbar sind und Hintergrundprozesse nicht mehr ausgeführt werden.",
+      "text": "Das Panel kann nach dem Ausschalten des Bildschirms in den Ruhezustand oder Doze wechseln, sodass HTTP, MQTT und Hintergrundaufgaben nicht mehr erreichbar sind.",
       "sourceHash": "c3985d94deae2c90693d7b57b50bd842fa613cf16e2c8d34ca8a9aad579d9c13",
       "state": "machine-cross-checked"
     },

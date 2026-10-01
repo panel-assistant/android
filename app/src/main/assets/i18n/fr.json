@@ -2479,7 +2479,7 @@
       "state": "machine-cross-checked"
     },
     "dashboard.camera.action.grant_permission": {
-      "text": "accordez au panneau l’autorisation d’utiliser la caméra à l’invite",
+      "text": "accordez l’autorisation d’utiliser la caméra sur le panneau à l’invite",
       "sourceHash": "b8021f57862db8b3de847ed071a7d422746cc592947888bb9f369fff7668c4e0",
       "state": "machine-cross-checked"
     },
@@ -4919,7 +4919,7 @@
       "state": "machine-cross-checked"
     },
     "entities.control.apply_policy": {
-      "text": "Appliquer la stratégie ({current} → {desired})",
+      "text": "Appliquer les entités choisies par la stratégie ({current} → {desired})",
       "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
       "state": "machine-cross-checked"
     },
@@ -7259,7 +7259,7 @@
       "state": "machine-cross-checked"
     },
     "install.presentation.status_power_at_risk": {
-      "text": "⛔ Gestion de l’alimentation du panneau : risque élevé — le panneau peut se mettre en veille ou passer en mode Doze après l’extinction de l’écran, rendant HTTP, MQTT et les tâches en arrière-plan inaccessibles.",
+      "text": "⛔ Gestion de l’alimentation du panneau : à risque — le panneau peut se mettre en veille ou passer en mode Doze après l’extinction de l’écran, rendant HTTP, MQTT et les tâches en arrière-plan inaccessibles.",
       "sourceHash": "a74da057925352acddd3dd33fbb3024de2c565cbcb5410079024512fbe9ad1ab",
       "state": "machine-cross-checked"
     },
@@ -7829,7 +7829,7 @@
       "state": "machine-cross-checked"
     },
     "install.uninstall.dynamic.none": {
-      "text": "aucune application amovible",
+      "text": "aucune application désinstallable",
       "sourceHash": "857e324e486859a8fb02806020847f3d341f0f40d2c0732f0912947f19a064ce",
       "state": "machine-cross-checked"
     },
@@ -11974,7 +11974,7 @@
       "state": "machine-cross-checked"
     },
     "setup.mqtt.error.nothing_listening": {
-      "text": "Aucun service ne répond à {host}:{port}. Vérifiez l’adresse et le port. Appuyez à nouveau pour enregistrer quand même.",
+      "text": "Aucun service n’écoute à {host}:{port}. Vérifiez l’adresse et le port. Appuyez à nouveau pour enregistrer quand même.",
       "sourceHash": "1033c7bfa571cbb694463132fd61755a77712535237c1d9263a51eec29295cfe",
       "state": "machine-cross-checked"
     },

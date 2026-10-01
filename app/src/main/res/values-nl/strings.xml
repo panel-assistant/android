@@ -49,7 +49,7 @@
     <string name="approval_op_package_uninstall">App verwijderen</string>
     <string name="approval_op_profile_activate">Hardwareprofiel activeren</string>
     <string name="approval_op_devtools_enable">WebView-ontwikkelaarstools beschikbaar maken</string>
-    <string name="approval_op_remote_media">Een media-URL op afstand afspelen</string>
+    <string name="approval_op_remote_media">Een externe media-URL afspelen</string>
     <string name="approval_op_package_tame">De status van het leverancierspakket wijzigen</string>
     <string name="approval_op_home_hand_back">Het startscherm teruggeven</string>
     <string name="approval_op_dashboard_reload">Dashboard-renderer opnieuw laden</string>
@@ -57,8 +57,8 @@
     <string name="approval_op_companion_repair">Companion-configuratie herstellen</string>
     <string name="approval_op_dashboard_storage_clear">Bladergegevens van het dashboard wissen</string>
     <string name="approval_op_display_configuration">De weergavegrootte aanpassen</string>
-    <string name="approval_op_power_configuration">Veiligheidsmaatregelen voor de stroomtoevoer van het paneel aanpassen</string>
-    <string name="approval_op_power_safety_ack">Eén specifieke veiligheidswaarschuwing over de stroomvoorziening verbergen</string>
+    <string name="approval_op_power_configuration">Beveiligingen voor het energiebeheer van het paneel aanpassen</string>
+    <string name="approval_op_power_safety_ack">Eén specifieke waarschuwing over het energiebeheer van het paneel verbergen</string>
     <string name="approval_op_guard_db">Databaseherstel voortzetten</string>
     <string name="approval_op_camera_enable">De camera van het paneel inschakelen</string>
     <string name="approval_op_transport_release">Bediening van het paneel teruggeven aan MQTT</string>
@@ -223,7 +223,7 @@
     <string name="disable">Uitschakelen</string>
     <string name="shizuku_title">Uitgebreide toegang (Shizuku)</string>
     <string name="shizuku_scope">Het staat geen willekeurige APK-uploads, WebView-vervanging, een algemene shell, root-app-gegevens, opnieuw opstarten, logbestanden of bediening van leveranciersapps toe.\n\nZodra dit is ingeschakeld, kunnen de ondersteunde bewerkingen worden gestart via de bestaande vertrouwde-LAN-bediening van ha-paneld op dit paneel.</string>
-    <string name="shizuku_grant_scope">Dit verleent alleen door de ondertekenaar geverifieerde updates van ha-paneld en minimale updates van Companion, schermafbeeldingen, toets-/tikinvoer, en bewerkingen voor dichtheid en tekstgrootte. %1$s</string>
+    <string name="shizuku_grant_scope">Dit staat alleen updates van ha-paneld en minimale Companion-updates met geverifieerde ondertekenaar, schermafbeeldingen, toets-/tikinvoer en bewerkingen voor dichtheid en tekstgrootte toe. %1$s</string>
     <string name="shizuku_not_installed">Shizuku is niet geïnstalleerd. Voer het provisioningscript van ha-paneld één keer uit via ADB en keur daarna hier op het paneel de toegang goed.</string>
     <string name="shizuku_untrusted">Een pakket met de naam Shizuku is geïnstalleerd, maar het ondertekeningscertificaat wordt niet vertrouwd. ha-paneld maakt er geen verbinding mee.</string>
     <string name="shizuku_disabled">Uitgebreide toegang is uitgeschakeld in ha-paneld. Kies hier op dit paneel ‘Inschakelen’ om de lokale goedkeuring te starten.</string>
@@ -239,7 +239,7 @@
     <string name="storage_health_channel">Status van de opslag</string>
     <string name="storage_health_channel_description">Kritieke fouten in de opslag en SQLite van het paneel</string>
     <string name="panel_agent_channel_description">Hardware-agent voor het paneel voor Home Assistant</string>
-    <string name="storage_pressure_title">De opslagruimte/database van het paneel staat onder grote druk</string>
+    <string name="storage_pressure_title">Opslag-/databasedruk van het paneel is kritiek</string>
     <string name="storage_capacity_suffix">" (%1$d MiB vrij op het bestandssysteem)"</string>
     <string name="storage_pressure_body">De druk op de opslag of het databasebestand is kritiek%1$s. Open ha-paneld en controleer de vrije ruimte en de WAL-groei voordat je de configuratie wijzigt.</string>
     <string name="database_attention_title">De database van het paneel heeft aandacht nodig</string>

@@ -59,8 +59,8 @@
     <string name="approval_op_companion_repair">Companion-Konfiguration reparieren</string>
     <string name="approval_op_dashboard_storage_clear">Browserdaten des Dashboards löschen</string>
     <string name="approval_op_display_configuration">Anzeigegröße ändern</string>
-    <string name="approval_op_power_configuration">Sicherheitsvorkehrungen der Panel-Stromversorgung ändern</string>
-    <string name="approval_op_power_safety_ack">Genau einen Sicherheitshinweis zur Stromversorgung ausblenden</string>
+    <string name="approval_op_power_configuration">Energieschutzmaßnahmen des Panels ändern</string>
+    <string name="approval_op_power_safety_ack">Einen ganz bestimmten Vorsichtshinweis zum Energieschutz ausblenden</string>
     <string name="approval_op_guard_db">Datenbankwiederherstellung fortsetzen</string>
     <string name="approval_op_camera_enable">Panel-Kamera aktivieren</string>
     <string name="approval_op_transport_release">Panel-Steuerung an MQTT zurückgeben</string>
@@ -232,7 +232,7 @@
     <string name="disable">Deaktivieren</string>
     <string name="shizuku_title">Erweiterter Zugriff (Shizuku)</string>
     <string name="shizuku_scope">Er erlaubt keine beliebigen APK-Uploads, keinen WebView-Austausch, keine allgemeine Shell, keinen Zugriff auf Root-App-Daten und keine Steuerung von Neustarts, Protokollen oder Hersteller-Apps.\n\nNach der Aktivierung können die unterstützten Vorgänge über die bestehenden ha-paneld-Steuerelemente im vertrauenswürdigen LAN dieses Panels aufgerufen werden.</string>
-    <string name="shizuku_grant_scope">Dies gewährt ausschließlich dem signaturgeprüften ha-paneld minimale Companion-Aktualisierungen, Screenshots, Tasten-/Tippeingaben sowie Änderungen an Dichte und Textgröße. %1$s</string>
+    <string name="shizuku_grant_scope">Dies erlaubt nur ha-paneld-Aktualisierungen mit verifiziertem Signierer, minimale Companion-Aktualisierungen, Screenshots, Tasten-/Tippeingaben sowie Änderungen an Dichte und Textgröße. %1$s</string>
     <string name="shizuku_not_installed">Shizuku ist nicht installiert. Führe das ha-paneld-Bereitstellungsskript einmal über ADB aus und bestätige den Zugriff anschließend hier auf dem Panel.</string>
     <string name="shizuku_untrusted">Ein Paket namens Shizuku ist installiert, aber sein Signaturzertifikat ist nicht vertrauenswürdig. ha-paneld stellt keine Verbindung dazu her.</string>
     <string name="shizuku_disabled">Der erweiterte Zugriff ist in ha-paneld deaktiviert. Wähle hier auf diesem Panel „Aktivieren“, um die lokale Bestätigung zu beginnen.</string>

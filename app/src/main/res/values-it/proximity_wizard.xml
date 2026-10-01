@@ -39,7 +39,7 @@
     <string name="proximity_wizard_near">Avvicina la mano al sensore</string>
     <string name="proximity_wizard_near_hint">Tieni la mano ferma vicino al sensore finché non appare il passaggio successivo.</string>
     <string name="proximity_wizard_return_clear">Allontana di nuovo la mano</string>
-    <string name="proximity_wizard_return_clear_hint">Allontana la mano per la prossima prova. Attendi il segnale prima di riavvicinarla.</string>
+    <string name="proximity_wizard_return_clear_hint">Allontanati per la prossima prova. Attendi che ti venga chiesto di riavvicinarti.</string>
     <string name="proximity_wizard_waves">Avvicina la mano</string>
     <string name="proximity_wizard_waves_hint">Avvicinala rapidamente, come per toccare lo schermo. Ritirala quando richiesto per la prossima prova.</string>
     <string name="proximity_wizard_review">Controlla la configurazione</string>

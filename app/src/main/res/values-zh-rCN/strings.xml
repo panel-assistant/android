@@ -60,7 +60,7 @@
     <string name="approval_op_dashboard_storage_clear">清除仪表盘浏览数据</string>
     <string name="approval_op_display_configuration">更改显示尺寸</string>
     <string name="approval_op_power_configuration">更改面板电源安全保护</string>
-    <string name="approval_op_power_safety_ack">隐藏一条特定的电源安全警告</string>
+    <string name="approval_op_power_safety_ack">隐藏一条特定的电源安全注意事项</string>
     <string name="approval_op_guard_db">推进数据库恢复</string>
     <string name="approval_op_camera_enable">启用面板摄像头</string>
     <string name="approval_op_transport_release">将面板控制权交还给 MQTT</string>
@@ -70,14 +70,14 @@
     <string name="panel_not_set_up">此面板尚未设置。</string>
     <string name="panel_not_set_up_hint">用手机或笔记本电脑扫描二维码或打开下面的地址——大约需要两分钟。也可以点按%1$s，在此屏幕上进行设置。</string>
     <string name="mqtt_could_not_connect">MQTT 无法连接。</string>
-    <string name="mqtt_credentials_rejected_hint">MQTT 消息代理拒绝了用户名和密码——请在浏览器的设置页面中修正。</string>
+    <string name="mqtt_credentials_rejected_hint">MQTT 消息代理拒绝了用户名和密码——请在浏览器中打开面板设置页面进行修正。</string>
     <string name="waiting_for_mqtt_details">正在等待 MQTT 详细信息。</string>
     <string name="someone_configuring_hint">有人正在浏览器中进行设置。这里无需操作。</string>
     <string name="mqtt_address_check_hint">请在浏览器的设置页面中检查 MQTT 消息代理地址。</string>
     <string name="checking_mqtt_connection">正在检查 MQTT 连接…</string>
     <string name="takes_few_seconds_hint">这需要几秒钟。这里无需操作。</string>
     <string name="browser_engine_too_old">此面板的浏览器引擎版本过旧。</string>
-    <string name="browser_engine_too_old_hint">Home Assistant 仪表盘需要更新的版本。请在浏览器的设置页面中修复。</string>
+    <string name="browser_engine_too_old_hint">Home Assistant 仪表盘需要更新的版本。请在浏览器中打开面板设置页面进行修复。</string>
     <string name="choose_dashboard_app">选择仪表盘应用。</string>
     <string name="continue_setup_browser">请在浏览器的设置页面中继续。</string>
     <string name="connected_next_ha_address">已连接。下一步：Home Assistant 地址。</string>
@@ -217,8 +217,8 @@
     <string name="guard_db_reading_journal">正在读取 root 日志…</string>
     <string name="guard_db_journal_status">Root 日志：%1$s · 轮次 %2$d</string>
     <string name="guard_db_outcome">" · 结果 %1$s"</string>
-    <string name="guard_db_deadline">硬性截止时间：已用时 %1$d 毫秒</string>
-    <string name="guard_db_forward_deadline">" · 推进操作已用时：%1$d 毫秒"</string>
+    <string name="guard_db_deadline">硬性截止时间：%1$d（启动后经过的毫秒数）</string>
+    <string name="guard_db_forward_deadline">\" · 推进截止时间：%1$d\"</string>
     <string name="guard_db_unreachable">Root 辅助程序正在重启或无法访问。不允许进行任何更改。</string>
     <string name="guard_db_malformed">Root 日志响应格式错误。恢复已暂停。</string>
     <string name="guard_db_unsupported">已安装的辅助程序无法执行此恢复。恢复已暂停。</string>
@@ -232,7 +232,7 @@
     <string name="disable">禁用</string>
     <string name="shizuku_title">增强访问权限（Shizuku）</string>
     <string name="shizuku_scope">它不允许任意上传 APK、替换 WebView、使用通用 shell、访问 root 应用数据、重启、查看日志或控制供应商应用。\n\n启用后，可通过此面板上 ha-paneld 现有的受信任局域网控制来调用受支持的操作。</string>
-    <string name="shizuku_grant_scope">这仅授予以下操作权限：更新签名已验证的 ha-paneld 和精简版 Companion、截屏、按键/点按输入，以及调整显示密度和文字大小。%1$s</string>
+    <string name="shizuku_grant_scope">这仅授予以下操作权限：更新 ha-paneld 和精简版 Companion（均须通过签名者验证）、截屏、按键/点按输入，以及调整显示密度和文字大小。%1$s</string>
     <string name="shizuku_not_installed">未安装 Shizuku。请通过 ADB 运行一次 ha-paneld 配置脚本，然后在此面板上批准访问。</string>
     <string name="shizuku_untrusted">已安装名为 Shizuku 的软件包，但其签名证书不受信任。ha-paneld 不会连接到它。</string>
     <string name="shizuku_disabled">ha-paneld 中的增强访问权限已禁用。请在此面板上选择“启用”以开始本地批准。</string>
