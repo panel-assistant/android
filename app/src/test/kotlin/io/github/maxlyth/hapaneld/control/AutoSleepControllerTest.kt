@@ -492,6 +492,23 @@ class AutoSleepControllerTest {
         } finally { h.closeWithVirtualTime(::runCurrent) }
     }
 
+    @Test fun `an adoption refused while the touch wake is still attaching is retried before the guard`() = runTest {
+        val h = virtualHarness(inheritedDark = true)
+        try {
+            // Startup holds the main thread, so the first overlay attach is not confirmed in time.
+            h.wakeTap.armSucceeds = false
+            h.start()
+            assertFalse(h.screen.isIntendedOff())
+            assertFalse(h.backlightPowered())
+            h.wakeTap.armSucceeds = true
+            advanceTimeBy(ADOPTION_RETRY_MS)
+            runCurrent()
+            assertTrue(h.screen.isIntendedOff())
+            assertFalse(h.screen.recoverUnexpectedDark())
+            assertFalse(h.backlightPowered())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
     @Test fun `an inherited dark screen with no touch wake is left for the never-blank guard`() =
         Harness(inheritedDark = true, wakeTapAvailable = false).use { h ->
             h.start()
