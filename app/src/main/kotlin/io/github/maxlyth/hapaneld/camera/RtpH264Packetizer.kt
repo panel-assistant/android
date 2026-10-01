@@ -8,7 +8,7 @@ package io.github.maxlyth.hapaneld.camera
  * sets go out as ordinary single-NAL packets ahead of the IDR, which every decoder understands.
  */
 class RtpH264Packetizer(
-    private val ssrc: Int,
+    val ssrc: Int,
     firstSequence: Int,
     private val maxPayload: Int = DEFAULT_MAX_PAYLOAD,
     private val payloadType: Int = PAYLOAD_TYPE,

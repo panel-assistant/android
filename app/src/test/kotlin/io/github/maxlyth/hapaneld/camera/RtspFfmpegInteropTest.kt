@@ -55,14 +55,29 @@ class RtspFfmpegInteropTest {
         return Sample(sets, units.map { unit -> unit.filter { AnnexB.nalType(it) !in parameterTypes } })
     }
 
-    private inner class LoopingSource(private val units: List<List<ByteArray>>, val sets: ParameterSets) : CameraStreamSource {
+    private inner class LoopingSource(private val units: List<List<ByteArray>>, val sets: ParameterSets, private val audioUnits: List<ByteArray> = emptyList()) : CameraStreamSource {
         @Volatile private var running = true
         private var server: CameraRtspServer? = null
+        @Volatile private var audioSink: ((ByteArray, Long) -> Unit)? = null
+        val audio = object : CameraAudioSource {
+            override fun available() = audioUnits.isNotEmpty()
+            override fun start(output: (ByteArray, Long) -> Unit): AutoCloseable {
+                audioSink = output
+                return AutoCloseable { audioSink = null }
+            }
+        }
         private val feeder = Thread {
             var pts = 0L
             var index = 0
+            var audioIndex = 0
+            var audioPts = 0L
             while (running) {
                 server?.onAccessUnit(units[index], AnnexB.isKeyFrame(units[index]), pts, attempt = 1L)
+                while (audioUnits.isNotEmpty() && audioPts <= pts) {
+                    audioSink?.invoke(audioUnits[audioIndex], audioPts)
+                    audioIndex = (audioIndex + 1) % audioUnits.size
+                    audioPts += 64_000L
+                }
                 index = (index + 1) % units.size
                 pts += 1_000_000L / 15
                 Thread.sleep(1_000L / 15)
@@ -88,19 +103,21 @@ class RtspFfmpegInteropTest {
     }
 
     private fun run(vararg command: String): Pair<Int, String> {
-        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
-        val output = process.inputStream.readBytes().toString(Charsets.UTF_8)
-        if (!process.waitFor(40, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            throw AssertionError("timed out: ${command.joinToString(" ")}\n$output")
-        }
-        return process.exitValue() to output
+        val log = File.createTempFile("camera-ffmpeg-", ".log")
+        try {
+            val process = ProcessBuilder(*command).redirectErrorStream(true).redirectOutput(log).start()
+            if (!process.waitFor(40, TimeUnit.SECONDS)) {
+                process.destroyForcibly().waitFor(5, TimeUnit.SECONDS)
+                throw AssertionError("timed out: ${command.joinToString(" ")}\n${log.readText()}")
+            }
+            return process.exitValue() to log.readText()
+        } finally { log.delete() }
     }
 
-    private fun withServer(block: (url: String) -> Unit) {
+    private fun withServer(audioUnits: List<ByteArray> = emptyList(), block: (url: String) -> Unit) {
         val sample = sample()
-        val source = LoopingSource(sample.units, sample.sets)
-        val server = CameraRtspServer(port = 0, source = { source })
+        val source = LoopingSource(sample.units, sample.sets, audioUnits)
+        val server = CameraRtspServer(port = 0, source = { source }, audio = source.audio)
         server.setListening(true)
         source.start(server)
         try {
@@ -131,6 +148,40 @@ class RtspFfmpegInteropTest {
             assertEquals(output, 0, status)
             assertTrue(output, output.lines().none { it.contains("error", ignoreCase = true) && it.contains("decod", ignoreCase = true) })
         }
+    }
+
+    @Test fun ffmpegDecodesTheVideoAndAacRoomAudioOverTheSameRtspConnection() {
+        assumeTrue("ffmpeg on PATH", tool("ffmpeg"))
+        val aac = ProcessBuilder(
+            "ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=16000",
+            "-t", "2", "-ac", "1", "-c:a", "aac", "-profile:a", "aac_low", "-b:a", "32k", "-f", "adts", "-",
+        ).redirectError(ProcessBuilder.Redirect.INHERIT).start()
+        val adts = aac.inputStream.readBytes()
+        assertTrue(aac.waitFor(10, TimeUnit.SECONDS))
+        assertEquals(0, aac.exitValue())
+        val units = ArrayList<ByteArray>()
+        var offset = 0
+        while (offset + 7 <= adts.size) {
+            val size = ((adts[offset + 3].toInt() and 3) shl 11) or ((adts[offset + 4].toInt() and 255) shl 3) or ((adts[offset + 5].toInt() and 255) ushr 5)
+            val header = if (adts[offset + 1].toInt() and 1 == 1) 7 else 9
+            check(size > header && offset + size <= adts.size)
+            units += adts.copyOfRange(offset + header, offset + size)
+            offset += size
+        }
+        assertTrue(units.size >= 20)
+        val decoded = File.createTempFile("camera-aac-decoded-", ".pcm")
+        try {
+            withServer(units) { url ->
+                val (status, output) = run(
+                    "ffmpeg", "-nostdin", "-y", "-v", "warning", "-rtsp_transport", "tcp", "-i", url,
+                    "-map", "0:v:0", "-frames:v", "20", "-f", "null", "-",
+                    "-map", "0:a:0", "-t", "1", "-acodec", "pcm_s16le", "-f", "s16le", decoded.absolutePath,
+                )
+                assertEquals(output, 0, status)
+                assertTrue("decoded at least half a second of room sound", decoded.length() >= 16_000)
+                assertTrue("decoded sound is not silence", decoded.readBytes().any { it != 0.toByte() })
+            }
+        } finally { decoded.delete() }
     }
 
     @Test fun theSampleCarriesItsOwnParameterSetsOnceAndNoAccessUnitCarriesThemInline() {

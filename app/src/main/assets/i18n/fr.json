@@ -10404,9 +10404,9 @@
       "state": "machine-cross-checked"
     },
     "settings.camera_enabled.help": {
-      "sourceHash": "7cdea3db240f425db9be12ceb307b9cb3986e5466981f26156d853e842ab2c9f",
+      "sourceHash": "26cbf74a17b8917bdc37624458a557520a5289f5902c34ffba20f4c5fa408a0f",
       "state": "machine-cross-checked",
-      "text": "Désactivée par défaut. Diffuse la caméra du panneau sous forme de flux RTSP vidéo seule (sans audio) et d’instantané JPEG que Home Assistant peut récupérer. Aucune image ne quitte le panneau tant qu’aucun client n’est connecté, et le panneau allume un voyant rouge chaque fois que la caméra est ouverte."
+      "text": "Désactivée par défaut. Fournit de la vidéo RTSP avec le son de la pièce lorsqu’un microphone est disponible et autorisé, ainsi que des instantanés JPEG pour Home Assistant. La capture démarre uniquement lorsqu’un client demande un média, et le panneau affiche un voyant rouge tant que la caméra est ouverte."
     },
     "settings.camera_enabled.label": {
       "sourceHash": "03494b0d1f803522a3497d751eaaf6f987883cd4fe0b0e66baf67a662ae231b2",

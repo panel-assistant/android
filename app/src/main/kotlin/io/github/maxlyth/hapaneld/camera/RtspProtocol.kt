@@ -1,7 +1,7 @@
 package io.github.maxlyth.hapaneld.camera
 
 /**
- * The RTSP 1.0 control protocol for one live H.264 track, with no sockets in it. `CameraRtspServer`
+ * The RTSP 1.0 control protocol for live H.264 and optional AAC tracks, with no sockets in it. `CameraRtspServer`
  * reads requests off a connection and feeds them through an [RtspSession]; everything a client can
  * observe — status codes, the state a method is valid in, the SDP, the transport it is granted — is
  * decided here so it can be unit-tested and mutation-proven.
@@ -102,7 +102,11 @@ class RtspSession(
         private set
     var rtpChannel: Int = 0
         private set
-    private var setupUrl: String? = null
+    private data class Track(val url: String, val rtp: Int, val rtcp: Int)
+    private val tracks = LinkedHashMap<Int, Track>()
+    val audioRtpChannel: Int? get() = tracks[1]?.rtp
+    val videoRtcpChannel: Int? get() = tracks[0]?.rtcp
+    val audioRtcpChannel: Int? get() = tracks[1]?.rtcp
 
     /** [nextSequence] and [rtpTimestamp] describe the first packet PLAY will deliver, for `RTP-Info`. */
     fun handle(request: RtspRequest, nextSequence: Int = 0, rtpTimestamp: Long = 0L): Outcome {
@@ -155,12 +159,23 @@ class RtspSession(
         val interleaved = interleavedChannels(transport)
             ?: return Outcome(respond(461, "Unsupported Transport", request))
         // The camera attaches on the first describing request; a client that skips DESCRIBE attaches here.
-        when (val described = describer.describe(StreamRequest.fromUrl(request.url))) {
-            is Described.Refused -> return Outcome(respond(503, "Service Unavailable", request, listOf(CAMERA_HEADER to described.reason.token)))
-            is Described.Ready -> Unit
+        val track = when (request.path.trimEnd('/')) {
+            mountPath, "$mountPath/$TRACK_CONTROL" -> 0
+            "$mountPath/$AUDIO_TRACK_CONTROL" -> 1
+            else -> return Outcome(respond(404, "Not Found", request))
         }
-        rtpChannel = interleaved.first
-        setupUrl = request.url
+        val description = when (val described = describer.describe(StreamRequest.fromUrl(request.url))) {
+            is Described.Refused -> return Outcome(respond(503, "Service Unavailable", request, listOf(CAMERA_HEADER to described.reason.token)))
+            is Described.Ready -> described.sdp
+        }
+        if (track == 1 && !description.lineSequence().any { it.trim() == "a=control:$AUDIO_TRACK_CONTROL" }) {
+            return Outcome(respond(404, "Not Found", request))
+        }
+        if (interleaved.first == interleaved.second || tracks.any { (id, existing) ->
+                id != track && (existing.rtp in listOf(interleaved.first, interleaved.second) || existing.rtcp in listOf(interleaved.first, interleaved.second))
+            }) return Outcome(respond(461, "Unsupported Transport", request))
+        tracks[track] = Track(request.url, interleaved.first, interleaved.second)
+        if (track == 0) rtpChannel = interleaved.first
         state = State.READY
         return Outcome(
             respond(
@@ -171,13 +186,13 @@ class RtspSession(
     }
 
     private fun play(request: RtspRequest, nextSequence: Int, rtpTimestamp: Long): Outcome {
-        if (state == State.INIT) return Outcome(respond(455, "Method Not Valid in This State", request))
+        if (state == State.INIT || tracks[0] == null) return Outcome(respond(455, "Method Not Valid in This State", request))
         if (!sessionMatches(request)) return Outcome(respond(454, "Session Not Found", request))
         val wasPlaying = state == State.PLAYING
         state = State.PLAYING
         val headers = session() + listOf(
             "Range" to "npt=now-",
-            "RTP-Info" to "url=${setupUrl ?: request.url};seq=$nextSequence;rtptime=$rtpTimestamp",
+            "RTP-Info" to "url=${tracks.getValue(0).url};seq=$nextSequence;rtptime=$rtpTimestamp",
         )
         return Outcome(respond(200, "OK", request, headers), startPlaying = !wasPlaying)
     }
@@ -229,6 +244,7 @@ class RtspSession(
     companion object {
         const val MOUNT_PATH = "/live"
         const val TRACK_CONTROL = "trackID=0"
+        const val AUDIO_TRACK_CONTROL = "trackID=1"
         const val SESSION_TIMEOUT_S = 60
         const val SERVER_NAME = "ha-paneld"
         /** Names the classified refusal on a 503 so a person reading a client log learns which gate held. */
@@ -261,11 +277,11 @@ class RtspSession(
     }
 }
 
-/** The session description for the one video track. There is never an audio line: the trial is video only. */
+/** The live video track, with AAC only when microphone capture can be admitted. */
 object Sdp {
     private const val CRLF = "\r\n"
 
-    fun video(sessionId: String, sets: ParameterSets, fps: Int, width: Int, height: Int): String = buildString {
+    fun video(sessionId: String, sets: ParameterSets, fps: Int, width: Int, height: Int, audio: Boolean = false): String = buildString {
         append("v=0").append(CRLF)
         append("o=- ").append(sessionId).append(" 1 IN IP4 0.0.0.0").append(CRLF)
         append("s=ha-paneld camera").append(CRLF)
@@ -282,5 +298,11 @@ object Sdp {
         append("a=framerate:").append(fps).append(CRLF)
         append("a=x-dimensions:").append(width).append(',').append(height).append(CRLF)
         append("a=control:").append(RtspSession.TRACK_CONTROL).append(CRLF)
+        if (audio) {
+            append("m=audio 0 RTP/AVP 97").append(CRLF)
+            append("a=rtpmap:97 MPEG4-GENERIC/16000/1").append(CRLF)
+            append("a=fmtp:97 streamtype=5;profile-level-id=1;mode=AAC-hbr;config=1408;SizeLength=13;IndexLength=3;IndexDeltaLength=3").append(CRLF)
+            append("a=control:").append(RtspSession.AUDIO_TRACK_CONTROL).append(CRLF)
+        }
     }
 }
