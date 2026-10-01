@@ -5,6 +5,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 
+/** The resolved dashboard's configuration JSON, as the scan and the change probe both analyse it. */
+internal suspend fun readDashboardConfig(
+    request: suspend (JSONObject) -> JSONObject,
+    resolved: String,
+): String? {
+    val urlPath = EntityLearningProtocol.dashboardUrlPath(resolved)
+    EntityLearningProtocol.panelDashboardConfig(urlPath)?.let { return it.toString() }
+    val command = JSONObject().put("type", "lovelace/config")
+    if (urlPath.isNotBlank()) command.put("url_path", urlPath)
+    return (request(command).opt("result") as? JSONObject)?.toString()
+}
+
 /** Pure dashboard-analysis and document-start helpers for automatic entity learning. */
 object EntityLearningProtocol {
     /**
