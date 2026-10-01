@@ -155,7 +155,7 @@ else
   fail_test "curated changelog remains the sole release prose source"
 fi
 
-required_check_names='["Android build","Host contracts","Dependency integrity","Privileged helper","CodeQL · actions","CodeQL · c-cpp","CodeQL · java-kotlin","CodeQL · javascript-typescript","CodeQL · python"]'
+required_check_names='["Android build","Android lint","Host contracts","Dependency integrity","Privileged helper","CodeQL · actions","CodeQL · c-cpp","CodeQL · java-kotlin","CodeQL · javascript-typescript","CodeQL · python"]'
 latest_success_checks="$TMP/latest-success-checks.json"
 jq -cn --argjson names "$required_check_names" '
   {check_runs: [$names[] as $name |
@@ -204,6 +204,7 @@ if grep -Fq 'Require clean integrated checks for the source commit' "$WORKFLOW" 
    grep -Fq 'commits/$SOURCE_COMMIT/check-runs' "$WORKFLOW" && \
    grep -Fq 'code-scanning/alerts?state=open' "$WORKFLOW" && \
    grep -Fq '"Android build"' "$WORKFLOW" && \
+   grep -Fq '"Android lint"' "$WORKFLOW" && \
    grep -Fq '"Host contracts"' "$WORKFLOW" && \
    grep -Fq '"Dependency integrity"' "$WORKFLOW" && \
    grep -Fq '"Privileged helper"' "$WORKFLOW" && \
@@ -250,12 +251,14 @@ else
   fail_test "same-tag release runs serialize without cancelling publication"
 fi
 
-if grep -Fqx '    needs: [verify, package]' <<<"$publish_job" && \
-   grep -Fq 'EXPECTED_MANIFEST_SHA256: ${{ needs.package.outputs.input-manifest-sha256 }}' <<<"$publish_job" && \
+if grep -Fqx '    needs: [verify, seal]' <<<"$publish_job" && \
+   grep -Fqx '    needs: [package, package-apk]' <<<"$package_job" && \
+   grep -Fqx '      input-manifest-sha256: ${{ steps.manifest.outputs.sha256 }}' <<<"$package_job" && \
+   grep -Fq 'EXPECTED_MANIFEST_SHA256: ${{ needs.seal.outputs.input-manifest-sha256 }}' <<<"$publish_job" && \
    grep -Fqx "    if: github.event_name == 'push'" <<<"$publish_job"; then
-  pass "publication requires both parallel jobs and the package manifest"
+  pass "publication requires the verify gate and the manifest sealed from both identity builds"
 else
-  fail_test "publication requires both parallel jobs and the package manifest"
+  fail_test "publication requires the verify gate and the manifest sealed from both identity builds"
 fi
 
 if grep -Fqx '      contents: read' <<<"$verify_job" && \
@@ -957,12 +960,15 @@ fi
 
 build_step="$(extract_named_step 'Build release APKs for both identities')"
 collect_step="$(extract_named_step 'Collect unsigned release inputs')"
+stage_step="$(extract_named_step 'Stage shared release inputs')"
 ordering_step="$(extract_named_step 'Verify shipped updaters resolve the bridge APK')"
 
-if grep -Fq './gradlew :app:assembleRelease --stacktrace' <<<"$build_step" && \
-   grep -Fq './gradlew :app:assembleRelease -PappIdentity=successor --stacktrace' <<<"$build_step" && \
-   grep -Fq 'release-build/bridge' <<<"$build_step" && \
-   grep -Fq 'release-build/successor' <<<"$build_step" && \
+if grep -Fq 'bridge) ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace ;;' <<<"$build_step" && \
+   grep -Fq 'successor) ./gradlew :app:assembleRelease -x lintVitalRelease -PappIdentity=successor --stacktrace ;;' <<<"$build_step" && \
+   grep -Fq 'release-build/$IDENTITY' <<<"$build_step" && \
+   grep -Fqx '        identity: [bridge, successor]' <<<"$package_job" && \
+   grep -Fqx '          path: release-build/bridge' <<<"$package_job" && \
+   grep -Fqx '          path: release-build/successor' <<<"$package_job" && \
    grep -Fq 'collect_identity bridge ha-paneld-unsigned.apk io.github.maxlyth.hapaneld' <<<"$collect_step" && \
    grep -Fq 'collect_identity successor panel-assistant-unsigned.apk io.panelassistant.android' <<<"$collect_step" && \
    grep -Fq 'Unsigned $identity APK package is' <<<"$collect_step" && \
@@ -993,13 +999,29 @@ else
   fail_test "publication is followed by an assertion that the first .apk asset is the bridge"
 fi
 
+# The release jobs restore the basic Gradle cache CI writes on main and never write one. Full lint runs
+# on every push to main, never on tags, so the verify gate finds a finished "Android lint" check for the
+# exact commit instead of waiting on a run the tag started.
+LINT_WORKFLOW="${RELEASE_LINT_WORKFLOW_UNDER_TEST:-$ROOT/.github/workflows/lint.yml}"
+if [ "$(grep -Fc 'uses: gradle/actions/setup-gradle@' "$WORKFLOW")" -eq 2 ] && \
+   [ "$(grep -Fxc '          cache-provider: basic' "$WORKFLOW")" -eq 2 ] && \
+   [ "$(grep -Fxc '          cache-read-only: true' "$WORKFLOW")" -eq 2 ] && \
+   ! grep -Fq 'cache-write-only' "$WORKFLOW" && \
+   grep -Fqx '    name: Android lint' "$LINT_WORKFLOW" && \
+   [ "$(grep -Fxc '    branches: [main]' "$LINT_WORKFLOW")" -eq 2 ] && \
+   ! grep -Eq '^[[:space:]]+tags:' "$LINT_WORKFLOW"; then
+  pass "release builds only read main's Gradle cache and publication waits on lint from main"
+else
+  fail_test "release builds only read main's Gradle cache and publication waits on lint from main"
+fi
+
 # The descriptor names the successor and the installer pins it, while the bridge asset name is
 # frozen at what every earlier release published.
 if grep -Fq 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"' <<<"$descriptor_step" && \
    grep -Fq 'descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"' <<<"$descriptor_step" && \
    grep -Fq 'RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"' <<<"$package_job" && \
-   grep -Fq 'bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"' <<<"$collect_step" && \
-   grep -Fq 'successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"' <<<"$collect_step"; then
+   grep -Fq 'bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"' <<<"$stage_step" && \
+   grep -Fq 'successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"' <<<"$stage_step"; then
   pass "the descriptor and installer pin the successor while the bridge asset name is unchanged"
 else
   fail_test "the descriptor and installer pin the successor while the bridge asset name is unchanged"
