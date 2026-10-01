@@ -22,8 +22,8 @@ class SettingsCatalogueContractTest {
             if (spec.promotedHelp.isNotEmpty()) expected[spec.promotedHelpKey] = spec.promotedHelp
         }
 
-        assertEquals(92, SettingsRegistry.SPECS.size)
-        assertEquals(243, expected.size)
+        assertEquals(87, SettingsRegistry.SPECS.size)
+        assertEquals(231, expected.size)
         val settings = catalogue.strings.filterKeys { it.startsWith("settings.") }
         assertEquals("Settings must remain an exact independently-owned subset", expected.keys, settings.keys)
         expected.forEach { (key, text) ->
@@ -98,14 +98,6 @@ class SettingsCatalogueContractTest {
                 "Light" to ("configure.enum.dashboard_theme.light" to "Light"),
                 "Ambient" to ("configure.enum.dashboard_theme.ambient" to "Ambient"),
             ),
-            "update_channel" to linkedMapOf(
-                "stable" to ("configure.enum.update_channel.stable" to "Stable"),
-                "prerelease" to ("configure.enum.update_channel.prerelease" to "Prerelease"),
-            ),
-            "companion_update_channel" to linkedMapOf(
-                "stable" to ("configure.enum.update_channel.stable" to "Stable"),
-                "prerelease" to ("configure.enum.update_channel.prerelease" to "Prerelease"),
-            ),
             "voice_audio_source" to linkedMapOf(
                 "voice_recognition" to ("configure.enum.voice_audio_source.voice_recognition" to "Voice recognition"),
                 "mic" to ("configure.enum.voice_audio_source.mic" to "Microphone"),
@@ -139,7 +131,7 @@ class SettingsCatalogueContractTest {
             assertEquals(english, checkNotNull(source.strings[key]).text)
         }
         val uniqueBindings = expected.values.flatMap { it.values }.toSet()
-        assertEquals(28, uniqueBindings.size)
+        assertEquals(26, uniqueBindings.size)
         uniqueBindings.forEach { (key, english) ->
             val record = checkNotNull(source.strings[key]) { "English catalogue is missing $key" }
             assertEquals(english, record.text)
