@@ -101,8 +101,8 @@ jobs:
         include:
           - name: build and tests
             tasks: >-
-              :app:testDebugUnitTest :app:processDebugManifest :app:testReleaseUnitTest
-              :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+              :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+              :app:assembleRelease -x lintVitalRelease
             apks: both
     steps: &android-steps
       # The Gradle step runs as root and hands the tree back in an EXIT trap, but a cancelled run (a newer
@@ -328,15 +328,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # DatabaseCompatibilityApkContractTest asserts against the merged DEBUG manifest, so the release
-        # suite needs it built. The debug and release APKs share almost no tasks, so they build on
-        # separate hosted runners. Full lint runs out of band in lint.yml; the release build's fatal
-        # lint pass stays in CI.
+        # The debug and release APKs share almost no tasks, so they build on separate hosted runners.
+        # Full lint runs beside CI in lint.yml, so the release build skips its duplicate fatal lint pass.
+        # The release unit tests repeat the debug suite against the release variant; they run nightly
+        # in release-unit-tests.yml rather than on every push.
         include:
           - {name: debug unit tests, tasks: ":app:testDebugUnitTest", apks: "no"}
-          - {name: release unit tests, tasks: ":app:processDebugManifest :app:testReleaseUnitTest", apks: "no"}
           - {name: assemble debug, tasks: ":app:assembleDebug :app:assembleDebugAndroidTest", apks: debug}
-          - {name: assemble release, tasks: ":app:assembleRelease", apks: release}
+          - {name: assemble release, tasks: ":app:assembleRelease -x lintVitalRelease", apks: release}
     steps: *android-steps
 
   android-build:
@@ -707,3 +706,50 @@ jobs:
           else
             test "$HELPER_RESULT" = success
           fi
+
+  # The Release workflow's package jobs use the open-source basic cache provider and only read it. Basic
+  # caching keys one Gradle home by the build files and never updates an entry, so this job writes that
+  # entry from main when none exists yet for the current build files: the first push after a build-file
+  # change. Every later push restores it and stops. Tag runs can read main's entries; pull requests
+  # cannot write them, and this job runs only for pushes to main of the public repository.
+  release-cache:
+    name: Release Gradle cache
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'panel-assistant/android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
+
+      - name: Install Android build toolchain
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
+
+      - name: Build the release identities into the Gradle home
+        run: |
+          set -euo pipefail
+          if [ -d "${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2" ]; then
+            echo "A release Gradle home for these build files is already cached; nothing to write."
+            exit 0
+          fi
+          ./gradlew :app:assembleRelease -x lintVitalRelease --stacktrace
+          ./gradlew :app:assembleRelease -x lintVitalRelease -PappIdentity=successor --stacktrace
+          ./gradlew :app:cyclonedxDirectBom --stacktrace

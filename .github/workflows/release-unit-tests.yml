@@ -1,0 +1,62 @@
+name: Release unit tests
+run-name: Release unit tests · ${{ github.event_name == 'schedule' && 'nightly' || github.ref_name }}
+
+# The release unit tests run the same JVM suite as CI's debug unit tests against the release variant,
+# so they run nightly and on demand rather than on every push. CI keeps the debug suite on every push.
+on:
+  schedule:
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-unit-tests:
+    name: Android release unit tests
+    if: github.repository == 'panel-assistant/android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default package list includes the retired `tools` package, which sdkmanager
+          # from cmdline-tools 20.0 can no longer find, so the step failed before doing any work.
+          packages: platform-tools
+
+      - name: Install Android build toolchain
+        run: .github/scripts/install-android-sdk.sh "platforms;android-37.0" "build-tools;36.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: enhanced
+
+      # The bundled-helper installer tests drive the real staging script, whose transaction record must
+      # be owned by root exactly as it is on a panel, so the invocation runs as root and hands the tree
+      # back afterwards, as CI's Android jobs do. DatabaseCompatibilityApkContractTest asserts against
+      # the merged debug manifest, so the release suite needs it built.
+      - name: Run release unit tests
+        run: |
+          trap 'sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" "${GRADLE_USER_HOME:-$HOME/.gradle}" "$RUNNER_TEMP" || true' EXIT
+          sudo -E env "PATH=$PATH" "JAVA_HOME=$JAVA_HOME" "ANDROID_HOME=$ANDROID_HOME" \
+            "GRADLE_USER_HOME=${GRADLE_USER_HOME:-$HOME/.gradle}" \
+            ./gradlew :app:processDebugManifest :app:testReleaseUnitTest \
+              --configuration-cache \
+              --no-daemon \
+              --stacktrace
