@@ -261,6 +261,35 @@ class HomeDashboardCatalogTest {
         assertEquals("", retained?.key?.configuredPath)
     }
 
+    @Test fun `fresh account resolving to a built-in panel dashboard reads a config Home Assistant serves`() = runTest {
+        // A fresh account: no default, no stored Lovelace config, built-in panels registered as Core does.
+        val ha: suspend (JSONObject) -> JSONObject = { command ->
+            when (command.getString("type")) {
+                "auth/current_user" -> result(JSONObject().put("is_admin", true))
+                "get_panels" -> result(JSONObject()
+                    .put("home", JSONObject().put("component_name", "home").put("config", JSONObject.NULL))
+                    .put("light", JSONObject().put("component_name", "light").put("config", JSONObject.NULL)))
+                "lovelace/dashboards/list" -> result(JSONArray())
+                "frontend/get_user_data", "frontend/get_system_data" -> result(JSONObject().put("value", JSONObject.NULL))
+                "lovelace/config" -> {
+                    val urlPath = command.optString("url_path")
+                    require(urlPath.isNotBlank() && '-' in urlPath) {
+                        if (urlPath.isBlank()) "No config found." else "Unknown config specified: $urlPath"
+                    }
+                    result(JSONObject().put("views", JSONArray()))
+                }
+                else -> error("unexpected command ${command.getString("type")}")
+            }
+        }
+        val catalog = readHomeDashboardCatalog(ha)
+        val resolved = EntityLearningProtocol.resolveHomeDashboard("", null, null, catalog.items).path!!
+        assertEquals("/home", resolved)
+
+        val config = JSONObject(checkNotNull(readDashboardConfig(ha, resolved)))
+
+        assertEquals("home", config.getJSONObject("strategy").getString("type"))
+    }
+
     private fun result(value: Any): JSONObject = JSONObject()
         .put("success", true)
         .put("result", value)

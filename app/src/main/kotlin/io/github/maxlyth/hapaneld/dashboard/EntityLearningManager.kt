@@ -157,6 +157,18 @@ private data class AuthenticatedHomeDashboardChoices(
     val items: List<EntityLearningProtocol.HomeDashboardChoice>,
 )
 
+/** The resolved dashboard's configuration JSON, as the scan and the change probe both analyse it. */
+internal suspend fun readDashboardConfig(
+    request: suspend (JSONObject) -> JSONObject,
+    resolved: String,
+): String? {
+    val urlPath = EntityLearningProtocol.dashboardUrlPath(resolved)
+    EntityLearningProtocol.panelDashboardConfig(urlPath)?.let { return it.toString() }
+    val command = JSONObject().put("type", "lovelace/config")
+    if (urlPath.isNotBlank()) command.put("url_path", urlPath)
+    return (request(command).opt("result") as? JSONObject)?.toString()
+}
+
 /** Read only the authenticated legal set shared by catalog display and renderer resolution. */
 private suspend fun readAuthenticatedHomeDashboardChoices(
     request: suspend (JSONObject) -> JSONObject,
@@ -722,13 +734,7 @@ class EntityLearningManager(
                 outcome = DashboardProbeOutcome.CHANGED
                 return@withHaSocket
             }
-            // Named apart from the scan's fetch so the source contract that pins the scan's ordering
-            // keeps pointing at the scan.
-            val probedUrlPath = EntityLearningProtocol.dashboardUrlPath(resolved)
-            val command = JSONObject().put("type", "lovelace/config")
-            if (probedUrlPath.isNotBlank()) command.put("url_path", probedUrlPath)
-            val configJson = (request(command).opt("result") as? JSONObject)?.toString()
-                ?: error("dashboard configuration unavailable")
+            val configJson = readDashboardConfig(request, resolved) ?: error("dashboard configuration unavailable")
             outcome = dashboardProbeOutcome(
                 resolvedPath = resolved,
                 boundPath = snapshot.dashboardPath,
@@ -2066,11 +2072,7 @@ class EntityLearningManager(
             if (reconcileResolvedScope(snapshot, resolved)) {
                 error("entity-learning scope retargeted to the resolved dashboard")
             }
-            val urlPath = EntityLearningProtocol.dashboardUrlPath(resolved)
-            val command = JSONObject().put("type", "lovelace/config")
-            if (urlPath.isNotBlank()) command.put("url_path", urlPath)
-            val response = request(command)
-            configJson = (response.opt("result") as? JSONObject)?.toString()
+            configJson = readDashboardConfig(request, resolved)
             val dashboard = configJson ?: error("dashboard configuration unavailable")
             val requirements = DashboardConfigurationLint.registryRequirements(dashboard)
             // Fetch only the ancestry the stored dashboard can consume. The dashboard comes first:
