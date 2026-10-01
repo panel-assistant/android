@@ -454,6 +454,61 @@ class AutoSleepControllerTest {
         assertEquals("registry_transport", h.status().getString("detail"))
     }
 
+    @Test fun `a screen a replaced process left asleep stays asleep until presence returns`() =
+        Harness(inheritedDark = true).use { h ->
+            val request = h.start()
+            h.await { h.screen.isIntendedOff() }
+            assertFalse(h.screen.recoverUnexpectedDark())
+            // The stream reports DISABLED before it subscribes; neither transit may release the adopted off.
+            assertEquals(0, h.status().getInt("source_count"))
+            assertTrue(h.offer(aggregate(request, 0L, HaPresenceValue.OFF,
+                phase = HaPresencePhase.DISABLED, hydrated = false)))
+            h.await { h.status().getInt("source_count") == 1 }
+            assertTrue(h.screen.isIntendedOff())
+            assertTrue(h.offer(aggregate(request, 0L, HaPresenceValue.OFF,
+                phase = HaPresencePhase.CONNECTING, hydrated = false)))
+            h.await { h.status().getString("phase") == "connecting" }
+            assertTrue(h.screen.isIntendedOff())
+            assertTrue(h.offer(aggregate(request, 1L, HaPresenceValue.OFF)))
+            h.await { h.status().getString("phase") == "live" }
+            assertTrue(h.screen.isIntendedOff())
+            assertFalse(h.backlightPowered())
+
+            assertTrue(h.offer(aggregate(request, 2L, HaPresenceValue.ON)))
+            h.await { !h.screen.isIntendedOff() }
+            assertTrue(h.backlightPowered())
+        }
+
+    @Test fun `a refresh landing after the start is dequeued still adopts the inherited dark`() = runTest {
+        val h = virtualHarness(inheritedDark = true)
+        try {
+            assertTrue(h.controller.start())
+            // The owner has taken the start's configuration; a refresh now makes it stale before handling.
+            h.controller.drainForTest { assertTrue(h.controller.refresh()) }
+            h.awaitRequest(1)
+            assertTrue(h.screen.isIntendedOff())
+            assertFalse(h.screen.recoverUnexpectedDark())
+            assertFalse(h.backlightPowered())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
+    }
+
+    @Test fun `an inherited dark screen with no touch wake is left for the never-blank guard`() =
+        Harness(inheritedDark = true, wakeTapAvailable = false).use { h ->
+            h.start()
+            assertFalse(h.screen.isIntendedOff())
+            assertTrue(h.screen.recoverUnexpectedDark())
+            assertTrue(h.backlightPowered())
+        }
+
+    @Test fun `with auto-sleep off an inherited dark screen stays dark for a tap`() =
+        Harness(inheritedDark = true, enabled = false).use { h ->
+            h.start()
+            h.await { h.screen.isIntendedOff() }
+            assertFalse(h.backlightPowered())
+            assertFalse(h.screen.recoverUnexpectedDark())
+            assertTrue(h.wakeTap.armed)
+        }
+
     @Test fun aggregateFloodIsBoundedAndConvergesToTheLatestState() = Harness().use { h ->
         val request = h.start()
         repeat(10_000) { revision ->
@@ -857,8 +912,9 @@ class AutoSleepControllerTest {
         enabled: Boolean = true,
         onNoArea: (Long) -> Unit = {},
         source: String = "home_assistant",
+        inheritedDark: Boolean = false,
     ) = Harness(this, StandardTestDispatcher(testScheduler), enabled = enabled, source = source,
-        onNoArea = onNoArea, drive = { runCurrent() })
+        onNoArea = onNoArea, drive = { runCurrent() }, inheritedDark = inheritedDark)
 
     private class Harness(
         scopeOverride: CoroutineScope? = null,
@@ -872,17 +928,28 @@ class AutoSleepControllerTest {
         },
         onNoArea: (Long) -> Unit = {},
         private val drive: (() -> Unit)? = null,
+        /** The backlight a replaced process left powered off; bl_power then follows the actuator. */
+        inheritedDark: Boolean = false,
     ) : AutoCloseable {
         val now = AtomicLong()
         val wallNow = AtomicLong()
         val scope = scopeOverride ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val wakeTap = FakeWakeTap(canArm = wakeTapAvailable)
         val backlight = FakeBacklight()
+        private val daemonReplies = java.util.concurrent.ConcurrentHashMap(
+            mapOf("SCREEN OFF" to "OK", "SCREEN ON" to "OK", "BLPOWER" to if (inheritedDark) "4" else "0"),
+        )
         val screen = ScreenController(
             backlight, FakeScreenPower(), FakeRootShell(),
-            FakeDaemon(mapOf("SCREEN OFF" to "OK", "SCREEN ON" to "OK", "BLPOWER" to "0")),
+            FakeDaemon(daemonReplies, onSend = { command ->
+                if (inheritedDark) when (command) {
+                    "SCREEN OFF" -> daemonReplies["BLPOWER"] = "4"
+                    "SCREEN ON" -> daemonReplies["BLPOWER"] = "0"
+                }
+            }),
             wakeTap, ScreenOff.DAEMON_BLPOWER,
         )
+        fun backlightPowered() = daemonReplies["BLPOWER"] == "0"
         val requests = CopyOnWriteArrayList<HaPresenceRequest>()
         val screenChanges = CopyOnWriteArrayList<Boolean>()
         val managerClosed = AtomicBoolean()
