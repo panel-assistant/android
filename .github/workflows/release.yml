@@ -288,11 +288,6 @@ jobs:
           file release-input/hapaneld-helper-armeabi-v7a | grep -Fq 'ELF 32-bit'
           file release-input/hapaneld-helper-arm64-v8a | grep -Fq 'ELF 64-bit'
 
-      - name: Verify standalone helpers match APK-bundled helpers
-        run: |
-          cmp release-input/hapaneld-helper-armeabi-v7a app/src/main/assets/hapaneld-helper-arm
-          cmp release-input/hapaneld-helper-arm64-v8a app/src/main/assets/hapaneld-helper-arm64
-
       - name: Generate release dependency SBOM
         run: ./gradlew :app:cyclonedxDirectBom --stacktrace
 
@@ -539,6 +534,16 @@ jobs:
             echo "::error::The bridge and successor APKs are byte-identical; the identity property did not take effect."
             exit 1
           fi
+
+      # The standalone helpers are built in `package`; the bundled ones are compiled by Gradle into each
+      # APK in `package-apk`. Compare against the helper actually packaged in both APKs.
+      - name: Verify standalone helpers match APK-bundled helpers
+        run: |
+          set -euo pipefail
+          for apk in release-input/ha-paneld-unsigned.apk release-input/panel-assistant-unsigned.apk; do
+            unzip -p "$apk" assets/hapaneld-helper-arm | cmp release-input/hapaneld-helper-armeabi-v7a -
+            unzip -p "$apk" assets/hapaneld-helper-arm64 | cmp release-input/hapaneld-helper-arm64-v8a -
+          done
 
       - name: Seal exact release inputs
         id: manifest

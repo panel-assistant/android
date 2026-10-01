@@ -8383,8 +8383,8 @@ if grep -Fq 'helper_build_id="$(helper/source-id.sh)"' "$RELEASE_WORKFLOW" && \
 else
   fail_test "release helpers and provisioner share one deterministic full-source build identity"
 fi
-if grep -Fq 'cmp release-input/hapaneld-helper-armeabi-v7a app/src/main/assets/hapaneld-helper-arm' "$RELEASE_WORKFLOW" && \
-   grep -Fq 'cmp release-input/hapaneld-helper-arm64-v8a app/src/main/assets/hapaneld-helper-arm64' "$RELEASE_WORKFLOW"; then
+if grep -Fq 'unzip -p "$apk" assets/hapaneld-helper-arm | cmp release-input/hapaneld-helper-armeabi-v7a -' "$RELEASE_WORKFLOW" && \
+   grep -Fq 'unzip -p "$apk" assets/hapaneld-helper-arm64 | cmp release-input/hapaneld-helper-arm64-v8a -' "$RELEASE_WORKFLOW"; then
   pass "release workflow proves standalone privileged assets are byte-identical to the APK bundle"
 else
   fail_test "release workflow proves standalone privileged assets are byte-identical to the APK bundle"
