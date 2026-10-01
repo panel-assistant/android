@@ -1,6 +1,6 @@
 schema: 2
 id: shelly-wall-display-x2i
-version: 2.0.0
+version: 2.0.1
 display_name: Shelly Wall Display X2i
 soc_class: rk3326
 soc:
@@ -62,6 +62,9 @@ hardware:
   # The backlight sysfs node refuses an unprivileged write, but this route writes
   # Settings.System instead and never touches it.
   screen_off: brightness-zero
+  # An ES7202 PDM microphone, the codec the WF1589T uses. Android opens it as a 16 kHz stereo
+  # stream and hands the app the mono capture it asks for.
+  microphone: true
   has_button_backlight: false
 sensors:
   proximity_technology: Infrared
