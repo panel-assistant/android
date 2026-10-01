@@ -1049,7 +1049,7 @@ internal class MqttNativeParityTest : MqttWireRig() {
             "companion_auto_update" to "switch", "companion_update_channel" to "select",
             "webview_auto_update" to "switch",
         )
-        val rig = rig()
+        val rig = rig(hasCamera = true)
         try {
             rig.announce()
             val announcement = rig.transport.snapshot()
