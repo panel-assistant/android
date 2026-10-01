@@ -50,7 +50,7 @@ test:
 
 test-units: $(TEST_BINS)
 	$(BUILD)/unit
-	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.3.0 proto=1.3"
+	test "$$($(BUILD)/hapaneld-helper --version)" = "HELPER version=1.3.1 proto=1.3"
 	$(BUILD)/companion-boundary
 	$(BUILD)/guard-maintenance-boundary
 	$(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-old $(BUILD)/replacement-lease-new
