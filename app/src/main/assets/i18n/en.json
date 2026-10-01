@@ -31232,9 +31232,52 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
+    "settings.auto_brightness_maximum_percent.help": {
+      "text": "Highest automatic screen level as a percentage. Proposals scale between the minimum and maximum; manual brightness can still go higher.",
+      "sourceHash": "807d354b83f70e5cf04cc085fcecd83d1eacb3229b71f3283eff2d493d4b7b80",
+      "surface": "settings",
+      "context": "Configure > Display > Maximum level: supporting help for the auto_brightness_maximum_percent setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness_maximum_percent.label"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 184,
+      "hardMaxChars": 245
+    },
+    "settings.auto_brightness_maximum_percent.label": {
+      "text": "Maximum level",
+      "sourceHash": "777774aaf270918df6b044e180ba81a0b314fa376c8a1d03d63a2630e7346080",
+      "surface": "settings",
+      "context": "Configure > Display: label for the auto_brightness_maximum_percent setting.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness_maximum_percent.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 32,
+      "hardMaxChars": 32
+    },
+    "settings.auto_brightness_maximum_percent.summary": {
+      "text": "Highest level auto-brightness will choose.",
+      "sourceHash": "0294ec80681fa7af8d9a5ff54658eac7252a87c3dc8a913e5bf88513fbe4d8e0",
+      "surface": "settings",
+      "context": "Configure > Display: one-line summary shown under the auto_brightness_maximum_percent setting's label; the full help opens behind an info button. Plain text, one line.",
+      "risk": "ordinary",
+      "siblings": [
+        "settings.auto_brightness_maximum_percent.label",
+        "settings.auto_brightness_maximum_percent.help"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 70,
+      "hardMaxChars": 90
+    },
     "settings.auto_brightness_minimum_percent.help": {
-      "text": "Lowest automatic screen level as a percentage. Proposals scale from this floor to full brightness; manual brightness can still go lower.",
-      "sourceHash": "f867987f4c5e28c720153d3438f9dd602c01a40c89539c5baab444d34bad0ce8",
+      "text": "Lowest automatic screen level as a percentage. Proposals scale between the minimum and maximum; manual brightness can still go lower.",
+      "sourceHash": "78f0ab03232ebba54ad06c901f3a8c4dd10bd96d991b2fbf05c20ae248a6b68c",
       "surface": "settings",
       "context": "Configure > Display > Minimum level: supporting help for the auto_brightness_minimum_percent setting.",
       "risk": "ordinary",

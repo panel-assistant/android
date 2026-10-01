@@ -450,15 +450,17 @@
   }
 
   function loadAutoBrightnessData(force) {
+    if (Number(cfg.values.auto_brightness_minimum_percent) >= Number(cfg.values.auto_brightness_maximum_percent)) return;
     if (cfg.autoBrightLoading && !force) return;
     cfg.autoBrightLoading = true;
     var request = ++cfg.autoBrightRequest;
     var sensitivitySuffix = autoBrightnessPreviewSuffix("&sensitivity=", "auto_brightness_response_percent");
     var minimumSuffix = autoBrightnessPreviewSuffix("&minimum_percent=", "auto_brightness_minimum_percent");
+    var maximumSuffix = autoBrightnessPreviewSuffix("&maximum_percent=", "auto_brightness_maximum_percent");
     var succeeded = false;
     Promise.all([
       fetch("api/v1/auto-brightness", { cache: "no-store" }).then(function (r) { if (!r.ok) throw r.status; return r.json(); }),
-      fetch("api/v1/auto-brightness/history?hours=168" + sensitivitySuffix + minimumSuffix, { cache: "no-store" }).then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+      fetch("api/v1/auto-brightness/history?hours=168" + sensitivitySuffix + minimumSuffix + maximumSuffix, { cache: "no-store" }).then(function (r) { if (!r.ok) throw r.status; return r.json(); })
     ]).then(function (result) {
       if (request !== cfg.autoBrightRequest) return;
       var statusRevision = autoBrightnessSourceRevision(result[0]);

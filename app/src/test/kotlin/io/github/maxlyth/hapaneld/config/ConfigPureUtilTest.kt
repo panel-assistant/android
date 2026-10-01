@@ -390,6 +390,17 @@ class MigrationsTest {
         assertTrue(w.any { it.contains("newer") })
     }
 
+    @Test fun schemaTwelveDefaultsMaximumWithoutReplacingExplicitBounds() {
+        val (old, warnings) = Migrations.migrate(12, mapOf("auto_brightness_minimum_percent" to "25"))
+        assertEquals("100", old["auto_brightness_maximum_percent"])
+        assertEquals("25", old["auto_brightness_minimum_percent"])
+        assertTrue(warnings.isEmpty())
+        val (explicit, _) = Migrations.migrate(12, mapOf("auto_brightness_maximum_percent" to "60"))
+        assertEquals("60", explicit["auto_brightness_maximum_percent"])
+        val (again, _) = Migrations.migrate(SettingsRegistry.SCHEMA, old)
+        assertEquals(old, again)
+    }
+
     @Test fun schemaOneAddsTheBackwardCompatibleAutomaticBrightnessFloor() {
         val (migrated, warnings) = Migrations.migrate(1, mapOf("a" to "1"))
 

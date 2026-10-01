@@ -5206,3 +5206,54 @@ browserTest('Panel proximity Auto-sleep works without HA prerequisites or an HA 
   assert.equal(await page.locator('#cfg-auto_sleep [role=switch]').getAttribute('aria-disabled'), 'true');
   assert.ok(prerequisiteGets > 0);
 });
+
+for (const [engine, launcher] of [['Chromium', chromium], ['WebKit', webkit]]) {
+  browserTest(`Configure maximum brightness previews, validates and fits in ${engine}`, async (t) => {
+    let settings = { auto_brightness: 'true', auto_brightness_minimum_percent: '12', auto_brightness_maximum_percent: '100' };
+    const posts = [];
+    const harness = await startHarness(async (path, request) => {
+      if (path === '/api/v1/config/schema') return json([
+        { key: 'auto_brightness', label: 'Adaptive brightness', group: 'Display', type: 'BOOL', available: true },
+        { key: 'auto_brightness_minimum_percent', label: 'Minimum level', group: 'Display', type: 'INT', min: 4, max: 99, available: true },
+        { key: 'auto_brightness_maximum_percent', label: 'Maximum level', summary: 'Highest level auto-brightness will choose.', group: 'Display', type: 'INT', min: 5, max: 100, available: true },
+      ]);
+      if (path === '/api/v1/config') {
+        if (request.method === 'POST') {
+          const values = Object.fromEntries(new URLSearchParams(await requestBody(request)));
+          posts.push(values); settings = { ...settings, ...values }; return json({});
+        }
+        return json({ settings, ha_expose: {}, ha_auth: {} });
+      }
+      if (path === '/api/v1/auto-brightness') return json({ available: true, sourceAvailable: true, latestLux: 42 });
+      if (path === '/api/v1/auto-brightness/history') return json({ points: [], bucket_minutes: 5 });
+      if (path === '/api/v1/apps') return json({ apps: [] });
+      if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
+      if (path === '/health') return { body: 'ok cfg=test' };
+      return json({});
+    }, configureVisualFixture);
+    const browser = await launcher.launch(engine === 'Chromium' ? { executablePath: chrome, headless: true } : { headless: true });
+    const page = await browser.newPage({ viewport: { width: 320, height: 600 } });
+    page.setDefaultTimeout(5_000);
+    t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+    await page.goto(harness.url, { waitUntil: 'domcontentloaded' });
+    const maximum = page.locator('#cfg-auto_brightness_maximum_percent input');
+    await page.waitForFunction(() => document.querySelector('#cfg-auto_brightness_maximum_percent input')?.disabled === false);
+    const preview = page.waitForRequest((request) => new URL(request.url()).searchParams.get('maximum_percent') === '70');
+    await maximum.fill('70');
+    assert.equal(new URL((await preview).url()).searchParams.get('minimum_percent'), '12');
+    for (const width of [320, 768, 1200]) {
+      await page.setViewportSize({ width, height: 600 });
+      await page.locator('#cfg-auto_brightness_maximum_percent').waitFor({ state: 'visible' });
+      const bounds = await page.locator('#cfg-auto_brightness_maximum_percent').evaluate((row) => ({ width: row.clientWidth, scrollWidth: row.scrollWidth }));
+      assert.ok(bounds.width > 0 && bounds.scrollWidth <= bounds.width + 1, `${engine} row overflows at ${width}: ${JSON.stringify(bounds)}`);
+    }
+    await maximum.fill('12'); await page.locator('#savebtn').focus(); await page.locator('#savebtn').press('Enter');
+    await page.waitForFunction(() => document.querySelector('#cfg-msg')?.textContent === 'Maximum level has an invalid value.');
+    assert.equal(posts.length, 0);
+    await maximum.fill('70'); await page.locator('#savebtn').focus(); await page.locator('#savebtn').press('Enter');
+    await page.waitForFunction(() => document.querySelector('#cfg-msg')?.textContent === 'Saved.');
+    assert.equal(posts[0].auto_brightness_maximum_percent, '70');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    assert.equal(await maximum.inputValue(), '70');
+  });
+}

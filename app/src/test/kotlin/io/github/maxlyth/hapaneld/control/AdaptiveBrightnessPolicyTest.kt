@@ -6,6 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.TimeZone
 import kotlin.math.ln1p
+import kotlin.math.roundToInt
 
 class AdaptiveBrightnessPolicyTest {
     @Test fun baselineCacheBuildsOnlyOnTtlEvidenceOrContextChange() {
@@ -280,6 +281,70 @@ class AdaptiveBrightnessPolicyTest {
 
         assertEquals(runtime!!.brightness, chart.proposedBrightness)
         assertEquals(minimum, chart.proposedBrightness)
+    }
+
+    @Test fun maximumRescalesFixedAndLearnedRangesRatherThanClipping() {
+        val minimum = AdaptiveLuxCurve.percentToBrightness(20)
+        val maximum = AdaptiveLuxCurve.percentToBrightness(60)
+        val learned = estimateRange(learnedRangeHistory())
+        listOf(AdaptiveBrightnessRange.FIXED, learned).forEach { range ->
+            val dark = if (range.learnedWeight == 0.0) 0.0 else range.lowLux
+            val bright = if (range.learnedWeight == 0.0) 10_000.0 else range.highLux
+            assertEquals(minimum, AdaptiveLuxCurve.rawBrightness(dark, range, minimum, maximum))
+            assertEquals(maximum, AdaptiveLuxCurve.rawBrightness(bright, range, minimum, maximum))
+            val middle = AdaptiveLuxCurve.rawBrightness(25.0, range, minimum, maximum)
+            assertTrue(middle > minimum && middle < maximum)
+            assertTrue(middle < AdaptiveLuxCurve.rawBrightness(25.0, range, minimum))
+        }
+    }
+
+    @Test fun fullMaximumPreservesEveryPreviousIntegerCurve() {
+        val anchors = listOf(0.0 to 0.04, 1.0 to 0.06, 10.0 to 0.12,
+            100.0 to 0.30, 1_000.0 to 0.65, 10_000.0 to 1.0)
+        val learned = estimateRange(learnedRangeHistory())
+        // Independent copy of the shipped numerical definition, including both integer roundings.
+        fun previous(lux: Double, range: AdaptiveBrightnessRange, minimum: Int): Int {
+            val safe = lux.coerceIn(0.0, 10_000.0)
+            val index = anchors.indexOfFirst { safe <= it.first }
+            val fraction = if (index == 0) anchors[0].second else {
+                val (lowLux, low) = anchors[index - 1]
+                val (highLux, high) = anchors[index]
+                low + (ln1p(safe) - ln1p(lowLux)) / (ln1p(highLux) - ln1p(lowLux)) * (high - low)
+            }
+            val native = (fraction * 255).roundToInt().coerceIn(10, 255)
+            val fixed = (minimum + (native - 10).toDouble() / 245 * (255 - minimum)).roundToInt()
+            if (range.learnedWeight <= 0.0) return fixed
+            val roomFraction = ((ln1p(lux.coerceAtLeast(0.0)) - range.lowLogLux) /
+                (range.highLogLux - range.lowLogLux)).coerceIn(0.0, 1.0)
+            val room = (minimum + roomFraction * (255 - minimum)).roundToInt()
+            return (fixed + range.learnedWeight * (room - fixed)).roundToInt().coerceIn(minimum, 255)
+        }
+        listOf(AdaptiveBrightnessRange.FIXED, learned, learned.copy(learnedWeight = 0.5)).forEach { range ->
+            listOf(10, 64, 128, 252).forEach { minimum ->
+                (0..10_000).forEach { lux ->
+                    assertEquals(previous(lux.toDouble(), range, minimum),
+                        AdaptiveLuxCurve.rawBrightness(lux.toDouble(), range, minimum, 255))
+                }
+            }
+        }
+    }
+
+    @Test fun runtimeAndChartRespectMaximumForColdAndLearnedModels() {
+        val minimum = AdaptiveLuxCurve.percentToBrightness(10)
+        val maximum = AdaptiveLuxCurve.percentToBrightness(40)
+        listOf(AdaptiveBrightnessRange.FIXED, estimateRange(learnedRangeHistory())).forEach { range ->
+            val lux = 10_000.0
+            val baseline = BaselineEstimate(ln1p(lux), 0.05, 4, 100, range)
+            val runtime = AdaptiveBrightnessPolicy().evaluate(NOW, 60_000L, lux, baseline, 100,
+                minimumBrightness = minimum, maximumBrightness = maximum)!!
+            val chart = AdaptiveChartProjection.fiveMinute(
+                rows = listOf(historyRow(NOW / AMBIENT_MINUTE_MS, lux)), sensitivity = 100,
+                brightnessRange = range, minimumBrightness = minimum, maximumBrightness = maximum,
+                expectedLogLux = { ln1p(lux) },
+            ).single()
+            assertEquals(maximum, runtime.brightness)
+            assertEquals(runtime.brightness, chart.proposedBrightness)
+        }
     }
 
     private fun repeatedHistory(expectedLux: Double, days: Int): List<AmbientHistoryMinute> =

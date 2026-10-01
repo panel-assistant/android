@@ -84,6 +84,7 @@ object Migrations {
         },
         Migration { values -> values.putIfAbsent("dashboard_network_warning", "true") },
         Migration { values -> values.putIfAbsent("auto_sleep_touch_delay_seconds", "30") },
+        Migration { values -> values.putIfAbsent("auto_brightness_maximum_percent", "100") },
     )
 
     /**

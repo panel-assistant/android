@@ -34,12 +34,17 @@ internal fun Route.autoBrightnessRoutes(
         val request = runCatching {
             autoBrightnessHistoryParameters(
                 call.request.queryParameters["hours"], call.request.queryParameters["sensitivity"],
-                call.request.queryParameters["minimum_percent"],
+                call.request.queryParameters["minimum_percent"], call.request.queryParameters["maximum_percent"],
             )
         }.getOrElse {
             return@get call.respondText("${it.message ?: "invalid history query"}\n", status = HttpStatusCode.BadRequest)
         }
-        call.respondText(api.historyJson(request.hours, request.sensitivity, request.minimumPercent), ContentType.Application.Json)
+        val json = try {
+            api.historyJson(request.hours, request.sensitivity, request.minimumPercent, request.maximumPercent)
+        } catch (invalid: IllegalArgumentException) {
+            return@get call.respondText("${invalid.message}\n", status = HttpStatusCode.BadRequest)
+        }
+        call.respondText(json, ContentType.Application.Json)
     }
     get("/auto-brightness/sources") {
         val query = call.request.queryParameters["q"].orEmpty().trim().take(100)
@@ -80,7 +85,7 @@ internal fun Route.autoBrightnessRoutes(
  * wired into the service. JSON is produced by the owner to avoid copying its snapshots here. */
 internal interface AutoBrightnessHttpApi {
     fun statusJson(): String
-    fun historyJson(hours: Int = 168, sensitivity: Int? = null, minimumPercent: Int? = null): String
+    fun historyJson(hours: Int = 168, sensitivity: Int? = null, minimumPercent: Int? = null, maximumPercent: Int? = null): String
     fun haSourcesJson(query: String, limit: Int): String
     suspend fun validateHaSource(entityId: String): AutoBrightnessHttpValidation
     suspend fun selectHaSource(entityId: String?): AutoBrightnessHttpAction
@@ -95,7 +100,7 @@ internal interface AutoBrightnessHttpApi {
             override fun statusJson(): String =
                 """{"available":false,"state":"unavailable","sourceRevision":null,"detail":"Adaptive brightness runtime is not connected."}"""
 
-            override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?): String =
+            override fun historyJson(hours: Int, sensitivity: Int?, minimumPercent: Int?, maximumPercent: Int?): String =
                 """{"available":false,"hours":$hours,"bucket_minutes":0,"sourceRevision":null,"latestEpochMinute":null,"points":[]}"""
 
             override fun haSourcesJson(query: String, limit: Int): String =
@@ -134,12 +139,14 @@ internal data class AutoBrightnessHistoryParameters(
     val hours: Int,
     val sensitivity: Int?,
     val minimumPercent: Int?,
+    val maximumPercent: Int?,
 )
 
 internal fun autoBrightnessHistoryParameters(
     hours: String?,
     sensitivity: String?,
     minimumPercent: String? = null,
+    maximumPercent: String? = null,
 ): AutoBrightnessHistoryParameters {
     val boundedHours = if (hours == null) 168 else hours.toIntOrNull()
         ?: throw IllegalArgumentException("hours must be between 1 and 168")
@@ -155,5 +162,12 @@ internal fun autoBrightnessHistoryParameters(
                 "minimum_percent must be between ${minimumRange.first} and ${minimumRange.last}",
             )
     }
-    return AutoBrightnessHistoryParameters(boundedHours, boundedSensitivity, boundedMinimum)
+    val boundedMaximum = maximumPercent?.let {
+        it.toIntOrNull()?.takeIf { value -> value in (SettingsRegistry.MINIMUM_AUTOMATIC_PERCENT + 1)..100 }
+            ?: throw IllegalArgumentException("maximum_percent must be between ${SettingsRegistry.MINIMUM_AUTOMATIC_PERCENT + 1} and 100")
+    }
+    require(boundedMaximum == null || boundedMinimum == null || boundedMaximum > boundedMinimum) {
+        "maximum_percent must be above minimum_percent"
+    }
+    return AutoBrightnessHistoryParameters(boundedHours, boundedSensitivity, boundedMinimum, boundedMaximum)
 }

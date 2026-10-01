@@ -155,6 +155,12 @@ internal class ConfigBundleRoutes(
             call.respondText(importJson("rejected", emptyList(), skipped, warn, errors), ContentType.Application.Json, HttpStatusCode.UnprocessableEntity)
             return
         }
+        SettingsRegistry.automaticBrightnessBoundsError(
+            accepted, config.autoBrightnessMinimumPercent, config.autoBrightnessMaximumPercent,
+        )?.let { reason ->
+            call.respondText(importJson("rejected", emptyList(), skipped, warn, errors + reason), ContentType.Application.Json, HttpStatusCode.UnprocessableEntity)
+            return
+        }
         if (dryRun) {
             val current = values.currentValues()
             call.respondText(

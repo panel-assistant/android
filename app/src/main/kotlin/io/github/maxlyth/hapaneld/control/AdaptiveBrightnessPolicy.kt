@@ -403,13 +403,15 @@ internal object AdaptiveLuxCurve {
         lux: Double,
         range: AdaptiveBrightnessRange = AdaptiveBrightnessRange.FIXED,
         minimumBrightness: Int = BrightnessController.MIN_VISIBLE,
+        maximumBrightness: Int = 255,
     ): Int {
         val minimum = minimumBrightness.coerceIn(BrightnessController.MIN_VISIBLE, 255)
-        val fixed = (minimum + fixedFraction(lux) * (255 - minimum)).roundToInt()
+        val maximum = maximumBrightness.coerceIn(minimum, 255)
+        val fixed = (minimum + fixedFraction(lux) * (maximum - minimum)).roundToInt()
         if (range.learnedWeight <= 0.0) return fixed
-        val learned = (minimum + learnedFraction(lux, range) * (255 - minimum)).roundToInt()
+        val learned = (minimum + learnedFraction(lux, range) * (maximum - minimum)).roundToInt()
         return (fixed + range.learnedWeight * (learned - fixed)).roundToInt()
-            .coerceIn(minimum, 255)
+            .coerceIn(minimum, maximum)
     }
 
     /**
@@ -484,11 +486,12 @@ internal class AdaptiveBrightnessPolicy {
         zone: TimeZone = TimeZone.getDefault(),
         location: SolarLocation? = null,
         minimumBrightness: Int = BrightnessController.MIN_VISIBLE,
+        maximumBrightness: Int = 255,
     ): AdaptiveBrightnessResult? {
         if (nowMs < 0L || elapsedMs <= 0L || !lux.isFinite() || lux < 0.0) return null
         val fallback = if (smoothedDirectLog.isFinite()) smoothedDirectLog else ln1p(lux.coerceAtLeast(0.0))
         val estimate = AdaptiveAmbientModel.estimate(nowMs, history, zone, location, fallback)
-        return evaluate(nowMs, elapsedMs, lux, estimate, sensitivity, minimumBrightness = minimumBrightness)
+        return evaluate(nowMs, elapsedMs, lux, estimate, sensitivity, minimumBrightness = minimumBrightness, maximumBrightness = maximumBrightness)
     }
 
     /** O(1) real-time path using a baseline built by [AdaptiveBaselineCache]. */
@@ -500,6 +503,7 @@ internal class AdaptiveBrightnessPolicy {
         sensitivity: Int,
         conditionElapsedMs: Long = elapsedMs,
         minimumBrightness: Int = BrightnessController.MIN_VISIBLE,
+        maximumBrightness: Int = 255,
     ): AdaptiveBrightnessResult? {
         if (nowMs < 0L || elapsedMs <= 0L || !lux.isFinite() || lux < 0.0) return null
         val elapsed = elapsedMs.coerceAtMost(MAX_EVALUATION_GAP_MS)
@@ -572,7 +576,7 @@ internal class AdaptiveBrightnessPolicy {
         }
         val effectiveLux = expm1Safe(effectiveLog)
         return AdaptiveBrightnessResult(
-            brightness = AdaptiveLuxCurve.rawBrightness(effectiveLux, estimate.brightnessRange, minimumBrightness),
+            brightness = AdaptiveLuxCurve.rawBrightness(effectiveLux, estimate.brightnessRange, minimumBrightness, maximumBrightness),
             effectiveLux = effectiveLux,
             expectedLux = expm1Safe(expectedLog),
             brighterThanExpected = boost,
@@ -629,6 +633,7 @@ internal object AdaptiveChartProjection {
         sensitivity: Int,
         brightnessRange: AdaptiveBrightnessRange = AdaptiveBrightnessRange.FIXED,
         minimumBrightness: Int = BrightnessController.MIN_VISIBLE,
+        maximumBrightness: Int = 255,
         expectedLogLux: (Long) -> Double,
     ): List<AdaptiveChartPoint> =
         rows.groupBy { floor(it.key.minute / 5.0).toLong() * 5L }
@@ -651,6 +656,7 @@ internal object AdaptiveChartProjection {
                         projectedLux,
                         brightnessRange,
                         minimumBrightness,
+                        maximumBrightness,
                     ),
                 )
             }

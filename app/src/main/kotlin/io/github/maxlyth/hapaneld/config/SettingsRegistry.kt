@@ -64,8 +64,16 @@ object SettingsRegistry {
         return out
     }
 
+    /** Validate a partial update against the effective automatic range before any value commits. */
+    fun automaticBrightnessBoundsError(values: Map<String, String>, currentMinimum: Int, currentMaximum: Int): String? {
+        if ("auto_brightness_minimum_percent" !in values && "auto_brightness_maximum_percent" !in values) return null
+        val minimum = values["auto_brightness_minimum_percent"]?.toIntOrNull() ?: currentMinimum
+        val maximum = values["auto_brightness_maximum_percent"]?.toIntOrNull() ?: currentMaximum
+        return if (maximum > minimum) null else "auto_brightness_maximum_percent: must be above the minimum level"
+    }
+
     /** Bump whenever the persisted shape changes; drives bundle migration. */
-    const val SCHEMA = 12
+    const val SCHEMA = 13
     const val MAX_PANEL_ID_CHARS = 63
     const val DEFAULT_SILENCE_BOOT_CHIME = true
     const val DEFAULT_MQTT_ADDRESS_FAMILY = "Automatic"
@@ -467,7 +475,16 @@ object SettingsRegistry {
             step = 1.0,
             liveApply = true,
             scope = Scope.DEVICE,
-            help = "Lowest automatic screen level as a percentage. Proposals scale from this floor to full brightness; manual brightness can still go lower.",
+            help = "Lowest automatic screen level as a percentage. Proposals scale between the minimum and maximum; manual brightness can still go lower.",
+        ),
+        SettingSpec(
+            key = "auto_brightness_maximum_percent", type = SettingType.INT, group = "Display",
+            tier = Tier.ADVANCED, summary = "Highest level auto-brightness will choose.",
+            label = "Maximum level", default = "100",
+            min = (MINIMUM_AUTOMATIC_PERCENT + 1).toDouble(), max = 100.0, step = 1.0,
+            liveApply = true,
+            scope = Scope.DEVICE,
+            help = "Highest automatic screen level as a percentage. Proposals scale between the minimum and maximum; manual brightness can still go higher.",
         ),
         SettingSpec(
             key = RESPONSE_PERCENT_KEY, type = SettingType.INT, group = "Display",

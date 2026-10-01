@@ -157,6 +157,7 @@ class ConfigAccessorDefaultCoherenceTest {
             "dashboard_zoom" to c.dashboardZoom.toString(),
             "auto_brightness_response_percent" to c.autoBrightnessResponsePercent.toString(),
             "auto_brightness_minimum_percent" to c.autoBrightnessMinimumPercent.toString(),
+            "auto_brightness_maximum_percent" to c.autoBrightnessMaximumPercent.toString(),
             "log_ship_port" to c.logShipPort.toString(),
             "ha_token_expiry" to c.haTokenExpiry.toString(),
             // FLOAT read-back is canonical in its storage domain (for example 0f -> "0"), while
