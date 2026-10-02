@@ -2083,9 +2083,9 @@
       "state": "machine-cross-checked",
       "text": "{label} deve essere tra {min} e {max}."
     },
-    "configure.validation.step": {
-      "text": "{label} deve essere un multiplo di {step}.",
-      "sourceHash": "a875c86551a0f7dd45c9b6d2a8f822328bdbbecb1872e43ef51c18a3e1989f00",
+    "configure.validation.whole_range": {
+      "text": "{label} deve essere un numero intero compreso tra {min} e {max}.",
+      "sourceHash": "f50400f2dd16ee35194f64bbdd54ea514a8d29ac8ff70edfa9af83e7df2b8ec3",
       "state": "machine-cross-checked"
     },
     "configure.voice.configure_wake_word_first": {

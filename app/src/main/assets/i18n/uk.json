@@ -1738,9 +1738,9 @@
    "sourceHash": "054c9181365746dd56b7fd3565f1e9a019456a996732f3d0caff9184baa22585",
    "state": "machine-cross-checked"
   },
-  "configure.validation.step": {
-   "text": "{label} має бути кратним {step}.",
-   "sourceHash": "a875c86551a0f7dd45c9b6d2a8f822328bdbbecb1872e43ef51c18a3e1989f00",
+  "configure.validation.whole_range": {
+   "text": "{label} має бути цілим числом від {min} до {max}.",
+   "sourceHash": "f50400f2dd16ee35194f64bbdd54ea514a8d29ac8ff70edfa9af83e7df2b8ec3",
    "state": "machine-cross-checked"
   },
   "configure.voice.configure_wake_word_first": {

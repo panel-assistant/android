@@ -157,18 +157,21 @@ for (const engine of engines) {
     assert.deepEqual(h.posts, [{ dashboard_zoom: '96' }]);
   });
 
-  engineTest(`${engine.name}: a value off a setting's step names the step, not the range`, async (t) => {
+  engineTest(`${engine.name}: a value between a setting's arrow steps saves; a fraction or out-of-range value does not`, async (t) => {
     const h = await harness(true);
     const browser = await engine.type.launch(engine.launch);
     t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
     const p = await browser.newPage({ viewport: { width: 1024, height: 800 } });
     await p.goto(h.url);
     await card(p);
-    await save(p, 'camera_kbps', 1100);
-    assert.equal(await p.locator('#cfg-msg').textContent(), 'Bitrate (kbps) must be a multiple of 250.');
     await save(p, 'camera_kbps', 9000);
-    assert.equal(await p.locator('#cfg-msg').textContent(), 'Bitrate (kbps) must be between 250 and 8000.');
+    assert.equal(await p.locator('#cfg-msg').textContent(), 'Bitrate (kbps) must be a whole number between 250 and 8000.');
+    await save(p, 'camera_kbps', 1100.5);
+    assert.equal(await p.locator('#cfg-msg').textContent(), 'Bitrate (kbps) must be a whole number between 250 and 8000.');
     assert.deepEqual(h.posts, []);
+    await save(p, 'camera_kbps', 1100);
+    await p.waitForFunction(() => /Saved/.test(document.getElementById('cfg-msg').textContent));
+    assert.deepEqual(h.posts, [{ camera_kbps: '1100' }]);
   });
 
   for (const refusal of [
