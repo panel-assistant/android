@@ -700,6 +700,8 @@
       if (f.key === "auto_sleep_touch_delay_seconds") cfg.updateAutoSleepSummary();
       if (f.key === "auto_brightness_minimum_percent" || f.key === "auto_brightness_maximum_percent" || f.key === "auto_brightness_response_percent") cfg.queueAutoBrightnessHistory();
     });
+    // A whole-number setting rounds a typed fraction (96.5 → 97) rather than refusing it.
+    if (f.type === "INT") inp.addEventListener("change", function () { cfg.roundWholeNumber(f, inp); });
     return inp;
   }
 

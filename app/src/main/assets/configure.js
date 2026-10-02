@@ -80,6 +80,29 @@
     }, 500);
   }
 
+  // A setting's step is the arrow increment, not a rule: the panel accepts any in-range value and rounds
+  // where hardware needs it (camera exposure). A fraction in a whole-number field is rounded before saving.
+  function offStepOnly(field, control) {
+    var v = control.validity;
+    return !!v && v.stepMismatch && !v.rangeUnderflow && !v.rangeOverflow && !v.badInput;
+  }
+
+  cfg.roundWholeNumber = function (field, control) {
+    var n = Number(control.value);
+    if (control.value === "" || !isFinite(n) || Number.isInteger(n)) return;
+    control.value = String(Math.round(n));
+    cfg.values[field.key] = control.value;
+    cfg.setDirty(field.key);
+  };
+
+  function roundDirtyWholeNumbers() {
+    cfg.schema.forEach(function (field) {
+      if (field.type !== "INT" || !cfg.dirtyValues[field.key]) return;
+      var control = document.querySelector("#cfg-" + field.key + " input");
+      if (control) cfg.roundWholeNumber(field, control);
+    });
+  }
+
   function firstInvalidDirtySetting() {
     var minimumKey = "auto_brightness_minimum_percent";
     var maximumKey = "auto_brightness_maximum_percent";
@@ -103,12 +126,15 @@
       var controls = row && row.querySelectorAll ? row.querySelectorAll("input,select,textarea") : [];
       var control = null;
       for (var c = 0; c < controls.length; c++) {
-        if (controls[c].disabled || !controls[c].checkValidity || controls[c].checkValidity()) continue;
+        if (controls[c].disabled || !controls[c].checkValidity || controls[c].checkValidity() ||
+            offStepOnly(field, controls[c])) continue;
         control = controls[c];
         break;
       }
       if (!control) continue;
-      var message = field.min != null && field.max != null
+      var message = field.type === "INT" && field.min != null && field.max != null
+        ? cfg.i18nText("configure.validation.whole_range", "{label} must be a whole number between {min} and {max}.", { label: field.label, min: field.min, max: field.max })
+        : field.min != null && field.max != null
         ? cfg.i18nText("configure.validation.range", "{label} must be between {min} and {max}.", { label: field.label, min: field.min, max: field.max })
         : cfg.i18nText("configure.validation.invalid", "{label} has an invalid value.", { label: field.label });
       return { field: field, control: control, message: message };
@@ -119,6 +145,7 @@
   window.cfgSave = function () {
     if (!cfg.dirty || cfg.saving) return;
     var msg = document.getElementById("cfg-msg");
+    roundDirtyWholeNumbers();
     var invalid = firstInvalidDirtySetting();
     if (invalid) {
       msg.textContent = invalid.message;
@@ -149,13 +176,23 @@
       method: "POST", headers: { "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     }).then(function (r) {
+      // The panel refuses as JSON `message` or as plain text; keep whichever arrived so the reason is shown.
+      var text = r.ok ? null : r.clone().text().catch(function () { return ""; });
       return cfg.approvalAwareJson(r).then(function (body) {
         if (!r.ok) {
-          var error = new Error(body && body.status === "saved-partial"
-            ? cfg.i18nText("configure.save.failed", "Save failed.")
-            : cfg.i18nText("configure.error.http", "Failed (HTTP {status})", { status: r.status }));
-          error.configOutcome = body;
-          throw error;
+          return text.then(function (raw) {
+            var partial = body && body.status === "saved-partial";
+            var reason = (body && typeof body.message === "string" && body.message) ||
+              (body && typeof body.error === "string" ? body.error + (body.reason ? " (" + body.reason + ")" : "") : raw.trim());
+            var error = new Error(partial
+              ? cfg.i18nText("configure.save.failed", "Save failed.")
+              : reason
+              ? cfg.i18nText("configure.save.refused", "Not saved: {reason}", { reason: reason })
+              : cfg.i18nText("configure.error.http", "Failed (HTTP {status})", { status: r.status }));
+            error.configOutcome = body;
+            error.refused = true;
+            throw error;
+          });
         }
         return body;
       });
@@ -264,6 +301,8 @@
         } else {
           msg.textContent = e && e.approvalRequired
             ? cfg.approvalMessage(e.body)
+            : e && e.refused
+            ? e.message
             : cfg.i18nText("configure.save.failed", "Save failed.");
           updateSaveUi();
         }
