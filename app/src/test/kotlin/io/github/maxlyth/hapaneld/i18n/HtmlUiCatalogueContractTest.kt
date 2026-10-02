@@ -62,13 +62,13 @@ class HtmlUiCatalogueContractTest {
             catalogue.getJSONObject(key).getString("surface") in promotedSurfaces
         }
 
-        assertEquals("the complete source catalogue is a reviewed release contract", 2526, source.strings.size)
-        assertEquals("the declared promoted HTML UI preview scope must not shrink silently", 2046, expected.size)
+        assertEquals("the complete source catalogue is a reviewed release contract", 2537, source.strings.size)
+        assertEquals("the declared promoted HTML UI preview scope must not shrink silently", 2057, expected.size)
         releaseTargetLocales.forEach { locale ->
             val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), source)
             assertEquals(
                 "$locale must contain the complete release catalogue",
-                2526,
+                2537,
                 target.strings.size,
             )
             assertEquals(
@@ -312,7 +312,7 @@ class HtmlUiCatalogueContractTest {
     private fun literalKeys(source: String, function: String): Set<String> =
         Regex("$function\\(\\s*[\\\"']((?:shell|dashboard|configure|profiles|entities)\\.[a-z0-9._-]+)[\\\"']")
             .findAll(source)
-            .mapTo(sortedSetOf()) { it.groupValues[1] }
+            .map { it.groupValues[1] }.filterNot { it.endsWith(".") }.toSortedSet()
 
     private fun literalFallbackBindings(source: String): List<Pair<String, String>> =
         Regex(

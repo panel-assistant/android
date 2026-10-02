@@ -433,6 +433,7 @@ internal class PanelAssistantTransportOwner(
                                 }
                             }
                             is PanelAssistantHelloOutcome.Refused -> {
+                                lifecycleCurrent(run, onLifecycleAuthenticated)
                                 // The entry was removed, so nothing holds this panel's entities: hand them
                                 // back to MQTT. Migration scaffolding; it is deleted with MQTT.
                                 if (outcome.code == PanelAssistantTransportProtocol.CODE_ENTRY_REMOVED && releaseToMqtt()) {
@@ -448,6 +449,7 @@ internal class PanelAssistantTransportOwner(
                 // just closed. Only this coroutine's own cancellation ends the owner; anything else is
                 // a lost socket and retries like one.
                 currentCoroutineContext().ensureActive()
+                lifecycleCurrent(run, onLifecycleDisconnected)
                 attemptedRoute?.let(onTransportFailure)
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${cancelled.javaClass.simpleName}")
@@ -461,13 +463,13 @@ internal class PanelAssistantTransportOwner(
                     Retry.Fast(REFUSAL_AUTH_INVALID)
                 }
             } catch (failure: Exception) {
+                lifecycleCurrent(run, onLifecycleDisconnected)
                 attemptedRoute?.let(onTransportFailure)
                 // Network, TLS, frame bound, closed socket, malformed reply or liveness: never parks.
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${failure.javaClass.simpleName}")
                 }
             } finally {
-                lifecycleCurrent(run, onLifecycleDisconnected)
                 connection?.let { open ->
                     withContext(NonCancellable) {
                         withTimeoutOrNull(closeTimeoutMs) { runCatching { open.close() } }

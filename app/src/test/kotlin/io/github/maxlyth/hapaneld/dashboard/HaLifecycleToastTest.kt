@@ -9,11 +9,9 @@ import org.junit.Test
 
 class HaLifecycleToastTest {
     @Test fun nativeNoticeReplacesOnlyHomeAssistantConnectionAndStartupToasts() {
-        val root = generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
-            .first { File(it, "tools/test/package.json").isFile }
         val script = JSONObject.quote(InjectionScript.lifecycleNoticeJs(false))
         // Keep the exact production payload available for a real-browser acceptance run.
-        val emitted = File(root, "app/build/tmp/lifecycle-toast-proof.js")
+        val emitted = File("build/tmp/lifecycle-toast-proof.js")
         emitted.parentFile.mkdirs()
         emitted.writeText(InjectionScript.lifecycleNoticeJs(false))
         val process = ProcessBuilder("node").redirectErrorStream(true).start()

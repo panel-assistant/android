@@ -47,6 +47,30 @@ class HaOfflineNoticeTest {
         assertEquals(HaLifecycleDuration(2L, "minutes"), haLifecycleDuration(61_000L))
     }
 
+    @Test fun directCoreStartedClearsNativeStartupWithoutRepeatingTheRecoveryWindow() {
+        val tracker = HaLifecycle()
+        tracker.onNativeNotice(notice(HaLifecyclePhase.STARTING), 100L)
+        tracker.onAuthenticatedRunning(200L)
+        tracker.onEvent(HaLifecycleEvent.STARTED, HaLifecycleSource.MQTT, 300L)
+        assertEquals(HaLifecycleState.STARTING, tracker.snapshot(300L).state)
+        tracker.onEvent(HaLifecycleEvent.STARTED, HaLifecycleSource.SOCKET, 400L)
+        assertEquals(HaLifecycleState.BACK_ONLINE, tracker.snapshot(400L).state)
+        tracker.onNativeNotice(notice(HaLifecyclePhase.READY), 500L)
+        assertEquals(7_900L, tracker.snapshot(500L).backOnlineRemainingMs)
+        assertEquals(HaLifecycleState.NORMAL, tracker.snapshot(8_400L).state)
+        tracker.onNativeNotice(notice(HaLifecyclePhase.READY), 8_500L)
+        assertEquals(HaLifecycleState.NORMAL, tracker.snapshot(8_500L).state)
+    }
+
+    @Test fun nativeDisconnectCannotEraseTheExactSocketRefusal() {
+        val tracker = HaLifecycle()
+        tracker.onSubscriptionRejected()
+        tracker.onDisconnected(100L, HaLifecycleSource.NATIVE)
+        assertTrue(tracker.snapshot(100L).refused)
+        tracker.onDisconnected(200L, HaLifecycleSource.SOCKET)
+        assertFalse(tracker.snapshot(200L).refused)
+    }
+
     @Test fun firstRestartReportsNoMeasuredEstimateAndRetiredNativeOwnerCannotStrandIt() {
         val tracker = HaLifecycle()
         tracker.onNativeNotice(notice(HaLifecyclePhase.SHUTTING_DOWN), 100L)

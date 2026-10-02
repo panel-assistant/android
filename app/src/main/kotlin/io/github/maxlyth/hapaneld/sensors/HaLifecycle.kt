@@ -223,7 +223,10 @@ internal class HaLifecycle(
     fun onEvent(event: HaLifecycleEvent, from: HaLifecycleSource, nowMs: Long) {
         synchronized(lock) {
             val observed = stateLocked(nowMs)
-            if (nativeAwaitingReady) return
+            if (nativeAwaitingReady) {
+                if (event != HaLifecycleEvent.STARTED || from != HaLifecycleSource.SOCKET) return
+                nativeAwaitingReady = false
+            }
             if (event.shutdown || event == HaLifecycleEvent.START) notice = null
             // The socket is authoritative: once it has explained an outage, a broker will arriving for
             // the same event must not downgrade the wording back to a guess.
@@ -287,10 +290,8 @@ internal class HaLifecycle(
                     revision++
                 }
             }
-            // A dead socket cannot still be a refused one; the next connection answers for itself.
-            // The same is true of an accepted subscription: it died with the session that held it.
-            clearRefusalLocked()
-            subscribed = false
+            // These facts belong to the exact socket, whose session a native failure cannot end.
+            if (from == HaLifecycleSource.SOCKET) clearRefusalLocked()
         }
     }
 
