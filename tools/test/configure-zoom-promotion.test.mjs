@@ -41,16 +41,18 @@ function schema(promoted) {
     field('dashboard_fullscreen', 'Fullscreen'),
     field('dashboard_theme', 'Theme', { type: 'ENUM', options: ['auto'] }),
     field('camera_kbps', 'Bitrate (kbps)', { type: 'INT', min: 250, max: 8000, step: 250 }),
+    { key: 'ui_language', label: 'Interface language', group: 'System', type: 'ENUM', tier: 'BASIC', available: true, options: ['auto', 'en', 'fr'] },
   ];
   return promoted ? [zoom, ...rest] : [...rest, zoom];
 }
 
 async function harness(promoted, onPost = () => ({ status: 200, body: JSON.stringify({ ok: true, status: 'saved', pending: [] }) })) {
   const posts = [];
+  let documents = 0;
   const server = createServer(async (request, response) => {
     const path = new URL(request.url, 'http://panel.test').pathname;
     const send = (body, type = 'application/json') => { response.setHeader('content-type', type); response.end(body); };
-    if (path === '/') return send(page(), 'text/html');
+    if (path === '/') { documents++; return send(page(), 'text/html'); }
     if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js'].includes(path) || path === '/proximity-learning.js') return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
     if (path === '/api/v1/config/schema') return send(JSON.stringify(schema(promoted)));
@@ -63,7 +65,7 @@ async function harness(promoted, onPost = () => ({ status: 200, body: JSON.strin
       response.statusCode = reply.status;
       return send(reply.body, reply.type);
     }
-    if (path === '/api/v1/config') return send(JSON.stringify({ settings: { dashboard_zoom: 100, dashboard_package: 'builtin', camera_kbps: 2000 }, ha_expose: {}, ha_auth: { configured: false } }));
+    if (path === '/api/v1/config') return send(JSON.stringify({ settings: { dashboard_zoom: 100, dashboard_package: 'builtin', camera_kbps: 2000, ui_language: 'auto' }, ha_expose: {}, ha_auth: { configured: false } }));
     if (path === '/api/v1/apps') return send(JSON.stringify({ apps: [] }));
     if (path === '/api/v1/config/home-dashboards') return send(JSON.stringify({ queried: true, items: [], default: { explicit: false, path: '' } }));
     if (['/api/v1/radio', '/api/v1/proximity'].includes(path)) return send(JSON.stringify({ present: false }));
@@ -71,7 +73,7 @@ async function harness(promoted, onPost = () => ({ status: 200, body: JSON.strin
     response.statusCode = 404; response.end('not found');
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { server, posts, url: `http://127.0.0.1:${server.address().port}` };
+  return { server, posts, documents: () => documents, url: `http://127.0.0.1:${server.address().port}` };
 }
 
 const engines = [
@@ -157,7 +159,7 @@ for (const engine of engines) {
     assert.deepEqual(h.posts, [{ dashboard_zoom: '96' }]);
   });
 
-  engineTest(`${engine.name}: a value between a setting's arrow steps saves; a fraction or out-of-range value does not`, async (t) => {
+  engineTest(`${engine.name}: a value between a setting's arrow steps saves; an out-of-range value does not`, async (t) => {
     const h = await harness(true);
     const browser = await engine.type.launch(engine.launch);
     t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
@@ -166,12 +168,22 @@ for (const engine of engines) {
     await card(p);
     await save(p, 'camera_kbps', 9000);
     assert.equal(await p.locator('#cfg-msg').textContent(), 'Bitrate (kbps) must be a whole number between 250 and 8000.');
-    await save(p, 'camera_kbps', 1100.5);
-    assert.equal(await p.locator('#cfg-msg').textContent(), 'Bitrate (kbps) must be a whole number between 250 and 8000.');
     assert.deepEqual(h.posts, []);
     await save(p, 'camera_kbps', 1100);
     await p.waitForFunction(() => /Saved/.test(document.getElementById('cfg-msg').textContent));
     assert.deepEqual(h.posts, [{ camera_kbps: '1100' }]);
+  });
+
+  engineTest(`${engine.name}: a fraction in a whole-number setting is rounded, not refused`, async (t) => {
+    const h = await harness(true);
+    const browser = await engine.type.launch(engine.launch);
+    t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
+    const p = await browser.newPage({ viewport: { width: 1024, height: 800 } });
+    await p.goto(h.url);
+    await card(p);
+    await save(p, 'dashboard_zoom', 96.5);
+    await p.waitForFunction(() => /Saved/.test(document.getElementById('cfg-msg').textContent));
+    assert.deepEqual(h.posts, [{ dashboard_zoom: '97' }]);
   });
 
   for (const refusal of [
@@ -191,4 +203,22 @@ for (const engine of engines) {
       assert.equal(await p.locator('#cfg-msg').textContent(), refusal.shown);
     });
   }
+}
+
+for (const engine of engines) {
+  const engineTest = engine.available ? test : test.skip;
+  engineTest(`${engine.name}: choosing an interface language saves it and reloads the page to render in it`, async (t) => {
+    const h = await harness(true);
+    const browser = await engine.type.launch(engine.launch);
+    t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
+    const p = await browser.newPage({ viewport: { width: 1024, height: 800 } });
+    await p.goto(h.url);
+    await p.locator('#cfg-ui_language select').waitFor();
+    await p.locator('#cfg-ui_language select').selectOption('fr');
+    await p.evaluate(() => window.cfgSave());
+    await p.waitForLoadState('load');
+    for (let i = 0; i < 50 && h.documents() < 2; i++) await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(h.posts, [{ ui_language: 'fr' }]);
+    assert.equal(h.documents(), 2, 'the page is recreated once so the server renders the saved language');
+  });
 }

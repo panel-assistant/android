@@ -81,11 +81,26 @@
   }
 
   // A setting's step is the arrow increment, not a rule: the panel accepts any in-range value and rounds
-  // where hardware needs it (camera exposure). Only a fraction in a whole-number field stays refused.
+  // where hardware needs it (camera exposure). A fraction in a whole-number field is rounded before saving.
   function offStepOnly(field, control) {
     var v = control.validity;
-    if (!v || !v.stepMismatch || v.rangeUnderflow || v.rangeOverflow || v.badInput) return false;
-    return field.type === "FLOAT" || Number.isInteger(Number(control.value));
+    return !!v && v.stepMismatch && !v.rangeUnderflow && !v.rangeOverflow && !v.badInput;
+  }
+
+  cfg.roundWholeNumber = function (field, control) {
+    var n = Number(control.value);
+    if (control.value === "" || !isFinite(n) || Number.isInteger(n)) return;
+    control.value = String(Math.round(n));
+    cfg.values[field.key] = control.value;
+    cfg.setDirty(field.key);
+  };
+
+  function roundDirtyWholeNumbers() {
+    cfg.schema.forEach(function (field) {
+      if (field.type !== "INT" || !cfg.dirtyValues[field.key]) return;
+      var control = document.querySelector("#cfg-" + field.key + " input");
+      if (control) cfg.roundWholeNumber(field, control);
+    });
   }
 
   function firstInvalidDirtySetting() {
@@ -130,6 +145,7 @@
   window.cfgSave = function () {
     if (!cfg.dirty || cfg.saving) return;
     var msg = document.getElementById("cfg-msg");
+    roundDirtyWholeNumbers();
     var invalid = firstInvalidDirtySetting();
     if (invalid) {
       msg.textContent = invalid.message;
