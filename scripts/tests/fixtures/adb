@@ -18,8 +18,10 @@ fi
 
 printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?MOCK_CALL_LOG is required}"
 STATE_DIR="${MOCK_STATE_DIR:-$(dirname "$MOCK_CALL_LOG")}"
-case "$*" in *' -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR'*)
-  : > "$STATE_DIR/handoff-started" ;;
+# The installer no longer wakes the old app's handover. On a panel that already carries both
+# identities, the started successor drives its own migration, so its launch begins the modelled one.
+case "$*" in *' monkey -p io.panelassistant.android '*)
+  [ "${MOCK_LEGACY_INSTALLED:-0}" != 1 ] || : > "$STATE_DIR/handoff-started" ;;
 esac
 DIAG_ID=abcdef0123456789abcdef0123456789
 HELPER_STATE_FIXTURE="$(cd "$(dirname "$0")" && pwd)/helper-state"

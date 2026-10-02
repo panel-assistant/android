@@ -590,6 +590,30 @@ refuse_legacy_provisioner() {
   exit 1
 }
 
+# A panel that still runs only the old application id is moved by Panel Assistant's Home Assistant
+# Repair, never by installing the new app beside it: a new app that has run beside the old one is a
+# state that Repair refuses. Refuse before any download or panel change. A release that carries only
+# the old app's own build updates that app in place and is unaffected. An undecided observation is
+# left to the provisioner, which makes the same check against its own observation.
+INSTALLS_SUCCESSOR=0
+if [ "$PROVISION_NEEDS_APK" = 1 ]; then
+  if [ -n "$RELEASE_TAG" ] || [ "$RESOLVED_APK_NAME" = "$(release_apk_name "$PROVISION_REF")" ]; then
+    INSTALLS_SUCCESSOR=1
+  fi
+fi
+if [ "$INSTALLS_SUCCESSOR" = 1 ] &&
+   [ "$(legacy_provisioner_package_verdict "$LEGACY_PKG")" = present ]; then
+  case "$(legacy_provisioner_package_verdict "$PKG")" in
+    absent|retained)
+      echo "${R}${B}This panel still runs the old ha-paneld app.${X}" >&2
+      echo "Installers no longer put the new app beside the old one." >&2
+      echo "Move the panel with Panel Assistant: in Home Assistant, open Settings → Repairs → \"Move <panel name> to the new app\"." >&2
+      echo "Panel Assistant is required for the move. Nothing was installed or changed." >&2
+      exit 1
+      ;;
+  esac
+fi
+
 LEGACY_PROVISIONER_FRESH_GATE=0
 LEGACY_PROVISIONER_INITIAL_FRESH_VERDICT=""
 if [ "$PROVISION_NEEDS_APK" = 1 ] && ! grep -q 'HAPANELD_HOST_DB_GATE_V1' "$SCRIPT"; then

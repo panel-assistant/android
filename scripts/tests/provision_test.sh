@@ -5311,102 +5311,32 @@ if [ -n "$exact_release_branch_line" ] && [ -n "$release_clear_line" ] &&
   pass "source disowns RELEASE custody only inside the exact-response branch"
 else fail_test "source disowns RELEASE custody only inside the exact-response branch"; fi
 
-# --- the application-id handover ----------------------------------------------------------------
-# A panel mid-migration still carries the bridge and not yet the successor this run installs. The
-# install target's absence is not the panel's: the database, the upgrade-control receiver and the
-# app-data directory all still belong to the old application id. So the candidate is measured
-# against THAT database instead of being admitted as a fresh install over it, and both the capture
-# and the quiescence broadcast address the package that is actually there. The receiver component is
-# the shorthand under the old id and fully qualified under the new one, because Android expands a
-# leading dot against the package half and the classes never left io.github.maxlyth.hapaneld.
+# --- the application-id move ----------------------------------------------------------------------
+# A panel still running the old application id, without the new one, is moved by Panel Assistant's
+# Home Assistant Repair. The installer never installs the new app beside the old one, because a new
+# app that has run beside the old one is a state that Repair refuses. It stops before changing the
+# panel and names the Repair.
 reset_db_txn_state
 MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
 MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
-MOCK_UPGRADE_PREPARE=ready UPGRADE_RENEW_INTERVAL_SECONDS=1 MOCK_APK_INSTALL_DELAY_SECONDS=2 \
+MOCK_UPGRADE_PREPARE=ready \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "a panel still carrying the bridge is provisioned with the successor"
-if awk '/^adb .* install( |$)/ { installing=1 } /RELEASE_UPGRADE/ { installing=0 } installing && /RENEW_UPGRADE/ { found=1 } END { exit found ? 0 : 1 }' "$MOCK_CALL_LOG"; then
-  pass "the bridge hold continues renewing while the successor installation is in progress"
-else fail_test "the bridge hold continues renewing while the successor installation is in progress"; fi
-assert_contains 'schema 9 is inside candidate boundary' \
-  "the bridge's database is what the candidate boundary is measured against"
-assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
-  "the upgrade-control broadcast reaches the identity that is actually installed"
-assert_log_contains 'cp /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db ' \
-  "the pre-mutation capture copies the database the bridge holds"
-# Installing the successor does not replace the bridge, so nothing stops the process this run
-# quiesced. Its lease is released back to the identity that armed it, not to the one just installed.
-assert_log_contains 'am broadcast --user 0 -a io\.github\.maxlyth\.hapaneld\.action\.RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver ' \
-  "the quiesced bridge is released after the successor is installed"
-assert_log_contains 'am start-foreground-service --user 0 -n io\.github\.maxlyth\.hapaneld/\.PaneldService -a io\.github\.maxlyth\.hapaneld\.action\.HANDOFF_INSTALLED_SUCCESSOR' \
-  "release explicitly wakes installed handoff even when the watchdog already resumed the bridge"
-handover_install_line="$(grep -nE '^adb .* install( |$)' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-handover_commit_line="$(grep -nE 'helper-transaction-[0-9a-f]+.*commit-system' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-handover_release_line="$(grep -n 'RELEASE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-handover_wake_line="$(grep -n 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-handover_launch_line="$(grep -n 'monkey -p io.panelassistant.android -c android.intent.category.LAUNCHER 1' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-if [ -n "$handover_install_line" ] && [ -n "$handover_commit_line" ] && \
-   [ -n "$handover_release_line" ] && [ -n "$handover_wake_line" ] && [ -n "$handover_launch_line" ] && \
-   [ "$handover_install_line" -lt "$handover_commit_line" ] && \
-   [ "$handover_commit_line" -lt "$handover_release_line" ] && \
-   [ "$handover_release_line" -lt "$handover_wake_line" ] && \
-   [ "$handover_wake_line" -lt "$handover_launch_line" ]; then
-  pass "bridge quiescence ends after helper commit and before successor launch"
-else
-  fail_test "bridge quiescence ends after helper commit and before successor launch"
-fi
-if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 1 ]; then
-  pass "the acknowledged bridge release is not repeated at EXIT"
-else fail_test "the acknowledged bridge release is not repeated at EXIT"; fi
-if grep -Fq 'db=/data/data/io.github.maxlyth.hapaneld/databases/ha-paneld.db' \
-     "$TMP/db-observer-script.$MOCK_TARGET" 2>/dev/null; then
-  pass "the database observer inspects the bridge's app-data directory"
-else
-  fail_test "the database observer inspects the bridge's app-data directory"
-fi
+assert_failure "a panel still on the old app is not given the new app beside it" \
+  'this panel still runs the old ha-paneld app'
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' \
+  "the refusal names the Panel Assistant Repair that moves the panel"
+assert_contains 'Panel Assistant is required for the move' "the refusal says Panel Assistant is required"
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p|am start' \
+  "$MOCK_CALL_LOG" "the old-app refusal precedes every tracked panel mutation"
 
-# A failed RELEASE must keep the bridge's lease available to EXIT cleanup, without launching the
-# successor into a wait for a token from the service we still hold down.
-reset_db_txn_state
-MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
-MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
-MOCK_UPGRADE_PREPARE=ready MOCK_UPGRADE_RELEASE=fail \
-  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "an unacknowledged bridge release stops before successor launch"
-assert_contains 'previous app has not resumed for the handover' "the retained bridge hold is reported"
-assert_not_contains 'monkey -p io.panelassistant.android|am start -n io.panelassistant.android/' "$MOCK_CALL_LOG" \
-  "a held bridge cannot strand a newly launched successor"
-assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
-  "unacknowledged release and abort cleanup do not request handoff"
-if [ "$(grep -c 'RELEASE_UPGRADE' "$MOCK_CALL_LOG")" = 4 ]; then
-  pass "unacknowledged bridge release retains its nonce for EXIT retry"
-else fail_test "unacknowledged bridge release retains its nonce for EXIT retry"; fi
-
-# Abort cleanup must only resume the incumbent.
-# The handoff wake is owned by the successful installation path, not generic RELEASE.
-for handover_failure in install helper-commit; do
-  reset_db_txn_state
-  handover_apk_result=ok; handover_commit_result=ok
-  if [ "$handover_failure" = install ]; then handover_apk_result=fail
-  else handover_commit_result=fail; fi
-  MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld \
-  MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
-  MOCK_UPGRADE_PREPARE=ready MOCK_APK_INSTALL="$handover_apk_result" MOCK_HELPER_COMMIT="$handover_commit_result" \
-    run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "$handover_failure refusal stops a handover rerun"
-  assert_log_contains 'RELEASE_UPGRADE' "$handover_failure cleanup resumes the quiesced incumbent"
-  assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
-    "$handover_failure cleanup never starts successor handoff"
-done
-
-# A prior failed run may have installed the passive successor already. Package presence is not
-# runtime ownership: its own database gate must not hide the bridge's post-commit handoff wake.
+# A prior run may have installed the passive successor already. The installer updates it in place and
+# never starts the old app's on-panel handover.
 reset_db_txn_state
 MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "a rerun with both installed identities requests the remaining handover"
-assert_log_contains 'am start-foreground-service --user 0 -n io\.github\.maxlyth\.hapaneld/\.PaneldService -a io\.github\.maxlyth\.hapaneld\.action\.HANDOFF_INSTALLED_SUCCESSOR' \
-  "an installed successor does not hide the bridge handoff wake"
+assert_success "a rerun with both installed identities updates the installed successor"
+assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
+  "the installer never wakes the old app's on-panel handover"
 
 # A successor package can be installed but remain entirely passive, without a canonical database.
 # The observer fixture reads the package from the actual staged script, so choosing the wrong
@@ -6100,15 +6030,12 @@ for manifest_case in manifest_missing_bytes:' \(bytes\)' manifest_missing_rows:'
   assert_log_contains '^adb .* install' "a $txn_mode manifest does not preempt APK install"
 done
 
-# The executed script's first two refusals. Both are reached without a race on a panel whose bridge
-# holds the data but has never created its database: the compatibility gate proves that state fresh,
-# and the capture still runs against the bridge. The sandbox seeds a database and a sqlite3 unless
-# told otherwise, which is why neither refusal had ever run.
+# The executed script's first two refusals. The compatibility gate is answered by its own fixture,
+# while the capture runs in a sandbox that seeds a database and a sqlite3 unless told otherwise, so
+# withholding either reaches the refusal without a race.
 for first_refusal in source_missing sqlite_missing; do
   reset_db_txn_state
-  MOCK_DB_TXN="$first_refusal" MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 \
-  MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_HOST_DB_PRIMARY=missing MOCK_HOST_DB_RECOVERY=none \
-  MOCK_HOST_DB_RETAINED=0 MOCK_HOST_DB_INVENTORY=readable \
+  MOCK_DB_TXN="$first_refusal" \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
   assert_success "a $first_refusal capture refusal remains advisory for the successor install"
   assert_contains "on-panel capture transaction refused \\($first_refusal\\)" \

@@ -286,6 +286,29 @@ else
   fail_test "current marker-bearing provisioners retain their authoritative host gate"
 fi
 
+# A panel that runs only the old app is moved by Panel Assistant's Repair. The installer refuses
+# before downloading or running anything, even with a current provisioner that would otherwise run.
+MOCK_INSTALL_LEGACY_PRESENT=1 MOCK_INSTALL_RELEASE_SUCCESSOR=1 \
+  run_installer old-app-only absent absent rooted fresh fresh 1
+if [ "$LAST_STATUS" -ne 0 ] && did_not_run &&
+   grep -Fq 'This panel still runs the old ha-paneld app.' <<< "$LAST_OUTPUT" &&
+   grep -Fq 'Settings → Repairs → "Move <panel name> to the new app"' <<< "$LAST_OUTPUT" &&
+   grep -Fq 'Panel Assistant is required for the move.' <<< "$LAST_OUTPUT" &&
+   ! grep -Fq 'panel-assistant-v0.9.2-manual-setup-required.apk' "$LAST_STATE/calls.log"; then
+  pass "a panel on the old app is refused before the new app is fetched or installed beside it"
+else
+  fail_test "a panel on the old app is refused before the new app is fetched or installed beside it"
+fi
+
+# The same panel with a release that carries only the old app's own build is updated in place.
+MOCK_INSTALL_LEGACY_PRESENT=1 run_installer old-app-in-place absent absent rooted fresh fresh 1
+if [ "$LAST_STATUS" -eq 0 ] && ran_once &&
+   ! grep -Fq 'still runs the old ha-paneld app' <<< "$LAST_OUTPUT"; then
+  pass "a release of the old app's own build still updates a panel on the old app"
+else
+  fail_test "a release of the old app's own build still updates a panel on the old app"
+fi
+
 printf '1..%d\n' "$((passes + failures))"
 if [ "$failures" -ne 0 ]; then
   printf '%d assertion(s) failed\n' "$failures" >&2

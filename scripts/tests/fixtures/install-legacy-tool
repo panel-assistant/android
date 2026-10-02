@@ -40,7 +40,12 @@ emit_package_observation() {
   probe_pkg="$(printf '%s\n' "$command" | sed -n 's/^[^;]*; *pm path \([^;]*\);.*/\1/p' | head -1)"
   if [ "$probe_pkg" != "io.panelassistant.android" ]; then
     printf 'HAPANELD_INSTALLER_PKG_BEGIN:%s\n' "$nonce"
-    printf 'HAPANELD_INSTALLER_PKG_TARGET:%s:1\n' "$nonce"
+    if [ "${MOCK_INSTALL_LEGACY_PRESENT:-0}" = 1 ]; then
+      printf 'package:/data/app/%s/base.apk\n' "$probe_pkg"
+      printf 'HAPANELD_INSTALLER_PKG_TARGET:%s:0\n' "$nonce"
+    else
+      printf 'HAPANELD_INSTALLER_PKG_TARGET:%s:1\n' "$nonce"
+    fi
     printf 'HAPANELD_INSTALLER_DATA:%s:0\n' "$nonce"
     printf 'package:/system/framework/framework-res.apk\n'
     printf 'HAPANELD_INSTALLER_PKG_LIVE:%s:0\n' "$nonce"
@@ -247,12 +252,17 @@ mock_curl() {
   printf 'curl %s\n' "$url" >> "$state_dir/calls.log"
   case "$url" in
     https://api.github.com/repos/panel-assistant/android/releases/latest)
-      printf '%s\n' '{"tag_name":"v0.9.2","browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.2/ha-paneld-v0.9.2-manual-setup-required.apk"}' | write_curl_output "$output"
+      if [ "${MOCK_INSTALL_RELEASE_SUCCESSOR:-0}" = 1 ]; then
+        printf '%s\n' '{"tag_name":"v0.9.2","assets":[{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.2/ha-paneld-v0.9.2-manual-setup-required.apk"},{"browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.2/panel-assistant-v0.9.2-manual-setup-required.apk"}]}' | write_curl_output "$output"
+      else
+        printf '%s\n' '{"tag_name":"v0.9.2","browser_download_url":"https://github.com/panel-assistant/android/releases/download/v0.9.2/ha-paneld-v0.9.2-manual-setup-required.apk"}' | write_curl_output "$output"
+      fi
       ;;
     https://raw.githubusercontent.com/panel-assistant/android/v0.9.2/scripts/provision.sh)
       emit_provisioner | write_curl_output "$output"
       ;;
-    https://github.com/panel-assistant/android/releases/download/v0.9.2/ha-paneld-v0.9.2-manual-setup-required.apk)
+    https://github.com/panel-assistant/android/releases/download/v0.9.2/ha-paneld-v0.9.2-manual-setup-required.apk|\
+    https://github.com/panel-assistant/android/releases/download/v0.9.2/panel-assistant-v0.9.2-manual-setup-required.apk)
       printf 'fixture apk\n' | write_curl_output "$output"
       ;;
     *) printf 'unexpected curl URL: %s\n' "$url" >&2; exit 22 ;;

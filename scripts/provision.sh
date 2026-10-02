@@ -131,10 +131,11 @@ shift
 REPO="panel-assistant/android"
 LOCAL_APK="app/build/outputs/apk/debug/app-debug.apk"
 # One source tree builds two installable identities. This provisioner installs and verifies the
-# successor; the bridge keeps the historical application id so a panel can run both for one handover.
-# Until the bridge is gone it may still be the package that holds the data, answers the upgrade
-# control broadcast and owns the app-data directory, so those reads resolve the installed data
-# holder rather than assuming the install target.
+# successor; the bridge keeps the historical application id. A panel that carries only the bridge is
+# moved by Panel Assistant's Home Assistant Repair, never by installing the successor beside it, so
+# this provisioner refuses that panel before changing it. On a panel that already carries both, the
+# bridge may still hold the data, answer the upgrade control broadcast and own the app-data
+# directory, so those reads resolve the installed data holder rather than assuming the install target.
 PKG="io.panelassistant.android"
 LEGACY_PKG="io.github.maxlyth.hapaneld"
 # The Gradle namespace and Kotlin package do NOT move with the applicationId, so the merged manifest
@@ -1035,6 +1036,21 @@ resolve_data_package() {
   [ "$verdict" = present ] || return 0
   DATA_PKG="$LEGACY_PKG"
   return 0
+}
+
+# A panel that runs only the old application id is moved by Panel Assistant's Repair: backup, install
+# the new app without starting it, HOME to it, remove the old app, start the new app, restore. A new
+# app installed beside the old one, and started, is a state that Repair refuses, so this provisioner
+# stops before any backup, quiescence or install. It reads the database gate's own observations
+# rather than asking the panel again: the gate classified the new app, and only its proven absence
+# with the old app's proven presence made the old app the data holder.
+refuse_old_app_only_panel() {
+  [ "$PACKAGE_PRESENCE" = absent ] && [ "$DATA_PKG" = "$LEGACY_PKG" ] || return 0
+  fail "this panel still runs the old ha-paneld app" \
+    "It has $LEGACY_PKG installed and not $PKG. Installers no longer put the new app beside the old one." \
+    "Move the panel with Panel Assistant: in Home Assistant, open Settings → Repairs → \"Move <panel name> to the new app\"." \
+    "Panel Assistant is required for the move." \
+    "Nothing was installed, started, or privileged."
 }
 
 # `pm uninstall -k` removes the installed path while retaining a package-manager record and app
@@ -8438,6 +8454,9 @@ resolve_root_route
 # reset, helper, Shizuku, package, grant or configuration mutation can begin.
 host_database_compatibility_gate
 
+# A panel still on the old app is moved by Panel Assistant, never by this provisioner.
+refuse_old_app_only_panel
+
 # DB_COMPAT_MUTATION_ANCHOR: HOST_FIRST_MUTATION — everything above is artifact authentication or read-only panel inspection.
 # Emergency upgrade safety window: try to persist a unique, owner-only config export before an
 # ordinary helper/APK mutation. Best effort — a failure warns, withdraws the partial artifact and
@@ -8735,21 +8754,10 @@ if [ -n "$UPGRADE_QUIESCE_NONCE" ] && [ "${UPGRADE_QUIESCE_PKG:-$PKG}" != "$PKG"
     "The successor and root helper are installed. Re-run this command to finish the handover."
 fi
 if [ "$PKG" != "$LEGACY_PKG" ]; then
-  # A previous partial install can leave both packages present with the successor still passive.
-  # DATA_PKG prefers that successor, so it cannot establish whether the bridge still needs a wake.
+  # A panel that already carries both identities is updated in place, but the installer never starts
+  # the old app's on-panel handover: Panel Assistant moves panels through its Repair. The presence is
+  # recorded only so the launch below waits for the app instead of restarting it.
   handoff_bridge_presence="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
-  case "$handoff_bridge_presence" in
-    present)
-      # Unlike generic RELEASE (also used by abort cleanup), this wake follows successful install,
-      # helper commit, and acknowledged release of any held bridge. It also reaches a bridge resumed by watchdog.
-      run_root "am start-foreground-service --user 0 -n $(app_component "$LEGACY_PKG" .PaneldService) -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR" >/dev/null 2>&1 \
-        || fail "the previous app could not start the installed successor handover" \
-          "The successor and root helper are installed. Re-run this command to finish the handover."
-      ;;
-    absent) ;;
-    *) fail "could not confirm whether the previous app needs a handover" \
-      "The successor and root helper are installed. Reconnect adb and re-run this command." ;;
-  esac
 fi
 
 step "🔑 permissions" "${D}notifications · WRITE_SETTINGS (brightness/screen) · SYSTEM_ALERT_WINDOW (navbar) · a11y (buttons)${X}"
@@ -8869,7 +8877,8 @@ if [ "${handoff_bridge_presence:-absent}" = present ]; then
   # own completion before reading the provisioning plan or applying any settings to this endpoint.
   if wait_for_launch_health "$APP_HEALTH_TIMEOUT_SECONDS" 1; then AGENT_HEALTHY=1; else
     fail "the installed successor did not finish its handover on $URL within ${APP_HEALTH_TIMEOUT_SECONDS}s" \
-      "The APK and helper are installed. The handover may still be running; no configuration was applied or verified. Re-run this command after it completes."
+      "The APK and helper are installed, but the old ha-paneld app is still on the panel; no configuration was applied or verified." \
+      "Move the panel with Panel Assistant: in Home Assistant, open Settings → Repairs → \"Move <panel name> to the new app\"."
   fi
 elif wait_for_launch_health "$APP_LAUNCH_PROBE_SECONDS"; then
   AGENT_HEALTHY=1

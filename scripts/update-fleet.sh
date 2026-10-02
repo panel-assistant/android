@@ -7,10 +7,10 @@
 # The APK is downloaded once (for --latest) and reused for the whole fleet, rather than re-fetched
 # per panel.
 #
-# A release publishes one APK per installable identity, and a panel crosses the application-id change
-# by running both for one handover. Each panel that still carries the old package therefore gets the
-# bridge updated in place and started first, then the successor installed and provisioned; the
-# successor performs the handover and removes the bridge, and this script verifies that it did.
+# A release publishes one APK per installable identity. A panel that carries only the old package is
+# moved to the new one by Panel Assistant's Home Assistant Repair: its bridge is still updated in
+# place, and the provisioner then refuses to install the successor beside it and names the Repair.
+# A panel that already carries both is updated, and this script verifies the bridge was removed.
 #
 # Usage:
 #   scripts/update-fleet.sh [--jobs N] [provision-args...] -- <ip|ip:port> [<ip> ...]
