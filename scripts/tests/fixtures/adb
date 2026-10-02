@@ -525,11 +525,13 @@ mark_hapaneld_stopped() {
 #   truncated  the reply is cut off after SYSTEM_RO, before the runner check reports either way
 #   garbled    the shell answers, but with nothing the probe emits
 #   flood      a large unrecognised reply, larger than one pipe buffer
-# MOCK_VENDOR_INIT_RW: 1 writable, 0 the partition refuses the write, unreadable no answer at all.
+# MOCK_VENDOR_INIT_RW: 1 writable, 0 the partition refuses the write, full the partition is full,
+# unreadable no answer at all.
 emit_vendor_init_probe() {
   case "${MOCK_VENDOR_INIT_RW:-1}" in
     1) printf 'VENDOR_INIT_RW\n' ;;
     unreadable) exit 255 ;;
+    full) printf 'VENDOR_INIT_FULL\n' ;;
     *) printf 'VENDOR_INIT_RO\n' ;;
   esac
 }
@@ -1246,6 +1248,12 @@ case "${1:-}" in
       # rather than normalised, so a test can model a panel whose platform level cannot be read.
       "getprop ro.build.version.sdk")
         printf '%s\r\n' "${MOCK_SDK-33}"
+        ;;
+      "getprop ro.product.version")
+        printf '%s\r\n' "${MOCK_PRODUCT_VERSION:-}"
+        ;;
+      "getprop ro.product.device")
+        printf '%s\r\n' "${MOCK_PRODUCT_DEVICE:-}"
         ;;
       "getprop ro.product.cpu.abi")
         printf '%s\n' "${MOCK_ABI:-arm64-v8a}"

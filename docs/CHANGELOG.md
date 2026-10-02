@@ -37,6 +37,8 @@
 
 ### Fixed
 
+- **Sonoff NSPanel Pro panels install again when there is no room for the root helper.** On these panels the app can use root itself, so when neither the system nor the vendor partition can take the helper's startup file, the installer now warns and finishes without the helper instead of stopping. Other panels that use the helper still stop and say why, and the installer now tells a full vendor partition apart from a read-only one.
+
 - Panels with a configured home dashboard return to it after starting or reloading the Companion renderer. Repeating Navigate to the current built-in dashboard reloads it.
 
 - Panels report their current primary and secondary network addresses to Panel Assistant when connecting, allowing it to verify a reachable address after a network change.

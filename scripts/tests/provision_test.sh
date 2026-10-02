@@ -476,6 +476,8 @@ run_provision() {
   MOCK_LATE_ADB_STATUS="${MOCK_LATE_ADB_STATUS:-0}" \
   MOCK_LATE_ADB_PHASE="${MOCK_LATE_ADB_PHASE:-identity}" \
   MOCK_PRODUCT_IDENTITY="${MOCK_PRODUCT_IDENTITY:-}" \
+  MOCK_PRODUCT_VERSION="${MOCK_PRODUCT_VERSION:-}" \
+  MOCK_PRODUCT_DEVICE="${MOCK_PRODUCT_DEVICE:-}" \
   MOCK_ADB_ROOT="${MOCK_ADB_ROOT:-0}" \
   MOCK_HELPER_PROOF_DOWNLOAD="${MOCK_HELPER_PROOF_DOWNLOAD:-ok}" \
   MOCK_HELPER_CHECKSUM="${MOCK_HELPER_CHECKSUM:-ok}" \
@@ -619,7 +621,7 @@ last_refusal_headline() {
 # only the two content assertions after it failed.
 #
 # A case that MEANS to assert one of these passes it as assert_failure's second argument.
-UNRELATED_REFUSALS='the /system layout probe returned no recognisable answer|the /vendor/etc/init write probe returned no recognisable answer|the panel has read-only /system and no verified systemless boot-service runner|/vendor/etc/init is not writable for the hybrid root helper|the root-helper transaction could not be promoted into protected storage'
+UNRELATED_REFUSALS='the /system layout probe returned no recognisable answer|the /vendor/etc/init write probe returned no recognisable answer|the panel has read-only /system and no verified systemless boot-service runner|/vendor/etc/init is not writable for the hybrid root helper|/vendor/etc/init has no free space for the hybrid root helper|the root-helper transaction could not be promoted into protected storage'
 
 # assert_failure "<description>" ["<expected refusal pattern>"]
 #
@@ -2795,6 +2797,70 @@ assert_not_contains 'Restore vendor-partition writability' "$LAST_OUTPUT" \
   "an unanswered vendor init probe does not tell the operator to change the partition"
 assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
   "an unanswered vendor init probe stops before a helper transaction or APK replacement"
+
+# The /vendor probe separates a full partition from a read-only one, as the /system probe does: a
+# created-but-empty probe file is a full partition, and is refused on its own reason.
+MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=full run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "full /system and full /vendor init refuse on the full-partition reason" \
+  "/vendor/etc/init has no free space for the hybrid root helper"
+assert_not_contains 'Restore vendor-partition writability' "$LAST_OUTPUT" \
+  "a full vendor partition is not reported as read-only"
+assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)|^adb .* install( |$)' "$MOCK_CALL_LOG" \
+  "a full vendor partition stops before a helper transaction or APK replacement"
+
+# Sonoff NSPanel Pro firmware lets the app run su itself (nspanel-pro.yaml: app_can_su true), so a
+# panel whose /system and /vendor both lack room for the helper's boot registration installs without
+# the helper and says so, instead of failing. Each of the profile's match facts is enough on its own.
+for sonoff_case in version:nspanel_86p model:PX30 device:rk3326_s6; do
+  sonoff_fact="${sonoff_case%%:*}" sonoff_value="${sonoff_case#*:}"
+  sonoff_version="" sonoff_model="" sonoff_device=""
+  case "$sonoff_fact" in
+    version) sonoff_version="$sonoff_value" ;;
+    model) sonoff_model="$sonoff_value" ;;
+    device) sonoff_device="$sonoff_value" ;;
+  esac
+  MOCK_PRODUCT_VERSION="$sonoff_version" MOCK_PRODUCT_IDENTITY="$sonoff_model" MOCK_PRODUCT_DEVICE="$sonoff_device" \
+    MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=full run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+  assert_success "Sonoff panel ($sonoff_fact) without room for the helper installs without it"
+  assert_contains 'root helper not installed: this panel has no room for its boot registration' \
+    "Sonoff panel ($sonoff_fact) warns that the helper was not installed"
+  assert_contains '/system has 12KB free .* and /vendor/etc/init has no free space' \
+    "Sonoff panel ($sonoff_fact) names both full partitions"
+  assert_contains 'continuing without it' "Sonoff panel ($sonoff_fact) says the install continues"
+  assert_log_contains '^adb .* install( |$)' "Sonoff panel ($sonoff_fact) still installs the APK"
+  assert_not_contains 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)' "$MOCK_CALL_LOG" \
+    "Sonoff panel ($sonoff_fact) runs no helper transaction"
+done
+unset sonoff_case sonoff_fact sonoff_value sonoff_version sonoff_model sonoff_device
+
+MOCK_PRODUCT_VERSION=nspanel_86p MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=0 \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "Sonoff panel with a read-only vendor init installs without the helper"
+assert_contains '/vendor/etc/init is read-only' "Sonoff panel names the read-only vendor partition"
+
+# A Sonoff panel installed without the helper has no helper daemon afterwards, and the app answers
+# its diagnostics that way; the post-install check must not then report the missing daemon as a fault.
+MOCK_PRODUCT_VERSION=nspanel_86p MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=full MOCK_DIAG_DAEMON=false \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "Sonoff panel installed without the helper passes verification with no helper daemon running"
+assert_not_contains 'root helper daemon: not detected after installation' "$LAST_OUTPUT" \
+  "Sonoff panel installed without the helper does not report the absent daemon as a failure"
+
+# An unanswered probe concludes nothing about the partition, so even a Sonoff panel still refuses.
+MOCK_PRODUCT_VERSION=nspanel_86p MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=unreadable \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "Sonoff panel with an unanswered vendor probe still refuses" \
+  "the /vendor/etc/init write probe returned no recognisable answer"
+
+# The provisioner's Sonoff facts are a copy of the app profile's match rules; pin the two together.
+for sonoff_token in 'app_can_su: true' 'su_form: toolbox' '- nspanel' '- s6_android_' '- px30' '- rk3326'; do
+  if grep -Fq -- "$sonoff_token" "$ROOT/app/src/main/assets/device-profiles/nspanel-pro.yaml"; then
+    pass "nspanel-pro profile still declares '$sonoff_token' as provision.sh assumes"
+  else
+    fail_test "nspanel-pro profile no longer declares '$sonoff_token'; update panel_runs_without_root_helper"
+  fi
+done
+unset sonoff_token
 
 MOCK_SYSTEM_AVAIL_KB=1048576 MOCK_VENDOR_RC_STATE=managed MOCK_VENDOR_INIT_RW=0 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
@@ -8051,14 +8117,45 @@ FULL_ROOT="$TMP/full-system"
 mkdir -p "$FULL_ROOT/system/etc/init" "$FULL_ROOT/system/bin"
 FULL_LIMIT="trap '' XFSZ; ulimit -f 0"
 # Only the paths move: the probe's own create, write, capacity and runner logic run as shipped.
-full_probe="$(sed -n '/^    system_init_probe=\/system\/etc\/init/,/^  '"'"' 2>&1)" || layout_status=\$?$/p' "$PROVISION" |
-  sed -e '$d' -e "s|/system|$FULL_ROOT/system|g" -e 's/@TRANSACTION_ID@/full/g')"
+# The write itself comes from the shared partition_write_probe definition, which the host renders
+# into the probe text; render it here the same way, from the call exactly as provision.sh writes it.
+full_probe="$(sed -n '/^    system_init_probe=\/system\/etc\/init/,/^  '"'"' 2>&1)" || layout_status=\$?$/p' "$PROVISION")"
+eval "$(sed -n '/^partition_write_probe() {/,/^}/p' "$PROVISION")"
+full_probe_call="$(printf '%s\n' "$full_probe" | grep -F 'partition_write_probe system_init_writable' | head -1)" || full_probe_call=""
+if [ -n "$full_probe_call" ]; then
+  full_probe_write="${full_probe_call#\'\"\$(}"
+  full_probe_write="$(eval "${full_probe_write%)\"\'}")"
+  full_probe="${full_probe/"$full_probe_call"/"$full_probe_write"}"
+fi
+full_probe="$(printf '%s\n' "$full_probe" | sed -e '$d' -e "s|/system|$FULL_ROOT/system|g" -e 's/@TRANSACTION_ID@/full/g')"
 full_out="$(PATH=/usr/bin:/bin /bin/sh -c "$FULL_LIMIT
 $full_probe" 2>&1)"
 if [ -n "$full_probe" ] && [ "$full_out" = "$(printf '%s\n' SYSTEM_RW SYSTEM_AVAIL_KB=0)" ]; then
   pass "a read-write /system with no room is reported writable with no space, never read-only"
 else
   fail_test "a read-write /system with no room is reported writable with no space, never read-only"
+fi
+
+# The /vendor/etc/init probe makes the same distinction through the same write definition: a
+# read-write directory that takes a create and refuses every byte is full, not read-only.
+mkdir -p "$FULL_ROOT/vendor/etc/init"
+eval "$(sed -n '/^partition_write_probe() {/,/^}/p' "$PROVISION")"
+vendor_full_probe="$(sed -n '/^    vendor_probe="\$(run_root '"'"'$/,/^    '"'"' 2>&1)" || vendor_status=\$?$/p' "$PROVISION" | sed -e '1d' -e '$d')"
+vendor_full_call="$(printf '%s\n' "$vendor_full_probe" | grep -F 'partition_write_probe vendor_init_writable' | head -1)" || vendor_full_call=""
+if [ -n "$vendor_full_call" ]; then
+  vendor_full_write="${vendor_full_call#\'\"\$(}"
+  vendor_full_write="$(eval "${vendor_full_write%)\"\'}")"
+  vendor_full_probe="${vendor_full_probe/"$vendor_full_call"/"$vendor_full_write"}"
+fi
+vendor_full_probe="$(printf '%s\n' "$vendor_full_probe" | sed -e "s|/vendor|$FULL_ROOT/vendor|g" -e 's/'"'"'"\$ROOT_HELPER_TRANSACTION_ID"'"'"'/full/g')"
+vendor_full_out="$(PATH=/usr/bin:/bin /bin/sh -c "$FULL_LIMIT
+$vendor_full_probe" 2>&1)"
+vendor_ro_out="$(PATH=/usr/bin:/bin /bin/sh -c "$(printf '%s\n' "$vendor_full_probe" | sed "s|$FULL_ROOT/vendor/etc/init|$FULL_ROOT/vendor/absent|g")" 2>&1)"
+if [ -n "$vendor_full_call" ] && [ "$vendor_full_out" = VENDOR_INIT_FULL ] && [ "$vendor_ro_out" = VENDOR_INIT_RO ] &&
+   [ -z "$(ls -A "$FULL_ROOT/vendor/etc/init")" ]; then
+  pass "a read-write /vendor/etc/init with no room is reported full, a refused create read-only, and no probe file is left"
+else
+  fail_test "a read-write /vendor/etc/init with no room is reported full, a refused create read-only, and no probe file is left (full: '$vendor_full_out', refused: '$vendor_ro_out')"
 fi
 # The opposite case must not ride along: /system takes the create but its boot directory refuses one,
 # as a read-only overmount there does. Hybrid would then fail late removing the old boot file, so this
