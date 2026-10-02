@@ -34,6 +34,7 @@ internal class PaneldServerHttpFixture(
     installComponent: (String, String, String) -> Boolean = { _, _, _ -> error("Unexpected install") },
     density: io.github.maxlyth.hapaneld.control.DensityController? = null,
     camera: io.github.maxlyth.hapaneld.camera.CameraSurface = io.github.maxlyth.hapaneld.camera.AbsentCameraSurface,
+    permissionStatus: () -> Map<io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.Grant, io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.State> = { emptyMap() },
     powerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyAssessment = { error("Unexpected power assessment") },
     repairPowerSafety: () -> io.github.maxlyth.hapaneld.control.PowerSafetyRepairResult = { error("Unexpected power repair") },
     logApp: io.github.maxlyth.hapaneld.logship.LogCapture? = null,
@@ -86,6 +87,7 @@ internal class PaneldServerHttpFixture(
         field("onRepairCompanionUrl", repairCompanionUrl)
         companionCache.set(io.github.maxlyth.hapaneld.control.CompanionDb.ServerObservation.EMPTY)
         field("camera", camera)
+        field("permissionStatus", permissionStatus)
         field("density", density ?: allocate(io.github.maxlyth.hapaneld.control.DensityController::class.java))
         field("profile", io.github.maxlyth.hapaneld.control.fakeProfile())
         field("catalogueLoader\$delegate", lazy {

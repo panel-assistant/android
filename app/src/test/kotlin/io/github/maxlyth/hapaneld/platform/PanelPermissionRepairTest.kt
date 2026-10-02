@@ -1,9 +1,13 @@
 package io.github.maxlyth.hapaneld.platform
 
+import android.Manifest
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.camera.CameraCapabilityReason
 import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.Grant
 import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.Outcome
+import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair.State
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -96,11 +100,95 @@ class PanelPermissionRepairTest {
     }
 
     @Test fun cameraMetadataCoversDelayedEnumerationWithoutOverridingTheProfile() {
-        for (reason in CameraCapabilityReason.entries) for (hardware in listOf(false, true)) {
-            val expected = reason == CameraCapabilityReason.PRESENT || reason == CameraCapabilityReason.MISDECLARED ||
-                (reason == CameraCapabilityReason.UNDETERMINED && hardware)
+        for (reason in CameraCapabilityReason.entries) for (hardware in listOf(false, true, null)) {
+            val expected = when {
+                reason.capable -> true
+                reason != CameraCapabilityReason.UNDETERMINED -> false
+                hardware == true -> true
+                else -> null
+            }
             assertEquals(expected, PanelPermissionRepair.cameraRequired(reason, hardware))
         }
+    }
+
+    @Test fun statusObservesEachSupportedGrantWithoutRepairingOrReadingAbsentHardware() {
+        val panel = Panel(mutableSetOf(Grant.WRITESETTINGS, Grant.ACCESSIBILITY))
+        val observed = PanelPermissionRepair.observe(32, false, false, panel::held)
+        assertEquals(mapOf(
+            Grant.NOTIFICATIONS to State.NOT_REQUIRED,
+            Grant.WRITESETTINGS to State.HELD,
+            Grant.OVERLAY to State.MISSING,
+            Grant.ACCESSIBILITY to State.HELD,
+            Grant.MICROPHONE to State.NOT_REQUIRED,
+            Grant.CAMERA to State.NOT_REQUIRED,
+        ), observed)
+        assertEquals(setOf(Grant.WRITESETTINGS, Grant.OVERLAY, Grant.ACCESSIBILITY), panel.observed)
+        assertTrue(panel.submitted.isEmpty())
+    }
+
+    @Test fun missingUnreadableAndUnknownHardwareRemainDistinct() {
+        for (camera in listOf(false, true, null)) {
+            val observed = PanelPermissionRepair.observe(34, true, camera) { grant ->
+                if (grant == Grant.MICROPHONE) throw SecurityException("read unavailable")
+                false
+            }
+            assertEquals(State.MISSING, observed[Grant.NOTIFICATIONS])
+            assertEquals(State.MISSING, observed[Grant.WRITESETTINGS])
+            assertEquals(State.MISSING, observed[Grant.OVERLAY])
+            assertEquals(State.MISSING, observed[Grant.ACCESSIBILITY])
+            assertEquals(State.UNREADABLE, observed[Grant.MICROPHONE])
+            assertEquals(when (camera) {
+                true -> State.MISSING
+                false -> State.NOT_REQUIRED
+                null -> State.UNREADABLE
+            }, observed[Grant.CAMERA])
+        }
+        val panel = Panel(mutableSetOf())
+        val outcome = PanelPermissionRepair.repair(32, false, null, panel::held, panel, AppIdentity.LEGACY)
+        assertEquals(Outcome.UNREADABLE, outcome[Grant.CAMERA])
+        assertEquals(setOf(Grant.WRITESETTINGS, Grant.OVERLAY, Grant.ACCESSIBILITY), panel.permissions)
+    }
+
+    @Test fun androidRuntimeReadbackChangesWithoutCachingAndHardwareProbeFailureIsPartial() {
+        val runtimePermissions = mutableSetOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        val context = object : ContextWrapper(null) {
+            override fun getPackageName() = AppIdentity.LEGACY
+            override fun checkSelfPermission(permission: String): Int =
+                if (permission in runtimePermissions) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+            override fun getPackageManager(): PackageManager = throw SecurityException("hardware metadata unavailable")
+        }
+        val present = PanelPermissionRepair.observe(context, true, CameraCapabilityReason.PRESENT)
+        assertEquals(State.HELD, present[Grant.CAMERA])
+        assertEquals(State.HELD, present[Grant.MICROPHONE])
+        runtimePermissions.clear()
+        val missing = PanelPermissionRepair.observe(context, true, CameraCapabilityReason.PRESENT)
+        assertEquals(State.MISSING, missing[Grant.CAMERA])
+        assertEquals(State.MISSING, missing[Grant.MICROPHONE])
+        val unavailable = PanelPermissionRepair.observe(context, true, CameraCapabilityReason.UNDETERMINED)
+        assertEquals(State.UNREADABLE, unavailable[Grant.CAMERA])
+        assertEquals(State.MISSING, unavailable[Grant.MICROPHONE])
+        val suppressed = PanelPermissionRepair.observe(context, false, CameraCapabilityReason.SUPPRESSED_BY_PROFILE)
+        assertEquals(State.NOT_REQUIRED, suppressed[Grant.CAMERA])
+        assertEquals(State.NOT_REQUIRED, suppressed[Grant.MICROPHONE])
+    }
+
+    @Test fun failedHelperAndLostReadbackDoNotAbortOtherGrantRepairs() {
+        val panel = Panel(mutableSetOf())
+        val helper = object : Daemon by panel {
+            override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult {
+                if (cmd.endsWith("WRITESETTINGS")) throw IllegalStateException("helper unavailable")
+                return panel.sendLong(cmd, timeoutMs)
+            }
+        }
+        var cameraReads = 0
+        val result = PanelPermissionRepair.repair(34, true, true, { grant ->
+            if (grant == Grant.CAMERA && ++cameraReads == 2) throw SecurityException("lost readback")
+            panel.held(grant)
+        }, helper, AppIdentity.LEGACY)
+        assertEquals(Outcome.REFUSED, result[Grant.WRITESETTINGS])
+        assertEquals(Outcome.UNREADABLE, result[Grant.CAMERA])
+        assertEquals(4, result.values.count { it == Outcome.CLAIMED })
+        assertEquals(Grant.entries.toSet() - Grant.WRITESETTINGS, panel.permissions)
     }
 
     @Test fun accessibilityRequiresOurExactComponentAndTheGlobalEnableFlag() {

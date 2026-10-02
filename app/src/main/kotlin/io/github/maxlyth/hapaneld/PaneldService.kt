@@ -1880,6 +1880,7 @@ class PaneldService : Service() {
             // One-line EFR32 radio status for the Install-tab Radio card; null when this panel has no radio.
             radioStatus = { if (profile.zigbeeGatewayDir != null) zigbeeHealth.snapshot() else null },
             camera = camera,
+            permissionStatus = { PanelPermissionRepair.observe(this, profile.hasMicrophone, cameraReason()) },
             panelAssistantTransportFacts = { panelAssistantTransport.facts() },
             panelAssistantRestartHealth = { panelAssistantTransport.restartHealthToken() },
             releasePanelAssistantTransport = { panelAssistantTransport.releaseToMqtt() },
