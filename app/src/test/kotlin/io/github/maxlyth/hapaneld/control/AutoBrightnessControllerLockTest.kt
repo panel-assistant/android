@@ -19,6 +19,7 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -245,6 +246,71 @@ class AutoBrightnessControllerLockTest {
         assertEquals("a late system change after close", emptyList<Throwable>(), failures.toList())
     }
 
+    @Test(timeout = 30_000)
+    fun `a restart keeps an unexpired preference when the source and site are unchanged`() {
+        val store = MemoryPreferenceStore()
+        captureThenRestart(store, haEntity = "sensor.room_lux")
+        val restarted = harness(haEntity = "sensor.room_lux", store = store)
+
+        // Production order: the controller is read before Home Assistant's site metadata arrives.
+        assertTrue("judged before the site is known", restarted.controller.status().manualPreference.active)
+        restarted.controller.updateSite(SITE_LAT, SITE_LON, SITE_ZONE)
+
+        assertTrue(restarted.controller.status().manualPreference.active)
+        assertNotNull("the stored preference survives", store.load())
+    }
+
+    @Test(timeout = 30_000)
+    fun `a restart clears the preference when the site has moved`() {
+        val store = MemoryPreferenceStore()
+        captureThenRestart(store)
+        val restarted = harness(store = store)
+
+        restarted.controller.updateSite(SITE_LAT + 1.0, SITE_LON, SITE_ZONE)
+
+        assertFalse(restarted.controller.status().manualPreference.active)
+        assertEquals(null, store.load())
+    }
+
+    @Test(timeout = 30_000)
+    fun `a restart clears the preference when the ambient source has changed`() {
+        val store = MemoryPreferenceStore()
+        captureThenRestart(store, haEntity = "sensor.room_lux")
+        val restarted = harness(haEntity = "sensor.other_lux", store = store)
+
+        assertFalse(restarted.controller.status().manualPreference.active)
+        assertEquals(null, store.load())
+    }
+
+    @Test(timeout = 30_000)
+    fun `a restart clears the preference once it has expired`() {
+        val store = MemoryPreferenceStore()
+        val offset = AtomicLong()
+        val clock = { System.nanoTime() / 1_000_000L + offset.get() }
+        captureThenRestart(store, clock = clock)
+        offset.set(ManualBrightnessAuthority.DURATION_MS)
+        val restarted = harness(store = store, clock = clock)
+
+        restarted.controller.updateSite(SITE_LAT, SITE_LON, SITE_ZONE)
+
+        assertFalse(restarted.controller.status().manualPreference.active)
+        assertEquals(null, store.load())
+    }
+
+    /** A running controller learns its site, takes a manual level, and stops, persisting it. */
+    private fun captureThenRestart(
+        store: MemoryPreferenceStore,
+        haEntity: String = "",
+        clock: () -> Long = { System.nanoTime() / 1_000_000L },
+    ) {
+        val first = harness(haEntity = haEntity, store = store, clock = clock)
+        first.controller.updateSite(SITE_LAT, SITE_LON, SITE_ZONE)
+        assertTrue(first.controller.noteExternalBrightness(240, BrightnessPreferenceOrigin.PANEL_CONTROLS, priorAppliedLevel = 100))
+        first.root.release.countDown()
+        first.controller.closeAndJoin(timeoutMs = 5_000L)
+        assertNotNull("the preference was persisted at stop", store.load())
+    }
+
     private class Harness(val controller: AutoBrightnessController, val root: BlockingRootShell)
 
     /** Blocks the first actuation before its action runs; counts completed actuations. */
@@ -347,6 +413,8 @@ class AutoBrightnessControllerLockTest {
         haEntity: String = "",
         wallClockMs: () -> Long = System::currentTimeMillis,
         historyExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor(),
+        store: MemoryPreferenceStore = MemoryPreferenceStore(),
+        clock: () -> Long = { System.nanoTime() / 1_000_000L },
     ): Harness {
         val files = Files.createTempDirectory("auto-brightness-lock").toFile().also { it.deleteOnExit() }
         val prefs = proxyPreferences()
@@ -356,7 +424,6 @@ class AutoBrightnessControllerLockTest {
             if (haEntity.isNotEmpty()) setAutoBrightnessHaEntity(haEntity)
         }
         val root = BlockingRootShell()
-        val clock = { System.nanoTime() / 1_000_000L }
         val controller = AutoBrightnessController(
             context = context,
             brightness = BrightnessController(context, root, FakeDaemon()),
@@ -366,7 +433,7 @@ class AutoBrightnessControllerLockTest {
             elapsedRealtimeMs = clock,
             history = AmbientHistoryRuntime(context, executor = historyExecutor),
             preference = ManualBrightnessAuthority(
-                MemoryPreferenceStore(),
+                store,
                 wallClockMs = System::currentTimeMillis,
                 elapsedRealtimeMs = clock,
                 bootCount = { 1 },
@@ -419,6 +486,9 @@ class AutoBrightnessControllerLockTest {
     private companion object {
         const val LUX = 50.0
         const val PROMPT_MS = 2_000L
+        const val SITE_LAT = 51.5
+        const val SITE_LON = -0.1
+        const val SITE_ZONE = "Europe/London"
 
         fun newConfig(prefs: SharedPreferences, resolver: ContentResolver): Config {
             val constructor = Config::class.java.declaredConstructors.single {

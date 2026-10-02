@@ -92,6 +92,9 @@ internal class AutoBrightnessController(
     private var location: SolarLocation? = null
     private var zone: TimeZone = TimeZone.getDefault()
     private var locationContext = contextKey(null, zone.id)
+    // Until Home Assistant's site metadata first arrives, locationContext is a placeholder; a restored
+    // manual preference is judged on source and expiry only, never against it.
+    private var siteKnown = false
     private var activeSourceKind = AmbientLuxSourceKind.PANEL
     private var activeSourceKey = "panel"
     private var cachedHaEntity = ""
@@ -113,6 +116,9 @@ internal class AutoBrightnessController(
      * moved on is discarded rather than applied.
      */
     private val evaluationGeneration = AtomicLong()
+
+    // The configured source is known now; a manual level captured before the first tick must carry it.
+    init { refreshSourceIdentity() }
 
     /** Activate only after the service-generation lease has admitted active owners. */
     @Synchronized fun activate() {
@@ -180,9 +186,11 @@ internal class AutoBrightnessController(
         val nextContext = contextKey(nextLocation, nextZone.id)
         zone = nextZone
         location = nextLocation
+        siteKnown = true
         if (nextContext != locationContext) {
             locationContext = nextContext
-            resetTransientPolicy(clearPreference = true)
+            // The preference authority clears a preference whose context no longer matches.
+            resetTransientPolicy(clearPreference = false)
             baselineCache.invalidate()
             if (config.autoBrightness) {
                 configureHistorySource()
@@ -303,7 +311,7 @@ internal class AutoBrightnessController(
         val automatic = lastAutomaticTarget.takeIf { it >= 0 }
         val manual = preference.snapshot(
             automaticTarget = automatic ?: BrightnessController.MIN_VISIBLE,
-            modelContextKey = locationContext,
+            modelContextKey = judgedContext(),
             ambientSourceKey = activeSourceKey,
         )
         return AutoBrightnessRuntimeStatus(
@@ -513,7 +521,7 @@ internal class AutoBrightnessController(
         // backlight follows, through the same learned range, before the backlight's minimum floor.
         lastAmbientLevel = AdaptiveLuxCurve.normalizedLevel(result.effectiveLux, result.estimate.brightnessRange)
         if (ambientTheme.observe(nowElapsed, lastAmbientLevel)) publishAmbientVerdict()
-        val manual = preference.evaluate(result.brightness, locationContext, activeSourceKey)
+        val manual = preference.evaluate(result.brightness, judgedContext(), activeSourceKey)
         val finalTarget = manual.finalTarget ?: result.brightness
         val lastBacklightWriteElapsed = brightness.lastSuccessfulWriteElapsed()
         val baselineEligible = result.baselineEligible &&
@@ -601,7 +609,8 @@ internal class AutoBrightnessController(
         val changed = refreshSourceIdentity() || activeSourceKey != history.currentSourceId() ||
             locationContext != history.currentContextId()
         if (changed) {
-            resetTransientPolicy(clearPreference = true)
+            // The preference authority clears a preference whose source no longer matches.
+            resetTransientPolicy(clearPreference = false)
             baselineCache.invalidate()
             configureHistorySource()
         }
@@ -626,6 +635,7 @@ internal class AutoBrightnessController(
     }
 
     private fun activeSourceId(): String = activeSourceKey
+    private fun judgedContext(): String? = locationContext.takeIf { siteKnown }
     private fun activeSourceRevision(): String = hash("$locationContext|$activeSourceKey")
     private fun activeLux(): Double =
         if (activeSourceKind == AmbientLuxSourceKind.HOME_ASSISTANT) latestHaLux else latestPanelLux
