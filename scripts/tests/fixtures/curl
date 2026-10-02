@@ -431,7 +431,8 @@ JSON
       exit 22
     fi
     case "$url" in *"${MOCK_VERIFY_FAIL_HOST:-__no_host__}"*) exit 22 ;; esac
-    printf 'ha-paneld diagnostics write_settings=true a11y=true su=true daemon=true\n'
+    # MOCK_DIAG_DAEMON=false: the app reports no running root helper, as on a panel installed without it.
+    printf 'ha-paneld diagnostics write_settings=true a11y=true su=true daemon=%s\n' "${MOCK_DIAG_DAEMON:-true}"
     ;;
   *'/api/v1/config/export?include_secrets=1')
     [ "${MOCK_EXPORT:-ok}" = "ok" ] || exit 22
