@@ -32,9 +32,9 @@ class NativeLocalizationContractTest {
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder()
             .parse(File("src/main/res/values/strings.xml"))
         val catalogue = baseStrings()
-        assertEquals(258, document.getElementsByTagName("string").length)
-        assertEquals(258, catalogue.size)
-        assertEquals(255, catalogue.count { it.value })
+        assertEquals(255, document.getElementsByTagName("string").length)
+        assertEquals(255, catalogue.size)
+        assertEquals(252, catalogue.count { it.value })
         assertEquals(
             setOf("app_name", "home_assistant", "wordmark_description"),
             catalogue.filterValues { !it }.keys,
@@ -79,7 +79,8 @@ class NativeLocalizationContractTest {
 
     @Test fun everyAppStringReferenceResolvesAndEveryFrozenKeyIsAccountedFor() {
         val catalogue = baseStrings()
-        val supplemental = stringsIn(File("src/main/res/values/proximity_wizard.xml"))
+        val supplemental = stringsIn(File("src/main/res/values/proximity_wizard.xml")) +
+            stringsIn(File("src/main/res/values/ha_lifecycle.xml"))
         val kotlinReferences = productionKotlin.values.flatMap { source ->
             Regex("(?<!android\\.)R\\.string\\.([A-Za-z0-9_]+)").findAll(source).map { it.groupValues[1] }.toList()
         }.toSet()

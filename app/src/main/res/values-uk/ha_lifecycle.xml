@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ha_reason_restart">Перезапуск Home Assistant</string>
+    <string name="ha_reason_host_reboot">Перезапуск хоста</string>
+    <string name="ha_reason_core_update">Оновлення ядра Home Assistant</string>
+    <string name="ha_reason_unknown">Причина невідома</string>
+    <string name="ha_not_measured">Час до відновлення ще не виміряно</string>
+    <string name="ha_taking_longer">Триває довше, ніж зазвичай</string>
+    <string name="ha_expected_in">Очікуване відновлення приблизно через %1$s</string>
+    <string name="ha_overdue">На %1$s довше за очікуваний час</string>
+    <string name="ha_duration_seconds">%1$d с</string>
+    <string name="ha_duration_minutes">%1$d хв</string>
+    <string name="ha_duration_hours">%1$d год</string>
+</resources>

@@ -94,10 +94,13 @@ class HaNetworkPathQualificationTest {
 
     @Test fun healthyPathIsMeasuredHealthyWithSingleDigitRoundTrips() {
         server.pongDelayMs.set(0L)
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         val snap = await("four round trips", 4_000L) { it.roundTrips >= 4 }
         assertEquals(HaNetworkPathSeverity.HEALTHY, snap.severity)
         assertTrue("p95 ${snap.p95Ms} on loopback", snap.p95Ms in 0L..HaNetworkPath.WARN_P95_MS)
+        assertEquals(setOf("device_registry_updated", "entity_registry_updated", "area_registry_updated"),
+            server.subscriptions.map { it.getString("event_type") }.toSet())
+        assertEquals("only the requested registry subscriptions reach Core", 3, server.subscriptions.size)
         assertEquals(0, snap.networkFailures)
         assertEquals(0, snap.serverFailures)
         assertTrue(pokes.contains(Triple(true, false, HaNetworkPathSeverity.HEALTHY)))
@@ -114,7 +117,7 @@ class HaNetworkPathQualificationTest {
      */
     @Test fun sustainedLatencyOnTheRealSocketIsAResponsivenessVerdictAndNeverAPathOne() {
         server.pongDelayMs.set(180L)
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         val warned = await("responsiveness warning", 6_000L) { it.responsiveness == HaNetworkPathSeverity.WARNING }
         assertTrue("p95 ${warned.p95Ms}", warned.p95Ms >= 180L)
         assertEquals(0, warned.networkFailures)
@@ -138,7 +141,7 @@ class HaNetworkPathQualificationTest {
 
     @Test fun droppedPongsAreLossAndTheVerdictAgesOutAfterRecovery() {
         server.pongDelayMs.set(0L)
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         await("baseline", 4_000L) { it.roundTrips >= 2 }
         server.pongDelayMs.set(null)
         val severe = await("severe by consecutive misses", 12_000L) { it.severity == HaNetworkPathSeverity.SEVERE }
@@ -155,7 +158,7 @@ class HaNetworkPathQualificationTest {
 
     @Test fun anOverloadedServerThatStreamsButNeverPongsIsNeverLossAndKeepsTheSocket() {
         server.pongDelayMs.set(0L)
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         await("baseline", 4_000L) { it.roundTrips >= 2 }
         // Home Assistant keeps pushing event frames every 50 ms but stops answering pings.
         server.eventEveryMs.set(50L)
@@ -176,7 +179,7 @@ class HaNetworkPathQualificationTest {
 
     @Test fun aServerRestartOnAHealthyPathIsNeverLoss() {
         server.pongDelayMs.set(0L)
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         await("baseline", 4_000L) { it.roundTrips >= 2 }
         // Home Assistant goes away: every socket closed, the port refuses while it "restarts".
         server.restart(downForMs = 1_500L)
@@ -214,7 +217,7 @@ class HaNetworkPathQualificationTest {
                     synchronized(attributed) { attributed += kind }
                 }
             })
-            second.replaceLifecycleWatch(true)
+            second.replacePresenceRegistryWatch(true)
             // The per-route connect timeout is 5 s; two attempts prove the classification is stable.
             val deadline = System.nanoTime() + 25_000L * 1_000_000L
             while (System.nanoTime() < deadline && synchronized(attributed) { attributed.size } < 2) Thread.sleep(50L)
@@ -240,6 +243,7 @@ class HaNetworkPathQualificationTest {
      * masked and unmasked here; server frames are sent unmasked. Protocol pings are answered.
      */
     private class FakeHaServer {
+        val subscriptions = CopyOnWriteArrayList<JSONObject>()
         val pongDelayMs = AtomicReference<Long?>(0L)
         /** When set, every live connection receives an entity event frame this often (an overloaded server that still streams). */
         val eventEveryMs = AtomicReference<Long?>(null)
@@ -311,9 +315,11 @@ class HaNetworkPathQualificationTest {
                         val json = JSONObject(String(payload, Charsets.UTF_8))
                         when (json.optString("type")) {
                             "auth" -> send(JSONObject().put("type", "auth_ok").put("ha_version", "2026.8.0").toString())
-                            "subscribe_events", "subscribe_entities" -> send(
-                                JSONObject().put("id", json.getInt("id")).put("type", "result").put("success", true).put("result", JSONObject.NULL).toString(),
-                            )
+                            "subscribe_events", "subscribe_entities" -> {
+                                subscriptions += json
+                                send(JSONObject().put("id", json.getInt("id")).put("type", "result")
+                                    .put("success", true).put("result", JSONObject.NULL).toString())
+                            }
                             "ping" -> {
                                 pingsSeen++
                                 val delay = pongDelayMs.get() ?: continue

@@ -3379,7 +3379,11 @@ class DashboardActivity : AppCompatActivity() {
         // Attached to the same frame the fullscreen-video view uses, so the dashboard keeps rendering
         // underneath. Seeded from the CURRENT state because a renderer rebuilt mid-outage must not come
         // up looking calm.
-        lifecycleBar = HaLifecycleBar.attach(this, container)
+        lifecycleBar = HaLifecycleBar.attach(this, container) { visible ->
+            if (rendererCurrent(generation, w)) {
+                w.evaluateJavascript(InjectionScript.lifecycleNoticeJs(visible), null)
+            }
+        }
         networkChip = HaNetworkChip.attach(this, container)
         redrawLifecycleBar()
         val target = currentUrl(config, homePath)
@@ -3649,6 +3653,20 @@ class DashboardActivity : AppCompatActivity() {
         // every stream paused on a touchless panel. (Not media-file playback, which stays out of scope.)
         settings.mediaPlaybackRequiresUserGesture = false
         setBackgroundColor(BG_DARK) // no white flash before first paint
+        runCatching {
+            if (webViewFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                    this,
+                    InjectionScript.lifecycleNoticeJs(
+                        haLifecycleNoticeState(
+                            io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime.snapshot(),
+                            RendererAdmissionRuntime.current()?.takeIf { it.owner == activityOwner },
+                        ) != null,
+                    ),
+                    documentStartOrigins,
+                )
+            }
+        }.onFailure { Log.w(TAG, "Home Assistant notice coordination unavailable", it) }
         // Overscroll stretch/glow off by default (see applyOverscroll) — set before first layout.
         overScrollMode = if (config.dashboardOverscroll) View.OVER_SCROLL_ALWAYS else View.OVER_SCROLL_NEVER
         // Page zoom to match the HA Companion's default sizing (it scales by device density); pinch
@@ -3896,10 +3914,15 @@ class DashboardActivity : AppCompatActivity() {
                 if (!rendererCurrent(generation, view)) return
                 externalBusSession?.takeIf { bridgeCurrent(generation, it) }?.let(v2Handshake::finish)
                 swipe?.isRefreshing = false
-                // Re-assert the page zoom AFTER load — HA's frontend ships its own <meta viewport
-                // initial-scale=1>, which overrides a scale set before load, so a pre-load setInitialScale
-                // silently reverts to default (dashboard looks compact). HACA does exactly this in its
-                // own onPageFinished. Keeps our sizing matching the Companion app's.
+                // A reload creates a new document even if the card's visibility did not change.
+                view.evaluateJavascript(InjectionScript.lifecycleNoticeJs(
+                    haLifecycleNoticeState(
+                        io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime.snapshot(),
+                        RendererAdmissionRuntime.current()?.takeIf { it.owner == activityOwner },
+                    ) != null,
+                ), null)
+                // HA's frontend viewport can override pre-load zoom; restore the configured
+                // built-in renderer scale once the document finishes loading.
                 applyZoom()
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {

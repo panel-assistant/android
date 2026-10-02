@@ -446,3 +446,25 @@ test('missing and non-callable helpers reproduce every English network row and b
     }
   }
 });
+
+test('offline story waits for grace and shows measured countdown with subdued quantified overrun', async () => {
+  const rig = await loadBuildwatch();
+  await rig.poll('ha=connection_lost ha_reason=unknown ha_grace_ms=10000');
+  assert.equal(rig.ids.halifebar.style.display, 'none');
+  await rig.poll('ha=connection_lost ha_reason=unknown ha_grace_ms=0');
+  assert.match(rig.ids.halifecell.textContent, /Reason unknown/);
+  assert.match(rig.ids.halifecell.textContent, /Time back has not been measured yet/);
+  await rig.poll('ha=shutting_down ha_src=native ha_reason=core_update ha_elapsed_ms=1000 ha_expected_ms=121000');
+  assert.match(rig.ids.halifecell.textContent, /Home Assistant Core update/);
+  assert.match(rig.ids.halifecell.textContent, /Expected back in about 2 min/);
+  await rig.poll('ha=starting ha_src=native ha_reason=restart ha_elapsed_ms=181000 ha_expected_ms=121000');
+  assert.match(rig.ids.halifebar.textContent, /Taking longer than usual/);
+  assert.match(rig.ids.halifebar.textContent, /1 min past the estimate/);
+  assert.equal(rig.ids.halifebar.children.at(-1).tagName, 'SMALL');
+  await rig.poll('ha=starting ha_reason=restart ha_elapsed_ms=3721000 ha_expected_ms=121000');
+  assert.match(rig.ids.halifebar.textContent, /1 h past the estimate/);
+  await rig.poll('ha=back_online ha_src=native ha_reason=restart ha_elapsed_ms=3721000 ha_expected_ms=121000');
+  assert.doesNotMatch(rig.ids.halifebar.textContent, /Taking longer|past the estimate/);
+  await rig.poll('ha=normal ha_reason=unknown');
+  assert.equal(rig.ids.halifebar.style.display, 'none');
+});
