@@ -60,6 +60,7 @@ class ManagementHomeProofTest {
                                         },
                                         camera = { events += "camera"; CameraPresentation.absent() },
                                         databaseObservationNonce = nonce,
+                                        permissions = { emptyMap() },
                                         homeProof = if (requested) ({
                                             events += "home"
                                             homeUiProofJson("ready", "dashboard_foreground", "builtin_lifecycle")

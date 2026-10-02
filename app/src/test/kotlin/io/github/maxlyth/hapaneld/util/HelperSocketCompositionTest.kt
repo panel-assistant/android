@@ -36,7 +36,7 @@ class HelperSocketCompositionTest {
             ).redirectErrorStream(true).start()
             assertEquals("READY", second.inputStream.bufferedReader().readLine())
             assertTrue(Files.isDirectory(root.resolve(".hapaneld-guard-db-test")))
-            assertEquals("HELPER version=1.3.0 proto=1.3", SocketDaemon(socket).send("VERSION"))
+            assertEquals("HELPER version=1.3.1 proto=1.3", SocketDaemon(socket).send("VERSION"))
         } finally {
             second?.let {
                 it.destroy()
@@ -52,7 +52,7 @@ class HelperSocketCompositionTest {
         val daemon = SocketDaemon(socketPath)
 
         assertTrue(daemon.available())
-        assertEquals("HELPER version=1.3.0 proto=1.3", daemon.send("VERSION"))
+        assertEquals("HELPER version=1.3.1 proto=1.3", daemon.send("VERSION"))
         assertEquals("ERR", daemon.send("PINGEXTRA"))
         assertEquals("OK", daemon.sendLong("RELOAD io.example.dashboard", 5_000).replyValue())
     }
@@ -71,7 +71,7 @@ class HelperSocketCompositionTest {
         // from the same condition the helper itself tests rather than assuming an outcome.
         val governorReply = if (governorAcceptsWrites()) "OK" else "ERR"
         listOf(
-            WireTranscript("VERSION", "HELPER version=1.3.0 proto=1.3"),
+            WireTranscript("VERSION", "HELPER version=1.3.1 proto=1.3"),
             WireTranscript("PING", "OK"),
             WireTranscript("BUILDID", "BUILDID development"),
             WireTranscript("COMPANIONCAPS", "COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),

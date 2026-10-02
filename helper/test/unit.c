@@ -486,10 +486,10 @@ static void test_perfdump_bridge_protocol(void) {
 
 static void test_dispatch_exact_match(void) {
     char out[64];
-    CHECK(strcmp(helper_identity(), "HELPER version=1.3.0 proto=1.3") == 0,
+    CHECK(strcmp(helper_identity(), "HELPER version=1.3.1 proto=1.3") == 0,
           "helper identity is stable (got '%s')\n", helper_identity());
     dispatch_reply("VERSION", out, sizeof out);
-    CHECK(strcmp(out, "HELPER version=1.3.0 proto=1.3\n") == 0,
+    CHECK(strcmp(out, "HELPER version=1.3.1 proto=1.3\n") == 0,
           "VERSION -> machine-readable identity (got '%s')\n", out);
     dispatch_reply("VERSION extra", out, sizeof out);
     CHECK(strcmp(out, "ERR\n") == 0, "VERSION rejects arguments (got '%s')\n", out);
@@ -2190,6 +2190,7 @@ static void test_grant_verb(void) {
         "pm", "grant", SUCCESSOR_ID, "android.permission.POST_NOTIFICATIONS", NULL
     };
     const char *const microphone[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.RECORD_AUDIO", NULL };
+    const char *const camera[] = { "pm", "grant", SUCCESSOR_ID, "android.permission.CAMERA", NULL };
     const char *const write_settings[] = { "appops", "set", SUCCESSOR_ID, "WRITE_SETTINGS", "allow", NULL };
     const char *const overlay[] = { "appops", "set", SUCCESSOR_ID, "SYSTEM_ALERT_WINDOW", "allow", NULL };
     const char *const battery_modern[] = { "cmd", "deviceidle", "whitelist", "+" SUCCESSOR_ID, NULL };
@@ -2203,6 +2204,15 @@ static void test_grant_verb(void) {
     sysexec_stub_reset();
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " MICROPHONE", out, sizeof out);
     CHECK(ran_argv("/system/bin/pm", microphone) == 1, "GRANT MICROPHONE runs the exact pm grant\n");
+
+    sysexec_stub_reset();
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " CAMERA", out, sizeof out);
+    CHECK(strcmp(out, "OK\n") == 0, "GRANT CAMERA succeeds (got '%s')\n", out);
+    CHECK(ran_argv("/system/bin/pm", camera) == 1, "GRANT CAMERA runs the exact pm grant\n");
+    sysexec_stub_reset();
+    sysexec_stub_fail_run("pm grant " SUCCESSOR_ID " android.permission.CAMERA", 256);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " CAMERA", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0, "GRANT CAMERA reports a failed pm grant (got '%s')\n", out);
 
     sysexec_stub_reset();
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " WRITESETTINGS", out, sizeof out);
@@ -2291,10 +2301,7 @@ static void test_grant_accessibility(void) {
     CHECK(ran_argv("/system/bin/settings", put_appended) == 1,
           "GRANT ACCESSIBILITY appends to the shared list instead of overwriting it\n");
 
-    // Idempotence: a retry of an interrupted grant must converge, not append a second copy. Assert
-    // the exact number of actuator calls rather than the absence of one doubled-up argument — the
-    // stub bounds each recorded argument at 128 bytes, so two concatenated components compare equal
-    // to anything else that long and a match on them would prove nothing.
+    // Idempotence: a retry of an interrupted grant must converge, not append a second copy.
     // Granting when already present: read the list, then assert accessibility_enabled. No write.
     sysexec_stub_reset();
     char already[512];
@@ -2317,6 +2324,37 @@ static void test_grant_accessibility(void) {
     CHECK(sysexec_stub_count_argv_calls() == 2,
           "a list already carrying the shorthand is left alone (ran %d calls)\n",
           sysexec_stub_count_argv_calls());
+
+    // Successor shorthand resolves to a different namespace. Preserve it and the unrelated vendor
+    // service while appending the actual class, then a retry must leave that repaired list alone.
+    const char *invalid = "com.vendor/.A:" SUCCESSOR_ID "/.input.PanelAccessibilityService";
+    char repaired[512];
+    snprintf(repaired, sizeof repaired, "%s:%s", invalid, component);
+    const char *const put_repaired[] = {
+        "settings", "put", "secure", "enabled_accessibility_services", repaired, NULL
+    };
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("enabled_accessibility_services", invalid, 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " ACCESSIBILITY", out, sizeof out);
+    CHECK(strcmp(out, "OK\n") == 0 && sysexec_stub_count_argv_calls() == 3,
+          "successor shorthand needs the real service appended before accessibility is enabled\n");
+    CHECK(ran_argv("/system/bin/settings", put_repaired) == 1,
+          "successor shorthand repair preserves the complete shared list and actual class\n");
+
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("enabled_accessibility_services", invalid, 0);
+    sysexec_stub_fail_run("settings put secure enabled_accessibility_services", 256);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " ACCESSIBILITY", out, sizeof out);
+    CHECK(strcmp(out, "ERR\n") == 0,
+          "a failed accessibility list write reports ERR\n");
+    CHECK(ran_argv("/system/bin/settings", enable_flag) == 0,
+          "a failed accessibility list write never enables accessibility\n");
+
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("enabled_accessibility_services", repaired, 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " ACCESSIBILITY", out, sizeof out);
+    CHECK(strcmp(out, "OK\n") == 0 && sysexec_stub_count_argv_calls() == 2,
+          "successor shorthand repair converges without duplicating or rewriting the shared list\n");
 
     // A setting this daemon cannot account for is not something root hands back to the framework.
     sysexec_stub_reset();
