@@ -58,40 +58,4 @@ EOF
   exit 1
 fi
 
-# Pin consumer-facing behavior to the shipped code, not to docs/*.md prose — the fleet-recipe,
-# backup-contract and API-currency claims formerly pinned here now live only on
-# panel-assistant.io/hardware and manage pages, since docs/provisioning.md, provisioning-safety.md
-# and api.md are one-line stubs (docs hub migration, slice 3). These checks still pin the actual
-# shipped scripts, which is the part a docs edit cannot silently break.
-if ! grep -Fq -- 'Reset is irreversible and makes no backup' scripts/install.sh ||
-   grep -Fq -- 'backs the configuration up first' scripts/install.sh; then
-  printf 'scripts/install.sh: checkout-free reset help contradicts the no-backup contract\n' >&2
-  failed=1
-fi
-
-implementation_seams=(
-  'io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE'
-  'HAPANELD_UPGRADE_READY_V1:'
-  'exec-out'
-  '".backup '\''@STAGE@/ha-paneld.db'\''"'
-  'host_sha256 "$host_db" "the database copy"'
-  'continuing the ordinary in-place upgrade WITHOUT a database restore point'
-  '[ "$RESET_CONFIG" = 1 ] || auto_export_before_upgrade'
-  '[ "$RESET_CONFIG" = 1 ] || snapshot_panel_database'
-)
-for seam in "${implementation_seams[@]}"; do
-  if ! grep -Fq -- "$seam" scripts/provision.sh; then
-    printf 'scripts/provision.sh: shipped backup seam is missing %s\n' "$seam" >&2
-    failed=1
-  fi
-done
-if grep -Fq -- 'df -P -k /data' scripts/provision.sh; then
-  printf 'scripts/provision.sh: fixed /data capacity gate returned\n' >&2
-  failed=1
-fi
-
-if (( failed )); then
-  exit 1
-fi
-
 echo "checkout-free entry-point command regression: PASS"

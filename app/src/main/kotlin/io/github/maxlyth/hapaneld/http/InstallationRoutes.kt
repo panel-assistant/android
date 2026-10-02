@@ -55,7 +55,10 @@ internal fun Route.installationRoutes(
     // channel ∈ {stable,prerelease}). Up to 10 choices plus one unavailable explanation on capped panels.
     get("/install/versions") {
         val name = call.request.queryParameters["name"]?.trim().orEmpty()
-        val channel = call.request.queryParameters["channel"]?.trim()?.ifEmpty { "stable" } ?: "stable"
+        val requestedChannel = call.request.queryParameters["channel"]?.trim()?.ifEmpty { "stable" } ?: "stable"
+        val channel = if (name == "paneld") {
+            if (AppInstaller.panelUpdatePolicy()?.prerelease == true) "prerelease" else "stable"
+        } else requestedChannel
         val vers = withContext(Dispatchers.IO) { versionCatalogue(name, channel) }
         val installedVersion = when (name) {
             "paneld" -> Config.VERSION
@@ -64,6 +67,9 @@ internal fun Route.installationRoutes(
             }
             else -> null
         }
+        val responseChannel = if (name == "paneld") AppInstaller.panelUpdatePolicy()?.let {
+            Json.str(if (it.prerelease) "prerelease" else "stable")
+        } ?: "null" else Json.str(channel)
         val arr = vers.joinToString(",") { v ->
             val candidate = if (name == "companion") UpdateChecker.stripVariant(v.version) else v.version
             val installed = installedVersion?.let {
@@ -80,7 +86,7 @@ internal fun Route.installationRoutes(
             }
             """{"version":${Json.str(v.version)},"tag":${Json.str(v.tag)},"notes":${Json.str(v.notesUrl)},"installable":${v.installable},"unavailableReason":${v.unavailableReason?.let(Json::str) ?: "null"},"maxVersion":${v.maxVersion?.let(Json::str) ?: "null"},"action":${Json.str(action)},"apk":${Json.str(v.apkUrl ?: "")},"presentations":{"action":${presentation.json()}}}"""
         }
-        call.respondText("""{"channel":${Json.str(channel)},"versions":[$arr]}""", ContentType.Application.Json)
+        call.respondText("""{"channel":$responseChannel,"versions":[$arr]}""", ContentType.Application.Json)
     }
     get("/install/status") { call.respondText(InstallProgress.json(), ContentType.Application.Json) }
     // Enable/disable the APK-upload capability (the card's toggle).

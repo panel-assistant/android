@@ -109,7 +109,7 @@ function builders(s, locale) {
   const pickerRow = (name, label, version) => `<div class="comprow" data-name="${name}">
 <div class="compname"><b>${label}</b> <span class="muted">${installed(version)}</span></div>
 <div class="comppick">
-<label class="muted">${s.t('install.components.channel')} <select class="cchan" onchange="loadVersions('${name}')"><option value="stable" selected>${s.t('install.components.stable')}</option><option value="prerelease">${s.t('install.components.prerelease')}</option></select></label>
+<label class="muted">${s.t('install.components.channel')} ${name === 'paneld' ? `<span class="cpa-channel">${s.t('install.components.stable')}</span>` : `<select class="cchan" onchange="loadVersions('${name}')"><option value="stable" selected>${s.t('install.components.stable')}</option><option value="prerelease">${s.t('install.components.prerelease')}</option></select>`}</label>
 <label class="muted">${s.t('install.shared.version')} <select class="cvsel" onchange="verChanged('${name}')"><option>${s.t('install.shared.loading')}</option></select></label>
 <a class="gh gh-inline cnotes" target="_blank" rel="noopener" title="${s.t('install.components.release_notes')}" aria-label="${s.t('install.components.release_notes')}" style="visibility:hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${GH_ICON}"/></svg></a>
 <button class="pbtn cinstall"${a11y()} onclick="installSel('${name}',this)" data-root="1" disabled>${s.t('install.components.install')}</button>

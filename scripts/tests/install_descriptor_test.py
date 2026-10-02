@@ -1,13 +1,14 @@
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[1] / "generate_install_descriptor.py"
+SCRIPT = Path(os.environ.get("INSTALL_DESCRIPTOR_SCRIPT", Path(__file__).resolve().parents[1] / "generate_install_descriptor.py"))
 SPEC = importlib.util.spec_from_file_location("generate_install_descriptor", SCRIPT)
 assert SPEC and SPEC.loader
 descriptor = importlib.util.module_from_spec(SPEC)
@@ -15,6 +16,7 @@ SPEC.loader.exec_module(descriptor)
 
 TAG = "v1.2.3-rc1"
 APK_NAME = f"panel-assistant-{TAG}-manual-setup-required.apk"
+BRIDGE_APK_NAME = f"ha-paneld-{TAG}-manual-setup-required.apk"
 RELEASE_IDENTITY_CORPUS = json.loads(
     (Path(__file__).parent / "fixtures" / "release-identity-corpus.json").read_text(
         encoding="utf-8"
@@ -47,6 +49,12 @@ SIGNER = (
     "Signer #1 certificate SHA-256 digest: "
     "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339\n"
 )
+PROTOCOL_NODE = """\
+    E: meta-data (line=12)
+      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL")
+      A: android:value(0x01010024)="hapaneld-native:v1:3:3" (Raw: "hapaneld-native:v1:3:3")
+"""
+PROTOCOL_XMLTREE = XMLTREE.replace("    E: activity", PROTOCOL_NODE + "    E: activity")
 
 
 class InstallDescriptorTest(unittest.TestCase):
@@ -109,6 +117,26 @@ class InstallDescriptorTest(unittest.TestCase):
         payload = descriptor.canonical_json({"z": 1, "a": "caf\N{LATIN SMALL LETTER E WITH ACUTE}"})
         self.assertEqual(b'{"a":"caf\\u00e9","z":1}\n', payload)
         self.assertEqual(payload, descriptor.canonical_json(json.loads(payload)))
+
+    def test_bridge_descriptor_binds_its_own_bytes_identity_and_version_code(self):
+        self.apk = self.apk.rename(self.apk.with_name(BRIDGE_APK_NAME))
+        self.apk.write_bytes(b"distinct signed bridge apk\n")
+        actual = self.build(badging=BADGING.replace("io.panelassistant.android", "io.github.maxlyth.hapaneld").replace("versionCode='701'", "versionCode='702'"))
+        self.assertEqual(13, len(actual))
+        self.assertEqual(BRIDGE_APK_NAME, actual["apkName"])
+        self.assertEqual("io.github.maxlyth.hapaneld", actual["packageId"])
+        self.assertEqual("io.github.maxlyth.hapaneld/io.github.maxlyth.hapaneld.MainActivity", actual["launchComponent"])
+        self.assertEqual(702, actual["versionCode"])
+        self.assertEqual(hashlib.sha256(self.apk.read_bytes()).hexdigest(), actual["apkSha256"])
+        self.assertEqual(self.apk.stat().st_size, actual["apkSize"])
+        self.assertEqual(descriptor.SIGNER_CERTIFICATE_SHA256, actual["signerCertificateSha256"])
+        self.assertEqual(descriptor.SCHEMA, actual["schema"])
+
+    def test_each_canonical_filename_refuses_the_other_package(self):
+        for apk_name, package_id in ((APK_NAME, "io.github.maxlyth.hapaneld"), (BRIDGE_APK_NAME, "io.panelassistant.android")):
+            self.apk = self.apk.rename(self.apk.with_name(apk_name))
+            with self.subTest(apk_name=apk_name), self.assertRaisesRegex(descriptor.DescriptorError, "package ID"):
+                self.build(badging=BADGING.replace("io.panelassistant.android", package_id))
 
     def test_release_tag_must_match_version_name_and_canonical_apk_name(self):
         with self.assertRaisesRegex(descriptor.DescriptorError, "versionName does not match"):
@@ -367,6 +395,110 @@ E: foreign-root (line=20)
                 Path("/tools/aapt"),
                 Path("/tools/apksigner"),
             )
+
+    def protocol(self, apks=None, xmltree=PROTOCOL_XMLTREE, signer=SIGNER, badging=BADGING):
+        apks = apks or [self.apk]
+        replies = [self.completed(value) for _ in apks for value in (badging, xmltree, signer)]
+        with patch.object(descriptor.subprocess, "run", side_effect=replies):
+            return descriptor.build_protocol_manifest(apks, TAG, Path("/tools/aapt"), Path("/tools/apksigner"))
+
+    def test_protocol_companion_binds_exact_bridge_and_successor_bytes(self):
+        bridge = self.directory / "app-release.apk"
+        bridge.write_bytes(b"signed bridge apk\n")
+        replies = [self.completed(value) for value in (
+            BADGING.replace("io.panelassistant.android", "io.github.maxlyth.hapaneld"),
+            PROTOCOL_XMLTREE.replace(":3:3", ":1:3"), SIGNER,
+            BADGING, PROTOCOL_XMLTREE, SIGNER,
+        )]
+        with patch.object(descriptor.subprocess, "run", side_effect=replies):
+            actual = descriptor.build_protocol_manifest([bridge, self.apk], TAG, Path("/tools/aapt"), Path("/tools/apksigner"))
+        expected = sorted([
+            {"apkSha256": hashlib.sha256(bridge.read_bytes()).hexdigest(), "protocolMin": 1, "protocolMax": 3},
+            {"apkSha256": hashlib.sha256(self.apk.read_bytes()).hexdigest(), "protocolMin": 3, "protocolMax": 3},
+        ], key=lambda record: record["apkSha256"])
+        self.assertEqual({"schema": "io.github.maxlyth.hapaneld.protocol.v1", "artifacts": expected}, actual)
+
+    def test_protocol_companion_refuses_missing_malformed_and_unscoped_metadata(self):
+        values = ("", "hapaneld-native:v2:3:3", "hapaneld-native:v1:0:3", "hapaneld-native:v1:4:3",
+                  "hapaneld-native:v1:03:3", "hapaneld-native:v1:3:true", "hapaneld-native:v1:1:2147483648")
+        invalid = [PROTOCOL_XMLTREE.replace("hapaneld-native:v1:3:3", value) for value in values]
+        invalid.extend((XMLTREE,
+            PROTOCOL_XMLTREE.replace("    E: activity", PROTOCOL_NODE + "    E: activity"),
+            XMLTREE + "\n".join(line[4:] for line in PROTOCOL_NODE.splitlines()),
+            XMLTREE.replace("    E: activity", "    E: activity\n" + "\n".join("  " + line for line in PROTOCOL_NODE.splitlines())),
+            PROTOCOL_XMLTREE.replace("    E: meta-data (line=12)", "    E: activity\n      E: application\n        E: meta-data (line=12)"),
+            PROTOCOL_XMLTREE.replace('      A: android:value(0x01010024)="hapaneld-native',
+                '      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL"\n      A: android:value(0x01010024)="hapaneld-native'),
+            PROTOCOL_XMLTREE.replace("    E: activity", '      A: android:value(0x01010024)="hapaneld-native:v1:3:3"\n    E: activity'),
+        ))
+        for xmltree in invalid:
+            with self.subTest(xmltree=xmltree), self.assertRaises(descriptor.DescriptorError):
+                self.protocol(xmltree=xmltree)
+        upper = self.protocol(xmltree=PROTOCOL_XMLTREE.replace(":3:3", ":1:2147483647"))
+        self.assertEqual(2147483647, upper["artifacts"][0]["protocolMax"])
+
+    def test_protocol_companion_requires_distinct_authenticated_release_apks(self):
+        with self.assertRaisesRegex(descriptor.DescriptorError, "repeats"):
+            self.protocol(apks=[self.apk, self.apk])
+        for signer in (SIGNER.replace("ac619330", "bc619330"), SIGNER + SIGNER.replace("#1", "#2")):
+            with self.subTest(signer=signer), self.assertRaises(descriptor.DescriptorError):
+                self.protocol(signer=signer)
+        for badging in (BADGING.replace("io.panelassistant.android", "com.foreign.app"), BADGING.replace("1.2.3-rc1", "1.2.4")):
+            with self.subTest(badging=badging), self.assertRaises(descriptor.DescriptorError):
+                self.protocol(badging=badging)
+
+    def test_protocol_companion_cli_preserves_v1_and_publishes_canonical_pair(self):
+        bridge = self.directory / f"ha-paneld-{TAG}-manual-setup-required.apk"
+        bridge.write_bytes(b"signed bridge apk\n")
+        aapt = self.directory / "aapt"
+        aapt.write_text("#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n"
+            f"badging={BADGING!r}\nxmltree={PROTOCOL_XMLTREE!r}\n"
+            "path=next(value for value in sys.argv if value.startswith('/proc/self/fd/'))\n"
+            "if b'bridge' in Path(path).read_bytes(): badging=badging.replace('io.panelassistant.android','io.github.maxlyth.hapaneld')\n"
+            "print(xmltree if 'xmltree' in sys.argv else badging,end='')\n")
+        aapt.chmod(0o755)
+        signer = self.directory / "apksigner"
+        signer.write_text(f"#!/usr/bin/env python3\nprint({SIGNER!r},end='')\n")
+        signer.chmod(0o755)
+        output = self.directory / "install.json"
+        protocol_output = self.directory / "protocol.json"
+        command = ["python3", str(SCRIPT), "--apk", str(self.apk), "--release-tag", TAG,
+            "--aapt", str(aapt), "--apksigner", str(signer), "--output", str(output),
+            "--protocol-apk", str(self.apk), "--protocol-apk", str(bridge), "--protocol-output", str(protocol_output)]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(13, len(json.loads(output.read_bytes())))
+        expected = {"schema": "io.github.maxlyth.hapaneld.protocol.v1", "artifacts": sorted([
+            {"apkSha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "protocolMin": 3, "protocolMax": 3}
+            for apk in (self.apk, bridge)
+        ], key=lambda record: record["apkSha256"])}
+        self.assertEqual((json.dumps(expected, separators=(",", ":"), sort_keys=True) + "\n").encode("ascii"), protocol_output.read_bytes())
+        bridge_output = self.directory / "bridge-install.json"
+        bridge_command = command.copy()
+        bridge_command[bridge_command.index("--apk") + 1] = str(bridge)
+        bridge_command[bridge_command.index("--output") + 1] = str(bridge_output)
+        result = subprocess.run(bridge_command, capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        actual_bridge = json.loads(bridge_output.read_bytes())
+        self.assertEqual(13, len(actual_bridge))
+        self.assertEqual(BRIDGE_APK_NAME, actual_bridge["apkName"])
+        self.assertEqual("io.github.maxlyth.hapaneld", actual_bridge["packageId"])
+        self.assertEqual(hashlib.sha256(bridge.read_bytes()).hexdigest(), actual_bridge["apkSha256"])
+        bridge_output.unlink()
+        signer.write_text(signer.read_text().replace("ac619330", "bc619330"))
+        result = subprocess.run(bridge_command, capture_output=True, text=True)
+        self.assertEqual(1, result.returncode)
+        self.assertIn("release authority", result.stderr)
+        self.assertFalse(bridge_output.exists())
+        signer.write_text(signer.read_text().replace("bc619330", "ac619330"))
+        # A failing companion cannot publish a new V1 output either.
+        output.unlink()
+        protocol_output.unlink()
+        aapt.write_text(aapt.read_text().replace("hapaneld-native:v1:3:3", "hapaneld-native:v1:4:3"))
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(1, result.returncode, result.stderr)
+        self.assertFalse(output.exists())
+        self.assertFalse(protocol_output.exists())
 
 
 if __name__ == "__main__":
