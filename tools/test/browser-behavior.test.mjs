@@ -722,7 +722,6 @@ browserTest('Unrelated and failed saves preserve the supported browser language 
     if (path === '/health') return { body: 'ok cfg=locale-negative' };
   }, () => { state.documents++; return fixture({
     'configure.save.saved': '已保存。',
-    'configure.save.failed': '保存失败。',
     'configure.save.refused': '未保存：{reason}',
   }); });
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
