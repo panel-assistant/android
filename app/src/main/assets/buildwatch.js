@@ -104,17 +104,46 @@
   // /health observation. A server-rendered advisory used to sit beside them; it could not retract
   // itself after recovery, so it was removed rather than kept in step.
   var HA_ROW_REFUSED = "watching; Home Assistant does not permit WebSocket lifecycle events for this user";
-  function haBanner(state, src, refused) {
-    var copy = (src === "socket" && ownValue(HA_TEXT_SOCKET, state)) || ownValue(HA_TEXT, state);
-    var text = copy ? i18nText(copy.key, copy.text) : "";
+  function haBanner(state, src, refused, notice) {
+    var copy = ((src === "socket" || src === "native") && ownValue(HA_TEXT_SOCKET, state)) || ownValue(HA_TEXT, state);
+    if (notice && state === "connection_lost") copy = HA_TEXT.shutting_down;
+    var outage = notice && (state === "shutting_down" || state === "starting" || state === "connection_lost");
+    var overdue = outage && notice.expected !== null && notice.elapsed !== null && notice.elapsed > notice.expected;
+    var grace = outage && state === "connection_lost" && notice.grace > 0;
+    var text = !grace && copy ? i18nText(copy.key, copy.text) : "";
+    if (overdue) text = i18nText("shell.runtime.ha_lifecycle.taking_longer", "Taking longer than usual");
+    var supporting = "", forecast = "";
+    if (outage && !grace) {
+      var reasons = {restart:"Home Assistant restart",host_reboot:"Host reboot",core_update:"Home Assistant Core update",unknown:"Reason unknown"};
+      var reason = ownValue(reasons, notice.reason) ? notice.reason : "unknown";
+      supporting = i18nText("shell.runtime.ha_lifecycle.reason_" + reason, reasons[reason]);
+      forecast = i18nText("shell.runtime.ha_lifecycle.not_measured", "Time back has not been measured yet");
+      if (notice.expected !== null && notice.elapsed !== null) {
+        var seconds = Math.max(1, Math.ceil(Math.abs(notice.expected - notice.elapsed) / 1000));
+        var unit = seconds >= 3600 ? "hours" : seconds >= 60 ? "minutes" : "seconds";
+        var value = unit === "hours" ? Math.ceil(seconds / 3600) : unit === "minutes" ? Math.ceil(seconds / 60) : seconds;
+        var duration = i18nText("shell.runtime.ha_lifecycle.duration_" + unit, "{value} " + ({seconds:"sec",minutes:"min",hours:"h"}[unit]), {value:localizedNumber(value)});
+        forecast = i18nText("shell.runtime.ha_lifecycle." + (overdue ? "overdue" : "expected_in"),
+          overdue ? "{duration} past the estimate" : "Expected back in about {duration}", {duration:duration});
+      }
+    }
     var b = document.getElementById("halifebar");
     if (b) {
-      if (!text) { b.style.display = "none"; } else { b.textContent = copy.glyph + " " + text; b.style.display = ""; }
+      if (!text) { b.style.display = "none"; } else {
+        b.textContent = copy.glyph + " " + text;
+        if (supporting) {
+          var detail = document.createElement("span"); detail.style.display = "block"; detail.textContent = supporting;
+          var timing = document.createElement("small"); timing.style.display = "block"; timing.textContent = forecast;
+          b.appendChild(detail); b.appendChild(timing);
+        }
+        b.style.display = "";
+      }
     }
     var row = document.getElementById("halifecell");
     if (!row) return;
     if (!state) { row.textContent = ""; return; }
-    if (text) { row.textContent = text; return; }
+    if (text) { row.textContent = text + (supporting ? " — " + supporting + "; " + forecast : ""); return; }
+    if (grace) { row.textContent = ""; return; }
     if (state === "connection_lost") {
       row.textContent = i18nText("dashboard.runtime.ha_connection_lost", "connection lost");
       return;
@@ -264,7 +293,14 @@
       var mh = t.match(/ha=(\S+)/);
       var ms = t.match(/ha_src=(\S+)/);
       var mr = t.match(/ha_refused=1/);
-      haBanner(mh ? mh[1] : "", ms ? ms[1] : "", !!mr);
+      var reason = t.match(/(?:^|\s)ha_reason=(\S+)/);
+      function timingToken(name) {
+        var match = t.match(new RegExp("(?:^|\\s)" + name + "=(\\d+)(?:\\s|$)"));
+        return match ? Number(match[1]) : null;
+      }
+      haBanner(mh ? mh[1] : "", ms ? ms[1] : "", !!mr, reason ? {
+        reason:reason[1], elapsed:timingToken("ha_elapsed_ms"), expected:timingToken("ha_expected_ms"), grace:timingToken("ha_grace_ms") || 0
+      } : null);
       var mn = t.match(/ha_net=(\S+)/);
       var mrs = t.match(/ha_resp=(\S+)/);
       var mcz = t.match(/ha_net_cause=(\S+)/);

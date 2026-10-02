@@ -387,7 +387,7 @@ class HaLifecycleRuntimeTest {
         val c = install()
         HaLifecycleRuntime.setWatching(c, true)
         c.onSignal(HaLifecycleSignal.Transport(HaExactEntityStreamPhase.RECONNECTING))
-        assertEquals("connection lost", HaLifecycleRuntime.statusText())
+        assertEquals("watching", HaLifecycleRuntime.statusText())
     }
 
     @Test fun theStatusNeverLeaksAnEventPayloadOrCredential() {

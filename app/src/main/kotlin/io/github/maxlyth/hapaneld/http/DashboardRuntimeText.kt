@@ -30,11 +30,45 @@ private fun runtimeValue(value: String, strings: AppStrings): String = when (val
 }
 
 internal fun localizedRuntimeValue(key: String, value: String, strings: AppStrings): String = when (key) {
+    "HA lifecycle" -> localizedHaLifecycle(value, strings)
     "HA renderer" -> localizedRendererRuntime(value, strings)
     "MQTT state" -> localizedMqttRuntime(value, strings)
     "App database" -> localizedDatabaseRuntime(value, strings)
     "Camera" -> localizedCameraRuntime(value, strings)
     else -> runtimeValue(value, strings)
+}
+
+/** Translate the closed lifecycle presentation without re-reading a different owner's snapshot. */
+private fun localizedHaLifecycle(value: String, strings: AppStrings): String {
+    if (value == "Home Assistant is back online.") return strings.get("shell.runtime.ha_lifecycle.back_online")
+    val parts = value.split(" · ")
+    if (parts.size != 3) return runtimeValue(value, strings)
+    val headline = when (parts[0]) {
+        "Taking longer than usual" -> strings.get("shell.runtime.ha_lifecycle.taking_longer")
+        "Home Assistant is starting — controls will return shortly." -> strings.get("shell.runtime.ha_lifecycle.starting")
+        "Home Assistant is shutting down — controls may be temporarily unavailable." -> strings.get("shell.runtime.ha_lifecycle.shutting_down")
+        "Home Assistant has gone offline — controls may be temporarily unavailable." -> strings.get("shell.runtime.ha_lifecycle.offline")
+        else -> return value
+    }
+    val reason = when (parts[1]) {
+        "Home Assistant restart" -> strings.get("shell.runtime.ha_lifecycle.reason_restart")
+        "Host reboot" -> strings.get("shell.runtime.ha_lifecycle.reason_host_reboot")
+        "Home Assistant Core update" -> strings.get("shell.runtime.ha_lifecycle.reason_core_update")
+        "Reason unknown" -> strings.get("shell.runtime.ha_lifecycle.reason_unknown")
+        else -> return value
+    }
+    val forecast = if (parts[2] == "Time back has not been measured yet") strings.get("shell.runtime.ha_lifecycle.not_measured")
+    else {
+        val duration = Regex("(?:Expected back in about )?(\\d+) (sec|min|h)( past the estimate)?").matchEntire(parts[2]) ?: return value
+        val quantified = strings.get(when (duration.groupValues[2]) {
+            "h" -> "shell.runtime.ha_lifecycle.duration_hours"
+            "min" -> "shell.runtime.ha_lifecycle.duration_minutes"
+            else -> "shell.runtime.ha_lifecycle.duration_seconds"
+        }).replace("{value}", duration.groupValues[1])
+        strings.get(if (duration.groupValues[3].isEmpty()) "shell.runtime.ha_lifecycle.expected_in" else "shell.runtime.ha_lifecycle.overdue")
+            .replace("{duration}", quantified)
+    }
+    return "$headline · $reason · $forecast"
 }
 
 private fun localizedRendererRuntime(value: String, strings: AppStrings): String {

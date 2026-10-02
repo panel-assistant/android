@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ha_reason_restart">Ponowne uruchomienie Home Assistant</string>
+    <string name="ha_reason_host_reboot">Ponowne uruchomienie hosta</string>
+    <string name="ha_reason_core_update">Aktualizacja Home Assistant Core</string>
+    <string name="ha_reason_unknown">Przyczyna nieznana</string>
+    <string name="ha_not_measured">Czas do powrotu nie został jeszcze zmierzony</string>
+    <string name="ha_taking_longer">Trwa dłużej niż zwykle</string>
+    <string name="ha_expected_in">Przewidywany powrót za około %1$s</string>
+    <string name="ha_overdue">O %1$s ponad szacowany czas</string>
+    <string name="ha_duration_seconds">%1$d s</string>
+    <string name="ha_duration_minutes">%1$d min</string>
+    <string name="ha_duration_hours">%1$d godz.</string>
+</resources>

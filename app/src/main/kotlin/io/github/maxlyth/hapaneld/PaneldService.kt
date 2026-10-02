@@ -1417,6 +1417,13 @@ class PaneldService : Service() {
             commands = panelAssistantCommands,
             onAuthority = config::setPanelAssistantAuthority,
             onConnected = config::markPanelAssistantConnected,
+            onLifecycleNotice = { notice -> haLifecycle.onNativeNotice(notice) },
+            onLifecycleAuthenticated = { haLifecycle.onNativeAuthenticated() },
+            onLifecycleDisconnected = { haLifecycle.onNativeDisconnected() },
+            onLifecycleRetired = {
+                haLifecycle.onNativeRetired()
+                if (HaLifecycleRuntime.setNativeWatching(haLifecycle, false)) BuiltinDashboard.onHaLifecycleChanged()
+            },
             authority = config::panelAssistantAuthority,
             mqttDiscovery = config::panelAssistantMqttDiscovery,
             onMqttDiscovery = { value ->
@@ -2816,7 +2823,10 @@ class PaneldService : Service() {
         if (!::panelAssistantTransport.isInitialized) return
         val demand = currentPanelAssistantTransportDemand()
         runtime.runIfRunning {
-            if (!teardownBoundary.isStopping) panelAssistantTransport.replaceDemand(demand)
+            if (!teardownBoundary.isStopping) {
+                panelAssistantTransport.replaceDemand(demand)
+                if (HaLifecycleRuntime.setNativeWatching(haLifecycle, demand != null)) BuiltinDashboard.onHaLifecycleChanged()
+            }
         }
     }
 
@@ -3937,7 +3947,10 @@ class PaneldService : Service() {
             initialNativeDemand = currentPanelAssistantTransportDemand()
         }, complete = {
             // Demand construction reads configuration before this short, lock-admitted publication.
-            if (!teardownBoundary.isStopping) panelAssistantTransport.replaceDemand(initialNativeDemand)
+            if (!teardownBoundary.isStopping) {
+                panelAssistantTransport.replaceDemand(initialNativeDemand)
+                if (HaLifecycleRuntime.setNativeWatching(haLifecycle, initialNativeDemand != null)) BuiltinDashboard.onHaLifecycleChanged()
+            }
         })
         Thread({
             val disposition = awaitServiceStartup(startup, startupActivationGeneration)
