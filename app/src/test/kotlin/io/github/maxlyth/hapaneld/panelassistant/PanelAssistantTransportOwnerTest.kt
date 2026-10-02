@@ -4,6 +4,13 @@ import io.github.maxlyth.hapaneld.HaAuthOwner
 import io.github.maxlyth.hapaneld.sensors.HaApiSession
 import io.github.maxlyth.hapaneld.sensors.HaApiSessionProvider
 import io.github.maxlyth.hapaneld.sensors.HaAuthenticationException
+import io.github.maxlyth.hapaneld.sensors.HaLifecycle
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleEvent
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleNotice
+import io.github.maxlyth.hapaneld.sensors.HaLifecyclePhase
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleReason
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleSource
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleState
 import io.github.maxlyth.hapaneld.util.ServiceRestartBarrier
 import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
 import kotlinx.coroutines.CancellationException
@@ -90,6 +97,55 @@ class PanelAssistantTransportOwnerTest {
             runCurrent()
             assertEquals(1, lost)
             assertTrue(notices.isEmpty())
+        } finally { harness.owner.close() }
+    }
+
+    @Test fun `enrollment refusals prove authentication without claiming Home Assistant is offline`() = runTest {
+        for (code in listOf("unknown_panel", "panel_user_mismatch")) {
+            val tracker = HaLifecycle()
+            tracker.onDisconnected(testScheduler.currentTime, HaLifecycleSource.NATIVE)
+            val harness = harness(repeating = { FakeConnection(Ha.refusing(code)) },
+                onLifecycleAuthenticated = { tracker.onAuthenticatedRunning(testScheduler.currentTime) },
+                onLifecycleDisconnected = { tracker.onDisconnected(testScheduler.currentTime, HaLifecycleSource.NATIVE) })
+            try {
+                harness.owner.replaceDemand(DEMAND)
+                runCurrent()
+                advanceTimeBy(15_000L)
+                runCurrent()
+                assertEquals(code, harness.owner.status.refusal)
+                assertEquals(HaLifecycleState.NORMAL, tracker.snapshot(testScheduler.currentTime).state)
+            } finally { harness.owner.close(); runCurrent() }
+        }
+    }
+
+    @Test fun `enrollment refusal cannot retire a native reported startup`() = runTest {
+        val tracker = HaLifecycle()
+        tracker.onNativeNotice(HaLifecycleNotice(HaLifecyclePhase.STARTING, HaLifecycleReason.RESTART, 0L, null), 0L)
+        val harness = harness(FakeConnection(Ha.refusing("unknown_panel")),
+            onLifecycleAuthenticated = { tracker.onAuthenticatedRunning(testScheduler.currentTime) },
+            onLifecycleDisconnected = { tracker.onDisconnected(testScheduler.currentTime, HaLifecycleSource.NATIVE) })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(HaLifecycleState.STARTING, tracker.snapshot(testScheduler.currentTime).state)
+        } finally { harness.owner.close() }
+    }
+
+    @Test fun `native transport loss preserves exact socket readiness authority`() = runTest {
+        val tracker = HaLifecycle()
+        tracker.onSubscriptionEstablished()
+        val harness = harness(IOException("offline"), FakeConnection(Ha.accepting()),
+            onLifecycleAuthenticated = { tracker.onAuthenticatedRunning(testScheduler.currentTime) },
+            onLifecycleDisconnected = { tracker.onDisconnected(testScheduler.currentTime, HaLifecycleSource.NATIVE) })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            tracker.onEvent(HaLifecycleEvent.STOP, HaLifecycleSource.SOCKET, testScheduler.currentTime)
+            advanceTimeBy(1_000L)
+            runCurrent()
+            assertEquals(HaLifecycleState.STARTING, tracker.snapshot(testScheduler.currentTime).state)
+            tracker.onEvent(HaLifecycleEvent.STARTED, HaLifecycleSource.SOCKET, testScheduler.currentTime)
+            assertEquals(HaLifecycleState.BACK_ONLINE, tracker.snapshot(testScheduler.currentTime).state)
         } finally { harness.owner.close() }
     }
 
