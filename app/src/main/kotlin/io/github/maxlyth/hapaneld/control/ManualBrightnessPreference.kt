@@ -97,14 +97,17 @@ internal class ManualBrightnessAuthority(
 
     @Synchronized fun persistCurrent() { record?.let(store::save) }
 
+    /** A null [modelContextKey] means the context is not yet known: source and expiry are still judged. */
     @Synchronized
     fun evaluate(
         automaticTarget: Int,
-        modelContextKey: String,
+        modelContextKey: String?,
         ambientSourceKey: String,
     ): ManualBrightnessPreferenceSnapshot {
         val current = record ?: return inactive(automaticTarget)
-        if (current.modelContextKey != modelContextKey || current.ambientSourceKey != ambientSourceKey) {
+        if ((modelContextKey != null && current.modelContextKey != modelContextKey) ||
+            current.ambientSourceKey != ambientSourceKey
+        ) {
             clearLocked()
             return inactive(automaticTarget)
         }
@@ -142,7 +145,7 @@ internal class ManualBrightnessAuthority(
 
     @Synchronized fun snapshot(
         automaticTarget: Int,
-        modelContextKey: String,
+        modelContextKey: String?,
         ambientSourceKey: String,
     ): ManualBrightnessPreferenceSnapshot = evaluate(automaticTarget, modelContextKey, ambientSourceKey)
 
