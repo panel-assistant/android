@@ -876,6 +876,21 @@
       "softMaxChars": 24,
       "hardMaxChars": 40
     },
+    "configure.auto_sleep.insufficient_history": {
+      "text": "This Area’s activity sensors have too little usable history or are unavailable.",
+      "sourceHash": "a597055604b131dde0d5ef789cae122fb0cd1f7a42449e14733cc4e8c0656fdb",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.auto_sleep.no_device_source",
+        "configure.auto_sleep.no_credible_sources"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 130,
+      "hardMaxChars": 220
+    },
     "configure.auto_sleep.interval_count": {
       "text": "{state} {count} interval(s)",
       "sourceHash": "3d9afeb488077abafe5bdeecbeeda344c0badb0b23a0fd251198cd1833c3c762",
@@ -945,6 +960,21 @@
       "frozen": [],
       "softMaxChars": 85,
       "hardMaxChars": 123
+    },
+    "configure.auto_sleep.no_device_source": {
+      "text": "This Area has no motion, occupancy or presence binary sensor from a device integration.",
+      "sourceHash": "d693f089f0719dc40b248a657c8f2cc9c2ba3ee13f347ec8eda03dee650f1b18",
+      "surface": "configure",
+      "context": "auto_sleep",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.auto_sleep.insufficient_history",
+        "configure.auto_sleep.no_credible_sources"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 130,
+      "hardMaxChars": 220
     },
     "configure.auto_sleep.no_intervals": {
       "text": "no intervals",

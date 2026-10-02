@@ -323,6 +323,11 @@
    "sourceHash": "0e7f1acff19835681c748f83671c0bd5b07c642ee690e18aaff20a89d501af56",
    "state": "machine-cross-checked"
   },
+  "configure.auto_sleep.insufficient_history": {
+   "text": "Czujniki aktywności w tym obszarze mają zbyt mało użytecznej historii lub są niedostępne.",
+   "sourceHash": "a597055604b131dde0d5ef789cae122fb0cd1f7a42449e14733cc4e8c0656fdb",
+   "state": "machine-cross-checked"
+  },
   "configure.auto_sleep.interval_count": {
    "text": "{state}, liczba interwałów: {count}",
    "sourceHash": "3d9afeb488077abafe5bdeecbeeda344c0badb0b23a0fd251198cd1833c3c762",
@@ -341,6 +346,11 @@
   "configure.auto_sleep.no_credible_sources": {
    "text": "W tym obszarze nie ma żadnego wiarygodnego źródła aktywności opartego na urządzeniu.",
    "sourceHash": "1fafdf61adcae38c76552e518a2883c4dc158891ef5ac59ef17f4d51af719158",
+   "state": "machine-cross-checked"
+  },
+  "configure.auto_sleep.no_device_source": {
+   "text": "W tym obszarze nie ma czujnika binarnego ruchu, zajętości ani obecności pochodzącego z integracji urządzenia.",
+   "sourceHash": "d693f089f0719dc40b248a657c8f2cc9c2ba3ee13f347ec8eda03dee650f1b18",
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.no_intervals": {

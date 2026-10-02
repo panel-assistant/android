@@ -610,7 +610,7 @@ internal class HaPresenceSourceManager(
         Log.i(TAG, "presence authority candidates=${area.candidates.size} " +
             "asserting=${assertingCandidates.size} supporting=${area.candidates.size - assertingCandidates.size}")
         if (assertingCandidates.isEmpty()) {
-            throw NoCredibleSources("No device-backed activity source is ready", area.panelAreaName)
+            throw NoCredibleSources("no_device_source", area.panelAreaName)
         }
         val historyIds = assertingCandidates.mapTo(linkedSetOf()) { it.entityId }
         if (!quiet) publish(run, HaPresenceAggregate(HaPresencePhase.LEARNING))
@@ -632,7 +632,7 @@ internal class HaPresenceSourceManager(
             .map(HaPresenceCandidate::entityId)
             .toCollection(linkedSetOf())
         if (credible.isEmpty()) {
-            throw NoCredibleSources("No credible activity source is ready", area.panelAreaName)
+            throw NoCredibleSources("insufficient_history", area.panelAreaName)
         }
         val excluded = exclusions.excluded(area.panelAreaId)
         val selected = credible.filterTo(linkedSetOf()) { it !in excluded }
