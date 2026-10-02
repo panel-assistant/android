@@ -28,6 +28,6 @@ void cmd_installgc(conn_ctx *ctx, const char *args);  // INSTALLGC <apk-path> le
 // Identity-migration verbs. Both accept ONLY the two known ha-paneld package ids, so the successor
 // can complete a handover without a root shell and nothing else gains a privileged package surface.
 void cmd_uninstall(conn_ctx *ctx, const char *args);  // UNINSTALL <pkg>   remove the OTHER known package
-void cmd_grant(conn_ctx *ctx, const char *args);      // GRANT <pkg> NOTIFICATIONS|MICROPHONE|WRITESETTINGS|OVERLAY|BATTERY|ACCESSIBILITY
+void cmd_grant(conn_ctx *ctx, const char *args);      // GRANT <pkg> NOTIFICATIONS|MICROPHONE|CAMERA|WRITESETTINGS|OVERLAY|BATTERY|ACCESSIBILITY
 
 #endif

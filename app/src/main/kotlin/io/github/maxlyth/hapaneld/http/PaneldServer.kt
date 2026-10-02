@@ -15,6 +15,7 @@ import io.github.maxlyth.hapaneld.i18n.CatalogueLoader
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.github.maxlyth.hapaneld.camera.AbsentCameraSurface
 import io.github.maxlyth.hapaneld.camera.CameraSurface
+import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair
 import io.github.maxlyth.hapaneld.control.CdpRelay
 import io.github.maxlyth.hapaneld.control.AdbController
 import io.github.maxlyth.hapaneld.control.CompanionDataOperationState
@@ -208,6 +209,7 @@ class PaneldServer internal constructor(
     // needed here. AbsentCameraSurface is the default so a board with no camera owner still compiles
     // and answers `absent` truthfully; the service wires the real session owner once profile.hasCamera.
     private val camera: CameraSurface = AbsentCameraSurface,
+    private val permissionStatus: () -> Map<PanelPermissionRepair.Grant, PanelPermissionRepair.State>,
     // Home Assistant Assist pipeline catalogue for the Configure voice_pipelines picker. Defaults to a
     // stub reporting not-configured; the voice-coordinator lane injects the real HA-backed directory.
     private val assistPipelines: io.github.maxlyth.hapaneld.assist.AssistPipelineDirectory =
@@ -658,6 +660,7 @@ class PaneldServer internal constructor(
         return managementStatusJson(
             config, management, companion, powerAdvisory, radio, storage, health,
             { rendererAdmission(appContext, config, autoBrightnessHttpApi) }, camera::presentation, databaseObservationNonce,
+            permissions = permissionStatus,
             homeProof = if (homeProofRequested) ({
                 val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible())
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)

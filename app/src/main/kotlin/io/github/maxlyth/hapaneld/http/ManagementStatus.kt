@@ -4,6 +4,7 @@ import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.PanelStatus
 import io.github.maxlyth.hapaneld.dashboardRecoveryPresentation
 import io.github.maxlyth.hapaneld.camera.CameraPresentation
+import io.github.maxlyth.hapaneld.platform.PanelPermissionRepair
 import io.github.maxlyth.hapaneld.control.CompanionDb
 import io.github.maxlyth.hapaneld.control.PowerSafetyAdvisory
 import io.github.maxlyth.hapaneld.control.ZigbeeHealthSnapshot
@@ -37,6 +38,7 @@ internal fun managementStatusJson(
     renderer: () -> RendererAdmissionPresentation,
     camera: () -> CameraPresentation,
     databaseObservationNonce: String?,
+    permissions: () -> Map<PanelPermissionRepair.Grant, PanelPermissionRepair.State>,
     homeProof: (() -> String)? = null,
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
@@ -138,6 +140,7 @@ internal fun managementStatusJson(
             "\"ha_path_probe\":${PathProbeRuntime.statusJson()}," +
         "\"renderer\":${renderer().statusJson()}," +
         "\"camera\":${camera().statusJson()}," +
+        "\"permissions\":${PanelPermissionRepair.statusJson(runCatching(permissions).getOrDefault(emptyMap()))}," +
         "\"power_safety\":${PowerSafetyPresentation.json(powerAdvisory)}}"
 }
 

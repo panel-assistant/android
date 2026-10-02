@@ -17,7 +17,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 
 | Command | Effect | Reply |
 | --- | --- | --- |
-| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.3.0 proto=1.3` / `ERR` when arguments are supplied |
+| `VERSION` | read the helper identity without touching hardware | `HELPER version=1.3.1 proto=1.3` / `ERR` when arguments are supplied |
 | `RGB <r> <g> <b>` | set LED colour (each 0..255) | `OK` / `ERR` |
 | `OFF` | LED off | `OK` / `ERR` |
 | `BTN <0..255>` | button-backlight brightness | `OK` / `ERR` |
@@ -55,7 +55,7 @@ Newline-terminated ASCII on the abstract UNIX socket `@hapaneld-helper`. One or 
 | `REBOOT` / `REBOOT AWAIT` | reboot the panel through every mechanism in turn rather than trusting a zero exit status. Each mechanism gets a fixed window: it runs in its own process group under that window as a hard deadline, the whole group is killed and reaped if it has not returned by then (so a wrapper's forked worker dies with it), and any unused remainder is waited out, so a wedged actuator costs the same as a fast one and never blocks the mechanisms behind it. `REBOOT` accepts first and then goes down; `REBOOT AWAIT` answers only when the reboot demonstrably did not happen, so the client's EOF is the success signal | `OK` (then down) · `ERR` when every mechanism ran and the panel is still up, or the argument is not `AWAIT` |
 | `HELPERSTATUS` | report the running helper's build identity, the connection's authenticated caller, and every package id this daemon accepts. A client cannot infer dual-uid support from `BUILDID`, which is an opaque source hash; the bridge must confirm it before it installs and launches a successor that would otherwise have no root channel at all | `HELPERSTATUS 1 BUILD=<hash> CALLER=<ROOT\|LEGACY\|SUCCESSOR> PACKAGES=<id>,<id>` / `ERR` when arguments are supplied |
 | `UNINSTALL <pkg>` | remove one of the two known ha-paneld packages, so the identity migration can retire the old one without a root shell. Refuses any other package, and refuses the caller's own | `OK` / `ERR` / `BUSY` while Guard owns package mutation |
-| `GRANT <pkg> <capability>` | apply one grant from a fixed table to one of the two known packages: `NOTIFICATIONS`, `MICROPHONE` (runtime permissions), `WRITESETTINGS`, `OVERLAY` (app-ops), `BATTERY` (deviceidle whitelist, `cmd` with a `dumpsys` fallback), `ACCESSIBILITY` (append the panel service to the shared secure setting and enable accessibility, idempotently). No free-form permission, app-op or setting name is accepted, and no package outside the two | `OK` / `ERR` |
+| `GRANT <pkg> <capability>` | apply one grant from a fixed table to one of the two known packages: `NOTIFICATIONS`, `MICROPHONE`, `CAMERA` (runtime permissions), `WRITESETTINGS`, `OVERLAY` (app-ops), `BATTERY` (deviceidle whitelist, `cmd` with a `dumpsys` fallback), `ACCESSIBILITY` (append the panel service to the shared secure setting and enable accessibility, idempotently). No free-form permission, app-op or setting name is accepted, and no package outside the two | `OK` / `ERR` |
 | `PING` | liveness probe | `OK` |
 | anything else | — | `ERR` |
 
