@@ -18,8 +18,10 @@ fi
 
 printf 'adb %s\n' "$*" >> "${MOCK_CALL_LOG:?MOCK_CALL_LOG is required}"
 STATE_DIR="${MOCK_STATE_DIR:-$(dirname "$MOCK_CALL_LOG")}"
-# The installer no longer wakes the old app's handover. On a panel that already carries both
-# identities, the started successor drives its own migration, so its launch begins the modelled one.
+# On a panel that already carries both identities, launching the successor starts it beside the old
+# app: both then answer health on the same port. The old app refuses to release the panel, so the
+# successor never completes a handover and the old app stays installed; only Panel Assistant's Repair
+# moves the panel.
 case "$*" in *' monkey -p io.panelassistant.android '*)
   [ "${MOCK_LEGACY_INSTALLED:-0}" != 1 ] || : > "$STATE_DIR/handoff-started" ;;
 esac
@@ -301,16 +303,7 @@ pm_marked_probe_reply() {
     case "${MOCK_HANDOVER_PRESENCE:-ok}" in
       unknown) other=truncated ;;
       hang) /bin/sleep 30 ;;
-      present) ;;
-      slow|ok)
-        [ "${MOCK_HANDOVER_PRESENCE:-ok}" != slow ] || /bin/sleep 6
-        handover_probes=0
-        [ ! -f "$STATE_DIR/handoff-health-probes" ] || handover_probes="$(cat "$STATE_DIR/handoff-health-probes")"
-        if [ "$handover_probes" -gt "$(( ${MOCK_HANDOVER_BRIDGE_PROBES:-0} + ${MOCK_HANDOVER_HELD_PROBES:-0} ))" ]; then
-          probe_installed=no
-          printf 'handover-legacy-absent\n' >> "$MOCK_CALL_LOG"
-        fi
-        ;;
+      *) ;;
     esac
   fi
   printf 'HAPANELD_PKG_BEGIN:%s\n' "$nonce"
@@ -934,6 +927,12 @@ case "${1:-}" in
     [ -z "${MOCK_APK_INSTALL_DELAY_SECONDS:-}" ] || /bin/sleep "$MOCK_APK_INSTALL_DELAY_SECONDS"
     # Which identity was installed is observable from the asset name the release publishes it under.
     case "${!#}" in */panel-assistant-*.apk) : > "$STATE_DIR/successor-installed" ;; esac
+    # The bridge's release asset updates the old app in place on a panel that carries it; it never
+    # installs the successor identity.
+    if [ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] && [[ "${!#}" == */ha-paneld-v*-manual-setup-required.apk ]]; then
+      printf 'Success\n'
+      exit 0
+    fi
     if [[ "${!#}" == */shizuku.apk ]] && [ "${MOCK_SHIZUKU_INSTALL:-ok}" = block ]; then
       [ -z "${MOCK_SHIZUKU_INSTALL_PID_FILE:-}" ] || printf '%s\n' "$$" > "$MOCK_SHIZUKU_INSTALL_PID_FILE"
       trap 'exit 143' TERM INT
@@ -1171,11 +1170,6 @@ case "${1:-}" in
         ;;
       "pm path io.github.maxlyth.hapaneld")
         [ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] || exit 1
-        # The successor removes the bridge once it has taken the panel over, which is the state a
-        # fleet update observes rather than performs.
-        if [ "${MOCK_LEGACY_REMOVED_AFTER_SUCCESSOR:-0}" = 1 ] && [ -f "$STATE_DIR/successor-installed" ]; then
-          exit 1
-        fi
         pm_query_reply ok 'package:/data/app/io.github.maxlyth.hapaneld/base.apk' ""
         ;;
       "pidof io.github.maxlyth.hapaneld")

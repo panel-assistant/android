@@ -108,6 +108,12 @@ export PROVISION_TEST_ADB_FIXTURE="$FIXTURES/adb"
 export PROVISION_TEST_STATE_DIR="$TMP"
 export MOCK_STATE_DIR="$TMP"
 export HAPANELD_HOST_SQLITE3="$(command -v sqlite3)"
+# The database fixtures are built with the host's sqlite3. Without one, every capture reads as an
+# absent database and well over a hundred unrelated assertions fail; stop once and say why instead.
+if [ -z "$HAPANELD_HOST_SQLITE3" ]; then
+  echo "provision_test: sqlite3 is not on PATH; the database fixtures cannot be built" >&2
+  exit 2
+fi
 
 # A private time-zone database, so the host/panel time-zone advisory is decided by these files rather
 # than by whatever tzdata the machine running the suite happens to carry. That is not a convenience:
@@ -4295,26 +4301,24 @@ fi
 
 if provision_scope_is core all shard-install-finish; then
 
-# The bridge and the held successor both serve health before migration is ready for host writes.
-# Only exact successor identity plus the app's own bridge removal admits the plan and verification.
-MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_BRIDGE_PROBES=2 MOCK_HANDOVER_HELD_PROBES=2 \
+# On a panel that already carries both identities, the bridge and the held successor both serve
+# health, and the bridge refuses to release the panel, so it is never removed. Only exact successor
+# identity plus the app's own bridge removal would admit the plan, so the run stops, names Panel
+# Assistant's Repair, and never configures, verifies or relaunches.
+MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_BRIDGE_PROBES=2 APP_HEALTH_TIMEOUT_SECONDS=6 \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "handover waits through bridge and held-successor health"
-handover_plan_line="$(grep -n 'curl .*\/api/v1/provisioning/plan.txt' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-handover_bridge_probe_line="$(grep -n '^handover-health package=io.github.maxlyth.hapaneld probe=2$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-handover_held_probe_line="$(grep -n '^handover-health package=io.panelassistant.android probe=5$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-if [ -n "$handover_bridge_probe_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_bridge_probe_line" -lt "$handover_plan_line" ]; then
-  pass "bridge health does not admit the installed successor"
-else fail_test "bridge health does not admit the installed successor"; fi
-if [ -n "$handover_held_probe_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_held_probe_line" -lt "$handover_plan_line" ]; then
-  pass "held-successor health does not admit a handover before bridge removal"
-else fail_test "held-successor health does not admit a handover before bridge removal"; fi
-handover_absent_line="$(grep -n '^handover-legacy-absent$' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-if [ -n "$handover_absent_line" ] && [ -n "$handover_plan_line" ] && [ "$handover_absent_line" -lt "$handover_plan_line" ]; then
-  pass "the first installed-app plan follows proven bridge removal"
-else fail_test "the first installed-app plan follows proven bridge removal"; fi
-assert_not_contains 'shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity' "$MOCK_CALL_LOG" \
-  "an in-progress handover never receives the direct relaunch fallback"
+assert_failure "a successor beside a bridge that keeps the panel is not admitted" 'did not finish its handover'
+assert_contains 'old ha-paneld app is still on the panel' "the refused handover says the old app remains"
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' \
+  "the refused handover names the Panel Assistant Repair"
+assert_log_contains '^handover-health package=io\.github\.maxlyth\.hapaneld probe=2$' \
+  "the wait observes the bridge's own health"
+assert_log_contains '^handover-health package=io\.panelassistant\.android probe=3$' \
+  "the wait observes the held successor's health"
+assert_not_contains 'curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config' "$MOCK_CALL_LOG" \
+  "neither bridge nor held-successor health admits the plan or configuration"
+assert_not_contains 'shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity|HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
+  "the refused handover is neither relaunched nor woken"
 
 for handover_wait_case in present unknown wrong_identity duplicate_identity malformed_health; do
   handover_presence=ok; handover_health_package=io.panelassistant.android; handover_health_prefix=ha-paneld
@@ -4331,11 +4335,6 @@ for handover_wait_case in present unknown wrong_identity duplicate_identity malf
   assert_not_contains 'curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config|shell am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity' \
     "$MOCK_CALL_LOG" "$handover_wait_case handover neither configures nor verifies nor relaunches"
 done
-
-# Supported older panels can need more than five seconds for the two package-manager queries.
-MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=slow STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=15 APP_HEALTH_TIMEOUT_SECONDS=12 \
-  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "handover retains the existing slow package-manager query allowance"
 
 # The existing package classifier owns its child timeout, clamped to the launch wait's remainder.
 handover_wait_started=$SECONDS
@@ -5330,13 +5329,18 @@ assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/
   "$MOCK_CALL_LOG" "the old-app refusal precedes every tracked panel mutation"
 
 # A prior run may have installed the passive successor already. The installer updates it in place and
-# never starts the old app's on-panel handover.
+# never starts the old app's on-panel handover. The old app refuses to release the panel to the
+# successor beside it, so the run stops before configuration and names Panel Assistant's Repair.
 reset_db_txn_state
 MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "a rerun with both installed identities updates the installed successor"
+assert_failure "a rerun with both installed identities stops while the old app keeps the panel" 'did not finish its handover'
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' "a rerun with both installed identities stops while the old app keeps the panel: the Repair is named"
+assert_log_contains '^adb .* install( |$)' "a rerun with both installed identities updates the installed successor"
 assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
   "the installer never wakes the old app's on-panel handover"
+assert_not_contains 'curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config' "$MOCK_CALL_LOG" \
+  "a successor the old app has not released is never configured"
 
 # A successor package can be installed but remain entirely passive, without a canonical database.
 # The observer fixture reads the package from the actual staged script, so choosing the wrong
@@ -5347,7 +5351,8 @@ MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
 MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
 MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "a passive installed successor preserves the bridge-owned canonical database"
+assert_failure "a passive installed successor preserves the bridge-owned canonical database" 'did not finish its handover'
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' "a passive installed successor preserves the bridge-owned canonical database: the Repair is named"
 assert_marker_captured "passive successor handover captures the real bridge database"
 assert_log_contains 'host-db-observe package=io.panelassistant.android count=1 primary=missing passive=passive' \
   "passive ownership starts with an actual missing-successor observation"
@@ -5371,7 +5376,8 @@ assert_log_contains 'RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeC
 reset_db_txn_state
 MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=blocked \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_success "a successor with its own canonical database remains the data owner"
+assert_failure "a successor with its own canonical database remains the data owner" 'did not finish its handover'
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' "a successor with its own canonical database remains the data owner: the Repair is named"
 assert_not_contains 'host-db-observe package=io.github.maxlyth.hapaneld' "$MOCK_CALL_LOG" \
   "a valid successor database never falls back to stale bridge data"
 assert_log_contains 'PREPARE_UPGRADE -n io\.panelassistant\.android/io\.github\.maxlyth\.hapaneld\.UpgradeControlReceiver' \
@@ -6717,21 +6723,18 @@ cp "$APK" "$SUCCESSOR_APK_LOCAL"
 : > "$MOCK_CALL_LOG"
 rm -f "$TMP/installed-apk" "$TMP/successor-installed"
 LAST_OUTPUT="$TMP/fleet-local-bridge-output.txt"
-MOCK_LEGACY_INSTALLED=1 MOCK_LEGACY_REMOVED_AFTER_SUCCESSOR=1 HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=5   bash "$UPDATE_FLEET" --apk "$SUCCESSOR_APK_LOCAL" --bridge-apk "$BRIDGE_APK_LOCAL" --allow-unsigned-helper --no-tame   -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
+# A panel on the old app alone is moved by Panel Assistant's Repair: the bridge is updated in place,
+# and the provisioner then refuses to install the successor beside it.
+MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=5   bash "$UPDATE_FLEET" --apk "$SUCCESSOR_APK_LOCAL" --bridge-apk "$BRIDGE_APK_LOCAL" --allow-unsigned-helper --no-tame   -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
-assert_success "a locally sealed pair carries a legacy panel across without a release download"
+assert_failure "a locally sealed pair does not install the successor beside a legacy panel"
 assert_log_contains '^adb .* install -r .*ha-paneld-v0\.9\.3-manual-setup-required\.apk$' \
   "the bridge named by --bridge-apk is the one installed in place"
 assert_not_contains 'unknown arg' "$LAST_OUTPUT" "--bridge-apk is consumed by the wrapper and never reaches provision.sh"
 assert_not_contains 'supplies the successor only' "$LAST_OUTPUT" "a supplied bridge suppresses the successor-only warning"
-local_bridge_line="$(grep -n 'install -r .*ha-paneld-v0.9.3-manual-setup-required.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-local_successor_line="$(grep -n 'install .*panel-assistant-v0.9.3-manual-setup-required.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-if [ -n "$local_bridge_line" ] && [ -n "$local_successor_line" ] &&
-   [ "$local_bridge_line" -lt "$local_successor_line" ]; then
-  pass "the locally supplied bridge is in place before the successor"
-else
-  fail_test "the locally supplied bridge is in place before the successor"
-fi
+assert_not_contains 'install .*panel-assistant-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" \
+  "the locally supplied successor is never installed beside the bridge"
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' "a fleet update names the Repair that moves the panel"
 
 : > "$MOCK_CALL_LOG"
 LAST_OUTPUT="$TMP/fleet-bridge-without-apk-output.txt"
@@ -6946,49 +6949,30 @@ assert_success "fleet updater consumes an oversized prerelease response without 
 assert_log_contains 'releases/download/v0\.9\.2-rc3/panel-assistant-v0\.9\.2-rc3-manual-setup-required\.apk' \
   "oversized fleet response retains the first prerelease asset"
 
-# A panel still on the old application id is carried across in one pass: the bridge it already
-# runs is updated in place and started, the successor is then installed and provisioned, and the
-# bridge's removal — which the successor performs, not this script — is observed before the panel is
-# called done.
+# A panel still on the old application id is not carried across by this script. The bridge it already
+# runs is updated in place and started; the provisioner then refuses to install the successor beside
+# it and names Panel Assistant's Repair, so the panel fails rather than being called done.
 : > "$MOCK_CALL_LOG"
 rm -f "$TMP/installed-apk" "$TMP/successor-installed"
 LAST_OUTPUT="$TMP/fleet-bridge-output.txt"
-MOCK_GITHUB_API=stable_only MOCK_LEGACY_INSTALLED=1 MOCK_LEGACY_REMOVED_AFTER_SUCCESSOR=1 \
-HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=5 \
+MOCK_GITHUB_API=stable_only MOCK_NO_INSTALLED_PACKAGE=1 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_HOST_DB_PRIMARY=readable:9:ok MOCK_HOST_DB_RETAINED=1 MOCK_HOST_DB_INVENTORY=readable \
+HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=1 \
   bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
 LAST_STATUS=$?
-assert_success "a panel carrying the bridge is carried across in one pass"
+assert_failure "a panel carrying only the bridge is not given the successor"
 assert_log_contains '^adb .* install -r .*ha-paneld-v0\.9\.3-manual-setup-required\.apk$' \
   "the bridge is updated in place from its own release asset"
 assert_log_contains '^adb .* shell am start -n io\.github\.maxlyth\.hapaneld/\.MainActivity$' \
   "the updated bridge is started, because an install -r leaves it stopped"
-assert_contains 'fleet update complete.*1/1 panels OK' "the carried-across panel counts as complete"
-bridge_install_line="$(grep -n 'install -r .*ha-paneld-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-successor_install_line="$(grep -n 'install .*panel-assistant-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-if [ -n "$bridge_install_line" ] && [ -n "$successor_install_line" ] &&
-   [ "$bridge_install_line" -lt "$successor_install_line" ]; then
-  pass "the bridge is in place before the successor that hands over from it is installed"
-else
-  fail_test "the bridge is in place before the successor that hands over from it is installed"
-fi
+assert_not_contains 'install .*panel-assistant-v0\.9\.3-manual-setup-required\.apk' "$MOCK_CALL_LOG" \
+  "the successor is never installed beside the bridge"
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' "a fleet update names the Repair that moves the panel"
+assert_not_contains 'fleet update complete.*1/1 panels OK' "$LAST_OUTPUT" "a panel left on the bridge is not counted as complete"
 if ! grep -Eq 'uninstall|pm uninstall' "$MOCK_CALL_LOG"; then
   pass "update-fleet never removes a package itself"
 else
   fail_test "update-fleet never removes a package itself"
 fi
-
-# A handover that has not finished is reported, not forced: the panel fails with the idempotent
-# re-run advice rather than update-fleet claiming a migration that never completed.
-: > "$MOCK_CALL_LOG"
-rm -f "$TMP/installed-apk" "$TMP/successor-installed"
-LAST_OUTPUT="$TMP/fleet-bridge-stuck-output.txt"
-MOCK_GITHUB_API=stable_only MOCK_LEGACY_INSTALLED=1 \
-HAPANELD_FLEET_BRIDGE_START_SECONDS=5 HAPANELD_FLEET_MIGRATION_SECONDS=1 \
-  bash "$UPDATE_FLEET" --prerelease -- "$MOCK_TARGET" > "$LAST_OUTPUT" 2>&1
-LAST_STATUS=$?
-assert_failure "a bridge that is still installed afterwards fails its panel"
-assert_contains 'io\.github\.maxlyth\.hapaneld is still installed' "the unfinished handover is named exactly"
-assert_contains 're-run this fleet update for the panel' "the unfinished handover names the idempotent recovery"
 rm -f "$TMP/installed-apk" "$TMP/successor-installed"
 
 # A legacy literal secret is unavoidable in this wrapper's original argv, but it must be normalized
