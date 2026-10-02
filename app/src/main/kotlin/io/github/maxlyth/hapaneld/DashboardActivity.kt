@@ -3921,10 +3921,8 @@ class DashboardActivity : AppCompatActivity() {
                         RendererAdmissionRuntime.current()?.takeIf { it.owner == activityOwner },
                     ) != null,
                 ), null)
-                // Re-assert the page zoom AFTER load — HA's frontend ships its own <meta viewport
-                // initial-scale=1>, which overrides a scale set before load, so a pre-load setInitialScale
-                // silently reverts to default (dashboard looks compact). HACA does exactly this in its
-                // own onPageFinished. Keeps our sizing matching the Companion app's.
+                // HA's frontend viewport can override pre-load zoom; restore the configured
+                // built-in renderer scale once the document finishes loading.
                 applyZoom()
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
