@@ -5047,6 +5047,20 @@
       "softMaxChars": 53,
       "hardMaxChars": 76
     },
+    "configure.save.refused": {
+      "text": "Not saved: {reason}",
+      "sourceHash": "efd0fb5c5d944eaf6a7e4ebb5b08b47cc65284f06ee919bb04e2777a1e27538e",
+      "surface": "configure",
+      "context": "save",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{reason}"
+      ],
+      "frozen": [],
+      "softMaxChars": 140,
+      "hardMaxChars": 240
+    },
     "configure.save.reload_failed": {
       "text": "Saved (reload failed — refresh the page).",
       "sourceHash": "a2dd4f224888a496a50ea48da45bb9db08515fa0c2c4d962760aa3d83fd089e6",
@@ -5515,6 +5529,21 @@
       ],
       "softMaxChars": 50,
       "hardMaxChars": 72
+    },
+    "configure.validation.step": {
+      "text": "{label} must be a multiple of {step}.",
+      "sourceHash": "a875c86551a0f7dd45c9b6d2a8f822328bdbbecb1872e43ef51c18a3e1989f00",
+      "surface": "configure",
+      "context": "validation",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [
+        "{label}",
+        "{step}"
+      ],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 100
     },
     "configure.voice.configure_wake_word_first": {
       "text": "Configure a wake word above first.",

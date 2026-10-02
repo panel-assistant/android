@@ -25,5 +25,9 @@ class DashboardZoomSpecTest {
         assertEquals(300.0, spec.max)
     }
 
+    // The browser enforces `step` as a validity grid from `min`; a 10 % grid refused 96 (2026-10-02).
+    @Test fun anyWholePercentageIsOnTheGrid() =
+        assertEquals("any whole percentage between 90 and 100 must be offered", 1.0, spec!!.step)
+
     @Test fun notAnHaEntity() = assertNull("local display setting, never an HA entity", spec!!.ha)
 }
