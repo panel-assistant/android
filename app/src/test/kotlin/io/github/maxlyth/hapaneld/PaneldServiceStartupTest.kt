@@ -107,7 +107,7 @@ class PaneldServiceStartupTest {
     @Test fun unrelatedConfigChangesDoNotRefreshAutoSleepOrOtherLiveOwners() {
         listOf(emptySet(), setOf("touch_sound"), setOf("friendly_name"), setOf("ha_expose_touch_sound")).forEach { keys ->
             assertEquals(
-                ConfigOwnerRefreshPlan(false, false, false, false, false, false, false, false, false),
+                ConfigOwnerRefreshPlan(false, false, false, false, false, false, false, false),
                 configOwnerRefreshPlan(keys),
             )
         }
@@ -115,11 +115,11 @@ class PaneldServiceStartupTest {
 
     @Test fun configOwnerRefreshesAreExplicitlyKeyed() {
         assertEquals(
-            ConfigOwnerRefreshPlan(true, true, false, false, true, true, true, false, true),
+            ConfigOwnerRefreshPlan(true, true, false, false, true, true, false, true),
             configOwnerRefreshPlan(setOf("ha_url")),
         )
         assertEquals(
-            ConfigOwnerRefreshPlan(false, false, true, true, false, false, false, false, false),
+            ConfigOwnerRefreshPlan(false, false, true, true, false, false, false, false),
             configOwnerRefreshPlan(setOf("log_ship_host", "keep_awake")),
         )
         assertTrue(configOwnerRefreshPlan(setOf("panel_id")).autoSleep)
