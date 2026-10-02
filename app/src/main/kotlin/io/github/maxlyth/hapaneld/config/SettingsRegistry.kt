@@ -747,7 +747,7 @@ object SettingsRegistry {
         SettingSpec(
             key = "dashboard_zoom", type = SettingType.INT, group = "Dashboard",
             tier = Tier.ADVANCED, summary = "Browser zoom for the dashboard.",
-            label = "Zoom (%)", default = "100", min = 50.0, max = 300.0, step = 10.0,
+            label = "Zoom (%)", default = "100", min = 50.0, max = 300.0, step = 1.0,
             scope = Scope.DEVICE,
             help = "Browser zoom.",
             promoteWhen = { !it.canSetDisplay },

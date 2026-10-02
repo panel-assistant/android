@@ -1908,6 +1908,11 @@
       "state": "machine-cross-checked",
       "text": "{outcome} 较新的更改仍需保存。"
     },
+    "configure.save.refused": {
+      "text": "未保存：{reason}",
+      "sourceHash": "efd0fb5c5d944eaf6a7e4ebb5b08b47cc65284f06ee919bb04e2777a1e27538e",
+      "state": "machine-cross-checked"
+    },
     "configure.save.reload_failed": {
       "sourceHash": "a2dd4f224888a496a50ea48da45bb9db08515fa0c2c4d962760aa3d83fd089e6",
       "state": "machine-cross-checked",
@@ -2077,6 +2082,11 @@
       "sourceHash": "054c9181365746dd56b7fd3565f1e9a019456a996732f3d0caff9184baa22585",
       "state": "machine-cross-checked",
       "text": "{label} 必须介于 {min} 和 {max} 之间。"
+    },
+    "configure.validation.whole_range": {
+      "text": "{label} 必须是 {min} 到 {max} 之间的整数。",
+      "sourceHash": "f50400f2dd16ee35194f64bbdd54ea514a8d29ac8ff70edfa9af83e7df2b8ec3",
+      "state": "machine-cross-checked"
     },
     "configure.voice.configure_wake_word_first": {
       "sourceHash": "29db9e0656abb9d76014f07d2f3faac2ece244b4b3e8c217ae984de03ab4aff8",

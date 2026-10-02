@@ -76,7 +76,7 @@ class EmbedModeTest {
         assertEquals("api,logs", embedded.bodyAsText())
     }
 
-    @Test fun `embedded language ranks below an explicit choice and above the persisted setting`() = testApplication {
+    @Test fun `embedded language stands in for Automatic and never overrides a chosen language`() = testApplication {
         val loader = catalogueLoader()
         application {
             intercept(ApplicationCallPipeline.Plugins) { call.admitEmbedMode() }
@@ -84,7 +84,7 @@ class EmbedModeTest {
                 get("/") {
                     val strings = resolvedRequestStrings(
                         call = call,
-                        persistedLanguage = "de",
+                        persistedLanguage = call.request.headers["X-Persisted"] ?: "de",
                         deviceLanguageTag = "fr",
                         allowPseudo = false,
                         catalogueLoader = loader,
@@ -93,21 +93,25 @@ class EmbedModeTest {
                 }
             }
         }
-        suspend fun locale(path: String, embedHeader: String?): String = client.get(path) {
+        suspend fun locale(path: String, embedHeader: String?, persisted: String = "de"): String = client.get(path) {
             header(HttpHeaders.AcceptLanguage, "es")
+            header("X-Persisted", persisted)
             embedHeader?.let { header(EmbedMode.HEADER, it) }
         }.bodyAsText()
 
         // Outside embedded mode the persisted panel choice wins, as on the LAN.
         assertEquals("de", locale("/?ha_lang=it", null))
+        // A chosen Interface language wins in the sidebar too: choosing one must change the page.
         assertEquals("de", locale("/", "v=1;lang=it;theme=blue"))
-        // The Home Assistant user's language outranks the persisted setting and every automatic signal.
-        assertEquals("it", locale("/?ha_lang=nl", "v=1;lang=it"))
-        assertEquals("zh-Hans", locale("/", "v=1;lang=zh-Hans"))
+        assertEquals("de", locale("/", "v=1;lang=it"))
+        // On Automatic the Home Assistant user's language outranks every automatic signal.
+        assertEquals("it", locale("/?ha_lang=nl", "v=1;lang=it", persisted = "auto"))
+        assertEquals("zh-Hans", locale("/", "v=1;lang=zh-Hans", persisted = "auto"))
         // A language without a catalogue is English, not the panel's own choice.
-        assertEquals("en", locale("/", "v=1;lang=pt-BR"))
+        assertEquals("en", locale("/", "v=1;lang=pt-BR", persisted = "auto"))
         // An explicit choice made in the page still wins.
         assertEquals("fr", locale("/?lang=fr", "v=1;lang=it"))
+        assertEquals("fr", locale("/?lang=fr", "v=1;lang=it", persisted = "auto"))
         // A switch without a language leaves the LAN precedence alone.
         assertEquals("de", locale("/", "v=1;hide=api"))
     }
