@@ -3001,9 +3001,10 @@ root_helper_unchanged_advice() {
 # named variable to 1 when they arrived, to `full` when the file was created but stores nothing (a
 # full partition: a read-only one refuses the create itself), and to 0 when the write was refused.
 # The caller removes the probe file; a zero-byte create proves nothing about whether a file fits.
+# stderr is silenced before the redirect so a refused create adds no line to the probe's answer.
 partition_write_probe() {
   local var="$1" path="$2" content="$3"
-  printf '%s=0\nif printf %s > %s 2>/dev/null && [ -s %s ]; then\n  %s=1\nelif [ -e %s ]; then\n  %s=full\nfi\n' \
+  printf '%s=0\nif printf %s 2>/dev/null > %s && [ -s %s ]; then\n  %s=1\nelif [ -e %s ]; then\n  %s=full\nfi\n' \
     "$var" "$content" "$path" "$path" "$var" "$path" "$var"
 }
 
