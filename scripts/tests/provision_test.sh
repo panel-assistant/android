@@ -8109,14 +8109,45 @@ FULL_ROOT="$TMP/full-system"
 mkdir -p "$FULL_ROOT/system/etc/init" "$FULL_ROOT/system/bin"
 FULL_LIMIT="trap '' XFSZ; ulimit -f 0"
 # Only the paths move: the probe's own create, write, capacity and runner logic run as shipped.
-full_probe="$(sed -n '/^    system_init_probe=\/system\/etc\/init/,/^  '"'"' 2>&1)" || layout_status=\$?$/p' "$PROVISION" |
-  sed -e '$d' -e "s|/system|$FULL_ROOT/system|g" -e 's/@TRANSACTION_ID@/full/g')"
+# The write itself comes from the shared partition_write_probe definition, which the host renders
+# into the probe text; render it here the same way, from the call exactly as provision.sh writes it.
+full_probe="$(sed -n '/^    system_init_probe=\/system\/etc\/init/,/^  '"'"' 2>&1)" || layout_status=\$?$/p' "$PROVISION")"
+eval "$(sed -n '/^partition_write_probe() {/,/^}/p' "$PROVISION")"
+full_probe_call="$(printf '%s\n' "$full_probe" | grep -F 'partition_write_probe system_init_writable' | head -1)" || full_probe_call=""
+if [ -n "$full_probe_call" ]; then
+  full_probe_write="${full_probe_call#\'\"\$(}"
+  full_probe_write="$(eval "${full_probe_write%)\"\'}")"
+  full_probe="${full_probe/"$full_probe_call"/"$full_probe_write"}"
+fi
+full_probe="$(printf '%s\n' "$full_probe" | sed -e '$d' -e "s|/system|$FULL_ROOT/system|g" -e 's/@TRANSACTION_ID@/full/g')"
 full_out="$(PATH=/usr/bin:/bin /bin/sh -c "$FULL_LIMIT
 $full_probe" 2>&1)"
 if [ -n "$full_probe" ] && [ "$full_out" = "$(printf '%s\n' SYSTEM_RW SYSTEM_AVAIL_KB=0)" ]; then
   pass "a read-write /system with no room is reported writable with no space, never read-only"
 else
   fail_test "a read-write /system with no room is reported writable with no space, never read-only"
+fi
+
+# The /vendor/etc/init probe makes the same distinction through the same write definition: a
+# read-write directory that takes a create and refuses every byte is full, not read-only.
+mkdir -p "$FULL_ROOT/vendor/etc/init"
+eval "$(sed -n '/^partition_write_probe() {/,/^}/p' "$PROVISION")"
+vendor_full_probe="$(sed -n '/^    vendor_probe="\$(run_root '"'"'$/,/^    '"'"' 2>&1)" || vendor_status=\$?$/p' "$PROVISION" | sed -e '1d' -e '$d')"
+vendor_full_call="$(printf '%s\n' "$vendor_full_probe" | grep -F 'partition_write_probe vendor_init_writable' | head -1)" || vendor_full_call=""
+if [ -n "$vendor_full_call" ]; then
+  vendor_full_write="${vendor_full_call#\'\"\$(}"
+  vendor_full_write="$(eval "${vendor_full_write%)\"\'}")"
+  vendor_full_probe="${vendor_full_probe/"$vendor_full_call"/"$vendor_full_write"}"
+fi
+vendor_full_probe="$(printf '%s\n' "$vendor_full_probe" | sed -e "s|/vendor|$FULL_ROOT/vendor|g" -e 's/'"'"'"\$ROOT_HELPER_TRANSACTION_ID"'"'"'/full/g')"
+vendor_full_out="$(PATH=/usr/bin:/bin /bin/sh -c "$FULL_LIMIT
+$vendor_full_probe" 2>&1)"
+vendor_ro_out="$(PATH=/usr/bin:/bin /bin/sh -c "$(printf '%s\n' "$vendor_full_probe" | sed "s|$FULL_ROOT/vendor/etc/init|$FULL_ROOT/vendor/absent|g")" 2>&1)"
+if [ -n "$vendor_full_call" ] && [ "$vendor_full_out" = VENDOR_INIT_FULL ] && [ "$vendor_ro_out" = VENDOR_INIT_RO ] &&
+   [ -z "$(ls -A "$FULL_ROOT/vendor/etc/init")" ]; then
+  pass "a read-write /vendor/etc/init with no room is reported full, a refused create read-only, and no probe file is left"
+else
+  fail_test "a read-write /vendor/etc/init with no room is reported full, a refused create read-only, and no probe file is left (full: '$vendor_full_out', refused: '$vendor_ro_out')"
 fi
 # The opposite case must not ride along: /system takes the create but its boot directory refuses one,
 # as a read-only overmount there does. Hybrid would then fail late removing the old boot file, so this
