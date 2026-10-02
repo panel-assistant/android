@@ -273,6 +273,35 @@ class ProximityCalibrationRuntimeTest {
         assertEquals(0, fixture.backing.writes)
     }
 
+    @Test fun introWithNoReadingEndsWithAPlainReasonWithinItsBoundAndRetryRestartsIt() {
+        val previous = row(legacy())
+        val fixture = Fixture(Backing(previous))
+        assertTrue(fixture.runtime.start())
+        fixture.session = fixture.status().getString("sessionId")
+        fixture.runtime.visible()
+        fixture.advance(ProximityCalibrationRuntime.NO_READING_TIMEOUT_MS - 1)
+        assertEquals("intro", fixture.stage())
+        assertTrue(fixture.runtime.active())
+        fixture.advance(1)
+        assertFalse(fixture.runtime.active())
+        assertEquals(ProximityCalibrationRuntime.NO_READING_MESSAGE, fixture.status().getString("message"))
+        assertEquals(previous, fixture.backing.row)
+        assertTrue(fixture.runtime.localAction("retry"))
+        fixture.advance(ProximityCalibrationRuntime.NO_READING_TIMEOUT_MS - 1)
+        assertEquals("intro", fixture.stage())
+    }
+
+    @Test fun introWithALiveReadingIsNotEndedByTheNoReadingBound() {
+        val fixture = Fixture()
+        assertTrue(fixture.runtime.start())
+        fixture.session = fixture.status().getString("sessionId")
+        fixture.runtime.visible()
+        fixture.sample(100f, live = false, capture = true)
+        fixture.advance(ProximityCalibrationRuntime.NO_READING_TIMEOUT_MS + 1)
+        assertEquals("intro", fixture.stage())
+        assertTrue(fixture.runtime.localAction("begin"))
+    }
+
     @Test fun retryRequiresFreshProbeBeforeQuietSourceCanBeCapturedAgain() {
         val fixture = Fixture()
         fixture.begin(100f)
