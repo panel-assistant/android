@@ -299,6 +299,12 @@ pm_marked_probe_reply() {
     io.github.maxlyth.hapaneld) probe_installed="$([ "${MOCK_LEGACY_INSTALLED:-0}" = 1 ] && echo yes || echo no)" ;;
     *) probe_installed="$([ -f "$STATE_DIR/installed-apk" ] && echo yes || echo no)" ;;
   esac
+  # MOCK_LEGACY_PRESENCE_AFTER_INSTALL=unknown models an old-app query that cannot be answered once the
+  # new app's APK has been installed, while every earlier observation still answers.
+  if [ "$probe_pkg" = io.github.maxlyth.hapaneld ] && [ -f "$STATE_DIR/apk-install-attempted" ] &&
+     [ "${MOCK_LEGACY_PRESENCE_AFTER_INSTALL:-ok}" = unknown ]; then
+    other=truncated
+  fi
   if [ "$probe_pkg" = io.github.maxlyth.hapaneld ] && [ -f "$STATE_DIR/handoff-started" ]; then
     case "${MOCK_HANDOVER_PRESENCE:-ok}" in
       unknown) other=truncated ;;

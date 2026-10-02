@@ -8759,6 +8759,14 @@ if [ "$PKG" != "$LEGACY_PKG" ]; then
   # the old app's on-panel handover: Panel Assistant moves panels through its Repair. The presence is
   # recorded only so the launch below waits for the app instead of restarting it.
   handoff_bridge_presence="$(classify_package_presence "$ADB_COMMAND_TIMEOUT_SECONDS" "$LEGACY_PKG"; printf '%s\n' "$PACKAGE_PRESENCE")"
+  # An unreadable answer is not proof that the old app is gone: launching the new app could start it
+  # beside the old one, the state Panel Assistant's Repair refuses. Stop before launch instead.
+  case "$handoff_bridge_presence" in
+    present|absent) ;;
+    *) fail "could not confirm whether the old ha-paneld app is still on the panel" \
+      "The new app and root helper are installed but not started; no configuration was applied." \
+      "Reconnect adb and re-run this command." ;;
+  esac
 fi
 
 step "🔑 permissions" "${D}notifications · WRITE_SETTINGS (brightness/screen) · SYSTEM_ALERT_WINDOW (navbar) · a11y (buttons)${X}"

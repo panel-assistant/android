@@ -4336,6 +4336,17 @@ for handover_wait_case in present unknown wrong_identity duplicate_identity malf
     "$MOCK_CALL_LOG" "$handover_wait_case handover neither configures nor verifies nor relaunches"
 done
 
+# After the install, an old-app presence that cannot be read is not proof that the old app is gone.
+# Launching and configuring the new app could then run it beside the old one, so the run stops first.
+rm -f "$TMP/apk-install-attempted"
+MOCK_LEGACY_INSTALLED=1 MOCK_LEGACY_PRESENCE_AFTER_INSTALL=unknown \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_failure "an unreadable old-app presence after install stops before launch" \
+  'could not confirm whether the old ha-paneld app is still on the panel'
+assert_not_contains 'monkey -p io\.panelassistant\.android|am start -n io\.panelassistant\.android/|curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config' \
+  "$MOCK_CALL_LOG" "an unreadable old-app presence never launches or configures the new app"
+rm -f "$TMP/apk-install-attempted"
+
 # The existing package classifier owns its child timeout, clamped to the launch wait's remainder.
 handover_wait_started=$SECONDS
 MOCK_LEGACY_INSTALLED=1 MOCK_HANDOVER_PRESENCE=hang STORAGE_HEALTH_PACKAGE_QUERY_SECONDS=15 APP_HEALTH_TIMEOUT_SECONDS=1 \
