@@ -21,12 +21,20 @@ interface Daemon {
      */
     fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult
 
+    /** Recheck current admission after transport preparation, before command submission. */
+    fun sendLong(cmd: String, timeoutMs: Long, beforeSubmit: () -> Boolean): DaemonLongResult =
+        if (beforeSubmit()) sendLong(cmd, timeoutMs) else DaemonLongResult.NotSubmitted
+
     /**
      * Negotiate a two-phase command, stream [source] only after the daemon replies `READY`, then wait
      * for one terminal line. The default keeps injected/older daemon implementations compatible.
      */
     fun sendFile(cmd: String, source: File, timeoutMs: Long): DaemonStreamResult =
         DaemonStreamResult.Unsupported
+
+    /** The production transport checks on its bootstrapped connection before sending the command. */
+    fun sendFile(cmd: String, source: File, timeoutMs: Long, beforeSubmit: () -> Boolean): DaemonStreamResult =
+        if (beforeSubmit()) sendFile(cmd, source, timeoutMs) else DaemonStreamResult.NotSubmitted
 
     /** Send one command and read the full binary reply (e.g. a `SCREENCAP` PNG), or null. */
     fun sendBytes(cmd: String): ByteArray?

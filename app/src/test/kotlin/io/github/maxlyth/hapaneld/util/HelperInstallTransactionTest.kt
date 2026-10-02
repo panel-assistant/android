@@ -59,6 +59,87 @@ class HelperInstallTransactionTest {
         assertTrue(daemon.calls.isEmpty())
     }
 
+    @Test fun revokedAdmissionBeforeStreamDeletesInputWithoutSubmitting() {
+        val source = apk("not-admitted.apk", byteArrayOf(1, 2))
+        val directory = temporary.newFolder("not-admitted-staging")
+        val daemon = LongDaemon(DaemonLongResult.Reply("OK"))
+        val refusal = InstallOutcome.Retryable("Panel Assistant must be online with update policy")
+
+        assertEquals(refusal, HelperInstallTransaction(daemon).install(source, directory) { refusal })
+        assertFalse(source.exists())
+        assertTrue(daemon.streamCalls.isEmpty())
+        assertTrue(daemon.calls.isEmpty())
+        assertTrue(directory.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test fun revokedAdmissionDuringUnsupportedNegotiationRefusesFreshInstall() {
+        listOf<InstallOutcome.Failure>(
+            InstallOutcome.Retryable("Panel Assistant must be online with update policy"),
+            InstallOutcome.Rejected("refused (Panel Assistant update policy permits stable builds only)"),
+        ).forEachIndexed { index, refusal ->
+            var admitted = true
+            val source = apk("negotiation-$index.apk", byteArrayOf(1, 2))
+            val directory = temporary.newFolder("negotiation-staging-$index")
+            val daemon = LongDaemon(DaemonLongResult.Reply("OK"), onStream = { _, _, _ -> admitted = false })
+
+            assertEquals(refusal, HelperInstallTransaction(daemon).install(source, directory) {
+                if (admitted) null else refusal
+            })
+            assertEquals(1, daemon.streamCalls.size)
+            assertTrue(daemon.calls.isEmpty())
+            assertFalse(source.exists())
+            assertTrue(directory.listFiles().orEmpty().isEmpty())
+        }
+    }
+
+    @Test fun revokedAdmissionDuringStagingDeletesOnlyTheClaimedInput() {
+        var admitted = true
+        val directory = temporary.newFolder("revoked-staging")
+        val unrelated = File(directory, "owner.apk").apply { writeBytes(byteArrayOf(9, 8)) }
+        val source = object : File(temporary.root, "revoke-on-claim.apk") {
+            override fun renameTo(destination: File): Boolean = super.renameTo(destination).also {
+                admitted = false
+            }
+        }.apply { writeBytes(byteArrayOf(1, 2)) }
+        val daemon = LongDaemon(DaemonLongResult.Reply("OK"))
+        val refusal = InstallOutcome.Retryable("Panel Assistant must be online with update policy")
+        val staging = HelperInstallStaging()
+
+        assertEquals(refusal, HelperInstallTransaction(daemon, staging = staging).install(source, directory) {
+            if (admitted) null else refusal
+        })
+        assertEquals(1, daemon.streamCalls.size)
+        assertTrue(daemon.calls.isEmpty())
+        assertFalse(source.exists())
+        assertEquals(listOf(unrelated), directory.listFiles().orEmpty().toList())
+        assertArrayEquals(byteArrayOf(9, 8), unrelated.readBytes())
+    }
+
+    @Test fun acceptedOrAmbiguousStreamIsNotReadmittedAfterRevocation() {
+        listOf<Pair<DaemonStreamResult, InstallOutcome>>(
+            DaemonStreamResult.Reply("OK") to InstallOutcome.Succeeded,
+            DaemonStreamResult.Indeterminate to InstallOutcome.Retryable(
+                "install outcome unknown: streamed input released", mayHaveCommitted = true,
+            ),
+        ).forEachIndexed { index, (streamResult, expected) ->
+            var admitted = true
+            val source = apk("accepted-$index.apk", byteArrayOf(1, 2))
+            val directory = temporary.newFolder("accepted-staging-$index")
+            val daemon = LongDaemon(DaemonLongResult.Reply("OK"), streamResult, onStream = { _, _, _ ->
+                admitted = false
+            })
+
+            assertEquals(expected, HelperInstallTransaction(daemon).install(source, directory) {
+                if (admitted) null else InstallOutcome.Retryable("PA disconnected")
+            })
+            assertFalse(admitted)
+            assertFalse(source.exists())
+            assertEquals(1, daemon.streamCalls.size)
+            assertTrue(daemon.calls.isEmpty())
+            assertTrue(directory.listFiles().orEmpty().isEmpty())
+        }
+    }
+
     @Test fun streamSuccessUsesOriginalInputAndNeverCreatesLegacyStaging() {
         val source = apk("stream.apk", byteArrayOf(0x50, 0x4b, 3, 4))
         val directory = temporary.newFolder("stream-staging")

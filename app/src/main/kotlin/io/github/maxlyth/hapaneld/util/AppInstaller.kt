@@ -630,14 +630,15 @@ object AppInstaller {
             )
         }
         var installSucceeded = false
+        val submissionRefusal: (() -> InstallOutcome.Failure?)? = if (AppIdentity.isPanelApp(info.pkg)) {
+            { currentPanelUpdateRefusal(context, info)?.let(::policyFailure) }
+        } else null
         try {
             // Snapshot/flush can outlive the hello that admitted them. PA stays connected through state
             // quiescence, so re-admit immediately before submitting any privileged package transaction.
-            if (AppIdentity.isPanelApp(info.pkg)) {
-                currentPanelUpdateRefusal(context, info)?.let { why ->
-                    apk.delete()
-                    return@withContext policyFailure(why)
-                }
+            submissionRefusal?.invoke()?.let { refusal ->
+                apk.delete()
+                return@withContext refusal
             }
             if (route == InstallRoute.SU) {
                 val out = try {
@@ -664,6 +665,7 @@ object AppInstaller {
                 HelperInstallTransaction(HelperClient).install(
                     apk,
                     File(context.filesDir, HelperInstallTransaction.STAGING_DIR),
+                    beforeSubmit = submissionRefusal,
                 )
             } else if (route == InstallRoute.SHIZUKU) {
                 val out = try {
