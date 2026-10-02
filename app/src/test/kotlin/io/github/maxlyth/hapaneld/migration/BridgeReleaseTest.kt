@@ -42,14 +42,19 @@ class BridgeReleaseTest {
     private fun request(ports: FakePorts, token: String? = "good", loopback: Boolean = true) =
         BridgeRelease(ports).request(token, loopback)
 
-    @Test fun anAdmittedReleaseQuiescesThenRetiresThenSetsHome() {
+    @Test fun aTrustedRequestIsRefusedBecausePanelAssistantMovesThePanel() {
         val ports = FakePorts()
 
-        assertEquals(Outcome.Releasing, request(ports))
-        assertEquals("nothing is given up before the service has torn down", listOf("quiesce"), ports.events)
+        assertEquals(Outcome.Refused(Refusal.MOVED_BY_PANEL_ASSISTANT), request(ports))
+        assertEquals("the bridge keeps the panel and keeps running", emptyList<String>(), ports.events)
+        assertEquals("moved-by-panel-assistant", Refusal.MOVED_BY_PANEL_ASSISTANT.code)
+    }
 
-        ports.quiesced!!.invoke()
-        assertEquals(listOf("quiesce", "marker", "home", "end"), ports.events)
+    @Test fun theRetirementRefusalHoldsEvenWhenTheHelperAndShutdownWouldAdmitIt() {
+        val ports = FakePorts(helperRefusal = null, quiesceArms = true)
+
+        assertEquals(Outcome.Refused(Refusal.MOVED_BY_PANEL_ASSISTANT), request(ports))
+        assertEquals(null, ports.quiesced)
     }
 
     @Test fun everyRefusalLeavesNoSideEffect() {
@@ -57,22 +62,13 @@ class BridgeReleaseTest {
             Refusal.NOT_A_BRIDGE to FakePorts(bridge = false),
             Refusal.BAD_TOKEN to FakePorts(token = "other"),
             Refusal.UNTRUSTED_SUCCESSOR to FakePorts(trusted = false),
-            Refusal.HELPER_NOT_CONFIRMED to FakePorts(helperRefusal = "running helper is not the bundled build"),
+            Refusal.MOVED_BY_PANEL_ASSISTANT to FakePorts(helperRefusal = "running helper is not the bundled build"),
         )
 
         refusals.forEach { (refusal, ports) ->
             assertEquals(refusal, (request(ports) as? Outcome.Refused)?.refusal)
             assertEquals("$refusal must not touch the panel", emptyList<String>(), ports.events)
         }
-    }
-
-    @Test fun theHelperRefusalCarriesItsReason() {
-        val ports = FakePorts(helperRefusal = "running helper is not the bundled build")
-
-        assertEquals(
-            Outcome.Refused(Refusal.HELPER_NOT_CONFIRMED, "running helper is not the bundled build"),
-            request(ports),
-        )
     }
 
     @Test fun aCallerThatIsNotOnLoopbackIsRefusedEvenWithTheToken() {
@@ -86,13 +82,6 @@ class BridgeReleaseTest {
         assertEquals(Outcome.Refused(Refusal.BAD_TOKEN), request(FakePorts(), token = null))
     }
 
-    @Test fun aShutdownThatCannotBeArmedIsARefusalNotAHandover() {
-        val ports = FakePorts(quiesceArms = false)
-
-        assertEquals(Outcome.Refused(Refusal.QUIESCE_UNAVAILABLE), request(ports))
-        assertEquals(listOf("quiesce"), ports.events)
-    }
-
     @Test fun aRetiredBridgeAnswersARetryWithoutQuiescingAgain() {
         val ports = FakePorts(retired = true)
 
@@ -102,24 +91,5 @@ class BridgeReleaseTest {
 
     @Test fun aRetiredBridgeStillRefusesAWrongToken() {
         assertEquals(Outcome.Refused(Refusal.BAD_TOKEN), request(FakePorts(retired = true), token = "other"))
-    }
-
-    @Test fun aMarkerThatCannotBeMadeDurableResumesTheBridgeAndNeverGivesUpHome() {
-        val ports = FakePorts(markerWrites = false)
-        request(ports)
-
-        ports.quiesced!!.invoke()
-
-        assertEquals(listOf("quiesce", "marker", "resume"), ports.events)
-    }
-
-    @Test fun anUnconfirmedHomeDoesNotUndoTheRetirement() {
-        val ports = FakePorts(homeSets = false)
-        request(ports)
-
-        ports.quiesced!!.invoke()
-
-        assertEquals(listOf("quiesce", "marker", "home", "end"), ports.events)
-        assertEquals(true, ports.retired)
     }
 }

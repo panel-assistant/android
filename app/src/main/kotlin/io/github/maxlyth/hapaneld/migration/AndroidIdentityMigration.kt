@@ -4,11 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.Config
-import io.github.maxlyth.hapaneld.BuildConfig
 import io.github.maxlyth.hapaneld.util.AppInstaller
-import io.github.maxlyth.hapaneld.util.HelperClient
-import io.github.maxlyth.hapaneld.util.GuardDbProcessAdmission
-import io.github.maxlyth.hapaneld.util.dualUidHelperRefusal
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Environment
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Result
 import io.github.maxlyth.hapaneld.migration.SuccessorMigration.Step
@@ -108,15 +104,13 @@ internal class AndroidIdentityMigration(
 
     override suspend fun offer(): SuccessorHandoff.Outcome? = offerHandoff()
 
-    override fun successorUploadCapability(): SuccessorUploadCapability? {
-        if (!AppIdentity.IS_BRIDGE || BridgeRetirement.isRetired(context) ||
-            !GuardDbProcessAdmission.ordinaryMutationsAllowed()
-        ) return null
-        if (dualUidHelperRefusal(HelperClient.helperStatus(), BuildConfig.HELPER_BUILD_ID, context.packageName) != null) return null
-        return SuccessorUploadCapability(
-            AppIdentity.SUCCESSOR, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), AppInstaller.MIGRATION_SIGNER,
-        )
-    }
+    /**
+     * The bridge no longer installs the successor beside itself: Panel Assistant moves the panel
+     * through its Repair, which refuses a successor that has run beside the bridge. With no
+     * capability, `/api/v1/successor` answers not-a-bridge and a migration upload is refused before
+     * anything is installed; ordinary uploads are unaffected.
+     */
+    override fun successorUploadCapability(): SuccessorUploadCapability? = null
 
     override fun installedSuccessorStatus(): InstalledSuccessorStatus {
         val info = try {

@@ -186,6 +186,7 @@ class MigrationStateTest {
         assertEquals(HttpStatusCode.Forbidden, refused(BridgeRelease.Refusal.BAD_TOKEN).first)
         assertEquals(HttpStatusCode.Forbidden, refused(BridgeRelease.Refusal.UNTRUSTED_SUCCESSOR).first)
         assertEquals(HttpStatusCode.Conflict, refused(BridgeRelease.Refusal.QUIESCE_UNAVAILABLE).first)
+        assertEquals(HttpStatusCode.Conflict, refused(BridgeRelease.Refusal.MOVED_BY_PANEL_ASSISTANT).first)
         assertEquals(
             HttpStatusCode.Conflict to
                 """{"ok":false,"error":"helper-not-confirmed","detail":"running helper is not the bundled build"}""",

@@ -1,7 +1,10 @@
 package io.github.maxlyth.hapaneld.migration
 
 /**
- * Bridge side of the handover: the successor has pulled and verified a backup and asks for the panel.
+ * Bridge side of the retired on-panel handover: the successor has pulled and verified a backup and
+ * asks for the panel. Panel Assistant now moves panels itself, so a request that passes the identity
+ * checks is refused with [Refusal.MOVED_BY_PANEL_ASSISTANT]; only an already retired bridge answers
+ * [Outcome.AlreadyReleased].
  *
  * A refusal has no side effect at all, so a refused successor stays passive and the panel keeps
  * running the bridge. Once admitted the order is fixed, because each step is what makes the next one
@@ -48,6 +51,9 @@ internal class BridgeRelease(private val ports: Ports) {
         UNTRUSTED_SUCCESSOR("untrusted-successor"),
         HELPER_NOT_CONFIRMED("helper-not-confirmed"),
         QUIESCE_UNAVAILABLE("quiesce-unavailable"),
+
+        /** The on-panel handover is retired: Panel Assistant moves the panel through its Repair. */
+        MOVED_BY_PANEL_ASSISTANT("moved-by-panel-assistant"),
     }
 
     sealed interface Outcome {
@@ -65,9 +71,9 @@ internal class BridgeRelease(private val ports: Ports) {
         if (!ports.tokenMatches(token)) return Outcome.Refused(Refusal.BAD_TOKEN)
         if (!ports.successorTrusted()) return Outcome.Refused(Refusal.UNTRUSTED_SUCCESSOR)
         if (ports.retired()) return Outcome.AlreadyReleased
-        ports.helperRefusal()?.let { return Outcome.Refused(Refusal.HELPER_NOT_CONFIRMED, it) }
-        if (!ports.beginQuiesce(::completeAfterQuiesce)) return Outcome.Refused(Refusal.QUIESCE_UNAVAILABLE)
-        return Outcome.Releasing
+        // A bridge never gives up the panel to a successor running beside it. Panel Assistant moves
+        // the panel through its Repair, which refuses a successor that has already run.
+        return Outcome.Refused(Refusal.MOVED_BY_PANEL_ASSISTANT)
     }
 
     /**

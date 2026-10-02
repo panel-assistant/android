@@ -77,7 +77,8 @@ internal fun releaseReply(outcome: BridgeRelease.Outcome): Pair<HttpStatusCode, 
             BridgeRelease.Refusal.BAD_TOKEN,
             BridgeRelease.Refusal.UNTRUSTED_SUCCESSOR -> HttpStatusCode.Forbidden
             BridgeRelease.Refusal.HELPER_NOT_CONFIRMED,
-            BridgeRelease.Refusal.QUIESCE_UNAVAILABLE -> HttpStatusCode.Conflict
+            BridgeRelease.Refusal.QUIESCE_UNAVAILABLE,
+            BridgeRelease.Refusal.MOVED_BY_PANEL_ASSISTANT -> HttpStatusCode.Conflict
         }
         val detail = outcome.detail?.let { ""","detail":${Json.str(it)}""" }.orEmpty()
         status to """{"ok":false,"error":${Json.str(outcome.refusal.code)}$detail}"""

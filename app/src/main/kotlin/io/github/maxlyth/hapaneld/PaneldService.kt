@@ -117,7 +117,6 @@ import io.github.maxlyth.hapaneld.logship.LogShipper
 import io.github.maxlyth.hapaneld.logship.webViewConsoleEnabled
 import io.github.maxlyth.hapaneld.media.AudioPlaybackCoordinator
 import io.github.maxlyth.hapaneld.migration.AndroidIdentityMigration
-import io.github.maxlyth.hapaneld.migration.AndroidSuccessorHandoffPorts
 import io.github.maxlyth.hapaneld.migration.IdentityMigrationGate
 import io.github.maxlyth.hapaneld.migration.StartDisposition
 import io.github.maxlyth.hapaneld.migration.SuccessorMigrationRunner
@@ -3171,52 +3170,19 @@ class PaneldService : Service() {
         return true
     }
 
-    private val successorHandoffGate = kotlinx.coroutines.sync.Mutex()
-    @Volatile private var lastSuccessorHandoffDetail: String? = null
-
     /**
-     * Bridge build only: install and start the successor identity. One offer at a time, whether the
-     * explicit HTTP trigger asked; the outcome is logged only when it changes.
+     * Bridge build only. The bridge no longer installs, starts or hands the panel to the successor:
+     * Panel Assistant moves a panel through its Home Assistant Repair, and a successor that has run
+     * beside the bridge is a state that Repair refuses. Nothing is launched; the caller sees no offer.
      */
     internal suspend fun offerSuccessorHandoff(allowInstall: Boolean = true): SuccessorHandoff.Outcome? {
-        if (!AppIdentity.IS_BRIDGE) return null
-        successorHandoffGate.lock()
-        try {
-            // A finite host request may have waited behind another offer during teardown.
-            if (teardownBoundary.isStopping) return null
-            return SuccessorHandoff(AndroidSuccessorHandoffPorts(this, config, system))
-                .offer(AppIdentity.SUCCESSOR, allowInstall)
-                .also { outcome ->
-                    if (outcome.detail != lastSuccessorHandoffDetail) {
-                        lastSuccessorHandoffDetail = outcome.detail
-                        Log.i(TAG, "successor handoff: ${outcome.detail}")
-                    }
-                }
-        } finally {
-            successorHandoffGate.unlock()
-        }
+        if (AppIdentity.IS_BRIDGE) Log.i(TAG, "successor handoff not offered: the panel is moved by Panel Assistant (allowInstall=$allowInstall)")
+        return null
     }
 
     private fun requestInstalledSuccessorHandoff(reason: String) {
         if (!AppIdentity.IS_BRIDGE) return
-        if (teardownBoundary.isStopping) {
-            Log.i(TAG, "installed successor handover skipped: $reason, stopping")
-            return
-        }
-        Log.i(TAG, "installed successor handover queued: $reason, scopeActive=${scope.coroutineContext[Job]?.isActive}")
-        scope.launch {
-            Log.i(TAG, "installed successor handover entered: $reason, stopping=${teardownBoundary.isStopping}")
-            try {
-                if (!teardownBoundary.isStopping) offerSuccessorHandoff(allowInstall = false)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                Log.w(TAG, "installed successor handover failed: $reason", error)
-            }
-        }.invokeOnCompletion { failure ->
-            // Also records cancellation before the coroutine body gets its first dispatch.
-            Log.i(TAG, "installed successor handover completed: $reason, result=${failure?.javaClass?.simpleName ?: "completed"}")
-        }
+        Log.i(TAG, "installed successor handover not started: $reason; the panel is moved by Panel Assistant")
     }
 
     private suspend fun runOperation(
