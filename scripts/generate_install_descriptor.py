@@ -15,8 +15,8 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
-# The descriptor names the successor package, the identity the integration installs. Three strings
-# below used to be derived from it and must not be: the Gradle namespace does not move with the
+# The integration's descriptor names the successor; bridge updates use their own descriptor.
+# Three strings below must not follow the applicationId: the Gradle namespace does not move with the
 # applicationId, and the schema and database-compatibility contracts are compared byte for byte by
 # shipped verifiers that predate the move.
 SCHEMA = "io.github.maxlyth.hapaneld.install.v1"
@@ -35,9 +35,6 @@ PROTOCOL_METADATA_KEY = f"{CODE_PACKAGE}.PANEL_ASSISTANT_PROTOCOL"
 PROTOCOL_SCHEMA = "io.github.maxlyth.hapaneld.protocol.v1"
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a")
 LAUNCH_ACTIVITY = f"{CODE_PACKAGE}.MainActivity"
-# Fully qualified on purpose. The `/.MainActivity` shorthand resolves against the applicationId, so
-# under the successor id it would name a class that does not exist.
-LAUNCH_COMPONENT = f"{PACKAGE_ID}/{LAUNCH_ACTIVITY}"
 RELEASE_TAG_PATTERN = re.compile(
     r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-rc[1-9][0-9]*)?$"
@@ -318,17 +315,22 @@ def inspect_apk(
 
 
 def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -> dict[str, object]:
-    canonical_apk_name = f"panel-assistant-{release_tag}-manual-setup-required.apk"
-    if apk.name != canonical_apk_name:
+    canonical_packages = {
+        f"panel-assistant-{release_tag}-manual-setup-required.apk": PACKAGE_ID,
+        f"ha-paneld-{release_tag}-manual-setup-required.apk": CODE_PACKAGE,
+    }
+    package_id = canonical_packages.get(apk.name)
+    if package_id is None:
         _fail("APK filename is not canonical for the release tag")
-    fields, xmltree, signer, final_identity = inspect_apk(apk, release_tag, aapt, apksigner)
+    fields, xmltree, signer, final_identity = inspect_apk(apk, release_tag, aapt, apksigner, (package_id,))
 
     return {
-        "apkName": canonical_apk_name,
+        "apkName": apk.name,
         "apkSha256": final_identity[1],
         "apkSize": final_identity[0],
         "databaseCompatibility": parse_database_compatibility(xmltree),
-        "launchComponent": LAUNCH_COMPONENT,
+        # The class stays fully qualified even when the applicationId differs from its namespace.
+        "launchComponent": f"{package_id}/{LAUNCH_ACTIVITY}",
         "minSdk": fields["minSdk"],
         "packageId": fields["packageId"],
         "releaseTag": release_tag,

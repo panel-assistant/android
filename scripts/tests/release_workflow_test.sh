@@ -488,14 +488,14 @@ if grep -Fq 'cp scripts/generate_install_descriptor.py release-input/generate_in
    grep -Fq -- '--reuid=65534 \' <<<"$descriptor_step" && \
    grep -Fq 'SYS_landlock_restrict_self' <<<"$descriptor_step" && \
    grep -Fq '/usr/bin/env -i \' <<<"$descriptor_step" && \
-   grep -Fq '/usr/bin/python3 "$workspace/release-input/generate_install_descriptor.py" \' <<<"$descriptor_step" && \
+   grep -Fq '/usr/bin/python3 "$workspace/release-input/generate_install_descriptor.py" "${generator_args[@]}"' <<<"$descriptor_step" && \
    ! grep -Fq 'KEYSTORE_B64: ${{' <<<"$(extract_named_step_yaml 'Generate bounded install descriptor without release credentials')" && \
    ! grep -Eq '(^|[[:space:]])(python3|release-input/[^[:space:]]+\.py)([[:space:]]|$)' <<<"$proof_step" && \
    ! grep -Fq -- '-srcstorepass "$KEYSTORE_PASSWORD"' <<<"$proof_step" && \
    ! grep -Fq -- '-srckeypass "$KEY_PASSWORD"' <<<"$proof_step" && \
    ! grep -Fq -- '-passin "pass:' <<<"$proof_step" && \
    grep -Fq 'Install descriptor is not the exact canonical 13-field APK contract.' <<<"$proof_step" && \
-   grep -Fq 'for metadata_name in "$descriptor_name" "$protocol_name"; do' <<<"$proof_step" && \
+   grep -Fq 'for metadata_name in "$descriptor_name" "$bridge_descriptor_name" "$protocol_name"; do' <<<"$proof_step" && \
    grep -Fq '/usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$metadata_name.sig"' <<<"$proof_step" && \
    grep -Fq 'Final exact verification before publication' <<<"$publish_job" && \
    grep -Fq '/usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig"' <<<"$final_step" && \
@@ -505,9 +505,11 @@ else
   fail_test "release seals, isolates, revalidates, signs and publishes the exact APK install descriptor"
 fi
 
-if [ "$(grep -Fc 'build-tools/36.0.0' <<<"$descriptor_step")" -eq 1 ] && \
-   [ "$(grep -Fc 'build-tools/36.0.0' <<<"$proof_step")" -eq 1 ] && \
-   [ "$(grep -Fc 'build-tools/36.0.0' <<<"$final_step")" -eq 4 ] && \
+# Source-text reason: hosted tool installation and the credentialed tool paths cannot be replaced
+# by the fixture executables below; require the same pinned SDK version across those boundaries.
+if grep -Fq 'build-tools/36.0.0' <<<"$descriptor_step" && \
+   grep -Fq 'build-tools/36.0.0' <<<"$proof_step" && \
+   grep -Fq 'build-tools/36.0.0' <<<"$final_step" && \
    [ "$(grep -Fc 'build-tools;36.0.0' <<<"$publish_job")" -eq 1 ] && \
    ! grep -Eiq 'build-tools/(latest|[0-9]+\.[0-9]+\.[1-9][0-9]*)' <<<"$descriptor_step$proof_step$final_step"; then
   pass "descriptor generation and verification stay pinned to Android Build-Tools 36.0.0"
@@ -600,15 +602,18 @@ cp "$ROOT/scripts/generate_install_descriptor.py" "$descriptor_case/release-inpu
 apk_name=panel-assistant-v1.2.3-rc1-manual-setup-required.apk
 bridge_apk_name=ha-paneld-v1.2.3-rc1-manual-setup-required.apk
 descriptor_name=ha-paneld-v1.2.3-rc1-install.json
+bridge_descriptor_name=ha-paneld-v1.2.3-rc1-bridge-install.json
 protocol_name=ha-paneld-v1.2.3-rc1-protocol.json
 printf 'authenticated release APK fixture\n' > "$descriptor_case/dist/$apk_name"
 printf 'authenticated bridge release APK fixture\n' > "$descriptor_case/dist/$bridge_apk_name"
 cat > "$descriptor_case/android/build-tools/36.0.0/aapt" <<'EOF'
 #!/usr/bin/env bash
 set -eu
+apk_path="$*"
 for argument in "$@"; do
   case "$argument" in
     /proc/self/fd/*)
+      apk_path="$(readlink "$argument")"
       [ -z "${POISON+x}" ] && [ -z "${KEYSTORE_B64+x}" ] || exit 90
       escape_path="$(dirname "$0")/../../../../forbidden-write/escape"
       if printf 'escaped\n' > "$escape_path" 2>/dev/null; then
@@ -627,9 +632,9 @@ done
 # namespace, which does not move. Both are read from the real artifact, not assumed.
 case "$*" in
   *"dump badging"*)
-    if [ "${MOCK_BADGING_IDENTITY:-}" = bridge ] || case "$*" in *ha-paneld-v1.2.3-rc1-manual-setup-required.apk*) true ;; *) false ;; esac; then
+    if [ "${MOCK_BADGING_IDENTITY:-}" = bridge ] || case "$apk_path" in *ha-paneld-v1.2.3-rc1-manual-setup-required.apk*) true ;; *) false ;; esac; then
       cat <<'BRIDGE_BADGING'
-package: name='io.github.maxlyth.hapaneld' versionCode='701' versionName='1.2.3-rc1' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+package: name='io.github.maxlyth.hapaneld' versionCode='702' versionName='1.2.3-rc1' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
 sdkVersion:'26'
 launchable-activity: name='io.github.maxlyth.hapaneld.MainActivity'  label='' icon=''
 native-code: 'arm64-v8a' 'armeabi-v7a'
@@ -731,6 +736,20 @@ else
   fail_test "credential-free uid-65534 step behaviorally generates the exact 13-field descriptor"
 fi
 
+if jq -e --arg name "$bridge_apk_name" \
+    --arg hash "$(sha256sum "$descriptor_case/dist/$bridge_apk_name" | cut -d' ' -f1)" \
+    --argjson size "$(stat --format='%s' "$descriptor_case/dist/$bridge_apk_name")" '
+    (keys | length) == 13 and .apkName == $name and .apkSha256 == $hash and .apkSize == $size and
+    .packageId == "io.github.maxlyth.hapaneld" and .versionCode == 702 and
+    .launchComponent == "io.github.maxlyth.hapaneld/io.github.maxlyth.hapaneld.MainActivity" and
+    .schema == "io.github.maxlyth.hapaneld.install.v1" and
+    .signerCertificateSha256 == "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"' \
+    "$descriptor_case/dist/$bridge_descriptor_name" >/dev/null; then
+  pass "credential-free generation binds the bridge's own APK bytes, package and versionCode"
+else
+  fail_test "credential-free generation binds the bridge's own APK bytes, package and versionCode"
+fi
+
 if jq -e --arg successor "$(sha256sum "$descriptor_case/dist/$apk_name" | cut -d' ' -f1)" \
     --arg bridge "$(sha256sum "$descriptor_case/dist/$bridge_apk_name" | cut -d' ' -f1)" '
     keys == ["artifacts","schema"] and .schema == "io.github.maxlyth.hapaneld.protocol.v1" and
@@ -826,6 +845,31 @@ if openssl dgst -sha256 -verify "$descriptor_case/test-release-public-key.pem" \
 else
   fail_test "proof step signs and verifies the exact APK protocol companion"
 fi
+if openssl dgst -sha256 -verify "$descriptor_case/test-release-public-key.pem" \
+    -signature "$descriptor_case/dist/$bridge_descriptor_name.sig" "$descriptor_case/dist/$bridge_descriptor_name" >/dev/null; then
+  pass "proof step signs and verifies the bridge descriptor with the same authority"
+else
+  fail_test "proof step signs and verifies the bridge descriptor with the same authority"
+fi
+cp "$descriptor_case/dist/$bridge_descriptor_name" "$descriptor_case/original-bridge-descriptor.json"
+for mutation in '.versionCode = 701' '.packageId = "io.panelassistant.android"' '.apkSha256 = ("0" * 64)'; do
+  jq -cS "$mutation" "$descriptor_case/original-bridge-descriptor.json" > "$descriptor_case/dist/$bridge_descriptor_name"
+  rm -f "$descriptor_case/dist/$bridge_descriptor_name.sig"
+  if ! (
+    cd "$descriptor_case" || exit 1
+    ANDROID_HOME="$descriptor_case/android" JAVA_HOME="$java_home" \
+      KEYSTORE_B64="$keystore_b64" KEYSTORE_PASSWORD="$key_password" KEY_ALIAS="$key_alias" KEY_PASSWORD="$key_password" \
+      RELEASE_TAG=v1.2.3-rc1 RUNNER_TEMP="$descriptor_case/runner-temp" bash <<<"$test_proof_step"
+  ) > "$descriptor_case/bridge-tampered-proof.log" 2>&1 && \
+     [ ! -e "$descriptor_case/dist/$bridge_descriptor_name.sig" ] && \
+     grep -Fq 'exact canonical 13-field APK contract' "$descriptor_case/bridge-tampered-proof.log"; then
+    pass "proof refuses altered bridge descriptor before signing: $mutation"
+  else
+    fail_test "proof refuses altered bridge descriptor before signing: $mutation"
+  fi
+  cp "$descriptor_case/original-bridge-descriptor.json" "$descriptor_case/dist/$bridge_descriptor_name"
+done
+
 cp "$descriptor_case/dist/$protocol_name" "$descriptor_case/original-protocol.json"
 jq -cS '.artifacts[0].protocolMax = 4' "$descriptor_case/original-protocol.json" > "$descriptor_case/dist/$protocol_name"
 rm -f "$descriptor_case/dist/$protocol_name.sig"
@@ -920,6 +964,31 @@ else
   fail_test "final pre-upload step behaviorally verifies the exact asset set, checksums, APK signer, and signatures"
 fi
 
+mv "$descriptor_case/dist/$bridge_descriptor_name" "$descriptor_case/held-bridge-descriptor.json"
+if ! (
+  cd "$descriptor_case" || exit 1
+  ANDROID_HOME="$descriptor_case/android" RELEASE_TAG=v1.2.3-rc1 \
+    RUNNER_TEMP="$descriptor_case/runner-temp" bash <<<"$test_final_step"
+) > "$descriptor_case/missing-bridge-final.log" 2>&1 && \
+   grep -Fq 'Final release asset set is not exact' "$descriptor_case/missing-bridge-final.log"; then
+  pass "final exact inventory requires the bridge descriptor asset"
+else
+  fail_test "final exact inventory requires the bridge descriptor asset"
+fi
+mv "$descriptor_case/held-bridge-descriptor.json" "$descriptor_case/dist/$bridge_descriptor_name"
+cp "$descriptor_case/dist/$bridge_descriptor_name.sig" "$descriptor_case/original-bridge.sig"
+printf '\n' >> "$descriptor_case/dist/$bridge_descriptor_name"
+if ! (
+  cd "$descriptor_case" || exit 1
+  ANDROID_HOME="$descriptor_case/android" RELEASE_TAG=v1.2.3-rc1 \
+    RUNNER_TEMP="$descriptor_case/runner-temp" bash <<<"$test_final_step"
+) > "$descriptor_case/bridge-tampered-final.log" 2>&1; then
+  pass "final publication refuses bridge descriptor bytes changed after signing"
+else
+  fail_test "final publication refuses bridge descriptor bytes changed after signing"
+fi
+cp "$descriptor_case/original-bridge-descriptor.json" "$descriptor_case/dist/$bridge_descriptor_name"
+
 cp "$descriptor_case/dist/$apk_name.idsig" "$descriptor_case/original.idsig"
 printf 'corrupt V4 signature fixture\n' > "$descriptor_case/dist/$apk_name.idsig"
 if ! (
@@ -942,6 +1011,23 @@ openssl pkcs12 \
   -nocerts \
   -passin "pass:$key_password" \
   -out "$descriptor_case/test-release-private-key.pem" >/dev/null 2>&1
+for mutation in '.versionCode = 701' '.packageId = "io.panelassistant.android"' '.apkSha256 = ("0" * 64)'; do
+  jq -cS "$mutation" "$descriptor_case/original-bridge-descriptor.json" > "$descriptor_case/dist/$bridge_descriptor_name"
+  openssl dgst -sha256 -sign "$descriptor_case/test-release-private-key.pem" \
+    -out "$descriptor_case/dist/$bridge_descriptor_name.sig" "$descriptor_case/dist/$bridge_descriptor_name"
+  if ! (
+    cd "$descriptor_case" || exit 1
+    ANDROID_HOME="$descriptor_case/android" RELEASE_TAG=v1.2.3-rc1 \
+      RUNNER_TEMP="$descriptor_case/runner-temp" bash <<<"$test_final_step"
+  ) > "$descriptor_case/bridge-mixed-final.log" 2>&1 && \
+     grep -Fq 'does not bind the exact final release APK' "$descriptor_case/bridge-mixed-final.log"; then
+    pass "final publication refuses validly signed foreign bridge proof: $mutation"
+  else
+    fail_test "final publication refuses validly signed foreign bridge proof: $mutation"
+  fi
+done
+cp "$descriptor_case/original-bridge-descriptor.json" "$descriptor_case/dist/$bridge_descriptor_name"
+cp "$descriptor_case/original-bridge.sig" "$descriptor_case/dist/$bridge_descriptor_name.sig"
 jq -cS '.artifacts[0].apkSha256 = ("0" * 64)' "$descriptor_case/original-protocol.json" > "$descriptor_case/dist/$protocol_name"
 openssl dgst -sha256 -sign "$descriptor_case/test-release-private-key.pem" \
   -out "$descriptor_case/dist/$protocol_name.sig" "$descriptor_case/dist/$protocol_name"
@@ -1144,8 +1230,8 @@ if [ "$(grep -Fc 'io.github.maxlyth.hapaneld.install.v1' "$WORKFLOW")" -ge 1 ] &
    ! grep -Fq 'io.panelassistant.android.DATABASE_COMPATIBILITY' "$WORKFLOW" && \
    grep -Fq 'hapaneld-db:v1:ha-paneld\.db' <<<"$proof_step" && \
    grep -Fq '.schema == "io.github.maxlyth.hapaneld.install.v1"' <<<"$final_step" && \
-   grep -Fq '.packageId == "io.panelassistant.android"' <<<"$final_step" && \
-   grep -Fq '.launchComponent == "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity"' <<<"$final_step"; then
+   grep -Fq 'verify_final_descriptor "$successor_apk_name" "$descriptor_name" io.panelassistant.android' <<<"$final_step" && \
+   grep -Fq '.launchComponent == ($package_id+"/io.github.maxlyth.hapaneld.MainActivity")' <<<"$final_step"; then
   pass "frozen schema and database contracts survive the identity move while the descriptor id moves"
 else
   fail_test "frozen schema and database contracts survive the identity move while the descriptor id moves"

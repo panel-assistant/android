@@ -782,6 +782,7 @@ jobs:
           # Its own asset name is unchanged: shipped integration releases look it up by that name.
           apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
+          bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
           descriptor_stage=$(/usr/bin/mktemp -d "$RUNNER_TEMP/install-descriptor.XXXXXX")
           sandbox_source=$(/usr/bin/mktemp "$RUNNER_TEMP/install-descriptor-sandbox.XXXXXX.c")
@@ -896,40 +897,53 @@ jobs:
             [ "$descriptor_ancestor" != / ] || break
           done
 
-          "${root_command[@]}" /usr/bin/setpriv \
-            --reuid=65534 \
-            --regid=65534 \
-            --clear-groups \
-            --no-new-privs \
-            --inh-caps=-all \
-            --ambient-caps=-all \
-            --bounding-set=-all \
-            "$sandbox_binary" "$descriptor_stage" \
-              /usr/bin/env -i \
-                "HOME=$descriptor_stage" \
-                "JAVA_HOME=$JAVA_HOME" \
-                'LC_ALL=C.UTF-8' \
-                'PATH=/usr/bin:/bin' \
-                'PYTHONDONTWRITEBYTECODE=1' \
-                'PYTHONHASHSEED=0' \
-                "TMPDIR=$descriptor_stage" \
-                /usr/bin/python3 "$workspace/release-input/generate_install_descriptor.py" \
-                  --apk "$workspace/dist/$apk_name" \
-                  --release-tag "$RELEASE_TAG" \
-                  --aapt "$build_tools/aapt" \
-                  --apksigner "$build_tools/apksigner" \
-                  --output "$descriptor_stage/$descriptor_name" \
-                  --protocol-apk "$workspace/dist/$apk_name" \
-                  --protocol-apk "$workspace/dist/ha-paneld-${RELEASE_TAG}-manual-setup-required.apk" \
-                  --protocol-output "$descriptor_stage/$protocol_name"
-
+          for identity in successor bridge; do
+            subject_apk_name=$apk_name
+            generated_descriptor_name=$descriptor_name
+            if [ "$identity" = bridge ]; then
+              subject_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+              generated_descriptor_name=$bridge_descriptor_name
+            fi
+            generator_args=(
+              --apk "$workspace/dist/$subject_apk_name"
+              --release-tag "$RELEASE_TAG"
+              --aapt "$build_tools/aapt"
+              --apksigner "$build_tools/apksigner"
+              --output "$descriptor_stage/$generated_descriptor_name"
+            )
+            if [ "$identity" = successor ]; then
+              generator_args+=(
+                --protocol-apk "$workspace/dist/$apk_name"
+                --protocol-apk "$workspace/dist/ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+                --protocol-output "$descriptor_stage/$protocol_name"
+              )
+            fi
+            "${root_command[@]}" /usr/bin/setpriv \
+              --reuid=65534 \
+              --regid=65534 \
+              --clear-groups \
+              --no-new-privs \
+              --inh-caps=-all \
+              --ambient-caps=-all \
+              --bounding-set=-all \
+              "$sandbox_binary" "$descriptor_stage" \
+                /usr/bin/env -i \
+                  "HOME=$descriptor_stage" \
+                  "JAVA_HOME=$JAVA_HOME" \
+                  'LC_ALL=C.UTF-8' \
+                  'PATH=/usr/bin:/bin' \
+                  'PYTHONDONTWRITEBYTECODE=1' \
+                  'PYTHONHASHSEED=0' \
+                  "TMPDIR=$descriptor_stage" \
+                  /usr/bin/python3 "$workspace/release-input/generate_install_descriptor.py" "${generator_args[@]}"
+          done
           staged_entries=$("${root_command[@]}" /usr/bin/find "$descriptor_stage" -mindepth 1 -maxdepth 1 -printf '%f\n' | /usr/bin/sort)
-          expected_entries=$(/usr/bin/printf '%s\n' "$descriptor_name" "$protocol_name" | /usr/bin/sort)
+          expected_entries=$(/usr/bin/printf '%s\n' "$descriptor_name" "$bridge_descriptor_name" "$protocol_name" | /usr/bin/sort)
           if [ "$staged_entries" != "$expected_entries" ]; then
             echo "::error::Descriptor generator did not produce exactly the expected output."
             exit 1
           fi
-          for generated_name in "$descriptor_name" "$protocol_name"; do
+          for generated_name in "$descriptor_name" "$bridge_descriptor_name" "$protocol_name"; do
             if ! "${root_command[@]}" /usr/bin/test -f "$descriptor_stage/$generated_name" || \
                "${root_command[@]}" /usr/bin/test -L "$descriptor_stage/$generated_name"; then
               echo "::error::Descriptor generator output is not a regular nofollow file."
@@ -963,6 +977,7 @@ jobs:
           apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
           successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
+          bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
           helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
@@ -1027,43 +1042,6 @@ jobs:
           authenticate_apk "$signed_apk" "$apk_name"
           authenticate_apk "$successor_signed_apk" "$successor_apk_name"
 
-          apk_size=$(/usr/bin/stat --format='%s' "$successor_signed_apk")
-          apk_sha256=$(/usr/bin/sha256sum "$successor_signed_apk" | /usr/bin/cut -d' ' -f1)
-
-          # The descriptor binds the successor, so the manifest and badging contracts below are read
-          # from that APK. The bridge is authenticated above and published; it is not described.
-          badging=$("$build_tools/aapt" dump badging "$successor_signed_apk")
-          mapfile -t package_lines < <(/usr/bin/grep '^package:' <<<"$badging")
-          mapfile -t sdk_lines < <(/usr/bin/grep '^sdkVersion:' <<<"$badging")
-          mapfile -t launch_lines < <(/usr/bin/grep '^launchable-activity:' <<<"$badging")
-          mapfile -t native_lines < <(/usr/bin/grep '^native-code:' <<<"$badging")
-          if [ "${#package_lines[@]}" -ne 1 ] || [ "${#sdk_lines[@]}" -ne 1 ] || \
-             [ "${#launch_lines[@]}" -ne 1 ] || [ "${#native_lines[@]}" -ne 1 ]; then
-            echo "::error::Signed APK badging is ambiguous or incomplete."
-            exit 1
-          fi
-          package_name=$(/usr/bin/sed -n "s/.* name='\([^']*\)'.*/\1/p" <<<"${package_lines[0]}")
-          version_code=$(/usr/bin/sed -n "s/.* versionCode='\([^']*\)'.*/\1/p" <<<"${package_lines[0]}")
-          version_name=$(/usr/bin/sed -n "s/.* versionName='\([^']*\)'.*/\1/p" <<<"${package_lines[0]}")
-          min_sdk=$(/usr/bin/sed -n "s/^sdkVersion:'\([^']*\)'$/\1/p" <<<"${sdk_lines[0]}")
-          launch_activity=$(/usr/bin/sed -n "s/.* name='\([^']*\)'.*/\1/p" <<<"${launch_lines[0]}")
-          mapfile -t supported_abis < <(/usr/bin/grep -o "'[^']*'" <<<"${native_lines[0]}" | /usr/bin/tr -d "'" | /usr/bin/sort)
-          expected_version_name="${RELEASE_TAG#v}"
-          # The launcher class stays in the Gradle namespace, which does not move with the
-          # applicationId, so the successor APK reports the same launchable-activity as the bridge.
-          if [ "$package_name" != io.panelassistant.android ] || \
-             [ "$version_name" != "$expected_version_name" ] || \
-             [ "$launch_activity" != io.github.maxlyth.hapaneld.MainActivity ] || \
-             [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]] || [ "${#version_code}" -gt 10 ] || \
-             [ "$version_code" -gt 2147483647 ] || \
-             [[ ! "$min_sdk" =~ ^[1-9][0-9]*$ ]] || [ "${#min_sdk}" -gt 3 ] || [ "$min_sdk" -gt 100 ] || \
-             [ "${#supported_abis[@]}" -ne 2 ] || \
-             [ "${supported_abis[0]}" != arm64-v8a ] || [ "${supported_abis[1]}" != armeabi-v7a ]; then
-            echo "::error::Signed APK package, version, platform, ABI, or launcher contract is invalid."
-            exit 1
-          fi
-
-          xmltree=$("$build_tools/aapt" dump xmltree "$successor_signed_apk" AndroidManifest.xml)
           application_metadata() {
             /usr/bin/printf '%s\n' "$1" | /usr/bin/awk -v wanted="$2" '
             function quoted(line, start, rest, stop) {
@@ -1117,43 +1095,87 @@ jobs:
             }
             '
           }
-          database_contracts=$(application_metadata "$xmltree" 'io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY')
-          mapfile -t database_records < <(/usr/bin/awk 'NF' <<<"$database_contracts")
-          if [ "${#database_records[@]}" -ne 1 ] || \
-             [[ ! "${database_records[0]}" =~ ^hapaneld-db:v1:ha-paneld\.db:([1-9][0-9]*):([1-9][0-9]*)$ ]]; then
-            echo "::error::Signed APK database compatibility contract is invalid."
-            exit 1
-          fi
-          database_min=${BASH_REMATCH[1]}
-          database_max=${BASH_REMATCH[2]}
-          if [ "${#database_min}" -gt 10 ] || [ "${#database_max}" -gt 10 ] || \
-             [ "$database_min" -gt 2147483647 ] || [ "$database_max" -gt 2147483647 ] || \
-             [ "$database_min" -gt "$database_max" ]; then
-            echo "::error::Signed APK database compatibility bounds are invalid."
-            exit 1
-          fi
-          database_contract=${database_records[0]}
+          authenticate_descriptor() {
+            local subject_apk_name=$1
+            local descriptor_name=$2
+            local expected_package=$3
+            local subject_apk="dist/$subject_apk_name"
+            apk_size=$(/usr/bin/stat --format='%s' "$subject_apk")
+            apk_sha256=$(/usr/bin/sha256sum "$subject_apk" | /usr/bin/cut -d' ' -f1)
 
-          if [ ! -f "dist/$descriptor_name" ] || [ -L "dist/$descriptor_name" ] || \
-             [ "$(/usr/bin/stat --format='%s' "dist/$descriptor_name")" -gt 4096 ]; then
-            echo "::error::Install descriptor is not a bounded regular nofollow file."
-            exit 1
-          fi
-          /usr/bin/jq -cnS \
-            --arg apk_name "$successor_apk_name" \
-            --arg apk_sha256 "$apk_sha256" \
-            --argjson apk_size "$apk_size" \
-            --arg database_compatibility "$database_contract" \
-            --argjson min_sdk "$min_sdk" \
-            --arg release_tag "$RELEASE_TAG" \
-            --argjson version_code "$version_code" \
-            --arg version_name "$version_name" \
-            '{apkName:$apk_name,apkSha256:$apk_sha256,apkSize:$apk_size,databaseCompatibility:$database_compatibility,launchComponent:"io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity",minSdk:$min_sdk,packageId:"io.panelassistant.android",releaseTag:$release_tag,schema:"io.github.maxlyth.hapaneld.install.v1",signerCertificateSha256:"ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",supportedAbis:["arm64-v8a","armeabi-v7a"],versionCode:$version_code,versionName:$version_name}' \
-            > "$expected_descriptor"
-          if ! /usr/bin/cmp --silent "$expected_descriptor" "dist/$descriptor_name"; then
-            echo "::error::Install descriptor is not the exact canonical 13-field APK contract."
-            exit 1
-          fi
+            badging=$("$build_tools/aapt" dump badging "$subject_apk")
+            mapfile -t package_lines < <(/usr/bin/grep '^package:' <<<"$badging")
+            mapfile -t sdk_lines < <(/usr/bin/grep '^sdkVersion:' <<<"$badging")
+            mapfile -t launch_lines < <(/usr/bin/grep '^launchable-activity:' <<<"$badging")
+            mapfile -t native_lines < <(/usr/bin/grep '^native-code:' <<<"$badging")
+            if [ "${#package_lines[@]}" -ne 1 ] || [ "${#sdk_lines[@]}" -ne 1 ] || \
+               [ "${#launch_lines[@]}" -ne 1 ] || [ "${#native_lines[@]}" -ne 1 ]; then
+              echo "::error::Signed APK badging is ambiguous or incomplete."
+              exit 1
+            fi
+            package_name=$(/usr/bin/sed -n "s/.* name='\([^']*\)'.*/\1/p" <<<"${package_lines[0]}")
+            version_code=$(/usr/bin/sed -n "s/.* versionCode='\([^']*\)'.*/\1/p" <<<"${package_lines[0]}")
+            version_name=$(/usr/bin/sed -n "s/.* versionName='\([^']*\)'.*/\1/p" <<<"${package_lines[0]}")
+            min_sdk=$(/usr/bin/sed -n "s/^sdkVersion:'\([^']*\)'$/\1/p" <<<"${sdk_lines[0]}")
+            launch_activity=$(/usr/bin/sed -n "s/.* name='\([^']*\)'.*/\1/p" <<<"${launch_lines[0]}")
+            mapfile -t supported_abis < <(/usr/bin/grep -o "'[^']*'" <<<"${native_lines[0]}" | /usr/bin/tr -d "'" | /usr/bin/sort)
+            expected_version_name="${RELEASE_TAG#v}"
+            # The launcher class stays in the Gradle namespace, which does not move with the
+            # applicationId, so the successor APK reports the same launchable-activity as the bridge.
+            if [ "$package_name" != "$expected_package" ] || \
+               [ "$version_name" != "$expected_version_name" ] || \
+               [ "$launch_activity" != io.github.maxlyth.hapaneld.MainActivity ] || \
+               [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]] || [ "${#version_code}" -gt 10 ] || \
+               [ "$version_code" -gt 2147483647 ] || \
+               [[ ! "$min_sdk" =~ ^[1-9][0-9]*$ ]] || [ "${#min_sdk}" -gt 3 ] || [ "$min_sdk" -gt 100 ] || \
+               [ "${#supported_abis[@]}" -ne 2 ] || \
+               [ "${supported_abis[0]}" != arm64-v8a ] || [ "${supported_abis[1]}" != armeabi-v7a ]; then
+              echo "::error::Signed APK package, version, platform, ABI, or launcher contract is invalid."
+              exit 1
+            fi
+
+            xmltree=$("$build_tools/aapt" dump xmltree "$subject_apk" AndroidManifest.xml)
+            database_contracts=$(application_metadata "$xmltree" 'io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY')
+            mapfile -t database_records < <(/usr/bin/awk 'NF' <<<"$database_contracts")
+            if [ "${#database_records[@]}" -ne 1 ] || \
+               [[ ! "${database_records[0]}" =~ ^hapaneld-db:v1:ha-paneld\.db:([1-9][0-9]*):([1-9][0-9]*)$ ]]; then
+              echo "::error::Signed APK database compatibility contract is invalid."
+              exit 1
+            fi
+            database_min=${BASH_REMATCH[1]}
+            database_max=${BASH_REMATCH[2]}
+            if [ "${#database_min}" -gt 10 ] || [ "${#database_max}" -gt 10 ] || \
+               [ "$database_min" -gt 2147483647 ] || [ "$database_max" -gt 2147483647 ] || \
+               [ "$database_min" -gt "$database_max" ]; then
+              echo "::error::Signed APK database compatibility bounds are invalid."
+              exit 1
+            fi
+            database_contract=${database_records[0]}
+
+            if [ ! -f "dist/$descriptor_name" ] || [ -L "dist/$descriptor_name" ] || \
+               [ "$(/usr/bin/stat --format='%s' "dist/$descriptor_name")" -gt 4096 ]; then
+              echo "::error::Install descriptor is not a bounded regular nofollow file."
+              exit 1
+            fi
+            /usr/bin/jq -cnS \
+              --arg apk_name "$subject_apk_name" \
+              --arg package_id "$expected_package" \
+              --arg apk_sha256 "$apk_sha256" \
+              --argjson apk_size "$apk_size" \
+              --arg database_compatibility "$database_contract" \
+              --argjson min_sdk "$min_sdk" \
+              --arg release_tag "$RELEASE_TAG" \
+              --argjson version_code "$version_code" \
+              --arg version_name "$version_name" \
+              '{apkName:$apk_name,apkSha256:$apk_sha256,apkSize:$apk_size,databaseCompatibility:$database_compatibility,launchComponent:($package_id+"/io.github.maxlyth.hapaneld.MainActivity"),minSdk:$min_sdk,packageId:$package_id,releaseTag:$release_tag,schema:"io.github.maxlyth.hapaneld.install.v1",signerCertificateSha256:"ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",supportedAbis:["arm64-v8a","armeabi-v7a"],versionCode:$version_code,versionName:$version_name}' \
+              > "$expected_descriptor"
+            if ! /usr/bin/cmp --silent "$expected_descriptor" "dist/$descriptor_name"; then
+              echo "::error::Install descriptor is not the exact canonical 13-field APK contract."
+              exit 1
+            fi
+          }
+          authenticate_descriptor "$successor_apk_name" "$descriptor_name" io.panelassistant.android
+          authenticate_descriptor "$apk_name" "$bridge_descriptor_name" io.github.maxlyth.hapaneld
 
           # Independently reconstruct the companion from both authenticated APK manifests. V1's
           # closed descriptor remains unchanged for readers already in the field.
@@ -1255,7 +1277,7 @@ jobs:
             fi
           done
 
-          for metadata_name in "$descriptor_name" "$protocol_name"; do
+          for metadata_name in "$descriptor_name" "$bridge_descriptor_name" "$protocol_name"; do
             /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$metadata_name.sig" "dist/$metadata_name"
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$metadata_name.sig" "dist/$metadata_name"
           done
@@ -1298,6 +1320,7 @@ jobs:
           successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           successor_apk_idsig="dist/$successor_apk_name.idsig"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
+          bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
           helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
@@ -1306,6 +1329,8 @@ jobs:
             "ha-paneld-${RELEASE_TAG}-android-gradle-runtime.cdx.json" \
             "$descriptor_name" \
             "$descriptor_name.sig" \
+            "$bridge_descriptor_name" \
+            "$bridge_descriptor_name.sig" \
             "$protocol_name" \
             "$protocol_name.sig" \
             "$helper_arm64_name" \
@@ -1396,7 +1421,6 @@ jobs:
             (cd dist && /usr/bin/sha256sum --strict --check "$checksum_name")
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
           done
-          /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig" "dist/$descriptor_name"
           /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$protocol_name.sig" "dist/$protocol_name"
           bridge_protocol_sha=$(/usr/bin/sha256sum "dist/$apk_name" | /usr/bin/cut -d' ' -f1)
           successor_protocol_sha=$(/usr/bin/sha256sum "dist/$successor_apk_name" | /usr/bin/cut -d' ' -f1)
@@ -1412,24 +1436,35 @@ jobs:
             echo "::error::Final protocol companion does not bind the exact final APK pair."
             exit 1
           fi
-          # The descriptor binds the successor, so it is checked against that APK's bytes.
-          final_apk_sha256=$(/usr/bin/sha256sum "dist/$successor_apk_name" | /usr/bin/cut -d' ' -f1)
-          final_apk_size=$(/usr/bin/stat --format='%s' "dist/$successor_apk_name")
-          if ! /usr/bin/jq -e \
-            --arg apk_name "$successor_apk_name" \
-            --arg apk_sha256 "$final_apk_sha256" \
-            --argjson apk_size "$final_apk_size" \
-            --arg release_tag "$RELEASE_TAG" \
-            'keys == ["apkName","apkSha256","apkSize","databaseCompatibility","launchComponent","minSdk","packageId","releaseTag","schema","signerCertificateSha256","supportedAbis","versionCode","versionName"] and
-             .apkName == $apk_name and .apkSha256 == $apk_sha256 and .apkSize == $apk_size and
-             .releaseTag == $release_tag and .schema == "io.github.maxlyth.hapaneld.install.v1" and
-             .packageId == "io.panelassistant.android" and
-             .launchComponent == "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity" and
-             .signerCertificateSha256 == "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"' \
-            "dist/$descriptor_name" >/dev/null; then
-            echo "::error::Final signed descriptor does not bind the exact final release APK."
-            exit 1
-          fi
+          verify_final_descriptor() {
+            local subject_apk_name=$1 descriptor_name=$2 expected_package=$3
+            /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig" "dist/$descriptor_name"
+            final_badging=$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "dist/$subject_apk_name")
+            final_version_code=$(/usr/bin/sed -n "s/^package:.* versionCode='\([^']*\)'.*/\1/p" <<<"$final_badging")
+            final_version_name=$(/usr/bin/sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p" <<<"$final_badging")
+            final_apk_sha256=$(/usr/bin/sha256sum "dist/$subject_apk_name" | /usr/bin/cut -d' ' -f1)
+            final_apk_size=$(/usr/bin/stat --format='%s' "dist/$subject_apk_name")
+            if ! /usr/bin/jq -e \
+              --arg apk_name "$subject_apk_name" \
+              --arg package_id "$expected_package" \
+              --argjson version_code "$final_version_code" \
+              --arg version_name "$final_version_name" \
+              --arg apk_sha256 "$final_apk_sha256" \
+              --argjson apk_size "$final_apk_size" \
+              --arg release_tag "$RELEASE_TAG" \
+              'keys == ["apkName","apkSha256","apkSize","databaseCompatibility","launchComponent","minSdk","packageId","releaseTag","schema","signerCertificateSha256","supportedAbis","versionCode","versionName"] and
+               .apkName == $apk_name and .apkSha256 == $apk_sha256 and .apkSize == $apk_size and
+               .releaseTag == $release_tag and .schema == "io.github.maxlyth.hapaneld.install.v1" and
+               .packageId == $package_id and .versionCode == $version_code and .versionName == $version_name and
+               .launchComponent == ($package_id+"/io.github.maxlyth.hapaneld.MainActivity") and
+               .signerCertificateSha256 == "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"' \
+              "dist/$descriptor_name" >/dev/null; then
+              echo "::error::Final signed descriptor does not bind the exact final release APK."
+              exit 1
+            fi
+          }
+          verify_final_descriptor "$successor_apk_name" "$descriptor_name" io.panelassistant.android
+          verify_final_descriptor "$apk_name" "$bridge_descriptor_name" io.github.maxlyth.hapaneld
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3

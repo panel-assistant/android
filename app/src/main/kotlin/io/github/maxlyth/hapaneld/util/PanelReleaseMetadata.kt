@@ -19,7 +19,11 @@ internal object PanelReleaseMetadata {
 
     data class Candidate(val range: IntRange, val versionCode: Long)
 
-    fun read(tag: String, version: String, apkUrl: String, remainingMs: () -> Long): Candidate? = runCatching {
+    fun read(
+        tag: String, version: String, apkUrl: String,
+        authenticatedFetch: (String, () -> Long) -> ByteArray? = ::authenticated,
+        remainingMs: () -> Long,
+    ): Candidate? = runCatching {
         if (!ReleaseCatalog.validTag(tag)) return null
         val asset = URL(apkUrl)
         val prefix = "/panel-assistant/android/releases/download/$tag/"
@@ -28,9 +32,10 @@ internal object PanelReleaseMetadata {
         val filename = asset.path.removePrefix(prefix)
         if (!Regex("[A-Za-z0-9._-]+\\.apk").matches(filename)) return null
         val release = "https://github.com/panel-assistant/android/releases/download/$tag/ha-paneld-$tag"
-        val checksum = authenticated("$apkUrl.sha256", remainingMs) ?: return null
-        val protocol = authenticated("$release-protocol.json", remainingMs) ?: return null
-        val descriptor = authenticated("$release-install.json", remainingMs) ?: return null
+        val checksum = authenticatedFetch("$apkUrl.sha256", remainingMs) ?: return null
+        val protocol = authenticatedFetch("$release-protocol.json", remainingMs) ?: return null
+        val descriptorSuffix = if (AppIdentity.IS_BRIDGE) "bridge-install" else "install"
+        val descriptor = authenticatedFetch("$release-$descriptorSuffix.json", remainingMs) ?: return null
         verifiedCandidate(tag, version, filename, checksum, protocol, descriptor)
     }.getOrNull()
 
