@@ -2838,6 +2838,14 @@ MOCK_PRODUCT_VERSION=nspanel_86p MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=0 \
 assert_success "Sonoff panel with a read-only vendor init installs without the helper"
 assert_contains '/vendor/etc/init is read-only' "Sonoff panel names the read-only vendor partition"
 
+# A Sonoff panel installed without the helper has no helper daemon afterwards, and the app answers
+# its diagnostics that way; the post-install check must not then report the missing daemon as a fault.
+MOCK_PRODUCT_VERSION=nspanel_86p MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=full MOCK_DIAG_DAEMON=false \
+  run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
+assert_success "Sonoff panel installed without the helper passes verification with no helper daemon running"
+assert_not_contains 'root helper daemon: not detected after installation' "$LAST_OUTPUT" \
+  "Sonoff panel installed without the helper does not report the absent daemon as a failure"
+
 # An unanswered probe concludes nothing about the partition, so even a Sonoff panel still refuses.
 MOCK_PRODUCT_VERSION=nspanel_86p MOCK_SYSTEM_AVAIL_KB=12 MOCK_VENDOR_INIT_RW=unreadable \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
