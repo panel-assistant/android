@@ -260,6 +260,8 @@ internal class ProximityCalibrationRuntime(
             now < browserAt || now - browserAt > BROWSER_LEASE_MS -> "The setup browser disconnected. Your previous calibration is unchanged."
             visibleAt == 0L && now - startedAt > LAUNCH_TIMEOUT_MS -> "Could not show setup on the panel. Your previous calibration is unchanged."
             visibleAt > 0L && now - visibleAt > LOCAL_VISIBILITY_MS -> "The panel setup screen closed. Your previous calibration is unchanged."
+            view.stage == ProximityCalibrationEngine.Stage.INTRO && !(sourceProven && view.available) &&
+                now - startedAt >= NO_READING_TIMEOUT_MS -> NO_READING_MESSAGE
             else -> null
         }
         if (reason != null) {
@@ -306,6 +308,11 @@ internal class ProximityCalibrationRuntime(
         const val BROWSER_LEASE_MS = 30_000L
         const val LOCAL_VISIBILITY_MS = 5_000L
         const val LAUNCH_TIMEOUT_MS = 15_000L
+        /** The intro waits this long for a live reading before saying why it cannot start. */
+        const val NO_READING_TIMEOUT_MS = 30_000L
+        const val NO_READING_MESSAGE = "The proximity sensor sent no reading in 30 seconds. Check that nothing covers it, " +
+            "such as tape, film or a case over the edge of the screen, then start setup again. " +
+            "If it still shows no reading, restart the panel. Your previous calibration is unchanged."
 
         fun fingerprint(identity: String): String = MessageDigest.getInstance("SHA-256")
             .digest("explicit-proximity-v1|$identity".toByteArray(Charsets.UTF_8))
