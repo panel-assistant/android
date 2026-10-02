@@ -108,7 +108,10 @@
         break;
       }
       if (!control) continue;
-      var message = field.min != null && field.max != null
+      // Name the rule the browser actually broke: an in-range value off the step grid is not a range error.
+      var message = control.validity && control.validity.stepMismatch && field.step != null
+        ? cfg.i18nText("configure.validation.step", "{label} must be a multiple of {step}.", { label: field.label, step: field.step })
+        : field.min != null && field.max != null
         ? cfg.i18nText("configure.validation.range", "{label} must be between {min} and {max}.", { label: field.label, min: field.min, max: field.max })
         : cfg.i18nText("configure.validation.invalid", "{label} has an invalid value.", { label: field.label });
       return { field: field, control: control, message: message };
@@ -149,13 +152,23 @@
       method: "POST", headers: { "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     }).then(function (r) {
+      // The panel refuses as JSON `message` or as plain text; keep whichever arrived so the reason is shown.
+      var text = r.ok ? null : r.clone().text().catch(function () { return ""; });
       return cfg.approvalAwareJson(r).then(function (body) {
         if (!r.ok) {
-          var error = new Error(body && body.status === "saved-partial"
-            ? cfg.i18nText("configure.save.failed", "Save failed.")
-            : cfg.i18nText("configure.error.http", "Failed (HTTP {status})", { status: r.status }));
-          error.configOutcome = body;
-          throw error;
+          return text.then(function (raw) {
+            var partial = body && body.status === "saved-partial";
+            var reason = (body && typeof body.message === "string" && body.message) ||
+              (body && typeof body.error === "string" ? body.error + (body.reason ? " (" + body.reason + ")" : "") : raw.trim());
+            var error = new Error(partial
+              ? cfg.i18nText("configure.save.failed", "Save failed.")
+              : reason
+              ? cfg.i18nText("configure.save.refused", "Not saved: {reason}", { reason: reason })
+              : cfg.i18nText("configure.error.http", "Failed (HTTP {status})", { status: r.status }));
+            error.configOutcome = body;
+            error.refused = true;
+            throw error;
+          });
         }
         return body;
       });
@@ -264,6 +277,8 @@
         } else {
           msg.textContent = e && e.approvalRequired
             ? cfg.approvalMessage(e.body)
+            : e && e.refused
+            ? e.message
             : cfg.i18nText("configure.save.failed", "Save failed.");
           updateSaveUi();
         }

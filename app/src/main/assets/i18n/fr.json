@@ -1908,6 +1908,11 @@
       "sourceHash": "1afa8dc5ecaddb4f7ea2e4bdf97f0ec039ea7ddbb919727f42f339178250829d",
       "state": "machine-cross-checked"
     },
+    "configure.save.refused": {
+      "text": "Non enregistré : {reason}",
+      "sourceHash": "efd0fb5c5d944eaf6a7e4ebb5b08b47cc65284f06ee919bb04e2777a1e27538e",
+      "state": "machine-cross-checked"
+    },
     "configure.save.reload_failed": {
       "text": "Enregistré (échec du rechargement — actualisez la page).",
       "sourceHash": "a2dd4f224888a496a50ea48da45bb9db08515fa0c2c4d962760aa3d83fd089e6",
@@ -2076,6 +2081,11 @@
     "configure.validation.range": {
       "text": "{label} doit être compris entre {min} et {max}.",
       "sourceHash": "054c9181365746dd56b7fd3565f1e9a019456a996732f3d0caff9184baa22585",
+      "state": "machine-cross-checked"
+    },
+    "configure.validation.step": {
+      "text": "{label} doit être un multiple de {step}.",
+      "sourceHash": "a875c86551a0f7dd45c9b6d2a8f822328bdbbecb1872e43ef51c18a3e1989f00",
       "state": "machine-cross-checked"
     },
     "configure.voice.configure_wake_word_first": {
