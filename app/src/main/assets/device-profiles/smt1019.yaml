@@ -1,6 +1,6 @@
 schema: 2
 id: smt1019
-version: 3.0.0
+version: 3.0.1
 display_name: ZHICAI SMT1019
 soc_class: rk3576
 soc:
@@ -57,6 +57,9 @@ hardware:
   # the previous brightness-zero behaviour. Declaring the capable route costs that stock configuration
   # one refused socket connect per screen-off; helper-less rooted builds can still use direct root.
   screen_off: daemon-blpower
+  # Present hardware is offered and the panel proves it: the Electron WF2489T reports this same board and
+  # its owner reports voice working once a microphone is declared, so voice is offered here.
+  microphone: true
   has_button_backlight: false
 sensors:
   # Same GXHT30 part and the same vendor evdev layout as the ZX-SMT156, which already ships this route:
