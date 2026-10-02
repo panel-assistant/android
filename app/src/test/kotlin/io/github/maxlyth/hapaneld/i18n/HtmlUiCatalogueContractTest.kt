@@ -310,9 +310,9 @@ class HtmlUiCatalogueContractTest {
     }
 
     private fun literalKeys(source: String, function: String): Set<String> =
-        Regex("$function\\(\\s*[\\\"']((?:shell|dashboard|configure|profiles|entities)\\.[a-z0-9._-]+)[\\\"']")
+        Regex("$function\\(\\s*[\\\"']((?:shell|dashboard|configure|profiles|entities)\\.[a-z0-9._-]+)[\\\"'](?=\\s*[,\\)])")
             .findAll(source)
-            .map { it.groupValues[1] }.filterNot { it.endsWith(".") }.toSortedSet()
+            .mapTo(sortedSetOf()) { it.groupValues[1] }
 
     private fun literalFallbackBindings(source: String): List<Pair<String, String>> =
         Regex(
