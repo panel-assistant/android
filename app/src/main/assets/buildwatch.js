@@ -89,9 +89,8 @@
   // Information page's banner zone because that hydrates once and would freeze mid-outage; this poll
   // already runs on every page.
   // `ha_src` matters for one state only, and it may be ABSENT: it names a source only when one
-  // actually observed the state. Only the socket — Home Assistant saying so itself — proves a shutdown
-  // was deliberate, so the stronger wording requires ha_src=socket by name and everything else (a
-  // broker will, or no attributed source) claims only that Home Assistant is gone.
+  // actually observed the state. Panel Assistant reports deliberate shutdown through the native
+  // session; a connection loss without that notice claims only that Home Assistant is gone.
   var HA_TEXT = {
     shutting_down: { key: "shell.runtime.ha_lifecycle.offline", text: "Home Assistant has gone offline — controls may be temporarily unavailable.", glyph: "⚠" },
     starting: { key: "shell.runtime.ha_lifecycle.starting", text: "Home Assistant is starting — controls will return shortly.", glyph: "⟳" },

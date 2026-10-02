@@ -17,18 +17,18 @@ class HaLifecycleSurfaceContractTest {
     @Test fun theHealthTokenIsAbsentWhenThePanelIsNotWatchingOrUnowned() {
         // The token must not degrade to a default value: an absent token means "nothing to say", which is
         // what keeps the /health line byte-identical for every existing consumer.
-        assertEquals("", haLifecycleHealthToken(false, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.SOCKET)))
+        assertEquals("", haLifecycleHealthToken(false, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.NATIVE)))
         assertEquals("", haLifecycleHealthToken(true, null))
     }
 
     @Test fun theTokenPairsTheStateWithTheSourceFromTheSameSnapshot() {
         assertEquals(
-            " ha=shutting_down ha_src=mqtt ha_reason=unknown ha_grace_ms=0",
-            haLifecycleHealthToken(true, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.MQTT)),
+            " ha=shutting_down ha_src=native ha_reason=unknown ha_grace_ms=0",
+            haLifecycleHealthToken(true, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.NATIVE)),
         )
         assertEquals(
-            " ha=back_online ha_src=socket ha_reason=unknown ha_grace_ms=0",
-            haLifecycleHealthToken(true, snapshot(HaLifecycleState.BACK_ONLINE, HaLifecycleSource.SOCKET)),
+            " ha=back_online ha_src=native ha_reason=unknown ha_grace_ms=0",
+            haLifecycleHealthToken(true, snapshot(HaLifecycleState.BACK_ONLINE, HaLifecycleSource.NATIVE)),
         )
     }
 

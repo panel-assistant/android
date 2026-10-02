@@ -119,7 +119,7 @@ internal class HaLifecycleBar private constructor(
         val state = haLifecycleNoticeState(snap, renderer)
         val text = state?.let {
             view.context.getString(when (it) {
-                HaLifecycleState.SHUTTING_DOWN -> if (snap?.source == HaLifecycleSource.SOCKET || snap?.source == HaLifecycleSource.NATIVE) R.string.ha_shutting_down else R.string.ha_offline
+                HaLifecycleState.SHUTTING_DOWN -> if (snap?.source == HaLifecycleSource.NATIVE) R.string.ha_shutting_down else R.string.ha_offline
                 HaLifecycleState.STARTING -> R.string.ha_starting
                 HaLifecycleState.BACK_ONLINE -> R.string.ha_back_online
                 HaLifecycleState.CONNECTION_LOST -> R.string.ha_offline

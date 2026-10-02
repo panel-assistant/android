@@ -716,7 +716,6 @@ internal data class ConfigOwnerRefreshPlan(
     val keepAwake: Boolean,
     val launcherHome: Boolean,
     val rendererTarget: Boolean,
-    val haLifecycle: Boolean,
     val camera: Boolean,
     val panelAssistantTransport: Boolean,
 )
@@ -732,36 +731,12 @@ internal fun configOwnerRefreshPlan(changedKeys: Set<String>): ConfigOwnerRefres
         keepAwake = "keep_awake" in changedKeys,
         launcherHome = changedKeys.any(setOf("launcher_package", "dashboard_package", "ha_url")::contains),
         rendererTarget = changedKeys.any((ha + setOf("dashboard_package", "home_dashboard"))::contains),
-        // Lifecycle demand follows the renderer selection AND the credentials, because it is only worth
-        // holding a socket open for a panel that both renders a dashboard and can authenticate.
-        haLifecycle = changedKeys.any((ha + "dashboard_package")::contains),
         // The master switch closes a live session on this lane too, not only on the watchdog tick.
         camera = "camera_enabled" in changedKeys,
         // Credentials only; the owner itself ignores a change that leaves the credential identity equal.
         panelAssistantTransport = changedKeys.any(ha::contains),
     )
 }
-
-/**
- * Whether to hold the shared Home Assistant socket open purely to observe lifecycle events.
- *
- * Pure — unit-tested in `HaLifecycleDemandTest`. Kept separate from the renderer so the rule is stated
- * once: only the built-in renderer has a native surface to show the outage on, and without credentials
- * there is nothing to authenticate with.
- */
-internal fun haLifecycleWatchWanted(builtinRendererSelected: Boolean, credentialsPresent: Boolean): Boolean =
-    builtinRendererSelected && credentialsPresent
-
-/**
- * Whether a lifecycle-watch refresh may run now. Pure so the deferral is provable.
- *
- * Enabling waits for the CURRENT renderer to settle, on every path — the launch-latency decision is
- * void if an onboarding save can open the socket early through a different door. Disabling is never
- * deferred: settlement resets when a renderer is released, so a deferred disable after deselecting the
- * built-in renderer would wait forever while the socket stayed open.
- */
-internal fun haLifecycleRefreshPermitted(rendererSettled: Boolean, wanted: Boolean): Boolean =
-    rendererSettled || !wanted
 
 internal fun nextLiveSettingRetryAttempt(currentAttempt: Int, maximumAttempts: Int = 3): Int? =
     (currentAttempt + 1).takeIf { it < maximumAttempts }
@@ -1010,8 +985,7 @@ class PaneldService : Service() {
     private lateinit var haNetworkPath: HaNetworkPathMonitor
     private lateinit var haPathProbe: PathProbeMonitor
     private val haSocketClock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
-    private val rendererSettledForLifecycle: () -> Unit = {
-        runCatching { refreshHaLifecycleWatch() }
+    private val rendererSettledForSwap: () -> Unit = {
         scope.launch { acceptHealthyWebViewSwap() }
     }
     private lateinit var haSiteMetadata: HaSiteMetadataClient
@@ -1989,18 +1963,6 @@ class PaneldService : Service() {
                 assets.open(path).bufferedReader().use { it.readText() }
             }.strings(io.github.maxlyth.hapaneld.i18n.AppLocale.ENGLISH)
         }
-        // One lease per bridge generation. Registering it retires the previous generation's
-        // MQTT-sourced lifecycle claims — the birth that would retract them is not retained, so the
-        // replacement channel gets no replay — and makes every superseded bridge's queued callback a
-        // no-op. The connection read is derived from the live bridge, never copied.
-        val lease = HaLifecycleRuntime.MqttLease()
-        if (::haLifecycle.isInitialized &&
-            HaLifecycleRuntime.installMqttLease(haLifecycle, lease) {
-                runtime.observe()?.value?.mqtt?.isConnected() == true
-            }
-        ) {
-            BuiltinDashboard.onHaLifecycleChanged()
-        }
         return MqttBridge(
             config, brightness, screen, led, ledEffect, navigate, volume, system, navbar, watchdog, touchSound, bootChime, zigbee, relay, cpu, adb,
             accessibilityEnabled(), profile.evdevButtons.isNotEmpty(),
@@ -2076,9 +2038,6 @@ class PaneldService : Service() {
             onAutoSleepConfigChanged = {
                 acceptCommittedAutoSleepSetting(liveSettingAuthority) { refreshAutoSleepPresence() }
             },
-            // This bridge generation's lease, registered with the runtime as the live broker channel
-            // just below. A bridge that outlives its service OR its own replacement cannot report.
-            haLifecycleLease = lease,
         ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape)) }
     }
 
@@ -2796,9 +2755,9 @@ class PaneldService : Service() {
         if (ownerRefresh.keepAwake) runCatching { power.apply(config.keepAwake) }
         if (ownerRefresh.autoSleep) runCatching { refreshAutoSleepPresence() }
         if (ownerRefresh.rendererTarget) {
+            haExactEntityStream.replaceHaLink(currentHaLinkIdentity(), config.haRouteEpoch())
             io.github.maxlyth.hapaneld.http.PerfReader.updateRendererTarget(rendererTargetSnapshot())
         }
-        if (ownerRefresh.haLifecycle) runCatching { refreshHaLifecycleWatch() }
         if (ownerRefresh.camera && ::camera.isInitialized) runCatching { camera.onEnabledChanged() }
         // A camera switch moved on the Configure page, by a bundle import or by provisioning must reach
         // Home Assistant too; otherwise its switch keeps a position the panel has already left.
@@ -2825,31 +2784,10 @@ class PaneldService : Service() {
         runtime.runIfRunning {
             if (!teardownBoundary.isStopping) {
                 panelAssistantTransport.replaceDemand(demand)
+                if (demand != null) scope.launch(Dispatchers.IO) { HaBrandIcon.prefetch(this@PaneldService, config.haUrl) }
                 if (HaLifecycleRuntime.setNativeWatching(haLifecycle, demand != null)) BuiltinDashboard.onHaLifecycleChanged()
             }
         }
-    }
-
-    /** Rebind a changed link, then match lifecycle demand after renderer settlement. */
-    private fun refreshHaLifecycleWatch() {
-        if (!::haExactEntityStream.isInitialized || !::system.isInitialized) return
-        haExactEntityStream.replaceHaLink(currentHaLinkIdentity(), config.haRouteEpoch())
-        val wanted = haLifecycleWatchWanted(
-            builtinRendererSelected = system.isBuiltinDashboardTarget(config.dashboardPackage),
-            credentialsPresent = config.haUrl.isNotBlank() &&
-                (config.haToken.isNotBlank() || config.haRefreshToken.isNotBlank()),
-        )
-        // Defer enabling only; disabling must close the socket even when the renderer never settles.
-        if (!haLifecycleRefreshPermitted(BuiltinDashboard.rendererSettled, wanted)) return
-        haExactEntityStream.replaceLifecycleWatch(wanted)
-        val watchChanged = HaLifecycleRuntime.setWatching(haLifecycle, wanted)
-        // Switching the watch off retires everything consumers can render (an unreportable holder
-        // answers null), so they must be told — otherwise the native card keeps describing an outage
-        // for a feature that is no longer watching, and redraws it from that state on resume.
-        if (watchChanged) BuiltinDashboard.onHaLifecycleChanged()
-        // Warm the brand mark now rather than during an outage, when Home Assistant is exactly what is
-        // unreachable. Off the main thread; failure is silent and leaves a text-only banner.
-        if (wanted) scope.launch(Dispatchers.IO) { HaBrandIcon.prefetch(this@PaneldService, config.haUrl) }
     }
 
     /** Controller reads shared by the dashboard facts, live values and capability projection. */
@@ -3636,15 +3574,9 @@ class PaneldService : Service() {
             PathProbeRuntime.install(haPathProbe, haSocketClock)
             haExactEntityStream.bindPathProbe(haPathProbe)
             HaLifecycleRuntime.install(haLifecycle)
-            haExactEntityStream.bindLifecycle(haLifecycle)
-            activeRuntime.mqtt.haLifecycleLease?.let { lease ->
-                HaLifecycleRuntime.installMqttLease(haLifecycle, lease) {
-                    runtime.observe()?.value?.mqtt?.isConnected() == true
-                }
-            }
             BuiltinDashboard.onHaLifecycleChanged()
             // Registration can call back immediately when the renderer has already settled.
-            BuiltinDashboard.setRendererSettledListener(rendererSettledForLifecycle)
+            BuiltinDashboard.setRendererSettledListener(rendererSettledForSwap)
             scope.launch { guardWebViewSwap() }
             io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.install(
                 object : io.github.maxlyth.hapaneld.camera.CameraPermissionPrompt.Store {
@@ -3949,6 +3881,7 @@ class PaneldService : Service() {
             // Demand construction reads configuration before this short, lock-admitted publication.
             if (!teardownBoundary.isStopping) {
                 panelAssistantTransport.replaceDemand(initialNativeDemand)
+                if (initialNativeDemand != null) scope.launch(Dispatchers.IO) { HaBrandIcon.prefetch(this@PaneldService, config.haUrl) }
                 if (HaLifecycleRuntime.setNativeWatching(haLifecycle, initialNativeDemand != null)) BuiltinDashboard.onHaLifecycleChanged()
             }
         })
@@ -4947,7 +4880,7 @@ class PaneldService : Service() {
                 // The echo probe is cleared under the same identity gate, and silently: it drives no
                 // prominent surface, so nothing needs re-poking when it goes.
                 if (::haPathProbe.isInitialized) PathProbeRuntime.uninstall(haPathProbe)
-                BuiltinDashboard.clearRendererSettledListener(rendererSettledForLifecycle)
+                BuiltinDashboard.clearRendererSettledListener(rendererSettledForSwap)
             }
             closeOwner("sensors") { sensorPersistenceClosed.set(sensors.stop()) }
             BuiltinDashboard.setForegroundGainedListener(null)

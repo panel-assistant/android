@@ -34,7 +34,7 @@ class HaLifecycleNoticeTest {
     }
 
     private fun snapshot(state: HaLifecycleState) =
-        HaLifecycle.Snapshot(state, HaLifecycleSource.SOCKET, false, 1L, 8_000L)
+        HaLifecycle.Snapshot(state, HaLifecycleSource.NATIVE, false, 1L, 8_000L)
 
     @Test fun panelThatMissedStopShowsOfflineAfterConnectionLoss() {
         val tracker = HaLifecycle()
