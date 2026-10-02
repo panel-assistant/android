@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the canonical, signed-release install descriptor from an exact APK."""
+"""Generate V1 install and protocol companion records from exact signed APKs."""
 
 from __future__ import annotations
 
@@ -31,6 +31,8 @@ SIGNER_CERTIFICATE_SHA256 = (
     "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 )
 DATABASE_METADATA_KEY = f"{CODE_PACKAGE}.DATABASE_COMPATIBILITY"
+PROTOCOL_METADATA_KEY = f"{CODE_PACKAGE}.PANEL_ASSISTANT_PROTOCOL"
+PROTOCOL_SCHEMA = "io.github.maxlyth.hapaneld.protocol.v1"
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a")
 LAUNCH_ACTIVITY = f"{CODE_PACKAGE}.MainActivity"
 # Fully qualified on purpose. The `/.MainActivity` shorthand resolves against the applicationId, so
@@ -119,13 +121,15 @@ def _apk_identity(apk_fd: int) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def parse_badging(badging: str) -> dict[str, object]:
+def parse_badging(
+    badging: str, allowed_packages: tuple[str, ...] = (PACKAGE_ID,)
+) -> dict[str, object]:
     """Read the closed package/version/platform/launch contract from aapt output."""
     package_fields = _quoted_fields(_one_line("package:", badging))
     package_id = package_fields.get("name", "")
     version_name = package_fields.get("versionName", "")
     version_code_text = package_fields.get("versionCode", "")
-    if package_id != PACKAGE_ID:
+    if package_id not in allowed_packages:
         _fail(f"unexpected package ID: {package_id or '<missing>'}")
     if not version_name:
         _fail("APK versionName is missing")
@@ -164,8 +168,8 @@ def parse_badging(badging: str) -> dict[str, object]:
     }
 
 
-def parse_database_compatibility(xmltree: str) -> str:
-    """Read one application-scoped database contract from aapt xmltree output."""
+def parse_application_metadata(xmltree: str, key: str, label: str) -> str:
+    """Read one unique direct application metadata value from aapt xmltree output."""
     stack: dict[int, tuple[str, int]] = {}
     next_node_id = 0
     manifest_count = 0
@@ -181,10 +185,10 @@ def parse_database_compatibility(xmltree: str) -> str:
         if current is None:
             return
         direct_application_child, attributes = current
-        if DATABASE_METADATA_KEY in attributes["name"]:
+        if key in attributes["name"]:
             if (
                 not direct_application_child
-                or attributes["name"] != [DATABASE_METADATA_KEY]
+                or attributes["name"] != [key]
                 or len(attributes["value"]) != 1
             ):
                 wrong_scope = True
@@ -227,8 +231,12 @@ def parse_database_compatibility(xmltree: str) -> str:
     flush()
 
     if manifest_count != 1 or application_count != 1 or wrong_scope or len(contracts) != 1:
-        _fail("APK must contain one application-scoped database compatibility record")
-    contract = contracts[0]
+        _fail(f"APK must contain one application-scoped {label} record")
+    return contracts[0]
+
+
+def parse_database_compatibility(xmltree: str) -> str:
+    contract = parse_application_metadata(xmltree, DATABASE_METADATA_KEY, "database compatibility")
     match = re.fullmatch(r"hapaneld-db:v1:ha-paneld\.db:([1-9][0-9]*):([1-9][0-9]*)", contract)
     if (
         not match
@@ -240,6 +248,18 @@ def parse_database_compatibility(xmltree: str) -> str:
     ):
         _fail("APK database compatibility record is malformed")
     return contract
+
+
+def parse_protocol_range(xmltree: str) -> tuple[int, int]:
+    contract = parse_application_metadata(xmltree, PROTOCOL_METADATA_KEY, "Panel Assistant protocol")
+    match = re.fullmatch(r"hapaneld-native:v1:([1-9][0-9]*):([1-9][0-9]*)", contract)
+    if (
+        not match
+        or any(len(value) > 10 for value in match.groups())
+        or not 1 <= int(match.group(1)) <= int(match.group(2)) <= MAX_ANDROID_VERSION_CODE
+    ):
+        _fail("APK Panel Assistant protocol record is malformed")
+    return int(match.group(1)), int(match.group(2))
 
 
 def parse_signer(apksigner_output: str) -> str:
@@ -258,12 +278,15 @@ def parse_signer(apksigner_output: str) -> str:
     return digests[0]
 
 
-def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -> dict[str, object]:
+def inspect_apk(
+    apk: Path,
+    release_tag: str,
+    aapt: Path,
+    apksigner: Path,
+    allowed_packages: tuple[str, ...] = (PACKAGE_ID,),
+) -> tuple[dict[str, object], str, str, tuple[int, str]]:
     if len(release_tag) > 64 or not RELEASE_TAG_PATTERN.fullmatch(release_tag):
         _fail("release tag is not an accepted vX.Y.Z or vX.Y.Z-rcN value")
-    canonical_apk_name = f"panel-assistant-{release_tag}-manual-setup-required.apk"
-    if apk.name != canonical_apk_name:
-        _fail("APK filename is not canonical for the release tag")
     try:
         apk_fd = os.open(apk, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
     except OSError:
@@ -278,7 +301,7 @@ def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -
 
         badging = _run(aapt, apk_fd, "dump", "badging", fd_path)
         _require_path_identity(apk, opened)
-        fields = parse_badging(badging)
+        fields = parse_badging(badging, allowed_packages)
         expected_version_name = release_tag.removeprefix("v")
         if fields["versionName"] != expected_version_name:
             _fail("APK versionName does not match the release tag")
@@ -291,6 +314,14 @@ def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -
             _fail("release APK changed while its descriptor was generated")
     finally:
         os.close(apk_fd)
+    return fields, xmltree, signer, final_identity
+
+
+def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -> dict[str, object]:
+    canonical_apk_name = f"panel-assistant-{release_tag}-manual-setup-required.apk"
+    if apk.name != canonical_apk_name:
+        _fail("APK filename is not canonical for the release tag")
+    fields, xmltree, signer, final_identity = inspect_apk(apk, release_tag, aapt, apksigner)
 
     return {
         "apkName": canonical_apk_name,
@@ -307,6 +338,23 @@ def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -
         "versionCode": fields["versionCode"],
         "versionName": fields["versionName"],
     }
+
+
+def build_protocol_manifest(
+    apks: list[Path], release_tag: str, aapt: Path, apksigner: Path
+) -> dict[str, object]:
+    if not apks or len(apks) > 500:
+        _fail("protocol companion requires 1 to 500 exact APKs")
+    artifacts = []
+    for apk in apks:
+        _, xmltree, _, identity = inspect_apk(
+            apk, release_tag, aapt, apksigner, (CODE_PACKAGE, PACKAGE_ID)
+        )
+        low, high = parse_protocol_range(xmltree)
+        artifacts.append({"apkSha256": identity[1], "protocolMin": low, "protocolMax": high})
+    if len({record["apkSha256"] for record in artifacts}) != len(artifacts):
+        _fail("protocol companion repeats an APK hash")
+    return {"schema": PROTOCOL_SCHEMA, "artifacts": sorted(artifacts, key=lambda record: record["apkSha256"])}
 
 
 def canonical_json(descriptor: dict[str, object]) -> bytes:
@@ -330,15 +378,27 @@ def write_atomic(output: Path, payload: bytes) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apk", required=True, type=Path)
+    parser.add_argument("--apk", type=Path)
     parser.add_argument("--release-tag", required=True)
     parser.add_argument("--aapt", required=True, type=Path)
     parser.add_argument("--apksigner", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--protocol-apk", action="append", default=[], type=Path)
+    parser.add_argument("--protocol-output", type=Path)
     args = parser.parse_args()
+    if bool(args.apk) != bool(args.output) or bool(args.protocol_apk) != bool(args.protocol_output):
+        parser.error("each output requires its corresponding APK input")
+    if not args.output and not args.protocol_output:
+        parser.error("an install descriptor or protocol companion output is required")
     try:
-        descriptor = build_descriptor(args.apk, args.release_tag, args.aapt, args.apksigner)
-        write_atomic(args.output, canonical_json(descriptor))
+        # Validate both before publishing either, so a failed companion cannot leave a descriptor
+        # appearing to describe a completed generation run.
+        descriptor = build_descriptor(args.apk, args.release_tag, args.aapt, args.apksigner) if args.output else None
+        protocol = build_protocol_manifest(args.protocol_apk, args.release_tag, args.aapt, args.apksigner) if args.protocol_output else None
+        if args.output:
+            write_atomic(args.output, canonical_json(descriptor))
+        if args.protocol_output:
+            write_atomic(args.protocol_output, canonical_json(protocol))
     except DescriptorError as error:
         print(f"install descriptor: {error}", file=sys.stderr)
         return 1

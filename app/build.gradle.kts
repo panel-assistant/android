@@ -65,6 +65,25 @@ check(databaseMinimumSchema in 1..databaseMaximumSchema) {
 val databaseCompatibilityContract =
     "hapaneld-db:v1:ha-paneld.db:$databaseMinimumSchema:$databaseMaximumSchema"
 
+// The native handshake owns its range. Sign the same bounds into each APK so release tooling and
+// uploaded-app admission can inspect the candidate itself without guessing from its version.
+val panelAssistantProtocolSource = rootProject.file(
+    "app/src/main/kotlin/io/github/maxlyth/hapaneld/panelassistant/PanelAssistantTransportProtocol.kt",
+)
+fun panelAssistantProtocolConstant(name: String): Int {
+    val matches = Regex("""(?m)^\s*const\s+val\s+$name\s*=\s*([0-9]+)\s*$""")
+        .findAll(panelAssistantProtocolSource.readText()).toList()
+    check(matches.size == 1) { "PanelAssistantTransportProtocol.$name must be one integer literal" }
+    return matches.single().groupValues[1].toInt()
+}
+val panelAssistantProtocolMinimum = panelAssistantProtocolConstant("PROTOCOL_MIN")
+val panelAssistantProtocolMaximum = panelAssistantProtocolConstant("PROTOCOL_MAX")
+check(panelAssistantProtocolMinimum in 1..panelAssistantProtocolMaximum) {
+    "invalid Panel Assistant protocol range $panelAssistantProtocolMinimum..$panelAssistantProtocolMaximum"
+}
+val panelAssistantProtocolContract =
+    "hapaneld-native:v1:$panelAssistantProtocolMinimum:$panelAssistantProtocolMaximum"
+
 val helperIdentityFiles = rootProject.fileTree("helper/src") {
     include("*.c", "*.h", "*.def")
 }.files.sortedBy { it.relativeTo(rootProject.projectDir).invariantSeparatorsPath }
@@ -119,6 +138,7 @@ android {
         buildConfigField("String", "HELPER_BUILD_ID", "\"$helperBuildId\"")
         buildConfigField("String", "DATABASE_COMPATIBILITY", "\"$databaseCompatibilityContract\"")
         manifestPlaceholders["databaseCompatibility"] = databaseCompatibilityContract
+        manifestPlaceholders["panelAssistantProtocol"] = panelAssistantProtocolContract
 
         // Only the fleet's ARM ABIs — bounds the native LED lib (libhapaneld_led.so) + APK size.
         ndk {

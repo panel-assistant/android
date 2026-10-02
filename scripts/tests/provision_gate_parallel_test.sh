@@ -20,13 +20,7 @@ cat > "$FAKE_RUNNER" <<'FAKE'
 set -u
 name="${PROVISION_TEST_SCOPE#shard-}"
 case "$name" in
-  database-host) cases=1 ;; database-runtime) cases=1 ;; install-export) cases=1 ;;
-  install-probe) cases=1 ;;
-  install-runtime) cases=1 ;; helper-transaction) cases=1 ;; release-integrity) cases=1 ;;
-  renderer-seeding) cases=1 ;; install-finish) cases=1 ;;
-  backup) cases=1 ;; publication) cases=1 ;; database-authority) cases=1 ;;
-  fleet-installer) cases=1 ;; host-reclamation) cases=1 ;; git-bash) cases=1 ;;
-  helper-release-install) cases=1 ;; database-capture) cases=1 ;;
+  admission|read-only|helper-recovery|uninstall|wrapper-inspection) cases=1 ;;
   *) exit 2 ;;
 esac
 printf 'tmpdir=%s\n' "$TMPDIR"
@@ -79,151 +73,149 @@ chmod 755 "$FAKE_RUNNER"
 STATE="$TMP/state"; mkdir "$STATE"
 OUT="$TMP/pass-results"
 PASS_LOG="$TMP/pass.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=17 \
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=5 \
 FAKE_STATE_DIR="$STATE" FAKE_SLEEP_SECONDS=0.05 \
   bash "$WRAPPER" --jobs 2 --output "$OUT" > "$PASS_LOG" 2>&1
 status=$?
 description="the complete fake gate passes"; assert_true test "$status" -eq 0
-description="the aggregate pins all 17 shard cases"; assert_true grep -q '^AGGREGATE PASS shards=17 cases=17 failures=0 ' "$PASS_LOG"
+description="the aggregate pins all 5 shard cases"; assert_true grep -q '^AGGREGATE PASS shards=5 cases=5 failures=0 ' "$PASS_LOG"
 description="a successful full gate emits exactly one compatible totals marker"; assert_true test "$(grep -c '^PROVISION_GATE_TOTALS=' "$PASS_LOG")" -eq 1
-description="the full-gate totals marker is coherent"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=17/17;tests=17/17;failures=0' "$PASS_LOG"
+description="the full-gate totals marker is coherent"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=5/5;tests=5/5;failures=0' "$PASS_LOG"
 order="$(awk '/^SHARD / {printf "%s ", $2}' "$PASS_LOG")"
-description="per-shard reports retain deterministic manifest order"; assert_true test "$order" = "database-host database-runtime install-export install-probe install-runtime helper-release-install helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority database-capture fleet-installer host-reclamation git-bash "
+description="per-shard reports retain deterministic manifest order"; assert_true test "$order" = "admission read-only helper-recovery uninstall wrapper-inspection "
 unique_tmp="$(grep -h '^tmpdir=' "$OUT"/*/tap.log | sort -u | wc -l | tr -d ' ')"
-description="every shard receives isolated temporary state"; assert_true test "$unique_tmp" -eq 17
+description="every shard receives isolated temporary state"; assert_true test "$unique_tmp" -eq 5
 description="the jobs limit permits the requested concurrency"; assert_true test "$(cat "$STATE/maximum")" -eq 2
 
 AGGREGATE_ONLY_LOG="$TMP/aggregate-only.log"
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=17 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=5 \
   bash "$WRAPPER" --aggregate "$OUT" > "$AGGREGATE_ONLY_LOG" 2>&1
 status=$?
 description="retained results can be aggregated without a shard runner"; assert_true test "$status" -eq 0
-description="retained full-gate results preserve the canonical totals marker"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=17/17;tests=17/17;failures=0' "$AGGREGATE_ONLY_LOG"
+description="retained full-gate results preserve the canonical totals marker"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=5/5;tests=5/5;failures=0' "$AGGREGATE_ONLY_LOG"
 
 # The shard time budget only warns: it names a shard that has grown well past the median, as a GitHub
 # annotation and a step-summary table under Actions, and never changes the verdict or exit status.
 BUDGET="$TMP/budget-results"
 cp -a "$OUT" "$BUDGET"
 for result in "$BUDGET"/*/result; do printf '0 20\n' > "$result"; done
-printf '0 130\n' > "$BUDGET/install-runtime/result"
+printf '0 130\n' > "$BUDGET/read-only/result"
 BUDGET_LOG="$TMP/budget.log"
 BUDGET_SUMMARY="$TMP/budget-summary.md"
 GITHUB_ACTIONS=true GITHUB_STEP_SUMMARY="$BUDGET_SUMMARY" \
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=17 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=5 \
   bash "$WRAPPER" --aggregate "$BUDGET" > "$BUDGET_LOG" 2>&1
 status=$?
 description="an over-budget shard does not fail the gate"; assert_true test "$status" -eq 0
-description="the over-budget shard is named against the median"; assert_true grep -qx 'BUDGET WARN shard=install-runtime wall=130s median=20s ratio=2' "$BUDGET_LOG"
+description="the over-budget shard is named against the median"; assert_true grep -qx 'BUDGET WARN shard=read-only wall=130s median=20s ratio=2' "$BUDGET_LOG"
 description="only the over-budget shard is warned"; assert_true test "$(grep -c '^BUDGET WARN ' "$BUDGET_LOG")" -eq 1
-description="the budget warning is a GitHub annotation under Actions"; assert_true grep -q '^::warning title=Provisioning shard over budget::install-runtime took 130s' "$BUDGET_LOG"
-description="the step summary lists shards slowest first"; assert_true test "$(grep -m1 '^| [a-z]' "$BUDGET_SUMMARY" | cut -d'|' -f2 | tr -d ' ')" = install-runtime
-printf '0 55\n' > "$BUDGET/install-runtime/result"
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=17 \
+description="the budget warning is a GitHub annotation under Actions"; assert_true grep -q '^::warning title=Provisioning shard over budget::read-only took 130s' "$BUDGET_LOG"
+description="the step summary lists shards slowest first"; assert_true test "$(grep -m1 '^| [a-z]' "$BUDGET_SUMMARY" | cut -d'|' -f2 | tr -d ' ')" = read-only
+printf '0 55\n' > "$BUDGET/read-only/result"
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=5 \
   bash "$WRAPPER" --aggregate "$BUDGET" > "$BUDGET_LOG" 2>&1
 description="a short shard stays under the budget floor"; assert_true grep -qx 'BUDGET OK median=20s ratio=2' "$BUDGET_LOG"
 description="no annotation is written outside Actions"; assert_true test "$(grep -c '^::warning' "$BUDGET_LOG" || true)" -eq 0
 
 MISSING_AGGREGATE="$TMP/missing-aggregate"
 cp -a "$OUT" "$MISSING_AGGREGATE"
-rm -rf "$MISSING_AGGREGATE/database-host"
+rm -rf "$MISSING_AGGREGATE/admission"
 MISSING_AGGREGATE_LOG="$TMP/missing-aggregate.log"
-PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=17 \
+PROVISION_GATE_SHARD_RUNNER="$TMP/not-a-runner" PROVISION_GATE_EXPECTED_TOTAL=5 \
   bash "$WRAPPER" --aggregate "$MISSING_AGGREGATE" > "$MISSING_AGGREGATE_LOG" 2>&1
 status=$?
 description="a retained full gate fails when one shard artifact is missing"; assert_true test "$status" -ne 0
-description="the missing retained shard is reported explicitly"; assert_true grep -q '^SHARD database-host FAIL cases=0 ' "$MISSING_AGGREGATE_LOG"
+description="the missing retained shard is reported explicitly"; assert_true grep -q '^SHARD admission FAIL cases=0 ' "$MISSING_AGGREGATE_LOG"
 
 DEFAULT_STATE="$TMP/default-state"; mkdir "$DEFAULT_STATE"
 DEFAULT_LOG="$TMP/default.log"
 PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_STATE_DIR="$DEFAULT_STATE" FAKE_SLEEP_SECONDS=0.5 \
-  bash "$WRAPPER" --output "$TMP/default-results" \
-    database-host database-runtime install-export install-runtime helper-transaction \
-    release-integrity renderer-seeding install-finish database-authority fleet-installer git-bash \
+  bash "$WRAPPER" --output "$TMP/default-results" admission read-only uninstall wrapper-inspection \
     > "$DEFAULT_LOG" 2>&1
 status=$?
 description="the default-concurrency fake gate passes"; assert_true test "$status" -eq 0
-description="the default launches all eleven independent shards"; assert_true test "$(cat "$DEFAULT_STATE/maximum")" -eq 11
+description="the default launches all four independent shards"; assert_true test "$(cat "$DEFAULT_STATE/maximum")" -eq 4
 
 FAIL_LOG="$TMP/fail.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_FAIL_SCOPE=backup \
-  bash "$WRAPPER" -j 2 --output "$TMP/fail-results" database-host backup > "$FAIL_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_FAIL_SCOPE=uninstall \
+  bash "$WRAPPER" -j 2 --output "$TMP/fail-results" admission uninstall > "$FAIL_LOG" 2>&1
 status=$?
 description="one red shard fails the aggregate"; assert_true test "$status" -ne 0
-description="the red shard reports its TAP failure and status"; assert_true grep -q '^SHARD backup FAIL cases=1 failures=1 status=1 ' "$FAIL_LOG"
+description="the red shard reports its TAP failure and status"; assert_true grep -q '^SHARD uninstall FAIL cases=1 failures=1 status=1 ' "$FAIL_LOG"
 description="a red shard produces a fail-closed aggregate"; assert_true grep -q '^AGGREGATE FAIL shards=2 cases=2 failures=1 ' "$FAIL_LOG"
 description="a failed gate emits no passing totals marker"; assert_true test "$(grep -c '^PROVISION_GATE_TOTALS=' "$FAIL_LOG" || true)" -eq 0
 
 FOCUSED_LOG="$TMP/focused.log"
 PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" \
-  bash "$WRAPPER" -j 2 --output "$TMP/focused-results" database-host backup > "$FOCUSED_LOG" 2>&1
+  bash "$WRAPPER" -j 2 --output "$TMP/focused-results" admission uninstall > "$FOCUSED_LOG" 2>&1
 status=$?
 description="a focused fake gate passes"; assert_true test "$status" -eq 0
 description="a focused gate emits coherent positive selected totals"; assert_true grep -qx 'PROVISION_GATE_TOTALS=shards=2/2;tests=2/2;failures=0' "$FOCUSED_LOG"
 
 MALFORMED_LOG="$TMP/malformed.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MALFORMED_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/malformed-results" publication > "$MALFORMED_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MALFORMED_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/malformed-results" uninstall > "$MALFORMED_LOG" 2>&1
 status=$?
 description="missing TAP plan fails closed"; assert_true test "$status" -ne 0
-description="malformed TAP is identified as a failed shard"; assert_true grep -q '^SHARD publication FAIL cases=0 ' "$MALFORMED_LOG"
+description="malformed TAP is identified as a failed shard"; assert_true grep -q '^SHARD uninstall FAIL cases=0 ' "$MALFORMED_LOG"
 
 ZERO_LOG="$TMP/zero.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_ZERO_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/zero-results" publication > "$ZERO_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_ZERO_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/zero-results" uninstall > "$ZERO_LOG" 2>&1
 status=$?
 description="a focused shard with zero tests fails closed"; assert_true test "$status" -ne 0
-description="the zero-test shard is reported as failed"; assert_true grep -q '^SHARD publication FAIL cases=0 ' "$ZERO_LOG"
+description="the zero-test shard is reported as failed"; assert_true grep -q '^SHARD uninstall FAIL cases=0 ' "$ZERO_LOG"
 
 DUPLICATE_NUMBER_LOG="$TMP/duplicate-number.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_DUPLICATE_NUMBER_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/duplicate-number-results" publication > "$DUPLICATE_NUMBER_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_DUPLICATE_NUMBER_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/duplicate-number-results" uninstall > "$DUPLICATE_NUMBER_LOG" 2>&1
 status=$?
 description="duplicate TAP numbering fails closed"; assert_true test "$status" -ne 0
 
 DUPLICATE_IDENTITY_LOG="$TMP/duplicate-identity.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_DUPLICATE_IDENTITY_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/duplicate-identity-results" publication > "$DUPLICATE_IDENTITY_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_DUPLICATE_IDENTITY_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/duplicate-identity-results" uninstall > "$DUPLICATE_IDENTITY_LOG" 2>&1
 status=$?
 description="repeated TAP descriptions remain valid when test numbers are unique"; assert_true test "$status" -eq 0
 
 MULTIPLE_PLAN_LOG="$TMP/multiple-plan.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MULTIPLE_PLAN_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/multiple-plan-results" publication > "$MULTIPLE_PLAN_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MULTIPLE_PLAN_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/multiple-plan-results" uninstall > "$MULTIPLE_PLAN_LOG" 2>&1
 status=$?
 description="multiple TAP plans fail closed"; assert_true test "$status" -ne 0
 
 MALFORMED_RESULT_LOG="$TMP/malformed-result.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MALFORMED_RESULT_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/malformed-result-results" publication > "$MALFORMED_RESULT_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MALFORMED_RESULT_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/malformed-result-results" uninstall > "$MALFORMED_RESULT_LOG" 2>&1
 status=$?
 description="malformed worker metadata fails closed"; assert_true test "$status" -ne 0
 
 MISSING_RESULT_LOG="$TMP/missing-result.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MISSING_RESULT_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/missing-result-results" publication > "$MISSING_RESULT_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_MISSING_RESULT_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/missing-result-results" uninstall > "$MISSING_RESULT_LOG" 2>&1
 status=$?
 description="missing worker metadata fails closed"; assert_true test "$status" -ne 0
 
 NONZERO_LOG="$TMP/nonzero.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_NONZERO_SCOPE=publication \
-  bash "$WRAPPER" --output "$TMP/nonzero-results" publication > "$NONZERO_LOG" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_NONZERO_SCOPE=uninstall \
+  bash "$WRAPPER" --output "$TMP/nonzero-results" uninstall > "$NONZERO_LOG" 2>&1
 status=$?
 description="an interrupted nonzero worker fails closed"; assert_true test "$status" -ne 0
-description="the interrupted status is retained in the shard report"; assert_true grep -q '^SHARD publication FAIL cases=1 failures=0 status=143 ' "$NONZERO_LOG"
+description="the interrupted status is retained in the shard report"; assert_true grep -q '^SHARD uninstall FAIL cases=1 failures=0 status=143 ' "$NONZERO_LOG"
 
 AGGREGATE_MISMATCH_LOG="$TMP/aggregate-mismatch.log"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=18 \
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" PROVISION_GATE_EXPECTED_TOTAL=6 \
   bash "$WRAPPER" --output "$TMP/aggregate-mismatch-results" > "$AGGREGATE_MISMATCH_LOG" 2>&1
 status=$?
 description="a complete-set aggregate count mismatch fails closed"; assert_true test "$status" -ne 0
-description="the exact expected and actual aggregate are reported"; assert_true grep -q '^CONTRACT FAIL expected_cases=18 actual_cases=17$' "$AGGREGATE_MISMATCH_LOG"
+description="the exact expected and actual aggregate are reported"; assert_true grep -q '^CONTRACT FAIL expected_cases=6 actual_cases=5$' "$AGGREGATE_MISMATCH_LOG"
 description="an aggregate mismatch emits no passing totals marker"; assert_true test "$(grep -c '^PROVISION_GATE_TOTALS=' "$AGGREGATE_MISMATCH_LOG" || true)" -eq 0
 
 TERM_LOG="$TMP/term.log"
 TERM_CHILD_PID_FILE="$TMP/term-child.pid"
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_BLOCK_SCOPE=database-host \
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" FAKE_BLOCK_SCOPE=admission \
 FAKE_BLOCK_PID_FILE="$TERM_CHILD_PID_FILE" \
-  bash "$WRAPPER" --output "$TMP/term-results" database-host > "$TERM_LOG" 2>&1 &
+  bash "$WRAPPER" --output "$TMP/term-results" admission > "$TERM_LOG" 2>&1 &
 term_wrapper_pid=$!
 term_ready=0
 term_attempt=0
@@ -247,13 +239,13 @@ done
 description="TERM reaps the blocked shard descendant process group"; assert_true test "$term_child_gone" -eq 1
 description="an interrupted gate emits no passing totals marker"; assert_true test "$(grep -c '^PROVISION_GATE_TOTALS=' "$TERM_LOG" || true)" -eq 0
 
-PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" bash "$WRAPPER" -j 0 database-host > "$TMP/jobs.log" 2>&1
+PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" bash "$WRAPPER" -j 0 admission > "$TMP/jobs.log" 2>&1
 status=$?
 description="a zero jobs limit is rejected"; assert_true test "$status" -eq 2
 PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" bash "$WRAPPER" unknown > "$TMP/unknown.log" 2>&1
 status=$?
 description="an unknown shard is rejected before execution"; assert_true test "$status" -eq 2
-for retired_shard in shizuku helper-install device-sweep; do
+for retired_shard in shizuku helper-install device-sweep database-host database-runtime install-export install-probe install-runtime helper-release-install helper-transaction release-integrity renderer-seeding install-finish backup database-authority fleet-installer host-reclamation git-bash database-capture publication; do
   PROVISION_GATE_SHARD_RUNNER="$FAKE_RUNNER" bash "$WRAPPER" "$retired_shard" \
     > "$TMP/retired-$retired_shard.log" 2>&1
   status=$?
@@ -268,7 +260,7 @@ hosted_build_job="$(awk '/^  build:$/ { in_job=1 } /^  android-build:$/ { exit }
 android_build_job="$(awk '/^  android-build:$/ { in_job=1 } /^  host-contracts:$/ { exit } in_job' "$CI_WORKFLOW")"
 host_job="$(awk '/^  host-contracts:$/ { in_job=1 } /^  provisioning:$/ { exit } in_job' "$CI_WORKFLOW")"
 shard_list="$(awk '/^            shards: / { sub(/^            shards: /, ""); print }' <<<"$provisioning_job" | tr ' ' '\n' | sort)"
-expected_shards="$(printf '%s\n' database-host database-runtime install-export install-probe install-runtime helper-release-install helper-transaction release-integrity renderer-seeding install-finish backup publication database-authority database-capture fleet-installer host-reclamation git-bash | sort)"
+expected_shards="$(printf '%s\n' admission read-only helper-recovery uninstall wrapper-inspection | sort)"
 if grep -Fq 'bash scripts/tests/provision_gate_parallel.sh --jobs 3 --output "$results" ${{ matrix.shards }}' <<<"$provisioning_job" &&
    grep -Fqx "    runs-on: \${{ github.event_name != 'pull_request' && vars.CI_PROVISIONING_RUNNER != 'hosted' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}" <<<"$provisioning_job" &&
    [ "$shard_list" = "$expected_shards" ] &&

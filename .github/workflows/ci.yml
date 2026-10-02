@@ -493,7 +493,6 @@ jobs:
           sudo -E env "PROVISION_TEST_SCOPE=$PROVISION_TEST_SCOPE" bash -c '
             set -e
             scripts/tests/install_legacy_database_gate_test.sh
-            scripts/tests/database_observer_retry_test.sh
             scripts/tests/helper_actuator_environment_test.sh
             scripts/tests/remove_if_present_test.sh
             scripts/tests/hardware_collector_test.sh
@@ -512,58 +511,23 @@ jobs:
             --target-dir app/src/main/assets/i18n
 
 
-  # 23 of this workflow's 26 minutes was the provisioning contract as one
-  # serial step. It already ships as fifteen isolated shards, and running
-  # them in process barely parallelised on a two-core image, so each shard
-  # gets a runner and the wall time is the longest shard, not their sum.
+  # Retained shell maintenance contracts run as isolated admission, inspection and recovery shards.
   provisioning:
-    # Fourteen single-shard jobs plus the other CI and CodeQL jobs exceeded GitHub's twenty concurrent
-    # jobs, so shards queued for up to two minutes behind each other. Grouping keeps every group within
-    # the longest shard's time on a four-core runner while leaving the workflows under that ceiling.
     name: Provisioning ${{ matrix.group }}
     needs: changes
     if: needs.changes.outputs.host == 'true'
-    # Pushes and manual runs use Blacksmith's 4-vCPU Ubuntu 24.04 runners, which have no concurrency
-    # limit, so these twelve CPU-bound jobs no longer queue behind GitHub's twenty. Pull requests stay on
-    # GitHub-hosted runners, and setting the repository variable CI_PROVISIONING_RUNNER to `hosted` moves
-    # every run back without a commit.
     runs-on: ${{ github.event_name != 'pull_request' && vars.CI_PROVISIONING_RUNNER != 'hosted' && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          # The longest shards run alone and the rest are grouped with shorter ones. Three CPU-heavy
-          # shards on one four-core runner slowed each by about 60% and broke release-integrity's
-          # timing-bounded Shizuku cases, so no group runs more than two heavy shards at once. backup,
-          # publication and host-reclamation own their process-group signals and run one after another
-          # before a group's other shards start, so each signal owner shares a group only with a short
-          # shard. Twelve hosted groups stay under GitHub's twenty concurrent jobs when Android runs on the
-          # project runner.
-          - group: install-runtime
-            shards: install-runtime
-          - group: helper-release-install
-            shards: helper-release-install
-          - group: database-authority
-            shards: database-authority renderer-seeding
-          - group: database-capture
-            shards: database-capture
-          - group: fleet-installer
-            shards: fleet-installer
-          - group: database-host
-            shards: database-host
-          - group: install-export
-            shards: install-export install-probe
-          - group: helper-transaction
-            shards: helper-transaction
-          - group: release-integrity
-            shards: release-integrity git-bash
-          - group: install-finish
-            shards: install-finish
-          - group: backup
-            shards: backup publication
-          - group: host-reclamation
-            shards: host-reclamation database-runtime
+          - group: admission
+            shards: admission wrapper-inspection
+          - group: inspection
+            shards: read-only uninstall
+          - group: recovery
+            shards: helper-recovery
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

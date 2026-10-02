@@ -70,6 +70,9 @@
         <meta-data
             android:name="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"
             android:value="${databaseCompatibility}" />
+        <meta-data
+            android:name="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL"
+            android:value="${panelAssistantProtocol}" />
 
         <!-- Official Shizuku Binder hand-off. The signature-level permission prevents ordinary apps
              from calling this exported provider; ha-paneld never opens an ADB or network listener. -->

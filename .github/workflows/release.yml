@@ -782,6 +782,7 @@ jobs:
           # Its own asset name is unchanged: shipped integration releases look it up by that name.
           apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
+          protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
           descriptor_stage=$(/usr/bin/mktemp -d "$RUNNER_TEMP/install-descriptor.XXXXXX")
           sandbox_source=$(/usr/bin/mktemp "$RUNNER_TEMP/install-descriptor-sandbox.XXXXXX.c")
           sandbox_binary=${sandbox_source%.c}
@@ -917,24 +918,30 @@ jobs:
                   --release-tag "$RELEASE_TAG" \
                   --aapt "$build_tools/aapt" \
                   --apksigner "$build_tools/apksigner" \
-                  --output "$descriptor_stage/$descriptor_name"
+                  --output "$descriptor_stage/$descriptor_name" \
+                  --protocol-apk "$workspace/dist/$apk_name" \
+                  --protocol-apk "$workspace/dist/ha-paneld-${RELEASE_TAG}-manual-setup-required.apk" \
+                  --protocol-output "$descriptor_stage/$protocol_name"
 
           staged_entries=$("${root_command[@]}" /usr/bin/find "$descriptor_stage" -mindepth 1 -maxdepth 1 -printf '%f\n' | /usr/bin/sort)
-          if [ "$staged_entries" != "$descriptor_name" ]; then
+          expected_entries=$(/usr/bin/printf '%s\n' "$descriptor_name" "$protocol_name" | /usr/bin/sort)
+          if [ "$staged_entries" != "$expected_entries" ]; then
             echo "::error::Descriptor generator did not produce exactly the expected output."
             exit 1
           fi
-          if ! "${root_command[@]}" /usr/bin/test -f "$descriptor_stage/$descriptor_name" || \
-             "${root_command[@]}" /usr/bin/test -L "$descriptor_stage/$descriptor_name"; then
-            echo "::error::Descriptor generator output is not one regular nofollow file."
-            exit 1
-          fi
-          "${root_command[@]}" /usr/bin/install \
-            --owner="$current_uid" \
-            --group="$current_gid" \
-            --mode=0644 \
-            "$descriptor_stage/$descriptor_name" \
-            "$workspace/dist/$descriptor_name"
+          for generated_name in "$descriptor_name" "$protocol_name"; do
+            if ! "${root_command[@]}" /usr/bin/test -f "$descriptor_stage/$generated_name" || \
+               "${root_command[@]}" /usr/bin/test -L "$descriptor_stage/$generated_name"; then
+              echo "::error::Descriptor generator output is not a regular nofollow file."
+              exit 1
+            fi
+            "${root_command[@]}" /usr/bin/install \
+              --owner="$current_uid" \
+              --group="$current_gid" \
+              --mode=0644 \
+              "$descriptor_stage/$generated_name" \
+              "$workspace/dist/$generated_name"
+          done
 
       - name: Sign and authenticate release proofs
         env:
@@ -956,6 +963,7 @@ jobs:
           apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
           successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
+          protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
           helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
           helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
@@ -1056,7 +1064,8 @@ jobs:
           fi
 
           xmltree=$("$build_tools/aapt" dump xmltree "$successor_signed_apk" AndroidManifest.xml)
-          database_contracts=$(/usr/bin/printf '%s\n' "$xmltree" | /usr/bin/awk -v wanted='io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY' '
+          application_metadata() {
+            /usr/bin/printf '%s\n' "$1" | /usr/bin/awk -v wanted="$2" '
             function quoted(line, start, rest, stop) {
               start=index(line, "=\""); if (!start) return ""
               rest=substr(line, start + 2); stop=index(rest, "\"")
@@ -1106,7 +1115,9 @@ jobs:
               flush_meta()
               if (manifest_count != 1 || application_count != 1 || invalid) print "__INVALID_APPLICATION_METADATA__"
             }
-          ')
+            '
+          }
+          database_contracts=$(application_metadata "$xmltree" 'io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY')
           mapfile -t database_records < <(/usr/bin/awk 'NF' <<<"$database_contracts")
           if [ "${#database_records[@]}" -ne 1 ] || \
              [[ ! "${database_records[0]}" =~ ^hapaneld-db:v1:ha-paneld\.db:([1-9][0-9]*):([1-9][0-9]*)$ ]]; then
@@ -1141,6 +1152,42 @@ jobs:
             > "$expected_descriptor"
           if ! /usr/bin/cmp --silent "$expected_descriptor" "dist/$descriptor_name"; then
             echo "::error::Install descriptor is not the exact canonical 13-field APK contract."
+            exit 1
+          fi
+
+          # Independently reconstruct the companion from both authenticated APK manifests. V1's
+          # closed descriptor remains unchanged for readers already in the field.
+          protocol_records=()
+          for protocol_apk in "$signed_apk" "$successor_signed_apk"; do
+            protocol_xmltree=$("$build_tools/aapt" dump xmltree "$protocol_apk" AndroidManifest.xml)
+            protocol_contracts=$(application_metadata "$protocol_xmltree" 'io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL')
+            mapfile -t protocol_values < <(/usr/bin/awk 'NF' <<<"$protocol_contracts")
+            if [ "${#protocol_values[@]}" -ne 1 ] || \
+               [[ ! "${protocol_values[0]}" =~ ^hapaneld-native:v1:([1-9][0-9]*):([1-9][0-9]*)$ ]]; then
+              echo "::error::Signed APK Panel Assistant protocol contract is invalid."
+              exit 1
+            fi
+            protocol_min=${BASH_REMATCH[1]}
+            protocol_max=${BASH_REMATCH[2]}
+            if [ "${#protocol_min}" -gt 10 ] || [ "${#protocol_max}" -gt 10 ] || \
+               [ "$protocol_min" -gt 2147483647 ] || [ "$protocol_max" -gt 2147483647 ] || \
+               [ "$protocol_min" -gt "$protocol_max" ]; then
+              echo "::error::Signed APK Panel Assistant protocol bounds are invalid."
+              exit 1
+            fi
+            protocol_sha=$(/usr/bin/sha256sum "$protocol_apk" | /usr/bin/cut -d' ' -f1)
+            protocol_records+=("$(/usr/bin/jq -cnS --arg sha "$protocol_sha" \
+              --argjson low "$protocol_min" --argjson high "$protocol_max" \
+              '{apkSha256:$sha,protocolMin:$low,protocolMax:$high}')")
+          done
+          /usr/bin/printf '%s\n' "${protocol_records[@]}" | /usr/bin/jq -cS -s \
+            '{schema:"io.github.maxlyth.hapaneld.protocol.v1",artifacts:sort_by(.apkSha256)}' \
+            > "$proof_dir/expected-protocol.json"
+          if [ ! -f "dist/$protocol_name" ] || [ -L "dist/$protocol_name" ] || \
+             [ "$(/usr/bin/stat --format='%s' "dist/$protocol_name")" -gt 4096 ] || \
+             ! /usr/bin/jq -e '.artifacts | length == 2 and (unique_by(.apkSha256) | length == 2)' "$proof_dir/expected-protocol.json" >/dev/null || \
+             ! /usr/bin/cmp --silent "$proof_dir/expected-protocol.json" "dist/$protocol_name"; then
+            echo "::error::Protocol companion does not bind the exact signed APK pair."
             exit 1
           fi
 
@@ -1208,8 +1255,10 @@ jobs:
             fi
           done
 
-          /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$descriptor_name.sig" "dist/$descriptor_name"
-          /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig" "dist/$descriptor_name"
+          for metadata_name in "$descriptor_name" "$protocol_name"; do
+            /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$metadata_name.sig" "dist/$metadata_name"
+            /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$metadata_name.sig" "dist/$metadata_name"
+          done
           for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
             /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$checksum_name.sig" "dist/$checksum_name"
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
@@ -1249,6 +1298,7 @@ jobs:
           successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
           successor_apk_idsig="dist/$successor_apk_name.idsig"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
+          protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
           helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
           helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
@@ -1256,6 +1306,8 @@ jobs:
             "ha-paneld-${RELEASE_TAG}-android-gradle-runtime.cdx.json" \
             "$descriptor_name" \
             "$descriptor_name.sig" \
+            "$protocol_name" \
+            "$protocol_name.sig" \
             "$helper_arm64_name" \
             "$helper_arm64_name.sha256" \
             "$helper_arm64_name.sha256.sig" \
@@ -1345,6 +1397,21 @@ jobs:
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
           done
           /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$descriptor_name.sig" "dist/$descriptor_name"
+          /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$protocol_name.sig" "dist/$protocol_name"
+          bridge_protocol_sha=$(/usr/bin/sha256sum "dist/$apk_name" | /usr/bin/cut -d' ' -f1)
+          successor_protocol_sha=$(/usr/bin/sha256sum "dist/$successor_apk_name" | /usr/bin/cut -d' ' -f1)
+          if ! /usr/bin/jq -e --arg bridge "$bridge_protocol_sha" --arg successor "$successor_protocol_sha" '
+            keys == ["artifacts","schema"] and .schema == "io.github.maxlyth.hapaneld.protocol.v1" and
+            (.artifacts | map(.apkSha256)) == ([$bridge,$successor] | sort) and
+            $bridge != $successor and
+            all(.artifacts[]; keys == ["apkSha256","protocolMax","protocolMin"] and
+              (.protocolMin | type) == "number" and (.protocolMax | type) == "number" and
+              .protocolMin == (.protocolMin | floor) and .protocolMax == (.protocolMax | floor) and
+              1 <= .protocolMin and .protocolMin <= .protocolMax and .protocolMax <= 2147483647)' \
+            "dist/$protocol_name" >/dev/null; then
+            echo "::error::Final protocol companion does not bind the exact final APK pair."
+            exit 1
+          fi
           # The descriptor binds the successor, so it is checked against that APK's bytes.
           final_apk_sha256=$(/usr/bin/sha256sum "dist/$successor_apk_name" | /usr/bin/cut -d' ' -f1)
           final_apk_size=$(/usr/bin/stat --format='%s' "dist/$successor_apk_name")

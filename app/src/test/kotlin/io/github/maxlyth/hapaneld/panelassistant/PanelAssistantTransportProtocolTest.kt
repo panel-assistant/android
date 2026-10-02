@@ -93,6 +93,36 @@ class PanelAssistantTransportProtocolTest {
         assertTrue(hello.isNull("did"))
     }
 
+    @Test fun `a disconnected transport cannot admit updates with a remembered session`() {
+        val policy = PanelAssistantUpdatePolicy(1, 3, true)
+        val connected = PanelAssistantTransportStatus(phase = PanelAssistantTransportPhase.CONNECTED,
+            session = session(accepted()).copy(updatePolicy = policy))
+        assertEquals(policy, connected.liveUpdatePolicy())
+        for (phase in PanelAssistantTransportPhase.entries.filter { it != PanelAssistantTransportPhase.CONNECTED }) {
+            assertNull(connected.copy(phase = phase).liveUpdatePolicy())
+        }
+        assertNull(connected.copy(session = session(accepted())).liveUpdatePolicy())
+    }
+
+    @Test fun `hello carries optional live update authority and keeps old PA connections working`() {
+        assertNull(session(accepted()).updatePolicy)
+        val frame = accepted().apply {
+            getJSONObject("result").put("update_policy", JSONObject()
+                .put("protocolMin", 1).put("protocolMax", 3).put("prerelease", true))
+        }
+        assertEquals(PanelAssistantUpdatePolicy(1, 3, true), session(frame).updatePolicy)
+        for (bad in listOf<Any>(JSONObject.NULL, "cached", JSONObject().put("protocolMin", 1)
+            .put("protocolMax", 3).put("prerelease", "true"), JSONObject().put("protocolMin", 4)
+            .put("protocolMax", 3).put("prerelease", false), JSONObject().put("protocolMin", 1)
+            .put("protocolMax", 2).put("prerelease", false))) {
+            frame.getJSONObject("result").put("update_policy", bad)
+            try {
+                session(frame)
+                fail("malformed policy admitted: $bad")
+            } catch (_: PanelAssistantProtocolException) { }
+        }
+    }
+
     @Test fun `an accepted result yields the session and integration version`() {
         val outcome = PanelAssistantTransportProtocol.helloOutcome(accepted(), 1L)
         assertEquals(

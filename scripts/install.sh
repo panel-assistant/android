@@ -1,20 +1,8 @@
 #!/usr/bin/env bash
 #
-# ha-paneld one-line installer — no repo checkout needed. Run:
-#   curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash
-#
-# To follow the newest published release, including release candidates, add --prerelease:
-#   curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash -s -- --prerelease
-#
-# Preflights adb + curl (with per-OS fix-it hints), prompts for the panel IP (and optional id / MQTT
-# broker), downloads the release, and provisions the panel. On rooted panels the authenticated
-# provisioner also installs or upgrades the matching sealed root-helper asset. No parameters required
-# (except --prerelease). Advanced checkout-free provisioning is also available with:
-#   curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh |
-#     bash -s -- --provision panel-ip:5555 [provision options]
-# The release workflow fills RELEASE_TAG, RELEASE_APK_NAME and PROVISION_COMMIT
-# in its downloadable copy so an installer attached to a historical release always installs that exact
-# release using its matching authenticated provisioner asset.
+# Authenticated checkout-free inspection for existing panels.
+# Panel Assistant in Home Assistant owns panel app installation and updates.
+# The release workflow pins RELEASE_TAG and PROVISION_COMMIT for historical inspection.
 set -euo pipefail
 umask 077
 
@@ -51,25 +39,13 @@ materialize_provision_secret() {
   PROVISION_ARGS+=("${option}-file" "$secret_file")
 }
 show_usage() {
-  echo "Usage: curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash"
-  echo "       append: | bash -s -- --prerelease"
-  echo "       advanced: | bash -s -- [--prerelease] --provision PANEL-IP[:PORT] [options]"
+  echo "Panel app installs and updates require live Panel Assistant in Home Assistant."
+  echo "Use Panel Assistant's installer to select a compatible build."
   echo
-  echo "Advanced options cover configuration, backup, restore, verification, and exceptional"
-  echo "access setup. APK/channel overrides (--apk, --release-tag, --latest, or a second"
-  echo "--prerelease) are rejected so the authenticated provisioner stays paired with its release."
-  echo "Use --mqtt-pass-file, --ha-token-file, or --ha-pass-file for credentials. The older literal"
-  echo "flags remain compatible but expose their value in the original shell command and process list."
-  echo
-  echo "--home-dashboard PATH and --entity-filter on|off preseed ha-paneld's built-in renderer, so an"
-  echo "unattended install shows the dashboard you name instead of the Home Assistant account default."
-  echo "Both need --builtin (or a panel already on the built-in renderer), and both answer the matching"
-  echo "guided-setup question so it is not asked again on the panel."
-  echo
-  echo "--reset-config erases the panel's existing ha-paneld configuration and starts guided setup"
-  echo "from scratch. Reset is irreversible and makes no backup; use a separate backup or export"
-  echo "operation first if you need one. It asks for confirmation before erasing."
+  echo "Read-only inspection: install.sh [--prerelease] --provision PANEL-IP[:PORT] --verify"
+  echo "Settings export:      install.sh [--prerelease] --provision PANEL-IP[:PORT] --export FILE"
 }
+
 while [ "$#" -gt 0 ]; do case "$1" in
   --prerelease|--pre)
     [ "$ADVANCED_PROVISION" = 0 ] || { echo "channel selection must appear before --provision" >&2; exit 2; }
@@ -164,14 +140,15 @@ if [ "$ADVANCED_PROVISION" = 1 ]; then
   fi
 fi
 
+if [ "$PROVISION_NEEDS_APK" = 1 ]; then
+  echo "Panel app installs and updates require live Panel Assistant in Home Assistant." >&2
+  echo "Open Panel Assistant's installer to select a compatible build. Nothing was installed or changed." >&2
+  exit 1
+fi
+
 if [ -t 1 ]; then B=$'\033[1m'; R=$'\033[31m'; G=$'\033[32m'; Y=$'\033[33m'; X=$'\033[0m'
 else B=; R=; G=; Y=; X=; fi
 REPO="panel-assistant/android"
-# The two installable identities. This installer hands the panel to the provisioner that belongs to
-# the release it just authenticated, so it never installs either APK itself; it only has to refuse a
-# historical provisioner when state under EITHER identity proves this is not a first installation.
-PKG="io.panelassistant.android"
-LEGACY_PKG="io.github.maxlyth.hapaneld"
 PROVISION_REF="${RELEASE_TAG:-}"
 PROVISION_URL=""
 RESOLVED_APK_URL=""
@@ -334,328 +311,18 @@ if [ "$AUTHENTICATE_PROVISIONER" = 1 ]; then
   echo "${G}✓ authenticated $PROVISION_REF provisioner${X}"
 fi
 
-# --- prompts: stdin is the curl pipe, so interactive installs read from the terminal directly ---
-TTY=/dev/tty
-if [ "$ADVANCED_PROVISION" = 1 ]; then
-  IP="$ADVANCED_TARGET"
-else
-  [ -r "$TTY" ] || { echo "${R}No terminal available for prompts.${X} Try: ${B}bash <(curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh)${X}"; exit 1; }
-  echo "${Y}First enable network ADB on the panel (Developer options → ADB / 'ADB debugging').${X}"
-  printf "Panel IP (or ip:port): " > "$TTY"; read -r IP < "$TTY"
-  [ -n "${IP:-}" ] || { echo "${R}No IP entered.${X}"; exit 1; }
-fi
+IP="$ADVANCED_TARGET"
 # Loose sanity check (hostname/IPv4[:port]) — catch typos here rather than as an obscure adb error.
 case "$IP" in
   *[!0-9a-zA-Z.:-]*|.*|-*) echo "${R}'$IP' doesn't look like an IP address or hostname (optionally :port).${X} Find it on the panel under Settings → About → Status, or in your router's client list."; exit 1 ;;
 esac
 case "$IP" in *:*) TARGET="$IP" ;; *) TARGET="$IP:5555" ;; esac
 
-# A historical release can carry a correctly authenticated provisioner that predates database
-# admission. Never execute those bytes against existing or indeterminate app data. Package-path
-# absence is not fresh-install proof: Android must also prove that no retained `-u` package/data
-# record exists, and a usable root route strengthens that proof with the actual CE/DE app-data,
-# canonical-database and recovery inventory. Current provisioners expose the stable marker below and
-# perform the full exact-APK/actual-database HOST_GATE themselves.
-legacy_provisioner_package_verdict() {
-  local pkg="$1" nonce out status=0 verdict
-  nonce="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
-  printf '%s\n' "$nonce" | grep -Eq '^[0-9a-f]{32}$' || { printf 'unknown\n'; return; }
-  out="$(adb -s "$TARGET" shell \
-    "echo HAPANELD_INSTALLER_PKG_BEGIN:$nonce; pm path $pkg; echo HAPANELD_INSTALLER_PKG_TARGET:$nonce:\$?; pm list packages -u $pkg; echo HAPANELD_INSTALLER_DATA:$nonce:\$?; pm path android; echo HAPANELD_INSTALLER_PKG_LIVE:$nonce:\$?; echo HAPANELD_INSTALLER_PKG_END:$nonce" 2>/dev/null)" || status=$?
-  [ "$status" -eq 0 ] || { printf 'unknown\n'; return; }
-  verdict="$(printf '%s\n' "$out" | tr -d '\r' | awk -v n="$nonce" -v p="$pkg" '
-    /^HAPANELD_INSTALLER_PKG_BEGIN:/  { fields=split($0,a,":"); if (fields!=2 || a[2]!=n || seg!=0) bad=1; else seg=1; next }
-    /^HAPANELD_INSTALLER_PKG_TARGET:/ { fields=split($0,a,":"); if (fields!=3 || a[2]!=n || seg!=1 || a[3]!~/^[0-9]+$/) bad=1; else { trc=a[3]; seg=2 }; next }
-    /^HAPANELD_INSTALLER_DATA:/       { fields=split($0,a,":"); if (fields!=3 || a[2]!=n || seg!=2 || a[3]!~/^[0-9]+$/) bad=1; else { urc=a[3]; seg=3 }; next }
-    /^HAPANELD_INSTALLER_PKG_LIVE:/   { fields=split($0,a,":"); if (fields!=3 || a[2]!=n || seg!=3 || a[3]!~/^[0-9]+$/) bad=1; else { lrc=a[3]; seg=4 }; next }
-    /^HAPANELD_INSTALLER_PKG_END:/    { fields=split($0,a,":"); if (fields!=2 || a[2]!=n || seg!=4) bad=1; else seg=5; next }
-    seg==1 && /^package:/ { if ($0~/^package:\/[^ \t]+$/) target=1; else malformed=1; next }
-    seg==2 && /^package:/ { if ($0=="package:" p) retained=1; else malformed=1; next }
-    seg==3 && /^package:/ { if ($0~/^package:\/[^ \t]+$/) live=1; else malformed=1; next }
-    NF { malformed=1 }
-    END {
-      if (bad || malformed || seg!=5 || urc+0!=0 || lrc+0!=0 || !live) print "unknown"
-      else if (target) print (trc+0==0) ? "present" : "unknown"
-      else if (!(trc+0==0 || trc+0==1)) print "unknown"
-      else print retained ? "retained" : "absent"
-    }')"
-  case "$verdict" in present|retained|absent) printf '%s\n' "$verdict" ;; *) printf 'unknown\n' ;; esac
-}
-
-# An installed or retained package under EITHER identity refuses the historical provisioner: a
-# bridge package or its data record on a panel mid-migration is this app's own state, not a foreign
-# app, and the guardless script must never run against it.
-legacy_provisioner_packages_verdict() {
-  local pkg verdict combined=absent
-  for pkg in "$PKG" "$LEGACY_PKG"; do
-    verdict="$(legacy_provisioner_package_verdict "$pkg")"
-    case "$verdict" in
-      present) printf 'present\n'; return ;;
-      retained) combined=retained ;;
-      absent) ;;
-      *) printf 'unknown\n'; return ;;
-    esac
-  done
-  printf '%s\n' "$combined"
-}
-
-legacy_provisioner_root_form() {
-  local out key prefix
-  out="$(adb -s "$TARGET" shell id 2>/dev/null | tr -d '\r')" || out=""
-  case "$out" in uid=0*) printf 'shell\n'; return 0 ;; esac
-  for key in su0 suroot; do
-    case "$key" in su0) prefix='su 0' ;; suroot) prefix='su root' ;; esac
-    out="$(adb -s "$TARGET" shell "$prefix \"id; id\"" 2>/dev/null | tr -d '\r')" || out=""
-    case "$out" in *uid=0*) printf '%sjoin\n' "$key"; return 0 ;; esac
-    out="$(adb -s "$TARGET" shell "$prefix sh -c \"id; id\"" 2>/dev/null | tr -d '\r')" || out=""
-    case "$out" in *uid=0*) printf '%sshc\n' "$key"; return 0 ;; esac
-  done
-  out="$(adb -s "$TARGET" shell 'su -c "id; id"' 2>/dev/null | tr -d '\r')" || out=""
-  case "$out" in *uid=0*) printf 'suc\n'; return 0 ;; esac
-  printf 'none\n'
-  return 1
-}
-
-legacy_quote_root_command() {
-  local command="$1"
-  command="${command//\\/\\\\}"
-  command="${command//\"/\\\"}"
-  command="${command//\$/\\\$}"
-  command="${command//\`/\\\`}"
-  printf '%s\n' "$command"
-}
-
-legacy_run_root() {
-  local form="$1" command="$2" quoted
-  quoted="$(legacy_quote_root_command "$command")"
-  case "$form" in
-    shell)      adb -s "$TARGET" shell "$command" ;;
-    su0join)    adb -s "$TARGET" shell "su 0 \"$quoted\"" ;;
-    su0shc)     adb -s "$TARGET" shell "su 0 sh -c \"$quoted\"" ;;
-    surootjoin) adb -s "$TARGET" shell "su root \"$quoted\"" ;;
-    surootshc)  adb -s "$TARGET" shell "su root sh -c \"$quoted\"" ;;
-    suc)        adb -s "$TARGET" shell "su -c \"$quoted\"" ;;
-    *) return 1 ;;
-  esac
-}
-
-# A proven root route makes Android's private filesystem directly observable, so do not discard that
-# stronger evidence and rely only on package-manager bookkeeping. The three independent fields keep
-# an odd or partially removed tree fail-closed: an app-data directory, a canonical DB/sidecar, or any
-# recovery/superseded artifact is retained state. `unknown` means root was proven but the inventory
-# did not complete, which is also a refusal.
-legacy_provisioner_root_data_verdict() {
-  local form nonce command out status=0 verdict
-  form="$(legacy_provisioner_root_form)" || form=none
-  [ "$form" != none ] || { printf 'unavailable\n'; return; }
-  nonce="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
-  printf '%s\n' "$nonce" | grep -Eq '^[0-9a-f]{32}$' || { printf 'unknown\n'; return; }
-  command='set -u
-app_data=absent
-database=absent
-recovery=absent
-inventory=readable
-root_uid=unknown
-root_id=$(id 2>/dev/null) || root_id=""
-case "$root_id" in uid=0*) root_uid=zero ;; *) inventory=unreadable ;; esac
-for data_base in /data/user/0 /data/data /data/user_de/0; do
-  if [ -L "$data_base" ] || [ -d "$data_base" ]; then
-    if ! ls -1A "$data_base" >/dev/null 2>&1; then inventory=unreadable; continue; fi
-  elif [ -e "$data_base" ]; then
-    inventory=unreadable
-    continue
-  else
-    inventory=unreadable
-    continue
-  fi
-  for app_package in @PACKAGES@; do
-    app="$data_base/$app_package"
-    if [ -L "$app" ] || [ -e "$app" ]; then
-      app_data=retained
-      if [ -L "$app" ] || [ ! -d "$app" ] || ! ls -1A "$app" >/dev/null 2>&1; then
-        inventory=unreadable
-        continue
-      fi
-    else
-      continue
-    fi
-    db_dir="$app/databases"
-    if [ -L "$db_dir" ]; then inventory=unreadable; database=retained; recovery=retained; continue
-    elif [ -e "$db_dir" ]; then
-      if [ ! -d "$db_dir" ] || ! ls -1A "$db_dir" >/dev/null 2>&1; then
-        inventory=unreadable
-        database=retained
-        recovery=retained
-        continue
-      fi
-    else
-      continue
-    fi
-    db="$db_dir/ha-paneld.db"
-    for database_path in "$db" "$db"-wal "$db"-shm "$db"-journal; do
-      if [ -L "$database_path" ] || [ -e "$database_path" ]; then database=retained; fi
-    done
-    for recovery_path in \
-      "$db".restore.tmp "$db".v*.premigrate "$db".v*.superseded \
-      "$db".v*.premigrate.tmp "$db".v*.superseded.tmp \
-      "$db".v*.premigrate-wal "$db".v*.premigrate-shm "$db".v*.premigrate-journal \
-      "$db".v*.superseded-wal "$db".v*.superseded-shm "$db".v*.superseded-journal; do
-      if [ -L "$recovery_path" ] || [ -e "$recovery_path" ]; then recovery=retained; fi
-    done
-  done
-done
-echo HAPANELD_INSTALLER_DB_BEGIN:@NONCE@
-echo HAPANELD_INSTALLER_ROOT_UID:$root_uid
-echo HAPANELD_INSTALLER_APP_DATA:$app_data
-echo HAPANELD_INSTALLER_DATABASE:$database
-echo HAPANELD_INSTALLER_RECOVERY:$recovery
-echo HAPANELD_INSTALLER_INVENTORY:$inventory
-echo HAPANELD_INSTALLER_DB_END:@NONCE@'
-  command="${command//@PACKAGES@/$PKG $LEGACY_PKG}"
-  command="${command//@NONCE@/$nonce}"
-  out="$(legacy_run_root "$form" "$command" 2>/dev/null)" || status=$?
-  [ "$status" -eq 0 ] || { printf 'unknown\n'; return; }
-  verdict="$(printf '%s\n' "$out" | tr -d '\r' | awk -v n="$nonce" '
-    $0=="HAPANELD_INSTALLER_DB_BEGIN:" n { if (seg!=0) bad=1; else seg=1; next }
-    /^HAPANELD_INSTALLER_ROOT_UID:/ {
-      if (seg!=1 || root_uid!="") bad=1; else { root_uid=$0; sub(/^[^:]*:/,"",root_uid); seg=2 }; next
-    }
-    /^HAPANELD_INSTALLER_APP_DATA:/ {
-      if (seg!=2 || app!="") bad=1; else { app=$0; sub(/^[^:]*:/,"",app); seg=3 }; next
-    }
-    /^HAPANELD_INSTALLER_DATABASE:/ {
-      if (seg!=3 || db!="") bad=1; else { db=$0; sub(/^[^:]*:/,"",db); seg=4 }; next
-    }
-    /^HAPANELD_INSTALLER_RECOVERY:/ {
-      if (seg!=4 || recovery!="") bad=1; else { recovery=$0; sub(/^[^:]*:/,"",recovery); seg=5 }; next
-    }
-    /^HAPANELD_INSTALLER_INVENTORY:/ {
-      if (seg!=5 || inventory!="") bad=1; else { inventory=$0; sub(/^[^:]*:/,"",inventory); seg=6 }; next
-    }
-    $0=="HAPANELD_INSTALLER_DB_END:" n { if (seg!=6) bad=1; else seg=7; next }
-    NF { bad=1 }
-    END {
-      if (bad || seg!=7 || root_uid!="zero" || (app!="absent" && app!="retained") ||
-          (db!="absent" && db!="retained") ||
-          (recovery!="absent" && recovery!="retained") ||
-          (inventory!="readable" && inventory!="unreadable")) print "unknown"
-      else if (inventory!="readable") print "unknown"
-      else if (app=="absent" && db=="absent" && recovery=="absent") print "absent"
-      else print "retained"
-    }')"
-  case "$verdict" in absent|retained) printf '%s\n' "$verdict" ;; *) printf 'unknown\n' ;; esac
-}
-
-legacy_provisioner_fresh_verdict() {
-  local package_verdict root_verdict
-  package_verdict="$(legacy_provisioner_packages_verdict)"
-  case "$package_verdict" in
-    present|retained) printf '%s\n' "$package_verdict"; return ;;
-    absent) ;;
-    *) printf 'unknown\n'; return ;;
-  esac
-  root_verdict="$(legacy_provisioner_root_data_verdict)"
-  case "$root_verdict" in
-    absent) printf 'fresh-root\n' ;;
-    unavailable) printf 'fresh-android-removal\n' ;;
-    retained) printf 'actual-retained\n' ;;
-    *) printf 'actual-unknown\n' ;;
-  esac
-}
-
-refuse_legacy_provisioner() {
-  local verdict="$1" phase="${2:-initial}" timing=""
-  [ "$phase" != consume ] || timing=" at the consume-time recheck"
-  case "$verdict" in
-    present)
-      echo "${R}Refusing to run the $PROVISION_REF provisioner$timing against an installed ha-paneld package: that historical script has no database-compatibility gate.${X}" >&2
-      ;;
-    retained)
-      echo "${R}Refusing to run the $PROVISION_REF provisioner$timing: Android retains an uninstalled ha-paneld package/data record, so this is not a proven fresh install.${X}" >&2
-      ;;
-    actual-retained)
-      echo "${R}Refusing to run the $PROVISION_REF provisioner$timing: root inspection found retained ha-paneld app-data, database, or recovery state.${X}" >&2
-      ;;
-    actual-unknown)
-      echo "${R}Refusing to run the $PROVISION_REF provisioner$timing: a proven root route could not establish a complete app-data, database, and recovery inventory.${X}" >&2
-      ;;
-    root-proof-lost)
-      echo "${R}Refusing to run the $PROVISION_REF provisioner$timing: the root route used to inspect actual app data at admission is no longer available.${X}" >&2
-      ;;
-    *)
-      echo "${R}Refusing to run the $PROVISION_REF provisioner$timing because package/data state is unknown and that historical script has no database-compatibility gate.${X}" >&2
-      ;;
-  esac
-  echo "Use a current database-compatible provisioner, or prove a complete Android data removal before retrying. Nothing was installed or changed." >&2
-  exit 1
-}
-
-LEGACY_PROVISIONER_FRESH_GATE=0
-LEGACY_PROVISIONER_INITIAL_FRESH_VERDICT=""
-if [ "$PROVISION_NEEDS_APK" = 1 ] && ! grep -q 'HAPANELD_HOST_DB_GATE_V1' "$SCRIPT"; then
-  LEGACY_PROVISIONER_FRESH_VERDICT="$(legacy_provisioner_fresh_verdict)"
-  case "$LEGACY_PROVISIONER_FRESH_VERDICT" in
-    fresh-root)
-      LEGACY_PROVISIONER_FRESH_GATE=1
-      LEGACY_PROVISIONER_INITIAL_FRESH_VERDICT="$LEGACY_PROVISIONER_FRESH_VERDICT"
-      echo "${Y}Legacy provisioner is eligible only because Android and root inspection proved this is a fresh install with no retained database or recovery state.${X}"
-      ;;
-    fresh-android-removal)
-      LEGACY_PROVISIONER_FRESH_GATE=1
-      LEGACY_PROVISIONER_INITIAL_FRESH_VERDICT="$LEGACY_PROVISIONER_FRESH_VERDICT"
-      echo "${Y}Legacy provisioner is eligible only because Android proved both package absence and complete package/data-record removal.${X}"
-      ;;
-    *) refuse_legacy_provisioner "$LEGACY_PROVISIONER_FRESH_VERDICT" ;;
-  esac
-fi
-if [ "$ADVANCED_PROVISION" = 0 ]; then
-  printf "Panel id [blank = auto from device name]: " > "$TTY"; read -r PID < "$TTY" || PID=""
-  printf "MQTT broker tcp://host:1883 [blank = auto-discover Home Assistant]: " > "$TTY"; read -r BROKER < "$TTY" || BROKER=""
-fi
-
-# --- fetch the APK and run the already-authenticated provisioner ---
-echo "${B}→ provisioning $TARGET${X}"
-ARGS=("$TARGET")
-if [ "$PROVISION_NEEDS_APK" = 1 ] && [ -n "$RELEASE_TAG" ]; then
-  [ -n "$RELEASE_APK_NAME" ] || { echo "${R}Release installer is missing its APK name.${X}"; exit 1; }
-  APK="$TMP_DIR/$RELEASE_APK_NAME"
-  if ! curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$(release_apk_url "$RELEASE_TAG")" -o "$APK"; then
-    echo "${R}Could not download the $RELEASE_TAG APK.${X} The release may be incomplete or GitHub may be unavailable; no panel changes were made." >&2
-    exit 1
-  fi
-  ARGS+=(--apk "$APK" --release-tag "$RELEASE_TAG")
-elif [ "$PROVISION_NEEDS_APK" = 1 ]; then
-  RELEASE_APK_NAME="$RESOLVED_APK_NAME"
-  APK="$TMP_DIR/$RELEASE_APK_NAME"
-  if ! curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$RESOLVED_APK_URL" -o "$APK"; then
-    echo "${R}Could not download the $PROVISION_REF APK.${X} Check internet/GitHub access and try again; no panel changes were made." >&2
-    exit 1
-  fi
-  ARGS+=(--apk "$APK" --release-tag "$PROVISION_REF")
-fi
-if [ "$ADVANCED_PROVISION" = 1 ]; then
-  ARGS+=("${PROVISION_ARGS[@]}")
-else
-  [ -n "${PID:-}" ]    && ARGS+=(--id "$PID")
-  [ -n "${BROKER:-}" ] && ARGS+=(--mqtt "$BROKER")
-fi
-# Give provision.sh the terminal as stdin so its own prompts (e.g. downgrade confirm) work.
-PROVISION_STDIN=/dev/null
-if { : < "$TTY"; } 2>/dev/null; then PROVISION_STDIN="$TTY"; fi
-# The legacy provisioner is the first panel-mutating operation in this wrapper. Re-run the complete
-# fresh-install proof as the immediately preceding observation so a package install, retained-data
-# record, app-data directory, canonical DB, or recovery file that appeared since admission cannot be
-# raced into guardless historical code.
-if [ "$LEGACY_PROVISIONER_FRESH_GATE" = 1 ]; then
-  LEGACY_PROVISIONER_FRESH_VERDICT="$(legacy_provisioner_fresh_verdict)"
-  case "$LEGACY_PROVISIONER_INITIAL_FRESH_VERDICT:$LEGACY_PROVISIONER_FRESH_VERDICT" in
-    fresh-root:fresh-root|fresh-android-removal:fresh-root|fresh-android-removal:fresh-android-removal) ;;
-    fresh-root:fresh-android-removal) refuse_legacy_provisioner root-proof-lost consume ;;
-    *) refuse_legacy_provisioner "$LEGACY_PROVISIONER_FRESH_VERDICT" consume ;;
-  esac
-fi
-if ! bash "$SCRIPT" "${ARGS[@]}" < "$PROVISION_STDIN"; then
-  echo "${R}${B}ha-paneld installation did not complete.${X}" >&2
-  echo "Read the failed item above, correct it, and run the same installer command again. Existing panel configuration was not deliberately removed." >&2
+# Run only the explicitly requested read-only operation through authenticated release code.
+echo "${B}→ inspecting $TARGET${X}"
+ARGS=("$TARGET" "${PROVISION_ARGS[@]}")
+if ! bash "$SCRIPT" "${ARGS[@]}" < /dev/null; then
+  echo "${R}${B}ha-paneld inspection did not complete.${X}" >&2
+  echo "Read the failed item above, correct it, and repeat the inspection command." >&2
   exit 1
 fi

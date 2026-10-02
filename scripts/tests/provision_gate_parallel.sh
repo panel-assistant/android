@@ -4,30 +4,18 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="${PROVISION_GATE_SHARD_RUNNER:-$SCRIPT_DIR/provision_test.sh}"
-EXPECTED_TOTAL="${PROVISION_GATE_EXPECTED_TOTAL:-2776}"
-JOBS=11
+EXPECTED_TOTAL="${PROVISION_GATE_EXPECTED_TOTAL:-325}"
+JOBS=5
 OUTPUT_DIR=""
 TEMP_OUTPUT=0
 AGGREGATE_ONLY=0
 
 ALL_SHARDS=(
-  database-host
-  database-runtime
-  install-export
-  install-probe
-  install-runtime
-  helper-release-install
-  helper-transaction
-  release-integrity
-  renderer-seeding
-  install-finish
-  backup
-  publication
-  database-authority
-  database-capture
-  fleet-installer
-  host-reclamation
-  git-bash
+  admission
+  read-only
+  helper-recovery
+  uninstall
+  wrapper-inspection
 )
 
 usage() {
@@ -38,11 +26,7 @@ Usage: provision_gate_parallel.sh [-j JOBS] [--output DIR] [SHARD ...]
 Runs all provisioning shards by default. A named subset may be supplied for a
 focused gate. --aggregate validates retained shard results without running the
 shards again. Valid shards:
-  database-host database-runtime install-export install-probe
-  install-runtime helper-release-install helper-transaction release-integrity
-  renderer-seeding install-finish backup publication database-authority
-  database-capture fleet-installer
-  host-reclamation git-bash
+  admission read-only helper-recovery uninstall wrapper-inspection
 EOF
 }
 
@@ -194,7 +178,7 @@ wait_all_active() {
 
 owns_process_group_signals() {
   case "$1" in
-    backup|publication|host-reclamation) return 0 ;;
+    helper-recovery) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -203,7 +187,7 @@ gate_start="$(date +%s)"
 if [ "$AGGREGATE_ONLY" -eq 0 ]; then
   # Signal-owner shards must run before monitor mode has ever been enabled. Merely draining prior
   # background jobs is insufficient: Bash retains job-control state that changes nested process-group
-  # status and timeout evidence. These three total about one minute when run in this clean context.
+  # status and timeout evidence. The recovery shard runs in this clean context.
   for shard in "${requested[@]}"; do
     owns_process_group_signals "$shard" || continue
     ( run_shard "$shard" )

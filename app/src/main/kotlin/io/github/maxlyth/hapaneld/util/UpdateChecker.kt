@@ -71,7 +71,6 @@ object UpdateChecker {
 
     @Volatile var available: List<UpdateInfo> = emptyList()
         private set
-    @Volatile private var resolvedPaneld: ResolvedTarget? = null
     @Volatile private var resolvedCompanion: ResolvedTarget? = null
 
     /** Called after every completed [check]; the service republishes the update entities from it. */
@@ -112,19 +111,8 @@ object UpdateChecker {
         checkMutex.withLock {
             val previous = available
             val current = BuildConfig.VERSION_NAME
-            val paneldResolved = SelfUpdater.resolveTarget(channel)
-            val paneldResolution = ComponentUpdater.resolveUpdate(current) { paneldResolved }
-                .toResolution { target ->
-                    UpdateInfo(
-                        PANELD_LABEL,
-                        current,
-                        target.version,
-                        target.releaseUrl,
-                        "paneld",
-                        target.tag,
-                        target.prerelease,
-                    )
-                }
+            // Panel Assistant owns panel-app offers; this local catalogue retains Companion only.
+            val paneldResolution = Resolution.Resolved(null)
 
             val companion = installedCompanion(context)
             // Resolved even when no Companion is installed: absent is an installable state for the
@@ -160,7 +148,6 @@ object UpdateChecker {
             companionCachePolicy = reconciled.companionCachePolicy
             // A failed lookup keeps the previous target; readers only accept one resolved under their
             // exact policy, so a target from another channel or cap can never be reused.
-            paneldResolved?.let { resolvedPaneld = paneldResolvedTarget(it, channel) ?: resolvedPaneld }
             companionResolved?.let {
                 resolvedCompanion = ResolvedTarget(
                     version = it.version,
@@ -184,14 +171,8 @@ object UpdateChecker {
         Unit
     }
 
-    private fun paneldResolvedTarget(target: ComponentUpdater.Target, channel: String): ResolvedTarget? {
-        val tag = target.tag ?: return null
-        val releaseUrl = SelfUpdater.releaseNotesUrl(tag) ?: return null
-        return ResolvedTarget(target.version, tag, releaseUrl, channel, cap = null)
-    }
-
-    /** The ha-paneld target resolved under [channel], or null. Never triggers a lookup. */
-    internal fun paneldTarget(channel: String): ResolvedTarget? = samePolicy(resolvedPaneld, channel, cap = null)
+    /** Panel Assistant owns panel-app offers, including after a process restart. */
+    internal fun paneldTarget(channel: String): ResolvedTarget? = null
 
     /** The Companion target resolved under exactly [channel] and [cap], or null. Never triggers a lookup. */
     internal fun companionTarget(channel: String, cap: String?): ResolvedTarget? =
@@ -202,18 +183,16 @@ object UpdateChecker {
         target?.takeIf { it.channel == channel && it.cap == cap }
 
     /**
-     * Seed targets persisted by an earlier process, so a restarted panel reports the last known release
-     * instead of briefly reporting none (which would make Home Assistant recreate the update entity).
-     * A target this process has already resolved always wins; the policy check above still applies.
+     * Restore the Companion target from an earlier process. Historical panel-app targets are ignored:
+     * remembered catalogue data has no authority over the live Panel Assistant's update policy.
      */
     internal fun restoreTargets(paneld: String, companion: String) {
-        if (resolvedPaneld == null) resolvedPaneld = decodeTarget(paneld)
         if (resolvedCompanion == null) resolvedCompanion = decodeTarget(companion)
     }
 
     /** The current targets encoded for [restoreTargets]; blank when a component has none. */
     internal fun persistableTargets(): Pair<String, String> =
-        (resolvedPaneld?.let(::encodeTarget) ?: "") to (resolvedCompanion?.let(::encodeTarget) ?: "")
+        "" to (resolvedCompanion?.let(::encodeTarget) ?: "")
 
     internal fun encodeTarget(target: ResolvedTarget): String = JSONObject()
         .put("version", target.version)

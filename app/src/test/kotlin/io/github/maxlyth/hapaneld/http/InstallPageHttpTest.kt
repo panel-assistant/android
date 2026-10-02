@@ -30,9 +30,10 @@ class InstallPageHttpTest {
                         assertTrue(card, html.contains("data-layout-key=\"$card\""))
                     }
                     assertTrue(html.contains("src=\"assets/install.js\""))
-                    assertEquals(2, Regex("class=\"cchan\"").findAll(html).count())
-                    assertEquals(2, Regex("value=\"stable\" selected").findAll(html).count())
+                    assertEquals(1, Regex("class=\"cchan\"").findAll(html).count())
+                    assertEquals(1, Regex("value=\"stable\" selected").findAll(html).count())
                     assertTrue(html.contains("value=\"prerelease\""))
+                    assertEquals(1, Regex("class=\"cpa-channel\"").findAll(html).count())
                     assertFalse(html.contains("System WebView</b>"))
                     assertFalse(html.contains("healWebView("))
                     assertFalse(html.contains("installComp('webview'"))

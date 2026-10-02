@@ -47,11 +47,48 @@ object SelfUpdater {
     fun releaseNotesUrl(tag: String): String? = if (ReleaseCatalog.validTag(tag)) "$RELEASES_URL/tag/$tag" else null
 
     /** Up to [limit] recent versions on [channel] for the Install-tab picker (version + release-notes URL). */
-    fun versions(channel: String, limit: Int = 10): List<ReleaseCatalog.Version> =
-        ReleaseCatalog.list(REPO, channel, limit, APK_MATCH,
+    fun versions(channel: String, limit: Int = 10): List<ReleaseCatalog.Version> {
+        val policy = AppInstaller.panelUpdatePolicy() ?: return emptyList()
+        // PA chooses the effective channel; the request's old channel field has no update authority.
+        val effectiveChannel = if (policy.prerelease) "prerelease" else "stable"
+        val deadline = System.nanoTime() + 30_000_000_000L
+        val raw = ReleaseCatalog.list(REPO, effectiveChannel, 50, APK_MATCH,
             olderAppMatch = if (AppIdentity.IS_BRIDGE) null else { name ->
                 name.startsWith("ha-paneld-", ignoreCase = true) && name.endsWith(".apk", ignoreCase = true)
             }) { it.removePrefix("v") }
+        return admittedVersions(raw, limit, AppInstaller::panelUpdatePolicy) { version ->
+            PanelReleaseMetadata.read(version.tag, version.version, requireNotNull(version.apkUrl)) {
+                (deadline - System.nanoTime()) / 1_000_000L
+            }
+        }
+    }
+
+    /** Filter before taking the picker limit; an incompatible newest release cannot hide a valid one. */
+    internal fun admittedVersions(
+        candidates: List<ReleaseCatalog.Version>,
+        limit: Int,
+        policy: () -> io.github.maxlyth.hapaneld.panelassistant.PanelAssistantUpdatePolicy?,
+        metadata: (ReleaseCatalog.Version) -> PanelReleaseMetadata.Candidate?,
+    ): List<ReleaseCatalog.Version> {
+        if (limit <= 0 || policy() == null) return emptyList()
+        val admitted = candidates.sortedWith { left, right ->
+            AppInstaller.comparePanelVersions(right.version, left.version) ?: 0
+        }.asSequence().filter { version ->
+            version.installable && version.apkUrl != null &&
+                AppInstaller.comparePanelVersions(version.version, BuildConfig.VERSION_NAME)?.let { it >= 0 } == true
+        }.mapNotNull { version ->
+            val proof = metadata(version) ?: return@mapNotNull null
+            if (AppInstaller.panelUpdateRefusal(policy(), proof.range, version.version,
+                    BuildConfig.VERSION_NAME, proof.versionCode, BuildConfig.VERSION_CODE.toLong()) != null) null
+            else version.copy(protocolRange = proof.range, authenticatedVersionCode = proof.versionCode)
+        }.take(limit).toList()
+        // Metadata I/O can span a disconnect or a changed PA policy. Never publish remembered admission.
+        return admitted.filter { version ->
+            AppInstaller.panelUpdateRefusal(policy(), version.protocolRange, version.version,
+                BuildConfig.VERSION_NAME, version.authenticatedVersionCode ?: 0L,
+                BuildConfig.VERSION_CODE.toLong()) == null
+        }
+    }
 
     internal sealed interface ChannelPreparation {
         val message: String
@@ -83,6 +120,9 @@ object SelfUpdater {
     internal suspend fun installVersionResult(context: Context, tag: String): InstallOperationResult =
         withContext(Dispatchers.IO) {
             val version = tag.removePrefix("v")
+            if (AppInstaller.panelUpdatePolicy() == null) return@withContext InstallOperationResult(
+                "Panel Assistant must be online with update policy",
+            )
             val url = ReleaseCatalog.apkUrl(REPO, tag, APK_MATCH) ?: return@withContext managed(
                 "no APK asset for $tag",
                 "managed-apk-missing",
@@ -95,7 +135,7 @@ object SelfUpdater {
                     when (val outcome = AppInstaller.installPrepared(context, prepared)) {
                         InstallOutcome.Succeeded -> managed(
                             "installing ha-paneld $tag",
-                            committedCode(version),
+                            "managed-update-committed",
                             "version" to version,
                         )
                         is InstallOutcome.Failure -> outcome.asOperationResult()
@@ -107,16 +147,10 @@ object SelfUpdater {
     /** The newest release for [channel] as one coherent target (version + APK URL + release-notes URL), or
      *  null. Feeds the shared [ComponentUpdater] resolve -> compare -> decide pipeline. */
     fun resolveTarget(channel: String): ComponentUpdater.Target? =
-        ReleaseCatalog.newestApkTarget(REPO, channel, APK_MATCH) { it.removePrefix("v") }
-            ?.let { target ->
-                ComponentUpdater.Target(
-                    target.version,
-                    target.apkUrl,
-                    RELEASES_URL,
-                    target.tag,
-                    target.prerelease,
-                )
-            }
+        versions(channel, 1).firstOrNull()?.let { target ->
+            ComponentUpdater.Target(target.version, requireNotNull(target.apkUrl), RELEASES_URL,
+                target.tag, target.version.contains('-'))
+        }
 
     /**
      * Resolve, download, authenticate and database-admit one exact channel candidate without mutating
@@ -129,6 +163,9 @@ object SelfUpdater {
         force: Boolean = false,
     ): ChannelPreparation = withContext(Dispatchers.IO) {
         val current = BuildConfig.VERSION_NAME
+        if (AppInstaller.panelUpdatePolicy() == null) return@withContext ChannelPreparation.Refused(
+            "Panel Assistant must be online with update policy",
+        )
         when (val outcome = ComponentUpdater.resolveUpdate(current, force) { resolveTarget(channel) }) {
             ComponentUpdater.Outcome.Unresolved -> ChannelPreparation.Unresolved(
                 "no release found ($channel)",
@@ -165,7 +202,7 @@ object SelfUpdater {
         InstallOutcome.Succeeded -> InstallOperationResult(
             "updating ha-paneld -> ${prepared.version}",
             presentation = presentation(
-                committedCode(prepared.version),
+                "managed-update-committed",
                 "version" to prepared.version,
             ),
         )
@@ -200,11 +237,6 @@ object SelfUpdater {
                 }
             }
         }
-
-    private fun committedCode(version: String): String =
-        if (UpdateChecker.compareVersions(version, BuildConfig.VERSION_NAME)?.let { it < 0 } == true)
-            "managed-downgrade-committed"
-        else "managed-update-committed"
 
     private fun presentation(code: String, vararg params: Pair<String, String>): InstallPresentation? =
         InstallPresentation.create(code, mapOf("component" to "paneld", *params))

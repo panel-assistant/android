@@ -22,7 +22,6 @@ case "$*" in *' -a io.github.maxlyth.hapaneld.action.HANDOFF_INSTALLED_SUCCESSOR
   : > "$STATE_DIR/handoff-started" ;;
 esac
 DIAG_ID=abcdef0123456789abcdef0123456789
-HELPER_STATE_FIXTURE="$(cd "$(dirname "$0")" && pwd)/helper-state"
 # A clean panel has no package at all. Without this the fixture would silently re-create one and a
 # genuine first installation could never be modelled.
 if [ "${MOCK_NO_INSTALLED_PACKAGE:-0}" != 1 ]; then
@@ -93,17 +92,7 @@ standalone_manual_reply() {
 helper_request_reply() {
   local text="$1"
   printf '%s' "$text" 2>/dev/null | grep -Fq ' --request ' || return 1
-  if [ "${MOCK_HELPER_STATEFUL:-0}" = 1 ]; then
-    local request_tail verb request_head helper_path
-    request_tail="${text#* --request }"
-    verb="${request_tail%%[!A-Z0-9_]*}"
-    request_head="${text%% --request *}"
-    helper_path="${request_head##* }"
-    helper_path="${helper_path//\\/}"
-    helper_path="${helper_path//\"/}"
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" request "$helper_path" "$verb"
-    exit $?
-  fi
+
   case "$text" in
     *' --request PING'*) [ "${MOCK_ROLLBACK_PING:-ok}" = ok ] && printf 'OK\n' ;;
     *' --request COMPANIONCAPS'*)
@@ -127,100 +116,6 @@ helper_request_reply() {
   esac
   # A refused request answers nothing and exits non-zero, exactly as the inline branch did.
   exit $?
-}
-
-# Stateful managed-provision traffic.  The legacy fixture branches below remain available to the
-# broad suite; this lane is enabled explicitly so focused tests observe one coherent device instead
-# of choosing independent canned answers for install, requests, processes, and rollback.
-stateful_helper_reply() {
-  local text="$1" kind path launch_paths launch_count transaction_call action_kind transaction_id target_apk target_build target_helper transaction_open supervisors
-  [ "${MOCK_HELPER_STATEFUL:-0}" = 1 ] || return 1
-
-  if printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*discover-(system|systemless|hybrid)'; then
-    kind="$(printf '%s' "$text" | sed -nE 's/.*discover-(systemless|hybrid|system).*/\1/p')"
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" record "$kind"
-    exit $?
-  elif printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*status-(system|systemless|hybrid)'; then
-    transaction_call="$(printf '%s\n' "$text" | grep -oE 'status-(systemless|hybrid|system) [0-9a-f]{32} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64}' | tail -1)"
-    set -- $transaction_call
-    [ "$#" -eq 5 ] || exit 1
-    action_kind="$1"; transaction_id="$2"; target_apk="$3"; target_build="$4"; target_helper="$5"
-    kind="${action_kind#status-}"
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" record "$kind" "$transaction_id" "$target_apk" "$target_build" "$target_helper"
-    exit $?
-  elif printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*install-(system|systemless|hybrid)'; then
-    # Keep systemless before system: ERE alternation is leftmost-first and `.*` would otherwise let
-    # the shorter prefix classify install-systemless as install-system.
-    transaction_call="$(printf '%s\n' "$text" | grep -oE 'install-(systemless|hybrid|system) [0-9a-f]{32} [0-9a-f]{64} [0-9a-f]{64} [0-9a-f]{64}' | tail -1)"
-    set -- $transaction_call
-    [ "$#" -eq 5 ] || exit 1
-    action_kind="$1"; transaction_id="$2"; target_apk="$3"; target_build="$4"; target_helper="$5"
-    kind="${action_kind#install-}"
-    transaction_open="$(MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" inspect | sed -n 's/^TRANSACTION_OPEN=//p')"
-    if [ "$transaction_open" = 1 ]; then
-      printf 'STALE_%s_TRANSACTION\n' "$(printf '%s' "$kind" | tr '[:lower:]' '[:upper:]')"
-      MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" event "STALE_DETECTED kind=$kind"
-      exit 2
-    fi
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" install "$kind" "$transaction_id" "$target_apk" "$target_build" "$target_helper"
-    status=$?
-    [ "$status" -ne 0 ] || : > "$STATE_DIR/active-helper-transaction"
-    exit "$status"
-  elif printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*finalize-rollback-(system|systemless|hybrid)'; then
-    printf 'ROLLBACK_FINALIZED\n'
-    rm -f "$STATE_DIR/stale-helper-transaction" "$STATE_DIR/active-helper-transaction"
-    exit 0
-  elif printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*rollback-(system|systemless|hybrid)'; then
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" rollback
-    exit $?
-  elif printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*commit-(system|systemless|hybrid)'; then
-    if [ "${MOCK_STATEFUL_COMMIT_FAIL:-0}" = 1 ]; then
-      MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" event COMMIT_REFUSED
-      printf 'COMMIT_INVALID\n'
-      exit 1
-    fi
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" commit
-    exit $?
-  elif printf '%s' "$text" 2>/dev/null | grep -Eq 'helper-transaction-[0-9a-f]+.*lease-(system|systemless|hybrid)'; then
-    printf 'LEASE_OK\n'
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" event LEASE_OK
-    exit 0
-  elif printf '%s' "$text" 2>/dev/null | grep -Fq ' --replacement-safe'; then
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" replacement-safe
-    exit $?
-  elif printf '%s' "$text" 2>/dev/null | grep -Fq 'echo HELPER_PROCESSES_PRESENT' && printf '%s' "$text" 2>/dev/null | grep -Fq 'echo NO_HELPER_PROCESSES'; then
-    supervisors="$(MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" inspect | sed -n 's/^SUPERVISORS=//p')"
-    if [ "$supervisors" = 0 ]; then
-      printf 'NO_HELPER_PROCESSES\n'
-      MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" event 'PROCESS_PROBE result=NO_HELPER_PROCESSES'
-    else
-      printf 'HELPER_PROCESSES_PRESENT\n'
-      MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" event 'PROCESS_PROBE result=HELPER_PROCESSES_PRESENT'
-    fi
-    exit 0
-  elif printf '%s' "$text" 2>/dev/null | grep -Fq 'pidof hapaneld-helper'; then
-    supervisors="$(MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" inspect | sed -n 's/^SUPERVISORS=//p')"
-    [ "$supervisors" = 1 ] && printf '4242\n'
-    [ "$supervisors" = 1 ]
-    exit $?
-  elif printf '%s' "$text" 2>/dev/null | grep -Fq ' --request '; then
-    helper_request_reply "$text"
-  fi
-
-  launch_paths="$(printf '%s\n' "$text" | grep -oE '/(data/local|system/bin|data/adb/hapaneld)/hapaneld-helper --supervise' | sed 's/ --supervise$//' || true)"
-  launch_count="$(printf '%s\n' "$launch_paths" | awk 'NF { n++ } END { print n+0 }')"
-  if [ "$launch_count" -gt 0 ]; then
-    if printf '%s' "$text" 2>/dev/null | grep -Eq '(^|[ ;])stop hapaneld_helper|pkill -x hapaneld-helper'; then
-      MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" stop >/dev/null
-    fi
-    # More than one syntactic launch authority in one command is malformed even if shell branching
-    # would happen to choose one.  Tests can therefore kill fallback/rollback multi-authority mutants.
-    [ "$launch_count" = 1 ] || { MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" event "LAUNCH_REFUSED syntactic-authorities=$launch_count"; exit 1; }
-    path="$launch_paths"
-    MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" launch "$path" supervised
-    exit $?
-  fi
-  return 1
 }
 
 # Package presence and package-manager responsiveness are INDEPENDENT axes, because Android reports
@@ -877,9 +772,7 @@ case "${1:-}" in
         [ "${MOCK_DB_TXN:-ok}" = push_fail ] && exit 1
         cp "${2:?push source missing}" "$STATE_DIR/db-txn-script.$ADB_TARGET" ;;
     esac
-    if [ "${MOCK_HELPER_STATEFUL:-0}" = 1 ]; then
-      MOCK_STATE_DIR="$STATE_DIR" "$HELPER_STATE_FIXTURE" capture "${2:?push source missing}" "${3:?push destination missing}"
-    fi
+
     ;;
   pull)
     # MOCK_APK_QUERY=fail models a package manager that became unanswerable at the install-outcome
@@ -1394,8 +1287,6 @@ case "${1:-}" in
           [ "${MOCK_ROOT_LIVE:-ok}" = ok ] && [ "${MOCK_ROOT:-1}" = 1 ] && printf 'uid=0(root) gid=0(root)\n'
         elif standalone_manual_reply "$command_text"; then
           :
-        elif stateful_helper_reply "$command_text"; then
-          :
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'touch /system/.rw_probe'; then
           emit_system_layout_probe
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq '.hapaneld-rw-probe-'; then
@@ -1506,8 +1397,6 @@ case "${1:-}" in
       'su 0 sh -c "'*'"')
         if printf '%s' "$command_text" 2>/dev/null | grep -Fq 'id; id' && [ "${MOCK_SU_DIALECT:-join}" = shc ]; then
           [ "${MOCK_ROOT:-1}" = 1 ] && printf 'uid=0(root) gid=0(root)\n'
-        elif stateful_helper_reply "$command_text"; then
-          :
         elif standalone_manual_reply "$command_text"; then
           :
         elif printf '%s' "$command_text" 2>/dev/null | grep -Fq 'touch /system/.rw_probe'; then

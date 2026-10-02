@@ -50,6 +50,71 @@ class PanelAssistantTransportOwnerTest {
         } finally { harness.owner.close() }
     }
 
+    @Test fun replacingDemandImmediatelyRevokesPolicyWhileOldSocketTeardownBlocksItsSuccessor() = runTest {
+        val oldPolicy = PanelAssistantUpdatePolicy(1, 3, false)
+        val newPolicy = oldPolicy.copy(prerelease = true)
+        val release = CompletableDeferred<Unit>()
+        val first = FakeConnection(Ha.accepting(updatePolicy = oldPolicy)).apply { holdReadAfterCancel = release }
+        val second = FakeConnection(Ha.accepting(updatePolicy = newPolicy))
+        val harness = harness(first, second)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(oldPolicy, harness.owner.status.liveUpdatePolicy())
+
+            harness.owner.replaceDemand(DEMAND.copy(routeEpoch = 1))
+            assertNull("replacement revokes the retired hello before coroutine scheduling", harness.owner.status.liveUpdatePolicy())
+            assertNull(harness.owner.status.session)
+            runCurrent()
+            assertFalse(first.closed)
+            assertEquals(1, harness.connector.connects.size)
+            assertNull("retired socket teardown is not live update authority", harness.owner.status.liveUpdatePolicy())
+
+            release.complete(Unit)
+            runCurrent()
+            assertTrue(first.closed)
+            assertEquals(2, harness.connector.connects.size)
+            assertEquals(newPolicy, harness.owner.status.liveUpdatePolicy())
+        } finally {
+            release.complete(Unit)
+            harness.owner.close()
+            runCurrent()
+        }
+    }
+
+    @Test fun socketFailureRevokesUpdatePolicyBeforeBlockedSocketCleanupAndRetry() = runTest {
+        val policy = PanelAssistantUpdatePolicy(1, 3, true)
+        val release = CompletableDeferred<Unit>()
+        val first = FakeConnection(Ha.accepting(updatePolicy = policy)).apply { holdClose = release }
+        val second = FakeConnection(Ha.accepting(updatePolicy = policy))
+        val harness = harness(first, second)
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(policy, harness.owner.status.liveUpdatePolicy())
+
+            first.inbound.close(IOException("socket lost"))
+            runCurrent()
+            assertTrue(first.closeStarted)
+            assertFalse(first.closed)
+            assertEquals(1, harness.connector.connects.size)
+            assertNull("known socket failure revokes policy before cleanup returns", harness.owner.status.liveUpdatePolicy())
+            assertNull(harness.owner.status.session)
+
+            release.complete(Unit)
+            runCurrent()
+            assertTrue(first.closed)
+            advanceTimeBy(1_000L)
+            runCurrent()
+            assertEquals(2, harness.connector.connects.size)
+            assertEquals(policy, harness.owner.status.liveUpdatePolicy())
+        } finally {
+            release.complete(Unit)
+            harness.owner.close()
+            runCurrent()
+        }
+    }
+
     @Test fun `hello losing connection ownership cannot publish connected or authority`() = runTest {
         val connection = FakeConnection(Ha.accepting(authority = "native"))
         var connected = 0
@@ -1240,6 +1305,8 @@ class PanelAssistantTransportOwnerTest {
         val inbound = Channel<String>(Channel.UNLIMITED)
         val sent = mutableListOf<String>()
         var closed = false
+        var closeStarted = false
+        var holdClose: CompletableDeferred<Unit>? = null
 
         /** When set, a read cancelled mid-wait returns only once this completes, as a slow socket might. */
         var holdReadAfterCancel: CompletableDeferred<Unit>? = null
@@ -1261,6 +1328,8 @@ class PanelAssistantTransportOwnerTest {
         }
 
         override suspend fun close() {
+            closeStarted = true
+            holdClose?.await()
             closed = true
             inbound.close()
         }
@@ -1276,6 +1345,7 @@ class PanelAssistantTransportOwnerTest {
             commandResultError: String? = null,
             mqttDiscovery: String? = null,
             embed: JSONObject? = null,
+            updatePolicy: PanelAssistantUpdatePolicy? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
             holdFullEnd: Boolean = false,
         ): (JSONObject, FakeConnection) -> Unit = { frame, connection ->
@@ -1295,7 +1365,13 @@ class PanelAssistantTransportOwnerTest {
                                 .put("integration", JSONObject().put("version", "0.3.0"))
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (mqttDiscovery != null) put("mqtt_discovery", mqttDiscovery) }
-                                .apply { if (embed != null) put("embed", embed) },
+                                .apply { if (embed != null) put("embed", embed) }
+                                .apply {
+                                    if (updatePolicy != null) put("update_policy", JSONObject()
+                                        .put("protocolMin", updatePolicy.protocolMin)
+                                        .put("protocolMax", updatePolicy.protocolMax)
+                                        .put("prerelease", updatePolicy.prerelease))
+                                },
                         )
                         .toString(),
                 )

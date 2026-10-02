@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.BuildConfig
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantUpdatePolicy
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibility
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityBoundary
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityDecision
@@ -32,12 +33,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  * peer-uid-locked helper `INSTALL` verb, then (only for explicitly allowed curated packages) the typed
  * Shizuku shell-UID service. An attempted install is never replayed through a second authority because
  * a timed-out package-manager transaction can still have committed. Arbitrary uploads and the System
- * WebView never allow Shizuku. `pm install -r -d` — the
- * `-d` (allow downgrade) is deliberate, so a stable<->pre-release channel switch can move either way.
+ * WebView never allow Shizuku. Panel-app candidates require live Panel Assistant policy and cannot
+ * downgrade. Other approved packages retain their existing downgrade behavior.
  * Network + package installation — always call OFF the main / MQTT thread.
  */
 object AppInstaller {
     data class Pin(val pkg: String, val certSha256: String, val apkSha256: String? = null)
+    // Reads the current transport state rather than remembering a policy from a disconnected session.
+    @Volatile internal var livePanelUpdatePolicy: (() -> PanelAssistantUpdatePolicy?)? = null
+    internal fun panelUpdatePolicy(): PanelAssistantUpdatePolicy? =
+        runCatching { livePanelUpdatePolicy?.invoke() }.getOrNull()
+    internal const val PROTOCOL_METADATA_NAME = "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL"
     internal enum class InstallRoute { SU, DAEMON, SHIZUKU, NONE }
 
     // Pinned signers (public certificate fingerprints — NOT secrets).
@@ -183,6 +189,11 @@ object AppInstaller {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
             return@withContext SelfInstallPreparation.Failed(guardDbInstallBlocked("paneld"))
         }
+        if (panelUpdatePolicy() == null) {
+            return@withContext SelfInstallPreparation.Failed(
+                policyFailure("Panel Assistant must be online with update policy"),
+            )
+        }
         if (selectInstallRoute(Su.available(), HelperClient.available(), ShizukuBridge.available(), allowShizuku) ==
             InstallRoute.NONE
         ) {
@@ -221,6 +232,12 @@ object AppInstaller {
                 )
             }
             val info = inspect(context, apk.absolutePath)
+            if (info == null) return@withStagedFiles SelfInstallPreparation.Failed(
+                rejected("refused (unreadable candidate APK)", "paneld"),
+            )
+            currentPanelUpdateRefusal(context, info)?.let { why ->
+                return@withStagedFiles SelfInstallPreparation.Failed(policyFailure(why))
+            }
             var admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null
             val refusal = selfReplacementRefusal(info) { boundary ->
                 val decision = compatibilityDecision(context, boundary)
@@ -285,6 +302,7 @@ object AppInstaller {
         val databaseCompatibility: DatabaseCompatibilityApkContract.Parsed,
         internal val signerSha256s: Set<String> = setOfNotNull(signerSha256),
         val versionCode: Long = 0L,
+        val nativeProtocolRange: IntRange? = null,
     )
 
     /** Parse an APK's package name, versionName and signer SHA-256 without installing it. Null if the file
@@ -318,8 +336,93 @@ object AppInstaller {
             signerHashes.firstOrNull(),
             databaseCompatibility,
             signerHashes,
-            info.versionCode.toLong(),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong(),
+            parseNativeProtocolMetadata(metadata?.get(PROTOCOL_METADATA_NAME)),
         )
+    }
+
+    internal fun parseNativeProtocolMetadata(raw: Any?): IntRange? {
+        val value = raw as? String ?: return null
+        val match = Regex("^hapaneld-native:v1:([1-9][0-9]{0,9}):([1-9][0-9]{0,9})$")
+            .matchEntire(value) ?: return null
+        val low = match.groupValues[1].toIntOrNull() ?: return null
+        val high = match.groupValues[2].toIntOrNull() ?: return null
+        return (low..high).takeIf { low <= high }
+    }
+
+    /** The same predicate admits signed APKs and authenticated catalogue metadata. */
+    internal fun panelUpdateRefusal(
+        policy: PanelAssistantUpdatePolicy?,
+        candidateRange: IntRange?,
+        candidateVersion: String,
+        currentVersion: String,
+        candidateCode: Long,
+        currentCode: Long,
+    ): String? {
+        if (policy == null) return "Panel Assistant must be online with update policy"
+        val range = candidateRange ?: return "candidate Panel Assistant protocol metadata is missing or malformed"
+        if (range.first > policy.protocolMax || range.last < policy.protocolMin) {
+            return "candidate cannot speak to the running Panel Assistant"
+        }
+        val comparison = comparePanelVersions(candidateVersion, currentVersion)
+            ?: return "candidate version ordering could not be proven"
+        if (candidateCode <= 0L) return "candidate version ordering could not be proven"
+        if (!policy.prerelease && candidateVersion.contains('-')) {
+            return "Panel Assistant update policy permits stable builds only"
+        }
+        if (comparison < 0 || candidateCode < currentCode) return "panel-app downgrades are not permitted"
+        return null
+    }
+
+    /** Mirror PA's finite SemVer grammar and rc10-after-rc9 identifier ordering. */
+    internal fun comparePanelVersions(candidate: String, installed: String): Int? {
+        fun parts(value: String): Pair<List<java.math.BigInteger>, List<String>>? {
+            if (value.length > 64 || !Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$").matches(value)) return null
+            val suffix = value.substringAfter('-', "")
+            val identifiers = if (suffix.isEmpty()) emptyList() else suffix.split('.')
+            if (identifiers.any { it.isEmpty() || (it.all(Char::isDigit) && it.length > 1 && it.startsWith('0')) }) return null
+            return value.substringBefore('-').split('.').map { it.toBigInteger() } to identifiers
+        }
+        val left = parts(candidate) ?: return null
+        val right = parts(installed) ?: return null
+        for (i in 0..2) left.first[i].compareTo(right.first[i]).takeIf { it != 0 }?.let { return it }
+        if (left.second.isEmpty() || right.second.isEmpty()) {
+            return left.second.isEmpty().compareTo(right.second.isEmpty())
+        }
+        fun identifier(value: String): Triple<Int, String, java.math.BigInteger> {
+            if (value.all(Char::isDigit)) return Triple(0, "", value.toBigInteger())
+            val stem = value.trimEnd { it in '0'..'9' }
+            val digits = value.removePrefix(stem)
+            return Triple(1, stem, if (digits.isEmpty()) (-1).toBigInteger() else digits.toBigInteger())
+        }
+        for (i in 0 until minOf(left.second.size, right.second.size)) {
+            val a = identifier(left.second[i]); val b = identifier(right.second[i])
+            val comparison = a.first.compareTo(b.first).takeIf { it != 0 }
+                ?: a.second.compareTo(b.second).takeIf { it != 0 } ?: a.third.compareTo(b.third)
+            if (comparison != 0) return comparison
+        }
+        return left.second.size.compareTo(right.second.size)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentPanelUpdateRefusal(context: Context, candidate: ApkInfo): String? {
+        panelUpdateRefusal(panelUpdatePolicy(), candidate.nativeProtocolRange, candidate.version,
+            BuildConfig.VERSION_NAME, candidate.versionCode, BuildConfig.VERSION_CODE.toLong())?.let { return it }
+        // A counterpart may already be newer than the running bridge, or pm may have committed while
+        // an old process is finishing. Observe the actual package being replaced as well.
+        val installed = try {
+            context.packageManager.getPackageInfo(candidate.pkg, 0)
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        } catch (_: Exception) {
+            return "installed panel-app version could not be proven"
+        }
+        val version = installed?.versionName ?: BuildConfig.VERSION_NAME
+        val code = installed?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) it.longVersionCode else it.versionCode.toLong()
+        } ?: BuildConfig.VERSION_CODE.toLong()
+        return panelUpdateRefusal(panelUpdatePolicy(), candidate.nativeProtocolRange, candidate.version,
+            version, candidate.versionCode, code)
     }
 
     /**
@@ -369,9 +472,20 @@ object AppInstaller {
         info: ApkInfo?,
         runningPackage: String,
         admittedBoundary: DatabaseCompatibilityApkContract.Boundary?,
+        updatePolicy: PanelAssistantUpdatePolicy? = null,
+        currentVersion: String = BuildConfig.VERSION_NAME,
+        currentCode: Long = BuildConfig.VERSION_CODE.toLong(),
         decideCurrentCompatibility: (DatabaseCompatibilityApkContract.Boundary) -> String?,
     ): String? {
         if (info == null) return "unreadable candidate APK"
+        if (AppIdentity.isPanelApp(info.pkg)) {
+            if (info.signerSha256s.size != 1 ||
+                !info.signerSha256s.single().equals(ownPin(info.pkg).certSha256, ignoreCase = true)) {
+                return "candidate must have exactly the pinned panel-app signer"
+            }
+            panelUpdateRefusal(updatePolicy, info.nativeProtocolRange, info.version, currentVersion,
+                info.versionCode, currentCode)?.let { return it }
+        }
         if (admittedBoundary != null) {
             if (info.pkg != runningPackage) return "prepared candidate is not the running package"
             return preparedSelfReplacementRefusal(
@@ -466,6 +580,7 @@ object AppInstaller {
             info = info,
             runningPackage = context.packageName,
             admittedBoundary = admittedBoundary,
+            updatePolicy = panelUpdatePolicy(),
         ) { exactBoundary ->
             // Database/recovery state can change while the staged capability is held. Re-observe
             // before the first self-replacement mutation; matching APK bytes are not current DB proof.
@@ -474,7 +589,7 @@ object AppInstaller {
         if (refusal != null) {
             apk.delete()
             Log.w(TAG, "refused local install: $refusal")
-            return@withContext rejected("refused ($refusal)", component)
+            return@withContext InstallOutcome.Rejected("refused ($refusal)")
         }
         val replacingSelf = requireNotNull(info).pkg == context.packageName
         val hasSu = Su.available()
@@ -490,6 +605,13 @@ object AppInstaller {
             return@withContext retryable(
                 "skipped: dashboard changed before WebView install", "install-precondition-changed", component,
             )
+        }
+        // Re-read live authority after installer probing, immediately before our first mutation.
+        if (AppIdentity.isPanelApp(info.pkg)) {
+            currentPanelUpdateRefusal(context, info)?.let { why ->
+                apk.delete()
+                return@withContext policyFailure(why)
+            }
         }
         // DB_COMPAT_MUTATION_ANCHOR: IN_APP_FIRST_MUTATION
         val stateQuiescence = if (replacingSelf) {
@@ -509,12 +631,20 @@ object AppInstaller {
         }
         var installSucceeded = false
         try {
+            // Snapshot/flush can outlive the hello that admitted them. PA stays connected through state
+            // quiescence, so re-admit immediately before submitting any privileged package transaction.
+            if (AppIdentity.isPanelApp(info.pkg)) {
+                currentPanelUpdateRefusal(context, info)?.let { why ->
+                    apk.delete()
+                    return@withContext policyFailure(why)
+                }
+            }
             if (route == InstallRoute.SU) {
                 val out = try {
                     // Stream the APK straight into `pm install -S <size>` — no intermediate /data/local/tmp copy
                     // (halves peak disk use). Long-timeout: staging a large stream far exceeds the 5s su bound.
                     Su.runWithStdinLong(
-                        "pm install -S ${apk.length()} -r -d 2>&1",
+                        "pm install -S ${apk.length()} -r ${if (AppIdentity.isPanelApp(info.pkg)) "" else "-d "}2>&1",
                         apk,
                         HelperInstallTransaction.INSTALL_TIMEOUT_MS,
                     )?.trim()
@@ -537,7 +667,7 @@ object AppInstaller {
                 )
             } else if (route == InstallRoute.SHIZUKU) {
                 val out = try {
-                    ShizukuBridge.installApk(apk, allowDowngrade = true, HelperInstallTransaction.INSTALL_TIMEOUT_MS)
+                    ShizukuBridge.installApk(apk, allowDowngrade = !AppIdentity.isPanelApp(info.pkg), HelperInstallTransaction.INSTALL_TIMEOUT_MS)
                         ?.trim().orEmpty()
                 } finally {
                     apk.delete()
@@ -558,6 +688,10 @@ object AppInstaller {
             finishSelfReplaceQuiescence(stateQuiescence, installSucceeded)
         }
     }
+
+    private fun policyFailure(reason: String): InstallOutcome.Failure =
+        if (reason == "Panel Assistant must be online with update policy") InstallOutcome.Retryable(reason)
+        else InstallOutcome.Rejected("refused ($reason)")
 
     private fun guardDbInstallBlocked(component: String): InstallOutcome.Retryable = retryable(
         "blocked: Guard DB maintenance owns package mutations",

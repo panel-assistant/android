@@ -4,7 +4,7 @@ import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.util.CompanionInstaller
 
-/** Managed-components card. ha-paneld and HA Companion have request-local channel and version pickers. */
+/** Managed components: PA chooses the panel channel; Companion retains its request-local picker. */
 internal fun componentsCardHtml(
     installer: Boolean,
     strings: AppStrings,
@@ -32,9 +32,8 @@ $installNote
 <p class="note" id="comp-msg"></p></div>"""
 }
 
-/** A component row with a channel + version picker (versions hydrated by install.js), a release-notes
- *  link, and an Install button — for the GitHub-hosted components (ha-paneld, HA Companion). The
- *  channel select starts on stable for each page visit. */
+/** A version picker hydrated by install.js, with PA's effective panel channel or Companion's channel
+ *  selector, release notes, and the install/download control. */
 private fun pickerRow(
     name: String,
     label: String,
@@ -42,10 +41,12 @@ private fun pickerRow(
     installer: Boolean,
     strings: AppStrings,
 ): String {
+    val channelControl = if (name == "paneld") """<span class="cpa-channel">—</span>""" else
+        """<select class="cchan" onchange="loadVersions('$name')"><option value="stable" selected>${esc(strings.get("install.components.stable"))}</option><option value="prerelease">${esc(strings.get("install.components.prerelease"))}</option></select>"""
     return """<div class="comprow" data-name="${esc(name)}">
 <div class="compname"><b>${esc(label)}</b> <span class="muted">${if (installed != null) """${esc(strings.get("install.shared.installed"))} <span class="cver">${esc(installed)}</span>""" else """<span class="cver">${esc(strings.get("install.shared.not_installed"))}</span>"""}</span></div>
 <div class="comppick">
-<label class="muted">${esc(strings.get("install.components.channel"))} <select class="cchan" onchange="loadVersions('$name')"><option value="stable" selected>${esc(strings.get("install.components.stable"))}</option><option value="prerelease">${esc(strings.get("install.components.prerelease"))}</option></select></label>
+<label class="muted">${esc(strings.get("install.components.channel"))} $channelControl</label>
 <label class="muted">${esc(strings.get("install.shared.version"))} <select class="cvsel" onchange="verChanged('$name')"><option>${esc(strings.get("install.shared.loading"))}</option></select></label>
 <a class="gh gh-inline cnotes" target="_blank" rel="noopener" title="${esc(strings.get("install.components.release_notes"))}" aria-label="${esc(strings.get("install.components.release_notes"))}" style="visibility:hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="$GH_ICON"/></svg></a>
 ${if (installer) """<button class="pbtn cinstall"${hardenedApprovalA11yAttrs(strings = strings)} onclick="installSel('$name',this)" data-root="1" disabled>${esc(strings.get("install.components.install"))}</button>"""

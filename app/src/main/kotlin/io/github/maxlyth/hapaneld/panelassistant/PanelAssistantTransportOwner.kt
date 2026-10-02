@@ -102,6 +102,9 @@ internal data class PanelAssistantTransportStatus(
     val slowRetry: Boolean = false,
     val session: PanelAssistantSession? = null,
 ) {
+    fun liveUpdatePolicy(): PanelAssistantUpdatePolicy? =
+        session?.updatePolicy.takeIf { phase == PanelAssistantTransportPhase.CONNECTED }
+
     /** Log form. Carries no credential, identity or session token. */
     fun describe(): String = buildString {
         append(phase.name.lowercase())
@@ -230,6 +233,11 @@ internal class PanelAssistantTransportOwner(
             job = null
             demand = next
             run = generation.incrementAndGet()
+            // Replacement cancels this session immediately, even while its socket teardown keeps the
+            // next generation behind the run mutex. No retired hello may authorize an update meanwhile.
+            status = PanelAssistantTransportStatus(
+                phase = if (next == null) PanelAssistantTransportPhase.STOPPED else PanelAssistantTransportPhase.CONNECTING,
+            )
             if (next != null) {
                 job = scope.launch(workerDispatcher) { sessions.withLock { runSource(run, next) } }
             }
@@ -401,6 +409,7 @@ internal class PanelAssistantTransportOwner(
                                     speaking?.open(opened, outcome.session.token, session.baseUrl)
                                     holdSession(opened, outcome.session, reporting, commanding, withdrawAfterSync, speaking)
                                 } finally {
+                                    publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.WAITING, attempt))
                                     speaking?.close()
                                     // The key belongs to this session: once it ends no proof verifies.
                                     if (embed != null) embedKeys?.clear(embed.keyId)
@@ -454,6 +463,9 @@ internal class PanelAssistantTransportOwner(
                     log("native transport attempt failed: ${failure.javaClass.simpleName}")
                 }
             } finally {
+                // A known-ended session cannot authorize updates while bounded socket cleanup waits.
+                // This also covers an accepted hello whose setup failed before holdSession began.
+                publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.WAITING, attempt))
                 connection?.let { open ->
                     withContext(NonCancellable) {
                         withTimeoutOrNull(closeTimeoutMs) { runCatching { open.close() } }

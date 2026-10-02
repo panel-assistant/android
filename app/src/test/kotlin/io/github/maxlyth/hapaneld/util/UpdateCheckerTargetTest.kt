@@ -28,6 +28,15 @@ class UpdateCheckerTargetTest {
         assertNull(UpdateChecker.samePolicy(paneld, "stable", "2026.5.4"))
     }
 
+    @Test fun rememberedPanelAppOffersCannotRegainUpdateAuthorityAfterRestart() {
+        val paneld = UpdateChecker.ResolvedTarget(
+            "1.1.0", "v1.1.0", "https://github.com/panel-assistant/android/releases/tag/v1.1.0", "stable", null,
+        )
+        UpdateChecker.restoreTargets(UpdateChecker.encodeTarget(paneld), "")
+        assertNull(UpdateChecker.paneldTarget("stable"))
+        assertEquals("", UpdateChecker.persistableTargets().first)
+    }
+
     @Test fun persistedTargetsRoundTrip() {
         assertEquals(companion, UpdateChecker.decodeTarget(UpdateChecker.encodeTarget(companion)))
         val paneld = UpdateChecker.ResolvedTarget(

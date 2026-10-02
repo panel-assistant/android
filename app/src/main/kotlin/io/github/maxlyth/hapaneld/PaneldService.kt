@@ -1447,6 +1447,9 @@ class PaneldService : Service() {
                 }
             },
         )
+        AppInstaller.livePanelUpdatePolicy = {
+            if (teardownBoundary.isStopping) null else panelAssistantTransport.status.liveUpdatePolicy()
+        }
         haLifecycle = HaLifecycleCoordinator(
             // elapsedRealtime, not wall clock: a Home Assistant restart is exactly when NTP is likely to
             // step the panel's clock, and the back-online window must not be shortened or extended by it.
