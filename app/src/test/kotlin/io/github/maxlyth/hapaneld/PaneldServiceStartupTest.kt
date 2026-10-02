@@ -107,7 +107,7 @@ class PaneldServiceStartupTest {
     @Test fun unrelatedConfigChangesDoNotRefreshAutoSleepOrOtherLiveOwners() {
         listOf(emptySet(), setOf("touch_sound"), setOf("friendly_name"), setOf("ha_expose_touch_sound")).forEach { keys ->
             assertEquals(
-                ConfigOwnerRefreshPlan(false, false, false, false, false, false, false, false, false),
+                ConfigOwnerRefreshPlan(false, false, false, false, false, false, false, false),
                 configOwnerRefreshPlan(keys),
             )
         }
@@ -115,11 +115,11 @@ class PaneldServiceStartupTest {
 
     @Test fun configOwnerRefreshesAreExplicitlyKeyed() {
         assertEquals(
-            ConfigOwnerRefreshPlan(true, true, false, false, true, true, true, false, true),
+            ConfigOwnerRefreshPlan(true, true, false, false, true, true, false, true),
             configOwnerRefreshPlan(setOf("ha_url")),
         )
         assertEquals(
-            ConfigOwnerRefreshPlan(false, false, true, true, false, false, false, false, false),
+            ConfigOwnerRefreshPlan(false, false, true, true, false, false, false, false),
             configOwnerRefreshPlan(setOf("log_ship_host", "keep_awake")),
         )
         assertTrue(configOwnerRefreshPlan(setOf("panel_id")).autoSleep)
@@ -127,35 +127,6 @@ class PaneldServiceStartupTest {
         assertTrue(configOwnerRefreshPlan(setOf("auto_sleep_touch_delay_seconds")).autoSleep)
         assertTrue(configOwnerRefreshPlan(setOf("log_ship_system_enabled")).logShipping)
         assertTrue(configOwnerRefreshPlan(setOf("dashboard_package")).rendererTarget)
-    }
-
-    @Test fun lifecycleRefreshDefersEnablingButNeverDisabling() {
-        // The launch-latency decision is void if any path can open the socket early: EVERY refresh —
-        // startup, live configuration save, onboarding first-save — passes this gate.
-        assertFalse(haLifecycleRefreshPermitted(rendererSettled = false, wanted = true))
-        assertTrue(haLifecycleRefreshPermitted(rendererSettled = true, wanted = true))
-        // But a DISABLE must never wait: settlement dies with a released renderer, so a deferred
-        // disable after deselecting the built-in renderer would wait forever with the socket open.
-        assertTrue(haLifecycleRefreshPermitted(rendererSettled = false, wanted = false))
-        assertTrue(haLifecycleRefreshPermitted(rendererSettled = true, wanted = false))
-    }
-
-    @Test fun theHomeAssistantLifecycleWatchFollowsTheRendererAndCredentials() {
-        // Selecting a renderer or changing credentials must re-evaluate the watch, because either can
-        // start or stop the only socket the panel holds.
-        assertTrue(configOwnerRefreshPlan(setOf("dashboard_package")).haLifecycle)
-        assertTrue(configOwnerRefreshPlan(setOf("ha_refresh_token")).haLifecycle)
-        assertFalse(configOwnerRefreshPlan(setOf("keep_awake")).haLifecycle)
-
-        assertTrue(haLifecycleWatchWanted(builtinRendererSelected = true, credentialsPresent = true))
-        assertFalse(
-            "a foreign renderer has no native surface to show the outage on",
-            haLifecycleWatchWanted(builtinRendererSelected = false, credentialsPresent = true),
-        )
-        assertFalse(
-            "without credentials there is nothing to authenticate with",
-            haLifecycleWatchWanted(builtinRendererSelected = true, credentialsPresent = false),
-        )
     }
 
     @Test fun liveSettingRetryBudgetIsBounded() {

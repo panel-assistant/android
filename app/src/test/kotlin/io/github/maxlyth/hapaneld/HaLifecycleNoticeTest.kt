@@ -34,7 +34,14 @@ class HaLifecycleNoticeTest {
     }
 
     private fun snapshot(state: HaLifecycleState) =
-        HaLifecycle.Snapshot(state, HaLifecycleSource.SOCKET, false, 1L, 8_000L)
+        HaLifecycle.Snapshot(state, HaLifecycleSource.NATIVE, false, 1L, 8_000L)
+
+    @Test fun panelThatMissedStopShowsOfflineAfterConnectionLoss() {
+        val tracker = HaLifecycle()
+        tracker.onDisconnected(100L)
+        assertEquals(HaLifecycleState.CONNECTION_LOST,
+            haLifecycleNoticeState(tracker.snapshot(10_100L), null))
+    }
 
     @Test fun cachedDisconnectedDashboardShowsAnOutageUntilTheFrontendConnects() {
         admit()
@@ -42,6 +49,9 @@ class HaLifecycleNoticeTest {
             assertEquals("cached dashboard with lifecycle $state", HaLifecycleState.CONNECTION_LOST,
                 haLifecycleNoticeState(state?.let(::snapshot), RendererAdmissionRuntime.current()))
         }
+        assertNull("cached rendering must not bypass an observed loss grace",
+            haLifecycleNoticeState(snapshot(HaLifecycleState.CONNECTION_LOST).copy(offlineGraceRemainingMs = 1L),
+                RendererAdmissionRuntime.current()))
         RendererAdmissionRuntime.setFrontendConnected(owner, true)
         assertNull(haLifecycleNoticeState(snapshot(HaLifecycleState.NORMAL), RendererAdmissionRuntime.current()))
         RendererAdmissionRuntime.setFrontendConnected(owner, false)
@@ -56,10 +66,12 @@ class HaLifecycleNoticeTest {
         }
     }
 
-    @Test fun liveAdmissionAndAnUnobservedRendererDoNotInventAnOutage() {
+    @Test fun liveAdmissionShowsAnObservedLossOnlyAfterItsGrace() {
         assertNull(haLifecycleNoticeState(null, RendererAdmissionRuntime.current()))
         admit(cached = false)
-        assertNull(haLifecycleNoticeState(snapshot(HaLifecycleState.CONNECTION_LOST), RendererAdmissionRuntime.current()))
+        assertNull(haLifecycleNoticeState(snapshot(HaLifecycleState.CONNECTION_LOST).copy(offlineGraceRemainingMs = 1L), RendererAdmissionRuntime.current()))
+        assertEquals(HaLifecycleState.CONNECTION_LOST,
+            haLifecycleNoticeState(snapshot(HaLifecycleState.CONNECTION_LOST), RendererAdmissionRuntime.current()))
     }
 
     @Test fun replacingTheActivityRetiresTheOldCachedOutage() {

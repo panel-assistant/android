@@ -91,6 +91,14 @@ TARGET_NEWLINE_RUNS = {
     "profiles.modal.delete_detail": (1, 2),
 }
 UNCHANGED_TARGET_EXCEPTIONS = {
+    ("pl", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
+    ("es", "shell.runtime.ha_lifecycle.duration_hours"): "{value} h",
+    ("es", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
+    ("fr", "shell.runtime.ha_lifecycle.duration_hours"): "{value} h",
+    ("fr", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
+    ("it", "shell.runtime.ha_lifecycle.duration_hours"): "{value} h",
+    ("it", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
+    ("nl", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
     ("de", "configure.enum.voice_sensitivity.normal"): "Normal",
     ("de", "configure.group.dashboard"): "Dashboard",
     ("de", "configure.group.system"): "System",

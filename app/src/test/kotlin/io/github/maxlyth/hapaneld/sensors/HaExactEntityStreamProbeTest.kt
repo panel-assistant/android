@@ -261,7 +261,7 @@ class HaExactEntityStreamProbeTest {
         owner.bindNetworkPath(observer)
         // Binding with no demand reports STOPPED, and nothing is measured until a socket is LIVE.
         assertEquals(listOf(HaSocketState.STOPPED), observer.reports.socketTransitions())
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         runCurrent()
         assertEquals(HaSocketState.LIVE, observer.reports.of("socket").last())
         owner.replaceAmbientSource(ENTITY_A)
@@ -278,10 +278,10 @@ class HaExactEntityStreamProbeTest {
         assertEquals("dropping one of two demands must not stop the measurement", 1, stopsSoFar)
         assertEquals(HaSocketState.LIVE, observer.reports.of("socket").last())
         // Dropping the LAST demand stops it.
-        owner.replaceLifecycleWatch(false)
+        owner.replacePresenceRegistryWatch(false)
         runCurrent()
         assertEquals(HaSocketState.STOPPED, observer.reports.of("socket").last())
-        owner.replaceLifecycleWatch(true)
+        owner.replacePresenceRegistryWatch(true)
         runCurrent()
         assertEquals(HaSocketState.LIVE, observer.reports.of("socket").last())
         // Closing the owner ends it too.
@@ -372,22 +372,19 @@ class HaExactEntityStreamProbeTest {
         var subscribeCount = 0
 
         override suspend fun subscribe(baseUrl: String, accessToken: String, entityIds: Set<String>): HaExactEntityConnection =
-            subscribe(baseUrl, accessToken, entityIds, false, false)
+            subscribe(baseUrl, accessToken, entityIds, false)
 
         override suspend fun subscribe(
             baseUrl: String,
             accessToken: String,
             entityIds: Set<String>,
             watchRegistry: Boolean,
-            watchLifecycle: Boolean,
         ): HaExactEntityConnection {
             subscribeCount++
             if (rejectSubscriptions-- > 0) throw HaAuthenticationException("rejected")
             if (subscribeTimeouts-- > 0) awaitCancellation()
             subscribeErrors.removeFirstOrNull()?.let { throw it }
-            return connections.removeFirst().also { connection ->
-                if (watchLifecycle) connection.messages.trySend(HaExactSocketMessage.LifecycleEstablished)
-            }
+            return connections.removeFirst()
         }
 
         override suspend fun state(baseUrl: String, accessToken: String, entityId: String): JSONObject? =

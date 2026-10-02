@@ -17,27 +17,27 @@ class HaLifecycleSurfaceContractTest {
     @Test fun theHealthTokenIsAbsentWhenThePanelIsNotWatchingOrUnowned() {
         // The token must not degrade to a default value: an absent token means "nothing to say", which is
         // what keeps the /health line byte-identical for every existing consumer.
-        assertEquals("", haLifecycleHealthToken(false, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.SOCKET)))
+        assertEquals("", haLifecycleHealthToken(false, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.NATIVE)))
         assertEquals("", haLifecycleHealthToken(true, null))
     }
 
     @Test fun theTokenPairsTheStateWithTheSourceFromTheSameSnapshot() {
         assertEquals(
-            " ha=shutting_down ha_src=mqtt",
-            haLifecycleHealthToken(true, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.MQTT)),
+            " ha=shutting_down ha_src=native ha_reason=unknown ha_grace_ms=0",
+            haLifecycleHealthToken(true, snapshot(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.NATIVE)),
         )
         assertEquals(
-            " ha=back_online ha_src=socket",
-            haLifecycleHealthToken(true, snapshot(HaLifecycleState.BACK_ONLINE, HaLifecycleSource.SOCKET)),
+            " ha=back_online ha_src=native ha_reason=unknown ha_grace_ms=0",
+            haLifecycleHealthToken(true, snapshot(HaLifecycleState.BACK_ONLINE, HaLifecycleSource.NATIVE)),
         )
     }
 
     @Test fun statesNobodyObservedCarryNoSourceToken() {
         // The initial normal and a locally noticed connection loss are the panel's own inferences;
         // naming a source for them would claim an observation nobody made.
-        assertEquals(" ha=normal", haLifecycleHealthToken(true, snapshot(HaLifecycleState.NORMAL, null)))
+        assertEquals(" ha=normal ha_reason=unknown ha_grace_ms=0", haLifecycleHealthToken(true, snapshot(HaLifecycleState.NORMAL, null)))
         assertEquals(
-            " ha=connection_lost",
+            " ha=connection_lost ha_reason=unknown ha_grace_ms=0",
             haLifecycleHealthToken(true, snapshot(HaLifecycleState.CONNECTION_LOST, null)),
         )
     }
@@ -45,7 +45,7 @@ class HaLifecycleSurfaceContractTest {
     /** The refusal explains the idle row, so it rides the same observation instead of a second read. */
     @Test fun theRefusalRidesTheSameObservation() {
         assertEquals(
-            " ha=normal ha_refused=1",
+            " ha=normal ha_refused=1 ha_reason=unknown ha_grace_ms=0",
             haLifecycleHealthToken(true, snapshot(HaLifecycleState.NORMAL, null).copy(refused = true)),
         )
     }

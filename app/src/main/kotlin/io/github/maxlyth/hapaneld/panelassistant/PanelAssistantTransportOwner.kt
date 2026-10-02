@@ -177,6 +177,10 @@ internal class PanelAssistantTransportOwner(
     private val onAuthority: (String) -> Unit = {},
     /** Positive handshake evidence; a local MQTT fallback is not an accepted session. */
     private val onConnected: () -> Unit = {},
+    private val onLifecycleNotice: (io.github.maxlyth.hapaneld.sensors.HaLifecycleNotice) -> Unit = {},
+    private val onLifecycleAuthenticated: () -> Unit = {},
+    private val onLifecycleDisconnected: () -> Unit = {},
+    private val onLifecycleRetired: () -> Unit = {},
     /** The persisted authority, empty before any session. */
     private val authority: () -> String = { "" },
     /** The persisted MQTT discovery value, empty before any session. */
@@ -230,6 +234,7 @@ internal class PanelAssistantTransportOwner(
             job = null
             demand = next
             run = generation.incrementAndGet()
+            onLifecycleRetired()
             if (next != null) {
                 job = scope.launch(workerDispatcher) { sessions.withLock { runSource(run, next) } }
             }
@@ -294,11 +299,17 @@ internal class PanelAssistantTransportOwner(
             if (stopped) return
             stopped = true
             generation.incrementAndGet()
+            onLifecycleRetired()
             job?.cancel()
             job = null
             demand = null
         }
         status = PanelAssistantTransportStatus()
+    }
+
+    /** Serialize reporting with demand retirement, so an old session cannot overwrite its successor. */
+    private fun lifecycleCurrent(run: Long, report: () -> Unit) = synchronized(lock) {
+        if (generation.get() == run && !stopped) report()
     }
 
     private sealed interface Retry {
@@ -351,6 +362,8 @@ internal class PanelAssistantTransportOwner(
                                 if (generation.get() != run || !onConnection(session, outcome.session)) {
                                     throw PanelAssistantProtocolException("Home Assistant connection owner changed")
                                 }
+                                outcome.session.lifecycle?.let { notice -> lifecycleCurrent(run) { onLifecycleNotice(notice) } }
+                                lifecycleCurrent(run, onLifecycleAuthenticated)
                                 onConnected()
                                 attempt = 0
                                 authRefreshed = false
@@ -399,7 +412,7 @@ internal class PanelAssistantTransportOwner(
                                     }
                                     reporting?.open(described)
                                     speaking?.open(opened, outcome.session.token, session.baseUrl)
-                                    holdSession(opened, outcome.session, reporting, commanding, withdrawAfterSync, speaking)
+                                    holdSession(run, opened, outcome.session, reporting, commanding, withdrawAfterSync, speaking)
                                 } finally {
                                     speaking?.close()
                                     // The key belongs to this session: once it ends no proof verifies.
@@ -420,6 +433,7 @@ internal class PanelAssistantTransportOwner(
                                 }
                             }
                             is PanelAssistantHelloOutcome.Refused -> {
+                                lifecycleCurrent(run, onLifecycleAuthenticated)
                                 // The entry was removed, so nothing holds this panel's entities: hand them
                                 // back to MQTT. Migration scaffolding; it is deleted with MQTT.
                                 if (outcome.code == PanelAssistantTransportProtocol.CODE_ENTRY_REMOVED && releaseToMqtt()) {
@@ -435,6 +449,7 @@ internal class PanelAssistantTransportOwner(
                 // just closed. Only this coroutine's own cancellation ends the owner; anything else is
                 // a lost socket and retries like one.
                 currentCoroutineContext().ensureActive()
+                lifecycleCurrent(run, onLifecycleDisconnected)
                 attemptedRoute?.let(onTransportFailure)
                 Retry.Fast(REFUSAL_TRANSPORT).also {
                     log("native transport attempt failed: ${cancelled.javaClass.simpleName}")
@@ -448,6 +463,7 @@ internal class PanelAssistantTransportOwner(
                     Retry.Fast(REFUSAL_AUTH_INVALID)
                 }
             } catch (failure: Exception) {
+                lifecycleCurrent(run, onLifecycleDisconnected)
                 attemptedRoute?.let(onTransportFailure)
                 // Network, TLS, frame bound, closed socket, malformed reply or liveness: never parks.
                 Retry.Fast(REFUSAL_TRANSPORT).also {
@@ -534,6 +550,7 @@ internal class PanelAssistantTransportOwner(
      * observation, a result or a deadline may have made one due.
      */
     private suspend fun holdSession(
+        run: Long,
         connection: PanelAssistantTransportConnection,
         session: PanelAssistantSession,
         reporting: PanelAssistantShadowReporter?,
@@ -553,13 +570,14 @@ internal class PanelAssistantTransportOwner(
             }
         }
         try {
-            sessionLoop(connection, session, reporting, commanding, frames, withdrawAfterSync, speaking)
+            sessionLoop(run, connection, session, reporting, commanding, frames, withdrawAfterSync, speaking)
         } finally {
             reader.cancel()
         }
     }
 
     private suspend fun sessionLoop(
+        run: Long,
         connection: PanelAssistantTransportConnection,
         session: PanelAssistantSession,
         reporting: PanelAssistantShadowReporter?,
@@ -638,6 +656,7 @@ internal class PanelAssistantTransportOwner(
             val frame = parse(text)
             if (speaking != null && speaking.onFrame(frame, HELLO_ID)) continue
             when (val event = PanelAssistantTransportProtocol.sessionEvent(frame, HELLO_ID)) {
+                is PanelAssistantSessionEvent.Lifecycle -> lifecycleCurrent(run) { onLifecycleNotice(event.notice) }
                 is PanelAssistantSessionEvent.Closed -> return event.reason
                 is PanelAssistantSessionEvent.Command ->
                     commanding?.onCommand(event) ?: log("native transport ignored a command: commands not offered")

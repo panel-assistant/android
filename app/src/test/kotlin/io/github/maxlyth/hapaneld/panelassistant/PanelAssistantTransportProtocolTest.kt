@@ -11,6 +11,42 @@ import org.junit.Test
 
 class PanelAssistantTransportProtocolTest {
 
+    @Test fun `optional hello and subscription lifecycle notices share strict additive validation`() {
+        fun notice(phase: String = "starting", reason: String = "core_update") = JSONObject()
+            .put("phase", phase).put("reason", reason).put("elapsed_ms", 1200L).put("expected_ms", 45000L)
+        fun event(body: JSONObject) = JSONObject().put("type", "event").put("id", 1)
+            .put("event", body.put("kind", "lifecycle"))
+        fun session(body: JSONObject?) = (PanelAssistantTransportProtocol.helloOutcome(
+            accepted().apply { if (body != null) getJSONObject("result").put("lifecycle", body) }, 1L,
+        ) as PanelAssistantHelloOutcome.Accepted).session
+        assertNull(session(null).lifecycle)
+        for (phase in listOf("shutting_down", "starting", "ready")) {
+            for (reason in listOf("restart", "host_reboot", "core_update", "unknown")) {
+                val expected = session(notice(phase, reason)).lifecycle
+                assertTrue(expected != null)
+                assertEquals(1200L, expected?.elapsedMs)
+                assertEquals(45000L, expected?.expectedMs)
+                val parsed = PanelAssistantTransportProtocol.sessionEvent(event(notice(phase, reason)), 1L)
+                    as PanelAssistantSessionEvent.Lifecycle
+                assertEquals(expected, parsed.notice)
+            }
+        }
+        val nulls = notice().put("elapsed_ms", JSONObject.NULL).put("expected_ms", JSONObject.NULL)
+        assertNull(session(nulls).lifecycle?.elapsedMs)
+        assertTrue(session(nulls).lifecycle != null)
+        val invalid = listOf(
+            notice("future"), notice(reason = "future"), notice().put("elapsed_ms", -1),
+            notice().put("expected_ms", 0), notice().put("elapsed_ms", 1.5),
+            notice().put("expected_ms", "45000"), notice().put("elapsed_ms", true),
+            notice().apply { remove("expected_ms") },
+        )
+        for (body in invalid) {
+            assertNull(session(body).lifecycle)
+            assertTrue(PanelAssistantTransportProtocol.sessionEvent(event(body), 1L) is PanelAssistantSessionEvent.Ignored)
+        }
+        assertNull(PanelAssistantTransportProtocol.sessionEvent(event(notice()).put("id", 2), 1L))
+    }
+
     @Test fun `hello requires schema 3 so old integrations cannot bind an installation identity`() {
         val bare = JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY))
         assertEquals(0, bare.getJSONArray("capabilities").length())

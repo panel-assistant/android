@@ -195,11 +195,8 @@
 
     <string name="ha_shutting_down">Home Assistant is shutting down</string>
     <string name="ha_offline">Home Assistant is offline</string>
-    <string name="ha_disconnected">Disconnected from Home Assistant</string>
     <string name="ha_starting">Home Assistant is starting</string>
     <string name="ha_back_online">Home Assistant is back online</string>
-    <string name="controls_unavailable_reconnect">Controls unavailable. Reconnecting automatically.</string>
-    <string name="controls_return_shortly">Controls will return shortly.</string>
     <string name="controls_returned">Controls have returned.</string>
     <string name="ha_network_unreliable">HA network unreliable</string>
     <string name="home_assistant" translatable="false">Home Assistant</string>

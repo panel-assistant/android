@@ -11293,10 +11293,60 @@
    "sourceHash": "938f565142c69816f7acb66d1ac9276462f027ce189f7cc78cb626fd6b504c89",
    "state": "machine-cross-checked"
   },
+  "shell.runtime.ha_lifecycle.duration_hours": {
+    "text": "{value} год",
+    "sourceHash": "e169957312ecd6bcde53bcb8ce799073ab75128e063f0b9c9f072fe34cad0789",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.duration_minutes": {
+    "text": "{value} хв",
+    "sourceHash": "f18fde48b294cb5f9c61142eb0ba22eaf1502b9512590622886217ecaddc83d0",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.duration_seconds": {
+    "text": "{value} с",
+    "sourceHash": "5f7c1b7d1a7a9d1a9093c810748b7ada28cbc551e187ccb0fa377e8bbf1772d8",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.expected_in": {
+    "text": "Очікуване відновлення приблизно через {duration}",
+    "sourceHash": "7922065d280489080fbc5ae56506b33f86767d4fbb9556c8450490df6a35c1a4",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.not_measured": {
+    "text": "Час до відновлення ще не виміряно",
+    "sourceHash": "1f976c7946f8069ee2b65c48c51fd5e966a05282e29d6e9c42838ea5279ffbcc",
+    "state": "machine-draft"
+  },
   "shell.runtime.ha_lifecycle.offline": {
    "text": "Home Assistant вийшов з мережі — елементи керування можуть бути тимчасово недоступні.",
    "sourceHash": "bc0771747fb73bf88b5191f576ebbccc4ec6687e7de8f6437a0249f368117a76",
    "state": "machine-cross-checked"
+  },
+  "shell.runtime.ha_lifecycle.overdue": {
+    "text": "На {duration} довше за очікуваний час",
+    "sourceHash": "0cc29cfe82afaf4b37c63bbfcdf9cce00fc3abb62437dd2d77108b91982c857f",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.reason_core_update": {
+    "text": "Оновлення ядра Home Assistant",
+    "sourceHash": "bbb36c7b7262d875fa5be26ea1ad5969fa5e6d2a5caecc1f09b133971b08c217",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.reason_host_reboot": {
+    "text": "Перезапуск хоста",
+    "sourceHash": "1c4d13acf0b2d4747fc0f23715c75f182262e5f25b46529c60c77ea4406333c7",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.reason_restart": {
+    "text": "Перезапуск Home Assistant",
+    "sourceHash": "0613c9a7fd9cd5bfa91d73c76c2bb4b2d3ee136657a8f1ef5294bf8f99a39c0f",
+    "state": "machine-draft"
+  },
+  "shell.runtime.ha_lifecycle.reason_unknown": {
+    "text": "Причина невідома",
+    "sourceHash": "cf12e4b6973d5aa2768a203ba1cacb82fe4d962d2c56860db3d4674159ea93fa",
+    "state": "machine-draft"
   },
   "shell.runtime.ha_lifecycle.shutting_down": {
    "text": "Home Assistant вимикається — елементи керування можуть бути тимчасово недоступні.",
@@ -12337,6 +12387,11 @@
    "text": "Розгорнути рядок",
    "sourceHash": "5356a627c136dd38f53a6978df90476f829513bd460570d7e1bddbeda7b350ad",
    "state": "machine-cross-checked"
+  },
+  "shell.runtime.ha_lifecycle.taking_longer": {
+    "text": "Триває довше, ніж зазвичай",
+    "sourceHash": "1a5787cd1c50370a5f25674b47d5ccbedd5182efd90dd526dae38c7f732463df",
+    "state": "machine-draft"
   },
   "shell.runtime.ha_network.banner_latency_severe": {
    "text": "Мережевий шлях до Home Assistant працює дуже повільно. Кожна дія чекає на цей шлях. Затримку виміряно на рівні мережі, тож повільно працює не панель і не Home Assistant — перевірте Wi-Fi або зв’язок між ними.",

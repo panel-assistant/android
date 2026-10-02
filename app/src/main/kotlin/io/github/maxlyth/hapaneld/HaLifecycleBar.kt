@@ -13,6 +13,8 @@ import io.github.maxlyth.hapaneld.sensors.HaLifecycle
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleSource
 import io.github.maxlyth.hapaneld.sensors.HaLifecycleState
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleReason
+import io.github.maxlyth.hapaneld.sensors.haLifecycleDuration
 
 /** Select the notice shown over the dashboard from the current owners' observations. */
 internal fun haLifecycleNoticeState(
@@ -20,8 +22,10 @@ internal fun haLifecycleNoticeState(
     renderer: RendererAdmissionRuntime.Live?,
 ): HaLifecycleState? = when {
     snap?.state == HaLifecycleState.SHUTTING_DOWN || snap?.state == HaLifecycleState.STARTING -> snap.state
+    snap?.state == HaLifecycleState.CONNECTION_LOST && snap.offlineGraceRemainingMs > 0L -> null
     renderer?.record?.state == RendererAdmissionState.ADMITTED &&
         renderer.record.admittedOnCachedVersion && !renderer.frontendConnected -> HaLifecycleState.CONNECTION_LOST
+    snap?.state == HaLifecycleState.CONNECTION_LOST && snap.offlineGraceRemainingMs <= 0L -> snap.state
     snap?.state == HaLifecycleState.BACK_ONLINE -> snap.state
     else -> null
 }
@@ -86,6 +90,7 @@ internal class HaLifecycleBar private constructor(
     private val view: LinearLayout,
     private val card: android.graphics.drawable.GradientDrawable,
     private val dark: Boolean,
+    private val onVisibilityChanged: (Boolean) -> Unit,
 ) {
     private val label: TextView = view.getChildAt(1) as TextView
     private val detail: TextView = view.getChildAt(2) as TextView
@@ -98,12 +103,15 @@ internal class HaLifecycleBar private constructor(
      * hides or re-arms for exactly what is left, and the canonical clock alone decides. It is always
      * cancelled before rearming, so a rapid second outage cannot be hidden by a previous recovery's hide.
      */
-    private val hide = object : Runnable {
-        override fun run() {
-            val remaining = HaLifecycleRuntime.snapshot()?.backOnlineRemainingMs ?: 0L
-            if (remaining > 0L) view.postDelayed(this, remaining) else view.visibility = View.GONE
+    private var visible = false
+    private fun visibility(next: Boolean) {
+        view.visibility = if (next) View.VISIBLE else View.GONE
+        if (visible != next) {
+            visible = next
+            onVisibilityChanged(next)
         }
     }
+    private val hide = Runnable { update(HaLifecycleRuntime.snapshot(), RendererAdmissionRuntime.current()) }
 
     /** Render current lifecycle intent and this dashboard's connection evidence. */
     fun update(snap: HaLifecycle.Snapshot?, renderer: RendererAdmissionRuntime.Live?) {
@@ -111,43 +119,63 @@ internal class HaLifecycleBar private constructor(
         val state = haLifecycleNoticeState(snap, renderer)
         val text = state?.let {
             view.context.getString(when (it) {
-                HaLifecycleState.SHUTTING_DOWN -> if (snap?.source == HaLifecycleSource.SOCKET) R.string.ha_shutting_down else R.string.ha_offline
+                HaLifecycleState.SHUTTING_DOWN -> if (snap?.source == HaLifecycleSource.NATIVE) R.string.ha_shutting_down else R.string.ha_offline
                 HaLifecycleState.STARTING -> R.string.ha_starting
                 HaLifecycleState.BACK_ONLINE -> R.string.ha_back_online
-                HaLifecycleState.CONNECTION_LOST -> R.string.ha_disconnected
+                HaLifecycleState.CONNECTION_LOST -> R.string.ha_offline
                 HaLifecycleState.NORMAL -> return@let null
             })
         }
         if (state == null || text == null) {
-            view.visibility = View.GONE
+            visibility(false)
+            if ((snap?.offlineGraceRemainingMs ?: 0L) > 0L) view.postDelayed(hide, snap!!.offlineGraceRemainingMs)
             return
         }
         val colours = palette(state, dark)
         card.setColor(colours.surface)
         card.setStroke((BORDER_DP * view.resources.displayMetrics.density).toInt(), colours.border)
         label.setTextColor(colours.label)
-        label.text = text
-        val supporting = when (state) {
-            HaLifecycleState.SHUTTING_DOWN, HaLifecycleState.CONNECTION_LOST -> view.context.getString(R.string.controls_unavailable_reconnect)
-            HaLifecycleState.STARTING -> view.context.getString(R.string.controls_return_shortly)
-            HaLifecycleState.BACK_ONLINE -> view.context.getString(R.string.controls_returned)
-            HaLifecycleState.NORMAL -> null
+        val overdue = snap?.expectedMs?.let { (snap.elapsedMs ?: 0L) > it } == true &&
+            state != HaLifecycleState.BACK_ONLINE
+        label.text = if (overdue) view.context.getString(R.string.ha_taking_longer) else text
+        val supporting = if (state == HaLifecycleState.BACK_ONLINE) view.context.getString(R.string.controls_returned)
+        else {
+            val reason = view.context.getString(when (snap?.reason ?: HaLifecycleReason.UNKNOWN) {
+                HaLifecycleReason.RESTART -> R.string.ha_reason_restart
+                HaLifecycleReason.HOST_REBOOT -> R.string.ha_reason_host_reboot
+                HaLifecycleReason.CORE_UPDATE -> R.string.ha_reason_core_update
+                HaLifecycleReason.UNKNOWN -> R.string.ha_reason_unknown
+            })
+            val expected = snap?.expectedMs
+            val elapsed = snap?.elapsedMs
+            val forecast = if (expected == null || elapsed == null) view.context.getString(R.string.ha_not_measured)
+            else {
+                val duration = haLifecycleDuration(kotlin.math.abs(expected - elapsed))
+                val quantified = view.context.getString(when (duration.unit) {
+                    "hours" -> R.string.ha_duration_hours
+                    "minutes" -> R.string.ha_duration_minutes
+                    else -> R.string.ha_duration_seconds
+                }, duration.value)
+                view.context.getString(if (overdue) R.string.ha_overdue else R.string.ha_expected_in, quantified)
+            }
+            "$reason\n$forecast"
         }
         detail.setTextColor(colours.label)
         detail.text = supporting.orEmpty()
         detail.visibility = if (supporting == null) View.GONE else View.VISIBLE
-        view.visibility = View.VISIBLE
+        visibility(true)
         if (state == HaLifecycleState.BACK_ONLINE) {
             // The REMAINING canonical lifetime from the SAME snapshot as the wording — a renderer
             // recreated near expiry finishes the original notice rather than starting a fresh one.
             val remaining = snap?.backOnlineRemainingMs ?: 0L
-            if (remaining <= 0L) view.visibility = View.GONE
+            if (remaining <= 0L) visibility(false)
             else view.postDelayed(hide, remaining)
-        }
+        } else view.postDelayed(hide, 1_000L)
     }
 
     fun detach() {
         view.removeCallbacks(hide)
+        visibility(false)
         (view.parent as? ViewGroup)?.removeView(view)
     }
 
@@ -238,7 +266,7 @@ internal class HaLifecycleBar private constructor(
          * Attach a hidden bar to [root]. The icon is best-effort: when it is unavailable the bar is
          * text-only and still names Home Assistant, so the message never depends on artwork resolving.
          */
-        fun attach(context: Context, root: ViewGroup): HaLifecycleBar {
+        fun attach(context: Context, root: ViewGroup, onVisibilityChanged: (Boolean) -> Unit = {}): HaLifecycleBar {
             val metrics = context.resources.displayMetrics
             val density = metrics.density
             val pad = (PAD_DP * density).toInt()
@@ -309,7 +337,7 @@ internal class HaLifecycleBar private constructor(
                     Gravity.TOP,
                 ).apply { setMargins(margin, margin, margin, margin) },
             )
-            return HaLifecycleBar(row, card, dark)
+            return HaLifecycleBar(row, card, dark, onVisibilityChanged)
         }
     }
 }

@@ -48,8 +48,6 @@ import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantTransportProtocol
 import io.github.maxlyth.hapaneld.security.ApprovalBroker
 import io.github.maxlyth.hapaneld.security.LocalApprovalBroker
 import io.github.maxlyth.hapaneld.security.SensitiveOperation
-import io.github.maxlyth.hapaneld.sensors.HaLifecycleEvent
-import io.github.maxlyth.hapaneld.sensors.HaLifecycleRuntime
 import io.github.maxlyth.hapaneld.sensors.ProximityReportGate
 import io.github.maxlyth.hapaneld.storage.StorageHealthRuntime
 import io.github.maxlyth.hapaneld.storage.StorageHealthSeverity
@@ -1277,12 +1275,6 @@ internal class MqttBridge(
     // transient false is never stated to Home Assistant as a panel without the sensor.
     private val learnedProximityState: () -> Boolean? = { null },
     private val onAutoSleepConfigChanged: (Boolean) -> Unit = {},
-    // This bridge generation's right to report lifecycle observations, issued at construction by the
-    // service. A bridge can outlive both the service that configured it AND its own replacement on
-    // reconfigure, so every observation carries the lease and the runtime drops it once a newer bridge
-    // holds one — otherwise a queued callback from a superseded broker session mutates whichever
-    // coordinator happens to be installed when it finally runs.
-    internal val haLifecycleLease: HaLifecycleRuntime.MqttLease? = null,
     private val transport: MqttTransport = HiveMqTransport(),
 ) : LiveSettingHandlers {
     private enum class CommandKind { LATEST, ACTION }
@@ -2303,11 +2295,6 @@ internal class MqttBridge(
                 activeConnection = null
                 connectionGeneration.clear()
                 announcementReadiness.clear()
-                // This point is reached only for a disconnect that OWNS bridge state — sequence-current
-                // and not a superseded session — so a stale callback cannot retire a live claim. An
-                // MQTT-sourced outage must not outlive the channel it was heard on: the birth that
-                // retracts it is not retained by default, so one missed during the gap is missed forever.
-                haLifecycleLease?.let(HaLifecycleRuntime::observeMqttChannelLost)
                 if (event.state == "auth-failed" && runtimeMqttUser.isEmpty() && configuredBroker.isEmpty()) {
                     // A credential-LESS discovery probe (fresh panel, broker unconfigured, anonymous
                     // connect to the mDNS-found broker) getting NOT_AUTHORIZED is the broker requiring
@@ -2352,15 +2339,8 @@ internal class MqttBridge(
             // Re-announce discovery when HA (re)starts — its birth message on homeassistant/status. With
             // non-retained discovery this is what rebuilds our entities after an HA restart. The retained
             // online delivered while this connect announcement is still running is suppressed below.
-            subscribe("homeassistant/status") { _, payload, retained ->
+            subscribe("homeassistant/status") { _, payload, _ ->
                 if (mqttIsHaOnline(payload)) requestReAnnounce()
-                // Second lifecycle source. Home Assistant deliberately disconnects UNGRACEFULLY on
-                // shutdown so the broker publishes this will, which is why it works at all — and it needs
-                // no WebSocket subscription, so it survives the non-administrator accounts panels use.
-                haLifecycleLease?.let { lease ->
-                    haLifecycleFromMqttStatus(payload, retained)
-                        ?.let { HaLifecycleRuntime.observeMqtt(lease, it) }
-                }
             }
             mqttStalePanelCleanup(stalePanelId, panel).forEach {
                 publish(it.topic, it.payload, retain = it.retain)
@@ -5012,25 +4992,6 @@ internal fun panelAssistantCommandResult(failure: Exception?): PanelAssistantCom
         PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_HARDWARE_UNAVAILABLE)
     is IllegalArgumentException -> PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE)
     else -> PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED)
-}
-
-/**
- * Map Home Assistant's birth/will payload to a lifecycle observation, or null for anything else.
- *
- * Retained messages are ignored on purpose. A retained birth/will is HISTORY replayed to every new
- * subscriber, so honouring it would announce "back online" on each broker reconnect — the same defect
- * class as the retained screen-off command that once stranded a panel. Home Assistant's own default is
- * `retain: False`, but the broker or a user may retain it, and the reconnect path must not depend on that.
- *
- * Pure — unit-tested in `HaLifecycleMqttSourceTest`.
- */
-internal fun haLifecycleFromMqttStatus(payload: ByteArray, retained: Boolean): HaLifecycleEvent? {
-    if (retained) return null
-    return when (String(payload, Charsets.UTF_8).trim().lowercase(java.util.Locale.ROOT)) {
-        "online" -> HaLifecycleEvent.STARTED
-        "offline" -> HaLifecycleEvent.STOP
-        else -> null
-    }
 }
 
 internal fun mqttIsHaOnline(payload: ByteArray): Boolean =

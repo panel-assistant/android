@@ -18,7 +18,10 @@ internal fun haLifecycleHealthToken(watching: Boolean, snap: HaLifecycle.Snapsho
     // now refreshed from this line; deriving it from a second read would reintroduce the divergence
     // between surfaces that the one-shot banner had.
     val refused = if (snap.refused) " ha_refused=1" else ""
-    return " ha=${snap.state.wireValue}$src$refused"
+    val elapsed = snap.elapsedMs?.let { " ha_elapsed_ms=$it" }.orEmpty()
+    val expected = snap.expectedMs?.let { " ha_expected_ms=$it" }.orEmpty()
+    val grace = " ha_grace_ms=${snap.offlineGraceRemainingMs}"
+    return " ha=${snap.state.wireValue}$src$refused ha_reason=${snap.reason.wireValue}$elapsed$expected$grace"
 }
 
 /** Add Panel Assistant's stable discovery pseudonym without exposing the Android ID itself. */
