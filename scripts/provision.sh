@@ -2996,6 +2996,32 @@ root_helper_unchanged_advice() {
   esac
 }
 
+# One definition of the boot-registration write probe, shared by the /system and /vendor layout
+# probes. It prints a device-shell fragment that writes real bytes to the probe path and sets the
+# named variable to 1 when they arrived, to `full` when the file was created but stores nothing (a
+# full partition: a read-only one refuses the create itself), and to 0 when the write was refused.
+# The caller removes the probe file; a zero-byte create proves nothing about whether a file fits.
+partition_write_probe() {
+  local var="$1" path="$2" content="$3"
+  printf '%s=0\nif printf %s > %s 2>/dev/null && [ -s %s ]; then\n  %s=1\nelif [ -e %s ]; then\n  %s=full\nfi\n' \
+    "$var" "$content" "$path" "$path" "$var" "$path" "$var"
+}
+
+# Sonoff NSPanel Pro firmware lets the app run su itself (su_form toolbox, app_can_su true in
+# app/src/main/assets/device-profiles/nspanel-pro.yaml), so the root helper is optional there and a
+# panel with no room for its boot registration can still be provisioned. These are that profile's
+# match facts; scripts/tests/provision_test.sh pins them against the YAML. Every other profile keeps
+# requiring the helper. Each probe degrades to "not this panel", which keeps the existing refusal.
+panel_runs_without_root_helper() {
+  local version model device
+  version="$(adb -s "$TARGET" shell getprop ro.product.version 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true)"
+  model="$(adb -s "$TARGET" shell getprop ro.product.model 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true)"
+  device="$(adb -s "$TARGET" shell getprop ro.product.device 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]' || true)"
+  case "$version" in nspanel*|s6_android_*) return 0 ;; esac
+  case "$model $device" in *px30*|*rk3326*) return 0 ;; esac
+  return 1
+}
+
 run_root_helper_transaction() {
   local action="$1" transaction_id="${2:-$ROOT_HELPER_TRANSACTION_ID}" target_apk="${3:-$TARGET_APK_SHA256}"
   local target_build="${4:-$ROOT_HELPER_TARGET_BUILD_ID}" target_helper="${5:-$ROOT_HELPER_TARGET_SHA256}"
@@ -3233,7 +3259,7 @@ install_root_helper() {
   local legacy_rc_file="" legacy_rc_supervised_file="" legacy_hybrid_rc_file="" legacy_hybrid_rc_supervised_file="" legacy_service_file="" legacy_service_supervised_file=""
   local bin_sha256 rc_sha256 hybrid_rc_sha256 service_sha256 transaction_sha256 transaction_ready="" expected_build_id="" staged_build_id="" out out2 root_ready=0 install_kind=""
   local legacy_rc_sha256 legacy_rc_supervised_sha256 legacy_hybrid_rc_sha256 legacy_hybrid_rc_supervised_sha256 legacy_service_sha256 legacy_service_supervised_sha256
-  local system_avail_kb="" system_need_kb="" vendor_probe="" vendor_status=0 layout_status=0 layout_line vendor_line
+  local system_avail_kb="" system_need_kb="" vendor_probe="" vendor_refusal="" vendor_status=0 layout_status=0 layout_line vendor_line
   local -a layout_excerpt=() vendor_excerpt=()
   local access_timeout="${PRIVILEGE_INSPECTION_TIMEOUT_SECONDS:-45}" access_status
 
@@ -5994,12 +6020,7 @@ EOF
     rm -f "$system_init_probe" 2>/dev/null
     system_init_writable=0
     if touch /system/.rw_probe 2>/dev/null && rm /system/.rw_probe 2>/dev/null; then
-      if printf hapaneld-system-init-write-probe > "$system_init_probe" 2>/dev/null &&
-         [ -s "$system_init_probe" ]; then
-        system_init_writable=1
-      elif [ -e "$system_init_probe" ]; then
-        system_init_writable=full # created but empty: full (read-only refuses the create)
-      fi
+'"$(partition_write_probe system_init_writable '"$system_init_probe"' hapaneld-system-init-write-probe)"'
     fi
     rm -f "$system_init_probe" 2>/dev/null
     if [ "$system_init_writable" = 1 ]; then
@@ -6110,17 +6131,40 @@ EOF
       mount -o rw,remount /vendor 2>/dev/null
       probe=/vendor/etc/init/.hapaneld-rw-probe-'"$ROOT_HELPER_TRANSACTION_ID"'
       rm -f $probe
-      if printf hapaneld-vendor-write-probe > $probe 2>/dev/null && [ -s $probe ] && rm $probe 2>/dev/null; then
+'"$(partition_write_probe vendor_init_writable '$probe' hapaneld-vendor-write-probe)"'
+      if [ "$vendor_init_writable" = 1 ] && rm $probe 2>/dev/null; then
         echo VENDOR_INIT_RW
       else
         rm -f $probe 2>/dev/null
-        echo VENDOR_INIT_RO
+        if [ "$vendor_init_writable" = full ]; then echo VENDOR_INIT_FULL; else echo VENDOR_INIT_RO; fi
       fi
     ' 2>&1)" || vendor_status=$?
-    # Only an explicit VENDOR_INIT_RO is the partition refusing the write; silence is an unanswered probe.
+    # Only an explicit VENDOR_INIT_FULL or VENDOR_INIT_RO is the partition refusing the write; silence
+    # is an unanswered probe.
     if ! printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_RW; then
       [ -z "$helper_dir" ] || rm -rf "$helper_dir"
       rm -f "$rc_file" "$hybrid_rc_file" "$service_file" "$transaction_file"
+      vendor_refusal=""
+      if printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_FULL; then
+        vendor_refusal="has no free space"
+      elif printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_RO; then
+        vendor_refusal="is read-only"
+      fi
+      if [ -n "$vendor_refusal" ] && panel_runs_without_root_helper; then
+        HELPER_REQUIRED=0
+        echo "   ${YEL}⚠ root helper not installed: this panel has no room for its boot registration${X}"
+        if [ -n "$system_avail_kb" ]; then
+          echo "     ${D}/system has ${system_avail_kb}KB free (${system_need_kb}KB needed) and /vendor/etc/init $vendor_refusal${X}"
+        else
+          echo "     ${D}/vendor/etc/init $vendor_refusal${X}"
+        fi
+        echo "     ${D}continuing without it: on this Sonoff NSPanel Pro the app runs root commands itself, so ha-paneld works without the helper${X}"
+        return 0
+      fi
+      if printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_FULL; then
+        fail "/vendor/etc/init has no free space for the hybrid root helper" \
+          "The helper and APK were left unchanged. Free space on the vendor partition, then re-run."
+      fi
       if printf '%s\n' "$vendor_probe" | grep -qx VENDOR_INIT_RO; then
         fail "/vendor/etc/init is not writable for the hybrid root helper" \
           "The helper and APK were left unchanged. Restore vendor-partition writability, then re-run."
