@@ -12483,9 +12483,59 @@
       "sourceHash": "938f565142c69816f7acb66d1ac9276462f027ce189f7cc78cb626fd6b504c89",
       "state": "machine-cross-checked"
     },
+    "shell.runtime.ha_lifecycle.duration_hours": {
+      "text": "{value} h",
+      "sourceHash": "e169957312ecd6bcde53bcb8ce799073ab75128e063f0b9c9f072fe34cad0789",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.duration_minutes": {
+      "text": "{value} min",
+      "sourceHash": "f18fde48b294cb5f9c61142eb0ba22eaf1502b9512590622886217ecaddc83d0",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.duration_seconds": {
+      "text": "{value} s",
+      "sourceHash": "5f7c1b7d1a7a9d1a9093c810748b7ada28cbc551e187ccb0fa377e8bbf1772d8",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.expected_in": {
+      "text": "Regreso previsto en unos {duration}",
+      "sourceHash": "7922065d280489080fbc5ae56506b33f86767d4fbb9556c8450490df6a35c1a4",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.not_measured": {
+      "text": "Aún no se ha medido el tiempo de regreso",
+      "sourceHash": "1f976c7946f8069ee2b65c48c51fd5e966a05282e29d6e9c42838ea5279ffbcc",
+      "state": "machine-cross-checked"
+    },
     "shell.runtime.ha_lifecycle.offline": {
       "text": "Home Assistant se ha desconectado — puede que los controles no estén disponibles temporalmente.",
       "sourceHash": "bc0771747fb73bf88b5191f576ebbccc4ec6687e7de8f6437a0249f368117a76",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.overdue": {
+      "text": "{duration} por encima de la estimación",
+      "sourceHash": "0cc29cfe82afaf4b37c63bbfcdf9cce00fc3abb62437dd2d77108b91982c857f",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.reason_core_update": {
+      "text": "Actualización de Home Assistant Core",
+      "sourceHash": "bbb36c7b7262d875fa5be26ea1ad5969fa5e6d2a5caecc1f09b133971b08c217",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.reason_host_reboot": {
+      "text": "Reinicio del host",
+      "sourceHash": "1c4d13acf0b2d4747fc0f23715c75f182262e5f25b46529c60c77ea4406333c7",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.reason_restart": {
+      "text": "Reinicio de Home Assistant",
+      "sourceHash": "0613c9a7fd9cd5bfa91d73c76c2bb4b2d3ee136657a8f1ef5294bf8f99a39c0f",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.reason_unknown": {
+      "text": "Motivo desconocido",
+      "sourceHash": "cf12e4b6973d5aa2768a203ba1cacb82fe4d962d2c56860db3d4674159ea93fa",
       "state": "machine-cross-checked"
     },
     "shell.runtime.ha_lifecycle.shutting_down": {
@@ -12496,6 +12546,11 @@
     "shell.runtime.ha_lifecycle.starting": {
       "text": "Home Assistant se está iniciando — los controles volverán a estar disponibles en breve.",
       "sourceHash": "5ba1d019d11a080f325c121c03788d2dd20c17c6e87dae9d6261af2a07233ce3",
+      "state": "machine-cross-checked"
+    },
+    "shell.runtime.ha_lifecycle.taking_longer": {
+      "text": "Está tardando más de lo habitual",
+      "sourceHash": "1a5787cd1c50370a5f25674b47d5ccbedd5182efd90dd526dae38c7f732463df",
       "state": "machine-cross-checked"
     },
     "shell.runtime.ha_network.banner_latency_severe": {

@@ -17,6 +17,34 @@ import org.json.JSONObject
  * same computation the call sites did inline).
  */
 internal object InjectionScript {
+    /** Replace only HA's competing connection/startup toasts while the native outage card is visible. */
+    fun lifecycleNoticeJs(visible: Boolean): String = """
+        (function(){
+            $TOP_FRAME_GUARD
+            if(window.haPaneldLifecycleNotice){window.haPaneldLifecycleNotice($visible);return;}
+            var active=$visible;
+            window.haPaneldLifecycleNotice=function(value){
+                active=value===true;
+                if(!active)return;
+                var root=document.querySelector('home-assistant');
+                if(!root)return;
+                ['connection-lost','server-startup'].forEach(function(id){
+                    root.dispatchEvent(new CustomEvent('hass-notification',{
+                        detail:{id:id,message:'',duration:0},bubbles:true,composed:true
+                    }));
+                });
+            };
+            window.addEventListener('hass-notification',function(event){
+                var detail=event.detail;
+                if(active&&detail&&detail.duration!==0&&
+                    (detail.id==='connection-lost'||detail.id==='server-startup')){
+                    event.stopImmediatePropagation();
+                }
+            },true);
+            window.haPaneldLifecycleNotice(active);
+        })();
+    """.trimIndent()
+
     /** Guard dropped at the top of every document-start snippet so it runs only in the top frame
      *  (never inside an embedded iframe). */
     const val TOP_FRAME_GUARD = "if(window.top&&window.top!==window)return;"

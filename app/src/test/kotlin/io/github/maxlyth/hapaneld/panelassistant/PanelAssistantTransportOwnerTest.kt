@@ -33,6 +33,66 @@ import java.util.concurrent.atomic.AtomicInteger
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PanelAssistantTransportOwnerTest {
 
+    @Test fun `native notices replay hello then live phases and fence retired generation teardown`() = runTest {
+        fun notice(phase: String) = JSONObject().put("phase", phase).put("reason", "restart")
+            .put("elapsed_ms", 0).put("expected_ms", JSONObject.NULL)
+        val first = FakeConnection(Ha.accepting(lifecycle = notice("starting")))
+        val second = FakeConnection(Ha.accepting(lifecycle = notice("ready")))
+        val observations = mutableListOf<String>()
+        val harness = harness(first, second,
+            onLifecycleNotice = { observations += it.phase.name },
+            onLifecycleDisconnected = { observations += "disconnected" },
+            onLifecycleRetired = { observations += "retired" })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(listOf("retired", "STARTING"), observations)
+            first.inbound.send(JSONObject().put("type", "event").put("id", 1)
+                .put("event", notice("shutting_down").put("kind", "lifecycle")).toString())
+            runCurrent()
+            assertEquals("SHUTTING_DOWN", observations.last())
+            harness.owner.replaceDemand(DEMAND.copy(routeEpoch = 1))
+            runCurrent()
+            assertEquals(listOf("retired", "STARTING", "SHUTTING_DOWN", "retired", "READY"), observations)
+            second.inbound.close(IOException("lost"))
+            runCurrent()
+            assertEquals("disconnected", observations.last())
+            harness.owner.close()
+            runCurrent()
+            assertEquals("retired", observations.last())
+        } finally { harness.owner.close() }
+    }
+
+    @Test fun `legacy hello authentication clears connection loss without synthetic ready notice`() = runTest {
+        val observations = mutableListOf<String>()
+        val connection = FakeConnection(Ha.accepting())
+        val harness = harness(IOException("offline"), connection,
+            onLifecycleAuthenticated = { observations += "authenticated" },
+            onLifecycleNotice = { observations += "notice" },
+            onLifecycleDisconnected = { observations += "disconnected" })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(listOf("disconnected"), observations)
+            advanceTimeBy(1000)
+            runCurrent()
+            assertEquals(listOf("disconnected", "authenticated"), observations)
+        } finally { harness.owner.close() }
+    }
+
+    @Test fun `native cold connection failure reports loss without inventing lifecycle evidence`() = runTest {
+        var lost = 0
+        val notices = mutableListOf<io.github.maxlyth.hapaneld.sensors.HaLifecycleNotice>()
+        val harness = harness(IOException("offline"), onLifecycleNotice = { notices += it },
+            onLifecycleDisconnected = { lost++ })
+        try {
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            assertEquals(1, lost)
+            assertTrue(notices.isEmpty())
+        } finally { harness.owner.close() }
+    }
+
     @Test fun `route epoch change reopens native connection without replacing credential`() = runTest {
         val first = FakeConnection(Ha.accepting())
         val second = FakeConnection(Ha.accepting())
@@ -1172,6 +1232,10 @@ class PanelAssistantTransportOwnerTest {
         commands: PanelAssistantCommandSink? = null,
         onAuthority: (String) -> Unit = {},
         onConnected: () -> Unit = {},
+        onLifecycleNotice: (io.github.maxlyth.hapaneld.sensors.HaLifecycleNotice) -> Unit = {},
+        onLifecycleAuthenticated: () -> Unit = {},
+        onLifecycleDisconnected: () -> Unit = {},
+        onLifecycleRetired: () -> Unit = {},
         mqttDiscovery: () -> String = { "" },
         onMqttDiscovery: (String) -> Unit = {},
         persisted: Persisted? = null,
@@ -1205,6 +1269,10 @@ class PanelAssistantTransportOwnerTest {
             checkPreferred = checkPreferred,
             onAuthority = persisted?.let { store -> { value: String -> store.events += "authority:$value"; store.authority = value } } ?: onAuthority,
             onConnected = onConnected,
+            onLifecycleNotice = onLifecycleNotice,
+            onLifecycleAuthenticated = onLifecycleAuthenticated,
+            onLifecycleDisconnected = onLifecycleDisconnected,
+            onLifecycleRetired = onLifecycleRetired,
             authority = persisted?.let { store -> { store.authority } } ?: { "" },
             mqttDiscovery = persisted?.let { store -> { store.discovery } } ?: mqttDiscovery,
             onMqttDiscovery = persisted?.let { store -> { value: String -> store.events += "discovery:$value"; store.discovery = value } } ?: onMqttDiscovery,
@@ -1276,6 +1344,7 @@ class PanelAssistantTransportOwnerTest {
             commandResultError: String? = null,
             mqttDiscovery: String? = null,
             embed: JSONObject? = null,
+            lifecycle: JSONObject? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
             holdFullEnd: Boolean = false,
         ): (JSONObject, FakeConnection) -> Unit = { frame, connection ->
@@ -1295,7 +1364,8 @@ class PanelAssistantTransportOwnerTest {
                                 .put("integration", JSONObject().put("version", "0.3.0"))
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (mqttDiscovery != null) put("mqtt_discovery", mqttDiscovery) }
-                                .apply { if (embed != null) put("embed", embed) },
+                                .apply { if (embed != null) put("embed", embed) }
+                                .apply { if (lifecycle != null) put("lifecycle", lifecycle) },
                         )
                         .toString(),
                 )

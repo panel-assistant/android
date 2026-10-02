@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ha_reason_restart">Home Assistant 重启</string>
+    <string name="ha_reason_host_reboot">主机重启</string>
+    <string name="ha_reason_core_update">Home Assistant 核心更新</string>
+    <string name="ha_reason_unknown">原因未知</string>
+    <string name="ha_not_measured">尚未测量恢复所需的时间</string>
+    <string name="ha_taking_longer">耗时比平时更长</string>
+    <string name="ha_expected_in">预计约在 %1$s 后恢复</string>
+    <string name="ha_overdue">已超出预计时间 %1$s</string>
+    <string name="ha_duration_seconds">%1$d 秒</string>
+    <string name="ha_duration_minutes">%1$d 分钟</string>
+    <string name="ha_duration_hours">%1$d 小时</string>
+</resources>

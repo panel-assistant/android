@@ -21,6 +21,7 @@ internal object HaLifecycleRuntime {
     private val lock = Any()
     @Volatile private var source: HaLifecycleCoordinator? = null
     @Volatile private var socketWatching = false
+    @Volatile private var nativeWatching = false
 
     /**
      * The MQTT half of watching is DERIVED from the bridge's own serialized connection state, never
@@ -40,7 +41,7 @@ internal object HaLifecycleRuntime {
         // Captured under the lock as one pair so a half-torn-down owner cannot answer with its
         // predecessor's other half; the bridge read is invoked OUTSIDE it, because calling foreign
         // code under a lock is how lock-order cycles start.
-        val (socket, mqtt) = synchronized(lock) { socketWatching to mqttConnected }
+        val (socket, mqtt) = synchronized(lock) { (socketWatching || nativeWatching) to mqttConnected }
         return socket || (mqtt?.invoke() ?: false)
     }
 
@@ -52,6 +53,7 @@ internal object HaLifecycleRuntime {
         synchronized(lock) {
             source = next
             socketWatching = false
+            nativeWatching = false
             mqttConnected = null
             mqttLease = null
         }
@@ -66,6 +68,7 @@ internal object HaLifecycleRuntime {
         if (source !== expected) return false
         source = null
         socketWatching = false
+        nativeWatching = false
         mqttConnected = null
         mqttLease = null
         true
@@ -82,6 +85,13 @@ internal object HaLifecycleRuntime {
         if (source !== owner) return false
         val changed = socketWatching != next
         socketWatching = next
+        changed
+    }
+
+    fun setNativeWatching(owner: HaLifecycleCoordinator, next: Boolean): Boolean = synchronized(lock) {
+        if (source !== owner) return false
+        val changed = nativeWatching != next
+        nativeWatching = next
         changed
     }
 
@@ -150,7 +160,7 @@ internal object HaLifecycleRuntime {
         // coordinator's own read is also taken outside, because a coordinator notifying consumers
         // takes its lock and then reaches a renderer that reads THIS holder; nesting the two in the
         // opposite order here would close that cycle.
-        val (owner, socket, mqtt) = synchronized(lock) { Triple(source, socketWatching, mqttConnected) }
+        val (owner, socket, mqtt) = synchronized(lock) { Triple(source, socketWatching || nativeWatching, mqttConnected) }
         if (owner == null) return null
         if (!socket && !(mqtt?.invoke() ?: false)) return null
         val snapshot = owner.snapshot()
@@ -169,8 +179,8 @@ internal object HaLifecycleRuntime {
         val snap = snapshot() ?: return null
         return when (snap.state) {
             HaLifecycleState.NORMAL -> idleText(snap.refused)
-            HaLifecycleState.CONNECTION_LOST -> "connection lost"
-            else -> HaLifecycleMessage.text(snap.state, snap.source) ?: idleText(snap.refused)
+            HaLifecycleState.CONNECTION_LOST -> HaLifecycleMessage.text(snap) ?: idleText(snap.refused)
+            else -> HaLifecycleMessage.text(snap) ?: idleText(snap.refused)
         }
     }
 

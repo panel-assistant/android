@@ -187,11 +187,8 @@
     <string name="open_entity_settings">Otwórz ustawienia encji</string>
     <string name="ha_shutting_down">Home Assistant wyłącza się</string>
     <string name="ha_offline">Home Assistant jest offline</string>
-    <string name="ha_disconnected">Rozłączono z Home Assistant</string>
     <string name="ha_starting">Home Assistant uruchamia się</string>
     <string name="ha_back_online">Home Assistant znów działa</string>
-    <string name="controls_unavailable_reconnect">Elementy sterujące są niedostępne. Trwa automatyczne ponowne łączenie.</string>
-    <string name="controls_return_shortly">Elementy sterujące pojawią się za chwilę.</string>
     <string name="controls_returned">Powróciły elementy sterujące.</string>
     <string name="ha_network_unreliable">Niestabilna sieć HA</string>
     <string name="nav_back">Wstecz</string>

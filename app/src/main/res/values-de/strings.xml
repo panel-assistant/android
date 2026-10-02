@@ -193,11 +193,8 @@
 
     <string name="ha_shutting_down">Home Assistant wird heruntergefahren</string>
     <string name="ha_offline">Home Assistant ist offline</string>
-    <string name="ha_disconnected">Verbindung zu Home Assistant getrennt</string>
     <string name="ha_starting">Home Assistant wird gestartet</string>
     <string name="ha_back_online">Home Assistant ist wieder online</string>
-    <string name="controls_unavailable_reconnect">Steuerung nicht verfügbar. Die Verbindung wird automatisch wiederhergestellt.</string>
-    <string name="controls_return_shortly">Die Steuerung ist in Kürze wieder verfügbar.</string>
     <string name="controls_returned">Die Steuerung ist wieder verfügbar.</string>
     <string name="ha_network_unreliable">HA-Netzwerk unzuverlässig</string>
 

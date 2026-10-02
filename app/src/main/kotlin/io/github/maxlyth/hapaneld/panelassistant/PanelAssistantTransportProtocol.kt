@@ -1,5 +1,8 @@
 package io.github.maxlyth.hapaneld.panelassistant
 
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleNotice
+import io.github.maxlyth.hapaneld.sensors.HaLifecyclePhase
+import io.github.maxlyth.hapaneld.sensors.HaLifecycleReason
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -28,6 +31,7 @@ internal data class PanelAssistantSession(
     /** The sidebar proof key, present exactly when the session granted `embed_proof`. Never logged. */
     val embed: PanelAssistantEmbedGrant? = null,
     val connection: io.github.maxlyth.hapaneld.HaConnectionAdvertisement? = null,
+    val lifecycle: HaLifecycleNotice? = null,
 ) {
     /** The session token is a bearer for this session's requests, and the embed key a secret; keep both out of logs. */
     override fun toString(): String =
@@ -54,6 +58,8 @@ internal sealed interface PanelAssistantHelloOutcome {
 /** An event delivered on the `hello` subscription. */
 internal sealed interface PanelAssistantSessionEvent {
     data class Closed(val reason: String) : PanelAssistantSessionEvent
+
+    data class Lifecycle(val notice: HaLifecycleNotice) : PanelAssistantSessionEvent
 
     /**
      * A command for [channel]. [session] is the token the integration sent it for, compared with the live
@@ -337,7 +343,8 @@ internal object PanelAssistantTransportProtocol {
         }
         return PanelAssistantHelloOutcome.Accepted(
             PanelAssistantSession(protocol, token, authority, capabilities, integrationVersion, mqttDiscovery, embed,
-                io.github.maxlyth.hapaneld.HaConnectionAdvertisement.parse(result.optJSONObject("connection"))),
+                io.github.maxlyth.hapaneld.HaConnectionAdvertisement.parse(result.optJSONObject("connection")),
+                lifecycleNotice(result.optJSONObject("lifecycle"))),
         )
     }
 
@@ -374,9 +381,41 @@ internal object PanelAssistantTransportProtocol {
         val event = frame.optJSONObject("event") ?: return PanelAssistantSessionEvent.Ignored("")
         val kind = (event.opt("kind") as? String)?.takeIf(CODE::matches).orEmpty()
         if (kind == "command") return command(event)
+        if (kind == "lifecycle") return lifecycleNotice(event)?.let { PanelAssistantSessionEvent.Lifecycle(it) }
+            ?: PanelAssistantSessionEvent.Ignored(kind)
         if (kind != "session_closed") return PanelAssistantSessionEvent.Ignored(kind)
         val reason = (event.opt("reason") as? String)?.takeIf(CODE::matches).orEmpty()
         return PanelAssistantSessionEvent.Closed(reason)
+    }
+
+    /** Optional additive evidence: a malformed or future notice never rejects an otherwise valid session. */
+    private fun lifecycleNotice(body: JSONObject?): HaLifecycleNotice? {
+        if (body == null) return null
+        val phase = when (body.opt("phase")) {
+            "shutting_down" -> HaLifecyclePhase.SHUTTING_DOWN
+            "starting" -> HaLifecyclePhase.STARTING
+            "ready" -> HaLifecyclePhase.READY
+            else -> return null
+        }
+        val reason = when (body.opt("reason")) {
+            "restart" -> HaLifecycleReason.RESTART
+            "host_reboot" -> HaLifecycleReason.HOST_REBOOT
+            "core_update" -> HaLifecycleReason.CORE_UPDATE
+            "unknown" -> HaLifecycleReason.UNKNOWN
+            else -> return null
+        }
+        fun duration(key: String): Long? = when (val raw = body.opt(key)) {
+            is Int -> raw.toLong()
+            is Long -> raw
+            else -> null
+        }
+        val elapsed = duration("elapsed_ms")
+        val expected = duration("expected_ms")
+        if (!body.has("elapsed_ms") || !body.has("expected_ms")) return null
+        if ((body.opt("elapsed_ms") !== JSONObject.NULL && elapsed == null) ||
+            (body.opt("expected_ms") !== JSONObject.NULL && expected == null) ||
+            (elapsed != null && elapsed < 0) || (expected != null && expected <= 0)) return null
+        return HaLifecycleNotice(phase, reason, elapsed, expected)
     }
 
     private fun command(event: JSONObject): PanelAssistantSessionEvent {

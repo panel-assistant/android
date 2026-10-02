@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ha_reason_restart">Home Assistant herstart</string>
+    <string name="ha_reason_host_reboot">Herstart van de host</string>
+    <string name="ha_reason_core_update">Home Assistant Core-update</string>
+    <string name="ha_reason_unknown">Reden onbekend</string>
+    <string name="ha_not_measured">De tijd tot terugkeer is nog niet gemeten</string>
+    <string name="ha_taking_longer">Duurt langer dan normaal</string>
+    <string name="ha_expected_in">Naar verwachting over ongeveer %1$s weer beschikbaar</string>
+    <string name="ha_overdue">%1$s voorbij de schatting</string>
+    <string name="ha_duration_seconds">%1$d sec.</string>
+    <string name="ha_duration_minutes">%1$d min</string>
+    <string name="ha_duration_hours">%1$d u</string>
+</resources>

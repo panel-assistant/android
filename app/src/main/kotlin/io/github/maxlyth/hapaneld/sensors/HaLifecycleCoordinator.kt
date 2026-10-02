@@ -51,6 +51,30 @@ internal class HaLifecycleCoordinator(
         publish(now)
     }
 
+    fun onNativeNotice(notice: HaLifecycleNotice) {
+        val now = nowMs()
+        lifecycle.onNativeNotice(notice, now)
+        publish(now)
+    }
+
+    fun onNativeAuthenticated() {
+        val now = nowMs()
+        lifecycle.onAuthenticatedRunning(now)
+        publish(now)
+    }
+
+    fun onNativeDisconnected() {
+        val now = nowMs()
+        lifecycle.onDisconnected(now, HaLifecycleSource.NATIVE)
+        publish(now)
+    }
+
+    fun onNativeRetired() {
+        val now = nowMs()
+        lifecycle.onSourceRetired(HaLifecycleSource.NATIVE, now)
+        publish(now)
+    }
+
     /**
      * A Home Assistant birth/will observation from the MQTT broker. The second, privilege-free source:
      * it needs no WebSocket subscription and therefore works on the non-administrator accounts panels
@@ -132,4 +156,6 @@ internal fun lifecyclePublishDecision(
 ): Boolean = candidate.revision > published.revision &&
     (candidate.state != published.state ||
         candidate.source != published.source ||
-        candidate.refused != published.refused)
+        candidate.refused != published.refused ||
+        candidate.reason != published.reason || candidate.expectedMs != published.expectedMs ||
+        candidate.elapsedMs != published.elapsedMs)

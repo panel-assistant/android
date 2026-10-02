@@ -34,7 +34,18 @@ internal enum class HaLifecycleEvent(val wireValue: String, val rank: Int) {
  * proves the control path is gone, not that a shutdown was intended. The wording differs accordingly;
  * claiming a shutdown we cannot prove is the mislabelling this feature exists to avoid.
  */
-internal enum class HaLifecycleSource { SOCKET, MQTT }
+internal enum class HaLifecycleSource { SOCKET, MQTT, NATIVE }
+
+internal enum class HaLifecyclePhase { SHUTTING_DOWN, STARTING, READY }
+internal enum class HaLifecycleReason(val wireValue: String) {
+    RESTART("restart"), HOST_REBOOT("host_reboot"), CORE_UPDATE("core_update"), UNKNOWN("unknown")
+}
+internal data class HaLifecycleNotice(
+    val phase: HaLifecyclePhase,
+    val reason: HaLifecycleReason,
+    val elapsedMs: Long?,
+    val expectedMs: Long?,
+)
 
 /** What the panel is currently entitled to claim about its Home Assistant server. */
 internal enum class HaLifecycleState(val wireValue: String) {
@@ -129,6 +140,10 @@ internal class HaLifecycle(
     private var basis: HaLifecycleSource? = null
 
     private var revision = 0L
+    private var lostSinceMs = 0L
+    private var nativeAwaitingReady = false
+    private var notice: HaLifecycleNotice? = null
+    private var noticeReceivedMs = 0L
 
     /**
      * Everything a consumer's rendering can depend on, captured under ONE lock acquisition, with the
@@ -147,10 +162,21 @@ internal class HaLifecycle(
         val refused: Boolean,
         val revision: Long,
         val backOnlineRemainingMs: Long,
+        val offlineGraceRemainingMs: Long = 0L,
+        val reason: HaLifecycleReason = HaLifecycleReason.UNKNOWN,
+        val elapsedMs: Long? = null,
+        val expectedMs: Long? = null,
     )
 
     fun snapshot(nowMs: Long): Snapshot = synchronized(lock) {
-        Snapshot(stateLocked(nowMs), source, refused, revision, remainingLocked(nowMs))
+        Snapshot(stateLocked(nowMs), source, refused, revision, remainingLocked(nowMs),
+            if (current == HaLifecycleState.CONNECTION_LOST) (10_000L - (nowMs - lostSinceMs).coerceAtLeast(0L)).coerceAtLeast(0L) else 0L,
+            notice?.reason ?: HaLifecycleReason.UNKNOWN,
+            notice?.elapsedMs?.let { elapsed ->
+                val advance = (nowMs - noticeReceivedMs).coerceAtLeast(0L)
+                if (advance > Long.MAX_VALUE - elapsed) Long.MAX_VALUE else elapsed + advance
+            },
+            notice?.expectedMs)
     }
 
     private fun remainingLocked(nowMs: Long): Long {
@@ -197,6 +223,8 @@ internal class HaLifecycle(
     fun onEvent(event: HaLifecycleEvent, from: HaLifecycleSource, nowMs: Long) {
         synchronized(lock) {
             val observed = stateLocked(nowMs)
+            if (nativeAwaitingReady) return
+            if (event.shutdown || event == HaLifecycleEvent.START) notice = null
             // The socket is authoritative: once it has explained an outage, a broker will arriving for
             // the same event must not downgrade the wording back to a guess.
             if (!(observed == HaLifecycleState.SHUTTING_DOWN &&
@@ -242,18 +270,20 @@ internal class HaLifecycle(
      * attribute to Home Assistant survives the disconnect that follows it, which is the whole point of
      * subscribing before the socket dies.
      */
-    fun onDisconnected(nowMs: Long) {
+    fun onDisconnected(nowMs: Long, from: HaLifecycleSource = HaLifecycleSource.SOCKET) {
         synchronized(lock) {
             when (stateLocked(nowMs)) {
                 HaLifecycleState.SHUTTING_DOWN, HaLifecycleState.STARTING, HaLifecycleState.CONNECTION_LOST -> Unit
                 else -> {
                     bumpEpisodeLocked()
                     current = HaLifecycleState.CONNECTION_LOST
+                    lostSinceMs = nowMs
+                    notice = null
                     // The loss was noticed locally; no source observed it, and claiming one would
                     // lend the guess a confidence it has not earned. It still has a BASIS: the socket
                     // whose disconnect produced the inference, which is what makes it retirable.
                     source = null
-                    basis = HaLifecycleSource.SOCKET
+                    basis = from
                     revision++
                 }
             }
@@ -262,6 +292,34 @@ internal class HaLifecycle(
             clearRefusalLocked()
             subscribed = false
         }
+    }
+
+    /** Panel Assistant reports Core readiness independently of socket authentication. */
+    fun onNativeNotice(next: HaLifecycleNotice, nowMs: Long) = synchronized(lock) {
+        val observed = stateLocked(nowMs)
+        if (next.phase == HaLifecyclePhase.READY) {
+            nativeAwaitingReady = false
+            if (observed == HaLifecycleState.SHUTTING_DOWN || observed == HaLifecycleState.STARTING ||
+                (observed == HaLifecycleState.CONNECTION_LOST && nowMs - lostSinceMs >= 10_000L)) {
+                source = HaLifecycleSource.NATIVE
+                enterBackOnlineLocked(nowMs)
+            } else if (observed == HaLifecycleState.CONNECTION_LOST) {
+                current = HaLifecycleState.NORMAL
+                source = null
+                recoveryAnnouncedEpisode = episode
+                revision++
+            }
+            return@synchronized
+        }
+        nativeAwaitingReady = true
+        notice = next
+        noticeReceivedMs = nowMs
+        source = HaLifecycleSource.NATIVE
+        basis = HaLifecycleSource.NATIVE
+        if (observed == HaLifecycleState.NORMAL || observed == HaLifecycleState.BACK_ONLINE) bumpEpisodeLocked()
+        current = if (next.phase == HaLifecyclePhase.SHUTTING_DOWN) HaLifecycleState.SHUTTING_DOWN else HaLifecycleState.STARTING
+        inferredStartingSinceMs = null
+        revision++
     }
 
     /**
@@ -302,6 +360,7 @@ internal class HaLifecycle(
             }
             current = HaLifecycleState.NORMAL
             source = null
+            if (from == HaLifecycleSource.NATIVE) { nativeAwaitingReady = false; notice = null }
             // `basis` is deliberately NOT cleared here. Every outage entry assigns it, so a stale value
             // can never be read; a clear was written first, proved unkillable by mutation, and removed.
             revision++
@@ -324,6 +383,7 @@ internal class HaLifecycle(
     fun onAuthenticatedRunning(nowMs: Long) {
         synchronized(lock) {
             val observed = stateLocked(nowMs)
+            if (nativeAwaitingReady) return
             when (observed) {
                 // We claimed Home Assistant was down, and the socket is back. What that PROVES depends
                 // entirely on whether this session will be told when the server has actually started.
@@ -352,6 +412,7 @@ internal class HaLifecycle(
                 // relabel an ordinary LAN blip as a server outage.
                 HaLifecycleState.CONNECTION_LOST -> {
                     current = HaLifecycleState.NORMAL
+                    recoveryAnnouncedEpisode = episode
                     source = null
                     revision++
                 }
@@ -457,11 +518,35 @@ internal class HaLifecycle(
  * Pure — unit-tested in `HaLifecycleTest`.
  */
 internal object HaLifecycleMessage {
+    fun text(snap: HaLifecycle.Snapshot): String? {
+        if (snap.state == HaLifecycleState.NORMAL ||
+            (snap.state == HaLifecycleState.CONNECTION_LOST && snap.offlineGraceRemainingMs > 0L)) return null
+        if (snap.state == HaLifecycleState.BACK_ONLINE) return "Home Assistant is back online."
+        val expected = snap.expectedMs
+        val elapsed = snap.elapsedMs
+        val overdue = expected != null && elapsed != null && elapsed > expected
+        val headline = if (overdue) "Taking longer than usual"
+        else text(snap.state, snap.source) ?: text(HaLifecycleState.SHUTTING_DOWN, HaLifecycleSource.MQTT)!!
+        val reason = when (snap.reason) {
+            HaLifecycleReason.RESTART -> "Home Assistant restart"
+            HaLifecycleReason.HOST_REBOOT -> "Host reboot"
+            HaLifecycleReason.CORE_UPDATE -> "Home Assistant Core update"
+            HaLifecycleReason.UNKNOWN -> "Reason unknown"
+        }
+        val forecast = if (expected == null || elapsed == null) "Time back has not been measured yet"
+        else {
+            val duration = haLifecycleDuration(kotlin.math.abs(expected - elapsed))
+            if (overdue) "${duration.value} ${duration.abbreviation} past the estimate"
+            else "Expected back in about ${duration.value} ${duration.abbreviation}"
+        }
+        return "$headline · $reason · $forecast"
+    }
+
     fun text(state: HaLifecycleState, source: HaLifecycleSource?): String? = when (state) {
         // Only the socket proves INTENT. Anything else — a broker will, or no attributed source at
         // all — may honestly claim only that the control path vanished, so the weaker wording is the
         // default and the stronger one requires the socket by name.
-        HaLifecycleState.SHUTTING_DOWN -> if (source == HaLifecycleSource.SOCKET)
+        HaLifecycleState.SHUTTING_DOWN -> if (source == HaLifecycleSource.SOCKET || source == HaLifecycleSource.NATIVE)
             "Home Assistant is shutting down — controls may be temporarily unavailable."
         else "Home Assistant has gone offline — controls may be temporarily unavailable."
         HaLifecycleState.STARTING ->
@@ -469,5 +554,19 @@ internal object HaLifecycleMessage {
         HaLifecycleState.BACK_ONLINE ->
             "Home Assistant is back online."
         HaLifecycleState.NORMAL, HaLifecycleState.CONNECTION_LOST -> null
+    }
+}
+
+/** A duration retains its unit, so an hour can never look like a minute. */
+internal data class HaLifecycleDuration(val value: Long, val unit: String) {
+    val abbreviation: String get() = when (unit) { "hours" -> "h"; "minutes" -> "min"; else -> "sec" }
+}
+internal fun haLifecycleDuration(durationMs: Long): HaLifecycleDuration {
+    val milliseconds = durationMs.coerceAtLeast(0L)
+    val seconds = milliseconds / 1_000L + if (milliseconds % 1_000L > 0L) 1L else 0L
+    return when {
+        seconds >= 3_600L -> HaLifecycleDuration((seconds + 3_599L) / 3_600L, "hours")
+        seconds >= 60L -> HaLifecycleDuration((seconds + 59L) / 60L, "minutes")
+        else -> HaLifecycleDuration(seconds, "seconds")
     }
 }

@@ -193,11 +193,8 @@
 
     <string name="ha_shutting_down">Home Assistant est en cours d’arrêt</string>
     <string name="ha_offline">Home Assistant est hors ligne</string>
-    <string name="ha_disconnected">Déconnecté de Home Assistant</string>
     <string name="ha_starting">Home Assistant démarre</string>
     <string name="ha_back_online">Home Assistant est de nouveau en ligne</string>
-    <string name="controls_unavailable_reconnect">Commandes indisponibles. Reconnexion automatique.</string>
-    <string name="controls_return_shortly">Les commandes seront bientôt rétablies.</string>
     <string name="controls_returned">Les commandes sont rétablies.</string>
     <string name="ha_network_unreliable">Réseau HA peu fiable</string>
 
