@@ -70,7 +70,7 @@ class BundledProfileParityTest {
      */
     @Test fun onlyHardwareWithProvenCaptureDeclaresAMicrophone() {
         assertEquals(
-            setOf("wf1589t", "nspanel-pro", "shelly-wall-display-x2i"),
+            setOf("wf1589t", "nspanel-pro", "shelly-wall-display-x2i", "smt1019"),
             bundled.filter { it.document.hardware.hasMicrophone }.map { it.document.id }.toSet(),
         )
         // Unknown hardware stays conservative: a profile earns the declaration by capture, never by
@@ -80,6 +80,9 @@ class BundledProfileParityTest {
         assertTrue(bundledById.getValue("wf1589t").profile().hasMicrophone)
         assertTrue(bundledById.getValue("nspanel-pro").profile().hasMicrophone)
         assertTrue(bundledById.getValue("shelly-wall-display-x2i").profile().hasMicrophone)
+        // The Electron WF2489T reports device `wf2489t` and resolves to the SMT1019 profile, so an owner of
+        // that panel is offered voice without editing a profile.
+        assertTrue(resolve(DeviceFacts("rk3576_u", "wf2489t", "")).profile.hasMicrophone)
         // A camera is not a microphone. The WF1589T now declares both, so the witness that the two
         // keys are independent on real catalog content is the TPA10: it carries a camera, and its
         // capture chain has never produced audio, so it must declare the one and not the other.
@@ -878,7 +881,7 @@ class BundledProfileParityTest {
             "shelly-wall-display-v2.yaml" to "0b3141fc867e55905090d41773698c1638308bd78892a6487e04f0b07747dac9",
             "shelly-wall-display-x2i.yaml" to "2760932d1848bca54d59fb95e49146516017c8c383f9aeee4a23102c05980075",
             "shelly-wall-display.yaml" to "f2f6c59a9885321a2afd8e4bf37d803b041c0e5a2de004d1c4ee99566cbea7c3",
-            "smt1019.yaml" to "5167bcf071a944c997ea5e496352791eae06a943345d38a5feb6db66ec7c5d61",
+            "smt1019.yaml" to "72c5a1fb9118c48c6f66193584ce9a4d0e3181ae0d218f8e2735c783f6716438",
             "tpa10.yaml" to "a3bb5b60bfba70571bb24ed26fe18f4a565a37e30dbae9d8993df0184c31b421",
             "wf1589t.yaml" to "2b69edb225307146d597a5edea488525932403f9d894474e27612fd30516451a",
             "zx-smt156.yaml" to "42f01e4e61e61dbbc284b1292df6979e856c1e9d99d540e938fc9eb75aba5605",
