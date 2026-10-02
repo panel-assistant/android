@@ -12488,6 +12488,26 @@
       "sourceHash": "18099935ffa7e381e72b5614358626beac066ee14193dbccb31826af8f30abef",
       "state": "machine-cross-checked"
     },
+    "shell.pickles.back": {
+      "text": "Torna alla dashboard",
+      "sourceHash": "97ba1d394fab183d035d1f789a8fac45d0aa61b00fb378dbe152b014df418639",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.not_found": {
+      "text": "404 · Pagina non trovata",
+      "sourceHash": "861f921f7757c86ff78ddd47a3c6b3e4d1001eeff273ed69dfb5c1be9889fb01",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.story": {
+      "text": "Il nostro panda lento e testardo se n’è andato con questa pagina.",
+      "sourceHash": "a350c4b07ce0cc1444e8752d391aba54044674e4b7d5269b85edcc6eea032226",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.title": {
+      "text": "Pickles è scappato",
+      "sourceHash": "10900dbad0a7d181905313e1d894eed1632529f34f0fd2dd1e95db7fe7bee17f",
+      "state": "machine-cross-checked"
+    },
     "shell.runtime.duration_minutes": {
       "text": "{count} min",
       "sourceHash": "1829c58ba472520fd39e61f9e337a1b7da27e86299332dde5bfdea355c3895a8",

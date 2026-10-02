@@ -12707,6 +12707,26 @@
    "text": "Затримка за відсутності дотику (секунди)",
    "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
    "state": "machine-draft"
+  },
+  "shell.pickles.title": {
+   "text": "Pickles утік",
+   "sourceHash": "10900dbad0a7d181905313e1d894eed1632529f34f0fd2dd1e95db7fe7bee17f",
+   "state": "machine-cross-checked"
+  },
+  "shell.pickles.story": {
+   "text": "Наша повільна й уперта панда забрала цю сторінку та кудись побрела.",
+   "sourceHash": "a350c4b07ce0cc1444e8752d391aba54044674e4b7d5269b85edcc6eea032226",
+   "state": "machine-cross-checked"
+  },
+  "shell.pickles.not_found": {
+   "text": "404 · Сторінку не знайдено",
+   "sourceHash": "861f921f7757c86ff78ddd47a3c6b3e4d1001eeff273ed69dfb5c1be9889fb01",
+   "state": "machine-cross-checked"
+  },
+  "shell.pickles.back": {
+   "text": "Повернутися до інформаційної панелі",
+   "sourceHash": "97ba1d394fab183d035d1f789a8fac45d0aa61b00fb378dbe152b014df418639",
+   "state": "machine-cross-checked"
   }
  }
 }

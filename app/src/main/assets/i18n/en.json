@@ -38291,6 +38291,56 @@
       "softMaxChars": 80,
       "hardMaxChars": 112
     },
+    "shell.pickles.back": {
+      "text": "Back to Dashboard",
+      "sourceHash": "97ba1d394fab183d035d1f789a8fac45d0aa61b00fb378dbe152b014df418639",
+      "surface": "shell",
+      "context": "Full-page missing browser page: escaped slow stubborn panda story above the requested path and recovery link.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 40,
+      "hardMaxChars": 80
+    },
+    "shell.pickles.not_found": {
+      "text": "404 · Page not found",
+      "sourceHash": "861f921f7757c86ff78ddd47a3c6b3e4d1001eeff273ed69dfb5c1be9889fb01",
+      "surface": "shell",
+      "context": "Full-page missing browser page: escaped slow stubborn panda story above the requested path and recovery link.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 40,
+      "hardMaxChars": 80
+    },
+    "shell.pickles.story": {
+      "text": "Our slow, stubborn panda has wandered off with this page.",
+      "sourceHash": "a350c4b07ce0cc1444e8752d391aba54044674e4b7d5269b85edcc6eea032226",
+      "surface": "shell",
+      "context": "Full-page missing browser page: escaped slow stubborn panda story above the requested path and recovery link.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 100,
+      "hardMaxChars": 180
+    },
+    "shell.pickles.title": {
+      "text": "Pickles has escaped",
+      "sourceHash": "10900dbad0a7d181905313e1d894eed1632529f34f0fd2dd1e95db7fe7bee17f",
+      "surface": "shell",
+      "context": "Full-page missing browser page: escaped slow stubborn panda story above the requested path and recovery link.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [
+        "Pickles"
+      ],
+      "softMaxChars": 40,
+      "hardMaxChars": 80
+    },
     "shell.runtime.duration_minutes": {
       "text": "{count} min",
       "sourceHash": "1829c58ba472520fd39e61f9e337a1b7da27e86299332dde5bfdea355c3895a8",

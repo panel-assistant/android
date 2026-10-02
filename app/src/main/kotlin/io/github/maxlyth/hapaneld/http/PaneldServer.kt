@@ -595,6 +595,7 @@ class PaneldServer internal constructor(
                     debugInspectionRoutes(appContext, config, inspectLock, { stopping }, ::authorizeSensitive)
                 }
             }
+            browserNotFoundPage(::requestStrings)
         }
     }
 

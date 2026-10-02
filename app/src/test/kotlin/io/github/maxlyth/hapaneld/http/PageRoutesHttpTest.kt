@@ -2,6 +2,7 @@ package io.github.maxlyth.hapaneld.http
 
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -12,6 +13,61 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PageRoutesHttpTest {
+
+    @Test fun `missing browser pages show Pickles beneath production admission and retain machine errors`() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.enablePages()
+            testApplication {
+                application { fixture.mount(this) }
+                val page = client.get("/missing-page?lang=de") { header(HttpHeaders.Accept, "text/html") }
+                assertEquals(HttpStatusCode.NotFound, page.status)
+                assertEquals("text/html; charset=UTF-8", page.headers[HttpHeaders.ContentType])
+                val html = page.bodyAsText()
+                assertTrue(html.contains("Pickles ist ausgebüxt"))
+                assertTrue(html.contains("<code>/missing-page</code>"))
+                assertTrue(html.contains("href=\"./?lang=de\""))
+                assertEquals("DENY", page.headers["X-Frame-Options"])
+                assertEquals("de", page.headers[HttpHeaders.ContentLanguage])
+                val embedded = client.get("/missing-page") {
+                    header(HttpHeaders.Accept, "text/html")
+                    header(EmbedMode.HEADER, "v=1;theme=light;lang=fr")
+                }.bodyAsText()
+                assertTrue(embedded.contains("<base href=\"/\">"))
+                assertTrue(embedded.contains("<html lang=\"fr\" data-theme=\"light\""))
+                assertTrue(embedded.contains("href=\"info.css\""))
+                assertTrue(embedded.contains("src=\"assets/pickles.svg\""))
+                assertTrue(embedded.contains("href=\"./?lang=fr\""))
+                for (path in listOf("/api/v1/missing", "/assets/missing.js", "/missing.css")) {
+                    val machine = client.get(path) { header(HttpHeaders.Accept, "text/html") }
+                    assertEquals(path, HttpStatusCode.NotFound, machine.status)
+                    assertFalse(path, machine.bodyAsText().contains("Pickles"))
+                }
+                for (accept in listOf("application/json", "*/*", "text/html;q=0")) {
+                    val machine = client.get("/missing-page") { header(HttpHeaders.Accept, accept) }
+                    assertEquals(HttpStatusCode.NotFound, machine.status)
+                    assertFalse(machine.bodyAsText().contains("Pickles"))
+                }
+                val write = client.post("/missing-page") { header(HttpHeaders.Accept, "text/html") }
+                assertEquals(HttpStatusCode.NotFound, write.status)
+                assertFalse(write.bodyAsText().contains("Pickles"))
+                val refused = client.get("/missing-page") {
+                    header(HttpHeaders.Accept, "text/html")
+                    header(HttpHeaders.Host, "elsewhere.example")
+                }
+                assertEquals(HttpStatusCode.Forbidden, refused.status)
+                assertEquals("host not allowed\n", refused.bodyAsText())
+                val crossSite = client.post("/missing-page") {
+                    header(HttpHeaders.Accept, "text/html")
+                    header(HttpHeaders.Origin, "http://elsewhere.example")
+                }
+                assertEquals(HttpStatusCode.Forbidden, crossSite.status)
+                assertEquals("cross-origin refused\n", crossSite.bodyAsText())
+                val svg = client.get("/assets/pickles.svg")
+                assertEquals(HttpStatusCode.OK, svg.status)
+                assertEquals("image/svg+xml", svg.headers[HttpHeaders.ContentType]?.substringBefore(';'))
+            }
+        }
+    }
 
     @Test fun `retired test page redirects old bookmarks under the real host guard`() {
         PaneldServerHttpFixture().use { fixture ->
