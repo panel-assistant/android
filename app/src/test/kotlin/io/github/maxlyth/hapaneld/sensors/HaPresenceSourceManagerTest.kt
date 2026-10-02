@@ -631,9 +631,31 @@ class HaPresenceSourceManagerTest {
 
         val terminal = aggregates.last()
         assertEquals(HaPresencePhase.NO_CREDIBLE_SOURCES, terminal.phase)
-        assertEquals("No device-backed activity source is ready", terminal.detail)
+        assertEquals("no_device_source", terminal.detail)
         assertEquals("Room", terminal.areaName)
         assertTrue(discovery.historyEntitySets.isEmpty())
+        assertTrue(terminal.selectedEntityIds.isEmpty())
+        manager.close()
+        owner.close()
+    }
+
+    @Test fun `Area sources with insufficient history report why they are not ready`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val discovery = FakePresenceTransport().apply { emptyHistory = true }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(FakeExactConnection()), aggregates,
+        )
+
+        manager.configure(request())
+        runCurrent()
+
+        val terminal = aggregates.last()
+        assertEquals(HaPresencePhase.NO_CREDIBLE_SOURCES, terminal.phase)
+        assertEquals("insufficient_history", terminal.detail)
+        assertEquals("Room", terminal.areaName)
+        assertFalse(discovery.historyEntitySets.isEmpty())
+        assertTrue(discovery.historyEntitySets.all { it == setOf(ENTITY) })
         assertTrue(terminal.selectedEntityIds.isEmpty())
         manager.close()
         owner.close()
@@ -987,6 +1009,7 @@ class HaPresenceSourceManagerTest {
         var includeSupportingActivity = false
         var malformedEntityRegistry = false
         var historyTransportFailure = false
+        var emptyHistory = false
         var malformedHistory = false
         var oversizedHistory = false
         val historyEntitySets = mutableListOf<Set<String>>()
@@ -1054,6 +1077,7 @@ class HaPresenceSourceManagerTest {
             historyEntitySets += entityIds.toSet()
             historyRequests += Triple(entityIds.toSet(), startEpochMs, endEpochMs)
             if (historyTransportFailure) error("history unavailable")
+            if (emptyHistory) return@apply
             if (malformedHistory) {
                 put(JSONObject())
                 return@apply

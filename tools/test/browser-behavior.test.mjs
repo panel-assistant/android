@@ -2909,6 +2909,44 @@ browserTest('Auto-sleep hydration does not scroll toward an off-screen Auto-slee
     panelNode.getBoundingClientRect().top >= window.innerHeight), true);
 });
 
+for (const [detail, message] of [
+  ['no_device_source', 'This Area has no motion, occupancy or presence binary sensor from a device integration.'],
+  ['insufficient_history', 'This Area’s activity sensors have too little usable history or are unavailable.'],
+  ['unknown_source_reason', 'No credible device-backed activity source is available in this Area.'],
+]) {
+  browserTest(`Auto-sleep explains ${detail} in the existing red history line`, async (t) => {
+    let historyCalls = 0;
+    const harness = await startHarness((path) => {
+      if (path === '/api/v1/config/schema') return json([
+        { key: 'auto_sleep', label: 'Auto sleep', group: 'Behaviour', type: 'BOOL', available: true },
+      ]);
+      if (path === '/api/v1/config') return json({ settings: { auto_sleep: 'true' }, ha_expose: {}, ha_auth: { configured: true } });
+      if (path === '/api/v1/apps') return json({ apps: [] });
+      if (path === '/api/v1/radio' || path === '/api/v1/proximity') return json({ present: false });
+      if (path === '/api/v1/auto-sleep/prerequisite') return json({ eligible: true, phase: 'assigned', area_name: 'Office' });
+      if (path === '/api/v1/auto-sleep') return json({
+        enabled: true, available: false, phase: 'no_credible_sources', reason: 'no_credible_sources',
+        detail, area_name: 'Office', source_count: 0, discovered_source_count: 0,
+      });
+      if (path === '/api/v1/auto-sleep/history') { historyCalls++; return json({ available: false }); }
+      return json({});
+    });
+    const browser = await chromium.launch({ executablePath: chrome, headless: true });
+    const page = await browser.newPage({ viewport: { width: 480, height: 800 } });
+    page.setDefaultTimeout(2_000);
+    t.after(async () => { await browser.close(); await new Promise((resolve) => harness.server.close(resolve)); });
+    await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
+    const line = page.locator('#auto-sleep-history-message');
+    await page.waitForFunction(() => document.querySelector('#auto-sleep-history-message')?.classList.contains('error'));
+    assert.equal(await line.textContent(), message);
+    assert.equal(await line.evaluate((node) => getComputedStyle(node).color), 'rgb(211, 75, 66)');
+    assert.equal(await page.locator('#auto-sleep-status').count(), 1);
+    assert.equal(await page.locator('#auto-sleep-chart').count(), 1);
+    assert.equal(await page.locator('.auto-sleep-lane.source').count(), 0);
+    assert.equal(historyCalls, 0);
+  });
+}
+
 browserTest('Auto-sleep blank-Area discovery failure is terminal without cold-chart reflow', async (t) => {
   let statusCalls = 0;
   let historyCalls = 0;

@@ -373,6 +373,8 @@
     var phase = String(status && status.phase || "").toLowerCase();
     var detail = String(status && status.detail || "").toLowerCase();
     if (phase === "no_area") return cfg.i18nText("configure.auto_sleep.history_requires_area", "Assign this panel to a Home Assistant Area to calculate activity history.");
+    if (phase === "no_credible_sources" && detail === "no_device_source") return cfg.i18nText("configure.auto_sleep.no_device_source", "This Area has no motion, occupancy or presence binary sensor from a device integration.");
+    if (phase === "no_credible_sources" && detail === "insufficient_history") return cfg.i18nText("configure.auto_sleep.insufficient_history", "This Area’s activity sensors have too little usable history or are unavailable.");
     if (phase === "no_credible_sources") return cfg.i18nText("configure.auto_sleep.no_credible_sources", "No credible device-backed activity source is available in this Area.");
     if (phase === "auth_failed") return cfg.i18nText("configure.auto_sleep.auth_failed", "Home Assistant authentication failed. Reconnect Home Assistant to calculate activity history.");
     if (phase === "discovery_failed" && detail === "history_parse") return cfg.i18nText("configure.auto_sleep.timestamps_unreadable", "Home Assistant returned activity timestamps this panel could not read.");
