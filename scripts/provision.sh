@@ -1038,16 +1038,17 @@ resolve_data_package() {
   return 0
 }
 
-# A panel that runs only the old application id is moved by Panel Assistant's Repair: backup, install
-# the new app without starting it, HOME to it, remove the old app, start the new app, restore. A new
-# app installed beside the old one, and started, is a state that Repair refuses, so this provisioner
-# stops before any backup, quiescence or install. It reads the database gate's own observations
-# rather than asking the panel again: the gate classified the new app, and only its proven absence
-# with the old app's proven presence made the old app the data holder.
-refuse_old_app_only_panel() {
-  [ "$PACKAGE_PRESENCE" = absent ] && [ "$DATA_PKG" = "$LEGACY_PKG" ] || return 0
+# A panel whose data the old application id still holds is moved by Panel Assistant's Repair: backup,
+# install the new app without starting it, HOME to it, remove the old app, start the new app, restore.
+# A new app started beside the old one is a state that Repair refuses, so this provisioner stops
+# before any backup, quiescence, install or launch, whether or not a passive new app is already
+# installed. It reads the database gate's own decision rather than asking the panel again: the gate
+# names the old app as the data holder only on its proven presence with the new app proven absent or
+# proven passive.
+refuse_old_app_panel() {
+  [ "$DATA_PKG" = "$LEGACY_PKG" ] || return 0
   fail "this panel still runs the old ha-paneld app" \
-    "It has $LEGACY_PKG installed and not $PKG. Installers no longer put the new app beside the old one." \
+    "Its data is held by $LEGACY_PKG, not $PKG. Installers no longer put the new app beside the old one or start it there." \
     "Move the panel with Panel Assistant: in Home Assistant, open Settings → Repairs → \"Move <panel name> to the new app\"." \
     "Panel Assistant is required for the move." \
     "Nothing was installed, started, or privileged."
@@ -8455,7 +8456,7 @@ resolve_root_route
 host_database_compatibility_gate
 
 # A panel still on the old app is moved by Panel Assistant, never by this provisioner.
-refuse_old_app_only_panel
+refuse_old_app_panel
 
 # DB_COMPAT_MUTATION_ANCHOR: HOST_FIRST_MUTATION — everything above is artifact authentication or read-only panel inspection.
 # Emergency upgrade safety window: try to persist a unique, owner-only config export before an

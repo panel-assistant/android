@@ -5342,36 +5342,36 @@ assert_not_contains 'HANDOFF_INSTALLED_SUCCESSOR' "$MOCK_CALL_LOG" \
 assert_not_contains 'curl .*\/api/v1/(provisioning/plan.txt|config/schema)|curl .* -X POST .*\/api/v1/config' "$MOCK_CALL_LOG" \
   "a successor the old app has not released is never configured"
 
-# A successor package can be installed but remain entirely passive, without a canonical database.
-# The observer fixture reads the package from the actual staged script, so choosing the wrong
-# identity sees missing rather than being handed the bridge's healthy database by the mock.
+# A successor package can be installed but remain entirely passive, without a canonical database,
+# while the old app still holds the data. The observer fixture reads the package from the actual
+# staged script, so choosing the wrong identity sees missing rather than being handed the bridge's
+# healthy database by the mock. Panel Assistant's Repair moves such a panel, and it refuses a new app
+# that has run beside the old one, so the provisioner stops after measuring ownership and before any
+# backup, quiescence, install or launch.
 reset_db_txn_state
 MOCK_LEGACY_INSTALLED=1 MOCK_DATA_PACKAGE=io.github.maxlyth.hapaneld MOCK_UPGRADE_PREPARE=ready \
 MOCK_HOST_DB_SUCCESSOR_PRIMARY=missing MOCK_HOST_DB_SUCCESSOR_RETAINED=0 \
 MOCK_HOST_DB_SUCCESSOR_INVENTORY=readable MOCK_HOST_DB_SUCCESSOR_RECOVERY=none \
 MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=passive MOCK_HOST_DB_LEGACY_PRIMARY=readable:9:ok \
   run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-assert_failure "a passive installed successor preserves the bridge-owned canonical database" 'did not finish its handover'
-assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' "a passive installed successor preserves the bridge-owned canonical database: the Repair is named"
-assert_marker_captured "passive successor handover captures the real bridge database"
+assert_failure "a panel whose old app still holds the data is not given the new app beside it" \
+  'this panel still runs the old ha-paneld app'
+assert_contains 'Settings → Repairs → "Move <panel name> to the new app"' \
+  "the both-installed refusal names the Panel Assistant Repair"
+assert_contains 'Panel Assistant is required for the move' "the both-installed refusal says Panel Assistant is required"
+assert_not_contains 'config/export|PREPARE_UPGRADE|ha-paneld-db-txn|/data/local/tmp/hapaneld-helper|^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p|am start' \
+  "$MOCK_CALL_LOG" "the both-installed refusal precedes every tracked panel mutation"
 assert_log_contains 'host-db-observe package=io.panelassistant.android count=1 primary=missing passive=passive' \
   "passive ownership starts with an actual missing-successor observation"
 assert_log_contains 'host-db-observe package=io.github.maxlyth.hapaneld .*primary=readable:9:ok' \
   "passive ownership measures the bridge database against the candidate"
 passive_bridge_line="$(grep -n 'host-db-observe package=io.github.maxlyth.hapaneld count=1 ' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
 passive_recheck_line="$(grep -n 'host-db-observe package=io.panelassistant.android count=2 primary=missing passive=passive' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-passive_prepare_line="$(grep -n 'PREPARE_UPGRADE' "$MOCK_CALL_LOG" | head -1 | cut -d: -f1)"
-if [ -n "$passive_bridge_line" ] && [ -n "$passive_recheck_line" ] && [ -n "$passive_prepare_line" ] && \
-   [ "$passive_bridge_line" -lt "$passive_recheck_line" ] && [ "$passive_recheck_line" -lt "$passive_prepare_line" ]; then
+if [ -n "$passive_bridge_line" ] && [ -n "$passive_recheck_line" ] && \
+   [ "$passive_bridge_line" -lt "$passive_recheck_line" ]; then
   pass "passive ownership rechecks the empty successor after measuring the bridge"
 else fail_test "passive ownership rechecks the empty successor after measuring the bridge"; fi
-unset passive_bridge_line passive_recheck_line passive_prepare_line
-assert_log_contains 'PREPARE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver' \
-  "passive successor quiescence addresses the proven bridge owner"
-assert_log_contains 'cp /data/data/io\.github\.maxlyth\.hapaneld/databases/ha-paneld\.db ' \
-  "passive successor capture copies the proven bridge owner"
-assert_log_contains 'RELEASE_UPGRADE -n io\.github\.maxlyth\.hapaneld/\.UpgradeControlReceiver' \
-  "passive successor release returns to the proven bridge owner"
+unset passive_bridge_line passive_recheck_line
 
 reset_db_txn_state
 MOCK_LEGACY_INSTALLED=1 MOCK_UPGRADE_PREPARE=ready MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER=blocked \
@@ -5449,17 +5449,17 @@ for passive_drift in inside-retired inside-database consume-retired package-reti
   MOCK_HOST_DB_SUCCESSOR_PASSIVE_OWNER_CHANGED="$passive_changed_proof" \
   MOCK_HOST_DB_SUCCESSOR_PRIMARY_CHANGED="$passive_changed_primary" \
     run_provision "$MOCK_TARGET" --apk "$APK" --no-tame
-  assert_failure "$passive_drift ownership change cannot license package replacement" \
-    'database compatibility could not be proven'
-  passive_mutations='^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p'
-  case "$passive_drift" in inside-*) passive_mutations="$passive_mutations|PREPARE_UPGRADE" ;; esac
-  assert_not_contains "$passive_mutations" \
+  # A change inside the initial read is refused by the database gate. A later change is never reached:
+  # the initial read proved the old app holds the data, so the old-app refusal stops the run first.
+  case "$passive_drift" in
+    inside-*) passive_refusal_headline='database compatibility could not be proven' ;;
+    *) passive_refusal_headline='this panel still runs the old ha-paneld app' ;;
+  esac
+  assert_failure "$passive_drift ownership change cannot license package replacement" "$passive_refusal_headline"
+  assert_not_contains '^adb .* install( |$)|pm clear|pm grant|appops set|settings put|HANDOFF_INSTALLED_SUCCESSOR|monkey -p|PREPARE_UPGRADE' \
     "$MOCK_CALL_LOG" "$passive_drift ownership change stops before target mutation"
-  if [ "$passive_drift" = package-retired ]; then
-    assert_log_contains 'helper-transaction-[0-9a-f]+.*rollback-system' \
-      "package-time passive ownership drift rolls back prepared helper custody"
-  fi
 done
+unset passive_refusal_headline
 unset passive_refusal passive_retained passive_recovery passive_proof passive_bridge_present passive_bridge_primary \
   passive_drift passive_change_at passive_changed_proof passive_changed_primary passive_mutations
 
