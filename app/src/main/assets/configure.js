@@ -80,6 +80,14 @@
     }, 500);
   }
 
+  // A setting's step is the arrow increment, not a rule: the panel accepts any in-range value and rounds
+  // where hardware needs it (camera exposure). Only a fraction in a whole-number field stays refused.
+  function offStepOnly(field, control) {
+    var v = control.validity;
+    if (!v || !v.stepMismatch || v.rangeUnderflow || v.rangeOverflow || v.badInput) return false;
+    return field.type === "FLOAT" || Number.isInteger(Number(control.value));
+  }
+
   function firstInvalidDirtySetting() {
     var minimumKey = "auto_brightness_minimum_percent";
     var maximumKey = "auto_brightness_maximum_percent";
@@ -103,14 +111,14 @@
       var controls = row && row.querySelectorAll ? row.querySelectorAll("input,select,textarea") : [];
       var control = null;
       for (var c = 0; c < controls.length; c++) {
-        if (controls[c].disabled || !controls[c].checkValidity || controls[c].checkValidity()) continue;
+        if (controls[c].disabled || !controls[c].checkValidity || controls[c].checkValidity() ||
+            offStepOnly(field, controls[c])) continue;
         control = controls[c];
         break;
       }
       if (!control) continue;
-      // Name the rule the browser actually broke: an in-range value off the step grid is not a range error.
-      var message = control.validity && control.validity.stepMismatch && field.step != null
-        ? cfg.i18nText("configure.validation.step", "{label} must be a multiple of {step}.", { label: field.label, step: field.step })
+      var message = field.type === "INT" && field.min != null && field.max != null
+        ? cfg.i18nText("configure.validation.whole_range", "{label} must be a whole number between {min} and {max}.", { label: field.label, min: field.min, max: field.max })
         : field.min != null && field.max != null
         ? cfg.i18nText("configure.validation.range", "{label} must be between {min} and {max}.", { label: field.label, min: field.min, max: field.max })
         : cfg.i18nText("configure.validation.invalid", "{label} has an invalid value.", { label: field.label });
