@@ -723,6 +723,7 @@ browserTest('Unrelated and failed saves preserve the supported browser language 
   }, () => { state.documents++; return fixture({
     'configure.save.saved': '已保存。',
     'configure.save.failed': '保存失败。',
+    'configure.save.refused': '未保存：{reason}',
   }); });
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage();
@@ -739,7 +740,7 @@ browserTest('Unrelated and failed saves preserve the supported browser language 
 
   await page.locator('#cfg-ui_language select').selectOption('en');
   await page.locator('#savebtn').click();
-  await page.getByText('保存失败。', { exact: true }).waitFor();
+  await page.getByText('未保存：Locale save refused.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => localStorage.getItem('selectedLanguage')), '"fr"');
   assert.equal(state.documents, 1);
   assert.deepEqual(state.posts, [
@@ -1401,7 +1402,7 @@ browserTest('Configure rejects an invalid brightness floor before a save request
   await page.locator('#savebtn').click();
   await assert.rejects(page.waitForRequest((request) => request.url().endsWith('/api/v1/config') && request.method() === 'POST', { timeout: 200 }), /Timeout/);
   assert.equal(configPosts, 0);
-  await assert.doesNotReject(page.locator('#cfg-msg').getByText('Minimum brightness must be between 4 and 99.').waitFor());
+  await assert.doesNotReject(page.locator('#cfg-msg').getByText('Minimum brightness must be a whole number between 4 and 99.').waitFor());
 });
 
 browserTest('Configure renderer picker reflects the installed Companion catalogue across save and reload', async (t) => {
