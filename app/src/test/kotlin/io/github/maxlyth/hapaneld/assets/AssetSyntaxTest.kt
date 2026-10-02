@@ -394,8 +394,8 @@ class AssetSyntaxTest {
             ];
             global.fetch=(url,opts)=>{
               if(opts&&opts.method==='POST'){posted=String(opts.body||'');return Promise.resolve({ok:true,json:()=>Promise.resolve({})})}
-              if(url==='api/v1/config/schema')return Promise.resolve({json:()=>Promise.resolve(schema)});
-              if(url==='api/v1/config')return Promise.resolve({json:()=>Promise.resolve({settings:{dashboard_package:'builtin',dashboard_entity_learning:initiallyEnabled?'true':'false'},ha_expose:{}})});
+              if(url==='api/v1/config/schema')return Promise.resolve({ok:true,json:()=>Promise.resolve(schema)});
+              if(url==='api/v1/config')return Promise.resolve({ok:true,json:()=>Promise.resolve({settings:{dashboard_package:'builtin',dashboard_entity_learning:initiallyEnabled?'true':'false'},ha_expose:{}})});
               if(url==='api/v1/apps')return Promise.resolve({json:()=>Promise.resolve({apps:[]})});
               if(url==='api/v1/radio')return Promise.resolve({json:()=>Promise.resolve({present:false})});
               if(url==='health')return Promise.resolve({text:()=>Promise.resolve('ok cfg=entity-tab-test')});
@@ -463,8 +463,8 @@ class AssetSyntaxTest {
             ];
             global.fetch=(url,opts)=>{
               if(opts&&opts.method==='POST'){posted=String(opts.body||'');return new Promise(resolve=>{postResolve=resolve})}
-              if(url==='api/v1/config/schema')return Promise.resolve({json:()=>Promise.resolve(schema)});
-              if(url==='api/v1/config')return Promise.resolve({json:()=>Promise.resolve({settings:{dashboard_package:'builtin',dashboard_entity_learning:false},ha_expose:{}})});
+              if(url==='api/v1/config/schema')return Promise.resolve({ok:true,json:()=>Promise.resolve(schema)});
+              if(url==='api/v1/config')return Promise.resolve({ok:true,json:()=>Promise.resolve({settings:{dashboard_package:'builtin',dashboard_entity_learning:false},ha_expose:{}})});
               if(url==='api/v1/apps')return Promise.resolve({json:()=>Promise.resolve({apps:[]})});
               if(url==='api/v1/radio')return Promise.resolve({json:()=>Promise.resolve({present:false})});
               if(url==='health')return Promise.resolve({text:()=>Promise.resolve('ok cfg=new-baseline')});

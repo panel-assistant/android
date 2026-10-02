@@ -8,7 +8,7 @@ function i18nText(key,fallback,vars){if(window.HaI18n&&typeof window.HaI18n.t ==
 // The camera source is already satisfied on a panel that has no camera card: the server omits the card
 // on a board whose profile declares no camera, and a source that can never report would stall the
 // remembered card sizes for every other card on the page.
-var cardSizeSources={info:document.body.getAttribute('data-hydrate')!=='1',perf:false,topProcesses:false,sensors:false,inspect:false,camera:!document.getElementById('camtbl')};
+var cardSizeSources={info:document.body.getAttribute('data-hydrate')!=='1'&&document.body.getAttribute('data-hydrate')!=='cold',perf:false,topProcesses:false,sensors:false,inspect:false,camera:!document.getElementById('camtbl')};
 function cardSizeSourcesReady(){return cardSizeSources.info&&cardSizeSources.perf&&cardSizeSources.topProcesses&&cardSizeSources.sensors&&cardSizeSources.inspect&&cardSizeSources.camera;}
 function settleCardSizeMemory(){if(cardSizeSourcesReady()&&window.CardSizeMemory)window.CardSizeMemory.settle('dashboard-cards',1200);}
 function cardSizeSourceReady(source){if(cardSizeSources[source])return;cardSizeSources[source]=true;settleCardSizeMemory();}
@@ -697,13 +697,13 @@ function setupScreenshotOverlay(){var card=document.getElementById('shotcard'),s
 setupScreenshotOverlay();
 
 // Dashboard hydration: the shell now renders instantly (the probe-backed values used to block the
-// whole page ~12s on PX30). When the server marked the page stale/cold (body data-hydrate="1"),
+// whole page ~12s on PX30). When the server marked the page stale/cold (body data-hydrate="cold" or "1"),
 // fetch /api/v1/info — ready-to-inject HTML fragments rendered by the same Kotlin as the warm
 // server render — and fill the facts/value/capabilities tables, banners, controls and screenshot.
 function localizedInfoUrl(){var locale=window.HaI18n&&typeof window.HaI18n.locale==='string'?window.HaI18n.locale:'';
  return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale)?'api/v1/info?lang='+encodeURIComponent(locale):'api/v1/info';}
 (function(){
- if(document.body.getAttribute('data-hydrate')!=='1')return;
+ if(document.body.getAttribute('data-hydrate')!=='1'&&document.body.getAttribute('data-hydrate')!=='cold')return;
  function apply(d){
   var bz=document.getElementById('bannerzone');if(bz&&typeof d.banners==='string')bz.innerHTML=d.banners;
   Object.keys(d.cards||{}).forEach(function(id){var el=document.getElementById(id);if(!el)return;
@@ -717,8 +717,9 @@ function localizedInfoUrl(){var locale=window.HaI18n&&typeof window.HaI18n.local
   setupScreenshotOverlay();scheduleDashboardColumnAlignment();
   cardSizeSourceReady('info');
  }
- function hydrate(tries){fetch(localizedInfoUrl()).then(function(r){return r.json();}).then(apply)
-  .catch(function(){if(tries>0)setTimeout(function(){hydrate(tries-1);},3000);});}
+ function hydrate(tries){fetch(localizedInfoUrl()).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(apply)
+  .catch(function(error){if(tries>0)setTimeout(function(){hydrate(tries-1);},3000);
+   else if(document.body.getAttribute('data-hydrate')==='cold')window.HaI18n.pageFailure('api/v1/info · '+error);});}
  hydrate(10);
 })();
 // A warm server render does not run hydration, so explicitly start its background refresh too. A

@@ -294,7 +294,7 @@ browserTest('Configure consumes a locale reload message exactly once when initia
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio') return json({ present: false });
     if (path === '/api/v1/proximity') return json({ present: false });
-  });
+  }, () => fixture().replace('<script src="/configure-state.js">', '<script src="/assets/i18n.js"></script><script src="/configure-state.js">'));
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage();
   page.setDefaultTimeout(2_000);
@@ -309,8 +309,8 @@ browserTest('Configure consumes a locale reload message exactly once when initia
     };
   }, storageKey);
   await page.goto(harness.url, { waitUntil: 'domcontentloaded', timeout: 5_000 });
-  await page.getByText('Language saved; another setting was rejected.', { exact: true }).waitFor();
-  await page.getByText(/Could not load settings/).waitFor();
+  await page.locator('main.pickles').waitFor();
+  assert.equal(await page.locator('#cfg-msg').textContent(), 'Language saved; another setting was rejected.');
 
   assert.deepEqual(await page.evaluate((key) => ({
     stored: sessionStorage.getItem(key), removals: window.localeReloadMessageRemovals,
@@ -863,7 +863,7 @@ function cardMemoryFixture(cold) {
   return `<!doctype html><html><head><style>
     #dashboard-cards{width:820px}.card{box-sizing:border-box;width:400px;min-height:80px;border:1px solid transparent;padding:10px}
     .top-process-card tr{height:34px}
-  </style></head><body data-hydrate="${cold ? '1' : '0'}" data-hardened="0">
+  </style></head><body data-hydrate="${cold ? 'cold' : '0'}" data-hardened="0">
     <div id="bannerzone"></div><div id="dashboard-cards" data-card-size-page="dashboard" data-card-size-epoch="1" data-card-size-restore="1">
       <div class="card" data-layout-key="panel-info"${cold ? '' : ' style="height:220px"'}><table id="infotbl"><tr><td>reading…</td></tr></table></div>
       <div class="card" data-layout-key="live-metrics">

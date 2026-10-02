@@ -926,6 +926,7 @@
     }).catch(function (error) {
       setStatus(t("profiles.error.load_catalog", "Could not load profiles: {error}", { error: presentedError(error) }), "error");
       renderIssues([{ severity: "error", message: error.message }]);
+      if (!model.profiles.length && !model.catalogRevision && !model.sourceLoaded) window.HaI18n.pageFailure(API + " · " + presentedError(error));
     });
   }
   function loadSelected() {

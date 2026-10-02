@@ -314,8 +314,8 @@
     ++cfg.schemaLanguageRequest;
     var schemaUrl = cfg.configSchemaUrl(cfg.haUserStatus.phase === "connected" ? cfg.haUserStatus.language : "");
     Promise.all([
-      fetch(schemaUrl, { headers: { "Accept": "application/json" }, cache: "no-store" }).then(cfg.readLocalizedSchema),
-      fetch("api/v1/config", { headers: { "Accept": "application/json" }, cache: "no-store" }).then(function (r) { return r.json(); }),
+      fetch(schemaUrl, { headers: { "Accept": "application/json" }, cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(schemaUrl + " · HTTP " + r.status); return cfg.readLocalizedSchema(r); }),
+      fetch("api/v1/config", { headers: { "Accept": "application/json" }, cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("api/v1/config · HTTP " + r.status); return r.json(); }),
       // Installed launchable apps for the package pickers; tolerate failure (picker falls back to text).
       fetch("api/v1/apps").then(function (r) { return r.json(); }).catch(function () { return { apps: [] }; }),
     ]).then(function (res) {
@@ -378,6 +378,7 @@
       if (done) done(true);
     }).catch(function (e) {
       document.getElementById("cfg-status").textContent = cfg.i18nText("configure.load_failed", "Could not load settings ({error}).", { error: e });
+      if (!Array.isArray(cfg.schema) || !cfg.schema.some(function (field) { return document.getElementById("cfg-" + field.key); })) window.HaI18n.pageFailure("api/v1/config/schema / api/v1/config · " + e);
       cfg.consumeLocaleReloadMessage();
       if (done) done(false);
     });

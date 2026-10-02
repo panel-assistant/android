@@ -12488,6 +12488,36 @@
       "sourceHash": "18099935ffa7e381e72b5614358626beac066ee14193dbccb31826af8f30abef",
       "state": "machine-cross-checked"
     },
+    "shell.pickles.back": {
+      "text": "Zurück zum Dashboard",
+      "sourceHash": "97ba1d394fab183d035d1f789a8fac45d0aa61b00fb378dbe152b014df418639",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.load_failed": {
+      "text": "Diese Seite konnte nicht geladen werden",
+      "sourceHash": "89b097d0088555fbeee364930307b1a04b0f3a373d6f5e21fa4bdfa65a9b47e0",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.not_found": {
+      "text": "404 · Seite nicht gefunden",
+      "sourceHash": "861f921f7757c86ff78ddd47a3c6b3e4d1001eeff273ed69dfb5c1be9889fb01",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.retry": {
+      "text": "Erneut versuchen",
+      "sourceHash": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.story": {
+      "text": "Unser langsamer, sturer Panda ist mit dieser Seite davongeschlendert.",
+      "sourceHash": "a350c4b07ce0cc1444e8752d391aba54044674e4b7d5269b85edcc6eea032226",
+      "state": "machine-cross-checked"
+    },
+    "shell.pickles.title": {
+      "text": "Pickles ist ausgebüxt",
+      "sourceHash": "10900dbad0a7d181905313e1d894eed1632529f34f0fd2dd1e95db7fe7bee17f",
+      "state": "machine-cross-checked"
+    },
     "shell.runtime.duration_minutes": {
       "text": "{count} Min.",
       "sourceHash": "1829c58ba472520fd39e61f9e337a1b7da27e86299332dde5bfdea355c3895a8",
