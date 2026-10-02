@@ -133,11 +133,21 @@ esac
 #    pass against code whose write-storm answer was `unreadable` six times in seven, while the
 #    changelog promised the opposite. Weakening the assertion hid the defect instead of naming it,
 #    so the case now demands the verdict the product claims to give.
-( end=$((SECONDS + 25))
-  while [ "$SECONDS" -lt "$end" ]; do
-    sqlite3 "$work/live.db" "INSERT INTO t VALUES ('forever');" >/dev/null 2>&1
-  done ) &
+#    The writer is one connection fed an endless stream of statements, and the observer starts only
+#    once its first row has landed. It used to be a loop starting a fresh sqlite3 per row, with the
+#    observer started at once, and on a hosted runner that raced both ways: the observer finished a
+#    whole read before the first row landed (36 ms after case 2), or found a quiet gap between two
+#    process starts. Either way a read that really was stable came back `readable`, a correct answer
+#    about a database that was not being written, so the race was in the test, not the reader.
+yes "INSERT INTO t VALUES ('forever');" | timeout 25 sqlite3 "$work/live.db" >/dev/null 2>&1 &
 storm=$!
+started=0
+for _ in $(seq 100); do
+  [ "$(sqlite3 "$work/live.db" "SELECT count(*) FROM t WHERE v = 'forever';" 2>/dev/null)" -gt 0 ] 2>/dev/null &&
+    { started=1; break; }
+  sleep 0.05
+done
+[ "$started" = 1 ] || fail "the write storm never wrote a row"
 verdict="$(run_observer "$work/live.db")"
 kill "$storm" 2>/dev/null || true
 wait "$storm" 2>/dev/null || true
