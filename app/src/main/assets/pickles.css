@@ -1,0 +1,7 @@
+body.pickles-failed > :not(.pickles){display:none!important}
+.pickles{max-width:34rem;margin:0 auto;padding:16px;text-align:center}
+.pickles img{display:block;width:min(180px,50vw);height:auto;margin:0 auto}
+.pickles h1{font-size:1.5rem;margin:12px 0}
+.pickles p{line-height:1.4;margin:12px 0}
+.pickles code{display:block;overflow-wrap:anywhere;color:var(--dim,var(--icon));font-size:.85rem;margin:8px 0}
+.pickles a,.pickles button{display:inline-block;margin-top:8px;padding:7px 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:.85rem;cursor:pointer}

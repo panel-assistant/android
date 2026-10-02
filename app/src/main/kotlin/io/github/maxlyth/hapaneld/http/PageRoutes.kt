@@ -235,7 +235,7 @@ internal fun Route.apiPageRoute(
 ) {
     get("/api") {
         val strings = requestStrings(call)
-        val projectionPrefixes = setOf("api.", "configure.hardened.", "shell.hardened.")
+        val projectionPrefixes = setOf("api.", "configure.hardened.", "shell.hardened.", "shell.pickles.")
         call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
         call.response.headers.append(
             HttpHeaders.ContentLanguage,

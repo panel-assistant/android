@@ -38303,6 +38303,18 @@
       "softMaxChars": 40,
       "hardMaxChars": 80
     },
+    "shell.pickles.load_failed": {
+      "text": "Could not load this page",
+      "sourceHash": "89b097d0088555fbeee364930307b1a04b0f3a373d6f5e21fa4bdfa65a9b47e0",
+      "surface": "shell",
+      "context": "Full-page initial data load failure beneath Pickles story; retry reloads the current page.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 60,
+      "hardMaxChars": 100
+    },
     "shell.pickles.not_found": {
       "text": "404 · Page not found",
       "sourceHash": "861f921f7757c86ff78ddd47a3c6b3e4d1001eeff273ed69dfb5c1be9889fb01",
@@ -38314,6 +38326,18 @@
       "frozen": [],
       "softMaxChars": 40,
       "hardMaxChars": 80
+    },
+    "shell.pickles.retry": {
+      "text": "Try again",
+      "sourceHash": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
+      "surface": "shell",
+      "context": "Full-page initial data load failure beneath Pickles story; retry reloads the current page.",
+      "risk": "ordinary",
+      "siblings": [],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 40,
+      "hardMaxChars": 70
     },
     "shell.pickles.story": {
       "text": "Our slow, stubborn panda has wandered off with this page.",

@@ -38,9 +38,9 @@ internal fun browserNotFoundHtml(strings: AppStrings, path: String, embed: Embed
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(strings.get("shell.pickles.not_found"))}</title>
 <link rel="icon" href="favicon.svg"><link rel="stylesheet" href="info.css">
-<style>main{max-width:34rem;margin:0 auto;padding:16px;text-align:center}main img{display:block;width:min(180px,50vw);height:auto;margin:0 auto}h1{font-size:1.5rem;margin:12px 0}p{line-height:1.4;margin:12px 0}code{display:block;overflow-wrap:anywhere;color:var(--dim);font-size:.85rem;margin:8px 0}a{display:inline-block;margin-top:8px}</style>
+<link rel="stylesheet" href="assets/pickles.css">
 <script>(function(){var m=location.search.match(/[?&]theme=(dark|light)\b/);if(m)document.documentElement.setAttribute('data-theme',m[1])})();</script>
-</head><body${if (embed == null) "" else " data-embedded"}><main>
+</head><body${if (embed == null) "" else " data-embedded"}><main class="pickles">
 <img src="assets/pickles.svg" alt="">
 <h1>${esc(strings.get("shell.pickles.title"))}</h1>
 <p>${esc(strings.get("shell.pickles.story"))}</p>

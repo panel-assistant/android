@@ -289,15 +289,7 @@
   }
 
   hydrateChrome();
-  fetch(SPEC_PATH).then(function (response) { return response.json(); }).then(render).catch(function (error) {
-    var message = el("p", "desc");
-    var marker = "__OPAQUE_ERROR__";
-    appendOpaqueAtMarker(
-      message,
-      t("api.error.load_spec", "Could not load {path}: {error}", { path: SPEC_PATH, error: marker }),
-      marker,
-      error
-    );
-    document.getElementById("root").appendChild(message);
+  fetch(SPEC_PATH).then(function (response) { if (!response.ok) throw new Error("HTTP " + response.status); return response.json(); }).then(render).catch(function (error) {
+    if (!document.querySelector("#root details")) window.HaI18n.pageFailure(t("api.error.load_spec", "Could not load {path}: {error}", { path: SPEC_PATH, error: String(error) }));
   });
 }());

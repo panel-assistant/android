@@ -55,7 +55,7 @@ class DashboardPageHttpTest {
                 }
                 assertEquals(HttpStatusCode.OK, response.status)
                 val html = response.bodyAsText()
-                assertTrue(html.contains("data-hydrate=\"1\""))
+                assertTrue(html.contains("data-hydrate=\"cold\""))
                 assertTrue(html.contains("data-capture-ok=\"0\""))
                 assertTrue(html.contains("id=\"infotbl\""))
                 assertTrue(html.contains("id=\"contexttbl\""))

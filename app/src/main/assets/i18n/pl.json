@@ -12727,6 +12727,16 @@
    "text": "Wróć do pulpitu nawigacyjnego",
    "sourceHash": "97ba1d394fab183d035d1f789a8fac45d0aa61b00fb378dbe152b014df418639",
    "state": "machine-cross-checked"
+  },
+  "shell.pickles.load_failed": {
+   "text": "Nie udało się wczytać tej strony",
+   "sourceHash": "89b097d0088555fbeee364930307b1a04b0f3a373d6f5e21fa4bdfa65a9b47e0",
+   "state": "machine-cross-checked"
+  },
+  "shell.pickles.retry": {
+   "text": "Spróbuj ponownie",
+   "sourceHash": "d8b8392e2c542950ca64867168e4ef87d4ad606882d5898f826b51c6d553988f",
+   "state": "machine-cross-checked"
   }
  }
 }

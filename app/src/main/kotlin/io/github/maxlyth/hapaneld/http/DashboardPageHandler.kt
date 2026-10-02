@@ -77,7 +77,7 @@ internal class DashboardPageHandler(
         return pages().pageShell(
             active = "dashboard",
             sectionTitle = null,
-            bodyAttrs = """data-ver="${Config.VERSION}" data-build="${buildToken()}" data-cfg="${renderConfigConcurrencyHash()}" data-hydrate="${if (hydrate) "1" else "0"}" data-hardened="${if (config.hardenedSecurityEnabled) "1" else "0"}"""",
+            bodyAttrs = """data-ver="${Config.VERSION}" data-build="${buildToken()}" data-cfg="${renderConfigConcurrencyHash()}" data-hydrate="${if (s == null) "cold" else if (hydrate) "1" else "0"}" data-hardened="${if (config.hardenedSecurityEnabled) "1" else "0"}"""",
             rightControls = rightControls,
             embed = embed,
             extraScripts = """<script src="assets/card-size-memory.js"></script>

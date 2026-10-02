@@ -55,9 +55,45 @@
     return value;
   }
 
+  // Page loaders share this bridge. Retain their DOM so existing background observations can
+  // settle without losing controls or changing their lifetimes.
+  function pageFailure(diagnostic) {
+    if (document.querySelector("main.pickles")) return;
+    var stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = "assets/pickles.css";
+    document.head.appendChild(stylesheet);
+    var main = document.createElement("main");
+    main.className = "pickles";
+    main.setAttribute("role", "alert");
+    var image = document.createElement("img");
+    // Artwork: https://github.com/maxlyth/pickles — refresh app/src/main/assets/pickles.svg from that source when needed.
+    image.src = "assets/pickles.svg";
+    image.alt = "";
+    main.appendChild(image);
+    function line(tag, value) {
+      var node = document.createElement(tag);
+      node.textContent = value;
+      if (tag === "code") node.lang = "und";
+      main.appendChild(node);
+    }
+    line("h1", t("shell.pickles.title", "Pickles has escaped"));
+    line("p", t("shell.pickles.story", "Our slow, stubborn panda has wandered off with this page."));
+    line("p", t("shell.pickles.load_failed", "Could not load this page"));
+    line("code", String(diagnostic));
+    var retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = t("shell.pickles.retry", "Try again");
+    retry.addEventListener("click", function () { root.location.reload(); });
+    main.appendChild(retry);
+    document.body.appendChild(main);
+    document.body.classList.add("pickles-failed");
+  }
+
   root.HaI18n = Object.freeze({
     locale: typeof payload.locale === "string" ? payload.locale : "en",
     t: t,
-    text: text
+    text: text,
+    pageFailure: pageFailure
   });
 })(window);

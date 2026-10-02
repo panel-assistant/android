@@ -281,10 +281,10 @@ test('API Explorer spec-load failure localizes its frame and isolates hostile br
         : nativeFetch(input, options);
     },
   });
-  const message = page.locator('#root p.desc');
+  const message = page.locator('main.pickles code');
   await message.waitFor();
   assert.match(await message.textContent(), /^无法加载 api\/v1\/openapi\.json：<img/);
-  assert.equal(await message.locator('[lang="und"]').textContent(), '<img src=x onerror="window.__errorOwned=1">');
+  assert.equal(await message.getAttribute('lang'), 'und');
   assert.equal(await message.locator('img').count(), 0);
   assert.equal(await page.evaluate(() => window.__errorOwned), undefined);
 });
