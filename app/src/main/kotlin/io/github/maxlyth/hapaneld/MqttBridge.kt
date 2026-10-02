@@ -1132,6 +1132,14 @@ internal class MqttAnnouncementReadiness {
 }
 
 /**
+ * The published button-backlight state for the last commanded [level]. A panel that has never been
+ * commanded (-1) reports OFF: the bridge sends nothing to the node until the first command, the TPA10's
+ * node starts at 0, and an `unknown` here showed the entity as Unavailable on a connected panel.
+ */
+internal fun buttonBacklightState(level: Int): String =
+    if (level <= 0) """{"state":"OFF"}""" else """{"state":"ON","brightness":$level}"""
+
+/**
  * The helper `BTN` command for a key-backlight [level] on the Home Assistant scale. The node takes the level
  * raw, so the profile [curve] is applied here; the state published back stays [level] itself.
  */
@@ -1695,11 +1703,7 @@ internal class MqttBridge(
         channel("volume", stateVolume) {
             if (config.haExposed("volume", true)) known(volume.getPercent().toString()) else unknown
         }
-        if (hasButtonBacklight) channel("buttons", stateButtons) {
-            config.lastButtonBacklight.takeIf { it >= 0 }?.let {
-                known(if (it == 0) """{"state":"OFF"}""" else """{"state":"ON","brightness":$it}""")
-            } ?: unknown
-        }
+        if (hasButtonBacklight) channel("buttons", stateButtons) { known(buttonBacklightState(config.lastButtonBacklight)) }
         channel("wake_on_wave", stateWakeOnWave) {
             if (hasProximity) known(if (config.wakeOnWave) "ON" else "OFF") else unknown
         }
