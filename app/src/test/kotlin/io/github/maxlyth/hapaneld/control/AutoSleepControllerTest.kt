@@ -209,7 +209,8 @@ class AutoSleepControllerTest {
 
             h.now.set(clearAtMs + leaseMs)
             h.controller.advanceToForTest(h.now.get())
-            h.await { h.screen.routeSelection().selected == ScreenOff.DAEMON_BLPOWER }
+            h.settle()
+            assertEquals(ScreenOff.DAEMON_BLPOWER, h.screen.routeSelection().selected)
             assertTrue(h.screen.isIntendedOff())
             assertFalse("the reported expiry must power the panel off", h.backlightPowered())
         } finally { h.closeWithVirtualTime(::runCurrent) }
