@@ -315,7 +315,9 @@ else
   fail "CI uploads the debug APK only from the assemble split"
 fi
 if grep -Fqx '    name: Android build' <<<"$android_build_job" &&
-   grep -Fqx '    needs: [android-runner, build-self-hosted, build]' <<<"$android_build_job" &&
+   grep -Fqx '    needs: [android-runner, build-self-hosted, build, fixture-browser-tests]' <<<"$android_build_job" &&
+   grep -Fq 'BROWSER_RESULT: ${{ needs.fixture-browser-tests.result }}' <<<"$android_build_job" &&
+   grep -Fq 'test "$BROWSER_RESULT" = success' <<<"$android_build_job" &&
    grep -Fq 'SELF_HOSTED_RESULT: ${{ needs.build-self-hosted.result }}' <<<"$android_build_job" &&
    grep -Fq 'HOSTED_RESULT: ${{ needs.build.result }}' <<<"$android_build_job" &&
    grep -Fq 'self-hosted) test "$SELF_HOSTED_RESULT" = success ;;' <<<"$android_build_job" &&
