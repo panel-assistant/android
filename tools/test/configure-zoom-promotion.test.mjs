@@ -41,6 +41,7 @@ function schema(promoted) {
     field('dashboard_fullscreen', 'Fullscreen'),
     field('dashboard_theme', 'Theme', { type: 'ENUM', options: ['auto'] }),
     field('camera_kbps', 'Bitrate (kbps)', { type: 'INT', min: 250, max: 8000, step: 250 }),
+    field('camera_exposure', 'Exposure', { type: 'FLOAT', min: -2, max: 2, step: 0.5 }),
     { key: 'ui_language', label: 'Interface language', group: 'System', type: 'ENUM', tier: 'BASIC', available: true, options: ['auto', 'en', 'fr'] },
   ];
   return promoted ? [zoom, ...rest] : [...rest, zoom];
@@ -147,18 +148,6 @@ async function save(p, key, value) {
 for (const engine of engines) {
   const engineTest = engine.available ? test : test.skip;
 
-  engineTest(`${engine.name}: any whole zoom percentage saves`, async (t) => {
-    const h = await harness(true);
-    const browser = await engine.type.launch(engine.launch);
-    t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
-    const p = await browser.newPage({ viewport: { width: 1024, height: 800 } });
-    await p.goto(h.url);
-    await card(p);
-    await save(p, 'dashboard_zoom', 96);
-    await p.waitForFunction(() => /Saved/.test(document.getElementById('cfg-msg').textContent));
-    assert.deepEqual(h.posts, [{ dashboard_zoom: '96' }]);
-  });
-
   engineTest(`${engine.name}: a value between a setting's arrow steps saves; an out-of-range value does not`, async (t) => {
     const h = await harness(true);
     const browser = await engine.type.launch(engine.launch);
@@ -173,6 +162,28 @@ for (const engine of engines) {
     await p.waitForFunction(() => /Saved/.test(document.getElementById('cfg-msg').textContent));
     assert.deepEqual(h.posts, [{ camera_kbps: '1100' }]);
   });
+
+  for (const numeric of [
+    { key: 'dashboard_zoom', value: 96, refused: [49, 301], message: 'Zoom (%) must be a whole number between 50 and 300.' },
+    { key: 'camera_exposure', value: 0.3, refused: [-2.1, 2.1], message: 'Exposure must be between -2 and 2.' },
+  ]) {
+    engineTest(`${engine.name}: ${numeric.key} names its range on refusal and saves an in-range value`, async (t) => {
+      const h = await harness(true);
+      const browser = await engine.type.launch(engine.launch);
+      t.after(async () => { await browser.close(); await new Promise((resolve) => h.server.close(resolve)); });
+      const p = await browser.newPage({ viewport: { width: 1024, height: 800 } });
+      await p.goto(h.url);
+      await card(p);
+      for (const value of numeric.refused) {
+        await save(p, numeric.key, value);
+        assert.equal(await p.locator('#cfg-msg').textContent(), numeric.message);
+        assert.deepEqual(h.posts, [], 'a range refusal must not reach the server');
+      }
+      await save(p, numeric.key, numeric.value);
+      await p.waitForFunction(() => /Saved/.test(document.getElementById('cfg-msg').textContent));
+      assert.deepEqual(h.posts, [{ [numeric.key]: String(numeric.value) }]);
+    });
+  }
 
   engineTest(`${engine.name}: a fraction in a whole-number setting is rounded, not refused`, async (t) => {
     const h = await harness(true);

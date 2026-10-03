@@ -58,6 +58,30 @@ import kotlin.test.assertTrue
 
 class ConfigPostProductionRouteTest {
 
+    @Test fun `zoom 96 persists through the production route and invalid values explain the rule`() =
+        withRouteConfig { config, _, server, _ ->
+            testApplication {
+                application {
+                    paneldRoot({ emptySet() }, { false }, { "/setup" }) {
+                        route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } }
+                    }
+                }
+                val saved = client.submitForm("/api/v1/config", Parameters.build {
+                    append("dashboard_zoom", "96")
+                }) { accept(ContentType.Application.Json) }
+                assertEquals(HttpStatusCode.OK, saved.status)
+                assertEquals(96, config.dashboardZoom)
+                for ((value, rule) in listOf("49" to "must be ≥ 50", "301" to "must be ≤ 300", "bad" to "expected an integer")) {
+                    val refused = client.submitForm("/api/v1/config", Parameters.build {
+                        append("dashboard_zoom", value)
+                    }) { accept(ContentType.Application.Json) }
+                    assertEquals(HttpStatusCode.BadRequest, refused.status)
+                    assertEquals("dashboard_zoom: $rule\n", refused.bodyAsText())
+                    assertEquals(96, config.dashboardZoom, "a refusal must preserve the saved value")
+                }
+            }
+        }
+
     @Test fun `configure schema offers only system bars and native navigation the panel provides`() {
         for (caps in listOf(Capabilities(), Capabilities(hasNativeNavbar = true), Capabilities(hasAndroidStatusBar = true))) {
             withFullReadServer { _, fixture ->
