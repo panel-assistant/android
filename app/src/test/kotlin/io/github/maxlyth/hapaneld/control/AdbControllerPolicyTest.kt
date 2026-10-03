@@ -273,6 +273,28 @@ class AdbControllerPolicyTest {
         assertEquals(false, parseTcpListenerInventory(nearby))
     }
 
+    @Test fun `reassert follows the live listener, not ha-paneld's own persisted property`() {
+        // Vendor init (service.adb.tcp.port=0 at boot) or an adbd restart leaves persist.adb.tcp.port=5555
+        // set while nothing listens; that is exactly when the persisted intent must bring TCP back.
+        val noListener = networkAdbListenerActiveState(directRead = { emptyTcp }, rootRead = null)
+        assertTrue(shouldReassertNetworkAdb(persisted = true, disablePending = false, rootAvailable = true, listening = noListener))
+        // Already listening: restarting adbd would only drop live sessions.
+        assertFalse(shouldReassertNetworkAdb(persisted = true, disablePending = false, rootAvailable = true, listening = true))
+        // Unreadable listener: never restart adbd on a guess.
+        assertFalse(shouldReassertNetworkAdb(persisted = true, disablePending = false, rootAvailable = true, listening = null))
+        assertFalse(shouldReassertNetworkAdb(persisted = false, disablePending = false, rootAvailable = true, listening = false))
+        assertFalse(shouldReassertNetworkAdb(persisted = true, disablePending = false, rootAvailable = false, listening = false))
+    }
+
+    @Test fun `diagnostics report whether a persisted network adb really listens`() {
+        assertEquals("persistent (5555) · listening", networkAdbDiagnostic(persisted = true, active = true))
+        assertTrue(networkAdbDiagnostic(persisted = true, active = false).startsWith("persistent (5555) · NOT listening"))
+        assertEquals("persistent (5555) · listener unreadable", networkAdbDiagnostic(persisted = true, active = null))
+        assertEquals("active (5555) · external — not persisted by ha-paneld", networkAdbDiagnostic(persisted = false, active = true))
+        assertEquals("off", networkAdbDiagnostic(persisted = false, active = false))
+        assertEquals("off", networkAdbDiagnostic(persisted = false, active = null))
+    }
+
     @Test fun `listener proof fails closed on unreadable truncated or malformed inventory`() {
         assertNull(parseTcpListenerInventory(null))
         assertNull(parseTcpListenerInventory(""))
@@ -423,7 +445,7 @@ class AdbControllerPolicyTest {
                     persisted = model.owned,
                     disablePending = model.marker,
                     rootAvailable = true,
-                    active = false,
+                    listening = false,
                 ),
             )
             assertTrue("startup recovery must settle $cut", model.run())

@@ -59,10 +59,15 @@ class AdbController private constructor(
             directRead = ::readSystemPropertyDirect,
             rootRead = if (allowRootCrossCheck) ::readSystemPropertyRoot else null,
         ),
-        listenerState = networkAdbListenerActiveState(
-            directRead = ::readTcpListenerInventoryDirect,
-            rootRead = if (allowRootCrossCheck) ::readTcpListenerInventoryRoot else null,
-        ),
+        listenerState = listenerState(allowRootCrossCheck),
+    )
+
+    /** Whether adbd is listening on [PORT] now, from the kernel socket tables; null when unreadable. The
+     *  properties only say what adbd was asked to do: vendor init can override them at boot, and a
+     *  stopped adbd leaves them set, so only the listener says network adb actually works. */
+    fun listenerState(allowRootCrossCheck: Boolean = true): Boolean? = networkAdbListenerActiveState(
+        directRead = ::readTcpListenerInventoryDirect,
+        rootRead = if (allowRootCrossCheck) ::readTcpListenerInventoryRoot else null,
     )
 
     /** True when network adb is known to be active or enabled over the LAN now. */
@@ -107,9 +112,10 @@ class AdbController private constructor(
     }
 
     /**
-     * Boot/reconnect re-assert: if ha-paneld is persisting network adb but it isn't live (a firmware
-     * that stripped the prop at boot, or adbd died), bring it back. Idempotent no-op when already active,
-     * intent is off, or there's no root.
+     * Boot/reconnect re-assert: if ha-paneld is persisting network adb but nothing listens on its port (a
+     * firmware that stripped or overrode the prop at boot, or adbd restarted without TCP), bring it back.
+     * No-op while it listens, when the listener cannot be read (re-asserting restarts adbd and would drop
+     * live sessions), when intent is off, or without root.
      */
     fun reassert(): Unit = RemoteDebugSecurityTransitionGate.mutate {
         if (disableMarker.isPending()) {
@@ -127,7 +133,7 @@ class AdbController private constructor(
                 persisted = persisted,
                 disablePending = false,
                 rootAvailable = rootAvailable,
-                active = if (persisted && rootAvailable) isActive() else false,
+                listening = if (persisted && rootAvailable) listenerState() else null,
             )
         ) apply()
         resealHardenedAuthorityIfExact()
@@ -372,12 +378,22 @@ internal fun completeHardenedNetworkAdbAdmission(
     }
 }
 
+/** The diagnostics line. A persisted intent states whether adbd listens, so it never claims a port
+ *  that a firmware or an adbd restart has closed. */
+internal fun networkAdbDiagnostic(persisted: Boolean, active: Boolean?): String = when {
+    persisted && active == true -> "persistent (5555) · listening"
+    persisted && active == false -> "persistent (5555) · NOT listening; ha-paneld re-asserts it when it next starts"
+    persisted -> "persistent (5555) · listener unreadable"
+    active == true -> "active (5555) · external — not persisted by ha-paneld"
+    else -> "off"
+}
+
 internal fun shouldReassertNetworkAdb(
     persisted: Boolean,
     disablePending: Boolean,
     rootAvailable: Boolean,
-    active: Boolean,
-): Boolean = persisted && !disablePending && rootAvailable && !active
+    listening: Boolean?,
+): Boolean = persisted && !disablePending && rootAvailable && listening == false
 
 /**
  * Prefer app-readable Android properties so an unrooted panel can still detect externally enabled adb.

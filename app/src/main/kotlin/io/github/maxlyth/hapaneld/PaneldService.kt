@@ -76,6 +76,7 @@ import io.github.maxlyth.hapaneld.control.WifiOutageCounts
 import io.github.maxlyth.hapaneld.control.wifiOutageChronic
 import io.github.maxlyth.hapaneld.control.wifiOutageStatusText
 import io.github.maxlyth.hapaneld.control.availability
+import io.github.maxlyth.hapaneld.control.networkAdbDiagnostic
 import io.github.maxlyth.hapaneld.control.Su
 import io.github.maxlyth.hapaneld.control.SystemController
 import io.github.maxlyth.hapaneld.control.TameController
@@ -2821,7 +2822,7 @@ class PaneldService : Service() {
         val cpuTier: String?,
         val cpuGovernorsAvailable: Boolean,
         val networkAdbPersisted: Boolean,
-        val networkAdbActive: Boolean,
+        val networkAdbActive: Boolean?,
         val zigbee: ZigbeeObservation,
         val relayCount: Int,
         val buttonLedCount: Int,
@@ -2833,9 +2834,10 @@ class PaneldService : Service() {
             cpuTier = cpu.currentTier(allowRootFallback = privilege.directSuReady),
             cpuGovernorsAvailable = cpu.available(allowRootFallback = privilege.directSuReady),
             networkAdbPersisted = persistedAdb,
-            // A persisted ha-paneld intent already determines the displayed state; avoid five property
-            // reads merely to rediscover that its boot reassertion is owned here.
-            networkAdbActive = !persistedAdb && adb.isActive(allowRootCrossCheck = privilege.directSuReady),
+            // A persisted intent is reported by whether adbd really listens: its own property writes
+            // would otherwise read as active while vendor init or an adbd restart has dropped TCP.
+            networkAdbActive = if (persistedAdb) adb.listenerState(allowRootCrossCheck = privilege.directSuReady)
+                else adb.isActive(allowRootCrossCheck = privilege.directSuReady),
             zigbee = zigbee.observe(includeRole = true, directSuReady = privilege.directSuReady),
             relayCount = relay.count(allowRootProbe = privilege.directSuReady),
             buttonLedCount = relay.ledCount(),
@@ -2952,11 +2954,7 @@ class PaneldService : Service() {
             "Zigbee" to controllers.zigbee.status,
             "Relays" to controllers.relayCount.let { if (it > 0) it.toString() else "none" },
             "CPU profile" to (controllers.cpuTier ?: "n/a"),
-            "Network ADB" to when {
-                controllers.networkAdbPersisted -> "persistent (5555) · re-asserted by ha-paneld at boot"
-                controllers.networkAdbActive -> "active (5555) · external — not persisted by ha-paneld"
-                else -> "off"
-            },
+            "Network ADB" to networkAdbDiagnostic(controllers.networkAdbPersisted, controllers.networkAdbActive),
             "Log shipping" to logShipper.statusText(),
             "Audio playback" to audio.snapshot().statusText(),
         )
