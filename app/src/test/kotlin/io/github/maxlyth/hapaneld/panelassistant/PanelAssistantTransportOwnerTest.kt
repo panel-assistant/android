@@ -881,6 +881,29 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aSpeakerlessPanelStatesMediaUnsupportedOnceGrantedSoAnOldEntityIsRemoved() = runTest {
+        fun unsupported(message: String) = JSONObject(message).optJSONArray("unsupported")
+            ?.let { (0 until it.length()).map(it::getString) }.orEmpty()
+        val shadow = Shadow(listOf("relay1"))
+        shadow.unsupported += "media"
+        val first = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state", "media")))
+        val second = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state", "media")))
+        val harness = harness(first, second, shadow = shadow.reporter)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertFalse("an ungranted integration is not told about media", "media" in unsupported(first.sent.first()))
+        shadow.sink("relay1", "ON")
+        runCurrent()
+        assertTrue("the grant changes the hello, so the session ends", first.closed)
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertEquals(listOf("media"), unsupported(second.sent.first()))
+        advanceTimeBy(31_000L)
+        runCurrent()
+        assertFalse("a hello that already states it is stable", second.closed)
+        harness.owner.close()
+    }
+
     @Test fun aPanelMovedToAnIntegrationThatRefusesMediaWithholdsItAndHelloesAgainAtOnce() = runTest {
         fun channels(message: String) = JSONObject(message).getJSONArray("channels")
             .let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } }

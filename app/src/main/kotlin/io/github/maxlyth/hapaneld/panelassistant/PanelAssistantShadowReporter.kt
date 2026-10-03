@@ -40,6 +40,9 @@ internal class PanelAssistantShadowReporter(
 
     /** Gated channels the last session did not grant; until a grant, a hello leaves them out. */
     @Volatile private var withheld: Set<String> = PanelAssistantTransportProtocol.GATED_CHANNELS.values.toSet()
+
+    /** What [withheld] was when the last hello's offer was read; a grant that changes it changes the hello. */
+    @Volatile private var offeredWithheld: Set<String> = withheld
     private var retryPhaseAt = 0L
 
     /** Totals for this process, for status and tests. */
@@ -142,6 +145,7 @@ internal class PanelAssistantShadowReporter(
      */
     fun offer(): PanelAssistantHelloOffer {
         val shape = synchronized(lock) { source }.invoke()
+        offeredWithheld = withheld
         val descriptors = describable(shape.served)
         val unsupported = shape.unsupported.mapNotNull(PanelAssistantChannelCatalog::wireChannel)
             .filter { it !in withheld && (describe(it) != null || it in PanelAssistantChannelCatalog.RETIRED_CHANNELS) }
@@ -174,10 +178,14 @@ internal class PanelAssistantShadowReporter(
     /** True once the integration has acknowledged this session's `full_end`, so every native entity is available. */
     fun fullSyncComplete(): Boolean = synchronized(lock) { phase == Phase.DELTA }
 
-    /** True when the bridge now serves a different channel set than the session described. */
+    /**
+     * True when the bridge now serves a different channel set than the session described, or a grant
+     * changed which gated channels a hello leaves out: a gated channel the panel cannot fill must still
+     * reach the integration as `unsupported`, which removes an entity an earlier session created.
+     */
     fun descriptorsChanged(): Boolean {
         val current = describable().keys
-        return synchronized(lock) { phase != Phase.IDLE && current != described }
+        return synchronized(lock) { phase != Phase.IDLE && (current != described || withheld != offeredWithheld) }
     }
 
     private class Candidate(
