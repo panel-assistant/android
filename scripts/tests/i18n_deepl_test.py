@@ -486,6 +486,16 @@ class DeepLAdapterTest(unittest.TestCase):
                 DEEPL._default_http(request)
         self.assertEqual(response.asserted_limit, DEEPL.MAX_RESPONSE_BYTES + 1)
 
+    def test_default_http_reports_the_rejection_status_without_the_body(self):
+        request = DEEPL.urllib.request.Request(DEEPL.API_ORIGIN + "/v2/translate")
+        error = DEEPL.urllib.error.HTTPError(request.full_url, 456, "Quota Exceeded", {}, None)
+        opener = mock.Mock()
+        opener.open.side_effect = error
+        with mock.patch.object(DEEPL.urllib.request, "build_opener", return_value=opener):
+            with self.assertRaises(DEEPL.DeepLError) as raised:
+                DEEPL._default_http(request)
+        self.assertEqual(str(raised.exception), "translation service rejected the request (HTTP 456)")
+
     def test_authenticated_requests_never_follow_redirects(self):
         request = DEEPL.urllib.request.Request(
             DEEPL.API_ORIGIN + "/v2/usage",

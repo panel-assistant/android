@@ -215,7 +215,7 @@ class EcosystemInventoryTest(unittest.TestCase):
         pairs = set(ecosystem_blocks())
         for expected in (
             ("github-actions", "/"),
-            ("npm", "/test"),
+            ("npm", "/tools/test"),
             ("npm", "/tools/profile-editor"),
             ("docker", "/.devcontainer"),
         ):

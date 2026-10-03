@@ -40,7 +40,11 @@ jobs:
         run: |
           export CHROME="$(command -v google-chrome || command -v chromium-browser || command -v chromium)"
           test -x "$CHROME"
-          cd tools/test && npm test
+          # Tests that read app/build/test-fixtures need the JVM unit tests' output, so ci.yml runs them.
+          cd tools/test
+          tests=()
+          for test in ./*.test.mjs; do grep -q 'test-fixtures' "$test" || tests+=("$test"); done
+          node --test "${tests[@]}"
 
   layout:
     runs-on: ubuntu-24.04
