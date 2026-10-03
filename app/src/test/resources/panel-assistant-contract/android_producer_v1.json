@@ -125,14 +125,15 @@
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "29d65178c4cd01bd7e5200e4303ca1e61751f78c4e76772b41f07f19197fa479",
+        "contract_digest": "b848474dcbf17c64985da09623f3ab40259ef14e736df60077d44be8fe47aa32",
         "capabilities": [
           "state",
           "commands",
           "approval",
           "mqtt_withdraw",
           "embed_proof",
-          "voice"
+          "voice",
+          "media"
         ],
         "channels": [
           {

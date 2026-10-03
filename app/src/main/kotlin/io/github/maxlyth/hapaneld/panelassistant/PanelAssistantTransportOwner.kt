@@ -360,6 +360,7 @@ internal class PanelAssistantTransportOwner(
                                 // Proofs are verified by the web server, whatever else the session carries.
                                 PanelAssistantTransportProtocol.CAPABILITY_EMBED_PROOF -> embedKeys != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE -> voice?.offered() == true
+                                PanelAssistantTransportProtocol.CAPABILITY_MEDIA -> shadow != null
                                 else -> commands != null
                             }
                         }
@@ -367,6 +368,7 @@ internal class PanelAssistantTransportOwner(
                         val described = offer?.descriptors.orEmpty()
                         when (val outcome = handshake(opened, demand.identity, offered, described, offer?.unsupported.orEmpty())) {
                             is PanelAssistantHelloOutcome.Accepted -> {
+                                shadow?.granted(outcome.session.capabilities)
                                 if (generation.get() != run || !onConnection(session, outcome.session)) {
                                     throw PanelAssistantProtocolException("Home Assistant connection owner changed")
                                 }
@@ -444,6 +446,8 @@ internal class PanelAssistantTransportOwner(
                             }
                             is PanelAssistantHelloOutcome.Refused -> {
                                 lifecycleCurrent(run, onLifecycleAuthenticated)
+                                // An integration that no longer renders a gated channel refuses its descriptor.
+                                if (outcome.code == PanelAssistantTransportProtocol.CODE_INVALID_FORMAT) shadow?.granted(emptyList())
                                 // The entry was removed, so nothing holds this panel's entities: hand them
                                 // back to MQTT. Migration scaffolding; it is deleted with MQTT.
                                 if (outcome.code == PanelAssistantTransportProtocol.CODE_ENTRY_REMOVED && releaseToMqtt()) {

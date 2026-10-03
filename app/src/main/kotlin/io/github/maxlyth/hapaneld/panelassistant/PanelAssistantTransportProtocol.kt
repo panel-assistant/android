@@ -139,6 +139,16 @@ internal object PanelAssistantTransportProtocol {
     /** The panel is an Assist satellite on this session ([PanelAssistantVoice]). */
     const val CAPABILITY_VOICE = "voice"
 
+    /**
+     * The integration renders the `media` channel. An integration that predates the `media_player`
+     * platform refuses a whole hello that describes it, so the channel is described only on a session
+     * after one that granted this (protocol section 18).
+     */
+    const val CAPABILITY_MEDIA = "media"
+
+    /** Channels described only once the session grants the capability that names them. */
+    val GATED_CHANNELS: Map<String, String> = mapOf(CAPABILITY_MEDIA to "media")
+
     const val OUTCOME_APPLIED = "applied"
     const val OUTCOME_SUPERSEDED = "superseded"
     const val OUTCOME_PENDING_APPROVAL = "pending_approval"
@@ -183,6 +193,7 @@ internal object PanelAssistantTransportProtocol {
             CAPABILITY_MQTT_WITHDRAW,
             CAPABILITY_EMBED_PROOF,
             CAPABILITY_VOICE,
+            CAPABILITY_MEDIA,
         )
 
     /**
@@ -191,7 +202,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice"]}"""
+        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))

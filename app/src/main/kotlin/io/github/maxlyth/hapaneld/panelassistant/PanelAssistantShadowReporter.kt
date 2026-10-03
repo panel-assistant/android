@@ -37,6 +37,9 @@ internal class PanelAssistantShadowReporter(
     private val outstanding = LinkedHashMap<Long, Batch>()
     private var phase = Phase.IDLE
     private var described: Set<String> = emptySet()
+
+    /** Gated channels the last session did not grant; until a grant, a hello leaves them out. */
+    @Volatile private var withheld: Set<String> = PanelAssistantTransportProtocol.GATED_CHANNELS.values.toSet()
     private var retryPhaseAt = 0L
 
     /** Totals for this process, for status and tests. */
@@ -113,8 +116,17 @@ internal class PanelAssistantShadowReporter(
 
     private fun describable(keys: Collection<String>): Map<String, PanelAssistantChannelDescriptor> =
         keys.mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
+            .filter { it !in withheld }
             .mapNotNull { wire -> describe(wire)?.let { wire to it } }
             .toMap()
+
+    /**
+     * Record what the session granted. A newly granted gated channel makes [descriptorsChanged] true, so
+     * the session ends and the next hello describes it; a refusal or an older integration withholds it again.
+     */
+    fun granted(capabilities: Collection<String>) {
+        withheld = PanelAssistantTransportProtocol.GATED_CHANNELS.filterKeys { it !in capabilities }.values.toSet()
+    }
 
     /** Descriptors for a `hello`; [open] later receives the same set. */
     fun descriptors(): List<PanelAssistantChannelDescriptor> = describable().values.toList()
@@ -128,7 +140,7 @@ internal class PanelAssistantShadowReporter(
         val shape = synchronized(lock) { source }.invoke()
         val descriptors = describable(shape.served)
         val unsupported = shape.unsupported.mapNotNull(PanelAssistantChannelCatalog::wireChannel)
-            .filter { describe(it) != null || it in PanelAssistantChannelCatalog.RETIRED_CHANNELS }
+            .filter { it !in withheld && (describe(it) != null || it in PanelAssistantChannelCatalog.RETIRED_CHANNELS) }
             .distinct().sorted()
         return PanelAssistantHelloOffer(descriptors.values.toList(), unsupported)
     }

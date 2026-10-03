@@ -765,7 +765,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
 
         val hello = JSONObject(connection.sent.first())
-        assertEquals(listOf("state", "mqtt_withdraw"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("state", "mqtt_withdraw", "media"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         assertEquals(listOf("relay1", "screen"), hello.getJSONArray("channels").let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } })
         assertEquals(listOf("panel_assistant/hello", "full_begin", "full_end"), connection.sent.map(::kind))
         assertEquals("opaque-session", JSONObject(connection.sent[1]).getString("session"))
@@ -840,6 +840,44 @@ class PanelAssistantTransportOwnerTest {
         val again = JSONObject(second.sent.first())
         assertEquals(listOf("relay1"), again.getJSONArray("channels").let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } })
         assertEquals(listOf("humidity", "temperature"), again.optJSONArray("unsupported")?.let { (0 until it.length()).map(it::getString) })
+        harness.owner.close()
+    }
+
+    @Test fun mediaIsDescribedOnlyToAnIntegrationThatGrantsItAndAnOlderOneNeverSeesIt() = runTest {
+        fun channels(message: String) = JSONObject(message).getJSONArray("channels")
+            .let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } }
+        fun offered(message: String) = JSONObject(message).getJSONArray("capabilities")
+            .let { (0 until it.length()).map(it::getString) }
+
+        // An integration predating the media_player platform refuses a whole hello describing it, so a
+        // panel on one keeps a working session without the channel.
+        val older = Shadow(listOf("relay1", "media"))
+        val old = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state")))
+        val oldHarness = harness(old, shadow = older.reporter)
+        oldHarness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        older.sink("relay1", "ON")
+        advanceTimeBy(31_000L)
+        runCurrent()
+        assertEquals(listOf("relay1"), channels(old.sent.first()))
+        assertTrue("media" in offered(old.sent.first()))
+        assertFalse("an ungranted media stays out without ending the session", old.closed)
+        oldHarness.owner.close()
+
+        // An integration that grants it gets the channel on the next hello.
+        val shadow = Shadow(listOf("relay1", "media"))
+        val first = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state", "media")))
+        val second = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state", "media")))
+        val harness = harness(first, second, shadow = shadow.reporter)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertEquals(listOf("relay1"), channels(first.sent.first()))
+        shadow.sink("relay1", "ON")
+        runCurrent()
+        assertTrue(first.closed)
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertEquals(listOf("media", "relay1"), channels(second.sent.first()))
         harness.owner.close()
     }
 
@@ -929,7 +967,7 @@ class PanelAssistantTransportOwnerTest {
         runCurrent()
 
         val hello = JSONObject(connection.sent.first())
-        assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "media"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         assertEquals(listOf("native"), authorities)
         assertEquals(listOf("panel_assistant/hello", "full_begin", "full_end"), connection.sent.map(::kind))
 
@@ -1127,7 +1165,7 @@ class PanelAssistantTransportOwnerTest {
     @Test fun everyHelloOffersMqttWithdrawWhateverElseIsWired() = runTest {
         for ((shadow, commands, expected) in listOf(
             Triple(null, null, listOf("mqtt_withdraw")),
-            Triple(Shadow(listOf("relay1")).reporter, null, listOf("state", "mqtt_withdraw")),
+            Triple(Shadow(listOf("relay1")).reporter, null, listOf("state", "mqtt_withdraw", "media")),
             Triple(null, ImmediateSink(), listOf("commands", "approval", "mqtt_withdraw")),
         )) {
             val connection = FakeConnection(Ha.accepting())
