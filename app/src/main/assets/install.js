@@ -239,12 +239,14 @@
   // installable release; fall back to the installed release only when the channel has no installable APK.
   window.loadVersions = function (name) {
     var r = row(name); if (!r) return;
-    var chan = r.querySelector('.cchan').value, vsel = r.querySelector('.cvsel');
+    var channelSelect = r.querySelector('.cchan'), chan = channelSelect ? channelSelect.value : '', vsel = r.querySelector('.cvsel');
     var installed = (r.querySelector('.cver') || {}).textContent || '';
     vsel.textContent = '';
     var loading = document.createElement('option'); loading.textContent = t('install.shared.loading', 'loading…'); vsel.appendChild(loading);
-    return fetch('api/v1/install/versions?name=' + encodeURIComponent(name) + '&channel=' + encodeURIComponent(chan))
+    return fetch('api/v1/install/versions?name=' + encodeURIComponent(name) + (channelSelect ? '&channel=' + encodeURIComponent(chan) : ''))
       .then(function (res) { return res.json(); }).then(function (d) {
+        var paChannel = r.querySelector('.cpa-channel');
+        if (paChannel) paChannel.textContent = d && d.channel === 'prerelease' ? t('install.components.prerelease', 'Prerelease') : (d && d.channel === 'stable' ? t('install.components.stable', 'Stable') : '—');
         var vs = (d && d.versions) || [];
         if (!vs.length) { vsel.textContent = ''; var none = document.createElement('option'); none.value = ''; none.textContent = t('install.progress.no_versions', 'no versions found'); vsel.appendChild(none); verChanged(name); markVersionGeometryValid(); return true; }
         vsel.innerHTML = '';

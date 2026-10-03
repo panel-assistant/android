@@ -18,19 +18,33 @@ internal class HelperInstallTransaction(
     private val timeoutMs: Long = INSTALL_TIMEOUT_MS,
     private val staging: HelperInstallStaging = HelperInstallStaging.shared,
 ) {
-    fun install(apk: File, stagingDir: File): InstallOutcome {
+    fun install(
+        apk: File,
+        stagingDir: File,
+        beforeSubmit: (() -> InstallOutcome.Failure?)? = null,
+    ): InstallOutcome {
         if (!apk.isFile || apk.length() <= 0L) {
             apk.delete()
             return InstallOutcome.Retryable("install failed: invalid APK input")
         }
-        when (val streamed = daemon.sendFile("INSTALLSTREAM ${apk.length()}", apk, timeoutMs)) {
+        var refusal: InstallOutcome.Failure? = null
+        val submissionAllowed = beforeSubmit?.let { admit ->
+            {
+                refusal = admit()
+                refusal == null
+            }
+        }
+        val streamCommand = "INSTALLSTREAM ${apk.length()}"
+        val streamed = if (submissionAllowed == null) daemon.sendFile(streamCommand, apk, timeoutMs)
+            else daemon.sendFile(streamCommand, apk, timeoutMs, submissionAllowed)
+        when (streamed) {
             is DaemonStreamResult.Reply -> {
                 apk.delete()
                 return daemonInstallReply(streamed.value)
             }
             DaemonStreamResult.NotSubmitted -> {
                 apk.delete()
-                return InstallOutcome.Retryable("install failed: daemon unreachable")
+                return refusal ?: InstallOutcome.Retryable("install failed: daemon unreachable")
             }
             DaemonStreamResult.Indeterminate -> {
                 apk.delete()
@@ -41,14 +55,19 @@ internal class HelperInstallTransaction(
 
         val owned = staging.claim(apk, stagingDir)
             ?: return InstallOutcome.Retryable("install failed: could not claim helper staging")
-        return when (val result = daemon.sendLong("INSTALL ${owned.absolutePath}", timeoutMs)) {
+        // Unsupported accepted no payload. Claiming a legacy input is still preparation: this is a
+        // fresh installer submission, so authority may have changed during negotiation or staging.
+        val installCommand = "INSTALL ${owned.absolutePath}"
+        val result = if (submissionAllowed == null) daemon.sendLong(installCommand, timeoutMs)
+            else daemon.sendLong(installCommand, timeoutMs, submissionAllowed)
+        return when (result) {
             is DaemonLongResult.Reply -> {
                 staging.release(owned, delete = true)
                 daemonInstallReply(result.value)
             }
             DaemonLongResult.NotSubmitted -> {
                 staging.release(owned, delete = true)
-                InstallOutcome.Retryable("install failed: daemon unreachable")
+                refusal ?: InstallOutcome.Retryable("install failed: daemon unreachable")
             }
             DaemonLongResult.Indeterminate -> {
                 staging.release(owned, delete = false)

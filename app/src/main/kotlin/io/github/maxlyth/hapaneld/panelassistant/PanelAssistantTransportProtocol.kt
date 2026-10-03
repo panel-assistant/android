@@ -15,6 +15,9 @@ internal data class PanelAssistantHelloIdentity(
     val appVersionCode: Int,
 )
 
+/** Session-only authority for admitting panel-app candidates. Never persisted while PA is offline. */
+internal data class PanelAssistantUpdatePolicy(val protocolMin: Int, val protocolMax: Int, val prerelease: Boolean)
+
 /** The integration's accepted reply: what this session may use and whom it talks to. */
 internal data class PanelAssistantSession(
     val protocol: Int,
@@ -32,6 +35,7 @@ internal data class PanelAssistantSession(
     val embed: PanelAssistantEmbedGrant? = null,
     val connection: io.github.maxlyth.hapaneld.HaConnectionAdvertisement? = null,
     val lifecycle: HaLifecycleNotice? = null,
+    val updatePolicy: PanelAssistantUpdatePolicy? = null,
 ) {
     /** The session token is a bearer for this session's requests, and the embed key a secret; keep both out of logs. */
     override fun toString(): String =
@@ -290,6 +294,19 @@ internal object PanelAssistantTransportProtocol {
      * that result. A success result whose body breaks the contract is a protocol failure, reported
      * as an exception so the caller retries rather than holding a session it cannot describe.
      */
+    private fun updatePolicy(result: JSONObject, protocol: Int): PanelAssistantUpdatePolicy? {
+        if (!result.has("update_policy")) return null // An older PA can connect, but cannot admit updates.
+        val policy = result.optJSONObject("update_policy")
+            ?: throw PanelAssistantProtocolException("hello update policy is not an object")
+        val low = policy.opt("protocolMin") as? Int
+        val high = policy.opt("protocolMax") as? Int
+        val prerelease = policy.opt("prerelease") as? Boolean
+        if (low == null || high == null || low < 1 || high < low || protocol !in low..high || prerelease == null) {
+            throw PanelAssistantProtocolException("hello update policy is malformed")
+        }
+        return PanelAssistantUpdatePolicy(low, high, prerelease)
+    }
+
     fun helloOutcome(
         frame: JSONObject,
         helloId: Long,
@@ -344,7 +361,8 @@ internal object PanelAssistantTransportProtocol {
         return PanelAssistantHelloOutcome.Accepted(
             PanelAssistantSession(protocol, token, authority, capabilities, integrationVersion, mqttDiscovery, embed,
                 io.github.maxlyth.hapaneld.HaConnectionAdvertisement.parse(result.optJSONObject("connection")),
-                lifecycleNotice(result.optJSONObject("lifecycle"))),
+                lifecycleNotice(result.optJSONObject("lifecycle")),
+                updatePolicy(result, protocol)),
         )
     }
 

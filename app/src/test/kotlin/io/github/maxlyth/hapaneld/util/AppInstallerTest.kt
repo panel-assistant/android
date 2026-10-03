@@ -9,6 +9,7 @@ import org.junit.Test
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import io.github.maxlyth.hapaneld.persistence.StateQuiescence
+import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantUpdatePolicy
 import java.net.URL
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -35,6 +36,66 @@ class AppInstallerTest {
         signerSha256 = signer,
         databaseCompatibility = contract,
     )
+
+    @Test fun panelAppLocalInstallWaitsForLivePanelAssistantPolicy() {
+        val refusal = AppInstaller.localInstallCandidateRefusal(
+            info = selfInfo(),
+            runningPackage = AppInstaller.HA_PANELD.pkg,
+            admittedBoundary = null,
+        ) { null }
+        assertEquals("Panel Assistant must be online with update policy", refusal)
+    }
+
+    @Test fun signedPanelCandidatesShareChannelRangeAndVersionAdmission() {
+        val stable = PanelAssistantUpdatePolicy(1, 3, false)
+        val prerelease = stable.copy(prerelease = true)
+        fun refusal(version: String = "1.1.0", range: IntRange? = 3..3,
+                    policy: PanelAssistantUpdatePolicy? = stable, code: Long = 110) =
+            AppInstaller.localInstallCandidateRefusal(
+                selfInfo().copy(version = version, versionCode = code, nativeProtocolRange = range),
+                AppInstaller.HA_PANELD.pkg, null, policy, "1.0.0", 100,
+            ) { null }
+        assertNull(refusal())
+        assertNull(refusal("1.1.0-rc1", policy = prerelease))
+        assertNull(refusal("1.1.0-rc3.dev.1", policy = prerelease))
+        assertEquals("candidate version ordering could not be proven", refusal("1.1.0-rc3..1", policy = prerelease))
+        assertEquals("candidate version ordering could not be proven", refusal("1.1.0-01", policy = prerelease))
+        assertNull(refusal("1.1.0", policy = prerelease))
+        assertEquals("Panel Assistant must be online with update policy", refusal(policy = null))
+        assertEquals("candidate Panel Assistant protocol metadata is missing or malformed", refusal(range = null))
+        assertEquals("candidate cannot speak to the running Panel Assistant", refusal(range = 4..5))
+        assertEquals("Panel Assistant update policy permits stable builds only", refusal("1.1.0-rc1"))
+        assertEquals("panel-app downgrades are not permitted", refusal("0.9.9"))
+        assertEquals("panel-app downgrades are not permitted", refusal(code = 99))
+        assertEquals("candidate version ordering could not be proven", refusal("unknown"))
+    }
+
+    @Test fun localPanelCandidatePolicyAppliesToBothIdentitiesAndLeavesOtherAppsAlone() {
+        val otherPanel = selfInfo().copy(pkg = io.github.maxlyth.hapaneld.AppIdentity.COUNTERPART)
+        assertEquals("candidate must have exactly the pinned panel-app signer",
+            AppInstaller.localInstallCandidateRefusal(otherPanel.copy(signerSha256s = setOf("untrusted")),
+                AppInstaller.HA_PANELD.pkg, null) { null })
+        assertEquals("Panel Assistant must be online with update policy",
+            AppInstaller.localInstallCandidateRefusal(otherPanel, AppInstaller.HA_PANELD.pkg, null) { null })
+        val companion = otherPanel.copy(pkg = AppInstaller.COMPANION_MINIMAL.pkg)
+        assertNull(AppInstaller.localInstallCandidateRefusal(companion, AppInstaller.HA_PANELD.pkg, null) { null })
+    }
+
+    @Test fun panelVersionOrderingMatchesPanelAssistantForGenericPrereleaseIdentifiers() {
+        assertTrue(AppInstaller.comparePanelVersions("1.1.0-rc10", "1.1.0-rc9")!! > 0)
+        assertTrue(AppInstaller.comparePanelVersions("1.1.0", "1.1.0-rc10.dev.2")!! > 0)
+        assertTrue(AppInstaller.comparePanelVersions("1.1.0-beta.2", "1.1.0-beta.10")!! < 0)
+        assertNull(AppInstaller.comparePanelVersions("1.1.0-01", "1.0.0"))
+        assertNull(AppInstaller.comparePanelVersions("1.1.0+build", "1.0.0"))
+    }
+
+    @Test fun malformedProtocolMetadataNeverManufacturesCompatibility() {
+        assertEquals(1..3, AppInstaller.parseNativeProtocolMetadata("hapaneld-native:v1:1:3"))
+        assertEquals(3..Int.MAX_VALUE, AppInstaller.parseNativeProtocolMetadata("hapaneld-native:v1:3:2147483647"))
+        listOf(null, 3, "hapaneld-native:v1:0:3", "hapaneld-native:v1:4:3",
+            "hapaneld-native:v1:3:2147483648", "hapaneld-native:v2:1:3", "hapaneld-native:v1:01:3")
+            .forEach { assertNull("$it", AppInstaller.parseNativeProtocolMetadata(it)) }
+    }
 
     @Test fun selfCandidateSignerIsAuthenticatedBeforeDatabaseMetadataIsTrusted() {
         var compatibilityConsulted = false

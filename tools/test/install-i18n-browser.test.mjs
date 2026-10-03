@@ -120,6 +120,31 @@ async function rig(t, options = {}) {
   return { page, presentations, params };
 }
 
+browserTest('Panel version picker displays PA channel without a local selector', async (t) => {
+  let channel = 'prerelease';
+  let requestedChannel;
+  const { page } = await rig(t, {
+    noHelper: true,
+    html: '<div class="comprow" data-name="paneld"><span class="cpa-channel">—</span><select class="cvsel"></select></div>',
+    route(request, response, url) {
+      if (url.pathname !== '/api/v1/install/versions') return false;
+      requestedChannel = url.searchParams.get('channel');
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ channel, versions: [] })); return true;
+    },
+  });
+  await page.evaluate(() => window.loadVersions('paneld'));
+  assert.equal(requestedChannel, null);
+  assert.equal(await page.locator('.cchan').count(), 0);
+  assert.equal(await page.locator('.cpa-channel').textContent(), 'Prerelease');
+  channel = 'stable';
+  await page.evaluate(() => window.loadVersions('paneld'));
+  assert.equal(await page.locator('.cpa-channel').textContent(), 'Stable');
+  channel = null;
+  await page.evaluate(() => window.loadVersions('paneld'));
+  assert.equal(await page.locator('.cpa-channel').textContent(), '—');
+});
+
 browserTest('Version picker explains unavailable releases and keeps permitted choices usable', async (t) => {
   const versions = [
     { tag: 'v4', version: '4.0', installable: false, unavailableReason: 'above_panel_limit', maxVersion: '2.0' },

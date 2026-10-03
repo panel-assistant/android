@@ -17,6 +17,89 @@ import kotlin.test.assertTrue
 import org.junit.Test
 
 class HelperClientIdentityTest {
+    @get:org.junit.Rule val temporary = org.junit.rules.TemporaryFolder()
+
+    @Test
+    fun policyRevokedDuringVersionOrPingPreparationBlocksStreamSubmission() {
+        listOf(false, true).forEachIndexed { index, legacy ->
+            var admitted = true
+            val generation = FakeGeneration(version = HelperBootstrapReply.Line(
+                if (legacy) "ERR" else "HELPER version=1.1.0 proto=1.1",
+            ))
+            if (legacy) generation.afterPing = { admitted = false }
+            else generation.afterVersion = { admitted = false }
+            val transport = FakeHelperTransport(generation)
+            val source = temporary.newFile("bootstrap-$index.apk").apply { writeBytes(byteArrayOf(1, 2)) }
+            val directory = temporary.newFolder("bootstrap-staging-$index")
+            val refusal = InstallOutcome.Retryable("Panel Assistant must be online with update policy")
+
+            assertEquals(refusal, HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory) {
+                if (admitted) null else refusal
+            })
+            assertEquals(if (legacy) listOf("VERSION", "PING") else listOf("VERSION"),
+                transport.bootstrapCommands.map { it.command })
+            assertTrue(transport.fileCommands.isEmpty())
+            assertTrue(transport.longCommands.isEmpty())
+            assertFalse(source.exists())
+            assertTrue(directory.listFiles().orEmpty().isEmpty())
+            assertEquals(1, transport.closedSessions.size)
+        }
+    }
+
+    @Test
+    fun policyRevokedDuringLegacyInstallBootstrapDeletesOnlyClaimedInput() {
+        listOf(false, true).forEachIndexed { index, legacy ->
+            var admitted = true
+            val generation = FakeGeneration(
+                version = HelperBootstrapReply.Line(if (legacy) "ERR" else "HELPER version=1.1.0 proto=1.1"),
+                streamReply = DaemonStreamResult.Unsupported,
+            )
+            generation.afterStream = {
+                if (legacy) generation.afterPing = { admitted = false }
+                else generation.afterVersion = { admitted = false }
+            }
+            val transport = FakeHelperTransport(generation)
+            val source = temporary.newFile("fallback-$index.apk").apply { writeBytes(byteArrayOf(1, 2)) }
+            val directory = temporary.newFolder("fallback-staging-$index")
+            val unrelated = File(directory, "owner.apk").apply { writeBytes(byteArrayOf(9, 8)) }
+            val refusal = InstallOutcome.Rejected("refused (Panel Assistant update policy permits stable builds only)")
+
+            assertEquals(refusal, HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory) {
+                if (admitted) null else refusal
+            })
+            assertEquals(1, transport.fileCommands.size)
+            assertTrue(transport.longCommands.isEmpty())
+            assertFalse(source.exists())
+            assertEquals(listOf(unrelated), directory.listFiles().orEmpty().toList())
+            assertContentEquals(byteArrayOf(9, 8), unrelated.readBytes())
+            assertEquals(2, transport.closedSessions.size)
+        }
+    }
+
+    @Test
+    fun acceptedStreamMayFinishAndOtherPackagesNeedNoPanelPolicy() {
+        listOf(false, true).forEachIndexed { index, otherPackage ->
+            var admitted = true
+            val generation = FakeGeneration()
+            if (otherPackage) generation.afterVersion = { admitted = false }
+            else generation.afterStream = { admitted = false }
+            val transport = FakeHelperTransport(generation)
+            val source = temporary.newFile("accepted-bootstrap-$index.apk").apply { writeBytes(byteArrayOf(1, 2)) }
+            val directory = temporary.newFolder("accepted-bootstrap-staging-$index")
+            val gate: (() -> InstallOutcome.Failure?)? = if (otherPackage) null else {
+                { if (admitted) null else InstallOutcome.Retryable("PA disconnected") }
+            }
+
+            assertEquals(InstallOutcome.Succeeded,
+                HelperInstallTransaction(IdentityAdmittingHelperClient(transport)).install(source, directory, gate))
+            assertFalse(admitted)
+            assertEquals(1, transport.fileCommands.size)
+            assertTrue(transport.longCommands.isEmpty())
+            assertFalse(source.exists())
+            assertTrue(directory.listFiles().orEmpty().isEmpty())
+        }
+    }
+
     @Test
     fun logcatOpensOnlyAfterCapabilityOnTheAdmittedConnection() {
         val transport = FakeHelperTransport(FakeGeneration(lineReplies = mapOf("LOGCATCAPS" to "LOGCATCAPS 1")))
@@ -526,8 +609,11 @@ private data class FakeGeneration(
     val companionCaps: HelperBootstrapReply = HelperBootstrapReply.Line("COMPANIONCAPS 1 BACKUP RESTORE STATUS JOURNAL"),
     val lineReply: String? = "OK",
     val lineReplies: Map<String, String?> = emptyMap(),
+    val streamReply: DaemonStreamResult = DaemonStreamResult.Reply("OK"),
 ) {
     @Volatile var afterVersion: (() -> Unit)? = null
+    @Volatile var afterPing: (() -> Unit)? = null
+    @Volatile var afterStream: (() -> Unit)? = null
 
     companion object {
         private val ids = java.util.concurrent.atomic.AtomicInteger()
@@ -557,7 +643,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
                 bootstrapCommands += RecordedCommand(session, snapshot.id, command)
                 return when (command) {
                     "VERSION" -> snapshot.version.also { snapshot.afterVersion?.invoke() }
-                    "PING" -> snapshot.ping
+                    "PING" -> snapshot.ping.also { snapshot.afterPing?.invoke() }
                     "COMPANIONCAPS" -> snapshot.companionCaps
                     else -> error("unexpected bootstrap command $command")
                 }
@@ -575,7 +661,7 @@ private class FakeHelperTransport(initial: FakeGeneration = FakeGeneration()) : 
 
             override fun sendFile(cmd: String, source: File, timeoutMs: Long): DaemonStreamResult {
                 fileCommands += RecordedCommand(session, snapshot.id, cmd)
-                return DaemonStreamResult.Reply("OK")
+                return snapshot.streamReply.also { snapshot.afterStream?.invoke() }
             }
 
             override fun sendBytes(cmd: String, maxBytes: Long): ByteArray? {

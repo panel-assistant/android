@@ -32,6 +32,8 @@ object ReleaseCatalog {
         val apkUrl: String? = null,
         val unavailableReason: String? = if (installable) null else "no_matching_asset",
         val maxVersion: String? = null,
+        internal val protocolRange: IntRange? = null,
+        internal val authenticatedVersionCode: Long? = null,
     )
 
     /** One installable release, retaining the source tag alongside its normalised display version.

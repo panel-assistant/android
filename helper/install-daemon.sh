@@ -412,7 +412,7 @@ esac
 if ! run_root '[ ! -f /system/bin/.hapaneld-helper-upgrade ] && [ ! -f /data/adb/hapaneld/.helper-upgrade.marker ] && [ ! -f /data/adb/hapaneld/.helper-hybrid-upgrade.marker ]' \
     >/dev/null 2>&1; then
   fail "an incomplete APK-coupled helper upgrade must be recovered by the provisioner first" \
-    "Re-run the same scripts/provision.sh or scripts/update-fleet.sh command that started the upgrade." \
+    "Recover its authenticated journal first: scripts/provision.sh $TARGET --recover-helper --apk <release-signed-panel.apk>. The APK is recovery evidence and will not be installed." \
     "This standalone installer uses a separate journal and did not change helper files."
 fi
 
@@ -2039,7 +2039,7 @@ case "$manual_journal_state" in
       "No rollback was attempted because the authoritative prior install location is ambiguous." ;;
   FOREIGN_PROVISION_TRANSACTION)
     fail "an incomplete APK-coupled helper upgrade must be recovered by the provisioner first" \
-      "Re-run the same scripts/provision.sh or scripts/update-fleet.sh command that started the upgrade." \
+      "Recover its authenticated journal first: scripts/provision.sh $TARGET --recover-helper --apk <release-signed-panel.apk>. The APK is recovery evidence and will not be installed." \
       "This standalone installer did not change helper files." ;;
   LEGACY_TAKEOVER_HOLD)
     fail "a retained app-managed root-helper takeover could not be normalized safely" \

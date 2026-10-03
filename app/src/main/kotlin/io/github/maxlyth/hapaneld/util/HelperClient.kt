@@ -246,8 +246,18 @@ internal class IdentityAdmittingHelperClient(
     override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult =
         execute(DaemonLongResult.NotSubmitted) { it.sendLong(cmd, timeoutMs) }
 
+    override fun sendLong(cmd: String, timeoutMs: Long, beforeSubmit: () -> Boolean): DaemonLongResult =
+        execute(DaemonLongResult.NotSubmitted) {
+            if (beforeSubmit()) it.sendLong(cmd, timeoutMs) else DaemonLongResult.NotSubmitted
+        }
+
     override fun sendFile(cmd: String, source: File, timeoutMs: Long): DaemonStreamResult =
         execute(DaemonStreamResult.NotSubmitted) { it.sendFile(cmd, source, timeoutMs) }
+
+    override fun sendFile(cmd: String, source: File, timeoutMs: Long, beforeSubmit: () -> Boolean): DaemonStreamResult =
+        execute(DaemonStreamResult.NotSubmitted) {
+            if (beforeSubmit()) it.sendFile(cmd, source, timeoutMs) else DaemonStreamResult.NotSubmitted
+        }
 
     override fun sendBytes(cmd: String): ByteArray? =
         execute(null) { it.sendBytes(cmd, Long.MAX_VALUE - 1L) }
