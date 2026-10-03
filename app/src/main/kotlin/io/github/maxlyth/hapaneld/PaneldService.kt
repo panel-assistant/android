@@ -2021,7 +2021,7 @@ class PaneldService : Service() {
             buttonBacklightTransfer = profile.buttonBacklightTransfer,
             hasMicrophone = profile.hasMicrophone,
             media = media.takeIf { profile.hasSpeaker },
-            hasCamera = { cameraPresent() },
+            hasCamera = { cameraReason().takeUnless { it == CameraCapabilityReason.UNDETERMINED }?.capable },
             autoBright = autoBright,
             onAutoBrightnessConfigChanged = { refreshAdaptiveBrightnessInputs() },
             autoSleepActivity = { autoSleep.activitySnapshot() },
