@@ -1,6 +1,6 @@
 schema: 2
 id: shelly-wall-display-x2i
-version: 2.0.2
+version: 2.0.3
 display_name: Shelly Wall Display X2i
 soc_class: rk3326
 soc:
@@ -56,6 +56,8 @@ platform:
   su_form: none
   app_can_su: false
   has_recents: false
+  # Firmware advertises navigation resources without a usable system bar.
+  has_native_navbar: false
 hardware:
   led:
     mechanism: none

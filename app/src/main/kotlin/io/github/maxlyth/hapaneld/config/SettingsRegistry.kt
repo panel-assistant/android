@@ -651,6 +651,7 @@ object SettingsRegistry {
             key = "dashboard_fullscreen", type = SettingType.BOOL, group = "Dashboard",
             tier = Tier.ADVANCED, summary = "Hide Android's status and navigation bars behind the dashboard.",
             label = "Hide Android system bars", default = "true", scope = Scope.PORTABLE,
+            availableWhen = { it.hasNativeNavbar || it.hasAndroidStatusBar },
             help = "Built-in renderer only. Hides Android's status and navigation bars while the dashboard is in front; swipe from an edge to reveal them temporarily.\n\nIt does not lock the panel or hide Home Assistant navigation.",
         ),
         SettingSpec(
@@ -1246,50 +1247,12 @@ object SettingsRegistry {
             ?.takeIf { it.ha != null }
 }
 
-/**
- * The navbar mode a panel should start at when the user has never chosen one.
- *
- * Sole definition of that rule: [io.github.maxlyth.hapaneld.resolveNavbarMode] applies it to what a
- * panel has stored, and nothing else re-derives it. The tiers are ordered, and the order is the
- * substance of the rule rather than an implementation detail:
- *
- *  1. **The firmware draws its own bar** → `Native`. The one case where we know a software bar is
- *     unnecessary, as opposed to merely failing to prove it is needed.
- *  2. **The panel has no way out at all** → `Always on`. See below; this MUST precede the visibility
- *     tiers, because the panel that needs it is precisely the one whose firmware claims a bar it does
- *     not usably provide.
- *  3. **Vendor visibility property**, authoritative where present: some PX30 firmware hardcodes
- *     Android's generic `config_showNavigationBar` true while suppressing the vendor's own bar.
- *  4. **`nspanel-pro` by id.** Retained deliberately: it also covers the raw-config read path, where
- *     `resources` is null and [Capabilities.androidShowsNavbar] is therefore unknown, not false.
- *  5. **Android's generic resource**, answering "this panel probably has no usable system bar".
- *
- * **Tier 2, the no-way-out rule, is the one that strands people.** A panel with no native bar, no
- * working Recents and no physical buttons has no navigation affordance of its own, so a default of
- * `Off` leaves the user with no route to Android Settings once ha-paneld holds Home — the same
- * outcome `optionRequires` already withholds `Native` to prevent, reached by another road. `Always on`
- * rather than `Swipe reveal` because a user who is already stranded does not know to swipe.
- *
- * **The rule is deliberately narrow, and [Capabilities.hardwareDeclarationsKnown] is what keeps it
- * narrow.** All three inputs are profile declarations whose `false` is also their unset value, so a
- * default-constructed [Capabilities], or the last-resort profile used when the catalog fails to load,
- * would otherwise satisfy the predicate while knowing nothing — and switch a bar on everywhere. The
- * marker demands that the declarations were actually read from a catalog profile, which is the
- * difference between "this panel has no Recents" and "nobody said".
- *
- * Across the bundled catalogue the rule selects `shelly-wall-display-x2i` alone: `tpa10` also declares
- * no Recents but does declare physical buttons, `wf1589t` has a native bar, and every other profile
- * declares Recents. A panel matching no profile of its own resolves to `generic`, which declares
- * Recents present, so it too is excluded until someone measures otherwise.
- */
+/** Fresh defaults use the same resolved navigation presence as Native-mode admission. Keep the
+ * no-way-out default for catalog-backed panels with neither Recents nor physical buttons; unknown
+ * hardware must not be mistaken for measured absence. Stored choices are handled by Config. */
 internal fun navbarModeDefault(caps: Capabilities): String {
     if (caps.hasNativeNavbar) return "Native"
     if (caps.hardwareDeclarationsKnown && !caps.hasRecents && !caps.hasEvdevButtons) return "Always on"
-    when (caps.vendorNavbarProperty?.trim()?.lowercase(java.util.Locale.ROOT)) {
-        "false", "0", "no", "off" -> return "Swipe reveal"
-        "true", "1", "yes", "on" -> return "Off"
-    }
-    if (caps.profileId in setOf("nspanel-pro")) return "Swipe reveal"
     return if (caps.androidShowsNavbar == false) "Swipe reveal" else "Off"
 }
 

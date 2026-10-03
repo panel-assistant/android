@@ -15,6 +15,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +25,51 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PaneldServiceStartupTest {
+    @Test fun failedNavbarRestoreUsesTwoServiceRetriesAndKeepsItsIntent() {
+        val service = PaneldService()
+        val authority = LiveSettingAuthority(setOf("navbar_mode"))
+        val attempts = AtomicInteger()
+        val retried = CountDownLatch(2)
+        val schedule = PaneldService::class.java.getDeclaredMethod("scheduleLiveSettingRetries", Set::class.java)
+            .apply { isAccessible = true }
+        fun scheduleRetry() { schedule.invoke(service, setOf("navbar_mode")) }
+        val owner = ServiceRuntimeOwner(
+            initial = Any(),
+            threadName = "navbar-startup-retry-test",
+            latestOperation = LatestOperationPolicy(operation = {
+                authority.replayKeysObserved(setOf("navbar_mode")) { _, _, _, _ ->
+                    attempts.incrementAndGet()
+                    LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+                }
+                scheduleRetry()
+                retried.countDown()
+            }),
+        )
+        listOf("liveSettingAuthority" to authority, "runtime" to owner).forEach { (name, value) ->
+            PaneldService::class.java.getDeclaredField(name).apply { isAccessible = true }.set(service, value)
+        }
+        try {
+            assertTrue(owner.start {}.get(1, TimeUnit.SECONDS))
+            assertEquals(
+                LiveSettingRequestOutcome.FAILED_PENDING,
+                authority.applyOrQueueOutcomeObserved("navbar_mode", "Swipe reveal", "Swipe reveal") { _, _, _ ->
+                    attempts.incrementAndGet()
+                    LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+                },
+            )
+            scheduleRetry()
+            assertTrue("the service must retry a failed restore", retried.await(5, TimeUnit.SECONDS))
+            // Wait past the production one-second delay to prove no third retry was admitted.
+            Thread.sleep(1_250)
+            assertEquals(3, attempts.get())
+            assertEquals(mapOf("navbar_mode" to "Swipe reveal"), authority.pendingSnapshot())
+        } finally {
+            (PaneldService::class.java.getDeclaredField("scope").apply { isAccessible = true }
+                .get(service) as CoroutineScope).cancel()
+            owner.shutdown(1_000L) {}
+        }
+    }
+
     @Test fun ordinaryServiceStartsNeverRequestInstalledSuccessorHandoff() {
         for (bridge in listOf(false, true)) {
             for (action in listOf(null, "android.intent.action.MAIN", "io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE")) {

@@ -284,7 +284,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 suForm = string(platform, "su_form", "platform", required = true).orEmpty(),
                 appCanSu = boolean(platform, "app_can_su", "platform", required = true) ?: false,
                 hasRecents = boolean(platform, "has_recents", "platform") ?: true,
-                hasNativeNavbar = boolean(platform, "has_native_navbar", "platform") ?: false,
+                hasNativeNavbar = boolean(platform, "has_native_navbar", "platform"),
             ),
             hardware = ProfileHardware(
                 led = lightCurve(led, "hardware.led", transferRequired = false).let { curve ->
@@ -758,7 +758,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "app_can_su" to platform.appCanSu,
         "has_recents" to platform.hasRecents,
         "has_native_navbar" to platform.hasNativeNavbar,
-    ),
+    ).withoutNullValues(),
     "hardware" to linkedMapOf(
         "led" to linkedMapOf<String, Any?>("mechanism" to hardware.led.mechanism)
             .apply { putAll(hardware.led.curve.toYamlFields()) }.withoutNullValues(),

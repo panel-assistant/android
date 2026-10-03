@@ -42,33 +42,55 @@ class NavbarCapabilityDefaultTest {
         profile: DeviceProfile,
         androidShowsNavbar: Boolean? = null,
         vendorNavbarProperty: String? = null,
-    ) = Capabilities(
-        hasNativeNavbar = profile.hasNativeNavbar,
-        hasRecents = profile.hasRecents,
-        hasEvdevButtons = profile.evdevButtons.isNotEmpty(),
-        profileId = profile.id,
-        hardwareDeclarationsKnown = profile.declarationsFromCatalog,
-        androidShowsNavbar = androidShowsNavbar,
-        vendorNavbarProperty = vendorNavbarProperty,
-    )
+    ): Capabilities {
+        val present = resolveNativeNavbar(profile.hasNativeNavbar, vendorNavbarProperty, androidShowsNavbar)
+        return Capabilities(
+            hasNativeNavbar = present == true,
+            hasRecents = profile.hasRecents,
+            hasEvdevButtons = profile.evdevButtons.isNotEmpty(),
+            hardwareDeclarationsKnown = profile.declarationsFromCatalog,
+            androidShowsNavbar = present,
+        )
+    }
 
-    /** The legacy tiers exactly as they stood before the no-way-out rule was added, so "unchanged for
-     *  every other panel" is asserted against the old behaviour rather than against itself. */
-    private fun legacyDefault(caps: Capabilities): String {
-        if (caps.hasNativeNavbar) return "Native"
-        when (caps.vendorNavbarProperty?.trim()?.lowercase(java.util.Locale.ROOT)) {
-            "false", "0", "no", "off" -> return "Swipe reveal"
-            "true", "1", "yes", "on" -> return "Off"
+    @Test fun `explicit navbar declaration overrides misleading firmware probes`() {
+        for (declaration in listOf(false, true)) {
+            val present = resolveNativeNavbar(declaration, if (declaration) "false" else "true", !declaration)
+            assertEquals(declaration, present)
+            val caps = Capabilities(hasNativeNavbar = present == true, androidShowsNavbar = present)
+            assertEquals(declaration, SettingsRegistry.spec("navbar_mode")!!.optionsFor(caps).contains("Native"))
+            assertEquals(if (declaration) "Native" else "Swipe reveal", resolveNavbarMode(null, caps))
+            assertEquals("Off", resolveNavbarMode("Off", caps))
         }
-        if (caps.profileId in setOf("nspanel-pro")) return "Swipe reveal"
-        return if (caps.androidShowsNavbar == false) "Swipe reveal" else "Off"
+    }
+
+    @Test fun `undeclared navbar uses vendor suppression before Android resource`() {
+        for ((vendor, resource, expected) in listOf(
+            Triple("false", true, false), Triple("true", false, true),
+            Triple(null, true, true), Triple(null, false, false), Triple(null, null, null),
+            Triple("invalid", true, null),
+        )) {
+            val present = resolveNativeNavbar(null, vendor, resource)
+            assertEquals(expected, present)
+            val caps = Capabilities(hasNativeNavbar = present == true, androidShowsNavbar = present)
+            assertEquals(expected == true, SettingsRegistry.spec("navbar_mode")!!.optionsFor(caps).contains("Native"))
+            assertEquals(if (expected == true) "Native" else if (expected == false) "Swipe reveal" else "Off",
+                resolveNavbarMode(null, caps))
+        }
+    }
+
+    @Test fun `Android mainkeys override participates only when the vendor leaves navigation undeclared`() {
+        assertEquals(false, resolveNativeNavbar(null, null, true, "1"))
+        assertEquals(true, resolveNativeNavbar(null, null, false, "0"))
+        assertEquals(false, resolveNativeNavbar(null, "false", true, "0"))
+        assertEquals(null, resolveNativeNavbar(null, null, true, "invalid"))
     }
 
     // ---- the catalog is what the rule is aimed at --------------------------------------------
 
     @Test fun `exactly one bundled profile has no navigation affordance of its own`() {
         val stranded = profiles.filter {
-            !it.hasNativeNavbar && !it.hasRecents && it.evdevButtons.isEmpty()
+            it.hasNativeNavbar != true && !it.hasRecents && it.evdevButtons.isEmpty()
         }
         assertEquals(
             "a profile joining or leaving this set changes what a fresh panel does on first boot",
@@ -81,7 +103,7 @@ class NavbarCapabilityDefaultTest {
         assertTrue(tpa10.evdevButtons.isNotEmpty())
         assertTrue(
             "wf1589t is excluded by its native bar",
-            BundledProfileFixtures.profile("wf1589t").hasNativeNavbar,
+            BundledProfileFixtures.profile("wf1589t").hasNativeNavbar == true,
         )
         assertTrue(
             "generic must keep Recents, or every unprofiled panel joins the rule",
@@ -93,27 +115,10 @@ class NavbarCapabilityDefaultTest {
 
     // ---- the four acceptance cases -----------------------------------------------------------
 
-    @Test fun `a capable panel keeps the default it had before the rule existed`() {
-        val others = profiles.filterNot { it.id == "shelly-wall-display-x2i" }
-        assertTrue("the catalog must still hold the panels this guards", others.size >= 8)
-        for (profile in others) {
-            // Both readable states of the Android resource plus unknown, and no vendor property.
-            for (androidShowsNavbar in listOf(null, true, false)) {
-                val caps = capsOf(profile, androidShowsNavbar = androidShowsNavbar)
-                assertEquals(
-                    "${profile.id} androidShowsNavbar=$androidShowsNavbar",
-                    legacyDefault(caps),
-                    navbarModeDefault(caps),
-                )
-            }
-        }
-    }
-
     @Test fun `an x2i shaped panel defaults to a drawn bar instead of nothing`() {
         // The firmware claims a navigation bar it does not usably provide, which is exactly why the
         // legacy tiers answered Off and left such a panel with no way out.
         val caps = capsOf(x2i, androidShowsNavbar = true)
-        assertEquals("Off", legacyDefault(caps))
         assertEquals("Always on", navbarModeDefault(caps))
         // Through the mechanism that actually ships, not only the rule function: the spec must declare
         // the derivation and SettingSpec must consult it, or the rule is correct and never consulted.
@@ -146,7 +151,7 @@ class NavbarCapabilityDefaultTest {
         for (profile in profiles) {
             val caps = capsOf(profile, androidShowsNavbar = true)
             for (stored in NavbarController.MODES) {
-                if (stored == NavbarController.MODE_NATIVE && !profile.hasNativeNavbar) continue
+                if (stored == NavbarController.MODE_NATIVE && profile.hasNativeNavbar != true) continue
                 assertEquals("${profile.id} stored=$stored", stored, resolveNavbarMode(stored, caps))
             }
         }
@@ -168,7 +173,6 @@ class NavbarCapabilityDefaultTest {
             hasNativeNavbar = false,
             hasRecents = false,
             hasEvdevButtons = false,
-            profileId = "emergency",
             hardwareDeclarationsKnown = false,
         )
         assertEquals("Off", navbarModeDefault(emergency))
@@ -194,7 +198,7 @@ class NavbarCapabilityDefaultTest {
         for (profile in profiles.filterNot { it.id == "shelly-wall-display-x2i" }) {
             val config = emptyConfig()
             config.attachProfile(profile)
-            assertEquals(profile.id, legacyDefault(capsOf(profile)), config.navbarMode)
+            assertEquals(profile.id, when (profile.hasNativeNavbar) { true -> "Native"; false -> "Swipe reveal"; null -> "Off" }, config.navbarMode)
         }
 
         // A profile that is not catalog-backed carries the same stranded shape and must still derive
@@ -203,7 +207,7 @@ class NavbarCapabilityDefaultTest {
         val undeclared = emptyConfig()
         undeclared.attachProfile(NonCatalogProfile)
         assertTrue("the fixture must have the stranded shape, or it proves nothing",
-            !NonCatalogProfile.hasNativeNavbar && !NonCatalogProfile.hasRecents &&
+            NonCatalogProfile.hasNativeNavbar != true && !NonCatalogProfile.hasRecents &&
                 NonCatalogProfile.evdevButtons.isEmpty())
         assertEquals("Off", undeclared.navbarMode)
     }
@@ -219,7 +223,7 @@ class NavbarCapabilityDefaultTest {
         override val appCanSu = false
         override val usesDaemon = false
         override val hasRecents = false
-        override val hasNativeNavbar = false
+        override val hasNativeNavbar: Boolean? = null
         override val ledMechanism = LedMechanism.NONE
         override val screenOff = ScreenOff.BRIGHTNESS_ZERO
         override val zigbeeGatewayDir: String? = null

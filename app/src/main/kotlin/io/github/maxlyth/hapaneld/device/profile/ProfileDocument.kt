@@ -102,7 +102,7 @@ data class ProfilePlatform(
     val suForm: String,
     val appCanSu: Boolean,
     val hasRecents: Boolean = true,
-    val hasNativeNavbar: Boolean = false,
+    val hasNativeNavbar: Boolean? = null,
 )
 
 data class ProfileHardware(

@@ -58,6 +58,33 @@ import kotlin.test.assertTrue
 
 class ConfigPostProductionRouteTest {
 
+    @Test fun `configure schema offers only system bars and native navigation the panel provides`() {
+        for (caps in listOf(Capabilities(), Capabilities(hasNativeNavbar = true), Capabilities(hasAndroidStatusBar = true))) {
+            withFullReadServer { _, fixture ->
+                val observations = PaneldServer::class.java.getDeclaredField("managementObservations").run {
+                    isAccessible = true
+                    get(fixture.server) as ManagementObservations
+                }
+                val previous = requireNotNull(observations.snapCache.peek())
+                observations.snapCache.set(ManagementSnapshot(
+                    previous.facts, previous.live, caps, previous.capabilityRows, previous.privilege,
+                    previous.densityCur, previous.densityBase, previous.fontScale, previous.wifiChronic,
+                ))
+                testApplication {
+                    application { fixture.mount(this) }
+                    val response = client.get("/api/v1/config/schema")
+                    assertEquals(HttpStatusCode.OK, response.status)
+                    val entries = JSONArray(response.bodyAsText())
+                    val byKey = (0 until entries.length()).map(entries::getJSONObject).associateBy { it.getString("key") }
+                    assertEquals(caps.hasNativeNavbar || caps.hasAndroidStatusBar,
+                        byKey.getValue("dashboard_fullscreen").getBoolean("available"))
+                    val options = byKey.getValue("navbar_mode").getJSONArray("options")
+                    assertEquals(caps.hasNativeNavbar, (0 until options.length()).any { options.getString(it) == "Native" })
+                }
+            }
+        }
+    }
+
     @Test fun `full mount config reads redact secrets preserve source separation and localize schema`() =
         withFullReadServer { config, fixture ->
             config.setMqtt("", "reader", "private-test-password")

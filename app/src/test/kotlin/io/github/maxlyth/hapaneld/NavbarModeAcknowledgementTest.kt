@@ -9,9 +9,48 @@ import java.util.concurrent.CompletableFuture
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavbarModeAcknowledgementTest {
+    @Test fun `unacknowledged restored mode stays pending until a successful replay`() {
+        val authority = LiveSettingAuthority(setOf("navbar_mode"))
+        var attached = false
+        var persisted = "Swipe reveal"
+        val published = mutableListOf<String>()
+        fun apply(value: String): LiveSettingApplication {
+            applyAcknowledgedNavbarMode(
+                payload = value,
+                previousMode = persisted,
+                actuate = {
+                    CompletableFuture.completedFuture(NavbarModeApplyOutcome(
+                        it,
+                        if (attached) NavbarModeApplyStatus.APPLIED else NavbarModeApplyStatus.FAILED,
+                    ))
+                },
+                rollback = { _, previous ->
+                    CompletableFuture.completedFuture(NavbarModeApplyOutcome(previous, NavbarModeApplyStatus.APPLIED))
+                },
+                persist = { persisted = it; true },
+                reconcile = { published += persisted },
+            )
+            return LiveSettingApplication.immediate(LiveSettingApplyResult.APPLIED)
+        }
+
+        assertEquals(
+            LiveSettingRequestOutcome.FAILED_PENDING,
+            authority.applyOrQueueOutcomeObserved("navbar_mode", persisted, persisted) { _, value, _ -> apply(value) },
+        )
+        assertEquals(mapOf("navbar_mode" to "Swipe reveal"), authority.pendingSnapshot())
+        assertEquals("Swipe reveal", persisted)
+        assertTrue(published.isEmpty())
+
+        attached = true
+        authority.replayKeysObserved(setOf("navbar_mode")) { _, value, _, _ -> apply(value) }
+        assertTrue(authority.pendingSnapshot().isEmpty())
+        assertEquals(listOf("Swipe reveal"), published)
+    }
+
     @Test fun `Home Assistant select options match navbar actuation modes`() {
         assertEquals(NavbarController.MODES, SettingsRegistry.spec("navbar_mode")!!.options)
     }

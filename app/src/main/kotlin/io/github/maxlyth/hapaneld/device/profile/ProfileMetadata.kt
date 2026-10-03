@@ -95,7 +95,7 @@ object ProfileMetadata {
             field("platform.su_form", "enum", true, "Supported su calling convention.", listOf("none", "android", "toolbox")),
             field("platform.app_can_su", "boolean", true, "Whether an ordinary app can attempt su."),
             field("platform.has_recents", "boolean", false, "Whether Android Recents is functional."),
-            field("platform.has_native_navbar", "boolean", false, "Whether the firmware draws its own Android navigation bar."),
+            field("platform.has_native_navbar", "boolean", false, "Usable Android navigation bar: true or false overrides probing; omit to probe firmware visibility."),
             field("hardware.led.mechanism", "enum", true, "Built-in LED route.", LedMechanism.entries.map { it.yamlName }),
             field("hardware.led.transfer", "enum", false, "Core-owned LED transfer function; defaults to identity.", LedTransfer.NAMES.toList()),
             field("hardware.led.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),

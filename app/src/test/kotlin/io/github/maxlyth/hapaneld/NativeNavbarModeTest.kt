@@ -31,14 +31,11 @@ class NativeNavbarModeTest {
         hasNativeNavbar: Boolean = false,
         androidShowsNavbar: Boolean? = null,
         vendorNavbarProperty: String? = null,
-        profileId: String? = null,
         hasRecents: Boolean = true,
         hasEvdevButtons: Boolean = false,
     ) = Capabilities(
         hasNativeNavbar = hasNativeNavbar,
-        androidShowsNavbar = androidShowsNavbar,
-        vendorNavbarProperty = vendorNavbarProperty,
-        profileId = profileId,
+        androidShowsNavbar = resolveNativeNavbar(null, vendorNavbarProperty, androidShowsNavbar),
         hasRecents = hasRecents,
         hasEvdevButtons = hasEvdevButtons,
     )
@@ -113,26 +110,6 @@ class NativeNavbarModeTest {
         assertEquals(
             "Swipe reveal",
             resolveNavbarMode("Native", caps(vendorNavbarProperty = "false")),
-        )
-    }
-
-    @Test fun `the pre-existing default tiers are unchanged for panels with no native bar`() {
-        assertEquals(
-            "Swipe reveal",
-            resolveNavbarMode(null, caps(androidShowsNavbar = true, vendorNavbarProperty = "false")),
-        )
-        assertEquals(
-            "Off",
-            resolveNavbarMode(null, caps(androidShowsNavbar = false, vendorNavbarProperty = "true")),
-        )
-        assertEquals(
-            "Swipe reveal",
-            resolveNavbarMode(null, caps(androidShowsNavbar = false, vendorNavbarProperty = "")),
-        )
-        // The nspanel-pro tier still covers the raw-config path, where the resource is unknown, not false.
-        assertEquals(
-            "Swipe reveal",
-            resolveNavbarMode(null, caps(profileId = "nspanel-pro")),
         )
     }
 

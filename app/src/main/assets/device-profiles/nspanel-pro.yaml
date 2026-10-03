@@ -1,6 +1,6 @@
 schema: 2
 id: nspanel-pro
-version: 2.0.3
+version: 2.0.4
 display_name: Sonoff NSPanel Pro
 soc_class: PX30 / rk3326
 soc:
@@ -63,6 +63,8 @@ platform:
   su_form: toolbox
   app_can_su: true
   has_recents: true
+  # Vendor firmware suppresses its Android bar; PA supplies the usable navigation.
+  has_native_navbar: false
 hardware:
   led:
     # NSPanel status LEDs are not exposed through the supported app-side LED routes.

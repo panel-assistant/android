@@ -3087,13 +3087,11 @@ class PaneldService : Service() {
                 // `false` default is indistinguishable from "this panel has none", and the navbar
                 // no-way-out default reads it as evidence that a panel has no navigation affordance.
                 hasEvdevButtons = profile.evdevButtons.isNotEmpty(),
-                profileId = profile.id,
                 // Carried so a consumer can tell a real declaration from an unpopulated `false`.
                 hardwareDeclarationsKnown = profile.declarationsFromCatalog,
-                // Profile declaration only, deliberately not the Android/vendor navbar-visibility signals
-                // that seed the fresh-install default: those are known to misreport in both directions,
-                // and this decides whether "Native" may be selected rather than merely suggested.
-                hasNativeNavbar = profile.hasNativeNavbar,
+                // Same declaration/probe authority used by stored-mode reads and command admission.
+                hasNativeNavbar = config.hasNativeNavbar,
+                hasAndroidStatusBar = config.hasAndroidStatusBar,
                 cpuGovernors = controllers?.cpuGovernorsAvailable ?: cpu.available(),
                 // AdbController.available() is exactly Su.available(); reuse this snapshot's one root
                 // authority probe rather than opening another shell transaction.
@@ -3720,8 +3718,16 @@ class PaneldService : Service() {
             }
             // Forward our own logcat to the configured aggregator (no-op unless a sink host is set).
             logShipper.start()
-            // Restore the soft navbar to its persisted mode (no-op when Off / no overlay permission).
-            navbar.apply(config.navbarMode)
+            // A failed queued mode stays authoritative. Otherwise restore durable intent through the
+            // acknowledged command path, so a failed overlay attachment remains pending for retry.
+            if ("navbar_mode" !in liveSettingAuthority.pendingSnapshot()) {
+                liveSettingAuthority.applyOrQueueOutcomeObserved(
+                    key = "navbar_mode",
+                    value = config.navbarMode,
+                    previousValue = config.navbarMode,
+                ) { key, value, previous -> applyLiveSettingObserved(activeRuntime.mqtt, key, value, previous) }
+            }
+            scheduleLiveSettingRetries(MqttBridge.APPLY_SETTING_KEYS)
             if (!IdentityMigrationGate.holdsNetworkIdentity()) migrationNotice.start()
             // Start the app watchdog if enabled (off by default; self-heals a dead/abandoned dashboard).
             watchdog.apply(config.watchdogEnabled)
