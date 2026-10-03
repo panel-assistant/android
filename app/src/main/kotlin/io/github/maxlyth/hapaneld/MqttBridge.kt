@@ -1194,9 +1194,9 @@ internal class MqttBridge(
     // The panel's media player, or null when the profile declares no speaker: the native `media`
     // channel is then stated unsupported rather than described.
     private val media: io.github.maxlyth.hapaneld.media.PanelMediaPlayer? = null,
-    // Profile-authoritative camera capability. Discovery visibility is not a write guard because the
-    // wildcard command subscription still receives direct camera_enabled publications.
-    private val hasCamera: () -> Boolean = { false },
+    // Live profile/probe capability: null keeps the native channel while enumeration is unsettled.
+    // Discovery is not a write guard: wildcard subscriptions receive commands even without an entity.
+    private val hasCamera: () -> Boolean? = { false },
     // Optional service-owned adaptive-brightness engine.
     private val autoBright: AutoBrightnessController,
     private val onAutoBrightnessConfigChanged: () -> Unit = {},
@@ -3204,7 +3204,7 @@ internal class MqttBridge(
      *  camera into service. Disabling ends a live session immediately. */
     private fun handleCameraEnabled(payload: String) {
         val on = payload.trim().equals("ON", ignoreCase = true)
-        requireCameraEnableAdmission(on, hasCamera()) {
+        requireCameraEnableAdmission(on, hasCamera() == true) {
             authorizeRemoteSensitive(
                 SensitiveOperation.CAMERA_ENABLE,
                 "camera_enabled\u0000enable",
