@@ -48,6 +48,56 @@ class PanelTouchObserver private constructor(context: Context) {
     fun subscribeWithActivityFallback(onTouch: () -> Unit): Subscription? =
         subscribe(onTouch, requireOverlay = false)
 
+    /**
+     * Attach a full-screen touch target before permitting darkness. Unlike ordinary observation this
+     * owns the waking gesture, including when the renderer is in another app. Removing its window
+     * cancels the input stream; Android never retargets the remaining MOVE/UP to the dashboard.
+     */
+    @Suppress("ClickableViewAccessibility")
+    fun captureWakeTouches(onTouch: () -> Unit): Subscription? {
+        if (!canObserve()) return null
+        val active = AtomicBoolean(true)
+        val candidate = arrayOfNulls<View>(1)
+        val completed = onMain {
+            if (!active.get()) return@onMain
+            val target = View(ctx)
+            target.setOnTouchListener { _, event ->
+                if (active.get() && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    registry.dispatch()
+                    onTouch()
+                }
+                true
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                overlayType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT,
+            )
+            runCatching {
+                wm.addView(target, params)
+                candidate[0] = target
+            }.onFailure {
+                Log.w(TAG, "wake touch overlay addView failed: ${it.message}")
+            }
+        }
+        if (!completed || candidate[0] == null) {
+            active.set(false)
+            // Runs after a timed-out attachment, and owns only this attempt's view.
+            main.post { candidate[0]?.let { runCatching { wm.removeView(it) } } }
+            return null
+        }
+        val target = candidate[0]!!
+        return object : Subscription {
+            override fun close() {
+                if (!active.compareAndSet(true, false)) return
+                main.post { runCatching { wm.removeView(target) } }
+            }
+        }
+    }
+
     private fun subscribe(onTouch: () -> Unit, requireOverlay: Boolean): Subscription? {
         if (requireOverlay && !canObserve()) return null
         val active = AtomicBoolean(true)

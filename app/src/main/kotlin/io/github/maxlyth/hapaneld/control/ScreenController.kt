@@ -43,8 +43,8 @@ data class RouteSelection(val declared: ScreenOff, val selected: ScreenOff?, val
  * guaranteed is a property of the route, and the two families differ:
  *
  * - The bl_power and brightness routes leave the device Awake, so the dashboard stays foreground and
- *   ha-paneld cannot see a wake tap itself. Each real off therefore arms a [WakeTap] (a non-consuming
- *   touch overlay) and a tap re-lights the panel. If that cannot be confirmed ([WakeTap.arm] returns
+ *   ha-paneld cannot see a wake tap itself. Each real off therefore arms a [WakeTap] (a consuming
+ *   touch overlay) and a tap re-lights the panel without reaching the dashboard. If that cannot be confirmed ([WakeTap.arm] returns
  *   false), the off degrades to a visible dim rather than a true dark, so the panel can never look
  *   bricked — the failure mode that stranded a freshly-provisioned panel dark and touch-dead.
  * - [ScreenOff.KEYEVENT] puts Android itself noninteractive, which is a first-class platform state

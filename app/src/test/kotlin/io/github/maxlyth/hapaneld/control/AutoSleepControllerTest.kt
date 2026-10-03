@@ -8,6 +8,7 @@ import io.github.maxlyth.hapaneld.sensors.HaPresenceRequest
 import io.github.maxlyth.hapaneld.sensors.HaPresenceSelectedHistory
 import io.github.maxlyth.hapaneld.sensors.HaPresenceTransition
 import io.github.maxlyth.hapaneld.sensors.HaPresenceValue
+import io.github.maxlyth.hapaneld.sensors.ProximityCalibrationEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
@@ -147,24 +148,72 @@ class AutoSleepControllerTest {
         }
     }
 
-    @Test fun `panel source operates without HA and holds for sustained presence`() {
-        Harness(source = "panel").use { h ->
+    @Test fun `twenty count panel presence holds occupied and powers off at reported clear lease`() = runTest {
+        val h = Harness(this, StandardTestDispatcher(testScheduler), source = "panel",
+            drive = { runCurrent() }, trackBacklightPower = true)
+        val calibration = ProximityCalibrationEngine.Calibration(
+            mode = ProximityCalibrationEngine.Mode.RANGED, clearRaw = 220f, nearRaw = 240f,
+        )
+        val detector = ProximityCalibrationEngine(calibration)
+        fun report(result: ProximityCalibrationEngine.Result): ProximityCalibrationEngine.Result {
+            assertTrue(h.controller.noteProximityState(result.near.takeIf { result.presenceReady }))
+            h.settle()
+            return result
+        }
+        fun sample(raw: Float, atMs: Long): ProximityCalibrationEngine.Result {
+            h.now.set(atMs)
+            return report(detector.observe(raw, atMs))
+        }
+        fun tick(atMs: Long): ProximityCalibrationEngine.Result {
+            h.now.set(atMs)
+            return report(detector.tick(atMs))
+        }
+        try {
             assertFalse(h.start().enabled)
-            h.controller.noteProximityState(true)
+            sample(220f, 0L)
+            val initialClear = tick(calibration.debounceMs)
+            assertEquals(false, initialClear.near)
+            assertEquals(0, initialClear.level)
+            assertTrue(h.status().getBoolean("available"))
+            val leaseMs = h.status().getLong("learned_lease_ms")
+            assertTrue(leaseMs > 0L)
+
+            sample(240f, 1_000L)
+            val occupiedAtMs = 1_000L + calibration.debounceMs
+            val occupied = tick(occupiedAtMs)
+            assertEquals(true, occupied.near)
+            assertEquals(100, occupied.level)
             h.await { h.status().getString("reason") == "source_active" }
             assertEquals("panel", h.status().getString("source"))
-            assertTrue(h.status().getBoolean("available"))
-            h.now.set(2 * MIN_AUTO_SLEEP_LEASE_MS)
+
+            sample(240f, occupiedAtMs + 2 * leaseMs)
             h.controller.advanceToForTest(h.now.get())
-            h.controller.noteProximityState(true)
-            h.await { h.controller.feedPositionForTest()?.revision == 3L }
+            h.settle()
             assertFalse(h.screen.isIntendedOff())
-            h.controller.noteProximityState(false)
+            assertTrue(h.backlightPowered())
+
+            val clearAtMs = h.now.get() + 1_000L + calibration.debounceMs
+            sample(220f, clearAtMs - calibration.debounceMs)
+            val cleared = tick(clearAtMs)
+            assertEquals(false, cleared.near)
+            assertEquals(0, cleared.level)
             h.await { h.status().getString("reason") == "source_activity_lease" }
-            h.now.addAndGet(MIN_AUTO_SLEEP_LEASE_MS)
+            assertEquals(leaseMs, h.status().getLong("learned_lease_ms"))
+
+            sample(220f, clearAtMs + leaseMs / 2L)
+            sample(220f, clearAtMs + leaseMs - 1L)
             h.controller.advanceToForTest(h.now.get())
-            h.await { h.screen.isIntendedOff() }
-        }
+            h.settle()
+            assertFalse(h.screen.isIntendedOff())
+            assertTrue(h.backlightPowered())
+
+            h.now.set(clearAtMs + leaseMs)
+            h.controller.advanceToForTest(h.now.get())
+            h.settle()
+            assertEquals(ScreenOff.DAEMON_BLPOWER, h.screen.routeSelection().selected)
+            assertTrue(h.screen.isIntendedOff())
+            assertFalse("the reported expiry must power the panel off", h.backlightPowered())
+        } finally { h.closeWithVirtualTime(::runCurrent) }
     }
 
     @Test fun `panel presence cannot wake dark screen but source loss restores owned sleep`() {
@@ -971,6 +1020,7 @@ class AutoSleepControllerTest {
         private val drive: (() -> Unit)? = null,
         /** The backlight a replaced process left powered off; bl_power then follows the actuator. */
         inheritedDark: Boolean = false,
+        trackBacklightPower: Boolean = inheritedDark,
     ) : AutoCloseable {
         val now = AtomicLong()
         val wallNow = AtomicLong()
@@ -983,7 +1033,7 @@ class AutoSleepControllerTest {
         val screen = ScreenController(
             backlight, FakeScreenPower(), FakeRootShell(),
             FakeDaemon(daemonReplies, onSend = { command ->
-                if (inheritedDark) when (command) {
+                if (trackBacklightPower) when (command) {
                     "SCREEN OFF" -> daemonReplies["BLPOWER"] = "4"
                     "SCREEN ON" -> daemonReplies["BLPOWER"] = "0"
                 }
