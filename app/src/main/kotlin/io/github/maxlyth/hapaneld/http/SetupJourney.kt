@@ -227,8 +227,8 @@ object SetupJourney {
         val currentFingerprint: String = "",
         /**
          * Panel Assistant granted this panel native authority, or is setting it up now: its entities and
-         * commands travel over Panel Assistant's connection, so the MQTT steps do not apply unless the owner
-         * configured a broker anyway.
+         * commands travel over Panel Assistant's connection, so the MQTT steps do not apply even when
+         * broker settings remain from an earlier setup.
          */
         val panelAssistantNative: Boolean = false,
     )
@@ -288,7 +288,7 @@ object SetupJourney {
     }
 
     private fun mqttSteps(inputs: Inputs): List<Step> {
-        if (inputs.panelAssistantNative && !inputs.brokerConfigured) {
+        if (inputs.panelAssistantNative) {
             return listOf(
                 Step(Stage.MQTT_BROKER, Status.SKIPPED, blocking = false),
                 Step(Stage.MQTT_CREDENTIALS, Status.SKIPPED, blocking = false),
