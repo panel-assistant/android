@@ -215,7 +215,7 @@ internal class LiveSettingAuthority(
         LiveSettingApplication.immediate(apply(appliedKey, appliedValue, previous))
     }.legacyAcknowledged
 
-    private fun applyOrQueueOutcomeIf(
+    internal fun applyOrQueueOutcomeIf(
         key: String,
         value: String,
         previousValue: String?,

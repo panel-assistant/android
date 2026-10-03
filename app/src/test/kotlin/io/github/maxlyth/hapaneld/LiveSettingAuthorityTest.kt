@@ -10,6 +10,53 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class LiveSettingAuthorityTest {
+    @Test fun `startup restore refuses a newer durable or pending navbar mode`() {
+        listOf(false, true).forEach { pending ->
+            val authority = LiveSettingAuthority(setOf("navbar_mode"))
+            var durable = "Swipe reveal"
+            val captured = durable
+            if (pending) {
+                authority.applyOrQueueOutcomeObserved("navbar_mode", "Off", durable) { _, _, _ ->
+                    LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+                }
+            } else {
+                durable = "Off"
+            }
+            val result = authority.applyOrQueueOutcomeIf(
+                key = "navbar_mode",
+                value = captured,
+                previousValue = captured,
+                expected = { durable == captured && "navbar_mode" !in authority.pendingSnapshot() },
+            ) { _, _, _ -> error("stale restore must not actuate") }
+
+            assertEquals(LiveSettingRequestOutcome.REJECTED, result)
+            assertEquals(if (pending) mapOf("navbar_mode" to "Off") else emptyMap<String, String>(), authority.pendingSnapshot())
+            assertEquals(if (pending) "Swipe reveal" else "Off", durable)
+        }
+    }
+
+    @Test fun `conditionally admitted startup restore observes late acknowledgement without replaying in flight`() {
+        val authority = LiveSettingAuthority(setOf("navbar_mode"))
+        var complete: ((LiveSettingApplyResult) -> Unit)? = null
+        assertEquals(
+            LiveSettingRequestOutcome.FAILED_PENDING,
+            authority.applyOrQueueOutcomeIf(
+                "navbar_mode", "Swipe reveal", "Swipe reveal", expected = { true },
+            ) { _, _, _ ->
+                LiveSettingApplication(LiveSettingApplyResult.FAILED) { complete = it }
+            },
+        )
+        assertEquals(mapOf("navbar_mode" to "Swipe reveal"), authority.pendingSnapshot())
+        var replays = 0
+        authority.replayKeysObserved(setOf("navbar_mode")) { _, _, _, _ ->
+            replays++
+            LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+        }
+        assertEquals("an admitted restore must not be enqueued again while it is in flight", 0, replays)
+        requireNotNull(complete).invoke(LiveSettingApplyResult.APPLIED)
+        assertTrue(authority.pendingSnapshot().isEmpty())
+    }
+
     @Test fun `request outcome distinguishes applied deferred failed pending and rejected`() {
         listOf(
             LiveSettingApplyResult.APPLIED to LiveSettingRequestOutcome.APPLIED,

@@ -3720,13 +3720,16 @@ class PaneldService : Service() {
             logShipper.start()
             // A failed queued mode stays authoritative. Otherwise restore durable intent through the
             // acknowledged command path, so a failed overlay attachment remains pending for retry.
-            if ("navbar_mode" !in liveSettingAuthority.pendingSnapshot()) {
-                liveSettingAuthority.applyOrQueueOutcomeObserved(
-                    key = "navbar_mode",
-                    value = config.navbarMode,
-                    previousValue = config.navbarMode,
-                ) { key, value, previous -> applyLiveSettingObserved(activeRuntime.mqtt, key, value, previous) }
-            }
+            val restoredNavbarMode = config.navbarMode
+            liveSettingAuthority.applyOrQueueOutcomeIf(
+                key = "navbar_mode",
+                value = restoredNavbarMode,
+                previousValue = restoredNavbarMode,
+                expected = {
+                    config.navbarMode == restoredNavbarMode &&
+                        "navbar_mode" !in liveSettingAuthority.pendingSnapshot()
+                },
+            ) { key, value, previous -> applyLiveSettingObserved(activeRuntime.mqtt, key, value, previous) }
             scheduleLiveSettingRetries(MqttBridge.APPLY_SETTING_KEYS)
             if (!IdentityMigrationGate.holdsNetworkIdentity()) migrationNotice.start()
             // Start the app watchdog if enabled (off by default; self-heals a dead/abandoned dashboard).
