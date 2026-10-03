@@ -7,13 +7,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Touch-to-wake through [PanelTouchObserver]'s shared 1 px `FLAG_WATCH_OUTSIDE_TOUCH` overlay. While the
- * screen is off, the observer receives `ACTION_OUTSIDE` for a tap without consuming it (the tap still
- * reaches the dashboard) and re-lights the panel.
- *
- * Non-consuming is deliberate and load-bearing: the wake mechanism can never itself block touch, so it
- * can't become the unresponsive-panel it exists to prevent. Worst case if it misbehaves is a stray tap
- * reaching the dashboard — never a dead screen.
+ * Touch-to-wake through a full-screen consuming overlay. Android owns the whole gesture from DOWN,
+ * so disarming after wake cancels that stream instead of passing its remaining events to the renderer.
+ * Ordinary touch observation remains non-consuming while the screen is awake.
  *
  * Needs `SYSTEM_ALERT_WINDOW` (root-granted for the navbar). [canArm] reports whether it's held so
  * ScreenController can degrade a screen-off to a dim when there'd otherwise be no guaranteed local wake.
@@ -34,7 +30,7 @@ class OverlayWakeTap(
         subscription?.close()
         subscription = null
         val fired = AtomicBoolean()
-        val installed = observer.subscribe {
+        val installed = observer.captureWakeTouches {
             if (generation.get() == token && fired.compareAndSet(false, true)) {
                 Log.d(TAG, "tap while dark -> wake")
                 // Screen wake can call helper/root I/O; never run it on the main touch callback.

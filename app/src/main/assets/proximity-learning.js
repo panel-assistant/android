@@ -123,20 +123,25 @@
   async function request(action, sessionId) {
     var body = { action: action };
     if (sessionId) body.sessionId = sessionId;
-    var response = await fetch("api/v1/proximity/calibration", {
-      method: "POST", mode: "same-origin", cache: "no-store",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "X-Proximity-UI": "1" },
-      body: new URLSearchParams(body).toString()
-    });
-    var text = await response.text();
-    if (!response.ok) {
-      var reason = text.trim();
-      try { reason = JSON.parse(text).error || ""; } catch (_) {}
-      var error = new Error(reason || label("rejected", "The panel did not accept that action."));
-      error.opaque = !!reason;
-      throw error;
-    }
-    return JSON.parse(text);
+    var controller = action === "heartbeat" ? new AbortController() : null;
+    var timeout = controller ? setTimeout(function () { controller.abort(); }, 5000) : null;
+    try {
+      var response = await fetch("api/v1/proximity/calibration", {
+        method: "POST", mode: "same-origin", cache: "no-store",
+        signal: controller ? controller.signal : undefined,
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "X-Proximity-UI": "1" },
+        body: new URLSearchParams(body).toString()
+      });
+      var text = await response.text();
+      if (!response.ok) {
+        var reason = text.trim();
+        try { reason = JSON.parse(text).error || ""; } catch (_) {}
+        var error = new Error(reason || label("rejected", "The panel did not accept that action."));
+        error.opaque = !!reason;
+        throw error;
+      }
+      return JSON.parse(text);
+    } finally { clearTimeout(timeout); }
   }
   function scheduleHeartbeat() {
     clearTimeout(heartbeatTimer);

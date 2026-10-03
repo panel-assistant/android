@@ -15,6 +15,7 @@ async function fixture(t, initial = {}) {
   const page = await browser.newPage();
   const posts = [];
   let refusal = null;
+  let stallNextHeartbeat = false;
   let status = { present: true, phase: 'ready', signalMode: 'binary', profileDefaultAvailable: false, ...initial };
   await page.clock.install();
   await page.route('http://panel.test/**', async (route) => {
@@ -24,6 +25,10 @@ async function fixture(t, initial = {}) {
     if (path === '/api/v1/proximity/calibration') {
       const body = Object.fromEntries(new URLSearchParams(request.postData()));
       posts.push({ body, headers: request.headers() });
+      if (body.action === 'heartbeat' && stallNextHeartbeat) {
+        stallNextHeartbeat = false;
+        return;
+      }
       if (refusal) return route.fulfill(refusal);
       if (body.action === 'start') status = { ...status, phase: 'calibrating', stage: 'intro', sessionActive: true, sessionId: 'starter-session' };
       if (body.action === 'cancel') status = { ...status, phase: 'ready', stage: 'cancelled', sessionActive: false, sessionId: null };
@@ -36,8 +41,29 @@ async function fixture(t, initial = {}) {
   const expectedStatus = initial.present === false || initial.phase === 'source_unavailable' ? 'Proximity source is unavailable'
     : initial.phase === 'calibrating' ? 'Setup is running on the panel' : 'Proximity is ready';
   await page.getByText(expectedStatus, { exact: true }).waitFor();
-  return { page, posts, setStatus: (value) => { status = value; }, refuse: (value) => { refusal = value; } };
+  return { page, posts, setStatus: (value) => { status = value; }, refuse: (value) => { refusal = value; }, stallHeartbeat: () => { stallNextHeartbeat = true; } };
 }
+
+browserTest('one unanswered heartbeat cannot prevent renewal before the browser lease expires', async (t) => {
+  const { page, posts, stallHeartbeat } = await fixture(t);
+  await page.getByRole('button', { name: 'Set up proximity on panel' }).click();
+  await page.getByText('Ready to begin on the panel', { exact: true }).waitFor();
+  stallHeartbeat();
+  const first = page.waitForRequest((request) => request.postData()?.includes('action=heartbeat'));
+  await page.clock.runFor(5100);
+  await first;
+  let renewed = false;
+  page.on('response', (response) => {
+    if (response.request().postData()?.includes('action=heartbeat') && response.ok()) renewed = true;
+  });
+  // Exercise actual fetch cancellation and browser timers within the server's 30-second lease.
+  for (let seconds = 0; seconds < 20 && !renewed; seconds++) {
+    await page.clock.runFor(1000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal(renewed, true, 'an unanswered heartbeat must allow a later successful renewal');
+  assert.ok(posts.filter(({ body }) => body.action === 'heartbeat').every(({ body }) => body.sessionId === 'starter-session'));
+});
 
 browserTest('browser launches on-panel setup, heartbeats only its own session, and cancels with session binding', async (t) => {
   const { page, posts } = await fixture(t);

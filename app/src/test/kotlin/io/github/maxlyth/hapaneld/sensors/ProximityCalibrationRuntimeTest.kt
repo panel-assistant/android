@@ -454,6 +454,35 @@ class ProximityCalibrationRuntimeTest {
         assertEquals(2, saved.version)
     }
 
+    @Test fun twentyCountCalibrationPublishesOccupiedAndClearAfterDebounce() {
+        val fixture = Fixture()
+        fixture.toReview(220f, 240f, null)
+        assertTrue(fixture.runtime.localAction("save"))
+        val debounce = assertDecoded(assertRow(fixture.backing).snapshotJson).debounceMs
+
+        fixture.sample(220f)
+        val initialClear = fixture.advance(debounce)
+        assertTrue(fixture.runtime.isPresenceReady())
+        assertTrue(fixture.status().getBoolean("presenceReady"))
+        assertEquals(false, initialClear.near)
+        assertEquals(0, initialClear.normalizedLevel)
+
+        fixture.sample(240f)
+        assertEquals(false, fixture.advance(debounce - 1).near)
+        val occupied = fixture.advance(1)
+        assertTrue(fixture.runtime.isPresenceReady())
+        assertEquals(true, occupied.near)
+        assertEquals(100, occupied.normalizedLevel)
+
+        fixture.sample(220f)
+        assertEquals(true, fixture.advance(debounce - 1).near)
+        val clear = fixture.advance(1)
+        assertTrue(fixture.runtime.isPresenceReady())
+        assertEquals(false, clear.near)
+        assertEquals(0, clear.normalizedLevel)
+        fixture.runtime.close()
+    }
+
     @Test fun candidatePresenceNeverPublishesBeforeAtomicSave() {
         val previous = row(binaryLegacy())
         val fixture = Fixture(Backing(previous))
