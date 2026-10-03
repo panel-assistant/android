@@ -563,8 +563,9 @@ class SystemController(
 
         // Vendor kiosk apps that register CATEGORY_HOME but aren't real launchers — the navbar Launcher
         // button must never land on them (they obstruct the dashboard). eWeLink's control panel on
-        // Sonoff/NSPanel Pro is the known offender; add more here as other vendors surface.
-        private val VENDOR_PSEUDO_LAUNCHERS = setOf("com.eWeLinkControlPanel")
+        // Sonoff/NSPanel Pro, and Shelly's Stargate on Wall Displays, whose screens offer no way on to
+        // Android Settings; the admin launcher lists either as an app tile instead.
+        private val VENDOR_PSEUDO_LAUNCHERS = setOf("com.eWeLinkControlPanel", "cloud.shelly.stargate")
     }
 }
 
