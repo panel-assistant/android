@@ -33,6 +33,7 @@ class PaneldServiceStartupTest {
         val service = PaneldService()
         val attempts = AtomicInteger()
         val retried = CountDownLatch(2)
+        val retryCompletion = LinkedBlockingQueue<(LiveSettingApplyResult) -> Unit>()
         val schedule = PaneldService::class.java.getDeclaredMethod("scheduleLiveSettingRetries", Set::class.java)
             .apply { isAccessible = true }
         fun scheduleRetry() { schedule.invoke(service, setOf("navbar_mode")) }
@@ -42,11 +43,12 @@ class PaneldServiceStartupTest {
             threadName = "navbar-startup-retry-test",
             latestOperation = LatestOperationPolicy(operation = {
                 authority.replayKeysObserved(setOf("navbar_mode")) { _, _, _, _ ->
-                    attempts.incrementAndGet()
-                    LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+                    val attempt = attempts.incrementAndGet()
+                    retried.countDown()
+                    if (attempt == 2) LiveSettingApplication(LiveSettingApplyResult.DEFERRED) { retryCompletion.add(it) }
+                    else LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
                 }
                 scheduleRetry()
-                retried.countDown()
             }),
         )
         listOf("liveSettingAuthority" to authority, "runtime" to owner).forEach { (name, value) ->
@@ -64,6 +66,10 @@ class PaneldServiceStartupTest {
             )
             scheduleRetry()
             scheduleRetry()
+            val completeRetry = requireNotNull(retryCompletion.poll(5, TimeUnit.SECONDS))
+            // Duplicate timers have fired before this first actual retry fails.
+            Thread.sleep(1_250)
+            completeRetry(LiveSettingApplyResult.FAILED)
             assertTrue("the service must retry a failed restore", retried.await(5, TimeUnit.SECONDS))
             // Wait past the production one-second delay to prove no third retry was admitted.
             Thread.sleep(1_250)
