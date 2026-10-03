@@ -11,6 +11,6 @@
     "layout:update": "node layout-matrix.mjs --update-baseline"
   },
   "devDependencies": {
-    "playwright-core": "1.62.1"
+    "playwright-core": "1.63.0"
   }
 }
