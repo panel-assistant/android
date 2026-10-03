@@ -181,12 +181,9 @@
       return cfg.approvalAwareJson(r).then(function (body) {
         if (!r.ok) {
           return text.then(function (raw) {
-            var partial = body && body.status === "saved-partial";
             var reason = (body && typeof body.message === "string" && body.message) ||
               (body && typeof body.error === "string" ? body.error + (body.reason ? " (" + body.reason + ")" : "") : raw.trim());
-            var error = new Error(partial
-              ? cfg.i18nText("configure.save.failed", "Save failed.")
-              : reason
+            var error = new Error(reason
               ? cfg.i18nText("configure.save.refused", "Not saved: {reason}", { reason: reason })
               : cfg.i18nText("configure.error.http", "Failed (HTTP {status})", { status: r.status }));
             error.configOutcome = body;

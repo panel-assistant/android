@@ -200,6 +200,7 @@ for (const engine of engines) {
   for (const refusal of [
     { name: 'plain-text 400', status: 400, type: 'text/plain', body: 'dashboard_zoom: expected an integer\n', shown: 'Not saved: dashboard_zoom: expected an integer' },
     { name: 'JSON 409', status: 409, type: 'application/json', body: JSON.stringify({ ok: false, error: 'ha-sign-in-required', message: 'Connect Home Assistant with Browser sign-in before selecting the Built-in renderer.' }), shown: 'Not saved: Connect Home Assistant with Browser sign-in before selecting the Built-in renderer.' },
+    { name: 'partial-save JSON 500', status: 500, type: 'application/json', body: JSON.stringify({ status: 'saved-partial', applied: [], message: 'Some settings were saved, but dashboard_zoom could not be durably accepted.' }), shown: 'Not saved: Some settings were saved, but dashboard_zoom could not be durably accepted.' },
     { name: 'JSON code without a message', status: 403, type: 'application/json', body: JSON.stringify({ ok: false, error: 'embed-proof-rejected', reason: 'replayed' }), shown: 'Not saved: embed-proof-rejected (replayed)' },
   ]) {
     engineTest(`${engine.name}: a ${refusal.name} refusal shows the panel's reason`, async (t) => {
