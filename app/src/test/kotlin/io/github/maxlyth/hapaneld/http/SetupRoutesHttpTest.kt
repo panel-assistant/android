@@ -158,7 +158,47 @@ class SetupRoutesHttpTest {
             .map { it.getString("status") }
     }
 
-    private fun withSetup(block: (PaneldServerHttpFixture) -> Unit) {
+    @Test fun nativePanelWithSavedBrokerSkipsMqttWithoutChangingSettings() {
+        for (mqtt in listOf("unreachable", "auth-failed", "config-error")) withSetup(mqtt) { fixture ->
+            fixture.config.setPanelAssistantAuthority("native")
+            fixture.config.setMqtt("tcp://old-broker.example:1883", "saved-user", "saved-password")
+            fixture.config.setHaConnection("http://ha.example", "saved-ha-token")
+            fixture.config.setupIdentityConfirmed = true
+            fixture.config.setupEverCompleted = true
+            testApplication {
+                application { fixture.mount(this) }
+                repeat(2) {
+                    val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
+                    assertEquals(mqtt, listOf("skipped", "skipped", "skipped"), mqttStatuses(state))
+                    assertEquals("render_proof", state.getString("next"))
+                    assertEquals("tcp://old-broker.example:1883", fixture.config.mqttBroker)
+                    assertEquals("saved-user", fixture.config.mqttUser)
+                    assertEquals("saved-password", fixture.config.mqttPassword)
+                    assertEquals("saved-ha-token", fixture.config.haToken)
+                    assertEquals("native", fixture.config.panelAssistantAuthority)
+                }
+            }
+        }
+    }
+
+    @Test fun legacyPanelWithSavedBrokerKeepsMqttRepairSteps() {
+        for (mqtt in listOf("unreachable", "auth-failed", "config-error")) withSetup(mqtt) { fixture ->
+            fixture.config.setMqtt("tcp://old-broker.example:1883", "saved-user", "saved-password")
+            fixture.config.setHaConnection("http://ha.example", "saved-ha-token")
+            fixture.config.setupIdentityConfirmed = true
+            fixture.config.setupEverCompleted = true
+            testApplication {
+                application { fixture.mount(this) }
+                val state = JSONObject(client.get("/api/v1/setup").bodyAsText())
+                assertEquals("satisfied", mqttStatuses(state).first())
+                assertEquals("blocked", mqttStatuses(state).last())
+                assertEquals(if (mqtt == "auth-failed") "mqtt_credentials" else "mqtt_connection", state.getString("next"))
+                assertEquals("tcp://old-broker.example:1883", fixture.config.mqttBroker)
+            }
+        }
+    }
+
+    private fun withSetup(mqtt: String = "", block: (PaneldServerHttpFixture) -> Unit) {
         PaneldServerHttpFixture().use { fixture ->
             fixture.config.setDashboardPackage("com.example.dashboard")
             fixture.config.setFriendlyName("Contract panel")
@@ -200,8 +240,8 @@ class SetupRoutesHttpTest {
                 get(fixture.server) as android.content.Context
             }
             field("setupState", SetupState(
-                fixture.config, system, learning, profile, context, { "" }, { 0 },
-                { DiscoveryResult() }, { false }, { false },
+                fixture.config, system, learning, profile, context, { mqtt }, { 0 },
+                { DiscoveryResult() }, { false }, { !SetupBanner.mqttSetupRequired(fixture.config.panelAssistantAuthority) },
                 { system.resolveDashboard(fixture.config.dashboardPackage) == SystemController.BUILTIN_DASHBOARD },
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Job().apply { cancel() }),
                 io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator(
