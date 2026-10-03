@@ -120,8 +120,8 @@ internal enum class LiveSettingRequestOutcome {
 internal class LiveSettingAuthority(
     private val supportedKeys: Set<String>,
     private val journal: Journal = MemoryJournal(),
-    bootIdentity: () -> String? = ::kernelBootIdentity,
     private val onLatePending: (String) -> Unit = {},
+    bootIdentity: () -> String? = ::kernelBootIdentity,
 ) {
     internal data class Pending(
         val value: String,

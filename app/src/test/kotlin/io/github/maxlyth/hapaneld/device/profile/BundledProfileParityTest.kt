@@ -21,8 +21,8 @@ class BundledProfileParityTest {
 
     /**
      * `has_native_navbar` gates whether `Native` may be chosen at all, and choosing it on a panel with
-     * no system bar leaves no navigation. So absence is the conservative default and only hardware we
-     * have actually verified may declare it — today that is the WF1589T alone.
+     * no system bar leaves no navigation. Only verified hardware declares true; an omitted field
+     * delegates to firmware probing rather than declaring an absent bar.
      */
     @Test fun onlyVerifiedHardwareDeclaresANativeNavigationBar() {
         assertEquals(

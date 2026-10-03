@@ -2128,7 +2128,7 @@ class Config private constructor(
 
     /**
      * The capability inputs [navbarModeDefault] reads, built here from the resolved profile plus the
-     * two navbar-visibility signals only this Android edge can read. The service builds a much larger
+     * firmware probes only this Android edge can read. The service builds a much larger
      * snapshot for discovery and option gating; the profile-declared fields are drawn from the same
      * profile in both places, so the two cannot disagree about what this panel declares.
      *
