@@ -1194,9 +1194,8 @@ internal class MqttBridge(
     // The panel's media player, or null when the profile declares no speaker: the native `media`
     // channel is then stated unsupported rather than described.
     private val media: io.github.maxlyth.hapaneld.media.PanelMediaPlayer? = null,
-    // Profile-authoritative camera capability. Discovery visibility is not a write guard because the
-    // wildcard command subscription still receives direct camera_enabled publications.
-    // Null means enumeration has not settled; only false may withdraw the native channel.
+    // Live profile/probe capability: null keeps the native channel while enumeration is unsettled.
+    // Discovery is not a write guard: wildcard subscriptions receive commands even without an entity.
     private val hasCamera: () -> Boolean? = { false },
     // Optional service-owned adaptive-brightness engine.
     private val autoBright: AutoBrightnessController,
