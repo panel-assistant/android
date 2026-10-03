@@ -1,6 +1,7 @@
 package io.github.maxlyth.hapaneld.control
 
 import io.github.maxlyth.hapaneld.AppIdentity
+import io.github.maxlyth.hapaneld.device.profile.BundledProfileFixtures
 import io.github.maxlyth.hapaneld.platform.ActivityRef
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
@@ -48,10 +49,19 @@ class SystemControllerTest {
         suOut: Map<String, String> = emptyMap(),
         builtinForeground: Boolean = false,
         homeWarnings: MutableList<String>? = null,
+        profileId: String = "generic",
     ): Triple<SystemController, FakeRootShell, FakeDaemon> {
         val root = FakeRootShell(outputs = suOut, runResult = su)
         val d = FakeDaemon(replies = daemon ?: emptyMap(), available = daemon != null)
-        return Triple(SystemController(env, root, d, builtinForeground = { builtinForeground }, homeWarning = { homeWarnings?.add(it) }), root, d)
+        // Vendor home apps come from the bundled profile, exactly as PaneldService passes them.
+        val vendorHome = BundledProfileFixtures.bundledById.getValue(profileId).profile().vendorHomePackages
+        return Triple(
+            SystemController(
+                env, root, d, builtinForeground = { builtinForeground }, homeWarning = { homeWarnings?.add(it) },
+                vendorHomePackages = vendorHome,
+            ),
+            root, d,
+        )
     }
 
     private val BUILTIN = SystemController.BUILTIN_DASHBOARD
@@ -403,7 +413,7 @@ class SystemControllerTest {
         // eWeLink's control panel registers HOME but is vendor kiosk garbage, not a launcher — when it's
         // the default home, the Launcher button must fall through to a real launcher (a field report).
         val ewelink = "com.eWeLinkControlPanel"
-        val (c, root, _) = sc(launcherEnv(ewelink, ewelink, VENDOR), daemon = null)
+        val (c, root, _) = sc(launcherEnv(ewelink, ewelink, VENDOR), daemon = null, profileId = "nspanel-pro")
         c.launchLauncher("")
         assertTrue("skipped eWeLink kiosk, chose real launcher", root.ran.contains("am start -n $VENDOR/L"))
     }
@@ -411,7 +421,7 @@ class SystemControllerTest {
     @Test fun launcherEweLinkOnlyHomeFallsBackToAdminLauncher() {
         // eWeLink the sole registered home → no real launcher, so open ha-paneld's admin launcher.
         val ewelink = "com.eWeLinkControlPanel"
-        val (c, root, _) = sc(launcherEnv(ewelink, ewelink), daemon = null)
+        val (c, root, _) = sc(launcherEnv(ewelink, ewelink), daemon = null, profileId = "nspanel-pro")
         c.launchLauncher("")
         assertTrue(
             "admin launcher opened when only eWeLink registers HOME",
@@ -419,23 +429,36 @@ class SystemControllerTest {
         )
     }
 
+    // The bench X2i: no root, ha-paneld holds HOME, and Shelly's Stargate control app is the only other
+    // HOME candidate. Landing on Stargate leaves no way to Android Settings.
+    private fun x2iHomes() = FakeSystemEnv(
+        homes = listOf(
+            ActivityRef("cloud.shelly.stargate", "cloud.shelly.stargate.activities.SplashActivity"),
+            DASH_HOME,
+            ActivityRef(OWN, "$OWN.AdminLauncherActivity"),
+            ActivityRef("com.android.settings", "com.android.settings.FallbackHome"),
+        ),
+        default = DASH_HOME,
+    )
+
     @Test fun launcherOnShellyWallDisplayOpensAdminLauncherNotStargate() {
-        // The bench X2i: no root, ha-paneld holds HOME, and Shelly's Stargate control app is the only
-        // other HOME candidate. Landing on Stargate leaves no way to Android Settings, so the button
-        // must open the admin launcher, which offers Settings and Stargate as a tile.
-        val stargate = ActivityRef("cloud.shelly.stargate", "cloud.shelly.stargate.activities.SplashActivity")
-        val env = FakeSystemEnv(
-            homes = listOf(
-                stargate,
-                DASH_HOME,
-                ActivityRef(OWN, "$OWN.AdminLauncherActivity"),
-                ActivityRef("com.android.settings", "com.android.settings.FallbackHome"),
-            ),
-            default = DASH_HOME,
-        )
-        val (c, _, _) = sc(env, daemon = null, su = false)
+        // Every Shelly profile names Stargate, so the button opens the admin launcher, which offers
+        // Settings and lists Stargate as an app.
+        for (profileId in listOf("shelly-wall-display-x2i", "shelly-wall-display-v2", "shelly-wall-display")) {
+            val env = x2iHomes()
+            val (c, _, _) = sc(env, daemon = null, su = false, profileId = profileId)
+            c.launchLauncher("")
+            assertEquals(profileId, listOf("$OWN/.AdminLauncherActivity"), env.directStarts)
+        }
+    }
+
+    @Test fun launcherSkipsOnlyWhatTheProfileNames() {
+        // The exclusion is profile data, not app code: a profile that names no vendor home app leaves
+        // Stargate an ordinary launcher candidate.
+        val env = x2iHomes()
+        val (c, _, _) = sc(env, daemon = null, su = false, profileId = "generic")
         c.launchLauncher("")
-        assertEquals(listOf("$OWN/.AdminLauncherActivity"), env.directStarts)
+        assertEquals(listOf("cloud.shelly.stargate/cloud.shelly.stargate.activities.SplashActivity"), env.directStarts)
     }
 
     @Test fun launcherHonoursConfiguredPkg() {

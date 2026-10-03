@@ -1602,7 +1602,7 @@ class PaneldService : Service() {
             io.github.maxlyth.hapaneld.assist.VoiceAttention.phase(state)
             media.hold(io.github.maxlyth.hapaneld.media.PanelMediaPlayer.Hold.VOICE, state.inTurn)
         }
-        system = SystemController(AndroidSystemEnv(this), beforeReboot = {
+        system = SystemController(AndroidSystemEnv(this), vendorHomePackages = profile.vendorHomePackages, beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
         }, homeDashboard = { config.homeDashboard }, onCompanionHome = { pkg, home ->
             val generation = companionHomeReturnGeneration.incrementAndGet()

@@ -103,6 +103,13 @@ data class ProfilePlatform(
     val appCanSu: Boolean,
     val hasRecents: Boolean = true,
     val hasNativeNavbar: Boolean? = null,
+    val launcher: ProfileLauncher = ProfileLauncher(),
+)
+
+/** How the navbar Launcher button treats this firmware's HOME apps. */
+data class ProfileLauncher(
+    /** Vendor apps that register HOME but are not app drawers; the Launcher button skips them. */
+    val vendorHomePackages: List<String> = emptyList(),
 )
 
 data class ProfileHardware(
