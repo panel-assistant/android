@@ -881,6 +881,35 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aPanelMovedToAnIntegrationThatRefusesMediaWithholdsItAndHelloesAgainAtOnce() = runTest {
+        fun channels(message: String) = JSONObject(message).getJSONArray("channels")
+            .let { (0 until it.length()).map { i -> it.getJSONObject(i).getString("channel") } }
+        val shadow = Shadow(listOf("relay1", "media"))
+        val granting = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state", "media")))
+        val describing = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state", "media")))
+        val older = FakeConnection(Ha.refusing("invalid_format"))
+        val after = FakeConnection(Ha.accepting(authority = "shadow", capabilities = listOf("state")))
+        val harness = harness(granting, describing, older, after, shadow = shadow.reporter)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        shadow.sink("relay1", "ON")
+        runCurrent()
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertEquals(listOf("media", "relay1"), channels(describing.sent.first()))
+        // No session_closed event: Core closes the socket and the next receive fails.
+        describing.inbound.close()
+        runCurrent()
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertEquals(listOf("media", "relay1"), channels(older.sent.first()))
+        advanceTimeBy(5_000L)
+        runCurrent()
+        assertTrue("the next hello comes on backoff, not the slow schedule", after.sent.isNotEmpty())
+        assertEquals(listOf("relay1"), channels(after.sent.first()))
+        harness.owner.close()
+    }
+
     @Test fun anMqttAuthorityOrAnUngrantedStateCapabilityReportsNothing() = runTest {
         for ((authority, capabilities) in listOf("mqtt" to listOf("state"), "shadow" to emptyList())) {
             val shadow = Shadow(listOf("relay1"))

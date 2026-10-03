@@ -122,10 +122,14 @@ internal class PanelAssistantShadowReporter(
 
     /**
      * Record what the session granted. A newly granted gated channel makes [descriptorsChanged] true, so
-     * the session ends and the next hello describes it; a refusal or an older integration withholds it again.
+     * the session ends and the next hello describes it; a refusal or an older integration withholds it again,
+     * and the return says whether that withdrew a channel the last hello described.
      */
-    fun granted(capabilities: Collection<String>) {
-        withheld = PanelAssistantTransportProtocol.GATED_CHANNELS.filterKeys { it !in capabilities }.values.toSet()
+    fun granted(capabilities: Collection<String>): Boolean {
+        val next = PanelAssistantTransportProtocol.GATED_CHANNELS.filterKeys { it !in capabilities }.values.toSet()
+        val withdrawn = !withheld.containsAll(next)
+        withheld = next
+        return withdrawn
     }
 
     /** Descriptors for a `hello`; [open] later receives the same set. */

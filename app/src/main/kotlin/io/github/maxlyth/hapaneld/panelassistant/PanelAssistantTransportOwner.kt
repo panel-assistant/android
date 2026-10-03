@@ -446,14 +446,16 @@ internal class PanelAssistantTransportOwner(
                             }
                             is PanelAssistantHelloOutcome.Refused -> {
                                 lifecycleCurrent(run, onLifecycleAuthenticated)
-                                // An integration that no longer renders a gated channel refuses its descriptor.
-                                if (outcome.code == PanelAssistantTransportProtocol.CODE_INVALID_FORMAT) shadow?.granted(emptyList())
+                                // An integration that does not render a gated channel refuses its descriptor;
+                                // withhold it and say hello again at once rather than on the slow schedule.
+                                val regated = outcome.code == PanelAssistantTransportProtocol.CODE_INVALID_FORMAT &&
+                                    shadow?.granted(emptyList()) == true
                                 // The entry was removed, so nothing holds this panel's entities: hand them
                                 // back to MQTT. Migration scaffolding; it is deleted with MQTT.
                                 if (outcome.code == PanelAssistantTransportProtocol.CODE_ENTRY_REMOVED && releaseToMqtt()) {
                                     log("native transport entry removed: authority and discovery returned to MQTT")
                                 }
-                                refusalRetry(outcome.code, monotonicMillis() < warmUntil)
+                                if (regated) Retry.Fast(outcome.code) else refusalRetry(outcome.code, monotonicMillis() < warmUntil)
                             }
                         }
                     }
