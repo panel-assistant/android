@@ -35,6 +35,30 @@ class AudioPlaybackCoordinatorTest {
         assertTrue(coordinator.close(1_000L))
     }
 
+    @Test fun busyChangesAreReportedForQueuedPlayingAndFinishedAnnouncements() = runTest {
+        val busy = mutableListOf<Boolean>()
+        val release = CompletableDeferred<Unit>()
+        val factory = AudioPlaybackRunFactory { _ ->
+            object : AudioPlaybackRun {
+                override suspend fun execute() { release.await() }
+                override fun cancel() {}
+            }
+        }
+        val coordinator = AudioPlaybackCoordinator(
+            factory, StandardTestDispatcher(testScheduler), onBusyChanged = { busy += it },
+        )
+        coordinator.submit("first")
+        runCurrent()
+        assertEquals("queued then active is one busy span", listOf(true), busy)
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(true, false), busy)
+        val generation = requireNotNull(coordinator.submitForGeneration("second"))
+        assertTrue(coordinator.cancelGeneration(generation))
+        assertEquals("a cancelled request ends the busy span", listOf(true, false, true, false), busy)
+        assertTrue(coordinator.close(1_000L))
+    }
+
     private class FakeRun(
         private val name: String,
         private val events: MutableList<String>,

@@ -251,6 +251,8 @@ internal abstract class MqttWireRig {
             else -> listOf(org.json.JSONObject().put("on", true).put("brightness", 128) to """{"state":"ON","brightness":128}""")
         }
         PanelAssistantValueKind.UPDATE -> emptyList()
+        // Native only: no MQTT payload exists to compare (NativeMediaChannelTest covers it).
+        PanelAssistantValueKind.MEDIA -> emptyList()
         PanelAssistantValueKind.BUTTON -> listOf(org.json.JSONObject.NULL to "PRESS")
     }
 
@@ -348,6 +350,15 @@ internal abstract class MqttWireRig {
             override fun off() = true
         },
         companionHomeReturns: MutableList<String>? = null,
+        // A speaker panel by default, as every bundled profile is; null is a profile declaring none.
+        media: io.github.maxlyth.hapaneld.media.PanelMediaPlayer? = io.github.maxlyth.hapaneld.media.PanelMediaPlayer(
+            streams = { _, _, _ -> error("this rig plays no media") },
+            post = { it() },
+            announce = { false },
+            cancelAnnouncement = {},
+            muted = { false },
+            setMuted = {},
+        ),
         configure: (Config) -> Unit = {},
     ): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
@@ -447,6 +458,7 @@ internal abstract class MqttWireRig {
             hasCht8305 = false,
             hasButtonBacklight = true,
             hasMicrophone = true,
+            media = media,
             hasCamera = { hasCamera },
             // Never reached: no screen brightness or auto-brightness command is sent.
             autoBright = allocate(AutoBrightnessController::class.java),
@@ -1160,6 +1172,8 @@ internal class MqttNativeParityTest : MqttWireRig() {
                 .mapNotNull(PanelAssistantChannelCatalog::wireChannel).distinct().sorted()
                 .mapNotNull(PanelAssistantChannelCatalog::describe)
                 .filter { it.platform in PanelAssistantCommandTranslation.COMMANDABLE_PLATFORMS }
+                // Native only: no MQTT effect to compare (NativeMediaChannelTest covers it).
+                .filter { it.kind != PanelAssistantValueKind.MEDIA }
             assertEquals(
                 "commandable channels this rig serves",
                 COMMANDABLE_IN_RIG,

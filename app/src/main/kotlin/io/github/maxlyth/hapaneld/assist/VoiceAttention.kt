@@ -42,7 +42,7 @@ internal object VoiceAttention {
 
     /** The assistant's phase changed; the dashboard shows whether it is still attending. */
     fun phase(state: VoiceState) {
-        val now = state == VoiceState.LISTENING || state == VoiceState.PROCESSING || state == VoiceState.RESPONDING
+        val now = state.inTurn
         if (now == attending) return
         attending = now
         listening?.invoke(now)

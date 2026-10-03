@@ -12,7 +12,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /** How an MQTT state payload becomes a typed value on the native transport (protocol section 7). */
-internal enum class PanelAssistantValueKind { BOOLEAN, NUMBER, OPTION, TEXT, LIGHT, UPDATE, BUTTON }
+internal enum class PanelAssistantValueKind { BOOLEAN, NUMBER, OPTION, TEXT, LIGHT, UPDATE, BUTTON, MEDIA }
 
 /** One channel as the `hello` describes it. Codes and facts only, never display text. */
 internal data class PanelAssistantChannelDescriptor(
@@ -191,6 +191,11 @@ internal object PanelAssistantChannelCatalog {
         PanelAssistantChannelDescriptor(
             channel = "buttons", platform = "light", translationKey = "buttons", uniqueSuffix = "buttons",
             kind = PanelAssistantValueKind.LIGHT,
+        ),
+        // Native only: MQTT has no media_player platform (protocol section 18).
+        PanelAssistantChannelDescriptor(
+            channel = "media", platform = "media_player", translationKey = "media", uniqueSuffix = "media",
+            kind = PanelAssistantValueKind.MEDIA,
         ),
         PanelAssistantChannelDescriptor(
             channel = "navigate", platform = "text", translationKey = "navigate", uniqueSuffix = "navigate",

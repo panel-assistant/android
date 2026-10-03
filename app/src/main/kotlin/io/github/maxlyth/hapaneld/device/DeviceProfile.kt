@@ -121,6 +121,10 @@ interface DeviceProfile {
      *  only ever true once declared and verified on the hardware. */
     val hasMicrophone: Boolean get() = false
 
+    /** Board carries a loudspeaker, offered to Home Assistant as a media player. Default true: present
+     *  hardware is offered, so only a profile declaring `speaker: false` hides the player. */
+    val hasSpeaker: Boolean get() = true
+
     /** SoundPool gain for the physical-speaker click. This is deliberately profile-owned because the
      *  same media-stream level produces very different acoustic output across panel speaker/enclosure
      *  combinations. It scales only ha-paneld's click sample and never changes Android stream volume. */

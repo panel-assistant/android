@@ -400,6 +400,7 @@ internal class PanelAssistantTransportOwner(
                                         channels = described,
                                         monotonicMillis = monotonicMillis,
                                         approvalTtlMs = approvalTtlMs,
+                                        baseUrl = session.baseUrl,
                                         log = log,
                                     )
                                 }

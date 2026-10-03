@@ -49,6 +49,17 @@ class VolumeController(context: Context) {
         }
     }
 
+    /** Whether the music stream is muted; the volume level is kept underneath. */
+    fun isMuted(): Boolean = am.isStreamMute(stream)
+
+    fun setMuted(muted: Boolean) {
+        try {
+            am.adjustStreamVolume(stream, if (muted) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "cannot mute (needs MODIFY_AUDIO_SETTINGS / not DND-restricted)", e)
+        }
+    }
+
     companion object {
         private const val TAG = "ha-paneld/volume"
     }

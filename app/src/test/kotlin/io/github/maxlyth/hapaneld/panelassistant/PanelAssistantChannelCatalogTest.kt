@@ -29,6 +29,17 @@ class PanelAssistantChannelCatalogTest {
 
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
 
+    @Test fun mediaIsAnEnabledMediaPlayerTheNativeTransportCommands() {
+        val json = PanelAssistantChannelCatalog.describe("media")!!.toJson()
+        assertEquals("media_player", json.getString("platform"))
+        assertEquals("media", json.getString("translation_key"))
+        assertEquals("media", json.getString("unique_suffix"))
+        assertTrue(json.getBoolean("enabled_default"))
+        assertTrue(json.isNull("entity_category"))
+        assertTrue("media_player" in PanelAssistantCommandTranslation.COMMANDABLE_PLATFORMS)
+        assertTrue("the converger registers media", "media" in convergerChannels())
+    }
+
     @Test fun everyConvergerChannelIsDescribedOrFolded() {
         val keys = convergerChannels()
         // The scan must find the channels it exists to guard, or an empty scan would pass vacuously.

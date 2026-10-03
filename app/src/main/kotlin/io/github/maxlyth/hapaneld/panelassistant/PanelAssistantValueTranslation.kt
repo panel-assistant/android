@@ -46,6 +46,7 @@ internal object PanelAssistantValueTranslation {
             PanelAssistantValueKind.TEXT -> payload
             PanelAssistantValueKind.LIGHT -> light(payload)
             PanelAssistantValueKind.UPDATE -> update(payload)
+            PanelAssistantValueKind.MEDIA -> media(payload)
             PanelAssistantValueKind.BUTTON -> null
         } ?: return null
         return PanelAssistantWireValue.Known(value)
@@ -87,6 +88,15 @@ internal object PanelAssistantValueTranslation {
     }
 
     private fun byte(value: Any?): Int? = (value as? Int)?.takeIf { it in 0..255 }
+
+    private val MEDIA_STATES = setOf("idle", "playing", "paused", "buffering")
+
+    private fun media(payload: String): JSONObject? {
+        val json = parse(payload) ?: return null
+        val state = (json.opt("state") as? String)?.takeIf { it in MEDIA_STATES } ?: return null
+        val muted = json.opt("muted") as? Boolean ?: return null
+        return JSONObject().put("state", state).put("muted", muted)
+    }
 
     private fun update(payload: String): JSONObject? {
         val json = parse(payload) ?: return null

@@ -276,3 +276,44 @@ internal class AndroidAudioClip : AudioClip {
     }
 
 }
+
+/**
+ * One `MediaPlayer` streaming its data source directly, so an endless stream plays. Created on the main
+ * looper, which is where `MediaPlayer` then delivers its callbacks. Errors log codes only: the data
+ * source is a signed Home Assistant URL.
+ */
+internal class AndroidMediaStream(
+    url: String,
+    onPrepared: () -> Unit,
+    onEnded: () -> Unit,
+) : io.github.maxlyth.hapaneld.media.MediaStream {
+    private val player = MediaPlayer()
+
+    init {
+        try {
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build(),
+            )
+            player.setOnPreparedListener { onPrepared() }
+            player.setOnCompletionListener { onEnded() }
+            player.setOnErrorListener { _, what, extra ->
+                android.util.Log.w("ha-paneld/media", "media stream error what=$what extra=$extra")
+                onEnded()
+                true
+            }
+            player.setDataSource(url)
+            player.prepareAsync()
+        } catch (error: Throwable) {
+            runCatching { player.release() }
+            throw error
+        }
+    }
+
+    override fun start() = player.start()
+    override fun pause() = player.pause()
+    override fun release() = player.release()
+    override val durationMs: Int get() = runCatching { player.duration }.getOrDefault(-1)
+}

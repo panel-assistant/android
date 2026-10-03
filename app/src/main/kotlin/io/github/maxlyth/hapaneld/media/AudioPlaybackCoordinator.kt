@@ -30,6 +30,11 @@ internal class AudioPlaybackCoordinator(
     private val factory: AudioPlaybackRunFactory,
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val onFailure: (Throwable) -> Unit = {},
+    /**
+     * The lane started (true) or stopped (false) being busy: a request queued or playing. Called under
+     * this coordinator's monitor, so it must only hand the change on.
+     */
+    private val onBusyChanged: (Boolean) -> Unit = {},
 ) {
     enum class State { IDLE, QUEUED, ACTIVE, FAILED, CLOSED }
 
@@ -64,6 +69,12 @@ internal class AudioPlaybackCoordinator(
     private var generation = 0L
     private var closed = false
     private var snapshot = Snapshot(State.IDLE, 0L)
+        set(next) {
+            val wasBusy = field.state == State.QUEUED || field.state == State.ACTIVE
+            field = next
+            val busy = next.state == State.QUEUED || next.state == State.ACTIVE
+            if (busy != wasBusy) runCatching { onBusyChanged(busy) }
+        }
     @Volatile private var active: Active? = null
     private val worker = scope.launch { consume() }
 

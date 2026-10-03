@@ -46,14 +46,18 @@ internal interface PanelAssistantCommandSink {
 /** Typed wire values back to the payloads the command handlers already parse. */
 internal object PanelAssistantCommandTranslation {
     /** Platforms that take commands. Sensors, updates, events and images are read-only. */
-    val COMMANDABLE_PLATFORMS: Set<String> = setOf("switch", "camera", "light", "number", "select", "text", "button")
+    val COMMANDABLE_PLATFORMS: Set<String> = setOf("switch", "camera", "light", "number", "select", "text", "button", "media_player")
 
     private val CODE = Regex("^[a-z][a-z0-9_]{0,63}$")
     private val CONTROL = Regex("[\\x00-\\x1f\\x7f]")
     private const val MAX_TEXT_CHARS = 255
 
-    /** The handler payload for [value], or null when the value does not fit the descriptor. */
-    fun payload(descriptor: PanelAssistantChannelDescriptor, value: Any?): String? = when (descriptor.kind) {
+    /**
+     * The handler payload for [value], or null when the value does not fit the descriptor. [baseUrl] is the
+     * address this session reached Home Assistant at; a media URL given as a Home Assistant path resolves
+     * against it, as a voice announcement's does.
+     */
+    fun payload(descriptor: PanelAssistantChannelDescriptor, value: Any?, baseUrl: String? = null): String? = when (descriptor.kind) {
         PanelAssistantValueKind.BOOLEAN -> (value as? Boolean)?.let(::onOff)
         PanelAssistantValueKind.NUMBER -> number(descriptor, value)
         PanelAssistantValueKind.OPTION -> (value as? String)?.let(descriptor::label)
@@ -61,7 +65,17 @@ internal object PanelAssistantCommandTranslation {
             ?.takeIf { it.length <= MAX_TEXT_CHARS && !CONTROL.containsMatchIn(it) }
         PanelAssistantValueKind.LIGHT -> light(descriptor, value)
         PanelAssistantValueKind.UPDATE -> null
+        PanelAssistantValueKind.MEDIA -> media(value, baseUrl)
         PanelAssistantValueKind.BUTTON -> if (value == null || value == JSONObject.NULL) "PRESS" else null
+    }
+
+    private fun media(value: Any?, baseUrl: String?): String? {
+        val json = value as? JSONObject ?: return null
+        val path = (json.opt("url") as? String)?.takeIf { it.startsWith("/") && !it.startsWith("//") }
+        val resolved = if (path != null && baseUrl != null) {
+            JSONObject(json.toString()).put("url", PanelAssistantVoice.resolveUrl(baseUrl, path))
+        } else json
+        return resolved.takeIf { io.github.maxlyth.hapaneld.media.PanelMediaCommand.parse(it) != null }?.toString()
     }
 
     private fun onOff(on: Boolean): String = if (on) "ON" else "OFF"
@@ -118,6 +132,8 @@ internal class PanelAssistantCommandProcessor(
     private val monotonicMillis: () -> Long,
     private val approvalTtlMs: Long,
     private val approvalPollMs: Long = 1_000L,
+    /** The address this session reached Home Assistant at, for media URLs given as paths. */
+    private val baseUrl: String? = null,
     private val maxRemembered: Int = 256,
     private val log: (String) -> Unit = { message -> Log.i(PanelAssistantTransportOwner.TAG, message) },
 ) {
@@ -180,7 +196,7 @@ internal class PanelAssistantCommandProcessor(
             return
         }
         val descriptor = described.getValue(requireNotNull(event.channel))
-        val payload = PanelAssistantCommandTranslation.payload(descriptor, event.value)
+        val payload = PanelAssistantCommandTranslation.payload(descriptor, event.value, baseUrl)
         if (payload == null) {
             synchronized(lock) {
                 finishLocked(commandId, PanelAssistantTransportProtocol.OUTCOME_REFUSED, CODE_INVALID_VALUE)

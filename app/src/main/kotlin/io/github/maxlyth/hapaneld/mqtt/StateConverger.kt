@@ -47,6 +47,8 @@ class StateConverger(
         /** Maximum acknowledged silence for this channel. Null keeps change-only
          *  publication. The deadline never republishes Unknown or Unavailable observations. */
         val maxSilenceMs: Long? = null,
+        /** Observed for [onObservation] only; [sender] never receives it (a channel MQTT cannot carry). */
+        val nativeOnly: Boolean = false,
     )
 
     private data class Runtime(
@@ -115,6 +117,10 @@ class StateConverger(
                 onObservation(runtime.channel.key, observation as Observation.Reportable)
             } catch (_: Exception) {
                 // Native delivery never changes MQTT admission or acknowledgement state.
+            }
+            if (runtime.channel.nativeOnly) {
+                runtime.dirty = false
+                return
             }
             val acknowledged = runtime.acknowledged
             val equivalent = acknowledged?.let { runtime.channel.equivalent(it, observedPayload) } == true

@@ -5,6 +5,9 @@ enum class VoiceState {
     OFF, IDLE, LISTENING, PROCESSING, RESPONDING, ERROR;
 
     val wireValue: String get() = name.lowercase()
+
+    /** A turn is past its wake word: the assistant is listening, thinking or answering. */
+    val inTurn: Boolean get() = this == LISTENING || this == PROCESSING || this == RESPONDING
 }
 
 /**

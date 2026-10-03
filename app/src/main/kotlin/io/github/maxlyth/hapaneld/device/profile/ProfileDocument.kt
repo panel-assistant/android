@@ -126,6 +126,8 @@ data class ProfileHardware(
     // Whether the panel has a usable microphone. Declared independently of the camera because some
     // hardware has one without the other, and unlike the camera it is not enumerable.
     val hasMicrophone: Boolean = false,
+    // Whether the panel has a loudspeaker. True unless a profile says otherwise: present hardware is offered.
+    val hasSpeaker: Boolean = true,
     /**
      * How far the camera lens centre sits above the top of the active display area, in screen pixels.
      *

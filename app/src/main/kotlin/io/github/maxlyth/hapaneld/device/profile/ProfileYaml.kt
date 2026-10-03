@@ -193,7 +193,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
         val platform = map(root["platform"], "platform", setOf("su_form", "app_can_su", "has_recents", "has_native_navbar"), required = true).orEmpty()
         val hardware = map(root["hardware"], "hardware", setOf(
             "led", "screen_off", "has_button_backlight", "zigbee_gateway_dir", "relay_base",
-            "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone",
+            "relay_base_fallbacks", "button_led_gpio_base", "touch_click_gain", "camera", "microphone", "speaker",
             "camera_lens_offset_px", "backlight", "button_backlight",
         ), required = true).orEmpty()
         val led = map(hardware["led"], "hardware.led", setOf("mechanism", "transfer", "gamma", "points", "floor"), required = true).orEmpty()
@@ -305,6 +305,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 touchClickGain = float(hardware, "touch_click_gain", "hardware"),
                 cameraDeclared = boolean(hardware, "camera", "hardware"),
                 hasMicrophone = boolean(hardware, "microphone", "hardware") ?: false,
+                hasSpeaker = boolean(hardware, "speaker", "hardware") ?: true,
                 cameraLensOffsetPx = integer(hardware, "camera_lens_offset_px", "hardware"),
                 backlight = backlight(hardware["backlight"]),
                 buttonBacklight = map(hardware["button_backlight"], "hardware.button_backlight", CURVE_KEYS)
@@ -771,6 +772,8 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "touch_click_gain" to hardware.touchClickGain,
         "camera" to hardware.cameraDeclared,
         "microphone" to hardware.hasMicrophone,
+        // Written only when false, so profiles that never declared it keep their canonical form.
+        "speaker" to hardware.hasSpeaker.takeUnless { it },
         "camera_lens_offset_px" to hardware.cameraLensOffsetPx,
         "backlight" to hardware.backlight?.let { backlight ->
             backlight.curve.toYamlFields().apply { put("route", backlight.route) }.withoutNullValues()

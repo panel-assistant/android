@@ -1007,6 +1007,7 @@ class PaneldService : Service() {
     private val companionHomeReturnGeneration = java.util.concurrent.atomic.AtomicLong()
     private lateinit var volume: VolumeController
     private lateinit var audio: AudioPlaybackCoordinator
+    private lateinit var media: io.github.maxlyth.hapaneld.media.PanelMediaPlayer
     private lateinit var voice: io.github.maxlyth.hapaneld.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.github.maxlyth.hapaneld.assist.ConfiguredMicrophoneSource
     private val microphoneClaims = io.github.maxlyth.hapaneld.audio.MicrophoneForegroundClaims(::updateMicrophoneForeground)
@@ -1557,9 +1558,22 @@ class PaneldService : Service() {
         )
         navigate = NavigateController(this)
         volume = VolumeController(this)
+        // Home Assistant's media player. Announcements (speech, with the silent tail that keeps the last
+        // syllable) go to the announcement lane below; other media streams here.
+        media = io.github.maxlyth.hapaneld.media.PanelMediaPlayer(
+            streams = { url, onPrepared, onEnded -> AndroidMediaStream(url, onPrepared, onEnded) },
+            post = { block -> mainHandler.post(block) },
+            announce = { url -> audio.submitForGeneration(url, speech = true) != null },
+            cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
+            muted = volume::isMuted,
+            setMuted = volume::setMuted,
+            log = { Log.w(TAG, it) },
+        )
+        media.setChangeListener { runCatching { runtime.current().mqtt.mediaChanged() } }
         audio = AudioPlaybackCoordinator(
             AudioPlayer.factory(cacheDir),
             onFailure = { error -> Log.w(TAG, "audio playback failed: ${error.javaClass.simpleName}") },
+            onBusyChanged = { busy -> media.hold(io.github.maxlyth.hapaneld.media.PanelMediaPlayer.Hold.ANNOUNCEMENT, busy) },
         )
         // Arms only when the setting is on and the profile declares a microphone. The profile is the
         // authority: the platform feature flag reports one on hardware that captures silence.
@@ -1584,7 +1598,9 @@ class PaneldService : Service() {
             ),
         )
         voiceStateAuthority.setChangeListener {
-            io.github.maxlyth.hapaneld.assist.VoiceAttention.phase(voiceStateAuthority.current())
+            val state = voiceStateAuthority.current()
+            io.github.maxlyth.hapaneld.assist.VoiceAttention.phase(state)
+            media.hold(io.github.maxlyth.hapaneld.media.PanelMediaPlayer.Hold.VOICE, state.inTurn)
         }
         system = SystemController(AndroidSystemEnv(this), beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
@@ -2004,6 +2020,7 @@ class PaneldService : Service() {
             profile.hasButtonBacklight,
             buttonBacklightTransfer = profile.buttonBacklightTransfer,
             hasMicrophone = profile.hasMicrophone,
+            media = media.takeIf { profile.hasSpeaker },
             hasCamera = { cameraPresent() },
             autoBright = autoBright,
             onAutoBrightnessConfigChanged = { refreshAdaptiveBrightnessInputs() },
@@ -4669,6 +4686,7 @@ class PaneldService : Service() {
     private fun closeServiceAdmissions() {
         proximityWizard?.close()
         if (::audio.isInitialized) beginAudioTeardown(audio::closeAdmission, audio::cancelCurrent)
+        if (::media.isInitialized) media.command(io.github.maxlyth.hapaneld.media.PanelMediaCommand.Stop)
         if (::kiosk.isInitialized) kiosk.closeAdmission()
         if (::navbar.isInitialized) navbar.closeAdmission()
         if (::screen.isInitialized) screen.closeAdmission()

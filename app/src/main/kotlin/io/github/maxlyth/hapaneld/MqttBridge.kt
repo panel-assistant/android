@@ -1191,6 +1191,9 @@ internal class MqttBridge(
     // never stale for longer than that. Gates the voice_enabled live-setting handler, which refuses ON
     // without it.
     private val hasMicrophone: Boolean = false,
+    // The panel's media player, or null when the profile declares no speaker: the native `media`
+    // channel is then stated unsupported rather than described.
+    private val media: io.github.maxlyth.hapaneld.media.PanelMediaPlayer? = null,
     // Profile-authoritative camera capability. Discovery visibility is not a write guard because the
     // wildcard command subscription still receives direct camera_enabled publications.
     private val hasCamera: () -> Boolean = { false },
@@ -1632,11 +1635,15 @@ internal class MqttBridge(
         )
         fun channel(
             key: String,
-            topic: String,
+            topic: String?,
             retain: Boolean = true,
             equivalent: (String, String) -> Boolean = String::equals,
             observe: () -> io.github.maxlyth.hapaneld.mqtt.StateConverger.Observation,
-        ) = registerStateChannel(c, mqttStateChannel(key, topic, retain, equivalent, observe))
+        ) {
+            val mqtt = mqttStateChannel(key, topic.orEmpty(), retain, equivalent, observe)
+            // A null topic is a native-only channel: the converger observes it, MQTT never publishes it.
+            if (topic == null) c.register(mqtt.channel.copy(nativeOnly = true)) else registerStateChannel(c, mqtt)
+        }
 
         channel("storage_health", stateStorageHealth) {
             known(storageHealth().severity.name.lowercase(Locale.ROOT))
@@ -1688,6 +1695,8 @@ internal class MqttBridge(
         channel("volume", stateVolume) {
             if (config.haExposed("volume", true)) known(volume.getPercent().toString()) else unknown
         }
+        // Native only: MQTT has no media_player platform (protocol section 18).
+        channel("media", topic = null) { media?.let { known(it.observation()) } ?: unknown }
         if (hasButtonBacklight) channel("buttons", stateButtons) { known(buttonBacklightState(config.lastButtonBacklight)) }
         channel("wake_on_wave", stateWakeOnWave) {
             if (hasProximity) known(if (config.wakeOnWave) "ON" else "OFF") else unknown
@@ -1805,6 +1814,7 @@ internal class MqttBridge(
     private fun hardwareAvailability(key: String, learnedProximity: Boolean?): Boolean? = when (key) {
         "temperature" -> hasTemperature
         "humidity" -> hasHumidity
+        MEDIA_CHANNEL -> media != null
         "camera_enabled" -> hasCamera()
         "proximity", "proximity_level" -> learnedProximity
         // LedFactory returns the no-op controller only for a profile declaring no LED. A declared LED stays
@@ -2727,6 +2737,7 @@ internal class MqttBridge(
             finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED))
             return
         }
+        if (command.channel == MEDIA_CHANNEL) return submitMediaCommand(command, finish)
         val topic = "ha-paneld/$panel/${command.channel}/set"
         when (commandKind(topic)) {
             null -> return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL))
@@ -2769,6 +2780,34 @@ internal class MqttBridge(
             finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED))
         }
         recordCommandAdmission(admission)
+    }
+
+    /**
+     * The native-only `media` channel. It has no MQTT command topic, so the wildcard subscription cannot
+     * reach it. Media commands run in order on the action queue rather than conflating by channel: a
+     * mute must not replace a play still waiting to run.
+     */
+    private fun submitMediaCommand(command: PanelAssistantCommand, finish: (PanelAssistantCommandResult) -> Unit) {
+        val player = media
+            ?: return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_UNKNOWN_CHANNEL))
+        val parsed = runCatching { org.json.JSONObject(command.payload) }.getOrNull()
+            ?.let(io.github.maxlyth.hapaneld.media.PanelMediaCommand::parse)
+            ?: return finish(PanelAssistantCommandResult.Refused(PanelAssistantCommandProcessor.CODE_INVALID_VALUE))
+        val admission = commandDispatcher.submitAction {
+            finish(
+                command.admit() ?: if (player.command(parsed)) PanelAssistantCommandResult.Applied
+                else PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED),
+            )
+        }
+        if (admission == MqttCommandDispatcher.Admission.CLOSED || admission == MqttCommandDispatcher.Admission.REJECTED) {
+            finish(PanelAssistantCommandResult.Failed(PanelAssistantCommandProcessor.CODE_FAILED))
+        }
+        recordCommandAdmission(admission)
+    }
+
+    /** The media player's state changed: re-observe the `media` channel. */
+    internal fun mediaChanged() {
+        dispatchStateWork { stateConverger.reconcile(MEDIA_CHANNEL) }
     }
 
     /** Returns the failure the command handler raised, already logged, or null when it applied. */
@@ -4607,6 +4646,7 @@ internal class MqttBridge(
         private const val TAG = "ha-paneld/mqtt"
         private val ANNOUNCEMENT_BOUNDARY_CONSUMED_HERE = AtomicReference<String?>(null)
         private const val MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024
+        private const val MEDIA_CHANNEL = "media"
         private const val MAX_DYNAMIC_COMMAND_INDEX = 64
         /** Approval principals of the two remote command transports. */
         private const val MQTT_PEER = "mqtt"

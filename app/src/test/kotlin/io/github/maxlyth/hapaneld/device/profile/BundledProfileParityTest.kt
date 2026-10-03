@@ -222,6 +222,29 @@ class BundledProfileParityTest {
         }
     }
 
+    @Test fun aSpeakerIsPresentUnlessDeclaredAbsentAndOnlyAbsenceIsWritten() {
+        val descriptor = ProfileMetadata.schema.fields.singleOrNull { it.path == "hardware.speaker" }
+        assertNotNull("hardware.speaker must be described to the profile editor", descriptor)
+        assertFalse(descriptor!!.required)
+
+        // Present hardware is offered: every bundled profile omits the key and has a speaker, and the
+        // canonical form of each stays exactly as it was.
+        bundled.forEach { profile ->
+            assertTrue(profile.document.id, profile.document.hardware.hasSpeaker)
+            assertFalse(profile.document.id, ProfileYaml.serialize(profile.document).contains("speaker:"))
+        }
+
+        val base = bundledById.getValue("nspanel-pro").document
+        val silent = base.copy(hardware = base.hardware.copy(hasSpeaker = false))
+        val yaml = ProfileYaml.serialize(silent)
+        assertTrue(yaml.contains("  speaker: false"))
+        val reparsed = requireNotNull(ProfileYaml.parse(yaml).document)
+        assertEquals(silent, reparsed)
+        assertFalse(
+            DataDeviceProfile(document = reparsed, productVersion = "", revision = "test", trustedBundledContent = true).hasSpeaker,
+        )
+    }
+
     @Test fun theNativeNavbarDeclarationSurvivesASerializeParseRoundTrip() {
         val document = bundledById.getValue("wf1589t").document
         val reparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(document)).document)

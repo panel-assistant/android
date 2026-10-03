@@ -575,6 +575,24 @@
       "step": null
     },
     {
+      "channel": "media",
+      "platform": "media_player",
+      "translation_key": "media",
+      "unique_suffix": "media",
+      "family": null,
+      "index": null,
+      "entity_category": null,
+      "enabled_default": true,
+      "device_class": null,
+      "unit": null,
+      "state_class": null,
+      "force_update": false,
+      "options": null,
+      "min": null,
+      "max": null,
+      "step": null
+    },
+    {
       "channel": "navbar",
       "platform": "select",
       "translation_key": "navbar",

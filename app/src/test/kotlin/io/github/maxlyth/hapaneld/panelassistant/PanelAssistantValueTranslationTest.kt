@@ -87,6 +87,14 @@ class PanelAssistantValueTranslationTest {
         assertNull(PanelAssistantValueTranslation.attributes(Observation.Known("not json")))
     }
 
+    @Test fun theMediaChannelReportsStateAndMute() {
+        assertEquals("""{"state":"paused","muted":true}""", json(translate("media", """{"state":"paused","muted":true}""")))
+        assertEquals("""{"state":"idle","muted":false}""", json(translate("media", """{"muted":false,"state":"idle"}""")))
+        assertNull(translate("media", """{"state":"stopped","muted":false}"""))
+        assertNull(translate("media", """{"state":"playing"}"""))
+        assertNull(translate("media", "playing"))
+    }
+
     private fun translate(channel: String, payload: String) = translate(channel, Observation.Known(payload))
 
     private fun translate(channel: String, observation: Observation.Reportable): PanelAssistantWireValue? =

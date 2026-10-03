@@ -244,6 +244,48 @@ class PanelAssistantCommandProcessorTest {
         assertEquals(1, fixture.sink.submitted.size)
     }
 
+    @Test fun `media commands reach the panel as their JSON and a malformed one is refused invalid_value`() {
+        val fixture = Fixture(channels = CHANNELS + requireNotNull(PanelAssistantChannelCatalog.describe("media")))
+        val play = JSONObject().put("action", "play").put("url", "http://ha.local:8123/api/x.mp3").put("announce", false)
+        fixture.processor.onCommand(command("play", "media", play))
+        val submitted = fixture.sink.submitted.single().command
+        assertEquals("media", submitted.channel)
+        assertEquals(play.toString(), JSONObject(submitted.payload).toString())
+        fixture.sink.submitted.single().done(PanelAssistantCommandResult.Applied)
+        assertEquals("applied" to null, outcome(fixture.answers()))
+
+        listOf(
+            JSONObject().put("action", "play").put("url", "relative/x.mp3").put("announce", false),
+            JSONObject().put("action", "mute"),
+            JSONObject().put("action", "seek"),
+            "play",
+        ).forEachIndexed { index, value ->
+            fixture.processor.onCommand(command("bad$index", "media", value))
+            assertEquals("$value", "refused" to "invalid_value", outcome(fixture.answers()))
+        }
+        assertEquals(1, fixture.sink.submitted.size)
+    }
+
+    @Test fun `a media URL given as a Home Assistant path plays from the session's address`() {
+        val media = requireNotNull(PanelAssistantChannelCatalog.describe("media"))
+        val fixture = Fixture(channels = CHANNELS + media, baseUrl = "http://ha.local:8123/")
+        val path = "/media/local/chime.mp3?authSig=abc"
+        fixture.processor.onCommand(command("rel", "media", JSONObject().put("action", "play").put("url", path).put("announce", false)))
+        val submitted = JSONObject(fixture.sink.submitted.single().command.payload)
+        assertEquals("http://ha.local:8123/media/local/chime.mp3?authSig=abc", submitted.getString("url"))
+        assertEquals(
+            io.github.maxlyth.hapaneld.media.PanelMediaCommand.Play("http://ha.local:8123/media/local/chime.mp3?authSig=abc", false),
+            io.github.maxlyth.hapaneld.media.PanelMediaCommand.parse(submitted),
+        )
+
+        // Without a session address a path cannot be played, and a protocol-relative URL is never a path.
+        val unanchored = Fixture(channels = CHANNELS + media)
+        unanchored.processor.onCommand(command("rel", "media", JSONObject().put("action", "play").put("url", path).put("announce", false)))
+        assertEquals("refused" to "invalid_value", outcome(unanchored.answers()))
+        fixture.processor.onCommand(command("proto", "media", JSONObject().put("action", "play").put("url", "//evil/x").put("announce", false)))
+        assertEquals("refused" to "invalid_value", outcome(fixture.answers()))
+    }
+
     private class Submitted(val command: PanelAssistantCommand, val done: (PanelAssistantCommandResult) -> Unit)
 
     private class FakeSink : PanelAssistantCommandSink {
@@ -266,6 +308,7 @@ class PanelAssistantCommandProcessorTest {
     private class Fixture(
         session: PanelAssistantSession = SESSION,
         channels: List<PanelAssistantChannelDescriptor> = CHANNELS,
+        baseUrl: String? = null,
     ) {
         var now = 0L
         val sink = FakeSink()
@@ -276,6 +319,7 @@ class PanelAssistantCommandProcessorTest {
             channels = channels,
             monotonicMillis = { now },
             approvalTtlMs = TTL_MS,
+            baseUrl = baseUrl,
             log = {},
         )
 

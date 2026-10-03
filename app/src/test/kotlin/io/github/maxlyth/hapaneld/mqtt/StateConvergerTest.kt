@@ -22,6 +22,28 @@ class StateConvergerTest {
         monotonicMs = monotonicMs,
     )
 
+    @Test fun aNativeOnlyChannelReachesTheObserverButNeverTheSenderOrItsPump() {
+        val sent = mutableListOf<Sent>()
+        val observed = mutableListOf<String>()
+        var screenReads = 0
+        val c = StateConverger(
+            sender = { channel, observation, done -> sent += Sent(channel, observation, done) },
+            schedule = { it() },
+            onObservation = { channel, observation -> observed += "$channel=${mqttStatePayload(observation)}" },
+        )
+        c.register(StateConverger.Channel("screen", observe = { screenReads++; StateConverger.Observation.Known("ON") }))
+        c.register(StateConverger.Channel("media", observe = { StateConverger.Observation.Known("playing") }, nativeOnly = true))
+        c.reconcile("screen")
+        sent.single().done(false)
+        val readsAfterFailure = screenReads
+        c.reconcile("media", force = true)
+        c.reconcile("media", force = true)
+        assertEquals(listOf("screen=ON", "media=playing", "media=playing"), observed)
+        assertEquals("only the MQTT channel is sent", listOf("screen"), sent.map { it.channel })
+        assertEquals("a native-only report must not pump failed MQTT channels", readsAfterFailure, screenReads)
+        assertEquals("only the failed MQTT channel stays dirty", 1, c.status().dirty)
+    }
+
     @Test fun closeDeadlineDoesNotPretendABlockedObservationDrained() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)

@@ -114,6 +114,7 @@ object ProfileMetadata {
             field("hardware.has_button_backlight", "boolean", false, "Helper-backed button backlight capability."),
             field("hardware.camera", "boolean", false, "Board carries a usable camera."),
             field("hardware.microphone", "boolean", false, "Board carries a usable microphone; independent of hardware.camera."),
+            field("hardware.speaker", "boolean", false, "Board carries a loudspeaker, offered as a media player; defaults to true, so only a board without one declares false."),
             field("hardware.camera_lens_offset_px", "integer", false, "Screen pixels from the top of the active area up to the camera lens centre; centres the camera-in-use light on the lens."),
             field("hardware.zigbee_gateway_dir", "path", false, "Supported Sonoff gateway directory."),
             field("hardware.relay_base", "path", false, "Preferred supported relay sysfs class."),
