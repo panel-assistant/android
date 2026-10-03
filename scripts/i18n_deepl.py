@@ -331,7 +331,8 @@ def _default_http(request: urllib.request.Request) -> bytes:
                 raise DeepLError("translation service response is too large")
             return value
     except urllib.error.HTTPError as error:
-        raise DeepLError("translation service rejected the request") from None
+        # The status (403 key, 456 quota, 429 rate) is the only clue a CI log can show; never the body.
+        raise DeepLError(f"translation service rejected the request (HTTP {error.code})") from None
     except (urllib.error.URLError, TimeoutError, OSError):
         endpoint = request.full_url.removeprefix(API_ORIGIN)
         if endpoint == "/v2/translate":

@@ -485,6 +485,9 @@ val unitTestForks = providers.gradleProperty("hapaneld.testForks").map { it.toIn
 
 tasks.withType<Test>().configureEach {
     maxParallelForks = unitTestForks.get()
+    // MqttCardSchemaFixtureTest writes the Configure responses the browser test renders. Declaring the
+    // directory as an output makes a build-cache hit restore that fixture instead of leaving it absent.
+    outputs.dir(layout.buildDirectory.dir("test-fixtures")).withPropertyName("testFixtures")
     if (System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
         dependsOn(buildHelperSocketTestServer)
         systemProperty("hapaneld.helper.socketTestServer", helperSocketTestServer.absolutePath)
