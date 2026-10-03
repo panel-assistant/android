@@ -121,6 +121,7 @@ internal class LiveSettingAuthority(
     private val supportedKeys: Set<String>,
     private val journal: Journal = MemoryJournal(),
     bootIdentity: () -> String? = ::kernelBootIdentity,
+    private val onLatePending: (String) -> Unit = {},
 ) {
     internal data class Pending(
         val value: String,
@@ -303,6 +304,7 @@ internal class LiveSettingAuthority(
             }
             if (terminal == LiveSettingApplyResult.UNAVAILABLE) recordUnavailable(key, queued)
         }
+        if (synchronized(this) { pending[key]?.generation == queued.generation }) onLatePending(key)
     }
 
     /** Supersede any queued HTTP intent without replaying it. Safety-sensitive settings use this when
@@ -363,6 +365,10 @@ internal class LiveSettingAuthority(
 
     @Synchronized
     internal fun pendingSnapshot(): Map<String, String> = pending.mapValues { it.value.value }
+    /** Only terminal pending work may spend the service's bounded retry budget. */
+    @Synchronized
+    internal fun retryablePendingKeys(): Set<String> =
+        pending.filter { (key, value) -> inFlight[key] != value }.keys.toSet()
     @Synchronized
     internal fun pendingGenerationSnapshot(): Map<String, String> = pending.mapValues { it.value.generation }
     internal fun pendingPreviousSnapshot(): Map<String, String?> = pending.mapValues { it.value.previousValue }
@@ -383,7 +389,11 @@ internal class LiveSettingAuthority(
         internal const val STALL_OBSERVATION_BOOTS = 2
         private const val JOURNAL = "ha-paneld-live-setting-journal"
 
-        fun persistent(context: Context, supportedKeys: Set<String>): LiveSettingAuthority {
+        fun persistent(
+            context: Context,
+            supportedKeys: Set<String>,
+            onLatePending: (String) -> Unit = {},
+        ): LiveSettingAuthority {
             val preferences = AppState.preferences(context, "live-setting-journal", JOURNAL)
             val store = object : Journal {
                 override fun load(): Map<String, Pending> = preferences.all.mapNotNull { (key, raw) ->
@@ -395,7 +405,7 @@ internal class LiveSettingAuthority(
 
                 override fun remove(key: String): Boolean = preferences.edit().remove(key).commit()
             }
-            return LiveSettingAuthority(supportedKeys, store)
+            return LiveSettingAuthority(supportedKeys, store, onLatePending = onLatePending)
         }
     }
 }

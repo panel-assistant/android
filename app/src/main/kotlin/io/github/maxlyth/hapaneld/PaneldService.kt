@@ -843,6 +843,7 @@ class PaneldService : Service() {
     private val reconfigureKeysLock = Any()
     private val pendingReconfigureKeys = linkedSetOf<String>()
     private val liveSettingRetryAttempts = mutableMapOf<String, Int>()
+    private val scheduledLiveSettingRetries = mutableSetOf<String>()
     private lateinit var restartLease: ServiceRestartBarrier.Lease
     private var startupInitialization: Job? = null
     private var pendingStart = false
@@ -1149,6 +1150,7 @@ class PaneldService : Service() {
             preparedConfig.ensurePanelId()
             val preparedLiveSettings = LiveSettingAuthority.persistent(
                 this@PaneldService, MqttBridge.APPLY_SETTING_KEYS,
+                onLatePending = { key -> scheduleLiveSettingRetries(setOf(key)) },
             )
             val preparedProfiles = RuntimeProfileRegistry(this@PaneldService)
             val resolvedProfile = preparedProfiles.resolveForStartup()
@@ -2692,20 +2694,27 @@ class PaneldService : Service() {
 
     private fun scheduleLiveSettingRetries(attemptedKeys: Set<String>) {
         val remaining = liveSettingAuthority.pendingSnapshot().keys.intersect(attemptedKeys)
+        val retryable = liveSettingAuthority.retryablePendingKeys()
         val retry = synchronized(reconfigureKeysLock) {
             attemptedKeys.minus(remaining).forEach(liveSettingRetryAttempts::remove)
             remaining.filterTo(linkedSetOf()) { key ->
+                if (key !in retryable || key in scheduledLiveSettingRetries) return@filterTo false
                 val next = nextLiveSettingRetryAttempt(liveSettingRetryAttempts[key] ?: 0)
                 if (next == null) false else {
                     liveSettingRetryAttempts[key] = next
+                    scheduledLiveSettingRetries += key
                     true
                 }
             }
         }
         if (retry.isEmpty()) return
         scope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(1_000)
-            val stillPending = liveSettingAuthority.pendingSnapshot().keys.intersect(retry)
+            try {
+                kotlinx.coroutines.delay(1_000)
+            } finally {
+                synchronized(reconfigureKeysLock) { scheduledLiveSettingRetries.removeAll(retry) }
+            }
+            val stillPending = liveSettingAuthority.retryablePendingKeys().intersect(retry)
             if (stillPending.isNotEmpty()) enqueueReconfigure(stillPending, resetLiveRetries = false)
         }
     }

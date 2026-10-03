@@ -10,6 +10,23 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class LiveSettingAuthorityTest {
+    @Test fun `late failure of superseded navbar intent does not schedule newer pending work`() {
+        val notifications = mutableListOf<String>()
+        val authority = LiveSettingAuthority(setOf("navbar_mode"), onLatePending = notifications::add)
+        var complete: ((LiveSettingApplyResult) -> Unit)? = null
+        authority.applyOrQueueOutcomeObserved("navbar_mode", "Swipe reveal", "Off") { _, _, _ ->
+            LiveSettingApplication(LiveSettingApplyResult.DEFERRED) { complete = it }
+        }
+        authority.applyOrQueueOutcomeObserved("navbar_mode", "Always on", "Off") { _, _, _ ->
+            LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+        }
+        requireNotNull(complete).invoke(LiveSettingApplyResult.FAILED)
+
+        assertTrue(notifications.isEmpty())
+        assertEquals(mapOf("navbar_mode" to "Always on"), authority.pendingSnapshot())
+        assertEquals(setOf("navbar_mode"), authority.retryablePendingKeys())
+    }
+
     @Test fun `startup restore refuses a newer durable or pending navbar mode`() {
         listOf(false, true).forEach { pending ->
             val authority = LiveSettingAuthority(setOf("navbar_mode"))
