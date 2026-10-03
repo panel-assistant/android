@@ -2,19 +2,26 @@ package io.github.maxlyth.hapaneld
 
 import io.github.maxlyth.hapaneld.control.CompanionDataOperationGate
 import io.github.maxlyth.hapaneld.control.CompanionDataOperationState
+import io.github.maxlyth.hapaneld.control.NavbarModeApplyOutcome
+import io.github.maxlyth.hapaneld.control.NavbarModeApplyStatus
 import io.github.maxlyth.hapaneld.migration.SuccessorHandoff
 import io.github.maxlyth.hapaneld.util.CompanionOperationStatus
 import io.github.maxlyth.hapaneld.util.DurableRecoveryMarker
 import io.github.maxlyth.hapaneld.util.LatestOperationPolicy
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
 import io.github.maxlyth.hapaneld.util.ServiceRuntimeOwner
+import io.github.maxlyth.hapaneld.util.MonotonicDeadline
 import java.util.Collections
 import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +29,127 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PaneldServiceStartupTest {
+    @Test fun inlineLateNavbarFailureDoesNotSpendRetryBudgetTwice() {
+        val service = PaneldService()
+        val attempts = AtomicInteger()
+        val retried = CountDownLatch(2)
+        val retryCompletion = LinkedBlockingQueue<(LiveSettingApplyResult) -> Unit>()
+        val schedule = PaneldService::class.java.getDeclaredMethod("scheduleLiveSettingRetries", Set::class.java)
+            .apply { isAccessible = true }
+        fun scheduleRetry() { schedule.invoke(service, setOf("navbar_mode")) }
+        val authority = LiveSettingAuthority(setOf("navbar_mode"), onLatePending = { scheduleRetry() })
+        val owner = ServiceRuntimeOwner(
+            initial = Any(),
+            threadName = "navbar-startup-retry-test",
+            latestOperation = LatestOperationPolicy(operation = {
+                authority.replayKeysObserved(setOf("navbar_mode")) { _, _, _, _ ->
+                    val attempt = attempts.incrementAndGet()
+                    retried.countDown()
+                    if (attempt == 2) LiveSettingApplication(LiveSettingApplyResult.DEFERRED) { retryCompletion.add(it) }
+                    else LiveSettingApplication.immediate(LiveSettingApplyResult.FAILED)
+                }
+                scheduleRetry()
+            }),
+        )
+        listOf("liveSettingAuthority" to authority, "runtime" to owner).forEach { (name, value) ->
+            PaneldService::class.java.getDeclaredField(name).apply { isAccessible = true }.set(service, value)
+        }
+        try {
+            assertTrue(owner.start {}.get(1, TimeUnit.SECONDS))
+            assertEquals(
+                LiveSettingRequestOutcome.DEFERRED,
+                authority.applyOrQueueOutcomeObserved("navbar_mode", "Swipe reveal", "Swipe reveal") { _, _, _ ->
+                    attempts.incrementAndGet()
+                    // Completion can race the bounded dispatcher wait and arrive during registration.
+                    LiveSettingApplication(LiveSettingApplyResult.DEFERRED) { it(LiveSettingApplyResult.FAILED) }
+                },
+            )
+            scheduleRetry()
+            scheduleRetry()
+            val completeRetry = requireNotNull(retryCompletion.poll(5, TimeUnit.SECONDS))
+            // Duplicate timers have fired before this first actual retry fails.
+            Thread.sleep(1_250)
+            completeRetry(LiveSettingApplyResult.FAILED)
+            assertTrue("the service must retry a failed restore", retried.await(5, TimeUnit.SECONDS))
+            // Wait past the production one-second delay to prove no third retry was admitted.
+            Thread.sleep(1_250)
+            assertEquals(3, attempts.get())
+            assertEquals(mapOf("navbar_mode" to "Swipe reveal"), authority.pendingSnapshot())
+        } finally {
+            (PaneldService::class.java.getDeclaredField("scope").apply { isAccessible = true }
+                .get(service) as CoroutineScope).cancel()
+            owner.shutdown(1_000L) {}
+        }
+    }
+
+    @Test fun slowNavbarAcknowledgementFailuresReceiveTwoActualServiceRetries() {
+        val service = PaneldService()
+        val attempts = AtomicInteger()
+        val actuations = LinkedBlockingQueue<CompletableFuture<NavbarModeApplyOutcome>>()
+        val retried = CountDownLatch(1)
+        val dispatcher = MqttCommandDispatcher(threadName = "navbar-late-retry-test")
+        val schedule = PaneldService::class.java.getDeclaredMethod("scheduleLiveSettingRetries", Set::class.java)
+            .apply { isAccessible = true }
+        fun scheduleRetry() { schedule.invoke(service, setOf("navbar_mode")) }
+        val authority = LiveSettingAuthority(setOf("navbar_mode"), onLatePending = { scheduleRetry() })
+        fun apply(value: String): LiveSettingApplication = liveSettingApplication(
+            dispatcher.runLatestResult("http:navbar_mode") {
+                val attempt = attempts.incrementAndGet()
+                if (attempt == 3) retried.countDown()
+                applyAcknowledgedNavbarMode(
+                    payload = value,
+                    previousMode = "Swipe reveal",
+                    actuate = {
+                        if (attempt <= 2) CompletableFuture<NavbarModeApplyOutcome>().also(actuations::add)
+                        else CompletableFuture.completedFuture(NavbarModeApplyOutcome(it, NavbarModeApplyStatus.FAILED))
+                    },
+                    rollback = { _, previous ->
+                        CompletableFuture.completedFuture(NavbarModeApplyOutcome(previous, NavbarModeApplyStatus.APPLIED))
+                    },
+                    persist = { true },
+                    reconcile = {},
+                )
+            },
+        )
+        val owner = ServiceRuntimeOwner(
+            initial = Any(),
+            threadName = "navbar-delayed-retry-runtime",
+            latestOperation = LatestOperationPolicy(operation = {
+                authority.replayKeysObserved(setOf("navbar_mode")) { _, value, _, _ -> apply(value) }
+                scheduleRetry()
+            }),
+        )
+        listOf("liveSettingAuthority" to authority, "runtime" to owner).forEach { (name, value) ->
+            PaneldService::class.java.getDeclaredField(name).apply { isAccessible = true }.set(service, value)
+        }
+        try {
+            assertTrue(owner.start {}.get(1, TimeUnit.SECONDS))
+            assertEquals(
+                LiveSettingRequestOutcome.DEFERRED,
+                authority.applyOrQueueOutcomeObserved("navbar_mode", "Swipe reveal", "Swipe reveal") { _, value, _ -> apply(value) },
+            )
+            scheduleRetry()
+            repeat(2) { index ->
+                val actuation = requireNotNull(actuations.poll(5, TimeUnit.SECONDS))
+                // Longer than both the real dispatcher wait and both one-second retry delays.
+                Thread.sleep(2_250)
+                assertEquals(index + 1, attempts.get())
+                assertEquals(emptySet<String>(), authority.retryablePendingKeys())
+                actuation.complete(NavbarModeApplyOutcome("Swipe reveal", NavbarModeApplyStatus.FAILED))
+            }
+            assertTrue("late terminal failures must receive both actual retries", retried.await(5, TimeUnit.SECONDS))
+            Thread.sleep(1_250)
+            assertEquals(3, attempts.get())
+            assertEquals(mapOf("navbar_mode" to "Swipe reveal"), authority.pendingSnapshot())
+        } finally {
+            actuations.forEach { it.complete(NavbarModeApplyOutcome("Swipe reveal", NavbarModeApplyStatus.FAILED)) }
+            dispatcher.closeAndDrain(MonotonicDeadline(1_000))
+            (PaneldService::class.java.getDeclaredField("scope").apply { isAccessible = true }
+                .get(service) as CoroutineScope).cancel()
+            owner.shutdown(1_000L) {}
+        }
+    }
+
     @Test fun ordinaryServiceStartsNeverRequestInstalledSuccessorHandoff() {
         for (bridge in listOf(false, true)) {
             for (action in listOf(null, "android.intent.action.MAIN", "io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE")) {

@@ -63,7 +63,7 @@ function schema(strings, locale) {
   }];
 }
 
-async function harness(locale) {
+async function harness(locale, systemBarsAvailable = true) {
   const strings = catalogue(locale);
   const server = createServer(async (request, response) => {
     const path = new URL(request.url, 'http://panel.test').pathname;
@@ -71,7 +71,11 @@ async function harness(locale) {
     if (path === '/') return send(page(strings, locale), 'text/html');
     if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js'].includes(path) || path === '/proximity-learning.js') return send(await readFile(join(root, path.slice(1)), 'utf8'), 'application/javascript');
     if (path === '/info.css') return send(await readFile(join(root, 'info.css'), 'utf8'), 'text/css');
-    if (path === '/api/v1/config/schema') return send(JSON.stringify(schema(strings, locale)));
+    if (path === '/api/v1/config/schema') {
+      const fields = schema(strings, locale);
+      fields.find(f => f.key === 'dashboard_fullscreen').available = systemBarsAvailable;
+      return send(JSON.stringify(fields));
+    }
     if (path === '/api/v1/config') return send(JSON.stringify({ settings: { dashboard_theme: 'Ambient', dashboard_package: 'builtin' }, ha_expose: {}, ha_auth: { configured: false } }));
     if (path === '/api/v1/apps') return send(JSON.stringify({ apps: [] }));
     if (path === '/api/v1/config/home-dashboards') return send(JSON.stringify({ queried: true, items: [], default: { explicit: false, path: '' } }));
@@ -174,6 +178,25 @@ for (const engine of engines) {
       } finally {
         await new Promise((resolve) => h.server.close(resolve));
       }
+    }
+  });
+}
+
+for (const engine of engines) {
+  const engineTest = engine.available ? test : test.skip;
+  engineTest(`${engine.name}: Configure hides system-bar control when no usable bars exist`, async t => {
+    const browser = await engine.type.launch(engine.launch);
+    t.after(() => browser.close());
+    for (const available of [false, true]) {
+      const h = await harness('en', available);
+      try {
+        const p = await browser.newPage({ viewport: { width: 480, height: 480 } });
+        await p.goto(h.url);
+        await p.evaluate(() => window.cfgTab(true));
+        await p.locator('#cfg-dashboard_theme').waitFor();
+        assert.equal(await p.locator('#cfg-dashboard_fullscreen').count(), available ? 1 : 0);
+        await p.close();
+      } finally { await new Promise(resolve => h.server.close(resolve)); }
     }
   });
 }

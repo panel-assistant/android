@@ -65,20 +65,11 @@ data class Capabilities(
     /** A verified privileged install route exists for explicitly requested software updates. */
     val canInstallVerifiedApps: Boolean = false,
     val hasRecents: Boolean = false,
-    // The firmware draws Android's own navigation bar, so the soft overlay is unnecessary. Profile-declared
-    // only (see DeviceProfile.hasNativeNavbar) — the generic Android signals lie in both directions, and this
-    // gates whether "Native" may be chosen at all rather than merely seeding a default.
+    // Usable native navigation resolved by Config from an explicit profile declaration or firmware probe.
     val hasNativeNavbar: Boolean = false,
-    // Android's own generic `config_showNavigationBar` resource, or null where it could not be read
-    // (the raw-config path has no `resources`, so "unknown" and "false" must stay distinguishable).
+    val hasAndroidStatusBar: Boolean = false,
+    // Effective declaration/probe result, including unknown; shared by admission and fresh defaults.
     val androidShowsNavbar: Boolean? = null,
-    // Vendor navbar-visibility property, verbatim. Authoritative over the Android resource where
-    // present: some PX30 firmware hardcodes the generic resource true while suppressing its own bar.
-    val vendorNavbarProperty: String? = null,
-    // The resolved device profile's id, or null when no profile is resolved. NOT a licence for settings
-    // to branch on hardware by name: it carries one legacy navbar tier that predates the capability
-    // fields, and nothing else may read it.
-    val profileId: String? = null,
     // True when the profile-declared fields in this snapshot were read from a catalog profile document.
     // Most capability fields need no such marker, because their `false` and their unset value both mean
     // "withhold the feature". A field that makes something APPEAR where hardware is absent inverts that:

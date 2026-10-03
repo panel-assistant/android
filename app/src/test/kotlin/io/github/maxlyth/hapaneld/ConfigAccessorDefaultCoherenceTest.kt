@@ -1,8 +1,6 @@
 package io.github.maxlyth.hapaneld
 
 import android.content.SharedPreferences
-import io.github.maxlyth.hapaneld.config.Capabilities
-import io.github.maxlyth.hapaneld.config.navbarModeDefault
 import io.github.maxlyth.hapaneld.config.SettingValue
 import io.github.maxlyth.hapaneld.config.SettingsRegistry
 import io.github.maxlyth.hapaneld.config.Validation
@@ -25,13 +23,6 @@ import java.lang.reflect.Proxy
  *     and the accessor cannot drift from it.
  */
 class ConfigAccessorDefaultCoherenceTest {
-
-    @Test fun px30VendorNavbarOverrideWinsOverAndroidResourceDefault() {
-        assertEquals("Swipe reveal", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = true, vendorNavbarProperty = "false")))
-        assertEquals("Off", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = false, vendorNavbarProperty = "true")))
-        assertEquals("Swipe reveal", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = false, vendorNavbarProperty = "")))
-        assertEquals("Swipe reveal", navbarModeDefault(Capabilities(hasRecents = true, androidShowsNavbar = true, vendorNavbarProperty = "", profileId = "nspanel-pro")))
-    }
 
     @Test fun behaviourOrderKeepsIdleDimAboveKeepResponsive() {
         val behaviour = SettingsRegistry.SPECS.filter { it.group == "Behaviour" }.map { it.key }

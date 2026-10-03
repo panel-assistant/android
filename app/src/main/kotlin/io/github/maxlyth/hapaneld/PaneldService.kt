@@ -844,6 +844,7 @@ class PaneldService : Service() {
     private val reconfigureKeysLock = Any()
     private val pendingReconfigureKeys = linkedSetOf<String>()
     private val liveSettingRetryAttempts = mutableMapOf<String, Int>()
+    private val scheduledLiveSettingRetries = mutableSetOf<String>()
     private lateinit var restartLease: ServiceRestartBarrier.Lease
     private var startupInitialization: Job? = null
     private var pendingStart = false
@@ -1150,6 +1151,7 @@ class PaneldService : Service() {
             preparedConfig.ensurePanelId()
             val preparedLiveSettings = LiveSettingAuthority.persistent(
                 this@PaneldService, MqttBridge.APPLY_SETTING_KEYS,
+                onLatePending = { key -> scheduleLiveSettingRetries(setOf(key)) },
             )
             val preparedProfiles = RuntimeProfileRegistry(this@PaneldService)
             val resolvedProfile = preparedProfiles.resolveForStartup()
@@ -2693,20 +2695,27 @@ class PaneldService : Service() {
 
     private fun scheduleLiveSettingRetries(attemptedKeys: Set<String>) {
         val remaining = liveSettingAuthority.pendingSnapshot().keys.intersect(attemptedKeys)
+        val retryable = liveSettingAuthority.retryablePendingKeys()
         val retry = synchronized(reconfigureKeysLock) {
             attemptedKeys.minus(remaining).forEach(liveSettingRetryAttempts::remove)
             remaining.filterTo(linkedSetOf()) { key ->
+                if (key !in retryable || key in scheduledLiveSettingRetries) return@filterTo false
                 val next = nextLiveSettingRetryAttempt(liveSettingRetryAttempts[key] ?: 0)
                 if (next == null) false else {
                     liveSettingRetryAttempts[key] = next
+                    scheduledLiveSettingRetries += key
                     true
                 }
             }
         }
         if (retry.isEmpty()) return
         scope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(1_000)
-            val stillPending = liveSettingAuthority.pendingSnapshot().keys.intersect(retry)
+            try {
+                kotlinx.coroutines.delay(1_000)
+            } finally {
+                synchronized(reconfigureKeysLock) { scheduledLiveSettingRetries.removeAll(retry) }
+            }
+            val stillPending = liveSettingAuthority.retryablePendingKeys().intersect(retry)
             if (stillPending.isNotEmpty()) enqueueReconfigure(stillPending, resetLiveRetries = false)
         }
     }
@@ -3085,13 +3094,11 @@ class PaneldService : Service() {
                 // `false` default is indistinguishable from "this panel has none", and the navbar
                 // no-way-out default reads it as evidence that a panel has no navigation affordance.
                 hasEvdevButtons = profile.evdevButtons.isNotEmpty(),
-                profileId = profile.id,
                 // Carried so a consumer can tell a real declaration from an unpopulated `false`.
                 hardwareDeclarationsKnown = profile.declarationsFromCatalog,
-                // Profile declaration only, deliberately not the Android/vendor navbar-visibility signals
-                // that seed the fresh-install default: those are known to misreport in both directions,
-                // and this decides whether "Native" may be selected rather than merely suggested.
-                hasNativeNavbar = profile.hasNativeNavbar,
+                // Same declaration/probe authority used by stored-mode reads and command admission.
+                hasNativeNavbar = config.hasNativeNavbar,
+                hasAndroidStatusBar = config.hasAndroidStatusBar,
                 cpuGovernors = controllers?.cpuGovernorsAvailable ?: cpu.available(),
                 // AdbController.available() is exactly Su.available(); reuse this snapshot's one root
                 // authority probe rather than opening another shell transaction.
@@ -3718,8 +3725,19 @@ class PaneldService : Service() {
             }
             // Forward our own logcat to the configured aggregator (no-op unless a sink host is set).
             logShipper.start()
-            // Restore the soft navbar to its persisted mode (no-op when Off / no overlay permission).
-            navbar.apply(config.navbarMode)
+            // A failed queued mode stays authoritative. Otherwise restore durable intent through the
+            // acknowledged command path, so a failed overlay attachment remains pending for retry.
+            val restoredNavbarMode = config.navbarMode
+            liveSettingAuthority.applyOrQueueOutcomeIf(
+                key = "navbar_mode",
+                value = restoredNavbarMode,
+                previousValue = restoredNavbarMode,
+                expected = {
+                    config.navbarMode == restoredNavbarMode &&
+                        "navbar_mode" !in liveSettingAuthority.pendingSnapshot()
+                },
+            ) { key, value, previous -> applyLiveSettingObserved(activeRuntime.mqtt, key, value, previous) }
+            scheduleLiveSettingRetries(MqttBridge.APPLY_SETTING_KEYS)
             if (!IdentityMigrationGate.holdsNetworkIdentity()) migrationNotice.start()
             // Start the app watchdog if enabled (off by default; self-heals a dead/abandoned dashboard).
             watchdog.apply(config.watchdogEnabled)

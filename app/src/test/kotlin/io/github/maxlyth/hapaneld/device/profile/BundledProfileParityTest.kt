@@ -21,20 +21,20 @@ class BundledProfileParityTest {
 
     /**
      * `has_native_navbar` gates whether `Native` may be chosen at all, and choosing it on a panel with
-     * no system bar leaves no navigation. So absence is the conservative default and only hardware we
-     * have actually verified may declare it — today that is the WF1589T alone.
+     * no system bar leaves no navigation. Only verified hardware declares true; an omitted field
+     * delegates to firmware probing rather than declaring an absent bar.
      */
     @Test fun onlyVerifiedHardwareDeclaresANativeNavigationBar() {
         assertEquals(
             setOf("wf1589t"),
-            bundled.filter { it.document.platform.hasNativeNavbar }.map { it.document.id }.toSet(),
+            bundled.filter { it.document.platform.hasNativeNavbar == true }.map { it.document.id }.toSet(),
         )
         // Generic must stay conservative: unknown hardware is not assumed to have a system bar.
-        assertFalse(bundledById.getValue("generic").document.platform.hasNativeNavbar)
-        assertFalse(bundledById.getValue("nspanel-pro").document.platform.hasNativeNavbar)
+        assertNull(bundledById.getValue("generic").document.platform.hasNativeNavbar)
+        assertEquals(false, bundledById.getValue("nspanel-pro").document.platform.hasNativeNavbar)
         // The declaration reaches the resolved profile, not just the parsed document.
-        assertTrue(bundledById.getValue("wf1589t").profile().hasNativeNavbar)
-        assertFalse(bundledById.getValue("nspanel-pro").profile().hasNativeNavbar)
+        assertEquals(true, bundledById.getValue("wf1589t").profile().hasNativeNavbar)
+        assertEquals(false, bundledById.getValue("nspanel-pro").profile().hasNativeNavbar)
     }
 
     @Test fun theNativeNavbarFieldIsDescribedToTheProfileEditorAndRejectsUnknownSiblings() {
@@ -209,15 +209,28 @@ class BundledProfileParityTest {
         assertTrue(rejected.issues.any { it.path == "hardware.periscope" && it.message == "Unknown field." })
     }
 
+    @Test fun omittedNavbarRemainsProbeableAcrossProfileRoundTrip() {
+        val generic = bundledById.getValue("generic").document
+        assertNull(generic.platform.hasNativeNavbar)
+        for (declaration in listOf(null, false, true)) {
+            val document = generic.copy(platform = generic.platform.copy(hasNativeNavbar = declaration))
+            val reparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(document)).document)
+            assertEquals(declaration, reparsed.platform.hasNativeNavbar)
+            assertEquals(declaration, DataDeviceProfile(
+                document = reparsed, productVersion = "", revision = "test", trustedBundledContent = true,
+            ).hasNativeNavbar)
+        }
+    }
+
     @Test fun theNativeNavbarDeclarationSurvivesASerializeParseRoundTrip() {
         val document = bundledById.getValue("wf1589t").document
         val reparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(document)).document)
-        assertTrue(reparsed.platform.hasNativeNavbar)
+        assertEquals(true, reparsed.platform.hasNativeNavbar)
         assertEquals(document, reparsed)
 
         val plain = bundledById.getValue("nspanel-pro").document
         val plainReparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(plain)).document)
-        assertFalse(plainReparsed.platform.hasNativeNavbar)
+        assertEquals(false, plainReparsed.platform.hasNativeNavbar)
     }
 
     @Test fun bundledCatalogHasUniqueIdsRawHashesAndExactlyOneGenericFallback() {
@@ -473,7 +486,7 @@ class BundledProfileParityTest {
         assertEquals(setOf("access.android-su", "screen.keyevent", "sensor.android"), candidate.requires.drivers)
         assertEquals("android", candidate.platform.suForm)
         assertTrue("the contributor proved app-accessible su", candidate.platform.appCanSu)
-        assertFalse("a native navigation bar was not reported", candidate.platform.hasNativeNavbar)
+        assertEquals("the contributor explicitly declares no native navigation bar", false, candidate.platform.hasNativeNavbar)
         assertEquals("keyevent", candidate.hardware.screenOff)
         assertEquals("none", candidate.hardware.led.mechanism)
         assertFalse("no panel button backlight was reported", candidate.hardware.hasButtonBacklight)
@@ -627,7 +640,7 @@ class BundledProfileParityTest {
         assertTrue("the touchscreen must never be grabbed", candidate.input.evdevButtons.isEmpty())
         assertNull("the attached display is owner-supplied, so density must not be recommended", candidate.provisioning.display.density)
         assertNull("the attached display is owner-supplied, so its ppi is unknowable", candidate.display.physicalPpi)
-        assertFalse("a native navbar was never verified on this board", candidate.platform.hasNativeNavbar)
+        assertNull("an unverified navigation bar remains probeable", candidate.platform.hasNativeNavbar)
     }
 
     @Test fun actualUnofficialYamlIsInertUntilMatchingExplicitActivationAndCanRollback() {
@@ -876,10 +889,10 @@ class BundledProfileParityTest {
         )
         val EXPECTED_BUNDLED_SHA256 = mapOf(
             "generic.yaml" to "16088624128aa375bc28fb747e535f93aa43c65881b5041a6fedc3ce4de056d2",
-            "nspanel-pro.yaml" to "3ac087a5305d2b884c346ebb602aac1c77b9db90905b83b88d365b0149f17588",
+            "nspanel-pro.yaml" to "e67c4863b9b1932e2ec7327b04a92b6ade9726f393fbb0c6c58f65ee3cb77e25",
             "s9e.yaml" to "23874b2a79cb674d77c8b0ad0703ad1ee2cf4db925414e3e12b38354169f7a3f",
             "shelly-wall-display-v2.yaml" to "0b3141fc867e55905090d41773698c1638308bd78892a6487e04f0b07747dac9",
-            "shelly-wall-display-x2i.yaml" to "2760932d1848bca54d59fb95e49146516017c8c383f9aeee4a23102c05980075",
+            "shelly-wall-display-x2i.yaml" to "d05cc1f3b18792ac664c67ac019818a004e1628c2c481c4cab8a432bda19d6b9",
             "shelly-wall-display.yaml" to "f2f6c59a9885321a2afd8e4bf37d803b041c0e5a2de004d1c4ee99566cbea7c3",
             "smt1019.yaml" to "72c5a1fb9118c48c6f66193584ce9a4d0e3181ae0d218f8e2735c783f6716438",
             "tpa10.yaml" to "a3bb5b60bfba70571bb24ed26fe18f4a565a37e30dbae9d8993df0184c31b421",

@@ -93,14 +93,10 @@ interface DeviceProfile {
      *  control where hardware is absent. See `navbarModeDefault`. Default false. */
     val declarationsFromCatalog: Boolean get() = false
 
-    /** Whether the firmware draws Android's own navigation bar, making the soft overlay unnecessary.
-     *  Declared rather than probed: the generic Android signals lie in both directions — NSPanel Pro
-     *  hardcodes `config_showNavigationBar` false while having no bar (so the `policy_control` select
-     *  added in 72e82470 was removed an hour later in 049f2fac as a no-op), and some PX30 firmware
-     *  hardcodes it true while suppressing the bar. Gates only the `Native` navbar mode, which must
-     *  never be offered where selecting it would leave the panel with no navigation at all. Default
-     *  false, so an unverified or community profile never offers it speculatively. */
-    val hasNativeNavbar: Boolean get() = false
+    /** Usable Android navigation declared by the profile. Null leaves presence to the vendor/Android
+     * probe; an explicit false overrides generic resources that incorrectly advertise a suppressed bar.
+     * Shared by native-mode admission and the default soft-navbar decision. */
+    val hasNativeNavbar: Boolean? get() = null
 
     /** How the RGB LED is driven, if any. */
     val ledMechanism: LedMechanism

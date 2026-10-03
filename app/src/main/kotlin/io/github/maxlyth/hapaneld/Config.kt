@@ -80,6 +80,27 @@ internal fun resolveNavbarMode(stored: String?, caps: Capabilities): String {
     return stored
 }
 
+/** Profile declarations win; only an undeclared navbar consults firmware visibility and Android. */
+internal fun resolveNativeNavbar(
+    declared: Boolean?,
+    vendorProperty: String?,
+    androidShowsNavbar: Boolean?,
+    mainKeys: String? = null,
+): Boolean? {
+    if (declared != null) return declared
+    return when (vendorProperty?.trim()?.lowercase(java.util.Locale.ROOT)) {
+        "false", "0", "no", "off" -> false
+        "true", "1", "yes", "on" -> true
+        null, "" -> when (mainKeys?.trim()) {
+            "1" -> false
+            "0" -> true
+            null, "" -> androidShowsNavbar
+            else -> null
+        }
+        else -> null
+    }
+}
+
 /** Whether [mode] may be selected on a panel with this capability. Shared by the read-side coercion
  *  and by the HTTP/MQTT write admission, so all three cannot drift apart. */
 internal fun navbarModePermitted(mode: String, hasNativeNavbar: Boolean): Boolean =
@@ -2100,14 +2121,14 @@ class Config private constructor(
 
     // Navigation bar mode: "Off" | "Always on" | "Swipe reveal" | "Native" (NavbarController.MODES).
     // The first three govern ha-paneld's own drawn overlay; "Native" means the firmware's own bar has
-    // authority and is only selectable where the profile declares one. Persisted so the mode is
+    // authority and is only selectable where a declaration or firmware probe confirms one. Persisted so the mode is
     // restored on boot; a stored value that this panel may no longer use falls back to the default.
     val navbarMode: String
         get() = resolveNavbarMode(prefs.getString("navbar_mode", null), navbarCapabilities())
 
     /**
      * The capability inputs [navbarModeDefault] reads, built here from the resolved profile plus the
-     * two navbar-visibility signals only this Android edge can read. The service builds a much larger
+     * firmware probes only this Android edge can read. The service builds a much larger
      * snapshot for discovery and option gating; the profile-declared fields are drawn from the same
      * profile in both places, so the two cannot disagree about what this panel declares.
      *
@@ -2119,14 +2140,29 @@ class Config private constructor(
         hasRecents = profile?.hasRecents == true,
         hasEvdevButtons = profile?.evdevButtons?.isNotEmpty() == true,
         hasNativeNavbar = hasNativeNavbar,
-        androidShowsNavbar = resourceShowsNavbar(),
-        vendorNavbarProperty = SystemProps.get("persist.smatek.show.navigationbar"),
-        profileId = profile?.id,
+        androidShowsNavbar = nativeNavbarPresence,
         hardwareDeclarationsKnown = profile?.declarationsFromCatalog == true,
     )
 
-    /** The profile's native-navbar declaration; false whenever no profile is resolved (JVM-test seams). */
-    internal val hasNativeNavbar: Boolean get() = profile?.hasNativeNavbar == true
+    /** Usable native navigation: an explicit profile declaration, otherwise the firmware probe. */
+    internal val hasNativeNavbar: Boolean get() = nativeNavbarPresence == true
+
+    private val nativeNavbarPresence: Boolean? get() {
+        profile?.hasNativeNavbar?.let { return it }
+        return resolveNativeNavbar(
+            null,
+            SystemProps.get("persist.smatek.show.navigationbar"),
+            resourceShowsNavbar(),
+            SystemProps.get("qemu.hw.mainkeys"),
+        )
+    }
+
+    /** A zero-height standard status bar cannot be made visible by app-level immersive mode. */
+    internal val hasAndroidStatusBar: Boolean get() {
+        val res = resources ?: return false
+        val id = res.getIdentifier("status_bar_height", "dimen", "android")
+        return id != 0 && runCatching { res.getDimensionPixelSize(id) > 0 }.getOrDefault(false)
+    }
 
     private fun resourceShowsNavbar(): Boolean? {
         val res = resources
