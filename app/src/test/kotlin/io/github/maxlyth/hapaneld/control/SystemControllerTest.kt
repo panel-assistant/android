@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld.control
 
+import io.github.maxlyth.hapaneld.AppIdentity
 import io.github.maxlyth.hapaneld.platform.ActivityRef
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.util.RendererPreparationCoordinator
@@ -436,6 +437,55 @@ class SystemControllerTest {
 
         assertEquals(listOf("am start -n $OWN/.AdminLauncherActivity"), root.ran)
         assertEquals(OWN, c.resolvedLauncher(OWN))
+    }
+
+    @Test fun blankLauncherWithBothPanelAppsNeverOpensEitherDashboard() {
+        for (own in AppIdentity.ALL) {
+            val counterpart = AppIdentity.ALL.single { it != own }
+            val dashboards = listOf(counterpart, own).map {
+                ActivityRef(it, AppIdentity.className(it, ".DashboardActivity"))
+            }
+            val admin = AppIdentity.component(own, ".AdminLauncherActivity")
+            for (default in dashboards) {
+                for (hasLauncher in listOf(true, false)) {
+                    val vendor = ActivityRef(VENDOR, "L")
+                    val env = FakeSystemEnv(
+                        ownPackage = own,
+                        installed = AppIdentity.ALL + if (hasLauncher) setOf(VENDOR) else emptySet(),
+                        homes = dashboards + if (hasLauncher) listOf(vendor) else emptyList(),
+                        default = default,
+                    )
+                    val (controller, root, _) = sc(env)
+
+                    controller.launchLauncher("")
+
+                    val expected = if (hasLauncher) vendor.component else admin
+                    assertEquals("own=$own default=${default.pkg} launcher=$hasLauncher",
+                        listOf("am start -n $expected"), root.ran)
+                }
+            }
+        }
+    }
+
+    @Test fun restoredCounterpartLauncherWithBothPanelAppsOpensCurrentAdmin() {
+        for (own in AppIdentity.ALL.reversed()) {
+            val counterpart = AppIdentity.ALL.single { it != own }
+            val env = FakeSystemEnv(
+                ownPackage = own,
+                installed = AppIdentity.ALL,
+                homes = listOf(counterpart, own).map {
+                    ActivityRef(it, AppIdentity.className(it, ".DashboardActivity"))
+                } + ActivityRef(VENDOR, "L"),
+                default = ActivityRef(VENDOR, "L"),
+            )
+            val (controller, root, _) = sc(env)
+
+            controller.launchLauncher(counterpart)
+
+            assertEquals("restored $counterpart in $own must open this app's drawer",
+                listOf("am start -n ${AppIdentity.component(own, ".AdminLauncherActivity")}"), root.ran)
+            assertEquals(own, controller.resolvedLauncher(counterpart))
+        }
     }
 
     @Test fun launcherNoneSuitableFallsBackToAdminLauncher() {

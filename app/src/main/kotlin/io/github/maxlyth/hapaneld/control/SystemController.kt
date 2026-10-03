@@ -203,8 +203,8 @@ class SystemController(
 
     /**
      * Bring a launcher (home screen) to the foreground — for panels with no physical home button.
-     * [configuredPkg] forces a package; blank => first registered HOME launcher that isn't the
-     * current default, ourselves, or settings. When nothing resolves (kiosk panels often have no
+     * [configuredPkg] forces a package; either panel-app identity opens our admin launcher. Blank
+     * selects a real HOME launcher, excluding both panel apps and Settings. When nothing resolves (kiosk panels often have no
      * dedicated launcher app — the Companion registers HOME but is the dashboard, and the vendor
      * pseudo-launcher may be tamed/absent), falls back to our own admin launcher so the Launcher
      * key always lands somewhere; a stale configured package degrades the same way.
@@ -225,17 +225,17 @@ class SystemController(
 
     private fun pickLauncher(configuredPkg: String): io.github.maxlyth.hapaneld.platform.ActivityRef? {
         // Our package exposes more than one HOME activity. PackageManager ordering is not a contract,
-        // so an explicit "ha-paneld" selection must never accidentally resolve to DashboardActivity.
+        // so either panel-app identity must never accidentally resolve to DashboardActivity.
         // It means the on-demand panel-admin app drawer, regardless of the order returned below.
-        if (isAdminLauncherSelection(configuredPkg)) return adminLauncherActivity()
+        if (isAdminLauncherSelection(configuredPkg) || AppIdentity.isPanelApp(configuredPkg)) return adminLauncherActivity()
         val all = env.homeActivities()
         val default = env.defaultHome()?.pkg
         // Apps that register CATEGORY_HOME but are NOT an app-drawer launcher we'd want to land on:
-        // ourselves, Settings, the HA Companion (a kiosk dashboard, which registers as HOME), and known
+        // either panel app, Settings, the HA Companion (a kiosk dashboard, which registers as HOME), and known
         // vendor kiosk pseudo-launchers (e.g. eWeLink's control panel on Sonoff panels) — arriving at
         // those obstructs the dashboard instead of giving the user an app drawer.
         val notALauncher = { p: String ->
-            p == env.ownPackage || p == "com.android.settings" ||
+            p == env.ownPackage || AppIdentity.isPanelApp(p) || p == "com.android.settings" ||
                 p in RendererResolver.LEGACY_COMPANION_PACKAGE_SET ||
                 p in VENDOR_PSEUDO_LAUNCHERS
         }
