@@ -419,6 +419,25 @@ class SystemControllerTest {
         )
     }
 
+    @Test fun launcherOnShellyWallDisplayOpensAdminLauncherNotStargate() {
+        // The bench X2i: no root, ha-paneld holds HOME, and Shelly's Stargate control app is the only
+        // other HOME candidate. Landing on Stargate leaves no way to Android Settings, so the button
+        // must open the admin launcher, which offers Settings and Stargate as a tile.
+        val stargate = ActivityRef("cloud.shelly.stargate", "cloud.shelly.stargate.activities.SplashActivity")
+        val env = FakeSystemEnv(
+            homes = listOf(
+                stargate,
+                DASH_HOME,
+                ActivityRef(OWN, "$OWN.AdminLauncherActivity"),
+                ActivityRef("com.android.settings", "com.android.settings.FallbackHome"),
+            ),
+            default = DASH_HOME,
+        )
+        val (c, _, _) = sc(env, daemon = null, su = false)
+        c.launchLauncher("")
+        assertEquals(listOf("$OWN/.AdminLauncherActivity"), env.directStarts)
+    }
+
     @Test fun launcherHonoursConfiguredPkg() {
         val (c, root, _) = sc(launcherEnv(VENDOR, VENDOR, "com.other.home"), daemon = null)
         c.launchLauncher("com.other.home")

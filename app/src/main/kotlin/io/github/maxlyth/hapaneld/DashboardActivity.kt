@@ -718,6 +718,8 @@ class DashboardActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (maintenanceFence.stop(this)) return
+        // Home stays put on Back: Android 11 finished this task root, dropping the panel onto Shelly's Stargate.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) { override fun handleOnBackPressed() = Unit })
         supportActionBar?.hide()
         setContentView(TextView(this).apply {
             setText(R.string.preparing_dashboard)
