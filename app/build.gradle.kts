@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.util.Properties
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -438,7 +439,20 @@ val verifyBundledRootHelperBuildIdentity = tasks.register("verifyBundledRootHelp
         }
     }
 }
-tasks.named("preBuild") { dependsOn(compileCdpRelay, verifyBundledRootHelperBuildIdentity) }
+// Refuse stale API metadata before packaging any variant after a release version allocation.
+val verifyOpenApiVersion = tasks.register("verifyOpenApiVersion") {
+    val document = file("src/main/assets/openapi.json")
+    val expectedVersion = requireNotNull(appVersion.getProperty("versionName"))
+    inputs.file(document)
+    inputs.property("versionName", expectedVersion)
+    doLast {
+        val info = (JsonSlurper().parse(document) as Map<*, *>)["info"] as Map<*, *>
+        check(info["version"] == expectedVersion) {
+            "openapi.json info.version ${info["version"]} must match versionName $expectedVersion in app/version.properties"
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(compileCdpRelay, verifyBundledRootHelperBuildIdentity, verifyOpenApiVersion) }
 
 val helperSocketTestServer = rootProject.file("helper/build/socket-test-server")
 val buildHelperSocketTestServer = tasks.register<Exec>("buildHelperSocketTestServer") {
