@@ -58,6 +58,11 @@ platform:
   has_recents: false
   # Firmware advertises navigation resources without a usable system bar.
   has_native_navbar: false
+  launcher:
+    # Shelly's Stargate registers as Home but offers no route to Android Settings.
+    # The Launcher button skips it and opens the admin launcher, which lists it as an app.
+    vendor_home_packages:
+      - cloud.shelly.stargate
 hardware:
   led:
     mechanism: none

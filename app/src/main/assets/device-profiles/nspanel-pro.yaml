@@ -65,6 +65,11 @@ platform:
   has_recents: true
   # Vendor firmware suppresses its Android bar; PA supplies the usable navigation.
   has_native_navbar: false
+  launcher:
+    # eWeLink's control panel registers as Home but is not an app drawer.
+    # The Launcher button skips it and opens the admin launcher, which lists it as an app.
+    vendor_home_packages:
+      - com.eWeLinkControlPanel
 hardware:
   led:
     # NSPanel status LEDs are not exposed through the supported app-side LED routes.

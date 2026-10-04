@@ -37,6 +37,7 @@ class DataDeviceProfile internal constructor(
     override val hasRecents = document.platform.hasRecents
     override val declarationsFromCatalog = true
     override val hasNativeNavbar = document.platform.hasNativeNavbar
+    override val vendorHomePackages = document.platform.launcher.vendorHomePackages.toSet()
     // Never default an unknown name to NONE: a NONE LED is stated unsupported and Panel Assistant deletes
     // the entity. The validator refuses the profile first (`unknown-led-mechanism`), so this is unreachable.
     override val ledMechanism = LedMechanism.ofYaml(document.hardware.led.mechanism)

@@ -256,6 +256,13 @@ class BundledProfileParityTest {
         assertEquals(false, plainReparsed.platform.hasNativeNavbar)
     }
 
+    @Test fun vendorHomePackagesSurviveASerializeParseRoundTrip() {
+        val shelly = bundledById.getValue("shelly-wall-display-x2i").document
+        val reparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(shelly)).document)
+        assertEquals(listOf("cloud.shelly.stargate"), reparsed.platform.launcher.vendorHomePackages)
+        assertEquals(shelly, reparsed)
+    }
+
     @Test fun bundledCatalogHasUniqueIdsRawHashesAndExactlyOneGenericFallback() {
         assertTrue("no bundled profiles found", bundled.isNotEmpty())
 
@@ -912,11 +919,11 @@ class BundledProfileParityTest {
         )
         val EXPECTED_BUNDLED_SHA256 = mapOf(
             "generic.yaml" to "16088624128aa375bc28fb747e535f93aa43c65881b5041a6fedc3ce4de056d2",
-            "nspanel-pro.yaml" to "e67c4863b9b1932e2ec7327b04a92b6ade9726f393fbb0c6c58f65ee3cb77e25",
+            "nspanel-pro.yaml" to "1865621fc603342cde28875b5a9a071c8e5ae4f46800eba8c76b97847c6db9c6",
             "s9e.yaml" to "23874b2a79cb674d77c8b0ad0703ad1ee2cf4db925414e3e12b38354169f7a3f",
-            "shelly-wall-display-v2.yaml" to "0b3141fc867e55905090d41773698c1638308bd78892a6487e04f0b07747dac9",
-            "shelly-wall-display-x2i.yaml" to "d05cc1f3b18792ac664c67ac019818a004e1628c2c481c4cab8a432bda19d6b9",
-            "shelly-wall-display.yaml" to "f2f6c59a9885321a2afd8e4bf37d803b041c0e5a2de004d1c4ee99566cbea7c3",
+            "shelly-wall-display-v2.yaml" to "f005b3abd13716930955456c058b891f76c30dbdd31e6e1a1fb022f2d41a3e85",
+            "shelly-wall-display-x2i.yaml" to "f91ce902fffa59404f411f984f4d790959097f205136149296c3ae3b5fb24d1f",
+            "shelly-wall-display.yaml" to "245b8eee0b1fc816742477f2eda764c2bbb3ca44b44c44e76faff90e7678760e",
             "smt1019.yaml" to "72c5a1fb9118c48c6f66193584ce9a4d0e3181ae0d218f8e2735c783f6716438",
             "tpa10.yaml" to "a3bb5b60bfba70571bb24ed26fe18f4a565a37e30dbae9d8993df0184c31b421",
             "wf1589t.yaml" to "2b69edb225307146d597a5edea488525932403f9d894474e27612fd30516451a",

@@ -147,6 +147,13 @@ internal object ProfileValidator {
         }
         if (document.platform.suForm !in setOf("none", "android", "toolbox")) reject("platform.su_form", "Unknown su form '${document.platform.suForm}'.", "unknown-su-form", mapOf("value" to document.platform.suForm))
         if (document.platform.suForm == "none" && document.platform.appCanSu) reject("platform.app_can_su", "Cannot be true when su_form is none.", "app-su-needs-su-form")
+        val vendorHome = document.platform.launcher.vendorHomePackages
+        if (vendorHome.size > 8) reject("platform.launcher.vendor_home_packages", "At most 8 vendor home packages are allowed.", "vendor-home-package-count-limit")
+        vendorHome.forEachIndexed { index, pkg ->
+            val path = "platform.launcher.vendor_home_packages[$index]"
+            if (!packagePattern.matches(pkg)) reject(path, "Invalid Android package name.", "android-package-name-invalid")
+            if (vendorHome.indexOf(pkg) != index) reject(path, "Duplicate vendor home package.", "duplicate-vendor-home-package")
+        }
         if (LedMechanism.ofYaml(document.hardware.led.mechanism) == null) {
             reject("hardware.led.mechanism", "Unknown LED mechanism '${document.hardware.led.mechanism}'.", "unknown-led-mechanism", mapOf("value" to document.hardware.led.mechanism))
         }

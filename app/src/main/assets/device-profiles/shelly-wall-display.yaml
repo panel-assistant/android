@@ -65,6 +65,11 @@ platform:
   su_form: none
   app_can_su: false
   has_recents: true
+  launcher:
+    # Shelly's Stargate registers as Home but offers no route to Android Settings.
+    # The Launcher button skips it and opens the admin launcher, which lists it as an app.
+    vendor_home_packages:
+      - cloud.shelly.stargate
 hardware:
   led:
     mechanism: none

@@ -98,6 +98,10 @@ interface DeviceProfile {
      * Shared by native-mode admission and the default soft-navbar decision. */
     val hasNativeNavbar: Boolean? get() = null
 
+    /** Vendor apps that register HOME but are not app drawers, from `platform.launcher.vendor_home_packages`;
+     *  the navbar Launcher button skips them. Default empty. */
+    val vendorHomePackages: Set<String> get() = emptySet()
+
     /** How the RGB LED is driven, if any. */
     val ledMechanism: LedMechanism
 

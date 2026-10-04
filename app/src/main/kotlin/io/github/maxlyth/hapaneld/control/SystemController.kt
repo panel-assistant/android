@@ -46,6 +46,9 @@ class SystemController(
     private val beforeReboot: () -> Unit = {},
     private val homeDashboard: () -> String = { "" },
     private val onCompanionHome: (String, String) -> Unit = { _, _ -> },
+    // The active profile's `platform.launcher.vendor_home_packages`: vendor apps that register HOME but
+    // are not app drawers (eWeLink on Sonoff, Stargate on Shelly), so the Launcher button skips them.
+    private val vendorHomePackages: Set<String> = emptySet(),
 ) {
 
     // Native descriptor checks run on every live transport wake. Reuse one bounded observation of the
@@ -231,13 +234,13 @@ class SystemController(
         val all = env.homeActivities()
         val default = env.defaultHome()?.pkg
         // Apps that register CATEGORY_HOME but are NOT an app-drawer launcher we'd want to land on:
-        // either panel app, Settings, the HA Companion (a kiosk dashboard, which registers as HOME), and known
-        // vendor kiosk pseudo-launchers (e.g. eWeLink's control panel on Sonoff panels) — arriving at
-        // those obstructs the dashboard instead of giving the user an app drawer.
+        // either panel app, Settings, the HA Companion (a kiosk dashboard, which registers as HOME), and the
+        // vendor home apps the profile names — arriving at those obstructs the dashboard instead of giving
+        // the user an app drawer.
         val notALauncher = { p: String ->
             p == env.ownPackage || AppIdentity.isPanelApp(p) || p == "com.android.settings" ||
                 p in RendererResolver.LEGACY_COMPANION_PACKAGE_SET ||
-                p in VENDOR_PSEUDO_LAUNCHERS
+                p in vendorHomePackages
         }
         return when {
             configuredPkg.isNotBlank() -> all.firstOrNull { it.pkg == configuredPkg }
@@ -560,12 +563,6 @@ class SystemController(
             // The legacy identity of this app: a successor must be able to take HOME from a bridge that
             // retired without managing to hand it over.
             AppIdentity.LEGACY
-
-        // Vendor kiosk apps that register CATEGORY_HOME but aren't real launchers — the navbar Launcher
-        // button must never land on them (they obstruct the dashboard). eWeLink's control panel on
-        // Sonoff/NSPanel Pro, and Shelly's Stargate on Wall Displays, whose screens offer no way on to
-        // Android Settings; the admin launcher lists either as an app tile instead.
-        private val VENDOR_PSEUDO_LAUNCHERS = setOf("com.eWeLinkControlPanel", "cloud.shelly.stargate")
     }
 }
 
