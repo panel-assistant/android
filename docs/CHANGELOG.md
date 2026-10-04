@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.9.9 - 2026-10-04
+
+This release finishes handing the running of your panels to Panel Assistant. It is the last ha-paneld release that supports MQTT and the last one that can move an MQTT panel over to Panel Assistant's own connection, so if your panels still use MQTT, please move them with this release. Updates now come only through Panel Assistant, and so does the move to the new app. Sorry, Sonoff NSPanel Pro owners: in 0.9.8 the panel moved itself and needed the root helper in a system partition that is full on some NSPanel Pros. If yours got stuck, refused to install, or Panel Assistant 0.6.3 told you "The release did not match its signature, so nothing was installed", that was my approach, not your panel, and you should never need Magisk or to delete anything from the system partition. Thank you to everyone who reported it and sent logs.
+
+Pairs with Panel Assistant 0.7.0.
+
+### Moving off MQTT
+
+**Move now, while this release can still do it for you.** Update the panel, add it to Panel Assistant, then choose **Configure** on the panel in Home Assistant and set **Control** to **Panel Assistant**. Panels that have used MQTT also get a Repair that does the same. MQTT still works in this release, but future feature releases need Panel Assistant and its connection, so MQTT set-ups will not get new features after this.
+
+### Moving from the old app
+
+**The panel app has a new Android app id, `io.panelassistant.android`.** In 0.9.8 a panel tried to hand itself over to the new app. It no longer does. Panel Assistant moves each panel instead: open the panel's "Move to the new app" Repair under **Settings, Repairs** in Home Assistant, and one click backs the panel up, installs the new app over your network and carries its settings, identity and entities across. If the panel asks whether to allow USB debugging, tap Allow. The Repair also finishes panels caught halfway by an earlier attempt. Once the new app is running the panel, Panel Assistant removes the old app automatically.
+
+**Move before v1.0.** Moving panels to the new app is supported through the 0.x releases only. v1.0 will not move panels, so please move yours before then.
+
+### New
+
+- **Voice assistant preview.** Panels with a microphone can be a Home Assistant Assist satellite: turn on Voice assistant on the Configure page and pick your wake words. It works on the Sonoff NSPanel Pro, the Electron WF1589T and WF2489T, and the Shelly Wall Display X2i. It is an early preview and may change.
+- **Your panel's camera and speaker appear in Home Assistant.** The camera is a native camera entity and the speaker is a media player with its volume, ready for announcements, all with no MQTT. Snapshot preferences carry over through backups and restores.
+- **Screen off when nobody touches it.** Auto-sleep can now switch the screen off after a set time without a touch.
+- **A ceiling for automatic brightness.** A new **Maximum level** setting under Display stops automatic brightness going brighter than you want, while it still dims as the room darkens. You can still turn it up by hand.
+- **One notice for Home Assistant restarts, on every screen.** When Home Assistant restarts, updates or drops off, the dashboard and the panel's own screens show the same notice, with an estimate of how long it usually takes on your system. Panel Assistant tells the panel what Home Assistant is doing, so the panel no longer guesses.
+
+### Changed
+
+- **Updates come only through Panel Assistant.** The app no longer updates itself. Home Assistant offers each panel's update, and the panel takes its update channel and pre-release choice from Panel Assistant. Each build a panel is offered carries its own signed description, so an offer cannot point at the wrong file.
+
+### Improved
+
+- **A shorter, easier Configure page.** Every setting has a one-line summary, the basics show first, and the full help opens from an info button. You can type any value in range, not just the arrow steps, and when the panel refuses a setting, including an auto-sleep source it cannot use, Configure tells you why.
+- **The web interface works on a phone in every language.** Every tab, card and dialog fits a portrait phone screen, and the language you choose wins in the Panel Assistant sidebar.
+- **Reconnects when Home Assistant's address changes.** The panel can fall back to other trusted addresses for your Home Assistant and tells Panel Assistant its current network addresses.
+- **The Shelly Wall Display X2i profile covers firmware 2.7.4**, the version new owners receive.
+
+### Fixed
+
+- **Back to the dashboard after a restart or update.** The panel takes back the home screen when it starts instead of leaving Android's fallback screen up, a sleeping screen stays asleep, and the navigation bar comes back reliably with your latest setting.
+- **On Shelly Wall Display panels, Launcher and Back stay out of Shelly's home screen.** Launcher opens the Android launcher, and Back no longer drops you out of the dashboard.
+- **A wake tap no longer also presses whatever is under your finger.**
+- **Network debugging comes back on its own** when the app has it switched on and nothing is listening on its port any more, so Home Assistant can keep updating the panel.
+- **Installs finish on Sonoff NSPanel Pro panels with no room for the root helper.** The app can use root by itself there, so the installer warns and finishes without the helper. Full system storage is no longer reported as read-only, a freshly installed helper is used straight away, and the installer will not put the new app beside an old one whose data it cannot read; it stops and says why.
+- **A panel set up without MQTT no longer asks for MQTT.**
+- **Panels on a fresh Home Assistant account find their dashboard.**
+- **Missing permissions are put back when the app starts**, and the camera stays available while Android is still listing cameras.
+- **Proximity setup gives up after 30 seconds** when the sensor sends nothing, says what to check and keeps your previous calibration.
+- **A brightness you set by hand survives a restart** until it would have expired anyway.
+- **A saved dashboard shown while offline says so**, and the notice stays until the live connection returns.
+- **A button backlight that has never been set shows as off** instead of unknown.
+- **Fewer stray connection warnings in the logs.**
+- **Translation corrections** from a review of every language against the English.
+
 ## v0.9.9-rc5 - 2026-10-04
 
 The last release candidate before 0.9.9. It adds the panel speaker as a media player and fixes the problems people hit while setting up and navigating a panel after moving to the new app.
