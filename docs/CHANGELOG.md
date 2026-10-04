@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.9.9-rc5 - 2026-10-04
+
+The last release candidate before 0.9.9. It adds the panel speaker as a media player and fixes the problems people hit while setting up and navigating a panel after moving to the new app.
+
+Pairs with Panel Assistant 0.7.0-rc5.
+
+### New
+
+- **The panel's speaker is a Home Assistant media player.** Panel Assistant shows it with its volume, and it can play announcements.
+
+### Fixed
+
+- **A panel set up without MQTT no longer asks for MQTT.** Panels that talk to Panel Assistant directly skip the old MQTT setup step.
+- **Network debugging comes back on its own** when nothing is listening on its port any more, so Home Assistant can keep updating the panel.
+- **The navigation bar comes back reliably after a restart or update**, and a later change to its setting is never overwritten by an older one.
+- **On Shelly Wall Display panels, Launcher and Back stay out of Shelly's home screen.** The navigation bar's Launcher button opens the Android launcher, which leads on to Android settings, and Back no longer drops you out of the dashboard.
+- **A wake tap no longer also presses whatever is under your finger.**
+- **The camera stays available while Android is still listing cameras** at start-up.
+- **Configure keeps the reason a partial save was refused** instead of losing it.
+
 ## v0.9.9-rc4 - 2026-10-03
 
 A tidy-up release on the way to 0.9.9. It finishes the job rc3 started for panels moving to the new app, and makes updates follow Panel Assistant.
