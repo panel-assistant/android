@@ -99,6 +99,7 @@ UNCHANGED_TARGET_EXCEPTIONS = {
     ("it", "shell.runtime.ha_lifecycle.duration_hours"): "{value} h",
     ("it", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
     ("nl", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
+    ("nl", "shell.runtime.ha_lifecycle.duration_seconds"): "{value} sec",
     ("de", "configure.enum.voice_sensitivity.normal"): "Normal",
     ("de", "configure.group.dashboard"): "Dashboard",
     ("de", "configure.group.system"): "System",
@@ -266,6 +267,7 @@ UNCHANGED_TARGET_EXCEPTIONS = {
     ("pl", "shell.runtime.duration_seconds"): "{count} s",
 }
 TARGET_LITERAL_EXCEPTIONS = {
+    ("uk", "shell.runtime.ha_lifecycle.reason_core_update"): ("Core",),
     ("de", "install.presentation.status_no_renderer"): ("ℹ",),
     ("es", "install.presentation.status_no_renderer"): ("ℹ",),
     ("fr", "install.presentation.status_no_renderer"): ("ℹ",),
