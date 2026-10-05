@@ -2128,6 +2128,21 @@
       "sourceHash": "67ca4b530450a4ac62a77d2916c15496edc7a423f82f7639dd6ff386eddee540",
       "state": "machine-cross-checked"
     },
+    "configure.voice.microphone_absent": {
+      "text": "Dieses Panel meldet kein Mikrofon, oder sein Geräteprofil setzt hardware.microphone auf false, daher wird die Sprachsteuerung nicht angeboten.",
+      "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.microphone_no_audio": {
+      "text": "Das Mikrofon hat bei der Prüfung durch das Panel kein Audio geliefert, daher hört das Panel nicht zu. Schalten Sie den Sprachassistenten aus und wieder ein, um erneut zu prüfen.",
+      "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.microphone_silent": {
+      "text": "Das Mikrofon hat bei der Prüfung durch das Panel nur Stille aufgenommen, daher hört das Panel nicht zu. Versuchen Sie eine andere Audioquelle, oder schalten Sie den Sprachassistenten aus und wieder ein, um erneut zu prüfen.",
+      "sourceHash": "f199f52a53f3d02c180b4cdb110fc6809a2b599f8f6de24003d3fd97bbec60ce",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.pipeline_not_listed": {
       "text": "{pipeline} · nicht in der Home Assistant-Liste",
       "sourceHash": "71773debc9e3b12cc0d7cd4efd8241dd25e5e42e51532072c309dabbd180dd46",

@@ -2128,6 +2128,21 @@
       "sourceHash": "67ca4b530450a4ac62a77d2916c15496edc7a423f82f7639dd6ff386eddee540",
       "state": "machine-cross-checked"
     },
+    "configure.voice.microphone_absent": {
+      "text": "此面板未报告麦克风，或其设备配置文件将 hardware.microphone 设为 false，因此不提供语音功能。",
+      "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.microphone_no_audio": {
+      "text": "面板检查时麦克风未提供任何音频，因此面板没有在监听。请关闭再重新开启语音助理，以重新检查。",
+      "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
+      "state": "machine-cross-checked"
+    },
+    "configure.voice.microphone_silent": {
+      "text": "面板检查时麦克风只录到静音，因此面板没有在监听。请尝试其他音频源，或关闭再重新开启语音助理，以重新检查。",
+      "sourceHash": "f199f52a53f3d02c180b4cdb110fc6809a2b599f8f6de24003d3fd97bbec60ce",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.pipeline_not_listed": {
       "sourceHash": "71773debc9e3b12cc0d7cd4efd8241dd25e5e42e51532072c309dabbd180dd46",
       "state": "machine-cross-checked",
