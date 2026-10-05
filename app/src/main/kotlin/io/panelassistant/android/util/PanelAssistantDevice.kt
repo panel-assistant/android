@@ -49,8 +49,8 @@ object PanelAssistantDevice {
      * The additive `panel_assistant_device` status object. Always a JSON object, possibly empty;
      * a field the panel cannot state safely is left out instead of being sent blank.
      *
-     * No `hw_version`: the Android release and build string told a user nothing they could act on,
-     * and no panel reports a hardware revision that would. Older integrations accept its absence.
+     * No `hw_version` or serial: those travel in [hardwareJson], because the integration refuses an
+     * unknown key here and fails the whole status.
      */
     fun json(
         friendlyName: String?,
@@ -63,6 +63,29 @@ object PanelAssistantDevice {
             field(manufacturer)?.let { add("\"manufacturer\":${JSONObject.quote(it)}") }
             hardwareModel(model)?.let { add("\"model\":${JSONObject.quote(it)}") }
             field(area)?.let { add("\"area\":${JSONObject.quote(it)}") }
+        }
+        return "{${entries.joinToString(",")}}"
+    }
+
+    /**
+     * The additive `panel_assistant_hardware` status object: facts for the card's Hardware and Serial
+     * number lines. A sibling of the device object, because every integration discards an unknown
+     * top-level object, so no release has to learn it first.
+     *
+     * The firmware is the vendor's own number (`Build.DISPLAY`), sent verbatim so it can be matched
+     * against the vendor's release history. The serial is the hardware serial where this panel can read
+     * it, else the Android id, which panels cloned from one factory image can share.
+     */
+    fun hardwareJson(
+        firmware: String?,
+        androidRelease: String?,
+        hardwareSerial: String?,
+        androidId: String?,
+    ): String {
+        val entries = buildList {
+            field(firmware)?.let { add("\"firmware\":${JSONObject.quote(it)}") }
+            field(androidRelease)?.let { add("\"android_release\":${JSONObject.quote(it)}") }
+            (field(hardwareSerial) ?: field(androidId))?.let { add("\"serial_number\":${JSONObject.quote(it)}") }
         }
         return "{${entries.joinToString(",")}}"
     }

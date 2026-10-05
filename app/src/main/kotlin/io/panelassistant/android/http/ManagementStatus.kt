@@ -5,7 +5,9 @@ import io.panelassistant.android.PanelStatus
 import io.panelassistant.android.dashboardRecoveryPresentation
 import io.panelassistant.android.camera.CameraPresentation
 import io.panelassistant.android.platform.PanelPermissionRepair
+import android.os.Build
 import io.panelassistant.android.control.CompanionDb
+import io.panelassistant.android.control.HardwareSerial
 import io.panelassistant.android.control.PowerSafetyAdvisory
 import io.panelassistant.android.control.ZigbeeHealthSnapshot
 import io.panelassistant.android.util.UpdateChecker
@@ -131,6 +133,14 @@ internal fun managementStatusJson(
                 config.manufacturer,
                 config.model,
                 config.haArea,
+            )
+        }," +
+        "\"panel_assistant_hardware\":${
+            PanelAssistantDevice.hardwareJson(
+                Build.DISPLAY,
+                Build.VERSION.RELEASE,
+                HardwareSerial.shared.read(management.privilege.directSuReady),
+                config.androidId,
             )
         }," +
         "\"zigbee_gateway\":$zigbee,\"storage_health\":${storage.statusJson()}," +
