@@ -923,7 +923,6 @@ class PaneldService : Service() {
     private val receiverLock = Any()
     private var screenOnReceiver: BroadcastReceiver? = null
     private var webViewRebindReceiver: BroadcastReceiver? = null
-    private var microphoneMuteReceiver: BroadcastReceiver? = null
 
     /**
      * Whether this panel could repair its own Android System WebView, computed away from the screen.
@@ -1012,9 +1011,9 @@ class PaneldService : Service() {
     private lateinit var voice: io.panelassistant.android.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.panelassistant.android.assist.ConfiguredMicrophoneSource
     private val microphoneClaims = io.panelassistant.android.audio.MicrophoneForegroundClaims(::updateMicrophoneForeground)
-    // Only an offered microphone is reported muted: a panel without one has nothing to say about it.
-    private val microphoneMute = io.panelassistant.android.audio.MicrophoneMute {
-        microphonePresence().offered && getSystemService(android.media.AudioManager::class.java)?.isMicrophoneMute == true
+    private val microphoneMute = io.panelassistant.android.audio.MicrophoneMuteWatch(this, { microphonePresence().offered }) {
+        io.panelassistant.android.assist.VoiceAttention.microphoneMuted(it)
+        voice.microphoneMuteChanged()
     }
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
@@ -1584,7 +1583,7 @@ class PaneldService : Service() {
             audio = audio,
             microphone = { microphonePresence() },
             onMicrophoneStatus = { panelAssistantVoice.configurationChanged() },
-            muted = { microphoneMute.muted },
+            muted = { microphoneMute.mute.muted },
             source = { sharedMicrophone.get() },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
@@ -1604,7 +1603,7 @@ class PaneldService : Service() {
             io.panelassistant.android.assist.VoiceAttention.phase(state)
             media.hold(io.panelassistant.android.media.PanelMediaPlayer.Hold.VOICE, state.inTurn)
         }
-        startMicrophoneMuteWatch()
+        microphoneMute.start(scope)
         system = SystemController(AndroidSystemEnv(this), vendorHomePackages = profile.vendorHomePackages, beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
         }, homeDashboard = { config.homeDashboard }, onCompanionHome = { pkg, home ->
@@ -5171,41 +5170,6 @@ class PaneldService : Service() {
      * The receiver only hands off. Reconciliation reads the backlight through root or the daemon on
      * the bl_power routes, which must not happen on the main thread.
      */
-    /**
-     * Follow Android's microphone mute: read it once now, then again on each change Android announces.
-     * Before Android 9 there is no announcement, and reading it reaches the audio HAL, which on the
-     * Sonoff panels does not implement the mute query and logs a warning per read (2026-10-05), so it
-     * is not polled; those panels have no mute control to follow either.
-     */
-    private fun startMicrophoneMuteWatch() {
-        val follow = Runnable {
-            if (microphoneMute.refresh()) {
-                io.panelassistant.android.assist.VoiceAttention.microphoneMuted(microphoneMute.muted)
-                voice.microphoneMuteChanged()
-            }
-        }
-        scope.launch { follow.run() }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                if (!teardownBoundary.isStopping) scope.launch { follow.run() }
-            }
-        }
-        val filter = IntentFilter(android.media.AudioManager.ACTION_MICROPHONE_MUTE_CHANGED)
-        synchronized(receiverLock) {
-            if (microphoneMuteReceiver != null || teardownBoundary.isStopping) return
-            runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-                } else {
-                    @Suppress("UnspecifiedRegisterReceiverFlag")
-                    registerReceiver(receiver, filter)
-                }
-            }.onSuccess { microphoneMuteReceiver = receiver }
-                .onFailure { Log.w(TAG, "microphone mute changes could not be followed", it) }
-        }
-    }
-
     private fun startScreenOnReconciliation() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -5246,12 +5210,12 @@ class PaneldService : Service() {
      * still in flight either registers before this runs or not at all.
      */
     private fun releaseServiceReceivers() = synchronized(receiverLock) {
-        for (receiver in listOfNotNull(screenOnReceiver, webViewRebindReceiver, microphoneMuteReceiver)) {
+        for (receiver in listOfNotNull(screenOnReceiver, webViewRebindReceiver)) {
             runCatching { unregisterReceiver(receiver) }
         }
         screenOnReceiver = null
         webViewRebindReceiver = null
-        microphoneMuteReceiver = null
+        microphoneMute.close()
     }
 
     /**
