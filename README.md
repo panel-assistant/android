@@ -45,38 +45,21 @@ The web interface gives you one place to configure a panel, install software and
 
 ## Install
 
+ha-paneld is installed and updated by [Panel Assistant](https://github.com/panel-assistant/ha-integration), its Home Assistant integration. You do not need a computer with `adb` or a command line.
+
 If you are unsure whether ha-paneld can run on your panel, check [Panels and support status](#panels-and-support-status) before installing.
 
-First make ADB available over the network. On some panels this is a Developer options setting; others need a one-time USB connection to run `adb tcpip 5555`. The [provisioning guide](https://panel-assistant.io/go/docs?page=provisioning) and model-specific [hardware guides](https://panel-assistant.io/go/docs?page=hardware/readme) explain the available methods. Then run this from a computer with `adb` on the same network:
+1. Install Panel Assistant from HACS. Its [installation steps](https://github.com/panel-assistant/ha-integration#install-the-integration) include a button that opens it in your own Home Assistant.
+2. [Enable ADB on your panel](https://panel-assistant.io/go/panel-access).
+3. In Home Assistant, go to **Settings**, **Devices and services**, **Add integration**, choose **Panel Assistant** and enter the panel's address. Panel Assistant checks the panel, installs ha-paneld, starts it and adds the panel as a device. New versions then appear in Home Assistant as updates.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash
-```
+A new panel can also be installed over USB from Chrome or Edge on a computer: open **Panel Assistant** in the Home Assistant sidebar and follow the wizard. [Getting started](https://panel-assistant.io/start/getting-started/) covers the steps from a bare panel to your dashboard.
 
 > [!IMPORTANT]
-> **On Windows, use Git Bash or WSL, not PowerShell.** The installer is a `bash` script. Git Bash is included with [Git for Windows](https://gitforwindows.org/). Install `adb` with `winget install Google.PlatformTools`, reopen the shell and then run the command. macOS and Linux can run it as written.
-
-You do not need to clone the repository or supply any options. The installer checks that `adb` and `curl` are available, asks for the panel address and explains each change before making it. It downloads the latest signed stable release, installs it and checks that ha-paneld started correctly.
-
-If a required step fails, the installer names the problem and exits without claiming that the installation succeeded. Correct the problem and run the same command again.
+> **The install script is going away.** Since v0.9.9 the `curl … scripts/install.sh | bash` command no longer installs or updates ha-paneld: it stops, points you to Panel Assistant and changes nothing. From the next release, ha-paneld is installed and updated only through Panel Assistant. If you installed a panel with the script, add it to Panel Assistant: a panel that already runs ha-paneld is connected rather than reinstalled.
 
 > [!IMPORTANT]
 > **Check Home Assistant and the panel's system WebView before the first dashboard load.** The built-in renderer requires Home Assistant 2026.4.2 or newer and a modern WebView. Even a new panel can contain a WebView too old to display a current dashboard. See [Built-in renderer requirements](https://panel-assistant.io/go/docs?page=built-in-renderer) and [Updating the system WebView](https://panel-assistant.io/go/docs?page=hardware/readme).
-
-To follow the newest published release, including release candidates, add `--prerelease`. A newer stable release still wins:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/panel-assistant/android/main/scripts/install.sh | bash -s -- --prerelease
-```
-
-The same installer supports unattended single-panel provisioning. See [Provisioning and fleet updates](https://panel-assistant.io/go/docs?page=provisioning) for scripted installs, USB bootstrap, panels without network ADB and whole-fleet updates.
-
-ha-paneld is not distributed through Google Play, so installation always involves sideloading. This also applies to newer panels that otherwise have access to the Play Store.
-
-### Other ways to install
-
-- **F-Droid on the panel:** add [ha-paneld's F-Droid repository](https://panel-assistant.io/go/docs?page=fdroid) to install and update stable releases without a computer. F-Droid notifies you when an update is available and lets you install it on the panel; release candidates are not included. Sonoff NSPanel Pro firmware 4.0.0 and newer includes F-Droid. This installs the app, but features requiring root still need the normal provisioning steps.
-- **Manual sideloading or USB bootstrap:** use the APK from the [latest release](https://github.com/panel-assistant/android/releases) and follow [Provisioning and fleet updates](https://panel-assistant.io/go/docs?page=provisioning) for the remaining permissions and setup.
 
 ## Choose how the dashboard runs
 
@@ -149,7 +132,7 @@ A limited [advanced fallback](https://panel-assistant.io/go/docs?page=provisioni
 
 ### Using ha-paneld
 
-- [Provisioning and fleet updates](https://panel-assistant.io/go/docs?page=provisioning): unattended installation, USB and network ADB setup, backups and whole-fleet updates.
+- [Removing ha-paneld](https://panel-assistant.io/go/uninstall): give the panel its own home screen back, then uninstall the app.
 - [Built-in renderer](https://panel-assistant.io/go/docs?page=built-in-renderer): requirements, remote sign-in, dashboard selection, recovery and deliberate limitations.
 - [Performance](https://panel-assistant.io/go/docs?page=performance): find out why a dashboard is slow and measure the effect of entity filtering.
 - [Adaptive brightness](https://panel-assistant.io/go/docs?page=adaptive-brightness): select a light source, understand learning and reset the history after moving a panel.
