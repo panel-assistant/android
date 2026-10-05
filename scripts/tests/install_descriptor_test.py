@@ -15,8 +15,8 @@ descriptor = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(descriptor)
 
 TAG = "v1.2.3-rc1"
-APK_NAME = f"panel-assistant-{TAG}-manual-setup-required.apk"
-BRIDGE_APK_NAME = f"ha-paneld-{TAG}-manual-setup-required.apk"
+APK_NAME = f"panel-assistant-{TAG}-manual-setup-required.apk.bin"
+BRIDGE_APK_NAME = f"ha-paneld-{TAG}-manual-setup-required.apk.bin"
 RELEASE_IDENTITY_CORPUS = json.loads(
     (Path(__file__).parent / "fixtures" / "release-identity-corpus.json").read_text(
         encoding="utf-8"
@@ -34,7 +34,7 @@ package: name='io.panelassistant.android' versionCode='701' versionName='1.2.3-r
 platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' \
 compileSdkVersionCodename='17'
 sdkVersion:'26'
-launchable-activity: name='io.github.maxlyth.hapaneld.MainActivity'  label='' icon=''
+launchable-activity: name='io.panelassistant.android.MainActivity'  label='' icon=''
 native-code: 'arm64-v8a' 'armeabi-v7a'
 """.replace(" \\\n", " ")
 XMLTREE = """\
@@ -99,7 +99,7 @@ class InstallDescriptorTest(unittest.TestCase):
             "apkSha256": hashlib.sha256(self.apk.read_bytes()).hexdigest(),
             "apkSize": self.apk.stat().st_size,
             "databaseCompatibility": "hapaneld-db:v1:ha-paneld.db:11:14",
-            "launchComponent": "io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity",
+            "launchComponent": "io.panelassistant.android/io.panelassistant.android.MainActivity",
             "minSdk": 26,
             "packageId": "io.panelassistant.android",
             "releaseTag": TAG,
@@ -121,11 +121,11 @@ class InstallDescriptorTest(unittest.TestCase):
     def test_bridge_descriptor_binds_its_own_bytes_identity_and_version_code(self):
         self.apk = self.apk.rename(self.apk.with_name(BRIDGE_APK_NAME))
         self.apk.write_bytes(b"distinct signed bridge apk\n")
-        actual = self.build(badging=BADGING.replace("io.panelassistant.android", "io.github.maxlyth.hapaneld").replace("versionCode='701'", "versionCode='702'"))
+        actual = self.build(badging=BADGING.replace("io.panelassistant.android' versionCode", "io.github.maxlyth.hapaneld' versionCode").replace("versionCode='701'", "versionCode='702'"))
         self.assertEqual(13, len(actual))
         self.assertEqual(BRIDGE_APK_NAME, actual["apkName"])
         self.assertEqual("io.github.maxlyth.hapaneld", actual["packageId"])
-        self.assertEqual("io.github.maxlyth.hapaneld/io.github.maxlyth.hapaneld.MainActivity", actual["launchComponent"])
+        self.assertEqual("io.github.maxlyth.hapaneld/io.panelassistant.android.MainActivity", actual["launchComponent"])
         self.assertEqual(702, actual["versionCode"])
         self.assertEqual(hashlib.sha256(self.apk.read_bytes()).hexdigest(), actual["apkSha256"])
         self.assertEqual(self.apk.stat().st_size, actual["apkSize"])
@@ -136,7 +136,7 @@ class InstallDescriptorTest(unittest.TestCase):
         for apk_name, package_id in ((APK_NAME, "io.github.maxlyth.hapaneld"), (BRIDGE_APK_NAME, "io.panelassistant.android")):
             self.apk = self.apk.rename(self.apk.with_name(apk_name))
             with self.subTest(apk_name=apk_name), self.assertRaisesRegex(descriptor.DescriptorError, "package ID"):
-                self.build(badging=BADGING.replace("io.panelassistant.android", package_id))
+                self.build(badging=BADGING.replace("io.panelassistant.android' versionCode", package_id + "' versionCode"))
 
     def test_release_tag_must_match_version_name_and_canonical_apk_name(self):
         with self.assertRaisesRegex(descriptor.DescriptorError, "versionName does not match"):
@@ -151,9 +151,19 @@ class InstallDescriptorTest(unittest.TestCase):
                 Path("/tools/apksigner"),
             )
 
+    def test_names_ending_apk_are_refused_so_shipped_updaters_find_nothing(self):
+        # Every updater shipped before Panel Assistant 0.7.1 looks for a name ending `.apk`; a
+        # descriptor naming one would describe an asset those updaters install.
+        for apk_name in (APK_NAME.removesuffix(".bin"), BRIDGE_APK_NAME.removesuffix(".bin")):
+            self.apk = self.apk.rename(self.apk.with_name(apk_name))
+            with self.subTest(apk_name=apk_name), self.assertRaisesRegex(
+                descriptor.DescriptorError, "filename is not canonical"
+            ):
+                descriptor.build_descriptor(self.apk, TAG, Path("/tools/aapt"), Path("/tools/apksigner"))
+
     def test_release_tag_rejects_leading_zeroes_and_excessive_length(self):
         for release_tag in ("v01.2.3", "v1.02.3", "v1.2.03", "v1.2.3-" + "x" * 58):
-            invalid_apk = self.directory / f"panel-assistant-{release_tag}-manual-setup-required.apk"
+            invalid_apk = self.directory / f"panel-assistant-{release_tag}-manual-setup-required.apk.bin"
             invalid_apk.write_bytes(self.apk.read_bytes())
             with self.subTest(release_tag=release_tag), self.assertRaisesRegex(
                 descriptor.DescriptorError,
@@ -406,7 +416,7 @@ E: foreign-root (line=20)
         bridge = self.directory / "app-release.apk"
         bridge.write_bytes(b"signed bridge apk\n")
         replies = [self.completed(value) for value in (
-            BADGING.replace("io.panelassistant.android", "io.github.maxlyth.hapaneld"),
+            BADGING.replace("io.panelassistant.android' versionCode", "io.github.maxlyth.hapaneld' versionCode"),
             PROTOCOL_XMLTREE.replace(":3:3", ":1:3"), SIGNER,
             BADGING, PROTOCOL_XMLTREE, SIGNER,
         )]
@@ -443,18 +453,18 @@ E: foreign-root (line=20)
         for signer in (SIGNER.replace("ac619330", "bc619330"), SIGNER + SIGNER.replace("#1", "#2")):
             with self.subTest(signer=signer), self.assertRaises(descriptor.DescriptorError):
                 self.protocol(signer=signer)
-        for badging in (BADGING.replace("io.panelassistant.android", "com.foreign.app"), BADGING.replace("1.2.3-rc1", "1.2.4")):
+        for badging in (BADGING.replace("io.panelassistant.android' versionCode", "com.foreign.app' versionCode"), BADGING.replace("1.2.3-rc1", "1.2.4")):
             with self.subTest(badging=badging), self.assertRaises(descriptor.DescriptorError):
                 self.protocol(badging=badging)
 
     def test_protocol_companion_cli_preserves_v1_and_publishes_canonical_pair(self):
-        bridge = self.directory / f"ha-paneld-{TAG}-manual-setup-required.apk"
+        bridge = self.directory / f"ha-paneld-{TAG}-manual-setup-required.apk.bin"
         bridge.write_bytes(b"signed bridge apk\n")
         aapt = self.directory / "aapt"
         aapt.write_text("#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n"
             f"badging={BADGING!r}\nxmltree={PROTOCOL_XMLTREE!r}\n"
             "path=next(value for value in sys.argv if value.startswith('/proc/self/fd/'))\n"
-            "if b'bridge' in Path(path).read_bytes(): badging=badging.replace('io.panelassistant.android','io.github.maxlyth.hapaneld')\n"
+            "if b'bridge' in Path(path).read_bytes(): badging=badging.replace(\"io.panelassistant.android' versionCode\",\"io.github.maxlyth.hapaneld' versionCode\")\n"
             "print(xmltree if 'xmltree' in sys.argv else badging,end='')\n")
         aapt.chmod(0o755)
         signer = self.directory / "apksigner"

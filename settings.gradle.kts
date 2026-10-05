@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ha-paneld"
+rootProject.name = "panel-assistant-android"
 include(":app")

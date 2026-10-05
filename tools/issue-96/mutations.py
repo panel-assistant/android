@@ -13,8 +13,8 @@ Usage:
 import sys
 from pathlib import Path
 
-STORE = "app/src/main/kotlin/io/github/maxlyth/hapaneld/http/PendingUploadStore.kt"
-ROUTES = "app/src/main/kotlin/io/github/maxlyth/hapaneld/http/ControlPlaneRoutes.kt"
+STORE = "app/src/main/kotlin/io/panelassistant/android/http/PendingUploadStore.kt"
+ROUTES = "app/src/main/kotlin/io/panelassistant/android/http/ControlPlaneRoutes.kt"
 INSTALL_JS = "app/src/main/assets/install.js"
 
 # name -> (file, old, new, anchor, suite, named_test)

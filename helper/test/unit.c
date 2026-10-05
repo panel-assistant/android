@@ -2269,10 +2269,10 @@ static void test_grant_verb(void) {
 
 static void test_grant_accessibility(void) {
     char out[MAX_LINE + 2];
-    // The class comes from the Gradle namespace, which does not move with the applicationId, so the
-    // successor's component is its own id plus the UNCHANGED class. The `.input.…` shorthand would
-    // resolve against the successor's id and name a class that does not exist.
-    const char *component = SUCCESSOR_ID "/io.github.maxlyth.hapaneld.input.PanelAccessibilityService";
+    // The class lives in the Kotlin package io.panelassistant.android whichever id the build carries,
+    // so a component is the id plus that fully qualified class. The `.input.…` shorthand resolves
+    // against the id, so it names the class only for the successor.
+    const char *component = SUCCESSOR_ID "/io.panelassistant.android.input.PanelAccessibilityService";
     const char *const enable_flag[] = {
         "settings", "put", "secure", "accessibility_enabled", "1", NULL
     };
@@ -2315,19 +2315,33 @@ static void test_grant_accessibility(void) {
     CHECK(ran_argv("/system/bin/settings", enable_flag) == 1,
           "a repeated GRANT ACCESSIBILITY still asserts accessibility_enabled\n");
 
-    // The legacy provisioner wrote the shorthand spelling over ADB. It unflattens to the same
-    // component, so a panel provisioned that way must not gain a duplicate entry.
+    // An installer that wrote the shorthand spelling names the same component, so a panel set up that
+    // way must not gain a duplicate entry.
     sysexec_stub_reset();
-    sysexec_stub_add_popen("enabled_accessibility_services", LEGACY_ID "/.input.PanelAccessibilityService\n", 0);
-    dispatch_reply_as(HELPER_CALLER_LEGACY, "GRANT " LEGACY_ID " ACCESSIBILITY", out, sizeof out);
+    sysexec_stub_add_popen("enabled_accessibility_services", SUCCESSOR_ID "/.input.PanelAccessibilityService\n", 0);
+    dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " ACCESSIBILITY", out, sizeof out);
     CHECK(strcmp(out, "OK\n") == 0, "the shorthand spelling is recognised as already granted (got '%s')\n", out);
     CHECK(sysexec_stub_count_argv_calls() == 2,
           "a list already carrying the shorthand is left alone (ran %d calls)\n",
           sysexec_stub_count_argv_calls());
 
-    // Successor shorthand resolves to a different namespace. Preserve it and the unrelated vendor
-    // service while appending the actual class, then a retry must leave that repaired list alone.
-    const char *invalid = "com.vendor/.A:" SUCCESSOR_ID "/.input.PanelAccessibilityService";
+    // The legacy id's shorthand resolves to io.github.maxlyth.hapaneld.input.…, a class that no longer
+    // exists, so it is not a grant: the real component is appended beside it.
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("enabled_accessibility_services", LEGACY_ID "/.input.PanelAccessibilityService\n", 0);
+    dispatch_reply_as(HELPER_CALLER_LEGACY, "GRANT " LEGACY_ID " ACCESSIBILITY", out, sizeof out);
+    const char *const put_legacy[] = {
+        "settings", "put", "secure", "enabled_accessibility_services",
+        LEGACY_ID "/.input.PanelAccessibilityService:" LEGACY_ID "/io.panelassistant.android.input.PanelAccessibilityService",
+        NULL
+    };
+    CHECK(strcmp(out, "OK\n") == 0 && ran_argv("/system/bin/settings", put_legacy) == 1,
+          "a legacy shorthand naming no class gets the real service appended\n");
+
+    // An app updated from a build whose classes lived in io.github.maxlyth.hapaneld leaves an entry
+    // naming a class that no longer exists. Preserve it and the unrelated vendor service while
+    // appending the actual class, then a retry must leave that repaired list alone.
+    const char *invalid = "com.vendor/.A:" SUCCESSOR_ID "/io.github.maxlyth.hapaneld.input.PanelAccessibilityService";
     char repaired[512];
     snprintf(repaired, sizeof repaired, "%s:%s", invalid, component);
     const char *const put_repaired[] = {
@@ -2337,9 +2351,9 @@ static void test_grant_accessibility(void) {
     sysexec_stub_add_popen("enabled_accessibility_services", invalid, 0);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " ACCESSIBILITY", out, sizeof out);
     CHECK(strcmp(out, "OK\n") == 0 && sysexec_stub_count_argv_calls() == 3,
-          "successor shorthand needs the real service appended before accessibility is enabled\n");
+          "an entry for the pre-move class needs the real service appended before accessibility is enabled\n");
     CHECK(ran_argv("/system/bin/settings", put_repaired) == 1,
-          "successor shorthand repair preserves the complete shared list and actual class\n");
+          "the pre-move entry repair preserves the complete shared list and actual class\n");
 
     sysexec_stub_reset();
     sysexec_stub_add_popen("enabled_accessibility_services", invalid, 0);
@@ -2354,7 +2368,7 @@ static void test_grant_accessibility(void) {
     sysexec_stub_add_popen("enabled_accessibility_services", repaired, 0);
     dispatch_reply_as(HELPER_CALLER_SUCCESSOR, "GRANT " SUCCESSOR_ID " ACCESSIBILITY", out, sizeof out);
     CHECK(strcmp(out, "OK\n") == 0 && sysexec_stub_count_argv_calls() == 2,
-          "successor shorthand repair converges without duplicating or rewriting the shared list\n");
+          "the pre-move entry repair converges without duplicating or rewriting the shared list\n");
 
     // A setting this daemon cannot account for is not something root hands back to the framework.
     sysexec_stub_reset();

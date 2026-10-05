@@ -16,22 +16,22 @@ from pathlib import Path
 from typing import NoReturn
 
 # The integration's descriptor names the successor; bridge updates use their own descriptor.
-# Three strings below must not follow the applicationId: the Gradle namespace does not move with the
-# applicationId, and the schema and database-compatibility contracts are compared byte for byte by
-# shipped verifiers that predate the move.
+# The schema, protocol schema and meta-data keys keep the legacy id: shipped verifiers that predate
+# the move compare them byte for byte.
 SCHEMA = "io.github.maxlyth.hapaneld.install.v1"
 PACKAGE_ID = "io.panelassistant.android"
-# The Kotlin package and Gradle namespace. Every manifest class stays here whichever applicationId the
-# build carries, so a component is always `<applicationId>/<fully.qualified.Class>`.
-CODE_PACKAGE = "io.github.maxlyth.hapaneld"
+LEGACY_PACKAGE_ID = "io.github.maxlyth.hapaneld"
+# The Kotlin package. Every manifest class lives here whichever applicationId the build carries, so a
+# component is always `<applicationId>/<fully.qualified.Class>`.
+CODE_PACKAGE = "io.panelassistant.android"
 MAX_APK_SIZE_BYTES = 64 * 1024 * 1024
 MAX_ANDROID_SDK = 100
 MAX_ANDROID_VERSION_CODE = 2**31 - 1
 SIGNER_CERTIFICATE_SHA256 = (
     "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 )
-DATABASE_METADATA_KEY = f"{CODE_PACKAGE}.DATABASE_COMPATIBILITY"
-PROTOCOL_METADATA_KEY = f"{CODE_PACKAGE}.PANEL_ASSISTANT_PROTOCOL"
+DATABASE_METADATA_KEY = f"{LEGACY_PACKAGE_ID}.DATABASE_COMPATIBILITY"
+PROTOCOL_METADATA_KEY = f"{LEGACY_PACKAGE_ID}.PANEL_ASSISTANT_PROTOCOL"
 PROTOCOL_SCHEMA = "io.github.maxlyth.hapaneld.protocol.v1"
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a")
 LAUNCH_ACTIVITY = f"{CODE_PACKAGE}.MainActivity"
@@ -316,8 +316,9 @@ def inspect_apk(
 
 def build_descriptor(apk: Path, release_tag: str, aapt: Path, apksigner: Path) -> dict[str, object]:
     canonical_packages = {
-        f"panel-assistant-{release_tag}-manual-setup-required.apk": PACKAGE_ID,
-        f"ha-paneld-{release_tag}-manual-setup-required.apk": CODE_PACKAGE,
+        # `.bin` keeps every updater shipped before Panel Assistant 0.7.1 from finding an APK.
+        f"panel-assistant-{release_tag}-manual-setup-required.apk.bin": PACKAGE_ID,
+        f"ha-paneld-{release_tag}-manual-setup-required.apk.bin": LEGACY_PACKAGE_ID,
     }
     package_id = canonical_packages.get(apk.name)
     if package_id is None:
@@ -350,7 +351,7 @@ def build_protocol_manifest(
     artifacts = []
     for apk in apks:
         _, xmltree, _, identity = inspect_apk(
-            apk, release_tag, aapt, apksigner, (CODE_PACKAGE, PACKAGE_ID)
+            apk, release_tag, aapt, apksigner, (LEGACY_PACKAGE_ID, PACKAGE_ID)
         )
         low, high = parse_protocol_range(xmltree)
         artifacts.append({"apkSha256": identity[1], "protocolMin": low, "protocolMax": high})

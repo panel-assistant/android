@@ -651,9 +651,9 @@ static int accessibility_list_plausible(const char *value) {
 }
 
 static int grant_accessibility(const char *pkg) {
-    // The service class comes from the Gradle namespace, which does NOT move with the applicationId,
-    // so the successor's component is its own id plus the unchanged class. The `.input.…` shorthand
-    // would resolve against the successor's package id and name a class that does not exist.
+    // The service class lives in the Kotlin package whichever id the build carries, so a component is
+    // the id plus that class. The `.input.…` shorthand resolves against the id, so it names the class
+    // only when the id equals the package; an entry naming any other class is left for the framework.
     char component[256], shorthand[160];
     if (snprintf(component, sizeof component, "%s/%s", pkg, APP_ACCESSIBILITY_CLASS) >= (int)sizeof component)
         return -1;

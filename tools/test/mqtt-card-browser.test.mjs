@@ -9,7 +9,7 @@ import { chromium, webkit } from 'playwright-core';
 const assets = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const fixturePath = join(process.cwd(), '..', '..', 'app', 'build', 'test-fixtures', 'hide-mqtt-card.json');
 const fixture = JSON.parse(await readFile(fixturePath, 'utf8').catch(() => {
-  throw new Error(`missing JVM-produced Configure fixture at ${fixturePath}; run ./gradlew :app:testDebugUnitTest --rerun --tests io.github.maxlyth.hapaneld.http.MqttCardSchemaFixtureTest first`);
+  throw new Error(`missing JVM-produced Configure fixture at ${fixturePath}; run ./gradlew :app:testDebugUnitTest --rerun --tests io.panelassistant.android.http.MqttCardSchemaFixtureTest first`);
 }));
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 

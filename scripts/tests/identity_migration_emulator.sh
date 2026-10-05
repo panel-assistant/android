@@ -26,7 +26,7 @@ HELPER_BIN="${4:?missing helper binary}"
 
 LEGACY=io.github.maxlyth.hapaneld
 SUCCESSOR=io.panelassistant.android
-CODE_PACKAGE=io.github.maxlyth.hapaneld
+CODE_PACKAGE=io.panelassistant.android
 PANEL_ID=migration_emulator
 HOST_PORT=18888
 URL="http://127.0.0.1:$HOST_PORT"
@@ -110,14 +110,14 @@ scenario() {
   wait_for 60 "the base build to adopt the panel id" health_panel_is "$PANEL_ID"
 
   adb install -r "$BRIDGE_APK" >/dev/null
-  launch "$LEGACY/.MainActivity"
+  launch "$LEGACY/$CODE_PACKAGE.MainActivity"
   wait_for 120 "the bridge to answer under the legacy id" health_is "$LEGACY"
   health_panel_is "$PANEL_ID" || fail "the in-place update to the bridge lost the panel id"
 
   # The fleet's case is a kiosk whose HOME is this app, which the handover has to move. The other case
   # is an owner who kept another launcher, which the handover has to leave alone.
   if [ "$legacy_is_home" = yes ]; then
-    adb shell cmd package set-home-activity "$LEGACY/.DashboardActivity" >/dev/null
+    adb shell cmd package set-home-activity "$LEGACY/$CODE_PACKAGE.DashboardActivity" >/dev/null
     [ "$(home_package)" = "$LEGACY" ] || fail "could not make the legacy app HOME for the test"
   fi
   local home_before; home_before="$(home_package)"

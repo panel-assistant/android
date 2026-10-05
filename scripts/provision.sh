@@ -50,7 +50,7 @@ case "$1" in -h|--help) usage; exit 0 ;; esac
 TARGET="$1"; shift
 PKG="io.panelassistant.android"
 LEGACY_PKG="io.github.maxlyth.hapaneld"
-CODE_PACKAGE="io.github.maxlyth.hapaneld"
+CODE_PACKAGE="io.panelassistant.android"
 REPO="panel-assistant/android"
 RELEASE_CERT_SHA256="ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 RELEASE_HELPER_BUILD_ID=""

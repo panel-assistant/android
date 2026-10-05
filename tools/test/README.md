@@ -4,7 +4,7 @@ Browser tests for the web interface served from `app/src/main/assets`: behaviour
 **language layout gate** (blocking) and the **CLS matrix** (report-only).
 
 ```bash
-./gradlew :app:testDebugUnitTest --rerun --tests io.github.maxlyth.hapaneld.http.MqttCardSchemaFixtureTest
+./gradlew :app:testDebugUnitTest --rerun --tests io.panelassistant.android.http.MqttCardSchemaFixtureTest
 cd tools/test && npm ci --ignore-scripts          # per worktree; exact playwright-core from package-lock.json
 npx playwright-core install webkit                # once per machine; Chromium comes from CHROME (default /usr/bin/chromium)
 npm test                                          # every *.test.mjs, including the layout gate's own negative controls

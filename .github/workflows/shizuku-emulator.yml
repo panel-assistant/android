@@ -84,4 +84,4 @@ jobs:
             adb push "$RUNNER_TEMP/shizuku.apk" /data/local/tmp/shizuku.apk
             adb shell run-as io.github.maxlyth.hapaneld cp /data/local/tmp/shizuku.apk files/shizuku-test.apk
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -e managerApk /data/user/0/io.github.maxlyth.hapaneld/files/shizuku-test.apk -e class io.github.maxlyth.hapaneld.shizuku.ShizukuIntegrationTest io.github.maxlyth.hapaneld.test/androidx.test.runner.AndroidJUnitRunner
+            adb shell am instrument -w -e managerApk /data/user/0/io.github.maxlyth.hapaneld/files/shizuku-test.apk -e class io.panelassistant.android.shizuku.ShizukuIntegrationTest io.github.maxlyth.hapaneld.test/androidx.test.runner.AndroidJUnitRunner

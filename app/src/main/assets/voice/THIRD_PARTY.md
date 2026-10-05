@@ -8,4 +8,4 @@ Home Assistant Voice Preview Edition Sounds (https://github.com/esphome/home-ass
 
 ## Listening ripple
 
-`WakeRippleView` (`app/src/main/kotlin/io/github/maxlyth/hapaneld/assist/WakeRippleView.kt`) is ported from Ava-Pro's view of the same name, `knoop7/Ava-Pro` at commit `32c8abe2c68336d46f727b50e8126c098e2cdaa0` (`android/app/src/main/java/com/example/ava/ui/views/WakeRippleView.kt`), licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Changes: the package name, trailing whitespace, and the view no longer takes touches.
+`WakeRippleView` (`app/src/main/kotlin/io/panelassistant/android/assist/WakeRippleView.kt`) is ported from Ava-Pro's view of the same name, `knoop7/Ava-Pro` at commit `32c8abe2c68336d46f727b50e8126c098e2cdaa0` (`android/app/src/main/java/com/example/ava/ui/views/WakeRippleView.kt`), licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Changes: the package name, trailing whitespace, and the view no longer takes touches.

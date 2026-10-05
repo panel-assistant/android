@@ -300,8 +300,8 @@ jobs:
           test -s app/build/reports/cyclonedx-direct/bom.json
           cp app/build/reports/cyclonedx-direct/bom.json release-input/android-gradle-runtime.cdx.json
           cp scripts/generate_install_descriptor.py release-input/generate_install_descriptor.py
-          bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
-          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           echo "BRIDGE_APK_NAME=$bridge_apk_name" >> "$GITHUB_ENV"
           echo "SUCCESSOR_APK_NAME=$successor_apk_name" >> "$GITHUB_ENV"
 
@@ -368,7 +368,7 @@ jobs:
 
           ## Which APK
 
-          This release carries two APKs, because the app is moving to a new application id and Android treats a new application id as a new app.
+          This release carries two APKs, because the app is moving to a new application id and Android treats a new application id as a new app. Both are published with a \`.bin\` suffix so that only Panel Assistant 0.7.1 or newer installs them; to sideload one by hand, rename it to end in \`.apk\` first.
 
           - \`$SUCCESSOR_APK_NAME\` is the app. Install this one on a new panel, or for manual or on-device sideloading. After installing it, open the app and complete the on-panel setup.
           - \`$BRIDGE_APK_NAME\` keeps the previous application id. A panel already running an earlier version updates to it in place and then moves itself across to the new one. You do not need to install it by hand.
@@ -673,8 +673,8 @@ jobs:
           chmod 600 "$keystore"
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
-          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
-          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           android_sbom_name="ha-paneld-${RELEASE_TAG}-android-gradle-runtime.cdx.json"
           profile_editor_sbom_name="ha-paneld-${RELEASE_TAG}-profile-editor-runtime.cdx.json"
           provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
@@ -782,7 +782,7 @@ jobs:
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
           # The descriptor describes the identity the integration installs, which is the successor.
           # Its own asset name is unchanged: shipped integration releases look it up by that name.
-          apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
@@ -903,7 +903,7 @@ jobs:
             subject_apk_name=$apk_name
             generated_descriptor_name=$descriptor_name
             if [ "$identity" = bridge ]; then
-              subject_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+              subject_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
               generated_descriptor_name=$bridge_descriptor_name
             fi
             generator_args=(
@@ -916,7 +916,7 @@ jobs:
             if [ "$identity" = successor ]; then
               generator_args+=(
                 --protocol-apk "$workspace/dist/$apk_name"
-                --protocol-apk "$workspace/dist/ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+                --protocol-apk "$workspace/dist/ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
                 --protocol-output "$descriptor_stage/$protocol_name"
               )
             fi
@@ -976,8 +976,8 @@ jobs:
           done
 
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
-          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
-          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
@@ -1126,7 +1126,7 @@ jobs:
             # applicationId, so the successor APK reports the same launchable-activity as the bridge.
             if [ "$package_name" != "$expected_package" ] || \
                [ "$version_name" != "$expected_version_name" ] || \
-               [ "$launch_activity" != io.github.maxlyth.hapaneld.MainActivity ] || \
+               [ "$launch_activity" != io.panelassistant.android.MainActivity ] || \
                [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]] || [ "${#version_code}" -gt 10 ] || \
                [ "$version_code" -gt 2147483647 ] || \
                [[ ! "$min_sdk" =~ ^[1-9][0-9]*$ ]] || [ "${#min_sdk}" -gt 3 ] || [ "$min_sdk" -gt 100 ] || \
@@ -1169,7 +1169,7 @@ jobs:
               --arg release_tag "$RELEASE_TAG" \
               --argjson version_code "$version_code" \
               --arg version_name "$version_name" \
-              '{apkName:$apk_name,apkSha256:$apk_sha256,apkSize:$apk_size,databaseCompatibility:$database_compatibility,launchComponent:($package_id+"/io.github.maxlyth.hapaneld.MainActivity"),minSdk:$min_sdk,packageId:$package_id,releaseTag:$release_tag,schema:"io.github.maxlyth.hapaneld.install.v1",signerCertificateSha256:"ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",supportedAbis:["arm64-v8a","armeabi-v7a"],versionCode:$version_code,versionName:$version_name}' \
+              '{apkName:$apk_name,apkSha256:$apk_sha256,apkSize:$apk_size,databaseCompatibility:$database_compatibility,launchComponent:($package_id+"/io.panelassistant.android.MainActivity"),minSdk:$min_sdk,packageId:$package_id,releaseTag:$release_tag,schema:"io.github.maxlyth.hapaneld.install.v1",signerCertificateSha256:"ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",supportedAbis:["arm64-v8a","armeabi-v7a"],versionCode:$version_code,versionName:$version_name}' \
               > "$expected_descriptor"
             if ! /usr/bin/cmp --silent "$expected_descriptor" "dist/$descriptor_name"; then
               echo "::error::Install descriptor is not the exact canonical 13-field APK contract."
@@ -1317,9 +1317,9 @@ jobs:
       - name: Final exact verification before publication
         run: |
           set -euo pipefail
-          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
+          apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
           apk_idsig="dist/$apk_name.idsig"
-          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           successor_apk_idsig="dist/$successor_apk_name.idsig"
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
@@ -1458,7 +1458,7 @@ jobs:
                .apkName == $apk_name and .apkSha256 == $apk_sha256 and .apkSize == $apk_size and
                .releaseTag == $release_tag and .schema == "io.github.maxlyth.hapaneld.install.v1" and
                .packageId == $package_id and .versionCode == $version_code and .versionName == $version_name and
-               .launchComponent == ($package_id+"/io.github.maxlyth.hapaneld.MainActivity") and
+               .launchComponent == ($package_id+"/io.panelassistant.android.MainActivity") and
                .signerCertificateSha256 == "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"' \
               "dist/$descriptor_name" >/dev/null; then
               echo "::error::Final signed descriptor does not bind the exact final release APK."
@@ -1477,37 +1477,45 @@ jobs:
           # Tags with a suffix (e.g. v0.5.0-rc1) publish as pre-releases.
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
 
-      # Every panel in the field running 0.9.7 or 0.9.8-rc1 resolves its update by taking the FIRST
-      # `.apk` asset of the release, whatever it is called. If the successor ever sorted first those
-      # panels would be handed a package Android cannot install over the one they are running, and
-      # they would stop updating with no way to recover remotely. GitHub returns release assets
-      # ordered by name and `ha-paneld-` sorts before `panel-assistant-`, but that is a property of
-      # the API rather than a promise, so it is asserted against the published release itself.
-      - name: Verify shipped updaters resolve the bridge APK
+      # Every updater shipped before this release looks for an asset ending `.apk`. The app's
+      # own updater through 0.9.9 matches any name ending `.apk` (case-insensitively), old copies of
+      # install.sh grep for `.apk"`, and Panel Assistant 0.7.0 looks the APK up by its exact `.apk`
+      # name. Publishing the APKs as `.apk.bin` leaves all of them with nothing to install, so only
+      # Panel Assistant 0.7.1 and newer move a panel onto this release. One stray `.apk` asset would
+      # reopen that path, so the published release itself is checked: no asset name may end `.apk`,
+      # and the `.apk.bin` assets are exactly the bridge and the successor. Their order no longer
+      # matters: the bridge-first rule served updaters that took the first `.apk`, and none remains.
+      - name: Verify shipped updaters find no installable APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk"
-          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk"
+          bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"
+          successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           if ! published_asset_names=$(
             gh api "repos/$RELEASE_REPOSITORY/releases/tags/$RELEASE_TAG" \
-              --jq '.assets[].name | select(endswith(".apk"))'
+              --jq '.assets[].name'
           ); then
-            echo "::error::Could not read the published release to verify its asset order."
+            echo "::error::Could not read the published release to verify its asset names."
             exit 1
           fi
-          mapfile -t published_apks <<<"$published_asset_names"
-          if [ "${#published_apks[@]}" -ne 2 ]; then
-            echo "::error::Published release carries ${#published_apks[@]} APK assets, expected exactly 2."
-            /usr/bin/printf '%s\n' "${published_apks[@]:-}"
+          mapfile -t published_assets <<<"$published_asset_names"
+          stray_apks=()
+          packaged_apks=()
+          for asset_name in "${published_assets[@]}"; do
+            case "${asset_name,,}" in
+              *.apk) stray_apks+=("$asset_name") ;;
+              *.apk.bin) packaged_apks+=("$asset_name") ;;
+            esac
+          done
+          if [ "${#stray_apks[@]}" -ne 0 ]; then
+            echo "::error::Published release carries an asset ending .apk, which shipped updaters would install: ${stray_apks[*]}. Delete the release and its tag now."
             exit 1
           fi
-          if [ "${published_apks[0]}" != "$bridge_apk_name" ]; then
-            echo "::error::First published .apk asset is '${published_apks[0]}', expected the bridge '$bridge_apk_name'. Panels on an earlier release resolve the first .apk and would be handed the successor."
-            exit 1
-          fi
-          if [ "${published_apks[1]}" != "$successor_apk_name" ]; then
-            echo "::error::Second published .apk asset is '${published_apks[1]}', expected the successor '$successor_apk_name'."
+          expected_apks=$(/usr/bin/printf '%s\n' "$bridge_apk_name" "$successor_apk_name" | /usr/bin/sort)
+          actual_apks=$(/usr/bin/printf '%s\n' "${packaged_apks[@]}" | /usr/bin/sort)
+          if [ "${#packaged_apks[@]}" -ne 2 ] || [ "$actual_apks" != "$expected_apks" ]; then
+            echo "::error::Published release carries ${#packaged_apks[@]} .apk.bin assets, expected exactly the bridge '$bridge_apk_name' and the successor '$successor_apk_name'."
+            /usr/bin/printf '%s\n' "${packaged_apks[@]}"
             exit 1
           fi

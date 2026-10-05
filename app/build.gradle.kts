@@ -50,7 +50,7 @@ val releaseLocaleFilters = listOf("en", "de", "fr", "it", "es", "zh-rCN", "nl", 
 // database schema object as the source of truth: release tags/versionNames are presentation, not a
 // statement about which on-disk structures a candidate can safely open.
 val entityCatalogSchemaSource = rootProject.file(
-    "app/src/main/kotlin/io/github/maxlyth/hapaneld/dashboard/EntityCatalogStore.kt",
+    "app/src/main/kotlin/io/panelassistant/android/dashboard/EntityCatalogStore.kt",
 )
 fun entityCatalogSchemaConstant(name: String): Int {
     val match = Regex("""const\s+val\s+$name\s*=\s*(\d+)""")
@@ -69,7 +69,7 @@ val databaseCompatibilityContract =
 // The native handshake owns its range. Sign the same bounds into each APK so release tooling and
 // uploaded-app admission can inspect the candidate itself without guessing from its version.
 val panelAssistantProtocolSource = rootProject.file(
-    "app/src/main/kotlin/io/github/maxlyth/hapaneld/panelassistant/PanelAssistantTransportProtocol.kt",
+    "app/src/main/kotlin/io/panelassistant/android/panelassistant/PanelAssistantTransportProtocol.kt",
 )
 fun panelAssistantProtocolConstant(name: String): Int {
     val matches = Regex("""(?m)^\s*const\s+val\s+$name\s*=\s*([0-9]+)\s*$""")
@@ -112,7 +112,7 @@ dependencyLocking {
 val appVersion = Properties().apply { file("version.properties").inputStream().use { load(it) } }
 
 android {
-    namespace = "io.github.maxlyth.hapaneld"
+    namespace = "io.panelassistant.android"
     compileSdk = 37
 
     // Pinned independently of AGP's newer default so CI and local builds continue to produce the
@@ -468,6 +468,22 @@ val buildHelperSocketTestServer = tasks.register<Exec>("buildHelperSocketTestSer
     outputs.file(helperSocketTestServer)
 }
 
+// The JNI libraries' binding code built for the host, so NativeLibraryBindingTest loads both against
+// the real Kotlin classes (a missed package rename otherwise fails only on a panel).
+val hostJniLibraries = layout.buildDirectory.dir("host-jni")
+val buildHostJniLibraries = tasks.register<Exec>("buildHostJniLibraries") {
+    commandLine("bash", file("src/test/native/build-host-jni.sh").absolutePath, hostJniLibraries.get().asFile.absolutePath)
+    inputs.files(
+        file("src/test/native"),
+        file("src/main/cpp/led_jni.c"),
+        file("src/main/cpp/microwakeword/MicroWakeWord_jni.cpp"),
+        file("src/main/cpp/microwakeword/MicroWakeWordEngine.h"),
+        file("src/main/cpp/microwakeword/MicroFrontendWrapper.h"),
+        file("src/main/cpp/microwakeword/Logging.h"),
+    )
+    outputs.dir(hostJniLibraries)
+}
+
 // Files the JVM unit tests read from the working tree at run time, outside the test classpath: whole-tree
 // source scans, source-slicing wiring contracts, shipped web assets, the manifest, resource XML, build
 // scripts and a few repository documents and fixtures. Gradle fingerprints only declared inputs, so an
@@ -525,6 +541,8 @@ tasks.withType<Test>().configureEach {
     if (System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
         dependsOn(buildHelperSocketTestServer)
         systemProperty("hapaneld.helper.socketTestServer", helperSocketTestServer.absolutePath)
+        dependsOn(buildHostJniLibraries)
+        systemProperty("hapaneld.test.hostJniDirectory", hostJniLibraries.get().asFile.absolutePath)
     }
     // RELATIVE path sensitivity keys the fingerprint on content plus tree-relative path, so a clean
     // checkout at another location reuses the cache while any byte change invalidates it.
