@@ -122,6 +122,7 @@ internal class MicrophoneMutedChip private constructor(
                 ).apply { setMargins(margin, margin, margin, margin) },
             )
             return MicrophoneMutedChip(chip, strings.get("shell.microphone_muted"), strings.get("shell.microphone_on"))
+                .also { chip.tag = it }
         }
     }
 }

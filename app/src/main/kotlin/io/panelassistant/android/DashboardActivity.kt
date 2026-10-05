@@ -250,7 +250,6 @@ class DashboardActivity : AppCompatActivity() {
     private var root: FrameLayout? = null                       // holds the swipe layout + fullscreen video
     private var lifecycleBar: HaLifecycleBar? = null            // native HA outage bar, lives inside `root`
     private var networkChip: HaNetworkChip? = null              // native "HA network slow" chip, same root
-    private var microphoneMutedChip: io.panelassistant.android.assist.MicrophoneMutedChip? = null // in the decor, like the voice glow
 
     /**
      * Marshals to the UI thread because the state machine is driven from the service's IO scope.
@@ -797,7 +796,7 @@ class DashboardActivity : AppCompatActivity() {
         activityConfig.registerChangeListener(rendererPowerListener)
         // A resume that came while preparation was suspended returned before attaching the voice
         // overlays; without this the mute chip and listening glow wait for the next resume.
-        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) showVoiceRipple()
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) io.panelassistant.android.assist.VoiceOverlays.show(this)
         // The service's camera owner publishes the prompt state on its own lane; the listener posts
         // to main (never inline) and the delivery gate defers to the lifecycle's ON_RESUME, which is
         // the first point AndroidX reports RESUMED. Registering fires at once if an ask is already due.
@@ -2338,7 +2337,7 @@ class DashboardActivity : AppCompatActivity() {
         // Below API 29 onTopResumedActivityChanged is never delivered, so resume owns visibility there.
         if (resumeOwnsAdmissionVisibility(android.os.Build.VERSION.SDK_INT)) onAdmissionVisibilityChanged(true)
         BuiltinDashboard.setActivityForeground(activityOwner, dashboardIsTopResumed)
-        showVoiceRipple()
+        io.panelassistant.android.assist.VoiceOverlays.show(this)
         if (::activityConfig.isInitialized) applyRendererScreenPolicy()
         applyFullscreen()
         applyOverscroll()
@@ -2423,57 +2422,8 @@ class DashboardActivity : AppCompatActivity() {
         if (maintenanceFence.stop(this)) return
         if (hasFocus && ::activityConfig.isInitialized) applyFullscreen()
     }
-    /**
-     * The voice assistant's listening ripple, drawn in this window above whatever the dashboard shows. It
-     * is a child of the decor view, so every content swap keeps it on top, and it never takes a touch.
-     */
-    private fun showVoiceRipple() {
-        val decor = window.decorView as? android.view.ViewGroup ?: return
-        val view = decor.findViewWithTag<io.panelassistant.android.assist.WakeRippleView>(VOICE_RIPPLE_TAG)
-            ?: io.panelassistant.android.assist.WakeRippleView(this).also {
-                it.tag = VOICE_RIPPLE_TAG
-                decor.addView(it, android.view.ViewGroup.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                ))
-            }
-        val glow = decor.findViewWithTag<io.panelassistant.android.assist.ListeningGlowView>(VOICE_GLOW_TAG)
-            ?: io.panelassistant.android.assist.ListeningGlowView(this).also {
-                it.tag = VOICE_GLOW_TAG
-                it.visibility = android.view.View.GONE
-                decor.addView(it, android.view.ViewGroup.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                ))
-            }
-        io.panelassistant.android.assist.VoiceAttention.ripple = {
-            runOnUiThread {
-                view.bringToFront()
-                view.setColor(io.panelassistant.android.assist.VoiceAttention.color)
-                view.startRipple()
-            }
-        }
-        io.panelassistant.android.assist.VoiceAttention.listening = { active ->
-            runOnUiThread {
-                glow.bringToFront()
-                glow.setColor(io.panelassistant.android.assist.VoiceAttention.color)
-                glow.setListening(active)
-            }
-        }
-        glow.setColor(io.panelassistant.android.assist.VoiceAttention.color)
-        glow.setListening(io.panelassistant.android.assist.VoiceAttention.attending)
-        val muteChip = microphoneMutedChip
-            ?: io.panelassistant.android.assist.MicrophoneMutedChip.attach(this, decor).also { microphoneMutedChip = it }
-        io.panelassistant.android.assist.VoiceAttention.muteShown = { muted, announce ->
-            runOnUiThread { muteChip.show(muted, announce) }
-        }
-        muteChip.show(io.panelassistant.android.assist.VoiceAttention.muted, announce = false)
-    }
-
     override fun onPause() {
-        io.panelassistant.android.assist.VoiceAttention.ripple = null
-        io.panelassistant.android.assist.VoiceAttention.listening = null
-        io.panelassistant.android.assist.VoiceAttention.muteShown = null
+        io.panelassistant.android.assist.VoiceOverlays.hide()
         dashboardIsTopResumed = false
         onAdmissionVisibilityChanged(false)            // the retry stays armed; only the repaint stops
         BuiltinDashboard.setActivityForeground(activityOwner, false)
@@ -4029,8 +3979,6 @@ class DashboardActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "ha-paneld/dashboard"
-        private const val VOICE_RIPPLE_TAG = "voice-ripple"
-        private const val VOICE_GLOW_TAG = "voice-glow"
         /** Camera trial: the CAMERA runtime-permission request raised when the camera
          *  setting turns on. Distinct from any other request code — this activity had none before. */
         private const val REQUEST_CAMERA_PERMISSION = 4801
