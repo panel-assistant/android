@@ -659,7 +659,7 @@ browserTest('A partially applied locale save releases overrides and preserves it
     if (path === '/api/v1/radio') return json({ present: false });
     if (path === '/api/v1/proximity') return json({ present: false });
     if (path === '/health') return { body: 'ok cfg=locale-partial' };
-  }, () => { state.documents++; return fixture({ 'configure.save.failed': '保存失败。' }); });
+  }, () => { state.documents++; return fixture({ 'configure.save.refused': '未保存：{reason}' }); });
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage();
   page.setDefaultTimeout(3_000);
@@ -683,7 +683,7 @@ browserTest('A partially applied locale save releases overrides and preserves it
     message: 'Language was saved, but touch sound was rejected.',
   }, 500));
   await navigation;
-  await page.getByText('保存失败。', { exact: true }).waitFor();
+  await page.getByText('未保存：Language was saved, but touch sound was rejected.', { exact: true }).waitFor();
   await page.getByText('Anzeigename', { exact: true }).waitFor();
   assert.equal(state.dialogs, 0);
   assert.equal(state.haStatusGets, 2);
