@@ -305,11 +305,12 @@ class VoiceAssistantCoordinator internal constructor(
      */
     fun shutdown(timeoutMs: Long): Boolean {
         if (!closed.compareAndSet(false, true)) return true
-        val job = synchronized(lock) { runJob }
+        // The run and a capture check each hold a lease until their own cleanup has run.
+        val jobs = synchronized(lock) { listOfNotNull(runJob, checkJob) }
         stop()
         val deadline = System.nanoTime() + timeoutMs.coerceAtLeast(0L) * 1_000_000L
-        val drained = job == null || runBlocking {
-            withTimeoutOrNull(remainingMs(deadline)) { job.join() } != null
+        val drained = jobs.isEmpty() || runBlocking {
+            withTimeoutOrNull(remainingMs(deadline)) { jobs.forEach { it.join() } } != null
         }
         // The service owns the source. Only this feature's wake-word/Assist leases are ours to
         // release; a camera STREAM lease must survive a voice restart or stand-down.
@@ -501,39 +502,38 @@ class VoiceAssistantCoordinator internal constructor(
     /** Lease [mic] for a [MicrophoneSelfCheck]; the wake word arms from its result if it passes. */
     private fun checkLocked(mic: MicrophoneSource) {
         if (checkJob != null && checkedSource === mic) return
+        // A check of another source is superseded first, so its cleanup cannot drop the claim taken below.
+        checkJob?.cancel()
         if (!claimForegroundLocked()) {
             state.set(VoiceState.ERROR)
             scheduleRetryLocked()
             return
         }
-        checkJob?.cancel()
         checkedSource = mic
         setCheckLocked(MicrophoneCheck.RUNNING, null)
         state.set(VoiceState.IDLE)
         val probe = MicrophoneSelfCheck()
         val lease = mic.lease(MicPurpose.CALIBRATION, consumer = probe)
-        checkJob = scope.launch {
-            val me = coroutineContext[Job]
-            var verdict: MicrophoneCheck? = null
-            var detail: String? = null
-            try {
-                withTimeoutOrNull(checkTimeoutMs) { while (!probe.complete) delay(CHECK_POLL_MS) }
-                verdict = probe.verdict()
-                detail = (mic.state.value as? MicState.Error)?.reason
-            } finally {
-                lease.close()
-                synchronized(lock) {
-                    if (checkJob === me) checkJob = null
-                    if (verdict != null && armed && checkedSource === mic) {
-                        setCheckLocked(verdict, detail.takeIf { verdict == MicrophoneCheck.NO_AUDIO })
-                        if (verdict == MicrophoneCheck.PASSED && runJob == null) {
-                            armEngineLocked(settings())
-                        } else if (verdict.failed) {
-                            state.set(VoiceState.ERROR)
-                        }
+        val job = scope.launch { withTimeoutOrNull(checkTimeoutMs) { while (!probe.complete) delay(CHECK_POLL_MS) } }
+        checkJob = job
+        // Cleanup belongs to completion, not to the body: a check cancelled before its coroutine ever
+        // runs (voice turned off, or shut down, straight after arming) must still release its lease and
+        // the foreground claim. The handler runs on whichever thread completes or cancels the job.
+        job.invokeOnCompletion { cause ->
+            val detail = (mic.state.value as? MicState.Error)?.reason
+            lease.close()
+            synchronized(lock) {
+                if (checkJob === job) checkJob = null
+                if (cause == null && armed && checkedSource === mic) {
+                    val verdict = probe.verdict()
+                    setCheckLocked(verdict, detail.takeIf { verdict == MicrophoneCheck.NO_AUDIO })
+                    if (verdict == MicrophoneCheck.PASSED && runJob == null) {
+                        armEngineLocked(settings())
+                    } else if (verdict.failed) {
+                        state.set(VoiceState.ERROR)
                     }
-                    if (checkJob == null && runJob == null && wakeLease == null) releaseForegroundLocked()
                 }
+                if (checkJob == null && runJob == null && wakeLease == null) releaseForegroundLocked()
             }
         }
     }

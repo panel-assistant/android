@@ -13,6 +13,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -109,8 +110,8 @@ class VoiceAssistantCoordinatorTest {
     private var source: FakeMicrophoneSource = mic
     private var checkTimeoutMs = 2_000L
 
-    private fun coordinator(retryMs: Long = 60_000, maxTurns: Int = 5) = VoiceAssistantCoordinator(
-        scope = scope,
+    private fun coordinator(retryMs: Long = 60_000, maxTurns: Int = 5, on: CoroutineScope = scope) = VoiceAssistantCoordinator(
+        scope = on,
         settings = { settings },
         microphone = { presence },
         source = { sourceRequests += 1; source },
@@ -224,6 +225,41 @@ class VoiceAssistantCoordinatorTest {
         mic.speakForCheck(live = true)
         settleUntil { engines.isNotEmpty() }
         assertEquals(MicrophoneCheck.PASSED, c.microphoneStatus().check)
+    }
+
+    /** Work queued for [parkedScope], run only by [drainParked], so a check can be cancelled before its body starts. */
+    private val parked = java.util.concurrent.ConcurrentLinkedQueue<Runnable>()
+
+    private fun parkedScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + java.util.concurrent.Executor { parked.add(it) }.asCoroutineDispatcher())
+
+    private fun drainParked() {
+        while (true) (parked.poll() ?: return).run()
+    }
+
+    @Test
+    fun `voice turned off before the check gets a thread still releases the microphone and the claim`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator(on = parkedScope())
+        c.start()
+        assertEquals(listOf(MicPurpose.CALIBRATION), mic.activeLeases.map { it.purpose })
+        settings = settings.copy(enabled = false)
+        c.start()
+        drainParked()
+        assertTrue("the check's lease is released", mic.activeLeases.isEmpty())
+        assertEquals(listOf(true, false), foregroundCalls)
+        assertEquals(MicrophoneCheck.NOT_RUN, c.microphoneStatus().check)
+    }
+
+    @Test
+    fun `shutdown waits for a pending check, which releases the microphone and the claim once it runs`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator(on = parkedScope())
+        c.start()
+        assertFalse("shutdown does not report a drain the check has not done", c.shutdown(50))
+        drainParked()
+        assertTrue("the check's lease is released", mic.activeLeases.isEmpty())
+        assertEquals(listOf(true, false), foregroundCalls)
     }
 
     @Test
