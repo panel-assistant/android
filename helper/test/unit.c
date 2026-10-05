@@ -2325,6 +2325,19 @@ static void test_grant_accessibility(void) {
           "a list already carrying the shorthand is left alone (ran %d calls)\n",
           sysexec_stub_count_argv_calls());
 
+    // The legacy id's shorthand resolves to io.github.maxlyth.hapaneld.input.…, a class that no longer
+    // exists, so it is not a grant: the real component is appended beside it.
+    sysexec_stub_reset();
+    sysexec_stub_add_popen("enabled_accessibility_services", LEGACY_ID "/.input.PanelAccessibilityService\n", 0);
+    dispatch_reply_as(HELPER_CALLER_LEGACY, "GRANT " LEGACY_ID " ACCESSIBILITY", out, sizeof out);
+    const char *const put_legacy[] = {
+        "settings", "put", "secure", "enabled_accessibility_services",
+        LEGACY_ID "/.input.PanelAccessibilityService:" LEGACY_ID "/io.panelassistant.android.input.PanelAccessibilityService",
+        NULL
+    };
+    CHECK(strcmp(out, "OK\n") == 0 && ran_argv("/system/bin/settings", put_legacy) == 1,
+          "a legacy shorthand naming no class gets the real service appended\n");
+
     // An app updated from a build whose classes lived in io.github.maxlyth.hapaneld leaves an entry
     // naming a class that no longer exists. Preserve it and the unrelated vendor service while
     // appending the actual class, then a retry must leave that repaired list alone.
