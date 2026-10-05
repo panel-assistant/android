@@ -58,6 +58,38 @@ import kotlin.test.assertTrue
 
 class ConfigPostProductionRouteTest {
 
+    @Test fun `interface language save persists and changes the sidebar while refusals preserve it`() =
+        withFullReadServer { config, fixture ->
+            testApplication {
+                application { fixture.mount(this) }
+                suspend fun schema() = client.get("/api/v1/config/schema") {
+                    header(EmbedMode.HEADER, "v=1;lang=en")
+                }
+                for (language in listOf("de", "en")) {
+                    val saved = client.submitForm("/api/v1/config", Parameters.build {
+                        append("ui_language", language)
+                    }) { accept(ContentType.Application.Json) }
+                    assertEquals(HttpStatusCode.OK, saved.status)
+                    assertEquals(language, config.uiLanguage)
+                    val readBack = JSONObject(client.get("/api/v1/config").bodyAsText())
+                    assertEquals(language, readBack.getJSONObject("settings").getString("ui_language"))
+                    val localized = schema()
+                    assertEquals(HttpStatusCode.OK, localized.status)
+                    val fields = JSONArray(localized.bodyAsText())
+                    val name = (0 until fields.length()).map(fields::getJSONObject)
+                        .single { it.getString("key") == "friendly_name" }
+                    assertEquals(if (language == "de") "de" else "en", name.getString("labelLanguage"))
+                    assertEquals(if (language == "de") "Anzeigename" else "Friendly name", name.getString("label"))
+                    val refused = client.submitForm("/api/v1/config", Parameters.build {
+                        append("ui_language", "unsupported-locale")
+                    }) { accept(ContentType.Application.Json) }
+                    assertEquals(HttpStatusCode.BadRequest, refused.status)
+                    assertTrue(refused.bodyAsText().startsWith("ui_language: must be one of "))
+                    assertEquals(language, config.uiLanguage, "a refusal must preserve the saved language")
+                }
+            }
+        }
+
     @Test fun `zoom 96 persists through the production route and invalid values explain the rule`() =
         withRouteConfig { config, _, server, _ ->
             testApplication {
@@ -180,6 +212,7 @@ class ConfigPostProductionRouteTest {
                     "config", "system", "sensors", "pendingLiveSettings", "stalledLiveSettings",
                     "configLiveValues", "rendererPreparation", "tameReconciliation", "revisions",
                     "managementObservations", "powerSafety", "stopping", "haArea", "pageHealth",
+                    "directConfigMutationLock", "autoSleepHttpApi", "autoBrightnessHttpApi", "applySetting", "onReconfigure",
                 )) {
                     val value = PaneldServer::class.java.getDeclaredField(name).run {
                         isAccessible = true
