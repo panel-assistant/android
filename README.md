@@ -65,7 +65,7 @@ A new panel can also be installed over USB from Chrome or Edge on a computer: op
 
 The built-in renderer is by far the preferred choice, and the one guided setup uses. It is the only route with dashboard entity filtering, and it also supports signing in from another browser, selecting a specific dashboard tab, and faster startup and recovery. After an app restart, it can reopen the last verified account-default dashboard while it refreshes Home Assistant's dashboard list in the background.
 
-The official [Home Assistant Companion app](https://github.com/home-assistant/android) is still supported as an option, for example when a panel needs more than one Home Assistant server, Assist voice control or native notifications. On a panel without Google Play and with a supported install method, use ha-paneld's Install tab. The picker applies the compatibility limit for that panel instead of assuming the newest Companion release will run on it.
+Using the official [Home Assistant Companion app](https://github.com/home-assistant/android) as the panel dashboard is retired. Panel Assistant and the built-in renderer are the supported route, with Assist voice control through Panel Assistant's own voice satellite, and they avoid a second Home Assistant device with duplicate entities for every panel. A panel already set up with the Companion app keeps working; add it to Panel Assistant and switch the dashboard to the built-in renderer. Panel Assistant does not remove the Companion app or its Home Assistant device, so you can compare before deciding.
 
 <a id="panels-and-support-status"></a>
 
@@ -163,7 +163,7 @@ I do not recommend running [Fully Kiosk Browser](https://www.fully-kiosk.com/) a
 - Entity filtering is part of ha-paneld's built-in renderer, so a separate browser cannot use it.
 - Fully Kiosk is configured separately on each device, which becomes awkward when several different makes of panel need to behave consistently.
 
-Use one dashboard app on the panel: ha-paneld's built-in renderer, Companion, or a separate kiosk browser if it provides something the other two do not.
+Use one dashboard app on the panel: ha-paneld's built-in renderer, or a separate kiosk browser if it provides something the built-in renderer does not.
 
 </details>
 
