@@ -794,6 +794,9 @@ class DashboardActivity : AppCompatActivity() {
         }
         activityConfig = config
         activityConfig.registerChangeListener(rendererPowerListener)
+        // A resume that came while preparation was suspended returned before attaching the voice
+        // overlays; without this the mute chip and listening glow wait for the next resume.
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) showVoiceRipple()
         // The service's camera owner publishes the prompt state on its own lane; the listener posts
         // to main (never inline) and the delivery gate defers to the lifecycle's ON_RESUME, which is
         // the first point AndroidX reports RESUMED. Registering fires at once if an ask is already due.
