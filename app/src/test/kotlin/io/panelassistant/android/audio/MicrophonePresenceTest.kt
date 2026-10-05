@@ -18,4 +18,18 @@ class MicrophonePresenceTest {
             assertEquals("declared=${input.first} reported=${input.second}", presence, MicrophonePresence.resolve(input.first, input.second))
         }
     }
+
+    @Test fun `the mute is reported once per press, and an unreadable mute reads as unmuted`() {
+        var reading: () -> Boolean = { false }
+        val mute = MicrophoneMute { reading() }
+        val seen = mutableListOf<Pair<Boolean, Boolean>>()
+        fun poll() { seen += mute.refresh() to mute.muted }
+        poll()
+        reading = { true }
+        poll()
+        poll()
+        reading = { error("audio service gone") }
+        poll()
+        assertEquals(listOf(false to false, true to true, false to true, true to false), seen)
+    }
 }

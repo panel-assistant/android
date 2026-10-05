@@ -1011,6 +1011,10 @@ class PaneldService : Service() {
     private lateinit var voice: io.panelassistant.android.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.panelassistant.android.assist.ConfiguredMicrophoneSource
     private val microphoneClaims = io.panelassistant.android.audio.MicrophoneForegroundClaims(::updateMicrophoneForeground)
+    // Only an offered microphone is reported muted: a panel without one has nothing to say about it.
+    private val microphoneMute = io.panelassistant.android.audio.MicrophoneMute {
+        microphonePresence().offered && getSystemService(android.media.AudioManager::class.java)?.isMicrophoneMute == true
+    }
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null
@@ -1579,6 +1583,7 @@ class PaneldService : Service() {
             audio = audio,
             microphone = { microphonePresence() },
             onMicrophoneStatus = { panelAssistantVoice.configurationChanged() },
+            muted = { microphoneMute.muted },
             source = { sharedMicrophone.get() },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
@@ -1597,6 +1602,16 @@ class PaneldService : Service() {
             val state = voiceStateAuthority.current()
             io.panelassistant.android.assist.VoiceAttention.phase(state)
             media.hold(io.panelassistant.android.media.PanelMediaPlayer.Hold.VOICE, state.inTurn)
+        }
+        // Android 8.1 has no broadcast for the microphone mute, so it is read once a second.
+        scope.launch {
+            while (isActive) {
+                if (microphoneMute.refresh()) {
+                    io.panelassistant.android.assist.VoiceAttention.microphoneMuted(microphoneMute.muted)
+                    voice.microphoneMuteChanged()
+                }
+                kotlinx.coroutines.delay(io.panelassistant.android.audio.MicrophoneMute.POLL_MS)
+            }
         }
         system = SystemController(AndroidSystemEnv(this), vendorHomePackages = profile.vendorHomePackages, beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)

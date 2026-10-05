@@ -49,6 +49,30 @@ enum class MicrophonePresence {
     }
 }
 
+/**
+ * Android's aggregate microphone mute (`AudioManager.isMicrophoneMute`), which a hardware privacy switch
+ * such as the Tuya TPA10's sets. Polled, because Android 8.1, which most panels run, has no broadcast for
+ * it; [refresh] reports only a change, so a caller acts once per press.
+ */
+class MicrophoneMute(private val read: () -> Boolean) {
+    @Volatile
+    var muted: Boolean = false
+        private set
+
+    /** Read the mute again; true when it changed. */
+    @Synchronized
+    fun refresh(): Boolean {
+        val now = runCatching(read).getOrDefault(false)
+        if (now == muted) return false
+        muted = now
+        return true
+    }
+
+    companion object {
+        const val POLL_MS = 1_000L
+    }
+}
+
 /** What the panel's own capture check found. */
 enum class MicrophoneCheck {
     /** Not run: the microphone is proven by its profile, absent, or voice has not armed on it yet. */
@@ -72,12 +96,18 @@ enum class MicrophoneCheck {
     val failed: Boolean get() = this == SILENT || this == NO_AUDIO
 }
 
-/** The microphone as every surface reports it: what the panel has and what its check found. */
+/**
+ * The microphone as every surface reports it: what the panel has, what its check found, and whether it is
+ * muted. Mute is the owner's choice (a hardware switch, or another app), never a fault: while it lasts the
+ * check is not run and no failed verdict is reported, and nothing here ever undoes it.
+ */
 data class MicrophoneStatus(
     val presence: MicrophonePresence,
     val check: MicrophoneCheck = MicrophoneCheck.NOT_RUN,
     /** The capture's own error when [check] is [MicrophoneCheck.NO_AUDIO], when it gave one. */
     val detail: String? = null,
+    /** Android reports the microphone muted; never true for an [MicrophonePresence.ABSENT] one. */
+    val muted: Boolean = false,
 ) {
     /** Voice may listen now: a proven microphone, or an unproven one whose check passed. */
     val usable: Boolean

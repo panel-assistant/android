@@ -205,8 +205,8 @@
   }
 
   // What the panel's microphone is and what its own capture check found (GET api/v1/voice/microphone),
-  // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read at most
-  // every few seconds while the card is drawn, and sooner while a check is still running.
+  // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read every few
+  // seconds while the page shows a panel with a microphone.
   var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false;
   function loadVoiceMicrophone() {
     if (voiceMicrophoneLoading || Date.now() - voiceMicrophoneAt < 3000) return;
@@ -217,7 +217,8 @@
         var changed = JSON.stringify(d) !== JSON.stringify(voiceMicrophone);
         voiceMicrophone = d;
         if (changed) cfg.render();
-        if (d && d.check === "running") setTimeout(loadVoiceMicrophone, 3000);
+        // Kept current while the page is visible, so a mute switch pressed now shows within seconds.
+        if (d && (d.check === "running" || (d.presence !== "absent" && !document.hidden))) setTimeout(loadVoiceMicrophone, 3000);
       })
       .catch(function () { /* the card stays as the schema draws it */ })
       .then(function () { voiceMicrophoneLoading = false; voiceMicrophoneAt = Date.now(); });
@@ -235,6 +236,8 @@
     var status = voiceMicrophone, text = null;
     if (voiceGroupUnavailable()) {
       text = cfg.i18nText("configure.voice.microphone_absent", "This panel reports no microphone, or its device profile sets hardware.microphone to false, so voice is not offered.");
+    } else if (status && status.muted === true) {
+      text = cfg.i18nText("configure.voice.microphone_muted", "Microphone muted. The panel hears nothing until its microphone is unmuted.");
     } else if (status && status.check === "silent") {
       text = cfg.i18nText("configure.voice.microphone_silent", "The microphone recorded only silence when the panel checked it, so the panel is not listening. Try another audio source, or turn the voice assistant off and on to check again.");
     } else if (status && status.check === "no_audio") {

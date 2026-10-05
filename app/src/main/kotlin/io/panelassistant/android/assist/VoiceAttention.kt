@@ -48,6 +48,20 @@ internal object VoiceAttention {
         listening?.invoke(now)
     }
 
+    /** Set by the dashboard while it is resumed: show or clear its "Microphone muted" chip. */
+    @Volatile
+    var muteShown: ((Boolean) -> Unit)? = null
+
+    @Volatile
+    var muted = false
+        private set
+
+    /** The panel's microphone was muted or unmuted; the dashboard says so while it is muted. */
+    fun microphoneMuted(now: Boolean) {
+        muted = now
+        muteShown?.invoke(now)
+    }
+
     private var pool: SoundPool? = null
 
     @Volatile

@@ -5660,6 +5660,7 @@
       "context": "Configure page, Voice card: why the panel's voice assistant is not listening on this panel, and what would change the answer; preserve the operational meaning and render as text, not HTML.",
       "risk": "consequential",
       "siblings": [
+        "configure.voice.microphone_muted",
         "configure.voice.microphone_no_audio",
         "configure.voice.microphone_silent"
       ],
@@ -5671,6 +5672,23 @@
       "softMaxChars": 161,
       "hardMaxChars": 230
     },
+    "configure.voice.microphone_muted": {
+      "text": "Microphone muted. The panel hears nothing until its microphone is unmuted.",
+      "sourceHash": "1c8015177506eead973a22ded414317f38c61b3a5c615315b2467e717f7f7c87",
+      "surface": "configure",
+      "context": "Configure page, Voice card: the panel's microphone is muted (for example by a hardware privacy switch), so the voice assistant hears nothing; the panel never unmutes it itself. Render as text, not HTML.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.voice.microphone_absent",
+        "configure.voice.microphone_no_audio",
+        "configure.voice.microphone_silent",
+        "shell.microphone_muted"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 110,
+      "hardMaxChars": 160
+    },
     "configure.voice.microphone_no_audio": {
       "text": "The microphone delivered no audio when the panel checked it, so the panel is not listening. Turn the voice assistant off and on to check again.",
       "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
@@ -5679,6 +5697,7 @@
       "risk": "consequential",
       "siblings": [
         "configure.voice.microphone_absent",
+        "configure.voice.microphone_muted",
         "configure.voice.microphone_silent"
       ],
       "placeholders": [],
@@ -5694,6 +5713,7 @@
       "risk": "consequential",
       "siblings": [
         "configure.voice.microphone_absent",
+        "configure.voice.microphone_muted",
         "configure.voice.microphone_no_audio"
       ],
       "placeholders": [],
@@ -38137,6 +38157,20 @@
       "frozen": [],
       "softMaxChars": 12,
       "hardMaxChars": 24
+    },
+    "shell.microphone_muted": {
+      "text": "Microphone muted",
+      "sourceHash": "984fdad8bb94eedbcd1657cb3fdb0c09e558af95a7da4f7fac8dd7e1524b7c54",
+      "surface": "shell",
+      "context": "A small label in the corner of the panel's dashboard while the microphone is muted, for example by the panel's hardware privacy switch; it disappears when the microphone is unmuted.",
+      "risk": "ordinary",
+      "siblings": [
+        "configure.voice.microphone_muted"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 24,
+      "hardMaxChars": 32
     },
     "shell.migration.body": {
       "text": "Add the Panel Assistant integration in Home Assistant to manage this panel. MQTT support will be removed.",

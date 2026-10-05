@@ -2133,6 +2133,11 @@
       "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
       "state": "machine-cross-checked"
     },
+    "configure.voice.microphone_muted": {
+      "text": "Micrófono silenciado. El panel no oye nada hasta que se reactive su micrófono.",
+      "sourceHash": "1c8015177506eead973a22ded414317f38c61b3a5c615315b2467e717f7f7c87",
+      "state": "machine-cross-checked"
+    },
     "configure.voice.microphone_no_audio": {
       "text": "El micrófono no entregó audio cuando el panel lo comprobó, por lo que el panel no está escuchando. Desactiva y vuelve a activar el asistente de voz para comprobarlo de nuevo.",
       "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
@@ -12407,6 +12412,11 @@
       "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
       "state": "machine-cross-checked",
       "text": "Descartar aviso de red"
+    },
+    "shell.microphone_muted": {
+      "text": "Micrófono silenciado",
+      "sourceHash": "984fdad8bb94eedbcd1657cb3fdb0c09e558af95a7da4f7fac8dd7e1524b7c54",
+      "state": "machine-cross-checked"
     },
     "shell.hardened.key": {
       "sourceHash": "1cad2d18d4f0144e285115b035fa35f596fd66292288a07b1e25dd45b569f51a",

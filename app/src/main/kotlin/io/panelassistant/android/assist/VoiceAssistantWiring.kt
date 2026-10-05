@@ -141,6 +141,7 @@ internal fun voiceAssistantCoordinator(
     audio: AudioPlaybackCoordinator,
     microphone: () -> io.panelassistant.android.audio.MicrophonePresence,
     onMicrophoneStatus: () -> Unit,
+    muted: () -> Boolean,
     foregroundMicrophone: (Boolean) -> Boolean,
     state: VoiceStateAuthority,
     engineFactory: WakeWordEngineFactory,
@@ -166,5 +167,6 @@ internal fun voiceAssistantCoordinator(
         state = state,
         attention = VoiceAttention::cue,
         onMicrophoneStatus = onMicrophoneStatus,
+        muted = muted,
     ).also { VoiceAttention.prepare(context) }
 }

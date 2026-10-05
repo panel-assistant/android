@@ -64,15 +64,17 @@ class VoiceProductionHttpTest {
         mount()
         val cases = listOf(
             MicrophoneStatus(MicrophonePresence.PROVEN) to
-                """{"presence":"proven","check":"not_run","detail":null}""",
+                """{"presence":"proven","check":"not_run","detail":null,"muted":false}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED) to
-                """{"presence":"unproven","check":"passed","detail":null}""",
+                """{"presence":"unproven","check":"passed","detail":null,"muted":false}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.SILENT) to
-                """{"presence":"unproven","check":"silent","detail":null}""",
+                """{"presence":"unproven","check":"silent","detail":null,"muted":false}""",
             MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.NO_AUDIO, "AudioRecord init failed") to
-                """{"presence":"unproven","check":"no_audio","detail":"AudioRecord init failed"}""",
+                """{"presence":"unproven","check":"no_audio","detail":"AudioRecord init failed","muted":false}""",
             MicrophoneStatus(MicrophonePresence.ABSENT) to
-                """{"presence":"absent","check":"not_run","detail":null}""",
+                """{"presence":"absent","check":"not_run","detail":null,"muted":false}""",
+            MicrophoneStatus(MicrophonePresence.UNPROVEN, muted = true) to
+                """{"presence":"unproven","check":"not_run","detail":null,"muted":true}""",
         )
         cases.forEach { (status, body) ->
             microphoneStatus = status
