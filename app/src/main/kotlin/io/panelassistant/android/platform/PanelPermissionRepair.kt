@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.util.Log
 import io.panelassistant.android.AppIdentity
 import io.panelassistant.android.camera.CameraCapabilityReason
+import io.panelassistant.android.control.Su
 import io.panelassistant.android.util.HelperClient
 
 /** Repair installer omissions before the service constructs its feature owners. */
@@ -40,10 +41,10 @@ internal object PanelPermissionRepair {
 
     fun repair(context: Context, hasMicrophone: Boolean, cameraReason: CameraCapabilityReason) {
         repair(Build.VERSION.SDK_INT, hasMicrophone, cameraRequired(context, cameraReason),
-            { granted(context, it) }, HelperClient, context.packageName).forEach { (grant, outcome) ->
+            { granted(context, it) }, HelperClient, context.packageName, Su).forEach { (grant, outcome) ->
             when (outcome) {
                 Outcome.HELD -> Unit
-                Outcome.CLAIMED -> Log.i(TAG, "${grant.name.lowercase()} permission repaired through the root helper")
+                Outcome.CLAIMED -> Log.i(TAG, "${grant.name.lowercase()} permission repaired")
                 else -> Log.w(TAG, "${grant.name.lowercase()} permission not repaired (${outcome.name.lowercase()}); dependent features remain unavailable")
             }
         }
@@ -111,6 +112,10 @@ internal object PanelPermissionRepair {
      * Only an observed missing grant is submitted. Re-reading Android, rather than trusting an OK,
      * proves the repair; an unreadable state or a refused grant leaves the rest of startup running.
      * Camera/microphone access does not enable their features or open either device.
+     *
+     * Accessibility alone falls back to [root] when the helper cannot grant it: a helper installed
+     * before the 0.9.10 package move writes only the pre-move class, and the app cannot always replace
+     * that helper, while su is held on most panels. The other grants stay helper-only.
      */
     fun repair(
         sdkInt: Int,
@@ -119,6 +124,7 @@ internal object PanelPermissionRepair {
         granted: (Grant) -> Boolean,
         helper: Daemon,
         packageName: String,
+        root: RootShell? = null,
     ): Map<Grant, Outcome> = Grant.entries.filter { required(sdkInt, hasMicrophone, hasCamera, it) != false }
         .associateWith { grant ->
             when (observe(grant, required(sdkInt, hasMicrophone, hasCamera, grant), granted)) {
@@ -127,6 +133,11 @@ internal object PanelPermissionRepair {
                 State.MISSING -> {
                     val reply = runCatching { helper.sendLong("GRANT $packageName ${grant.name}", TIMEOUT_MS) }.getOrNull()
                     // A lost reply may still have granted it. Android's readback remains the authority.
+                    if (grant == Grant.ACCESSIBILITY && root != null && observe(grant, granted) == State.MISSING &&
+                        root.available()
+                    ) {
+                        grantAccessibilityAsRoot(root, packageName)
+                    }
                     when (observe(grant, granted)) {
                         State.HELD -> Outcome.CLAIMED
                         State.UNREADABLE -> Outcome.UNREADABLE
@@ -136,6 +147,23 @@ internal object PanelPermissionRepair {
             }
         }
 
+    /**
+     * The helper's GRANT ACCESSIBILITY over su: a read-modify-write of the shared list that appends
+     * this app's component, then enables accessibility. A list it cannot account for is not written
+     * back, which also keeps every value free of shell metacharacters.
+     */
+    internal fun grantAccessibilityAsRoot(root: RootShell, packageName: String): Boolean {
+        val component = "$packageName/${AppIdentity.CODE_PACKAGE}.input.PanelAccessibilityService"
+        val current = root.runOutput("settings get secure enabled_accessibility_services")?.trim() ?: return false
+        val entries = if (current.isEmpty() || current == "null") emptyList() else current.split(':')
+        if (!(entries + component).all(ACCESSIBILITY_ENTRY::matches)) return false
+        if (component !in entries &&
+            !root.run("settings put secure enabled_accessibility_services ${(entries + component).joinToString(":")}")
+        ) return false
+        return root.run("settings put secure accessibility_enabled 1")
+    }
+
+    private val ACCESSIBILITY_ENTRY = Regex("[A-Za-z0-9._/-]+")
     private const val TIMEOUT_MS = 30_000L
     private const val TAG = "ha-paneld/permissions"
 }

@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import io.panelassistant.android.AppIdentity
 import io.panelassistant.android.camera.CameraCapabilityReason
+import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.platform.PanelPermissionRepair.Grant
 import io.panelassistant.android.platform.PanelPermissionRepair.Outcome
 import io.panelassistant.android.platform.PanelPermissionRepair.State
@@ -216,6 +217,65 @@ class PanelPermissionRepairTest {
         assertEquals(listOf("GRANT $pkg ACCESSIBILITY"), submitted)
         assertEquals(Outcome.HELD, PanelPermissionRepair.repair(34, true, true, held, helper, pkg)[Grant.ACCESSIBILITY])
         assertEquals("a second start writes nothing", 1, submitted.size)
+    }
+
+    private val stale = "com.vendor/.Reader:${AppIdentity.SUCCESSOR}/io.github.maxlyth.hapaneld.input.PanelAccessibilityService"
+    private val moved = "${AppIdentity.SUCCESSOR}/io.panelassistant.android.input.PanelAccessibilityService"
+
+    /** A panel whose accessibility list is changed only by what the root shell runs. */
+    private class RootedPanel(var services: String, var enabled: Boolean = false, available: Boolean = true) {
+        val root = FakeRootShell(
+            outputs = mapOf("settings get secure enabled_accessibility_services" to "$services\n"),
+            available = available,
+            onRun = { cmd ->
+                when {
+                    cmd.startsWith("settings put secure enabled_accessibility_services ") ->
+                        services = cmd.removePrefix("settings put secure enabled_accessibility_services ")
+                    cmd == "settings put secure accessibility_enabled 1" -> enabled = true
+                }
+            },
+        )
+        fun held(grant: Grant) =
+            grant != Grant.ACCESSIBILITY || PanelPermissionRepair.accessibilityHeld(AppIdentity.SUCCESSOR, services, enabled)
+    }
+
+    /** A helper that cannot add the moved class: absent, or installed before the package move. */
+    private fun helper(reply: DaemonLongResult) = object : Daemon {
+        override fun available() = reply != DaemonLongResult.NotSubmitted
+        override fun send(cmd: String): String? = error("unexpected $cmd")
+        override fun sendBytes(cmd: String): ByteArray? = error("unexpected $cmd")
+        override fun sendLong(cmd: String, timeoutMs: Long) = reply
+    }
+
+    @Test fun withoutAHelperThatCanGrantItSuAppendsTheMovedAccessibilityClass() {
+        for (reply in listOf(DaemonLongResult.NotSubmitted, DaemonLongResult.Reply("OK"))) {
+            val panel = RootedPanel(stale)
+            val outcome = PanelPermissionRepair.repair(34, true, true, panel::held, helper(reply), AppIdentity.SUCCESSOR, panel.root)
+            assertEquals("helper $reply", Outcome.CLAIMED, outcome[Grant.ACCESSIBILITY])
+            assertEquals("$stale:$moved", panel.services)
+            assertTrue(panel.enabled)
+            assertEquals("a second start writes nothing", Outcome.HELD,
+                PanelPermissionRepair.repair(34, true, true, panel::held, helper(reply), AppIdentity.SUCCESSOR, panel.root)[Grant.ACCESSIBILITY])
+            assertEquals(2, panel.root.ran.size)
+        }
+    }
+
+    @Test fun anUnsetListGetsTheComponentAloneAndNoSuLeavesTheOutcomeAsItWas() {
+        val unset = RootedPanel("null")
+        PanelPermissionRepair.repair(34, true, true, unset::held, helper(DaemonLongResult.NotSubmitted), AppIdentity.SUCCESSOR, unset.root)
+        assertEquals(moved, unset.services)
+
+        val noSu = RootedPanel(stale, available = false)
+        assertEquals(Outcome.NO_HELPER, PanelPermissionRepair.repair(34, true, true, noSu::held,
+            helper(DaemonLongResult.NotSubmitted), AppIdentity.SUCCESSOR, noSu.root)[Grant.ACCESSIBILITY])
+        assertTrue(noSu.root.ran.isEmpty())
+    }
+
+    @Test fun aListSuCannotAccountForIsNeverWrittenBack() {
+        val panel = RootedPanel("com.vendor/.A;reboot")
+        assertEquals(Outcome.NO_HELPER, PanelPermissionRepair.repair(34, true, true, panel::held,
+            helper(DaemonLongResult.NotSubmitted), AppIdentity.SUCCESSOR, panel.root)[Grant.ACCESSIBILITY])
+        assertTrue(panel.root.ran.isEmpty())
     }
 
     @Test fun accessibilityRequiresOurExactComponentAndTheGlobalEnableFlag() {
