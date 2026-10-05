@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.util
 import android.net.LocalSocket
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.platform.Daemon
 import io.github.maxlyth.hapaneld.platform.DaemonLongResult
 import io.github.maxlyth.hapaneld.platform.DaemonStreamResult

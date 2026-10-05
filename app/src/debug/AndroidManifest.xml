@@ -7,7 +7,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <activity
-            android:name=".StatusSurfaceTestHost"
+            android:name="io.github.maxlyth.hapaneld.StatusSurfaceTestHost"
             android:exported="false" />
     </application>
 </manifest>

@@ -1,7 +1,7 @@
 package io.github.maxlyth.hapaneld.util
 
 import io.github.maxlyth.hapaneld.AppIdentity
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame

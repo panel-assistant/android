@@ -26,7 +26,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import io.github.maxlyth.hapaneld.R
+import io.panelassistant.android.R
 import io.github.maxlyth.hapaneld.nativeString
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOutcome

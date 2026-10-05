@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.R
 import android.content.Context
 import android.graphics.Color
 import android.view.Gravity

@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.testsupport.TestSources
 import java.util.Properties
 import org.junit.Assert.assertEquals

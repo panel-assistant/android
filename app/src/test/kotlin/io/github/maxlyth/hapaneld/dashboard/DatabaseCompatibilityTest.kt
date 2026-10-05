@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.dashboard
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.util.DatabaseCompatibilityApkContract
 import java.io.File
 import org.junit.Assert.assertEquals

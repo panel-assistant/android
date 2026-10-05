@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.shizuku
 import android.content.Intent
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import io.github.maxlyth.hapaneld.R
+import io.panelassistant.android.R
 
 /** On-panel-only opt-in surface. ConfigActivity is not exported and there is no remote equivalent. */
 object ShizukuSetupDialog {

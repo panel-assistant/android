@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.http
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals

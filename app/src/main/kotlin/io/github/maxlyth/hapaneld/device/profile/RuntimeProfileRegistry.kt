@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.device.profile
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import io.github.maxlyth.hapaneld.device.EvdevButton
 import io.github.maxlyth.hapaneld.device.LedMechanism

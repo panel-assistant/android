@@ -85,14 +85,14 @@ class CameraManifestContractTest {
     @Test fun theCameraServiceIsDedicatedAndUnexported() {
         assertTrue(
             manifest.contains(
-                """android:name=".camera.CameraForegroundService"
+                """android:name="io.github.maxlyth.hapaneld.camera.CameraForegroundService"
             android:exported="false"""",
             ),
         )
     }
 
     private companion object {
-        const val PANELD_SERVICE = ".PaneldService"
-        const val CAMERA_SERVICE = ".camera.CameraForegroundService"
+        const val PANELD_SERVICE = "io.github.maxlyth.hapaneld.PaneldService"
+        const val CAMERA_SERVICE = "io.github.maxlyth.hapaneld.camera.CameraForegroundService"
     }
 }

@@ -7,7 +7,7 @@ import android.os.Process
 import android.system.Os
 import android.system.OsConstants
 import android.util.Log
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
 import io.github.maxlyth.hapaneld.dashboard.DatabaseRestoreGuardBinding
 import io.github.maxlyth.hapaneld.dashboard.DatabaseRestoreGuardContext

@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.util
 import android.content.Context
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

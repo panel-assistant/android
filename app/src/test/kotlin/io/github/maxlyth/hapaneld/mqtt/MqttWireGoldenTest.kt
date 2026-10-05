@@ -6,7 +6,7 @@ import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.content.res.Resources
 import android.media.AudioManager
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.MqttAddressFamily
 import io.github.maxlyth.hapaneld.MqttBridge

@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.util
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.control.Su
 import java.io.File
 import java.security.MessageDigest

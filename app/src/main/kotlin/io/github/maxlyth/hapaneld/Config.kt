@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
 import android.content.Context
 import android.content.ContentResolver
 import android.content.SharedPreferences

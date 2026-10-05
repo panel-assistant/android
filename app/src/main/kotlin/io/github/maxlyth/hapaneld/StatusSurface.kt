@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
+import io.panelassistant.android.R
 import io.github.maxlyth.hapaneld.util.DashboardTheme
 import android.app.Activity
 import android.content.res.ColorStateList

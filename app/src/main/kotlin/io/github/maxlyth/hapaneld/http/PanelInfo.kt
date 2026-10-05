@@ -13,7 +13,7 @@ import android.webkit.WebSettings
 import io.github.maxlyth.hapaneld.control.SystemController
 import io.github.maxlyth.hapaneld.device.DeviceProfile
 import android.webkit.WebView
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogStore
 import io.github.maxlyth.hapaneld.util.AccessDenialMemo
 import io.github.maxlyth.hapaneld.util.CompanionInstaller

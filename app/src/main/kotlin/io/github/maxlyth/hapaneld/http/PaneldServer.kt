@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.http
 import android.content.Context
 import android.util.Log
 import io.github.maxlyth.hapaneld.Config
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.DiscoveryResult
 import io.github.maxlyth.hapaneld.LiveSettingRequestOutcome
 import io.github.maxlyth.hapaneld.peersJson

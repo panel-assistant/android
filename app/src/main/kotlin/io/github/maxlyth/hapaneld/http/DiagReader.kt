@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.http
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.control.Su
 import io.github.maxlyth.hapaneld.control.TameController
 import io.github.maxlyth.hapaneld.control.PrivilegedRouteObservation

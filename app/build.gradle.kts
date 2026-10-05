@@ -112,7 +112,7 @@ dependencyLocking {
 val appVersion = Properties().apply { file("version.properties").inputStream().use { load(it) } }
 
 android {
-    namespace = "io.github.maxlyth.hapaneld"
+    namespace = "io.panelassistant.android"
     compileSdk = 37
 
     // Pinned independently of AGP's newer default so CI and local builds continue to produce the

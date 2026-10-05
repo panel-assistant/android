@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent

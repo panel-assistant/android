@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
+import io.panelassistant.android.R
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context

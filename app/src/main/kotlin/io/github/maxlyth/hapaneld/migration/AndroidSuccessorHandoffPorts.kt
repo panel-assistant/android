@@ -3,7 +3,7 @@ package io.github.maxlyth.hapaneld.migration
 import android.content.Context
 import android.os.Build
 import io.github.maxlyth.hapaneld.AppIdentity
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.Config
 import io.github.maxlyth.hapaneld.control.SystemController
 import io.github.maxlyth.hapaneld.util.AppInstaller

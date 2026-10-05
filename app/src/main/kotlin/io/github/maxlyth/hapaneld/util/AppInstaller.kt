@@ -5,7 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import io.github.maxlyth.hapaneld.AppIdentity
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantUpdatePolicy
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibility
 import io.github.maxlyth.hapaneld.dashboard.DatabaseCompatibilityBoundary

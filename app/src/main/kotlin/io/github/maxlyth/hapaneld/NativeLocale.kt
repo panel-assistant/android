@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
+import io.panelassistant.android.R
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources

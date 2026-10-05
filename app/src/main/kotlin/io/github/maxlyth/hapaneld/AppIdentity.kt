@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
+
 /**
  * The two installable identities one source tree builds. A new applicationId is a new app to Android,
  * so a panel moves from [LEGACY] to [SUCCESSOR] by running both for one handover: the `bridge` build

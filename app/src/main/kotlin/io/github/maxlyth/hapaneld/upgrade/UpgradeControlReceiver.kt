@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
 import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context

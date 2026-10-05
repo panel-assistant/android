@@ -85,7 +85,7 @@ class BundledHelperInstallerTest {
         val process = ProcessBuilder("bash", sourceId.absolutePath).redirectErrorStream(true).start()
         val shellId = process.inputStream.bufferedReader().readText().trim()
         assertEquals(0, process.waitFor())
-        assertEquals(io.github.maxlyth.hapaneld.BuildConfig.HELPER_BUILD_ID, shellId)
+        assertEquals(io.panelassistant.android.BuildConfig.HELPER_BUILD_ID, shellId)
     }
 
     @Test fun `stage command atomically publishes a bounded candidate under shared authority lock`() {

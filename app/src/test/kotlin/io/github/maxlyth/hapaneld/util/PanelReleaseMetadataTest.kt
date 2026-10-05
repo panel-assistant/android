@@ -1,7 +1,7 @@
 package io.github.maxlyth.hapaneld.util
 
 import io.github.maxlyth.hapaneld.AppIdentity
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.panelassistant.PanelAssistantUpdatePolicy
 import org.json.JSONArray
 import org.json.JSONObject

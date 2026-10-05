@@ -118,7 +118,7 @@ class PageRoutesHttpTest {
                 assertTrue(response.headers[HttpHeaders.ContentLanguage].orEmpty().contains("zh-Hans"))
                 assertEquals("nosniff", response.headers["X-Content-Type-Options"])
                 val payload = org.json.JSONObject(response.bodyAsText())
-                assertEquals(io.github.maxlyth.hapaneld.BuildConfig.VERSION_CODE, payload.getInt("versionCode"))
+                assertEquals(io.panelassistant.android.BuildConfig.VERSION_CODE, payload.getInt("versionCode"))
                 assertTrue(payload.getJSONObject("cards").getString("infotbl").contains("Warm &lt;panel&gt;"))
                 assertTrue(payload.getJSONObject("cards").getString("livetbl").contains("50% (128)"))
                 val refused = client.get("/api/v1/info") { header(HttpHeaders.Host, "elsewhere.example") }

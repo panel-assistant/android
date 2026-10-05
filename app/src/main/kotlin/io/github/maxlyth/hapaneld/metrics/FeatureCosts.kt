@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.metrics
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.util.Cached
 import org.json.JSONArray
 import org.json.JSONObject

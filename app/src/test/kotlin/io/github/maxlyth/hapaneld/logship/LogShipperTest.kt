@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.logship
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.metrics.FeatureCostOperation
 import io.github.maxlyth.hapaneld.metrics.FeatureCostRegistry
 import kotlinx.coroutines.CoroutineScope

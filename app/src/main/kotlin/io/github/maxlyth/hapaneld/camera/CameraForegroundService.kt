@@ -11,7 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import io.github.maxlyth.hapaneld.R
+import io.panelassistant.android.R
 import io.github.maxlyth.hapaneld.nativeString
 
 /**

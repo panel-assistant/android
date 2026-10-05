@@ -1,5 +1,7 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
+import io.panelassistant.android.R
 import android.content.Intent
 import android.net.Uri
 import io.github.maxlyth.hapaneld.control.BuiltinDashboard

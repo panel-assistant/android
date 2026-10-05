@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.device.profile
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals

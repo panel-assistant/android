@@ -1,5 +1,6 @@
 package io.github.maxlyth.hapaneld
 
+import io.panelassistant.android.BuildConfig
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color

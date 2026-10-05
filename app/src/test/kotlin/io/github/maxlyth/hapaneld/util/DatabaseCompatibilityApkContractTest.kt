@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.util
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.dashboard.EntityCatalogSchema
 import io.github.maxlyth.hapaneld.testsupport.TestSources
 import io.github.maxlyth.hapaneld.util.DatabaseCompatibilityApkContract.Boundary

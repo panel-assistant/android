@@ -1,6 +1,6 @@
 package io.github.maxlyth.hapaneld.http
 
-import io.github.maxlyth.hapaneld.BuildConfig
+import io.panelassistant.android.BuildConfig
 import io.github.maxlyth.hapaneld.i18n.AppLocale
 import io.github.maxlyth.hapaneld.i18n.Strings as AppStrings
 import io.ktor.http.ContentType
