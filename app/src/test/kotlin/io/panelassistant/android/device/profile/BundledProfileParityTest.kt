@@ -1,6 +1,8 @@
 package io.panelassistant.android.device.profile
 
 import io.panelassistant.android.BuildConfig
+import io.panelassistant.android.audio.MicrophonePresence
+import io.panelassistant.android.audio.MicrophoneStatus
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -71,7 +73,7 @@ class BundledProfileParityTest {
     @Test fun provenCaptureDeclaresAMicrophoneAndOmissionLeavesItToThePanel() {
         // `true` records proof, so these arm voice without the panel's own capture check.
         assertEquals(
-            setOf("wf1589t", "nspanel-pro", "shelly-wall-display-x2i", "smt1019"),
+            setOf("wf1589t", "nspanel-pro", "shelly-wall-display-x2i", "smt1019", "tpa10"),
             bundled.filter { it.document.hardware.microphoneDeclared == true }.map { it.document.id }.toSet(),
         )
         // No bundled board has a microphone shown not to work, so none hides voice outright: every other
@@ -86,11 +88,13 @@ class BundledProfileParityTest {
         // The Electron WF2489T reports device `wf2489t` and resolves to the SMT1019 profile, so an owner of
         // that panel is offered voice without editing a profile.
         assertEquals(true, resolve(DeviceFacts("rk3576_u", "wf2489t", "")).profile.microphoneDeclared)
-        // A camera is not a microphone. The TPA10 declares its camera, and its microphone waits on a
-        // capture route the default one does not select, so it is left to the panel's check.
-        assertEquals(true, bundledById.getValue("tpa10").document.hardware.cameraDeclared)
-        assertNull(bundledById.getValue("tpa10").document.hardware.microphoneDeclared)
-        assertNull(bundledById.getValue("tpa10").profile().microphoneDeclared)
+        // TPA10 speech is proven on the existing canonical mono route. Resolve the observed device
+        // identity through the startup registry, then the same presence/status contract voice uses.
+        val tpa10 = resolve(DeviceFacts("TPA10", "tpa10", "rk30sdk"))
+        assertEquals("tpa10", tpa10.profile.id)
+        val microphone = MicrophonePresence.resolve(tpa10.profile.microphoneDeclared, deviceReports = true)
+        assertEquals(MicrophonePresence.PROVEN, microphone)
+        assertTrue(MicrophoneStatus(microphone).usable)
     }
 
     /**

@@ -1,6 +1,6 @@
 schema: 2
 id: tpa10
-version: 2.0.3
+version: 2.0.4
 display_name: Tuya TPA10
 soc_class: rk3566
 soc:
@@ -68,6 +68,8 @@ hardware:
     route: setting
   camera: true
   camera_lens_offset_px: 63
+  # Speech proven through the standard Android VOICE_RECOGNITION / 16 kHz mono route.
+  microphone: true
   has_button_backlight: true
   touch_click_gain: 0.12
 sensors:
