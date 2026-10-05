@@ -12418,6 +12418,11 @@
       "sourceHash": "984fdad8bb94eedbcd1657cb3fdb0c09e558af95a7da4f7fac8dd7e1524b7c54",
       "state": "machine-cross-checked"
     },
+    "shell.microphone_on": {
+      "text": "Microphone activé",
+      "sourceHash": "891fd461293ab50a940b8a7db6d1513909268125ef98bd74d8c803639719c098",
+      "state": "machine-cross-checked"
+    },
     "shell.hardened.key": {
       "text": "Les actions protégées nécessitent une approbation physique sur ce panneau en mode Hardened ; elles ne peuvent pas être approuvées à distance.",
       "sourceHash": "1cad2d18d4f0144e285115b035fa35f596fd66292288a07b1e25dd45b569f51a",

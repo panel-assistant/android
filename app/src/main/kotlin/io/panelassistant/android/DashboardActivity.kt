@@ -250,6 +250,7 @@ class DashboardActivity : AppCompatActivity() {
     private var root: FrameLayout? = null                       // holds the swipe layout + fullscreen video
     private var lifecycleBar: HaLifecycleBar? = null            // native HA outage bar, lives inside `root`
     private var networkChip: HaNetworkChip? = null              // native "HA network slow" chip, same root
+    private var microphoneMutedChip: io.panelassistant.android.assist.MicrophoneMutedChip? = null // in the decor, like the voice glow
 
     /**
      * Marshals to the UI thread because the state machine is driven from the service's IO scope.
@@ -2461,15 +2462,12 @@ class DashboardActivity : AppCompatActivity() {
         }
         glow.setColor(io.panelassistant.android.assist.VoiceAttention.color)
         glow.setListening(io.panelassistant.android.assist.VoiceAttention.attending)
-        val muteChip = decor.findViewWithTag<android.widget.TextView>(VOICE_MUTED_TAG)
-            ?: io.panelassistant.android.assist.MicrophoneMutedChip.attach(this, decor).also { it.tag = VOICE_MUTED_TAG }
-        io.panelassistant.android.assist.VoiceAttention.muteShown = { muted ->
-            runOnUiThread {
-                muteChip.bringToFront()
-                muteChip.visibility = if (muted) android.view.View.VISIBLE else android.view.View.GONE
-            }
+        val muteChip = microphoneMutedChip
+            ?: io.panelassistant.android.assist.MicrophoneMutedChip.attach(this, decor).also { microphoneMutedChip = it }
+        io.panelassistant.android.assist.VoiceAttention.muteShown = { muted, announce ->
+            runOnUiThread { muteChip.show(muted, announce) }
         }
-        io.panelassistant.android.assist.VoiceAttention.muteShown?.invoke(io.panelassistant.android.assist.VoiceAttention.muted)
+        muteChip.show(io.panelassistant.android.assist.VoiceAttention.muted, announce = false)
     }
 
     override fun onPause() {
@@ -4033,7 +4031,6 @@ class DashboardActivity : AppCompatActivity() {
         private const val TAG = "ha-paneld/dashboard"
         private const val VOICE_RIPPLE_TAG = "voice-ripple"
         private const val VOICE_GLOW_TAG = "voice-glow"
-        private const val VOICE_MUTED_TAG = "voice-muted"
         /** Camera trial: the CAMERA runtime-permission request raised when the camera
          *  setting turns on. Distinct from any other request code — this activity had none before. */
         private const val REQUEST_CAMERA_PERMISSION = 4801
