@@ -19,14 +19,19 @@ class VoiceSettingsSpecTest {
     private val everyMicrophoneGatedVoiceSpec =
         listOf(voiceEnabled, wakeWords, pipelines, audioSource, sensitivity, micGain)
 
-    @Test fun `every voice setting requires the microphone capability and lives in the Voice group`() {
+    @Test fun `every voice setting is offered wherever a microphone is present, proven or not, and lives in the Voice group`() {
+        val expected = mapOf(
+            io.panelassistant.android.audio.MicrophonePresence.PROVEN to true,
+            io.panelassistant.android.audio.MicrophonePresence.UNPROVEN to true,
+            io.panelassistant.android.audio.MicrophonePresence.ABSENT to false,
+        )
+        assertEquals(io.panelassistant.android.audio.MicrophonePresence.entries.toSet(), expected.keys)
         everyMicrophoneGatedVoiceSpec.forEach { spec ->
             assertEquals(spec.key, "Voice", spec.group)
             assertFalse("${spec.key} must be unavailable with no microphone", spec.availableWhen(Capabilities()))
-            assertTrue(
-                "${spec.key} must be available with a microphone",
-                spec.availableWhen(Capabilities(hasMicrophone = true)),
-            )
+            expected.forEach { (presence, offered) ->
+                assertEquals("${spec.key} with a $presence microphone", offered, spec.availableWhen(Capabilities(microphone = presence)))
+            }
         }
     }
 
@@ -47,7 +52,7 @@ class VoiceSettingsSpecTest {
             assertFalse("${spec.key} must not be secret-redacted", spec.secret)
         }
         // A microphone-bearing panel still resolves the settings; only their rendering is withheld.
-        val caps = Capabilities(hasMicrophone = true)
+        val caps = Capabilities(microphone = io.panelassistant.android.audio.MicrophonePresence.UNPROVEN)
         everyMicrophoneGatedVoiceSpec.forEach { spec ->
             assertTrue("${spec.key} must remain capability-available", spec.availableWhen(caps))
         }

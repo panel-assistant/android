@@ -1,5 +1,9 @@
 package io.panelassistant.android.panelassistant
 
+import io.panelassistant.android.assist.VoiceSettings
+import io.panelassistant.android.assist.wakeword.MicroWakeWordModelConfig
+import io.panelassistant.android.audio.MicrophonePresence
+import io.panelassistant.android.audio.MicrophoneStatus
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
 import kotlinx.coroutines.CancellationException
@@ -21,7 +25,28 @@ internal data class PanelAssistantVoiceConfiguration(
     val active: List<String>,
     /** Wake word id to pipeline id; absent or blank is Home Assistant's preferred pipeline. */
     val pipelines: Map<String, String>,
-)
+    /** What the panel has and what its own capture check found, so Home Assistant can say why voice is quiet. */
+    val microphone: MicrophoneStatus = MicrophoneStatus(MicrophonePresence.PROVEN),
+) {
+    companion object {
+        /** The configuration a panel offers, or null when it has no microphone to be a satellite with. */
+        fun of(
+            microphone: MicrophoneStatus,
+            settings: VoiceSettings,
+            models: List<MicroWakeWordModelConfig>,
+        ): PanelAssistantVoiceConfiguration? {
+            if (!microphone.presence.offered) return null
+            val ids = models.map { it.id }.toSet()
+            return PanelAssistantVoiceConfiguration(
+                enabled = settings.enabled,
+                wakeWords = models.map { PanelAssistantWakeWord(it.id, it.wakeWord, it.trainedLanguages) },
+                active = settings.wakeWords.filter { it in ids },
+                pipelines = settings.pipelines.filterKeys { it in ids },
+                microphone = microphone,
+            )
+        }
+    }
+}
 
 /** Home Assistant asked the panel to play something, and perhaps to listen afterwards. */
 internal data class PanelAssistantAnnouncement(
@@ -149,6 +174,12 @@ internal class PanelAssistantVoice(
                     )
                     .put("active", JSONArray(current.active))
                     .put("pipelines", JSONObject(current.pipelines.filterValues { it.isNotBlank() }))
+                    .put(
+                        "microphone",
+                        JSONObject().put("presence", current.microphone.presence.wireValue)
+                            .put("check", current.microphone.check.wireValue)
+                            .apply { current.microphone.detail?.let { put("detail", it) } },
+                    )
             }
             is Outbound.Run -> {
                 item.turn.runId = id

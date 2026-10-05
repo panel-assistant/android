@@ -5653,6 +5653,54 @@
       "softMaxChars": 32,
       "hardMaxChars": 48
     },
+    "configure.voice.microphone_absent": {
+      "text": "This panel reports no microphone, or its device profile sets hardware.microphone to false, so voice is not offered.",
+      "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
+      "surface": "configure",
+      "context": "Configure page, Voice card: why the panel's voice assistant is not listening on this panel, and what would change the answer; preserve the operational meaning and render as text, not HTML.",
+      "risk": "consequential",
+      "siblings": [
+        "configure.voice.microphone_no_audio",
+        "configure.voice.microphone_silent"
+      ],
+      "placeholders": [],
+      "frozen": [
+        "hardware.microphone",
+        "false"
+      ],
+      "softMaxChars": 161,
+      "hardMaxChars": 230
+    },
+    "configure.voice.microphone_no_audio": {
+      "text": "The microphone delivered no audio when the panel checked it, so the panel is not listening. Turn the voice assistant off and on to check again.",
+      "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
+      "surface": "configure",
+      "context": "Configure page, Voice card: why the panel's voice assistant is not listening on this panel, and what would change the answer; preserve the operational meaning and render as text, not HTML.",
+      "risk": "consequential",
+      "siblings": [
+        "configure.voice.microphone_absent",
+        "configure.voice.microphone_silent"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 200,
+      "hardMaxChars": 286
+    },
+    "configure.voice.microphone_silent": {
+      "text": "The microphone recorded only silence when the panel checked it, so the panel is not listening. Try another audio source, or turn the voice assistant off and on to check again.",
+      "sourceHash": "f199f52a53f3d02c180b4cdb110fc6809a2b599f8f6de24003d3fd97bbec60ce",
+      "surface": "configure",
+      "context": "Configure page, Voice card: why the panel's voice assistant is not listening on this panel, and what would change the answer; preserve the operational meaning and render as text, not HTML.",
+      "risk": "consequential",
+      "siblings": [
+        "configure.voice.microphone_absent",
+        "configure.voice.microphone_no_audio"
+      ],
+      "placeholders": [],
+      "frozen": [],
+      "softMaxChars": 245,
+      "hardMaxChars": 350
+    },
     "configure.voice.pipeline_not_listed": {
       "text": "{pipeline} · not in Home Assistant's list",
       "sourceHash": "71773debc9e3b12cc0d7cd4efd8241dd25e5e42e51532072c309dabbd180dd46",

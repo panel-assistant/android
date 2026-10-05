@@ -3,6 +3,9 @@ package io.panelassistant.android.http
 import io.panelassistant.android.assist.AssistPipelineDirectory
 import io.panelassistant.android.assist.VoiceTestTrigger
 import io.panelassistant.android.assist.wakeword.WakeWordCatalog
+import io.panelassistant.android.audio.MicrophoneCheck
+import io.panelassistant.android.audio.MicrophonePresence
+import io.panelassistant.android.audio.MicrophoneStatus
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -23,6 +26,7 @@ class VoiceProductionHttpTest {
     @get:Rule val folder = TemporaryFolder()
 
     private var microphone = true
+    private var microphoneStatus = MicrophoneStatus(MicrophonePresence.PROVEN)
     private var enabled = true
     private var directoryReads = 0
     private var triggered = 0
@@ -39,6 +43,7 @@ class VoiceProductionHttpTest {
                 route("/api/v1") {
                     voiceRoutes(
                         hasMicrophone = { microphone },
+                        microphone = { microphoneStatus },
                         voiceEnabled = { enabled },
                         assistPipelines = object : AssistPipelineDirectory {
                             override suspend fun list(): AssistPipelineDirectory.Result {
@@ -52,6 +57,28 @@ class VoiceProductionHttpTest {
                     )
                 }
             }
+        }
+    }
+
+    @Test fun `the microphone route says what the panel has and what its capture check found`() = testApplication {
+        mount()
+        val cases = listOf(
+            MicrophoneStatus(MicrophonePresence.PROVEN) to
+                """{"presence":"proven","check":"not_run","detail":null}""",
+            MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED) to
+                """{"presence":"unproven","check":"passed","detail":null}""",
+            MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.SILENT) to
+                """{"presence":"unproven","check":"silent","detail":null}""",
+            MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.NO_AUDIO, "AudioRecord init failed") to
+                """{"presence":"unproven","check":"no_audio","detail":"AudioRecord init failed"}""",
+            MicrophoneStatus(MicrophonePresence.ABSENT) to
+                """{"presence":"absent","check":"not_run","detail":null}""",
+        )
+        cases.forEach { (status, body) ->
+            microphoneStatus = status
+            val response = client.get("/api/v1/voice/microphone")
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals(body, response.bodyAsText())
         }
     }
 

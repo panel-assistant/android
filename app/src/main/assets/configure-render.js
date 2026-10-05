@@ -231,11 +231,13 @@
         // The one group that explains itself when it has nothing to show: a missing Camera card is the
         // documented complaint, because nothing connected "my panel has a camera" to "set the flag".
         // Every camera setting is advanced, so the explanation belongs to the Advanced view.
-        if (g !== "Camera" || !cfg.cameraGroupUnavailable() || !cfg.advanced || terms.length) return;
-        cfg.loadCameraCapability();
+        // Voice explains itself the same way, in every view: its switch is a basic setting.
+        var voice = g === "Voice" && cfg.voiceGroupUnavailable() && !terms.length;
+        if (!voice && (g !== "Camera" || !cfg.cameraGroupUnavailable() || !cfg.advanced || terms.length)) return;
+        if (!voice) cfg.loadCameraCapability();
         var absent = cfg.el("div", { class: "card" }, [
           cfg.el("h2", {}, [cfg.el("span", { text: groupTitle(g) })]),
-          cfg.cameraUnavailableNode(),
+          voice ? cfg.voiceMicrophoneNode() : cfg.cameraUnavailableNode(),
         ]);
         absent.setAttribute("data-config-group", g);
         absent.setAttribute("data-layout-key", configLayoutKey(g));
@@ -276,6 +278,10 @@
           if (!cfg.autoSleepUsesTouch() && !cfg.autoSleepStatus && !cfg.autoSleepLoading) setTimeout(cfg.loadAutoSleepData, 0);
         }
         if (g === "Home Assistant connection" && f.key === "ha_url") card.appendChild(cfg.haOAuthRow());
+        if (f.key === "voice_enabled" && cfg.values.voice_enabled === "true") {
+          var quiet = cfg.voiceMicrophoneNode();
+          if (quiet) card.appendChild(quiet);
+        }
         if (f.picker === "voice_wake_words" && Array.isArray(cfg.voiceWakeWordsCatalog)) card.appendChild(cfg.voiceWakeWordImportRow());
         if (f.key === "zigbee_router") {
           var join = cfg.zigbeeJoinRow();

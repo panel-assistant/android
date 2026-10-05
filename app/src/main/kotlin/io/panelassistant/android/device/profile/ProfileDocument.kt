@@ -130,9 +130,13 @@ data class ProfileHardware(
      * author a profile before the panel will offer it.
      */
     val cameraDeclared: Boolean? = null,
-    // Whether the panel has a usable microphone. Declared independently of the camera because some
-    // hardware has one without the other, and unlike the camera it is not enumerable.
-    val hasMicrophone: Boolean = false,
+    /**
+     * Whether the board has a working microphone, as three states. Declared independently of the camera
+     * because some hardware has one without the other. `true` records capture proven on this hardware,
+     * `false` records one shown not to work, and null (the common case) leaves it to what Android reports,
+     * checked by the panel's own capture: present hardware is offered and the panel proves it.
+     */
+    val microphoneDeclared: Boolean? = null,
     // Whether the panel has a loudspeaker. True unless a profile says otherwise: present hardware is offered.
     val hasSpeaker: Boolean = true,
     /**

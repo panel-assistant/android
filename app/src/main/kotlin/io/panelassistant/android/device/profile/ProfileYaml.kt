@@ -308,7 +308,7 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 buttonLedGpioBase = integer(hardware, "button_led_gpio_base", "hardware"),
                 touchClickGain = float(hardware, "touch_click_gain", "hardware"),
                 cameraDeclared = boolean(hardware, "camera", "hardware"),
-                hasMicrophone = boolean(hardware, "microphone", "hardware") ?: false,
+                microphoneDeclared = boolean(hardware, "microphone", "hardware"),
                 hasSpeaker = boolean(hardware, "speaker", "hardware") ?: true,
                 cameraLensOffsetPx = integer(hardware, "camera_lens_offset_px", "hardware"),
                 backlight = backlight(hardware["backlight"]),
@@ -777,7 +777,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         "button_led_gpio_base" to hardware.buttonLedGpioBase,
         "touch_click_gain" to hardware.touchClickGain,
         "camera" to hardware.cameraDeclared,
-        "microphone" to hardware.hasMicrophone,
+        "microphone" to hardware.microphoneDeclared,
         // Written only when false, so profiles that never declared it keep their canonical form.
         "speaker" to hardware.hasSpeaker.takeUnless { it },
         "camera_lens_offset_px" to hardware.cameraLensOffsetPx,

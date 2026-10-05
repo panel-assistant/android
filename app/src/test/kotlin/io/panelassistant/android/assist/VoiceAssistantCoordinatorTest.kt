@@ -2,6 +2,11 @@ package io.panelassistant.android.assist
 
 import io.panelassistant.android.audio.FakeMicrophoneSource
 import io.panelassistant.android.audio.MicPurpose
+import io.panelassistant.android.audio.MicrophoneCheck
+import io.panelassistant.android.audio.MicrophonePresence
+import io.panelassistant.android.audio.MicrophoneSelfCheck
+import io.panelassistant.android.audio.MicrophoneStatus
+import io.panelassistant.android.audio.MicrophoneSource
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
 import kotlinx.coroutines.CompletableDeferred
@@ -30,7 +35,8 @@ class VoiceAssistantCoordinatorTest {
     private val foregroundCalls = CopyOnWriteArrayList<Boolean>()
     private var foregroundAccepts = true
     private var settings = VoiceSettings(enabled = true, wakeWords = listOf("okay_nabu"), pipelines = mapOf("hey_jarvis" to "pipe-2"))
-    private var hasMicrophone = true
+    private var presence = MicrophonePresence.PROVEN
+    private var statusChanges = 0
 
     private class FakeEngine(val onActivation: (WakeWordActivation) -> Unit) : WakeWordEngine {
         var closed = false
@@ -100,11 +106,14 @@ class VoiceAssistantCoordinatorTest {
     /** Each cue's wake word, with the phase the panel was in when it was cued. */
     private val cues = java.util.Collections.synchronizedList(mutableListOf<Pair<String?, VoiceState>>())
 
+    private var source: FakeMicrophoneSource = mic
+    private var checkTimeoutMs = 2_000L
+
     private fun coordinator(retryMs: Long = 60_000, maxTurns: Int = 5) = VoiceAssistantCoordinator(
         scope = scope,
         settings = { settings },
-        microphoneAvailable = { hasMicrophone },
-        source = { sourceRequests += 1; mic },
+        microphone = { presence },
+        source = { sourceRequests += 1; source },
         engineFactory = engineFactory,
         runnerFactory = { ScriptedRunner().also(runners::add) },
         playback = playback,
@@ -113,6 +122,8 @@ class VoiceAssistantCoordinatorTest {
         foregroundRetryMs = retryMs,
         maxConversationTurns = maxTurns,
         attention = { wakeWordId -> cues += wakeWordId to state.current() },
+        onMicrophoneStatus = { statusChanges += 1 },
+        checkTimeoutMs = checkTimeoutMs,
     )
 
     @After
@@ -151,6 +162,112 @@ class VoiceAssistantCoordinatorTest {
         assertEquals(listOf(true), foregroundCalls)
     }
 
+    /** Enough frames to settle and then judge: a room's floor that moves, or digital silence. */
+    private fun FakeMicrophoneSource.speakForCheck(live: Boolean) {
+        val total = MicrophoneSelfCheck.SETTLE_FRAMES + MicrophoneSelfCheck.MEASURE_FRAMES
+        repeat(total) { n ->
+            pushFrame(ShortArray(MicrophoneSource.SAMPLES_PER_FRAME) { i -> if (live) ((n * 7 + i * 13) % 400 - 200).toShort() else 0 })
+        }
+    }
+
+    @Test
+    fun `a proven microphone arms at once without a capture check`() {
+        val c = coordinator()
+        c.start()
+        assertEquals(listOf(MicPurpose.WAKE_WORD), mic.leases.map { it.purpose })
+        assertEquals(MicrophoneStatus(MicrophonePresence.PROVEN, MicrophoneCheck.NOT_RUN), c.microphoneStatus())
+    }
+
+    @Test
+    fun `an unproven microphone that hears the room passes its check and then arms the wake word`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator()
+        c.start()
+        assertTrue("nothing listens before the check passes", engines.isEmpty())
+        assertEquals(listOf(MicPurpose.CALIBRATION), mic.activeLeases.map { it.purpose })
+        assertEquals(MicrophoneCheck.RUNNING, c.microphoneStatus().check)
+        mic.speakForCheck(live = true)
+        settleUntil { engines.isNotEmpty() }
+        assertEquals(1, engines.size)
+        assertEquals(listOf(MicPurpose.WAKE_WORD), mic.activeLeases.map { it.purpose })
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED), c.microphoneStatus())
+        assertEquals(VoiceState.IDLE, state.current())
+        assertTrue(statusChanges >= 2)
+        // A settings change rearms the listener without checking the same microphone again.
+        c.start()
+        assertEquals(1, mic.leases.count { it.purpose == MicPurpose.CALIBRATION })
+    }
+
+    @Test
+    fun `an unproven microphone that records silence fails its check, says why and does not listen`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator()
+        c.start()
+        mic.speakForCheck(live = false)
+        settleUntil { c.microphoneStatus().check == MicrophoneCheck.SILENT }
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.SILENT), c.microphoneStatus())
+        assertTrue(engines.isEmpty())
+        settleUntil { mic.activeLeases.isEmpty() && foregroundCalls.lastOrNull() == false }
+        assertTrue("the check releases the microphone", mic.activeLeases.isEmpty())
+        assertEquals(listOf(true, false), foregroundCalls)
+        assertEquals(VoiceState.ERROR, state.current())
+        assertEquals(VoiceTestTrigger.Result.Unavailable(VoiceAssistantCoordinator.SILENT_REASON), c.trigger())
+        // Rearming for another setting does not quietly retry; turning voice off and on does.
+        c.start()
+        assertEquals(1, mic.leases.count { it.purpose == MicPurpose.CALIBRATION })
+        settings = settings.copy(enabled = false)
+        c.start()
+        assertEquals(MicrophoneCheck.NOT_RUN, c.microphoneStatus().check)
+        settings = settings.copy(enabled = true)
+        c.start()
+        assertEquals(2, mic.leases.count { it.purpose == MicPurpose.CALIBRATION })
+        mic.speakForCheck(live = true)
+        settleUntil { engines.isNotEmpty() }
+        assertEquals(MicrophoneCheck.PASSED, c.microphoneStatus().check)
+    }
+
+    @Test
+    fun `an unproven microphone that delivers nothing reports no audio with the capture's own error`() {
+        presence = MicrophonePresence.UNPROVEN
+        checkTimeoutMs = 100
+        val c = coordinator()
+        c.start()
+        mic.failWith("AudioRecord could not be opened")
+        settleUntil { c.microphoneStatus().check == MicrophoneCheck.NO_AUDIO }
+        assertEquals(
+            MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.NO_AUDIO, "AudioRecord could not be opened"),
+            c.microphoneStatus(),
+        )
+        assertTrue(engines.isEmpty())
+        assertEquals(VoiceTestTrigger.Result.Unavailable(VoiceAssistantCoordinator.NO_AUDIO_REASON), c.trigger())
+    }
+
+    @Test
+    fun `another audio source is another microphone to check`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator()
+        c.start()
+        mic.speakForCheck(live = false)
+        settleUntil { c.microphoneStatus().check == MicrophoneCheck.SILENT }
+        val other = FakeMicrophoneSource()
+        source = other
+        c.start()
+        assertEquals(listOf(MicPurpose.CALIBRATION), other.activeLeases.map { it.purpose })
+        other.speakForCheck(live = true)
+        settleUntil { engines.isNotEmpty() }
+        assertEquals(MicrophoneCheck.PASSED, c.microphoneStatus().check)
+        assertEquals(listOf(MicPurpose.WAKE_WORD), other.activeLeases.map { it.purpose })
+    }
+
+    @Test
+    fun `the check reports only for an unproven microphone`() {
+        val c = coordinator()
+        MicrophonePresence.entries.forEach { each ->
+            presence = each
+            assertEquals(MicrophoneStatus(each, MicrophoneCheck.NOT_RUN), c.microphoneStatus())
+        }
+    }
+
     @Test
     fun `disabled settings stand the coordinator down and release the microphone`() {
         val c = coordinator()
@@ -165,7 +282,7 @@ class VoiceAssistantCoordinatorTest {
 
     @Test
     fun `no microphone capability means nothing is armed`() {
-        hasMicrophone = false
+        presence = MicrophonePresence.ABSENT
         val c = coordinator()
         c.start()
         assertTrue(engines.isEmpty())
@@ -312,7 +429,7 @@ class VoiceAssistantCoordinatorTest {
         settings = settings.copy(enabled = false)
         assertEquals(VoiceTestTrigger.Result.Refused("voice assistant is disabled"), c.trigger())
         settings = settings.copy(enabled = true)
-        hasMicrophone = false
+        presence = MicrophonePresence.ABSENT
         assertEquals(VoiceTestTrigger.Result.Unavailable("this panel has no microphone"), c.trigger())
     }
 
@@ -381,7 +498,7 @@ class VoiceAssistantCoordinatorTest {
             override fun onFrame(frame: PcmFrame) { delivered.countDown() }
         })
         val c = VoiceAssistantCoordinator(
-            scope = scope, settings = { settings }, microphoneAvailable = { true },
+            scope = scope, settings = { settings }, microphone = { MicrophonePresence.PROVEN },
             source = { fanout }, engineFactory = engineFactory,
             runnerFactory = { ScriptedRunner() }, playback = playback,
             foregroundMicrophone = { true }, state = state,

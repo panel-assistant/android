@@ -218,6 +218,9 @@ class PaneldServer internal constructor(
     // unavailable; the voice-coordinator lane injects the real pipeline-runtime trigger.
     private val voiceTest: io.panelassistant.android.assist.VoiceTestTrigger =
         io.panelassistant.android.assist.VoiceTestTrigger.NOT_WIRED,
+    // The microphone and its capture check as the voice coordinator holds them; null reports the
+    // capability alone, with no check run.
+    private val voiceMicrophone: () -> io.panelassistant.android.audio.MicrophoneStatus? = { null },
     // The wake words this panel holds, bundled and imported, for the Configure wake-word picker; null
     // answers 503. [onWakeWordsChanged] rearms the listener and tells Home Assistant after an import.
     private val wakeWords: io.panelassistant.android.assist.wakeword.WakeWordCatalog? = null,
@@ -513,7 +516,13 @@ class PaneldServer internal constructor(
                     proximityRoutes(sensors::hasProximity, sensors::proximityJson, onProximityCalibration)
                     sensorValuesRoute(appContext, sensors, { volume.getPercent() }, { effectiveBrightness() })
                     voiceRoutes(
-                        hasMicrophone = { liveCapabilities(managementObservations.snapStaleOk().caps).hasMicrophone },
+                        hasMicrophone = { liveCapabilities(managementObservations.snapStaleOk().caps).microphone.offered },
+                        microphone = {
+                            voiceMicrophone()
+                                ?: io.panelassistant.android.audio.MicrophoneStatus(
+                                    liveCapabilities(managementObservations.snapStaleOk().caps).microphone,
+                                )
+                        },
                         voiceEnabled = { config.voiceEnabled },
                         assistPipelines = assistPipelines,
                         voiceTest = voiceTest,

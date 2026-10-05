@@ -60,7 +60,7 @@ class DataDeviceProfile internal constructor(
     }
     override val hasButtonBacklight = document.hardware.hasButtonBacklight
     override val cameraDeclared = document.hardware.cameraDeclared
-    override val hasMicrophone = document.hardware.hasMicrophone
+    override val microphoneDeclared = document.hardware.microphoneDeclared
     override val hasSpeaker = document.hardware.hasSpeaker
     override val cameraLensOffsetPx = document.hardware.cameraLensOffsetPx
     override val touchClickGain = document.hardware.touchClickGain ?: 0.2f

@@ -59,7 +59,8 @@ data class Capabilities(
     val hasCht8305: Boolean = false,
     val hasButtonBacklight: Boolean = false,
     val hasCamera: Boolean = false,
-    val hasMicrophone: Boolean = false,
+    /** Whether the panel has a microphone, proven or not; voice is offered unless it is absent. */
+    val microphone: io.panelassistant.android.audio.MicrophonePresence = io.panelassistant.android.audio.MicrophonePresence.ABSENT,
     val hasEvdevButtons: Boolean = false,
     val appCanSu: Boolean = false,
     /** A verified privileged install route exists for explicitly requested software updates. */

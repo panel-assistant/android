@@ -3,8 +3,13 @@ package io.panelassistant.android.assist
 import io.panelassistant.android.audio.GainStage
 import io.panelassistant.android.audio.MicLease
 import io.panelassistant.android.audio.MicPurpose
+import io.panelassistant.android.audio.MicState
+import io.panelassistant.android.audio.MicrophoneCheck
 import io.panelassistant.android.audio.MicrophoneGain
+import io.panelassistant.android.audio.MicrophonePresence
+import io.panelassistant.android.audio.MicrophoneSelfCheck
 import io.panelassistant.android.audio.MicrophoneSource
+import io.panelassistant.android.audio.MicrophoneStatus
 import io.panelassistant.android.audio.PcmConsumer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -143,11 +148,17 @@ internal data class VoiceAnnouncement(
  * never held over a closed device. Android 14 refuses that claim when the
  * app is in the background, so a refused claim is retried on a bounded timer rather than treated as
  * terminal, and is retried immediately by [retryStart] when the panel's own activity comes forward.
+ *
+ * Microphone proof: a [MicrophonePresence.PROVEN] microphone arms at once. An
+ * [MicrophonePresence.UNPROVEN] one is first leased for a [MicrophoneSelfCheck], and the wake word arms
+ * only when it passes; a failed check leaves the setting on and the panel reporting `error` with the
+ * reason in [microphoneStatus], and runs again when voice is turned off and on, when the audio source
+ * changes, or at the next start of the service.
  */
 class VoiceAssistantCoordinator internal constructor(
     private val scope: CoroutineScope,
     private val settings: () -> VoiceSettings,
-    private val microphoneAvailable: () -> Boolean,
+    private val microphone: () -> MicrophonePresence,
     private val source: () -> MicrophoneSource?,
     private val engineFactory: WakeWordEngineFactory,
     private val runnerFactory: () -> AssistRunner,
@@ -159,6 +170,9 @@ class VoiceAssistantCoordinator internal constructor(
     /** Shows the room that the panel has started listening: a chime, and a ripple on screen. */
     /** Named with the wake word whose pipeline is listening; a turn without one uses the first armed. */
     private val attention: (wakeWordId: String?) -> Unit = {},
+    /** Told whenever [microphoneStatus] changes, so Home Assistant and Configure can say why. */
+    private val onMicrophoneStatus: () -> Unit = {},
+    private val checkTimeoutMs: Long = MicrophoneSelfCheck.TIMEOUT_MS,
 ) : AutoCloseable {
 
     private val lock = Any()
@@ -169,6 +183,13 @@ class VoiceAssistantCoordinator internal constructor(
     private var retryJob: Job? = null
     private var foregroundClaimed = false
     private val closed = AtomicBoolean(false)
+
+    // The capture check of an unproven microphone: the source it judged, its verdict, and the job still
+    // capturing, if any. A new source object (another audio source) is a new microphone to check.
+    private var checkedSource: MicrophoneSource? = null
+    private var check = MicrophoneCheck.NOT_RUN
+    private var checkDetail: String? = null
+    private var checkJob: Job? = null
 
     // Bumped whenever the listener is replaced or torn down. A callback carries the generation it was
     // armed with, so a hit delivered by an engine that has since been closed or replaced is refused
@@ -194,14 +215,21 @@ class VoiceAssistantCoordinator internal constructor(
     /** True while a pipeline run is in flight. */
     val running: Boolean get() = synchronized(lock) { runJob != null }
 
+    /** The microphone as every surface reports it; the check is reported only for an unproven one. */
+    fun microphoneStatus(): MicrophoneStatus {
+        val presence = microphone()
+        if (presence != MicrophonePresence.UNPROVEN) return MicrophoneStatus(presence)
+        return synchronized(lock) { MicrophoneStatus(presence, check, checkDetail) }
+    }
+
     /**
-     * Apply the current settings: arm when enabled on a microphone-capable panel, otherwise stand
+     * Apply the current settings: arm when enabled on a panel offering a microphone, otherwise stand
      * down. Safe to call repeatedly; a settings change is applied by calling it again.
      */
     fun start() {
         if (closed.get()) return
         val current = settings()
-        if (!current.enabled || !microphoneAvailable()) {
+        if (!current.enabled || !microphone().offered) {
             stop()
             return
         }
@@ -233,6 +261,9 @@ class VoiceAssistantCoordinator internal constructor(
             // Deliberately not cleared here. The run clears it when its cleanup has drained, so a
             // replacement cannot be admitted alongside a run that is still holding capture.
             job = runJob
+            checkJob?.cancel()
+            checkedSource = null
+            setCheckLocked(MicrophoneCheck.NOT_RUN, null)
             disarmLocked()
         }
         job?.cancel()
@@ -244,7 +275,14 @@ class VoiceAssistantCoordinator internal constructor(
         if (closed.get()) return VoiceTestTrigger.Result.Unavailable("voice assistant is shut down")
         val current = settings()
         if (!current.enabled) return VoiceTestTrigger.Result.Refused("voice assistant is disabled")
-        if (!microphoneAvailable()) return VoiceTestTrigger.Result.Unavailable("this panel has no microphone")
+        val status = microphoneStatus()
+        if (!status.presence.offered) return VoiceTestTrigger.Result.Unavailable("this panel has no microphone")
+        when (status.check) {
+            MicrophoneCheck.RUNNING -> return VoiceTestTrigger.Result.Refused("the panel is still checking its microphone")
+            MicrophoneCheck.SILENT -> return VoiceTestTrigger.Result.Unavailable(SILENT_REASON)
+            MicrophoneCheck.NO_AUDIO -> return VoiceTestTrigger.Result.Unavailable(NO_AUDIO_REASON)
+            else -> Unit
+        }
         return when (beginRun(activation = null, current)) {
             RunAdmission.STARTED -> VoiceTestTrigger.Result.Accepted
             RunAdmission.BUSY -> VoiceTestTrigger.Result.Refused("a voice run is already in progress")
@@ -326,8 +364,11 @@ class VoiceAssistantCoordinator internal constructor(
         generation: Long?,
         announcement: VoiceAnnouncement? = null,
     ): RunAdmission {
-        // Playing an announcement needs no microphone; listening afterwards does.
-        val listens = announcement == null || announcement.listenAfter
+        // Playing an announcement needs no microphone; listening afterwards does, and an announcement
+        // still plays where the microphone has not proven itself.
+        val usable = microphoneStatus().usable
+        if (announcement == null && !usable) return RunAdmission.NOT_ELIGIBLE
+        val listens = announcement == null || (announcement.listenAfter && usable)
         val mic = obtainSource()
         if (listens && mic == null) return RunAdmission.NOT_ELIGIBLE
         synchronized(lock) {
@@ -418,6 +459,12 @@ class VoiceAssistantCoordinator internal constructor(
 
     private fun armEngineLocked(current: VoiceSettings) {
         val mic = obtainSource()
+        if (mic != null && microphone() == MicrophonePresence.UNPROVEN &&
+            !(checkedSource === mic && check == MicrophoneCheck.PASSED)
+        ) {
+            if (checkedSource === mic && check.failed) state.set(VoiceState.ERROR) else checkLocked(mic)
+            return
+        }
         val generation = ++engineGeneration
         val built = if (mic != null && current.wakeWords.isNotEmpty()) {
             engineFactory.create(current.wakeWords) { activation -> onActivation(generation, activation) }
@@ -448,7 +495,54 @@ class VoiceAssistantCoordinator internal constructor(
         wakeLease = null
         engine?.close()
         engine = null
-        if (runJob == null) releaseForegroundLocked()
+        if (runJob == null && checkJob == null) releaseForegroundLocked()
+    }
+
+    /** Lease [mic] for a [MicrophoneSelfCheck]; the wake word arms from its result if it passes. */
+    private fun checkLocked(mic: MicrophoneSource) {
+        if (checkJob != null && checkedSource === mic) return
+        if (!claimForegroundLocked()) {
+            state.set(VoiceState.ERROR)
+            scheduleRetryLocked()
+            return
+        }
+        checkJob?.cancel()
+        checkedSource = mic
+        setCheckLocked(MicrophoneCheck.RUNNING, null)
+        state.set(VoiceState.IDLE)
+        val probe = MicrophoneSelfCheck()
+        val lease = mic.lease(MicPurpose.CALIBRATION, consumer = probe)
+        checkJob = scope.launch {
+            val me = coroutineContext[Job]
+            var verdict: MicrophoneCheck? = null
+            var detail: String? = null
+            try {
+                withTimeoutOrNull(checkTimeoutMs) { while (!probe.complete) delay(CHECK_POLL_MS) }
+                verdict = probe.verdict()
+                detail = (mic.state.value as? MicState.Error)?.reason
+            } finally {
+                lease.close()
+                synchronized(lock) {
+                    if (checkJob === me) checkJob = null
+                    if (verdict != null && armed && checkedSource === mic) {
+                        setCheckLocked(verdict, detail.takeIf { verdict == MicrophoneCheck.NO_AUDIO })
+                        if (verdict == MicrophoneCheck.PASSED && runJob == null) {
+                            armEngineLocked(settings())
+                        } else if (verdict.failed) {
+                            state.set(VoiceState.ERROR)
+                        }
+                    }
+                    if (checkJob == null && runJob == null && wakeLease == null) releaseForegroundLocked()
+                }
+            }
+        }
+    }
+
+    private fun setCheckLocked(next: MicrophoneCheck, detail: String?) {
+        if (check == next && checkDetail == detail) return
+        check = next
+        checkDetail = detail
+        onMicrophoneStatus()
     }
 
     private fun claimForegroundLocked(): Boolean {
@@ -477,5 +571,8 @@ class VoiceAssistantCoordinator internal constructor(
         const val DEFAULT_CLOSE_TIMEOUT_MS = 2_000L
         const val DEFAULT_MAX_CONVERSATION_TURNS = 5
         private const val ANNOUNCE_ADMISSION_ATTEMPTS = 3
+        private const val CHECK_POLL_MS = 50L
+        const val SILENT_REASON = "the microphone recorded only silence when the panel checked it"
+        const val NO_AUDIO_REASON = "the microphone delivered no audio when the panel checked it"
     }
 }

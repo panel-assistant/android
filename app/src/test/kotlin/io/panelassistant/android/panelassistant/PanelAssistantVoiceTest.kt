@@ -1,6 +1,10 @@
 package io.panelassistant.android.panelassistant
 
 import io.panelassistant.android.HaAuthOwner
+import io.panelassistant.android.assist.VoiceSettings
+import io.panelassistant.android.audio.MicrophoneCheck
+import io.panelassistant.android.audio.MicrophonePresence
+import io.panelassistant.android.audio.MicrophoneStatus
 import io.panelassistant.android.audio.PcmFrame
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
@@ -48,6 +52,50 @@ class PanelAssistantVoiceTest {
         val hello = JSONObject(rig.connection.sent.first())
         assertFalse(hello.getJSONArray("capabilities").toList().contains("voice"))
         assertTrue(rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_CONFIGURATION).isEmpty())
+    }
+
+    /** The hello and configuration a panel sends for [microphone], built the way the service builds them. */
+    private fun TestScope.describe(microphone: MicrophoneStatus): Pair<Boolean, JSONObject?> {
+        val settings = VoiceSettings(enabled = true, wakeWords = emptyList(), pipelines = emptyMap())
+        val rig = rig(configuration = PanelAssistantVoiceConfiguration.of(microphone, settings, emptyList()))
+        val offered = JSONObject(rig.connection.sent.first()).getJSONArray("capabilities").toList().contains("voice")
+        return offered to rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_CONFIGURATION).singleOrNull()
+    }
+
+    @Test fun `a panel whose unproven microphone passed its check offers voice and says so`() = runTest {
+        val (offered, configuration) = describe(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED))
+        assertTrue(offered)
+        val microphone = configuration!!.getJSONObject("microphone")
+        assertEquals("unproven", microphone.getString("presence"))
+        assertEquals("passed", microphone.getString("check"))
+        assertFalse(microphone.has("detail"))
+    }
+
+    @Test fun `a panel whose microphone failed its check still offers voice and tells Home Assistant why`() = runTest {
+        val (offered, configuration) = describe(
+            MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.NO_AUDIO, "AudioRecord could not be opened"),
+        )
+        assertTrue("the owner's switch stays reachable so the check can be retried", offered)
+        assertTrue(configuration!!.getBoolean("enabled"))
+        val microphone = configuration.getJSONObject("microphone")
+        assertEquals("no_audio", microphone.getString("check"))
+        assertEquals("AudioRecord could not be opened", microphone.getString("detail"))
+        assertEquals("silent", describe(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.SILENT))
+            .second!!.getJSONObject("microphone").getString("check"))
+    }
+
+    @Test fun `a panel with no microphone offers no voice at all`() = runTest {
+        val (offered, configuration) = describe(MicrophoneStatus(MicrophonePresence.ABSENT))
+        assertFalse(offered)
+        assertEquals(null, configuration)
+    }
+
+    @Test fun `every microphone presence reaches the describe as itself`() = runTest {
+        MicrophonePresence.entries.forEach { presence ->
+            val (offered, configuration) = describe(MicrophoneStatus(presence))
+            assertEquals(presence.toString(), presence != MicrophonePresence.ABSENT, offered)
+            if (offered) assertEquals(presence.wireValue, configuration!!.getJSONObject("microphone").getString("presence"))
+        }
     }
 
     @Test fun `audio heard before Home Assistant names the handler goes out first, in order, then the end`() = runTest {

@@ -21,6 +21,11 @@ internal fun voicePipelinesResponse(
         HttpStatusCode.ServiceUnavailable to "{\"error\":\"unavailable\",\"reason\":${Json.str(result.reason)}}"
 }
 
+/** `GET /api/v1/voice/microphone`: `{presence, check, detail}`, detail null unless the capture gave one. */
+internal fun voiceMicrophoneJson(status: io.panelassistant.android.audio.MicrophoneStatus): String =
+    "{\"presence\":${Json.str(status.presence.wireValue)},\"check\":${Json.str(status.check.wireValue)}," +
+        "\"detail\":${status.detail?.let(Json::str) ?: "null"}}"
+
 /** Refuses `POST /api/v1/voice/test` before the trigger is ever called — returns the 409 reason, or
  *  null to proceed. Checked ahead of [io.panelassistant.android.assist.VoiceTestTrigger] so a disabled
  *  or capability-less panel never depends on whether the coordinator lane happens to be wired up. */

@@ -120,10 +120,11 @@ interface DeviceProfile {
     /** Screen pixels from the top of the active area up to the lens centre; null when unmeasured. */
     val cameraLensOffsetPx: Int? get() = null
 
-    /** Board carries a usable microphone, independent of [cameraDeclared] — some hardware has one
-     *  without the other. Default false: unlike the camera a microphone cannot be enumerated, so it is
-     *  only ever true once declared and verified on the hardware. */
-    val hasMicrophone: Boolean get() = false
+    /** The board's microphone declaration, independent of [cameraDeclared]: `true` records capture proven
+     *  on this hardware, `false` records a microphone shown not to work (or none fitted), and null leaves
+     *  the answer to what Android reports, checked by the panel's own capture before voice arms. See
+     *  [io.panelassistant.android.audio.MicrophonePresence]. */
+    val microphoneDeclared: Boolean? get() = null
 
     /** Board carries a loudspeaker, offered to Home Assistant as a media player. Default true: present
      *  hardware is offered, so only a profile declaring `speaker: false` hides the player. */

@@ -797,14 +797,15 @@ object SettingsRegistry {
         // ---- Voice -------------------------------------------------------------------------------
         // The panel as a Home Assistant voice satellite through Panel Assistant: which wake words it
         // listens for, which Assist pipeline each one runs, and how its microphone is used. Every spec
-        // requires a microphone, which the device profile declares only for proven capture.
+        // is offered wherever the panel has a microphone, proven by its profile or reported by Android
+        // and checked by the panel's own capture; only an absent one hides them.
         SettingSpec(
             key = "voice_enabled", type = SettingType.BOOL, group = "Voice",
             shortDescriptionUsefulInPopover = true,
             tier = Tier.BASIC, summary = "Listen for a wake word and send speech to Assist.",
             label = "Voice assistant", default = "false", scope = Scope.DEVICE,
             liveApply = true,
-            availableWhen = { it.hasMicrophone },
+            availableWhen = { it.microphone.offered },
         ),
         SettingSpec(
             key = "voice_wake_words", type = SettingType.STRING, group = "Voice", picker = "voice_wake_words",
@@ -813,7 +814,7 @@ object SettingsRegistry {
             maxChars = 512,
             help = "The wake words to listen for: the bundled Okay Nabu, Hey Jarvis, Hey Mycroft and Alexa, " +
                 "and any you import below.",
-            availableWhen = { it.hasMicrophone },
+            availableWhen = { it.microphone.offered },
             validate = ::validateVoiceWakeWords,
         ),
         SettingSpec(
@@ -823,7 +824,7 @@ object SettingsRegistry {
             maxChars = 2_048,
             help = "Which Home Assistant Assist pipeline each wake word runs. A wake word left on the preferred " +
                 "pipeline follows whichever pipeline Home Assistant prefers.",
-            availableWhen = { it.hasMicrophone },
+            availableWhen = { it.microphone.offered },
             validate = ::validateVoicePipelines,
         ),
         SettingSpec(
@@ -833,7 +834,7 @@ object SettingsRegistry {
             label = "Audio source", default = "voice_recognition",
             options = listOf("voice_recognition", "mic", "voice_communication"),
             scope = Scope.DEVICE,
-            availableWhen = { it.hasMicrophone },
+            availableWhen = { it.microphone.offered },
         ),
         SettingSpec(
             key = "voice_sensitivity", type = SettingType.ENUM, group = "Voice",
@@ -842,7 +843,7 @@ object SettingsRegistry {
             options = listOf("low", "normal", "high"),
             scope = Scope.DEVICE,
             help = "Wake-word detector threshold, applied as an offset to the model's cutoff score.\n\n- **Low** requires a clearer match: fewer false wakes, more likely to miss a quiet or distant call.\n- **Normal** applies no offset.\n- **High** matches more readily: faster to wake, more false triggers.",
-            availableWhen = { it.hasMicrophone },
+            availableWhen = { it.microphone.offered },
         ),
         SettingSpec(
             key = "voice_mic_gain_db", type = SettingType.INT, group = "Voice",
@@ -851,7 +852,7 @@ object SettingsRegistry {
             min = MicrophoneGain.MIN_DB.toDouble(), max = MicrophoneGain.MAX_DB.toDouble(), step = 1.0,
             scope = Scope.DEVICE,
             help = "Amplifies the audio sent to Home Assistant for transcription.\n\nThese panels expose no platform noise suppression or automatic gain control, so a panel heard from across the room may wake reliably and still transcribe poorly: wake-word detection adapts to a quiet signal on its own and speech-to-text does not.\n\n**Raise this** if commands are missed or mistranscribed while the wake word works. Wake-word detection is deliberately left on the unamplified signal.",
-            availableWhen = { it.hasMicrophone },
+            availableWhen = { it.microphone.offered },
         ),
         // ---- Logging -----------------------------------------------------------------------------
         SettingSpec(

@@ -1029,22 +1029,24 @@ class PaneldService : Service() {
      * What this panel tells Home Assistant it hears, or null when it has no microphone to be a satellite
      * with. Read from the panel's own settings and model catalogue, which stay the one store.
      */
-    private fun voiceConfiguration(): io.panelassistant.android.panelassistant.PanelAssistantVoiceConfiguration? {
-        if (!profile.hasMicrophone) return null
-        val settings = io.panelassistant.android.assist.VoiceSettings.parse(
-            config.voiceEnabled, config.voiceWakeWords, config.voicePipelines,
+    private fun voiceConfiguration(): io.panelassistant.android.panelassistant.PanelAssistantVoiceConfiguration? =
+        io.panelassistant.android.panelassistant.PanelAssistantVoiceConfiguration.of(
+            if (::voice.isInitialized) voice.microphoneStatus()
+            else io.panelassistant.android.audio.MicrophoneStatus(microphonePresence()),
+            io.panelassistant.android.assist.VoiceSettings.parse(
+                config.voiceEnabled, config.voiceWakeWords, config.voicePipelines,
+            ),
+            wakeWordCatalog.available(),
         )
-        val models = wakeWordCatalog.available()
-        val ids = models.map { it.id }.toSet()
-        return io.panelassistant.android.panelassistant.PanelAssistantVoiceConfiguration(
-            enabled = settings.enabled,
-            wakeWords = models.map {
-                io.panelassistant.android.panelassistant.PanelAssistantWakeWord(it.id, it.wakeWord, it.trainedLanguages)
-            },
-            active = settings.wakeWords.filter { it in ids },
-            pipelines = settings.pipelines.filterKeys { it in ids },
-        )
+
+    // Android's own report of a built-in microphone, read once: it describes the board, not a moment.
+    private val deviceReportsMicrophone by lazy {
+        io.panelassistant.android.audio.MicrophonePresence.deviceReportsBuiltInMicrophone(this)
     }
+
+    /** The one place the profile's microphone declaration meets Android's report. */
+    private fun microphonePresence(of: DeviceProfile = profile): io.panelassistant.android.audio.MicrophonePresence =
+        io.panelassistant.android.audio.MicrophonePresence.resolve(of.microphoneDeclared, deviceReportsMicrophone)
     private lateinit var system: SystemController
     private lateinit var tame: TameController
     private lateinit var navbar: NavbarController
@@ -1203,7 +1205,7 @@ class PaneldService : Service() {
             }
             if (GuardDbProcessAdmission.ordinaryMutationsAllowed() && !teardownBoundary.isStopping) {
                 PanelPermissionRepair.repair(
-                    this@PaneldService, resolvedProfile.profile.hasMicrophone,
+                    this@PaneldService, microphonePresence(resolvedProfile.profile).offered,
                     cameraCapabilityReason(resolvedProfile.profile.cameraDeclared, cameraPresence.get()),
                 )
             }
@@ -1524,7 +1526,9 @@ class PaneldService : Service() {
             audio = io.panelassistant.android.camera.AndroidCameraAudioSource(
                 source = { sharedMicrophone.get() },
                 admitted = {
-                    profile.hasMicrophone && config.cameraEnabled && !teardownBoundary.isStopping &&
+                    // Room audio rides any microphone the panel offers; an unproven one that records
+                    // silence costs only a silent track, so the camera does not wait on voice's check.
+                    microphonePresence().offered && config.cameraEnabled && !teardownBoundary.isStopping &&
                         androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) ==
                         android.content.pm.PackageManager.PERMISSION_GRANTED
                 },
@@ -1575,14 +1579,16 @@ class PaneldService : Service() {
             onFailure = { error -> Log.w(TAG, "audio playback failed: ${error.javaClass.simpleName}") },
             onBusyChanged = { busy -> media.hold(io.panelassistant.android.media.PanelMediaPlayer.Hold.ANNOUNCEMENT, busy) },
         )
-        // Arms only when the setting is on and the profile declares a microphone. The profile is the
-        // authority: the platform feature flag reports one on hardware that captures silence.
+        // Arms only when the setting is on and the panel has a microphone. Android's report alone is not
+        // proof, since some boards report one that captures silence, so the coordinator checks an
+        // unproven microphone's capture before it listens.
         voice = io.panelassistant.android.assist.voiceAssistantCoordinator(
             context = this,
             config = config,
             scope = scope,
             audio = audio,
-            microphoneAvailable = { profile.hasMicrophone },
+            microphone = { microphonePresence() },
+            onMicrophoneStatus = { panelAssistantVoice.configurationChanged() },
             source = { sharedMicrophone.get() },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
@@ -1852,6 +1858,7 @@ class PaneldService : Service() {
             stalledLiveSettings = liveSettingAuthority::pendingStalledSnapshot,
             assistPipelines = io.panelassistant.android.assist.HaAssistPipelineDirectory(config),
             voiceTest = io.panelassistant.android.assist.VoiceTestTrigger { voice.trigger() },
+            voiceMicrophone = { voice.microphoneStatus() },
             wakeWords = wakeWordCatalog,
             onWakeWordsChanged = {
                 voice.start()
@@ -1882,7 +1889,7 @@ class PaneldService : Service() {
             // One-line EFR32 radio status for the Install-tab Radio card; null when this panel has no radio.
             radioStatus = { if (profile.zigbeeGatewayDir != null) zigbeeHealth.snapshot() else null },
             camera = camera,
-            permissionStatus = { PanelPermissionRepair.observe(this, profile.hasMicrophone, cameraReason()) },
+            permissionStatus = { PanelPermissionRepair.observe(this, microphonePresence().offered, cameraReason()) },
             panelAssistantTransportFacts = { panelAssistantTransport.facts() },
             panelAssistantRestartHealth = { panelAssistantTransport.restartHealthToken() },
             releasePanelAssistantTransport = { panelAssistantTransport.releaseToMqtt() },
@@ -2019,7 +2026,8 @@ class PaneldService : Service() {
             // SMT1019 also uses SocketLedController for RGB but has no button-backlight node.
             profile.hasButtonBacklight,
             buttonBacklightTransfer = profile.buttonBacklightTransfer,
-            hasMicrophone = profile.hasMicrophone,
+            // MQTT is being removed, so it takes only whether voice is offered at all.
+            hasMicrophone = microphonePresence().offered,
             media = media.takeIf { profile.hasSpeaker },
             hasCamera = { cameraReason().takeUnless { it == CameraCapabilityReason.UNDETERMINED }?.capable },
             autoBright = autoBright,
@@ -3104,7 +3112,7 @@ class PaneldService : Service() {
                 hasWifiSsid = wifiAvailable.ssid,
                 hasCht8305 = profile.hasCht8305,
                 hasCamera = cameraPresent(),
-                hasMicrophone = profile.hasMicrophone,
+                microphone = microphonePresence(),
                 appCanSu = profile.appCanSu,
                 hasRecents = profile.hasRecents,
                 // Declared physical buttons. Populated because a capability whose value is always its

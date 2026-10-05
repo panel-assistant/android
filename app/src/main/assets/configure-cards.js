@@ -204,6 +204,45 @@
     return cfg.el("div", { class: "camera-unavailable", role: "status", text: text });
   }
 
+  // What the panel's microphone is and what its own capture check found (GET api/v1/voice/microphone),
+  // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read at most
+  // every few seconds while the card is drawn, and sooner while a check is still running.
+  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false;
+  function loadVoiceMicrophone() {
+    if (voiceMicrophoneLoading || Date.now() - voiceMicrophoneAt < 3000) return;
+    voiceMicrophoneLoading = true;
+    fetch("api/v1/voice/microphone", { headers: { "Accept": "application/json" }, cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
+      .then(function (d) {
+        var changed = JSON.stringify(d) !== JSON.stringify(voiceMicrophone);
+        voiceMicrophone = d;
+        if (changed) cfg.render();
+        if (d && d.check === "running") setTimeout(loadVoiceMicrophone, 3000);
+      })
+      .catch(function () { /* the card stays as the schema draws it */ })
+      .then(function () { voiceMicrophoneLoading = false; voiceMicrophoneAt = Date.now(); });
+  }
+
+  // True only when the panel does not offer voice at all.
+  function voiceGroupUnavailable() {
+    var voice = cfg.schema.filter(function (f) { return cfg.presentationGroup(f) === "Voice"; });
+    return voice.length > 0 && voice.every(function (f) { return !f.available; });
+  }
+
+  // Why voice is not listening, or null when nothing needs saying.
+  function voiceMicrophoneNode() {
+    loadVoiceMicrophone();
+    var status = voiceMicrophone, text = null;
+    if (voiceGroupUnavailable()) {
+      text = cfg.i18nText("configure.voice.microphone_absent", "This panel reports no microphone, or its device profile sets hardware.microphone to false, so voice is not offered.");
+    } else if (status && status.check === "silent") {
+      text = cfg.i18nText("configure.voice.microphone_silent", "The microphone recorded only silence when the panel checked it, so the panel is not listening. Try another audio source, or turn the voice assistant off and on to check again.");
+    } else if (status && status.check === "no_audio") {
+      text = cfg.i18nText("configure.voice.microphone_no_audio", "The microphone delivered no audio when the panel checked it, so the panel is not listening. Turn the voice assistant off and on to check again.");
+    }
+    return text ? cfg.el("div", { class: "camera-unavailable", role: "status", text: text }) : null;
+  }
+
   function radioJoined() {
     return !!(cfg.radio && cfg.radio.attributes && cfg.radio.attributes.joined === true);
   }
@@ -454,6 +493,8 @@
   cfg.loadCameraCapability = loadCameraCapability;
   cfg.cameraGroupUnavailable = cameraGroupUnavailable;
   cfg.cameraUnavailableNode = cameraUnavailableNode;
+  cfg.voiceGroupUnavailable = voiceGroupUnavailable;
+  cfg.voiceMicrophoneNode = voiceMicrophoneNode;
   cfg.zigbeeJoinRow = zigbeeJoinRow;
   cfg.loadHomeDashboards = loadHomeDashboards;
   cfg.loadVoicePipelines = loadVoicePipelines;

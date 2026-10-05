@@ -171,7 +171,10 @@ internal class PaneldServerHttpFixture(
         values["voice_enabled"] = enabled
         val previous = requireNotNull(observations.snapCache.peek())
         observations.snapCache.set(ManagementSnapshot(
-            previous.facts, previous.live, previous.caps.copy(hasMicrophone = hasMicrophone),
+            previous.facts, previous.live, previous.caps.copy(
+                microphone = if (hasMicrophone) io.panelassistant.android.audio.MicrophonePresence.PROVEN
+                else io.panelassistant.android.audio.MicrophonePresence.ABSENT,
+            ),
             previous.capabilityRows, previous.privilege, previous.densityCur, previous.densityBase,
             previous.fontScale, previous.wifiChronic,
         ))

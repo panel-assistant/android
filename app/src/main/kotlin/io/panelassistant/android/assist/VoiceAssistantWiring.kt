@@ -139,7 +139,8 @@ internal fun voiceAssistantCoordinator(
     config: Config,
     scope: CoroutineScope,
     audio: AudioPlaybackCoordinator,
-    microphoneAvailable: () -> Boolean,
+    microphone: () -> io.panelassistant.android.audio.MicrophonePresence,
+    onMicrophoneStatus: () -> Unit,
     foregroundMicrophone: (Boolean) -> Boolean,
     state: VoiceStateAuthority,
     engineFactory: WakeWordEngineFactory,
@@ -156,7 +157,7 @@ internal fun voiceAssistantCoordinator(
                 config.voiceMicGainDb,
             )
         },
-        microphoneAvailable = microphoneAvailable,
+        microphone = microphone,
         source = source,
         engineFactory = engineFactory,
         runnerFactory = { runner },
@@ -164,5 +165,6 @@ internal fun voiceAssistantCoordinator(
         foregroundMicrophone = foregroundMicrophone,
         state = state,
         attention = VoiceAttention::cue,
+        onMicrophoneStatus = onMicrophoneStatus,
     ).also { VoiceAttention.prepare(context) }
 }

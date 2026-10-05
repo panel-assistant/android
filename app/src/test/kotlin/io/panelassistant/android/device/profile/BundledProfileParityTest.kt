@@ -68,27 +68,29 @@ class BundledProfileParityTest {
      * is scored against known-good hardware. A negative from a subset of channels proves nothing, and
      * it is more dangerous than a wrong flag because it looks like evidence.
      */
-    @Test fun onlyHardwareWithProvenCaptureDeclaresAMicrophone() {
+    @Test fun provenCaptureDeclaresAMicrophoneAndOmissionLeavesItToThePanel() {
+        // `true` records proof, so these arm voice without the panel's own capture check.
         assertEquals(
             setOf("wf1589t", "nspanel-pro", "shelly-wall-display-x2i", "smt1019"),
-            bundled.filter { it.document.hardware.hasMicrophone }.map { it.document.id }.toSet(),
+            bundled.filter { it.document.hardware.microphoneDeclared == true }.map { it.document.id }.toSet(),
         )
-        // Unknown hardware stays conservative: a profile earns the declaration by capture, never by
-        // resembling one that has it.
-        assertFalse(bundledById.getValue("generic").document.hardware.hasMicrophone)
-        // The declaration reaches the capability the voice settings gate on, not just the parsed document.
-        assertTrue(bundledById.getValue("wf1589t").profile().hasMicrophone)
-        assertTrue(bundledById.getValue("nspanel-pro").profile().hasMicrophone)
-        assertTrue(bundledById.getValue("shelly-wall-display-x2i").profile().hasMicrophone)
+        // No bundled board has a microphone shown not to work, so none hides voice outright: every other
+        // profile leaves the answer to what Android reports, checked by the panel (present hardware is
+        // offered and the panel proves it).
+        assertEquals(emptySet<String>(), bundled.filter { it.document.hardware.microphoneDeclared == false }.map { it.document.id }.toSet())
+        assertNull(bundledById.getValue("generic").document.hardware.microphoneDeclared)
+        // The declaration reaches the profile the service resolves presence from, not just the parsed document.
+        assertEquals(true, bundledById.getValue("wf1589t").profile().microphoneDeclared)
+        assertEquals(true, bundledById.getValue("nspanel-pro").profile().microphoneDeclared)
+        assertEquals(true, bundledById.getValue("shelly-wall-display-x2i").profile().microphoneDeclared)
         // The Electron WF2489T reports device `wf2489t` and resolves to the SMT1019 profile, so an owner of
         // that panel is offered voice without editing a profile.
-        assertTrue(resolve(DeviceFacts("rk3576_u", "wf2489t", "")).profile.hasMicrophone)
-        // A camera is not a microphone. The WF1589T now declares both, so the witness that the two
-        // keys are independent on real catalog content is the TPA10: it carries a camera, and its
-        // capture chain has never produced audio, so it must declare the one and not the other.
+        assertEquals(true, resolve(DeviceFacts("rk3576_u", "wf2489t", "")).profile.microphoneDeclared)
+        // A camera is not a microphone. The TPA10 declares its camera, and its microphone waits on a
+        // capture route the default one does not select, so it is left to the panel's check.
         assertEquals(true, bundledById.getValue("tpa10").document.hardware.cameraDeclared)
-        assertFalse(bundledById.getValue("tpa10").document.hardware.hasMicrophone)
-        assertFalse(bundledById.getValue("tpa10").profile().hasMicrophone)
+        assertNull(bundledById.getValue("tpa10").document.hardware.microphoneDeclared)
+        assertNull(bundledById.getValue("tpa10").profile().microphoneDeclared)
     }
 
     /**
@@ -175,22 +177,24 @@ class BundledProfileParityTest {
             assertFalse("hardware without the part must be able to omit $path", descriptor.required)
         }
 
-        // The generic profile declares neither key, so it is the witness for what omission means.
-        // The two keys differ deliberately: an absent microphone is false because nothing can enumerate
-        // a microphone, while an absent camera is null because Android can. Serialization must preserve
-        // that difference, or a round trip would turn "ask Android" into an explicit refusal.
+        // The generic profile declares neither key, so it is the witness for what omission means: for
+        // both, null asks Android. Serialization must preserve that, or a round trip would turn "ask
+        // Android" into an explicit refusal.
         val none = bundledById.getValue("generic").document
         assertNull(none.hardware.cameraDeclared)
-        assertFalse(none.hardware.hasMicrophone)
+        assertNull(none.hardware.microphoneDeclared)
         val noneReparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(none)).document)
         assertNull("an omitted camera key must not gain a value across a round trip", noneReparsed.hardware.cameraDeclared)
-        assertFalse("an omitted microphone key must not become true across a round trip", noneReparsed.hardware.hasMicrophone)
+        assertNull("an omitted microphone key must not gain a value across a round trip", noneReparsed.hardware.microphoneDeclared)
+        val dead = none.copy(hardware = none.hardware.copy(microphoneDeclared = false))
+        assertEquals("a microphone shown not to work stays declared", false,
+            requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(dead)).document).hardware.microphoneDeclared)
 
         // A microphone without a camera is the case that matters, and it must survive serialization.
         val base = bundledById.getValue("nspanel-pro").document
-        val micOnly = base.copy(hardware = base.hardware.copy(hasMicrophone = true))
+        val micOnly = base.copy(hardware = base.hardware.copy(microphoneDeclared = true))
         val reparsed = requireNotNull(ProfileYaml.parse(ProfileYaml.serialize(micOnly)).document)
-        assertTrue("a microphone declaration must survive the round trip", reparsed.hardware.hasMicrophone)
+        assertEquals("a microphone declaration must survive the round trip", true, reparsed.hardware.microphoneDeclared)
         assertNull("a microphone must not imply a camera", reparsed.hardware.cameraDeclared)
         assertEquals(micOnly, reparsed)
 
@@ -198,7 +202,7 @@ class BundledProfileParityTest {
         val micProfile = DataDeviceProfile(
             document = micOnly, productVersion = "", revision = "test", trustedBundledContent = true,
         )
-        assertTrue(micProfile.hasMicrophone)
+        assertEquals(true, micProfile.microphoneDeclared)
         assertNull(micProfile.cameraDeclared)
 
         // Adding two keys must not open the hardware block to a third.
@@ -521,7 +525,7 @@ class BundledProfileParityTest {
         assertEquals("none", candidate.hardware.led.mechanism)
         assertFalse("no panel button backlight was reported", candidate.hardware.hasButtonBacklight)
         assertNull("the community firmware camera path is undeclared, so Android decides", candidate.hardware.cameraDeclared)
-        assertFalse("the community firmware microphone path has not been proved", candidate.hardware.hasMicrophone)
+        assertNull("the community firmware microphone path has not been proved, so the panel checks it", candidate.hardware.microphoneDeclared)
         assertEquals("Android proximity sensor", candidate.sensors.proximityTechnology)
         assertEquals("Ambient light", candidate.sensors.lightTechnology)
         assertFalse("the panel uses ordinary Android sensors rather than CHT8305", candidate.sensors.cht8305)
@@ -584,7 +588,7 @@ class BundledProfileParityTest {
         assertEquals("none", candidate.hardware.led.mechanism)
         assertFalse("the product has no panel backlight button", candidate.hardware.hasButtonBacklight)
         assertNull("the reporter's panel has no camera to enumerate, so the profile claims nothing", candidate.hardware.cameraDeclared)
-        assertFalse("the audio capture chain has not been proved", candidate.hardware.hasMicrophone)
+        assertNull("the audio capture chain has not been proved, so the panel checks it", candidate.hardware.microphoneDeclared)
         assertNull("the firmware node does not prove a fitted proximity sensor", candidate.sensors.proximityTechnology)
         assertNull("the firmware node does not prove a usable ambient sensor", candidate.sensors.lightTechnology)
         assertFalse("AHT20 is not declared until the physical part is proved", candidate.sensors.cht8305)

@@ -18,6 +18,7 @@ private const val WAKE_WORD_IMPORT_DEADLINE_MS = 30_000L
 
 internal fun Route.voiceRoutes(
     hasMicrophone: () -> Boolean,
+    microphone: () -> io.panelassistant.android.audio.MicrophoneStatus,
     voiceEnabled: () -> Boolean,
     assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory,
     voiceTest: io.panelassistant.android.assist.VoiceTestTrigger,
@@ -41,6 +42,11 @@ internal fun Route.voiceRoutes(
         }
         val (status, body) = voicePipelinesResponse(assistPipelines.list())
         call.respondText(body, ContentType.Application.Json, status)
+    }
+    // What the panel has and what its own capture check found, so the Voice card can say why it is
+    // quiet: no microphone, or one that recorded silence or delivered nothing when checked.
+    get("/voice/microphone") {
+        call.respondText(voiceMicrophoneJson(microphone()), ContentType.Application.Json)
     }
     // One-shot voice-assistant test run. Refused with 409 before ever reaching the trigger
     // when the panel has no microphone capability or voice_enabled is off, so a disabled

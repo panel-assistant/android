@@ -414,7 +414,7 @@ internal abstract class MqttWireRig {
             hasTemperature = true,
             hasHumidity = true,
             hasButtonBacklight = true,
-            hasMicrophone = true,
+            microphone = io.panelassistant.android.audio.MicrophonePresence.PROVEN,
             hasCamera = hasCamera,
             relays = 2,
             buttonLeds = 1,
