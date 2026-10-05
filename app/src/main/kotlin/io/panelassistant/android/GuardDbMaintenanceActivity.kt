@@ -1,6 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.R
 import android.app.Activity
 import android.content.Context
 import android.content.Intent

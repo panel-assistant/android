@@ -1,6 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.BuildConfig
 import android.content.Context
 import android.content.ContentResolver
 import android.content.SharedPreferences

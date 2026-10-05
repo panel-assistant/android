@@ -1,6 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.R
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.graphics.Color

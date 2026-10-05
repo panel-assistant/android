@@ -1,7 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.BuildConfig
-import io.panelassistant.android.R
 import android.content.Intent
 import android.net.Uri
 import io.panelassistant.android.control.BuiltinDashboard

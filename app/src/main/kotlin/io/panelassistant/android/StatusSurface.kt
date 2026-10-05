@@ -1,7 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.BuildConfig
-import io.panelassistant.android.R
 import io.panelassistant.android.util.DashboardTheme
 import android.app.Activity
 import android.content.res.ColorStateList

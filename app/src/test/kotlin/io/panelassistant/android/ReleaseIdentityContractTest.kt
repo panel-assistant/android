@@ -1,6 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.testsupport.TestSources
 import java.util.Properties
 import org.junit.Assert.assertEquals

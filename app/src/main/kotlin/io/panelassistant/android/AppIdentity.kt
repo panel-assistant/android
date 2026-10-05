@@ -1,6 +1,5 @@
 package io.panelassistant.android
 
-import io.panelassistant.android.BuildConfig
 
 /**
  * The two installable identities one source tree builds. A new applicationId is a new app to Android,
