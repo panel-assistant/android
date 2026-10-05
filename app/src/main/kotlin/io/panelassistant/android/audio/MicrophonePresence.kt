@@ -51,8 +51,8 @@ enum class MicrophonePresence {
 
 /**
  * Android's aggregate microphone mute (`AudioManager.isMicrophoneMute`), which a hardware privacy switch
- * such as the Tuya TPA10's sets. Polled, because Android 8.1, which most panels run, has no broadcast for
- * it; [refresh] reports only a change, so a caller acts once per press.
+ * such as the Tuya TPA10's sets. Re-read when Android announces a change; [refresh] reports only a
+ * change, so a caller acts once per press.
  */
 class MicrophoneMute(private val read: () -> Boolean) {
     @Volatile
@@ -66,10 +66,6 @@ class MicrophoneMute(private val read: () -> Boolean) {
         if (now == muted) return false
         muted = now
         return true
-    }
-
-    companion object {
-        const val POLL_MS = 1_000L
     }
 }
 
