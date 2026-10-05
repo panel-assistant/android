@@ -36,7 +36,7 @@ static int led_open(void) {
 
 // True if the node exists and we can open it (presence + permission probe; issues no ioctls).
 JNIEXPORT jboolean JNICALL
-Java_io_github_maxlyth_hapaneld_hardware_NativeLed_nativeProbe(JNIEnv *env, jobject thiz) {
+Java_io_panelassistant_android_hardware_NativeLed_nativeProbe(JNIEnv *env, jobject thiz) {
     int fd = led_open();
     if (fd < 0) return JNI_FALSE;
     close(fd);
@@ -45,7 +45,7 @@ Java_io_github_maxlyth_hapaneld_hardware_NativeLed_nativeProbe(JNIEnv *env, jobj
 
 // Set R/G/B (each already scaled to 0..15 by the caller). Returns 0 on success, -errno on failure.
 JNIEXPORT jint JNICALL
-Java_io_github_maxlyth_hapaneld_hardware_NativeLed_nativeSetRgb(JNIEnv *env, jobject thiz,
+Java_io_panelassistant_android_hardware_NativeLed_nativeSetRgb(JNIEnv *env, jobject thiz,
                                                                 jint r, jint g, jint b) {
     int fd = led_open();
     if (fd < 0) {
@@ -63,7 +63,7 @@ Java_io_github_maxlyth_hapaneld_hardware_NativeLed_nativeSetRgb(JNIEnv *env, job
 
 // All channels off. Returns 0 on success, -errno on failure.
 JNIEXPORT jint JNICALL
-Java_io_github_maxlyth_hapaneld_hardware_NativeLed_nativeOff(JNIEnv *env, jobject thiz) {
+Java_io_panelassistant_android_hardware_NativeLed_nativeOff(JNIEnv *env, jobject thiz) {
     int fd = led_open();
     if (fd < 0) return -errno;
     int rc = 0;

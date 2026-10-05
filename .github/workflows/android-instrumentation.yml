@@ -100,7 +100,7 @@ jobs:
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk;
             log="$RUNNER_TEMP/core-instrumentation.log";
             status=0;
-            adb shell am instrument -w -e annotation io.github.maxlyth.hapaneld.CoreInstrumentation io.github.maxlyth.hapaneld.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
+            adb shell am instrument -w -e annotation io.panelassistant.android.CoreInstrumentation io.github.maxlyth.hapaneld.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || status=$?;
             cat "$log";
             test "$status" -eq 0;
             if grep -Eq "FAILURES!!!|Process crashed|INSTRUMENTATION_FAILED|shortMsg=|No tests found" "$log"; then exit 1; fi;

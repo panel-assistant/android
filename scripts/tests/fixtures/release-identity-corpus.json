@@ -31,6 +31,11 @@
       "successor": "panel-assistant-v0.9.7-manual-setup-required.apk"
     },
     {
+      "tag": "v0.9.10",
+      "legacy": "ha-paneld-v0.9.10-manual-setup-required.apk.bin",
+      "successor": "panel-assistant-v0.9.10-manual-setup-required.apk.bin"
+    },
+    {
       "tag": "v1.0.0-rc1",
       "legacy": "ha-paneld-v1.0.0-rc1-manual-setup-required.apk",
       "successor": "panel-assistant-v1.0.0-rc1-manual-setup-required.apk"

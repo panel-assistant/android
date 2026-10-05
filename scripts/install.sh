@@ -156,10 +156,12 @@ RESOLVED_APK_NAME=""
 valid_release_tag() { printf '%s\n' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; }
 valid_commit() { printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 release_asset_url() { printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$1" "$2"; }
-release_apk_name() { printf 'panel-assistant-%s-manual-setup-required.apk\n' "$1"; }
-# The bridge keeps the historical asset name. A release published before the successor existed
+# Releases from 0.9.10 publish their APKs with a `.bin` suffix, so that no updater shipped before
+# Panel Assistant 0.7.1 finds an asset ending `.apk`.
+release_apk_name() { printf 'panel-assistant-%s-manual-setup-required.apk.bin\n' "$1"; }
+# The bridge keeps the historical asset name, plus that suffix. A release published before the successor existed
 # carries only that APK, and its own provisioner is the one that installs it.
-bridge_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk\n' "$1"; }
+bridge_apk_name() { printf 'ha-paneld-%s-manual-setup-required.apk.bin\n' "$1"; }
 release_apk_url() { release_asset_url "$1" "$(release_apk_name "$1")"; }
 provision_asset_name() { printf 'ha-paneld-provision-%s.sh\n' "$1"; }
 provision_asset_url() { release_asset_url "$1" "$(provision_asset_name "$1")"; }
@@ -242,10 +244,12 @@ if [ -z "$RELEASE_TAG" ]; then
   PROVISION_REF="$(printf '%s' "$release_record" | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
   # A release carries one APK per installable identity, so the first `.apk` in the record is not
   # necessarily the one this installer wants. Take the successor when the release publishes it and
-  # the bridge otherwise, always by exact published URL rather than by position.
-  release_apk_urls="$(printf '%s' "$release_record" | grep -o '"browser_download_url": *"[^"]*\.apk"' | cut -d'"' -f4 || true)"
+  # the bridge otherwise, always by exact published URL rather than by position. A release from
+  # before 0.9.10 published the same names without the `.bin` suffix.
+  release_apk_urls="$(printf '%s' "$release_record" | grep -o '"browser_download_url": *"[^"]*\.apk\(\.bin\)\{0,1\}"' | cut -d'"' -f4 || true)"
   if [ -n "$PROVISION_REF" ] && valid_release_tag "$PROVISION_REF"; then
-    for candidate_name in "$(release_apk_name "$PROVISION_REF")" "$(bridge_apk_name "$PROVISION_REF")"; do
+    for candidate_name in "$(release_apk_name "$PROVISION_REF")" "$(bridge_apk_name "$PROVISION_REF")" \
+      "$(release_apk_name "$PROVISION_REF" | sed 's/\.bin$//')" "$(bridge_apk_name "$PROVISION_REF" | sed 's/\.bin$//')"; do
       candidate_url="$(release_asset_url "$PROVISION_REF" "$candidate_name")"
       if printf '%s\n' "$release_apk_urls" | grep -Fxq "$candidate_url"; then
         RESOLVED_APK_URL="$candidate_url"

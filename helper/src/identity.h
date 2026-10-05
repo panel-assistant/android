@@ -42,7 +42,7 @@
 // the applicationId, so the successor's component is its own package id plus this unchanged class.
 // `.input.PanelAccessibilityService` shorthand would resolve against the successor's package id and
 // name a class that does not exist, so the fully-qualified form is the only correct one for both.
-#define APP_ACCESSIBILITY_CLASS "io.github.maxlyth.hapaneld.input.PanelAccessibilityService"
+#define APP_ACCESSIBILITY_CLASS "io.panelassistant.android.input.PanelAccessibilityService"
 
 // Who is on the other end of a connection. Resolved once per connection from SO_PEERCRED and carried
 // in conn_ctx, so a handler never has to ask, and never takes the answer from the request.

@@ -22,8 +22,8 @@ COMMANDS="$ROOT/helper/src/commands.def"
 daemon=$(grep -oE '^COMMAND\([A-Z][A-Z0-9_]*' "$COMMANDS" | cut -d'(' -f2 | sort -u)
 
 app_helper=$(grep -rhoE '((HelperClient|daemon)\.(send|sendBytes|sendLong|sendFile)|privileged)\("[A-Z][A-Z0-9_]*' "$APP" | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"')
-app_client=$(grep -hoE '(send|sendBytes|sendLong|sendFile|requestRaw|request|bootstrap)\("[A-Z][A-Z0-9_]*' "$APP/io/github/maxlyth/hapaneld/util/HelperClient.kt" | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"')
-app_evdev=$(grep -rhoE '(out|writer)\.write\("[A-Z][A-Z0-9_]*' "$APP/io/github/maxlyth/hapaneld/input" 2>/dev/null | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"' || true)
+app_client=$(grep -hoE '(send|sendBytes|sendLong|sendFile|requestRaw|request|bootstrap)\("[A-Z][A-Z0-9_]*' "$APP/io/panelassistant/android/util/HelperClient.kt" | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"')
+app_evdev=$(grep -rhoE '(out|writer)\.write\("[A-Z][A-Z0-9_]*' "$APP/io/panelassistant/android/input" 2>/dev/null | grep -oE '"[A-Z][A-Z0-9_]*' | tr -d '"' || true)
 app=$(printf '%s\n%s\n%s\n' "$app_helper" "$app_client" "$app_evdev" | grep -E '.' | sort -u)
 
 missing=""

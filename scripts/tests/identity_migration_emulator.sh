@@ -26,7 +26,7 @@ HELPER_BIN="${4:?missing helper binary}"
 
 LEGACY=io.github.maxlyth.hapaneld
 SUCCESSOR=io.panelassistant.android
-CODE_PACKAGE=io.github.maxlyth.hapaneld
+CODE_PACKAGE=io.panelassistant.android
 PANEL_ID=migration_emulator
 HOST_PORT=18888
 URL="http://127.0.0.1:$HOST_PORT"

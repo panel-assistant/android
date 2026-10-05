@@ -903,7 +903,7 @@ case "${1:-}" in
         exit $? ;;
     esac
   case "$command_text" in
-      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.panelassistant.android/io.panelassistant.android.UpgradeControlReceiver --es nonce "* | \
       "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
         nonce="${command_text##*--es nonce }"
         case "${MOCK_UPGRADE_PREPARE:-unsupported}" in
@@ -943,7 +943,7 @@ case "${1:-}" in
           *) exit 1 ;;
         esac
         ;;
-      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.panelassistant.android/io.panelassistant.android.UpgradeControlReceiver --es nonce "* | \
       "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RENEW_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
         nonce="${command_text##*--es nonce }"
         case "${MOCK_UPGRADE_RENEW:-ok}" in
@@ -962,7 +962,7 @@ case "${1:-}" in
           *) exit 1 ;;
         esac
         ;;
-      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE -n io.panelassistant.android/io.github.maxlyth.hapaneld.UpgradeControlReceiver --es nonce "* | \
+      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE -n io.panelassistant.android/io.panelassistant.android.UpgradeControlReceiver --es nonce "* | \
       "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
         nonce="${command_text##*--es nonce }"
         release_attempt_file="$STATE_DIR/upgrade-release-attempts"
@@ -996,7 +996,7 @@ case "${1:-}" in
           *) exit 1 ;;
         esac
         ;;
-      "am start -n io.panelassistant.android/io.github.maxlyth.hapaneld.MainActivity")
+      "am start -n io.panelassistant.android/io.panelassistant.android.MainActivity")
         # Compatibility fallback is independently observable: unlike an ineffective launcher result,
         # a successful direct start clears the fixture's stopped state and makes health reachable.
         [ "${MOCK_DIRECT_START:-ok}" = ok ] || exit 1

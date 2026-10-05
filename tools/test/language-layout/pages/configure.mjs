@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ROOT, tabbedPage } from '../harness.mjs';
 
-const REGISTRY = resolve(ROOT, 'app/src/main/kotlin/io/github/maxlyth/hapaneld/config/SettingsRegistry.kt');
+const REGISTRY = resolve(ROOT, 'app/src/main/kotlin/io/panelassistant/android/config/SettingsRegistry.kt');
 
 /** Each `SettingSpec(...)` call in the registry, parsed for the fields the Configure form lays out. */
 export function registrySpecs() {

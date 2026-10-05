@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core';
 
 const asset = fileURLToPath(new URL('../../app/src/main/assets/profiles.js', import.meta.url));
 const editorBundle = fileURLToPath(new URL('../../app/src/main/assets/vendor/profile-editor/codemirror.js', import.meta.url));
-const contracts = fileURLToPath(new URL('../../app/src/main/kotlin/io/github/maxlyth/hapaneld/device/profile/ProfileContracts.kt', import.meta.url));
+const contracts = fileURLToPath(new URL('../../app/src/main/kotlin/io/panelassistant/android/device/profile/ProfileContracts.kt', import.meta.url));
 const englishCatalogue = fileURLToPath(new URL('../../app/src/main/assets/i18n/en.json', import.meta.url));
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const browserTest = existsSync(chrome) ? test : test.skip;

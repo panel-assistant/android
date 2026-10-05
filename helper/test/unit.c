@@ -2272,7 +2272,7 @@ static void test_grant_accessibility(void) {
     // The class comes from the Gradle namespace, which does not move with the applicationId, so the
     // successor's component is its own id plus the UNCHANGED class. The `.input.…` shorthand would
     // resolve against the successor's id and name a class that does not exist.
-    const char *component = SUCCESSOR_ID "/io.github.maxlyth.hapaneld.input.PanelAccessibilityService";
+    const char *component = SUCCESSOR_ID "/io.panelassistant.android.input.PanelAccessibilityService";
     const char *const enable_flag[] = {
         "settings", "put", "secure", "accessibility_enabled", "1", NULL
     };

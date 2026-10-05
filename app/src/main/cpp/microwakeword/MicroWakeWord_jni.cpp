@@ -1,5 +1,5 @@
 // Derived from the Home Assistant Companion App for Android (Apache-2.0); see THIRD_PARTY.md.
-// JNI binding for io.github.maxlyth.hapaneld.assist.wakeword.NativeMicroWakeWord. Methods are
+// JNI binding for io.panelassistant.android.assist.wakeword.NativeMicroWakeWord. Methods are
 // registered from JNI_OnLoad, so JNI_OnLoad is the library's only exported symbol.
 #include <jni.h>
 #include <memory>
@@ -8,7 +8,7 @@
 #include "MicroWakeWordEngine.h"
 
 static constexpr char LOG_TAG[] = "ha-paneld/mww-jni";
-static constexpr char KOTLIN_CLASS[] = "io/github/maxlyth/hapaneld/assist/wakeword/NativeMicroWakeWord";
+static constexpr char KOTLIN_CLASS[] = "io/panelassistant/android/assist/wakeword/NativeMicroWakeWord";
 
 static jlong nativeCreate(
     JNIEnv* env, jclass /*clazz*/, jobject modelBuffer, jint sampleRate,
