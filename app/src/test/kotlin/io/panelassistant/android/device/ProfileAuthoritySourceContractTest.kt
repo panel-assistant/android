@@ -1,6 +1,7 @@
 package io.panelassistant.android.device
 
 import io.panelassistant.android.device.profile.BundledProfileFixtures
+import io.panelassistant.android.device.profile.ProfileFact
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -220,7 +221,8 @@ class ProfileAuthoritySourceContractTest {
                 add(loaded.document.displayName)
                 loaded.document.identity.manufacturer?.let(::add)
                 loaded.document.identity.model?.let(::add)
-                loaded.document.match.any.flatMap { it.all }.flatMap { it.values }.forEach(::add)
+                loaded.document.match.any.flatMap { it.all }
+                    .filter { it.field == ProfileFact.MODEL || it.field == ProfileFact.DEVICE }.flatMap { it.values }.forEach(::add)
             }
         }.map(String::trim).filter { it.length >= 4 }.map(String::lowercase).toSet()
 
