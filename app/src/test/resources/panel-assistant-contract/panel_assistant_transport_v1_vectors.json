@@ -803,8 +803,8 @@
       "request": {
         "type": "panel_assistant/hello",
         "protocol": {
-          "min": 3,
-          "max": 3
+          "min": 4,
+          "max": 4
         },
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "app": {
@@ -937,8 +937,8 @@
       "request": {
         "type": "panel_assistant/hello",
         "protocol": {
-          "min": 3,
-          "max": 3
+          "min": 4,
+          "max": 4
         },
         "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "app": {
