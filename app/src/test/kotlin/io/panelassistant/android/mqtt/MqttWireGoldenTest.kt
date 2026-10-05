@@ -679,6 +679,7 @@ internal abstract class MqttWireRig {
             val normalised = String(payload, Charsets.UTF_8).let { text ->
                 check(text.toByteArray(Charsets.UTF_8).contentEquals(payload)) { "non-UTF-8 payload on $topic" }
                 text.replace(SW_VERSION, SW_VERSION_TOKEN)
+                    .replace("1.2.3 (${BuildConfig.VERSION_CODE})", "1.2.3 (@@VERSION_CODE@@)")
             }
             // Base64 never yields "-", so it unambiguously marks an empty payload without a trailing tab.
             val encoded = if (normalised.isEmpty()) EMPTY_PAYLOAD else Base64.getEncoder().encodeToString(normalised.toByteArray(Charsets.UTF_8))

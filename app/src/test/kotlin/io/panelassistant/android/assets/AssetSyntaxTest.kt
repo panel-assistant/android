@@ -269,7 +269,7 @@ class AssetSyntaxTest {
             const chan={value:'stable'},current={textContent:'1.0.0'};
             const link={href:'',style:{},removeAttribute(k){if(k==='href')this.href=''}};
             const button={disabled:true,textContent:'',getAttribute(){return '1'}};
-            const row={querySelector(s){if(s==='.cchan')return chan;if(s==='.cvsel')return vsel;if(s==='.cver')return current;if(s==='.cnotes')return link;if(s==='.cinstall')return button;if(s==='.cdl')return null;return null}};
+            const row={getAttribute(){return null},querySelector(s){if(s==='.cchan')return chan;if(s==='.cvsel')return vsel;if(s==='.cver')return current;if(s==='.cnotes')return link;if(s==='.cinstall')return button;if(s==='.cdl')return null;return null}};
             const versions=fallback?
               [{tag:'v3',version:'3.0.0',installable:false,action:'Upgrade'},{tag:'v2',version:'2.0.0',installable:false,action:'Upgrade'},{tag:'v1',version:'1.0.0',installable:false,action:'Install'}]:
               [{tag:'v3',version:'3.0.0',installable:false,action:'Upgrade'},{tag:'v2',version:'2.0.0',installable:true,action:'Upgrade'},{tag:'v1',version:'1.0.0',installable:true,action:'Install'}];
