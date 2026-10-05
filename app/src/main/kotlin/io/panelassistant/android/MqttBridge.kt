@@ -1924,6 +1924,9 @@ internal class MqttBridge(
     }
 
     private fun startOpen() {
+        // Confirm startup LED state through existing actuation, including panels without a broker.
+        runCatching { reapplyStoredLed() }
+            .onFailure { Log.w(TAG, "startup LED restoration failed", it) }
         // Linearize the explicit fresh-client boundary before clearing bridge state. A delayed event from
         // the prior client must not overwrite this attempt while it is waiting for its first CONNACK.
         connectionEventDispatcher.supersede()
@@ -3046,12 +3049,8 @@ internal class MqttBridge(
         check(delivered) { "screen wake failed; ON not published" }
     }
 
-    /**
-     * Drive the LED from persisted intent and record whether the actuation was confirmed. Reconnect uses
-     * it because the LED resets on reboot; the camera indicator uses it to give the LED back after
-     * holding it, because persisted intent is the only source that also reflects a command that arrived
-     * while the hold refused ordinary writes.
-     */
+    /** Restore persisted LED intent through acknowledged actuation after startup, reconnect or a camera hold.
+     * Persisted intent includes commands refused while the camera owned the output. */
     fun reapplyStoredLed() {
         val desiredLed = LedCommandPolicy.stored(config.lastLed, config.lastLedEffect)
         ledActuationKnown = false
