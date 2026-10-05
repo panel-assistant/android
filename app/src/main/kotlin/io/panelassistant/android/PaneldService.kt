@@ -1033,20 +1033,12 @@ class PaneldService : Service() {
         io.panelassistant.android.panelassistant.PanelAssistantVoiceConfiguration.of(
             if (::voice.isInitialized) voice.microphoneStatus()
             else io.panelassistant.android.audio.MicrophoneStatus(microphonePresence()),
-            io.panelassistant.android.assist.VoiceSettings.parse(
-                config.voiceEnabled, config.voiceWakeWords, config.voicePipelines,
-            ),
+            io.panelassistant.android.assist.VoiceSettings.parse(config.voiceEnabled, config.voiceWakeWords, config.voicePipelines),
             wakeWordCatalog.available(),
         )
-
-    // Android's own report of a built-in microphone, read once: it describes the board, not a moment.
-    private val deviceReportsMicrophone by lazy {
-        io.panelassistant.android.audio.MicrophonePresence.deviceReportsBuiltInMicrophone(this)
-    }
-
     /** The one place the profile's microphone declaration meets Android's report. */
-    private fun microphonePresence(of: DeviceProfile = profile): io.panelassistant.android.audio.MicrophonePresence =
-        io.panelassistant.android.audio.MicrophonePresence.resolve(of.microphoneDeclared, deviceReportsMicrophone)
+    private fun microphonePresence(of: DeviceProfile = profile) =
+        io.panelassistant.android.audio.MicrophonePresence.of(of.microphoneDeclared, this)
     private lateinit var system: SystemController
     private lateinit var tame: TameController
     private lateinit var navbar: NavbarController
@@ -1526,8 +1518,7 @@ class PaneldService : Service() {
             audio = io.panelassistant.android.camera.AndroidCameraAudioSource(
                 source = { sharedMicrophone.get() },
                 admitted = {
-                    // Room audio rides any microphone the panel offers; an unproven one that records
-                    // silence costs only a silent track, so the camera does not wait on voice's check.
+                    // Any offered microphone: an unproven silent one costs only a silent track.
                     microphonePresence().offered && config.cameraEnabled && !teardownBoundary.isStopping &&
                         androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) ==
                         android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -1579,9 +1570,8 @@ class PaneldService : Service() {
             onFailure = { error -> Log.w(TAG, "audio playback failed: ${error.javaClass.simpleName}") },
             onBusyChanged = { busy -> media.hold(io.panelassistant.android.media.PanelMediaPlayer.Hold.ANNOUNCEMENT, busy) },
         )
-        // Arms only when the setting is on and the panel has a microphone. Android's report alone is not
-        // proof, since some boards report one that captures silence, so the coordinator checks an
-        // unproven microphone's capture before it listens.
+        // Arms when the setting is on and the panel has a microphone; an unproven one (Android's report
+        // alone, which some boards make for silent hardware) is checked by the coordinator first.
         voice = io.panelassistant.android.assist.voiceAssistantCoordinator(
             context = this,
             config = config,

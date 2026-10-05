@@ -35,6 +35,12 @@ enum class MicrophonePresence {
             null -> if (deviceReports) UNPROVEN else ABSENT
         }
 
+        /** Presence for [declared] on this device; Android's report is read once, since it describes the board. */
+        fun of(declared: Boolean?, context: Context): MicrophonePresence =
+            resolve(declared, deviceReports ?: deviceReportsBuiltInMicrophone(context).also { deviceReports = it })
+
+        @Volatile private var deviceReports: Boolean? = null
+
         /** Whether Android lists a built-in microphone input on this device. */
         fun deviceReportsBuiltInMicrophone(context: Context): Boolean = runCatching {
             val audio = context.getSystemService(AudioManager::class.java) ?: return false
