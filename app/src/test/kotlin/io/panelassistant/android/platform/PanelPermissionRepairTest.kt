@@ -191,6 +191,33 @@ class PanelPermissionRepairTest {
         assertEquals(Grant.entries.toSet() - Grant.WRITESETTINGS, panel.permissions)
     }
 
+    @Test fun theFirstStartAfterThePackageMoveRewritesTheAccessibilityEntry() {
+        // A panel updated from a build whose classes lived in io.github.maxlyth.hapaneld keeps an entry
+        // naming a class that no longer exists. Startup reads it as missing, asks the helper, and claims
+        // the grant only once Android's list names the moved class.
+        val pkg = AppIdentity.SUCCESSOR
+        var services = "com.vendor/.Reader:$pkg/io.github.maxlyth.hapaneld.input.PanelAccessibilityService"
+        val submitted = mutableListOf<String>()
+        val helper = object : Daemon {
+            override fun available() = true
+            override fun send(cmd: String): String? = error("unexpected $cmd")
+            override fun sendBytes(cmd: String): ByteArray? = error("unexpected $cmd")
+            override fun sendLong(cmd: String, timeoutMs: Long): DaemonLongResult {
+                submitted += cmd
+                // What the root helper's GRANT ACCESSIBILITY does: append its compiled-in component.
+                services += ":$pkg/io.panelassistant.android.input.PanelAccessibilityService"
+                return DaemonLongResult.Reply("OK")
+            }
+        }
+        val held = { grant: Grant ->
+            grant != Grant.ACCESSIBILITY || PanelPermissionRepair.accessibilityHeld(pkg, services, true)
+        }
+        assertEquals(Outcome.CLAIMED, PanelPermissionRepair.repair(34, true, true, held, helper, pkg)[Grant.ACCESSIBILITY])
+        assertEquals(listOf("GRANT $pkg ACCESSIBILITY"), submitted)
+        assertEquals(Outcome.HELD, PanelPermissionRepair.repair(34, true, true, held, helper, pkg)[Grant.ACCESSIBILITY])
+        assertEquals("a second start writes nothing", 1, submitted.size)
+    }
+
     @Test fun accessibilityRequiresOurExactComponentAndTheGlobalEnableFlag() {
         for (pkg in AppIdentity.ALL) {
             val full = "$pkg/${AppIdentity.CODE_PACKAGE}.input.PanelAccessibilityService"
