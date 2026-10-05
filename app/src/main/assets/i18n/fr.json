@@ -4954,7 +4954,7 @@
       "state": "machine-cross-checked"
     },
     "entities.control.apply_policy": {
-      "text": "Appliquer la stratégie ({current} → {desired})",
+      "text": "Appliquer le lot selon la stratégie ({current} → {desired})",
       "sourceHash": "538781bf551ef48ab4a9bf050de1cef5e5f7f1b63aabdf7385e6a706be8cb926",
       "state": "machine-cross-checked"
     },
