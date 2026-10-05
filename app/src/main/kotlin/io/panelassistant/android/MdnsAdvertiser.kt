@@ -255,7 +255,7 @@ class MdnsAdvertiser(
                 }
                 val generationProbeToken = UUID.randomUUID().toString()
                 val props = buildMap {
-                    put("ver", Config.VERSION)
+                    put("ver", appVersion())
                     put("caps", "tts")
                     put("path", "/play")
                     // Friendly name so a peer's fleet switcher can label this panel nicely (falls back to the

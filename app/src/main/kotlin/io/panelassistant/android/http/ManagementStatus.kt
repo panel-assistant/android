@@ -157,7 +157,7 @@ private fun statusWarning(f: HealthAudit.Finding): String = when (f.kind) {
     HealthAudit.Kind.NO_RENDERER ->
         "ℹ <b>MQTT is configured. Next: choose a dashboard renderer.</b> Select ha-paneld's built-in renderer, install the Home Assistant Companion app, or configure another dashboard package."
     HealthAudit.Kind.UPDATE -> f.update!!.let { u ->
-        "⬆ <b>${esc(u.label)}</b> ${esc(u.latestVersion)} is available (installed ${esc(u.currentVersion)}) — " +
+        "⬆ <b>${esc(u.label)}</b> ${esc(u.latestVersion)} is available (installed ${esc(u.displayedCurrentVersion)}) — " +
             "<a href=\"${esc(u.releaseUrl)}\" target=\"_blank\" rel=\"noopener\">download</a>"
     }
     HealthAudit.Kind.SCHEMA_ROLLED_BACK ->

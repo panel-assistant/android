@@ -96,7 +96,6 @@
     <string name="dashboard">Dashboard</string>
     <string name="open_dashboard">Open dashboard</string>
     <string name="sign_in_home_assistant">Sign in to Home Assistant</string>
-    <string name="build_number">build %1$d</string>
 
     <string name="panel_admin">Panel admin</string>
     <string name="panel_admin_summary">Quick access for administering this panel. The dashboard is the panel’s home screen.</string>

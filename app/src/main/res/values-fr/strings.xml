@@ -94,7 +94,6 @@
     <string name="dashboard">Tableau de bord</string>
     <string name="open_dashboard">Ouvrir le tableau de bord</string>
     <string name="sign_in_home_assistant">Connexion à Home Assistant</string>
-    <string name="build_number">compilation %1$d</string>
 
     <string name="panel_admin">Administration du panneau</string>
     <string name="panel_admin_summary">Accès rapide pour administrer ce panneau. Le tableau de bord est l’écran d’accueil du panneau.</string>

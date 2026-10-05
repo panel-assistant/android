@@ -88,7 +88,7 @@ object HealthAudit {
                 "status-update-available",
                 mapOf(
                     "component" to (updateComponent ?: return@let null),
-                    "current" to update.currentVersion,
+                    "current" to update.displayedCurrentVersion,
                     "latest" to update.latestVersion,
                     "release_url" to update.releaseUrl,
                 ),

@@ -3877,7 +3877,7 @@ internal class MqttBridge(
         // never overrides a manual move) — exactly the semantics of the local ha_area REQUEST, whose
         // canonical source stays Home Assistant once the device exists.
         val sa = config.haArea.takeIf(String::isNotBlank)?.let { ""","suggested_area":"${jsonEsc(it)}"""" } ?: ""
-        val softwareVersion = jsonEsc(mqttDeviceSoftwareVersion(Config.VERSION, BuildConfig.VERSION_CODE))
+        val softwareVersion = jsonEsc(appVersion())
         val device = """"device":{"identifiers":$ids,"name":"$name","manufacturer":"$mfr","model":"$mdl","sw_version":"$softwareVersion","hw_version":"$hw","serial_number":"${config.androidId}"$sa$cu}"""
         val avail = """"availability_topic":"$availabilityTopic","payload_available":"online","payload_not_available":"offline""""
         val proximityAvail = """"availability":[{"topic":"$availabilityTopic","payload_available":"online","payload_not_available":"offline"},{"topic":"$proximityAvailabilityTopic","payload_available":"online","payload_not_available":"offline"}],"availability_mode":"all""""
@@ -5026,10 +5026,6 @@ internal fun mqttIsHaOnline(payload: ByteArray): Boolean =
     String(payload, Charsets.UTF_8).trim().equals("online", ignoreCase = true)
 
 internal fun mqttDiscoveryRetain(payload: String): Boolean = payload.isEmpty()
-
-/** Human-readable software identity shown on the Home Assistant device page. */
-internal fun mqttDeviceSoftwareVersion(versionName: String, versionCode: Int): String =
-    "$versionName (build $versionCode)"
 
 internal fun shouldRepublishDiscoveryAddress(
     connected: Boolean,

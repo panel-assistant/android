@@ -4,7 +4,7 @@ import io.panelassistant.android.mqttAcceptsCommand
 import io.panelassistant.android.mqttButtonEventTypes
 import io.panelassistant.android.mqttDiscoveryCleanupMarker
 import io.panelassistant.android.mqttDiscoveryRetain
-import io.panelassistant.android.mqttDeviceSoftwareVersion
+import io.panelassistant.android.appVersion
 import io.panelassistant.android.mqttIsHaOnline
 import io.panelassistant.android.shouldRepublishDiscoveryAddress
 import org.junit.Assert.assertEquals
@@ -47,7 +47,7 @@ class MqttProtocolPolicyTest {
     }
 
     @Test fun deviceFirmwareVersionIncludesTheInstalledBuildNumber() {
-        assertEquals("0.9.6-rc1 (build 480)", mqttDeviceSoftwareVersion("0.9.6-rc1", 480))
+        assertEquals("0.9.6-rc1 (480)", appVersion("0.9.6-rc1", 480))
     }
 
     @Test fun discoveryCleanupMarkerChangesAcrossCoreAndProfileRevisions() {

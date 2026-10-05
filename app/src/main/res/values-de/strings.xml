@@ -94,7 +94,6 @@
     <string name="dashboard">Dashboard</string>
     <string name="open_dashboard">Dashboard öffnen</string>
     <string name="sign_in_home_assistant">Bei Home Assistant anmelden</string>
-    <string name="build_number">Build %1$d</string>
 
     <string name="panel_admin">Panel-Verwaltung</string>
     <string name="panel_admin_summary">Schnellzugriff zur Verwaltung dieses Panels. Das Dashboard ist der Startbildschirm des Panels.</string>

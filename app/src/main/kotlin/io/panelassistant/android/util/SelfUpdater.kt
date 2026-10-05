@@ -1,5 +1,6 @@
 package io.panelassistant.android.util
 
+import io.panelassistant.android.appVersion
 import android.content.Context
 import android.util.Log
 import io.panelassistant.android.AppIdentity
@@ -175,8 +176,8 @@ object SelfUpdater {
                 ),
             )
             ComponentUpdater.Outcome.UpToDate -> ChannelPreparation.UpToDate(
-                "up to date ($current, $channel)",
-                presentation("managed-up-to-date", "current" to current),
+                "up to date (${appVersion()}, $channel)",
+                presentation("managed-up-to-date", "current" to appVersion()),
             )
             is ComponentUpdater.Outcome.Update -> {
                 val target = outcome.target
@@ -232,7 +233,7 @@ object SelfUpdater {
                     preparation.presentation,
                 )
                 is ChannelPreparation.Ready -> preparation.prepared.use { prepared ->
-                    Log.i(TAG, "self-update ${BuildConfig.VERSION_NAME} -> ${prepared.version} ($channel)")
+                    Log.i(TAG, "self-update ${appVersion()} -> ${prepared.version} ($channel)")
                     installPreparedOutcome(context, prepared)
                 }
             }

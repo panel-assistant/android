@@ -618,7 +618,6 @@ class MainActivity : AppCompatActivity() {
         // status phase, and it has to keep fitting a 480x480 panel without scrolling.
         val surface = statusSurface()
         // The build number belongs on this screen — it is the one a bug report quotes.
-        surface.setBrandCaption(getString(R.string.build_number, BuildConfig.VERSION_CODE))
         surface.setBody(root)
         return surface.root
     }

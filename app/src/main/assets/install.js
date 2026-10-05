@@ -240,7 +240,7 @@
   window.loadVersions = function (name) {
     var r = row(name); if (!r) return;
     var channelSelect = r.querySelector('.cchan'), chan = channelSelect ? channelSelect.value : '', vsel = r.querySelector('.cvsel');
-    var installed = (r.querySelector('.cver') || {}).textContent || '';
+    var installed = r.getAttribute('data-installed-version') || (r.querySelector('.cver') || {}).textContent || '';
     vsel.textContent = '';
     var loading = document.createElement('option'); loading.textContent = t('install.shared.loading', 'loading…'); vsel.appendChild(loading);
     return fetch('api/v1/install/versions?name=' + encodeURIComponent(name) + (channelSelect ? '&channel=' + encodeURIComponent(chan) : ''))

@@ -91,7 +91,6 @@
     <string name="dashboard">Dashboard</string>
     <string name="open_dashboard">Dashboard openen</string>
     <string name="sign_in_home_assistant">Log in op Home Assistant</string>
-    <string name="build_number">build %1$d</string>
     <string name="panel_admin">Paneelbeheer</string>
     <string name="panel_admin_summary">Snelle toegang voor het beheren van dit paneel. Het dashboard is het startscherm van het paneel.</string>
     <string name="apps">Apps</string>

@@ -94,7 +94,6 @@
     <string name="dashboard">Panel de control</string>
     <string name="open_dashboard">Abrir panel de control</string>
     <string name="sign_in_home_assistant">Iniciar sesión en Home Assistant</string>
-    <string name="build_number">compilación %1$d</string>
 
     <string name="panel_admin">Administración del panel</string>
     <string name="panel_admin_summary">Acceso rápido para administrar este panel. El panel de control es la pantalla de inicio del panel.</string>

@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.appVersion
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -13,7 +14,6 @@ import android.webkit.WebSettings
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.device.DeviceProfile
 import android.webkit.WebView
-import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.dashboard.EntityCatalogStore
 import io.panelassistant.android.util.AccessDenialMemo
 import io.panelassistant.android.util.CompanionInstaller
@@ -37,7 +37,7 @@ object PanelInfo {
         profile: DeviceProfile,
     ): LinkedHashMap<String, String> {
         val m = LinkedHashMap<String, String>()
-        m["ha-paneld"] = "${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})"
+        m["ha-paneld"] = appVersion()
         m["Android"] = "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
         m["Firmware"] = Build.DISPLAY
         // Model + Platform promoted to lines 4-5 (panel identity up top). putAll below updates the values

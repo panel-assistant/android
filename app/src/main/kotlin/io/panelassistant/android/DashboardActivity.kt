@@ -2068,7 +2068,7 @@ class DashboardActivity : AppCompatActivity() {
         when (incoming) {
             is ExternalBusProtocol.Incoming.ConfigGet ->
                 web?.evaluateJavascript(
-                    ExternalBusProtocol.configResult(incoming.id, BuildConfig.VERSION_NAME),
+                    ExternalBusProtocol.configResult(incoming.id, appVersion()),
                     null,
                 )
             ExternalBusProtocol.Incoming.ConfigScreenShow -> runCatching {

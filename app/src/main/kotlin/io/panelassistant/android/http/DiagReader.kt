@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.appVersion
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
@@ -299,7 +300,7 @@ object DiagReader {
         val su = routes.directSuReady
         val daemon = routes.helperRootReady
         return buildString {
-        appendLine("ha-paneld diagnostics — ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
+        appendLine("ha-paneld diagnostics — ${appVersion()}")
         // Capture metadata — a normalise-me line for the regression harness: when this dump was taken +
         // how long the panel has been up (uptime is often more telling than wall-clock on a panel).
         appendLine("[captured] ${java.time.OffsetDateTime.now()} uptime=${fmtUptime(android.os.SystemClock.elapsedRealtime())}")
@@ -385,7 +386,7 @@ object DiagReader {
         appendLine("[capabilities] " + capabilityRows.joinToString(" | ") { "${it.name}=${it.status}" })
         val updates = UpdateChecker.current(ctx)   // revalidated: no stale entry for an uninstalled Companion
         if (updates.isNotEmpty()) {
-            appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.currentVersion} → ${it.latestVersion}" })
+            appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.displayedCurrentVersion} → ${it.latestVersion}" })
         }
         }
     }

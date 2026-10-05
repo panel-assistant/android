@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.appVersion
 import io.panelassistant.android.Config
 import io.panelassistant.android.DashboardEntityBackupState
 import io.panelassistant.android.config.Capabilities
@@ -151,7 +152,7 @@ internal class ConfigValueProjection(
             "\"log_ship_port\":${config.logShipPort}," +
             "\"log_ship_protocol\":${s(config.logShipProtocol)}," +
             "\"ha_auth\":{\"configured\":${config.haToken.isNotEmpty() || config.haRefreshToken.isNotEmpty()},\"oauth\":${config.haRefreshToken.isNotEmpty()}}," +
-            "\"version\":${s(Config.VERSION)}," +
+            "\"version\":${s(appVersion())}," +
             "\"proximity\":${proximityJson()}," +
             "\"power_safety\":${powerAdvisory}," +
             // Registry-driven current values + per-key HA-exposure flags for the Configure form.

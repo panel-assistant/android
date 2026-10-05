@@ -179,6 +179,25 @@ browserTest('Version picker explains unavailable releases and keeps permitted ch
   assert.equal(await page.locator('.cinstall').isDisabled(), false);
 });
 
+browserTest('Version picker retains installed release fallback with a formatted version label', async (t) => {
+  const { page } = await rig(t, {
+    noHelper: true,
+    html: '<div class="comprow" data-name="paneld" data-installed-version="0.9.9"><span class="cver">0.9.9 (1136)</span><select class="cvsel"></select></div>',
+    route(request, response, url) {
+      if (url.pathname !== '/api/v1/install/versions') return false;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ versions: [
+        { tag: 'v1.0.0', version: '1.0.0', installable: false },
+        { tag: 'v0.9.9', version: '0.9.9', installable: false },
+      ] }));
+      return true;
+    },
+  });
+  await page.evaluate(() => window.loadVersions('paneld'));
+  assert.equal(await page.locator('.cvsel').inputValue(), 'v0.9.9');
+  assert.equal(await page.locator('.cver').textContent(), '0.9.9 (1136)');
+});
+
 browserTest('Version picker uses every shipped locale for all unavailable reasons', async (t) => {
   for (const locale of ['de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'zh-Hans']) {
     const projection = await realCatalogueProjection(locale, ['install.']);

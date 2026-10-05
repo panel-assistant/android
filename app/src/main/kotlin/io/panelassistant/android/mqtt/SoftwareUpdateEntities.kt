@@ -1,5 +1,6 @@
 package io.panelassistant.android.mqtt
 
+import io.panelassistant.android.appVersion
 import io.panelassistant.android.util.CompanionInstaller
 import io.panelassistant.android.util.Json
 import io.panelassistant.android.util.ReleaseCatalog
@@ -217,7 +218,12 @@ internal object SoftwareUpdateEntities {
 
     /** The latest version Home Assistant is shown, or null when no truthful value exists. */
     fun latestVersion(inputs: SoftwareUpdateInputs): String? =
-        if (inputs.externallyManaged) null else inputs.target?.version
+        if (inputs.externallyManaged) null else inputs.target?.version?.let { target ->
+            // HA compares installed/latest strings for equality. The same running release must have
+            // the same presentation on both sides; other releases retain their catalogue identity.
+            if (inputs.component == SoftwareComponent.PANELD && target == inputs.installedVersion)
+                appVersion(target) else target
+        }
 
     /**
      * A Companion entity exists only while a Companion app is installed. A panel without one is not
@@ -313,7 +319,8 @@ internal object SoftwareUpdateEntities {
     private fun installedPresentation(inputs: SoftwareUpdateInputs): String {
         val installed = inputs.installedVersion ?: return NOT_INSTALLED
         if (installed.isBlank()) return "unknown"
-        val version = normalized(inputs.component, installed)
+        val version = if (inputs.component == SoftwareComponent.PANELD) appVersion(installed)
+            else normalized(inputs.component, installed)
         return if (companionAboveCap(inputs)) UNSUPPORTED_PREFIX + version else version
     }
 

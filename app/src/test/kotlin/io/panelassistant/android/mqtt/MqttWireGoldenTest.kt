@@ -822,7 +822,7 @@ internal abstract class MqttWireRig {
         const val SW_VERSION_TOKEN = "@@SW_VERSION@@"
         const val EMPTY_PAYLOAD = "-"
         val SW_VERSION: String = jsonEscaped(
-            io.panelassistant.android.mqttDeviceSoftwareVersion(Config.VERSION, BuildConfig.VERSION_CODE),
+            io.panelassistant.android.appVersion(Config.VERSION, BuildConfig.VERSION_CODE),
         )
 
         fun jsonEscaped(value: String): String = io.panelassistant.android.util.Json.esc(value)
@@ -998,7 +998,7 @@ internal class MqttWireGoldenTest : MqttWireRig() {
         }
         assertEquals("scenario problems", emptyList<String>(), problems)
 
-        val swVersion = jsonEscaped(io.panelassistant.android.mqttDeviceSoftwareVersion(Config.VERSION, BuildConfig.VERSION_CODE))
+        val swVersion = jsonEscaped(io.panelassistant.android.appVersion(Config.VERSION, BuildConfig.VERSION_CODE))
         actual.filter { it.isPublication() && !it.topic().startsWith("homeassistant/") }.forEach { line ->
             assertFalse(
                 "normalisation token reached a non-discovery topic: ${line.topic()}",

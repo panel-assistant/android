@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.appVersion
 import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.Config
 import io.panelassistant.android.util.CompanionInstaller
@@ -11,7 +12,7 @@ internal fun componentsCardHtml(
     compPkg: String?,
     compCur: String?,
 ): String {
-    val paneldCur = Config.VERSION
+    val paneldCur = appVersion()
     val compFull = compPkg == CompanionInstaller.FULL_PKG
 
     val paneldRow = pickerRow("paneld", "ha-paneld", paneldCur, installer, strings)
@@ -43,7 +44,7 @@ private fun pickerRow(
 ): String {
     val channelControl = if (name == "paneld") """<span class="cpa-channel">—</span>""" else
         """<select class="cchan" onchange="loadVersions('$name')"><option value="stable" selected>${esc(strings.get("install.components.stable"))}</option><option value="prerelease">${esc(strings.get("install.components.prerelease"))}</option></select>"""
-    return """<div class="comprow" data-name="${esc(name)}">
+    return """<div class="comprow" data-name="${esc(name)}" data-installed-version="${esc(if (name == "paneld") Config.VERSION else installed.orEmpty())}">
 <div class="compname"><b>${esc(label)}</b> <span class="muted">${if (installed != null) """${esc(strings.get("install.shared.installed"))} <span class="cver">${esc(installed)}</span>""" else """<span class="cver">${esc(strings.get("install.shared.not_installed"))}</span>"""}</span></div>
 <div class="comppick">
 <label class="muted">${esc(strings.get("install.components.channel"))} $channelControl</label>

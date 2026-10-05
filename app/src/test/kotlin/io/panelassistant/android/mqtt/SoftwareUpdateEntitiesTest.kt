@@ -1,5 +1,6 @@
 package io.panelassistant.android.mqtt
 
+import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.mqttKnownConfigTopics
 import io.panelassistant.android.mqttStalePanelCleanup
 import org.json.JSONObject
@@ -65,6 +66,13 @@ class SoftwareUpdateEntitiesTest {
         installing = installing,
     )
 
+    @Test fun samePanelAppReleaseDoesNotBecomeAnUpdateBecauseOfItsBuildCaption() {
+        val inputs = paneld().copy(target = paneldTarget.copy(version = "0.9.7", tag = "v0.9.7"))
+        val json = state(inputs)
+        assertEquals("0.9.7 (${BuildConfig.VERSION_CODE})", field(json, "installed_version"))
+        assertEquals(field(json, "installed_version"), field(json, "latest_version"))
+    }
+
     private fun state(inputs: SoftwareUpdateInputs) = JSONObject(SoftwareUpdateEntities.stateJson(inputs))
 
     private fun field(json: JSONObject, key: String): Any {
@@ -114,7 +122,7 @@ class SoftwareUpdateEntitiesTest {
 
     @Test fun paneldReportsInstalledLatestNotesAndIdleProgress() {
         val json = state(paneld())
-        assertEquals("0.9.7", field(json, "installed_version"))
+        assertEquals("0.9.7 (${BuildConfig.VERSION_CODE})", field(json, "installed_version"))
         assertEquals("0.9.8", field(json, "latest_version"))
         assertEquals("ha-paneld", field(json, "title"))
         assertEquals("https://github.com/panel-assistant/android/releases/tag/v0.9.8", field(json, "release_url"))

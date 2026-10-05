@@ -94,7 +94,6 @@
     <string name="dashboard">仪表盘</string>
     <string name="open_dashboard">打开仪表盘</string>
     <string name="sign_in_home_assistant">登录 Home Assistant</string>
-    <string name="build_number">内部版本 %1$d</string>
 
     <string name="panel_admin">面板管理</string>
     <string name="panel_admin_summary">用于管理此面板的快捷入口。仪表盘是面板的主屏幕。</string>

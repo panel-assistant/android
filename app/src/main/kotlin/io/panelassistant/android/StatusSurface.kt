@@ -158,7 +158,7 @@ internal class StatusBrandHeader(
     private fun dp(value: Int): Int = (value * density).toInt()
 
     private val caption = TextView(activity).apply {
-        text = "v${BuildConfig.VERSION_NAME}"
+        text = appVersion()
         setTextColor(Color.parseColor(palette.subtle))
         textSize = spec.brandCaptionSp
         gravity = Gravity.CENTER
@@ -198,9 +198,9 @@ internal class StatusBrandHeader(
     /** Append the panel's running state to the caption under the mark. */
     fun setCaption(suffix: String) {
         caption.text = if (suffix.isBlank()) {
-            "v${BuildConfig.VERSION_NAME}"
+            appVersion()
         } else {
-            "v${BuildConfig.VERSION_NAME} · $suffix"
+            "${appVersion()} · $suffix"
         }
     }
 }

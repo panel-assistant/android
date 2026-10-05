@@ -91,7 +91,6 @@
     <string name="dashboard">Інформаційна панель</string>
     <string name="open_dashboard">Відкрити інформаційну панель</string>
     <string name="sign_in_home_assistant">Увійти в Home Assistant</string>
-    <string name="build_number">збірка %1$d</string>
     <string name="panel_admin">Адміністрування панелі</string>
     <string name="panel_admin_summary">Швидкий доступ до адміністрування цієї панелі. Інформаційна панель — головний екран панелі.</string>
     <string name="apps">Застосунки</string>

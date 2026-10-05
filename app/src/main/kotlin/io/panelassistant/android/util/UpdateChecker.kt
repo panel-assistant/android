@@ -2,6 +2,7 @@ package io.panelassistant.android.util
 
 import android.content.Context
 import android.os.SystemClock
+import io.panelassistant.android.appVersion
 import io.panelassistant.android.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -27,6 +28,9 @@ object UpdateChecker {
         /** Authoritative source-release classification; never infer stability from version text alone. */
         val prerelease: Boolean = false,
     ) {
+        val displayedCurrentVersion: String
+            get() = if (component == "paneld") appVersion(currentVersion) else currentVersion
+
         constructor(
             label: String,
             currentVersion: String,

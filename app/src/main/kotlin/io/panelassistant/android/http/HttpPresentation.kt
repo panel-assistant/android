@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.appVersion
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.PanelStatus
 import io.panelassistant.android.i18n.Strings as AppStrings
@@ -17,7 +18,7 @@ internal fun panelBrowserTitle(
     val panel = friendlyName.trim().ifBlank { "ha-paneld" }
     val suffix = section?.trim().orEmpty()
     val title = if (suffix.isBlank()) panel else "$panel · $suffix"
-    return if ('-' in versionName) "$versionCode · $title" else title
+    return "$title · ${appVersion(versionName, versionCode)}"
 }
 
 /** User-facing remediation for the renderer-specific recovery authority. */

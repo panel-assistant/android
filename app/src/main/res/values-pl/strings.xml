@@ -91,7 +91,6 @@
     <string name="dashboard">Pulpit nawigacyjny</string>
     <string name="open_dashboard">Otwórz pulpit nawigacyjny</string>
     <string name="sign_in_home_assistant">Zaloguj się do Home Assistant</string>
-    <string name="build_number">kompilacja %1$d</string>
     <string name="panel_admin">Administracja panelu</string>
     <string name="panel_admin_summary">Szybki dostęp do zarządzania tym panelem. Pulpit nawigacyjny to ekran główny panelu.</string>
     <string name="apps">Aplikacje</string>

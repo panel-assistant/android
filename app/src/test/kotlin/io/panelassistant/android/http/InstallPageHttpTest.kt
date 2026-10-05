@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.BuildConfig
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
@@ -26,6 +27,8 @@ class InstallPageHttpTest {
                     assertEquals(HttpStatusCode.OK, response.status)
                     assertEquals("text/html; charset=UTF-8", response.headers[HttpHeaders.ContentType])
                     val html = response.bodyAsText()
+                    assertTrue(html.contains("<span class=\"cver\">${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})</span>"))
+                    assertTrue(html.contains("data-installed-version=\"${BuildConfig.VERSION_NAME}\""))
                     for (card in listOf("managed-components", "apk-install", "uninstall-app", "vendor-packages", "display-sizing", "backup-restore")) {
                         assertTrue(card, html.contains("data-layout-key=\"$card\""))
                     }
