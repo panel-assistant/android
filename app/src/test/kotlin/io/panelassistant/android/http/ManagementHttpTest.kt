@@ -143,6 +143,9 @@ class ManagementHttpTest {
                     org.junit.Assert.assertTrue(key, body.has(key))
                 }
                 org.junit.Assert.assertFalse(body.has("database_observation_nonce"))
+                // The card's hardware facts sit beside the device object, never inside it.
+                org.junit.Assert.assertTrue(body.has("panel_assistant_hardware"))
+                org.junit.Assert.assertFalse(body.getJSONObject("panel_assistant_device").has("serial_number"))
                 assertEquals(0, refreshes)
                 val nonce = "0123456789abcdef0123456789abcdef"
                 val refreshed = client.get("/api/v1/status?database_observation_nonce=$nonce")

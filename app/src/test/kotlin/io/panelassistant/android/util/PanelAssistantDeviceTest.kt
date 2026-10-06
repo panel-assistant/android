@@ -25,8 +25,8 @@ class PanelAssistantDeviceTest {
         assertEquals(4, device.length())
     }
 
-    /** The Android release and build string was the card's Hardware line and told a user nothing. */
-    @Test fun theCardCarriesNoAndroidReleaseAsItsHardwareLine() {
+    /** Hardware facts travel beside this object: the integration refuses an unknown key inside it. */
+    @Test fun theDeviceObjectCarriesNoHardwareFacts() {
         val device = project()
         assertFalse(device.has("hw_version"))
         assertFalse(device.toString().contains("Android"))
@@ -88,5 +88,37 @@ class PanelAssistantDeviceTest {
         for (forbidden in listOf("serial", "android_id", "androidId", "mac", "did")) {
             assertFalse(forbidden, raw.contains(forbidden, ignoreCase = true))
         }
+    }
+
+    private fun hardware(
+        firmware: String? = "1.11.0",
+        androidRelease: String? = "8.1.0",
+        hardwareSerial: String? = "G000000000000000001",
+        androidId: String? = "0123456789abcdef",
+    ) = JSONObject(PanelAssistantDevice.hardwareJson(firmware, androidRelease, hardwareSerial, androidId))
+
+    @Test fun theHardwareSerialIsTheCardSerialWhenThePanelCanReadIt() {
+        val facts = hardware()
+        assertEquals("1.11.0", facts.getString("firmware"))
+        assertEquals("8.1.0", facts.getString("android_release"))
+        assertEquals("G000000000000000001", facts.getString("serial_number"))
+        assertEquals(3, facts.length())
+    }
+
+    @Test fun withoutAHardwareSerialTheAndroidIdStandsIn() {
+        for (unreadable in listOf(null, "", "  ")) {
+            assertEquals("0123456789abcdef", hardware(hardwareSerial = unreadable).getString("serial_number"))
+        }
+    }
+
+    /** The vendor's firmware string is matched against its release history, so it is sent verbatim. */
+    @Test fun theVendorFirmwareIsSentVerbatim() {
+        val tuya = "tpa10-userdebug 11 RD2A.211001.002 2.6.8-beta.33 release-keys"
+        assertEquals(tuya, hardware(firmware = tuya).getString("firmware"))
+    }
+
+    @Test fun aFactThePanelCannotStateIsLeftOut() {
+        val facts = hardware(firmware = "bad\u0000value", androidRelease = null, hardwareSerial = null, androidId = "")
+        assertEquals(0, facts.length())
     }
 }

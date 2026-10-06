@@ -60,4 +60,17 @@ class PanelAssistantDeviceStatusContractTest {
         }
         assertEquals(4, properties.length())
     }
+
+    @Test fun openApiDocumentsTheHardwareFactsBesideTheDevice() {
+        val statusSchema = openApi.getJSONObject("paths").getJSONObject("/api/v1/status")
+            .getJSONObject("get").getJSONObject("responses").getJSONObject("200")
+            .getJSONObject("content").getJSONObject("application/json").getJSONObject("schema")
+        assertEquals(
+            "#/components/schemas/PanelAssistantHardware",
+            statusSchema.getJSONObject("properties").getJSONObject("panel_assistant_hardware").getString("\$ref"),
+        )
+        val properties = openApi.getJSONObject("components").getJSONObject("schemas")
+            .getJSONObject("PanelAssistantHardware").getJSONObject("properties")
+        assertEquals(setOf("firmware", "android_release", "serial_number"), properties.keys().asSequence().toSet())
+    }
 }
