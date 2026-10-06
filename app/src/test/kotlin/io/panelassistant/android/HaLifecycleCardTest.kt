@@ -51,13 +51,20 @@ class HaLifecycleCardTest {
         assertEquals(20_000L, starting.remainingMs)
     }
 
-    @Test fun aFinishedStepIsFullEvenWhenTheClockIsBehindIt() {
+    @Test fun beforeTwoThirdsOfTheTimePanelsInDifferentStepsStillShowTheSameTrack() {
         val tracker = HaLifecycle().apply {
             notice(HaLifecyclePhase.SHUTTING_DOWN, 0L)
             notice(HaLifecyclePhase.STARTING, 10_000L, elapsedMs = 10_000L)
         }
-        // A fifth of the usual time would fill only 60% of Stopping, but Stopping has finished.
-        assertEquals(listOf(max, 0, 0), cardAt(tracker, 20_000L)!!.fills)
+        // Halfway through the usual time; one panel's dashboard has already reconnected.
+        val reloading = cardAt(tracker, 50_000L, dashboardConnected = true)!!
+        val starting = cardAt(tracker, 50_000L, dashboardConnected = false)!!
+        assertEquals(HaRestartStep.RELOADING, reloading.step)
+        assertEquals(HaRestartStep.STARTING, starting.step)
+        assertEquals("the clock, not the step, decides the fill", listOf(max, max / 2, 0), starting.fills)
+        assertEquals(starting.fills, reloading.fills)
+        // Early on, a step Home Assistant has finished is not forced full either: the fill is the time.
+        assertEquals(listOf(max * 3 / 5, 0, 0), cardAt(tracker, 20_000L)!!.fills)
     }
 
     @Test fun anOverdueRestartSitsFullAndCountsUpWithoutRunningBackwards() {
@@ -105,6 +112,15 @@ class HaLifecycleCardTest {
         assertNull("no countdown once Home Assistant is up", card.remainingMs)
         assertEquals("past the usual time the track is full", listOf(max, max, max), card.fills)
         assertEquals(113_000L, card.restartedInMs)
+    }
+
+    @Test fun homeAssistantReadyEarlyFillsTheTrackOnEveryPanel() {
+        val tracker = HaLifecycle().apply {
+            notice(HaLifecyclePhase.STARTING, 0L, elapsedMs = 30_000L)
+            notice(HaLifecyclePhase.READY, 30_000L)
+        }
+        // Ready at 60% of the usual time, with this panel's dashboard still to reconnect.
+        assertEquals(listOf(max, max, max), cardAt(tracker, 31_000L)!!.fills)
     }
 
     @Test fun theReloadingStepEndsWhenTheDashboardReconnects() {

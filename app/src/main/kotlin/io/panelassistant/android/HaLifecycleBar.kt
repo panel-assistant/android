@@ -78,12 +78,13 @@ internal const val HA_LIFECYCLE_PROGRESS_MAX = 10_000
  * continue over the back-online window.
  *
  * The track is ONE timeline: elapsed ÷ usual time, spread evenly across the three parts, so every panel
- * shows the same position at the same moment (an earlier version filled each step from when this panel
- * first showed it, and panels watching the same restart disagreed). Only the whole restart is measured,
- * not each step, so the fill can run ahead of the step; the pill and the bold step name say which step
- * this panel is in, and a finished step always shows full. Past the usual time the track sits full,
- * because progress is capped there, and never runs backwards. With no measurement there is no countdown
- * and no partial fill: the track still shows which step it is.
+ * shows the same position at the same moment. Nothing this panel alone knows moves it: an earlier
+ * version filled each step from when this panel showed it, and another forced a finished step full when
+ * this panel's dashboard reconnected, and in both panels watching the same restart disagreed. Only the
+ * whole restart is measured, not each step, so the fill can run ahead of or behind this panel's step; the
+ * pill and the bold step name say which step it is in. The track is full past the usual time (progress
+ * is capped there) and once Home Assistant is ready, and never runs backwards. With no measurement there
+ * is no timeline: no countdown, and the track only marks the steps already behind it.
  *
  * @param dashboardConnected whether this panel's dashboard is connected to Home Assistant right now
  */
@@ -107,16 +108,13 @@ internal fun haLifecycleCard(
     val max = HA_LIFECYCLE_PROGRESS_MAX
     val progress = if (measured) (minOf(elapsed!!, expected!!) * max / expected).toInt() else 0
     val overdue = measured && !ready && step != null && elapsed!! > expected!!
-    val fills = if (step == null) listOf(0, 0, 0) else List(3) { i ->
-        val timeline = (progress * 3 - i * max).coerceIn(0, max)
-        when {
-            i < step.ordinal -> max
-            ready && i == step.ordinal -> {
-                val remaining = (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
-                maxOf(timeline, ((backOnlineWindowMs - remaining) * max / backOnlineWindowMs).toInt())
-            }
-            else -> timeline
-        }
+    val fills = when {
+        step == null -> listOf(0, 0, 0)
+        // Ready is reported to every panel at once, so a full track is the same everywhere too.
+        ready -> listOf(max, max, max)
+        measured -> List(3) { i -> (progress * 3 - i * max).coerceIn(0, max) }
+        // Without a measurement there is no timeline; the track only marks the steps already behind it.
+        else -> List(3) { i -> if (i < step.ordinal) max else 0 }
     }
     val restartedIn = if (ready && elapsed != null) {
         val sinceBack = backOnlineWindowMs - (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
