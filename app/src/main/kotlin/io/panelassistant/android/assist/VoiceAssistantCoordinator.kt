@@ -173,6 +173,8 @@ class VoiceAssistantCoordinator internal constructor(
     /** Told whenever [microphoneStatus] changes, so Home Assistant and Configure can say why. */
     private val onMicrophoneStatus: () -> Unit = {},
     private val checkTimeoutMs: Long = MicrophoneSelfCheck.TIMEOUT_MS,
+    /** Android reports the microphone muted; [microphoneMuteChanged] is called when it changes. */
+    private val muted: () -> Boolean = { false },
 ) : AutoCloseable {
 
     private val lock = Any()
@@ -215,11 +217,39 @@ class VoiceAssistantCoordinator internal constructor(
     /** True while a pipeline run is in flight. */
     val running: Boolean get() = synchronized(lock) { runJob != null }
 
-    /** The microphone as every surface reports it; the check is reported only for an unproven one. */
+    /**
+     * The microphone as every surface reports it; the check is reported only for an unproven one, and
+     * never while it is muted, when silence is the owner's choice rather than a verdict on the hardware.
+     */
     fun microphoneStatus(): MicrophoneStatus {
         val presence = microphone()
+        if (presence == MicrophonePresence.ABSENT) return MicrophoneStatus(presence)
+        if (muted()) return MicrophoneStatus(presence, muted = true)
         if (presence != MicrophonePresence.UNPROVEN) return MicrophoneStatus(presence)
         return synchronized(lock) { MicrophoneStatus(presence, check, checkDetail) }
+    }
+
+    /**
+     * The mute changed. Muting abandons an unproven microphone's check and any failed verdict, which
+     * would only have measured the mute; unmuting checks it again, so voice listens once it passes.
+     */
+    fun microphoneMuteChanged() {
+        if (closed.get()) return
+        val recheck = synchronized(lock) {
+            if (!armed || microphone() != MicrophonePresence.UNPROVEN) {
+                false
+            } else if (muted()) {
+                // A passed check stands: the wake word stays armed and hears again on unmute.
+                if (check != MicrophoneCheck.PASSED) {
+                    abandonCheckLocked()
+                    state.set(VoiceState.IDLE)
+                }
+                false
+            } else {
+                check != MicrophoneCheck.PASSED && runJob == null
+            }
+        }
+        if (recheck) start()
     }
 
     /**
@@ -277,6 +307,7 @@ class VoiceAssistantCoordinator internal constructor(
         if (!current.enabled) return VoiceTestTrigger.Result.Refused("voice assistant is disabled")
         val status = microphoneStatus()
         if (!status.presence.offered) return VoiceTestTrigger.Result.Unavailable("this panel has no microphone")
+        if (status.muted) return VoiceTestTrigger.Result.Unavailable(MUTED_REASON)
         when (status.check) {
             MicrophoneCheck.RUNNING -> return VoiceTestTrigger.Result.Refused("the panel is still checking its microphone")
             MicrophoneCheck.SILENT -> return VoiceTestTrigger.Result.Unavailable(SILENT_REASON)
@@ -463,7 +494,12 @@ class VoiceAssistantCoordinator internal constructor(
         if (mic != null && microphone() == MicrophonePresence.UNPROVEN &&
             !(checkedSource === mic && check == MicrophoneCheck.PASSED)
         ) {
-            if (checkedSource === mic && check.failed) state.set(VoiceState.ERROR) else checkLocked(mic)
+            when {
+                // A muted microphone would only record the mute; it is checked once unmuted.
+                muted() -> state.set(VoiceState.IDLE)
+                checkedSource === mic && check.failed -> state.set(VoiceState.ERROR)
+                else -> checkLocked(mic)
+            }
             return
         }
         val generation = ++engineGeneration
@@ -524,7 +560,10 @@ class VoiceAssistantCoordinator internal constructor(
             lease.close()
             synchronized(lock) {
                 if (checkJob === job) checkJob = null
-                if (cause == null && armed && checkedSource === mic) {
+                if (cause == null && armed && checkedSource === mic && muted()) {
+                    // Muted while it listened: the verdict measured the mute, so it is not kept.
+                    abandonCheckLocked()
+                } else if (cause == null && armed && checkedSource === mic) {
                     val verdict = probe.verdict()
                     setCheckLocked(verdict, detail.takeIf { verdict == MicrophoneCheck.NO_AUDIO })
                     if (verdict == MicrophoneCheck.PASSED && runJob == null) {
@@ -536,6 +575,14 @@ class VoiceAssistantCoordinator internal constructor(
                 if (checkJob == null && runJob == null && wakeLease == null) releaseForegroundLocked()
             }
         }
+    }
+
+    /** Forget the check and its verdict, cancelling one in progress, so the next arming checks afresh. */
+    private fun abandonCheckLocked() {
+        checkJob?.cancel()
+        checkJob = null
+        checkedSource = null
+        setCheckLocked(MicrophoneCheck.NOT_RUN, null)
     }
 
     private fun setCheckLocked(next: MicrophoneCheck, detail: String?) {
@@ -574,5 +621,6 @@ class VoiceAssistantCoordinator internal constructor(
         private const val CHECK_POLL_MS = 50L
         const val SILENT_REASON = "the microphone recorded only silence when the panel checked it"
         const val NO_AUDIO_REASON = "the microphone delivered no audio when the panel checked it"
+        const val MUTED_REASON = "the microphone is muted"
     }
 }

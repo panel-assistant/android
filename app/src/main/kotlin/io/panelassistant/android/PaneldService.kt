@@ -1011,6 +1011,9 @@ class PaneldService : Service() {
     private lateinit var voice: io.panelassistant.android.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.panelassistant.android.assist.ConfiguredMicrophoneSource
     private val microphoneClaims = io.panelassistant.android.audio.MicrophoneForegroundClaims(::updateMicrophoneForeground)
+    private val microphoneMute = io.panelassistant.android.audio.MicrophoneMuteWatch(
+        this, { microphonePresence().offered }, io.panelassistant.android.assist.publishMicrophoneMute { voice },
+    )
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null
@@ -1579,6 +1582,7 @@ class PaneldService : Service() {
             audio = audio,
             microphone = { microphonePresence() },
             onMicrophoneStatus = { panelAssistantVoice.configurationChanged() },
+            muted = { microphoneMute.mute.muted },
             source = { sharedMicrophone.get() },
             foregroundMicrophone = ::setMicrophoneForegroundActive,
             state = voiceStateAuthority,
@@ -1598,6 +1602,7 @@ class PaneldService : Service() {
             io.panelassistant.android.assist.VoiceAttention.phase(state)
             media.hold(io.panelassistant.android.media.PanelMediaPlayer.Hold.VOICE, state.inTurn)
         }
+        microphoneMute.start(scope)
         system = SystemController(AndroidSystemEnv(this), vendorHomePackages = profile.vendorHomePackages, beforeReboot = {
             announcePanelAssistantRestart("panel", "reboot", 120_000L)
         }, homeDashboard = { config.homeDashboard }, onCompanionHome = { pkg, home ->
@@ -5209,6 +5214,7 @@ class PaneldService : Service() {
         }
         screenOnReceiver = null
         webViewRebindReceiver = null
+        microphoneMute.close()
     }
 
     /**

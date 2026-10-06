@@ -205,11 +205,16 @@
   }
 
   // What the panel's microphone is and what its own capture check found (GET api/v1/voice/microphone),
-  // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read at most
-  // every few seconds while the card is drawn, and sooner while a check is still running.
-  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false;
+  // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read every few
+  // seconds while the page is visible on a panel with a microphone, through failed requests too, and at
+  // once when the page becomes visible again, so a mute switch pressed meanwhile shows within seconds.
+  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false, voiceMicrophoneTimer = null, voiceMicrophoneWatched = false;
   function loadVoiceMicrophone() {
     if (voiceMicrophoneLoading || Date.now() - voiceMicrophoneAt < 3000) return;
+    if (!voiceMicrophoneWatched) {
+      voiceMicrophoneWatched = true;
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) rereadVoiceMicrophone(); });
+    }
     voiceMicrophoneLoading = true;
     fetch("api/v1/voice/microphone", { headers: { "Accept": "application/json" }, cache: "no-store" })
       .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
@@ -217,11 +222,18 @@
         var changed = JSON.stringify(d) !== JSON.stringify(voiceMicrophone);
         voiceMicrophone = d;
         if (changed) cfg.render();
-        if (d && d.check === "running") setTimeout(loadVoiceMicrophone, 3000);
       })
-      .catch(function () { /* the card stays as the schema draws it */ })
-      .then(function () { voiceMicrophoneLoading = false; voiceMicrophoneAt = Date.now(); });
+      .catch(function () { /* the card keeps what it last knew; the next read retries */ })
+      .then(function () {
+        voiceMicrophoneLoading = false;
+        voiceMicrophoneAt = Date.now();
+        // A panel with no microphone has nothing to re-read; a hidden page waits for visibilitychange.
+        var absent = voiceMicrophone && voiceMicrophone.presence === "absent" && voiceMicrophone.check !== "running";
+        clearTimeout(voiceMicrophoneTimer);
+        if (!absent && !document.hidden) voiceMicrophoneTimer = setTimeout(rereadVoiceMicrophone, 3000);
+      });
   }
+  function rereadVoiceMicrophone() { voiceMicrophoneAt = 0; loadVoiceMicrophone(); }
 
   // True only when the panel does not offer voice at all.
   function voiceGroupUnavailable() {
@@ -235,6 +247,8 @@
     var status = voiceMicrophone, text = null;
     if (voiceGroupUnavailable()) {
       text = cfg.i18nText("configure.voice.microphone_absent", "This panel reports no microphone, or its device profile sets hardware.microphone to false, so voice is not offered.");
+    } else if (status && status.muted === true) {
+      text = cfg.i18nText("configure.voice.microphone_muted", "Microphone muted. The panel hears nothing until its microphone is unmuted.");
     } else if (status && status.check === "silent") {
       text = cfg.i18nText("configure.voice.microphone_silent", "The microphone recorded only silence when the panel checked it, so the panel is not listening. Try another audio source, or turn the voice assistant off and on to check again.");
     } else if (status && status.check === "no_audio") {

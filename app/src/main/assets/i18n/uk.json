@@ -1788,6 +1788,11 @@
    "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
    "state": "machine-cross-checked"
   },
+  "configure.voice.microphone_muted": {
+   "text": "Мікрофон вимкнено. Панель нічого не чує, доки мікрофон не буде увімкнено.",
+   "sourceHash": "1c8015177506eead973a22ded414317f38c61b3a5c615315b2467e717f7f7c87",
+   "state": "machine-cross-checked"
+  },
   "configure.voice.microphone_no_audio": {
    "text": "Під час перевірки панеллю мікрофон не передав звуку, тому панель не слухає. Вимкніть та увімкніть голосовий помічник для повторної перевірки.",
    "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
@@ -11206,6 +11211,16 @@
   "shell.ha_network.dismiss": {
    "text": "Закрити мережеве попередження",
    "sourceHash": "9623329d5d5b5b5741a136663841b55eecd90bb0bac4bcde34b59c0f2f90f5a7",
+   "state": "machine-cross-checked"
+  },
+  "shell.microphone_muted": {
+   "text": "Мікрофон вимкнено",
+   "sourceHash": "984fdad8bb94eedbcd1657cb3fdb0c09e558af95a7da4f7fac8dd7e1524b7c54",
+   "state": "machine-cross-checked"
+  },
+  "shell.microphone_on": {
+   "text": "Мікрофон увімкнено",
+   "sourceHash": "891fd461293ab50a940b8a7db6d1513909268125ef98bd74d8c803639719c098",
    "state": "machine-cross-checked"
   },
   "shell.hardened.key": {

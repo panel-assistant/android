@@ -133,6 +133,15 @@ internal class ConfiguredMicrophoneSource(
     }
 }
 
+/**
+ * What the service does with each microphone mute reading: show it on the dashboard (announcing a change,
+ * quietly correcting a first reading) and let [voice] re-check or stand its microphone check down.
+ */
+internal fun publishMicrophoneMute(voice: () -> VoiceAssistantCoordinator): (Boolean, Boolean) -> Unit = { muted, initial ->
+    VoiceAttention.microphoneMuted(muted, announce = !initial)
+    voice().microphoneMuteChanged()
+}
+
 /** Assemble the coordinator for the running service. */
 internal fun voiceAssistantCoordinator(
     context: Context,
@@ -141,6 +150,7 @@ internal fun voiceAssistantCoordinator(
     audio: AudioPlaybackCoordinator,
     microphone: () -> io.panelassistant.android.audio.MicrophonePresence,
     onMicrophoneStatus: () -> Unit,
+    muted: () -> Boolean,
     foregroundMicrophone: (Boolean) -> Boolean,
     state: VoiceStateAuthority,
     engineFactory: WakeWordEngineFactory,
@@ -166,5 +176,6 @@ internal fun voiceAssistantCoordinator(
         state = state,
         attention = VoiceAttention::cue,
         onMicrophoneStatus = onMicrophoneStatus,
+        muted = muted,
     ).also { VoiceAttention.prepare(context) }
 }

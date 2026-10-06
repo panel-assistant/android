@@ -49,6 +49,42 @@ enum class MicrophonePresence {
     }
 }
 
+/**
+ * Android's aggregate microphone mute (`AudioManager.isMicrophoneMute`), which a hardware privacy switch
+ * such as the Tuya TPA10's sets. Re-read when Android announces a change; [refresh] publishes only a
+ * change, so a caller acts once per press.
+ *
+ * Reading and publishing happen under one lock, so two refreshes on different threads publish in the
+ * order they read: an older mute can never be published after a newer unmute and leave the chip stale.
+ * The first reading is always published, marked `initial`, because what the panel shows may come from an
+ * earlier reader in the same process (a restarted service) and must be reconciled with it.
+ */
+class MicrophoneMute(private val read: () -> Boolean, private val publish: (muted: Boolean, initial: Boolean) -> Unit) {
+    @Volatile
+    var muted: Boolean = false
+        private set
+    private var observed = false
+    private var closed = false
+
+    /** Read the mute again and publish it if it changed or is the first reading; nothing once [close]d. */
+    @Synchronized
+    fun refresh() {
+        if (closed) return
+        val now = runCatching(read).getOrDefault(false)
+        if (observed && now == muted) return
+        val initial = !observed
+        observed = true
+        muted = now
+        publish(now, initial)
+    }
+
+    /** Stop publishing; waits for a refresh in progress, so nothing is published after it returns. */
+    @Synchronized
+    fun close() {
+        closed = true
+    }
+}
+
 /** What the panel's own capture check found. */
 enum class MicrophoneCheck {
     /** Not run: the microphone is proven by its profile, absent, or voice has not armed on it yet. */
@@ -72,12 +108,18 @@ enum class MicrophoneCheck {
     val failed: Boolean get() = this == SILENT || this == NO_AUDIO
 }
 
-/** The microphone as every surface reports it: what the panel has and what its check found. */
+/**
+ * The microphone as every surface reports it: what the panel has, what its check found, and whether it is
+ * muted. Mute is the owner's choice (a hardware switch, or another app), never a fault: while it lasts the
+ * check is not run and no failed verdict is reported, and nothing here ever undoes it.
+ */
 data class MicrophoneStatus(
     val presence: MicrophonePresence,
     val check: MicrophoneCheck = MicrophoneCheck.NOT_RUN,
     /** The capture's own error when [check] is [MicrophoneCheck.NO_AUDIO], when it gave one. */
     val detail: String? = null,
+    /** Android reports the microphone muted; never true for an [MicrophonePresence.ABSENT] one. */
+    val muted: Boolean = false,
 ) {
     /** Voice may listen now: a proven microphone, or an unproven one whose check passed. */
     val usable: Boolean

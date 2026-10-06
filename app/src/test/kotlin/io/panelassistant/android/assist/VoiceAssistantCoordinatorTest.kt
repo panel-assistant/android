@@ -37,6 +37,8 @@ class VoiceAssistantCoordinatorTest {
     private var foregroundAccepts = true
     private var settings = VoiceSettings(enabled = true, wakeWords = listOf("okay_nabu"), pipelines = mapOf("hey_jarvis" to "pipe-2"))
     private var presence = MicrophonePresence.PROVEN
+    private var muted = false
+    private var muteReader: io.panelassistant.android.audio.MicrophoneMute? = null
     private var statusChanges = 0
 
     private class FakeEngine(val onActivation: (WakeWordActivation) -> Unit) : WakeWordEngine {
@@ -125,6 +127,7 @@ class VoiceAssistantCoordinatorTest {
         attention = { wakeWordId -> cues += wakeWordId to state.current() },
         onMicrophoneStatus = { statusChanges += 1 },
         checkTimeoutMs = checkTimeoutMs,
+        muted = { muteReader?.muted ?: muted },
     )
 
     @After
@@ -301,6 +304,142 @@ class VoiceAssistantCoordinatorTest {
         MicrophonePresence.entries.forEach { each ->
             presence = each
             assertEquals(MicrophoneStatus(each, MicrophoneCheck.NOT_RUN), c.microphoneStatus())
+        }
+    }
+
+    @Test
+    fun `a muted unproven microphone is not judged by its silence and is checked once unmuted`() {
+        presence = MicrophonePresence.UNPROVEN
+        muted = true
+        val c = coordinator()
+        c.start()
+        assertTrue("a muted microphone is not checked", mic.leases.none { it.purpose == MicPurpose.CALIBRATION })
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, muted = true), c.microphoneStatus())
+        assertEquals(VoiceState.IDLE, state.current())
+        assertEquals(VoiceTestTrigger.Result.Unavailable(VoiceAssistantCoordinator.MUTED_REASON), c.trigger())
+        muted = false
+        c.microphoneMuteChanged()
+        assertEquals(listOf(MicPurpose.CALIBRATION), mic.activeLeases.map { it.purpose })
+        mic.speakForCheck(live = true)
+        settleUntil { engines.isNotEmpty() }
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED), c.microphoneStatus())
+    }
+
+    @Test
+    fun `muting withdraws a failed check, and unmuting checks again`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator()
+        c.start()
+        mic.speakForCheck(live = false)
+        settleUntil { state.current() == VoiceState.ERROR }
+        assertEquals(MicrophoneCheck.SILENT, c.microphoneStatus().check)
+        val before = statusChanges
+        muted = true
+        c.microphoneMuteChanged()
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, muted = true), c.microphoneStatus())
+        assertEquals("muting is not an error", VoiceState.IDLE, state.current())
+        assertTrue("Home Assistant is told", statusChanges > before)
+        muted = false
+        c.microphoneMuteChanged()
+        assertEquals(2, mic.leases.count { it.purpose == MicPurpose.CALIBRATION })
+        mic.speakForCheck(live = true)
+        settleUntil { engines.isNotEmpty() }
+        assertEquals(MicrophoneCheck.PASSED, c.microphoneStatus().check)
+    }
+
+    @Test
+    fun `a mute pressed while the check listens discards what it heard`() {
+        presence = MicrophonePresence.UNPROVEN
+        val c = coordinator()
+        c.start()
+        muted = true
+        mic.speakForCheck(live = false)
+        settleUntil { mic.activeLeases.isEmpty() }
+        assertTrue(mic.activeLeases.isEmpty())
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, muted = true), c.microphoneStatus())
+        assertEquals(VoiceState.IDLE, state.current())
+        muted = false
+        c.microphoneMuteChanged()
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.RUNNING), c.microphoneStatus())
+    }
+
+    @Test
+    fun `a muted proven microphone stays armed and says it is muted`() {
+        val c = coordinator()
+        c.start()
+        muted = true
+        c.microphoneMuteChanged()
+        assertEquals(MicrophoneStatus(MicrophonePresence.PROVEN, muted = true), c.microphoneStatus())
+        assertEquals(listOf(MicPurpose.WAKE_WORD), mic.activeLeases.map { it.purpose })
+        assertEquals(VoiceState.IDLE, state.current())
+        muted = false
+        c.microphoneMuteChanged()
+        assertEquals(MicrophoneStatus(MicrophonePresence.PROVEN), c.microphoneStatus())
+        assertEquals(1, engines.size)
+    }
+
+    @Test
+    fun `absent, failed capture, muted and unmuted are four different answers`() {
+        val c = coordinator()
+        presence = MicrophonePresence.ABSENT
+        muted = true
+        val absent = c.microphoneStatus()
+        presence = MicrophonePresence.UNPROVEN
+        muted = false
+        c.start()
+        mic.speakForCheck(live = false)
+        settleUntil { c.microphoneStatus().check == MicrophoneCheck.SILENT }
+        val failed = c.microphoneStatus()
+        muted = true
+        c.microphoneMuteChanged()
+        val mutedStatus = c.microphoneStatus()
+        muted = false
+        c.microphoneMuteChanged()
+        mic.speakForCheck(live = true)
+        settleUntil { c.microphoneStatus().check == MicrophoneCheck.PASSED }
+        val unmuted = c.microphoneStatus()
+        assertEquals(MicrophoneStatus(MicrophonePresence.ABSENT), absent)
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.SILENT), failed)
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, muted = true), mutedStatus)
+        assertEquals(MicrophoneStatus(MicrophonePresence.UNPROVEN, MicrophoneCheck.PASSED), unmuted)
+        assertEquals(4, setOf(absent, failed, mutedStatus, unmuted).size)
+        // Only the failed capture is a failed check, so only it raises Home Assistant's Repair.
+        assertEquals(listOf(failed), listOf(absent, failed, mutedStatus, unmuted).filter { it.check.failed })
+    }
+
+    @Test
+    fun `a restarted reader corrects a mute left on the panel by the one before it, without announcing it`() {
+        // Muted, the service stops (its reader closes), the switch is unmuted meanwhile, and a new service in
+        // the same process starts a new reader: the panel must not keep showing the old reader's mute.
+        val c = coordinator()
+        c.start()
+        val shown = java.util.Collections.synchronizedList(mutableListOf<Pair<Boolean, Boolean>>())
+        VoiceAttention.muteShown = { m, announce -> shown += m to announce }
+        try {
+            var hardware = true
+            val first = io.panelassistant.android.audio.MicrophoneMute(read = { hardware }, publish = publishMicrophoneMute { c })
+            muteReader = first
+            first.refresh()
+            assertEquals(true, VoiceAttention.muted)
+            assertEquals(true, c.microphoneStatus().muted)
+            first.close()
+            hardware = false
+
+            val second = io.panelassistant.android.audio.MicrophoneMute(read = { hardware }, publish = publishMicrophoneMute { c })
+            muteReader = second
+            second.refresh()
+            assertEquals("the panel's mute follows the new reading", false, VoiceAttention.muted)
+            assertEquals(false to false, shown.last())
+            assertEquals(MicrophoneStatus(MicrophonePresence.PROVEN), c.microphoneStatus())
+
+            hardware = true
+            second.refresh()
+            second.refresh()
+            assertEquals("a press during one reader's life is announced once", true to true, shown.last())
+            assertEquals(listOf(true to false, false to false, true to true), shown.toList())
+        } finally {
+            VoiceAttention.muteShown = null
+            VoiceAttention.microphoneMuted(false, announce = false)
         }
     }
 

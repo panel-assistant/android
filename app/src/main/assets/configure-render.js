@@ -278,7 +278,9 @@
           if (!cfg.autoSleepUsesTouch() && !cfg.autoSleepStatus && !cfg.autoSleepLoading) setTimeout(cfg.loadAutoSleepData, 0);
         }
         if (g === "Home Assistant connection" && f.key === "ha_url") card.appendChild(cfg.haOAuthRow());
-        if (f.key === "voice_enabled" && cfg.values.voice_enabled === "true") {
+        // With voice off only a mute is reported: the check does not run then, but a muted
+        // microphone is worth knowing before turning voice on.
+        if (f.key === "voice_enabled") {
           var quiet = cfg.voiceMicrophoneNode();
           if (quiet) card.appendChild(quiet);
         }

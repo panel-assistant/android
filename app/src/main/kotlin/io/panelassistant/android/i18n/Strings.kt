@@ -261,6 +261,21 @@ class CatalogueLoader(private val readAsset: (String) -> String) {
             Strings(source, target)
         }
     }
+
+    companion object {
+        @Volatile private var shared: CatalogueLoader? = null
+
+        /**
+         * One loader over this app's own assets for the native chips, so the catalogue is parsed and
+         * hashed once per process rather than on the main thread at every dashboard build (a TPA10 ANR
+         * trace, 2026-10-06, caught the main thread in that parse).
+         */
+        fun assets(context: android.content.Context): CatalogueLoader = shared ?: synchronized(this) {
+            shared ?: context.applicationContext.let { app ->
+                CatalogueLoader { app.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
+            }.also { shared = it }
+        }
+    }
 }
 
 internal fun sourceHash(text: String): String = MessageDigest.getInstance("SHA-256")
