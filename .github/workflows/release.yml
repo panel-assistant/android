@@ -364,14 +364,7 @@ jobs:
           cat > release-input/release-body.md <<EOF
           ## Installation
 
-          Install and update ha-paneld through the [Panel Assistant integration](https://github.com/panel-assistant/ha-integration) for Home Assistant: add a panel from Settings, Devices & services, and Panel Assistant installs the right app for it. Installing an APK by hand with \`adb install\` skips the permissions, startup and checks that Panel Assistant completes for you.
-
-          ## Which APK
-
-          This release carries two APKs, because the app is moving to a new application id and Android treats a new application id as a new app. Both are published with a \`.bin\` suffix so that only Panel Assistant 0.7.1 or newer installs them; to sideload one by hand, rename it to end in \`.apk\` first.
-
-          - \`$SUCCESSOR_APK_NAME\` is the app. Install this one on a new panel, or for manual or on-device sideloading. After installing it, open the app and complete the on-panel setup.
-          - \`$BRIDGE_APK_NAME\` keeps the previous application id. A panel already running an earlier version updates to it in place and then moves itself across to the new one. You do not need to install it by hand.
+          Install and update ha-paneld through the [Panel Assistant integration](https://github.com/panel-assistant/ha-integration) for Home Assistant: add a panel from Settings, Devices & services, and Panel Assistant installs the right app for it. The files attached to this release are for Panel Assistant to use; they are not meant to be installed by hand.
 
           EOF
           cat "$changelog_body" >> release-input/release-body.md

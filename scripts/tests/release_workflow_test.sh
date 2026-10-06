@@ -148,6 +148,23 @@ else
   fail_test "stable tag with an exact changelog entry remains publishable"
 fi
 
+# The release page carries only the Panel Assistant installation text above the changelog.
+expected_body="$TMP/expected-release-body.md"
+cat > "$expected_body" <<'BODY'
+## Installation
+
+Install and update ha-paneld through the [Panel Assistant integration](https://github.com/panel-assistant/ha-integration) for Home Assistant: add a panel from Settings, Devices & services, and Panel Assistant installs the right app for it. The files attached to this release are for Panel Assistant to use; they are not meant to be installed by hand.
+
+
+Stable release notes.
+BODY
+if [ "$stable_present_status" -eq 0 ] && \
+   cmp -s "$expected_body" "$stable_present/release-input/release-body.md"; then
+  pass "release page carries only the Panel Assistant installation text above the changelog"
+else
+  fail_test "release page carries only the Panel Assistant installation text above the changelog"
+fi
+
 if grep -Fq "body_path: release-input/release-body.md" "$WORKFLOW" && \
    ! grep -Eq '^[[:space:]]*generate_release_notes:' "$WORKFLOW"; then
   pass "curated changelog remains the sole release prose source"
