@@ -91,7 +91,7 @@ internal class MicrophoneMutedChip private constructor(
             val density = metrics.density
             val config = runCatching { Config(context) }.getOrNull()
             val dark = config?.dashboardThemeDark ?: true
-            val strings = CatalogueLoader { context.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
+            val strings = CatalogueLoader.assets(context)
                 .strings(AppLocale.resolve(
                     explicit = null, persisted = config?.uiLanguage, acceptLanguage = null,
                     deviceLanguageTag = Locale.getDefault().toLanguageTag(), allowPseudo = BuildConfig.DEBUG,

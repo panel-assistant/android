@@ -213,7 +213,7 @@ internal class HaNetworkChip private constructor(
                 isLongClickable = false
             }
             chip.addView(label)
-            val strings = CatalogueLoader { context.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
+            val strings = CatalogueLoader.assets(context)
                 .strings(AppLocale.resolve(
                     explicit = null, persisted = Config(context).uiLanguage, acceptLanguage = null,
                     deviceLanguageTag = Locale.getDefault().toLanguageTag(), allowPseudo = BuildConfig.DEBUG,
