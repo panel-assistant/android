@@ -46,6 +46,16 @@ class HaLifecycleProgressTest {
         assertEquals(HA_LIFECYCLE_PROGRESS_MAX, barAt(tracker, 600_000L))
     }
 
+    // Widths measured on a 1920x1200 landscape panel (density 1.4125) during a real restart.
+    @Test fun onALandscapePanelTheBarIsOnlyAsWideAsTheHeadline() {
+        assertEquals(1085, haLifecycleBarWidth(headlineTextPx = 1084.3f, contentWidthPx = 1820))
+    }
+
+    @Test fun onASquarePanelAWrappedHeadlineGivesTheBarTheCardWidth() {
+        // 480x480: the headline needs about 760 px on one line, so it wraps across the 408 px content.
+        assertEquals(408, haLifecycleBarWidth(headlineTextPx = 760f, contentWidthPx = 408))
+    }
+
     @Test fun backOnlineRemovesTheBar() {
         val tracker = restart(expectedMs = 60_000L)
         tracker.onNativeNotice(HaLifecycleNotice(HaLifecyclePhase.READY, HaLifecycleReason.RESTART, null, null), 20_000L)

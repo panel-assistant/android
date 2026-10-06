@@ -51,6 +51,19 @@ internal fun haLifecycleProgress(state: HaLifecycleState, expectedMs: Long?, ela
 
 internal const val HA_LIFECYCLE_PROGRESS_MAX = 10_000
 
+/**
+ * The restart bar's width: as wide as the headline above it, never wider than the card's content.
+ *
+ * On a landscape panel the capped headline covers about half the card, and a full-width bar reached
+ * well past it. A headline that wraps (square and portrait panels) already fills the card, so the bar
+ * does too.
+ *
+ * @param headlineTextPx the headline's width on one line, unwrapped
+ * @param contentWidthPx the card's width inside its padding
+ */
+internal fun haLifecycleBarWidth(headlineTextPx: Float, contentWidthPx: Int): Int =
+    minOf(contentWidthPx, kotlin.math.ceil(headlineTextPx).toInt())
+
 /** The two text sizes the notice renders at, in pixels. */
 internal data class HaLifecycleTextSizes(val headlinePx: Float, val detailPx: Float)
 
@@ -112,6 +125,7 @@ internal class HaLifecycleBar private constructor(
     private val card: android.graphics.drawable.GradientDrawable,
     private val dark: Boolean,
     private val onVisibilityChanged: (Boolean) -> Unit,
+    private val contentWidthPx: Int,
 ) {
     private val label: TextView = view.getChildAt(1) as TextView
     private val bar: ProgressBar = view.getChildAt(2) as ProgressBar
@@ -215,6 +229,11 @@ internal class HaLifecycleBar private constructor(
         (barLayers.getDrawable(0) as GradientDrawable).setColor((colours.border and 0x00FFFFFF) or (BAR_TRACK_ALPHA shl 24))
         ((barLayers.getDrawable(1) as ClipDrawable).drawable as GradientDrawable).setColor(colours.border)
         if (!visible || bar.visibility != View.VISIBLE) bar.progress = fill
+        val width = haLifecycleBarWidth(label.paint.measureText(label.text.toString()), contentWidthPx)
+        if (bar.layoutParams.width != width) {
+            bar.layoutParams.width = width
+            bar.requestLayout()
+        }
         bar.visibility = View.VISIBLE
         val next = haLifecycleProgress(state, snap?.expectedMs, snap?.elapsedMs?.plus(TICK_MS)) ?: fill
         barAnimator = ObjectAnimator.ofInt(bar, "progress", bar.progress, maxOf(next, bar.progress)).apply {
@@ -393,7 +412,10 @@ internal class HaLifecycleBar private constructor(
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     (BAR_HEIGHT_DP * density).toInt(),
-                ).apply { topMargin = pad / 2 },
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    topMargin = pad / 2
+                },
             )
             row.addView(
                 TextView(context).apply {
@@ -417,7 +439,8 @@ internal class HaLifecycleBar private constructor(
                     Gravity.TOP,
                 ).apply { setMargins(margin, margin, margin, margin) },
             )
-            return HaLifecycleBar(row, card, dark, onVisibilityChanged)
+            // The card spans the root frame (the screen) less its margins, and its content less padding.
+            return HaLifecycleBar(row, card, dark, onVisibilityChanged, metrics.widthPixels - 2 * (margin + pad))
         }
     }
 }
