@@ -16,11 +16,9 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
-import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.i18n.CatalogueLoader
 import io.panelassistant.android.sensors.HaNetworkPath
 import io.panelassistant.android.sensors.HaNetworkPathSeverity
-import java.util.Locale
 
 /**
  * Decide the chip's text size for a display, in pixels.
@@ -214,10 +212,7 @@ internal class HaNetworkChip private constructor(
             }
             chip.addView(label)
             val strings = CatalogueLoader.assets(context)
-                .strings(AppLocale.resolve(
-                    explicit = null, persisted = Config(context).uiLanguage, acceptLanguage = null,
-                    deviceLanguageTag = Locale.getDefault().toLanguageTag(), allowPseudo = BuildConfig.DEBUG,
-                ))
+                .strings(CatalogueLoader.nativeLocale(Config(context).uiLanguage))
             val close = ImageButton(context).apply {
                 setImageDrawable(CloseGlyph((CLOSE_GLYPH_DP * density).toInt()))
                 setBackgroundColor(Color.TRANSPARENT)

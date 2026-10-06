@@ -781,6 +781,7 @@ class DashboardActivity : AppCompatActivity() {
             filterEpoch = filterPreparationEpoch
             prepared = prepareEntityFilter(config)
         }
+        io.panelassistant.android.i18n.CatalogueLoader.assets(this).prepareNative(config.uiLanguage)
         if (destroyed || !BuiltinDashboard.ownsActivity(activityOwner)) return
         // onNewIntent may have arrived while preparation was suspended, before activityConfig existed.
         // Its epoch forced a fresh preparation; honor its latest HOME and readiness state as well.

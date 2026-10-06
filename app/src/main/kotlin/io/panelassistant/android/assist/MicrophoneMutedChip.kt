@@ -10,12 +10,9 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.view.doOnPreDraw
-import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.Config
 import io.panelassistant.android.haNetworkChipTextSizePx
-import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.i18n.CatalogueLoader
-import java.util.Locale
 
 /**
  * "Microphone muted", in the bottom-start corner of the dashboard window while Android reports the
@@ -92,10 +89,7 @@ internal class MicrophoneMutedChip private constructor(
             val config = runCatching { Config(context) }.getOrNull()
             val dark = config?.dashboardThemeDark ?: true
             val strings = CatalogueLoader.assets(context)
-                .strings(AppLocale.resolve(
-                    explicit = null, persisted = config?.uiLanguage, acceptLanguage = null,
-                    deviceLanguageTag = Locale.getDefault().toLanguageTag(), allowPseudo = BuildConfig.DEBUG,
-                ))
+                .strings(CatalogueLoader.nativeLocale(config?.uiLanguage))
             val chip = TextView(context).apply {
                 maxLines = 1
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, haNetworkChipTextSizePx(minOf(metrics.widthPixels, metrics.heightPixels).toFloat(), density))

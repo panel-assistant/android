@@ -1,6 +1,8 @@
 package io.panelassistant.android.i18n
 
 import io.panelassistant.android.i18n.AppLocale.EARLY_ACCESS_LOCALES
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.security.MessageDigest
 
@@ -63,7 +65,7 @@ class SourceCatalogue private constructor(
             val records = root.getJSONObject("strings")
             val parsed = linkedMapOf<String, SourceString>()
             records.keys().asSequence().sorted().forEach { key ->
-                require(key.matches(Regex("[a-z0-9][a-z0-9._-]*"))) { "invalid i18n key: $key" }
+                require(key.matches(KEY_PATTERN)) { "invalid i18n key: $key" }
                 val record = records.getJSONObject(key)
                 val required = setOf(
                     "text", "sourceHash", "surface", "context", "risk", "siblings",
@@ -124,7 +126,7 @@ class TargetCatalogue private constructor(
             val records = root.getJSONObject("strings")
             val parsed = linkedMapOf<String, TargetString>()
             records.keys().asSequence().sorted().forEach { key ->
-                require(key.matches(Regex("[a-z0-9][a-z0-9._-]*"))) { "invalid target key: $key" }
+                require(key.matches(KEY_PATTERN)) { "invalid target key: $key" }
                 val sourceString = source.strings[key]
                 val record = records.getJSONObject(key)
                 requireExactKeys(record, setOf("text", "sourceHash", "state"), key)
@@ -132,7 +134,7 @@ class TargetCatalogue private constructor(
                 require(text.isNotEmpty()) { "$key has empty target text" }
                 require(text.length <= MAX_STALE_TARGET_CHARS) { "$key target text is unreasonably large" }
                 val hash = record.getString("sourceHash").also {
-                    require(it.matches(Regex("[0-9a-f]{64}"))) { "$key has an invalid source hash" }
+                    require(it.matches(SOURCE_HASH_PATTERN)) { "$key has an invalid source hash" }
                 }
                 val state = TranslationState.fromWireName(record.getString("state"))
                     ?: error("$key has invalid translation state")
@@ -248,6 +250,15 @@ class CatalogueLoader(private val readAsset: (String) -> String) {
     private val source: SourceCatalogue by lazy { SourceCatalogue.parse(readAsset("i18n/en.json")) }
     private val targets = mutableMapOf<String, TargetCatalogue?>()
 
+    /**
+     * Parses the catalogue for the native surfaces' language off the calling thread, so the dashboard's
+     * chips find it ready. The first parse takes seconds on a slow panel; run by a chip on the main thread
+     * it raised "isn't responding" during update restarts (Shelly X2i, TPA10, 2026-10-06).
+     */
+    suspend fun prepareNative(uiLanguage: String?) {
+        withContext(Dispatchers.IO) { strings(nativeLocale(uiLanguage)) }
+    }
+
     @Synchronized
     fun strings(locale: String): Strings = when (locale) {
         AppLocale.PSEUDO -> Strings(source, pseudo = true)
@@ -275,15 +286,36 @@ class CatalogueLoader(private val readAsset: (String) -> String) {
                 CatalogueLoader { app.assets.open(it).bufferedReader().use { reader -> reader.readText() } }
             }.also { shared = it }
         }
+
+        /** The locale of the panel's own native surfaces (dashboard chips, notices): one rule for every caller. */
+        fun nativeLocale(uiLanguage: String?): String = AppLocale.resolve(
+            explicit = null, persisted = uiLanguage, acceptLanguage = null,
+            deviceLanguageTag = java.util.Locale.getDefault().toLanguageTag(),
+            allowPseudo = io.panelassistant.android.BuildConfig.DEBUG,
+        )
     }
 }
 
-internal fun sourceHash(text: String): String = MessageDigest.getInstance("SHA-256")
-    .digest(text.toByteArray(Charsets.UTF_8))
-    .joinToString("") { "%02x".format(it) }
+// The catalogue parse validates every record on the dashboard's first build, so these are compiled once:
+// a `String.format` per digest byte and two regex compilations per record kept the X2i's main thread
+// busy for about 8 s on every update restart, long enough for an ANR (2026-10-06).
+private val KEY_PATTERN = Regex("[a-z0-9][a-z0-9._-]*")
+private val SOURCE_HASH_PATTERN = Regex("[0-9a-f]{64}")
+private val PLACEHOLDER_PATTERN = Regex("%(?:\\d+\\$)?[a-zA-Z]|\\{[a-zA-Z_][a-zA-Z0-9_]*\\}")
+private val HEX_DIGITS = "0123456789abcdef".toCharArray()
+
+internal fun sourceHash(text: String): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+    val hex = CharArray(digest.size * 2)
+    digest.forEachIndexed { index, byte ->
+        hex[index * 2] = HEX_DIGITS[(byte.toInt() shr 4) and 0xf]
+        hex[index * 2 + 1] = HEX_DIGITS[byte.toInt() and 0xf]
+    }
+    return String(hex)
+}
 
 internal fun extractPlaceholders(text: String): List<String> =
-    Regex("%(?:\\d+\\$)?[a-zA-Z]|\\{[a-zA-Z_][a-zA-Z0-9_]*\\}")
+    PLACEHOLDER_PATTERN
         .findAll(text)
         .map { it.value }
         .toList()

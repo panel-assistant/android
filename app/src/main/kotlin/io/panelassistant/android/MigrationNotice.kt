@@ -18,9 +18,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.panelassistant.android.control.Su
-import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.i18n.CatalogueLoader
-import java.util.Locale
 
 /** One small advisory above either renderer; no focus, dashboard replacement, or background polling. */
 internal class MigrationNotice(private val context: Context, private val config: Config) : AutoCloseable {
@@ -58,10 +56,7 @@ internal class MigrationNotice(private val context: Context, private val config:
             Log.w(TAG, "notice requires overlay permission")
             return
         }
-        val strings = catalogue.strings(AppLocale.resolve(
-            explicit = null, persisted = config.uiLanguage, acceptLanguage = null,
-            deviceLanguageTag = Locale.getDefault().toLanguageTag(), allowPseudo = BuildConfig.DEBUG,
-        ))
+        val strings = catalogue.strings(CatalogueLoader.nativeLocale(config.uiLanguage))
         val density = context.resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         val card = LinearLayout(context).apply {
