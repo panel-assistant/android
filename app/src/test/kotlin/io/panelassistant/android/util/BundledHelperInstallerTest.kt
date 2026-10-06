@@ -878,8 +878,180 @@ class BundledHelperInstallerTest {
                 forwardDeadlineElapsedMs = 0L,
             ))),
         )
-        assertNull(bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Unreachable))
         assertNull(bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Malformed))
+    }
+
+    @Test fun `no helper socket is a fresh install and not maintenance owning recovery`() {
+        // Issue #182: a fresh install has no helper to answer GUARDSTATUS. That used to read as
+        // "maintenance owns recovery", so no panel installed by Panel Assistant ever got a helper.
+        assertEquals(
+            BundledHelperReplacementMode.FRESH_INSTALL,
+            bundledHelperReplacementMode(GuardDbMaintenanceClient.StatusProbe.Unreachable),
+        )
+    }
+
+    @Test fun `fresh install publishes and supervises the bundled helper and repeats after a reboot`() {
+        withFreshFiles { fixture ->
+            val command = bundledFreshHelperInstallCommand(
+                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )
+            assertEquals(0, runTakeoverCommand(command))
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+            assertFalse(fixture.stage.exists())
+            assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
+
+            // A reboot keeps the /data/local file but not the process; the next start restages and relaunches.
+            writeExecutable(fixture.stage, fixture.candidateBytes, 700)
+            assertEquals(0, runTakeoverCommand(command))
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+            assertFalse(fixture.stage.exists())
+            // Staging may also find nothing to stage when the exact live copy is already there.
+            assertEquals(0, runTakeoverCommand(command))
+        }
+    }
+
+    @Test fun `first start on a panel with no helper stages then installs it`() {
+        // The root-side sequence ensureCurrent issues when no helper answers: stage, then fresh install.
+        withFreshFiles { fixture ->
+            fixture.stage.delete()
+            val hash = sha256(fixture.candidateBytes)
+            val staged = runCommandWithInput(
+                bundledHelperStageCommand(hash, filesystemRoot = fixture.root.absolutePath),
+                fixture.candidateBytes,
+            )
+            assertEquals(staged.output, 0, staged.exitCode)
+            assertTrue(staged.output, bundledHelperStaged(staged.output))
+            assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                hash, stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+        }
+    }
+
+    @Test fun `fresh install replaces an earlier build left at data local by a reboot`() {
+        withFreshFiles { fixture ->
+            writeExecutable(fixture.live, fakeHelper(incumbentBuild, candidate = true, starts = true), 700)
+            assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+            assertFalse(fixture.stage.exists())
+        }
+    }
+
+    @Test fun `fresh install refuses beside any provisioned helper or journal or takeover authority`() {
+        val authorities = listOf(
+            "system/bin/hapaneld-helper",
+            "system/etc/init/hapaneld-helper.rc",
+            "vendor/etc/init/hapaneld-helper.rc",
+            "data/adb/hapaneld",
+            "data/adb/service.d/hapaneld-helper.sh",
+            "system/bin/hapaneld-ledd",
+            "system/etc/init/hapaneld-ledd.rc",
+            "data/local/.hapaneld-guard-db/replacement.v1",
+            "data/local/.hapaneld-guard-db/.replacement.v1.tmp",
+            "system/bin/.hapaneld-helper-upgrade",
+            "system/bin/.hapaneld-helper-manual-upgrade",
+            "data/adb/hapaneld/.helper-upgrade.marker",
+            "data/adb/hapaneld/.helper-hybrid-upgrade.marker",
+            "data/adb/hapaneld/.helper-manual-upgrade.marker",
+            "data/local/.hapaneld-helper-manual-upgrade",
+            "data/local/.hapaneld-helper.legacy-takeover",
+            "data/local/.hapaneld-helper.legacy-takeover.tmp",
+            "data/local/.hapaneld-helper.previous",
+            "data/local/.hapaneld-helper.previous.tmp",
+        )
+        authorities.forEach { path ->
+            withFreshFiles { fixture ->
+                val authority = File(fixture.root, path).apply { parentFile!!.mkdirs(); writeText("kept\n") }
+                assertEquals(path, 1, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )))
+                assertFalse(path, fixture.live.exists())
+                assertFalse(path, fixture.stage.exists())
+                assertEquals(path, "kept\n", authority.readText())
+                assertFalse(path, File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
+            }
+        }
+    }
+
+    @Test fun `fresh install stops an earlier data local helper that is still running`() {
+        withFreshFiles { fixture ->
+            File("/bin/sleep").copyTo(fixture.live)
+            setMode(fixture.live, 700)
+            val running = ProcessBuilder(fixture.live.absolutePath, "60").start()
+            try {
+                assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )))
+                assertTrue(running.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+                assertEquals(fixture.candidateBytes, fixture.live.readText())
+            } finally {
+                running.destroyForcibly()
+            }
+        }
+    }
+
+    @Test fun `fresh install without its candidate leaves a running data local helper alone`() {
+        withFreshFiles { fixture ->
+            fixture.stage.delete()
+            File("/bin/sleep").copyTo(fixture.live)
+            setMode(fixture.live, 700)
+            val running = ProcessBuilder(fixture.live.absolutePath, "60").start()
+            try {
+                assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                    sha256(fixture.candidateBytes), stagedBuild,
+                    filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )))
+                assertTrue(running.isAlive)
+            } finally {
+                running.destroyForcibly()
+            }
+        }
+    }
+
+    @Test fun `fresh install waits for a live transaction owner`() {
+        withFreshFiles { fixture ->
+            File(fixture.root, "dev/.hapaneld-helper-transaction.lock").apply { mkdirs() }
+                .resolve("pid").writeText("${ProcessHandle.current().pid()}\n")
+            assertEquals(75, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            assertFalse(fixture.live.exists())
+            assertEquals(fixture.candidateBytes, fixture.stage.readText())
+        }
+    }
+
+    @Test fun `fresh candidate that cannot prove its build or Guard surface fails`() {
+        listOf(
+            fakeHelper(incumbentBuild, candidate = true, starts = true),
+            fakeHelper(stagedBuild, candidate = true, starts = false),
+        ).forEach { bytes ->
+            withFreshFiles(candidateBytes = bytes) { fixture ->
+                assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )))
+                assertFalse(File(fixture.root, "dev/.hapaneld-helper-transaction.lock").exists())
+            }
+        }
+    }
+
+    private data class FreshFixture(val root: File, val live: File, val stage: File, val candidateBytes: String)
+
+    private fun withFreshFiles(
+        candidateBytes: String = fakeHelper(stagedBuild, candidate = true, starts = true),
+        test: (FreshFixture) -> Unit,
+    ) {
+        val root = Files.createTempDirectory("bundled-helper-fresh-").toFile()
+        try {
+            val dataLocal = File(root, "data/local").apply { mkdirs() }
+            File(root, "dev").mkdirs()
+            val stage = File(dataLocal, ".hapaneld-helper.new")
+            writeExecutable(stage, candidateBytes, 700)
+            test(FreshFixture(root, File(dataLocal, "hapaneld-helper"), stage, candidateBytes))
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     private fun exactProbe(build: String): HelperReplacementProbe = classifyHelperReplacementProbe(
@@ -1126,7 +1298,8 @@ class BundledHelperInstallerTest {
             .redirectErrorStream(true)
             .start()
             .let { process ->
-                process.outputStream.bufferedWriter().use { it.write(input) }
+                // A refused command exits before reading its input; the broken pipe is not the result.
+                runCatching { process.outputStream.bufferedWriter().use { it.write(input) } }
                 val output = process.inputStream.bufferedReader().readText()
                 CommandResult(process.waitFor(), output)
             }
