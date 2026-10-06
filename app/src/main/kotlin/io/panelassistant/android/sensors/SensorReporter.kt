@@ -147,6 +147,11 @@ class SensorReporter(
     private val lightSensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_LIGHT)
     private val lightAvailability = LightAvailabilityTracker(
         present = lightSensor != null,
+        reported = config.lightSensorReported,
+        // The generic fallback knows nothing about the hardware; a specific profile naming no light
+        // technology declares that the panel has none (the WF1589T).
+        declaredAbsent = profile.id != "generic" && profile.lightTech == null,
+        onFirstReading = { config.lightSensorReported = true },
         acquireTimeoutMs = ON_CHANGE_ACQUIRE_TIMEOUT_MS,
         schedule = { delayMs, expire ->
             val handler = sensorHandler
@@ -329,11 +334,11 @@ class SensorReporter(
 
     fun hasLight() = lightSensor != null
 
-    /** Whether the light sensor actually delivers readings, not merely whether one is declared. This
-     *  is the single answer every advertising path reads; presence alone once advertised a dead part. */
-    fun lightAvailable() = lightAvailability.available()
+    /** Whether the illuminance channel is described (true), settled absent (false) or not yet known
+     *  (null): the single answer every advertising path reads. See [LightAvailabilityTracker.channel]. */
+    fun lightChannel(): Boolean? = lightAvailability.channel()
 
-    /** Notify the service only when advertised light availability changes. Carries no truth: every
+    /** Notify the service only when the advertised light answer changes. Carries no truth: every
      *  consumer re-reads this reporter before acting, exactly as learned proximity does. */
     fun setLightAvailabilityListener(listener: (() -> Unit)?) {
         synchronized(this) { lightAvailabilityListener = listener }

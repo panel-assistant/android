@@ -344,6 +344,7 @@ internal abstract class MqttWireRig {
         hasCamera: Boolean = false,
         cameraAvailability: () -> Boolean? = { hasCamera },
         learnedProximityState: () -> Boolean? = { null },
+        lightChannel: () -> Boolean? = { true },
         led: LedController = object : LedController {
             override fun available() = true
             override fun colorCapable() = true
@@ -461,6 +462,7 @@ internal abstract class MqttWireRig {
             hasMicrophone = true,
             media = media,
             hasCamera = cameraAvailability,
+            lightChannel = lightChannel,
             // Never reached: no screen brightness or auto-brightness command is sent.
             autoBright = allocate(AutoBrightnessController::class.java),
             configUrl = { "http://192.0.2.10:8888/" },

@@ -1197,6 +1197,8 @@ internal class MqttBridge(
     // Live profile/probe capability: null keeps the native channel while enumeration is unsettled.
     // Discovery is not a write guard: wildcard subscriptions receive commands even without an entity.
     private val hasCamera: () -> Boolean? = { false },
+    // Live light-sensor answer: true described, false settled absent, null left out until it settles.
+    private val lightChannel: () -> Boolean? = { true },
     // Optional service-owned adaptive-brightness engine.
     private val autoBright: AutoBrightnessController,
     private val onAutoBrightnessConfigChanged: () -> Unit = {},
@@ -1792,11 +1794,12 @@ internal class MqttBridge(
 
     /**
      * The native describe's view of [stateChannelKeys]: a channel whose [hardwareAvailability] is settled
-     * false is stated unsupported instead of described. An unsettled channel stays described, as before.
+     * false is stated unsupported instead of described. An unsettled one stays described, or omitted if [PROVEN_ONLY_CHANNELS].
      */
     internal fun nativeChannelShape(): io.panelassistant.android.panelassistant.PanelAssistantChannelShape {
         val learned = runCatching(learnedProximityState).getOrNull()
-        val (unsupported, served) = stateConverger.keys().partition { hardwareAvailability(it, learned) == false }
+        val keys = stateConverger.keys().filterNot { it in PROVEN_ONLY_CHANNELS && hardwareAvailability(it, learned) == null }
+        val (unsupported, served) = keys.partition { hardwareAvailability(it, learned) == false }
         val actions = listOf("reload" to system.canReloadDashboard(config.dashboardPackage), "reboot" to system.canReboot())
         return io.panelassistant.android.panelassistant.PanelAssistantChannelShape(
             served + actions.filter { it.second }.map { it.first },
@@ -1817,6 +1820,7 @@ internal class MqttBridge(
         MEDIA_CHANNEL -> media != null
         "camera_enabled" -> hasCamera()
         "proximity", "proximity_level" -> learnedProximity
+        "illuminance" -> lightChannel()
         // LedFactory returns the no-op controller only for a profile declaring no LED. A declared LED stays
         // described even when its probe fails: a daemon-driven one reads false until the helper answers.
         "led" -> if (led is NoOpLedController) false else null
@@ -3620,8 +3624,8 @@ internal class MqttBridge(
     }
 
     /** Apply an empirical mode-change notification without accepting truth from its producer. */
-    /** Re-announce discovery when the light sensor's real availability changes, so an illuminance
-     *  entity advertised optimistically at startup is withdrawn once activation is known to have failed. */
+    /** Re-announce discovery when the light answer changes: the first reading describes the illuminance
+     *  entity, and a never-reported sensor settling absent states it unsupported. */
     internal fun notifyLightAvailabilityChanged() {
         lifecycle.runIfOpen(Unit) {
             discoveryCapabilities.invalidate()
@@ -3978,10 +3982,12 @@ internal class MqttBridge(
 
         // Panel sensors — exposed as data only; room sensors stay the occupancy/lux authority. Their
         // registry descriptors are shared with Configure/API availability and remain the sole schema.
-        // No availableOverride: a static constructor snapshot cannot see a light sensor that failed
-        // to activate after the bridge was built. The live capability snapshot is the shared answer.
-        registryExposable("illuminance") {
-            stateConverger.reconcile("illuminance", force = true)
+        // Live answer; unsettled neither creates nor deletes (not even by the upgrade prune) an entity.
+        when (val available = hardwareAvailability("illuminance", null)) {
+            null -> SettingsRegistry.spec("illuminance")?.ha?.let { keepConfig(it.component, "${panel}_${it.objectSuffix}") }
+            else -> registryExposable("illuminance", availableOverride = available) {
+                stateConverger.reconcile("illuminance", force = true)
+            }
         }
         val learnedProximity = capabilitySnapshot?.hasLearnedProximity == true
         registryExposable("proximity", proximityAvail, hardwareAvailability("proximity", learnedProximity)) {
@@ -4194,13 +4200,16 @@ internal class MqttBridge(
     internal fun refreshPanelAssistantDiscovery() = requestReAnnounce()
 
     private fun publishConfig(component: String, objectId: String, payload: String) {
-        val topic = "homeassistant/$component/$objectId/config"
-        publishedConfigTopics.add(topic)
+        val topic = keepConfig(component, objectId)
         // Live configs are deliberately non-retained. Empty payloads are different: retaining the
         // tombstone clears any config an older retain=true release left on the broker, so a hidden or
         // unavailable entity cannot resurrect while this panel is offline.
         publish(topic, withDefaultEntityId(component, objectId, payload), retain = mqttDiscoveryRetain(payload))
     }
+
+    /** Account for a config this announcement leaves as it is, so [pruneStaleDiscovery] does not delete it. */
+    private fun keepConfig(component: String, objectId: String): String =
+        "homeassistant/$component/$objectId/config".also(publishedConfigTopics::add)
 
     /**
      * The historical SUPERSET of every entity ha-paneld has ever published for a panel — the tombstone
@@ -4646,6 +4655,8 @@ internal class MqttBridge(
         private val ANNOUNCEMENT_BOUNDARY_CONSUMED_HERE = AtomicReference<String?>(null)
         private const val MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024
         private const val MEDIA_CHANNEL = "media"
+        /** Described only once proven: a never-reported light sensor creates no entity (maintainer, 2026-10-06). */
+        private val PROVEN_ONLY_CHANNELS = setOf("illuminance")
         private const val MAX_DYNAMIC_COMMAND_INDEX = 64
         /** Approval principals of the two remote command transports. */
         private const val MQTT_PEER = "mqtt"
