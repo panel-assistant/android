@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ha_reason_restart">Restart Home Assistant</string>
+    <string name="ha_reason_host_reboot">Restart hostitele</string>
+    <string name="ha_reason_core_update">Aktualizace Home Assistant Core</string>
+    <string name="ha_reason_unknown">Důvod není znám</string>
+    <string name="ha_not_measured">Doba návratu zatím nebyla změřena</string>
+    <string name="ha_taking_longer">Trvá to déle než obvykle</string>
+    <string name="ha_exact_minutes_seconds">%1$d min %2$d s</string>
+    <string name="ha_exact_seconds">%1$d s</string>
+    <string name="ha_past_usual">Déle než obvykle</string>
+    <string name="ha_reloading_detail">Vaše nástěnka se znovu načítá</string>
+    <string name="ha_restarted_in">Restart trval %1$s</string>
+    <string name="ha_step_offline">Offline</string>
+    <string name="ha_step_reloading">Obnovování</string>
+    <string name="ha_step_starting">Spouštění</string>
+    <string name="ha_step_stopping">Zastavování</string>
+    <string name="ha_until_back">než bude Home Assistant zpět</string>
+    <string name="ha_usually">%1$s · obvykle %2$s</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ha_exact_minutes_seconds">%1$d min %2$d s</string>
+    <string name="ha_exact_seconds">%1$d s</string>
+    <string name="ha_past_usual">Além do tempo habitual</string>
+    <string name="ha_reloading_detail">Seu painel está recarregando</string>
+    <string name="ha_restarted_in">Reiniciado em %1$s</string>
+    <string name="ha_step_offline">Offline</string>
+    <string name="ha_step_reloading">Recarregando</string>
+    <string name="ha_step_starting">Iniciando</string>
+    <string name="ha_step_stopping">Parando</string>
+    <string name="ha_until_back">até o Home Assistant voltar</string>
+    <string name="ha_usually">%1$s · normalmente %2$s</string>
+    <string name="ha_reason_restart">Reinicialização do Home Assistant</string>
+    <string name="ha_reason_host_reboot">Reinicialização do host</string>
+    <string name="ha_reason_core_update">Atualização do Home Assistant Core</string>
+    <string name="ha_reason_unknown">Motivo desconhecido</string>
+    <string name="ha_not_measured">O tempo de retorno ainda não foi medido</string>
+    <string name="ha_taking_longer">Demorando além do normal</string>
+</resources>

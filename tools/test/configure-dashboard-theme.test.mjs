@@ -14,7 +14,7 @@ import { chromium, webkit } from 'playwright-core';
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const OPTIONS = ['Follow Home Assistant', 'Dark', 'Light', 'Ambient'];
-const LOCALES = ['en', 'de', 'fr', 'it', 'es', 'zh-Hans', 'nl', 'pl', 'uk'];
+const LOCALES = ['en', 'de', 'fr', 'it', 'es', 'zh-Hans', 'nl', 'pl', 'uk', 'cs', 'pt-BR'];
 
 const english = JSON.parse(readFileSync(join(root, 'i18n', 'en.json'), 'utf8')).strings;
 

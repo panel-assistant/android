@@ -248,7 +248,7 @@ browserTest('Configure enum labels fit a 1361px viewport at large text in every 
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   t.after(async () => browser.close());
 
-  for (const locale of ['de', 'es', 'fr', 'it', 'zh-Hans']) {
+  for (const locale of ['de', 'es', 'fr', 'it', 'zh-Hans', 'nl', 'pl', 'uk', 'cs', 'pt-BR']) {
     const target = JSON.parse(await readFile(new URL(`../../app/src/main/assets/i18n/${locale}.json`, import.meta.url), 'utf8')).strings;
     const translations = Object.fromEntries(Object.entries(target)
       .filter(([key]) => key.startsWith('configure.enum.')).map(([key, record]) => [key, record.text]));
@@ -373,6 +373,8 @@ browserTest('Configure renders translated, fallback and mixed schema fields with
 
 for (const scenario of [
   { name: 'German', initial: 'auto', saved: 'de', finalLabel: 'Anzeigename', haLanguage: '', queryOverride: true },
+  { name: 'Czech', optionLabel: 'Čeština', initial: 'auto', saved: 'cs', finalLabel: 'Friendly name', haLanguage: '', queryOverride: true },
+  { name: 'Brazilian Portuguese', optionLabel: 'Português (Brasil)', initial: 'auto', saved: 'pt-BR', finalLabel: 'Friendly name', haLanguage: '', queryOverride: true },
   { name: 'English', initial: 'auto', saved: 'en', finalLabel: 'Friendly name', haLanguage: '', queryOverride: false },
   { name: 'Automatic', initial: 'en', saved: 'auto', finalLabel: 'Anzeigename', haLanguage: 'de-DE', queryOverride: true },
 ]) {
@@ -381,7 +383,7 @@ for (const scenario of [
     const schemaFor = (language) => [
       localizedField('friendly_name', language === 'de' ? 'Anzeigename' : 'Friendly name', language, '', null),
       { key: 'ui_language', label: 'Interface language', labelLanguage: 'en', help: '', helpLanguage: null,
-        group: 'System', type: 'ENUM', available: true, options: ['auto', 'en', 'de', 'fr', 'it', 'es', 'zh-Hans'] },
+        group: 'System', type: 'ENUM', available: true, options: ['auto', 'en', 'de', 'fr', 'it', 'es', 'zh-Hans', 'cs', 'pt-BR'] },
     ];
     const harness = await startHarness(async (path, request) => {
       if (path === '/api/v1/config/schema') {
@@ -423,6 +425,7 @@ for (const scenario of [
       localStorage.setItem('selectedLanguage', JSON.stringify('fr'));
     });
     await page.goto(harness.url + (scenario.queryOverride ? '?lang=fr' : ''), { waitUntil: 'domcontentloaded', timeout: 5_000 });
+    if (scenario.optionLabel) assert.equal(await page.locator(`#cfg-ui_language option[value="${scenario.saved}"]`).textContent(), scenario.optionLabel);
     await page.locator('#cfg-ui_language select').selectOption(scenario.saved);
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded' }),

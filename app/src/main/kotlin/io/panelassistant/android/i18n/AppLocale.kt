@@ -9,15 +9,12 @@ object AppLocale {
     internal const val UKRAINIAN = "uk"
 
     /** Release locales admitted for the Tier-A bootstrap. English is always the final fallback. */
-    val RELEASE_LOCALES: List<String> = listOf(ENGLISH, "de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk")
+    val RELEASE_LOCALES: List<String> = listOf(ENGLISH, "de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk", "cs", "pt-BR")
 
-    /**
-     * Tier-B early-access locales: catalogue coverage is machine-draft only, not yet independently
-     * reviewed to machine-cross-checked. [Strings.resolve] renders draft text for these locales so
-     * real users see it now rather than English fallback; Tier-A keeps its stricter bar unchanged.
-     * Move a locale out of this set (and nowhere else) once its catalogue passes independent review.
+    /** Early-access machine previews keep their disclosure for every admitted locale signal.
+     * Ordinary drafts may render; consequential text still requires independent review.
      */
-    val EARLY_ACCESS_LOCALES: Set<String> = setOf("nl", "pl", "uk")
+    val EARLY_ACCESS_LOCALES: Set<String> = setOf("nl", "pl", "uk", "cs", "pt-BR")
 
     /**
      * Resolve every admitted signal in the configured precedence order. Query/browser choice wins,

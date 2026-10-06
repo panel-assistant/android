@@ -348,6 +348,21 @@ browserTest('revisiting a handed-over dashboard does not undo an answered filter
   assert.deepEqual(posts.map((request) => request.path), ['/api/v1/config', '/api/v1/setup/home-dashboard']);
 });
 
+browserTest('Setup keeps Czech and Brazilian Portuguese on its completion links', async (t) => {
+  for (const locale of ['cs', 'pt-BR']) {
+    const rig = await openRig(t, {
+      locale,
+      initialJourney: journey('render_proof', {
+        complete: true,
+        statuses: { render_proof: { status: 'satisfied', detail: 'builtin_frontend_connected' } },
+        entity_filter: { relevant: true, enabled: true },
+      }),
+    }, `/?lang=${locale}`);
+    const hrefs = await rig.page.locator('#wiz-step a').evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+    assert.deepEqual(hrefs, [`configure?lang=${locale}`, `./?lang=${locale}`, `install?lang=${locale}`]);
+  }
+});
+
 browserTest('Setup preserves the active locale on every JavaScript-authored cross-page link', async (t) => {
   const completeJourney = journey('render_proof', {
     complete: true,

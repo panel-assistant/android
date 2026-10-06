@@ -27,7 +27,7 @@ CANDIDATE_ROOT_KEYS = {
     "schema", "targetLocale", "sourceRevision", "sourceCatalogueHash", "translations",
 }
 CANDIDATE_RECORD_KEYS = {"key", "translation"}
-LOCALES = {"de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk"}
+LOCALES = {"de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk", "cs", "pt-BR"}
 SOURCE_SURFACES = {
     "settings", "shell", "dashboard", "configure", "setup", "profiles", "entities", "install", "logs",
     "fleet", "api",
@@ -54,6 +54,8 @@ TARGET_SCRIPT_POLICIES = {
     "nl": "latin",
     "pl": "latin",
     "uk": "ukrainian-cyrillic",
+    "cs": "latin",
+    "pt-BR": "latin",
 }
 # A locale remains unsupported until it is present in LOCALES and has a catalogue. These
 # requirements reserve script policies for later locales so extending LOCALES cannot silently
@@ -70,7 +72,7 @@ REQUIRED_FROZEN_LITERALS = ("Home Assistant", "dB")
 RENDERABLE_STATES = {"machine-cross-checked", "community-corrected"}
 # Mirrors Kotlin AppLocale.EARLY_ACCESS_LOCALES: for exactly these locales, Strings.resolve()
 # also renders a current machine-draft record instead of falling back to English.
-EARLY_ACCESS_LOCALES = {"nl", "pl", "uk"}
+EARLY_ACCESS_LOCALES = {"nl", "pl", "uk", "cs", "pt-BR"}
 
 
 def held_for_review(locale: str, record: dict[str, Any], source_record: dict[str, Any]) -> bool:
@@ -91,6 +93,63 @@ TARGET_NEWLINE_RUNS = {
     "profiles.modal.delete_detail": (1, 2),
 }
 UNCHANGED_TARGET_EXCEPTIONS = {
+    ("pt-BR", "dashboard.runtime.mqtt.seconds"): "{seconds}s",
+    ("pt-BR", "dashboard.live.volume"): "Volume",
+    ("pt-BR", "entities.disabled.badge"): "experimental",
+    ("pt-BR", "install.display.badge.experimental"): "experimental",
+    ("pt-BR", "logs.source.app"): "App",
+    ("pt-BR", "profiles.catalog.option.local"): "{name} · Local · {revision}",
+    ("pt-BR", "profiles.maturity.experimental"): "experimental",
+    ("pt-BR", "profiles.origin.local"): "Local",
+    ("pt-BR", "profiles.report.hardware"): "Hardware",
+    ("pt-BR", "settings.dashboard_zoom.label"): "Zoom (%)",
+    ("pt-BR", "shell.menu.label"): "Menu",
+    ("pt-BR", "shell.nav.logs"): "Logs",
+    ("pt-BR", "shell.runtime.duration_minutes"): "{count} min",
+    ("pt-BR", "shell.runtime.duration_seconds"): "{count} s",
+    ("pt-BR", "shell.runtime.ha_lifecycle.duration_hours"): "{value} h",
+    ("pt-BR", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
+    ("pt-BR", "configure.duration.hours_minutes"): "{hours} h {minutes} min",
+    ("pt-BR", "configure.duration.minutes"): "{count} min",
+    ("pt-BR", "configure.enum.voice_sensitivity.normal"): "Normal",
+    ("pt-BR", "configure.proximity.experimental"): "experimental",
+    ("pt-BR", "dashboard.fact.firmware"): "Firmware",
+    ("pt-BR", "dashboard.responsiveness.tap_percentiles"): "~p50 {p50} ms · ~p95 {p95} ms",
+    ("pt-BR", "dashboard.sensors.volume"): "Volume",
+    ('cs', 'configure.duration.hours_minutes'): '{hours} h {minutes} min',
+    ('cs', 'configure.duration.minutes'): '{count} min',
+    ('cs', 'configure.enum.cpu_governor.auto'): 'Auto',
+    ('cs', 'configure.enum.log_ship_protocol.syslog_tcp'): 'Syslog TCP',
+    ('cs', 'configure.enum.log_ship_protocol.syslog_udp'): 'Syslog UDP',
+    ('cs', 'configure.option.auto'): 'auto',
+    ('cs', 'configure.option.auto_detail'): 'auto ({value})',
+    ('cs', 'configure.voice.import_button'): 'Import',
+    ('cs', 'dashboard.capability.root_su'): 'Root (su)',
+    ('cs', 'dashboard.fact.firmware'): 'Firmware',
+    ('cs', 'dashboard.fact.ha_renderer'): 'HA renderer',
+    ('cs', 'dashboard.fact.http_port'): 'HTTP port',
+    ('cs', 'dashboard.fact.model'): 'Model',
+    ('cs', 'dashboard.performance.clock_max'): '/ {gigahertz} GHz max',
+    ('cs', 'dashboard.responsiveness.tap_percentiles'): '~p50 {p50} ms · ~p95 {p95} ms',
+    ('cs', 'dashboard.runtime.mqtt.seconds'): '{seconds}s',
+    ('cs', 'dashboard.value.auto_detail'): 'auto ({value})',
+    ('cs', 'entities.row.option.auto'): 'Auto',
+    ('cs', 'install.backup.dynamic.preview_panel'): 'Panel',
+    ('cs', 'logs.level.debug'): 'Debug+',
+    ('cs', 'logs.level.info'): 'Info+',
+    ('cs', 'profiles.action.export'): 'Export',
+    ('cs', 'profiles.action.fork'): 'Fork',
+    ('cs', 'profiles.action.import'): 'Import',
+    ('cs', 'profiles.editor.codemirror.regexp'): 'regexp',
+    ('cs', 'profiles.report.hardware'): 'Hardware',
+    ('cs', 'profiles.severity.info'): 'info',
+    ('cs', 'settings.model.label'): 'Model',
+    ('cs', 'settings.mqtt_broker.label'): 'Broker URL',
+    ('cs', 'settings.panel_id.label'): 'Panel ID',
+    ('cs', 'settings.zigbee_router.label'): 'Zigbee router',
+    ('cs', 'setup.progress.server'): 'Server',
+    ('cs', 'shell.runtime.duration_minutes'): '{count} min',
+    ('cs', 'shell.runtime.duration_seconds'): '{count} s',
     ("pl", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
     ("es", "shell.runtime.ha_lifecycle.duration_hours"): "{value} h",
     ("es", "shell.runtime.ha_lifecycle.duration_minutes"): "{value} min",
@@ -267,6 +326,8 @@ UNCHANGED_TARGET_EXCEPTIONS = {
     ("pl", "shell.runtime.duration_seconds"): "{count} s",
 }
 TARGET_LITERAL_EXCEPTIONS = {
+    ("pt-BR", "install.presentation.status_no_renderer"): ("ℹ",),
+    ('cs', 'install.presentation.status_no_renderer'): ('ℹ',),
     ("uk", "shell.runtime.ha_lifecycle.reason_core_update"): ("Core",),
     ("de", "install.presentation.status_no_renderer"): ("ℹ",),
     ("es", "install.presentation.status_no_renderer"): ("ℹ",),
@@ -502,7 +563,11 @@ def validate_target_language(key: str, text: str, locale: str, source_record: di
         if any(character.isalpha() and not HAN_RE.fullmatch(character) for character in target_visible):
             raise CatalogueError(f"{key}: {locale} target has unexpected script")
     elif policy == "latin":
-        if not LATIN_RE.search(target_visible) or any(
+        # A reviewed, exact label may consist entirely of protected technical tokens.
+        if (
+            not LATIN_RE.search(target_visible)
+            and UNCHANGED_TARGET_EXCEPTIONS.get((locale, key)) != text
+        ) or any(
             character.isalpha() and not LATIN_RE.fullmatch(character)
             for character in target_visible
         ):

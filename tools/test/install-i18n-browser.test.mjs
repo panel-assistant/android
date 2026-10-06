@@ -199,7 +199,7 @@ browserTest('Version picker retains installed release fallback with a formatted 
 });
 
 browserTest('Version picker uses every shipped locale for all unavailable reasons', async (t) => {
-  for (const locale of ['de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'zh-Hans']) {
+  for (const locale of ['de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'cs', 'pt-BR', 'zh-Hans']) {
     const projection = await realCatalogueProjection(locale, ['install.']);
     const { page } = await rig(t, {
       projection,
@@ -430,14 +430,16 @@ browserTest('Install protected-form success keeps the supported explicit languag
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ ok: true, message: 'Applied.' })); return true;
   };
-  const { page } = await rig(t, {
-    route,
-    query: '?lang=zh-Hans',
-    html: '<form action="/api/v1/display/density"><button id="density-submit" type="submit">Apply</button></form>',
-  });
-  await page.click('#density-submit');
-  await page.waitForURL(/\/install\?lang=zh-Hans#cfg-display$/, { timeout: 3_000 });
-  assert.equal(new URL(page.url()).searchParams.get('lang'), 'zh-Hans');
+  for (const locale of ['zh-Hans', 'cs', 'pt-BR']) {
+    const { page } = await rig(t, {
+      route,
+      query: `?lang=${locale}`,
+      html: '<form action="/api/v1/display/density"><button id="density-submit" type="submit">Apply</button></form>',
+    });
+    await page.click('#density-submit');
+    await page.waitForURL((url) => url.pathname === '/install' && url.searchParams.get('lang') === locale && url.hash === '#cfg-display', { timeout: 3_000 });
+    assert.equal(new URL(page.url()).searchParams.get('lang'), locale);
+  }
 });
 
 browserTest('Install Backup, Export and Import failures localize prefixes and isolate exact diagnostics', async (t) => {

@@ -61,7 +61,7 @@
     var params = new URLSearchParams(location.search);
     // en-XA is emitted only by debug builds, but when it is the server-resolved locale its authored
     // links must retain the pseudolocale just like every release locale.
-    var supported = ["en", "de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk", "en-XA"];
+    var supported = ["en", "de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk", "cs", "pt-BR", "en-XA"];
     if (!params.has("lang") && !params.has("ha_lang")) return path;
     var lang = requestedLocale();
     if (supported.indexOf(lang) === -1) return path;

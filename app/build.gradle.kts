@@ -44,7 +44,7 @@ val hasReleaseSigning = keystoreProps.exists()
 // The product catalogue lives in assets/i18n rather than values-*/strings.xml, so AGP cannot infer
 // this list through generateLocaleConfig. PlatformLocaleContractTest keeps this build-time list,
 // res/xml/locales_config.xml, and AppLocale.RELEASE_LOCALES in lockstep.
-val releaseLocaleFilters = listOf("en", "de", "fr", "it", "es", "zh-rCN", "nl", "pl", "uk")
+val releaseLocaleFilters = listOf("en", "de", "fr", "it", "es", "zh-rCN", "nl", "pl", "uk", "cs", "pt-rBR")
 
 // The compatibility boundary is signed into every APK as one finite manifest value. Keep the
 // database schema object as the source of truth: release tags/versionNames are presentation, not a

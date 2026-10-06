@@ -1,4 +1,3 @@
-import ast
 import importlib.util
 import json
 from pathlib import Path
@@ -109,36 +108,18 @@ class DeepLAdapterTest(unittest.TestCase):
             "strings": records,
         })
 
-    def test_provider_targets_are_unique_complete_and_mutation_sensitive(self):
-        script = ROOT / "scripts/i18n_deepl.py"
-        tree = ast.parse(script.read_text(encoding="utf-8"))
-        assignment = next(
-            node for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name) and target.id == "TARGETS"
-                for target in node.targets
-            )
-        )
-        self.assertIsInstance(assignment.value, ast.Dict)
-        literal_keys = [ast.literal_eval(key) for key in assignment.value.keys]
-        self.assertEqual(
-            len(literal_keys), len(set(literal_keys)), "DeepL targets have duplicate locale keys"
-        )
-        self.assertSetEqual(set(literal_keys), DEEPL.catalogue.LOCALES)
+    def test_retired_provider_routes_remain_bounded_and_unknown_routes_fail_before_access(self):
         DEEPL.validate_locale_configuration()
-
-        selected = sorted(DEEPL.catalogue.LOCALES)[0]
-        for mutation in (
-            {key: value for key, value in DEEPL.TARGETS.items() if key != selected},
-            {**DEEPL.TARGETS, "extra-locale": ("XX", "default")},
-        ):
+        for mutation in ({}, {**DEEPL.TARGETS, "extra-locale": ("XX", "default")}):
             with (
                 self.subTest(mutation=mutation),
                 mock.patch.object(DEEPL, "TARGETS", mutation),
-                self.assertRaisesRegex(DEEPL.DeepLError, "must exactly cover"),
+                self.assertRaisesRegex(DEEPL.DeepLError, "non-empty subset"),
             ):
                 DEEPL.validate_locale_configuration()
+        for unsupported in ("cs", "pt-BR", "pt", "pt-PT"):
+            with self.subTest(locale=unsupported), self.assertRaisesRegex(DEEPL.DeepLError, "supported locale list"):
+                DEEPL.build_plan(self.source_path, self.target_dir, self.context_path, [unsupported], REVISION, set())
 
     def test_provider_context_terms_exactly_cover_supported_locales(self):
         DEEPL._load_context(self.context_path)

@@ -99,10 +99,11 @@ class AssetSyntaxTest {
             data.selectedLanguage='"sv-SE"';
             if(cfg.configSchemaUrl('de')!=='api/v1/config/schema?lang=sv-SE&ha_lang=de'||!usesHaLanguage('sv-SE'))process.exit(8);
             if(usesHaLanguage('de-DE'))process.exit(9);
-            for(const locale of ['en','de','fr','it','es','zh-Hans','nl','pl','uk']){
+            for(const locale of ['en','de','fr','it','es','zh-Hans','nl','pl','uk','cs','pt-BR']){
               if(usesHaLanguage(locale)||usesHaLanguage(locale+'-Test'))process.exit(10);
             }
             if(!usesHaLanguage('zh-Hant')||!usesHaLanguage('zz-ZZ'))process.exit(11);
+            if(!usesHaLanguage('pt')||!usesHaLanguage('pt-PT'))process.exit(12);
         """.trimIndent()
         val (code, out) = run(listOf("node", "-e", script, File(dir, "configure-state.js").absolutePath))
         assertEquals("Configure language signal contract failed:\n$out", 0, code)
