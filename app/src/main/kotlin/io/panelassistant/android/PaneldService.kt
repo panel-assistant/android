@@ -2841,7 +2841,6 @@ class PaneldService : Service() {
         runtime.runIfRunning {
             if (!teardownBoundary.isStopping) {
                 panelAssistantTransport.replaceDemand(demand)
-                if (demand != null) scope.launch(Dispatchers.IO) { HaBrandIcon.prefetch(this@PaneldService, config.haUrl) }
                 if (HaLifecycleRuntime.setNativeWatching(haLifecycle, demand != null)) BuiltinDashboard.onHaLifecycleChanged()
             }
         }
@@ -3897,7 +3896,6 @@ class PaneldService : Service() {
             // Demand construction reads configuration before this short, lock-admitted publication.
             if (!teardownBoundary.isStopping) {
                 panelAssistantTransport.replaceDemand(initialNativeDemand)
-                if (initialNativeDemand != null) scope.launch(Dispatchers.IO) { HaBrandIcon.prefetch(this@PaneldService, config.haUrl) }
                 if (HaLifecycleRuntime.setNativeWatching(haLifecycle, initialNativeDemand != null)) BuiltinDashboard.onHaLifecycleChanged()
             }
         })

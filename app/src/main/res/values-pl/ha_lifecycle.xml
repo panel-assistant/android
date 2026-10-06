@@ -6,9 +6,15 @@
     <string name="ha_reason_unknown">Przyczyna nieznana</string>
     <string name="ha_not_measured">Czas do powrotu nie został jeszcze zmierzony</string>
     <string name="ha_taking_longer">Trwa dłużej niż zwykle</string>
-    <string name="ha_expected_in">Przewidywany powrót za około %1$s</string>
-    <string name="ha_overdue">O %1$s ponad szacowany czas</string>
-    <string name="ha_duration_seconds">%1$d s</string>
-    <string name="ha_duration_minutes">%1$d min</string>
-    <string name="ha_duration_hours">%1$d godz.</string>
+    <string name="ha_step_stopping">Zatrzymywanie</string>
+    <string name="ha_step_starting">Uruchamianie</string>
+    <string name="ha_step_reloading">Przeładowywanie</string>
+    <string name="ha_step_offline">Offline</string>
+    <string name="ha_until_back">do powrotu Home Assistant</string>
+    <string name="ha_past_usual">Dłużej niż zwykle</string>
+    <string name="ha_reloading_detail">Pulpit jest przeładowywany</string>
+    <string name="ha_usually">%1$s · zwykle %2$s</string>
+    <string name="ha_restarted_in">Ponowne uruchomienie trwało %1$s</string>
+    <string name="ha_exact_seconds">%1$d s</string>
+    <string name="ha_exact_minutes_seconds">%1$d min %2$d s</string>
 </resources>

@@ -192,13 +192,8 @@
     <string name="disable_entity_filter">Disable entity filter</string>
     <string name="open_entity_settings">Open entity settings</string>
 
-    <string name="ha_shutting_down">Home Assistant is shutting down</string>
     <string name="ha_offline">Home Assistant is offline</string>
-    <string name="ha_starting">Home Assistant is starting</string>
-    <string name="ha_back_online">Home Assistant is back online</string>
-    <string name="controls_returned">Controls have returned.</string>
     <string name="ha_network_unreliable">HA network unreliable</string>
-    <string name="home_assistant" translatable="false">Home Assistant</string>
 
     <string name="nav_back">Back</string>
     <string name="nav_launcher">Launcher</string>

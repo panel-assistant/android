@@ -190,11 +190,7 @@
     <string name="disable_entity_filter">Desactivar filtro de entidades</string>
     <string name="open_entity_settings">Abrir configuración de entidades</string>
 
-    <string name="ha_shutting_down">Home Assistant se está apagando</string>
     <string name="ha_offline">Home Assistant está sin conexión</string>
-    <string name="ha_starting">Home Assistant se está iniciando</string>
-    <string name="ha_back_online">Home Assistant vuelve a estar en línea</string>
-    <string name="controls_returned">Los controles han vuelto.</string>
     <string name="ha_network_unreliable">La red de HA no es fiable</string>
 
     <string name="nav_back">Volver</string>

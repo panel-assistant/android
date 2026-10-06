@@ -190,11 +190,7 @@
     <string name="disable_entity_filter">禁用实体筛选器</string>
     <string name="open_entity_settings">打开实体设置</string>
 
-    <string name="ha_shutting_down">Home Assistant 正在关闭</string>
     <string name="ha_offline">Home Assistant 已离线</string>
-    <string name="ha_starting">Home Assistant 正在启动</string>
-    <string name="ha_back_online">Home Assistant 已恢复在线</string>
-    <string name="controls_returned">控制功能已恢复。</string>
     <string name="ha_network_unreliable">HA 网络不稳定</string>
 
     <string name="nav_back">返回</string>

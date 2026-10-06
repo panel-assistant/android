@@ -184,11 +184,7 @@
     <string name="preparing_dashboard">Підготовка інформаційної панелі…</string>
     <string name="disable_entity_filter">Вимкнути фільтр сутностей</string>
     <string name="open_entity_settings">Відкрити налаштування сутностей</string>
-    <string name="ha_shutting_down">Home Assistant вимикається</string>
     <string name="ha_offline">Home Assistant не в мережі</string>
-    <string name="ha_starting">Home Assistant запускається</string>
-    <string name="ha_back_online">Home Assistant знову в мережі</string>
-    <string name="controls_returned">Елементи керування повернулися.</string>
     <string name="ha_network_unreliable">Мережа HA ненадійна</string>
     <string name="nav_back">Назад</string>
     <string name="nav_launcher">Лаунчер</string>

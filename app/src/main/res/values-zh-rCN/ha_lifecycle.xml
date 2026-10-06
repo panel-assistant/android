@@ -6,9 +6,15 @@
     <string name="ha_reason_unknown">原因未知</string>
     <string name="ha_not_measured">尚未测量恢复所需的时间</string>
     <string name="ha_taking_longer">耗时比平时更长</string>
-    <string name="ha_expected_in">预计约在 %1$s 后恢复</string>
-    <string name="ha_overdue">已超出预计时间 %1$s</string>
-    <string name="ha_duration_seconds">%1$d 秒</string>
-    <string name="ha_duration_minutes">%1$d 分钟</string>
-    <string name="ha_duration_hours">%1$d 小时</string>
+    <string name="ha_step_stopping">正在停止</string>
+    <string name="ha_step_starting">正在启动</string>
+    <string name="ha_step_reloading">正在重新加载</string>
+    <string name="ha_step_offline">离线</string>
+    <string name="ha_until_back">后 Home Assistant 恢复</string>
+    <string name="ha_past_usual">已超过通常时间</string>
+    <string name="ha_reloading_detail">仪表板正在重新加载</string>
+    <string name="ha_usually">%1$s · 通常 %2$s</string>
+    <string name="ha_restarted_in">重启用时 %1$s</string>
+    <string name="ha_exact_seconds">%1$d 秒</string>
+    <string name="ha_exact_minutes_seconds">%1$d 分 %2$d 秒</string>
 </resources>

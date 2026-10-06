@@ -6,9 +6,16 @@
     <string name="ha_reason_unknown">Reason unknown</string>
     <string name="ha_not_measured">Time back has not been measured yet</string>
     <string name="ha_taking_longer">Taking longer than usual</string>
-    <string name="ha_expected_in">Expected back in about %1$s</string>
-    <string name="ha_overdue">%1$s past the estimate</string>
-    <string name="ha_duration_seconds">%1$d sec</string>
-    <string name="ha_duration_minutes">%1$d min</string>
-    <string name="ha_duration_hours">%1$d h</string>
+    <string name="panel_assistant" translatable="false">Panel Assistant</string>
+    <string name="ha_step_stopping">Stopping</string>
+    <string name="ha_step_starting">Starting</string>
+    <string name="ha_step_reloading">Reloading</string>
+    <string name="ha_step_offline">Offline</string>
+    <string name="ha_until_back">until Home Assistant is back</string>
+    <string name="ha_past_usual">Past the usual time</string>
+    <string name="ha_reloading_detail">Your dashboard is reloading</string>
+    <string name="ha_usually">%1$s · usually %2$s</string>
+    <string name="ha_restarted_in">Restarted in %1$s</string>
+    <string name="ha_exact_seconds">%1$d seconds</string>
+    <string name="ha_exact_minutes_seconds">%1$d min %2$d s</string>
 </resources>

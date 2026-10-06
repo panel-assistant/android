@@ -190,11 +190,7 @@
     <string name="disable_entity_filter">Entitätsfilter deaktivieren</string>
     <string name="open_entity_settings">Entitätseinstellungen öffnen</string>
 
-    <string name="ha_shutting_down">Home Assistant wird heruntergefahren</string>
     <string name="ha_offline">Home Assistant ist offline</string>
-    <string name="ha_starting">Home Assistant wird gestartet</string>
-    <string name="ha_back_online">Home Assistant ist wieder online</string>
-    <string name="controls_returned">Die Steuerung ist wieder verfügbar.</string>
     <string name="ha_network_unreliable">HA-Netzwerk unzuverlässig</string>
 
     <string name="nav_back">Zurück</string>

@@ -6,9 +6,15 @@
     <string name="ha_reason_unknown">Reden onbekend</string>
     <string name="ha_not_measured">De tijd tot terugkeer is nog niet gemeten</string>
     <string name="ha_taking_longer">Duurt langer dan normaal</string>
-    <string name="ha_expected_in">Naar verwachting over ongeveer %1$s weer beschikbaar</string>
-    <string name="ha_overdue">%1$s voorbij de schatting</string>
-    <string name="ha_duration_seconds">%1$d sec.</string>
-    <string name="ha_duration_minutes">%1$d min</string>
-    <string name="ha_duration_hours">%1$d u</string>
+    <string name="ha_step_stopping">Stoppen</string>
+    <string name="ha_step_starting">Starten</string>
+    <string name="ha_step_reloading">Herladen</string>
+    <string name="ha_step_offline">Offline</string>
+    <string name="ha_until_back">tot Home Assistant terug is</string>
+    <string name="ha_past_usual">Langer dan gebruikelijk</string>
+    <string name="ha_reloading_detail">Je dashboard wordt herladen</string>
+    <string name="ha_usually">%1$s · meestal %2$s</string>
+    <string name="ha_restarted_in">Herstart in %1$s</string>
+    <string name="ha_exact_seconds">%1$d seconden</string>
+    <string name="ha_exact_minutes_seconds">%1$d min %2$d s</string>
 </resources>

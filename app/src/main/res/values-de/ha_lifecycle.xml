@@ -6,9 +6,15 @@
     <string name="ha_reason_unknown">Grund unbekannt</string>
     <string name="ha_not_measured">Die Zeit bis zur Rückkehr wurde noch nicht gemessen</string>
     <string name="ha_taking_longer">Dauert länger als üblich</string>
-    <string name="ha_expected_in">Voraussichtlich in etwa %1$s wieder verfügbar</string>
-    <string name="ha_overdue">%1$s über der Schätzung</string>
-    <string name="ha_duration_seconds">%1$d Sek.</string>
-    <string name="ha_duration_minutes">%1$d Min.</string>
-    <string name="ha_duration_hours">%1$d Std.</string>
+    <string name="ha_step_stopping">Wird beendet</string>
+    <string name="ha_step_starting">Wird gestartet</string>
+    <string name="ha_step_reloading">Wird neu geladen</string>
+    <string name="ha_step_offline">Offline</string>
+    <string name="ha_until_back">bis Home Assistant wieder da ist</string>
+    <string name="ha_past_usual">Länger als üblich</string>
+    <string name="ha_reloading_detail">Dein Dashboard wird neu geladen</string>
+    <string name="ha_usually">%1$s · normalerweise %2$s</string>
+    <string name="ha_restarted_in">Neu gestartet in %1$s</string>
+    <string name="ha_exact_seconds">%1$d Sekunden</string>
+    <string name="ha_exact_minutes_seconds">%1$d Min. %2$d s</string>
 </resources>

@@ -184,11 +184,7 @@
     <string name="preparing_dashboard">Przygotowywanie pulpitu…</string>
     <string name="disable_entity_filter">Wyłącz filtr encji</string>
     <string name="open_entity_settings">Otwórz ustawienia encji</string>
-    <string name="ha_shutting_down">Home Assistant wyłącza się</string>
     <string name="ha_offline">Home Assistant jest offline</string>
-    <string name="ha_starting">Home Assistant uruchamia się</string>
-    <string name="ha_back_online">Home Assistant znów działa</string>
-    <string name="controls_returned">Powróciły elementy sterujące.</string>
     <string name="ha_network_unreliable">Niestabilna sieć HA</string>
     <string name="nav_back">Wstecz</string>
     <string name="nav_launcher">Program uruchamiający</string>

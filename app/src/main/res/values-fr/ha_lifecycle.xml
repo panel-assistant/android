@@ -6,9 +6,15 @@
     <string name="ha_reason_unknown">Raison inconnue</string>
     <string name="ha_not_measured">Le délai de retour n’a pas encore été mesuré</string>
     <string name="ha_taking_longer">Cela prend plus de temps que d’habitude</string>
-    <string name="ha_expected_in">Retour prévu dans environ %1$s</string>
-    <string name="ha_overdue">%1$s au-delà de l’estimation</string>
-    <string name="ha_duration_seconds">%1$d s</string>
-    <string name="ha_duration_minutes">%1$d min</string>
-    <string name="ha_duration_hours">%1$d h</string>
+    <string name="ha_step_stopping">Arrêt</string>
+    <string name="ha_step_starting">Démarrage</string>
+    <string name="ha_step_reloading">Rechargement</string>
+    <string name="ha_step_offline">Hors ligne</string>
+    <string name="ha_until_back">avant le retour de Home Assistant</string>
+    <string name="ha_past_usual">Plus long que d’habitude</string>
+    <string name="ha_reloading_detail">Votre tableau de bord se recharge</string>
+    <string name="ha_usually">%1$s · habituellement %2$s</string>
+    <string name="ha_restarted_in">Redémarré en %1$s</string>
+    <string name="ha_exact_seconds">%1$d secondes</string>
+    <string name="ha_exact_minutes_seconds">%1$d min %2$d s</string>
 </resources>

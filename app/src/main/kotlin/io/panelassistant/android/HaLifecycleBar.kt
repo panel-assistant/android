@@ -3,9 +3,12 @@ package io.panelassistant.android
 import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -16,11 +19,10 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import io.panelassistant.android.sensors.HaLifecycle
+import io.panelassistant.android.sensors.HaLifecycleReason
 import io.panelassistant.android.sensors.HaLifecycleRuntime
 import io.panelassistant.android.sensors.HaLifecycleSource
 import io.panelassistant.android.sensors.HaLifecycleState
-import io.panelassistant.android.sensors.HaLifecycleReason
-import io.panelassistant.android.sensors.haLifecycleDuration
 
 /** Select the notice shown over the dashboard from the current owners' observations. */
 internal fun haLifecycleNoticeState(
@@ -32,114 +34,181 @@ internal fun haLifecycleNoticeState(
     renderer?.record?.state == RendererAdmissionState.ADMITTED &&
         renderer.record.admittedOnCachedVersion && !renderer.frontendConnected -> HaLifecycleState.CONNECTION_LOST
     snap?.state == HaLifecycleState.CONNECTION_LOST && snap.offlineGraceRemainingMs <= 0L -> snap.state
-    snap?.state == HaLifecycleState.BACK_ONLINE -> snap.state
+    // The last step lasts while the dashboard reloads and ends the moment it reconnects: a connected
+    // dashboard is usable, and a card still covering it would be Panel Assistant getting in the way.
+    snap?.state == HaLifecycleState.BACK_ONLINE && renderer?.frontendConnected != true -> snap.state
     else -> null
 }
 
+/** The three steps of a restart the card shows, in order. */
+internal enum class HaRestartStep { STOPPING, STARTING, RELOADING }
+
 /**
- * How far the restart bar is filled, out of [HA_LIFECYCLE_PROGRESS_MAX], or null when the card shows no bar.
+ * What the restart card shows, decided from the lifecycle snapshot alone.
  *
- * Mirrors the forecast text: a bar exactly when the card quantifies the time back. No measurement is no
- * bar, recovery is no bar, and an overdue restart sits full rather than running backwards — the
- * "taking longer" headline carries that case.
+ * Pure and Android-free, so every state is assertable without inflating a view — unit-tested in
+ * `HaLifecycleCardTest`. The view only turns this into words and pixels.
+ *
+ * @property step the current step, or null for an outage nothing explained (no track is shown)
+ * @property fills each step's fill, out of [HA_LIFECYCLE_PROGRESS_MAX]
+ * @property remainingMs time left to the measured usual time; null when not measured, overdue or reloading
+ * @property overdueMs how far past the usual time; null unless overdue
+ * @property usualMs the measured usual time
+ * @property restartedInMs while reloading, how long this restart took
  */
-internal fun haLifecycleProgress(state: HaLifecycleState, expectedMs: Long?, elapsedMs: Long?): Int? {
-    if (state == HaLifecycleState.BACK_ONLINE || expectedMs == null || elapsedMs == null) return null
-    if (expectedMs <= 0L || elapsedMs >= expectedMs) return HA_LIFECYCLE_PROGRESS_MAX
-    return (elapsedMs.coerceAtLeast(0L) * HA_LIFECYCLE_PROGRESS_MAX / expectedMs).toInt()
-}
+internal data class HaLifecycleCard(
+    val step: HaRestartStep?,
+    val fills: List<Int>,
+    val remainingMs: Long?,
+    val overdueMs: Long?,
+    val usualMs: Long?,
+    val restartedInMs: Long?,
+)
 
 internal const val HA_LIFECYCLE_PROGRESS_MAX = 10_000
 
 /**
- * The restart bar's width: as wide as the headline above it, never wider than the card's content.
+ * Decide the card for [state].
  *
- * On a landscape panel the capped headline covers about half the card, and a full-width bar reached
- * well past it. A headline that wraps (square and portrait panels) already fills the card, so the bar
- * does too.
+ * Only the whole restart is measured, not each step, so the measured progress (elapsed ÷ usual time)
+ * is shared out: Stopping fills over the first half of the usual time, and Starting fills from wherever
+ * the restart was when this card first saw it start ([startingFrom]) to the usual time, so it never
+ * sits empty waiting for a halfway mark. A step that has finished is full whatever the clock says. Past
+ * the usual time both sit full, because progress is capped there, and never run backwards. Reloading
+ * fills over the back-online window.
+ * With no measurement there is no countdown and no partial fill: the track still shows which step it is.
  *
- * @param headlineTextPx the headline's width on one line, unwrapped
- * @param contentWidthPx the card's width inside its padding
+ * @param startingFrom the overall progress, out of [HA_LIFECYCLE_PROGRESS_MAX], when Starting was first shown
  */
-internal fun haLifecycleBarWidth(headlineTextPx: Float, contentWidthPx: Int): Int =
-    minOf(contentWidthPx, kotlin.math.ceil(headlineTextPx).toInt())
+internal fun haLifecycleCard(
+    state: HaLifecycleState,
+    snap: HaLifecycle.Snapshot?,
+    startingFrom: Int? = null,
+    backOnlineWindowMs: Long = HaLifecycle.DEFAULT_BACK_ONLINE_WINDOW_MS,
+): HaLifecycleCard {
+    val step = when (state) {
+        HaLifecycleState.SHUTTING_DOWN ->
+            if (snap?.source == HaLifecycleSource.NATIVE) HaRestartStep.STOPPING else null
+        HaLifecycleState.STARTING -> HaRestartStep.STARTING
+        HaLifecycleState.BACK_ONLINE -> HaRestartStep.RELOADING
+        HaLifecycleState.CONNECTION_LOST, HaLifecycleState.NORMAL -> null
+    }
+    val expected = snap?.expectedMs?.takeIf { it > 0L }
+    val elapsed = snap?.elapsedMs?.coerceAtLeast(0L)
+    val measured = expected != null && elapsed != null
+    val max = HA_LIFECYCLE_PROGRESS_MAX
+    val progress = if (measured) (minOf(elapsed!!, expected!!) * max / expected).toInt() else 0
+    val overdue = measured && step != HaRestartStep.RELOADING && elapsed!! > expected!!
+    val fills = when (step) {
+        null -> listOf(0, 0, 0)
+        HaRestartStep.STOPPING -> listOf(minOf(max, progress * 2), 0, 0)
+        HaRestartStep.STARTING -> {
+            val from = (startingFrom ?: progress).coerceIn(0, max - 1)
+            val fill = when {
+                !measured -> 0
+                else -> ((progress - from).coerceAtLeast(0).toLong() * max / (max - from)).toInt()
+            }
+            listOf(max, fill, 0)
+        }
+        HaRestartStep.RELOADING -> {
+            val remaining = (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
+            listOf(max, max, ((backOnlineWindowMs - remaining) * max / backOnlineWindowMs).toInt())
+        }
+    }
+    val restartedIn = if (step == HaRestartStep.RELOADING && elapsed != null) {
+        val sinceBack = backOnlineWindowMs - (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
+        (elapsed - sinceBack).coerceAtLeast(0L)
+    } else null
+    return HaLifecycleCard(
+        step = step,
+        fills = fills,
+        remainingMs = if (measured && !overdue && step != null && step != HaRestartStep.RELOADING) expected!! - elapsed!! else null,
+        overdueMs = if (overdue) elapsed!! - expected!! else null,
+        usualMs = expected,
+        restartedInMs = restartedIn,
+    )
+}
 
-/** The two text sizes the notice renders at, in pixels. */
-internal data class HaLifecycleTextSizes(val headlinePx: Float, val detailPx: Float)
+/** A countdown as minutes and seconds, rounded up so it never reads 0:00 while time remains. */
+internal fun haLifecycleClock(ms: Long): String {
+    val seconds = (ms.coerceAtLeast(0L) + 999L) / 1_000L
+    return "%d:%02d".format(seconds / 60L, seconds % 60L)
+}
 
 /**
- * Decide the notice's text sizes for a display.
+ * An exact duration, never rounded to a vaguer unit: whole seconds up to three minutes ("113 seconds"),
+ * then minutes and seconds ("6 min 20 s"). "115 seconds" reads as a measurement where "about 2 min"
+ * reads as a guess.
+ */
+internal data class HaExactDuration(val minutes: Long?, val seconds: Long)
+
+internal fun haExactDuration(ms: Long): HaExactDuration {
+    val seconds = (ms.coerceAtLeast(0L) + 500L) / 1_000L
+    return if (seconds <= 180L) HaExactDuration(null, seconds) else HaExactDuration(seconds / 60L, seconds % 60L)
+}
+
+/**
+ * How much to scale the card's baseline sizes, which are its pixel sizes on the smallest supported
+ * panel (480px shortest edge at logical density 1.0).
  *
- * Pure and Android-free so the geometry is assertable without inflating a view — unit-tested in
- * `HaLifecycleBarSizingTest`.
- *
- * A fraction of the shortest edge suits a small panel and is what the accepted 480x480 rendering uses.
- * Past that the fraction keeps growing with the display while the reader does not move closer, so it is
- * capped at the density-independent logical size already proven readable. The cap is expressed in dp
- * and multiplied by [density] rather than being a pixel constant, so logical-density overrides are
- * respected instead of making the cap smaller in dp.
+ * The card grows with a small display, but past the baseline it is capped at the display's logical
+ * density: a wall panel is read from across a room, so the card must not keep taking a larger share of
+ * a bigger screen (measured on a 1920x1200 panel, where an uncapped notice took ~40% of the height).
+ * Logical-density overrides are respected because the cap is the density itself.
  *
  * @param shortestEdgePx the shorter of the display's two pixel dimensions
  * @param density `DisplayMetrics.density` — logical pixels per dp, not measured physical DPI
  */
-internal fun haLifecycleTextSizes(shortestEdgePx: Float, density: Float): HaLifecycleTextSizes {
-    // A non-positive density would silently collapse the cap to zero and hide the text entirely, which
-    // is worse than an oversized notice. Fall back to 1:1 rather than trusting it.
-    val scale = if (density > 0f) density else 1f
-    return HaLifecycleTextSizes(
-        headlinePx = minOf(shortestEdgePx * HA_LIFECYCLE_HEADLINE_FRACTION, HA_LIFECYCLE_MAX_HEADLINE_DP * scale),
-        detailPx = minOf(shortestEdgePx * HA_LIFECYCLE_DETAIL_FRACTION, HA_LIFECYCLE_MAX_DETAIL_DP * scale),
-    )
+internal fun haLifecycleScale(shortestEdgePx: Float, density: Float): Float {
+    // A non-positive density would collapse the card to nothing, which is worse than an oversized one.
+    val cap = if (density > 0f) density else 1f
+    return minOf(shortestEdgePx / HA_LIFECYCLE_BASELINE_EDGE_PX, cap)
 }
 
-private const val HA_LIFECYCLE_HEADLINE_FRACTION = 0.11f
-private const val HA_LIFECYCLE_DETAIL_FRACTION = 0.042f
-
-/**
- * The caps, in dp: exactly what the fraction yields on the smallest supported panel (480px shortest
- * edge at logical density 1.0), which is the rendering already accepted on hardware. Deriving them
- * from the baseline panel rather than picking a number preserves that 480x480 text size while
- * bounding growth on larger logical viewports.
- */
 private const val HA_LIFECYCLE_BASELINE_EDGE_PX = 480f
-private const val HA_LIFECYCLE_MAX_HEADLINE_DP = HA_LIFECYCLE_BASELINE_EDGE_PX * HA_LIFECYCLE_HEADLINE_FRACTION
-private const val HA_LIFECYCLE_MAX_DETAIL_DP = HA_LIFECYCLE_BASELINE_EDGE_PX * HA_LIFECYCLE_DETAIL_FRACTION
 
 /**
- * The native, dashboard-independent Home Assistant outage bar.
+ * The native, dashboard-independent Home Assistant restart notice.
  *
  * It is a second child of the renderer's root frame, so the dashboard keeps rendering underneath and
  * nothing is destroyed to show it — unlike the reconnect/auth interstitials, which replace the document.
  * It is NOT a system overlay: no `SYSTEM_ALERT_WINDOW` owner is added for this.
  *
- * Why a bar and not a toast: this explains unresponsiveness imposed from OUTSIDE the panel, so it has to
- * stay visible for as long as that lasts. A transient notice would clear while the dashboard was still
- * frozen, which is the confusion the feature exists to remove. The compact card is deliberate — a
- * full-bleed overlay was tried for the restart announcement and rejected on hardware.
+ * It stays up for as long as the outage imposed from OUTSIDE the panel lasts, because a transient
+ * notice would clear while the dashboard was still frozen. It carries the Panel Assistant mark and name,
+ * not Home Assistant's, because people took the old card for a Home Assistant feature.
  *
  * The caller owns removal. Every path that swaps or tears down the content view must call [detach], or
- * the bar outlives its container — exactly how the earlier attempt failed.
+ * the card outlives its container.
  */
 internal class HaLifecycleBar private constructor(
-    private val view: LinearLayout,
-    private val card: android.graphics.drawable.GradientDrawable,
-    private val dark: Boolean,
+    private val parts: Parts,
     private val onVisibilityChanged: (Boolean) -> Unit,
-    private val contentWidthPx: Int,
 ) {
-    private val label: TextView = view.getChildAt(1) as TextView
-    private val bar: ProgressBar = view.getChildAt(2) as ProgressBar
-    private val detail: TextView = view.getChildAt(3) as TextView
-    private val barLayers = bar.progressDrawable as LayerDrawable
-    private var barAnimator: ObjectAnimator? = null
+    private class Parts(
+        val card: LinearLayout,
+        val pillText: TextView,
+        val hero: TextView,
+        val sub: TextView,
+        val track: View,
+        val segments: List<ProgressBar>,
+        val labels: List<TextView>,
+        val footer: TextView,
+        val palette: Palette,
+        val heroClockPx: Float,
+    )
+
+    private val view get() = parts.card
+    private var segmentAnimator: ObjectAnimator? = null
+    private var shownStep: HaRestartStep? = null
+    private var startingFrom: Int? = null
 
     /**
-     * The back-online notice retires on read in the state machine, which pushes nothing when it lapses.
-     * The view therefore times out its own copy — but the canonical window runs on `elapsedRealtime`,
-     * which keeps counting through deep sleep, while `postDelayed` runs on uptime, which does not. So
-     * firing is only a WAKE-UP HINT: the runnable re-reads the canonical remaining lifetime and either
-     * hides or re-arms for exactly what is left, and the canonical clock alone decides. It is always
-     * cancelled before rearming, so a rapid second outage cannot be hidden by a previous recovery's hide.
+     * The back-online step retires on read in the state machine, which pushes nothing when it lapses.
+     * The view therefore re-reads on its own — but the canonical window runs on `elapsedRealtime`, which
+     * keeps counting through deep sleep, while `postDelayed` runs on uptime, which does not. So firing is
+     * only a WAKE-UP HINT: the runnable re-reads the canonical snapshot and the canonical clock alone
+     * decides. It is always cancelled before rearming.
      */
     private var visible = false
     private fun visibility(next: Boolean) {
@@ -155,299 +224,304 @@ internal class HaLifecycleBar private constructor(
     fun update(snap: HaLifecycle.Snapshot?, renderer: RendererAdmissionRuntime.Live?) {
         view.removeCallbacks(hide)
         val state = haLifecycleNoticeState(snap, renderer)
-        val text = state?.let {
-            view.context.getString(when (it) {
-                HaLifecycleState.SHUTTING_DOWN -> if (snap?.source == HaLifecycleSource.NATIVE) R.string.ha_shutting_down else R.string.ha_offline
-                HaLifecycleState.STARTING -> R.string.ha_starting
-                HaLifecycleState.BACK_ONLINE -> R.string.ha_back_online
-                HaLifecycleState.CONNECTION_LOST -> R.string.ha_offline
-                HaLifecycleState.NORMAL -> return@let null
-            })
-        }
-        if (state == null || text == null) {
+        if (state == null || state == HaLifecycleState.NORMAL) {
+            segmentAnimator?.cancel()
+            shownStep = null
             visibility(false)
             if ((snap?.offlineGraceRemainingMs ?: 0L) > 0L) view.postDelayed(hide, snap!!.offlineGraceRemainingMs)
             return
         }
-        val colours = palette(state, dark)
-        card.setColor((colours.surface and 0x00FFFFFF) or (CARD_ALPHA shl 24))
-        card.setStroke((BORDER_DP * view.resources.displayMetrics.density).toInt(), colours.border)
-        label.setTextColor(colours.label)
-        val overdue = snap?.expectedMs?.let { (snap.elapsedMs ?: 0L) > it } == true &&
-            state != HaLifecycleState.BACK_ONLINE
-        label.text = if (overdue) view.context.getString(R.string.ha_taking_longer) else text
-        val supporting = if (state == HaLifecycleState.BACK_ONLINE) view.context.getString(R.string.controls_returned)
-        else {
-            val reason = view.context.getString(when (snap?.reason ?: HaLifecycleReason.UNKNOWN) {
-                HaLifecycleReason.RESTART -> R.string.ha_reason_restart
-                HaLifecycleReason.HOST_REBOOT -> R.string.ha_reason_host_reboot
-                HaLifecycleReason.CORE_UPDATE -> R.string.ha_reason_core_update
-                HaLifecycleReason.UNKNOWN -> R.string.ha_reason_unknown
-            })
-            val expected = snap?.expectedMs
-            val elapsed = snap?.elapsedMs
-            val forecast = if (expected == null || elapsed == null) view.context.getString(R.string.ha_not_measured)
-            else {
-                val duration = haLifecycleDuration(kotlin.math.abs(expected - elapsed))
-                val quantified = view.context.getString(when (duration.unit) {
-                    "hours" -> R.string.ha_duration_hours
-                    "minutes" -> R.string.ha_duration_minutes
-                    else -> R.string.ha_duration_seconds
-                }, duration.value)
-                view.context.getString(if (overdue) R.string.ha_overdue else R.string.ha_expected_in, quantified)
-            }
-            "$reason\n$forecast"
-        }
-        detail.setTextColor(colours.label)
-        detail.text = supporting.orEmpty()
-        detail.visibility = if (supporting == null) View.GONE else View.VISIBLE
-        showProgress(state, snap, colours)
+        if (haLifecycleCard(state, snap).step != HaRestartStep.STARTING) startingFrom = null
+        else if (startingFrom == null) startingFrom = progressOf(snap)
+        val card = haLifecycleCard(state, snap, startingFrom)
+        render(card, state, snap)
         visibility(true)
-        if (state == HaLifecycleState.BACK_ONLINE) {
-            // The REMAINING canonical lifetime from the SAME snapshot as the wording — a renderer
-            // recreated near expiry finishes the original notice rather than starting a fresh one.
-            val remaining = snap?.backOnlineRemainingMs ?: 0L
-            if (remaining <= 0L) visibility(false)
-            else view.postDelayed(hide, remaining)
-        } else view.postDelayed(hide, TICK_MS)
+        view.postDelayed(hide, TICK_MS)
+    }
+
+    private fun progressOf(snap: HaLifecycle.Snapshot?): Int? {
+        val expected = snap?.expectedMs?.takeIf { it > 0L } ?: return null
+        val elapsed = snap.elapsedMs?.coerceAtLeast(0L) ?: return null
+        return (minOf(elapsed, expected) * HA_LIFECYCLE_PROGRESS_MAX / expected).toInt()
+    }
+
+    private fun render(card: HaLifecycleCard, state: HaLifecycleState, snap: HaLifecycle.Snapshot?) {
+        val context = view.context
+        val stepWord = when (card.step) {
+            HaRestartStep.STOPPING -> context.getString(R.string.ha_step_stopping)
+            HaRestartStep.STARTING -> context.getString(R.string.ha_step_starting)
+            HaRestartStep.RELOADING -> context.getString(R.string.ha_step_reloading)
+            null -> context.getString(R.string.ha_step_offline)
+        }
+        parts.pillText.text = if (card.overdueMs != null) context.getString(R.string.ha_taking_longer) else stepWord
+        val clock = card.remainingMs?.let(::haLifecycleClock) ?: card.overdueMs?.let { "+" + haLifecycleClock(it) }
+        setHero(clock ?: stepWord, clock != null)
+        parts.sub.text = context.getString(when {
+            card.step == null -> R.string.ha_offline
+            card.step == HaRestartStep.RELOADING -> R.string.ha_reloading_detail
+            card.overdueMs != null -> R.string.ha_past_usual
+            card.remainingMs != null -> R.string.ha_until_back
+            else -> R.string.ha_not_measured
+        })
+        val reason = context.getString(when (snap?.reason ?: HaLifecycleReason.UNKNOWN) {
+            HaLifecycleReason.RESTART -> R.string.ha_reason_restart
+            HaLifecycleReason.HOST_REBOOT -> R.string.ha_reason_host_reboot
+            HaLifecycleReason.CORE_UPDATE -> R.string.ha_reason_core_update
+            HaLifecycleReason.UNKNOWN -> R.string.ha_reason_unknown
+        })
+        parts.footer.text = when {
+            card.step == null -> ""
+            card.step == HaRestartStep.RELOADING && card.restartedInMs != null ->
+                context.getString(R.string.ha_restarted_in, exact(card.restartedInMs))
+            card.usualMs != null -> context.getString(R.string.ha_usually, reason, exact(card.usualMs))
+            else -> reason
+        }
+        // INVISIBLE, never GONE: the card wraps its content, so a track or footer leaving would shrink it.
+        parts.footer.visibility = if (parts.footer.text.isEmpty()) View.INVISIBLE else View.VISIBLE
+        parts.track.visibility = if (card.step == null) View.INVISIBLE else View.VISIBLE
+        val current = card.step?.ordinal
+        parts.labels.forEachIndexed { i, label ->
+            val active = i == current
+            label.setTextColor(if (active) parts.palette.text else parts.palette.muted)
+            label.typeface = if (active) MEDIUM else Typeface.DEFAULT
+        }
+        fill(card, state, snap)
+    }
+
+    private fun setHero(text: String, isClock: Boolean) {
+        parts.hero.text = text
+        parts.hero.setTextSize(TypedValue.COMPLEX_UNIT_PX, if (isClock) parts.heroClockPx else parts.heroClockPx * HERO_WORD / HERO_CLOCK)
+    }
+
+    private fun exact(ms: Long): String {
+        val d = haExactDuration(ms)
+        val context = view.context
+        return if (d.minutes == null) context.getString(R.string.ha_exact_seconds, d.seconds.toInt())
+        else context.getString(R.string.ha_exact_minutes_seconds, d.minutes.toInt(), d.seconds.toInt())
     }
 
     /**
-     * The bar is INVISIBLE, never GONE, when it has nothing to show: the card wraps its content, so a
-     * bar arriving mid-outage (a measurement reaching an unmeasured card) would otherwise grow it.
-     *
-     * Between the once-a-second updates it animates to where the snapshot clock will be at the next
-     * one, so it moves continuously rather than in steps.
+     * Finished steps sit full and later ones empty; the current step animates linearly over one second
+     * toward where the snapshot clock will be at the next update, so it moves continuously rather than in
+     * steps, and never back within a step. A freshly shown step jumps straight to its value.
      */
-    private fun showProgress(state: HaLifecycleState, snap: HaLifecycle.Snapshot?, colours: Palette) {
-        barAnimator?.cancel()
-        val fill = haLifecycleProgress(state, snap?.expectedMs, snap?.elapsedMs)
-        if (fill == null) {
-            bar.visibility = View.INVISIBLE
-            return
-        }
-        (barLayers.getDrawable(0) as GradientDrawable).setColor((colours.border and 0x00FFFFFF) or (BAR_TRACK_ALPHA shl 24))
-        ((barLayers.getDrawable(1) as ClipDrawable).drawable as GradientDrawable).setColor(colours.border)
-        if (!visible || bar.visibility != View.VISIBLE) bar.progress = fill
-        val width = haLifecycleBarWidth(label.paint.measureText(label.text.toString()), contentWidthPx)
-        if (bar.layoutParams.width != width) {
-            bar.layoutParams.width = width
-            bar.requestLayout()
-        }
-        bar.visibility = View.VISIBLE
-        val next = haLifecycleProgress(state, snap?.expectedMs, snap?.elapsedMs?.plus(TICK_MS)) ?: fill
-        barAnimator = ObjectAnimator.ofInt(bar, "progress", bar.progress, maxOf(next, bar.progress)).apply {
+    private fun fill(card: HaLifecycleCard, state: HaLifecycleState, snap: HaLifecycle.Snapshot?) {
+        segmentAnimator?.cancel()
+        val freshStep = !visible || shownStep != card.step
+        shownStep = card.step
+        parts.segments.forEachIndexed { i, bar -> if (i != card.step?.ordinal || freshStep) bar.progress = card.fills[i] }
+        val i = card.step?.ordinal ?: return
+        val bar = parts.segments[i]
+        val next = maxOf(bar.progress, nextFill(card, i, state, snap))
+        segmentAnimator = ObjectAnimator.ofInt(bar, "progress", bar.progress, next).apply {
             duration = TICK_MS
             interpolator = LinearInterpolator()
             start()
         }
     }
 
+    /** Where the current step's fill will be one tick from now: the same rule, one second later. */
+    private fun nextFill(card: HaLifecycleCard, i: Int, state: HaLifecycleState, snap: HaLifecycle.Snapshot?): Int {
+        snap ?: return card.fills[i]
+        val ahead = snap.copy(
+            elapsedMs = snap.elapsedMs?.plus(TICK_MS),
+            backOnlineRemainingMs = (snap.backOnlineRemainingMs - TICK_MS).coerceAtLeast(0L),
+        )
+        val later = haLifecycleCard(state, ahead, startingFrom)
+        return if (later.step == card.step) later.fills[i] else card.fills[i]
+    }
+
     fun detach() {
-        barAnimator?.cancel()
+        segmentAnimator?.cancel()
         view.removeCallbacks(hide)
         visibility(false)
         (view.parent as? ViewGroup)?.removeView(view)
     }
 
+    /**
+     * One palette per dashboard theme, not per state: the step is carried by words, position and label
+     * weight, never by colour alone, so it reads the same to colour-blind viewers. Every text role keeps
+     * WCAG AA 4.5:1 or better over a pure white, grey or black dashboard at [CARD_ALPHA] (worst 5.4:1:
+     * secondary labels, dark theme over white); the accent marks only the dot and the track, which need
+     * 3:1 and get 5.1:1 or better. Recheck those figures before changing a colour or the opacity.
+     */
+    private class Palette(
+        val surface: Int,
+        val text: Int,
+        val secondary: Int,
+        val muted: Int,
+        val accent: Int,
+    ) {
+        val line: Int get() = withAlpha(text, 0x1F)
+    }
+
     companion object {
-        /**
-         * State-coloured, theme-aware and MOSTLY opaque.
-         *
-         * A near-black card with no border was indistinguishable from the dark dashboard behind it and
-         * read as a rendering fault rather than a notice (observed on hardware). Colour fixes that,
-         * but three decisions are deliberate:
-         *
-         * The colour tracks the STATE, not the feature. Red for every state would announce good news in
-         * the language of failure; recovery is green.
-         *
-         * The fill is a fixed palette per theme, drawn at [CARD_ALPHA] so the dashboard shows faintly
-         * through. The surface behind is arbitrary — camera cards, photographs, bright media — so the
-         * opacity is the lowest that keeps every palette's text, headline and dimmed detail alike, at
-         * WCAG AA 4.5:1 or better over pure white, grey and black: 5.5:1 at its worst (recovery,
-         * light theme, over black). Below about 72% it fails, so lower it only with that check redone.
-         *
-         * The tint is muted and the SATURATION lives in the border. Home Assistant's guidelines forbid
-         * enclosing the logomark in a coloured or confined background, so the mark sits on a barely
-         * tinted surface while the stroke carries the signal.
-         */
-        private data class Palette(val surface: Int, val border: Int, val label: Int)
+        private val DARK = Palette(
+            surface = Color.parseColor("#16181C"), text = Color.parseColor("#F3F5F7"),
+            secondary = Color.parseColor("#C3CAD1"), muted = Color.parseColor("#A9B2BC"),
+            accent = Color.parseColor("#4FC3F7"),
+        )
+        private val LIGHT = Palette(
+            surface = Color.parseColor("#F7F8FA"), text = Color.parseColor("#15181C"),
+            secondary = Color.parseColor("#3D4650"), muted = Color.parseColor("#46505B"),
+            accent = Color.parseColor("#01579B"),
+        )
 
-        private fun palette(state: HaLifecycleState, dark: Boolean): Palette = when (state) {
-            HaLifecycleState.BACK_ONLINE -> if (dark)
-                Palette(Color.parseColor("#16261C"), Color.parseColor("#3FA45B"), Color.parseColor("#E8F5EC"))
-            else Palette(Color.parseColor("#ECF7F0"), Color.parseColor("#2E7D46"), Color.parseColor("#14351F"))
-            HaLifecycleState.STARTING -> if (dark)
-                Palette(Color.parseColor("#2A2418"), Color.parseColor("#D2951F"), Color.parseColor("#FAF2E2"))
-            else Palette(Color.parseColor("#FDF6E7"), Color.parseColor("#A5741A"), Color.parseColor("#3A2A08"))
-            // Outage. Red, because from the panel's side every control has just stopped working.
-            else -> if (dark)
-                Palette(Color.parseColor("#2E1A1D"), Color.parseColor("#D8474D"), Color.parseColor("#FBEBEC"))
-            else Palette(Color.parseColor("#FDECEE"), Color.parseColor("#B4292F"), Color.parseColor("#3F1114"))
-        }
+        /** 86% opaque, so the dashboard shows faintly through; see [Palette] for the contrast it keeps. */
+        private const val CARD_ALPHA = 0xDB
 
-        private const val BORDER_DP = 3
+        private val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        private val LIGHT_FACE: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
 
-        /** 80% opaque; see [Palette] for why no lower. */
-        private const val CARD_ALPHA = 0xCC
-
-        /** How often an outage card re-reads the snapshot, and so how far ahead the bar animates. */
+        /** How often the card re-reads the snapshot, and so how far ahead a step animates. */
         private const val TICK_MS = 1_000L
 
-        /** Thick enough to read from across a room; it is the card's main progress element. */
-        private const val BAR_HEIGHT_DP = 14
+        // Baseline sizes: pixels on a 480x480 panel at density 1.0, scaled by [haLifecycleScale].
+        private const val MARGIN = 16f
+        private const val PAD_H = 28f
+        private const val PAD_V = 24f
+        private const val GAP = 18f
+        private const val CORNER = 24f
+        private const val MARK = 40f
+        private const val BRAND = 17f
+        private const val PILL = 16f
+        private const val DOT = 9f
+        private const val HERO_CLOCK = 96f
+        private const val HERO_WORD = 56f
+        private const val SUB = 20f
+        private const val SEGMENT = 12f
+        private const val SEGMENT_GAP = 6f
+        private const val LABEL = 16f
+        private const val FOOTER = 16f
 
-        /** The unfilled track is the state's border colour, faint, so the fill reads against it. */
-        private const val BAR_TRACK_ALPHA = 0x40
+        /** The card never takes a landscape panel's full width; it sits centred at this baseline width. */
+        private const val MAX_WIDTH = 600f
 
-        /**
-         * Sized for a wall panel read from across a room, not a phone held at arm's length. The smallest
-         * supported panels are 480x480 at density 160, so 1dp is 1px and the original 24dp mark with 15sp
-         * text was genuinely that many pixels on the device (observed on hardware).
-         *
-         * Exclusion zone: the brand guidelines require clear space of "a quarter the height of the icon",
-         * so a 96dp mark needs 24dp. [PAD_DP] is 20dp and [MARGIN_DP] adds 16dp outside it, so the mark
-         * has 36dp clear to the bezel and 20dp to the text. Keep PAD_DP + MARGIN_DP >= ICON_DP / 4.
-         */
-        private const val ICON_DP = 96
-        private const val PAD_DP = 20
+        private fun withAlpha(colour: Int, alpha: Int) = (colour and 0x00FFFFFF) or (alpha shl 24)
 
-        /** Keeps the bar clear of the bezel; it must not run to the edges of the screen. */
-        private const val MARGIN_DP = 16
-        private const val CORNER_DP = 12
-
-        /**
-         * The text auto-sizes between these bounds. A fixed 4x size would overflow the 480x480 panels
-         * on the longer messages, so the ceiling is what it uses when it fits and the floor is still
-         * comfortably larger than the original 15sp.
-         */
-        /**
-         * Sizes are COMPUTED from the display, not auto-sized.
-         *
-         * Auto-sizing is documented as unreliable against a `wrap_content` height, because the view
-         * sizes itself to the text while the text sizes itself to the view. On hardware the headline
-         * collapsed to a row of unreadable marks while the supporting line — whose range was narrow
-         * enough to survive the circularity — rendered correctly, which is exactly the asymmetry that
-         * gave the cause away.
-         *
-         * A fraction of the shortest screen edge is deterministic and adapts to small panels, but it
-         * grows LINEARLY with the display and that is wrong past a point: a wall panel is read from
-         * across a room, so it should not keep consuming a larger share of the logical viewport. Measured
-         * on hardware — 52.8px (52.8dp) on a 480x480 panel, but 132px (93dp)
-         * on a 1920x1200 one, where the card took ~40% of the screen height and dominated the
-         * dashboard it annotates. So the fraction is capped at the baseline panel's proven logical dp
-         * size; see [haLifecycleTextSizes].
-         */
-        private const val DETAIL_MAX_LINES = 3
-
-        /** Lifts the card off the dashboard so it reads as laid OVER the page, not part of it. */
-        private const val ELEVATION_DP = 8
-
-        /** Caps the headline so a long message truncates rather than pushing the card off the screen. */
-        private const val MAX_LINES = 4
-
-        /**
-         * Attach a hidden bar to [root]. The icon is best-effort: when it is unavailable the bar is
-         * text-only and still names Home Assistant, so the message never depends on artwork resolving.
-         */
+        /** Attach a hidden card to [root]. */
         fun attach(context: Context, root: ViewGroup, onVisibilityChanged: (Boolean) -> Unit = {}): HaLifecycleBar {
             val metrics = context.resources.displayMetrics
-            val density = metrics.density
-            val pad = (PAD_DP * density).toInt()
-            val iconSize = (ICON_DP * density).toInt()
-            val shortestEdge = minOf(metrics.widthPixels, metrics.heightPixels).toFloat()
-            val sizes = haLifecycleTextSizes(shortestEdge, density)
-            val headlinePx = sizes.headlinePx
-            val detailPx = sizes.detailPx
-            // VERTICAL and centred: the mark sits on its own line with the wording centred beneath it.
-            // A horizontal row spent a fifth of a 480px panel on the mark and left the text a narrow
-            // column beside it; stacking gives the wording the full width and reads as a notice.
+            val s = haLifecycleScale(minOf(metrics.widthPixels, metrics.heightPixels).toFloat(), metrics.density)
+            fun px(base: Float) = (base * s).toInt()
             val dark = runCatching { Config(context).dashboardThemeDark }.getOrNull() ?: true
-            val card = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = CORNER_DP * density
+            val palette = if (dark) DARK else LIGHT
+
+            fun text(size: Float, colour: Int, face: Typeface = Typeface.DEFAULT) = TextView(context).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, size * s)
+                setTextColor(colour)
+                typeface = face
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
             }
-            val row = LinearLayout(context).apply {
+
+            val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(pad, pad, pad, pad)
-                background = card
-                elevation = ELEVATION_DP * density
+                setPadding(px(PAD_H), px(PAD_V), px(PAD_H), px(PAD_V))
+                background = GradientDrawable().apply {
+                    cornerRadius = CORNER * s
+                    setColor(withAlpha(palette.surface, CARD_ALPHA))
+                    setStroke(maxOf(1, (1f * s).toInt()), palette.line)
+                }
                 visibility = View.GONE
             }
-            row.addView(
-                ImageView(context).apply {
-                    HaBrandIcon.drawable(context)?.let(::setImageDrawable)
-                    // Attributive, not informative: the wording carries the meaning on its own.
-                    contentDescription = context.getString(R.string.home_assistant)
-                },
-                LinearLayout.LayoutParams(iconSize, iconSize).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    bottomMargin = pad
-                },
-            )
-            row.addView(
-                TextView(context).apply {
-                    gravity = Gravity.CENTER
-                    // Auto-size so the ceiling is used whenever it fits and a longer message shrinks
-                    // rather than overflowing. Stacked, the label has the full card width to work with.
-                    maxLines = MAX_LINES
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, headlinePx)
-                },
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ),
-            )
-            val barCorner = BAR_HEIGHT_DP * density / 2
-            row.addView(
+
+            // Header: the Panel Assistant mark and name, and the step pill.
+            val pillText = text(PILL, palette.text, MEDIUM).apply { maxLines = 1 }
+            val pill = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(px(14f), px(7f), px(14f), px(7f))
+                background = GradientDrawable().apply {
+                    cornerRadius = 999f * s
+                    setColor(withAlpha(palette.accent, 0x24))
+                }
+                addView(View(context).apply {
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(palette.accent) }
+                }, LinearLayout.LayoutParams(px(DOT), px(DOT)).apply { marginEnd = px(8f) })
+                addView(pillText)
+            }
+            val header = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(ImageView(context).apply {
+                    setImageResource(R.drawable.ic_pa_mark)
+                    // Attributive: the name beside it says whose notice this is.
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }, LinearLayout.LayoutParams(px(MARK), px(MARK)).apply { marginEnd = px(12f) })
+                addView(text(BRAND, palette.muted, MEDIUM).apply {
+                    text = context.getString(R.string.panel_assistant)
+                    maxLines = 1
+                    letterSpacing = 0.02f
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(pill)
+            }
+            card.addView(header)
+
+            // The hero: a countdown when the restart is measured, else the step in words. Its height is
+            // fixed at the countdown's, so switching between them never resizes the card.
+            val hero = text(HERO_CLOCK, palette.text, LIGHT_FACE).apply {
+                maxLines = 1
+                fontFeatureSettings = "tnum"
+                letterSpacing = -0.01f
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                minHeight = Paint().apply { textSize = HERO_CLOCK * s; typeface = LIGHT_FACE }
+                    .fontMetricsInt.let { it.bottom - it.top }
+            }
+            card.addView(hero, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = px(GAP) })
+            val sub = text(SUB, palette.secondary)
+            card.addView(sub)
+
+            // The track: one segment per step in a single accent colour, with its name beneath.
+            val corner = SEGMENT * s / 2
+            val segments = List(3) {
                 ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
                     isIndeterminate = false
                     max = HA_LIFECYCLE_PROGRESS_MAX
                     progressDrawable = LayerDrawable(arrayOf(
-                        GradientDrawable().apply { cornerRadius = barCorner },
-                        ClipDrawable(GradientDrawable().apply { cornerRadius = barCorner }, Gravity.START, ClipDrawable.HORIZONTAL),
+                        GradientDrawable().apply { cornerRadius = corner; setColor(palette.line) },
+                        ClipDrawable(GradientDrawable().apply { cornerRadius = corner; setColor(palette.accent) },
+                            Gravity.START, ClipDrawable.HORIZONTAL),
                     )).apply {
                         setId(0, android.R.id.background)
                         setId(1, android.R.id.progress)
                     }
-                    visibility = View.INVISIBLE
-                },
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (BAR_HEIGHT_DP * density).toInt(),
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    // A full padding of space above and below (with the detail's own half) sets the bar
-                    // apart as the card's main element rather than a rule between two lines of text.
-                    topMargin = pad
-                    bottomMargin = pad / 2
-                },
-            )
-            row.addView(
-                TextView(context).apply {
-                    gravity = Gravity.CENTER
-                    alpha = 0.85f
-                    maxLines = DETAIL_MAX_LINES
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, detailPx)
-                },
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { topMargin = pad / 2 },
-            )
-            val margin = (MARGIN_DP * density).toInt()
+                }
+            }
+            val labels = listOf(R.string.ha_step_stopping, R.string.ha_step_starting, R.string.ha_step_reloading).map {
+                text(LABEL, palette.muted).apply { setText(it); maxLines = 1 }
+            }
+            fun row(children: List<View>, height: Int) = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                children.forEachIndexed { i, child ->
+                    addView(child, LinearLayout.LayoutParams(0, height, 1f).apply { if (i > 0) marginStart = px(SEGMENT_GAP) })
+                }
+            }
+            val track = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(row(segments, px(SEGMENT)))
+                addView(row(labels, ViewGroup.LayoutParams.WRAP_CONTENT),
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                        .apply { topMargin = px(10f) })
+            }
+            card.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = px(GAP) })
+
+            val footer = text(FOOTER, palette.muted)
+            card.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = px(GAP) })
+
+            val margin = px(MARGIN)
             root.addView(
-                row,
+                card,
                 FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    minOf(metrics.widthPixels - 2 * margin, px(MAX_WIDTH)),
                     FrameLayout.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP,
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL,
                 ).apply { setMargins(margin, margin, margin, margin) },
             )
-            // The card spans the root frame (the screen) less its margins, and its content less padding.
-            return HaLifecycleBar(row, card, dark, onVisibilityChanged, metrics.widthPixels - 2 * (margin + pad))
+            return HaLifecycleBar(Parts(card, pillText, hero, sub, track, segments, labels, footer, palette, HERO_CLOCK * s), onVisibilityChanged)
         }
     }
 }
