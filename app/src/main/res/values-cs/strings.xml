@@ -200,9 +200,9 @@
     <string name="guard_db_intro">Běžné služby panelu a zapisovače do databáze jsou pozastaveny. Nechte tento panel zapnutý; obnovení je zaručeno pouze pro tento start systému. Schvalte pouze přesně ten další krok, o který jste požádali.</string>
     <string name="guard_db_reading_journal">Čtení žurnálu root…</string>
     <string name="guard_db_journal_status">Žurnál root: %1$s · generace %2$d</string>
-    <string name="guard_db_outcome"> · výsledek %1$s</string>
+    <string name="guard_db_outcome">" · výsledek %1$s"</string>
     <string name="guard_db_deadline">Pevný termín: %1$d ms uplynulého času</string>
-    <string name="guard_db_forward_deadline"> · postup vpřed: %1$d</string>
+    <string name="guard_db_forward_deadline">" · postup vpřed: %1$d"</string>
     <string name="guard_db_unreachable">Pomocný program root se restartuje nebo je nedostupný. Žádné změny nejsou povoleny.</string>
     <string name="guard_db_malformed">Odpověď žurnálu root má chybný formát. Obnova je pozastavena.</string>
     <string name="guard_db_unsupported">Nainstalovaný pomocný program nemůže tuto obnovu provést. Obnova je pozastavena.</string>
@@ -232,10 +232,10 @@
     <string name="storage_health_channel_description">Kritické chyby úložiště panelu a SQLite</string>
     <string name="panel_agent_channel_description">Hardwarový agent panelu pro Home Assistant</string>
     <string name="storage_pressure_title">Kritické přetížení úložiště/databáze panelu</string>
-    <string name="storage_capacity_suffix"> (%1$d MiB volných v souborovém systému)</string>
+    <string name="storage_capacity_suffix">" (%1$d MiB volných v souborovém systému)"</string>
     <string name="storage_pressure_body">Kritický stav úložiště nebo databázového souboru%1$s. Otevřete ha-paneld a před změnou konfigurace zkontrolujte volné místo a růst WAL.</string>
     <string name="database_attention_title">Databáze panelu vyžaduje pozornost</string>
-    <string name="database_during_suffix"> během %1$s</string>
+    <string name="database_during_suffix">" během %1$s"</string>
     <string name="database_full_body">Zápis do databáze panelu%1$s selhal, protože úložiště bylo plné. Otevřete ha-paneld; obnovení ještě nebylo ověřeno.</string>
     <string name="database_io_body">Databáze panelu nahlásila selhání diskového vstupu/výstupu%1$s. Otevřete ha-paneld; zkuste to znovu až po odstranění příčiny.</string>
     <string name="database_corruption_body">Databáze panelu neprošla kontrolou integrity%1$s. Zachovejte ji a před dalšími zápisy otevřete diagnostiku ha-paneld.</string>

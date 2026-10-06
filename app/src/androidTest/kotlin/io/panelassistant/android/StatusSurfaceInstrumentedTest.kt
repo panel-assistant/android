@@ -114,6 +114,37 @@ class StatusSurfaceInstrumentedTest {
         }
     }
 
+    @Test
+    fun czechDiagnosticSuffixesPreserveTheirWordBoundariesAfterCompilation() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val original = Config(context).uiLanguage
+        try {
+            Config(context).setUiLanguage("cs")
+            instrumentation.runOnMainSync { NativeLocale.apply("cs") }
+            onFrame(locale = "cs") { activity, _ ->
+                assertEquals(
+                    "compiled diagnostic suffixes retain their separator at both production resource seams",
+                    listOf(
+                        "probe · výsledek ok",
+                        "probe · postup vpřed: 42",
+                        "storage (42 MiB volných v souborovém systému)",
+                        "database během startup",
+                    ),
+                    listOf(
+                        "probe" + activity.getString(R.string.guard_db_outcome, "ok"),
+                        "probe" + activity.getString(R.string.guard_db_forward_deadline, 42),
+                        "storage" + context.nativeString(R.string.storage_capacity_suffix, 42),
+                        "database" + context.nativeString(R.string.database_during_suffix, "startup"),
+                    ),
+                )
+            }
+        } finally {
+            Config(context).setUiLanguage(original)
+            instrumentation.runOnMainSync { NativeLocale.apply(original) }
+        }
+    }
+
     private fun onFrame(
         dark: Boolean = true,
         fontScale: Float = 0f,
