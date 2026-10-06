@@ -38,6 +38,7 @@ class VoiceAssistantCoordinatorTest {
     private var settings = VoiceSettings(enabled = true, wakeWords = listOf("okay_nabu"), pipelines = mapOf("hey_jarvis" to "pipe-2"))
     private var presence = MicrophonePresence.PROVEN
     private var muted = false
+    private var muteReader: io.panelassistant.android.audio.MicrophoneMute? = null
     private var statusChanges = 0
 
     private class FakeEngine(val onActivation: (WakeWordActivation) -> Unit) : WakeWordEngine {
@@ -126,7 +127,7 @@ class VoiceAssistantCoordinatorTest {
         attention = { wakeWordId -> cues += wakeWordId to state.current() },
         onMicrophoneStatus = { statusChanges += 1 },
         checkTimeoutMs = checkTimeoutMs,
-        muted = { muted },
+        muted = { muteReader?.muted ?: muted },
     )
 
     @After
@@ -404,6 +405,42 @@ class VoiceAssistantCoordinatorTest {
         assertEquals(4, setOf(absent, failed, mutedStatus, unmuted).size)
         // Only the failed capture is a failed check, so only it raises Home Assistant's Repair.
         assertEquals(listOf(failed), listOf(absent, failed, mutedStatus, unmuted).filter { it.check.failed })
+    }
+
+    @Test
+    fun `a restarted reader corrects a mute left on the panel by the one before it, without announcing it`() {
+        // Muted, the service stops (its reader closes), the switch is unmuted meanwhile, and a new service in
+        // the same process starts a new reader: the panel must not keep showing the old reader's mute.
+        val c = coordinator()
+        c.start()
+        val shown = java.util.Collections.synchronizedList(mutableListOf<Pair<Boolean, Boolean>>())
+        VoiceAttention.muteShown = { m, announce -> shown += m to announce }
+        try {
+            var hardware = true
+            val first = io.panelassistant.android.audio.MicrophoneMute(read = { hardware }, publish = publishMicrophoneMute { c })
+            muteReader = first
+            first.refresh()
+            assertEquals(true, VoiceAttention.muted)
+            assertEquals(true, c.microphoneStatus().muted)
+            first.close()
+            hardware = false
+
+            val second = io.panelassistant.android.audio.MicrophoneMute(read = { hardware }, publish = publishMicrophoneMute { c })
+            muteReader = second
+            second.refresh()
+            assertEquals("the panel's mute follows the new reading", false, VoiceAttention.muted)
+            assertEquals(false to false, shown.last())
+            assertEquals(MicrophoneStatus(MicrophonePresence.PROVEN), c.microphoneStatus())
+
+            hardware = true
+            second.refresh()
+            second.refresh()
+            assertEquals("a press during one reader's life is announced once", true to true, shown.last())
+            assertEquals(listOf(true to false, false to false, true to true), shown.toList())
+        } finally {
+            VoiceAttention.muteShown = null
+            VoiceAttention.microphoneMuted(false, announce = false)
+        }
     }
 
     @Test

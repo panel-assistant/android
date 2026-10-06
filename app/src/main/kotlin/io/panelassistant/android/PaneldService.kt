@@ -1011,10 +1011,9 @@ class PaneldService : Service() {
     private lateinit var voice: io.panelassistant.android.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.panelassistant.android.assist.ConfiguredMicrophoneSource
     private val microphoneClaims = io.panelassistant.android.audio.MicrophoneForegroundClaims(::updateMicrophoneForeground)
-    private val microphoneMute = io.panelassistant.android.audio.MicrophoneMuteWatch(this, { microphonePresence().offered }) {
-        io.panelassistant.android.assist.VoiceAttention.microphoneMuted(it)
-        voice.microphoneMuteChanged()
-    }
+    private val microphoneMute = io.panelassistant.android.audio.MicrophoneMuteWatch(
+        this, { microphonePresence().offered }, io.panelassistant.android.assist.publishMicrophoneMute { voice },
+    )
     // One coalesced restart per burst of voice_* changes: a bundle import writes every key in turn and
     // must not rearm the listener once per key.
     @Volatile private var voiceRestart: kotlinx.coroutines.Job? = null

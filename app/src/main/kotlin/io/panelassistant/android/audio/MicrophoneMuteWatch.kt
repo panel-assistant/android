@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 internal class MicrophoneMuteWatch(
     private val context: Context,
     offered: () -> Boolean,
-    onChange: (muted: Boolean) -> Unit,
+    onChange: (muted: Boolean, initial: Boolean) -> Unit,
 ) : AutoCloseable {
     val mute = MicrophoneMute(
         read = { offered() && context.getSystemService(AudioManager::class.java)?.isMicrophoneMute == true },

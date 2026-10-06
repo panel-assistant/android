@@ -56,21 +56,26 @@ enum class MicrophonePresence {
  *
  * Reading and publishing happen under one lock, so two refreshes on different threads publish in the
  * order they read: an older mute can never be published after a newer unmute and leave the chip stale.
+ * The first reading is always published, marked `initial`, because what the panel shows may come from an
+ * earlier reader in the same process (a restarted service) and must be reconciled with it.
  */
-class MicrophoneMute(private val read: () -> Boolean, private val publish: (muted: Boolean) -> Unit) {
+class MicrophoneMute(private val read: () -> Boolean, private val publish: (muted: Boolean, initial: Boolean) -> Unit) {
     @Volatile
     var muted: Boolean = false
         private set
+    private var observed = false
     private var closed = false
 
-    /** Read the mute again and publish it if it changed; nothing is published once [close]d. */
+    /** Read the mute again and publish it if it changed or is the first reading; nothing once [close]d. */
     @Synchronized
     fun refresh() {
         if (closed) return
         val now = runCatching(read).getOrDefault(false)
-        if (now == muted) return
+        if (observed && now == muted) return
+        val initial = !observed
+        observed = true
         muted = now
-        publish(now)
+        publish(now, initial)
     }
 
     /** Stop publishing; waits for a refresh in progress, so nothing is published after it returns. */

@@ -19,17 +19,18 @@ class MicrophonePresenceTest {
         }
     }
 
-    @Test fun `the mute is published once per press, and an unreadable mute reads as unmuted`() {
+    @Test fun `the first reading is published as initial, then once per press, and an unreadable mute reads as unmuted`() {
         var reading: () -> Boolean = { false }
-        val published = mutableListOf<Boolean>()
-        val mute = MicrophoneMute(read = { reading() }, publish = { published += it })
+        val published = mutableListOf<Pair<Boolean, Boolean>>()
+        val mute = MicrophoneMute(read = { reading() }, publish = { muted, initial -> published += muted to initial })
+        mute.refresh()
         mute.refresh()
         reading = { true }
         mute.refresh()
         mute.refresh()
         reading = { error("audio service gone") }
         mute.refresh()
-        assertEquals(listOf(true, false), published)
+        assertEquals(listOf(false to true, true to false, false to false), published)
         assertEquals(false, mute.muted)
     }
 
@@ -40,7 +41,7 @@ class MicrophonePresenceTest {
         val published = java.util.Collections.synchronizedList(mutableListOf<Boolean>())
         var other: Thread? = null
         lateinit var mute: MicrophoneMute
-        mute = MicrophoneMute(read = { reading }, publish = { value ->
+        mute = MicrophoneMute(read = { reading }, publish = { value, _ ->
             if (value && other == null) {
                 reading = false
                 other = Thread { mute.refresh() }.also { it.start() }
@@ -57,7 +58,7 @@ class MicrophonePresenceTest {
     @Test fun `nothing is published once closed`() {
         var reading = false
         val published = mutableListOf<Boolean>()
-        val mute = MicrophoneMute(read = { reading }, publish = { published += it })
+        val mute = MicrophoneMute(read = { reading }, publish = { muted, _ -> published += muted })
         mute.close()
         reading = true
         mute.refresh()
