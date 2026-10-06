@@ -291,7 +291,7 @@ internal class HaLifecycleBar private constructor(
         private const val TICK_MS = 1_000L
 
         /** Thick enough to read from across a room; it is the card's main progress element. */
-        private const val BAR_HEIGHT_DP = 10
+        private const val BAR_HEIGHT_DP = 14
 
         /** The unfilled track is the state's border colour, faint, so the fill reads against it. */
         private const val BAR_TRACK_ALPHA = 0x40
@@ -414,7 +414,10 @@ internal class HaLifecycleBar private constructor(
                     (BAR_HEIGHT_DP * density).toInt(),
                 ).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
-                    topMargin = pad / 2
+                    // A full padding of space above and below (with the detail's own half) sets the bar
+                    // apart as the card's main element rather than a rule between two lines of text.
+                    topMargin = pad
+                    bottomMargin = pad / 2
                 },
             )
             row.addView(
