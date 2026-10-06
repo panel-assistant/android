@@ -20,10 +20,10 @@ class HaLifecycleCardTest {
     private fun HaLifecycle.notice(phase: HaLifecyclePhase, nowMs: Long, elapsedMs: Long? = 0L, expectedMs: Long? = 100_000L) =
         onNativeNotice(HaLifecycleNotice(phase, HaLifecycleReason.RESTART, elapsedMs, expectedMs), nowMs)
 
-    private fun cardAt(tracker: HaLifecycle, nowMs: Long, startingFrom: Int? = null): HaLifecycleCard? {
+    private fun cardAt(tracker: HaLifecycle, nowMs: Long, stepFrom: Int? = null, dashboardConnected: Boolean = false): HaLifecycleCard? {
         val snap = tracker.snapshot(nowMs)
-        val state = haLifecycleNoticeState(snap, null) ?: return null
-        return haLifecycleCard(state, snap, startingFrom)
+        val state = haLifecycleNoticeState(snap, live(dashboardConnected)) ?: return null
+        return haLifecycleCard(state, snap, dashboardConnected, stepFrom)
     }
 
     @Test fun aMeasuredRestartCountsDownWhileStoppingFillsTheFirstStep() {
@@ -52,7 +52,7 @@ class HaLifecycleCardTest {
 
     @Test fun anOverdueRestartSitsFullAndCountsUpWithoutRunningBackwards() {
         val tracker = HaLifecycle().apply { notice(HaLifecyclePhase.STARTING, 0L, elapsedMs = 0L, expectedMs = 30_000L) }
-        val card = cardAt(tracker, 54_000L, startingFrom = 0)!!
+        val card = cardAt(tracker, 54_000L, stepFrom = 0)!!
         assertEquals(listOf(max, max, 0), card.fills)
         assertNull(card.remainingMs)
         assertEquals(24_000L, card.overdueMs)
@@ -67,6 +67,23 @@ class HaLifecycleCardTest {
         assertNull(card.remainingMs)
         assertNull(card.overdueMs)
         assertNull(card.usualMs)
+    }
+
+    @Test fun aDashboardReconnectingWhileHomeAssistantStartsIsTheReloadingStepAndKeepsCounting() {
+        // Seen on hardware: the dashboard reconnected a minute before Home Assistant reported ready.
+        val tracker = HaLifecycle().apply {
+            notice(HaLifecyclePhase.SHUTTING_DOWN, 0L)
+            notice(HaLifecyclePhase.STARTING, 40_000L, elapsedMs = 40_000L)
+        }
+        val from = (60_000L * max / 100_000L).toInt()
+        val card = cardAt(tracker, 80_000L, stepFrom = from, dashboardConnected = true)!!
+        assertEquals(HaRestartStep.RELOADING, card.step)
+        assertEquals("Stopping and Starting are done; Reloading fills toward the usual time",
+            listOf(max, max, max / 2), card.fills)
+        assertEquals("Home Assistant is not ready yet, so the countdown goes on", 20_000L, card.remainingMs)
+        assertNull(card.restartedInMs)
+        assertNull("the card closes once Home Assistant is ready with the dashboard connected",
+            cardAt(tracker.apply { notice(HaLifecyclePhase.READY, 90_000L) }, 91_000L, dashboardConnected = true))
     }
 
     @Test fun backOnlineIsTheReloadingStepAndSaysHowLongTheRestartTook() {

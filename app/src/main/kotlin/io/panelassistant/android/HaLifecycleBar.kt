@@ -51,10 +51,11 @@ internal enum class HaRestartStep { STOPPING, STARTING, RELOADING }
  *
  * @property step the current step, or null for an outage nothing explained (no track is shown)
  * @property fills each step's fill, out of [HA_LIFECYCLE_PROGRESS_MAX]
- * @property remainingMs time left to the measured usual time; null when not measured, overdue or reloading
+ * @property remainingMs time left to the measured usual time; null when not measured, overdue or ready
  * @property overdueMs how far past the usual time; null unless overdue
  * @property usualMs the measured usual time
- * @property restartedInMs while reloading, how long this restart took
+ * @property restartedInMs once Home Assistant is ready and the dashboard is still catching up, how long
+ *   this restart took
  */
 internal data class HaLifecycleCard(
     val step: HaRestartStep?,
@@ -70,59 +71,65 @@ internal const val HA_LIFECYCLE_PROGRESS_MAX = 10_000
 /**
  * Decide the card for [state].
  *
+ * Reloading is when the dashboard redraws. Home Assistant reconnects the dashboard while it is still
+ * starting (seen on hardware: cameras live and lights "Unavailable" a minute before Panel Assistant
+ * reported it ready), so a reconnected dashboard during startup IS the Reloading step, and the card
+ * closes when Home Assistant is ready. Only if the dashboard has not reconnected by then does Reloading
+ * continue over the back-online window.
+ *
  * Only the whole restart is measured, not each step, so the measured progress (elapsed ÷ usual time)
- * is shared out: Stopping fills over the first half of the usual time, and Starting fills from wherever
- * the restart was when this card first saw it start ([startingFrom]) to the usual time, so it never
+ * is shared out: Stopping fills over the first half of the usual time, and each later step fills from
+ * wherever the restart was when this card first showed it ([stepFrom]) to the usual time, so it never
  * sits empty waiting for a halfway mark. A step that has finished is full whatever the clock says. Past
- * the usual time both sit full, because progress is capped there, and never run backwards. Reloading
- * fills over the back-online window.
+ * the usual time the steps sit full, because progress is capped there, and never run backwards.
  * With no measurement there is no countdown and no partial fill: the track still shows which step it is.
  *
- * @param startingFrom the overall progress, out of [HA_LIFECYCLE_PROGRESS_MAX], when Starting was first shown
+ * @param dashboardConnected whether this panel's dashboard is connected to Home Assistant right now
+ * @param stepFrom the overall progress, out of [HA_LIFECYCLE_PROGRESS_MAX], when the current step was first shown
  */
 internal fun haLifecycleCard(
     state: HaLifecycleState,
     snap: HaLifecycle.Snapshot?,
-    startingFrom: Int? = null,
+    dashboardConnected: Boolean = false,
+    stepFrom: Int? = null,
     backOnlineWindowMs: Long = HaLifecycle.DEFAULT_BACK_ONLINE_WINDOW_MS,
 ): HaLifecycleCard {
     val step = when (state) {
         HaLifecycleState.SHUTTING_DOWN ->
             if (snap?.source == HaLifecycleSource.NATIVE) HaRestartStep.STOPPING else null
-        HaLifecycleState.STARTING -> HaRestartStep.STARTING
+        HaLifecycleState.STARTING -> if (dashboardConnected) HaRestartStep.RELOADING else HaRestartStep.STARTING
         HaLifecycleState.BACK_ONLINE -> HaRestartStep.RELOADING
         HaLifecycleState.CONNECTION_LOST, HaLifecycleState.NORMAL -> null
     }
+    val ready = state == HaLifecycleState.BACK_ONLINE
     val expected = snap?.expectedMs?.takeIf { it > 0L }
     val elapsed = snap?.elapsedMs?.coerceAtLeast(0L)
     val measured = expected != null && elapsed != null
     val max = HA_LIFECYCLE_PROGRESS_MAX
     val progress = if (measured) (minOf(elapsed!!, expected!!) * max / expected).toInt() else 0
-    val overdue = measured && step != HaRestartStep.RELOADING && elapsed!! > expected!!
+    val overdue = measured && !ready && step != null && elapsed!! > expected!!
+    fun fromStep(): Int {
+        if (!measured) return 0
+        val from = (stepFrom ?: progress).coerceIn(0, max - 1)
+        return ((progress - from).coerceAtLeast(0).toLong() * max / (max - from)).toInt()
+    }
     val fills = when (step) {
         null -> listOf(0, 0, 0)
         HaRestartStep.STOPPING -> listOf(minOf(max, progress * 2), 0, 0)
-        HaRestartStep.STARTING -> {
-            val from = (startingFrom ?: progress).coerceIn(0, max - 1)
-            val fill = when {
-                !measured -> 0
-                else -> ((progress - from).coerceAtLeast(0).toLong() * max / (max - from)).toInt()
-            }
-            listOf(max, fill, 0)
-        }
-        HaRestartStep.RELOADING -> {
+        HaRestartStep.STARTING -> listOf(max, fromStep(), 0)
+        HaRestartStep.RELOADING -> if (!ready) listOf(max, max, fromStep()) else {
             val remaining = (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
             listOf(max, max, ((backOnlineWindowMs - remaining) * max / backOnlineWindowMs).toInt())
         }
     }
-    val restartedIn = if (step == HaRestartStep.RELOADING && elapsed != null) {
+    val restartedIn = if (ready && elapsed != null) {
         val sinceBack = backOnlineWindowMs - (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
         (elapsed - sinceBack).coerceAtLeast(0L)
     } else null
     return HaLifecycleCard(
         step = step,
         fills = fills,
-        remainingMs = if (measured && !overdue && step != null && step != HaRestartStep.RELOADING) expected!! - elapsed!! else null,
+        remainingMs = if (measured && !overdue && !ready && step != null) expected!! - elapsed!! else null,
         overdueMs = if (overdue) elapsed!! - expected!! else null,
         usualMs = expected,
         restartedInMs = restartedIn,
@@ -201,7 +208,8 @@ internal class HaLifecycleBar private constructor(
     private val view get() = parts.card
     private var segmentAnimator: ObjectAnimator? = null
     private var shownStep: HaRestartStep? = null
-    private var startingFrom: Int? = null
+    private var stepFrom: Int? = null
+    private var dashboardConnected = false
 
     /**
      * The back-online step retires on read in the state machine, which pushes nothing when it lapses.
@@ -231,9 +239,10 @@ internal class HaLifecycleBar private constructor(
             if ((snap?.offlineGraceRemainingMs ?: 0L) > 0L) view.postDelayed(hide, snap!!.offlineGraceRemainingMs)
             return
         }
-        if (haLifecycleCard(state, snap).step != HaRestartStep.STARTING) startingFrom = null
-        else if (startingFrom == null) startingFrom = progressOf(snap)
-        val card = haLifecycleCard(state, snap, startingFrom)
+        dashboardConnected = renderer?.frontendConnected == true
+        val step = haLifecycleCard(state, snap, dashboardConnected).step
+        if (step != shownStep) stepFrom = progressOf(snap)
+        val card = haLifecycleCard(state, snap, dashboardConnected, stepFrom)
         render(card, state, snap)
         visibility(true)
         view.postDelayed(hide, TICK_MS)
@@ -271,7 +280,7 @@ internal class HaLifecycleBar private constructor(
         })
         parts.footer.text = when {
             card.step == null -> ""
-            card.step == HaRestartStep.RELOADING && card.restartedInMs != null ->
+            card.restartedInMs != null ->
                 context.getString(R.string.ha_restarted_in, exact(card.restartedInMs))
             card.usualMs != null -> context.getString(R.string.ha_usually, reason, exact(card.usualMs))
             else -> reason
@@ -327,7 +336,7 @@ internal class HaLifecycleBar private constructor(
             elapsedMs = snap.elapsedMs?.plus(TICK_MS),
             backOnlineRemainingMs = (snap.backOnlineRemainingMs - TICK_MS).coerceAtLeast(0L),
         )
-        val later = haLifecycleCard(state, ahead, startingFrom)
+        val later = haLifecycleCard(state, ahead, dashboardConnected, stepFrom)
         return if (later.step == card.step) later.fills[i] else card.fills[i]
     }
 
@@ -345,9 +354,9 @@ internal class HaLifecycleBar private constructor(
      * The card is INVERTED against the dashboard — light on a dark dashboard, dark on a light one — as
      * Android's own prominent transient notices are. A card in the dashboard's own tones read as part of
      * the page rather than a notice (seen on hardware). Every text role keeps WCAG AA 4.5:1 or better over
-     * a pure white, grey or black dashboard at [CARD_ALPHA] (worst 6.8:1, secondary labels on the light
-     * card); the accent marks only the border, the dot and the track, which need 3:1 and get 6.1:1 or
-     * better. Recheck those figures before changing a colour or the opacity.
+     * a pure white, grey or black dashboard at [CARD_ALPHA] (worst 5.4:1, secondary labels on the dark
+     * card); the card's accent marks only the dot and the track, which need 3:1 and get 5.1:1 or better.
+     * Recheck those figures before changing a colour or the opacity.
      */
     private class Palette(
         val surface: Int,
@@ -371,11 +380,15 @@ internal class HaLifecycleBar private constructor(
             accent = Color.parseColor("#01579B"),
         )
 
-        /** 94% opaque: a hint of the dashboard behind, but solid enough to read as a notice; see [Palette]. */
-        private const val CARD_ALPHA = 0xF0
+        /** 86% opaque: the inverted palette already makes the card stand out; see [Palette]. */
+        private const val CARD_ALPHA = 0xDB
 
-        /** The border carries the accent, so the card's edge is clear against any dashboard. */
-        private const val BORDER = 2f
+        /**
+         * The border is drawn in the accent of the DASHBOARD's tone, not the card's: bright blue round a
+         * light card on a dark dashboard, deep blue round a dark card on a light one, so the card's edge
+         * contrasts with what is behind it (the card's own accent nearly vanished against the dashboard).
+         */
+        private const val BORDER = 4f
 
         private val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         private val LIGHT_FACE: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
@@ -429,7 +442,7 @@ internal class HaLifecycleBar private constructor(
                 background = GradientDrawable().apply {
                     cornerRadius = CORNER * s
                     setColor(withAlpha(palette.surface, CARD_ALPHA))
-                    setStroke(maxOf(2, (BORDER * s).toInt()), palette.accent)
+                    setStroke(maxOf(3, (BORDER * s).toInt()), (if (dark) DARK else LIGHT).accent)
                 }
                 visibility = View.GONE
             }
