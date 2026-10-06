@@ -1211,6 +1211,22 @@ class CatalogueTest(unittest.TestCase):
                 with self.subTest(key=key, mutation="removed"), self.assertRaises(i18n.CatalogueError):
                     i18n.validate_target_language(key, target_text, "zh-Hans", source_record)
 
+    def test_ukrainian_home_assistant_core_name_is_key_scoped(self):
+        catalogue_dir = SCRIPT.parents[1] / "app/src/main/assets/i18n"
+        source = i18n.validate_source(catalogue_dir / "en.json")
+        target = json.loads((catalogue_dir / "uk.json").read_text(encoding="utf-8"))
+        key = "shell.runtime.ha_lifecycle.reason_core_update"
+        record = source["strings"][key]
+        text = target["strings"][key]["text"]
+        i18n.validate_target_language(key, text, "uk", record)
+        for candidate_key, candidate_text in (
+            (f"{key}.other", text),
+            (key, text.replace("Core", "Cores")),
+        ):
+            with self.subTest(key=candidate_key, text=candidate_text):
+                with self.assertRaises(i18n.CatalogueError):
+                    i18n.validate_target_language(candidate_key, candidate_text, "uk", record)
+
     def test_report_counts_current_translation_and_effective_fallback_per_locale(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

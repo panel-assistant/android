@@ -1524,9 +1524,9 @@
    "state": "machine-cross-checked"
   },
   "configure.renderer.companion_launcher_hint": {
-   "text": "Schakel de launcheroptie van de Companion-app in zodat deze Home kan overnemen.",
+   "text": "Schakel de launcheroptie van de Companion-app in om die het startscherm te laten overnemen.",
    "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.renderer.configured_external": {
    "text": "{package} · Geconfigureerde externe renderer",
@@ -1784,19 +1784,19 @@
    "state": "machine-cross-checked"
   },
   "configure.voice.microphone_absent": {
-   "text": "Dit paneel meldt geen microfoon, of het apparaatprofiel zet hardware.microphone op false, dus spraak wordt niet aangeboden.",
+   "text": "Dit paneel meldt geen microfoon, of het apparaatprofiel stelt hardware.microphone in op false. Daarom is spraak niet beschikbaar.",
    "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.microphone_no_audio": {
-   "text": "De microfoon leverde geen audio toen het paneel hem controleerde, dus het paneel luistert niet. Zet de spraakassistent uit en weer aan om opnieuw te controleren.",
+   "text": "De microfoon leverde geen geluid toen het paneel die controleerde, dus het paneel luistert niet. Zet de spraakassistent uit en weer aan om opnieuw te controleren.",
    "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.microphone_silent": {
-   "text": "De microfoon nam alleen stilte op toen het paneel hem controleerde, dus het paneel luistert niet. Probeer een andere audiobron, of zet de spraakassistent uit en weer aan om opnieuw te controleren.",
+   "text": "De microfoon nam alleen stilte op toen het paneel die controleerde, dus het paneel luistert niet. Probeer een andere audiobron, of zet de spraakassistent uit en weer aan om opnieuw te controleren.",
    "sourceHash": "f199f52a53f3d02c180b4cdb110fc6809a2b599f8f6de24003d3fd97bbec60ce",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.pipeline_not_listed": {
    "text": "{pipeline} · niet in de lijst van Home Assistant",
@@ -9144,9 +9144,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
-   "text": "Schakelt het scherm uit na de aangeleerde vertraging van de gekozen aanwezigheidsmodus of de ingestelde vertraging bij geen aanraakactiviteit. Handmatige schermbediening blijft apart.",
+   "text": "Schakel het scherm uit na de aangeleerde vertraging van de gekozen aanwezigheidsmodus of de gekozen tijd zonder aanraking. Handmatige schermbediening blijft afzonderlijk.",
    "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep.label": {
    "text": "Automatische slaapstand",
@@ -11321,27 +11321,27 @@
   "shell.runtime.ha_lifecycle.duration_hours": {
     "text": "{value} u",
     "sourceHash": "e169957312ecd6bcde53bcb8ce799073ab75128e063f0b9c9f072fe34cad0789",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.duration_minutes": {
     "text": "{value} min",
     "sourceHash": "f18fde48b294cb5f9c61142eb0ba22eaf1502b9512590622886217ecaddc83d0",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.duration_seconds": {
-    "text": "{value} sec.",
+    "text": "{value} sec",
     "sourceHash": "5f7c1b7d1a7a9d1a9093c810748b7ada28cbc551e187ccb0fa377e8bbf1772d8",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.expected_in": {
-    "text": "Naar verwachting over ongeveer {duration} weer beschikbaar",
+    "text": "Naar verwachting terug over ongeveer {duration}",
     "sourceHash": "7922065d280489080fbc5ae56506b33f86767d4fbb9556c8450490df6a35c1a4",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.not_measured": {
     "text": "De tijd tot terugkeer is nog niet gemeten",
     "sourceHash": "1f976c7946f8069ee2b65c48c51fd5e966a05282e29d6e9c42838ea5279ffbcc",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.offline": {
    "text": "Home Assistant is offline gegaan — bedieningselementen zijn mogelijk tijdelijk niet beschikbaar.",
@@ -11349,29 +11349,29 @@
    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.overdue": {
-    "text": "{duration} voorbij de schatting",
+    "text": "{duration} na de geschatte tijd",
     "sourceHash": "0cc29cfe82afaf4b37c63bbfcdf9cce00fc3abb62437dd2d77108b91982c857f",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_core_update": {
     "text": "Home Assistant Core-update",
     "sourceHash": "bbb36c7b7262d875fa5be26ea1ad5969fa5e6d2a5caecc1f09b133971b08c217",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_host_reboot": {
     "text": "Herstart van de host",
     "sourceHash": "1c4d13acf0b2d4747fc0f23715c75f182262e5f25b46529c60c77ea4406333c7",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_restart": {
-    "text": "Home Assistant herstart",
+    "text": "Herstart van Home Assistant",
     "sourceHash": "0613c9a7fd9cd5bfa91d73c76c2bb4b2d3ee136657a8f1ef5294bf8f99a39c0f",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_unknown": {
     "text": "Reden onbekend",
     "sourceHash": "cf12e4b6973d5aa2768a203ba1cacb82fe4d962d2c56860db3d4674159ea93fa",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.shutting_down": {
    "text": "Home Assistant wordt afgesloten — bedieningselementen zijn mogelijk tijdelijk niet beschikbaar.",
@@ -12416,7 +12416,7 @@
   "shell.runtime.ha_lifecycle.taking_longer": {
     "text": "Duurt langer dan normaal",
     "sourceHash": "1a5787cd1c50370a5f25674b47d5ccbedd5182efd90dd526dae38c7f732463df",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_network.banner_latency_severe": {
    "text": "Het netwerkpad naar Home Assistant is erg traag. Elke actie wacht op dit pad. Het wordt op netwerkniveau gemeten, dus het ligt niet aan een traag paneel of een trage Home Assistant — controleer de Wi-Fi of de verbinding tussen beide.",
@@ -12509,9 +12509,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.help": {
-   "text": "Gebruik de gekalibreerde nabijheidssensor van het paneel, apparaten in het Home Assistant-gebied of geen aanraakactiviteit.\n\n- Aanwezigheidsmodi pauzeren als hun bron niet beschikbaar is.\n- Voor geen aanraakactiviteit hoeft aanwezigheid niet te worden ingesteld.",
+   "text": "Gebruik de gekalibreerde nabijheidssensor van het paneel, apparaten in de Home Assistant-ruimte, of de tijd zonder aanraking.\n\n- Aanwezigheidsmodi pauzeren als hun bron niet beschikbaar is.\n- Voor de tijd zonder aanraking hoef je geen aanwezigheid in te stellen.",
    "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.stage.wave_baseline": {
    "text": "Startpositie voor handzwaai controleren",
@@ -12596,7 +12596,7 @@
   "settings.auto_sleep_source.label": {
    "text": "Activiteitsbron voor automatische slaapstand",
    "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.summary": {
    "text": "Wat telt als aanwezigheid: nabijheidssensor, gebied of aanraking.",
@@ -12694,24 +12694,24 @@
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.fixed_delay": {
-   "text": "Scherm uitschakelen na {count} seconden zonder aanraking.",
+   "text": "Scherm uit na {count} seconden zonder aanraking.",
    "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.source_touch": {
-   "text": "Geen aanraakactiviteit",
+   "text": "Geen aanraking",
    "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.touch_help": {
    "text": "Gebruikt aanrakingen op dit paneel. Home Assistant en aanwezigheidssensoren zijn niet nodig.",
    "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.help": {
-   "text": "Als Geen aanraakactiviteit is geselecteerd, wordt het scherm na dit aantal seconden zonder aanraking volledig uitgeschakeld.",
+   "text": "Bij Geen aanraking schakel je het scherm volledig uit na dit aantal seconden zonder aanraking.",
    "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.summary": {
    "text": "Aantal seconden zonder aanraking voordat het scherm uitschakelt.",
@@ -12719,9 +12719,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.label": {
-   "text": "Vertraging bij geen aanraakactiviteit (seconden)",
+   "text": "Wachttijd zonder aanraking (seconden)",
    "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "shell.pickles.title": {
    "text": "Pickles is ontsnapt",

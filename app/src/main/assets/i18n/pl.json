@@ -1524,9 +1524,9 @@
    "state": "machine-cross-checked"
   },
   "configure.renderer.companion_launcher_hint": {
-   "text": "Włącz opcję programu uruchamiającego w aplikacji Companion, aby mogła przejąć ekran główny.",
+   "text": "Włącz opcję ekranu głównego w aplikacji Companion, aby przejęła tę rolę.",
    "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.renderer.configured_external": {
    "text": "{package} · skonfigurowany renderer zewnętrzny",
@@ -1784,19 +1784,19 @@
    "state": "machine-cross-checked"
   },
   "configure.voice.microphone_absent": {
-   "text": "Ten panel nie zgłasza mikrofonu lub jego profil urządzenia ustawia hardware.microphone na false, więc sterowanie głosem nie jest udostępniane.",
+   "text": "Panel nie zgłasza mikrofonu lub jego profil urządzenia ustawia hardware.microphone na false, więc funkcja głosowa nie jest dostępna.",
    "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.microphone_no_audio": {
-   "text": "Mikrofon nie dostarczył dźwięku podczas sprawdzania przez panel, więc panel nie nasłuchuje. Wyłącz i ponownie włącz asystenta głosowego, aby sprawdzić jeszcze raz.",
+   "text": "Podczas sprawdzania przez panel mikrofon nie dostarczył dźwięku, więc panel nie nasłuchuje. Wyłącz i włącz asystenta głosowego, aby sprawdzić ponownie.",
    "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.microphone_silent": {
-   "text": "Mikrofon nagrał wyłącznie ciszę podczas sprawdzania przez panel, więc panel nie nasłuchuje. Spróbuj innego źródła dźwięku lub wyłącz i ponownie włącz asystenta głosowego, aby sprawdzić jeszcze raz.",
+   "text": "Podczas sprawdzania przez panel mikrofon nagrał tylko ciszę, więc panel nie nasłuchuje. Spróbuj innego źródła dźwięku lub wyłącz i włącz asystenta głosowego, aby sprawdzić ponownie.",
    "sourceHash": "f199f52a53f3d02c180b4cdb110fc6809a2b599f8f6de24003d3fd97bbec60ce",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.pipeline_not_listed": {
    "text": "{pipeline} · nie ma na liście Home Assistant",
@@ -9144,9 +9144,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
-   "text": "Wyłącza ekran po wyuczonym opóźnieniu wybranego trybu obecności albo po ustawionym opóźnieniu braku dotyku. Ręczne sterowanie ekranem pozostaje oddzielne.",
+   "text": "Wyłącz ekran po wyuczonym czasie wybranego trybu obecności lub po wybranym czasie bez dotyku. Ręczne sterowanie ekranem działa niezależnie.",
    "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep.label": {
    "text": "Automatyczne uśpienie",
@@ -11321,27 +11321,27 @@
   "shell.runtime.ha_lifecycle.duration_hours": {
     "text": "{value} godz.",
     "sourceHash": "e169957312ecd6bcde53bcb8ce799073ab75128e063f0b9c9f072fe34cad0789",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.duration_minutes": {
     "text": "{value} min",
     "sourceHash": "f18fde48b294cb5f9c61142eb0ba22eaf1502b9512590622886217ecaddc83d0",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.duration_seconds": {
     "text": "{value} s",
     "sourceHash": "5f7c1b7d1a7a9d1a9093c810748b7ada28cbc551e187ccb0fa377e8bbf1772d8",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.expected_in": {
     "text": "Przewidywany powrót za około {duration}",
     "sourceHash": "7922065d280489080fbc5ae56506b33f86767d4fbb9556c8450490df6a35c1a4",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.not_measured": {
-    "text": "Czas do powrotu nie został jeszcze zmierzony",
+    "text": "Czas powrotu nie został jeszcze zmierzony",
     "sourceHash": "1f976c7946f8069ee2b65c48c51fd5e966a05282e29d6e9c42838ea5279ffbcc",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.offline": {
    "text": "Home Assistant przeszedł w tryb offline — sterowanie może być chwilowo niedostępne.",
@@ -11349,29 +11349,29 @@
    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.overdue": {
-    "text": "O {duration} ponad szacowany czas",
+    "text": "{duration} po przewidywanym czasie",
     "sourceHash": "0cc29cfe82afaf4b37c63bbfcdf9cce00fc3abb62437dd2d77108b91982c857f",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_core_update": {
     "text": "Aktualizacja Home Assistant Core",
     "sourceHash": "bbb36c7b7262d875fa5be26ea1ad5969fa5e6d2a5caecc1f09b133971b08c217",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_host_reboot": {
     "text": "Ponowne uruchomienie hosta",
     "sourceHash": "1c4d13acf0b2d4747fc0f23715c75f182262e5f25b46529c60c77ea4406333c7",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_restart": {
     "text": "Ponowne uruchomienie Home Assistant",
     "sourceHash": "0613c9a7fd9cd5bfa91d73c76c2bb4b2d3ee136657a8f1ef5294bf8f99a39c0f",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_unknown": {
-    "text": "Przyczyna nieznana",
+    "text": "Nieznana przyczyna",
     "sourceHash": "cf12e4b6973d5aa2768a203ba1cacb82fe4d962d2c56860db3d4674159ea93fa",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.shutting_down": {
    "text": "Home Assistant się wyłącza — elementy sterujące mogą być chwilowo niedostępne.",
@@ -12416,7 +12416,7 @@
   "shell.runtime.ha_lifecycle.taking_longer": {
     "text": "Trwa dłużej niż zwykle",
     "sourceHash": "1a5787cd1c50370a5f25674b47d5ccbedd5182efd90dd526dae38c7f732463df",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_network.banner_latency_severe": {
    "text": "Ścieżka sieciowa do Home Assistant działa bardzo wolno. Każda akcja czeka na tę ścieżkę. Jest to mierzone na poziomie sieci, więc nie chodzi o to, że panel lub Home Assistant działa wolno — sprawdź Wi-Fi lub połączenie między nimi.",
@@ -12509,9 +12509,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.help": {
-   "text": "Użyj skalibrowanego czujnika zbliżeniowego panelu, urządzeń obszaru Home Assistant lub braku dotyku.\n\n- Tryby obecności są wstrzymywane, gdy ich źródło jest niedostępne.\n- Brak dotyku nie wymaga konfiguracji obecności.",
+   "text": "Użyj skalibrowanego czujnika zbliżeniowego panelu, urządzeń z obszaru Home Assistant lub braku dotyku.\n\n- Tryby obecności wstrzymują działanie, gdy ich źródło jest niedostępne.\n- Brak dotyku nie wymaga konfiguracji obecności.",
    "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.stage.wave_baseline": {
    "text": "Sprawdzanie pozycji początkowej dla machnięć dłonią",
@@ -12596,7 +12596,7 @@
   "settings.auto_sleep_source.label": {
    "text": "Źródło aktywności automatycznego usypiania",
    "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.summary": {
    "text": "Co uznaje się za obecność: czujnik zbliżeniowy, obszar lub dotyk.",
@@ -12694,24 +12694,24 @@
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.fixed_delay": {
-   "text": "Wyłącz ekran po {count} sekundach bez dotyku.",
+   "text": "Ekran wyłączy się po {count} sekundach bez dotyku.",
    "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.source_touch": {
    "text": "Brak dotyku",
    "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.touch_help": {
-   "text": "Wykorzystuje dotyk panelu. Home Assistant i czujniki obecności nie są wymagane.",
+   "text": "Korzysta z dotyku na tym panelu. Home Assistant i czujniki obecności nie są wymagane.",
    "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.help": {
-   "text": "Po wybraniu Brak dotyku całkowicie wyłącza ekran po tej liczbie sekund bez dotyku.",
+   "text": "Gdy wybrano Brak dotyku, całkowicie wyłącz ekran po tylu sekundach bez dotknięcia.",
    "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.summary": {
    "text": "Liczba sekund bez dotknięcia, po upływie których ekran się wyłącza.",
@@ -12719,9 +12719,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.label": {
-   "text": "Opóźnienie przy braku dotyku (sekundy)",
+   "text": "Czas bez dotyku (sekundy)",
    "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "shell.pickles.title": {
    "text": "Pickles uciekł",

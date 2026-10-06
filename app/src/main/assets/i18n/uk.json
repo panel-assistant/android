@@ -1524,9 +1524,9 @@
    "state": "machine-cross-checked"
   },
   "configure.renderer.companion_launcher_hint": {
-   "text": "Увімкніть у застосунку Companion опцію лаунчера, щоб він став головним екраном.",
+   "text": "Увімкніть у програмі Companion опцію запуску як головного екрана, щоб вона обробляла дію «Додому».",
    "sourceHash": "70b247a18a32a3d19356d5e1ec79d06525e2ccc9bb331d4c7db7f644c929a5b6",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.renderer.configured_external": {
    "text": "{package} · налаштований зовнішній рендерер",
@@ -1784,19 +1784,19 @@
    "state": "machine-cross-checked"
   },
   "configure.voice.microphone_absent": {
-   "text": "Ця панель не повідомляє про мікрофон, або профіль її пристрою встановлює hardware.microphone у false, тому голос не пропонується.",
+   "text": "Ця панель повідомляє про відсутність мікрофона, або її профіль пристрою задає hardware.microphone як false, тому голосові функції не пропонуються.",
    "sourceHash": "4de4b6204ee7bace69a84ce679fa1b1d918a717fd4d7045ae0854ebcca6cd84f",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.microphone_no_audio": {
-   "text": "Мікрофон не надав звуку, коли панель його перевіряла, тому панель не слухає. Вимкніть і знову ввімкніть голосового помічника, щоб перевірити ще раз.",
+   "text": "Під час перевірки панеллю мікрофон не передав звуку, тому панель не слухає. Вимкніть та увімкніть голосовий помічник для повторної перевірки.",
    "sourceHash": "161b1ad1b64eeb61758adf95b0fafe1e88965b0998c4623c18514b349a24c533",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.microphone_silent": {
-   "text": "Мікрофон записав лише тишу, коли панель його перевіряла, тому панель не слухає. Спробуйте інше джерело звуку або вимкніть і знову ввімкніть голосового помічника, щоб перевірити ще раз.",
+   "text": "Під час перевірки панеллю мікрофон записав лише тишу, тому панель не слухає. Спробуйте інше джерело звуку або вимкніть та увімкніть голосовий помічник для повторної перевірки.",
    "sourceHash": "f199f52a53f3d02c180b4cdb110fc6809a2b599f8f6de24003d3fd97bbec60ce",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.voice.pipeline_not_listed": {
    "text": "{pipeline} · немає у списку Home Assistant",
@@ -9144,9 +9144,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep.help": {
-   "text": "Вимикає екран після вивченої затримки вибраного режиму присутності або заданої затримки за відсутності дотику. Ручне керування екраном залишається окремим.",
+   "text": "Вимикати екран після затримки, вивченої вибраним режимом присутності, або вибраної затримки без дотиків. Ручне керування екраном залишається окремим.",
    "sourceHash": "ad1f9f6fa465548e561c41c0f04bc7d424f197949aa9f8759142b27d452db295",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep.label": {
    "text": "Автоматичний сон",
@@ -11321,27 +11321,27 @@
   "shell.runtime.ha_lifecycle.duration_hours": {
     "text": "{value} год",
     "sourceHash": "e169957312ecd6bcde53bcb8ce799073ab75128e063f0b9c9f072fe34cad0789",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.duration_minutes": {
     "text": "{value} хв",
     "sourceHash": "f18fde48b294cb5f9c61142eb0ba22eaf1502b9512590622886217ecaddc83d0",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.duration_seconds": {
     "text": "{value} с",
     "sourceHash": "5f7c1b7d1a7a9d1a9093c810748b7ada28cbc551e187ccb0fa377e8bbf1772d8",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.expected_in": {
-    "text": "Очікуване відновлення приблизно через {duration}",
+    "text": "Повернення очікується приблизно через {duration}",
     "sourceHash": "7922065d280489080fbc5ae56506b33f86767d4fbb9556c8450490df6a35c1a4",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.not_measured": {
-    "text": "Час до відновлення ще не виміряно",
+    "text": "Час до повернення ще не виміряно",
     "sourceHash": "1f976c7946f8069ee2b65c48c51fd5e966a05282e29d6e9c42838ea5279ffbcc",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.offline": {
    "text": "Home Assistant вийшов з мережі — елементи керування можуть бути тимчасово недоступні.",
@@ -11349,29 +11349,29 @@
    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.overdue": {
-    "text": "На {duration} довше за очікуваний час",
+    "text": "Оцінку перевищено на {duration}",
     "sourceHash": "0cc29cfe82afaf4b37c63bbfcdf9cce00fc3abb62437dd2d77108b91982c857f",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_core_update": {
-    "text": "Оновлення ядра Home Assistant",
+    "text": "Оновлення Home Assistant Core",
     "sourceHash": "bbb36c7b7262d875fa5be26ea1ad5969fa5e6d2a5caecc1f09b133971b08c217",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_host_reboot": {
-    "text": "Перезапуск хоста",
+    "text": "Перезавантаження хоста",
     "sourceHash": "1c4d13acf0b2d4747fc0f23715c75f182262e5f25b46529c60c77ea4406333c7",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_restart": {
     "text": "Перезапуск Home Assistant",
     "sourceHash": "0613c9a7fd9cd5bfa91d73c76c2bb4b2d3ee136657a8f1ef5294bf8f99a39c0f",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.reason_unknown": {
     "text": "Причина невідома",
     "sourceHash": "cf12e4b6973d5aa2768a203ba1cacb82fe4d962d2c56860db3d4674159ea93fa",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_lifecycle.shutting_down": {
    "text": "Home Assistant вимикається — елементи керування можуть бути тимчасово недоступні.",
@@ -12416,7 +12416,7 @@
   "shell.runtime.ha_lifecycle.taking_longer": {
     "text": "Триває довше, ніж зазвичай",
     "sourceHash": "1a5787cd1c50370a5f25674b47d5ccbedd5182efd90dd526dae38c7f732463df",
-    "state": "machine-draft"
+    "state": "machine-cross-checked"
   },
   "shell.runtime.ha_network.banner_latency_severe": {
    "text": "Мережевий шлях до Home Assistant працює дуже повільно. Кожна дія чекає на цей шлях. Затримку виміряно на рівні мережі, тож повільно працює не панель і не Home Assistant — перевірте Wi-Fi або зв’язок між ними.",
@@ -12509,9 +12509,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.help": {
-   "text": "Використовуйте калібрований датчик наближення панелі, пристрої області Home Assistant або відсутність дотику.\n\n- Режими присутності призупиняються, якщо їхнє джерело недоступне.\n- Відсутність дотику не потребує налаштування присутності.",
+   "text": "Використовувати відкалібрований датчик наближення панелі, пристрої приміщення Home Assistant або відсутність дотиків.\n\n- Режими присутності призупиняються, якщо їхнє джерело недоступне.\n- Відсутність дотиків не потребує налаштування присутності.",
    "sourceHash": "b6ae4c9d0c2cbf29bbffafdd847901cea10c18e91e16d77c7716ae108fb0284d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.proximity.setup.stage.wave_baseline": {
    "text": "Перевірка початкового положення для помаху рукою",
@@ -12594,9 +12594,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.label": {
-   "text": "Джерело активності автоматичного сну",
+   "text": "Джерело активності для автосну",
    "sourceHash": "485e78dd0ccd45757ad048f9805f4fe39b1260890bb7d0364b2c8d07caa926c1",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_source.summary": {
    "text": "Що вважається присутністю: датчик наближення, приміщення або дотик.",
@@ -12694,24 +12694,24 @@
    "state": "machine-cross-checked"
   },
   "configure.auto_sleep.fixed_delay": {
-   "text": "Вимкнути екран через {count} секунд без дотику.",
+   "text": "Екран вимкнеться після {count} сек. без дотиків.",
    "sourceHash": "f82a99e3e874380f49c82b78bf86d1e250c487c51272babc74ab2a7b64d16965",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.source_touch": {
-   "text": "Відсутність дотику",
+   "text": "Відсутність дотиків",
    "sourceHash": "2843ad9602b09046deeabb2a47c0a7e060f1be3cda4537fb48fea37fb834a12d",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "configure.auto_sleep.touch_help": {
    "text": "Використовує дотики до цієї панелі. Home Assistant і датчики присутності не потрібні.",
    "sourceHash": "c84f90ce5af37f5103e8de750d0ffc26123bcf56b30f3e8f47625faf516963bd",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.help": {
-   "text": "Якщо вибрано Відсутність дотику, повністю вимикає екран після цієї кількості секунд без дотику.",
+   "text": "Коли вибрано «Відсутність дотиків», повністю вимикати екран після такої кількості секунд без дотику.",
    "sourceHash": "2859a764da776afae021acb6fc0c9719b3c9b382f0a2e10d3d9031eaa4a1409c",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.summary": {
    "text": "Кількість секунд без дотику, після яких екран вимикається.",
@@ -12719,9 +12719,9 @@
    "state": "machine-cross-checked"
   },
   "settings.auto_sleep_touch_delay_seconds.label": {
-   "text": "Затримка за відсутності дотику (секунди)",
+   "text": "Затримка без дотиків (секунди)",
    "sourceHash": "c5068fba0df696eb1d804e4710a04fbf3dec581802683f77e2ef1b9276198932",
-   "state": "machine-draft"
+   "state": "machine-cross-checked"
   },
   "shell.pickles.title": {
    "text": "Pickles утік",
