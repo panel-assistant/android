@@ -9688,21 +9688,6 @@
    "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
    "state": "machine-cross-checked"
   },
-  "settings.kiosk_companion_packages.help": {
-   "text": "Імена пакетів Android, розділені комами, які блокування інформаційної панелі залишає на передньому плані замість повернення до інформаційної панелі. Використовуйте цю опцію для переходу до екранів супутнього додатка. Потрібні права root.",
-   "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
-   "state": "machine-cross-checked"
-  },
-  "settings.kiosk_companion_packages.label": {
-   "text": "Додатки, дозволені блокуванням",
-   "sourceHash": "d10363e328d4b092471a2bfeac18f6095a19876a6fd26b85a86675181efaec18",
-   "state": "machine-cross-checked"
-  },
-  "settings.kiosk_companion_packages.summary": {
-   "text": "Додатки, які блокування залишає на передньому плані, за назвою пакета.",
-   "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-   "state": "machine-cross-checked"
-  },
   "settings.kiosk_lock.help": {
    "text": "Блокування для повсякденного використання, лише з root. Приховує системні панелі Android і повертає до вибраної інформаційної панелі приблизно за 3 секунди, коли відкривається інший застосунок або «Недавні». Воно не приховує навігацію Home Assistant.\n\nЗняти його можна:\n\n- тут або з Home Assistant\n- через adb\n- 7 швидкими натисканнями у верхньому лівому куті\n- протягом 60-секундного вікна без блокування після перезавантаження",
    "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",

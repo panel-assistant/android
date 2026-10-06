@@ -9688,21 +9688,6 @@
    "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
    "state": "machine-cross-checked"
   },
-  "settings.kiosk_companion_packages.help": {
-   "text": "Android-pakketnamen, gescheiden door komma’s, die de dashboardvergrendeling vooraan laat staan in plaats van terug te keren naar het dashboard. Gebruik dit om de eigen schermen van een bijbehorende app te openen. Vereist root-toegang.",
-   "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
-   "state": "machine-cross-checked"
-  },
-  "settings.kiosk_companion_packages.label": {
-   "text": "Apps die de vergrendeling toestaat",
-   "sourceHash": "d10363e328d4b092471a2bfeac18f6095a19876a6fd26b85a86675181efaec18",
-   "state": "machine-cross-checked"
-  },
-  "settings.kiosk_companion_packages.summary": {
-   "text": "Apps die de vergrendeling op de voorgrond laat, op pakketnaam.",
-   "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-   "state": "machine-cross-checked"
-  },
   "settings.kiosk_lock.help": {
    "text": "Vergrendeling voor informeel gebruik, alleen met root. Verbergt de Android-systeembalken en keert binnen ongeveer 3 seconden terug naar het geselecteerde dashboard wanneer een andere app of het overzicht van recente apps wordt geopend. De navigatie van Home Assistant wordt niet verborgen.\n\nZo hef je de vergrendeling op:\n\n- hier, of vanuit Home Assistant\n- via adb\n- met 7 snelle tikken linksboven\n- tijdens het ontgrendelde venster van 60 seconden na een herstart",
    "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",

@@ -19,12 +19,10 @@ class SuccessorHandoffTest {
         var assetUrl: String? = "https://example.invalid/panel-assistant-v1.apk",
         var installFailure: String? = null,
         var installedAfterInstall: InstalledSuccessor? = InstalledSuccessor("1.0", setOf(SIGNER)),
-        var companionWriteSticks: Boolean = true,
         var launchResult: Boolean = true,
         var tokenDelivered: Boolean = true,
     ) : SuccessorHandoff.Ports {
         val events = mutableListOf<String>()
-        private var companions: Set<String> = setOf("com.example.kept")
 
         override fun retired(): Boolean = retired
         override fun helperRefusal(): String? {
@@ -42,14 +40,8 @@ class SuccessorHandoffTest {
             if (installFailure == null) installed = installedAfterInstall
             return installFailure
         }
-        override fun companionPackages(): Set<String> = companions
-        override fun addCompanionPackage(pkg: String) {
-            events += "companion $pkg"
-            if (companionWriteSticks) companions = companions + pkg
-        }
         override fun launchSuccessor(): Boolean = launchResult.also { events += "launch" }
         override fun deliverReleaseToken(): Boolean = tokenDelivered.also { events += "token" }
-        fun companionsNow(): Set<String> = companions
     }
 
     private companion object {
@@ -80,7 +72,7 @@ class SuccessorHandoffTest {
             val installed = InstalledSuccessor(version, setOf(SIGNER), code)
             val ports = FakePorts(installed = installed)
             assertEquals(Outcome.Launched, SuccessorHandoff(ports).offer(successor, allowInstall = false))
-            assertEquals(listOf("helper", "helper", "companion $successor", "launch", "token"), ports.events)
+            assertEquals(listOf("helper", "helper", "launch", "token"), ports.events)
             assertEquals(installed, ports.installed)
         }
     }
@@ -110,13 +102,11 @@ class SuccessorHandoffTest {
                 "resolve",
                 "install https://example.invalid/panel-assistant-v1.apk",
                 "helper",
-                "companion $successor",
                 "launch",
                 "token",
             ),
             ports.events,
         )
-        assertEquals(setOf("com.example.kept", successor), ports.companionsNow())
     }
 
     @Test fun aRetiredBridgeOffersNothing() {
@@ -138,7 +128,6 @@ class SuccessorHandoffTest {
 
         assertEquals(Outcome.HelperNotConfirmed("helper did not report a dual-identity status"), offer(ports))
         assertFalse(ports.events.contains("launch"))
-        assertEquals(setOf("com.example.kept"), ports.companionsNow())
     }
 
     @Test fun aReleaseWithoutASuccessorAssetIsNotAnError() {
@@ -188,18 +177,11 @@ class SuccessorHandoffTest {
         assertEquals(Outcome.UntrustedSuccessor, offer(ports))
     }
 
-    @Test fun aCompanionWriteThatDoesNotReadBackBlocksTheLaunch() {
-        val ports = FakePorts(companionWriteSticks = false)
-
-        assertEquals(Outcome.CompanionNotHonoured, offer(ports))
-        assertFalse(ports.events.contains("launch"))
-    }
-
     @Test fun anInstalledSuccessorOfThisVersionIsRelaunchedWithoutReinstalling() {
         val ports = FakePorts(installed = InstalledSuccessor("1.0", setOf(SIGNER.uppercase())))
 
         assertEquals(Outcome.Launched, offer(ports))
-        assertEquals(listOf("helper", "helper", "companion $successor", "launch", "token"), ports.events)
+        assertEquals(listOf("helper", "helper", "launch", "token"), ports.events)
     }
 
     @Test fun anOlderSuccessorIsReplacedBeforeLaunch() {

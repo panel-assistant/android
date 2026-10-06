@@ -10888,21 +10888,6 @@
       "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
       "state": "machine-cross-checked"
     },
-    "settings.kiosk_companion_packages.help": {
-      "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
-      "state": "machine-cross-checked",
-      "text": "Nomi dei pacchetti Android, separati da virgole, che il blocco della plancia lascia in primo piano invece di tornare alla plancia. Usalo per accedere alle schermate dell'app associata. Richiede i privilegi di root."
-    },
-    "settings.kiosk_companion_packages.label": {
-      "sourceHash": "d10363e328d4b092471a2bfeac18f6095a19876a6fd26b85a86675181efaec18",
-      "state": "machine-cross-checked",
-      "text": "App consentite dal blocco"
-    },
-    "settings.kiosk_companion_packages.summary": {
-      "text": "App che il blocco lascia in primo piano, per nome del pacchetto.",
-      "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-      "state": "machine-cross-checked"
-    },
     "settings.kiosk_lock.help": {
       "text": "Blocco per uso non critico, disponibile solo con root. Nasconde le barre di sistema di Android e torna alla plancia selezionata entro circa 3 secondi quando viene aperta un'altra app o la schermata Recenti. Non nasconde la navigazione di Home Assistant.\n\nPer disattivarlo:\n\n- qui, oppure da Home Assistant\n- tramite adb\n- con 7 tocchi rapidi nell'angolo superiore sinistro\n- durante la finestra di 60 secondi senza blocco dopo il riavvio",
       "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",

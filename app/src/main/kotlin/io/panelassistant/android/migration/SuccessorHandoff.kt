@@ -8,10 +8,8 @@ package io.panelassistant.android.migration
  * and asks for them through the release endpoint. Every refusal therefore leaves the panel running
  * the bridge exactly as before, and the next pass simply tries again.
  *
- * Two preconditions are applied and then read back before the launch, because each one is what stops
- * a launched successor from harming a working panel: the running root helper must authenticate both
- * application ids (the successor has no other root channel where `su` authorises a single uid), and
- * the successor must be a kiosk companion the return loop honours, or a locked panel snaps it away.
+ * The running root helper must authenticate both application ids before launch: the successor has
+ * no other root channel where `su` authorises a single uid.
  *
  * An installed successor is trusted only under the pinned signer. A package that merely carries the
  * successor's id is never launched, never handed the release token and never replaced silently.
@@ -47,9 +45,6 @@ internal class SuccessorHandoff(private val ports: Ports) {
         /** Pin-verified install of the successor package; null on success, otherwise the failure. */
         suspend fun installSuccessor(url: String): String?
 
-        fun companionPackages(): Set<String>
-        fun addCompanionPackage(pkg: String)
-
         /** Start the successor's launcher activity through a privileged route. */
         fun launchSuccessor(): Boolean
 
@@ -71,9 +66,6 @@ internal class SuccessorHandoff(private val ports: Ports) {
             override val detail = "no current or newer successor is installed"
         }
         data class InstallFailed(override val detail: String) : Outcome
-        data object CompanionNotHonoured : Outcome {
-            override val detail = "successor was not accepted as a kiosk companion"
-        }
         data object LaunchFailed : Outcome { override val detail = "successor could not be started" }
         data object TokenNotDelivered : Outcome {
             override val detail = "successor started; release token was not delivered"
@@ -110,8 +102,6 @@ internal class SuccessorHandoff(private val ports: Ports) {
 
         // The helper may have been replaced while the APK downloaded; the launch gate is the state now.
         ports.helperRefusal()?.let { return Outcome.HelperNotConfirmed(it) }
-        if (successorPackage !in ports.companionPackages()) ports.addCompanionPackage(successorPackage)
-        if (successorPackage !in ports.companionPackages()) return Outcome.CompanionNotHonoured
 
         if (!ports.launchSuccessor()) return Outcome.LaunchFailed
         // After the start: a package that has never run is in the stopped state and receives nothing.

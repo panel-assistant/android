@@ -377,7 +377,6 @@ class SettingsBehaviorContractTest {
             "home_dashboard" to "/lovelace/contract",
             "dashboard_package" to "io.github.maxlyth.hapaneld.BUILTIN",
             "launcher_package" to "io.example.launcher",
-            "kiosk_companion_packages" to "io.example.companion",
             "tame_vendor_packages" to "io.example.vendor",
             "auto_brightness_ha_entity" to "sensor.contract_lux",
             "voice_wake_words" to "[\"hey_jarvis\"]",

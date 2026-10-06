@@ -201,7 +201,6 @@ class SuccessorMigrationTest {
         val markers = FakeMarkers()
         assertEquals(Result.Waiting(Step.PULL, "no authenticated installation identity and release token; update the legacy app before handover"), pass(world, markers))
         val handoffEvents = mutableListOf<String>()
-        var companion = false
         val signer = "a".repeat(64)
         val ports = object : SuccessorHandoff.Ports {
             override fun retired() = world.legacyRetired
@@ -212,14 +211,12 @@ class SuccessorMigrationTest {
             override fun compareVersions(left: String, right: String) = 0
             override fun successorAssetUrl(): String? = throw AssertionError("startup must not resolve an update")
             override suspend fun installSuccessor(url: String): String? = throw AssertionError("startup must not install an update")
-            override fun companionPackages() = if (companion) setOf("successor") else emptySet()
-            override fun addCompanionPackage(pkg: String) { companion = true; handoffEvents += "companion" }
             override fun launchSuccessor() = true.also { handoffEvents += "launch" }
             override fun deliverReleaseToken() = true.also { world.tokenHeld = true; handoffEvents += "token" }
         }
 
         assertEquals(SuccessorHandoff.Outcome.Launched, SuccessorHandoff(ports).offer("successor", allowInstall = false))
-        assertEquals(listOf("helper", "helper", "companion", "launch", "token"), handoffEvents)
+        assertEquals(listOf("helper", "helper", "launch", "token"), handoffEvents)
         assertTrue("token delivery does not remove the bridge", world.legacyInstalled)
         assertEquals(Result.Complete, runToRest(world, markers))
         assertTrue(world.restored)
