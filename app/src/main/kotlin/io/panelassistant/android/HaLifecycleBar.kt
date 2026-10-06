@@ -1,6 +1,6 @@
 package io.panelassistant.android
 
-import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Paint
@@ -77,21 +77,20 @@ internal const val HA_LIFECYCLE_PROGRESS_MAX = 10_000
  * closes when Home Assistant is ready. Only if the dashboard has not reconnected by then does Reloading
  * continue over the back-online window.
  *
- * Only the whole restart is measured, not each step, so the measured progress (elapsed ÷ usual time)
- * is shared out: Stopping fills over the first half of the usual time, and each later step fills from
- * wherever the restart was when this card first showed it ([stepFrom]) to the usual time, so it never
- * sits empty waiting for a halfway mark. A step that has finished is full whatever the clock says. Past
- * the usual time the steps sit full, because progress is capped there, and never run backwards.
- * With no measurement there is no countdown and no partial fill: the track still shows which step it is.
+ * The track is ONE timeline: elapsed ÷ usual time, spread evenly across the three parts, so every panel
+ * shows the same position at the same moment (an earlier version filled each step from when this panel
+ * first showed it, and panels watching the same restart disagreed). Only the whole restart is measured,
+ * not each step, so the fill can run ahead of the step; the pill and the bold step name say which step
+ * this panel is in, and a finished step always shows full. Past the usual time the track sits full,
+ * because progress is capped there, and never runs backwards. With no measurement there is no countdown
+ * and no partial fill: the track still shows which step it is.
  *
  * @param dashboardConnected whether this panel's dashboard is connected to Home Assistant right now
- * @param stepFrom the overall progress, out of [HA_LIFECYCLE_PROGRESS_MAX], when the current step was first shown
  */
 internal fun haLifecycleCard(
     state: HaLifecycleState,
     snap: HaLifecycle.Snapshot?,
     dashboardConnected: Boolean = false,
-    stepFrom: Int? = null,
     backOnlineWindowMs: Long = HaLifecycle.DEFAULT_BACK_ONLINE_WINDOW_MS,
 ): HaLifecycleCard {
     val step = when (state) {
@@ -108,18 +107,15 @@ internal fun haLifecycleCard(
     val max = HA_LIFECYCLE_PROGRESS_MAX
     val progress = if (measured) (minOf(elapsed!!, expected!!) * max / expected).toInt() else 0
     val overdue = measured && !ready && step != null && elapsed!! > expected!!
-    fun fromStep(): Int {
-        if (!measured) return 0
-        val from = (stepFrom ?: progress).coerceIn(0, max - 1)
-        return ((progress - from).coerceAtLeast(0).toLong() * max / (max - from)).toInt()
-    }
-    val fills = when (step) {
-        null -> listOf(0, 0, 0)
-        HaRestartStep.STOPPING -> listOf(minOf(max, progress * 2), 0, 0)
-        HaRestartStep.STARTING -> listOf(max, fromStep(), 0)
-        HaRestartStep.RELOADING -> if (!ready) listOf(max, max, fromStep()) else {
-            val remaining = (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
-            listOf(max, max, ((backOnlineWindowMs - remaining) * max / backOnlineWindowMs).toInt())
+    val fills = if (step == null) listOf(0, 0, 0) else List(3) { i ->
+        val timeline = (progress * 3 - i * max).coerceIn(0, max)
+        when {
+            i < step.ordinal -> max
+            ready && i == step.ordinal -> {
+                val remaining = (snap?.backOnlineRemainingMs ?: 0L).coerceIn(0L, backOnlineWindowMs)
+                maxOf(timeline, ((backOnlineWindowMs - remaining) * max / backOnlineWindowMs).toInt())
+            }
+            else -> timeline
         }
     }
     val restartedIn = if (ready && elapsed != null) {
@@ -206,9 +202,8 @@ internal class HaLifecycleBar private constructor(
     )
 
     private val view get() = parts.card
-    private var segmentAnimator: ObjectAnimator? = null
+    private var segmentAnimator: ValueAnimator? = null
     private var shownStep: HaRestartStep? = null
-    private var stepFrom: Int? = null
     private var dashboardConnected = false
 
     /**
@@ -240,18 +235,10 @@ internal class HaLifecycleBar private constructor(
             return
         }
         dashboardConnected = renderer?.frontendConnected == true
-        val step = haLifecycleCard(state, snap, dashboardConnected).step
-        if (step != shownStep) stepFrom = progressOf(snap)
-        val card = haLifecycleCard(state, snap, dashboardConnected, stepFrom)
+        val card = haLifecycleCard(state, snap, dashboardConnected)
         render(card, state, snap)
         visibility(true)
         view.postDelayed(hide, TICK_MS)
-    }
-
-    private fun progressOf(snap: HaLifecycle.Snapshot?): Int? {
-        val expected = snap?.expectedMs?.takeIf { it > 0L } ?: return null
-        val elapsed = snap.elapsedMs?.coerceAtLeast(0L) ?: return null
-        return (minOf(elapsed, expected) * HA_LIFECYCLE_PROGRESS_MAX / expected).toInt()
     }
 
     private fun render(card: HaLifecycleCard, state: HaLifecycleState, snap: HaLifecycle.Snapshot?) {
@@ -310,34 +297,37 @@ internal class HaLifecycleBar private constructor(
     }
 
     /**
-     * Finished steps sit full and later ones empty; the current step animates linearly over one second
-     * toward where the snapshot clock will be at the next update, so it moves continuously rather than in
-     * steps, and never back within a step. A freshly shown step jumps straight to its value.
+     * The track animates linearly over one second toward where the snapshot clock will be at the next
+     * update, so it moves continuously rather than in steps, and never back while the card stays up. A
+     * freshly shown card starts at the snapshot's own position.
      */
     private fun fill(card: HaLifecycleCard, state: HaLifecycleState, snap: HaLifecycle.Snapshot?) {
         segmentAnimator?.cancel()
-        val freshStep = !visible || shownStep != card.step
+        val fresh = !visible || shownStep == null
         shownStep = card.step
-        parts.segments.forEachIndexed { i, bar -> if (i != card.step?.ordinal || freshStep) bar.progress = card.fills[i] }
-        val i = card.step?.ordinal ?: return
-        val bar = parts.segments[i]
-        val next = maxOf(bar.progress, nextFill(card, i, state, snap))
-        segmentAnimator = ObjectAnimator.ofInt(bar, "progress", bar.progress, next).apply {
+        val start = parts.segments.mapIndexed { i, bar -> if (fresh) card.fills[i] else maxOf(bar.progress, card.fills[i]) }
+        val end = nextFills(card, state, snap).mapIndexed { i, next -> maxOf(next, start[i]) }
+        parts.segments.forEachIndexed { i, bar -> bar.progress = start[i] }
+        segmentAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = TICK_MS
             interpolator = LinearInterpolator()
+            addUpdateListener { animation ->
+                val f = animation.animatedValue as Float
+                parts.segments.forEachIndexed { i, bar -> bar.progress = start[i] + ((end[i] - start[i]) * f).toInt() }
+            }
             start()
         }
     }
 
-    /** Where the current step's fill will be one tick from now: the same rule, one second later. */
-    private fun nextFill(card: HaLifecycleCard, i: Int, state: HaLifecycleState, snap: HaLifecycle.Snapshot?): Int {
-        snap ?: return card.fills[i]
+    /** Where the track will be one tick from now: the same rule, one second later. */
+    private fun nextFills(card: HaLifecycleCard, state: HaLifecycleState, snap: HaLifecycle.Snapshot?): List<Int> {
+        snap ?: return card.fills
         val ahead = snap.copy(
             elapsedMs = snap.elapsedMs?.plus(TICK_MS),
             backOnlineRemainingMs = (snap.backOnlineRemainingMs - TICK_MS).coerceAtLeast(0L),
         )
-        val later = haLifecycleCard(state, ahead, dashboardConnected, stepFrom)
-        return if (later.step == card.step) later.fills[i] else card.fills[i]
+        val later = haLifecycleCard(state, ahead, dashboardConnected)
+        return if (later.step == card.step) later.fills else card.fills
     }
 
     fun detach() {

@@ -20,10 +20,10 @@ class HaLifecycleCardTest {
     private fun HaLifecycle.notice(phase: HaLifecyclePhase, nowMs: Long, elapsedMs: Long? = 0L, expectedMs: Long? = 100_000L) =
         onNativeNotice(HaLifecycleNotice(phase, HaLifecycleReason.RESTART, elapsedMs, expectedMs), nowMs)
 
-    private fun cardAt(tracker: HaLifecycle, nowMs: Long, stepFrom: Int? = null, dashboardConnected: Boolean = false): HaLifecycleCard? {
+    private fun cardAt(tracker: HaLifecycle, nowMs: Long, dashboardConnected: Boolean = false): HaLifecycleCard? {
         val snap = tracker.snapshot(nowMs)
         val state = haLifecycleNoticeState(snap, live(dashboardConnected)) ?: return null
-        return haLifecycleCard(state, snap, dashboardConnected, stepFrom)
+        return haLifecycleCard(state, snap, dashboardConnected)
     }
 
     @Test fun aMeasuredRestartCountsDownWhileStoppingFillsTheFirstStep() {
@@ -32,28 +32,39 @@ class HaLifecycleCardTest {
         assertEquals(HaRestartStep.STOPPING, card.step)
         assertEquals(75_000L, card.remainingMs)
         assertEquals(100_000L, card.usualMs)
-        // Stopping fills over the first half of the usual time; nothing later has started.
-        assertEquals(listOf(max / 2, 0, 0), card.fills)
+        // One timeline over three parts: a quarter of the usual time is three quarters of the first part.
+        assertEquals(listOf(max * 3 / 4, 0, 0), card.fills)
     }
 
-    @Test fun startingFillsFromWhereTheRestartWasWhenItStartedToTheUsualTime() {
+    @Test fun panelsAtTheSameMomentShowTheSameTrackWhateverStepEachIsIn() {
         val tracker = HaLifecycle().apply {
             notice(HaLifecyclePhase.SHUTTING_DOWN, 0L)
             notice(HaLifecyclePhase.STARTING, 40_000L, elapsedMs = 40_000L)
         }
-        val from = (40_000L * max / 100_000L).toInt()
-        val atStart = cardAt(tracker, 40_000L, from)!!
-        assertEquals(HaRestartStep.STARTING, atStart.step)
-        assertEquals("a finished step is full and the new one starts empty", listOf(max, 0, 0), atStart.fills)
-        val halfway = cardAt(tracker, 70_000L, from)!!
-        assertEquals(listOf(max, max / 2, 0), halfway.fills)
-        assertEquals(30_000L, halfway.remainingMs)
+        // At 80% of the usual time one panel's dashboard has reconnected and another's has not.
+        val reloading = cardAt(tracker, 80_000L, dashboardConnected = true)!!
+        val starting = cardAt(tracker, 80_000L, dashboardConnected = false)!!
+        assertEquals(HaRestartStep.RELOADING, reloading.step)
+        assertEquals(HaRestartStep.STARTING, starting.step)
+        assertEquals(listOf(max, max, max * 2 / 5), reloading.fills)
+        assertEquals("the track is the clock, not this panel's step", reloading.fills, starting.fills)
+        assertEquals(20_000L, starting.remainingMs)
+    }
+
+    @Test fun aFinishedStepIsFullEvenWhenTheClockIsBehindIt() {
+        val tracker = HaLifecycle().apply {
+            notice(HaLifecyclePhase.SHUTTING_DOWN, 0L)
+            notice(HaLifecyclePhase.STARTING, 10_000L, elapsedMs = 10_000L)
+        }
+        // A fifth of the usual time would fill only 60% of Stopping, but Stopping has finished.
+        assertEquals(listOf(max, 0, 0), cardAt(tracker, 20_000L)!!.fills)
     }
 
     @Test fun anOverdueRestartSitsFullAndCountsUpWithoutRunningBackwards() {
         val tracker = HaLifecycle().apply { notice(HaLifecyclePhase.STARTING, 0L, elapsedMs = 0L, expectedMs = 30_000L) }
-        val card = cardAt(tracker, 54_000L, stepFrom = 0)!!
-        assertEquals(listOf(max, max, 0), card.fills)
+        val card = cardAt(tracker, 54_000L)!!
+        assertEquals("the usual time is used up; the step name and pill say where it is", listOf(max, max, max), card.fills)
+        assertEquals(HaRestartStep.STARTING, card.step)
         assertNull(card.remainingMs)
         assertEquals(24_000L, card.overdueMs)
         assertEquals("+0:24", "+" + haLifecycleClock(card.overdueMs!!))
@@ -75,11 +86,9 @@ class HaLifecycleCardTest {
             notice(HaLifecyclePhase.SHUTTING_DOWN, 0L)
             notice(HaLifecyclePhase.STARTING, 40_000L, elapsedMs = 40_000L)
         }
-        val from = (60_000L * max / 100_000L).toInt()
-        val card = cardAt(tracker, 80_000L, stepFrom = from, dashboardConnected = true)!!
+        val card = cardAt(tracker, 80_000L, dashboardConnected = true)!!
         assertEquals(HaRestartStep.RELOADING, card.step)
-        assertEquals("Stopping and Starting are done; Reloading fills toward the usual time",
-            listOf(max, max, max / 2), card.fills)
+        assertEquals(listOf(max, max, max * 2 / 5), card.fills)
         assertEquals("Home Assistant is not ready yet, so the countdown goes on", 20_000L, card.remainingMs)
         assertNull(card.restartedInMs)
         assertNull("the card closes once Home Assistant is ready with the dashboard connected",
@@ -94,7 +103,7 @@ class HaLifecycleCardTest {
         val card = cardAt(tracker, 67_000L)!!
         assertEquals(HaRestartStep.RELOADING, card.step)
         assertNull("no countdown once Home Assistant is up", card.remainingMs)
-        assertEquals(listOf(max, max, max / 2), card.fills)
+        assertEquals("past the usual time the track is full", listOf(max, max, max), card.fills)
         assertEquals(113_000L, card.restartedInMs)
     }
 
