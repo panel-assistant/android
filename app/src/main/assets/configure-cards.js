@@ -208,9 +208,13 @@
   // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read every few
   // seconds while the page is visible on a panel with a microphone, through failed requests too, and at
   // once when the page becomes visible again, so a mute switch pressed meanwhile shows within seconds.
-  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false, voiceMicrophoneTimer = null;
+  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false, voiceMicrophoneTimer = null, voiceMicrophoneWatched = false;
   function loadVoiceMicrophone() {
     if (voiceMicrophoneLoading || Date.now() - voiceMicrophoneAt < 3000) return;
+    if (!voiceMicrophoneWatched) {
+      voiceMicrophoneWatched = true;
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) rereadVoiceMicrophone(); });
+    }
     voiceMicrophoneLoading = true;
     fetch("api/v1/voice/microphone", { headers: { "Accept": "application/json" }, cache: "no-store" })
       .then(function (r) { if (!r.ok) throw r.status; return r.json(); })
@@ -230,9 +234,6 @@
       });
   }
   function rereadVoiceMicrophone() { voiceMicrophoneAt = 0; loadVoiceMicrophone(); }
-  document.addEventListener("visibilitychange", function () {
-    if (!document.hidden && voiceMicrophoneAt) rereadVoiceMicrophone();
-  });
 
   // True only when the panel does not offer voice at all.
   function voiceGroupUnavailable() {
