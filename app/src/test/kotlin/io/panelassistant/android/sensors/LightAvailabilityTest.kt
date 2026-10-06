@@ -1,15 +1,15 @@
 package io.panelassistant.android.sensors
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
  * The YC-SM10P declares an `em3071x` light part its bus never answers for. `getDefaultSensor` still
  * returns it, so presence advertised an illuminance entity that stored 50 empty Home Assistant states
- * over 30 days while the HAL logged `Error activating sensor 3`. These tests pin the distinction
- * between a declared part and a working one.
+ * over 30 days while the HAL logged `Error activating sensor 3`. These tests pin the rule that
+ * replaced presence (maintainer, 2026-10-06): a sensor is described once it has reported on this
+ * install and kept after that; one that never reported is never described.
  */
 class LightAvailabilityTest {
     /** Collects scheduled acquire timers so a test fires or cancels them explicitly. */
@@ -30,83 +30,109 @@ class LightAvailabilityTest {
         }
     }
 
-    private fun tracker(present: Boolean = true, timers: Timers = Timers(), onChange: () -> Unit = {}) =
-        LightAvailabilityTracker(
-            present = present,
-            acquireTimeoutMs = ACQUIRE_MS,
-            schedule = timers::schedule,
-            onChange = onChange,
-        )
+    private fun tracker(
+        present: Boolean = true,
+        reported: Boolean = false,
+        declaredAbsent: Boolean = false,
+        timers: Timers = Timers(),
+        onFirstReading: () -> Unit = {},
+        onChange: () -> Unit = {},
+    ) = LightAvailabilityTracker(
+        present = present,
+        acquireTimeoutMs = ACQUIRE_MS,
+        schedule = timers::schedule,
+        reported = reported,
+        declaredAbsent = declaredAbsent,
+        onFirstReading = onFirstReading,
+        onChange = onChange,
+    )
 
-    @Test fun `a refused registration is unavailable and says so in the start log`() {
+    @Test fun `a sensor that has never reported is left out until it settles, then stated absent`() {
         var changes = 0
-        val subject = tracker(onChange = { changes++ })
+        val timers = Timers()
+        val subject = tracker(timers = timers, onChange = { changes++ })
 
-        // Optimistic before the answer is known: a healthy panel must not withdraw its entity at boot.
-        assertTrue(subject.available())
+        // Neither described nor stated absent while nothing is known.
+        assertNull(subject.channel())
+        subject.registered(ok = true)
+        assertNull(subject.channel())
+
+        timers.fireAll()
+
+        assertEquals(false, subject.channel())
+        assertEquals("failed", subject.label())
+        assertEquals(1, changes)
+    }
+
+    @Test fun `a refused registration on a sensor that never reported is stated absent`() {
+        val subject = tracker()
 
         subject.registered(ok = false)
 
-        assertFalse(subject.available())
+        assertEquals(false, subject.channel())
         assertEquals(LightAvailability.UNAVAILABLE, subject.state)
-        // The start log reports what activated, not what the device tree declared.
-        assertEquals("failed", subject.label())
-        assertEquals(1, changes)
     }
 
-    @Test fun `a working sensor stays available and schedules no withdrawal`() {
+    @Test fun `the first reading describes the channel, records it once and asks for a re-announce`() {
         var changes = 0
+        var recorded = 0
         val timers = Timers()
-        val subject = tracker(timers = timers, onChange = { changes++ })
+        val subject = tracker(timers = timers, onFirstReading = { recorded++ }, onChange = { changes++ })
 
         subject.registered(ok = true)
-        assertEquals(LightAvailability.ACQUIRING, subject.state)
-        assertEquals(ACQUIRE_MS, timers.pending.single().first)
-
+        subject.reading()
         subject.reading()
 
-        assertTrue(subject.available())
-        assertEquals(LightAvailability.AVAILABLE, subject.state)
+        assertEquals(true, subject.channel())
         assertEquals("available", subject.label())
+        assertEquals(1, recorded)
+        assertEquals(1, changes)
         // The acquire window is cancelled, so firing every remaining timer cannot withdraw a live sensor.
         assertEquals(1, timers.cancelled)
         timers.fireAll()
-        assertTrue(subject.available())
-        // Available throughout: nothing was ever withdrawn, so no re-announce was requested.
+        assertEquals(true, subject.channel())
+    }
+
+    @Test fun `a sensor that reported is kept through a later refused, silent or stopped run`() {
+        var changes = 0
+        val timers = Timers()
+        val subject = tracker(timers = timers, onChange = { changes++ })
+        subject.registered(ok = true)
+        subject.reading()
+        changes = 0
+
+        subject.stop()
+        subject.registered(ok = true)
+        timers.fireAll()
+        assertEquals(true, subject.channel())
+        subject.registered(ok = false)
+        assertEquals(true, subject.channel())
+        assertEquals(LightAvailability.UNAVAILABLE, subject.state)
         assertEquals(0, changes)
     }
 
-    @Test fun `a registration that never reports stops being advertised when the window expires`() {
-        var changes = 0
-        val timers = Timers()
-        val subject = tracker(timers = timers, onChange = { changes++ })
+    @Test fun `a reading recorded by an earlier process keeps the channel from the first moment`() {
+        // A restart or an app update builds a new tracker from the stored flag.
+        var recorded = 0
+        val subject = tracker(reported = true, onFirstReading = { recorded++ })
 
-        subject.registered(ok = true)
-        assertTrue(subject.available())
-
-        timers.fireAll()
-
-        assertFalse(subject.available())
-        assertEquals(LightAvailability.UNAVAILABLE, subject.state)
-        assertEquals("failed", subject.label())
-        assertEquals(1, changes)
+        assertEquals(true, subject.channel())
+        subject.registered(ok = false)
+        assertEquals(true, subject.channel())
+        subject.reading()
+        assertEquals(0, recorded)
     }
 
-    @Test fun `a late reading restores a sensor that only woke slowly`() {
-        var changes = 0
-        val timers = Timers()
-        val subject = tracker(timers = timers, onChange = { changes++ })
+    @Test fun `a profile declaring no light sensor settles absence at once, and a reading still wins`() {
+        val subject = tracker(declaredAbsent = true)
 
+        assertEquals(false, subject.channel())
         subject.registered(ok = true)
-        timers.fireAll()
-        assertFalse(subject.available())
+        assertEquals(false, subject.channel())
 
         subject.reading()
 
-        assertTrue(subject.available())
-        assertEquals(LightAvailability.AVAILABLE, subject.state)
-        // Withdrawn once, restored once: each transition re-announces exactly once.
-        assertEquals(2, changes)
+        assertEquals(true, subject.channel())
     }
 
     @Test fun `an expired timer from a previous run cannot withdraw the current one`() {
@@ -122,10 +148,10 @@ class LightAvailabilityTest {
         staleWindow.invoke()
 
         assertEquals(LightAvailability.ACQUIRING, subject.state)
-        assertTrue(subject.available())
+        assertNull(subject.channel())
     }
 
-    @Test fun `stop keeps the verdict, so a dead sensor is not re-advertised at every restart`() {
+    @Test fun `stop keeps the verdict, so a dead sensor is not re-announced at every restart`() {
         var changes = 0
         val subject = tracker(onChange = { changes++ })
 
@@ -133,45 +159,27 @@ class LightAvailabilityTest {
         assertEquals(1, changes)
 
         subject.stop()
-
-        // Ending a run learns nothing new about the hardware. Resetting here would re-advertise the
-        // entity on every service stop and withdraw it again at the next start.
-        assertEquals(LightAvailability.UNAVAILABLE, subject.state)
-        assertFalse(subject.available())
-        assertEquals(1, changes)
-
-        // A restart that fails the same way is silent.
         subject.registered(ok = false)
-        assertFalse(subject.available())
+
+        assertEquals(false, subject.channel())
         assertEquals(1, changes)
-    }
-
-    @Test fun `a sensor that starts working after a failed run is advertised again`() {
-        var changes = 0
-        val subject = tracker(onChange = { changes++ })
-
-        subject.registered(ok = false)
-        subject.stop()
-        subject.registered(ok = true)
-
-        assertEquals(LightAvailability.ACQUIRING, subject.state)
-        assertTrue(subject.available())
-        assertEquals(2, changes)
     }
 
     @Test fun `no declared sensor is absent and no registration result can revive it`() {
         var changes = 0
-        val subject = tracker(present = false, onChange = { changes++ })
+        var recorded = 0
+        val subject = tracker(present = false, onFirstReading = { recorded++ }, onChange = { changes++ })
 
-        assertFalse(subject.available())
+        assertEquals(false, subject.channel())
         assertEquals("absent", subject.label())
 
         subject.registered(ok = true)
         subject.reading()
 
-        assertFalse(subject.available())
+        assertEquals(false, subject.channel())
         assertEquals(LightAvailability.ABSENT, subject.state)
         assertEquals(0, changes)
+        assertEquals(0, recorded)
     }
 
     private companion object {

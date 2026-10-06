@@ -2025,6 +2025,7 @@ class PaneldService : Service() {
             hasMicrophone = microphonePresence().offered,
             media = media.takeIf { profile.hasSpeaker },
             hasCamera = { cameraReason().takeUnless { it == CameraCapabilityReason.UNDETERMINED }?.capable },
+            lightChannel = sensors::lightChannel,
             autoBright = autoBright,
             onAutoBrightnessConfigChanged = { refreshAdaptiveBrightnessInputs() },
             autoSleepActivity = { autoSleep.activitySnapshot() },
@@ -3100,7 +3101,7 @@ class PaneldService : Service() {
             Capabilities(
                 hasProximity = sensors.hasProximity(),
                 hasLearnedProximity = sensors.hasLearnedProximity(),
-                hasLight = sensors.lightAvailable(),
+                hasLight = sensors.lightChannel() == true,
                 hasTemperature = sensors.hasTemperature(),
                 hasHumidity = sensors.hasHumidity(),
                 hasWifi = wifiAvailable.rssi,

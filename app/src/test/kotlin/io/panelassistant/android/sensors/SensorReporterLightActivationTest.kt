@@ -15,6 +15,7 @@ import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,41 +41,61 @@ class SensorReporterLightActivationTest {
         override fun getPackageName(): String = "io.github.maxlyth.hapaneld"
     }
 
-    private fun reporter(activates: Boolean, hasProximity: Boolean = false): Pair<SensorReporter, FakeSensorManager> {
+    private fun reporter(
+        activates: Boolean,
+        hasProximity: Boolean = false,
+        prefs: SharedPreferences = proxyPreferences(),
+        profileId: String = "generic",
+    ): Pair<SensorReporter, FakeSensorManager> {
         val sensors = FakeSensorManager(activates, hasProximity)
-        val prefs = proxyPreferences()
         val files = Files.createTempDirectory("sensor-reporter").toFile().also { it.deleteOnExit() }
         val context = FakeContext(files, prefs, sensors)
-        return SensorReporter(context, newConfig(prefs, context.contentResolver), fakeProfile()) to sensors
+        return SensorReporter(context, newConfig(prefs, context.contentResolver), fakeProfile(id = profileId)) to sensors
     }
 
-    @Test fun `a light sensor that refuses to activate is present but not available`() {
+    @Test fun `a light sensor that has never reported is not described, and refusing to activate settles it absent`() {
         val (reporter, sensors) = reporter(activates = false)
 
         // Presence is unchanged: the diagnostics row still reports the part the device tree declares.
         assertTrue(reporter.hasLight())
-        // Optimistic until the answer is known, so a healthy panel does not churn its entity at boot.
-        assertTrue(reporter.lightAvailable())
+        // Never reported on this install: no entity, and nothing stated until the answer is known.
+        assertNull(reporter.lightChannel())
 
         reporter.start(onLux = {}, onProximity = { _, _, _ -> })
 
         assertEquals(1, sensors.lightRegistrations)
-        // The advertised answer, which Capabilities.hasLight and therefore MQTT discovery reads.
-        assertFalse(reporter.lightAvailable())
-        assertTrue(reporter.hasLight())
+        assertEquals(false, reporter.lightChannel())
         reporter.stop()
-        // The verdict survives the run that reached it; a restart must not re-advertise a dead part.
-        assertFalse(reporter.lightAvailable())
+        // The verdict survives the run that reached it.
+        assertEquals(false, reporter.lightChannel())
     }
 
-    @Test fun `a light sensor that activates stays available while it acquires`() {
+    @Test fun `a light sensor that activates but has never reported stays undescribed while it acquires`() {
         val (reporter, sensors) = reporter(activates = true)
 
         reporter.start(onLux = {}, onProximity = { _, _, _ -> })
 
         assertEquals(1, sensors.lightRegistrations)
-        assertTrue(reporter.lightAvailable())
+        assertNull(reporter.lightChannel())
         reporter.stop()
+    }
+
+    @Test fun `a sensor that reported before a restart or app update stays described when its next read fails`() {
+        val prefs = proxyPreferences()
+        // What the first reading wrote; app data, and so this flag, survives a restart and an in-place update.
+        newConfig(prefs, object : ContentResolver(null) {}).lightSensorReported = true
+        val (reporter, _) = reporter(activates = false, prefs = prefs)
+
+        assertEquals(true, reporter.lightChannel())
+        reporter.start(onLux = {}, onProximity = { _, _, _ -> })
+        assertEquals(true, reporter.lightChannel())
+        reporter.stop()
+    }
+
+    @Test fun `a specific profile that names no light technology settles absence before any run`() {
+        val (reporter, _) = reporter(activates = true, profileId = "wf1589t")
+
+        assertEquals(false, reporter.lightChannel())
     }
 
     @Test fun `learned proximity is settled at once on a panel with no proximity source`() {

@@ -394,6 +394,18 @@ class Config private constructor(
             Unit
         }
 
+    /**
+     * Whether this panel's light sensor has delivered a reading on this install. Once true, the
+     * illuminance entity stays described through any later failed or missing reading; never true, it
+     * is not described at all. Device-local: a restore onto other hardware proves nothing about it.
+     */
+    var lightSensorReported: Boolean
+        get() = prefs.getBoolean(LIGHT_SENSOR_REPORTED_PREF, false)
+        set(value) = synchronized(CONFIG_LOCK) {
+            prefs.edit().putBoolean(LIGHT_SENSOR_REPORTED_PREF, value).commit()
+            Unit
+        }
+
     var setupRenderAttestation: String
         get() = prefs.getString(SETUP_RENDER_ATTESTED_PREF, "") ?: ""
         set(value) = synchronized(CONFIG_LOCK) {
@@ -2824,6 +2836,7 @@ class Config private constructor(
         private const val HA_AREA_USER_OVERRIDE_PREF = "device_local_ha_area_user_override"
         private const val SETUP_RENDER_ATTESTED_PREF = "device_local_setup_render_attested"
         private const val SETUP_EVER_COMPLETED_PREF = "device_local_setup_ever_completed"
+        private const val LIGHT_SENSOR_REPORTED_PREF = "device_local_light_sensor_reported"
         private const val MQTT_FAMILY_BROKER_PREF = "device_local_mqtt_family_broker"
         private const val MQTT_FAMILY_IPV4_PREF = "device_local_mqtt_family_ipv4"
         private const val MQTT_ANNOUNCEMENT_BOUNDARY_PREF =
