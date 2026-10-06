@@ -206,8 +206,9 @@
 
   // What the panel's microphone is and what its own capture check found (GET api/v1/voice/microphone),
   // so the Voice card says why voice is quiet instead of vanishing or failing silently. Re-read every few
-  // seconds while the page shows a panel with a microphone.
-  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false;
+  // seconds while the page is visible on a panel with a microphone, through failed requests too, and at
+  // once when the page becomes visible again, so a mute switch pressed meanwhile shows within seconds.
+  var voiceMicrophone = null, voiceMicrophoneAt = 0, voiceMicrophoneLoading = false, voiceMicrophoneTimer = null;
   function loadVoiceMicrophone() {
     if (voiceMicrophoneLoading || Date.now() - voiceMicrophoneAt < 3000) return;
     voiceMicrophoneLoading = true;
@@ -217,12 +218,21 @@
         var changed = JSON.stringify(d) !== JSON.stringify(voiceMicrophone);
         voiceMicrophone = d;
         if (changed) cfg.render();
-        // Kept current while the page is visible, so a mute switch pressed now shows within seconds.
-        if (d && (d.check === "running" || (d.presence !== "absent" && !document.hidden))) setTimeout(loadVoiceMicrophone, 3000);
       })
-      .catch(function () { /* the card stays as the schema draws it */ })
-      .then(function () { voiceMicrophoneLoading = false; voiceMicrophoneAt = Date.now(); });
+      .catch(function () { /* the card keeps what it last knew; the next read retries */ })
+      .then(function () {
+        voiceMicrophoneLoading = false;
+        voiceMicrophoneAt = Date.now();
+        // A panel with no microphone has nothing to re-read; a hidden page waits for visibilitychange.
+        var absent = voiceMicrophone && voiceMicrophone.presence === "absent" && voiceMicrophone.check !== "running";
+        clearTimeout(voiceMicrophoneTimer);
+        if (!absent && !document.hidden) voiceMicrophoneTimer = setTimeout(rereadVoiceMicrophone, 3000);
+      });
   }
+  function rereadVoiceMicrophone() { voiceMicrophoneAt = 0; loadVoiceMicrophone(); }
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && voiceMicrophoneAt) rereadVoiceMicrophone();
+  });
 
   // True only when the panel does not offer voice at all.
   function voiceGroupUnavailable() {

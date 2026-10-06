@@ -19,17 +19,48 @@ class MicrophonePresenceTest {
         }
     }
 
-    @Test fun `the mute is reported once per press, and an unreadable mute reads as unmuted`() {
+    @Test fun `the mute is published once per press, and an unreadable mute reads as unmuted`() {
         var reading: () -> Boolean = { false }
-        val mute = MicrophoneMute { reading() }
-        val seen = mutableListOf<Pair<Boolean, Boolean>>()
-        fun poll() { seen += mute.refresh() to mute.muted }
-        poll()
+        val published = mutableListOf<Boolean>()
+        val mute = MicrophoneMute(read = { reading() }, publish = { published += it })
+        mute.refresh()
         reading = { true }
-        poll()
-        poll()
+        mute.refresh()
+        mute.refresh()
         reading = { error("audio service gone") }
-        poll()
-        assertEquals(listOf(false to false, true to true, false to true, true to false), seen)
+        mute.refresh()
+        assertEquals(listOf(true, false), published)
+        assertEquals(false, mute.muted)
+    }
+
+    @Test fun `a refresh that reads later publishes later, so an old mute never lands after a newer unmute`() {
+        // Thread A reads "muted"; while A is publishing, thread B reads "unmuted". A slow publish of A's
+        // reading must not land after B's, or the chip would say muted on an unmuted panel indefinitely.
+        var reading = true
+        val published = java.util.Collections.synchronizedList(mutableListOf<Boolean>())
+        var other: Thread? = null
+        lateinit var mute: MicrophoneMute
+        mute = MicrophoneMute(read = { reading }, publish = { value ->
+            if (value && other == null) {
+                reading = false
+                other = Thread { mute.refresh() }.also { it.start() }
+                Thread.sleep(300) // B runs now if nothing holds it back
+            }
+            published += value
+        })
+        mute.refresh()
+        other!!.join(5_000)
+        assertEquals(listOf(true, false), published.toList())
+        assertEquals(false, mute.muted)
+    }
+
+    @Test fun `nothing is published once closed`() {
+        var reading = false
+        val published = mutableListOf<Boolean>()
+        val mute = MicrophoneMute(read = { reading }, publish = { published += it })
+        mute.close()
+        reading = true
+        mute.refresh()
+        assertEquals(emptyList<Boolean>(), published)
     }
 }

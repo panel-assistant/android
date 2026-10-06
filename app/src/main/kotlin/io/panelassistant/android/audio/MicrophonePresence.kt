@@ -51,21 +51,32 @@ enum class MicrophonePresence {
 
 /**
  * Android's aggregate microphone mute (`AudioManager.isMicrophoneMute`), which a hardware privacy switch
- * such as the Tuya TPA10's sets. Re-read when Android announces a change; [refresh] reports only a
+ * such as the Tuya TPA10's sets. Re-read when Android announces a change; [refresh] publishes only a
  * change, so a caller acts once per press.
+ *
+ * Reading and publishing happen under one lock, so two refreshes on different threads publish in the
+ * order they read: an older mute can never be published after a newer unmute and leave the chip stale.
  */
-class MicrophoneMute(private val read: () -> Boolean) {
+class MicrophoneMute(private val read: () -> Boolean, private val publish: (muted: Boolean) -> Unit) {
     @Volatile
     var muted: Boolean = false
         private set
+    private var closed = false
 
-    /** Read the mute again; true when it changed. */
+    /** Read the mute again and publish it if it changed; nothing is published once [close]d. */
     @Synchronized
-    fun refresh(): Boolean {
+    fun refresh() {
+        if (closed) return
         val now = runCatching(read).getOrDefault(false)
-        if (now == muted) return false
+        if (now == muted) return
         muted = now
-        return true
+        publish(now)
+    }
+
+    /** Stop publishing; waits for a refresh in progress, so nothing is published after it returns. */
+    @Synchronized
+    fun close() {
+        closed = true
     }
 }
 

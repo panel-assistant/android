@@ -20,25 +20,23 @@ import kotlinx.coroutines.launch
 internal class MicrophoneMuteWatch(
     private val context: Context,
     offered: () -> Boolean,
-    private val onChange: (muted: Boolean) -> Unit,
+    onChange: (muted: Boolean) -> Unit,
 ) : AutoCloseable {
-    val mute = MicrophoneMute { offered() && context.getSystemService(AudioManager::class.java)?.isMicrophoneMute == true }
+    val mute = MicrophoneMute(
+        read = { offered() && context.getSystemService(AudioManager::class.java)?.isMicrophoneMute == true },
+        publish = onChange,
+    )
     private var receiver: BroadcastReceiver? = null
-
-    @Volatile private var closed = false
-
-    private fun follow() {
-        if (!closed && mute.refresh()) onChange(mute.muted)
-    }
+    private var closed = false
 
     @Synchronized
     fun start(scope: CoroutineScope) {
         if (closed || receiver != null) return
-        scope.launch { follow() }
+        scope.launch { mute.refresh() }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         val listener = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                scope.launch { follow() }
+                scope.launch { mute.refresh() }
             }
         }
         val filter = IntentFilter(AudioManager.ACTION_MICROPHONE_MUTE_CHANGED)
@@ -57,6 +55,7 @@ internal class MicrophoneMuteWatch(
     @Synchronized
     override fun close() {
         closed = true
+        mute.close()
         receiver?.let { runCatching { context.unregisterReceiver(it) } }
         receiver = null
     }
