@@ -916,7 +916,7 @@ internal fun bundledLegacyHelperTakeoverCommand(
 
 /**
  * The only helper is the one this app publishes: no boot binary, boot registration, provisioner
- * custody, recovery journal or takeover record may exist, or a second root authority would appear
+ * custody, recovery journal, takeover record or Guard DB state beyond its owner lock may exist, or a second root authority would appear
  * beside one that a reboot or a running transaction brings back. Under the shared helper lock the
  * staged candidate replaces any earlier `/data/local` copy that is not running (a reboot keeps the file
  * and loses the process), then supervises itself and must prove its exact bytes and Guard capabilities.
@@ -974,15 +974,28 @@ internal fun bundledFreshHelperInstallCommand(
           if exact_candidate "${dollar}stage"; then rm -f "${dollar}stage"; fi
           exit 1
         }
-        for authority in \
-          $BUNDLED_HELPER_FOREIGN_JOURNALS \
-          $otherHelpers \
-          "${dollar}data_local/.hapaneld-helper.legacy-takeover" \
-          "${dollar}data_local/.hapaneld-helper.legacy-takeover.tmp" \
-          "${dollar}data_local/.hapaneld-helper.previous" \
-          "${dollar}data_local/.hapaneld-helper.previous.tmp"; do
-          absent "${dollar}authority" || refuse
-        done
+        # Guard recovery custody is durable on disk, whatever the socket or the app's own data say.
+        # Empty means what the helper itself accepts as empty: nothing but its owner lock.
+        guard_empty() {
+          guard=${dollar}data_local/.hapaneld-guard-db
+          absent "${dollar}guard" && return 0
+          [ -d "${dollar}guard" ] && [ ! -L "${dollar}guard" ] || return 1
+          entries=${dollar}(ls -A "${dollar}guard") || return 1
+          for entry in ${dollar}entries; do [ "${dollar}entry" = .owner.lock ] || return 1; done
+        }
+        no_other_authority() {
+          for authority in \
+            $BUNDLED_HELPER_FOREIGN_JOURNALS \
+            $otherHelpers \
+            "${dollar}data_local/.hapaneld-helper.legacy-takeover" \
+            "${dollar}data_local/.hapaneld-helper.legacy-takeover.tmp" \
+            "${dollar}data_local/.hapaneld-helper.previous" \
+            "${dollar}data_local/.hapaneld-helper.previous.tmp"; do
+            absent "${dollar}authority" || return 1
+          done
+          guard_empty
+        }
+        no_other_authority || refuse
         if ! absent "${dollar}live"; then
           [ -f "${dollar}live" ] && [ ! -L "${dollar}live" ] || refuse
           case "${dollar}(file_meta "${dollar}live")" in 0:0:700:1:*) ;; *) refuse ;; esac
@@ -1014,6 +1027,8 @@ internal fun bundledFreshHelperInstallCommand(
         }
 
         stop_live || exit 1
+        # A copy stopped just now may have been writing custody; nothing runs it from here on.
+        no_other_authority || refuse
         if exact_candidate "${dollar}stage"; then mv -f "${dollar}stage" "${dollar}live" || exit 1; fi
         sync || exit 1
         exact_candidate "${dollar}live" && absent "${dollar}stage" || exit 1

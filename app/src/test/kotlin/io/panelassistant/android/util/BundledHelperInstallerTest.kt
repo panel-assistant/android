@@ -960,6 +960,13 @@ class BundledHelperInstallerTest {
             "data/local/.hapaneld-helper.legacy-takeover.tmp",
             "data/local/.hapaneld-helper.previous",
             "data/local/.hapaneld-helper.previous.tmp",
+            "data/local/.hapaneld-guard-db/manifest.v1",
+            "data/local/.hapaneld-guard-db/journal.v1",
+            "data/local/.hapaneld-guard-db/draft.v1",
+            "data/local/.hapaneld-guard-db/capture.v1",
+            "data/local/.hapaneld-guard-db/.journal.v1.tmp",
+            "data/local/.hapaneld-guard-db/a.apk",
+            "data/local/.hapaneld-guard-db/unrecognised",
         )
         authorities.forEach { path ->
             withFreshFiles { fixture ->
@@ -1004,6 +1011,52 @@ class BundledHelperInstallerTest {
                     filesystemRoot = fixture.root.absolutePath, polls = 1,
                 )))
                 assertTrue(running.isAlive)
+            } finally {
+                running.destroyForcibly()
+            }
+        }
+    }
+
+    @Test fun `fresh install accepts a Guard directory holding only its owner lock`() {
+        withFreshFiles { fixture ->
+            File(fixture.root, "data/local/.hapaneld-guard-db").apply { mkdirs() }
+                .resolve(".owner.lock").writeText("")
+            assertEquals(0, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            assertEquals(fixture.candidateBytes, fixture.live.readText())
+        }
+    }
+
+    @Test fun `fresh install refuses a Guard directory that is a link`() {
+        withFreshFiles { fixture ->
+            val elsewhere = File(fixture.root, "elsewhere").apply { mkdirs() }
+            Files.createSymbolicLink(File(fixture.root, "data/local/.hapaneld-guard-db").toPath(), elsewhere.toPath())
+            assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+            )))
+            assertFalse(fixture.live.exists())
+        }
+    }
+
+    @Test fun `fresh install refuses when a stopped copy leaves Guard custody behind`() {
+        withFreshFiles { fixture ->
+            File("/bin/bash").copyTo(fixture.live)
+            setMode(fixture.live, 700)
+            val guard = File(fixture.root, "data/local/.hapaneld-guard-db").apply { mkdirs() }
+            val earlier = fixture.live.readBytes()
+            val running = ProcessBuilder(
+                fixture.live.absolutePath, "-c",
+                "trap 'echo held > \"${guard.absolutePath}/journal.v1\"; exit 0' TERM; while :; do sleep 0.1; done",
+            ).start()
+            try {
+                Thread.sleep(300)
+                assertEquals(1, runTakeoverCommand(bundledFreshHelperInstallCommand(
+                    sha256(fixture.stage), stagedBuild, filesystemRoot = fixture.root.absolutePath, polls = 1,
+                )))
+                assertTrue(File(guard, "journal.v1").isFile)
+                assertTrue(earlier.contentEquals(fixture.live.readBytes()))
+                assertFalse(fixture.stage.exists())
             } finally {
                 running.destroyForcibly()
             }
