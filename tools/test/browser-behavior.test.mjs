@@ -2395,7 +2395,7 @@ browserTest('Configure reconciles structured partial failure instead of blindly 
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio') return json({ present: false });
     if (path === '/api/v1/proximity') return json({ present: false });
-  }, () => fixture({ 'configure.save.failed': '保存失败。' }, 'zh-Hans'));
+  }, () => fixture({ 'configure.save.refused': '未保存：{reason}' }, 'zh-Hans'));
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage();
   page.setDefaultTimeout(2_000);
@@ -2405,7 +2405,7 @@ browserTest('Configure reconciles structured partial failure instead of blindly 
   await page.locator('#cfg-friendly_name input').fill('Alpha');
   await page.locator('#cfg-touch_sound [role=switch]').click();
   await page.locator('#savebtn').click();
-  await page.getByText('保存失败。').waitFor();
+  await page.getByText('未保存：Panel name was saved, but touch_sound could not be durably accepted.').waitFor();
   assert.equal(await page.locator('#cfg-friendly_name input').inputValue(), 'Alpha');
   assert.equal(await page.locator('#cfg-touch_sound [role=switch]').getAttribute('aria-checked'), 'false');
   assert.equal(await page.locator('#savebtn').isDisabled(), true);
