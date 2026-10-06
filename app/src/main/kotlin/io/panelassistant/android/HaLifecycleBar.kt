@@ -460,7 +460,7 @@ internal class HaLifecycleBar private constructor(
                 }, LinearLayout.LayoutParams(px(MARK), px(MARK)).apply { marginEnd = px(12f) })
                 addView(text(BRAND, palette.muted, MEDIUM).apply {
                     text = context.getString(R.string.panel_assistant)
-                    maxLines = 1
+                    maxLines = 2
                     letterSpacing = 0.02f
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(pill)

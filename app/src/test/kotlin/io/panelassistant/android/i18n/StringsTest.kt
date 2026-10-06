@@ -47,6 +47,17 @@ class StringsTest {
         assertEquals("Keep {name} on MQTT.", Strings(source, draft).get("settings.example.help"))
     }
 
+    @Test fun `Czech and Brazilian Portuguese preview ordinary drafts while held and stale text stays English`() {
+        val source = SourceCatalogue.parse(english)
+        for ((locale, translated) in listOf("cs" to "Ponechat {name} v MQTT.", "pt-BR" to "Manter {name} no MQTT.")) {
+            fun catalogue(text: String, state: String, hash: String = sourceHash("Keep {name} on MQTT.")) =
+                TargetCatalogue.parse(target(text, state, hash).replace("\"locale\":\"de\"", "\"locale\":\"$locale\""), source)
+            assertEquals(LocalizedText(translated, locale), Strings(source, catalogue(translated, "machine-draft")).resolve("settings.example.help"))
+            assertEquals(LocalizedText("Keep {name} on MQTT.", "en"), Strings(source, catalogue("Keep {name} on MQTT.", "english-fallback")).resolve("settings.example.help"))
+            assertEquals(LocalizedText("Keep {name} on MQTT.", "en"), Strings(source, catalogue(translated, "machine-draft", "0".repeat(64))).resolve("settings.example.help"))
+        }
+    }
+
     @Test fun `missing target key falls back per key`() {
         val source = SourceCatalogue.parse(english)
         val emptyTarget = target("{name} auf MQTT behalten.", "machine-draft")

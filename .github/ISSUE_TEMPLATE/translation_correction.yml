@@ -21,6 +21,8 @@ body:
         - Dutch (nl)
         - Polish (pl)
         - Ukrainian (uk)
+        - Czech (cs)
+        - Brazilian Portuguese (pt-BR)
     validations:
       required: true
 

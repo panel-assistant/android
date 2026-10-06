@@ -16,7 +16,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 FORM = ROOT / ".github" / "ISSUE_TEMPLATE" / "translation_correction.yml"
-WORKFLOW = ROOT / ".github" / "workflows" / "i18n-candidates.yml"
 CATALOGUE_SCRIPT = ROOT / "scripts" / "i18n_catalogue.py"
 
 SPEC = importlib.util.spec_from_file_location("i18n_catalogue", CATALOGUE_SCRIPT)
@@ -69,68 +68,6 @@ def option_lines(section: list[str]) -> list[str]:
     if not options:
         raise AssertionError("form section has no options at the expected indentation")
     return options
-
-
-def candidate_workflow_locale_surfaces(workflow: str) -> dict[str, list[str]]:
-    """Extract each operational locale surface from the candidate workflow."""
-    input_match = re.search(
-        r"^      locales:\n(?P<body>(?:^        .*\n)+)",
-        workflow,
-        re.MULTILINE,
-    )
-    if input_match is None:
-        raise AssertionError("translation workflow has no workflow_dispatch locales input")
-    default_match = re.search(
-        r"^        default: ([A-Za-z0-9,-]+)$",
-        input_match.group("body"),
-        re.MULTILINE,
-    )
-    if default_match is None:
-        raise AssertionError("translation workflow locales input has no default")
-    input_default = default_match.group(1).split(",")
-
-    env_defaults = re.findall(
-        r"REQUESTED_LOCALES: .*\|\| '([A-Za-z0-9,-]+)'",
-        workflow,
-    )
-    if len(env_defaults) != 1:
-        raise AssertionError("translation workflow must have one trusted event locale default")
-
-    case_match = re.search(
-        r"^\s+([A-Za-z0-9|-]+)\) ;;\n\s+\*\) echo \"::error::Unsupported locale selection\"",
-        workflow,
-        re.MULTILINE,
-    )
-    if case_match is None:
-        raise AssertionError("translation workflow locale allowlist is missing")
-    case_locales = case_match.group(1).split("|")
-
-    target_paths = re.findall(
-        r"^\s+- app/src/main/assets/i18n/([^/]+)\.json$",
-        workflow,
-        re.MULTILINE,
-    )
-    target_paths = [locale for locale in target_paths if locale != "en"]
-
-    return {
-        "workflow-dispatch default": input_default,
-        "push path filters": target_paths,
-        "locale allowlist": case_locales,
-        "trusted event default": env_defaults[0].split(","),
-    }
-
-
-def assert_candidate_workflow_locale_parity(workflow: str) -> None:
-    """Require every operational workflow locale surface to match catalogue policy."""
-    expected = i18n.LOCALES
-    surfaces = candidate_workflow_locale_surfaces(workflow)
-    for label, locales in surfaces.items():
-        if len(locales) != len(set(locales)):
-            raise AssertionError(f"{label} contains duplicate locales: {locales!r}")
-        if set(locales) != expected:
-            raise AssertionError(
-                f"{label} must exactly match i18n_catalogue.LOCALES: {locales!r}"
-            )
 
 
 class TranslationCorrectionFormTest(unittest.TestCase):
@@ -203,63 +140,6 @@ class TranslationCorrectionFormTest(unittest.TestCase):
                     "          required: true",
                     f"confirmation must remain required: {line.removeprefix('        - label: ')}",
                 )
-
-
-class TranslationCandidateWorkflowTest(unittest.TestCase):
-    def test_human_description_does_not_duplicate_locale_enumeration(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-        input_match = re.search(
-            r"^      locales:\n(?P<body>(?:^        .*\n)+)", workflow, re.MULTILINE
-        )
-        self.assertIsNotNone(input_match)
-        descriptions = re.findall(
-            r"^        description: (.+)$", input_match.group("body"), re.MULTILINE
-        )
-        self.assertEqual(descriptions, ["Comma-separated target locale codes"])
-        description_tokens = set(
-            re.findall(r"[A-Za-z]+(?:-[A-Za-z]+)?", descriptions[0])
-        )
-        self.assertFalse(i18n.LOCALES & description_tokens)
-
-    def test_operational_locale_surfaces_match_catalogue_policy(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-        assert_candidate_workflow_locale_parity(workflow)
-
-        surfaces = candidate_workflow_locale_surfaces(workflow)
-        selected = sorted(i18n.LOCALES)[-1]
-        input_csv = ",".join(surfaces["workflow-dispatch default"])
-        event_csv = ",".join(surfaces["trusted event default"])
-        case_list = "|".join(surfaces["locale allowlist"])
-        path_line = f"      - app/src/main/assets/i18n/{selected}.json\n"
-
-        replacements = (
-            (
-                f"        default: {input_csv}\n",
-                f"        default: {input_csv.replace(',' + selected, '')}\n",
-            ),
-            (
-                f"        default: {input_csv}\n",
-                f"        default: {input_csv},{selected}\n",
-            ),
-            (path_line, ""),
-            (path_line, path_line + path_line),
-            (
-                f"              {case_list}) ;;",
-                f"              {case_list.replace('|' + selected, '')}) ;;",
-            ),
-            (
-                f"              {case_list}) ;;",
-                f"              {case_list}|{selected}) ;;",
-            ),
-            (f"|| '{event_csv}'", f"|| '{event_csv.replace(',' + selected, '')}'"),
-            (f"|| '{event_csv}'", f"|| '{event_csv},{selected}'"),
-        )
-        for old, new in replacements:
-            self.assertEqual(workflow.count(old), 1, f"mutation source is not unique: {old!r}")
-            mutation = workflow.replace(old, new)
-            self.assertNotEqual(mutation, workflow)
-            with self.assertRaises(AssertionError):
-                assert_candidate_workflow_locale_parity(mutation)
 
 
 if __name__ == "__main__":

@@ -4467,8 +4467,8 @@
       "hardMaxChars": 198
     },
     "configure.proximity.setup.no_source": {
-      "text": "Wake-to-wave is unavailable. Touch-to-wake remains available.",
-      "sourceHash": "fc08b46c5f11c807063e836506b0e635d95aa83a292eb8c87246679f896717ce",
+      "text": "Wake on wave is unavailable. Touch-to-wake remains available.",
+      "sourceHash": "3289aebbf56f13839cce39ea69f9f957ef682f9a52b1b92d1b2513ad36a74748",
       "surface": "configure",
       "context": "Proximity setup launched from the browser; physical instructions and Save appear on the panel. Preserve safety meaning and named placeholders; render as text, not HTML.",
       "risk": "ordinary",

@@ -3,6 +3,7 @@ import importlib.util
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -19,6 +20,27 @@ SPEC.loader.exec_module(i18n)
 
 
 class CatalogueTest(unittest.TestCase):
+    def test_czech_and_brazilian_portuguese_validate_without_admitting_other_portuguese(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_path = root / "en.json"
+            self.write(source_path, self.source())
+            source = i18n.validate_source(source_path)
+            for locale, text in (("cs", "Ponechat {name} v MQTT."), ("pt-BR", "Manter {name} no MQTT.")):
+                path = root / f"{locale}.json"
+                self.write(path, {
+                    "schema": 1, "locale": locale, "sourceRevision": source["sourceRevision"],
+                    "strings": {"settings.example.help": {
+                        "text": text, "sourceHash": source["strings"]["settings.example.help"]["sourceHash"],
+                        "state": "machine-draft",
+                    }},
+                })
+                with self.subTest(locale=locale):
+                    self.assertEqual(i18n.validate_target(path, source)["locale"], locale)
+            for locale in ("pt", "pt-PT"):
+                with self.subTest(locale=locale), self.assertRaises(i18n.CatalogueError):
+                    i18n.validate_target_language("settings.example.help", "Manter {name} no MQTT.", locale, source["strings"]["settings.example.help"])
+
     def source(self):
         text = "Keep {name} on MQTT."
         return {
@@ -101,12 +123,14 @@ class CatalogueTest(unittest.TestCase):
                 "source": "frontend",
                 "sourceKey": "panel.config",
                 "translations": {
+                    "cs": "Nastavení",
                     "de": "Einstellungen",
                     "es": "Configuración",
                     "fr": "Paramètres",
                     "it": "Impostazioni",
                     "nl": "Instellingen",
                     "pl": "Ustawienia",
+                    "pt-BR": "Configurações",
                     "uk": "Налаштування",
                     "zh-Hans": "设置",
                 },
@@ -1041,6 +1065,8 @@ class CatalogueTest(unittest.TestCase):
                     replacement = character.lower() if character.isupper() else character.upper()
                     case_mutated = f"{text[:index]}{replacement}{text[index + 1:]}"
                     break
+            if case_mutated == text:
+                case_mutated = text + " "
             with self.subTest(locale=locale, key=key, mutation="none"):
                 i18n.validate_target_language(key, text, locale, source_record)
 
@@ -1117,46 +1143,170 @@ class CatalogueTest(unittest.TestCase):
                 with self.subTest(key=key), self.assertRaises(i18n.CatalogueError):
                     i18n.validate_target_language(key, text, "zh-Hans", source["strings"][key])
 
-    def test_every_unchanged_english_fallback_target_is_registered_as_an_exception(self):
-        # An english-fallback record whose text is byte-identical to the source is exactly
-        # the shape the translation-candidate pipeline re-offers for regeneration on every
-        # push (it always retries english-fallback records). If the provider returns the
-        # same, correct cognate text again, an unregistered pair fails the candidate bundle
-        # step with nothing catching it beforehand. Ask the real validator, per key, whether
-        # that would happen, rather than guessing from the record shape.
+    def test_english_fallback_promotion_requires_an_exact_approved_cognate(self):
+        # A fallback may be unresolved English. Re-offering it as a translated candidate
+        # must fail closed unless its exact locale/key/text was independently approved.
+        # Pure placeholders and protected technical tokens do not need translation.
         catalogue_dir = SCRIPT.parents[1] / "app/src/main/assets/i18n"
         source = i18n.validate_source(catalogue_dir / "en.json")
-        for locale in sorted(i18n.LOCALES):
-            target = json.loads((catalogue_dir / f"{locale}.json").read_text(encoding="utf-8"))
-            for key, record in target["strings"].items():
-                if record.get("state") != "english-fallback":
-                    continue
-                source_text = source["strings"][key]["text"]
-                if record["text"] != source_text:
-                    continue
-                source_record = source["strings"][key]
-                if i18n.held_for_review(locale, record, source_record):
-                    continue
-                pair = (locale, key)
-                with self.subTest(locale=locale, key=key):
-                    with mock.patch.dict(i18n.UNCHANGED_TARGET_EXCEPTIONS, {}, clear=False):
-                        i18n.UNCHANGED_TARGET_EXCEPTIONS.pop(pair, None)
-                        try:
-                            i18n.validate_target_language(key, source_text, locale, source_record)
-                        except i18n.CatalogueError:
-                            registration_required = True
-                        else:
-                            registration_required = False
-                    if not registration_required:
+        with tempfile.TemporaryDirectory() as directory:
+            candidate_path = Path(directory) / "candidate.json"
+            for locale in sorted(i18n.LOCALES):
+                target = json.loads((catalogue_dir / f"{locale}.json").read_text(encoding="utf-8"))
+                for key, record in target["strings"].items():
+                    source_record = source["strings"][key]
+                    if record.get("state") != "english-fallback" or record["text"] != source_record["text"]:
                         continue
-                    self.assertEqual(
-                        source_text,
-                        i18n.UNCHANGED_TARGET_EXCEPTIONS.get(pair),
-                        f"{locale}/{key} carries an unchanged english-fallback text that the "
-                        "validator rejects without a registered exception, so a future "
-                        "regeneration would fail the candidate bundle step unless "
-                        "UNCHANGED_TARGET_EXCEPTIONS carries this exact pair.",
-                    )
+                    candidate = {
+                        "schema": 1,
+                        "locale": locale,
+                        "sourceRevision": target["sourceRevision"],
+                        "strings": {key: {**record, "sourceHash": source_record["sourceHash"]}},
+                    }
+                    self.write(candidate_path, candidate)
+                    with self.subTest(locale=locale, key=key, state="english-fallback"):
+                        i18n.validate_target(candidate_path, source, expected_locale=locale)
+
+                    visible_source = i18n.unprotected_text(source_record["text"], source_record)
+                    approved = i18n.UNCHANGED_TARGET_EXCEPTIONS.get((locale, key)) == record["text"]
+                    for state in ("machine-draft", "machine-cross-checked"):
+                        candidate["strings"][key] = {
+                            **record,
+                            "sourceHash": source_record["sourceHash"],
+                            "state": state,
+                        }
+                        self.write(candidate_path, candidate)
+                        with self.subTest(locale=locale, key=key, state=state):
+                            if approved or not re.search(r"[A-Za-z]", visible_source):
+                                i18n.validate_target(candidate_path, source, expected_locale=locale)
+                            else:
+                                with self.assertRaises(i18n.CatalogueError):
+                                    i18n.validate_target(candidate_path, source, expected_locale=locale)
+
+    def test_portuguese_identical_units_and_cognates_require_exact_current_records(self):
+        catalogue_dir = SCRIPT.parents[1] / "app/src/main/assets/i18n"
+        source_path = catalogue_dir / "en.json"
+        source = i18n.validate_source(source_path)
+        cases = {
+            "configure.duration.hours_minutes": "{hours} h {minutes} min",
+            "configure.duration.minutes": "{count} min",
+            "configure.enum.voice_sensitivity.normal": "Normal",
+            "configure.proximity.experimental": "experimental",
+            "dashboard.fact.firmware": "Firmware",
+            "dashboard.responsiveness.tap_percentiles": "~p50 {p50} ms · ~p95 {p95} ms",
+            "dashboard.sensors.volume": "Volume",
+            "dashboard.runtime.mqtt.seconds": "{seconds}s",
+            "dashboard.live.volume": "Volume",
+            "entities.disabled.badge": "experimental",
+            "install.display.badge.experimental": "experimental",
+            "logs.source.app": "App",
+            "profiles.catalog.option.local": "{name} · Local · {revision}",
+            "profiles.maturity.experimental": "experimental",
+            "profiles.origin.local": "Local",
+            "profiles.report.hardware": "Hardware",
+            "settings.dashboard_zoom.label": "Zoom (%)",
+            "shell.menu.label": "Menu",
+            "shell.nav.logs": "Logs",
+            "shell.runtime.duration_minutes": "{count} min",
+            "shell.runtime.duration_seconds": "{count} s",
+            "shell.runtime.ha_lifecycle.duration_hours": "{value} h",
+            "shell.runtime.ha_lifecycle.duration_minutes": "{value} min",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pt-BR.json"
+            candidate = {
+                "schema": 1, "locale": "pt-BR", "sourceRevision": source["sourceRevision"],
+                "strings": {key: {
+                    "text": text, "sourceHash": source["strings"][key]["sourceHash"],
+                    "state": "machine-cross-checked",
+                } for key, text in cases.items()},
+            }
+            self.write(path, candidate)
+            self.assertEqual(candidate, i18n.validate_target(path, source, expected_locale="pt-BR"))
+            report = i18n.catalogue_report(source_path, [path])["locales"]["pt-BR"]
+            self.assertEqual(len(cases), report["translated"]["count"])
+            for key, text in cases.items():
+                with self.subTest(key=key):
+                    record = source["strings"][key]
+                    for changed_text in (text + " ", text.replace("ms", "MS") if "ms" in text else text.swapcase()):
+                        changed = {**candidate, "strings": {key: {**candidate["strings"][key], "text": changed_text}}}
+                        self.write(path, changed)
+                        with self.assertRaises(i18n.CatalogueError):
+                            i18n.validate_target(path, source, expected_locale="pt-BR")
+                    if record["placeholders"]:
+                        changed_text = text.replace(record["placeholders"][0], "{unexpected}", 1)
+                        self.write(path, {**candidate, "strings": {key: {
+                            **candidate["strings"][key], "text": changed_text,
+                        }}})
+                        with self.assertRaisesRegex(i18n.CatalogueError, "changed placeholders"):
+                            i18n.validate_target(path, source, expected_locale="pt-BR")
+                    if key == "dashboard.runtime.mqtt.seconds":
+                        self.write(path, {**candidate, "strings": {key: {
+                            **candidate["strings"][key], "text": "{seconds} s",
+                        }}})
+                        with self.assertRaisesRegex(i18n.CatalogueError, "unchanged English"):
+                            i18n.validate_target(path, source, expected_locale="pt-BR")
+                    # A known source key with identical copy still needs its own exception.
+                    other_key = key + ".unapproved"
+                    other_source = {**source, "strings": {**source["strings"], other_key: record}}
+                    self.write(path, {**candidate, "strings": {other_key: candidate["strings"][key]}})
+                    with self.assertRaises(i18n.CatalogueError):
+                        i18n.validate_target(path, other_source, expected_locale="pt-BR")
+                    other_locale = next(locale for locale in ("cs", "de", "es", "fr", "it")
+                                        if i18n.UNCHANGED_TARGET_EXCEPTIONS.get((locale, key)) != text)
+                    self.write(path, {**candidate, "locale": other_locale, "strings": {key: candidate["strings"][key]}})
+                    with self.assertRaises(i18n.CatalogueError):
+                        i18n.validate_target(path, source, expected_locale=other_locale)
+            for unrelated in ("settings.friendly_name.label", "entities.issue.default_dashboard"):
+                self.write(path, {**candidate, "strings": {unrelated: {
+                    "text": source["strings"][unrelated]["text"],
+                    "sourceHash": source["strings"][unrelated]["sourceHash"], "state": "machine-cross-checked",
+                }}})
+                with self.subTest(unrelated=unrelated), self.assertRaisesRegex(i18n.CatalogueError, "unchanged English"):
+                    i18n.validate_target(path, source, expected_locale="pt-BR")
+            for state, source_hash, translated, stale in (
+                ("english-fallback", None, 0, 0),
+                ("machine-cross-checked", "0" * 64, 0, len(cases)),
+            ):
+                changed = {**candidate, "strings": {key: {
+                    **record, "state": state, "sourceHash": source_hash or record["sourceHash"],
+                } for key, record in candidate["strings"].items()}}
+                self.write(path, changed)
+                report = i18n.catalogue_report(source_path, [path])["locales"]["pt-BR"]
+                self.assertEqual(translated, report["translated"]["count"])
+                self.assertEqual(stale, report["stale"]["count"])
+                self.assertEqual(len(source["strings"]), report["fallback"]["count"])
+            invalid = {**candidate, "strings": {
+                key: {**record, "sourceHash": "invalid"} for key, record in candidate["strings"].items()
+            }}
+            self.write(path, invalid)
+            with self.assertRaisesRegex(i18n.CatalogueError, "invalid source hash"):
+                i18n.validate_target(path, source, expected_locale="pt-BR")
+
+    def test_czech_reviewed_labels_are_exact_key_text_and_locale_scoped(self):
+        source = i18n.validate_source(SCRIPT.parents[1] / "app/src/main/assets/i18n/en.json")
+        cases = {
+            "configure.duration.minutes": "{count} min",
+            "configure.voice.import_button": "Import",
+            "dashboard.fact.model": "Model",
+            "configure.enum.log_ship_protocol.syslog_tcp": "Syslog TCP",
+            "configure.enum.log_ship_protocol.syslog_udp": "Syslog UDP",
+        }
+        for key, text in cases.items():
+            record = source["strings"][key]
+            with self.subTest(key=key):
+                i18n.validate_target_language(key, text, "cs", record)
+                for changed_key, changed_text, locale in (
+                    (f"{key}.other", text, "cs"),
+                    (key, text, "it"),
+                    (key, text + " ", "cs"),
+                    (key, text + " Ελληνικά", "cs"),
+                ):
+                    with self.subTest(key=changed_key, text=changed_text, locale=locale), self.assertRaises(i18n.CatalogueError):
+                        i18n.validate_target_language(changed_key, changed_text, locale, record)
+                with mock.patch.dict(i18n.UNCHANGED_TARGET_EXCEPTIONS, {("cs", key): "different"}):
+                    with self.assertRaises(i18n.CatalogueError):
+                        i18n.validate_target_language(key, text, "cs", record)
 
     def test_install_information_symbol_exception_is_exact_and_key_scoped(self):
         key = "install.presentation.status_no_renderer"
@@ -1166,6 +1316,7 @@ class CatalogueTest(unittest.TestCase):
             "frozen": ["MQTT"],
         }
         targets = {
+            "cs": "ℹ MQTT je nakonfigurováno.",
             "de": "ℹ MQTT ist konfiguriert.",
             "es": "ℹ MQTT está configurado.",
             "fr": "ℹ MQTT est configuré.",
@@ -1181,6 +1332,32 @@ class CatalogueTest(unittest.TestCase):
             with mock.patch.dict(i18n.TARGET_LITERAL_EXCEPTIONS, {pair: ()}):
                 with self.subTest(locale=locale, mutation="removed"), self.assertRaises(i18n.CatalogueError):
                     i18n.validate_target_language(key, text, locale, source_record)
+
+    def test_portuguese_information_symbol_keeps_other_scripts_and_frozen_literals_closed(self):
+        key = "install.presentation.status_no_renderer"
+        source = i18n.validate_source(SCRIPT.parents[1] / "app/src/main/assets/i18n/en.json")
+        text = ("ℹ MQTT configurado. Próximo passo: escolha um renderizador de dashboard. "
+                "Selecione o renderizador integrado do ha-paneld, instale o app Home Assistant Companion "
+                "ou configure outro pacote de dashboard.")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pt-BR.json"
+            record = {"text": text, "sourceHash": source["strings"][key]["sourceHash"], "state": "machine-cross-checked"}
+            candidate = {"schema": 1, "locale": "pt-BR", "sourceRevision": source["sourceRevision"], "strings": {key: record}}
+            self.write(path, candidate)
+            self.assertEqual(candidate, i18n.validate_target(path, source, expected_locale="pt-BR"))
+            for changed in (text + " Ж", text.replace("ℹ", "ℂ"), text + " ℂ"):
+                self.write(path, {**candidate, "strings": {key: {**record, "text": changed}}})
+                with self.subTest(text=changed), self.assertRaisesRegex(i18n.CatalogueError, "unexpected script"):
+                    i18n.validate_target(path, source, expected_locale="pt-BR")
+            for literal in ("MQTT", "Home Assistant", "ha-paneld"):
+                self.write(path, {**candidate, "strings": {key: {**record, "text": text.replace(literal, "changed")}}})
+                with self.subTest(literal=literal), self.assertRaisesRegex(i18n.CatalogueError, "changed frozen literal"):
+                    i18n.validate_target(path, source, expected_locale="pt-BR")
+            other_key = key + ".unapproved"
+            other_source = {**source, "strings": {**source["strings"], other_key: source["strings"][key]}}
+            self.write(path, {**candidate, "strings": {other_key: record}})
+            with self.assertRaisesRegex(i18n.CatalogueError, "unexpected script"):
+                i18n.validate_target(path, other_source, expected_locale="pt-BR")
 
     def test_install_chinese_diagnostic_literals_are_exact_and_key_scoped(self):
         cases = {

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
 import android.widget.FrameLayout
+import java.util.Locale
 
 /**
  * An empty Activity that exists only so instrumented tests can measure [StatusSurface] on a real
@@ -26,18 +27,25 @@ class StatusSurfaceTestHost : Activity() {
          */
         @JvmStatic
         var fontScaleOverride: Float = 0f
+
+        @JvmStatic
+        var localeTagOverride: String? = null
     }
 
     override fun attachBaseContext(newBase: Context) {
         val scale = fontScaleOverride
-        if (scale <= 0f) {
+        val locale = localeTagOverride
+        if (scale <= 0f && locale == null) {
             super.attachBaseContext(newBase)
             return
         }
         // A real configuration override, so every sp dimension the frame resolves is genuinely scaled —
         // not a multiplier applied to measurements after the fact, which would prove nothing about how
         // Android actually lays the frame out.
-        val scaled = Configuration(newBase.resources.configuration).apply { fontScale = scale }
+        val scaled = Configuration(newBase.resources.configuration).apply {
+            if (scale > 0f) fontScale = scale
+            locale?.let { setLocale(Locale.forLanguageTag(it)) }
+        }
         super.attachBaseContext(newBase.createConfigurationContext(scaled))
     }
 

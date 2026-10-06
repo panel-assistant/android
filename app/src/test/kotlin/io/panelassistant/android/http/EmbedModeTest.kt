@@ -107,8 +107,10 @@ class EmbedModeTest {
         // On Automatic the Home Assistant user's language outranks every automatic signal.
         assertEquals("it", locale("/?ha_lang=nl", "v=1;lang=it", persisted = "auto"))
         assertEquals("zh-Hans", locale("/", "v=1;lang=zh-Hans", persisted = "auto"))
+        assertEquals("cs", locale("/", "v=1;lang=cs", persisted = "auto"))
+        assertEquals("pt-BR", locale("/", "v=1;lang=pt-BR", persisted = "auto"))
         // A language without a catalogue is English, not the panel's own choice.
-        assertEquals("en", locale("/", "v=1;lang=pt-BR", persisted = "auto"))
+        assertEquals("en", locale("/", "v=1;lang=pt-PT", persisted = "auto"))
         // An explicit choice made in the page still wins.
         assertEquals("fr", locale("/?lang=fr", "v=1;lang=it"))
         assertEquals("fr", locale("/?lang=fr", "v=1;lang=it", persisted = "auto"))

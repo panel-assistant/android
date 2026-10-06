@@ -1674,8 +1674,8 @@
       "state": "machine-cross-checked"
     },
     "configure.proximity.setup.no_source": {
-      "text": "Aufwecken per Handbewegung ist nicht verfügbar. Aufwecken durch Berührung bleibt verfügbar.",
-      "sourceHash": "fc08b46c5f11c807063e836506b0e635d95aa83a292eb8c87246679f896717ce",
+      "text": "Aufwecken durch Winken ist nicht verfügbar. Aufwecken durch Berühren bleibt verfügbar.",
+      "sourceHash": "3289aebbf56f13839cce39ea69f9f957ef682f9a52b1b92d1b2513ad36a74748",
       "state": "machine-cross-checked"
     },
     "configure.proximity.setup.ready": {
