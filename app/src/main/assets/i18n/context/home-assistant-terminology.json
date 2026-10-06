@@ -31,12 +31,14 @@
       "source": "frontend",
       "sourceKey": "ui.card.light.brightness",
       "translations": {
+        "cs": "Jas",
         "de": "Helligkeit",
         "es": "Brillo",
         "fr": "Luminosité",
         "it": "Luminosità",
         "nl": "Helderheid",
         "pl": "Jasność",
+        "pt-BR": "Brilho",
         "uk": "Яскравість",
         "zh-Hans": "亮度"
       }
@@ -48,12 +50,14 @@
       "source": "android",
       "sourceKey": "websocket_listening",
       "translations": {
+        "cs": "Připojeno k Home Assistantovi",
         "de": "Mit Home Assistant verbunden",
         "es": "Conectado a Home Assistant",
         "fr": "Connecté à Home Assistant",
         "it": "Connesso a Home Assistant",
         "nl": "Verbonden met Home Assistant",
         "pl": "Połączono z Home Assistant",
+        "pt-BR": "Conectado ao Home Assistant",
         "uk": "З'єднано з Home Assistant",
         "zh-Hans": "已连接到 Home Assistant"
       }
@@ -65,12 +69,14 @@
       "source": "android",
       "sourceKey": "error_connection_failed",
       "translations": {
+        "cs": "Nelze se připojit k Home Assistantovi.",
         "de": "Verbindung zu Home Assistant nicht möglich.",
         "es": "No se ha podido conectar con Home Assistant.",
         "fr": "Impossible de se connecter à Home Assistant.",
         "it": "Impossibile connettersi a Home Assistant.",
         "nl": "Kan geen verbinding maken met Home Assistant.",
         "pl": "Nie można połączyć się z Home Assistant.",
+        "pt-BR": "Não foi possível conectar-se ao Home Assistant.",
         "uk": "Не вдалося підключитися до Home Assistant.",
         "zh-Hans": "无法连接到 Home Assistant 。"
       }
@@ -82,12 +88,14 @@
       "source": "android",
       "sourceKey": "lang_option_label_default",
       "translations": {
+        "cs": "Jazyk zařízení",
         "de": "Gerätesprache",
         "es": "Idioma del dispositivo",
         "fr": "Langue de l'appareil",
         "it": "Lingua del dispositivo",
         "nl": "Apparaattaal",
         "pl": "Język urządzenia",
+        "pt-BR": "Idioma do dispositivo",
         "uk": "Мова пристрою",
         "zh-Hans": "设备语言"
       }
@@ -99,12 +107,14 @@
       "source": "frontend",
       "sourceKey": "ui.components.entity.entity-picker.entity",
       "translations": {
+        "cs": "Entita",
         "de": "Entität",
         "es": "Entidad",
         "fr": "Entité",
         "it": "Entità",
         "nl": "Entiteit",
         "pl": "Encja",
+        "pt-BR": "Entidade",
         "uk": "Сутність",
         "zh-Hans": "实体"
       }
@@ -116,12 +126,14 @@
       "source": "frontend",
       "sourceKey": "ui.components.language-picker.language",
       "translations": {
+        "cs": "Jazyk",
         "de": "Sprache",
         "es": "Idioma",
         "fr": "Langue",
         "it": "Lingua",
         "nl": "Taal",
         "pl": "Język",
+        "pt-BR": "Idioma",
         "uk": "Мова",
         "zh-Hans": "语言"
       }
@@ -133,12 +145,14 @@
       "source": "frontend",
       "sourceKey": "ui.dialogs.quick-bar.commands.navigation.network",
       "translations": {
+        "cs": "Síť",
         "de": "Netzwerk",
         "es": "Red",
         "fr": "Réseau",
         "it": "Rete",
         "nl": "Netwerk",
         "pl": "Sieć",
+        "pt-BR": "Rede",
         "uk": "Мережа",
         "zh-Hans": "网络"
       }
@@ -150,12 +164,14 @@
       "source": "frontend",
       "sourceKey": "ui.dialogs.quick-bar.commands.types.reload",
       "translations": {
+        "cs": "Nově načíst",
         "de": "Neu laden",
         "es": "Recargar",
         "fr": "Recharger",
         "it": "Ricarica",
         "nl": "Herladen",
         "pl": "Odśwież",
+        "pt-BR": "Recarregar",
         "uk": "Оновити",
         "zh-Hans": "重载"
       }
@@ -167,12 +183,14 @@
       "source": "frontend",
       "sourceKey": "panel.security",
       "translations": {
+        "cs": "Zabezpečení",
         "de": "Sicherheit",
         "es": "Seguridad",
         "fr": "Sécurité",
         "it": "Sicurezza",
         "nl": "Beveiliging",
         "pl": "Bezpieczeństwo",
+        "pt-BR": "Segurança",
         "uk": "Безпека",
         "zh-Hans": "安全"
       }
@@ -184,12 +202,14 @@
       "source": "frontend",
       "sourceKey": "panel.config",
       "translations": {
+        "cs": "Nastavení",
         "de": "Einstellungen",
         "es": "Configuración",
         "fr": "Paramètres",
         "it": "Impostazioni",
         "nl": "Instellingen",
         "pl": "Ustawienia",
+        "pt-BR": "Configurações",
         "uk": "Налаштування",
         "zh-Hans": "设置"
       }

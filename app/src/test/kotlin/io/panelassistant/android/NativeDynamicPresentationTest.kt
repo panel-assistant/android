@@ -1,6 +1,7 @@
 package io.panelassistant.android
 
 import io.panelassistant.android.util.HaTransportFault
+import io.panelassistant.android.i18n.AppLocale
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
@@ -16,7 +17,14 @@ class NativeDynamicPresentationTest {
 
     // Source-text reason: the string catalogue is a user-visible translation contract, read as data.
     @Test fun `dynamic native resources catalogue contract is complete across every release locale`() {
-        val directories = listOf("values", "values-de", "values-es", "values-fr", "values-it", "values-zh-rCN")
+        val directories = AppLocale.RELEASE_LOCALES.map { locale ->
+            when (locale) {
+                "en" -> "values"
+                "zh-Hans" -> "values-zh-rCN"
+                "pt-BR" -> "values-pt-rBR"
+                else -> "values-$locale"
+            }
+        }
         val required = setOf(
             "approval_list_item", "approval_request_detail", "approval_exact_detail",
             "cannot_reach_ha_detail", "ha_transport_not_ready", "ha_transport_tls_trust",

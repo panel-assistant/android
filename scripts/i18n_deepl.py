@@ -63,9 +63,9 @@ class DeepLError(ValueError):
 
 
 def validate_locale_configuration() -> None:
-    """Fail closed when provider routing and catalogue locale policy diverge."""
-    if set(TARGETS) != catalogue.LOCALES:
-        raise DeepLError("DeepL targets must exactly cover supported locales")
+    """Keep the retired adapter limited to recognized catalogue locales."""
+    if not TARGETS or not set(TARGETS).issubset(catalogue.LOCALES):
+        raise DeepLError("DeepL targets must be a non-empty subset of supported locales")
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

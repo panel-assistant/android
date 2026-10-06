@@ -6,6 +6,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppLocaleTest {
+    @Test fun `Czech and Brazilian Portuguese retain canonical tags through every production signal`() {
+        for ((signal, expected) in listOf("cs-CZ" to "cs", "PT_br" to "pt-BR")) {
+            assertEquals(expected, AppLocale.canonical(signal))
+            assertEquals(expected, AppLocale.resolve(signal, "de", "fr", "it", "es", false))
+            assertEquals(expected, AppLocale.resolve(null, signal, "fr", "it", "es", false))
+            assertEquals(expected, AppLocale.resolve(null, "auto", signal, "it", "es", false))
+            assertEquals(expected, AppLocale.resolve(null, "auto", null, "$signal;q=.9, de;q=.8", "es", false))
+            assertEquals(expected, AppLocale.resolve(null, "auto", null, null, signal, false))
+            assertEquals("en", AppLocale.resolve("en", signal, signal, signal, signal, false))
+        }
+    }
+
+    @Test fun `Brazilian Portuguese never consumes generic or European Portuguese signals`() {
+        for (unsupported in listOf("pt", "pt-PT", "pt_PT", "pt-AO")) {
+            assertNull(AppLocale.canonical(unsupported))
+            assertEquals("de", AppLocale.resolve(unsupported, null, unsupported, "$unsupported, de;q=.8", "pt-BR", false))
+            assertEquals("en", AppLocale.resolve(null, "auto", null, null, unsupported, false))
+        }
+        assertEquals("pt-BR", AppLocale.canonical("pt-BR-x-test"))
+    }
+
     @Test fun `every release locale is uniquely canonical and accepts a more specific tag`() {
         assertEquals(AppLocale.RELEASE_LOCALES.size, AppLocale.RELEASE_LOCALES.toSet().size)
         AppLocale.RELEASE_LOCALES.forEach { locale ->

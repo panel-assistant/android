@@ -236,7 +236,8 @@ class ProximityWizardActivity : AppCompatActivity() {
             addView(countdownRing, FrameLayout.LayoutParams(-1, -1))
             addView(cadence, FrameLayout.LayoutParams(-1, -1))
         }
-        val clockSize = if (compact) 116 else 144
+        val clockScale = if (compactSquare) resources.configuration.fontScale.coerceAtLeast(1f) else 1f
+        val clockSize = ((if (compact) 116 else 144) * clockScale).toInt()
         val cadenceColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -248,7 +249,11 @@ class ProximityWizardActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(if (compact) 12 else 20), 0, dp(if (compact) 12 else 20))
             addView(pictogram, LinearLayout.LayoutParams(0, -1, 1.5f))
-            addView(cadenceColumn, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(cadenceColumn, if (compactSquare) {
+                LinearLayout.LayoutParams(dp(clockSize), -2)
+            } else {
+                LinearLayout.LayoutParams(0, -2, 1f)
+            })
         }
         val copy = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -266,14 +271,9 @@ class ProximityWizardActivity : AppCompatActivity() {
             addView(rawWaiting, LinearLayout.LayoutParams(-1, -2))
         }
         if (compactSquare) {
-            val top = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.TOP
-                addView(copy, LinearLayout.LayoutParams(0, -2, 1.7f))
-                addView(visualRow, LinearLayout.LayoutParams(0, dp(150), 0.55f).apply { leftMargin = dp(6) })
-            }
             content.addView(rawBlock, LinearLayout.LayoutParams(-1, -2))
-            content.addView(top, LinearLayout.LayoutParams(-1, dp(218)))
+            content.addView(copy)
+            content.addView(visualRow, LinearLayout.LayoutParams(-1, -2))
         } else if (landscape) {
             val top = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL

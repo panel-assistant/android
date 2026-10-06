@@ -35,7 +35,7 @@ class ProximityLearningI18nContractTest {
                 )
             }
             val permittedSourceIdentical = when (locale) {
-                "es" -> setOf("$PREFIX.detail.with_health", "$PREFIX.experimental")
+                "es", "pt-BR" -> setOf("$PREFIX.detail.with_health", "$PREFIX.experimental")
                 else -> setOf("$PREFIX.detail.with_health")
             }
             assertEquals(

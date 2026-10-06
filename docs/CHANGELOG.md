@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.9.10 - 2026-10-07
+
+The big change in this release is one you mostly won't see: the app's code now lives under its new name, `io.panelassistant.android`, to match the app id it moved to in 0.9.8. Alongside that, voice is no longer limited to the panels I could test myself. Any panel whose hardware reports a microphone can now turn on the voice assistant, and the panel checks its own microphone first and tells you if it can't hear anything. The Tuya TPA10 joins the list of panels with a proven microphone. Installation now goes only through Panel Assistant, and I've stopped recommending the Home Assistant Companion app as the panel dashboard. If voice doesn't work on your panel, please open an issue with the panel model and what the Voice card says.
+
+Pairs with Panel Assistant 0.8.0.
+
+### Update Panel Assistant first
+
+**Update Panel Assistant to 0.8.0 before, or together with, your panels.** Only Panel Assistant 0.8.0 knows how to install, start and grant permissions to this release. A panel connected to an older Panel Assistant isn't offered v0.9.10: it stays on the build it has and keeps working, and gets the update once Panel Assistant is up to date. Your settings, device and entities carry over as usual.
+
+### New
+
+- **Voice on any panel with a microphone.** If your panel's hardware reports a built-in microphone, you can turn on Voice assistant on the Configure page, even if your model has never been tested with it. Before it starts listening for the wake word, the panel records a few seconds to check the microphone actually works. If the check hears only silence or gets no audio, the setting stays on, the Voice card says why, and Panel Assistant 0.8.0 shows a Repair for the panel. Turning voice off and on again runs the check again. Panels already known to work, such as the Sonoff NSPanel Pro, the Electron WF1589T and WF2489T and the Shelly Wall Display X2i, skip the check and work as before.
+- **Voice on the Tuya TPA10.** Its microphone is now part of its profile, so the TPA10 can be a Home Assistant voice assistant too.
+- **Dutch, Polish and Ukrainian are complete.** Every screen of the panel's web interface is now translated in these three languages, not just part of it.
+- **The panel shows when its microphone is muted.** When you press the panel's hardware mute, a small "Microphone muted" label appears on the dashboard and on the Voice card, and it clears when you unmute. A muted microphone no longer counts as a failed microphone check, so the voice assistant starts listening again as soon as you unmute.
+- **The panel reports its firmware, Android release and serial number.** With Panel Assistant 0.8.0 these appear on the panel's device card in Home Assistant, so you can tell your panels apart and see what they run without opening them.
+- **The restart notice shows progress.** When Home Assistant restarts, the notice on the panel now shows a bar filling towards the time Home Assistant usually takes to come back, with the time below it. The card keeps the same size throughout.
+
+### Changed
+
+- **The app's code moved to its new name.** The app id changed to `io.panelassistant.android` in 0.9.8; this release moves the code inside the app to match. You don't need to do anything beyond updating Panel Assistant first, and the panel's accessibility service is switched back on for the new name after the update.
+- **Installation goes through Panel Assistant.** The README now sends you to Panel Assistant to install the app, and the old one-line install script is retired; it has refused installs since v0.9.9.
+- **The Companion app is retired as the panel dashboard.** Panel Assistant and the built-in renderer are the supported route, with voice through Panel Assistant's own voice assistant, and they avoid a second Home Assistant device with duplicate entities for every panel. A panel already using the Companion app keeps working: add it to Panel Assistant and switch the dashboard to the built-in renderer. Panel Assistant doesn't remove the Companion app or its device, so you can compare before deciding.
+
+### Fixed
+
+- **The LED works without MQTT.** On a panel that never used MQTT, the LED's state stayed unknown after the app started until you changed it. The panel now puts back your last LED setting at start-up and reports it to Home Assistant straight away.
+- **Accessibility comes back after updating rooted panels.** On rooted panels where the app can't replace its helper, the accessibility service could stay off after the move to the new code name. The app now switches it back on by itself at start-up.
+- **The voice microphone check lets go of the microphone** if you turn voice off before the check has run.
+- **Translation corrections**, including a clearer French label on the Entities page, and the new Voice card messages in every language.
+- **No more light sensor that is always unavailable.** A panel only gets a light-sensor entity once its sensor has given a reading, so panels without one no longer show an entity that never works. A sensor that has reported keeps its entity through later failed readings.
+- **Reinstalling the root helper can't discard unfinished recovery data.** A fresh helper install now waits until no earlier helper session has recovery records left on the panel.
+
 ## v0.9.9 - 2026-10-04
 
 This release finishes handing the running of your panels to Panel Assistant. It is the last ha-paneld release that supports MQTT and the last one that can move an MQTT panel over to Panel Assistant's own connection, so if your panels still use MQTT, please move them with this release. Updates now come only through Panel Assistant, and so does the move to the new app. Sorry, Sonoff NSPanel Pro owners: in 0.9.8 the panel moved itself and needed the root helper in a system partition that is full on some NSPanel Pros. If yours got stuck, refused to install, or Panel Assistant 0.6.3 told you "The release did not match its signature, so nothing was installed", that was my approach, not your panel, and you should never need Magisk or to delete anything from the system partition. Thank you to everyone who reported it and sent logs.

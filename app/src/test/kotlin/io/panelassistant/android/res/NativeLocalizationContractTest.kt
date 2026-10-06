@@ -1,6 +1,7 @@
 package io.panelassistant.android.res
 
 import java.io.File
+import io.panelassistant.android.i18n.AppLocale
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -102,7 +103,12 @@ class NativeLocalizationContractTest {
 
     @Test fun proximityWizardResourcesAreCompleteInEveryReleaseLocale() {
         val base = stringsIn(File("src/main/res/values/proximity_wizard.xml"))
-        for (directory in listOf("values-de", "values-es", "values-fr", "values-it", "values-zh-rCN")) {
+        for (locale in AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }) {
+            val directory = when (locale) {
+                "zh-Hans" -> "values-zh-rCN"
+                "pt-BR" -> "values-pt-rBR"
+                else -> "values-$locale"
+            }
             val translated = stringsIn(File("src/main/res/$directory/proximity_wizard.xml"))
             assertEquals("$directory proximity strings", base.keys, translated.keys)
             assertTrue("$directory must contain only translated strings", translated.values.all { it })

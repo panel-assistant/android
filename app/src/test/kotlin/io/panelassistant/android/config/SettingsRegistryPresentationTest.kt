@@ -19,7 +19,10 @@ class SettingsRegistryPresentationTest {
         SettingsRegistry.UI_LANGUAGES.forEach { language ->
             assertEquals(language, (SettingValue.validate(spec, language) as Validation.Ok).normalized)
         }
-        assertTrue(SettingValue.validate(spec, "pt-BR") is Validation.Bad)
+        assertTrue("cs" in spec.options)
+        assertTrue("pt-BR" in spec.options)
+        assertTrue(SettingValue.validate(spec, "pt") is Validation.Bad)
+        assertTrue(SettingValue.validate(spec, "pt-PT") is Validation.Bad)
         assertEquals(
             "Language used by ha-paneld's own interface.\n\n**Automatic** uses an explicit page override first. " +
                 "Configure setting labels and help can then follow the connected Home Assistant user's language; " +

@@ -3,7 +3,6 @@ package io.panelassistant.android
 import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
-import android.os.Build
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.ConfigurationCompat
@@ -30,7 +29,13 @@ internal object NativeLocale {
     fun apply(raw: String) {
         val automatic = raw.equals(AUTO_LANGUAGE, ignoreCase = true)
         val locale = if (automatic) {
-            AppLocale.automaticLocaleOverride(systemLanguageTag(), AppLocale.RELEASE_LOCALES)
+            val systemTag = systemLanguageTag()
+            // Android can otherwise match Brazilian resources for another Portuguese region.
+            AppLocale.automaticLocaleOverride(systemTag, AppLocale.RELEASE_LOCALES)
+                ?: AppLocale.ENGLISH.takeIf {
+                    Locale.forLanguageTag(systemTag.orEmpty()).language == "pt" &&
+                        AppLocale.automatic(systemTag) == null
+                }
         } else {
             AppLocale.canonical(raw, allowPseudo = BuildConfig.DEBUG)
         }
@@ -46,7 +51,7 @@ internal object NativeLocale {
 
     fun string(context: Context, @StringRes id: Int, vararg formatArgs: Any): String {
         val tag = resourceLanguageTag
-        val localized = if (Build.VERSION.SDK_INT >= 33 || tag == null) {
+        val localized = if (tag == null) {
             context
         } else {
             val configuration = Configuration(context.resources.configuration).apply {
@@ -84,7 +89,7 @@ private const val LEGACY_CONFIG_MIRROR = "ha-paneld"
 private const val DARK_MODE_KEY = "dark_mode"
 private const val DARK_MODE_DEFAULT = true
 
-/** Services do not inherit AppCompat's activity locale override before Android 13. */
+/** Services and early callbacks must also honor the selected native resource locale. */
 internal fun Context.nativeString(@StringRes id: Int, vararg formatArgs: Any): String =
     NativeLocale.string(this, id, *formatArgs)
 

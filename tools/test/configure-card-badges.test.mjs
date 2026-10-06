@@ -53,7 +53,7 @@ const engines = [
   { name: 'chromium', type: chromium, launch: { executablePath: chrome, args: ['--no-sandbox'] }, available: existsSync(chrome) },
   { name: 'webkit', type: webkit, launch: {}, available: existsSync(webkit.executablePath()) },
 ];
-const LOCALES = ['en', 'de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'zh-Hans'];
+const LOCALES = ['en', 'de', 'es', 'fr', 'it', 'nl', 'pl', 'uk', 'cs', 'pt-BR', 'zh-Hans'];
 for (const engine of engines) {
   const engineTest = engine.available ? test : test.skip;
   engineTest(`${engine.name} 390px: Display has no maturity badge; Voice has a translated, styled Preview badge without overflow`, async (t) => {

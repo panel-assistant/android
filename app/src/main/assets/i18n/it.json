@@ -1674,9 +1674,9 @@
       "text": "La configurazione facoltativa si svolge sul pannello. Il risveglio al tocco resta disponibile."
     },
     "configure.proximity.setup.no_source": {
-      "sourceHash": "fc08b46c5f11c807063e836506b0e635d95aa83a292eb8c87246679f896717ce",
-      "state": "machine-cross-checked",
-      "text": "Il risveglio con un gesto non è disponibile. Il risveglio al tocco resta disponibile."
+      "text": "Il risveglio agitando la mano non è disponibile. Il risveglio al tocco resta disponibile.",
+      "sourceHash": "3289aebbf56f13839cce39ea69f9f957ef682f9a52b1b92d1b2513ad36a74748",
+      "state": "machine-cross-checked"
     },
     "configure.proximity.setup.ready": {
       "sourceHash": "04c0b7d2c142ac192b0217e7c7581ec1709282a8e6bd5548ff8606c955026d7a",
