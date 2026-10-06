@@ -33,10 +33,8 @@ internal fun restorableSettingValue(key: String, value: String, configuredOrigin
     }
 
 /**
- * Configuration adjustments for a migration-mode restore. The bridge made the successor a kiosk
- * companion of itself so its return loop would leave the successor in the foreground; carried into
- * the successor that entry would exempt the legacy package, and the successor itself, from its own
- * kiosk lock. Every other value is restored exactly as written.
+ * Configuration adjustments for package-valued settings in a migration-mode restore.
+ * Every other value is restored exactly as written.
  */
 internal fun migrationRestoreConfig(values: Map<String, String>): Map<String, String> {
     val restored = LinkedHashMap(values)
@@ -47,11 +45,6 @@ internal fun migrationRestoreConfig(values: Map<String, String>): Map<String, St
         if (restored[key] == io.panelassistant.android.AppIdentity.LEGACY) {
             restored[key] = io.panelassistant.android.AppIdentity.SUCCESSOR
         }
-    }
-    restored["kiosk_companion_packages"]?.let { companions ->
-        restored["kiosk_companion_packages"] = io.panelassistant.android.parseKioskCompanionPackages(companions)
-            .filterNot(io.panelassistant.android.AppIdentity::isPanelApp)
-            .joinToString(",")
     }
     return if (restored == values) values else restored
 }

@@ -481,31 +481,6 @@ class SystemController(
     }
 
     /**
-     * The package currently holding window focus, or null when it cannot be established.
-     *
-     * Only the `su` route exists here on purpose. The helper protocol has no foreground verb, and
-     * adding one would mean shipping a new helper for a question asked rarely — see
-     * [shouldKioskReturnToDashboard], which puts this question only at the instant something else is
-     * already in front. A panel whose app cannot reach a privileged shell therefore answers null,
-     * and null is not exempt: the lock keeps enforcing rather than silently switching itself off.
-     *
-     * Known consequence, recorded rather than hidden: the built-in renderer reports FG/BG from its
-     * own lifecycle with no privilege at all, so on a panel running the built-in renderer where the
-     * app cannot reach `su`, the return loop still works while this probe cannot answer, and a
-     * configured companion is pulled back anyway. Note that reaching a root shell over adb does not
-     * prove the app can — the two run as different uids, and a `su` binary restricted to the shell
-     * group refuses an ordinary app at exec. Test the app's own path before assuming the exemption
-     * is available on a given panel.
-     */
-    fun foregroundPackage(): String? = ShortOperationRouter.value(
-        ValueAttempt(PrivilegeRoute.SU) {
-            val focus = root.runOutput("dumpsys window 2>/dev/null | grep mCurrentFocus")
-                ?: return@ValueAttempt null
-            parseForegroundPackage(focus)
-        }
-    )?.value
-
-    /**
      * Reboot the panel.
      *
      * `REBOOT AWAIT` answers only when the reboot demonstrably did not happen. A panel that goes down
@@ -564,28 +539,4 @@ class SystemController(
             // retired without managing to hand it over.
             AppIdentity.LEGACY
     }
-}
-
-/**
- * Pull the focused package out of a `dumpsys window | grep mCurrentFocus` reply.
- *
- * The line reads `mCurrentFocus=Window{<hash> u0 <package>/<activity>}` when an activity holds focus.
- * Several shapes must return null rather than a wrong answer, because a wrong package here would
- * exempt the wrong app from the kiosk lock: `mCurrentFocus=null` between transitions, a bare
- * `mCurrentFocus=`, and system windows whose name carries no `package/activity` pair at all
- * (`NavigationBar0`, `StatusBar`). Anything not recognised with confidence is null, which the caller
- * treats as "keep enforcing".
- *
- * Every one of those shapes is rejected by the single `contains('/')` test. Earlier drafts also
- * guarded the empty and `null` values and the empty brace body explicitly; a mutation run showed
- * removing them changed no result on any of them, because a value with no `{` yields an empty body
- * and an empty body has no component. They were deleted rather than kept as reassurance, so every
- * remaining line here carries weight and a future edit to the `/` test cannot be masked by a guard
- * that looks protective but never fires.
- */
-internal fun parseForegroundPackage(raw: String): String? {
-    val line = raw.lineSequence().firstOrNull { it.contains("mCurrentFocus=") } ?: return null
-    val inner = line.substringAfter("mCurrentFocus=").substringAfter('{', "").substringBefore('}')
-    val component = inner.trim().split(' ').lastOrNull()?.takeIf { it.contains('/') } ?: return null
-    return component.substringBefore('/').takeIf { it.isNotEmpty() }
 }

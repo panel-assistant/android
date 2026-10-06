@@ -10888,21 +10888,6 @@
       "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
       "state": "machine-cross-checked"
     },
-    "settings.kiosk_companion_packages.help": {
-      "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
-      "state": "machine-cross-checked",
-      "text": "Durch Kommas getrennte Android-Paketnamen, die die Dashboard-Sperre im Vordergrund belässt, statt zum Dashboard zurückzukehren. Damit erreichst du die eigenen Bildschirme einer Begleit-App. Benötigt Root-Rechte."
-    },
-    "settings.kiosk_companion_packages.label": {
-      "sourceHash": "d10363e328d4b092471a2bfeac18f6095a19876a6fd26b85a86675181efaec18",
-      "state": "machine-cross-checked",
-      "text": "Apps, die die Sperre erlaubt"
-    },
-    "settings.kiosk_companion_packages.summary": {
-      "text": "Apps (Paketnamen), die die Sperre im Vordergrund lässt.",
-      "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-      "state": "machine-cross-checked"
-    },
     "settings.kiosk_lock.help": {
       "text": "Einfache Sperre gegen beiläufige Nutzung, nur mit Root. Blendet die Android-Systemleisten aus und kehrt in etwa 3 Sekunden zum ausgewählten Dashboard zurück, wenn eine andere App oder die Übersicht geöffnet wird. Die Navigation von Home Assistant wird nicht ausgeblendet.\n\nAufheben kannst du sie:\n\n- hier oder über Home Assistant\n- per adb\n- durch 7-maliges schnelles Tippen oben links\n- im 60-sekündigen entsperrten Zeitfenster nach einem Neustart",
       "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",

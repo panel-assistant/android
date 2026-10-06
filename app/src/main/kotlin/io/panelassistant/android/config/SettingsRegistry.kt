@@ -1,7 +1,6 @@
 package io.panelassistant.android.config
 
 import io.panelassistant.android.audio.MicrophoneGain
-import io.panelassistant.android.parseKioskCompanionPackages
 import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.util.AndroidInput
 import io.panelassistant.android.util.BrokerEndpoint
@@ -116,6 +115,7 @@ object SettingsRegistry {
      * old HA exposure flags. Applying any bundle must never resurrect a retired update owner.
      */
     val RETIRED_KEYS: Set<String> = setOf(
+        "kiosk_companion_packages",
         "voice_state",
         "${HA_EXPOSE_PREFIX}voice_enabled",
         "${HA_EXPOSE_PREFIX}voice_state",
@@ -388,22 +388,6 @@ object SettingsRegistry {
             tier = Tier.ADVANCED, summary = "Relaunch the dashboard app if it dies or stays backgrounded.",
             label = "App watchdog", default = "false", scope = Scope.PORTABLE,
             liveApply = true,
-        ),
-        SettingSpec(
-            key = "kiosk_companion_packages", type = SettingType.STRING, group = "Behaviour",
-            tier = Tier.ADVANCED, summary = "Apps the lock leaves in front, by package name.",
-            label = "Apps the lock allows", default = "", scope = Scope.DEVICE,
-            maxChars = 512,
-            // Not liveApply: there is no side effect to route. The return loop reads this value on
-            // every poll, so a saved change is in force within one poll without a rebuild or restart.
-            help = "Android package names, separated by commas, that the dashboard lock leaves in front " +
-                "instead of returning to the dashboard. Use it to reach a companion app's own screens. " +
-                "Needs root.",
-            validate = { value ->
-                val bad = parseKioskCompanionPackages(value).filterNot(AndroidInput::isPackage)
-                if (bad.isEmpty()) Validation.Ok(value)
-                else Validation.Bad("kiosk_companion_packages: not Android package names: ${bad.joinToString(", ")}")
-            },
         ),
         SettingSpec(
             key = "touch_sound", type = SettingType.BOOL, group = "Behaviour",

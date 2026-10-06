@@ -354,7 +354,6 @@ internal class DirectConfigPost(
                     dashboardPackage?.let { config.setDashboardPackage(it) }
                     val dashChanged = dashboardPackage?.let { it != prevDash } == true
                     p["launcher_package"]?.let { config.setLauncherPackage(it.trim()) }
-                    p["kiosk_companion_packages"]?.let { config.setKioskCompanionPackages(it) }
                     p["tame_vendor_packages"]?.let { raw ->
                         if (tamePackagesChanged) config.setTameVendorPackages(raw)
                     }

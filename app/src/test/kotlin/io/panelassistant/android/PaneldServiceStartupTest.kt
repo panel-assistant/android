@@ -199,7 +199,6 @@ class PaneldServiceStartupTest {
         val signer = "a".repeat(64)
         var installed: SuccessorHandoff.InstalledSuccessor? = null
         var launches = 0
-        val companions = mutableSetOf<String>()
         val wake = InstalledSuccessorHandoffWake()
         val handoff = SuccessorHandoff(object : SuccessorHandoff.Ports {
             override fun retired() = false
@@ -210,8 +209,6 @@ class PaneldServiceStartupTest {
             override fun compareVersions(left: String, right: String) = left.compareTo(right)
             override fun successorAssetUrl(): String? = error("installed-only wake must not resolve an APK")
             override suspend fun installSuccessor(url: String): String? = error("installed-only wake must not install an APK")
-            override fun companionPackages(): Set<String> = companions.toSet()
-            override fun addCompanionPackage(pkg: String) { companions += pkg }
             override fun launchSuccessor(): Boolean { launches++; return true }
             override fun deliverReleaseToken() = true
         })
@@ -229,7 +226,6 @@ class PaneldServiceStartupTest {
             assertEquals("an explicit wake must remain retryable after the earlier refusal", SuccessorHandoff.Outcome.Launched, explicitWake())
         }
         assertEquals(2, launches)
-        assertEquals(setOf(successor), companions)
     }
 
     @Test fun unrelatedConfigChangesDoNotRefreshAutoSleepOrOtherLiveOwners() {

@@ -13,7 +13,6 @@ import android.view.View
 import android.view.WindowManager
 import io.panelassistant.android.Config
 import io.panelassistant.android.KioskAdminUi
-import io.panelassistant.android.isKioskCompanionForeground
 import io.panelassistant.android.shouldKioskReturnToDashboard
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostOutcome
@@ -152,12 +151,7 @@ class KioskController(
                             outcome = FeatureCostOutcome.CANCELLED
                             break
                         }
-                        val companions = config.kioskCompanionPackages
-                        if (shouldKioskReturnToDashboard(state, KioskAdminUi.isVisible()) {
-                                companions.isNotEmpty() &&
-                                    isKioskCompanionForeground(system.foregroundPackage(), companions)
-                            }
-                        ) {
+                        if (shouldKioskReturnToDashboard(state, KioskAdminUi.isVisible())) {
                             Log.i(TAG, "left the dashboard while locked -> returning to it")
                             system.launchHome(pkg)
                         }

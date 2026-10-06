@@ -9688,21 +9688,6 @@
    "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
    "state": "machine-cross-checked"
   },
-  "settings.kiosk_companion_packages.help": {
-   "text": "Nazwy pakietów Android, oddzielone przecinkami, które blokada pulpitu pozostawia na ekranie zamiast powrotu do pulpitu. Należy z nich korzystać, aby przejść do ekranów własnych aplikacji towarzyszących. Wymaga uprawnień root.",
-   "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
-   "state": "machine-cross-checked"
-  },
-  "settings.kiosk_companion_packages.label": {
-   "text": "Aplikacje, na które zezwala blokada",
-   "sourceHash": "d10363e328d4b092471a2bfeac18f6095a19876a6fd26b85a86675181efaec18",
-   "state": "machine-cross-checked"
-  },
-  "settings.kiosk_companion_packages.summary": {
-   "text": "Aplikacje pozostawione przez blokadę na pierwszym planie, według nazwy pakietu.",
-   "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-   "state": "machine-cross-checked"
-  },
   "settings.kiosk_lock.help": {
    "text": "Blokada tylko dla root, chroniąca przed przypadkowym użyciem. Ukrywa paski systemowe Android i w ciągu około 3 sekund wraca do wybranego pulpitu nawigacyjnego, gdy otworzy się inna aplikacja lub lista ostatnich aplikacji. Nie ukrywa nawigacji Home Assistant.\n\nWyłącz ją:\n\n- tutaj lub z poziomu Home Assistant\n- przez adb\n- 7 szybkimi dotknięciami w lewym górnym rogu\n- w ciągu 60-sekundowego okna bez blokady po ponownym uruchomieniu",
    "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",

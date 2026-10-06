@@ -25,6 +25,53 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class ConfigTransactionTest {
+    @Test fun legacyKioskAllowanceIsIgnoredWithoutChangingLockOrOtherSettings() {
+        for (schema in listOf(13, SettingsRegistry.SCHEMA)) {
+            val prefs = fakePreferences(initial = mapOf(
+                "config_schema" to schema,
+                "kiosk_companion_packages" to "com.example.ava,com.other.app",
+                "kiosk_lock" to true,
+                "dashboard_package" to CompanionInstaller.MINIMAL_PKG,
+                "panel_id" to "existing_panel",
+            ))
+            val config = Config(prefs.instance)
+            // The return-loop decision uses only dashboard and administration state, even before
+            // startup cleanup runs or when a failed commit leaves the old record on disk.
+            for (adminVisible in listOf(false, true)) {
+                for (state in io.panelassistant.android.control.AppState.values()) {
+                    assertEquals(
+                        state == io.panelassistant.android.control.AppState.BG && !adminVisible,
+                        shouldKioskReturnToDashboard(state, adminVisible),
+                    )
+                }
+            }
+            assertTrue(config.migrateLiveStore())
+            assertTrue(config.kioskLock)
+            assertEquals(CompanionInstaller.MINIMAL_PKG, config.dashboardPackage)
+            assertEquals("existing_panel", config.panelId)
+            assertFalse(prefs.values.containsKey("kiosk_companion_packages"))
+            assertNull(SettingsRegistry.spec("kiosk_companion_packages"))
+            val committed = prefs.values.toMap()
+            assertTrue(config.migrateLiveStore())
+            assertEquals(committed, prefs.values)
+        }
+    }
+
+    @Test fun oldKioskAllowanceCannotReturnThroughBackupOrBundleRestore() {
+        for (schema in listOf(13, SettingsRegistry.SCHEMA, SettingsRegistry.SCHEMA + 1)) {
+            val (migrated, _) = Migrations.migrate(schema, mapOf(
+                "kiosk_companion_packages" to "com.example.ava",
+                "kiosk_lock" to "true",
+                "panel_id" to "existing_panel",
+            ))
+            val decision = io.panelassistant.android.http.planRestoreSettings(migrated, null)
+            assertEquals(emptyList<String>(), decision.errors)
+            assertFalse(decision.accepted.containsKey("kiosk_companion_packages"))
+            assertEquals("true", decision.accepted["kiosk_lock"])
+            assertEquals("existing_panel", decision.accepted["panel_id"])
+        }
+    }
+
     @Test fun firstConfigReadRepairsLegacyAreaBeforeReportingOverride() = testApplication {
         val stale = fakePreferences(initial = mapOf(
             "ha_area" to "null",

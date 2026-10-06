@@ -61,19 +61,6 @@ class MigrationRestoreTest {
         assertEquals(emptyList<String>(), StateBackupPolicy.restorableRows(rows, unproven).map { it.namespace })
     }
 
-    @Test fun theBridgesCompanionEntryForTheSuccessorIsNotCarriedIntoTheSuccessor() {
-        val restored = migrationRestoreConfig(
-            mapOf(
-                "panel_id" to "alpha",
-                "kiosk_companion_packages" to
-                    "com.example.kept, io.panelassistant.android\nio.github.maxlyth.hapaneld,com.example.other",
-            ),
-        )
-
-        assertEquals("com.example.kept,com.example.other", restored["kiosk_companion_packages"])
-        assertEquals("alpha", restored["panel_id"])
-    }
-
     @Test fun settingsThatNameTheWritersOwnPackageFollowTheAppToItsNewId() {
         val restored = migrationRestoreConfig(
             mapOf(
@@ -102,7 +89,7 @@ class MigrationRestoreTest {
         assertFalse(migrationRestoreComplete(rawPreferencesApplied = false, carriedRows = 17, restoredRows = 17))
     }
 
-    @Test fun aBackupWithoutCompanionPackagesIsRestoredUntouched() {
+    @Test fun unrelatedBackupValuesAreRestoredUntouched() {
         val values = mapOf("panel_id" to "alpha")
 
         assertSame(values, migrationRestoreConfig(values))
@@ -113,7 +100,7 @@ class MigrationRestoreTest {
         // the app-held Home Assistant tokens. They are in it only while they stay settable and durable.
         val carried = SettingsRegistry.settable().filterNot { it.transient }.map { it.key }.toSet()
 
-        listOf("panel_id", "mqtt_password", "ha_refresh_token", "kiosk_companion_packages").forEach { key ->
+        listOf("panel_id", "mqtt_password", "ha_refresh_token").forEach { key ->
             assertTrue("$key must be part of the backup projection", key in carried)
         }
     }

@@ -10888,21 +10888,6 @@
       "sourceHash": "f95833719c9bb4b74cd33077a5fd8e0fcc590428af239f4961e48e6603b0274f",
       "state": "machine-cross-checked"
     },
-    "settings.kiosk_companion_packages.help": {
-      "sourceHash": "384f4e706ef32a15c7d6abab7bc1ed63e84cde0f5278f637b0a774f0ed07661b",
-      "state": "machine-cross-checked",
-      "text": "以逗号分隔的 Android 包名列表，用于在仪表盘锁定时保留在前端而非返回仪表盘，以便访问配套应用的自有界面。需要 root 权限。"
-    },
-    "settings.kiosk_companion_packages.label": {
-      "sourceHash": "d10363e328d4b092471a2bfeac18f6095a19876a6fd26b85a86675181efaec18",
-      "state": "machine-cross-checked",
-      "text": "锁定允许的应用"
-    },
-    "settings.kiosk_companion_packages.summary": {
-      "text": "锁定时保留在前台的应用，按包名指定。",
-      "sourceHash": "fb1f681bde163f87f061be250f6edbcec28e231f9f091848e681cc0d6d6324be",
-      "state": "machine-cross-checked"
-    },
     "settings.kiosk_lock.help": {
       "text": "仅限已 root 设备使用的轻量级锁定。隐藏 Android 系统栏；打开其他应用或最近任务时，会在约 3 秒内返回所选仪表盘。它不会隐藏 Home Assistant 导航。\n\n解除方式：\n\n- 在此处或 Home Assistant 中\n- 通过 adb\n- 快速点击左上角 7 次\n- 在重启后 60 秒的解锁窗口内",
       "sourceHash": "a5aea4a70feac20a926a91470d535b063611aec3d0053a9ffeb139dacab4e8f7",
