@@ -21,8 +21,7 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
-  # One definition for every URL this workflow emits, including the installer one-liner in the
-  # release body. The scripts carry their own single `REPO=` definition.
+  # One definition for every URL this workflow emits in the release body.
   RELEASE_REPOSITORY: panel-assistant/android
 
 concurrency:
@@ -192,7 +191,7 @@ jobs:
           fi
 
   package:
-    # Everything except the two APKs: helpers, SBOMs, installer, provisioner and release notes. It runs
+    # Everything except the two APKs: the comparison helpers, SBOMs and release notes. It runs
     # beside the identity builds; the seal job joins the three.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -304,27 +303,6 @@ jobs:
           successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           echo "BRIDGE_APK_NAME=$bridge_apk_name" >> "$GITHUB_ENV"
           echo "SUCCESSOR_APK_NAME=$successor_apk_name" >> "$GITHUB_ENV"
-
-      - name: Build release-pinned installer asset
-        run: |
-          installer="release-input/ha-paneld-installer-${RELEASE_TAG}.sh"
-          provisioner="release-input/ha-paneld-provision-${RELEASE_TAG}.sh"
-          sed \
-            -e "s|^RELEASE_HELPER_BUILD_ID=.*|RELEASE_HELPER_BUILD_ID=\"$HELPER_BUILD_ID\"|" \
-            scripts/provision.sh > "$provisioner"
-          chmod +x "$provisioner"
-          bash -n "$provisioner"
-          sed \
-            -e "s|^RELEASE_TAG=.*|RELEASE_TAG=\"$RELEASE_TAG\"|" \
-            -e "s|^RELEASE_APK_NAME=.*|RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"|" \
-            -e "s|^PROVISION_COMMIT=.*|PROVISION_COMMIT=\"$SOURCE_COMMIT\"|" \
-            scripts/install.sh > "$installer"
-          chmod +x "$installer"
-          bash -n "$installer"
-          grep -Fq "RELEASE_TAG=\"$RELEASE_TAG\"" "$installer"
-          grep -Fq "RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"" "$installer"
-          grep -Fq "PROVISION_COMMIT=\"$SOURCE_COMMIT\"" "$installer"
-          grep -Fq "RELEASE_HELPER_BUILD_ID=\"$HELPER_BUILD_ID\"" "$provisioner"
 
       # Human-readable notes come only from the matching docs/CHANGELOG.md section, keeping the approved
       # consumer-facing body exact for both prereleases and stable releases.
@@ -531,6 +509,9 @@ jobs:
             unzip -p "$apk" assets/hapaneld-helper-arm | cmp release-input/hapaneld-helper-armeabi-v7a -
             unzip -p "$apk" assets/hapaneld-helper-arm64 | cmp release-input/hapaneld-helper-arm64-v8a -
           done
+          # The standalone helpers were only a comparison input; the app ships the bundled copy and
+          # nothing downloads a separate helper, so they never reach the sealed or published set.
+          rm -f release-input/hapaneld-helper-armeabi-v7a release-input/hapaneld-helper-arm64-v8a
 
       - name: Seal exact release inputs
         id: manifest
@@ -538,11 +519,7 @@ jobs:
           expected=$(printf '%s\n' \
             android-gradle-runtime.cdx.json \
             generate_install_descriptor.py \
-            "ha-paneld-installer-${RELEASE_TAG}.sh" \
-            "ha-paneld-provision-${RELEASE_TAG}.sh" \
             ha-paneld-unsigned.apk \
-            hapaneld-helper-arm64-v8a \
-            hapaneld-helper-armeabi-v7a \
             panel-assistant-unsigned.apk \
             profile-editor-runtime.cdx.json \
             release-body.md)
@@ -554,7 +531,7 @@ jobs:
           fi
           (
             cd release-input
-            sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py "ha-paneld-installer-${RELEASE_TAG}.sh" "ha-paneld-provision-${RELEASE_TAG}.sh" ha-paneld-unsigned.apk hapaneld-helper-arm64-v8a hapaneld-helper-armeabi-v7a panel-assistant-unsigned.apk profile-editor-runtime.cdx.json release-body.md > MANIFEST.sha256
+            sha256sum android-gradle-runtime.cdx.json generate_install_descriptor.py ha-paneld-unsigned.apk panel-assistant-unsigned.apk profile-editor-runtime.cdx.json release-body.md > MANIFEST.sha256
           )
           sha256=$(sha256sum release-input/MANIFEST.sha256 | cut -d' ' -f1)
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
@@ -604,11 +581,7 @@ jobs:
             MANIFEST.sha256 \
             android-gradle-runtime.cdx.json \
             generate_install_descriptor.py \
-            "ha-paneld-installer-${RELEASE_TAG}.sh" \
-            "ha-paneld-provision-${RELEASE_TAG}.sh" \
             ha-paneld-unsigned.apk \
-            hapaneld-helper-arm64-v8a \
-            hapaneld-helper-armeabi-v7a \
             panel-assistant-unsigned.apk \
             profile-editor-runtime.cdx.json \
             release-body.md)
@@ -670,9 +643,6 @@ jobs:
           successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"
           android_sbom_name="ha-paneld-${RELEASE_TAG}-android-gradle-runtime.cdx.json"
           profile_editor_sbom_name="ha-paneld-${RELEASE_TAG}-profile-editor-runtime.cdx.json"
-          provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
-          helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
-          helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
           signed_apk="dist/$apk_name"
           apk_idsig="$signed_apk.idsig"
           expected_version_name="${RELEASE_TAG#v}"
@@ -742,18 +712,8 @@ jobs:
 
           cp release-input/android-gradle-runtime.cdx.json "dist/$android_sbom_name"
           cp release-input/profile-editor-runtime.cdx.json "dist/$profile_editor_sbom_name"
-          cp "release-input/ha-paneld-installer-${RELEASE_TAG}.sh" "dist/ha-paneld-installer-${RELEASE_TAG}.sh"
-          cp "release-input/$provisioner_name" "dist/$provisioner_name"
-          cp release-input/hapaneld-helper-armeabi-v7a "dist/$helper_arm_name"
-          cp release-input/hapaneld-helper-arm64-v8a "dist/$helper_arm64_name"
-          chmod +x "dist/ha-paneld-installer-${RELEASE_TAG}.sh"
-          chmod +x "dist/$provisioner_name"
-          chmod +x "dist/$helper_arm_name" "dist/$helper_arm64_name"
           (cd dist && sha256sum "$apk_name" > "$apk_name.sha256")
           (cd dist && sha256sum "$successor_apk_name" > "$successor_apk_name.sha256")
-          (cd dist && sha256sum "$provisioner_name" > "$provisioner_name.sha256")
-          (cd dist && sha256sum "$helper_arm_name" > "$helper_arm_name.sha256")
-          (cd dist && sha256sum "$helper_arm64_name" > "$helper_arm64_name.sha256")
 
           echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
           echo "successor_apk_name=$successor_apk_name" >> "$GITHUB_OUTPUT"
@@ -974,9 +934,6 @@ jobs:
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
-          provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
-          helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
-          helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
           signed_apk="dist/$apk_name"
           apk_idsig="$signed_apk.idsig"
           successor_signed_apk="dist/$successor_apk_name"
@@ -986,8 +943,6 @@ jobs:
           pkcs12="$proof_dir/release-key.p12"
           private_key="$proof_dir/release-private-key.pem"
           public_key="$proof_dir/release-public-key.pem"
-          installer_public_key="$proof_dir/installer-public-key.pem"
-          provisioner_public_key="$proof_dir/provisioner-public-key.pem"
           expected_descriptor="$proof_dir/expected-install.json"
           cleanup_release_proofs() {
             unset KEYSTORE_B64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD HAPANELD_PKCS12_PASSWORD
@@ -1208,28 +1163,6 @@ jobs:
             exit 1
           fi
 
-          for source in "dist/ha-paneld-installer-${RELEASE_TAG}.sh" "dist/$provisioner_name"; do
-            if [ ! -f "$source" ] || [ -L "$source" ] || \
-               [ "$(/usr/bin/grep -c '^-----BEGIN PUBLIC KEY-----$' "$source")" -ne 1 ] || \
-               [ "$(/usr/bin/grep -c '^-----END PUBLIC KEY-----$' "$source")" -ne 1 ]; then
-              echo "::error::Release script does not contain exactly one trusted public key."
-              exit 1
-            fi
-          done
-          /usr/bin/awk '/^-----BEGIN PUBLIC KEY-----$/{copy=1} copy{print} /^-----END PUBLIC KEY-----$/{exit}' \
-            "dist/ha-paneld-installer-${RELEASE_TAG}.sh" > "$installer_public_key"
-          /usr/bin/awk '/^-----BEGIN PUBLIC KEY-----$/{copy=1} copy{print} /^-----END PUBLIC KEY-----$/{exit}' \
-            "dist/$provisioner_name" > "$provisioner_public_key"
-          if ! /usr/bin/cmp --silent "$installer_public_key" "$provisioner_public_key"; then
-            echo "::error::Release scripts disagree on the trusted public key."
-            exit 1
-          fi
-          trusted_public_key_sha256=$(/usr/bin/openssl pkey -pubin -in "$installer_public_key" -outform DER | /usr/bin/sha256sum | /usr/bin/cut -d' ' -f1)
-          if [ "$trusted_public_key_sha256" != 502bf38874682ff337f187022b904adbc3ab0b387fd7ceb4043ce722997273f3 ]; then
-            echo "::error::Release scripts do not embed the release proof authority."
-            exit 1
-          fi
-
           printf '%s' "$KEYSTORE_B64" | /usr/bin/base64 --decode > "$keystore"
           /usr/bin/chmod 0600 "$keystore"
           HAPANELD_PKCS12_PASSWORD=$(/usr/bin/openssl rand -hex 32)
@@ -1253,30 +1186,17 @@ jobs:
           /usr/bin/chmod 0600 "$private_key"
           /usr/bin/openssl pkey -in "$private_key" -pubout -out "$public_key"
           signing_public_key_sha256=$(/usr/bin/openssl pkey -pubin -in "$public_key" -outform DER | /usr/bin/sha256sum | /usr/bin/cut -d' ' -f1)
-          if [ "$signing_public_key_sha256" != "$trusted_public_key_sha256" ]; then
+          if [ "$signing_public_key_sha256" != 502bf38874682ff337f187022b904adbc3ab0b387fd7ceb4043ce722997273f3 ]; then
             echo "::error::APK signing key does not match the release proof authority."
             exit 1
           fi
           unset KEYSTORE_B64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD HAPANELD_PKCS12_PASSWORD
 
-          for proof_name in "$provisioner_name" "$helper_arm_name" "$helper_arm64_name"; do
-            if [ ! -f "dist/$proof_name" ] || [ -L "dist/$proof_name" ]; then
-              echo "::error::Release proof subject is not a regular nofollow file: $proof_name"
-              exit 1
-            fi
-            /usr/bin/sha256sum "dist/$proof_name" | /usr/bin/sed "s|  dist/|  |" > "$proof_dir/$proof_name.sha256"
-            if ! /usr/bin/cmp --silent "$proof_dir/$proof_name.sha256" "dist/$proof_name.sha256" || \
-               ! (cd dist && /usr/bin/sha256sum --strict --check "$proof_name.sha256"); then
-              echo "::error::Release checksum record does not bind the exact asset: $proof_name"
-              exit 1
-            fi
-          done
-
           for metadata_name in "$descriptor_name" "$bridge_descriptor_name" "$protocol_name"; do
             /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$metadata_name.sig" "dist/$metadata_name"
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$metadata_name.sig" "dist/$metadata_name"
           done
-          for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
+          for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256"; do
             /usr/bin/openssl dgst -sha256 -sign "$private_key" -out "dist/$checksum_name.sig" "dist/$checksum_name"
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
           done
@@ -1317,9 +1237,6 @@ jobs:
           descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"
           bridge_descriptor_name="ha-paneld-${RELEASE_TAG}-bridge-install.json"
           protocol_name="ha-paneld-${RELEASE_TAG}-protocol.json"
-          provisioner_name="ha-paneld-provision-${RELEASE_TAG}.sh"
-          helper_arm_name="ha-paneld-helper-${RELEASE_TAG}-armeabi-v7a"
-          helper_arm64_name="ha-paneld-helper-${RELEASE_TAG}-arm64-v8a"
           expected=$(/usr/bin/printf '%s\n' \
             "ha-paneld-${RELEASE_TAG}-android-gradle-runtime.cdx.json" \
             "$descriptor_name" \
@@ -1328,13 +1245,6 @@ jobs:
             "$bridge_descriptor_name.sig" \
             "$protocol_name" \
             "$protocol_name.sig" \
-            "$helper_arm64_name" \
-            "$helper_arm64_name.sha256" \
-            "$helper_arm64_name.sha256.sig" \
-            "$helper_arm_name" \
-            "$helper_arm_name.sha256" \
-            "$helper_arm_name.sha256.sig" \
-            "ha-paneld-installer-${RELEASE_TAG}.sh" \
             "$apk_name" \
             "$apk_name.idsig" \
             "$apk_name.sha256" \
@@ -1343,10 +1253,7 @@ jobs:
             "$successor_apk_name" \
             "$successor_apk_name.idsig" \
             "$successor_apk_name.sha256" \
-            "$successor_apk_name.sha256.sig" \
-            "$provisioner_name" \
-            "$provisioner_name.sha256" \
-            "$provisioner_name.sha256.sig" | /usr/bin/sort)
+            "$successor_apk_name.sha256.sig" | /usr/bin/sort)
           actual=$(/usr/bin/find dist -mindepth 1 -maxdepth 1 -printf '%f\n' | /usr/bin/sort)
           if [ "$actual" != "$expected" ]; then
             echo "::error::Final release asset set is not exact."
@@ -1371,14 +1278,16 @@ jobs:
           final_dir=$(/usr/bin/mktemp -d "$RUNNER_TEMP/final-release-proof.XXXXXX")
           trap '/usr/bin/rm -rf -- "$final_dir"' EXIT
           public_key="$final_dir/release-public-key.pem"
-          installer="dist/ha-paneld-installer-${RELEASE_TAG}.sh"
-          if [ "$(/usr/bin/grep -c '^-----BEGIN PUBLIC KEY-----$' "$installer")" -ne 1 ] || \
-             [ "$(/usr/bin/grep -c '^-----END PUBLIC KEY-----$' "$installer")" -ne 1 ]; then
-            echo "::error::Release installer does not contain exactly one trusted public key."
-            exit 1
-          fi
-          /usr/bin/awk '/^-----BEGIN PUBLIC KEY-----$/{copy=1} copy{print} /^-----END PUBLIC KEY-----$/{exit}' \
-            "$installer" > "$public_key"
+          # The release authority's public key is read from the published successor APK's own signing
+          # certificate, then pinned by digest; no published script carries it any more.
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+            --v4-signature-file "$successor_apk_idsig" \
+            --print-certs-pem \
+            "dist/$successor_apk_name" \
+            | /usr/bin/tr -d '\r' \
+            | /usr/bin/awk '/^-----BEGIN CERTIFICATE-----$/{n++} n==1{print} n==1 && /^-----END CERTIFICATE-----$/{exit}' \
+            > "$final_dir/release-certificate.pem"
+          /usr/bin/openssl x509 -pubkey -noout -in "$final_dir/release-certificate.pem" > "$public_key"
           trusted_public_key_sha256=$(/usr/bin/openssl pkey -pubin -in "$public_key" -outform DER | /usr/bin/sha256sum | /usr/bin/cut -d' ' -f1)
           if [ "$trusted_public_key_sha256" != 502bf38874682ff337f187022b904adbc3ab0b387fd7ceb4043ce722997273f3 ]; then
             echo "::error::Final release proof authority is not trusted."
@@ -1412,7 +1321,7 @@ jobs:
             exit 1
           fi
 
-          for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256" "$provisioner_name.sha256" "$helper_arm_name.sha256" "$helper_arm64_name.sha256"; do
+          for checksum_name in "$apk_name.sha256" "$successor_apk_name.sha256"; do
             (cd dist && /usr/bin/sha256sum --strict --check "$checksum_name")
             /usr/bin/openssl dgst -sha256 -verify "$public_key" -signature "dist/$checksum_name.sig" "dist/$checksum_name"
           done

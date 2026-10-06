@@ -699,8 +699,10 @@ cat > "$descriptor_case/android/build-tools/36.0.0/apksigner" <<'EOF'
 set -eu
 v4_signature_file=
 apk=
+print_certs_pem=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --print-certs-pem) print_certs_pem=1; shift ;;
     --v4-signature-file)
       [ "$#" -ge 2 ] || exit 93
       v4_signature_file=$2
@@ -718,6 +720,11 @@ if [ -n "$v4_signature_file" ]; then
   fi
 fi
 printf '%s\n' 'Signer #1 certificate SHA-256 digest: ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339'
+# Like the real tool, --print-certs-pem follows the signer lines with each certificate's PEM. The
+# test signing certificate stands in for the release one; the cases run from the case directory.
+if [ "$print_certs_pem" -eq 1 ]; then
+  cat test-release-certificate.pem
+fi
 EOF
 chmod 0755 "$descriptor_case/android/build-tools/36.0.0/aapt" \
   "$descriptor_case/android/build-tools/36.0.0/apksigner"
@@ -804,18 +811,6 @@ openssl x509 -pubkey -noout \
 test_public_key_sha256=$(openssl pkey -pubin \
   -in "$descriptor_case/test-release-public-key.pem" \
   -outform DER | sha256sum | cut -d' ' -f1)
-for release_script in \
-  "ha-paneld-installer-v1.2.3-rc1.sh" \
-  "ha-paneld-provision-v1.2.3-rc1.sh"; do
-  {
-    printf '%s\n' '#!/usr/bin/env bash' 'write_release_public_key() {'
-    cat "$descriptor_case/test-release-public-key.pem"
-    printf '%s\n' '}'
-  } > "$descriptor_case/dist/$release_script"
-  chmod 0755 "$descriptor_case/dist/$release_script"
-done
-printf 'arm helper fixture\n' > "$descriptor_case/dist/ha-paneld-helper-v1.2.3-rc1-armeabi-v7a"
-printf 'arm64 helper fixture\n' > "$descriptor_case/dist/ha-paneld-helper-v1.2.3-rc1-arm64-v8a"
 printf '{}\n' > "$descriptor_case/dist/ha-paneld-v1.2.3-rc1-android-gradle-runtime.cdx.json"
 printf '{}\n' > "$descriptor_case/dist/ha-paneld-v1.2.3-rc1-profile-editor-runtime.cdx.json"
 printf 'APK Signature Scheme v4 fixture\n' > "$descriptor_case/dist/$apk_name.idsig"
@@ -824,10 +819,7 @@ printf 'APK Signature Scheme v4 fixture\n' > "$descriptor_case/dist/$bridge_apk_
   cd "$descriptor_case/dist" || exit 1
   for subject in \
     "$apk_name" \
-    "$bridge_apk_name" \
-    ha-paneld-provision-v1.2.3-rc1.sh \
-    ha-paneld-helper-v1.2.3-rc1-armeabi-v7a \
-    ha-paneld-helper-v1.2.3-rc1-arm64-v8a; do
+    "$bridge_apk_name"; do
     sha256sum "$subject" > "$subject.sha256"
   done
 )
@@ -1223,16 +1215,15 @@ else
   fail_test "standalone helpers are compared with the helper packaged in both APKs"
 fi
 
-# The descriptor names the successor and the installer pins it; both APK asset names carry the
+# The descriptor names the successor; both APK asset names carry the
 # `.apk.bin` suffix that keeps earlier updaters away.
 if grep -Fq 'apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"' <<<"$descriptor_step" && \
    grep -Fq 'descriptor_name="ha-paneld-${RELEASE_TAG}-install.json"' <<<"$descriptor_step" && \
-   grep -Fq 'RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"' <<<"$package_job" && \
    grep -Fq 'bridge_apk_name="ha-paneld-${RELEASE_TAG}-manual-setup-required.apk.bin"' <<<"$stage_step" && \
    grep -Fq 'successor_apk_name="panel-assistant-${RELEASE_TAG}-manual-setup-required.apk.bin"' <<<"$stage_step"; then
-  pass "the descriptor and installer pin the successor and both APK assets carry .apk.bin"
+  pass "the descriptor pins the successor and both APK assets carry .apk.bin"
 else
-  fail_test "the descriptor and installer pin the successor and both APK assets carry .apk.bin"
+  fail_test "the descriptor pins the successor and both APK assets carry .apk.bin"
 fi
 
 # Shipped 0.4.1 verifiers compare these byte for byte. A migration that moves any of them silently
@@ -1293,7 +1284,7 @@ run_ordering_case() {
 
 gate_bridge=ha-paneld-v1.2.3-rc1-manual-setup-required.apk.bin
 gate_successor=panel-assistant-v1.2.3-rc1-manual-setup-required.apk.bin
-gate_others="ha-paneld-v1.2.3-rc1-android-gradle-runtime.cdx.json ha-paneld-v1.2.3-rc1-install.json ha-paneld-v1.2.3-rc1-install.json.sig ha-paneld-v1.2.3-rc1-bridge-install.json ha-paneld-v1.2.3-rc1-bridge-install.json.sig ha-paneld-v1.2.3-rc1-protocol.json ha-paneld-v1.2.3-rc1-protocol.json.sig ha-paneld-installer-v1.2.3-rc1.sh ha-paneld-provision-v1.2.3-rc1.sh ha-paneld-provision-v1.2.3-rc1.sh.sha256 ha-paneld-provision-v1.2.3-rc1.sh.sha256.sig"
+gate_others="ha-paneld-v1.2.3-rc1-android-gradle-runtime.cdx.json ha-paneld-v1.2.3-rc1-install.json ha-paneld-v1.2.3-rc1-install.json.sig ha-paneld-v1.2.3-rc1-bridge-install.json ha-paneld-v1.2.3-rc1-bridge-install.json.sig ha-paneld-v1.2.3-rc1-protocol.json ha-paneld-v1.2.3-rc1-protocol.json.sig"
 gate_companions=""
 for gate_apk in "$gate_bridge" "$gate_successor"; do
   gate_companions="$gate_companions $gate_apk.idsig $gate_apk.sha256 $gate_apk.sha256.sig"
@@ -1331,42 +1322,19 @@ else
   fail_test "no-APK-asset guard refuses a release whose .apk.bin assets are not exactly the bridge and successor"
 fi
 
-# --- the pinned installer must agree with the workflow that pinned it --------------------------
+# --- retired assets stay retired -------------------------------------------------------------
 #
-# The release workflow rewrites `RELEASE_APK_NAME=` in the published installer, and the installer
-# then asserts at startup that the value it was given is the one its own `release_apk_name` would
-# produce for that tag. The two live in different files and are edited by different lanes, so a
-# disagreement is invisible until a user runs the published one-liner and it refuses itself. This
-# calls the installer's real function and compares it against the name the workflow pins.
-
-installer_apk_name="$(
-  { sed -n '/^release_apk_name() {/p' "$ROOT/scripts/install.sh"; printf 'release_apk_name v1.2.3-rc1\n'; } | bash
-)"
-
-if grep -Fq 'RELEASE_APK_NAME=\"$SUCCESSOR_APK_NAME\"' <<<"$package_job"; then
-  workflow_pinned_apk_name=panel-assistant-v1.2.3-rc1-manual-setup-required.apk.bin
+# The one-line installer, the provisioner and the standalone root helpers are no longer release
+# assets (2026-10-06): no Panel Assistant release fetches them and the app bundles its own helper.
+# The helper is still built as a comparison input under the internal name `hapaneld-helper-*`, but
+# no published name, upload, checksum or signature for any of them may come back.
+retired_asset_hits="$(grep -nE 'ha-paneld-(installer|provision|helper)-|provisioner_name|helper_arm(64)?_name|installer_public_key|scripts/(install|provision)\.sh' "$WORKFLOW" || true)"
+if [ -z "$retired_asset_hits" ] && \
+   grep -Fq 'rm -f release-input/hapaneld-helper-armeabi-v7a release-input/hapaneld-helper-arm64-v8a' <<<"$seal_helper_step"; then
+  pass "the workflow publishes no installer, provisioner or standalone helper asset"
 else
-  workflow_pinned_apk_name=ha-paneld-v1.2.3-rc1-manual-setup-required.apk.bin
-fi
-
-if [ -n "$installer_apk_name" ] && [ "$installer_apk_name" = "$workflow_pinned_apk_name" ]; then
-  pass "the published installer resolves the same APK asset the release workflow pins into it"
-else
-  printf 'installer resolves: %s\nworkflow pins:      %s\n' \
-    "${installer_apk_name:-<none>}" "$workflow_pinned_apk_name" >&2
-  fail_test "the published installer resolves the same APK asset the release workflow pins into it"
-fi
-
-# The installer downloads what it was pinned to, so its repository must be the one the workflow
-# writes the download URL for. One definition per script, both pointing at the same place.
-installer_repo="$(sed -n 's/^REPO="\([^"]*\)"$/\1/p' "$ROOT/scripts/install.sh" | head -1)"
-workflow_repo="$(sed -n 's/^  RELEASE_REPOSITORY: \(.*\)$/\1/p' "$WORKFLOW" | head -1)"
-if [ -n "$installer_repo" ] && [ "$installer_repo" = "$workflow_repo" ]; then
-  pass "the installer and the release workflow name the same repository"
-else
-  printf 'installer REPO: %s\nworkflow REPO:  %s\n' \
-    "${installer_repo:-<none>}" "${workflow_repo:-<none>}" >&2
-  fail_test "the installer and the release workflow name the same repository"
+  printf '%s\n' "$retired_asset_hits" >&2
+  fail_test "the workflow publishes no installer, provisioner or standalone helper asset"
 fi
 
 printf '1..%d\n' "$((passes + failures))"
