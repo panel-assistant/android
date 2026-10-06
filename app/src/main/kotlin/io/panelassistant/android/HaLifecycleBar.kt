@@ -340,10 +340,14 @@ internal class HaLifecycleBar private constructor(
 
     /**
      * One palette per dashboard theme, not per state: the step is carried by words, position and label
-     * weight, never by colour alone, so it reads the same to colour-blind viewers. Every text role keeps
-     * WCAG AA 4.5:1 or better over a pure white, grey or black dashboard at [CARD_ALPHA] (worst 5.4:1:
-     * secondary labels, dark theme over white); the accent marks only the dot and the track, which need
-     * 3:1 and get 5.1:1 or better. Recheck those figures before changing a colour or the opacity.
+     * weight, never by colour alone, so it reads the same to colour-blind viewers.
+     *
+     * The card is INVERTED against the dashboard — light on a dark dashboard, dark on a light one — as
+     * Android's own prominent transient notices are. A card in the dashboard's own tones read as part of
+     * the page rather than a notice (seen on hardware). Every text role keeps WCAG AA 4.5:1 or better over
+     * a pure white, grey or black dashboard at [CARD_ALPHA] (worst 6.8:1, secondary labels on the light
+     * card); the accent marks only the border, the dot and the track, which need 3:1 and get 6.1:1 or
+     * better. Recheck those figures before changing a colour or the opacity.
      */
     private class Palette(
         val surface: Int,
@@ -367,8 +371,11 @@ internal class HaLifecycleBar private constructor(
             accent = Color.parseColor("#01579B"),
         )
 
-        /** 86% opaque, so the dashboard shows faintly through; see [Palette] for the contrast it keeps. */
-        private const val CARD_ALPHA = 0xDB
+        /** 94% opaque: a hint of the dashboard behind, but solid enough to read as a notice; see [Palette]. */
+        private const val CARD_ALPHA = 0xF0
+
+        /** The border carries the accent, so the card's edge is clear against any dashboard. */
+        private const val BORDER = 2f
 
         private val MEDIUM: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         private val LIGHT_FACE: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
@@ -405,7 +412,8 @@ internal class HaLifecycleBar private constructor(
             val s = haLifecycleScale(minOf(metrics.widthPixels, metrics.heightPixels).toFloat(), metrics.density)
             fun px(base: Float) = (base * s).toInt()
             val dark = runCatching { Config(context).dashboardThemeDark }.getOrNull() ?: true
-            val palette = if (dark) DARK else LIGHT
+            // Inverted against the dashboard: see [Palette].
+            val palette = if (dark) LIGHT else DARK
 
             fun text(size: Float, colour: Int, face: Typeface = Typeface.DEFAULT) = TextView(context).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, size * s)
@@ -421,7 +429,7 @@ internal class HaLifecycleBar private constructor(
                 background = GradientDrawable().apply {
                     cornerRadius = CORNER * s
                     setColor(withAlpha(palette.surface, CARD_ALPHA))
-                    setStroke(maxOf(1, (1f * s).toInt()), palette.line)
+                    setStroke(maxOf(2, (BORDER * s).toInt()), palette.accent)
                 }
                 visibility = View.GONE
             }
