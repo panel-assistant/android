@@ -170,7 +170,7 @@ internal class HaLifecycleBar private constructor(
             return
         }
         val colours = palette(state, dark)
-        card.setColor(colours.surface)
+        card.setColor((colours.surface and 0x00FFFFFF) or (CARD_ALPHA shl 24))
         card.setStroke((BORDER_DP * view.resources.displayMetrics.density).toInt(), colours.border)
         label.setTextColor(colours.label)
         val overdue = snap?.expectedMs?.let { (snap.elapsedMs ?: 0L) > it } == true &&
@@ -252,7 +252,7 @@ internal class HaLifecycleBar private constructor(
 
     companion object {
         /**
-         * State-coloured, theme-aware and OPAQUE.
+         * State-coloured, theme-aware and MOSTLY opaque.
          *
          * A near-black card with no border was indistinguishable from the dark dashboard behind it and
          * read as a rendering fault rather than a notice (observed on hardware). Colour fixes that,
@@ -261,10 +261,11 @@ internal class HaLifecycleBar private constructor(
          * The colour tracks the STATE, not the feature. Red for every state would announce good news in
          * the language of failure; recovery is green.
          *
-         * The fill is OPAQUE per theme rather than a translucent wash. Translucency adapts to light and
-         * dark for free, but the surface behind is an arbitrary dashboard — camera cards, photographs,
-         * bright media — so the resulting text contrast is unpredictable and sometimes unreadable. Two
-         * fixed palettes guarantee it.
+         * The fill is a fixed palette per theme, drawn at [CARD_ALPHA] so the dashboard shows faintly
+         * through. The surface behind is arbitrary — camera cards, photographs, bright media — so the
+         * opacity is the lowest that keeps every palette's text, headline and dimmed detail alike, at
+         * WCAG AA 4.5:1 or better over pure white, grey and black: 5.5:1 at its worst (recovery,
+         * light theme, over black). Below about 72% it fails, so lower it only with that check redone.
          *
          * The tint is muted and the SATURATION lives in the border. Home Assistant's guidelines forbid
          * enclosing the logomark in a coloured or confined background, so the mark sits on a barely
@@ -286,6 +287,9 @@ internal class HaLifecycleBar private constructor(
         }
 
         private const val BORDER_DP = 3
+
+        /** 80% opaque; see [Palette] for why no lower. */
+        private const val CARD_ALPHA = 0xCC
 
         /** How often an outage card re-reads the snapshot, and so how far ahead the bar animates. */
         private const val TICK_MS = 1_000L
