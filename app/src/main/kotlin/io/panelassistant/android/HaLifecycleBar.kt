@@ -1,13 +1,19 @@
 package io.panelassistant.android
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.ClipDrawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import io.panelassistant.android.sensors.HaLifecycle
 import io.panelassistant.android.sensors.HaLifecycleRuntime
@@ -29,6 +35,21 @@ internal fun haLifecycleNoticeState(
     snap?.state == HaLifecycleState.BACK_ONLINE -> snap.state
     else -> null
 }
+
+/**
+ * How far the restart bar is filled, out of [HA_LIFECYCLE_PROGRESS_MAX], or null when the card shows no bar.
+ *
+ * Mirrors the forecast text: a bar exactly when the card quantifies the time back. No measurement is no
+ * bar, recovery is no bar, and an overdue restart sits full rather than running backwards — the
+ * "taking longer" headline carries that case.
+ */
+internal fun haLifecycleProgress(state: HaLifecycleState, expectedMs: Long?, elapsedMs: Long?): Int? {
+    if (state == HaLifecycleState.BACK_ONLINE || expectedMs == null || elapsedMs == null) return null
+    if (expectedMs <= 0L || elapsedMs >= expectedMs) return HA_LIFECYCLE_PROGRESS_MAX
+    return (elapsedMs.coerceAtLeast(0L) * HA_LIFECYCLE_PROGRESS_MAX / expectedMs).toInt()
+}
+
+internal const val HA_LIFECYCLE_PROGRESS_MAX = 10_000
 
 /** The two text sizes the notice renders at, in pixels. */
 internal data class HaLifecycleTextSizes(val headlinePx: Float, val detailPx: Float)
@@ -93,7 +114,10 @@ internal class HaLifecycleBar private constructor(
     private val onVisibilityChanged: (Boolean) -> Unit,
 ) {
     private val label: TextView = view.getChildAt(1) as TextView
-    private val detail: TextView = view.getChildAt(2) as TextView
+    private val bar: ProgressBar = view.getChildAt(2) as ProgressBar
+    private val detail: TextView = view.getChildAt(3) as TextView
+    private val barLayers = bar.progressDrawable as LayerDrawable
+    private var barAnimator: ObjectAnimator? = null
 
     /**
      * The back-online notice retires on read in the state machine, which pushes nothing when it lapses.
@@ -163,6 +187,7 @@ internal class HaLifecycleBar private constructor(
         detail.setTextColor(colours.label)
         detail.text = supporting.orEmpty()
         detail.visibility = if (supporting == null) View.GONE else View.VISIBLE
+        showProgress(state, snap, colours)
         visibility(true)
         if (state == HaLifecycleState.BACK_ONLINE) {
             // The REMAINING canonical lifetime from the SAME snapshot as the wording — a renderer
@@ -170,10 +195,37 @@ internal class HaLifecycleBar private constructor(
             val remaining = snap?.backOnlineRemainingMs ?: 0L
             if (remaining <= 0L) visibility(false)
             else view.postDelayed(hide, remaining)
-        } else view.postDelayed(hide, 1_000L)
+        } else view.postDelayed(hide, TICK_MS)
+    }
+
+    /**
+     * The bar is INVISIBLE, never GONE, when it has nothing to show: the card wraps its content, so a
+     * bar arriving mid-outage (a measurement reaching an unmeasured card) would otherwise grow it.
+     *
+     * Between the once-a-second updates it animates to where the snapshot clock will be at the next
+     * one, so it moves continuously rather than in steps.
+     */
+    private fun showProgress(state: HaLifecycleState, snap: HaLifecycle.Snapshot?, colours: Palette) {
+        barAnimator?.cancel()
+        val fill = haLifecycleProgress(state, snap?.expectedMs, snap?.elapsedMs)
+        if (fill == null) {
+            bar.visibility = View.INVISIBLE
+            return
+        }
+        (barLayers.getDrawable(0) as GradientDrawable).setColor((colours.border and 0x00FFFFFF) or (BAR_TRACK_ALPHA shl 24))
+        ((barLayers.getDrawable(1) as ClipDrawable).drawable as GradientDrawable).setColor(colours.border)
+        if (!visible || bar.visibility != View.VISIBLE) bar.progress = fill
+        bar.visibility = View.VISIBLE
+        val next = haLifecycleProgress(state, snap?.expectedMs, snap?.elapsedMs?.plus(TICK_MS)) ?: fill
+        barAnimator = ObjectAnimator.ofInt(bar, "progress", bar.progress, maxOf(next, bar.progress)).apply {
+            duration = TICK_MS
+            interpolator = LinearInterpolator()
+            start()
+        }
     }
 
     fun detach() {
+        barAnimator?.cancel()
         view.removeCallbacks(hide)
         visibility(false)
         (view.parent as? ViewGroup)?.removeView(view)
@@ -215,6 +267,15 @@ internal class HaLifecycleBar private constructor(
         }
 
         private const val BORDER_DP = 3
+
+        /** How often an outage card re-reads the snapshot, and so how far ahead the bar animates. */
+        private const val TICK_MS = 1_000L
+
+        /** Thick enough to read from across a room; it is the card's main progress element. */
+        private const val BAR_HEIGHT_DP = 10
+
+        /** The unfilled track is the state's border colour, faint, so the fill reads against it. */
+        private const val BAR_TRACK_ALPHA = 0x40
 
         /**
          * Sized for a wall panel read from across a room, not a phone held at arm's length. The smallest
@@ -314,6 +375,25 @@ internal class HaLifecycleBar private constructor(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ),
+            )
+            val barCorner = BAR_HEIGHT_DP * density / 2
+            row.addView(
+                ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                    isIndeterminate = false
+                    max = HA_LIFECYCLE_PROGRESS_MAX
+                    progressDrawable = LayerDrawable(arrayOf(
+                        GradientDrawable().apply { cornerRadius = barCorner },
+                        ClipDrawable(GradientDrawable().apply { cornerRadius = barCorner }, Gravity.START, ClipDrawable.HORIZONTAL),
+                    )).apply {
+                        setId(0, android.R.id.background)
+                        setId(1, android.R.id.progress)
+                    }
+                    visibility = View.INVISIBLE
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (BAR_HEIGHT_DP * density).toInt(),
+                ).apply { topMargin = pad / 2 },
             )
             row.addView(
                 TextView(context).apply {
