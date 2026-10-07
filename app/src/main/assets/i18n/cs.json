@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "locale": "cs",
-  "sourceRevision": "2a7e1ef487fb94aae085075edbf18447f61e60a4",
+  "sourceRevision": "2e806335f2623ca954827fcec67450ec9f30b39c",
   "strings": {
     "api.action.send": {
       "text": "Odeslat {method}",
