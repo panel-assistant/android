@@ -156,6 +156,20 @@ class ProfileYamlSecurityTest {
         assertEquals("identity", parsed.document?.hardware?.led?.transfer)
     }
 
+    @Test fun `an imported profile that still recommends the retired Shizuku route is accepted`() {
+        val serialized = ProfileYaml.serialize(testProfileDocument().copy(
+            provisioning = testProfileDocument().provisioning.copy(access = ProfileProvisioningAccess()),
+        ))
+        assertFalse(serialized.contains("shizuku", ignoreCase = true))
+        for (value in listOf("none", "optional", "recommended")) {
+            val older = serialized.replaceFirst("provisioning:\n", "provisioning:\n  access:\n    shizuku: $value\n")
+            assertTrue("shizuku: $value" in older)
+            val parsed = ProfileYaml.parse(older)
+            assertEquals(emptyList<ProfileIssue>(), parsed.issues)
+            assertEquals(emptyList<ProfileIssue>(), ProfileValidator.validate(requireNotNull(parsed.document), "1.0.0", bundled = false))
+        }
+    }
+
     @Test fun `exceptional access is omitted by default and retained when explicitly declared`() {
         val baseline = testProfileDocument()
         val ordinary = baseline.copy(

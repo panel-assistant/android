@@ -169,6 +169,17 @@ class DiagCapabilityPolicyTest {
         assertFalse(cap.note(englishCatalogue).contains("reboot/reload"))
     }
 
+    @Test fun privilegedActionsNeedRootOrTheHelperAndOtherwiseGiveTheStandardExplanation() {
+        val rooted = DiagReader.verifiedOperationsCapability(rootish = true, shizuku = false)
+        assertEquals("ok", rooted.status)
+        assertEquals("available through root or the helper daemon", rooted.note(englishCatalogue))
+
+        val rootless = DiagReader.verifiedOperationsCapability(rootish = false, shizuku = false)
+        assertEquals("Verified app update / screenshot / display", rootless.name(englishCatalogue))
+        assertEquals("none", rootless.status)
+        assertEquals("needs supported privileged panel access", rootless.note(englishCatalogue))
+    }
+
     @Test fun appVisibleSuIsReportedPrecisely() {
         val cap = DiagReader.rootSuCapability(su = true, daemon = false)
 

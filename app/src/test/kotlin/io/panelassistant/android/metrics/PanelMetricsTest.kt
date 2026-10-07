@@ -87,6 +87,18 @@ class PanelMetricsTest {
         assertNull(reader(src).roomClimate(now))
     }
 
+    @Test fun roomClimateReadsFromTheHelperAndIsUnavailableWithoutIt() {
+        val src = FakeSource().apply { roomDaemon = "T=2384 H=5895" }
+        val r = reader(src)
+        assertEquals(23.84, r.roomClimate(now)!!.tempC, 0.0001)
+        src.roomDaemon = "ERR"
+        now += 1
+        assertNull("no helper reading means no room climate", r.roomClimate(now))
+        src.roomDaemon = "T=2820 H=3400"
+        now += 1
+        assertEquals("a recovered helper reads again", 28.20, r.roomClimate(now)!!.tempC, 0.0001)
+    }
+
     // --- the helper→Shizuku ladder, re-homed from OsMetricSourceTest onto the Resolvable that now owns it --
 
     @Test fun roomClimateEstablishedHelperWinsWithoutConsultingShizuku() {
