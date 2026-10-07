@@ -193,9 +193,9 @@ internal class StreamedSpeechRun(
     }
 }
 
-/** A streamed event's `stream_start_us`: the integer, or null when it is absent or not an integer. */
+/** A streamed event's `stream_start_us`: a JSON integer ≥ 0, or null when absent, not an integer or negative. */
 internal fun streamStartUs(json: org.json.JSONObject): Long? = when (val raw = json.opt("stream_start_us")) {
     is Int -> raw.toLong()
     is Long -> raw
     else -> null
-}
+}?.takeIf { it >= 0 }

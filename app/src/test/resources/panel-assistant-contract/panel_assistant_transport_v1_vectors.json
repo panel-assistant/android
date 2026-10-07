@@ -1384,5 +1384,115 @@
       },
       "valid": false
     }
+  ],
+  "streamed": [
+    {
+      "name": "voice_announce_streamed",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": 1759834567123456
+      },
+      "valid": true,
+      "claims": 1759834567123456
+    },
+    {
+      "name": "voice_run_play_streamed",
+      "payload": {
+        "kind": "play",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "continue_conversation": false,
+        "stream": true,
+        "stream_start_us": 1759834567123456
+      },
+      "valid": true,
+      "claims": 1759834567123456
+    },
+    {
+      "name": "media_play_announce_streamed",
+      "payload": {
+        "action": "play",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "announce": true,
+        "stream": true,
+        "stream_start_us": 1759834567123456
+      },
+      "valid": true,
+      "claims": 1759834567123456
+    },
+    {
+      "name": "voice_announce_streamed_without_its_start_by_an_older_integration",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true
+      },
+      "valid": true,
+      "claims": null
+    },
+    {
+      "name": "voice_announce_not_streamed",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false
+      },
+      "valid": true,
+      "claims": null
+    },
+    {
+      "name": "voice_announce_stream_start_as_text",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": "1759834567123456"
+      },
+      "valid": false
+    },
+    {
+      "name": "voice_announce_stream_start_fractional",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": 1759834567123456.5
+      },
+      "valid": false
+    },
+    {
+      "name": "voice_announce_stream_start_negative",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": -1
+      },
+      "valid": false
+    }
   ]
 }

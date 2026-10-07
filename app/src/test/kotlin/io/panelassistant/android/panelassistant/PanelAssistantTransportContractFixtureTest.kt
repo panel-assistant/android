@@ -132,6 +132,23 @@ class PanelAssistantTransportContractFixtureTest {
         }
     }
 
+    @Test
+    fun `a streamed event claims exactly the stream its vector names`() {
+        val vectors = JSONObject(resource(FIXTURE)).getJSONArray("streamed").objects()
+        assertTrue("the shared vectors carry streamed cases", vectors.isNotEmpty())
+        vectors.forEach { case ->
+            val payload = case.getJSONObject("payload")
+            val claimed = if (payload.optString("kind").isEmpty()) {
+                (io.panelassistant.android.media.PanelMediaCommand.parse(payload) as? io.panelassistant.android.media.PanelMediaCommand.Play)
+                    ?.takeIf { it.stream }?.streamStartUs
+            } else {
+                if (payload.opt("stream") == true) io.panelassistant.android.media.streamStartUs(payload) else null
+            }
+            val expected = (case.opt("claims") as? Number)?.toLong() // null: the event claims no stream
+            assertEquals(case.getString("name"), expected, claimed)
+        }
+    }
+
     private fun recordingProducer(): Boolean = System.getenv("HAPANELD_RECORD_ANDROID_PRODUCER") == "1"
 
     /** Record actual producer values; the owner stamps a real code commit before submission. */
