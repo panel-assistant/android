@@ -1,5 +1,6 @@
 package io.panelassistant.android.assets
 
+import io.panelassistant.android.testsupport.NodeI18n
 import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
@@ -66,7 +67,7 @@ class AssetSyntaxTest {
               location.search=q<0?'':url.slice(q,h<0?url.length:h);location.hash=h<0?'':url.slice(h);
             }}};
             global.URLSearchParams=URLSearchParams;
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            ${NodeI18n.REAL_BRIDGE}vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             const cfg=window.ConfigurePage;
             if(cfg.configSchemaUrl('fr')!=='api/v1/config/schema?lang=zh_CN&ha_lang=fr'||data.selectedLanguage!=='"zh_CN"')process.exit(2);
             location.search='?lang=auto&theme=dark';
@@ -230,7 +231,7 @@ class AssetSyntaxTest {
             global.window=global;
             global.document={querySelector(){return row},querySelectorAll(){return []},getElementById(){return null},createElement(){return {}}};
             global.fetch=()=>Promise.reject(new Error('unused'));
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            ${NodeI18n.REAL_BRIDGE}vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             function check(good){
               global.verChanged('paneld');
               if(good){if(!notes.href.startsWith('https://github.com/')||notes.style.visibility!=='visible')process.exit(2);if(!download.href.startsWith('https://github.com/')||download.style.display!=='')process.exit(3);if(button.textContent!=='Downgrade')process.exit(6)}
@@ -266,7 +267,7 @@ class AssetSyntaxTest {
             global.window=global;
             global.document={querySelector(){return row},querySelectorAll(){return []},getElementById(){return null},createElement(){return option()}};
             global.fetch=()=>Promise.resolve({json:()=>Promise.resolve({versions})});
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            ${NodeI18n.REAL_BRIDGE}vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             global.loadVersions('paneld');
             setImmediate(()=>setImmediate(()=>{const expected=fallback?2:1;if(vsel.selectedIndex!==expected)process.exit(2);if(button.textContent!==(fallback?'Install':'Upgrade'))process.exit(3)}));
         """.trimIndent()
@@ -391,7 +392,7 @@ class AssetSyntaxTest {
               if(url==='health')return Promise.resolve({text:()=>Promise.resolve('ok cfg=entity-tab-test')});
               return Promise.reject(new Error('unexpected fetch '+url));
             };
-            for(const name of ['configure-state.js','configure-view.js','configure-help.js','configure-controls.js','configure-brightness.js','configure-auto-sleep.js','configure-cards.js','configure-render.js','configure.js']){
+            ${NodeI18n.REAL_BRIDGE}for(const name of ['configure-state.js','configure-view.js','configure-help.js','configure-controls.js','configure-brightness.js','configure-auto-sleep.js','configure-cards.js','configure-render.js','configure.js']){
               vm.runInThisContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]),name),'utf8'));
             }
             setImmediate(()=>setImmediate(()=>{
@@ -460,7 +461,7 @@ class AssetSyntaxTest {
               if(url==='health')return Promise.resolve({text:()=>Promise.resolve('ok cfg=new-baseline')});
               return Promise.reject(new Error('unexpected fetch '+url));
             };
-            for(const name of ['configure-state.js','configure-view.js','configure-help.js','configure-controls.js','configure-brightness.js','configure-auto-sleep.js','configure-cards.js','configure-render.js','configure.js']){
+            ${NodeI18n.REAL_BRIDGE}for(const name of ['configure-state.js','configure-view.js','configure-help.js','configure-controls.js','configure-brightness.js','configure-auto-sleep.js','configure-cards.js','configure-render.js','configure.js']){
               vm.runInThisContext(fs.readFileSync(require('path').join(require('path').dirname(process.argv[1]),name),'utf8'));
             }
             setImmediate(()=>setImmediate(()=>{
@@ -503,7 +504,7 @@ class AssetSyntaxTest {
               if(mode==='failure')return Promise.resolve({status:500,ok:false,json:()=>Promise.resolve({ok:false,status:'apply-failed',message:'Display command was rejected.'})});
               return Promise.resolve({status:200,ok:true,json:()=>Promise.resolve({ok:true,status:'started',message:'Taming started.'})});
             };
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            ${NodeI18n.REAL_BRIDGE}vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             submitHandler({target:form,submitter:submit,preventDefault(){}});
             setImmediate(()=>setImmediate(()=>{
               if(mode==='failure'){
@@ -534,7 +535,7 @@ class AssetSyntaxTest {
               if(mode==='approval')return Promise.resolve({status:202,ok:true,json:()=>Promise.resolve({error:'approval-required',message:'Approve exact export on the panel.'})});
               return Promise.resolve({status:200,ok:true,blob:()=>Promise.resolve({size:10})});
             };
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            ${NodeI18n.REAL_BRIDGE}vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             global.configExport(true,button);
             setImmediate(()=>setImmediate(()=>{
               if(mode==='approval'){

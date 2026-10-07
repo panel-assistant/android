@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
+import { i18nHelper } from './fixtures/i18n-bridge.mjs';
 
 const defaultAsset = fileURLToPath(new URL('../../app/src/main/assets/switcher.js', import.meta.url));
 const switcherAsset = process.argv[2] ? resolve(process.argv[2]) : defaultAsset;
@@ -39,7 +40,7 @@ function element(tagName = 'div') {
   return node;
 }
 
-async function loadSwitcher({ translate, helperValue, peers: suppliedPeers } = {}) {
+async function loadSwitcher({ translate, peers: suppliedPeers } = {}) {
   const source = await readFile(switcherAsset, 'utf8');
   const host = element('small');
   host.attributes['data-self-id'] = 'alpha';
@@ -65,16 +66,7 @@ async function loadSwitcher({ translate, helperValue, peers: suppliedPeers } = {
     location: { pathname: '/configure', search: '?lang=zh-Hans', hash: '#network', href: '' },
     addEventListener() {},
   };
-  if (helperValue !== undefined) {
-    window.HaI18n = helperValue;
-  } else if (translate !== undefined) {
-    window.HaI18n = {
-      t(key, fallback) {
-        calls.push({ key, fallback });
-        return translate;
-      },
-    };
-  }
+  window.HaI18n = i18nHelper({ strings: translate === undefined ? {} : { 'shell.panel_switcher.title': translate } }, calls);
   const peers = suppliedPeers || [
     { panel_id: 'beta', name: 'Beta panel', ip: '192.168.1.20', port: 8080 },
     { panel_id: 'alpha', name: 'Alpha panel', ip: '192.168.1.10', port: 8080, self: true },
@@ -109,14 +101,8 @@ test('panel switcher resolves its title through the shared catalogue helper', as
   assert.equal(rig.select.selectedIndex, 0);
 });
 
-test('panel switcher retains the exact English title without the i18n helper', async () => {
+test('panel switcher retains the exact English title when untranslated', async () => {
   const rig = await loadSwitcher();
-
-  assert.equal(rig.select.title, ENGLISH_TITLE);
-});
-
-test('panel switcher retains exact English with a malformed non-callable helper', async () => {
-  const rig = await loadSwitcher({ helperValue: { t: 'not-a-function' } });
 
   assert.equal(rig.select.title, ENGLISH_TITLE);
 });

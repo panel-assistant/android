@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const css = readFileSync('../../app/src/main/assets/info.css', 'utf8');
@@ -48,7 +49,7 @@ function html() {
       </tr></thead><tbody></tbody></table></div>
       <div><button class="pbtn entity-prev">Previous</button><button class="pbtn entity-next">Next</button><span class="muted entity-msg">Loading…</span></div>
     </div>`;
-  return `<!doctype html><html lang="en" data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body>
+  return `<!doctype html><html lang="en" data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style>${i18nBridge()}</head><body>
     <script>${bootstrap}</script>
     <div class="wrap">
     <div class="topbar"><div class="hdr"><h1>Panel Assistant</h1></div><nav class="nav"><a class="active">Entities</a></nav></div>

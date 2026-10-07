@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const english = JSON.parse(readFileSync(join(root, 'i18n', 'en.json'), 'utf8')).strings;
@@ -24,7 +25,7 @@ function page(kind) {
       <table><tbody><tr><th>HA network path</th><td>warning</td></tr></tbody></table>
       <p class="note" id="guidance">${wording('dashboard.networking.warning_guidance')}</p></section></div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body><main class="wrap">${content}</main></body></html>`;
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body><main class="wrap">${content}</main></body></html>`;
 }
 
 async function harness() {

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const assets = fileURLToPath(new URL('../../app/src/main/assets/', import.meta.url));
 const chrome = process.env.CHROME || '/usr/bin/chromium';
@@ -17,7 +18,7 @@ browserTest('embedded Configure gives a copyable panel-owned authorization URL a
     const path = new URL(request.url, 'http://panel.test').pathname;
     if (path === '/') {
       response.setHeader('content-type', 'text/html');
-      response.end(`<!doctype html><html><body data-embedded><button id="tab-basic"></button><button id="tab-adv"></button><p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups"></div><div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div><script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script></body></html>`);
+      response.end(`<!doctype html><html><head>${i18nBridge()}</head><body data-embedded><button id="tab-basic"></button><button id="tab-adv"></button><p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups"></div><div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div><script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script></body></html>`);
       return;
     }
     if (['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js'].includes(path)) {

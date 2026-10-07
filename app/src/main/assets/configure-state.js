@@ -128,13 +128,7 @@ window.ConfigurePage = {};
     "it": "Italiano", "es": "Español", "zh-Hans": "简体中文",
     "nl": "Nederlands", "pl": "Polski", "uk": "Українська", "cs": "Čeština", "pt-BR": "Português (Brasil)"
   };
-  function i18nText(key, fallback, vars) {
-    return window.HaI18n && typeof window.HaI18n.t === "function"
-      ? window.HaI18n.t(key, fallback, vars)
-      : String(fallback == null ? "" : fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, function (placeholder, name) {
-        return vars && Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : placeholder;
-      });
-  }
+  var i18nText = window.HaI18n.t;
 
   function localizedPlaceholder(value) {
     if (value === "auto") return i18nText("configure.option.auto", "auto");

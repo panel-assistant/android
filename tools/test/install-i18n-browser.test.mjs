@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const asset = fileURLToPath(new URL('../../app/src/main/assets/install.js', import.meta.url));
 const powerAsset = fileURLToPath(new URL('../../app/src/main/assets/power-safety.js', import.meta.url));
@@ -97,9 +98,7 @@ async function rig(t, options = {}) {
   Object.keys(options.extraStrings || {}).forEach((key) => { languages[key] = 'zh-Hans'; });
   if (options.untranslated) delete languages[typeof presentations[options.untranslated] === 'string' ? presentations[options.untranslated] : presentations[options.untranslated].other];
   const projection = options.projection || { locale: 'zh-Hans', strings, languages };
-  const projectedStrings = projection.strings;
   const projectedLocale = projection.locale;
-  const payload = JSON.stringify(projection).replaceAll('<', '\\u003c');
   const status = options.status || { warnings: [], warning_presentations: [] };
   const server = createServer((request, response) => {
     const requestUrl = new URL(request.url, 'http://panel.test');
@@ -108,9 +107,8 @@ async function rig(t, options = {}) {
     if (path === '/install.js') { response.writeHead(200, { 'content-type': 'application/javascript' }); response.end(source); return; }
     if (path === '/api/v1/radio') { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(options.radio || { present: false })); return; }
     if (path === '/api/v1/status') { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(status)); return; }
-    const helper = options.noHelper ? '' : `<script>window.HaI18n={locale:${JSON.stringify(projectedLocale)},locales:['en','de','fr','it','es','zh-Hans','nl','pl','uk','cs','pt-BR','en-XA'],t:(key,fallback,values)=>{const all=${JSON.stringify(projectedStrings)};return String(Object.prototype.hasOwnProperty.call(all,key)?all[key]:fallback).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(token,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):token);}};</script>`;
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    response.end(`<!doctype html><html lang="${projectedLocale}"><body><script id="ha-i18n" type="application/json">${payload}</script>${helper}${options.html || '<div id="audit-out"></div><div id="bk-msg"></div>'}<script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/install.js"></script></body></html>`);
+    response.end(`<!doctype html><html lang="${projectedLocale}"><head>${i18nBridge(options.noHelper ? {} : projection)}</head><body>${options.html || '<div id="audit-out"></div><div id="bk-msg"></div>'}<script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/install.js"></script></body></html>`);
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
@@ -380,12 +378,6 @@ browserTest('Install power warnings require matching typed advisory state and re
   assert.equal(await mismatch.page.locator('#audit-out .setup').innerHTML(), '<i>legacy power warning</i>');
 });
 
-browserTest('Install remains usable in exact English when the shared helper is absent', async (t) => {
-  const { page } = await rig(t, { noHelper: true });
-  const value = await page.evaluate(() => window.HaPaneldInstallPresentation.present({ code: 'managed-up-to-date', params: { component: 'paneld', current: '1' } }, 'Exact English fallback'));
-  assert.equal(value.text, 'Exact English fallback');
-});
-
 browserTest('Install APK and uninstall results localize their controlled summary while retaining exact legacy evidence', async (t) => {
   const route = (request, response, url) => {
     if (url.pathname === '/api/v1/packages') {
@@ -495,7 +487,7 @@ browserTest('Install power-safety alerts localize repair and acknowledgement sta
     'runtime.power_safety.ack.saving': 'LOC saving',
     'runtime.power_safety.ack.not_hidden': 'LOC not hidden',
   };
-  const projection = JSON.stringify({ locale: 'de', strings, languages: Object.fromEntries(Object.keys(strings).map((key) => [key, 'de'])) });
+  const projection = { locale: 'de', strings, languages: Object.fromEntries(Object.keys(strings).map((key) => [key, 'de'])) };
   const calls = [];
   const server = createServer((request, response) => {
     const path = new URL(request.url, 'http://panel.test').pathname;
@@ -509,8 +501,7 @@ browserTest('Install power-safety alerts localize repair and acknowledgement sta
       response.end(JSON.stringify({ acknowledged: false, message: 'raw acknowledgement detail' })); return;
     }
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(`<!doctype html><html lang="de"><body><script id="ha-i18n" type="application/json">${projection}</script>
-      <script>window.HaI18n={locale:'de',t:(key,fallback)=>(${JSON.stringify(strings)})[key]||fallback};</script>
+    response.end(`<!doctype html><html lang="de"><head>${i18nBridge(projection)}</head><body>
       <div data-power-safety-banner><form action="/api/v1/power-safety/repair" data-power-safety-repair>
       <button type="submit">Repair</button><span class="power-safety-repair-result"></span></form></div>
       <script src="/power-safety.js"></script></body></html>`);

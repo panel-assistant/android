@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const script = await readFile(new URL('../../app/src/main/assets/buildwatch.js', import.meta.url), 'utf8');
 const stylesheet = await readFile(new URL('../../app/src/main/assets/info.css', import.meta.url), 'utf8');
@@ -39,7 +40,7 @@ async function fixture(t, engine, { notice = false, visible = false, width = 480
     }
     if (path === '/assets/buildwatch.js') return route.fulfill({ contentType: 'application/javascript', body: script });
     if (path === '/info.css') return route.fulfill({ contentType: 'text/css', body: stylesheet });
-    if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><base href="/"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="info.css"></head><body data-build="build-a" data-cfg="cfg-a"><div class="wrap"><div id="halifebar" class="setup" style="display:none"></div><div id="hanetbar" class="setup" style="display:none"></div><div id="verbar" class="setup" style="display:none"></div><div id="migrationbar" class="setup" style="display:${visible ? '' : 'none'}">⚠ <b>Panel Assistant is required</b> Add the Panel Assistant integration in Home Assistant to manage this panel. MQTT support will be removed. <a href="https://panel-assistant.io/go/migration">Learn more</a> <button id="migration-dismiss" class="pbtn" type="button">Dismiss until the next update</button></div><main>Page</main></div><script src="assets/buildwatch.js"></script></body></html>` });
+    if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><base href="/"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="info.css">${i18nBridge()}</head><body data-build="build-a" data-cfg="cfg-a"><div class="wrap"><div id="halifebar" class="setup" style="display:none"></div><div id="hanetbar" class="setup" style="display:none"></div><div id="verbar" class="setup" style="display:none"></div><div id="migrationbar" class="setup" style="display:${visible ? '' : 'none'}">⚠ <b>Panel Assistant is required</b> Add the Panel Assistant integration in Home Assistant to manage this panel. MQTT support will be removed. <a href="https://panel-assistant.io/go/migration">Learn more</a> <button id="migration-dismiss" class="pbtn" type="button">Dismiss until the next update</button></div><main>Page</main></div><script src="assets/buildwatch.js"></script></body></html>` });
     return route.fulfill({ status: 404 });
   });
   await page.clock.install();

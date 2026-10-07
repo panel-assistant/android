@@ -27,18 +27,7 @@
   var pollTimer = null;
   var ladderTimer = null;
 
-  /* Guarded like every secondary page: a missing or malformed catalogue projection must leave the
-   * complete English wizard usable. Call sites remain the authority for that fallback copy. */
-  function i18nText(key, fallback, values) {
-    if (window.HaI18n && typeof window.HaI18n.t === "function") {
-      return window.HaI18n.t(key, fallback, values);
-    }
-    return String(fallback == null ? "" : fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
-      function (placeholder, name) {
-        return values && Object.prototype.hasOwnProperty.call(values, name)
-          ? String(values[name]) : placeholder;
-      });
-  }
+  var i18nText = window.HaI18n.t;
 
   function requestedLocale() {
     return window.HaI18n && typeof window.HaI18n.locale === "string"

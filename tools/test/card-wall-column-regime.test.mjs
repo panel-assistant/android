@@ -30,6 +30,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
@@ -47,7 +48,7 @@ function wallPage(containerId) {
     <div style="height:${180 + (index % 5) * 60}px">card ${index}</div></div>`).join('');
   return `<!doctype html><html><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body><div class="wrap">
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body><div class="wrap">
     <div class="topbar"><div class="hdr">
       <h1><span class="brand">ha-paneld</span></h1>
       <span><button id="revbtn" type="button">Reveal</button></span></div>
@@ -62,7 +63,7 @@ function embedPage() {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;padding:0}
     iframe{display:block;border:0;width:900px;height:900px}
-  </style></head><body><iframe id="frame" src="/wall?id=cfg-groups"></iframe></body></html>`;
+  </style>${i18nBridge()}</head><body><iframe id="frame" src="/wall?id=cfg-groups"></iframe></body></html>`;
 }
 
 async function startHarness() {

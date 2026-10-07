@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const assets = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const fixturePath = join(process.cwd(), '..', '..', 'app', 'build', 'test-fixtures', 'hide-mqtt-card.json');
@@ -15,7 +16,7 @@ const chrome = process.env.CHROME || '/usr/bin/chromium';
 
 function page() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body>
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body>
     <span id="hardened-approval-description"></span><span id="hardened-approval-conditional-description"></span>
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups" class="cards"></div>

@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const asset = fileURLToPath(new URL('../../app/src/main/assets/profiles.js', import.meta.url));
 const editorBundle = fileURLToPath(new URL('../../app/src/main/assets/vendor/profile-editor/codemirror.js', import.meta.url));
@@ -50,11 +51,10 @@ function profile(overrides = {}) {
 }
 
 function html(translations, withHelper = true, editorProbe = false, locale = 'zh-Hans', realEditor = false) {
-  const helper = withHelper ? `<script>window.__calls=[];const __c=${JSON.stringify(translations)};window.HaI18n={locale:${JSON.stringify(locale)},has:(key)=>Object.prototype.hasOwnProperty.call(__c,key),t:(key,fallback,values)=>{window.__calls.push(key);const c=__c;if(c.__throw===key)throw new Error('missing review projection');const value=Object.prototype.hasOwnProperty.call(c,key)?c[key]:fallback;return String(value==null?'':value).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(p,n)=>values&&Object.prototype.hasOwnProperty.call(values,n)?String(values[n]):p);}};</script>` : '';
   const editor = editorProbe ? `<script>window.__editorValue='';window.ProfileCodeEditor={create:()=>({getValue:()=>window.__editorValue,setValue:(value)=>{window.__editorValue=value;},setReadOnly:()=>{},setSchema:(fields)=>{window.__schema=fields;},setDiagnostics:()=>{},focus:()=>{}})};</script>` : '';
   const ids = ['profile-select','profile-use-draft','profile-status','profile-new','profile-edit','profile-fork','profile-import','profile-export','profile-validate','profile-compare','savebtn','profile-activate','profile-auto','profile-rollback','profile-delete','profile-draft','profile-modal-cancel','profile-modal-confirm'];
   const controls = ids.map((id) => id === 'profile-select' ? `<select id="${id}"></select>` : id === 'profile-import' ? `<input id="${id}" type="file">` : `<button id="${id}">${id}</button>`).join('');
-  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"></head><body><div class="wrap"><div class="profile-toolbar">${controls}</div><div class="profile-workspace"><section id="profile-editor"><div class="profile-editor-head"></div></section><section class="profile-inspector"><div class="profile-inspector-head"></div><div class="profile-inspector-body"><div id="profile-editor-meta"></div><div id="profile-badges"></div><div id="profile-links"></div><div id="profile-catalog-issues"></div><div id="profile-issues"></div><div id="profile-diff"></div><div id="profile-report"></div></div></section></div></div><div id="profile-modal" hidden><h2 id="profile-modal-title"></h2><pre id="profile-modal-detail"></pre></div>${helper}${editor}${realEditor ? '<script src="/codemirror.js"></script>' : ''}<script src="/profiles.js"></script></body></html>`;
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8">${i18nBridge({ locale, strings: withHelper ? translations : {} })}</head><body><div class="wrap"><div class="profile-toolbar">${controls}</div><div class="profile-workspace"><section id="profile-editor"><div class="profile-editor-head"></div></section><section class="profile-inspector"><div class="profile-inspector-head"></div><div class="profile-inspector-body"><div id="profile-editor-meta"></div><div id="profile-badges"></div><div id="profile-links"></div><div id="profile-catalog-issues"></div><div id="profile-issues"></div><div id="profile-diff"></div><div id="profile-report"></div></div></section></div></div><div id="profile-modal" hidden><h2 id="profile-modal-title"></h2><pre id="profile-modal-detail"></pre></div>${editor}${realEditor ? '<script src="/codemirror.js"></script>' : ''}<script src="/profiles.js"></script></body></html>`;
 }
 
 async function rig(t, { translations = {}, withHelper = true, editorProbe = false, locale = 'zh-Hans', realEditor = false, profiles = [profile()], status = {}, report, schema, yaml = 'schema: 1\n', route } = {}) {
@@ -241,7 +241,7 @@ browserTest('Profiles rejects unknown, malformed and parameter-mismatched issue 
   ]);
 });
 
-browserTest('Profiles keeps English fallback usable without the helper and unknown presentation metadata exact', async (t) => {
+browserTest('Profiles keeps English fallback usable without translations and unknown presentation metadata exact', async (t) => {
   const compatibility = 'Exact backend <message>&"';
   const { page } = await rig(t, {
     withHelper: false,
@@ -257,19 +257,6 @@ browserTest('Profiles keeps English fallback usable without the helper and unkno
   assert.equal(await page.locator('#profile-report .profile-diff-path').textContent(), 'evidence.some_new.path');
   assert.equal(await page.locator('#profile-report .profile-diff-value').textContent(), 'future_status · raw_value');
   assert.equal(await page.locator('#profile-source-fallback').getAttribute('aria-label'), 'Profile YAML');
-});
-
-browserTest('Profiles falls back per key when the shared helper rejects one projection', async (t) => {
-  const { page } = await rig(t, {
-    translations: {
-      __throw: 'profiles.origin.bundled',
-      'profiles.maturity.verified_trusted': '✓ 已验证',
-      'profiles.state.active': '已启用',
-    },
-  });
-  assert.deepEqual((await page.locator('#profile-badges .profile-badge').allTextContents()).slice(0, 3), [
-    'Bundled', '✓ 已验证', '已启用',
-  ]);
 });
 
 browserTest('Profiles selects every full option template and maps imported origin to Local', async (t) => {

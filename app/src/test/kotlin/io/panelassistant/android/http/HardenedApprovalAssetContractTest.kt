@@ -3,6 +3,7 @@ package io.panelassistant.android.http
 import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.testsupport.Node
 import io.panelassistant.android.BuildConfig
+import io.panelassistant.android.testsupport.NodeI18n
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -101,7 +102,7 @@ class HardenedApprovalAssetContractTest {
             const NativeURL=global.URL;
             NativeURL.createObjectURL=()=>{objectUrls++;return 'blob:wrong'};
             NativeURL.revokeObjectURL=()=>{};
-            vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
+            ${NodeI18n.REAL_BRIDGE}vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             const button={disabled:false};
             global.doBackup(button);
             setImmediate(()=>setImmediate(()=>{

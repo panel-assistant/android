@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
@@ -19,22 +20,19 @@ function json(body, status = 200) {
 }
 
 function fixture(translations = {}, locale = 'en') {
-  return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/info.css"></head><body>
+  return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/info.css">${i18nBridge({ locale, strings: translations })}</head><body>
     <span id="hardened-approval-description"></span><span id="hardened-approval-conditional-description"></span>
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups"></div>
     <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn" onclick="cfgSave()"></button></div>${HELP_POPOVER}
-    <script>window.CardColumnAlignment={attach:()=>()=>{}};window.HaI18n={locale:${JSON.stringify(locale)},t:(key,fallback,values)=>{
-      var catalogue=${JSON.stringify(translations)},text=Object.prototype.hasOwnProperty.call(catalogue,key)?catalogue[key]:fallback;
-      return String(text).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
-    }};</script>
+    <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>
     ${ADVANCED_VIEW}<script src="/configure-state.js"></script><script src="/configure-view.js"></script><script src="/configure-help.js"></script><script src="/configure-controls.js"></script><script src="/configure-brightness.js"></script><script src="/configure-auto-sleep.js"></script><script src="/configure-cards.js"></script><script src="/configure-render.js"></script><script src="/configure.js"></script><script src="/proximity-learning.js"></script>
   </body></html>`;
 }
 
 function configureVisualFixture() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body>
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body>
     <span id="hardened-approval-description"></span><span id="hardened-approval-conditional-description"></span>
     <button id="tab-basic"></button><button id="tab-adv"></button>
     <p id="cfg-msg"></p><p id="cfg-status"></p>
@@ -287,7 +285,7 @@ browserTest('Configure consumes a locale reload message exactly once when initia
     if (path === '/api/v1/apps') return json({ apps: [] });
     if (path === '/api/v1/radio') return json({ present: false });
     if (path === '/api/v1/proximity') return json({ present: false });
-  }, () => fixture().replace('<script src="/configure-state.js">', '<script src="/assets/i18n.js"></script><script src="/configure-state.js">'));
+  }, () => fixture());
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   const page = await browser.newPage();
   page.setDefaultTimeout(2_000);
@@ -813,10 +811,10 @@ function autoSleepHydrationSettings(source) {
   };
 }
 
-function screenshotFixture({ hardened = false, supported = true } = {}) {
+function screenshotFixture({ hardened = false, supported = true, locale = 'en' } = {}) {
   const dialogShim = supported ? '' : '<script>HTMLDialogElement.prototype.showModal=undefined;</script>';
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body data-hardened="${hardened ? '1' : '0'}">
+    <link rel="stylesheet" href="/info.css">${i18nBridge({ locale })}</head><body data-hardened="${hardened ? '1' : '0'}">
     <canvas id="perfchart" width="600" height="96"></canvas><canvas id="respchart" width="600" height="150"></canvas>
     <table id="perf"></table><table id="smtbl"></table><table id="streamtbl"></table>
     <h2>Top processes <span class="top-process-modes" role="group" aria-label="Rank processes by"><button type="button" class="top-process-mode on" data-mode="cpu" aria-pressed="true" onclick="setTopMode('cpu')">CPU</button><button type="button" class="top-process-mode" data-mode="ram" aria-pressed="false" onclick="setTopMode('ram')">RAM</button></span></h2>
@@ -830,16 +828,16 @@ function screenshotFixture({ hardened = false, supported = true } = {}) {
     <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>${dialogShim}<script src="/info.js"></script></body></html>`;
 }
 
-function localizedDashboardHydrationFixture(locale, validHelper = true) {
-  return screenshotFixture().replace(
+function localizedDashboardHydrationFixture(locale) {
+  return screenshotFixture({ locale }).replace(
     '<body data-hardened="0">',
-    `<body data-hardened="0" data-hydrate="1"><div id="bannerzone"></div><script>window.HaI18n={locale:${JSON.stringify(locale)},t:${validHelper ? '(key,fallback)=>fallback' : JSON.stringify('not-a-function')}};</script>`,
+    '<body data-hardened="0" data-hydrate="1"><div id="bannerzone"></div>',
   );
 }
 
 function controlsFixture() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body data-hardened="0">
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body data-hardened="0">
     <canvas id="perfchart" width="600" height="96"></canvas><canvas id="respchart" width="600" height="150"></canvas>
     <table id="perf"></table><table id="smtbl"></table><table id="streamtbl"></table><table id="topproc"></table><table id="noisyentities"></table>
     <small id="smhdr"></small><small id="perfage"></small><small id="sensage"></small><small id="insthdr"></small><table id="senstbl"></table><p id="insthint"></p>
@@ -859,7 +857,7 @@ function cardMemoryFixture(cold) {
   return `<!doctype html><html><head><style>
     #dashboard-cards{width:820px}.card{box-sizing:border-box;width:400px;min-height:80px;border:1px solid transparent;padding:10px}
     .top-process-card tr{height:34px}
-  </style></head><body data-hydrate="${cold ? 'cold' : '0'}" data-hardened="0">
+  </style>${i18nBridge()}</head><body data-hydrate="${cold ? 'cold' : '0'}" data-hardened="0">
     <div id="bannerzone"></div><div id="dashboard-cards" data-card-size-page="dashboard" data-card-size-epoch="1" data-card-size-restore="1">
       <div class="card" data-layout-key="panel-info"${cold ? '' : ' style="height:220px"'}><table id="infotbl"><tr><td>reading…</td></tr></table></div>
       <div class="card" data-layout-key="live-metrics">
@@ -876,7 +874,7 @@ function cardMemoryFixture(cold) {
 
 function configureCardMemoryFixture(compact) {
   return `<!doctype html><html><head><style>#cfg-groups{width:820px}.card{box-sizing:border-box;width:400px;min-height:80px;padding:10px}
-    [data-config-group="Display"]{height:${compact ? '100' : '220'}px}</style></head><body>
+    [data-config-group="Display"]{height:${compact ? '100' : '220'}px}</style>${i18nBridge()}</head><body>
     <button id="tab-basic"></button><button id="tab-adv"></button><p id="cfg-msg"></p><p id="cfg-status"></p>
     <div id="cfg-groups" data-card-size-page="configure" data-card-size-epoch="1" data-card-size-restore="1" data-card-size-proximity="0"></div>
     <div id="savebar" hidden><button id="savebtn"></button></div>
@@ -886,7 +884,7 @@ function configureCardMemoryFixture(compact) {
 
 function installCardMemoryFixture(compact) {
   return `<!doctype html><html><head><style>#install-cards{width:820px}.card{box-sizing:border-box;width:400px;min-height:80px;padding:10px}
-    [data-layout-key="managed-components"]{height:${compact ? '100' : '220'}px}</style></head><body>
+    [data-layout-key="managed-components"]{height:${compact ? '100' : '220'}px}</style>${i18nBridge()}</head><body>
     <div id="install-cards" data-card-size-page="install" data-card-size-epoch="1" data-card-size-restore="1">
       <div class="card" data-layout-key="managed-components"><div class="comprow" data-name="paneld"><span class="cver">0.9.6</span>
         <select class="cchan"><option value="stable">Stable</option></select><select class="cvsel"><option>loading…</option></select>
@@ -898,7 +896,7 @@ function installCardMemoryFixture(compact) {
 }
 
 function powerSafetyFixture() {
-  return `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  return `<!doctype html><html><head><meta charset="utf-8">${i18nBridge()}</head><body>
     <div class="setup" data-power-safety-banner>
       <span class="power-safety-warning">Panel power safety needs attention.</span>
       <form method="post" action="/api/v1/power-safety/repair" data-power-safety-repair style="display:inline">
@@ -1175,11 +1173,10 @@ browserTest('Top processes switches between CPU and resident RAM rankings', asyn
 });
 
 browserTest('Dashboard hydration forwards only an admitted explicit locale', async (t) => {
-  for (const [locale, expected, validHelper = true] of [
+  for (const [locale, expected] of [
     ['zh-Hans', '/api/v1/info?lang=zh-Hans'],
     ['en', '/api/v1/info?lang=en'],
     ['zh-Hans?theme=dark', '/api/v1/info'],
-    ['zh-Hans', '/api/v1/info?lang=zh-Hans', false],
   ]) {
     const requests = [];
     const harness = await startHarness((path, request) => {
@@ -1190,7 +1187,7 @@ browserTest('Dashboard hydration forwards only an admitted explicit locale', asy
       if (path === '/api/v1/perf') return json({ hist: { cpu: [], ram: [], gpu: [] } });
       if (path === '/api/v1/sensors') return json({});
       if (path === '/api/v1/inspect') return json({ status: 'needs-root', running: false, port: 9222 });
-    }, () => localizedDashboardHydrationFixture(locale, validHelper));
+    }, () => localizedDashboardHydrationFixture(locale));
     const browser = await chromium.launch({ executablePath: chrome, headless: true });
     const page = await browser.newPage();
     try {
@@ -1198,7 +1195,6 @@ browserTest('Dashboard hydration forwards only an admitted explicit locale', asy
       await page.waitForFunction(() => document.body.getAttribute('data-hydrate') === '1' && document.querySelector('#topproc'));
       await new Promise((resolve) => setTimeout(resolve, 100));
       assert.deepEqual(requests, [expected]);
-      if (!validHelper) await page.locator('#topproc').getByText('needs root (su)').waitFor();
     } finally {
       await browser.close();
       await new Promise((resolve) => harness.server.close(resolve));
@@ -3845,7 +3841,7 @@ function dashboardFixture() {
     <div class="probe-body" style="height:96px">card ${index}</div></div>`).join('');
   return `<!doctype html><html><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body data-hydrate="1"><div class="wrap">
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body data-hydrate="1"><div class="wrap">
     <div class="topbar"><div class="hdr">
       <button id="navburger" class="navburger pbtn" aria-label="Menu">&#9776;</button>
       <h1><img src="/icon.svg" class="logo" alt=""><span class="brand">ha-paneld</span>
@@ -4006,7 +4002,7 @@ browserTest('dashboard scroll position survives a reload at every narrow width',
 
 function apkInstallCardFixture() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body>
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body>
     <span id="hardened-approval-description"></span>
     <div id="install-cards">
       <div class="card" data-layout-key="apk-install"><h2>Install an APK</h2>
@@ -4531,7 +4527,7 @@ function entitiesFixture() {
       <div><button class="pbtn entity-prev">Previous</button><button class="pbtn entity-next">Next</button><span class="muted entity-msg">Loading…</span></div>
     </div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body>
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body>
     <div class="cards entity-cards">
       <div class="card"><h2>Entity subscription filter</h2>
         <div id="entity-status">Loading…</div>
@@ -4709,7 +4705,7 @@ browserTest('The search status line reserves its height, so feedback shifts noth
 // the facts go away. A verdict that survives a gap in the facts is the defect they exist to catch.
 
 function cameraFixture(translations = {}) {
-  return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/info.css"></head>
+  return `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/info.css">${i18nBridge({ strings: translations })}</head>
     <body data-hydrate="0" data-hardened="0">
     <canvas id="perfchart" width="600" height="96"></canvas><canvas id="respchart" width="600" height="150"></canvas>
     <table id="perf"></table><table id="smtbl"></table><table id="streamtbl"></table><table id="topproc"></table>
@@ -4718,10 +4714,7 @@ function cameraFixture(translations = {}) {
     <div id="dashboard-cards"><div class="card" data-layout-key="camera-stream">
       <h2>Camera stream <small id="camhdr"></small></h2>
       <table id="camtbl"><tr><td style="color:#888">reading…</td></tr></table></div></div>
-    <script>window.CardColumnAlignment={attach:()=>()=>{}};window.HaI18n={t:(key,fallback,values)=>{
-      var catalogue=${JSON.stringify(translations)},text=Object.prototype.hasOwnProperty.call(catalogue,key)?catalogue[key]:fallback;
-      return String(text).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
-    }};</script><script src="/info.js"></script></body></html>`;
+    <script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/info.js"></script></body></html>`;
 }
 
 // A board whose profile declares no camera: the server omits the card entirely, so nothing here mounts.

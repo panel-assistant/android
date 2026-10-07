@@ -7,19 +7,20 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const root = join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const NOTICE = 'Microphone muted. The panel hears nothing until its microphone is unmuted.';
 const SCRIPTS = ['/configure-state.js', '/configure-view.js', '/configure-help.js', '/configure-controls.js', '/configure-brightness.js', '/configure-auto-sleep.js', '/configure-cards.js', '/configure-render.js', '/configure.js', '/proximity-learning.js'];
 
-const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/info.css"></head><body>
+const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body>
   <span id="hardened-approval-description"></span><span id="hardened-approval-conditional-description"></span>
   <button id="tab-basic"></button><button id="tab-adv"></button>
   <p id="cfg-msg"></p><p id="cfg-status"></p><div id="cfg-groups" class="cards"></div>
   <div id="proximity-learning-mount"></div><div id="savebar" hidden><button id="savebtn"></button></div>
   <div id="cfg-help" class="cfg-help" popover="manual"><div class="cfg-help-head"><b id="cfg-help-title"></b><button id="cfg-help-close" type="button">x</button></div><div id="cfg-help-body" class="cfg-help-body"></div><div class="cfg-help-foot"><a id="cfg-help-more"></a></div></div>
-  <script>window.CardColumnAlignment={attach:()=>()=>{}};window.HaI18n={t:function(k,f){return f;}};</script>
+  <script>window.CardColumnAlignment={attach:()=>()=>{}};</script>
   ${SCRIPTS.map((s) => `<script src="${s}"></script>`).join('')}
 </body></html>`;
 
