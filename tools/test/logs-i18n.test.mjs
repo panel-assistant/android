@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
+import { i18nHelper } from './fixtures/i18n-bridge.mjs';
 
 const asset = process.argv[2] || new URL('../../app/src/main/assets/logs.js', import.meta.url);
 
@@ -52,14 +53,7 @@ async function loadLogs(translations = {}, helper = true) {
     EventSource,
     addEventListener() {},
   };
-  if (helper) {
-    window.HaI18n = {
-      t(key, fallback) {
-        calls.push({ key, fallback });
-        return Object.prototype.hasOwnProperty.call(translations, key) ? translations[key] : fallback;
-      },
-    };
-  }
+  window.HaI18n = i18nHelper({ strings: helper ? translations : {} }, calls);
   vm.runInNewContext(source, { window, document, EventSource });
   return { window, document, nodes, streams, calls, events };
 }
@@ -122,7 +116,7 @@ test('logs status and pause controls consume translations while preserving UI sy
   );
 });
 
-test('logs keeps raw SSE evidence verbatim and falls back safely when the i18n helper is absent', async () => {
+test('logs keeps raw SSE evidence verbatim and falls back to English when untranslated', async () => {
   const raw = '09-03 12:34:56.789  123  456 E Tag: token=<redacted> /api/v1/status?x=1&y=2';
   const translated = await loadLogs({ 'logs.state.connecting': '已连接' });
 
@@ -141,14 +135,4 @@ test('logs keeps raw SSE evidence verbatim and falls back safely when the i18n h
   assert.equal(rig.nodes['lg-pause'].textContent, '▶ Resume');
   rig.window.lgPause();
   assert.equal(rig.nodes['lg-pause'].textContent, '⏸ Pause');
-});
-
-test('logs script exposes one guarded English-safe adapter and never translates raw entries', async () => {
-  const source = await readFile(asset, 'utf8');
-
-  assert.match(source, /function\s+i18nText\s*\(key\s*,\s*(?:englishFallback|fallback)/);
-  assert.match(source, /typeof\s+window\.HaI18n\.t\s*===\s*["']function["']/);
-  assert.match(source, /d\.textContent\s*=\s*entry\.raw/);
-  assert.match(source, /append\(\{\s*raw:\s*e\.data\s*,\s*lvl:\s*levelOf\(e\.data\)\s*\}\)/);
-  assert.doesNotMatch(source, /i18nText\([^)]*entry\.raw/);
 });

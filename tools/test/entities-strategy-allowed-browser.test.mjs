@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const css = readFileSync('../../app/src/main/assets/info.css', 'utf8');
@@ -32,7 +33,7 @@ function html() {
     db_bytes: 8, auto_static: true, auto_runtime: true, apply_required: false, strategy_selector_ignored: true,
   };
   const bootstrap = `window.setInterval=()=>0;window.fetch=async(url)=>{if(url.includes('/entities/issues'))return{ok:true,status:200,json:async()=>(${JSON.stringify({ items: issues, dashboard_issue_count: 2, blocking_issue_count: 1, ignored_issue_count: 1, dynamic_expressions: [] })})};if(url.includes('/entities?'))return{ok:true,status:200,json:async()=>({items:[],total:0})};return{ok:true,status:200,json:async()=>(${JSON.stringify(status)}),text:async()=>''}};`;
-  return `<!doctype html><html lang="en" data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body>
+  return `<!doctype html><html lang="en" data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style>${i18nBridge()}</head><body>
     <script>${bootstrap}</script>
     <div class="cards entity-cards">
       <div class="card"><h2>Entity filter</h2><div id="entity-status"></div>

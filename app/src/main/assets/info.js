@@ -3,8 +3,7 @@
 // string, so syntax errors (e.g. an apostrophe in a single-quoted string) are caught at build.
 var cpuH=[],ramH=[],gpuH=[],MAX=120,perfMode='',topMode='cpu',topCpu=null,topRam=null;  // ~4 min at 2s
 var TOP_PROCESS_MEMORY_FALLBACK_POLLS=12,topProcessMemoryPolls=0,topProcessMemoryPopulated=false;
-function i18nText(key,fallback,vars){if(window.HaI18n&&typeof window.HaI18n.t === "function")return window.HaI18n.t(key,fallback,vars);
- return fallback.replace(/\{([A-Za-z0-9_]+)\}/g,function(all,name){return vars&&vars[name]!=null?String(vars[name]):all;});}
+var i18nText=window.HaI18n.t;
 // The camera source is already satisfied on a panel that has no camera card: the server omits the card
 // on a board whose profile declares no camera, and a source that can never report would stall the
 // remembered card sizes for every other card on the page.

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { chromium } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const asset = await readFile(new URL('../../app/src/main/assets/proximity-learning.js', import.meta.url), 'utf8');
 const stylesheet = await readFile(process.argv[2] || new URL('../../app/src/main/assets/info.css', import.meta.url), 'utf8');
@@ -21,7 +22,7 @@ async function fixture(t, initial = {}) {
   await page.route('http://panel.test/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === '/') return route.fulfill({ contentType: 'text/html', body: '<div id="cfg-groups"></div><div id="proximity-learning-mount"></div>' });
+    if (path === '/') return route.fulfill({ contentType: 'text/html', body: `<head>${i18nBridge()}</head><div id="cfg-groups"></div><div id="proximity-learning-mount"></div>` });
     if (path === '/api/v1/proximity/calibration') {
       const body = Object.fromEntries(new URLSearchParams(request.postData()));
       posts.push({ body, headers: request.headers() });

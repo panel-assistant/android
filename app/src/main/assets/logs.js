@@ -14,13 +14,7 @@
   var levelRe = /^\d\d-\d\d \d\d:\d\d:\d\d\.\d+\s+\d+\s+\d+\s+([VDIWEF])\s/;
   var longLevelRe = /^\[\s*\S+\s+\d+:\s*\d+\s+([VDIWEF])\//;
 
-  function i18nText(key, fallback, vars) {
-    return window.HaI18n && typeof window.HaI18n.t === "function"
-      ? window.HaI18n.t(key, fallback, vars)
-      : String(fallback == null ? "" : fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, function (placeholder, name) {
-        return vars && Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : placeholder;
-      });
-  }
+  var i18nText = window.HaI18n.t;
 
   function state(msg) { document.getElementById("lg-state").textContent = "· " + msg; }
 

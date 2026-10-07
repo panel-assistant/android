@@ -10,14 +10,7 @@
     "/api/v1/action": true
   });
 
-  function t(key, fallback, values) {
-    if (window.HaI18n && typeof window.HaI18n.t === "function") {
-      try { return window.HaI18n.t(key, fallback, values); } catch (_) { /* English remains usable. */ }
-    }
-    return String(fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, function (placeholder, name) {
-      return values && Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : placeholder;
-    });
-  }
+  var t = window.HaI18n.t;
 
   function text(id, key, fallback, values) {
     var node = document.getElementById(id);

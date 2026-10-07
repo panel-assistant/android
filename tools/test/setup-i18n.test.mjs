@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const defaultAsset = fileURLToPath(new URL('../../app/src/main/assets/setup.js', import.meta.url));
 const setupAsset = process.argv[2] ? resolve(process.argv[2]) : defaultAsset;
@@ -55,20 +56,11 @@ function requestBody(request) {
 }
 
 function fixture(translations, locale, withHelper) {
-  const helper = withHelper ? `<script>
-    window.__i18nCalls=[];
-    window.HaI18n={locale:${JSON.stringify(locale)},locales:['en','de','fr','it','es','zh-Hans','nl','pl','uk','cs','pt-BR','en-XA'],t:(key,fallback,values)=>{
-      window.__i18nCalls.push({key,fallback,values:values||null});
-      const catalogue=${JSON.stringify(translations)};
-      const selected=Object.prototype.hasOwnProperty.call(catalogue,key)?catalogue[key]:fallback;
-      return String(selected == null?'':selected).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,
-        (placeholder,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):placeholder);
-    }};
-  </script>` : '';
-  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"></head><body>
+  const strings = withHelper ? translations : {};
+  return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8">${i18nBridge({ locale, strings })}</head><body>
     <ol id="wiz-dots"></ol><main id="wiz-step"></main>
     <a class="wiz-escape" href="/configure">escape</a>
-    ${helper}<script src="/setup.js"></script>
+    <script src="/setup.js"></script>
   </body></html>`;
 }
 

@@ -12,17 +12,7 @@
 (function () {
   "use strict";
   var LB = document.body.getAttribute("data-build") || "";
-  function interpolateFallback(fallback, values) {
-    if (!values || typeof values !== "object") return fallback;
-    return fallback.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, function (placeholder, name) {
-      return Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : placeholder;
-    });
-  }
-  function i18nText(key, fallback, values) {
-    return window.HaI18n && typeof window.HaI18n.t === "function"
-      ? window.HaI18n.t(key, fallback, values)
-      : interpolateFallback(fallback, values);
-  }
+  var i18nText = window.HaI18n.t;
   function requestedLocale() {
     var locale = window.HaI18n && typeof window.HaI18n.locale === "string"
       ? window.HaI18n.locale

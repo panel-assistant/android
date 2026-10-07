@@ -9,11 +9,7 @@
   var selfId = el.getAttribute('data-self-id') || '';
   var selfName = el.getAttribute('data-self-name') || '';
 
-  function i18nText(key, fallback) {
-    return window.HaI18n && typeof window.HaI18n.t === 'function'
-      ? window.HaI18n.t(key, fallback)
-      : fallback;
-  }
+  var i18nText = window.HaI18n.t;
 
   function isSelf(p) { return p.self === true || p.panel_id === selfId; }
 

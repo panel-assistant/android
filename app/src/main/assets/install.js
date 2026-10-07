@@ -10,19 +10,7 @@
   } catch (_) { projection = {}; }
   var locale = window.HaI18n && typeof window.HaI18n.locale === 'string' ? window.HaI18n.locale : (document.documentElement && document.documentElement.lang || 'en');
   var languages = projection.languages && typeof projection.languages === 'object' && !Array.isArray(projection.languages) ? projection.languages : {};
-  function fallbackText(fallback, values) {
-    return String(fallback == null ? '' : fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, function (token, name) {
-      return values && own.call(values, name) ? String(values[name]) : token;
-    });
-  }
-  function t(key, fallback, values) {
-    var english = fallbackText(fallback, values);
-    if (!window.HaI18n || typeof window.HaI18n.t !== 'function') return english;
-    try {
-      var translated = window.HaI18n.t(key, fallback, values);
-      return typeof translated === 'string' ? translated : english;
-    } catch (_) { return english; }
-  }
+  var t = window.HaI18n.t;
   function localized(key) { return locale === 'en' || languages[key] === locale; }
   function pluralText(oneKey, otherKey, count, oneFallback, otherFallback, values) {
     var category = Number(count) === 1 ? 'one' : 'other';

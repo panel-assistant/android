@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
+import { i18nHelper } from './fixtures/i18n-bridge.mjs';
 
 const asset = new URL('../../app/src/main/assets/buildwatch.js', import.meta.url);
 const englishCatalogueAsset = new URL('../../app/src/main/assets/i18n/en.json', import.meta.url);
@@ -37,7 +38,7 @@ function english(key, values) {
   return interpolate(englishCatalogue[key].text, values);
 }
 
-async function loadBuildwatch({ translations = {}, locale = 'en', helper = true, helperValue, dirty = false, pathname = '/' } = {}) {
+async function loadBuildwatch({ translations = {}, locale = 'en', helper = true, dirty = false, pathname = '/' } = {}) {
   const source = await readFile(asset, 'utf8');
   const ids = Object.fromEntries(['verbar', 'halifebar', 'halifecell', 'hanetbar', 'hanetcell'].map((id) => [id, node(id)]));
   const bodyAttributes = { 'data-build': 'build-a', 'data-cfg': 'cfg-a' };
@@ -61,18 +62,7 @@ async function loadBuildwatch({ translations = {}, locale = 'en', helper = true,
     },
   };
   const window = { document };
-  if (helperValue !== undefined) {
-    window.HaI18n = helperValue;
-  } else if (helper) {
-    window.HaI18n = {
-      locale,
-      t(key, fallback, values) {
-        calls.push({ key, fallback, values });
-        const selected = Object.prototype.hasOwnProperty.call(translations, key) ? translations[key] : fallback;
-        return interpolate(selected, values);
-      },
-    };
-  }
+  window.HaI18n = i18nHelper({ locale, strings: helper ? translations : {} }, calls);
   const context = {
     document,
     window,
@@ -264,7 +254,7 @@ test('layer-3 latency uses the closed localized matrix without borrowing WebSock
   }
 });
 
-test('version and settings banners create a safe localized reload link and preserve English without helper', async () => {
+test('version and settings banners create a safe localized reload link and preserve English when untranslated', async () => {
   const translations = {
     'shell.new_version.installed': '已安装新版本',
     'shell.settings_changed.externally': '设置已在其他位置更改',
@@ -326,8 +316,8 @@ test('untrusted catalogue strings stay inert text in lifecycle, network, and rel
   assert.doesNotMatch(rig.source, /\.innerHTML\s*=/);
 });
 
-test('missing or non-callable translation helpers preserve exact English runtime copy', async () => {
-  for (const options of [{ helper: false }, { helperValue: { locale: 'en', t: 'not-a-function' } }]) {
+test('untranslated keys preserve exact English runtime copy', async () => {
+  for (const options of [{ helper: false }]) {
     const rig = await loadBuildwatch({ ...options, dirty: true });
     await rig.poll('ha=starting ha_net=warning ha_resp=healthy ha_net_p95=25 ha_net_n=30 ha_net_miss=0 build=build-b cfg=cfg-a');
 
@@ -342,10 +332,9 @@ test('missing or non-callable translation helpers preserve exact English runtime
   }
 });
 
-test('missing and non-callable helpers reproduce every English network row and banner composition', async () => {
+test('untranslated keys reproduce every English network row and banner composition', async () => {
   const helperCases = [
-    ['missing helper', { helper: false }],
-    ['non-callable helper', { helperValue: { locale: 'en', t: 'not-a-function' } }],
+    ['untranslated', { helper: false }],
   ];
   const rows = [
     ['healthy', 'healthy', 'dashboard.runtime.ha_network_healthy'],

@@ -23,27 +23,7 @@
   var profileLayoutFrame = 0;
   var own = Object.prototype.hasOwnProperty;
 
-  // A missing or malformed request-local projection must leave the complete English editor usable.
-  function fallbackText(fallback, values) {
-    return String(fallback == null ? "" : fallback).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
-      function (placeholder, name) {
-        return values && own.call(values, name) ? String(values[name]) : placeholder;
-      });
-  }
-  function t(key, fallback, values) {
-    var english = fallbackText(fallback, values);
-    if (window.HaI18n && typeof window.HaI18n.t === "function") {
-      try {
-        var localized = window.HaI18n.t(key, fallback, values);
-        return typeof localized === "string" ? localized : english;
-      } catch (_) { return english; }
-    }
-    return english;
-  }
-  function hasText(key) {
-    try { return !!(window.HaI18n && typeof window.HaI18n.has === "function" && window.HaI18n.has(key)); }
-    catch (_) { return false; }
-  }
+  var t = window.HaI18n.t, hasText = window.HaI18n.has;
   function locale() {
     return window.HaI18n && typeof window.HaI18n.locale === "string"
       ? window.HaI18n.locale : (document.documentElement.lang || "en");

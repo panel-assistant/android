@@ -5,13 +5,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { chromium, webkit } from 'playwright-core';
+import { i18nBridge } from './fixtures/i18n-bridge.mjs';
 
 const root = process.env.CONFIGURE_ASSET_ROOT || join(process.cwd(), '..', '..', 'app', 'src', 'main', 'assets');
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 
 function page() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/info.css"></head><body><div class="wrap">
+    <link rel="stylesheet" href="/info.css">${i18nBridge()}</head><body><div class="wrap">
     <span id="hardened-approval-description"></span><span id="hardened-approval-conditional-description"></span>
     <div id="cfg-tools" class="cfg-tools" data-app-version="9.9.9-rc1"><input id="cfg-filter" class="cfg-filter" type="search"><div class="cfg-seg" role="radiogroup"><label><input type="radio" name="cfg-tier" id="tier-basic" value="basic" checked>Basic</label><label><input type="radio" name="cfg-tier" id="tier-adv" value="advanced">Advanced</label></div><label class="cfg-desc-switch"><input type="checkbox" id="cfg-desc" checked><span class="cfg-desc-track"></span>Descriptions</label><span id="cfg-count" class="muted cfg-count"></span></div>
     <p id="cfg-msg"></p><p id="cfg-status"></p>

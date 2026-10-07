@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { i18nHelper } from '../../../../tools/test/fixtures/i18n-bridge.mjs';
 
 const source = fs.readFileSync(process.argv[2], 'utf8');
 
@@ -25,7 +26,7 @@ global.document = {
   querySelectorAll: () => [],
   addEventListener() {},
 };
-global.window = { addEventListener() {} };
+global.window = { addEventListener() {}, HaI18n: i18nHelper() };
 global.location = { pathname: '/', reload() { throw new Error('reload must not fire'); } };
 global.fetch = () => Promise.resolve({ text: () => Promise.resolve(health) });
 global.setInterval = (fn) => { ticks.push(fn); return 0; };

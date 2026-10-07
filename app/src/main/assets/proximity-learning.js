@@ -7,12 +7,7 @@
   var timer = null, active = false, busy = false, cardSizeInvalid = false;
   var ownedSession = null, currentSession = null, heartbeatTimer = null;
 
-  function t(key, fallback, values) {
-    if (window.HaI18n) return window.HaI18n.t(key, fallback, values);
-    return fallback.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, function (match, name) {
-      return values && Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match;
-    });
-  }
+  var t = window.HaI18n.t;
   function label(key, fallback, values) { return t("configure.proximity.setup." + key, fallback, values); }
   function node(tag, cls, text) {
     var n = document.createElement(tag);
