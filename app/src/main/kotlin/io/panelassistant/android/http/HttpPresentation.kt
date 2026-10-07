@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.appVersion
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.PanelStatus
@@ -49,10 +50,8 @@ internal fun dashboardControlButtonHtml(
     style: String = "",
 ): String {
     require(action.matches(Regex("[a-z_]+"))) { "invalid Dashboard control action" }
-    fun attr(value: String): String = value
-        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
-    val styleAttr = style.takeIf(String::isNotBlank)?.let { " style=\"${attr(it)}\"" }.orEmpty()
-    val titleAttr = disabledReason?.let { " title=\"${attr(it)}\"" }.orEmpty()
+    val styleAttr = style.takeIf(String::isNotBlank)?.let { " style=\"${esc(it)}\"" }.orEmpty()
+    val titleAttr = disabledReason?.let { " title=\"${esc(it)}\"" }.orEmpty()
     val disabledAttr = if (disabledReason != null) " disabled" else ""
     return "<button class=\"pbtn\"$styleAttr$titleAttr onclick=\"act('$action')\"$disabledAttr>$labelHtml</button>"
 }
@@ -75,7 +74,9 @@ internal fun browserI18nPayload(strings: AppStrings, prefixes: Set<String>): Str
         }
         ",\"languages\":{$languages}"
     } else ""
-    return "{\"locale\":${Json.str(strings.requestedLocale)},\"strings\":{$entries}$provenance}"
+    // Pages keep ?lang on their own links for exactly these locales; the debug pseudolocale included.
+    val locales = (AppLocale.RELEASE_LOCALES + AppLocale.PSEUDO).joinToString(",") { Json.str(it) }
+    return "{\"locale\":${Json.str(strings.requestedLocale)},\"locales\":[$locales],\"strings\":{$entries}$provenance}"
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")

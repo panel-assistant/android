@@ -57,6 +57,7 @@ function schema(strings, locale) {
     help: text(strings, 'settings.dashboard_theme.help'), helpLanguage: locale,
     summary: text(strings, 'settings.dashboard_theme.summary'), summaryLanguage: locale,
     default: 'Follow Home Assistant', options: OPTIONS,
+    optionLabels: OPTIONS.map((o) => text(strings, `configure.enum.dashboard_theme.${o.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`)),
   }, {
     key: 'dashboard_fullscreen', type: 'BOOL', group: 'Dashboard', tier: 'BASIC', available: true,
     label: text(strings, 'settings.dashboard_fullscreen.label'),

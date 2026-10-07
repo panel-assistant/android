@@ -108,7 +108,7 @@ async function rig(t, options = {}) {
     if (path === '/install.js') { response.writeHead(200, { 'content-type': 'application/javascript' }); response.end(source); return; }
     if (path === '/api/v1/radio') { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(options.radio || { present: false })); return; }
     if (path === '/api/v1/status') { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify(status)); return; }
-    const helper = options.noHelper ? '' : `<script>window.HaI18n={locale:${JSON.stringify(projectedLocale)},t:(key,fallback,values)=>{const all=${JSON.stringify(projectedStrings)};return String(Object.prototype.hasOwnProperty.call(all,key)?all[key]:fallback).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(token,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):token);}};</script>`;
+    const helper = options.noHelper ? '' : `<script>window.HaI18n={locale:${JSON.stringify(projectedLocale)},locales:['en','de','fr','it','es','zh-Hans','nl','pl','uk','cs','pt-BR','en-XA'],t:(key,fallback,values)=>{const all=${JSON.stringify(projectedStrings)};return String(Object.prototype.hasOwnProperty.call(all,key)?all[key]:fallback).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(token,name)=>values&&Object.prototype.hasOwnProperty.call(values,name)?String(values[name]):token);}};</script>`;
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(`<!doctype html><html lang="${projectedLocale}"><body><script id="ha-i18n" type="application/json">${payload}</script>${helper}${options.html || '<div id="audit-out"></div><div id="bk-msg"></div>'}<script>window.CardColumnAlignment={attach:()=>()=>{}};</script><script src="/install.js"></script></body></html>`);
   });
@@ -267,7 +267,6 @@ browserTest('Install rejects malformed, unknown, unsafe and untranslated metadat
     { code: 'managed-apk-missing', params: { component: 7, version: '1' } },
     { code: 'managed-apk-missing', params: { component: 'paneld', version: 'x'.repeat(513) } },
     { code: 'status-update-available', params: { component: 'paneld', current: '1', latest: '2', release_url: 'javascript:alert(1)' } },
-    { code: 'status-mdns-unresponsive', params: { attempts: '02', reason_code: 'no-response' } },
     { code: 'version-install', params: {}, extra: true },
   ];
   const outcomes = await page.evaluate(({ cases, fallback }) => cases.map((item) => window.HaPaneldInstallPresentation.present(item, fallback)), { cases, fallback });

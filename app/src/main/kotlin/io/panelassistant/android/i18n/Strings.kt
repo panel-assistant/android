@@ -203,6 +203,8 @@ class Strings(
 
     fun get(key: String): String = resolve(key).text
 
+    fun has(key: String): Boolean = key in source.strings
+
     /** Resolve only keys owned by one of the supplied catalogue prefixes, in canonical key order. */
     fun resolved(prefixes: Set<String>): Map<String, LocalizedText> {
         if (prefixes.isEmpty()) return emptyMap()

@@ -168,6 +168,21 @@ class ConfigPostProductionRouteTest {
                 assertEquals("de", friendly.getString("labelLanguage"))
                 val byKey = (0 until entries.length()).map(entries::getJSONObject)
                     .associateBy { it.getString("key") }
+                val german = io.panelassistant.android.i18n.CatalogueLoader { java.io.File("src/main/assets", it).readText() }.strings("de")
+                fun list(field: JSONObject, name: String) = field.getJSONArray(name).let { a -> (0 until a.length()).map(a::getString) }
+                for (key in listOf("navbar_mode", "camera_resolution", "log_ship_protocol", "ui_language")) {
+                    val spec = io.panelassistant.android.config.SettingsRegistry.SPECS.single { it.key == key }
+                    val field = byKey[key] ?: continue
+                    assertEquals(
+                        list(field, "options").map { spec.optionLabelKey(it).takeIf(german::has)?.let(german::get) ?: it },
+                        list(field, "optionLabels"),
+                        "$key option labels are the German records, or the value itself where none exists",
+                    )
+                }
+                assertEquals(
+                    german.get("configure.enum.navbar_mode.swipe_reveal"),
+                    list(byKey.getValue("navbar_mode"), "optionLabels")[list(byKey.getValue("navbar_mode"), "options").indexOf("Swipe reveal")],
+                )
                 assertTrue(byKey.getValue("watchdog_enabled").getBoolean("shortDescriptionUsefulInPopover"))
                 assertEquals(false, byKey.getValue("silence_boot_chime").getBoolean("shortDescriptionUsefulInPopover"))
                 val refused = client.get("/api/v1/config") { header(HttpHeaders.Host, "foreign.example") }

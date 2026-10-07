@@ -250,9 +250,8 @@ internal fun configMutationWantsJson(accept: String?, contentType: String?): Boo
         contentType?.startsWith("application/json", ignoreCase = true) == true
 
 internal fun configMutationHtml(message: String): String {
-    val escaped = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return "<!doctype html><base href=\"/\"><meta charset=utf-8>" +
         "<meta http-equiv=refresh content='2;url=configure'>" +
         "<body style='font-family:system-ui;background:#111;color:#eee;padding:20px'>" +
-        escaped + "</body>"
+        esc(message) + "</body>"
 }

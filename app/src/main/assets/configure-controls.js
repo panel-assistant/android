@@ -255,8 +255,8 @@
     }
     if (f.type === "ENUM") {
       var s = cfg.el("select");
-      f.options.forEach(function (o) {
-        var label = cfg.localizedEnumOption(f.key, o);
+      f.options.forEach(function (o, index) {
+        var label = cfg.localizedEnumOption(f, o, index);
         var op = cfg.el("option", { value: o, text: label }); if (o === v) op.selected = true; s.appendChild(op);
       });
       s.addEventListener("change", function () {

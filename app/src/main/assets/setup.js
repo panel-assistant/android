@@ -59,9 +59,7 @@
    * through this helper. Fragment-only links already retain the current query by browser semantics. */
   function internalHref(path) {
     var params = new URLSearchParams(location.search);
-    // en-XA is emitted only by debug builds, but when it is the server-resolved locale its authored
-    // links must retain the pseudolocale just like every release locale.
-    var supported = ["en", "de", "fr", "it", "es", "zh-Hans", "nl", "pl", "uk", "cs", "pt-BR", "en-XA"];
+    var supported = (window.HaI18n && window.HaI18n.locales) || [];
     if (!params.has("lang") && !params.has("ha_lang")) return path;
     var lang = requestedLocale();
     if (supported.indexOf(lang) === -1) return path;

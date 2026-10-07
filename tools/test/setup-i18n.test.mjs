@@ -57,7 +57,7 @@ function requestBody(request) {
 function fixture(translations, locale, withHelper) {
   const helper = withHelper ? `<script>
     window.__i18nCalls=[];
-    window.HaI18n={locale:${JSON.stringify(locale)},t:(key,fallback,values)=>{
+    window.HaI18n={locale:${JSON.stringify(locale)},locales:['en','de','fr','it','es','zh-Hans','nl','pl','uk','cs','pt-BR','en-XA'],t:(key,fallback,values)=>{
       window.__i18nCalls.push({key,fallback,values:values||null});
       const catalogue=${JSON.stringify(translations)};
       const selected=Object.prototype.hasOwnProperty.call(catalogue,key)?catalogue[key]:fallback;

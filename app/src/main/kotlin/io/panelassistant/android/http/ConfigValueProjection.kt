@@ -184,7 +184,12 @@ internal class ConfigValueProjection(
         val schemaSpecs = SettingsRegistry.schemaVisibleSpecs(caps)
             .filter { it.group != "MQTT" || mqttSetupRequired }
         val items = schemaSpecs.joinToString(",") { spec ->
-            val opts = spec.optionsFor(caps).joinToString(",") { s(it) }
+            val options = spec.optionsFor(caps)
+            val opts = options.joinToString(",") { s(it) }
+            // An option without a label record (a value added before its translation) shows as itself.
+            val optionLabels = options.joinToString(",") { option ->
+                s(spec.optionLabelKey(option).takeIf(strings::has)?.let(strings::get) ?: option)
+            }
             val isHa = spec.ha != null
             val placeholder = hints[spec.key]?.let {
                 strings.get("configure.option.auto_detail").replace("{value}", it)
@@ -240,6 +245,7 @@ internal class ConfigValueProjection(
                 "\"available\":$available," +
                 "\"displaySizingAvailable\":$displaySizing," +
                 "\"options\":[$opts]," +
+                "\"optionLabels\":[$optionLabels]," +
                 "\"picker\":$pickerJson," +
                 "\"min\":$minJson," +
                 "\"max\":$maxJson," +

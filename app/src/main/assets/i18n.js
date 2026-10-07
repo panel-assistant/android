@@ -92,6 +92,8 @@
 
   root.HaI18n = Object.freeze({
     locale: typeof payload.locale === "string" ? payload.locale : "en",
+    // Locales whose ?lang the pages carry on their own links.
+    locales: Object.freeze(Array.isArray(payload.locales) ? payload.locales.slice() : []),
     t: t,
     has: function (key) { return translatedText(String(key)) != null; },
     text: text,

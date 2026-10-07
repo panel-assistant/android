@@ -244,7 +244,7 @@ class InstallPresentation(
         private val COMPONENTS = setOf("paneld", "companion", "webview", "apk")
         private val CHANNELS = setOf("stable", "prerelease")
         private val FAILURES = setOf("storage-full", "io", "corruption", "busy")
-        private val OPERATIONS = setOf(
+        internal val OPERATIONS = setOf(
             "app-state-write",
             "ambient-history",
             "ambient-history-reset",

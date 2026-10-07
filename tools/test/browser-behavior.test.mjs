@@ -180,21 +180,14 @@ browserTest('Configure bypasses caches and lets a supported HA language supersed
   for (const read of reads) assert.equal(read.cacheControl, 'no-cache');
 });
 
-browserTest('Configure localizes finite enum labels while preserving submitted wire values', async (t) => {
+browserTest('Configure shows each enum option by its served label while preserving submitted wire values', async (t) => {
   const posts = [];
+  // The server serves optionLabels beside options; an option without a label record is served as itself.
   const schema = [
-    { key: 'navbar_mode', label: '导航栏模式', help: '选择导航栏的显示方式。', group: 'Behaviour', tier: 'BASIC', type: 'ENUM', options: ['Off', 'Always on', 'Swipe reveal', 'Native', 'Future wire'], available: true },
-    { key: 'mqtt_address_family', label: '地址族', help: '选择连接地址族。', group: 'MQTT', tier: 'ADVANCED', type: 'ENUM', options: ['Automatic', 'Prefer IPv4', 'Force IPv4'], available: true },
+    { key: 'navbar_mode', label: '导航栏模式', help: '选择导航栏的显示方式。', group: 'Behaviour', tier: 'BASIC', type: 'ENUM', options: ['Off', 'Always on', 'Swipe reveal', 'Native', 'Future wire'], optionLabels: ['关闭', '始终显示导航栏（本地化长标签）', '滑动显示', '原生', 'Future wire'], available: true },
+    { key: 'mqtt_address_family', label: '地址族', help: '选择连接地址族。', group: 'MQTT', tier: 'ADVANCED', type: 'ENUM', options: ['Automatic', 'Prefer IPv4', 'Force IPv4'], optionLabels: ['自动', '优先 IPv4', '强制 IPv4'], available: true },
   ];
-  const translations = {
-    'configure.enum.navbar_mode.off': '关闭',
-    'configure.enum.navbar_mode.always_on': '始终显示导航栏（本地化长标签）',
-    'configure.enum.navbar_mode.swipe_reveal': '滑动显示',
-    'configure.enum.navbar_mode.native': '原生',
-    'configure.enum.mqtt_address_family.automatic': '自动',
-    'configure.enum.mqtt_address_family.prefer_ipv4': '优先 IPv4',
-    'configure.enum.mqtt_address_family.force_ipv4': '强制 IPv4',
-  };
+  const translations = {};
   const harness = await startHarness(async (path, request) => {
     if (path === '/api/v1/config/schema') return json(schema);
     if (path === '/api/v1/config') {

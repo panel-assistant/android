@@ -150,15 +150,15 @@ object InstallProgress {
     @Synchronized
     fun json(): String = buildString {
         append("{\"running\":").append(running)
-        append(",\"component\":").append(esc(component))
-        append(",\"message\":").append(esc(message))
+        append(",\"component\":").append(Json.str(component))
+        append(",\"message\":").append(Json.str(message))
         presentation?.let { append(",\"presentation\":").append(it.json()) }
         result?.let { append(",\"result\":").append(resultJson(it)) }
         append('}')
     }
 
     private fun resultJson(result: OperationResult): String = buildString {
-        append("{\"status\":").append(esc(result.status.wireValue))
+        append("{\"status\":").append(Json.str(result.status.wireValue))
         result.config?.let { append(",\"config\":").append(componentJson(it)) }
         result.profiles?.let { append(",\"profiles\":").append(componentJson(it)) }
         result.companion?.let { append(",\"companion\":").append(componentJson(it)) }
@@ -168,26 +168,13 @@ object InstallProgress {
     }
 
     private fun componentJson(result: ComponentResult): String = buildString {
-        append("{\"status\":").append(esc(result.status.wireValue))
+        append("{\"status\":").append(Json.str(result.status.wireValue))
         result.items?.let { append(",\"items\":").append(it.coerceAtLeast(0)) }
-        if (result.detail.isNotBlank()) append(",\"detail\":").append(esc(result.detail.take(MAX_DETAIL_CHARS)))
+        if (result.detail.isNotBlank()) append(",\"detail\":").append(Json.str(result.detail.take(MAX_DETAIL_CHARS)))
         result.presentation?.let { append(",\"presentation\":").append(it.json()) }
         append('}')
     }
 
-    /** Minimal JSON string escaper — installer results can contain quotes/newlines/backslashes. */
-    private fun esc(s: String): String {
-        val b = StringBuilder(s.length + 2).append('"')
-        for (c in s) when (c) {
-            '"' -> b.append("\\\"")
-            '\\' -> b.append("\\\\")
-            '\n' -> b.append("\\n")
-            '\r' -> b.append("\\r")
-            '\t' -> b.append("\\t")
-            else -> if (c < ' ') b.append("\\u%04x".format(c.code)) else b.append(c)
-        }
-        return b.append('"').toString()
-    }
 
     private const val MAX_DETAIL_CHARS = 256
 }

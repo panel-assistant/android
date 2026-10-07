@@ -1,6 +1,7 @@
 package io.panelassistant.android.i18n
 
 import io.panelassistant.android.config.SettingsRegistry
+import io.panelassistant.android.http.browserI18nPayload
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -31,22 +32,21 @@ class RuntimeLocaleRegistrationContractTest {
         assertEquals(SettingsRegistry.UI_LANGUAGES, labels)
     }
 
-    @Test fun `Setup and Install retain every admitted locale and only the debug pseudolocale extra`() {
-        val expected = release + AppLocale.PSEUDO
-        assertExactSequence("Setup internal links", expected, jsSupportedLocales(assets.resolve("setup.js").readText()))
-        assertExactSequence("Install card links", expected, jsSupportedLocales(assets.resolve("install.js").readText()))
+    @Test fun `every page is told the admitted locales and only the debug pseudolocale extra`() {
+        val strings = CatalogueLoader { assets.resolve(it).readText() }.strings("de")
+        val payload = JSONObject(browserI18nPayload(strings, setOf("shell.")))
+        val locales = payload.getJSONArray("locales").let { array -> (0 until array.length()).map(array::getString) }
+        assertExactSequence("page locale list", release + AppLocale.PSEUDO, locales)
     }
 
     @Test fun `registration comparison rejects omissions duplicates extras reorderings and no-op mutants`() {
-        val expected = release + AppLocale.PSEUDO
         val actual = registrationSnapshot()
         validateRegistration(actual)
         val mutants = listOf<Pair<String, Registration>>(
             "catalogue omission" to actual.copy(catalogues = actual.catalogues.dropLast(1)),
             "Settings duplicate" to actual.copy(settings = actual.settings + actual.settings.last()),
             "Configure extra" to actual.copy(configure = actual.configure + "zz"),
-            "Setup reorder" to actual.copy(setup = actual.setup.reversed()),
-            "Install omission" to actual.copy(install = actual.install.dropLast(1)),
+            "Configure reorder" to actual.copy(configure = actual.configure.reversed()),
             "release tranche not registered anywhere" to actual.copy(release = actual.release + "nl"),
         )
         assertEquals("mutation names must be unique", mutants.size, mutants.map { it.first }.toSet().size)
@@ -56,7 +56,6 @@ class RuntimeLocaleRegistrationContractTest {
             }.isFailure)
         }
         assertFalse("the mutation battery must not contain a no-op", mutants.any { it.second == actual })
-        assertEquals(expected, actual.setup)
     }
 
     private fun registrationSnapshot(): Registration {
@@ -68,8 +67,6 @@ class RuntimeLocaleRegistrationContractTest {
             catalogues = catalogues,
             settings = SettingsRegistry.UI_LANGUAGES,
             configure = configure,
-            setup = jsSupportedLocales(assets.resolve("setup.js").readText()),
-            install = jsSupportedLocales(assets.resolve("install.js").readText()),
         )
     }
 
@@ -77,8 +74,6 @@ class RuntimeLocaleRegistrationContractTest {
         assertExactMembers("catalogues", value.release, value.catalogues)
         assertExactSequence("Settings", listOf(SettingsRegistry.DEFAULT_UI_LANGUAGE) + value.release, value.settings)
         assertExactSequence("Configure", listOf(SettingsRegistry.DEFAULT_UI_LANGUAGE) + value.release, value.configure)
-        assertExactSequence("Setup", value.release + AppLocale.PSEUDO, value.setup)
-        assertExactSequence("Install", value.release + AppLocale.PSEUDO, value.install)
     }
 
     private fun jsObjectKeys(source: String, variable: String): List<String> {
@@ -88,15 +83,6 @@ class RuntimeLocaleRegistrationContractTest {
         val keys = Regex("[\\\"']([^\\\"']+)[\\\"']\\s*:").findAll(body).map { it.groupValues[1] }.toList()
         assertEquals("$variable contains duplicate keys", keys.size, keys.toSet().size)
         return keys
-    }
-
-    private fun jsSupportedLocales(source: String): List<String> {
-        val body = checkNotNull(
-            Regex("(?:var\\s+params[^;]*,\\s*)?supported\\s*=\\s*\\[([^]]*)]").find(source),
-        ) { "finite supported locale array is missing" }.groupValues[1]
-        val locales = Regex("[\\\"']([^\\\"']+)[\\\"']").findAll(body).map { it.groupValues[1] }.toList()
-        assertEquals("supported locale array contains duplicates", locales.size, locales.toSet().size)
-        return locales
     }
 
     private fun assertExactMembers(owner: String, expected: List<String>, actual: List<String>) {
@@ -114,7 +100,5 @@ class RuntimeLocaleRegistrationContractTest {
         val catalogues: List<String>,
         val settings: List<String>,
         val configure: List<String>,
-        val setup: List<String>,
-        val install: List<String>,
     )
 }

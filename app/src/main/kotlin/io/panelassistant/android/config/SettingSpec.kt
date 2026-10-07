@@ -332,6 +332,10 @@ data class SettingSpec(
     val summaryKey: String get() = "settings.$key.summary"
     val promotedHelpKey: String get() = "settings.$key.promoted_help"
 
+    /** Display label record of one closed option; the option itself stays the stored and wire value. */
+    fun optionLabelKey(option: String): String =
+        "configure.enum.$key." + option.lowercase().replace(Regex("[^a-z0-9]+"), "_")
+
     init {
         require(hidden || summary.isNotBlank()) { "$key: a visible setting needs a summary" }
         require(summary.length <= SUMMARY_HARD_MAX_CHARS) { "$key: summary over $SUMMARY_HARD_MAX_CHARS characters" }

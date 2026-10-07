@@ -177,9 +177,9 @@ object HealthAudit {
 
         /** Ready-to-render warning content shared by the status warning list and Dashboard banner. */
         fun warningHtml(): String? = when (state) {
-            "warning" -> "⚠ <b>Storage pressure: warning</b> — ${html(summary)} ${html(action)}"
-            "critical" -> "⛔ <b>Storage pressure: critical</b> — ${html(summary)} ${html(action)}"
-            "database_failure" -> "⛔ <b>Database storage failure</b> — ${html(summary)} ${html(action)}"
+            "warning" -> "⚠ <b>Storage pressure: warning</b> — ${esc(summary)} ${esc(action)}"
+            "critical" -> "⛔ <b>Storage pressure: critical</b> — ${esc(summary)} ${esc(action)}"
+            "database_failure" -> "⛔ <b>Database storage failure</b> — ${esc(summary)} ${esc(action)}"
             else -> null
         }
 
@@ -401,9 +401,4 @@ object HealthAudit {
         return if (unit == 0) "$bytes ${units[unit]}" else "%.1f %s".format(java.util.Locale.ROOT, value, units[unit])
     }
 
-    private fun html(value: String): String = value
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
 }
