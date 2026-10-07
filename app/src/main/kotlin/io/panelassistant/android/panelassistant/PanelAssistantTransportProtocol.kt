@@ -93,6 +93,20 @@ internal sealed interface PanelAssistantSessionEvent {
         val deadlineMs: Long?,
     ) : PanelAssistantSessionEvent
 
+    /**
+     * A management request ([op] `snapshot` or `settings`) on a session that granted `management`. Its
+     * [session], [commandId] and [deadlineMs] mean what a command's do; [settings] is null when absent or
+     * malformed.
+     */
+    data class Manage(
+        val commandId: String,
+        val session: String?,
+        val op: String,
+        val updateOwner: Boolean,
+        val settings: Map<String, String>?,
+        val deadlineMs: Long?,
+    ) : PanelAssistantSessionEvent
+
     /** A command event with no usable `command_id`: there is nothing to answer it with. */
     data object MalformedCommand : PanelAssistantSessionEvent
 
@@ -171,6 +185,14 @@ internal object PanelAssistantTransportProtocol {
      */
     const val CAPABILITY_VOICE_STREAM_SESSION = "voice_stream_session"
 
+    /**
+     * Panel Assistant reads this panel's health and status, and writes its settings, on the session
+     * ([PanelAssistantManagement]) rather than by opening a connection back to it.
+     */
+    const val CAPABILITY_MANAGEMENT = "management"
+    const val MANAGE_SNAPSHOT = "snapshot"
+    const val MANAGE_SETTINGS = "settings"
+
     /** Channels described only once the session grants the capability that names them. */
     val GATED_CHANNELS: Map<String, String> = mapOf(CAPABILITY_MEDIA to "media")
 
@@ -220,6 +242,7 @@ internal object PanelAssistantTransportProtocol {
             CAPABILITY_VOICE,
             CAPABILITY_MEDIA,
             CAPABILITY_VOICE_STREAM_SESSION,
+            CAPABILITY_MANAGEMENT,
         )
 
     /**
@@ -228,7 +251,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media","voice_stream_session"]}"""
+        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media","voice_stream_session","management"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))
@@ -310,8 +333,15 @@ internal object PanelAssistantTransportProtocol {
         return PanelAssistantReportResult.Acknowledged(id, rejected)
     }
 
-    /** The one final (or `pending_approval` interim) answer to a delivered command. */
-    fun commandResult(id: Long, session: String, commandId: String, outcome: String, code: String?): String =
+    /** The one final (or `pending_approval` interim) answer to a delivered command or management request. */
+    fun commandResult(
+        id: Long,
+        session: String,
+        commandId: String,
+        outcome: String,
+        code: String?,
+        result: JSONObject? = null,
+    ): String =
         JSONObject()
             .put("id", id)
             .put("type", COMMAND_COMMAND_RESULT)
@@ -319,6 +349,7 @@ internal object PanelAssistantTransportProtocol {
             .put("command_id", commandId)
             .put("outcome", outcome)
             .apply { if (code != null) put("code", code) }
+            .apply { if (result != null) put("result", result) }
             .toString()
 
     fun ping(id: Long): String = JSONObject().put("id", id).put("type", "ping").toString()
@@ -459,6 +490,7 @@ internal object PanelAssistantTransportProtocol {
         val event = frame.optJSONObject("event") ?: return PanelAssistantSessionEvent.Ignored("")
         val kind = (event.opt("kind") as? String)?.takeIf(CODE::matches).orEmpty()
         if (kind == "command") return command(event)
+        if (kind == "manage") return manage(event)
         if (kind == "lifecycle") return lifecycleNotice(event)?.let { PanelAssistantSessionEvent.Lifecycle(it) }
             ?: PanelAssistantSessionEvent.Ignored(kind)
         if (kind != "session_closed") return PanelAssistantSessionEvent.Ignored(kind)
@@ -496,21 +528,38 @@ internal object PanelAssistantTransportProtocol {
         return HaLifecycleNotice(phase, reason, elapsed, expected)
     }
 
+    private fun deadline(event: JSONObject): Long? = when (val raw = event.opt("deadline_ms")) {
+        null -> DEFAULT_DEADLINE_MS
+        is Int -> raw.toLong().takeIf { it in 1..MAX_DEADLINE_MS }
+        is Long -> raw.takeIf { it in 1..MAX_DEADLINE_MS }
+        else -> null
+    }
+
     private fun command(event: JSONObject): PanelAssistantSessionEvent {
         val commandId = (event.opt("command_id") as? String)?.takeIf(COMMAND_ID::matches)
             ?: return PanelAssistantSessionEvent.MalformedCommand
-        val deadline = when (val raw = event.opt("deadline_ms")) {
-            null -> DEFAULT_DEADLINE_MS
-            is Int -> raw.toLong().takeIf { it in 1..MAX_DEADLINE_MS }
-            is Long -> raw.takeIf { it in 1..MAX_DEADLINE_MS }
-            else -> null
-        }
         return PanelAssistantSessionEvent.Command(
             commandId = commandId,
             session = event.opt("session") as? String,
             channel = (event.opt("channel") as? String)?.takeIf(CODE::matches),
             value = if (event.has("value")) event.opt("value") else null,
-            deadlineMs = deadline,
+            deadlineMs = deadline(event),
+        )
+    }
+
+    private fun manage(event: JSONObject): PanelAssistantSessionEvent {
+        val commandId = (event.opt("command_id") as? String)?.takeIf(COMMAND_ID::matches)
+            ?: return PanelAssistantSessionEvent.MalformedCommand
+        val settings = event.optJSONObject("settings")?.let { json ->
+            json.keys().asSequence().associateWith { key -> json.opt(key) as? String ?: return@let null }
+        }
+        return PanelAssistantSessionEvent.Manage(
+            commandId = commandId,
+            session = event.opt("session") as? String,
+            op = (event.opt("op") as? String)?.takeIf(CODE::matches).orEmpty(),
+            updateOwner = event.opt("update_owner") == true,
+            settings = settings,
+            deadlineMs = deadline(event),
         )
     }
 }

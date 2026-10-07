@@ -125,7 +125,7 @@
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "4679658244ba064b7117a8156e51808f33ece93113e850f93779ee7bc80ffeb6",
+        "contract_digest": "17d41206370d87f19f93ba14005e52f41b23dd80f22780c200fa11594a35ae1d",
         "capabilities": [
           "state",
           "commands",
@@ -134,7 +134,8 @@
           "embed_proof",
           "voice",
           "media",
-          "voice_stream_session"
+          "voice_stream_session",
+          "management"
         ],
         "channels": [
           {
