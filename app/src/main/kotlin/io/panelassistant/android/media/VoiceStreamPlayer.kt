@@ -25,6 +25,9 @@ internal interface SendspinApi {
     fun connect(handle: Long, url: String)
     fun loop(handle: Long)
     fun nextEvent(handle: Long): Int
+
+    /** The value of the event [nextEvent] last returned (the schedule of [SendspinNative.EVENT_STREAM_SCHEDULED]). */
+    fun eventValue(handle: Long): Long
     fun serverId(handle: Long): String?
     fun read(handle: Long, buffer: ByteBuffer, maxBytes: Int, waitMs: Int): Int
     fun played(handle: Long, frames: Int, finishUs: Long)
@@ -53,6 +56,7 @@ internal object SendspinNative : SendspinApi {
     @JvmStatic external fun nConnect(handle: Long, url: String)
     @JvmStatic external fun nLoop(handle: Long)
     @JvmStatic external fun nNextEvent(handle: Long): Int
+    @JvmStatic external fun nEventValue(handle: Long): Long
     @JvmStatic external fun nServerId(handle: Long): String?
     @JvmStatic external fun nRead(handle: Long, buffer: ByteBuffer, maxBytes: Int, waitMs: Int): Int
     @JvmStatic external fun nPlayed(handle: Long, frames: Int, finishUs: Long)
@@ -68,6 +72,7 @@ internal object SendspinNative : SendspinApi {
     override fun connect(handle: Long, url: String) = nConnect(handle, url)
     override fun loop(handle: Long) = nLoop(handle)
     override fun nextEvent(handle: Long) = nNextEvent(handle)
+    override fun eventValue(handle: Long) = nEventValue(handle)
     override fun serverId(handle: Long) = nServerId(handle)
     override fun read(handle: Long, buffer: ByteBuffer, maxBytes: Int, waitMs: Int) = nRead(handle, buffer, maxBytes, waitMs)
     override fun played(handle: Long, frames: Int, finishUs: Long) = nPlayed(handle, frames, finishUs)
@@ -82,6 +87,9 @@ internal object SendspinNative : SendspinApi {
     const val EVENT_STREAM_END = 2
     const val EVENT_TRUST_USER = 3
     const val EVENT_TRUST_NONE = 4
+
+    /** The current stream's first sample is scheduled at [SendspinApi.eventValue] (microseconds, the [nNowUs] base). */
+    const val EVENT_STREAM_SCHEDULED = 5
 }
 
 /**
@@ -187,10 +195,10 @@ internal class AudioTrackOutput(rate: Int, channels: Int) : VoiceOutput {
  * out to the session's own Home Assistant address, and checks the server it reached is the one granted;
  * the session's end disconnects it. Its keypair is generated and kept by the library in the same store.
  *
- * The speaker is opened only for a stream some announcement may still own: `stream/start` opens one
- * output at the stream's rate, and `stream/end` lets what was written play out, then releases it. A stream
- * [VoiceStreamClaims] has dropped (its announcement was cancelled, or fell back to the URL before it arrived)
- * never opens the speaker. While it plays, the presentation time of every buffer goes back to the library,
+ * The speaker is opened only for a stream an announcement owns ([VoiceStreamClaims], matched by the
+ * stream's scheduled start): until then the stream is held, unread; a stream that is dropped (its
+ * announcement was cancelled or fell back to the URL, or no announcement can claim it) never opens the
+ * speaker. `stream/end` lets what was written play out, then releases the output. While it plays, the presentation time of every buffer goes back to the library,
  * which aligns the audio to Panel Assistant's clock.
  *
  * One thread runs the library's main loop (the library requires its start, loop and stop on one thread);
@@ -299,6 +307,9 @@ internal class VoiceStreamPlayer(
                                 it.start()
                             }
                         }
+                        SendspinNative.EVENT_STREAM_SCHEDULED -> current?.let {
+                            claims.scheduled(it.streamId, native.eventValue(raw) * 1_000L)
+                        }
                         SendspinNative.EVENT_STREAM_END -> {
                             current?.finish()
                             current = null
@@ -341,15 +352,15 @@ internal class VoiceStreamPlayer(
      * Feeds one stream to the speaker. Reads the library's aligned PCM, writes it to its own output and
      * reports each buffer's presentation time; writes short silence (unreported) while the library has
      * nothing, so the output's timeline stays live through the stream. A dropped stream is read and
-     * discarded, reported as presented now, so the library is never left waiting; one dropped before its
-     * first buffer never opens the speaker.
+     * discarded, reported as presented now, so the library is never left waiting; a stream nobody owns yet
+     * is not read, and one dropped before an announcement owned it never opens the speaker.
      */
     private inner class StreamWriter(
         private val handle: SendspinHandle,
-        private val id: Long,
+        val streamId: Long,
         private val rate: Int,
         private val channels: Int,
-    ) : Thread("sendspin-audio-$id") {
+    ) : Thread("sendspin-audio-$streamId") {
         @Volatile private var finishing = false
         @Volatile private var aborted = false
 
@@ -372,9 +383,15 @@ internal class VoiceStreamPlayer(
                 var written = 0L
                 var silenced = false
                 while (!finishing) {
+                    val ownership = claims.ownership(streamId)
+                    if (ownership == VoiceStreamClaims.Ownership.PENDING) {
+                        // Nobody owns it yet: nothing is read or played until an announcement does.
+                        sleep(PENDING_POLL_MS)
+                        continue
+                    }
                     val read = handle.call(0) { native.read(it, buffer, buffer.capacity(), READ_WAIT_MS) }
                     val frames = read / frameBytes
-                    if (claims.dropped(id)) {
+                    if (ownership == VoiceStreamClaims.Ownership.DROPPED) {
                         if (!silenced) {
                             silenced = true
                             output?.pause()
@@ -417,7 +434,7 @@ internal class VoiceStreamPlayer(
                 Log.w(TAG, "voice stream output failed: ${error.javaClass.simpleName}")
             } finally {
                 output?.let { runCatching { it.release() } }
-                claims.ended(id)
+                claims.ended(streamId)
             }
         }
 
@@ -439,6 +456,7 @@ internal class VoiceStreamPlayer(
         private const val CLIENT_ID_CHARS = 43
         private const val READ_WAIT_MS = 2
         private const val WRITE_POLL_MS = 2L
+        private const val PENDING_POLL_MS = 2L
         private const val STREAMING_LOOP_MS = 10L
         private const val IDLE_LOOP_MS = 50L
         private const val TAIL_MS = 200

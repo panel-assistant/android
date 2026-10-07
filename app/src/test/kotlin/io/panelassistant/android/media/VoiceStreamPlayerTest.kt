@@ -34,7 +34,9 @@ class VoiceStreamPlayerTest {
 
     /** The library: events and PCM the test queues, and every call the player makes. */
     private class Library : SendspinApi {
-        val events = ConcurrentLinkedQueue<Int>()
+        val events = ConcurrentLinkedQueue<Pair<Int, Long>>()
+
+        @Volatile private var eventValue = 0L
         val pcm = ConcurrentLinkedQueue<ByteArray>()
         val inFlight = AtomicInteger()
         val reads = AtomicInteger()
@@ -62,7 +64,18 @@ class VoiceStreamPlayerTest {
         override fun clientId(handle: Long) = "c".repeat(43)
         override fun connect(handle: Long, url: String) {}
         override fun loop(handle: Long) {}
-        override fun nextEvent(handle: Long) = events.poll() ?: 0
+        override fun nextEvent(handle: Long): Int {
+            val (event, value) = events.poll() ?: return 0
+            eventValue = value
+            return event
+        }
+        override fun eventValue(handle: Long) = eventValue
+
+        /** A stream starts whose first sample is scheduled at [scheduledNs]. */
+        fun start(scheduledNs: Long) {
+            events += (SendspinNative.EVENT_STREAM_START or (2 shl 4) or (RATE shl 8)) to 0L
+            events += SendspinNative.EVENT_STREAM_SCHEDULED to scheduledNs / 1_000L
+        }
         override fun serverId(handle: Long) = "s".repeat(43)
         override fun read(handle: Long, buffer: ByteBuffer, maxBytes: Int, waitMs: Int): Int = native().use {
             reads.incrementAndGet()
@@ -149,16 +162,16 @@ class VoiceStreamPlayerTest {
     private fun chunk(n: Int) = ByteArray(RATE / 50 * FRAME_BYTES) { (n + 1).toByte() }
 
     /**
-     * Plays one stream on the library carrying [chunks]: waits until the player has consumed them, ends the
-     * stream, and waits until its writer has left.
+     * Plays one stream on the library, scheduled at [scheduledNs] and carrying [chunks]: waits until the
+     * player has consumed them, ends the stream, and waits until its writer has left.
      */
-    private fun Library.stream(chunks: List<ByteArray>) {
+    private fun Library.stream(scheduledNs: Long, chunks: List<ByteArray>) {
         val before = playedFrames.get()
         chunks.forEach { pcm += it }
-        events += SendspinNative.EVENT_STREAM_START or (2 shl 4) or (RATE shl 8)
+        start(scheduledNs)
         val frames = chunks.sumOf { it.size } / FRAME_BYTES
         await("the player consumed the stream") { playedFrames.get() - before >= frames }
-        events += SendspinNative.EVENT_STREAM_END
+        events += SendspinNative.EVENT_STREAM_END to 0L
         await("the stream's writer left") { Thread.getAllStackTraces().keys.none { it.isAlive && it.name.startsWith("sendspin-audio-") } }
     }
 
@@ -173,54 +186,166 @@ class VoiceStreamPlayerTest {
         }
     }
 
-    @Test fun aStreamArrivingAfterTheUrlFallbackWritesNoAudioAndTheNextAnnouncementsStreamPlays() = runTest {
+    /** The speaker heard exactly [pcm], in order, then only the silent tail. */
+    private fun Speaker.heardExactly(pcm: ByteArray) {
+        val audio = written()
+        assertArrayEquals("exactly this announcement's audio, in order", pcm, audio.copyOf(pcm.size))
+        assertTrue("then only the silent tail", audio.drop(pcm.size).all { it == 0.toByte() })
+    }
+
+    private fun Speakers.awaitReleased(count: Int) =
+        await("$count speaker(s) released") { opened.size == count && opened.all { it.released.count == 0L } }
+
+    @Test fun aFallenBackAnnouncementsStreamDelayedPastANewerEventWritesNoAudioAndTheNewerPlaysItsOwn() = runTest {
         var nowNs = 100 * SECOND
+        val played = mutableListOf<String>()
         val claims = VoiceStreamClaims(nanoTime = { nowNs })
-        val coordinator = AudioPlaybackCoordinator(urlLane(claims), StandardTestDispatcher(testScheduler))
+        val coordinator = AudioPlaybackCoordinator(urlLane(claims, played), StandardTestDispatcher(testScheduler))
         val library = Library()
         val speakers = Speakers()
         val player = player(library, speakers, claims)
-        coordinator.submitStreamForGeneration(nowNs, listOf("message.mp3"))
+        val aAt = nowNs
+        coordinator.submitStreamForGeneration(aAt, listOf("a.mp3"))
+        runCurrent()
+        advanceTimeBy(3_001L)
+        runCurrent()
+        assertEquals(listOf("a.mp3"), played)
+
+        nowNs = aAt + 4 * SECOND
+        val b = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("b.mp3")))
+        runCurrent()
+        nowNs += SECOND
+        library.stream(aAt + SECOND / 2, listOf(chunk(1), chunk(2)))
+        assertTrue("A's delayed stream never opens the speaker", speakers.opened.isEmpty())
+        runCurrent()
+        assertEquals("B does not finish on A's stream", AudioPlaybackCoordinator.State.ACTIVE, coordinator.snapshot().state)
+
+        library.stream(aAt + 4 * SECOND + SECOND / 2, listOf(chunk(3), chunk(4)))
+        speakers.awaitReleased(1)
+        speakers.only().heardExactly(chunk(3) + chunk(4))
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, b), coordinator.snapshot())
+        assertEquals("B played its stream, not its URL", listOf("a.mp3"), played)
+        player.close()
+        assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun aFallenBackAnnouncementsStreamArrivingAfterTheNewerOnesWritesNoAudio() = runTest {
+        var nowNs = 100 * SECOND
+        val played = mutableListOf<String>()
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
+        val coordinator = AudioPlaybackCoordinator(urlLane(claims, played), StandardTestDispatcher(testScheduler))
+        val library = Library()
+        val speakers = Speakers()
+        val player = player(library, speakers, claims)
+        val aAt = nowNs
+        coordinator.submitStreamForGeneration(aAt, listOf("a.mp3"))
         runCurrent()
         advanceTimeBy(3_001L)
         runCurrent()
 
-        library.stream(listOf(chunk(1), chunk(2)))
-        assertTrue("the late stream never opens the speaker", speakers.opened.isEmpty())
+        nowNs = aAt + 4 * SECOND
+        val b = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("b.mp3")))
+        runCurrent()
+        library.stream(nowNs + SECOND / 2, listOf(chunk(3), chunk(4)))
+        speakers.awaitReleased(1)
+        runCurrent()
+        assertEquals("B completes on its own stream", AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, b), coordinator.snapshot())
 
-        nowNs += 10 * SECOND
-        val next = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("other.mp3")))
+        nowNs += SECOND
+        library.stream(aAt + SECOND / 2, listOf(chunk(1), chunk(2)))
+        assertEquals("A's delayed stream opens no speaker", 1, speakers.opened.size)
+        speakers.only().heardExactly(chunk(3) + chunk(4))
+        assertEquals(listOf("a.mp3"), played)
+        player.close()
+        assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun whenAFallenBackAnnouncementsStreamNeverComesTheNewerOnePlaysItsOwnStream() = runTest {
+        var nowNs = 100 * SECOND
+        val played = mutableListOf<String>()
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
+        val coordinator = AudioPlaybackCoordinator(urlLane(claims, played), StandardTestDispatcher(testScheduler))
+        val library = Library()
+        val speakers = Speakers()
+        val player = player(library, speakers, claims)
+        coordinator.submitStreamForGeneration(nowNs, listOf("a.mp3"))
         runCurrent()
-        library.stream(listOf(chunk(3), chunk(4)))
-        await("the next stream's speaker was released") { speakers.opened.size == 1 && speakers.only().released.count == 0L }
-        val audio = speakers.only().written()
-        assertArrayEquals("the newer announcement's audio plays, in order", chunk(3) + chunk(4), audio.copyOf(2 * chunk(3).size))
-        assertTrue("then only the silent tail", audio.drop(2 * chunk(3).size).all { it == 0.toByte() })
+        advanceTimeBy(3_001L)
         runCurrent()
-        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, next), coordinator.snapshot())
+
+        nowNs += 4 * SECOND
+        val b = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("b.mp3")))
+        runCurrent()
+        library.stream(nowNs + SECOND / 2, listOf(chunk(3), chunk(4)))
+        speakers.awaitReleased(1)
+        speakers.only().heardExactly(chunk(3) + chunk(4))
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, b), coordinator.snapshot())
+        assertEquals("no URL fallback for B", listOf("a.mp3"), played)
         player.close()
         assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
         assertTrue(coordinator.close(1_000L))
     }
 
     @Test fun aStreamArrivingAfterItsAnnouncementWasCancelledWritesNoAudio() = runTest {
-        val claims = VoiceStreamClaims()
+        var nowNs = 100 * SECOND
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
         val coordinator = AudioPlaybackCoordinator(urlLane(claims), StandardTestDispatcher(testScheduler))
         val library = Library()
         val speakers = Speakers()
         val player = player(library, speakers, claims)
-        val generation = requireNotNull(coordinator.submitStreamForGeneration(System.nanoTime()))
+        val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
         runCurrent()
         assertTrue(coordinator.cancelGeneration(generation))
         runCurrent()
 
-        library.stream(listOf(chunk(1), chunk(2), chunk(3)))
+        library.stream(nowNs + SECOND / 2, listOf(chunk(1), chunk(2), chunk(3)))
         assertTrue("the cancelled announcement's stream never opens the speaker", speakers.opened.isEmpty())
         player.close()
         assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
         assertTrue(speakers.opened.isEmpty())
         assertTrue(coordinator.close(1_000L))
     }
+
+    @Test fun aSingleAnnouncementPlaysItsStream() = runTest {
+        val nowNs = 100 * SECOND
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
+        val coordinator = AudioPlaybackCoordinator(urlLane(claims), StandardTestDispatcher(testScheduler))
+        val library = Library()
+        val speakers = Speakers()
+        val player = player(library, speakers, claims)
+        val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
+        runCurrent()
+        library.stream(nowNs + SECOND / 2, listOf(chunk(5), chunk(6)))
+        speakers.awaitReleased(1)
+        speakers.only().heardExactly(chunk(5) + chunk(6))
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, generation), coordinator.snapshot())
+        player.close()
+        assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun aStreamNoAnnouncementOwnsNeverOpensTheSpeaker() {
+        val library = Library()
+        val speakers = Speakers()
+        val player = player(library, speakers, VoiceStreamClaims())
+        library.pcm += chunk(1)
+        library.start(System.nanoTime())
+        Thread.sleep(200)
+        assertTrue("an unowned stream is held silent", speakers.opened.isEmpty())
+        assertEquals("and not read", 0, library.reads.get())
+        player.close()
+        assertTrue(library.destroyedLatch.await(10, TimeUnit.SECONDS))
+        assertTrue(speakers.opened.isEmpty())
+    }
+
+    /** An announcement for a stream scheduled now, claimed on its own thread; it returns once the stream ends. */
+    private fun own(claims: VoiceStreamClaims, atNs: Long) =
+        kotlin.concurrent.thread(isDaemon = true) { kotlinx.coroutines.runBlocking { runCatching { claims.play(atNs) } } }
 
     @Test fun closingWhileAWriterIsInsideANativeCallDestroysTheClientOnlyAfterTheCallReturns() {
         val library = Library()
@@ -229,7 +354,9 @@ class VoiceStreamPlayerTest {
         val player = player(library, speakers, claims, joinMs = 50L)
         val gate = CountDownLatch(1)
         library.readGate = gate
-        library.events += SendspinNative.EVENT_STREAM_START or (2 shl 4) or (RATE shl 8)
+        val now = System.nanoTime()
+        own(claims, now)
+        library.start(now)
         assertTrue(library.readBlocked.await(10, TimeUnit.SECONDS))
 
         player.close()
@@ -249,7 +376,9 @@ class VoiceStreamPlayerTest {
         val claims = VoiceStreamClaims()
         val player = player(library, speakers, claims, joinMs = 50L)
         val stall = CountDownLatch(1)
-        library.events += SendspinNative.EVENT_STREAM_START or (2 shl 4) or (RATE shl 8)
+        val now = System.nanoTime()
+        own(claims, now)
+        library.start(now)
         await("the speaker opened") { speakers.opened.isNotEmpty() }
         speakers.only().writeGate = stall
         library.pcm += chunk(1)
@@ -273,10 +402,10 @@ class VoiceStreamPlayerTest {
         assertNull(handle.call(null) { "reached" })
     }
 
-    private fun urlLane(claims: VoiceStreamClaims) = object : AudioPlaybackRunFactory {
+    private fun urlLane(claims: VoiceStreamClaims, played: MutableList<String> = mutableListOf()) = object : AudioPlaybackRunFactory {
         override fun create(url: String) = error("streamed speech never plays as media")
         override fun createSpeech(url: String) = object : AudioPlaybackRun {
-            override suspend fun execute() {}
+            override suspend fun execute() { played += url }
             override fun cancel() {}
         }
         override fun createStream(eventAtNs: Long, fallbackUrls: List<String>): AudioPlaybackRun =

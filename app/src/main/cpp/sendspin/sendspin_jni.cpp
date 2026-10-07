@@ -1,6 +1,6 @@
 // JNI bridge for media/SendspinNative.kt: one sendspin-cpp player client per handle.
 //
-// Threads: nCreate, nClientId, nConnect, nLoop, nNextEvent, nServerId and nDestroy run on one
+// Threads: nCreate, nClientId, nConnect, nLoop, nNextEvent, nEventValue, nServerId and nDestroy run on one
 // dedicated Kotlin thread (the library's main-loop thread). nRead, nPlayed and nNowUs run on the
 // audio writer thread. nWriteRecord runs while no instance is alive for its directory.
 //
@@ -18,6 +18,7 @@
 #include <dirent.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
@@ -46,6 +47,9 @@ constexpr int kEventStreamStart = 1;
 constexpr int kEventStreamEnd = 2;
 constexpr int kEventTrustUser = 3;
 constexpr int kEventTrustNone = 4;
+// The current stream's first sample is scheduled to play at the event's value (local monotonic
+// microseconds, the base of nNowUs); read with nEventValue right after nNextEvent returns it.
+constexpr int kEventStreamScheduled = 5;
 
 std::string join_path(const std::string& dir, const std::string& name) {
     return dir + "/" + name;
@@ -173,6 +177,7 @@ struct PlayerListener : PlayerRoleListener {
     size_t on_audio_write(uint8_t* data, size_t length, uint32_t timeout_ms) override;
     void on_stream_start() override;
     void on_stream_end() override;
+    void on_audio_chunk(int64_t server_timestamp_us) override;
 };
 
 struct ClientListener : SendspinClientListener {
@@ -189,14 +194,17 @@ struct Instance {
     SendspinClient client;
     PlayerRole* player = nullptr;
     std::mutex events_mutex;
-    std::deque<int> events;
+    std::deque<std::pair<int, int64_t>> events;
+    int64_t event_value = 0;  // the value of the event nNextEvent last returned; loop thread only
+    // Set once a stream has started until its first chunk's scheduled time has been reported.
+    std::atomic<bool> awaiting_schedule{false};
 
     Instance(SendspinClientConfig cfg, size_t ring_bytes, size_t frame_bytes)
         : ring(ring_bytes, frame_bytes), client(std::move(cfg)) {}
 
-    void push_event(int e) {
+    void push_event(int e, int64_t value = 0) {
         std::lock_guard<std::mutex> lk(events_mutex);
-        events.push_back(e);
+        events.emplace_back(e, value);
     }
 };
 
@@ -209,9 +217,23 @@ void PlayerListener::on_stream_start() {
     const int sr = static_cast<int>(p.sample_rate.value_or(0));
     const int ch = static_cast<int>(p.channels.value_or(0));
     inst->push_event(kEventStreamStart | ((ch & 0xF) << 4) | (sr << 8));
+    // Armed after the start is queued, so the schedule always follows its start; a chunk handed
+    // over in between is skipped and the next one (one chunk later) reports instead.
+    inst->awaiting_schedule.store(true);
+}
+
+void PlayerListener::on_audio_chunk(int64_t server_timestamp_us) {
+    if (!inst->awaiting_schedule.exchange(false)) return;
+    const int64_t local = inst->client.get_client_time(server_timestamp_us);
+    if (local == 0) {
+        inst->awaiting_schedule.store(true);  // no connection to map it through; try the next chunk
+        return;
+    }
+    inst->push_event(kEventStreamScheduled, local);
 }
 
 void PlayerListener::on_stream_end() {
+    inst->awaiting_schedule.store(false);
     inst->ring.clear();
     inst->push_event(kEventStreamEnd);
 }
@@ -298,9 +320,15 @@ extern "C" JNIEXPORT jint JNICALL JNI_FN(nNextEvent)(JNIEnv*, jclass, jlong hand
     Instance* inst = from(handle);
     std::lock_guard<std::mutex> lk(inst->events_mutex);
     if (inst->events.empty()) return 0;
-    const int e = inst->events.front();
+    const auto [e, value] = inst->events.front();
     inst->events.pop_front();
+    inst->event_value = value;
     return e;
+}
+
+extern "C" JNIEXPORT jlong JNICALL JNI_FN(nEventValue)(JNIEnv*, jclass, jlong handle) {
+    if (handle == 0) return 0;
+    return static_cast<jlong>(from(handle)->event_value);
 }
 
 extern "C" JNIEXPORT jstring JNICALL JNI_FN(nServerId)(JNIEnv* env, jclass, jlong handle) {

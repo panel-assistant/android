@@ -341,6 +341,10 @@ SS_HOT void PlayerRole::Impl::handle_binary(InboundMessage& message) {
         SS_LOGV(TAG, "Audio chunk carries no encoded frame");
         return;
     }
+    // ha-paneld: report the chunk's scheduled server time (PATCHES.md section 6).
+    if (this->listener != nullptr) {
+        this->listener->on_audio_chunk(chunk->timestamp_us);
+    }
     // roles/player/v1.md "client/hello player@v1 support object": the server keeps the
     // advertised buffer_capacity, which the quota covers at the smallest chunk size.
     (void)inbound.hand_message(message,

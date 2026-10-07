@@ -140,3 +140,40 @@ The host build's client connection is IXWebSocket, which this build had without 
      # Threading support (for shim implementations)
      find_package(Threads REQUIRED)
 ```
+
+## 6. Scheduled time of each audio chunk (`sendspin-cpp/include/sendspin/player_role.h`, `sendspin-cpp/src/player_role.cpp`)
+
+The panel decides which announcement a stream belongs to by when the stream is scheduled to play, not by when its `stream/start` happens to arrive. Upstream keeps each chunk's server timestamp inside the player role. A new `PlayerRoleListener::on_audio_chunk(int64_t server_timestamp_us)` (default no-op, so other listeners are unaffected) is called from `PlayerRole::Impl::handle_binary()` for every chunk accepted for decoding, on the thread that delivers inbound messages. The JNI shim maps the first chunk after each stream start through `SendspinClient::get_client_time()` (documented as callable from any thread) and reports it as event 5 with `nEventValue`.
+
+```diff
+--- a/include/sendspin/player_role.h
++++ b/include/sendspin/player_role.h
+@@ -107,6 +107,14 @@
+
+     /// @brief Called when the output delay is changed by the server
+     virtual void on_output_delay_changed(uint16_t /*delay_ms*/) {}
++
++    /// @brief Called with the server timestamp of the first sample of every audio chunk accepted
++    /// for decoding
++    ///
++    /// ha-paneld addition. Fires on the thread that delivers inbound messages (the protocol
++    /// task), not the main loop; implementations must be thread-safe. Lets the application learn
++    /// when a stream is scheduled to play (via SendspinClient::get_client_time()).
++    virtual void on_audio_chunk(int64_t /*server_timestamp_us*/) {}
+ };
+
+ /**
+--- a/src/player_role.cpp
++++ b/src/player_role.cpp
+@@ -341,6 +341,10 @@
+         SS_LOGV(TAG, "Audio chunk carries no encoded frame");
+         return;
+     }
++    // ha-paneld: report the chunk's scheduled server time (PATCHES.md section 6).
++    if (this->listener != nullptr) {
++        this->listener->on_audio_chunk(chunk->timestamp_us);
++    }
+     // roles/player/v1.md "client/hello player@v1 support object": the server keeps the
+     // advertised buffer_capacity, which the quota covers at the smallest chunk size.
+     (void)inbound.hand_message(message,
+```
