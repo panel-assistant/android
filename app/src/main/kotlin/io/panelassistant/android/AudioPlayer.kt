@@ -33,11 +33,18 @@ object AudioPlayer {
     internal const val TEMP_PREFIX = "ha-paneld-audio-"
     internal const val TEMP_SUFFIX = ".media"
 
-    internal fun factory(cacheDir: File): AudioPlaybackRunFactory {
+    internal fun factory(cacheDir: File, streams: io.panelassistant.android.media.VoiceStreamSource? = null): AudioPlaybackRunFactory {
         cleanupStale(cacheDir)
         return object : AudioPlaybackRunFactory {
             override fun create(url: String) = createRun(url, false)
             override fun createSpeech(url: String) = createRun(url, true)
+            override fun createStream(cue: io.panelassistant.android.media.StreamCue, fallbackUrls: List<String>): AudioPlaybackRun =
+                io.panelassistant.android.media.StreamedSpeechRun(
+                    streams ?: throw UnsupportedOperationException("this panel has no voice stream"),
+                    cue,
+                    fallbackUrls,
+                    ::createSpeech,
+                )
             private fun createRun(url: String, speech: Boolean) = DownloadedAudioRun(
                 url = url,
                 createTemp = { File.createTempFile(TEMP_PREFIX, TEMP_SUFFIX, cacheDir) },

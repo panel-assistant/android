@@ -349,6 +349,112 @@
       "valid": false
     },
     {
+      "name": "hello_voice_stream",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ],
+        "voice_stream": {
+          "client_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_voice_stream_key_too_short",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ],
+        "voice_stream": {
+          "client_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw"
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_voice_stream_without_key",
+      "message": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 1,
+          "max": 1
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [
+          {
+            "channel": "relay1",
+            "platform": "switch",
+            "translation_key": "relay",
+            "family": "relay",
+            "index": 1,
+            "unique_suffix": "relay1"
+          }
+        ],
+        "voice_stream": {}
+      },
+      "valid": false
+    },
+    {
       "name": "report_state_delta",
       "message": {
         "type": "panel_assistant/report_state",
@@ -1011,6 +1117,223 @@
       "valid": false
     },
     {
+      "name": "hello_result_voice_stream_granted",
+      "offeredCapabilities": [
+        "state",
+        "events",
+        "voice",
+        "voice_stream"
+      ],
+      "request": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 4,
+          "max": 4
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [],
+        "voice_stream": {
+          "client_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+        }
+      },
+      "result": {
+        "protocol": 4,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "events",
+          "state",
+          "voice",
+          "voice_stream"
+        ],
+        "voice_stream": {
+          "path": "/api/panel_assistant/sendspin",
+          "server_id": "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg",
+          "psk": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+        },
+        "integration": {
+          "version": "0.9.0"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_result_voice_stream_not_granted_by_an_older_integration",
+      "offeredCapabilities": [
+        "state",
+        "events",
+        "voice",
+        "voice_stream"
+      ],
+      "request": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 4,
+          "max": 4
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [],
+        "voice_stream": {
+          "client_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+        }
+      },
+      "result": {
+        "protocol": 4,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "events",
+          "state",
+          "voice"
+        ],
+        "integration": {
+          "version": "0.9.0"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "hello_result_voice_stream_granted_without_its_server",
+      "offeredCapabilities": [
+        "state",
+        "events",
+        "voice",
+        "voice_stream"
+      ],
+      "request": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 4,
+          "max": 4
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [],
+        "voice_stream": {
+          "client_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+        }
+      },
+      "result": {
+        "protocol": 4,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "events",
+          "state",
+          "voice",
+          "voice_stream"
+        ],
+        "integration": {
+          "version": "0.9.0"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "hello_result_voice_stream_granted_with_a_malformed_key",
+      "offeredCapabilities": [
+        "state",
+        "events",
+        "voice",
+        "voice_stream"
+      ],
+      "request": {
+        "type": "panel_assistant/hello",
+        "protocol": {
+          "min": 4,
+          "max": 4
+        },
+        "did": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "app": {
+          "version": "0.9.8-rc1",
+          "version_code": 790
+        },
+        "contract_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "capabilities": [
+          "state",
+          "events",
+          "voice",
+          "voice_stream"
+        ],
+        "channels": [],
+        "voice_stream": {
+          "client_id": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+        }
+      },
+      "result": {
+        "protocol": 4,
+        "session": "q0vEYzJ4bGx0V2Q3cGF4NnRqS1BmZlRk",
+        "authority": "shadow",
+        "mqtt_discovery": "announce",
+        "capabilities": [
+          "events",
+          "state",
+          "voice",
+          "voice_stream"
+        ],
+        "voice_stream": {
+          "path": "/api/panel_assistant/sendspin",
+          "server_id": "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg",
+          "psk": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh"
+        },
+        "integration": {
+          "version": "0.9.0"
+        },
+        "channels": {
+          "accepted": 0,
+          "unknown": []
+        }
+      },
+      "valid": false
+    },
+    {
       "name": "hello_result_ungranted_embed_object_is_ignored",
       "offeredCapabilities": [
         "state"
@@ -1058,6 +1381,116 @@
           "accepted": 0,
           "unknown": []
         }
+      },
+      "valid": false
+    }
+  ],
+  "streamed": [
+    {
+      "name": "voice_announce_streamed",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": 1759834567123456
+      },
+      "valid": true,
+      "claims": 1759834567123456
+    },
+    {
+      "name": "voice_run_play_streamed",
+      "payload": {
+        "kind": "play",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "continue_conversation": false,
+        "stream": true,
+        "stream_start_us": 1759834567123456
+      },
+      "valid": true,
+      "claims": 1759834567123456
+    },
+    {
+      "name": "media_play_announce_streamed",
+      "payload": {
+        "action": "play",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "announce": true,
+        "stream": true,
+        "stream_start_us": 1759834567123456
+      },
+      "valid": true,
+      "claims": 1759834567123456
+    },
+    {
+      "name": "voice_announce_streamed_without_its_start_by_an_older_integration",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true
+      },
+      "valid": true,
+      "claims": null
+    },
+    {
+      "name": "voice_announce_not_streamed",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false
+      },
+      "valid": true,
+      "claims": null
+    },
+    {
+      "name": "voice_announce_stream_start_as_text",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": "1759834567123456"
+      },
+      "valid": false
+    },
+    {
+      "name": "voice_announce_stream_start_fractional",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": 1759834567123456.5
+      },
+      "valid": false
+    },
+    {
+      "name": "voice_announce_stream_start_negative",
+      "payload": {
+        "kind": "voice_announce",
+        "announce_id": "01J9ANNOUNCEMENT0000000000",
+        "url": "https://ha.example/api/tts_proxy/abc.mp3",
+        "preannounce_url": "https://ha.example/api/panel_assistant/media/chime.mp3",
+        "message": "Dinner is ready",
+        "listen_after": false,
+        "stream": true,
+        "stream_start_us": -1
       },
       "valid": false
     }

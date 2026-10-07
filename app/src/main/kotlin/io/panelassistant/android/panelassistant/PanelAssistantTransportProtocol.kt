@@ -36,6 +36,8 @@ internal data class PanelAssistantSession(
     val connection: io.panelassistant.android.HaConnectionAdvertisement? = null,
     val lifecycle: HaLifecycleNotice? = null,
     val updatePolicy: PanelAssistantUpdatePolicy? = null,
+    /** Where and how to reach Panel Assistant's voice stream, present exactly when the session granted `voice_stream`. */
+    val voiceStream: PanelAssistantVoiceStreamGrant? = null,
 ) {
     /** The session token is a bearer for this session's requests, and the embed key a secret; keep both out of logs. */
     override fun toString(): String =
@@ -50,6 +52,29 @@ internal class PanelAssistantEmbedGrant(val keyId: String, key: ByteArray) {
     fun key(): ByteArray = key.copyOf()
 
     override fun toString(): String = "PanelAssistantEmbedGrant(keyId=$keyId)"
+}
+
+/**
+ * Panel Assistant's voice stream for this panel (`hello` result field `voice_stream`): the Sendspin
+ * endpoint on the panel's own Home Assistant address, the server's public key the panel must find
+ * there, and the long-term pairing key the two share. The key is a secret: never logged.
+ */
+internal class PanelAssistantVoiceStreamGrant(val path: String, val serverId: String, psk: ByteArray) {
+    private val psk = psk.copyOf()
+
+    fun psk(): ByteArray = psk.copyOf()
+
+    /**
+     * The WebSocket address for a session reached at [baseUrl]: `ws://` for `http`, `wss://` for `https`,
+     * on the session's own host and port; null for any other scheme.
+     */
+    fun url(baseUrl: String): String? {
+        val base = baseUrl.trim().trimEnd('/')
+        val scheme = PanelAssistantTransportProtocol.voiceStreamScheme(base) ?: return null
+        return scheme + base.substring(base.indexOf("://")) + path
+    }
+
+    override fun toString(): String = "PanelAssistantVoiceStreamGrant(path=$path, serverId=$serverId)"
 }
 
 internal sealed interface PanelAssistantHelloOutcome {
@@ -149,6 +174,23 @@ internal object PanelAssistantTransportProtocol {
      */
     const val CAPABILITY_MEDIA = "media"
 
+    /**
+     * The panel plays voice from Panel Assistant's Sendspin stream, in step with the other panels. Offered
+     * on an `http` or `https` session (the stream dials `ws` or `wss` to match), with the panel's client id
+     * in the hello's `voice_stream` object; granting it makes the reply's `voice_stream` grant required.
+     */
+    const val CAPABILITY_VOICE_STREAM = "voice_stream"
+
+    /** The stream's WebSocket scheme for a session at [baseUrl] (`ws` for http, `wss` for https), or null. */
+    fun voiceStreamScheme(baseUrl: String): String? {
+        val base = baseUrl.trim()
+        return when {
+            base.startsWith("http://", ignoreCase = true) -> "ws"
+            base.startsWith("https://", ignoreCase = true) -> "wss"
+            else -> null
+        }
+    }
+
     /** Channels described only once the session grants the capability that names them. */
     val GATED_CHANNELS: Map<String, String> = mapOf(CAPABILITY_MEDIA to "media")
 
@@ -197,6 +239,7 @@ internal object PanelAssistantTransportProtocol {
             CAPABILITY_EMBED_PROOF,
             CAPABILITY_VOICE,
             CAPABILITY_MEDIA,
+            CAPABILITY_VOICE_STREAM,
         )
 
     /**
@@ -205,7 +248,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media"]}"""
+        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media","voice_stream"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))
@@ -216,6 +259,7 @@ internal object PanelAssistantTransportProtocol {
     private val VERSION = Regex("^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$")
     private val EMBED_KEY_ID = Regex("^[0-9a-f]{16}$")
     private val EMBED_KEY = Regex("^[A-Za-z0-9_-]{43}$")
+    private val VOICE_STREAM_PATH = Regex("^/[A-Za-z0-9/_.-]{0,255}$")
     private const val MAX_SESSION_TOKEN_CHARS = 64
     private const val MAX_CAPABILITIES = 16
 
@@ -226,6 +270,8 @@ internal object PanelAssistantTransportProtocol {
         channels: List<PanelAssistantChannelDescriptor> = emptyList(),
         unsupported: List<String> = emptyList(),
         addresses: List<String> = emptyList(),
+        /** The panel's Sendspin client id, sent exactly when [capabilities] offers `voice_stream`. */
+        voiceStreamClientId: String? = null,
     ): String = JSONObject()
         .put("id", id)
         .put("type", COMMAND_HELLO)
@@ -242,6 +288,11 @@ internal object PanelAssistantTransportProtocol {
         // An explicit statement that these channels cannot be served here, so the integration removes their
         // entities; a channel merely absent from both lists changes nothing. Omitted when empty.
         .apply { if (unsupported.isNotEmpty()) put("unsupported", JSONArray(unsupported)) }
+        .apply {
+            if (voiceStreamClientId != null && CAPABILITY_VOICE_STREAM in capabilities) {
+                put("voice_stream", JSONObject().put("client_id", voiceStreamClientId))
+            }
+        }
         .toString()
 
     fun reportState(id: Long, session: String, sync: String, observations: JSONArray): String = JSONObject()
@@ -372,11 +423,18 @@ internal object PanelAssistantTransportProtocol {
         } else {
             null
         }
+        val voiceStream = if (CAPABILITY_VOICE_STREAM in capabilities) {
+            voiceStreamGrant(result.optJSONObject("voice_stream"))
+                ?: throw PanelAssistantProtocolException("hello result grants voice_stream without a usable grant")
+        } else {
+            null
+        }
         return PanelAssistantHelloOutcome.Accepted(
             PanelAssistantSession(protocol, token, authority, capabilities, integrationVersion, mqttDiscovery, embed,
                 io.panelassistant.android.HaConnectionAdvertisement.parse(result.optJSONObject("connection")),
                 lifecycleNotice(result.optJSONObject("lifecycle")),
-                updatePolicy(result, protocol)),
+                updatePolicy(result, protocol),
+                voiceStream),
         )
     }
 
@@ -405,6 +463,16 @@ internal object PanelAssistantTransportProtocol {
         val bytes = runCatching { java.util.Base64.getUrlDecoder().decode(key) }.getOrNull() ?: return null
         // Forty-three base64url characters are exactly 32 bytes.
         return PanelAssistantEmbedGrant(keyId, bytes)
+    }
+
+    private fun voiceStreamGrant(grant: JSONObject?): PanelAssistantVoiceStreamGrant? {
+        val path = (grant?.opt("path") as? String)?.takeIf(VOICE_STREAM_PATH::matches) ?: return null
+        val serverId = (grant.opt("server_id") as? String)?.takeIf(EMBED_KEY::matches) ?: return null
+        val psk = (grant.opt("psk") as? String)?.takeIf(EMBED_KEY::matches) ?: return null
+        // Forty-three base64url characters are exactly 32 bytes, as a Sendspin key and PSK are.
+        val bytes = runCatching { java.util.Base64.getUrlDecoder().decode(psk) }.getOrNull() ?: return null
+        if (runCatching { java.util.Base64.getUrlDecoder().decode(serverId) }.isFailure) return null
+        return PanelAssistantVoiceStreamGrant(path, serverId, bytes)
     }
 
     /** Interpret an event on the `hello` subscription [helloId]; null for any other frame. */

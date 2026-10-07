@@ -6,6 +6,7 @@ import io.panelassistant.android.audio.MicrophoneCheck
 import io.panelassistant.android.audio.MicrophonePresence
 import io.panelassistant.android.audio.MicrophoneStatus
 import io.panelassistant.android.audio.PcmFrame
+import io.panelassistant.android.media.StreamCue
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import kotlinx.coroutines.channels.Channel
@@ -172,6 +173,40 @@ class PanelAssistantVoiceTest {
         )
     }
 
+    @Test fun `a streamed announcement and a streamed reply carry when they arrived and the stream they name, and the URL path carries none`() = runTest {
+        val rig = rig()
+        fun announce(id: String, stream: Any?, startUs: Any? = null) = rig.connection.inbound.trySend(
+            JSONObject().put("id", 1).put("type", "event").put(
+                "event",
+                JSONObject().put("kind", "voice_announce").put("announce_id", id).put("url", "/api/tts_proxy/b.mp3")
+                    .put("listen_after", false).apply {
+                        if (stream != null) put("stream", stream)
+                        if (startUs != null) put("stream_start_us", startUs)
+                    },
+            ).toString(),
+        )
+        announce("streamed", true, START_US)
+        announce("plain", null)
+        announce("not_boolean", "yes", START_US)
+        announce("no_start", true)
+        announce("fractional_start", true, 1.5)
+        runCurrent()
+        assertEquals(
+            listOf(StreamCue(NOW_NS, START_US), null, null, StreamCue(NOW_NS, null), StreamCue(NOW_NS, null)),
+            rig.announcements.map { it.stream },
+        )
+
+        val turn = rig.voice.begin(null, continued = false)!!
+        runCurrent()
+        val run = rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_RUN).single()
+        rig.connection.reply(run, JSONObject().put("handler_id", 3))
+        rig.connection.event(run, JSONObject().put("kind", "play").put("url", "/r.mp3").put("stream", true).put("stream_start_us", START_US))
+        rig.connection.event(run, JSONObject().put("kind", "play").put("url", "/s.mp3"))
+        runCurrent()
+        assertEquals(VoiceTurnEvent.Play("https://ha.example/r.mp3", false, StreamCue(NOW_NS, START_US)), turn.events.receive())
+        assertEquals(VoiceTurnEvent.Play("https://ha.example/s.mp3", false, null), turn.events.receive())
+    }
+
     @Test fun `Home Assistant's pipeline colours reach the panel, and a malformed one is dropped`() = runTest {
         val rig = rig()
         rig.connection.inbound.trySend(
@@ -231,7 +266,9 @@ class PanelAssistantVoiceTest {
         val connection = ScriptedHa(grantVoice = configuration != null)
         val announcements = mutableListOf<PanelAssistantAnnouncement>()
         val colors = mutableListOf<Map<String, Int>>()
-        val voice = PanelAssistantVoice(backgroundScope, { configuration }, { announcements += it }, onColors = { colors += it })
+        val voice = PanelAssistantVoice(
+            backgroundScope, { configuration }, { announcements += it }, onColors = { colors += it }, nanoTime = { NOW_NS },
+        )
         val owner = PanelAssistantTransportOwner(
             scope = backgroundScope,
             auth = HaApiSessionProvider { HaApiSession("https://ha.example", "token", owner = OWNER) },
@@ -299,6 +336,8 @@ class PanelAssistantVoiceTest {
     }
 
     private companion object {
+        const val NOW_NS = 123_456_789L
+        const val START_US = 1_759_830_000_500_000L
         val OWNER = HaAuthOwner(url = "https://ha.example", refreshToken = "refresh", clientId = "", staticAccessToken = "")
         val IDENTITY = PanelAssistantHelloIdentity(did = "0".repeat(64), appVersion = "0.9.9-rc1", appVersionCode = 990)
         val CONFIGURATION = PanelAssistantVoiceConfiguration(

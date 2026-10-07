@@ -356,7 +356,7 @@ internal abstract class MqttWireRig {
         media: io.panelassistant.android.media.PanelMediaPlayer? = io.panelassistant.android.media.PanelMediaPlayer(
             streams = { _, _, _ -> error("this rig plays no media") },
             post = { it() },
-            announce = { false },
+            announce = { _, _ -> false },
             cancelAnnouncement = {},
             muted = { false },
             setMuted = {},
