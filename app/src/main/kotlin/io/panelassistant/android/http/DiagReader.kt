@@ -384,7 +384,7 @@ object DiagReader {
         appendLine("[capabilities] " + capabilityRows.joinToString(" | ") { "${it.name}=${it.status}" })
         val updates = UpdateChecker.current(ctx)   // revalidated: no stale entry for an uninstalled Companion
         if (updates.isNotEmpty()) {
-            appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.displayedCurrentVersion} → ${it.latestVersion}" })
+            appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.currentVersion} → ${it.latestVersion}" })
         }
         }
     }

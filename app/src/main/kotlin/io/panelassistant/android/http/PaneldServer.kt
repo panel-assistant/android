@@ -534,10 +534,7 @@ class PaneldServer internal constructor(
                         onUpdateOwner = onPanelAssistantUpdateOwner,
                         admitActiveRead = ::admitActiveRead,
                         refreshUpdates = {
-                            UpdateChecker.check(
-                                appContext, "stable",
-                                "stable", profile.companionMaxVersion,
-                            )
+                            UpdateChecker.check(appContext, "stable", profile.companionMaxVersion)
                         },
                         refreshStorage = refreshStorageHealth,
                         cachedStorage = storageHealth,

@@ -3246,7 +3246,7 @@ class PaneldService : Service() {
 
     private fun attachSoftwareUpdateObservers() {
         // Targets persisted by an earlier process: a restart keeps reporting the last known release.
-        config.softwareUpdateTargets.let { (paneld, companion) -> UpdateChecker.restoreTargets(paneld, companion) }
+        UpdateChecker.restoreTargets(config.softwareUpdateTargets.second)
         InstallProgress.observer = softwareProgressObserver
         UpdateChecker.onChecked = softwareCatalogObserver
     }
@@ -3277,9 +3277,7 @@ class PaneldService : Service() {
         return SoftwareUpdateSources(
             paneldVersion = BuildConfig.VERSION_NAME,
             paneldChannel = paneldChannel,
-            paneldTarget = UpdateChecker.paneldTarget(paneldChannel)?.let {
-                SoftwareTarget(it.version, it.tag, it.releaseUrl)
-            },
+            paneldTarget = null,
             companionMinimalVersion = companionMinimal,
             companionFullVersion = companionFull,
             companionChannel = companionChannel,
@@ -3339,7 +3337,6 @@ class PaneldService : Service() {
                 runCatching {
                     UpdateChecker.check(
                         this@PaneldService,
-                        "stable",
                         "stable",
                         profile.companionMaxVersion,
                     )
@@ -3662,7 +3659,6 @@ class PaneldService : Service() {
                 runCatching {
                     UpdateChecker.check(
                         this@PaneldService,
-                        "stable",
                         "stable",
                         profile.companionMaxVersion,
                     )
