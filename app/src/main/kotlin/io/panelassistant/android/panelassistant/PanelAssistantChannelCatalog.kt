@@ -84,6 +84,7 @@ internal object PanelAssistantChannelCatalog {
         "storage_health_attributes" to "storage_health",
         "diag_wifi_outages_attributes" to "diag_wifi_outages_24h",
         "zigbee_gateway_health_attributes" to "zigbee_gateway_health",
+        "auto_sleep_activity_attributes" to "auto_sleep_activity",
     )
 
     private val RENAMED: Map<String, String> = SoftwareComponent.entries.associate {

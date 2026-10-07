@@ -1728,6 +1728,11 @@ internal class MqttBridge(
             if (!config.autoSleep || !snapshot.policyHealthy) io.panelassistant.android.mqtt.StateConverger.Observation.Unavailable
             else known(if (snapshot.holdingAwake) "ON" else "OFF")
         }
+        // Folded into auto_sleep_activity: the same attributes its MQTT entity carries.
+        channel("auto_sleep_activity_attributes", topic = null) {
+            if (!config.haExposed("auto_sleep_activity", true)) return@channel unknown
+            known(autoSleepMqttProjection(autoSleepActivity()).attributes)
+        }
         channel("navbar", stateNavbar) { known(config.navbarMode) }
 
         channel("illuminance", stateIlluminance, retain = false) {
@@ -3739,6 +3744,8 @@ internal class MqttBridge(
         autoSleepMqttPublications(panel, exposed, snapshot).forEach { publication ->
             publish(publication.topic, publication.payload, retain = publication.retain)
         }
+        // The attributes first, so the native report carries them with the state.
+        stateConverger.reconcile("auto_sleep_activity_attributes", force = true)
         stateConverger.reconcile("auto_sleep_activity", force = true)
     }
 

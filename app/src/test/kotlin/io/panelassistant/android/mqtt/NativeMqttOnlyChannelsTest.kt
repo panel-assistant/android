@@ -46,7 +46,12 @@ internal class NativeMqttOnlyChannelsTest : MqttWireRig() {
     @Test fun autoSleepActivityIsReportedWithoutBroker() {
         val rig = rig(
             runtimeBroker = "",
-            autoSleepActivity = { AutoSleepActivitySnapshot(holdingAwake = true, policyHealthy = true) },
+            autoSleepActivity = {
+                AutoSleepActivitySnapshot(
+                    holdingAwake = true, policyHealthy = true, reason = "presence", learnedDelay = "90s",
+                    sourceCount = 2, phase = "holding", manualSuppression = true,
+                )
+            },
         )
         try {
             val native = bound(rig)
@@ -55,6 +60,13 @@ internal class NativeMqttOnlyChannelsTest : MqttWireRig() {
             val observation = observation(fullSync(native), "auto_sleep_activity")
             assertEquals("known", observation.getString("state"))
             assertEquals(true, observation.get("value"))
+            // The attributes its MQTT entity carries, so nothing is lost when the panel moves.
+            val attributes = observation.getJSONObject("attributes")
+            assertEquals("presence", attributes.getString("reason"))
+            assertEquals("90s", attributes.getString("learned_delay"))
+            assertEquals(2, attributes.getInt("source_count"))
+            assertEquals("holding", attributes.getString("phase"))
+            assertEquals(true, attributes.getBoolean("manual_suppression"))
         } finally { rig.close() }
     }
 
