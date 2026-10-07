@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.panelassistant.PanelAssistantTransportProtocol
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.i18n.CatalogueLoader
@@ -49,8 +50,9 @@ class MqttCardSchemaFixtureTest {
     }
 
     private fun response(authority: String, broker: String): JSONObject = PaneldServerHttpFixture().use { fixture ->
-        fixture.config.setFriendlyName("Fixture panel")
-        fixture.config.setHardware("Fixture manufacturer", "Fixture model")
+        fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Fixture panel")
+        fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Fixture manufacturer")
+        fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Fixture model")
         fixture.config.setMqtt(broker, "owner", "secret")
         fixture.config.setPanelAssistantAuthority(authority)
         val values = ConfigValueProjection(

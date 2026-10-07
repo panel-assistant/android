@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.LiveSettingRequestOutcome
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.migration.RestoreAttempt
@@ -28,7 +29,7 @@ class AcceptedRestoreTransactionTest {
     private suspend fun checkRendererFailure(supersede: Boolean) {
         PaneldServerHttpFixture().use { fixture ->
             val config = fixture.config
-            config.setFriendlyName("Restore contract panel")
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Restore contract panel")
             var liveReads = 0
             var transactionReads = 0
             var rendererAttempts = 0

@@ -89,6 +89,18 @@ class RendererConfigEffectsTest {
         assertFalse(RendererConfigEffects.credentialsChanged(previous, mapOf("ha_url" to "http://ha:8123/")))
     }
 
+    @Test fun aCallerThatOwnsTheCredentialGroupAndHomePathDecidesTheirEffects() {
+        // The direct Configure save takes these from the credential group's owner and from the home path
+        // its live handler actually applied, not from comparing the posted strings.
+        val previous = mapOf("ha_token" to "old", "home_dashboard" to "/lovelace/0")
+        val accepted = mapOf("ha_token" to "new", "home_dashboard" to "/kiosk/wall")
+        assertTrue(RendererConfigEffects.between(previous, accepted).reloadBuiltin)
+        assertFalse(
+            RendererConfigEffects.between(previous, accepted, credentialChanged = false, homeChanged = false).reloadBuiltin,
+        )
+        assertTrue(RendererConfigEffects.between(emptyMap(), emptyMap(), credentialChanged = true).reloadBuiltin)
+    }
+
     @Test fun aHomeDashboardChangeReloadsTheBuiltInRenderer() {
         // Editing the home dashboard used to update config without navigating the renderer, so it looked
         // like nothing happened. A home change now reloads the built-in renderer onto the new path.

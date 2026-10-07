@@ -359,7 +359,7 @@ class ConfigPostProductionRouteTest {
         withFullReadServer { config, fixture ->
             config.setHaExposed("camera_enabled", true)
             config.setPanelId("retained_panel")
-            config.setFriendlyName("Original panel")
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Original panel")
             config.setMqtt("", "retained-user", "retained-password")
             val panelId = config.panelId
             val builder = fixture.backupBuilder(null, config) { spec, live -> effectiveSettingValue(config, spec, live) }
@@ -368,7 +368,7 @@ class ConfigPostProductionRouteTest {
                 assertTrue(manifest.getJSONObject("config").has("ha_expose_camera_enabled"))
                 assertEquals("true", manifest.getJSONObject("config").getString("ha_expose_camera_enabled"))
                 config.setHaExposed("camera_enabled", false)
-                config.setFriendlyName("Changed panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Changed panel")
                 setField(fixture.server, "applySetting", { _: String, _: String -> LiveSettingRequestOutcome.APPLIED })
                 setField(fixture.server, "onReconfigure", { _: Set<String> -> })
                 testApplication {
@@ -505,8 +505,9 @@ class ConfigPostProductionRouteTest {
             val config = Config(SqliteStatePreferences(persistence, writer))
             assertTrue(config.applyBatch {
                 config.setPanelId("contract-panel")
-                config.setFriendlyName("Contract panel")
-                config.setHardware("Contract manufacturer", "Contract model")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Contract manufacturer")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Contract model")
                 config.setDashboardPackage("com.example.dashboard")
             })
             val live = mutableListOf<String>()
@@ -531,8 +532,9 @@ class ConfigPostProductionRouteTest {
             val config = Config(SqliteStatePreferences(JdbcStatePersistence(database), writer))
             assertTrue(config.applyBatch {
                 config.setPanelId("contract-panel")
-                config.setFriendlyName("Contract panel")
-                config.setHardware("Contract manufacturer", "Contract model")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Contract manufacturer")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Contract model")
                 config.setDashboardPackage("com.example.dashboard")
             })
             val spec = requireNotNull(SettingsRegistry.spec("home_dashboard"))
@@ -606,8 +608,9 @@ class ConfigPostProductionRouteTest {
             val config = Config(SqliteStatePreferences(JdbcStatePersistence(database), writer))
             assertTrue(config.applyBatch {
                 config.setPanelId("contract-panel")
-                config.setFriendlyName("Contract panel")
-                config.setHardware("Contract manufacturer", "Contract model")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Contract manufacturer")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Contract model")
                 config.setDashboardPackage("com.example.dashboard")
             })
             val minimum = requireNotNull(SettingsRegistry.spec("auto_brightness_minimum_percent"))
@@ -667,8 +670,9 @@ class ConfigPostProductionRouteTest {
             val config = Config(SqliteStatePreferences(JdbcStatePersistence(database), writer))
             assertTrue(config.applyBatch {
                 config.setPanelId("contract-panel")
-                config.setFriendlyName("Contract panel")
-                config.setHardware("Contract manufacturer", "Contract model")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Contract manufacturer")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Contract model")
             })
             val posted = linkedMapOf(
                 "dashboard_idle_return_min" to "15",
@@ -724,6 +728,53 @@ class ConfigPostProductionRouteTest {
         } finally {
             writer.shutdownNow()
             reopenedWriter.shutdownNow()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test fun `a Configure save writes only the settings it changes`() {
+        val directory = Files.createTempDirectory("config-post-write-set").toFile()
+        val database = File(directory, "ha-paneld.db")
+        val writer = Executors.newSingleThreadExecutor()
+        try {
+            val persistence = JdbcStatePersistence(database)
+            val config = Config(SqliteStatePreferences(persistence, writer))
+            assertTrue(config.applyBatch {
+                config.setPanelId("contract_panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Contract manufacturer")
+                config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Contract model")
+                config.setDashboardPackage("com.example.dashboard")
+            })
+            // The Configure form posts every field, so a save that renames the panel resubmits the rest unchanged.
+            val unchanged = listOf(
+                "panel_id", "manufacturer", "model", "keep_awake", "room_temp_offset",
+                "dashboard_package", "launcher_package", "dashboard_fullscreen", "dashboard_native_kiosk",
+                "dashboard_zoom", "dark_mode", "dashboard_theme",
+            ).associateWith { config.getRaw(requireNotNull(SettingsRegistry.spec(it))) }
+            val server = routeServer(config) { key, _ -> error("$key must not reach the live-setting lane") }
+            persistence.written.clear()
+
+            testApplication {
+                application {
+                    routing { route("/api/v1") { with(server) { installDirectConfigPostRoute { Capabilities() } } } }
+                }
+                val response = client.submitForm(
+                    url = "/api/v1/config",
+                    formParameters = Parameters.build {
+                        unchanged.forEach { (key, value) -> append(key, value) }
+                        append("friendly_name", "Renamed panel")
+                    },
+                ) { accept(ContentType.Application.Json) }
+                assertEquals(HttpStatusCode.OK, response.status, response.bodyAsText())
+            }
+
+            assertEquals("Renamed panel", config.friendlyName)
+            val written = persistence.written.flatten()
+            assertEquals(1, written.count { it == "friendly_name" }, "written: $written")
+            assertEquals(emptySet(), unchanged.keys.intersect(written.toSet()), "resubmitted values were rewritten: ${persistence.written}")
+        } finally {
+            writer.shutdownNow()
             directory.deleteRecursively()
         }
     }
@@ -845,6 +896,8 @@ class ConfigPostProductionRouteTest {
 
     private class JdbcStatePersistence(private val database: File) : StateNamespacePersistence {
         var failWrites = false
+        /** Every key each durable commit wrote, in order. */
+        val written = mutableListOf<Set<String>>()
         init {
             connection().use { connection ->
                 connection.createStatement().use {
@@ -867,6 +920,7 @@ class ConfigPostProductionRouteTest {
         }
 
         override fun persist(mutation: StateMutation): Boolean = transaction { connection ->
+            written += mutation.changes.keys
             if (mutation.clear) connection.createStatement().use { it.executeUpdate("DELETE FROM app_state") }
             mutation.changes.forEach { (key, value) ->
                 if (value == null) {

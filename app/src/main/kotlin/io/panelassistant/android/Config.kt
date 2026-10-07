@@ -736,10 +736,6 @@ class Config private constructor(
      */
     val friendlyName: String
         get() = prefs.getString("friendly_name", null)?.takeIf { it.isNotBlank() } ?: deviceName()
-    fun setFriendlyName(name: String) {
-        edit { putString("friendly_name", name) }
-    }
-
     /**
      * Settings.Secure.ANDROID_ID, reported as the Home Assistant device `serial_number`.
      *
@@ -997,7 +993,6 @@ class Config private constructor(
      *  renderer's dashboard default. Android 10+ panels follow the OS setting instead (the Display-card
      *  toggle is hidden there); the `:8888` web UI always follows the viewing browser's preference. */
     val darkMode: Boolean get() = boolPref("dark_mode")
-    fun setDarkMode(v: Boolean) = edit { putBoolean("dark_mode", v) }
 
     /** OAuth client_id to use when refreshing [haToken]. Blank => the HA origin (`<ha_url>/`, what the
      *  frontend uses). Set it to match the client the refresh token was issued for — e.g.
@@ -1401,10 +1396,6 @@ class Config private constructor(
 
     /** Language used by ha-paneld's own interface; `auto` delegates to the locale resolver. */
     val uiLanguage: String get() = stringPref("ui_language")
-    fun setUiLanguage(language: String) {
-        edit { putString("ui_language", language) }
-    }
-
     // Network-adb persist INTENT (the switch). ha-paneld re-asserts adb-tcp at boot/reconnect when this
     // is true (some firmwares strip persist.adb.tcp.port at boot), and only tears adb down on OFF if it
     // was ha-paneld that turned it on — never disabling adb another mechanism started.
@@ -1553,7 +1544,6 @@ class Config private constructor(
     /** Built-in renderer: hide the system status + navigation bars (immersive edge-to-edge kiosk).
      *  Swipe-from-edge still transiently reveals them, so an admin is never locked out. */
     val dashboardFullscreen: Boolean get() = boolPref("dashboard_fullscreen")
-    fun setDashboardFullscreen(on: Boolean) { edit { putBoolean("dashboard_fullscreen", on) } }
 
     /** Visibility of the panel's dashboard network warning; diagnostic checks stay independent. */
     val dashboardNetworkWarning: Boolean get() = boolPref("dashboard_network_warning")
@@ -1561,14 +1551,12 @@ class Config private constructor(
     /** Ask Home Assistant's own frontend to enter its native kiosk mode. This is independent of
      * Android fullscreen/dashboard lock and does not inject CSS into the dashboard. */
     val dashboardNativeKiosk: Boolean get() = boolPref("dashboard_native_kiosk")
-    fun setDashboardNativeKiosk(on: Boolean) { edit { putBoolean("dashboard_native_kiosk", on) } }
 
     /** Built-in renderer: who owns the dashboard's light/dark choice — [DashboardTheme.FOLLOW] (Home
      *  Assistant does, which is what [darkMode] supplies a default for) or an explicit Dark/Light this
      *  panel imposes. A stored value this build no longer declares resolves to the default rather than
      *  leaving the renderer with a policy it cannot act on. */
     val dashboardTheme: String get() = DashboardTheme.policy(prefs.getString("dashboard_theme", null))
-    fun setDashboardTheme(v: String) { edit { putString("dashboard_theme", DashboardTheme.policy(v)) } }
 
     /** The policy the renderer and every themed screen act on: [dashboardTheme] with Ambient resolved
      *  to the room's verdict, and to Follow while auto-brightness (the model that produces it) is off.
@@ -2325,10 +2313,6 @@ class Config private constructor(
     private fun inferredModel(): String =
         listOf(Build.MODEL, Build.DEVICE, Build.PRODUCT).firstOrNull { !it.isNullOrBlank() } ?: "panel"
 
-    fun setHardware(manufacturer: String, model: String) {
-        edit { putString("manufacturer", manufacturer); putString("model", model) }
-    }
-
     // --- legacy proximity calibration retirement -----------------------------------------------
 
     /**
@@ -2396,14 +2380,6 @@ class Config private constructor(
     /** Persist the user's `room_temp_offset` trim (°C), clamped to the registry range. Uses [edit] so it
      *  composes with the /config POST batch — without this the key had a [SettingSpec] and rendered a form
      *  field but no persistence path, so a posted value was silently dropped. */
-    fun setRoomTempOffset(raw: String) {
-        val v = raw.trim().toFloatOrNull()?.takeIf { it.isFinite() } ?: return
-        val spec = SettingsRegistry.spec("room_temp_offset")
-        val lo = spec?.min?.toFloat() ?: -20f
-        val hi = spec?.max?.toFloat() ?: 20f
-        edit { putFloat("room_temp_offset", v.coerceIn(lo, hi)) }
-    }
-
     // --- last-known actuator state, re-applied/published on (re)connect so HA reflects reality ---
 
     /** Last navigated URL (published as the navigate state on connect; empty if never set). */

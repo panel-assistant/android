@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import io.panelassistant.android.Config
@@ -291,8 +292,9 @@ internal class PaneldServerHttpFixture(
 
     /** Real page rendering with deterministic identity, renderer discovery and bundled catalogues. */
     fun enablePages() {
-        config.setFriendlyName("Contract <panel>")
-        config.setHardware("Contract manufacturer", "Contract model")
+        config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract <panel>")
+        config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Contract manufacturer")
+        config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Contract model")
         config.setDashboardPackage("com.example.dashboard")
         server.field("configLiveValues", { emptyMap<String, String>() })
         server.field("mqttState", { "connecting" })

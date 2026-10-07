@@ -15,7 +15,6 @@ import io.panelassistant.android.config.Validation
 import io.panelassistant.android.control.PowerSafetyMutationPolicy
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.security.SensitiveOperation
-import io.panelassistant.android.util.DashboardTheme
 import io.panelassistant.android.util.isLoopbackPeer
 import io.panelassistant.android.util.InstallProgress
 import io.panelassistant.android.util.Json
@@ -272,24 +271,13 @@ internal class DirectConfigPost(
         lateinit var expectedReadBack: Map<String, String>
         // Partial-merge: apply ONLY keys present, so a fleet tool can set one field without clobbering
         // the rest. The UI form sends every key (blank = clear), preserving its full-replace behaviour.
-        val panelId = p["panel_id"]
         // Persisted fields are staged into one editor and committed atomically, so a power loss mid-apply
         // can't leave a half-written config (e.g. broker set but credentials not). Live side-effects
-        // (behaviour keys, reconfigure) run after the commit so they read freshly-committed state.
-        // Live-apply side-effects are DETECTED inside the batch (from POSTED values — a read-back inside
-        // applyBatch returns the pre-commit value, which silently defeated change-detection) but EXECUTED
-        // after it commits, so the relaunched renderer can never read stale config.
-        var applyDark: Boolean? = null
-        // The built-in dashboard colour-scheme policy. Detected from the POSTED value for the same
-        // reason as applyDark: a read-back inside applyBatch returns the pre-commit value.
-        var themePolicyChanged = false
-        var relaunchForHa = false
-        var relaunchForDash = false
-        var relaunchForFullscreen = false
-        var relaunchForNativeKiosk = false
-        var reloadForZoom = false
+        // (behaviour keys, reconfigure) run after the commit so they read freshly-committed state, and
+        // renderer effects come from what changed against the pre-commit revision, never a read-back
+        // inside applyBatch, which returns the pre-commit value.
+        var credentialsChanged = false
         var entityLearningChanged: Boolean? = null
-        var entityTargetChanged = false
         var homeDashboardAppliedEarly = false
         var homeDashboardChangedEarly = false
         var rendererFailure: Throwable? = null
@@ -342,20 +330,12 @@ internal class DirectConfigPost(
                             p["ui_language"]?.let(NativeLocale::apply)
                         },
                     ) {
+                    // Every registered setting that changed is written once, here; the bespoke writes
+                    // below are only for keys with no spec, coupled groups and live keys.
                     stageDirectConfigRegistryValues(config, postedValues, mutationPlan.changedKeys)
                     // Commit the coupled range before either live handler schedules a new evaluation.
                     p["auto_brightness_minimum_percent"]?.toInt()?.let(config::setAutoBrightnessMinimumPercent)
                     p["auto_brightness_maximum_percent"]?.toInt()?.let(config::setAutoBrightnessMaximumPercent)
-                    panelId?.let { config.setPanelId(it) }
-                    p["friendly_name"]?.let { config.setFriendlyName(it.trim()) }
-                    p["ui_language"]?.let { config.setUiLanguage(it) }
-                    val prevDash = config.dashboardPackage
-                    dashboardPackage?.let { config.setDashboardPackage(it) }
-                    val dashChanged = dashboardPackage?.let { it != prevDash } == true
-                    p["launcher_package"]?.let { config.setLauncherPackage(it.trim()) }
-                    p["tame_vendor_packages"]?.let { raw ->
-                        if (tamePackagesChanged) config.setTameVendorPackages(raw)
-                    }
                     p["http_allowed_hosts"]?.let { config.setHttpAllowedHosts(it) }
                     // The handover trio persists here for the same reason `http_allowed_hosts` does:
                     // they are bespoke config keys with no SettingsRegistry spec, so the generic
@@ -368,27 +348,6 @@ internal class DirectConfigPost(
                     p["ha_url_handover_reason"]?.let { config.setHaUrlHandoverReason(it) }
                     // Live keys are deliberately excluded from this batch. Their handlers must observe
                     // the previous value before the live-setting authority persists the applied value.
-                    // Keep-awake (partial wakelock so SoC/network never suspend). Applied live by reconfigure().
-                    p["keep_awake"]?.let { config.setKeepAwake(it.trim().equals("true", ignoreCase = true) || it.trim() == "1") }
-                    // Room-temperature calibration trim (°C) — a plain local pref with no MQTT command, so it
-                    // persists here rather than through HTTP_LIVE_KEYS/applySetting (the command path).
-                    p["room_temp_offset"]?.let { config.setRoomTempOffset(it) }
-                    // Live-apply a fullscreen toggle: a bare foreground relaunch of the running renderer re-runs
-                    // onResume → applyFullscreen with the new value, without touching the page (no reload flag).
-                    // Detected from the POSTED value — config read-back inside the batch is pre-commit.
-                    val prevFullscreen = config.dashboardFullscreen
-                    val postedFullscreen = p["dashboard_fullscreen"]?.let { it.trim().equals("true", ignoreCase = true) || it.trim() == "1" }
-                    postedFullscreen?.let { config.setDashboardFullscreen(it) }
-                    relaunchForFullscreen = postedFullscreen != null && postedFullscreen != prevFullscreen && !dashChanged
-                    // Native HA kiosk mode is applied over the live external bus. Foregrounding the
-                    // singleTask renderer lets onNewIntent update the current document without reload.
-                    val prevNativeKiosk = config.dashboardNativeKiosk
-                    val postedNativeKiosk = p["dashboard_native_kiosk"]?.let {
-                        it.trim().equals("true", ignoreCase = true) || it.trim() == "1"
-                    }
-                    postedNativeKiosk?.let { config.setDashboardNativeKiosk(it) }
-                    relaunchForNativeKiosk = postedNativeKiosk != null &&
-                        postedNativeKiosk != prevNativeKiosk && !dashChanged
                     val prevEntityLearning = config.dashboardEntityLearningEnabled
                     val postedEntityLearning = p["dashboard_entity_learning"]?.let {
                         it.trim().equals("true", ignoreCase = true) || it.trim() == "1"
@@ -399,44 +358,11 @@ internal class DirectConfigPost(
                         // defeating its fresh-opt-in latch reset and bootstrap semantics.
                         entityLearningChanged = postedEntityLearning
                     }
-                    // Page zoom (%). A fresh load is where setInitialScale reliably takes effect, so on a change
-                    // we reload the renderer rather than just re-foregrounding it. Detected from the POSTED value.
-                    val prevZoom = config.dashboardZoom
-                    val postedZoom = p["dashboard_zoom"]?.trim()?.toIntOrNull()?.coerceIn(50, 300)
-                    postedZoom?.let { config.setDashboardZoom(it) }
-                    reloadForZoom = postedZoom != null && postedZoom != prevZoom && !dashChanged
-                    // Dark mode (Display card; only meaningful on panels WITHOUT a system dark-mode setting,
-                    // Android 9-). Detected from the POSTED value (read-back inside the batch is pre-commit —
-                    // this exact bug made the toggle a silent no-op); executed after the batch commits.
-                    val prevDark = config.darkMode
-                    val postedDark = p["dark_mode"]?.let { it.trim().equals("true", ignoreCase = true) || it.trim() == "1" }
-                    postedDark?.let { config.setDarkMode(it) }
-                    if (postedDark != null && postedDark != prevDark && android.os.Build.VERSION.SDK_INT < 29) applyDark = postedDark
-                    // Dashboard colour-scheme policy (Dashboard card). Separate authority from dark_mode
-                    // and deliberately ungated by SDK: it is the only lever that re-themes Home Assistant,
-                    // and it must reach a fresh page load because the policy is baked into a
-                    // document-start script that cannot be replaced in a live WebView.
-                    val prevThemePolicy = config.dashboardTheme
-                    val postedThemePolicy = p["dashboard_theme"]?.let { DashboardTheme.policy(it) }
-                    postedThemePolicy?.let { config.setDashboardTheme(it) }
-                    themePolicyChanged = postedThemePolicy != null && postedThemePolicy != prevThemePolicy
                     stageDirectLogShipping(config, postedValues)
-                    val mfr = p["manufacturer"]?.trim()
-                    val mdl = p["model"]?.trim()
-                    if (mfr != null || mdl != null) config.setHardware(
-                        mfr ?: config.manufacturerRaw,
-                        mdl ?: config.modelRaw,
-                    )
                     // Credential groups carry dependent-clear semantics which cannot be represented as
                     // independent generic keys. Keep their actual owner in one production-used helper so
                     // the behavioural contract can prove username/password and HA session transitions.
-                    val credentialEffects = stageDirectCredentialSettings(config, postedValues)
-                    relaunchForHa = credentialEffects.haChanged
-                    entityTargetChanged = credentialEffects.haChanged
-                    // Live-apply a renderer switch: re-anchor HOME to the new renderer and bring it up now —
-                    // previously changing "Dashboard app" did nothing until the next boot. Off-thread (su/daemon).
-                    // The kiosk/watchdog loops read dashboard_package per tick, so they retarget on their own.
-                    relaunchForDash = dashChanged
+                    credentialsChanged = stageDirectCredentialSettings(config, postedValues).haChanged
 
                     // Per-row "expose to HA" toggles (ha_expose_<key>=true|false) — take effect on the reconfigure.
                     for (name in p.names()) {
@@ -465,7 +391,7 @@ internal class DirectConfigPost(
                             homeDashboardAppliedEarly = true
                             homeDashboardChangedEarly = config.homeDashboard != previousHome
                         }
-                        if (entityTargetChanged && !homeDashboardChangedEarly) {
+                        if (credentialsChanged && !homeDashboardChangedEarly) {
                             onEntityTargetChanged()
                         }
                         entityLearningChanged?.let { enabled ->
@@ -481,16 +407,16 @@ internal class DirectConfigPost(
                             }
                             entityLearningChanged = null
                         }
+                        // A dashboard app switch re-anchors HOME to the new renderer and brings it up now;
+                        // the kiosk and watchdog loops read dashboard_package per tick and retarget alone.
                         applyRendererEffects(
-                            RendererConfigEffects.coalesce(
-                                dashboardChanged = relaunchForDash,
-                                credentialChanged = relaunchForHa,
-                                zoomChanged = reloadForZoom,
-                                fullscreenChanged = relaunchForFullscreen,
-                                nativeKioskChanged = relaunchForNativeKiosk,
+                            RendererConfigEffects.between(
+                                requireNotNull(previous).values,
+                                postedValues.filterKeys(mutationPlan.changedKeys::contains),
+                                // The credential group's own owner decides a credential change, and the home
+                                // path counts only once applied, because its live handler may refuse it.
+                                credentialChanged = credentialsChanged,
                                 homeChanged = homeDashboardChangedEarly,
-                                darkMode = applyDark,
-                                themePolicyChanged = themePolicyChanged,
                             ),
                         )
                     }.onFailure { rendererFailure = it }

@@ -12,12 +12,14 @@ internal data class RendererConfigEffects(
             "ha_url", "ha_token", "ha_refresh_token", "ha_token_expiry", "ha_client_id",
         )
 
+        private fun changed(previous: Map<String, String>, accepted: Map<String, String>, key: String): Boolean {
+            val next = accepted[key] ?: return false
+            val before = previous[key]
+            return if (key == "ha_url") next.trimEnd('/') != before?.trimEnd('/') else next != before
+        }
+
         fun credentialsChanged(previous: Map<String, String>, accepted: Map<String, String>): Boolean {
-            fun changed(key: String): Boolean {
-                val next = accepted[key] ?: return false
-                val before = previous[key]
-                return if (key == "ha_url") next.trimEnd('/') != before?.trimEnd('/') else next != before
-            }
+            fun changed(key: String): Boolean = changed(previous, accepted, key)
             val accessReplacesRefresh = accepted["ha_token"]?.isNotEmpty() == true &&
                 "ha_refresh_token" !in accepted && previous["ha_refresh_token"].orEmpty().isNotEmpty()
             val urlClearDropsCredentials = accepted["ha_url"]?.isEmpty() == true &&
@@ -25,19 +27,25 @@ internal data class RendererConfigEffects(
             return CREDENTIAL_KEYS.any(::changed) || accessReplacesRefresh || urlClearDropsCredentials
         }
 
-        fun between(previous: Map<String, String>, accepted: Map<String, String>): RendererConfigEffects {
-            fun changed(key: String): Boolean {
-                val next = accepted[key] ?: return false
-                val before = previous[key]
-                return if (key == "ha_url") next.trimEnd('/') != before?.trimEnd('/') else next != before
-            }
+        /**
+         * The renderer work a committed change from [previous] to [accepted] needs. A caller whose credential
+         * group or home path has its own owner passes that owner's verdict as [credentialChanged] or
+         * [homeChanged].
+         */
+        fun between(
+            previous: Map<String, String>,
+            accepted: Map<String, String>,
+            credentialChanged: Boolean = credentialsChanged(previous, accepted),
+            homeChanged: Boolean = changed(previous, accepted, "home_dashboard"),
+        ): RendererConfigEffects {
+            fun changed(key: String): Boolean = changed(previous, accepted, key)
             return coalesce(
                 dashboardChanged = changed("dashboard_package"),
-                credentialChanged = credentialsChanged(previous, accepted),
+                credentialChanged = credentialChanged,
                 zoomChanged = changed("dashboard_zoom"),
                 fullscreenChanged = changed("dashboard_fullscreen"),
                 nativeKioskChanged = changed("dashboard_native_kiosk"),
-                homeChanged = changed("home_dashboard"),
+                homeChanged = homeChanged,
                 darkMode = accepted["dark_mode"]?.toBooleanStrictOrNull()
                     ?.takeIf { changed("dark_mode") && android.os.Build.VERSION.SDK_INT < 29 },
                 // Unlike dark_mode this has no SDK gate: the policy is the only lever that re-themes

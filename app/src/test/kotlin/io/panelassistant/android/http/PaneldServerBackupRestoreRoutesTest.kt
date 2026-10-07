@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import io.ktor.client.request.post
 import io.ktor.client.request.header
 import io.ktor.client.request.setBody
@@ -70,7 +71,7 @@ class PaneldServerBackupRestoreRoutesTest {
 
     @Test fun `full mount refuses inverted automatic bounds before restore side effects`() {
         PaneldServerHttpFixture().use { fixture ->
-            fixture.config.setFriendlyName("Contract panel")
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
             fixture.config.setAutoBrightnessMinimumPercent(20)
             fixture.config.setAutoBrightnessMaximumPercent(60)
             testApplication {

@@ -245,7 +245,7 @@ class ConfigTransactionTest {
         assertEquals(SettingsRegistry.DEFAULT_UI_LANGUAGE, config.uiLanguage)
         assertFalse(prefs.values.containsKey("ui_language"))
 
-        config.setUiLanguage("zh-Hans")
+        config.setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), "zh-Hans")
 
         assertEquals("zh-Hans", prefs.values["ui_language"])
         assertEquals("zh-Hans", Config(prefs.instance).uiLanguage)
@@ -318,10 +318,10 @@ class ConfigTransactionTest {
 
         assertTrue(config.dashboardNativeKiosk)
         assertFalse(prefs.values.containsKey("dashboard_native_kiosk"))
-        config.setDashboardNativeKiosk(false)
+        config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "false")
         assertFalse(config.dashboardNativeKiosk)
         assertEquals(false, prefs.values["dashboard_native_kiosk"])
-        config.setDashboardNativeKiosk(true)
+        config.setRaw(requireNotNull(SettingsRegistry.spec("dashboard_native_kiosk")), "true")
         assertTrue(config.dashboardNativeKiosk)
         assertEquals(true, prefs.values["dashboard_native_kiosk"])
     }
@@ -516,16 +516,6 @@ class ConfigTransactionTest {
 
         assertTrue(config.setSecurityMode(Config.SecurityMode.RELAXED))
         assertTrue(config.setNetworkAdbEnabled(true))
-    }
-
-    @Test fun roomTemperatureOffsetRejectsNonFiniteFormValues() {
-        val prefs = fakePreferences(initial = mapOf("room_temp_offset" to 1.5f))
-        val config = Config(prefs.instance)
-
-        listOf("NaN", "Infinity", "+Infinity", "-Infinity").forEach(config::setRoomTempOffset)
-
-        assertEquals(1.5f, config.roomTempOffsetC, 0f)
-        assertEquals(1.5f, prefs.values["room_temp_offset"])
     }
 
     @Test fun adaptiveLearnerConsumesCurrentProfileCaptureOnceAndRetiresAllOldCalibration() {

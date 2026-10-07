@@ -1,5 +1,6 @@
 package io.panelassistant.android.mqtt
 
+import io.panelassistant.android.config.SettingsRegistry
 import android.content.ContentResolver
 import android.content.Context
 import android.content.ContextWrapper
@@ -367,7 +368,8 @@ internal abstract class MqttWireRig {
         val prefs = MemoryPreferences()
         val context = FakeContext(tmp, prefs)
         val config = newConfig(prefs, context.contentResolver)
-        config.setHardware("Golden Manufacturing", "Golden Panel")
+        config.setRaw(requireNotNull(SettingsRegistry.spec("manufacturer")), "Golden Manufacturing")
+        config.setRaw(requireNotNull(SettingsRegistry.spec("model")), "Golden Panel")
         config.setAutoSleep(true)
         // Most config entities are opt-in. Expose a representative set so their discovery payloads, not
         // only their tombstones, are on the wire. Host-metric diagnostics stay hidden: they read /proc.

@@ -19,9 +19,10 @@ internal data class DirectConfigMutationPlan(
 internal val DIRECT_CONFIG_DELEGATED_KEYS: Set<String> = setOf("dashboard_entity_learning")
 
 /**
- * Catalogue-wide persistence floor for ordinary direct-POST settings. The bespoke block which follows
- * still owns coupled credentials, secondary keys and effect planning, but no newly registered ordinary
- * setting can be silently read and dropped: a validated changed value reaches Config automatically.
+ * The one writer of ordinary direct-POST settings: each validated changed value reaches Config once, so no
+ * registered setting can be silently read and dropped. `panel_id` and `dashboard_package` go through the
+ * setters that also stage their secondary keys, as a bundle import does. The bespoke block which follows
+ * owns only coupled credentials, keys with no spec and live keys.
  */
 internal fun stageDirectConfigRegistryValues(
     config: Config,
@@ -32,7 +33,11 @@ internal fun stageDirectConfigRegistryValues(
         if (spec.liveApply || spec.key in DIRECT_CONFIG_DELEGATED_KEYS || spec.key !in changedKeys) return@forEach
         val raw = posted[spec.key] ?: return@forEach
         val normalized = (SettingValue.validate(spec, raw) as? Validation.Ok)?.normalized ?: return@forEach
-        config.setRaw(spec, normalized)
+        when (spec.key) {
+            "panel_id" -> config.setPanelId(normalized)
+            "dashboard_package" -> config.setDashboardPackage(normalized)
+            else -> config.setRaw(spec, normalized)
+        }
         add(spec.key)
     }
 }
