@@ -175,6 +175,25 @@ class StreamedSpeechPlaybackTest {
         assertTrue(coordinator.close(1_000L))
     }
 
+    @Test fun aStreamLateForAnAnnouncementANewerOneCancelledIsDroppedAndTheNewerOnePlaysTheNext() = runTest {
+        val (coordinator, claims) = lane()
+        coordinator.submitStreamForGeneration(nowNs)
+        runCurrent()
+        nowNs += SECOND
+        val newer = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
+        runCurrent()
+        val late = claims.started()
+        runCurrent()
+        assertTrue("the cancelled announcement's stream, sent first, is not the newer one's", claims.dropped(late))
+        val next = claims.started()
+        runCurrent()
+        assertFalse(claims.dropped(next))
+        claims.ended(next)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, newer), coordinator.snapshot())
+        assertTrue(coordinator.close(1_000L))
+    }
+
     @Test fun aStreamNoAnnouncementClaimsIsDroppedOnceNoEventCanStillClaimIt() {
         val claims = VoiceStreamClaims(nanoTime = { nowNs })
         val stream = claims.started()

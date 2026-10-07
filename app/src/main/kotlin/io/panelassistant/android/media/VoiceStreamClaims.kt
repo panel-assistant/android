@@ -17,8 +17,9 @@ import kotlinx.coroutines.withTimeout
  *
  * An announcement that stops waiting before its stream starts (it fell back to the URL, or was cancelled)
  * still owns that stream: the next stream to start is dropped on arrival, so it never plays over or after
- * the URL speech. A newer announcement's event ends that ownership, since the server streams only its
- * latest announcement and the abandoned stream may never come. A stream nobody claims within
+ * the URL speech. An event arriving at least the start timeout after the abandoned one's ends that
+ * ownership, since by then the abandoned stream may never come; a stream for an announcement cancelled
+ * sooner by a newer one still arrives first, and is still dropped. A stream nobody claims within
  * [windowNs] plus a margin can no longer be claimed, and is dropped too.
  *
  * The player reports [started] and [ended] (after playing out) and asks [dropped] before writing each
@@ -37,7 +38,7 @@ internal class VoiceStreamClaims(
         @Volatile var dropped = false
     }
 
-    private class Waiter {
+    private class Waiter(val eventAtNs: Long) {
         val stream = CompletableDeferred<Stream>()
 
         @Volatile var assigned: Stream? = null
@@ -84,9 +85,9 @@ internal class VoiceStreamClaims(
     }
 
     override suspend fun play(eventAtNs: Long) {
-        val waiter = Waiter()
+        val waiter = Waiter(eventAtNs)
         val recentEnough = synchronized(lock) {
-            waiters.removeAll { it.abandoned }
+            waiters.removeAll { it.abandoned && eventAtNs - it.eventAtNs >= startTimeoutMs * 1_000_000L }
             val found = recent.firstOrNull {
                 !it.claimed && !it.dropped && it.startedAtNs - (eventAtNs - windowNs) >= 0L
             }
