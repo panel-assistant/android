@@ -25,7 +25,7 @@ internal fun interface AudioPlaybackRunFactory {
     fun createSpeech(url: String): AudioPlaybackRun = create(url)
 
     /** Speech Panel Assistant streams, for the event that arrived at [eventAtNs] ([VoiceStreamClaims]). */
-    fun createStream(eventAtNs: Long): AudioPlaybackRun =
+    fun createStream(eventAtNs: Long, fallbackUrls: List<String> = emptyList()): AudioPlaybackRun =
         throw UnsupportedOperationException("this panel has no voice stream")
 }
 
@@ -56,7 +56,13 @@ internal class AudioPlaybackCoordinator(
         }
     }
 
-    private data class Request(val generation: Long, val url: String, val speech: Boolean, val streamAtNs: Long? = null)
+    private data class Request(
+        val generation: Long,
+        val url: String,
+        val speech: Boolean,
+        val streamAtNs: Long? = null,
+        val fallbackUrls: List<String> = emptyList(),
+    )
     private class Active(val generation: Long, val run: AudioPlaybackRun, val job: Job) {
         private val cancelled = AtomicBoolean(false)
         fun cancel() {
@@ -101,11 +107,12 @@ internal class AudioPlaybackCoordinator(
      * the lane like any announcement, so a newer request replaces it and cancelling it drops its audio.
      */
     @Synchronized
-    fun submitStreamForGeneration(eventAtNs: Long): Long? = admit("", true, eventAtNs)
+    fun submitStreamForGeneration(eventAtNs: Long, fallbackUrls: List<String> = emptyList()): Long? =
+        admit("", true, eventAtNs, fallbackUrls)
 
-    private fun admit(url: String, speech: Boolean, streamAtNs: Long?): Long? {
+    private fun admit(url: String, speech: Boolean, streamAtNs: Long?, fallbackUrls: List<String> = emptyList()): Long? {
         if (closed) return null
-        val request = Request(++generation, url, speech, streamAtNs)
+        val request = Request(++generation, url, speech, streamAtNs, fallbackUrls)
         snapshot = Snapshot(State.QUEUED, request.generation)
         if (requests.trySend(request).isSuccess) return request.generation
         closed = true
@@ -180,7 +187,7 @@ internal class AudioPlaybackCoordinator(
 
                 val run = try {
                     when {
-                        request.streamAtNs != null -> factory.createStream(request.streamAtNs)
+                        request.streamAtNs != null -> factory.createStream(request.streamAtNs, request.fallbackUrls)
                         request.speech -> factory.createSpeech(request.url)
                         else -> factory.create(request.url)
                     }

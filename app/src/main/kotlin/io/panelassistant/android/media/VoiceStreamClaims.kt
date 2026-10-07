@@ -21,7 +21,7 @@ import kotlinx.coroutines.withTimeout
 internal class VoiceStreamClaims(
     private val nanoTime: () -> Long = System::nanoTime,
     private val windowNs: Long = CLAIM_WINDOW_NS,
-    /** How long an event waits for its stream to start before the announcement fails. */
+    /** How long after the event its stream may still start; after that the URL path plays instead. */
     private val startTimeoutMs: Long = START_TIMEOUT_MS,
 ) : VoiceStreamSource {
     private class Stream(val id: Long, val startedAtNs: Long) {
@@ -75,7 +75,7 @@ internal class VoiceStreamClaims(
         }
         if (recentEnough != null) return awaitEnd(recentEnough)
         val stream = try {
-            withTimeout(startTimeoutMs) { waiter.stream.await() }
+            withTimeout(startTimeoutMs - (nanoTime() - eventAtNs) / 1_000_000L) { waiter.stream.await() }
         } catch (late: TimeoutCancellationException) {
             if (abandon(waiter)) throw VoiceStreamMissing()
             waiter.stream.await() // It started as the wait ran out: it is this announcement's.
@@ -104,7 +104,7 @@ internal class VoiceStreamClaims(
 
     private companion object {
         const val CLAIM_WINDOW_NS = 2_000_000_000L
-        const val START_TIMEOUT_MS = 10_000L
+        const val START_TIMEOUT_MS = 3_000L
         const val MAX_RECENT = 8
     }
 }
@@ -115,13 +115,33 @@ internal fun interface VoiceStreamSource {
     suspend fun play(eventAtNs: Long)
 }
 
-/** No stream started for a streamed announcement. */
+/** No stream started for a streamed announcement in time; a stream starting later is not claimed. */
 internal class VoiceStreamMissing : java.io.IOException("no voice stream started for the announcement")
 
-/** One streamed announcement as the playback coordinator runs it. */
-internal class StreamedSpeechRun(private val source: VoiceStreamSource, private val eventAtNs: Long) : AudioPlaybackRun {
-    override suspend fun execute() = source.play(eventAtNs)
+/**
+ * One streamed announcement as the playback coordinator runs it. When no stream can be claimed in time
+ * (the panel's player is not connected), it plays the event's [fallbackUrls] in order instead, as the
+ * URL path does: preannouncement first, then the message.
+ */
+internal class StreamedSpeechRun(
+    private val source: VoiceStreamSource,
+    private val eventAtNs: Long,
+    private val fallbackUrls: List<String> = emptyList(),
+    private val fallback: (String) -> AudioPlaybackRun = { throw UnsupportedOperationException("no URL playback") },
+) : AudioPlaybackRun {
+    @Volatile private var current: AudioPlaybackRun? = null
 
-    /** The coordinator cancels the run's job as well, and that cancellation drops the stream. */
-    override fun cancel() = Unit
+    override suspend fun execute() {
+        try {
+            return source.play(eventAtNs)
+        } catch (missing: VoiceStreamMissing) {
+            if (fallbackUrls.isEmpty()) throw missing
+        }
+        for (url in fallbackUrls) fallback(url).also { current = it }.execute()
+    }
+
+    /** The coordinator cancels the run's job as well, which drops a claimed stream. */
+    override fun cancel() {
+        current?.cancel()
+    }
 }

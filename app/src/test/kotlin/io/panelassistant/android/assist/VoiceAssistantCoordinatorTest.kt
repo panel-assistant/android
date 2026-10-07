@@ -107,7 +107,7 @@ class VoiceAssistantCoordinatorTest {
             state.set(VoiceState.RESPONDING)
         }
 
-        override suspend fun playStream(eventAtNs: Long) = play("stream@$eventAtNs")
+        override suspend fun playStream(eventAtNs: Long, fallbackUrls: List<String>) = play("stream@$eventAtNs")
     }
 
     /** Each cue's wake word, with the phase the panel was in when it was cued. */

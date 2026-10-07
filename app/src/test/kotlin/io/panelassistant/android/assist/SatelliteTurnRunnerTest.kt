@@ -72,7 +72,7 @@ class SatelliteTurnRunnerTest {
                 { AutoCloseable {} },
                 object : AssistPlayback {
                     override suspend fun play(url: String) { played += url }
-                    override suspend fun playStream(eventAtNs: Long) { played += "stream" }
+                    override suspend fun playStream(eventAtNs: Long, fallbackUrls: List<String>) { played += "stream" }
                 },
             )
         }

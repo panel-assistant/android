@@ -38,10 +38,12 @@ object AudioPlayer {
         return object : AudioPlaybackRunFactory {
             override fun create(url: String) = createRun(url, false)
             override fun createSpeech(url: String) = createRun(url, true)
-            override fun createStream(eventAtNs: Long): AudioPlaybackRun =
+            override fun createStream(eventAtNs: Long, fallbackUrls: List<String>): AudioPlaybackRun =
                 io.panelassistant.android.media.StreamedSpeechRun(
                     streams ?: throw UnsupportedOperationException("this panel has no voice stream"),
                     eventAtNs,
+                    fallbackUrls,
+                    ::createSpeech,
                 )
             private fun createRun(url: String, speech: Boolean) = DownloadedAudioRun(
                 url = url,

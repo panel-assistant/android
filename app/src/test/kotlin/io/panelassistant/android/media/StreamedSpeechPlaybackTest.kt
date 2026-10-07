@@ -109,6 +109,34 @@ class StreamedSpeechPlaybackTest {
         assertTrue(coordinator.close(1_000L))
     }
 
+    @Test fun withNoStreamWithinThreeSecondsTheEventsUrlsPlayInsteadAndALateStreamIsNotClaimed() = runTest {
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
+        val played = mutableListOf<String>()
+        val factory = object : AudioPlaybackRunFactory {
+            override fun create(url: String) = error("streamed speech never plays as media")
+            override fun createSpeech(url: String) = object : AudioPlaybackRun {
+                override suspend fun execute() { played += url }
+                override fun cancel() {}
+            }
+            override fun createStream(eventAtNs: Long, fallbackUrls: List<String>): AudioPlaybackRun =
+                StreamedSpeechRun(claims, eventAtNs, fallbackUrls, ::createSpeech)
+        }
+        val coordinator = AudioPlaybackCoordinator(factory, StandardTestDispatcher(testScheduler))
+        val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs, listOf("chime.mp3", "message.mp3")))
+        runCurrent()
+        advanceTimeBy(2_999L)
+        runCurrent()
+        assertEquals("a stream may still start within three seconds", emptyList<String>(), played)
+        advanceTimeBy(2L)
+        runCurrent()
+        assertEquals(listOf("chime.mp3", "message.mp3"), played)
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, generation), coordinator.snapshot())
+        val late = claims.started()
+        runCurrent()
+        assertFalse("a stream after the fallback belongs to no announcement", claims.dropped(late))
+        assertTrue(coordinator.close(1_000L))
+    }
+
     private companion object {
         const val SECOND = 1_000_000_000L
     }

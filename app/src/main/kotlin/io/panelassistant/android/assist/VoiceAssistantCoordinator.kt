@@ -426,7 +426,7 @@ class VoiceAssistantCoordinator internal constructor(
                         val played = runCatching {
                             val streamAt = announcement.streamAtNs
                             if (streamAt != null) {
-                                playback.playStream(streamAt)
+                                playback.playStream(streamAt, listOfNotNull(announcement.preannounceUrl, announcement.url))
                             } else {
                                 announcement.preannounceUrl?.let { playback.play(it) }
                                 playback.play(announcement.url)
