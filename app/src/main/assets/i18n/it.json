@@ -5978,36 +5978,6 @@
       "state": "machine-cross-checked",
       "text": "Entità della dashboard suggerite"
     },
-    "fleet.note.direct": {
-      "sourceHash": "e1c2a22afad5337db44569d030a1c44a11da9827b984f1860ccf0c9a933810f3",
-      "state": "machine-cross-checked",
-      "text": "Per ora, apri direttamente un altro pannello all’indirizzo"
-    },
-    "fleet.note.discovery_prefix": {
-      "sourceHash": "837241e255815b61c78cddfcfec2a745b5ef37494f8ada692cf1c438e23f5034",
-      "state": "machine-cross-checked",
-      "text": "Ogni ha-paneld si annuncia già tramite mDNS"
-    },
-    "fleet.note.discovery_suffix": {
-      "sourceHash": "f5ec3d4269c475a35daaf7465d8677889d6fbb542a95d3c9699523ec6ed75cf0",
-      "state": "machine-cross-checked",
-      "text": "e pubblica la disponibilità MQTT, quindi i meccanismi di rilevamento sono già predisposti."
-    },
-    "fleet.note.roster": {
-      "sourceHash": "9058c25917877ba67309d5c1fda25eb950e7871e7aab0994abd7690db1ba9eb9",
-      "state": "machine-cross-checked",
-      "text": "Qui comparirà un elenco di più pannelli — nome · IP · stato, con un link alla UI di ogni pannello."
-    },
-    "fleet.state.coming_soon": {
-      "sourceHash": "62bfdf0b726cbcc51d7ad57cfd2f03c007306a8a74d477500f92863236d79c13",
-      "state": "machine-cross-checked",
-      "text": "prossimamente"
-    },
-    "fleet.title": {
-      "sourceHash": "90a0e533f9a804dc15a95e46a99ad3e186250b1066fdbf749e1c7dfd048f72d7",
-      "state": "machine-cross-checked",
-      "text": "Panoramica flotta"
-    },
     "install.apk.choose": {
       "sourceHash": "93bc2050724e81c543daf449e7bac462859143e1c137bbc254b2660661e4d9dc",
       "state": "machine-cross-checked",
@@ -10593,16 +10563,6 @@
       "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
       "state": "machine-cross-checked"
     },
-    "settings.dashboard_overscroll.help": {
-      "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
-      "state": "machine-cross-checked",
-      "text": "Renderer integrato: consente l'effetto di allungamento o bagliore di Android quando un trascinamento supera il bordo superiore o inferiore della dashboard. Disattivato per impostazione predefinita (un pannello a parete scorre raramente e il rimbalzo appare fuori luogo). Solo API: imposta true per ripristinare l'effetto nativo."
-    },
-    "settings.dashboard_overscroll.label": {
-      "sourceHash": "6bb0a7d9220faa711c6dea3a7ce31f2007a53547d329f6951a5d0589873ac865",
-      "state": "machine-cross-checked",
-      "text": "Effetto overscroll della dashboard"
-    },
     "settings.dashboard_package.label": {
       "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
       "state": "machine-cross-checked",
@@ -12457,11 +12417,6 @@
       "sourceHash": "7fdb3ccec0e0d23662eb4c22eb63a64c5873e7c383efde354432152eed55c9ce",
       "state": "machine-cross-checked",
       "text": "Entità"
-    },
-    "shell.nav.fleet": {
-      "sourceHash": "2bb4f92ced331c66b26c0388e4cf20e4ee5965cf24f3283f1c3633befbf0c4a1",
-      "state": "machine-cross-checked",
-      "text": "Flotta"
     },
     "shell.nav.install": {
       "sourceHash": "569ca49f4aaf7846e952c1d4aeca72febd0b79fa1c4f9db08fd3127551218572",

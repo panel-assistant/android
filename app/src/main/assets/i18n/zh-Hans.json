@@ -5978,36 +5978,6 @@
       "state": "machine-cross-checked",
       "text": "建议的仪表盘实体"
     },
-    "fleet.note.direct": {
-      "sourceHash": "e1c2a22afad5337db44569d030a1c44a11da9827b984f1860ccf0c9a933810f3",
-      "state": "machine-cross-checked",
-      "text": "目前，可通过以下地址直接打开另一块面板"
-    },
-    "fleet.note.discovery_prefix": {
-      "sourceHash": "837241e255815b61c78cddfcfec2a745b5ef37494f8ada692cf1c438e23f5034",
-      "state": "machine-cross-checked",
-      "text": "每个 ha-paneld 都已通过 mDNS 发布自身服务"
-    },
-    "fleet.note.discovery_suffix": {
-      "sourceHash": "f5ec3d4269c475a35daaf7465d8677889d6fbb542a95d3c9699523ec6ed75cf0",
-      "state": "machine-cross-checked",
-      "text": "并发布 MQTT 可用性，因此发现机制已就绪。"
-    },
-    "fleet.note.roster": {
-      "sourceHash": "9058c25917877ba67309d5c1fda25eb950e7871e7aab0994abd7690db1ba9eb9",
-      "state": "machine-cross-checked",
-      "text": "这里将显示多面板列表，包括名称、IP、运行状况以及各面板 UI 的链接。"
-    },
-    "fleet.state.coming_soon": {
-      "sourceHash": "62bfdf0b726cbcc51d7ad57cfd2f03c007306a8a74d477500f92863236d79c13",
-      "state": "machine-cross-checked",
-      "text": "即将推出"
-    },
-    "fleet.title": {
-      "sourceHash": "90a0e533f9a804dc15a95e46a99ad3e186250b1066fdbf749e1c7dfd048f72d7",
-      "state": "machine-cross-checked",
-      "text": "多面板概览"
-    },
     "install.apk.choose": {
       "sourceHash": "93bc2050724e81c543daf449e7bac462859143e1c137bbc254b2660661e4d9dc",
       "state": "machine-cross-checked",
@@ -10593,16 +10563,6 @@
       "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
       "state": "machine-cross-checked"
     },
-    "settings.dashboard_overscroll.help": {
-      "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
-      "state": "machine-cross-checked",
-      "text": "内置渲染器：拖动超出仪表盘顶部或底部时，允许显示 Android 的过度滚动拉伸或发光效果。默认关闭（墙面面板很少滚动，回弹效果也显得突兀）。仅可通过 API 设置；设为 true 可恢复原生效果。"
-    },
-    "settings.dashboard_overscroll.label": {
-      "sourceHash": "6bb0a7d9220faa711c6dea3a7ce31f2007a53547d329f6951a5d0589873ac865",
-      "state": "machine-cross-checked",
-      "text": "仪表盘过度滚动效果"
-    },
     "settings.dashboard_package.label": {
       "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
       "state": "machine-cross-checked",
@@ -12457,11 +12417,6 @@
       "sourceHash": "7fdb3ccec0e0d23662eb4c22eb63a64c5873e7c383efde354432152eed55c9ce",
       "state": "machine-cross-checked",
       "text": "实体"
-    },
-    "shell.nav.fleet": {
-      "sourceHash": "2bb4f92ced331c66b26c0388e4cf20e4ee5965cf24f3283f1c3633befbf0c4a1",
-      "state": "machine-cross-checked",
-      "text": "面板群"
     },
     "shell.nav.install": {
       "sourceHash": "569ca49f4aaf7846e952c1d4aeca72febd0b79fa1c4f9db08fd3127551218572",

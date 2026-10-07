@@ -416,19 +416,18 @@ class PaneldServer internal constructor(
                 setupPageRoute(::requestStrings, { pages }, ::buildToken)
                 profilesPageRoute(::requestStrings, { pages })
                 installPageRoute(::requestStrings, { pages }) { strings -> installPageHandler().body(strings) }
-                fleetPageRoute(::requestStrings, { pages }) { config.httpPort }
                 logsPageRoute(::requestStrings, { pages }) { config.httpPort }
                 entitiesPageRoute(::requestStrings, { pages }) { config.dashboardEntityLearningEnabled && effectiveDashboardIsBuiltin() }
                 // Self-contained REST API explorer (no Swagger-UI CDN bundle) + the OpenAPI spec it
                 // renders — the spec also imports into Swagger/Postman for fleet tooling.
                 apiPageRoute(::requestStrings, asset) { config.friendlyName }
                 healthRoute(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantRestartHealth() }
-                // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
-                legacyRedirects()
+                // The pre-0.8.5 flat /diag → 308 to /api/v1/diag; the other flat paths are retired.
+                legacyDiagRedirect()
 
                 // ---- /api/v1 — the canonical machine API (0.8.5 conformity pass). Every machine
-                // endpoint lives here; the pre-0.8.5 flat paths 308 to their v1 homes (method + body
-                // preserved), except /health and /play which stay REAL at the root too — they're the
+                // endpoint lives here (the pre-0.8.5 flat /diag 308s to its v1 home), except /health and
+                // /play which stay REAL at the root too — they're the
                 // external "contract" endpoints called by plain curl (no -L) from HA automations and
                 // monitors. Human pages + static assets stay top-level. ----
                 route("/api/v1") {

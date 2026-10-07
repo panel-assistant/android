@@ -184,6 +184,19 @@ class MigrationsTest {
         assertEquals(SettingsRegistry.SCHEMA - 1, Migrations.CHAIN.size)
     }
 
+    @Test fun aBundleCarryingTheRetiredOverscrollChoiceStillImportsWithoutIt() {
+        for (schema in listOf(13, SettingsRegistry.SCHEMA)) {
+            val (migrated, _) = Migrations.migrate(schema, mapOf(
+                "dashboard_overscroll" to "true",
+                "dashboard_zoom" to "120",
+            ))
+            val decision = io.panelassistant.android.http.planRestoreSettings(migrated, null)
+            assertEquals(emptyList<String>(), decision.errors)
+            assertFalse(decision.accepted.containsKey("dashboard_overscroll"))
+            assertEquals("120", decision.accepted["dashboard_zoom"])
+        }
+    }
+
     @Test fun publicV095ConfigFixtureUpgradesInOneStepAndPreservesEveryValue() {
         val fixture = requireNotNull(javaClass.getResource("/fixtures/config-v0.9.5.json"))
             .readText()

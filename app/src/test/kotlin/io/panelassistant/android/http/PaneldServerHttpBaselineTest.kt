@@ -13,26 +13,28 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PaneldServerHttpBaselineTest {
-    @Test fun `full production mount preserves legacy GET and POST redirects`() {
+    @Test fun `full production mount keeps the diag redirect and retires the other flat paths`() {
         PaneldServerHttpFixture().use { fixture ->
             testApplication {
                 application { fixture.mount(this) }
                 val direct = createClient { followRedirects = false }
-                val target = "/api/v1/proximity/threshold?value=12&note=a%20b"
-                val responses = listOf(
-                    direct.get("/proximity/threshold?value=12&note=a%20b"),
-                    direct.post("/proximity/threshold?value=12&note=a%20b") {
+                val diag = direct.get("/diag?redact=1")
+                assertEquals(HttpStatusCode.PermanentRedirect, diag.status)
+                assertEquals("/api/v1/diag?redact=1", diag.headers[HttpHeaders.Location])
+                assertEquals("moved-permanently: /api/v1/diag?redact=1\n", diag.bodyAsText())
+                assertEquals("nosniff", diag.headers["X-Content-Type-Options"])
+                assertEquals("DENY", diag.headers["X-Frame-Options"])
+
+                val retired = listOf(
+                    direct.get("/proximity/threshold?value=12"),
+                    direct.post("/config") {
                         header(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString())
-                        setBody("threshold=12")
+                        setBody("friendly_name=x")
                     },
+                    direct.get("/screenshot.png"),
+                    direct.get("/fleet"),
                 )
-                for (response in responses) {
-                    assertEquals(HttpStatusCode.PermanentRedirect, response.status)
-                    assertEquals(target, response.headers[HttpHeaders.Location])
-                    assertEquals("moved-permanently: $target\n", response.bodyAsText())
-                    assertEquals("nosniff", response.headers["X-Content-Type-Options"])
-                    assertEquals("DENY", response.headers["X-Frame-Options"])
-                }
+                for (response in retired) assertEquals(HttpStatusCode.NotFound, response.status)
             }
         }
     }

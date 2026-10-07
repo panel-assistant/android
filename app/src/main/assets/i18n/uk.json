@@ -5583,36 +5583,6 @@
    "sourceHash": "116d030af30a47c77e4b40b6783fbab3837e71cf38b5c7b3d5408ac7f9cd3831",
    "state": "machine-cross-checked"
   },
-  "fleet.note.direct": {
-   "text": "Наразі відкрийте іншу панель безпосередньо за адресою",
-   "sourceHash": "e1c2a22afad5337db44569d030a1c44a11da9827b984f1860ccf0c9a933810f3",
-   "state": "machine-cross-checked"
-  },
-  "fleet.note.discovery_prefix": {
-   "text": "Кожен ha-paneld уже оголошує себе через mDNS",
-   "sourceHash": "837241e255815b61c78cddfcfec2a745b5ef37494f8ada692cf1c438e23f5034",
-   "state": "machine-cross-checked"
-  },
-  "fleet.note.discovery_suffix": {
-   "text": "і публікує доступність через MQTT, тож механізми виявлення вже на місці.",
-   "sourceHash": "f5ec3d4269c475a35daaf7465d8677889d6fbb542a95d3c9699523ec6ed75cf0",
-   "state": "machine-cross-checked"
-  },
-  "fleet.note.roster": {
-   "text": "Список панелей — назва · IP · стан, із посиланням на UI кожної панелі — буде тут.",
-   "sourceHash": "9058c25917877ba67309d5c1fda25eb950e7871e7aab0994abd7690db1ba9eb9",
-   "state": "machine-cross-checked"
-  },
-  "fleet.state.coming_soon": {
-   "text": "скоро",
-   "sourceHash": "62bfdf0b726cbcc51d7ad57cfd2f03c007306a8a74d477500f92863236d79c13",
-   "state": "machine-cross-checked"
-  },
-  "fleet.title": {
-   "text": "Огляд панелей",
-   "sourceHash": "90a0e533f9a804dc15a95e46a99ad3e186250b1066fdbf749e1c7dfd048f72d7",
-   "state": "machine-cross-checked"
-  },
   "install.apk.dynamic.cancel": {
    "text": "Скасувати",
    "sourceHash": "19766ed6ccb2f4a32778eed80d1928d2c87a18d7c275ccb163ec6709d3eb2e27",
@@ -9393,16 +9363,6 @@
    "sourceHash": "6e23d2793b9b7a2e68007044413a2374d781a7f4fda7b42f665b488ede0c6ef6",
    "state": "machine-cross-checked"
   },
-  "settings.dashboard_overscroll.help": {
-   "text": "Вбудований рендерер: дозволити ефект розтягування/світіння Android під час прокручування за верхній або нижній край інформаційної панелі. За замовчуванням вимкнено (настінна панель рідко прокручується, і такий відскок виглядає недоречно). Лише через API — встановіть true, щоб відновити стандартний ефект.",
-   "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
-   "state": "machine-cross-checked"
-  },
-  "settings.dashboard_overscroll.label": {
-   "text": "Ефект перепрокрутки інформаційної панелі",
-   "sourceHash": "6bb0a7d9220faa711c6dea3a7ce31f2007a53547d329f6951a5d0589873ac865",
-   "state": "machine-cross-checked"
-  },
   "settings.dashboard_package.label": {
    "text": "Застосунок інформаційної панелі",
    "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
@@ -11256,11 +11216,6 @@
   "shell.nav.entities": {
    "text": "Сутності",
    "sourceHash": "7fdb3ccec0e0d23662eb4c22eb63a64c5873e7c383efde354432152eed55c9ce",
-   "state": "machine-cross-checked"
-  },
-  "shell.nav.fleet": {
-   "text": "Парк",
-   "sourceHash": "2bb4f92ced331c66b26c0388e4cf20e4ee5965cf24f3283f1c3633befbf0c4a1",
    "state": "machine-cross-checked"
   },
   "shell.nav.install": {

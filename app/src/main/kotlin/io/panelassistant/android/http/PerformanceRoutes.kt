@@ -13,7 +13,7 @@ import javax.crypto.spec.SecretKeySpec
 
 internal val PERFORMANCE_WORKLOAD_KEYS = listOf(
     "dashboard_package", "home_dashboard", "ha_url", "dashboard_fullscreen",
-    "dashboard_native_kiosk", "dashboard_overscroll", "dashboard_idle_return_min",
+    "dashboard_native_kiosk", "dashboard_idle_return_min",
     "dashboard_zoom", "dark_mode", "dashboard_theme", "auto_brightness",
     "auto_brightness_minimum_percent", "auto_brightness_maximum_percent", "auto_brightness_response_percent",
     "auto_brightness_ha_entity", "cpu_governor", "keep_awake", "prevent_idle_dim",

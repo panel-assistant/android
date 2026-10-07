@@ -1584,11 +1584,6 @@ class Config private constructor(
         prefs.edit().putBoolean("dashboard_theme_ambient_dark", dark).apply()
     }
 
-    /** Built-in renderer: allow Android's overscroll stretch/glow past the top or bottom of the page.
-     *  Off by default (a wall panel rarely scrolls; the bounce looks out of place). API-only setting. */
-    val dashboardOverscroll: Boolean get() = boolPref("dashboard_overscroll")
-    fun setDashboardOverscroll(on: Boolean) { edit { putBoolean("dashboard_overscroll", on) } }
-
     /** Built-in renderer: dashboard page zoom %. 100 matches the HA Companion's default sizing (which
      *  scales the page by device density), so a switched-over panel keeps its layout. */
     val dashboardZoom: Int get() = intPref("dashboard_zoom")

@@ -121,6 +121,7 @@ object SettingsRegistry {
         "${HA_EXPOSE_PREFIX}voice_enabled",
         "${HA_EXPOSE_PREFIX}voice_state",
         "webview_auto_last_version",
+        "dashboard_overscroll",
     ) + setOf(
         "self_update",
         "update_channel",
@@ -642,14 +643,6 @@ object SettingsRegistry {
             tier = Tier.ADVANCED, summary = "Ask Home Assistant to hide its own navigation.",
             label = "Hide Home Assistant navigation (native)", default = "true", scope = Scope.PORTABLE,
             help = "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOn by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
-        ),
-        SettingSpec(
-            key = "dashboard_overscroll", type = SettingType.BOOL, group = "Dashboard",
-            tier = Tier.ADVANCED,
-            label = "Dashboard overscroll effect", default = "false", scope = Scope.PORTABLE, hidden = true,
-            help = "Built-in renderer: allow Android's overscroll stretch/glow when a drag runs past " +
-                "the top or bottom of the dashboard. Off by default (a wall panel rarely scrolls, and " +
-                "the bounce looks out of place). API-only — set true to restore the native effect.",
         ),
         SettingSpec(
             key = "dashboard_idle_return_min", type = SettingType.INT, group = "Dashboard",

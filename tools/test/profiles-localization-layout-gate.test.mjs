@@ -56,7 +56,7 @@ function documentHtml(catalogues, locale, theme) {
     ['dashboard', 'shell.nav.dashboard'], ['configure', 'shell.nav.configure'],
     ['setup', 'shell.nav.setup'], ['profiles', 'shell.nav.profile'],
     ['entities', 'shell.nav.entities'], ['install', 'shell.nav.install'],
-    ['fleet', 'shell.nav.fleet'], ['logs', 'shell.nav.logs'],
+    ['logs', 'shell.nav.logs'],
   ].map(([path, key]) => `<a class="${path === 'profiles' ? 'active' : ''}" href="#">${t(key)}</a>`).join('');
   return `<!doctype html><html lang="${escapeHtml(locale)}" data-theme="${theme}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ha-paneld · ${t('shell.nav.profile')}</title>

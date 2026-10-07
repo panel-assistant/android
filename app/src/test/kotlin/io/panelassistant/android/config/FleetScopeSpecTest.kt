@@ -40,7 +40,6 @@ class FleetScopeSpecTest {
                 "dashboard_theme",
                 "dashboard_fullscreen",
                 "dashboard_native_kiosk",
-                "dashboard_overscroll",
                 "dashboard_idle_return_min",
                 "ha_url",
                 "dark_mode",

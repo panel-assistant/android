@@ -61,7 +61,7 @@ class ConfigAccessorDefaultCoherenceTest {
 
         // Booleans that default false.
         listOf(
-            c.wakeOnWave, c.autoSleep, c.watchdogEnabled, c.kioskLock, c.dashboardOverscroll,
+            c.wakeOnWave, c.autoSleep, c.watchdogEnabled, c.kioskLock,
             c.dashboardEntityLearningEnabled, c.dashboardEntityLearningApplied, c.logShipEnabled,
             c.autoBrightness, c.cameraEnabled,
         ).forEach { assertEquals(false, it) }
@@ -131,7 +131,6 @@ class ConfigAccessorDefaultCoherenceTest {
             "watchdog_enabled" to c.watchdogEnabled.toString(),
             "kiosk_lock" to c.kioskLock.toString(),
             "dashboard_native_kiosk" to c.dashboardNativeKiosk.toString(),
-            "dashboard_overscroll" to c.dashboardOverscroll.toString(),
             "dashboard_entity_learning" to c.dashboardEntityLearningEnabled.toString(),
             "log_ship_enabled" to c.logShipEnabled.toString(),
             "auto_brightness" to c.autoBrightness.toString(),
