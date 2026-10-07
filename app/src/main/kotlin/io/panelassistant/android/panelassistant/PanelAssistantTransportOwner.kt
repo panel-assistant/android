@@ -583,7 +583,9 @@ internal class PanelAssistantTransportOwner(
         val frames = Channel<String>(Channel.UNLIMITED)
         val managing = management?.takeIf {
             PanelAssistantTransportProtocol.CAPABILITY_MANAGEMENT in session.capabilities
-        }?.let { PanelAssistantManagementRequests(this, it, session, monotonicMillis) }
+        // Parented on the owner, not this session scope: a snapshot build that cannot be interrupted must
+        // never hold the session's teardown, and with it the reconnect, until it finishes.
+        }?.let { PanelAssistantManagementRequests(scope, it, session, monotonicMillis) }
         val reader = launch {
             try {
                 while (true) connection.receive(pingIntervalMs)?.let { frames.send(it) }

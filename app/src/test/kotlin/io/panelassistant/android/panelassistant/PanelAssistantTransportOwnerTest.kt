@@ -1076,6 +1076,31 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aSnapshotStillBuildingNeverHoldsTheReconnectAfterTheSessionEnds() = runTest {
+        val building = CompletableDeferred<Unit>()
+        val management = object : PanelAssistantManagement by FakeManagement() {
+            // Blocking work, as the status build is: cancellation cannot interrupt it.
+            override suspend fun snapshot(updateOwner: Boolean): PanelAssistantManagementSnapshot {
+                withContext(NonCancellable) { building.await() }
+                return PanelAssistantManagementSnapshot("", "")
+            }
+        }
+        val first = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+        val harness = harness(first, FakeConnection(Ha.accepting(capabilities = listOf("management"))), management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        first.inbound.trySend(Ha.manage("m1", "snapshot"))
+        runCurrent()
+        first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertEquals(2, harness.connector.connects.size)
+        assertEquals(PanelAssistantTransportPhase.CONNECTED, harness.owner.status.phase)
+        building.complete(Unit)
+        harness.owner.close()
+    }
+
     @Test fun aSessionThatDoesNotGrantManagementNeverRunsIt() = runTest {
         val management = FakeManagement()
         val connection = FakeConnection(Ha.accepting(capabilities = emptyList()))
