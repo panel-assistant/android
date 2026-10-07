@@ -7,7 +7,6 @@ import io.panelassistant.android.control.CompanionDb
 import io.panelassistant.android.control.DensityController
 import io.panelassistant.android.control.PrivilegedRouteObservation
 import io.panelassistant.android.control.observePrivilegedRoutes
-import io.panelassistant.android.shizuku.ShizukuBridge
 import io.panelassistant.android.util.AccessDenialMemo
 import io.panelassistant.android.util.BundledHelperInstaller
 import io.panelassistant.android.util.Cached
@@ -70,8 +69,7 @@ internal class ManagementObservations(
     fun privilegeObservation(): PrivilegedRouteObservation = observePrivilegedRoutes(
         directSuProbe = { Su.availableCachedIsolated() },
         helperRootProbe = HelperClient::available,
-        shizukuSnapshot = ShizukuBridge::snapshot,
-    ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady, it.shizuku.ready)) }
+    ).also { AccessDenialMemo.app.onCapabilitySignal(listOf(it.directSuReady, it.helperRootReady)) }
 
     val termuxBridgeCache = Cached(SNAP_TTL_MS) {
         TermuxBridgeProbe.collect(

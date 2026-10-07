@@ -9,7 +9,7 @@ import org.junit.Test
 
 /**
  * Renderer zoom is the unprivileged substitute for display sizing. Where the panel can set its display
- * (root or Shizuku) the Configure form is exactly as it was; where it cannot, zoom takes density's place.
+ * (root or the helper) the Configure form is exactly as it was; where it cannot, zoom takes density's place.
  */
 class ZoomPromotionTest {
     private val privileged = Capabilities(canSetDisplay = true)

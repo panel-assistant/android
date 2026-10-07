@@ -96,14 +96,13 @@ class PanelMetrics(
         Strategy(SourceKind.DAEMON) { c -> c.dump()?.loadavg?.takeIf { it.isNotEmpty() } },
     ))
 
-    // Room climate (CHT8305): the helper→Shizuku authority ladder, folded into the same [Resolvable]
+    // Room climate (CHT8305): the helper authority, folded into the same [Resolvable]
     // source-selection every other metric uses — each strategy reads its raw authority and parses ONCE,
     // so the winner's value is produced without the reader re-parsing it. `unavailRetryMs = 0` keeps the
     // prior semantics on chip-less panels (re-run the ladder on every fresh-miss read, no source backoff);
     // the value-freshness cache below is what coalesces the temp + humidity heartbeat reads onto one round-trip.
     private val roomR = Resolvable(0L, listOf(
         Strategy(SourceKind.DAEMON) { c -> MetricParse.parseCht8305(c.source.roomClimateDaemon()) },
-        Strategy(SourceKind.SHIZUKU) { c -> MetricParse.parseCht8305(c.source.roomClimateShell()) },
     ), stickyWinner = false)
 
     /** A coherent reading, freshness-cached. Thread-safe: safe to call from the PerfReader coroutine and
@@ -135,7 +134,7 @@ class PanelMetrics(
 
     /**
      * Room air temperature + humidity (CHT8305), or null on panels without the chip. Read off-tick on the
-     * heartbeat (not the 2 s perf tick); source selection runs through [roomR] (the helper→Shizuku ladder as
+     * heartbeat (not the 2 s perf tick); source selection runs through [roomR] (the helper authority as
      * a [Resolvable], parsed once at the source), and its own [freshMs] value cache coalesces the two
      * heartbeat consumers (the temp sensor and the humidity sensor) onto one round-trip instead of reading twice.
      */
@@ -201,8 +200,8 @@ class PanelMetrics(
     }
 }
 
-/** Which kind of source a strategy reads from — cheap-first ordering is DIRECT < DAEMON < SU/SHIZUKU. */
-internal enum class SourceKind { DIRECT, DAEMON, SU, SHIZUKU }
+/** Which kind of source a strategy reads from — cheap-first ordering is DIRECT < DAEMON < SU. */
+internal enum class SourceKind { DIRECT, DAEMON, SU }
 
 /** One way to read a metric; [read] returns null when that source is unavailable/denied this tick. */
 internal class Strategy<out T>(val kind: SourceKind, val read: (TickCtx) -> T?)

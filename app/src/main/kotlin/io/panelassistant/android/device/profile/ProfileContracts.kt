@@ -10,9 +10,6 @@ data class ProfileRef(val id: String, val revision: String)
 /** Where a profile revision came from. Bundled revisions ship in the APK; imported revisions are local. */
 enum class ProfileOrigin { BUNDLED, IMPORTED }
 
-/** Author guidance only. Runtime Shizuku installation/readiness remains separate live state. */
-enum class ShizukuRecommendation { NONE, OPTIONAL, RECOMMENDED }
-
 enum class ProfileMaturity { DRAFT, EXPERIMENTAL, VERIFIED }
 
 /** Automatic fingerprint matching, or an explicit immutable revision selected by the administrator. */
@@ -342,7 +339,6 @@ data class ProfileSummary(
     val matchesThisDevice: Boolean,
     val active: Boolean,
     val selected: Boolean,
-    val shizukuRecommendation: ShizukuRecommendation,
     val risks: Set<ProfileRisk> = emptySet(),
     val contentVersion: String = "",
     val author: String? = null,

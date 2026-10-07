@@ -6,7 +6,6 @@
     <string name="retry">Erneut versuchen</string>
     <string name="ok">OK</string>
     <string name="cancel">Abbrechen</string>
-    <string name="close">Schließen</string>
     <string name="approve">Bestätigen</string>
     <string name="deny">Ablehnen</string>
     <string name="configure">Konfigurieren</string>
@@ -20,7 +19,6 @@
 
     <string name="settings">Einstellungen</string>
     <string name="back_to_dashboard">Zurück zum Dashboard</string>
-    <string name="enhanced_access">Erweiterter Zugriff</string>
     <string name="security_mode">Sicherheitsmodus</string>
     <string name="security_mode_hardened_summary">Der Hardened-Modus ist aktiviert. Anfragen mit großen Auswirkungen aus dem Netzwerk müssen auf diesem Panel bestätigt werden. Ausstehend: %1$d.</string>
     <string name="security_mode_relaxed_summary">Der Relaxed-Modus ist aktiviert. Funktionen im vertrauenswürdigen LAN funktionieren ohne Bestätigung am Panel. Der Hardened-Modus ist optional.</string>
@@ -218,23 +216,6 @@
     <string name="pending_physical_approval">Ausstehende physische Bestätigung</string>
     <string name="approval_exact_detail">Prüfe die Aktion und die genauen Anfrageinformationen, bevor du sie bestätigst.\n\nAnfrageinformationen (Englisch):\n%1$s\n\nExakte Anfrage von %2$s. Die Bestätigung gilt einmalig und läuft ab.</string>
 
-    <string name="shizuku_enable">Aktivieren</string>
-    <string name="shizuku_request_permission">Berechtigung anfordern</string>
-    <string name="shizuku_open">Shizuku öffnen</string>
-    <string name="disable">Deaktivieren</string>
-    <string name="shizuku_title">Erweiterter Zugriff (Shizuku)</string>
-    <string name="shizuku_scope">Er erlaubt keine beliebigen APK-Uploads, keinen WebView-Austausch, keine allgemeine Shell, keinen Zugriff auf Root-App-Daten und keine Steuerung von Neustarts, Protokollen oder Hersteller-Apps.\n\nNach der Aktivierung können die unterstützten Vorgänge über die bestehenden ha-paneld-Steuerelemente im vertrauenswürdigen LAN dieses Panels aufgerufen werden.</string>
-    <string name="shizuku_grant_scope">Dies erlaubt nur ha-paneld-Aktualisierungen mit verifiziertem Signierer, minimale Companion-Aktualisierungen, Screenshots, Tasten-/Tippeingaben sowie Änderungen an Dichte und Textgröße. %1$s</string>
-    <string name="shizuku_not_installed">Shizuku ist nicht installiert. Führe das ha-paneld-Bereitstellungsskript einmal über ADB aus und bestätige den Zugriff anschließend hier auf dem Panel.</string>
-    <string name="shizuku_untrusted">Ein Paket namens Shizuku ist installiert, aber sein Signaturzertifikat ist nicht vertrauenswürdig. ha-paneld stellt keine Verbindung dazu her.</string>
-    <string name="shizuku_disabled">Der erweiterte Zugriff ist in ha-paneld deaktiviert. Wähle hier auf diesem Panel „Aktivieren“, um die lokale Bestätigung zu beginnen.</string>
-    <string name="shizuku_stopped">Der erweiterte Zugriff ist in ha-paneld aktiviert, aber der Shizuku-Dienst ist beendet. Öffne Shizuku, starte den Dienst und kehre dann hierher zurück.</string>
-    <string name="shizuku_permission_needed">Shizuku läuft und kann seine lokale Berechtigungsanfrage anzeigen. Fordere die Berechtigung an, um fortzufahren.</string>
-    <string name="shizuku_permission_denied">Der Shizuku-Zugriff wurde abgelehnt, daher kann keine weitere Berechtigungsanfrage angezeigt werden. Öffne Shizuku, wähle „Autorisierte Anwendungen“, wähle ha-paneld aus und gewähre den Zugriff manuell. Kehre dann hierher zurück.</string>
-    <string name="shizuku_connecting">Verbindung zu Shizuku wird hergestellt…</string>
-    <string name="shizuku_ready">Der erweiterte Zugriff ist bereit.</string>
-    <string name="shizuku_incompatible">Der Shizuku-Dienst hat eine unerwartete Identität oder Protokollversion zurückgegeben. Der Zugriff ist gesperrt.</string>
-    <string name="shizuku_error">Die Verbindung zu Shizuku konnte nicht hergestellt werden. Schließe diesen Dialog und versuche es erneut.</string>
 
     <string name="camera_channel">Kamera</string>
     <string name="camera_in_use">Kamera wird verwendet</string>

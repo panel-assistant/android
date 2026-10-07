@@ -156,23 +156,16 @@ class ProfileYamlSecurityTest {
         assertEquals("identity", parsed.document?.hardware?.led?.transfer)
     }
 
-    @Test fun `exceptional access is omitted by default and retained when explicitly declared`() {
-        val baseline = testProfileDocument()
-        val ordinary = baseline.copy(
-            provisioning = baseline.provisioning.copy(
-                access = ProfileProvisioningAccess(),
-            ),
-        )
-        assertFalse(ProfileYaml.serialize(ordinary).contains("shizuku", ignoreCase = true))
-
-        val declared = ordinary.copy(
-            provisioning = ordinary.provisioning.copy(
-                access = ProfileProvisioningAccess(ShizukuRecommendation.OPTIONAL),
-            ),
-        )
-        val serialized = ProfileYaml.serialize(declared)
-        assertTrue("shizuku: optional" in serialized)
-        assertEquals(declared, ProfileYaml.parse(serialized).document)
+    @Test fun `an imported profile that still recommends the retired Shizuku route is accepted`() {
+        val serialized = ProfileYaml.serialize(testProfileDocument())
+        assertFalse(serialized.contains("shizuku", ignoreCase = true))
+        for (value in listOf("none", "optional", "recommended")) {
+            val older = serialized.replaceFirst("provisioning:\n", "provisioning:\n  access:\n    shizuku: $value\n")
+            assertTrue("shizuku: $value" in older)
+            val parsed = ProfileYaml.parse(older)
+            assertEquals(emptyList<ProfileIssue>(), parsed.issues)
+            assertEquals(emptyList<ProfileIssue>(), ProfileValidator.validate(requireNotNull(parsed.document), "1.0.0", bundled = false))
+        }
     }
 
     @Test fun `retired proximity classifier keys load as ignored tombstones`() {
@@ -460,19 +453,13 @@ class ProfileYamlSecurityTest {
         assertTrue(dataProfile(document).requiresProvisioningHelper())
     }
 
-    @Test fun `room climate requires helper unless the profile declares its Shizuku alternate`() {
-        val base = testProfileDocument().copy(
+    @Test fun `room climate requires the helper`() {
+        val document = testProfileDocument().copy(
             requires = ProfileRequirements(drivers = setOf("screen.brightness-zero", "sensor.cht8305-daemon")),
             sensors = ProfileSensors(cht8305 = true),
         )
-        val withoutShizuku = base.copy(
-            provisioning = base.provisioning.copy(
-                access = ProfileProvisioningAccess(shizuku = ShizukuRecommendation.NONE),
-            ),
-        )
 
-        assertFalse(dataProfile(base).requiresProvisioningHelper())
-        assertTrue(dataProfile(withoutShizuku).requiresProvisioningHelper())
+        assertTrue(dataProfile(document).requiresProvisioningHelper())
     }
 
     @Test fun `the core version gate admits a core at or above the profile minimum`() {

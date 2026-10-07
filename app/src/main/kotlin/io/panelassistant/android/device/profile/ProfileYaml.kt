@@ -215,11 +215,9 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
             setOf("access", "software", "display", "packages", "recipes"),
             required = true,
         ).orEmpty()
-        val provisioningAccess = map(
-            provisioning["access"],
-            "provisioning.access",
-            setOf("shizuku"),
-        ).orEmpty()
+        // The retired Shizuku recommendation: older and imported profiles still carry it, so the key is
+        // accepted and ignored rather than rejected.
+        map(provisioning["access"], "provisioning.access", setOf("shizuku"))
         val provisioningSoftware = map(
             provisioning["software"],
             "provisioning.software",
@@ -336,15 +334,6 @@ private class SchemaReader(private val issues: MutableList<ProfileIssue>) {
                 geometry = displayGeometry(display["geometry"]),
             ),
             provisioning = ProfileProvisioning(
-                access = ProfileProvisioningAccess(
-                    shizuku = enum(
-                        provisioningAccess,
-                        "shizuku",
-                        "provisioning.access",
-                        ShizukuRecommendation.entries,
-                        "none",
-                    ) { it.name.lowercase() } ?: ShizukuRecommendation.NONE,
-                ),
                 software = ProfileProvisioningSoftware(
                     webView = provisioningWebView?.let {
                         ProfileWebViewProvisioning(
@@ -843,9 +832,6 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
         },
     ).withoutNullValues(),
     "provisioning" to linkedMapOf(
-        "access" to provisioning.access.shizuku
-            .takeUnless { it == ShizukuRecommendation.NONE }
-            ?.let { linkedMapOf("shizuku" to it.name.lowercase()) },
         "software" to linkedMapOf(
             "webview" to provisioning.software.webView?.let {
                 linkedMapOf("artifact" to it.artifact)
@@ -872,7 +858,7 @@ internal fun ProfileDocument.toYamlMap(): Map<String, Any?> = linkedMapOf(
             )
         },
         "recipes" to provisioning.recipes.map { linkedMapOf("id" to it.id) },
-    ).withoutNullValues(),
+    ),
 ).withoutNullValues()
 
 private fun <K, V> LinkedHashMap<K, V?>.withoutNullValues(): LinkedHashMap<K, V> {

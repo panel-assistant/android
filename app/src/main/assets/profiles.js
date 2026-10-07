@@ -136,7 +136,6 @@
     "hardware.led.transfer": "profiles.schema.description.led_transfer",
     "hardware.screen_off": "profiles.schema.description.screen_off",
     "identity.model_label_strategy": "profiles.schema.description.model_label_strategy",
-    "provisioning.access.shizuku": "profiles.schema.description.shizuku_recommendation",
     "provisioning.software.webview.artifact": "profiles.schema.description.webview_artifact",
     "provisioning.packages[].desired_state": "profiles.schema.description.package_desired_state",
     "provisioning.packages[].importance": "profiles.schema.description.package_importance",
@@ -517,8 +516,6 @@
     if (!root) return;
     root.textContent = "";
     var summary = reviewedSummary();
-    var guidance = byId("profile-shizuku-guidance");
-    if (guidance) guidance.hidden = true;
     renderProfileLinks(summary);
     if (!summary) return;
     var origins = {
@@ -544,12 +541,6 @@
     if (summary.active) root.appendChild(badge(t("profiles.state.active", "Active"), "active"));
     if (summary.selected && !summary.active) root.appendChild(badge(t("profiles.state.selected", "Selected"), "pending"));
     if (summary.last_known_good) root.appendChild(badge(t("profiles.state.last_known_good", "Last known good"), "lkg"));
-    var shizuku = string(summary.shizuku_recommendation);
-    if (shizuku.toLowerCase() === "recommended") {
-      root.appendChild(badge(t("profiles.shizuku.recommended", "Shizuku: recommended"), "shizuku"));
-    }
-    // Keep exceptional access guidance out of ordinary profile summaries.
-    if (guidance) guidance.hidden = shizuku.toLowerCase() !== "recommended";
     (summary.risks || []).forEach(function (risk) { root.appendChild(badge(riskText(risk), "warning")); });
     var activation = model.status.activation || {};
     var activationLabels = {

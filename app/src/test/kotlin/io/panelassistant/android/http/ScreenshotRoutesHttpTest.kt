@@ -5,8 +5,6 @@ import io.panelassistant.android.control.FakeDaemon
 import io.panelassistant.android.control.FakeRootShell
 import io.panelassistant.android.platform.AccessibilityActions
 import io.panelassistant.android.platform.RootShell
-import io.panelassistant.android.platform.ShellPrivilege
-import io.panelassistant.android.shizuku.ShizukuPolicy
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsBytes
@@ -28,7 +26,7 @@ class ScreenshotRoutesHttpTest {
         val root = object : RootShell by FakeRootShell(available = false, runResult = false) {
             override fun runBytesBounded(cmd: String, maxBytes: Long): ByteArray? {
                 assertEquals("screencap -p", cmd)
-                assertEquals(ShizukuPolicy.MAX_SCREENSHOT_BYTES.toLong(), maxBytes)
+                assertEquals(32L * 1024 * 1024, maxBytes)
                 captures.incrementAndGet()
                 return if (available) png else null
             }
@@ -42,20 +40,6 @@ class ScreenshotRoutesHttpTest {
                     override fun back() = false
                     override fun recents() = false
                     override fun tap(x: Int, y: Int) = false
-                },
-                shell = object : ShellPrivilege {
-                    override fun available() = false
-                    override fun uid(): Int? = null
-                    override fun screenshot(): ByteArray? = null
-                    override fun inputKey(keyCode: Int) = false
-                    override fun tap(x: Int, y: Int) = false
-                    override fun density(): String? = null
-                    override fun setDensity(dpi: Int) = false
-                    override fun resetDensity() = false
-                    override fun fontScale(): String? = null
-                    override fun setFontScale(scale: Float) = false
-                    override fun resetFontScale() = false
-                    override fun installApk(apk: java.io.File, allowDowngrade: Boolean, timeoutMs: Long): String? = null
                 },
             ))
             testApplication {

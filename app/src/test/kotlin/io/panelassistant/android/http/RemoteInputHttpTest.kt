@@ -81,10 +81,10 @@ class RemoteInputHttpTest {
             "su",
         )
         assertFailure(
-            TapCaptureResult.CompletionUnknown(PrivilegeRoute.SHIZUKU),
+            TapCaptureResult.CompletionUnknown(PrivilegeRoute.ACCESSIBILITY),
             HttpStatusCode.GatewayTimeout,
             "completion-unknown",
-            "shizuku",
+            "accessibility",
         )
         assertFailure(
             TapCaptureResult.HardenedRefusal,

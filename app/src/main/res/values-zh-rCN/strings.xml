@@ -6,7 +6,6 @@
     <string name="retry">重试</string>
     <string name="ok">确定</string>
     <string name="cancel">取消</string>
-    <string name="close">关闭</string>
     <string name="approve">批准</string>
     <string name="deny">拒绝</string>
     <string name="configure">设置</string>
@@ -20,7 +19,6 @@
 
     <string name="settings">设置</string>
     <string name="back_to_dashboard">返回仪表盘</string>
-    <string name="enhanced_access">增强访问权限</string>
     <string name="security_mode">安全模式</string>
     <string name="security_mode_hardened_summary">强化模式已开启。来自网络的高影响请求需要在此面板上批准。待处理：%1$d。</string>
     <string name="security_mode_relaxed_summary">宽松模式已开启。受信任局域网功能无需在面板上批准即可使用。强化模式为可选项。</string>
@@ -218,23 +216,6 @@
     <string name="pending_physical_approval">待处理的面板现场批准</string>
     <string name="approval_exact_detail">批准前，请检查此操作和确切的请求信息。\n\n请求信息（英语）：\n%1$s\n\n来自 %2$s 的确切请求。批准仅可使用一次且会过期。</string>
 
-    <string name="shizuku_enable">启用</string>
-    <string name="shizuku_request_permission">请求权限</string>
-    <string name="shizuku_open">打开 Shizuku</string>
-    <string name="disable">禁用</string>
-    <string name="shizuku_title">增强访问权限（Shizuku）</string>
-    <string name="shizuku_scope">它不允许任意上传 APK、替换 WebView、使用通用 shell、访问 root 应用数据、重启、查看日志或控制供应商应用。\n\n启用后，可通过此面板上 ha-paneld 现有的受信任局域网控制来调用受支持的操作。</string>
-    <string name="shizuku_grant_scope">这仅授予以下操作权限：更新 ha-paneld 和精简版 Companion（均须通过签名者验证）、截屏、按键/点按输入，以及调整显示密度和文字大小。%1$s</string>
-    <string name="shizuku_not_installed">未安装 Shizuku。请通过 ADB 运行一次 ha-paneld 配置脚本，然后在此面板上批准访问。</string>
-    <string name="shizuku_untrusted">已安装名为 Shizuku 的软件包，但其签名证书不受信任。ha-paneld 不会连接到它。</string>
-    <string name="shizuku_disabled">ha-paneld 中的增强访问权限已禁用。请在此面板上选择“启用”以开始本地批准。</string>
-    <string name="shizuku_stopped">ha-paneld 中的增强访问权限已启用，但 Shizuku 服务已停止。请打开 Shizuku，启动其服务，然后返回此处。</string>
-    <string name="shizuku_permission_needed">Shizuku 正在运行，已准备好显示本地权限提示。请请求权限以继续。</string>
-    <string name="shizuku_permission_denied">Shizuku 访问被拒绝，因此无法再次显示权限提示。请打开 Shizuku，选择“已授权应用”，选择 ha-paneld 并手动授予访问权限。然后返回此处。</string>
-    <string name="shizuku_connecting">正在连接 Shizuku…</string>
-    <string name="shizuku_ready">增强访问权限已就绪。</string>
-    <string name="shizuku_incompatible">Shizuku 服务返回了意外的身份或协议版本。访问已被阻止。</string>
-    <string name="shizuku_error">无法连接 Shizuku。请关闭此对话框并重试。</string>
 
     <string name="camera_channel">摄像头</string>
     <string name="camera_in_use">摄像头正在使用</string>

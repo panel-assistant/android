@@ -3043,11 +3043,6 @@
       "state": "machine-cross-checked",
       "text": "richiede WRITE_SETTINGS: {command}"
     },
-    "dashboard.capability.note.preferred_route_prefix": {
-      "sourceHash": "f1ab2487d4655ed06023393219c15889849d1dfc235f4db57b572cc909a58828",
-      "state": "machine-cross-checked",
-      "text": "non aggiunge funzionalità mentre root o il daemon ausiliario forniscono il percorso preferito; "
-    },
     "dashboard.capability.note.rockchip_led_direct": {
       "sourceHash": "f5876fe3b48b4aeb1411b01ffc22454d72a3ab77bac26c52751b595f6c5a2dc8",
       "state": "machine-cross-checked",
@@ -3062,61 +3057,6 @@
       "sourceHash": "165f7476c83ccff55a53fe81df2bb7213eb58cc7dc042802bf754fc9a75d8acc",
       "state": "machine-cross-checked",
       "text": "disponibile tramite root o il daemon ausiliario"
-    },
-    "dashboard.capability.note.shizuku_connecting": {
-      "sourceHash": "20ee03c32f465fae6c1c11e967e0e84adcc9bbb3020f72c9aeacaa08c27fe72a",
-      "state": "machine-cross-checked",
-      "text": "connessione al servizio Shizuku approvato localmente"
-    },
-    "dashboard.capability.note.shizuku_disabled": {
-      "sourceHash": "3bee0070aeb6277cf63a471498b0fd5694cf27f969e666b702644b440086e92a",
-      "state": "machine-cross-checked",
-      "text": "disabilitato in ha-paneld; sul pannello apri Configura → menu della barra degli strumenti → Accesso avanzato → Abilita"
-    },
-    "dashboard.capability.note.shizuku_failed": {
-      "sourceHash": "c55ae7ee37cbc132cc37edd487b0d96b87317868a2912f108147ee9867c445d5",
-      "state": "machine-cross-checked",
-      "text": "impossibile connettersi a Shizuku; riprova dalla finestra Accesso avanzato sul pannello"
-    },
-    "dashboard.capability.note.shizuku_grant": {
-      "sourceHash": "7788db822a8fbe15837d8cc318945e47ee7ce3725c6b3282cba6c5c5273042c4",
-      "state": "machine-cross-checked",
-      "text": "accesso negato; autorizza ha-paneld in Shizuku → Applicazioni autorizzate"
-    },
-    "dashboard.capability.note.shizuku_incompatible": {
-      "sourceHash": "86b1e0cf086b8ad212410b559f017fea9d4662bb263a68413efa934c1cfe7d80",
-      "state": "machine-cross-checked",
-      "text": "bloccato: identità o protocollo del servizio Shizuku non previsti"
-    },
-    "dashboard.capability.note.shizuku_missing": {
-      "sourceHash": "fb760f6c866b73fcb6e8c782783813d5011fea64d563d767ad9b1643f635a78c",
-      "state": "machine-cross-checked",
-      "text": "gestore assente; esegui di nuovo il provisioning con --shizuku"
-    },
-    "dashboard.capability.note.shizuku_permission": {
-      "sourceHash": "d83310993a1a94b12cdec092d96a629a92285d910255d1c61f308a201c624a2a",
-      "state": "machine-cross-checked",
-      "text": "servizio in esecuzione; richiedi e approva localmente l'accesso a ha-paneld"
-    },
-    "dashboard.capability.note.shizuku_ready": {
-      "sourceHash": "ecdf8f84be742bd0ba8d4633061b3d355cefae6b946bc0eb030889ebe0344b14",
-      "state": "machine-cross-checked",
-      "text": "pronto come shell UID; solo operazioni locali con tipo definito"
-    },
-    "dashboard.capability.note.shizuku_stopped": {
-      "sourceHash": "081425f46f4ebb0257a08721060226f25d4e9ce1221ba37ca6e85847ef5c5079",
-      "state": "machine-cross-checked",
-      "text": "abilitato in ha-paneld, ma il servizio Shizuku è arrestato; apri Shizuku e avvia il servizio"
-    },
-    "dashboard.capability.note.shizuku_untrusted": {
-      "sourceHash": "ca917912583f3b7942d9ba51510733d455007c04e339fe3101687c9dc83d73d4",
-      "state": "machine-cross-checked",
-      "text": "bloccato: il certificato di firma del gestore installato non è attendibile"
-    },
-    "dashboard.capability.note.shizuku_verified": {
-      "sourceHash": "3b125c2e143d0b144888f9d28ef510a0d7a05f77298ea490b8736c7087961ecf",
-      "state": "machine-cross-checked",
-      "text": "disponibile tramite accesso Shizuku approvato localmente; gli aggiornamenti dell'app restano verificati in base alla firma"
     },
     "dashboard.capability.note.su_direct": {
       "sourceHash": "a0ba5183f28168934f6d83d722669ab6cc27b21777617658035d9f9934c3992e",
@@ -3157,11 +3097,6 @@
       "sourceHash": "0d4d080bcd55f5ee63c4d2574a7c7e2a743c63673b4d440bbee7984f28e40c4a",
       "state": "machine-cross-checked",
       "text": "Schermo acceso/spento"
-    },
-    "dashboard.capability.shizuku": {
-      "sourceHash": "195c2335bc7909021beca0b17dd90d7d6690c4d9b1bc28d3b41825d6712a83f5",
-      "state": "machine-cross-checked",
-      "text": "Accesso avanzato Shizuku"
     },
     "dashboard.capability.system_actions": {
       "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
@@ -9753,11 +9688,6 @@
       "state": "machine-cross-checked",
       "text": "Percorso preferito per lo spegnimento dello schermo."
     },
-    "profiles.schema.description.shizuku_recommendation": {
-      "sourceHash": "d9923d81100c264134d703555a7a7ea41e81f3f01f348ff52207de7d24032aed",
-      "state": "machine-cross-checked",
-      "text": "Solo raccomandazione dell'autore, mai disponibilità effettiva o consenso."
-    },
     "profiles.schema.description.su_form": {
       "sourceHash": "c59b1eee40a674144215cd402e07eb6b989182bdd2458cbedace47fc5f6eb763",
       "state": "machine-cross-checked",
@@ -9802,26 +9732,6 @@
       "sourceHash": "4bd9354bb652233497a0f42647464b81b83a83654fcf1511263a5d0120d74c91",
       "state": "machine-cross-checked",
       "text": "avviso"
-    },
-    "profiles.shizuku.body": {
-      "sourceHash": "f5e6ae0bc6233a2dcdd90801ec4aab0bbced0cfdf2e56ba262e4c44f337aedd4",
-      "state": "machine-cross-checked",
-      "text": "Questo profilo dichiara un fallback specifico a livello di shell. Non installa, abilita o approva il servizio di accesso separato."
-    },
-    "profiles.shizuku.guide": {
-      "sourceHash": "55878109cd662d28cb779e3ec2164d283a24a39bbba6e5ae24a765bc1bec0960",
-      "state": "machine-cross-checked",
-      "text": "Leggi la guida alla configurazione avanzata"
-    },
-    "profiles.shizuku.recommended": {
-      "sourceHash": "d37bff97e12b6ca397f2487ebb1378cf4261cbbeee760e6370ebbf7fa6db8866",
-      "state": "machine-cross-checked",
-      "text": "Shizuku: consigliato"
-    },
-    "profiles.shizuku.title": {
-      "sourceHash": "d8501ad35856c2d0c2429b3a7de56a36dad32278d82e53208d2fab136abbc8f3",
-      "state": "machine-cross-checked",
-      "text": "Requisito di accesso eccezionale"
     },
     "profiles.state.active": {
       "sourceHash": "92340695899bd2d86223e4a007620e0d6502fc0e08809773634c7e0743764a9c",

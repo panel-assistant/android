@@ -18,10 +18,6 @@ import io.panelassistant.android.hardware.NativeLed
 import io.panelassistant.android.input.ButtonCaptureHealth
 import io.panelassistant.android.input.EvdevButtonClient
 import io.panelassistant.android.metrics.PanelMetrics
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuConsent
-import io.panelassistant.android.shizuku.ShizukuManagerIdentity
-import io.panelassistant.android.shizuku.ShizukuState
 import io.panelassistant.android.storage.StorageHealthSnapshot
 import io.panelassistant.android.util.CompanionInstaller
 import io.panelassistant.android.util.HelperClient
@@ -106,19 +102,13 @@ object DiagReader {
             null
         }
         val rootish = privilege.rootControlReady
-        val shizukuSnapshot = privilege.shizuku
-        val shizuku = shizukuSnapshot.ready
-        val manager = ShizukuManagerIdentity.status(ctx)
         // Surface the helper whenever this profile needs it for privileged control or profile-specific
         // hardware such as daemon-only LEDs and evdev buttons, even if the app can also execute su.
         val usesDaemon = profile.usesDaemon
         val rows = listOfNotNull(
             rootSuCapability(su, daemon),
             if (usesDaemon) helperDaemonCapability(profile, daemon) else null,
-            if (showShizukuCapability(ShizukuConsent.enabled(ctx), manager)) {
-                shizukuCapability(shizukuSnapshot, manager, preferredPrivilegeReady = rootish)
-            } else null,
-            verifiedOperationsCapability(rootish, shizuku),
+            verifiedOperationsCapability(rootish),
             screenBrightnessCapability(canWrite, su, daemon, pkg),
             screenOnOffCapability(profile.screenOff, su, daemon),
             if (showLed) rgbLedCapability(rkLed, ledProbe, daemonLed) else null,
@@ -131,13 +121,9 @@ object DiagReader {
     internal fun helperDaemonCapability(profile: DeviceProfile, daemon: Boolean): Cap =
         Cap("helper_daemon", if (daemon) "ok" else "none", daemonRequirement(profile, running = daemon))
 
-    internal fun verifiedOperationsCapability(rootish: Boolean, shizuku: Boolean): Cap =
-        Cap("verified_operations", if (rootish || shizuku) "ok" else "none",
-            when {
-                rootish -> note("root_or_helper")
-                shizuku -> note("shizuku_verified")
-                else -> note("needs_privileged_access")
-            })
+    internal fun verifiedOperationsCapability(rootish: Boolean): Cap =
+        Cap("verified_operations", if (rootish) "ok" else "none",
+            note(if (rootish) "root_or_helper" else "needs_privileged_access"))
 
     internal fun rgbLedCapability(rkLed: Boolean, ledProbe: String?, daemonLed: Boolean): Cap =
         Cap("rgb_led", if (rkLed || daemonLed) "ok" else "none",
@@ -229,43 +215,6 @@ object DiagReader {
         }
     }
 
-    internal fun showShizukuCapability(
-        consentEnabled: Boolean,
-        manager: ShizukuManagerIdentity.Status,
-    ): Boolean = consentEnabled || manager != ShizukuManagerIdentity.Status.MISSING
-
-    internal fun shizukuCapability(
-        snapshot: ShizukuBridge.Snapshot,
-        manager: ShizukuManagerIdentity.Status,
-        preferredPrivilegeReady: Boolean = false,
-    ): Cap = Cap(
-        id = "shizuku",
-        status = if (snapshot.ready && manager == ShizukuManagerIdentity.Status.TRUSTED) "ok" else "none",
-        text = shizukuCapabilityNote(snapshot.state, manager, preferredPrivilegeReady),
-    )
-
-    internal fun shizukuCapabilityNote(
-        state: ShizukuState,
-        manager: ShizukuManagerIdentity.Status,
-        preferredPrivilegeReady: Boolean = false,
-    ): CatalogueText {
-        val stateNote = note(
-            when {
-                manager == ShizukuManagerIdentity.Status.UNTRUSTED -> "shizuku_untrusted"
-                manager == ShizukuManagerIdentity.Status.MISSING -> "shizuku_missing"
-                state == ShizukuState.READY -> "shizuku_ready"
-                state == ShizukuState.DISABLED -> "shizuku_disabled"
-                state == ShizukuState.STOPPED -> "shizuku_stopped"
-                state == ShizukuState.PERMISSION_REQUIRED -> "shizuku_permission"
-                state == ShizukuState.MANUAL_GRANT_REQUIRED -> "shizuku_grant"
-                state == ShizukuState.BINDING -> "shizuku_connecting"
-                state == ShizukuState.INCOMPATIBLE -> "shizuku_incompatible"
-                else -> "shizuku_failed"
-            },
-        )
-        return if (preferredPrivilegeReady) note("preferred_route_prefix").then(stateNote) else stateNote
-    }
-
     private fun daemonRequirement(profile: DeviceProfile, running: Boolean): CatalogueText = note(
         "daemon_state",
         "state" to note(if (running) "daemon_running" else "daemon_needed"),
@@ -323,7 +272,7 @@ object DiagReader {
         appendLine("board=${Build.BOARD} product=${Build.PRODUCT} hardware=${Build.HARDWARE} abis=${Build.SUPPORTED_ABIS.joinToString(",")}")
         appendLine(bootSecurityLine(SystemProps::get, Build.TYPE))
         val evdev = EvdevButtonClient.snapshot()
-        appendLine("[env] selinux=${PanelMetrics.shared.selinuxEnforce() ?: "?"} su=$su write_settings=${Settings.System.canWrite(ctx)} a11y=${a11yEnabled(ctx)} daemon=$daemon shizuku=${routes.shizuku.state.name.lowercase()} evdev=${evdev.state.name.lowercase()}/${evdev.mode?.name?.lowercase() ?: "none"} ledjni=${NativeLed.available()}")
+        appendLine("[env] selinux=${PanelMetrics.shared.selinuxEnforce() ?: "?"} su=$su write_settings=${Settings.System.canWrite(ctx)} a11y=${a11yEnabled(ctx)} daemon=$daemon evdev=${evdev.state.name.lowercase()}/${evdev.mode?.name?.lowercase() ?: "none"} ledjni=${NativeLed.available()}")
         displaySizing?.let { appendLine(displaySizingLine(it, profile)) }
         // The renderer/Home Assistant line leads the health block deliberately: a pasted report whose
         // dashboard is down should answer that question before it answers anything about storage or

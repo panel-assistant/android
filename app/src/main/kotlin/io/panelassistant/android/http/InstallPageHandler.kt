@@ -40,7 +40,7 @@ internal class InstallPageHandler(
         val h = pageHealth.healthInputs()
         val wv = h.webView
         val root = management.privilege.rootControlReady
-        val installer = management.privilege.typedShellControlReady
+        val installer = management.privilege.rootControlReady
         val su = management.privilege.directSuReady
         val displaySizing = managementObservations.densityCache.peek() ?: DisplaySizingObservation(
             current = management.densityCur,
@@ -79,7 +79,7 @@ internal class InstallPageHandler(
             apk = apkCardHtml(root, strings, config),
             uninstall = uninstallCardHtml(su, strings),
             vendor = tameCardHtml(root, strings) { tame.cardCandidates(config.tameVendorPackages, tameProfileCandidates) },
-            display = displayCardHtml(management.privilege.typedShellControlReady, displaySizing, strings, recommendedDensity, recommendedFontScale),
+            display = displayCardHtml(management.privilege.rootControlReady, displaySizing, strings, recommendedDensity, recommendedFontScale),
             backup = backupCardHtml(companionHelper, CompanionInstaller.installedPkg(appContext) != null, strings),
         )
     }

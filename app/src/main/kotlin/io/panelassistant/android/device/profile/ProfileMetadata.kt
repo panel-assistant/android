@@ -24,9 +24,7 @@ object ProfileMetadata {
      *
      * The helper demand is deliberately separate from `privileged`: a privileged driver may satisfy
      * its access through app `su`, a trusted-host operation, or the root helper, and only the last one
-     * belongs in `access.helper`. The established helper is preferred for `sensor.cht8305-daemon`, but
-     * an exact shell-readable input layout can use the fixed Shizuku reader when the profile declares
-     * that provisioning route ([ProfileHelperAuthorityDemand.SHIZUKU_ALTERNATE]).
+     * belongs in `access.helper`.
      */
     val drivers: List<ProfileDriverDescriptor> = listOf(
         ProfileDriverDescriptor("access.android-su", ProfileDriverKind.ACCESS, "Android su invocation and runtime fallback", true, ProfileHelperAuthorityDemand.NONE),
@@ -45,7 +43,7 @@ object ProfileMetadata {
         ProfileDriverDescriptor("screen.su-blpower", ProfileDriverKind.SCREEN, "su-backed kernel bl_power screen off", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
         ProfileDriverDescriptor("screen.keyevent", ProfileDriverKind.SCREEN, "Android sleep/wake keyevent for panels with no backlight class", true, ProfileHelperAuthorityDemand.SANDBOX_FALLBACK),
         ProfileDriverDescriptor("sensor.android", ProfileDriverKind.SENSOR, "Android SensorManager light/proximity inputs", false, ProfileHelperAuthorityDemand.NONE),
-        ProfileDriverDescriptor("sensor.cht8305-daemon", ProfileDriverKind.SENSOR, "Authenticated helper/Shizuku allowlisted room-climate input", true, ProfileHelperAuthorityDemand.SHIZUKU_ALTERNATE),
+        ProfileDriverDescriptor("sensor.cht8305-daemon", ProfileDriverKind.SENSOR, "Authenticated helper allowlisted room-climate input", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("sensor.vi530x-daemon", ProfileDriverKind.SENSOR, "Authenticated helper time-of-flight range (started over ioctl, then polled)", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("sensor.gpio-proximity", ProfileDriverKind.SENSOR, "Root-backed binary proximity GPIO", true, ProfileHelperAuthorityDemand.REQUIRED),
         ProfileDriverDescriptor("update.webview", ProfileDriverKind.UPDATE, "Core-owned System WebView artifacts: ${ProfileArtifacts.webViews.keys.sorted().joinToString()}", true, ProfileHelperAuthorityDemand.NONE),
@@ -172,7 +170,6 @@ object ProfileMetadata {
             field("display.geometry[].factory_base_dpi", "integer", false, "The firmware's factory reset logical DPI; a rendering fact, never physical density."),
             field("display.geometry[].evidence", "enum", true, "Where the active size comes from.", listOf("measured", "module", "specification", "approximate")),
             field("display.geometry[].evidence_note", "string", false, "Bounded citation for the evidence."),
-            field("provisioning.access.shizuku", "enum", false, "Author recommendation only, never live readiness or consent.", listOf("none", "optional", "recommended")),
             field("provisioning.software.webview.artifact", "enum", false, "Core-owned APK artifact and signer trust root.", ProfileArtifacts.webViews.keys.sorted()),
             field("provisioning.software.companion.max_version", "version", false, "Newest known-good Companion version."),
             field("provisioning.display.density", "integer|strategy", false, "Recommended fixed dpi or nspanel-variant strategy."),
@@ -199,13 +196,11 @@ object ProfileMetadata {
  * Whether selecting a driver makes the root helper part of the core provisioning contract.
  *
  * [SANDBOX_FALLBACK] mirrors controllers that prefer an app-side privileged route and then fall back
- * to the helper. [SHIZUKU_ALTERNATE] requires the helper unless the profile explicitly includes Shizuku
- * provisioning guidance for the same fixed core operation.
+ * to the helper.
  */
 enum class ProfileHelperAuthorityDemand {
     NONE,
     SANDBOX_FALLBACK,
-    SHIZUKU_ALTERNATE,
     REQUIRED,
 }
 

@@ -3043,11 +3043,6 @@
       "state": "machine-cross-checked",
       "text": "需要 WRITE_SETTINGS：{command}"
     },
-    "dashboard.capability.note.preferred_route_prefix": {
-      "sourceHash": "f1ab2487d4655ed06023393219c15889849d1dfc235f4db57b572cc909a58828",
-      "state": "machine-cross-checked",
-      "text": "在超级用户权限或辅助守护进程已提供首选路径的情况下，此项不会增加任何功能；"
-    },
     "dashboard.capability.note.rockchip_led_direct": {
       "sourceHash": "f5876fe3b48b4aeb1411b01ffc22454d72a3ab77bac26c52751b595f6c5a2dc8",
       "state": "machine-cross-checked",
@@ -3062,61 +3057,6 @@
       "sourceHash": "165f7476c83ccff55a53fe81df2bb7213eb58cc7dc042802bf754fc9a75d8acc",
       "state": "machine-cross-checked",
       "text": "可通过超级用户权限或辅助守护进程使用"
-    },
-    "dashboard.capability.note.shizuku_connecting": {
-      "sourceHash": "20ee03c32f465fae6c1c11e967e0e84adcc9bbb3020f72c9aeacaa08c27fe72a",
-      "state": "machine-cross-checked",
-      "text": "正在连接本地已批准的 Shizuku 服务"
-    },
-    "dashboard.capability.note.shizuku_disabled": {
-      "sourceHash": "3bee0070aeb6277cf63a471498b0fd5694cf27f969e666b702644b440086e92a",
-      "state": "machine-cross-checked",
-      "text": "已在 ha-paneld 中禁用；请在面板上打开“设置”→ 工具栏更多菜单 → 增强访问权限 → 启用"
-    },
-    "dashboard.capability.note.shizuku_failed": {
-      "sourceHash": "c55ae7ee37cbc132cc37edd487b0d96b87317868a2912f108147ee9867c445d5",
-      "state": "machine-cross-checked",
-      "text": "无法连接 Shizuku；请在面板上的“增强访问权限”对话框中重试"
-    },
-    "dashboard.capability.note.shizuku_grant": {
-      "sourceHash": "7788db822a8fbe15837d8cc318945e47ee7ce3725c6b3282cba6c5c5273042c4",
-      "state": "machine-cross-checked",
-      "text": "访问被拒绝；请在 Shizuku → 已授权应用中授予 ha-paneld 访问权限"
-    },
-    "dashboard.capability.note.shizuku_incompatible": {
-      "sourceHash": "86b1e0cf086b8ad212410b559f017fea9d4662bb263a68413efa934c1cfe7d80",
-      "state": "machine-cross-checked",
-      "text": "已阻止：Shizuku 服务身份或协议与预期不符"
-    },
-    "dashboard.capability.note.shizuku_missing": {
-      "sourceHash": "fb760f6c866b73fcb6e8c782783813d5011fea64d563d767ad9b1643f635a78c",
-      "state": "machine-cross-checked",
-      "text": "缺少管理器；请添加 --shizuku 选项并重新运行预配"
-    },
-    "dashboard.capability.note.shizuku_permission": {
-      "sourceHash": "d83310993a1a94b12cdec092d96a629a92285d910255d1c61f308a201c624a2a",
-      "state": "machine-cross-checked",
-      "text": "服务正在运行；请在面板上请求并批准 ha-paneld 访问权限"
-    },
-    "dashboard.capability.note.shizuku_ready": {
-      "sourceHash": "ecdf8f84be742bd0ba8d4633061b3d355cefae6b946bc0eb030889ebe0344b14",
-      "state": "machine-cross-checked",
-      "text": "已以 shell UID 就绪；仅限本地预定义操作"
-    },
-    "dashboard.capability.note.shizuku_stopped": {
-      "sourceHash": "081425f46f4ebb0257a08721060226f25d4e9ce1221ba37ca6e85847ef5c5079",
-      "state": "machine-cross-checked",
-      "text": "ha-paneld 中已启用，但 Shizuku 服务已停止；请打开 Shizuku 并启动其服务"
-    },
-    "dashboard.capability.note.shizuku_untrusted": {
-      "sourceHash": "ca917912583f3b7942d9ba51510733d455007c04e339fe3101687c9dc83d73d4",
-      "state": "machine-cross-checked",
-      "text": "已阻止：已安装管理器的签名者不受信任"
-    },
-    "dashboard.capability.note.shizuku_verified": {
-      "sourceHash": "3b125c2e143d0b144888f9d28ef510a0d7a05f77298ea490b8736c7087961ecf",
-      "state": "machine-cross-checked",
-      "text": "可通过本地获批的 Shizuku 访问权限使用；应用更新仍会校验签名者身份"
     },
     "dashboard.capability.note.su_direct": {
       "sourceHash": "a0ba5183f28168934f6d83d722669ab6cc27b21777617658035d9f9934c3992e",
@@ -3157,11 +3097,6 @@
       "sourceHash": "0d4d080bcd55f5ee63c4d2574a7c7e2a743c63673b4d440bbee7984f28e40c4a",
       "state": "machine-cross-checked",
       "text": "屏幕开/关"
-    },
-    "dashboard.capability.shizuku": {
-      "sourceHash": "195c2335bc7909021beca0b17dd90d7d6690c4d9b1bc28d3b41825d6712a83f5",
-      "state": "machine-cross-checked",
-      "text": "Shizuku 增强访问权限"
     },
     "dashboard.capability.system_actions": {
       "sourceHash": "4a70712df481ed02525edcbf9e3507d7a28fca003abcbdd8b63516be53628ef0",
@@ -9753,11 +9688,6 @@
       "state": "machine-cross-checked",
       "text": "首选的息屏路径。"
     },
-    "profiles.schema.description.shizuku_recommendation": {
-      "sourceHash": "d9923d81100c264134d703555a7a7ea41e81f3f01f348ff52207de7d24032aed",
-      "state": "machine-cross-checked",
-      "text": "仅为作者建议，绝不表示实时就绪或同意。"
-    },
     "profiles.schema.description.su_form": {
       "sourceHash": "c59b1eee40a674144215cd402e07eb6b989182bdd2458cbedace47fc5f6eb763",
       "state": "machine-cross-checked",
@@ -9802,26 +9732,6 @@
       "sourceHash": "4bd9354bb652233497a0f42647464b81b83a83654fcf1511263a5d0120d74c91",
       "state": "machine-cross-checked",
       "text": "警告"
-    },
-    "profiles.shizuku.body": {
-      "sourceHash": "f5e6ae0bc6233a2dcdd90801ec4aab0bbced0cfdf2e56ba262e4c44f337aedd4",
-      "state": "machine-cross-checked",
-      "text": "此配置文件声明了特定的命令解释器级后备方案。它不会安装、启用或批准单独的访问服务。"
-    },
-    "profiles.shizuku.guide": {
-      "sourceHash": "55878109cd662d28cb779e3ec2164d283a24a39bbba6e5ae24a765bc1bec0960",
-      "state": "machine-cross-checked",
-      "text": "阅读高级设置指南"
-    },
-    "profiles.shizuku.recommended": {
-      "sourceHash": "d37bff97e12b6ca397f2487ebb1378cf4261cbbeee760e6370ebbf7fa6db8866",
-      "state": "machine-cross-checked",
-      "text": "Shizuku：建议使用"
-    },
-    "profiles.shizuku.title": {
-      "sourceHash": "d8501ad35856c2d0c2429b3a7de56a36dad32278d82e53208d2fab136abbc8f3",
-      "state": "machine-cross-checked",
-      "text": "特殊访问要求"
     },
     "profiles.state.active": {
       "sourceHash": "92340695899bd2d86223e4a007620e0d6502fc0e08809773634c7e0743764a9c",

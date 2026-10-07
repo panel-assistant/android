@@ -5,9 +5,6 @@ import io.panelassistant.android.control.TameController
 import io.panelassistant.android.device.EvdevButton
 import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.device.profile.BundledProfileFixtures
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuManagerIdentity
-import io.panelassistant.android.shizuku.ShizukuState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -169,6 +166,17 @@ class DiagCapabilityPolicyTest {
         assertFalse(cap.note(englishCatalogue).contains("reboot/reload"))
     }
 
+    @Test fun privilegedActionsNeedRootOrTheHelperAndOtherwiseGiveTheStandardExplanation() {
+        val rooted = DiagReader.verifiedOperationsCapability(rootish = true)
+        assertEquals("ok", rooted.status)
+        assertEquals("available through root or the helper daemon", rooted.note(englishCatalogue))
+
+        val rootless = DiagReader.verifiedOperationsCapability(rootish = false)
+        assertEquals("Verified app update / screenshot / display", rootless.name(englishCatalogue))
+        assertEquals("none", rootless.status)
+        assertEquals("needs supported privileged panel access", rootless.note(englishCatalogue))
+    }
+
     @Test fun appVisibleSuIsReportedPrecisely() {
         val cap = DiagReader.rootSuCapability(su = true, daemon = false)
 
@@ -233,96 +241,6 @@ class DiagCapabilityPolicyTest {
         val unavailable = DiagReader.screenBrightnessCapability(canWrite = false, su = false, daemon = false, pkg = "test.pkg")
         assertEquals("none", unavailable.status)
         assertTrue(unavailable.note(englishCatalogue).contains("adb shell appops set test.pkg WRITE_SETTINGS allow"))
-    }
-
-    @Test fun rootedOrHelperBackedPanelsExplainConfiguredShizukuIsRedundant() {
-        for (manager in ShizukuManagerIdentity.Status.entries) {
-            assertTrue(DiagReader.showShizukuCapability(consentEnabled = true, manager))
-        }
-        assertFalse(
-            DiagReader.showShizukuCapability(
-                consentEnabled = false,
-                ShizukuManagerIdentity.Status.MISSING,
-            ),
-        )
-        assertTrue(
-            DiagReader.shizukuCapabilityNote(
-                ShizukuState.READY,
-                ShizukuManagerIdentity.Status.TRUSTED,
-                preferredPrivilegeReady = true,
-            ).render(englishCatalogue).contains("adds no capability while root or the helper daemon provides the preferred route"),
-        )
-        val unhealthy = DiagReader.shizukuCapabilityNote(
-            ShizukuState.READY,
-            ShizukuManagerIdentity.Status.UNTRUSTED,
-            preferredPrivilegeReady = true,
-        ).render(englishCatalogue)
-        assertTrue(unhealthy.contains("adds no capability"))
-        assertTrue(unhealthy.contains("signer is not trusted"))
-        assertFalse(unhealthy.contains("ready as shell UID"))
-    }
-
-    @Test fun shizukuCapabilityStatusRequiresAReadyBridgeAndTrustedManager() {
-        val ready = ShizukuBridge.Snapshot(ShizukuState.READY, ready = true)
-        val trusted = DiagReader.shizukuCapability(
-            ready,
-            ShizukuManagerIdentity.Status.TRUSTED,
-            preferredPrivilegeReady = true,
-        )
-        val untrusted = DiagReader.shizukuCapability(
-            ready,
-            ShizukuManagerIdentity.Status.UNTRUSTED,
-            preferredPrivilegeReady = true,
-        )
-        val stopped = DiagReader.shizukuCapability(
-            ShizukuBridge.Snapshot(ShizukuState.STOPPED, ready = false),
-            ShizukuManagerIdentity.Status.TRUSTED,
-        )
-
-        assertEquals("ok", trusted.status)
-        assertTrue(trusted.note(englishCatalogue).contains("adds no capability"))
-        assertEquals("none", untrusted.status)
-        assertTrue(untrusted.note(englishCatalogue).contains("signer is not trusted"))
-        assertEquals("none", stopped.status)
-        assertTrue(stopped.note(englishCatalogue).contains("service is stopped"))
-    }
-
-    @Test fun genuinelyUnrootedPanelsShowShizukuOnlyWhenConfiguredOrInstalled() {
-        assertFalse(
-            DiagReader.showShizukuCapability(
-                consentEnabled = false,
-                ShizukuManagerIdentity.Status.MISSING,
-            ),
-        )
-        assertTrue(
-            DiagReader.showShizukuCapability(
-                consentEnabled = true,
-                ShizukuManagerIdentity.Status.MISSING,
-            ),
-        )
-        assertTrue(
-            DiagReader.showShizukuCapability(
-                consentEnabled = false,
-                ShizukuManagerIdentity.Status.TRUSTED,
-            ),
-        )
-    }
-
-    @Test fun enhancedAccessDiagnosticsGiveDifferentDisabledAndStoppedRecoveryPaths() {
-        val disabled = DiagReader.shizukuCapabilityNote(
-            ShizukuState.DISABLED,
-            ShizukuManagerIdentity.Status.TRUSTED,
-        ).render(englishCatalogue)
-        val stopped = DiagReader.shizukuCapabilityNote(
-            ShizukuState.STOPPED,
-            ShizukuManagerIdentity.Status.TRUSTED,
-        ).render(englishCatalogue)
-
-        assertTrue(disabled.contains("Configure → toolbar overflow → Enhanced access → Enable"))
-        assertFalse(disabled.contains("service is stopped"))
-        assertTrue(stopped.contains("service is stopped"))
-        assertTrue(stopped.contains("open Shizuku"))
-        assertFalse(stopped.contains("→ Enable"))
     }
 
     @Test fun bootSecurityDiagnosticsNormalizeOnlyAllowlistedCategoricalFacts() {

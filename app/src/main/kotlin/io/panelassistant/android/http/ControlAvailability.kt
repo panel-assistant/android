@@ -13,10 +13,9 @@ internal object ControlAvailability {
 
     fun navigation(
         accessibilityReady: Boolean,
-        shizukuReady: Boolean,
         hasRecents: Boolean,
     ): Navigation {
-        val inputReady = accessibilityReady || shizukuReady
+        val inputReady = accessibilityReady
         val supportedActions = buildList {
             if (inputReady) {
                 add("Back")

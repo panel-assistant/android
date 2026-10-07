@@ -1,7 +1,7 @@
 package io.panelassistant.android.control
 
 /** The route that completed a short privileged operation. */
-internal enum class PrivilegeRoute { DAEMON, SU, SHIZUKU, ACCESSIBILITY }
+internal enum class PrivilegeRoute { DAEMON, SU, ACCESSIBILITY }
 
 /** One ordered effect attempt. Returning false means the next route may be tried. */
 internal data class EffectAttempt(

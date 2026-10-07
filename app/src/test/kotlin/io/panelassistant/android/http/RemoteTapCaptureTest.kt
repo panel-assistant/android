@@ -99,11 +99,11 @@ class RemoteTapCaptureTest {
             execution(),
             hardened = { false },
             nowElapsedMs = { 100 },
-            tap = { _, _ -> taps += 1; PrivilegeRoute.SHIZUKU },
+            tap = { _, _ -> taps += 1; PrivilegeRoute.ACCESSIBILITY },
             settle = { true },
             screenshot = { screenshots += 1; null },
         )
-        assertEquals(TapCaptureResult.ScreenshotFailed(PrivilegeRoute.SHIZUKU), screenshotFailed)
+        assertEquals(TapCaptureResult.ScreenshotFailed(PrivilegeRoute.ACCESSIBILITY), screenshotFailed)
         assertEquals(2, taps)
         assertEquals(1, screenshots)
     }

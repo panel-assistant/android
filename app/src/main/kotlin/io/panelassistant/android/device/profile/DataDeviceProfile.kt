@@ -75,7 +75,6 @@ class DataDeviceProfile internal constructor(
     override fun displayGeometry(physicalWidthPx: Int, physicalHeightPx: Int) =
         DisplayGeometryResolver.resolve(document.display, productVersion, physicalWidthPx, physicalHeightPx)
     override val provisioning = ProvisioningIntent(
-        shizuku = document.provisioning.access.shizuku,
         webViewArtifactId = document.provisioning.software.webView?.artifact,
         companionMaxVersion = document.provisioning.software.companion?.maxVersion,
         density = when (val density = document.provisioning.display.density) {

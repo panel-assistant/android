@@ -47,11 +47,6 @@ internal fun profilesBody(strings: AppStrings): String = """
       <div class="profile-inspector-body">
         <section><h3>${esc(strings.get("profiles.section.catalog_runtime"))}</h3><div id="profile-catalog-issues" class="profile-issues"></div></section>
         <section><h3>${esc(strings.get("profiles.section.validation"))}</h3><div id="profile-issues" class="profile-issues"></div></section>
-        <div class="profile-guidance" id="profile-shizuku-guidance" hidden>
-          <p><b>${esc(strings.get("profiles.shizuku.title"))}</b></p>
-          <p>${esc(strings.get("profiles.shizuku.body"))}</p>
-          <p><a href="$SHIZUKU_GUIDE_DOC" target="_blank" rel="noopener">${esc(strings.get("profiles.shizuku.guide"))}</a></p>
-        </div>
         <section><h3>${esc(strings.get("profiles.section.compared_active"))}</h3><div id="profile-diff" class="profile-diff"></div></section>
         <section><h3>${esc(strings.get("profiles.section.observed"))}</h3><p class="profile-report-note">${esc(strings.get("profiles.observed.note"))}</p><div id="profile-report" class="profile-report"></div></section>
         <div class="profile-draft" id="profile-generic-draft" hidden>
@@ -69,5 +64,3 @@ internal fun profilesBody(strings: AppStrings): String = """
 </div>
 <script src="assets/vendor/profile-editor/codemirror.js"></script>
 <script src="assets/profiles.js"></script>"""
-
-internal const val SHIZUKU_GUIDE_DOC = "https://panel-assistant.io/go/docs?page=provisioning"

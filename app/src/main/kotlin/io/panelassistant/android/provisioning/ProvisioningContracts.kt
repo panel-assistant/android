@@ -3,7 +3,6 @@ package io.panelassistant.android.provisioning
 import io.panelassistant.android.device.profile.ProfileActivationPhase
 import io.panelassistant.android.device.profile.ProfileOrigin
 import io.panelassistant.android.device.profile.ProfileRef
-import io.panelassistant.android.device.profile.ShizukuRecommendation
 
 internal const val PROVISIONING_PLAN_SCHEMA = 1
 
@@ -25,7 +24,6 @@ internal enum class ProvisioningItemStatus {
 internal enum class ProvisioningExecutor {
     APP,
     HOST,
-    LOCAL_USER,
     NONE,
 }
 
@@ -46,7 +44,6 @@ internal data class ProvisioningProfile(
     val contentVersion: String,
     val directRootExpected: Boolean = false,
     val helperImportance: ProvisioningImportance? = null,
-    val shizuku: ShizukuRecommendation = ShizukuRecommendation.NONE,
     val webView: ProvisioningWebViewTarget? = null,
 )
 

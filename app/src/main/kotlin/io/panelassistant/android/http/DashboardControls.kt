@@ -13,11 +13,10 @@ internal fun controlsHtml(
     strings: AppStrings,
 ): String {
     // Controls buttons: render but DISABLE (not hide, not silently-broken) when the action's capability
-    // is missing — back/recents accept Accessibility or Shizuku input; launcher/reboot need root.
+    // is missing — back/recents need Accessibility input; launcher/reboot need root.
     val a11yOk = facts?.get("Nav actions (a11y)") == "yes"
     val navigation = ControlAvailability.navigation(
         accessibilityReady = a11yOk,
-        shizukuReady = privilege?.shizuku?.ready == true,
         hasRecents = hasRecents,
     )
     // Recents is only real where the firmware has an overview screen — KEYCODE_APP_SWITCH no-ops on

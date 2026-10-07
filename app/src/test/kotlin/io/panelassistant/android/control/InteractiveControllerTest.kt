@@ -4,37 +4,17 @@ import io.panelassistant.android.platform.AccessibilityActions
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.DaemonLongResult
 import io.panelassistant.android.platform.RootShell
-import io.panelassistant.android.platform.ShellPrivilege
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class InteractiveControllerTest {
-    private class Shell(
-        private val calls: MutableList<String>,
-        private val screenshotBytes: ByteArray? = null,
-        private val inputResult: Boolean = false,
-    ) : ShellPrivilege {
-        override fun available() = true
-        override fun uid() = 2000
-        override fun screenshot(): ByteArray? { calls += "shizuku:screenshot"; return screenshotBytes }
-        override fun inputKey(keyCode: Int): Boolean { calls += "shizuku:key:$keyCode"; return inputResult }
-        override fun tap(x: Int, y: Int): Boolean { calls += "shizuku:tap:$x:$y"; return inputResult }
-        override fun density(): String? = null
-        override fun setDensity(dpi: Int) = false
-        override fun resetDensity() = false
-        override fun fontScale(): String? = null
-        override fun setFontScale(scale: Float) = false
-        override fun resetFontScale() = false
-        override fun installApk(apk: File, allowDowngrade: Boolean, timeoutMs: Long): String? = null
-    }
     private class Root(
         private val calls: MutableList<String>,
         runResults: List<Boolean> = emptyList(),
@@ -170,7 +150,6 @@ class InteractiveControllerTest {
             root = root,
             daemon = Helper(mutableListOf()),
             accessibility = Accessibility(mutableListOf()),
-            shell = Shell(mutableListOf()),
         )
         var first: ByteArray? = null
         val worker = Thread { first = controller.screenshot() }.apply { start() }
@@ -205,7 +184,6 @@ class InteractiveControllerTest {
             root = root,
             daemon = Helper(mutableListOf()),
             accessibility = Accessibility(mutableListOf()),
-            shell = Shell(mutableListOf()),
         )
         val first = Thread { controller.screenshot() }.apply { start() }
         assertTrue(entered.await(1, TimeUnit.SECONDS))
@@ -284,16 +262,15 @@ class InteractiveControllerTest {
 
     @Test fun combinedTapUsesExactlyOneSelectedRouteAndNeverFallsThrough() {
         val calls = mutableListOf<String>()
-        val route = InteractiveController(
+        val route = controller(
             canSu = false,
-            root = Root(calls, runResults = listOf(true)),
-            daemon = Helper(calls),
-            accessibility = Accessibility(calls, results = listOf(true)),
-            shell = Shell(calls, inputResult = false),
+            calls = calls,
+            rootRuns = listOf(true),
+            accessibilityResults = listOf(false),
         ).tapOnceWithRoute(12f, 34f)
 
         assertNull(route)
-        assertEquals(listOf("shizuku:tap:12:34"), calls)
+        assertEquals(listOf("a11y:tap:12:34"), calls)
     }
 
     @Test fun combinedTapUsesOneRootCommandAttemptOnRootProfiles() {
@@ -322,20 +299,6 @@ class InteractiveControllerTest {
         }
     }
 
-    @Test fun screenshotFallsThroughExistingRoutesToShizukuLast() {
-        val calls = mutableListOf<String>()
-        val png = byteArrayOf(7, 8, 9)
-        val result = InteractiveController(
-            canSu = true,
-            root = Root(calls),
-            daemon = Helper(calls),
-            accessibility = Accessibility(calls),
-            shell = Shell(calls, screenshotBytes = png),
-        ).screenshot()
-        assertArrayEquals(png, result)
-        assertEquals(listOf("su-bytes:screencap -p", "helper-bytes:SCREENCAP", "shizuku:screenshot"), calls)
-    }
-
     @Test fun screenshotReportsTheRouteThatProducedBytes() {
         val calls = mutableListOf<String>()
         val result = controller(
@@ -354,36 +317,15 @@ class InteractiveControllerTest {
             root = Root(calls, byteResults = listOf(byteArrayOf(9))),
             daemon = Helper(calls, byteResults = listOf(null)),
             accessibility = Accessibility(calls),
-            shell = Shell(calls, screenshotBytes = byteArrayOf(8)),
         ).screenshotOnceWithRoute(0)
 
         assertNull(result)
         assertEquals(listOf("helper-bytes:SCREENCAP"), calls)
     }
 
-    @Test fun readyShizukuPrecedesSpeculativeSuOnSandboxedProfile() {
+    @Test fun failedAccessibilityFallsThroughToSpeculativeSu() {
         val calls = mutableListOf<String>()
-        val controller = InteractiveController(
-            canSu = false,
-            root = Root(calls),
-            daemon = Helper(calls),
-            accessibility = Accessibility(calls),
-            shell = Shell(calls, inputResult = true),
-        )
-        assertTrue(controller.tap(12f, 34f))
-        assertEquals(listOf("a11y:tap:12:34", "shizuku:tap:12:34"), calls)
-    }
-
-    @Test fun failedReadyShizukuStillFallsThroughToSpeculativeSu() {
-        val calls = mutableListOf<String>()
-        val controller = InteractiveController(
-            canSu = false,
-            root = Root(calls, runResults = listOf(true)),
-            daemon = Helper(calls),
-            accessibility = Accessibility(calls),
-            shell = Shell(calls, inputResult = false),
-        )
-        assertTrue(controller.back())
-        assertEquals(listOf("a11y:back", "shizuku:key:4", "su:input keyevent 4"), calls)
+        assertTrue(controller(canSu = false, calls = calls, rootRuns = listOf(true)).back())
+        assertEquals(listOf("a11y:back", "su:input keyevent 4"), calls)
     }
 }

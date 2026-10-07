@@ -82,16 +82,6 @@
             android:name="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL"
             android:value="${panelAssistantProtocol}" />
 
-        <!-- Official Shizuku Binder hand-off. The signature-level permission prevents ordinary apps
-             from calling this exported provider; ha-paneld never opens an ADB or network listener. -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:multiprocess="false"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-
         <activity
             android:name="io.panelassistant.android.MainActivity"
             android:exported="true">

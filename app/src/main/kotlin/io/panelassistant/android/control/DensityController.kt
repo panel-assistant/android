@@ -2,8 +2,6 @@ package io.panelassistant.android.control
 
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.RootShell
-import io.panelassistant.android.platform.ShellPrivilege
-import io.panelassistant.android.shizuku.ShizukuBridge
 import io.panelassistant.android.util.HelperClient
 
 /** One coherent display-sizing read; current and base share one routed density observation. */
@@ -30,7 +28,6 @@ class DensityController(
     private val canSu: Boolean,
     private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
-    private val shell: ShellPrivilege = ShizukuBridge,
 ) {
     private data class DensityState(val base: Int, val override: Int?)
 
@@ -53,7 +50,6 @@ class DensityController(
         return routedEffect(
             su = { root.run("wm density $dpi") },
             helper = { daemon.send("DENSITY $dpi") == "OK" },
-            shizuku = { shell.setDensity(dpi) },
         )
     }
 
@@ -61,14 +57,12 @@ class DensityController(
     fun reset(): Boolean = routedEffect(
         su = { root.run("wm density reset") },
         helper = { daemon.send("DENSITY reset") == "OK" },
-        shizuku = shell::resetDensity,
     )
 
     private fun readFontScale(privilege: PrivilegedRouteObservation? = null): Float = routedValue(
         privilege = privilege,
         su = { parseRootScale(root.runOutput("settings get system font_scale 2>/dev/null")) },
         helper = { parseHelperScale(daemon.send("FONTSCALE")) },
-        shizuku = { parseRootScale(shell.fontScale()) },
     ) ?: 1.0f
 
     /** Set the system font scale (text size). Bounded to keep text legible. Returns true if applied. */
@@ -77,7 +71,6 @@ class DensityController(
         return routedEffect(
             su = { root.run("settings put system font_scale $scale") },
             helper = { daemon.send("FONTSCALE $scale") == "OK" },
-            shizuku = { shell.setFontScale(scale) },
         )
     }
 
@@ -85,14 +78,12 @@ class DensityController(
     fun resetFontScale(): Boolean = routedEffect(
         su = { root.run("settings delete system font_scale") },
         helper = { daemon.send("FONTSCALE reset") == "OK" },
-        shizuku = shell::resetFontScale,
     )
 
     private fun densityState(privilege: PrivilegedRouteObservation? = null): DensityState? = routedValue(
         privilege = privilege,
         su = { parseRootDensity(root.runOutput("wm density 2>/dev/null")) },
         helper = { parseHelperDensity(daemon.send("DENSITY")) },
-        shizuku = { parseRootDensity(shell.density()) },
     )
 
     private fun parseRootDensity(reply: String?): DensityState? {
@@ -134,16 +125,10 @@ class DensityController(
     private fun routedEffect(
         su: () -> Boolean,
         helper: () -> Boolean,
-        shizuku: () -> Boolean,
     ): Boolean {
         val suAttempt = EffectAttempt(PrivilegeRoute.SU, su)
         val helperAttempt = EffectAttempt(PrivilegeRoute.DAEMON, helper)
-        val shizukuAttempt = EffectAttempt(PrivilegeRoute.SHIZUKU, shizuku)
-        val attempts = when {
-            canSu -> arrayOf(suAttempt, helperAttempt, shizukuAttempt)
-            shell.available() -> arrayOf(helperAttempt, shizukuAttempt, suAttempt)
-            else -> arrayOf(helperAttempt, suAttempt, shizukuAttempt)
-        }
+        val attempts = if (canSu) arrayOf(suAttempt, helperAttempt) else arrayOf(helperAttempt, suAttempt)
         return ShortOperationRouter.effect(*attempts) != null
     }
 
@@ -151,17 +136,10 @@ class DensityController(
         privilege: PrivilegedRouteObservation? = null,
         su: () -> T?,
         helper: () -> T?,
-        shizuku: () -> T?,
     ): T? {
         val suAttempt = ValueAttempt(PrivilegeRoute.SU, su)
         val helperAttempt = ValueAttempt(PrivilegeRoute.DAEMON, helper)
-        val shizukuAttempt = ValueAttempt(PrivilegeRoute.SHIZUKU, shizuku)
-        val ordered = when {
-            canSu -> arrayOf(suAttempt, helperAttempt, shizukuAttempt)
-            privilege?.shizuku?.ready == true -> arrayOf(helperAttempt, shizukuAttempt, suAttempt)
-            privilege == null && shell.available() -> arrayOf(helperAttempt, shizukuAttempt, suAttempt)
-            else -> arrayOf(helperAttempt, suAttempt, shizukuAttempt)
-        }
+        val ordered = if (canSu) arrayOf(suAttempt, helperAttempt) else arrayOf(helperAttempt, suAttempt)
         val attempts = if (privilege == null) {
             ordered
         } else {

@@ -68,9 +68,9 @@ class ProvisioningServiceAdapterTest {
             // helper daemon otherwise, so the helper is a fallback rather than a requirement.
             "screen.keyevent" to ProfileHelperAuthorityDemand.SANDBOX_FALLBACK,
             "sensor.android" to ProfileHelperAuthorityDemand.NONE,
-            "sensor.cht8305-daemon" to ProfileHelperAuthorityDemand.SHIZUKU_ALTERNATE,
-            // Added 2026-08-14: the VI530x range route is helper-only — there is no sandbox or
-            // Shizuku path to a misc-device ioctl, so the demand is REQUIRED rather than an alternate.
+            "sensor.cht8305-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
+            // Added 2026-08-14: the VI530x range route is helper-only — there is no sandbox path to a
+            // misc-device ioctl, so the demand is REQUIRED.
             "sensor.vi530x-daemon" to ProfileHelperAuthorityDemand.REQUIRED,
             "sensor.gpio-proximity" to ProfileHelperAuthorityDemand.REQUIRED,
             "update.webview" to ProfileHelperAuthorityDemand.NONE,
@@ -95,7 +95,6 @@ class ProvisioningServiceAdapterTest {
                 matchesThisDevice = true,
                 active = true,
                 selected = true,
-                shizukuRecommendation = source.document.provisioning.access.shizuku,
                 contentVersion = source.document.version,
                 maturity = source.document.metadata.maturity,
             ),

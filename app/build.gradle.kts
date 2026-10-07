@@ -189,7 +189,6 @@ android {
 
     buildFeatures {
         buildConfig = true
-        aidl = true
     }
 
     buildTypes {
@@ -203,8 +202,8 @@ android {
                 "MIGRATION_SIGNER_OVERRIDE",
                 "\"${if (hasReleaseSigning) "" else debugKeystoreSignerSha256}\"",
             )
-            // Keep production ABIs unchanged while allowing the optional Shizuku integration job to
-            // install the real app/native library on an x86_64 Android emulator.
+            // Keep production ABIs unchanged while allowing the optional emulator jobs to install the
+            // real app/native library on an x86_64 Android emulator.
             ndk.abiFilters += "x86_64"
             isPseudoLocalesEnabled = true
         }
@@ -291,11 +290,6 @@ dependencies {
     // Strict YAML 1.2 parser for runtime-loadable device profiles. ProfileYaml applies tighter
     // byte/depth/alias/key bounds and maps only into the app's closed schema (never Java objects).
     implementation(libs.snakeyaml.engine)
-
-    // Optional shell-UID bridge for non-root panels. The manager APK remains a separate, explicit
-    // user opt-in; these small API/provider libraries only expose its authenticated Binder boundary.
-    implementation(libs.shizuku.api)
-    implementation(libs.shizuku.provider)
 
     // QR code for the on-device config URL (pure-Java encoder; no Android transitive deps).
     implementation("com.google.zxing:core:3.5.4")

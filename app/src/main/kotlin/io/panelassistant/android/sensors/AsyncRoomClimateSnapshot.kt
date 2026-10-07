@@ -10,7 +10,7 @@ internal fun interface RoomClimateRefreshCancellation {
 }
 
 /**
- * Lifecycle-owned asynchronous room-climate cache. The source read may block in helper/Shizuku I/O,
+ * Lifecycle-owned asynchronous room-climate cache. The source read may block in helper I/O,
  * so it runs only inside the supplied single-worker scheduler. HTTP callers only read [current] and
  * never wait for or initiate I/O. A refresh schedules its successor only after completion, preventing
  * overlap even when one authority attempt is slower than the refresh interval.

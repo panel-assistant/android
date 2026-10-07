@@ -13,7 +13,6 @@ import io.panelassistant.android.dashboard.DatabaseCompatibilityDecision
 import io.panelassistant.android.dashboard.DatabaseOwnerState
 import io.panelassistant.android.control.Su
 import io.panelassistant.android.persistence.AppState
-import io.panelassistant.android.shizuku.ShizukuBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -30,11 +29,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * updater and ha-paneld's own self-update.
  *
  * Install path is selected once from currently available authorities: `su` first, then the
- * peer-uid-locked helper `INSTALL` verb, then (only for explicitly allowed curated packages) the typed
- * Shizuku shell-UID service. An attempted install is never replayed through a second authority because
- * a timed-out package-manager transaction can still have committed. Arbitrary uploads and the System
- * WebView never allow Shizuku. Panel-app candidates require live Panel Assistant policy and cannot
- * downgrade. Other approved packages retain their existing downgrade behavior.
+ * peer-uid-locked helper `INSTALL` verb. An attempted install is never replayed through a second
+ * authority because a timed-out package-manager transaction can still have committed. Panel-app
+ * candidates require live Panel Assistant policy and cannot downgrade. Other approved packages retain
+ * their existing downgrade behavior.
  * Network + package installation — always call OFF the main / MQTT thread.
  */
 object AppInstaller {
@@ -44,7 +42,7 @@ object AppInstaller {
     internal fun panelUpdatePolicy(): PanelAssistantUpdatePolicy? =
         runCatching { livePanelUpdatePolicy?.invoke() }.getOrNull()
     internal const val PROTOCOL_METADATA_NAME = "io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL"
-    internal enum class InstallRoute { SU, DAEMON, SHIZUKU, NONE }
+    internal enum class InstallRoute { SU, DAEMON, NONE }
 
     // Pinned signers (public certificate fingerprints — NOT secrets).
     private const val RELEASE_SIGNER = "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
@@ -100,7 +98,6 @@ object AppInstaller {
         private val expectedSha256: String,
         internal val version: String,
         internal val boundary: DatabaseCompatibilityApkContract.Boundary,
-        internal val allowShizuku: Boolean,
     ) : AutoCloseable {
         private val consumed = AtomicBoolean(false)
         internal fun consume(): File? = if (consumed.compareAndSet(false, true)) apk else null
@@ -129,17 +126,13 @@ object AppInstaller {
         context: Context,
         url: String,
         pin: Pin,
-        allowShizuku: Boolean = false,
         beforeInstall: (() -> Boolean)? = null,
     ): InstallOutcome = withContext(Dispatchers.IO) {
         val component = componentForPin(pin)
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
             return@withContext guardDbInstallBlocked(component)
         }
-        val hasSu = Su.available()
-        val hasDaemon = HelperClient.available()
-        val hasShizuku = ShizukuBridge.available()
-        if (selectInstallRoute(hasSu, hasDaemon, hasShizuku, allowShizuku) == InstallRoute.NONE)
+        if (selectInstallRoute(Su.available(), HelperClient.available()) == InstallRoute.NONE)
             return@withContext retryable("skipped: no permitted installer", "install-no-permitted-route", component)
 
         // Preflight free space BEFORE downloading, so a large APK (a WebView build is ~250 MB) can't
@@ -176,7 +169,7 @@ object AppInstaller {
                 Log.w(TAG, "refused install: $why")
                 return@withStagedFiles rejected("refused ($why)", component)
             }
-            installLocalApkAdmitted(context, apk, allowShizuku, component = component, beforeInstall = beforeInstall)
+            installLocalApkAdmitted(context, apk, component = component, beforeInstall = beforeInstall)
         }
     }
 
@@ -192,7 +185,6 @@ object AppInstaller {
     internal suspend fun prepareSelfInstall(
         context: Context,
         url: String,
-        allowShizuku: Boolean = true,
     ): SelfInstallPreparation = withContext(Dispatchers.IO) {
         if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
             return@withContext SelfInstallPreparation.Failed(guardDbInstallBlocked("paneld"))
@@ -202,9 +194,7 @@ object AppInstaller {
                 policyFailure("Panel Assistant must be online with update policy"),
             )
         }
-        if (selectInstallRoute(Su.available(), HelperClient.available(), ShizukuBridge.available(), allowShizuku) ==
-            InstallRoute.NONE
-        ) {
+        if (selectInstallRoute(Su.available(), HelperClient.available()) == InstallRoute.NONE) {
             return@withContext SelfInstallPreparation.Failed(
                 retryable("skipped: no permitted installer", "install-no-permitted-route", "paneld"),
             )
@@ -268,7 +258,6 @@ object AppInstaller {
                 expectedSha256 = sha256(apk),
                 version = requireNotNull(info).version,
                 boundary = requireNotNull(admittedBoundary),
-                allowShizuku = allowShizuku,
             )
             staged.commit()
             SelfInstallPreparation.Ready(prepared)
@@ -292,7 +281,6 @@ object AppInstaller {
             installLocalApkAdmitted(
                 context = context,
                 apk = apk,
-                allowShizuku = prepared.allowShizuku,
                 admittedBoundary = prepared.boundary,
                 component = "paneld",
             )
@@ -544,16 +532,13 @@ object AppInstaller {
      * signer-authenticated and database-admitted here before any mutation; non-self uploads retain their
      * explicit user-confirmation policy. Streams straight into `pm install -S` or over
      * the peer-uid-locked daemon socket; an older daemon falls back to its path-based `INSTALL` verb.
-     * Shizuku is considered only when [allowShizuku] is explicitly true; arbitrary upload callers keep
-     * the default false.
      * Returns a typed [InstallOutcome].
      */
     suspend fun installLocalApk(
         context: Context,
         apk: File,
-        allowShizuku: Boolean = false,
     ): InstallOutcome = if (GuardDbProcessAdmission.ordinaryMutationsAllowed()) {
-        installLocalApkAdmitted(context, apk, allowShizuku, admittedBoundary = null, component = "apk")
+        installLocalApkAdmitted(context, apk, admittedBoundary = null, component = "apk")
     } else {
         guardDbInstallBlocked("apk")
     }
@@ -561,7 +546,6 @@ object AppInstaller {
     private suspend fun installLocalApkAdmitted(
         context: Context,
         apk: File,
-        allowShizuku: Boolean,
         admittedBoundary: DatabaseCompatibilityApkContract.Boundary? = null,
         component: String,
         beforeInstall: (() -> Boolean)? = null,
@@ -589,8 +573,7 @@ object AppInstaller {
         val replacingSelf = requireNotNull(info).pkg == context.packageName
         val hasSu = Su.available()
         val hasDaemon = HelperClient.available()
-        val hasShizuku = ShizukuBridge.available()
-        val route = selectInstallRoute(hasSu, hasDaemon, hasShizuku, allowShizuku)
+        val route = selectInstallRoute(hasSu, hasDaemon)
         if (route == InstallRoute.NONE) {
             apk.delete()
             return@withContext retryable("skipped: no permitted installer", "install-no-permitted-route", component)
@@ -662,15 +645,6 @@ object AppInstaller {
                     File(context.filesDir, HelperInstallTransaction.STAGING_DIR),
                     beforeSubmit = submissionRefusal,
                 )
-            } else if (route == InstallRoute.SHIZUKU) {
-                val out = try {
-                    ShizukuBridge.installApk(apk, allowDowngrade = !AppIdentity.isPanelApp(info.pkg), HelperInstallTransaction.INSTALL_TIMEOUT_MS)
-                        ?.trim().orEmpty()
-                } finally {
-                    apk.delete()
-                }
-                if (out.contains("Success", ignoreCase = true)) InstallOutcome.Succeeded
-                else installFailure(out.ifBlank { "Shizuku installer unavailable" })
             } else {
                 apk.delete()
                 retryable("skipped: no permitted installer", "install-no-permitted-route", component)
@@ -837,12 +811,9 @@ object AppInstaller {
     internal fun selectInstallRoute(
         hasSu: Boolean,
         hasDaemon: Boolean,
-        hasShizuku: Boolean,
-        allowShizuku: Boolean,
     ): InstallRoute = when {
         hasSu -> InstallRoute.SU
         hasDaemon -> InstallRoute.DAEMON
-        allowShizuku && hasShizuku -> InstallRoute.SHIZUKU
         else -> InstallRoute.NONE
     }
 
