@@ -131,7 +131,7 @@ internal fun capRowsHtml(capabilities: List<DiagReader.Cap>, strings: AppStrings
     val capColor = mapOf("ok" to "#48c774", "degraded" to "#d9a528", "none" to "#d04a3b")
     return capabilities.joinToString("\n") { c ->
         val col = capColor[c.status] ?: "#888"
-        """<tr><th>${esc(capabilityName(c.name, strings))}</th><td><span style="color:$col">●</span> ${esc(capabilityNote(c.note, strings))}</td></tr>"""
+        """<tr><th>${esc(c.name(strings))}</th><td><span style="color:$col">●</span> ${esc(c.note(strings))}</td></tr>"""
     }
 }
 

@@ -1,6 +1,7 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.Config
+import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.PanelStatus
 import io.panelassistant.android.dashboardRecoveryPresentation
 import io.panelassistant.android.camera.CameraPresentation
@@ -42,6 +43,8 @@ internal fun managementStatusJson(
     databaseObservationNonce: String?,
     permissions: () -> Map<PanelPermissionRepair.Grant, PanelPermissionRepair.State>,
     homeProof: (() -> String)? = null,
+    /** The capability rows' wire text is English, from the same catalogue the dashboard reads. */
+    english: AppStrings,
 ): String {
     // Engine-aware WebView age check (a Cromite swap reports the stale OEM package version). Same finding
     // set as the dashboard banner + Install tab (HealthAudit); the audit lists ALL available updates
@@ -103,7 +106,7 @@ internal fun managementStatusJson(
     // Stale-while-revalidate keeps status polling fast while ensuring a status-only client still
     // admits one background refresh instead of preserving an old capability view indefinitely.
     val caps = management.capabilityRows.joinToString(",") { c ->
-        "{\"name\":${jsonStr(c.name)},\"note\":${jsonStr(c.note)},\"color\":${jsonStr(capColor[c.status] ?: "#888")}}"
+        "{\"name\":${jsonStr(c.name(english))},\"note\":${jsonStr(c.note(english))},\"color\":${jsonStr(capColor[c.status] ?: "#888")}}"
     }
     val zigbee = radio?.let {
         JSONObject(it.mqttAttributes()).put("state", it.state.wireValue).toString()

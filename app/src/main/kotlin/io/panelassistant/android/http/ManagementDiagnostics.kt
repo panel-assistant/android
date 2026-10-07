@@ -1,6 +1,7 @@
 package io.panelassistant.android.http
 
 import android.content.Context
+import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.RendererAdmissionPresentation
 import io.panelassistant.android.camera.CameraPresentation
 import io.panelassistant.android.control.PowerSafetyAssessment
@@ -21,6 +22,7 @@ internal fun managementDiagnosticReport(
     renderer: RendererAdmissionPresentation,
     camera: CameraPresentation,
     termux: () -> TermuxBridgeProbe.State,
+    english: AppStrings,
 ): String =
     DiagReader.dump(
         appContext,
@@ -29,6 +31,7 @@ internal fun managementDiagnosticReport(
         radio,
         privilege = management.privilege,
         capabilityRows = management.capabilityRows,
+        english = english,
         displaySizing = DiagReader.DisplaySizingEvidence(
             management.densityBase,
             management.densityCur,

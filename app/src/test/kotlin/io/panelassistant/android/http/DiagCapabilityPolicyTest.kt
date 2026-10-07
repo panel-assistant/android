@@ -49,13 +49,13 @@ class DiagCapabilityPolicyTest {
 
             assertEquals("brightness-zero must never claim ok with $label", "degraded", cap.status)
             assertFalse(
-                "brightness-zero must not claim a backlight-off it never attempts with $label: ${cap.note}",
-                cap.note.contains("backlight-off"),
+                "brightness-zero must not claim a backlight-off it never attempts with $label: ${cap.note(englishCatalogue)}",
+                cap.note(englishCatalogue).contains("backlight-off"),
             )
             assertEquals(
                 "brightness-zero must say it only dims, and why, with $label",
                 "DIM ONLY — this panel's profile selects the brightness-zero route, which never powers the backlight down",
-                cap.note,
+                cap.note(englishCatalogue),
             )
         }
     }
@@ -64,11 +64,11 @@ class DiagCapabilityPolicyTest {
     @Test fun blPowerRoutesNameTheirOwnFirstAttempt() {
         val su = DiagReader.screenOnOffCapability(ScreenOff.SU_BLPOWER, su = true, daemon = true)
         assertEquals("ok", su.status)
-        assertTrue("su-blpower tries su first: ${su.note}", su.note.contains("su bl_power"))
+        assertTrue("su-blpower tries su first: ${su.note(englishCatalogue)}", su.note(englishCatalogue).contains("su bl_power"))
 
         val daemon = DiagReader.screenOnOffCapability(ScreenOff.DAEMON_BLPOWER, su = true, daemon = true)
         assertEquals("ok", daemon.status)
-        assertTrue("daemon-blpower tries the daemon first: ${daemon.note}", daemon.note.contains("helper daemon"))
+        assertTrue("daemon-blpower tries the daemon first: ${daemon.note(englishCatalogue)}", daemon.note(englishCatalogue).contains("helper daemon"))
     }
 
     /** A bl_power route with no privileged transport at all cannot power the backlight down. */
@@ -79,7 +79,7 @@ class DiagCapabilityPolicyTest {
             assertEquals(
                 "$route must say it only dims, and why",
                 "DIM ONLY — the backlight stays powered; needs su or the helper daemon for a real off",
-                cap.note,
+                cap.note(englishCatalogue),
             )
         }
     }
@@ -154,42 +154,42 @@ class DiagCapabilityPolicyTest {
     @Test fun missingAppSuDoesNotClaimHelperBackedActionsAreUnavailable() {
         val cap = DiagReader.rootSuCapability(su = false, daemon = true)
 
-        assertEquals("Root (su)", cap.name)
+        assertEquals("Root (su)", cap.name(englishCatalogue))
         assertEquals("degraded", cap.status)
-        assertTrue(cap.note.contains("routed through the helper daemon"))
-        assertFalse(cap.note.contains("unavailable"))
-        assertFalse(cap.note.contains("no su on this firmware"))
+        assertTrue(cap.note(englishCatalogue).contains("routed through the helper daemon"))
+        assertFalse(cap.note(englishCatalogue).contains("unavailable"))
+        assertFalse(cap.note(englishCatalogue).contains("no su on this firmware"))
     }
 
     @Test fun missingBothPrivilegeRoutesDefersToSpecificCapabilityRows() {
         val cap = DiagReader.rootSuCapability(su = false, daemon = false)
 
         assertEquals("none", cap.status)
-        assertTrue(cap.note.contains("individual capability rows"))
-        assertFalse(cap.note.contains("reboot/reload"))
+        assertTrue(cap.note(englishCatalogue).contains("individual capability rows"))
+        assertFalse(cap.note(englishCatalogue).contains("reboot/reload"))
     }
 
     @Test fun appVisibleSuIsReportedPrecisely() {
         val cap = DiagReader.rootSuCapability(su = true, daemon = false)
 
         assertEquals("ok", cap.status)
-        assertEquals("available directly to ha-paneld", cap.note)
+        assertEquals("available directly to ha-paneld", cap.note(englishCatalogue))
     }
 
     @Test fun blPowerRoutesReportABacklightOff() {
         val daemonRoute = DiagReader.screenOnOffCapability(ScreenOff.DAEMON_BLPOWER, su = false, daemon = true)
-        assertEquals("Screen on/off", daemonRoute.name)
+        assertEquals("Screen on/off", daemonRoute.name(englishCatalogue))
         assertEquals("ok", daemonRoute.status)
-        assertEquals("true backlight-off via the helper daemon", daemonRoute.note)
+        assertEquals("true backlight-off via the helper daemon", daemonRoute.note(englishCatalogue))
 
         val suRoute = DiagReader.screenOnOffCapability(ScreenOff.SU_BLPOWER, su = true, daemon = false)
-        assertEquals("true backlight-off via su bl_power", suRoute.note)
+        assertEquals("true backlight-off via su bl_power", suRoute.note(englishCatalogue))
 
         val none = DiagReader.screenOnOffCapability(ScreenOff.BRIGHTNESS_ZERO, su = false, daemon = false)
         assertEquals("degraded", none.status)
         assertEquals(
             "DIM ONLY — this panel's profile selects the brightness-zero route, which never powers the backlight down",
-            none.note,
+            none.note(englishCatalogue),
         )
     }
 
@@ -201,38 +201,38 @@ class DiagCapabilityPolicyTest {
             DiagReader.screenOnOffCapability(ScreenOff.KEYEVENT, su = false, daemon = true),
         ).forEach { cap ->
             assertEquals("ok", cap.status)
-            assertTrue(cap.note.contains("KEYCODE_SLEEP"))
-            assertTrue(cap.note.contains("Home Assistant always wakes it"))
-            assertTrue(cap.note.contains("platform wake source"))
-            assertFalse("the keyevent route blanks no backlight", cap.note.contains("backlight-off"))
+            assertTrue(cap.note(englishCatalogue).contains("KEYCODE_SLEEP"))
+            assertTrue(cap.note(englishCatalogue).contains("Home Assistant always wakes it"))
+            assertTrue(cap.note(englishCatalogue).contains("platform wake source"))
+            assertFalse("the keyevent route blanks no backlight", cap.note(englishCatalogue).contains("backlight-off"))
         }
 
         val unprivileged = DiagReader.screenOnOffCapability(ScreenOff.KEYEVENT, su = false, daemon = false)
         assertEquals("with no privileged injector there is no real off at all", "degraded", unprivileged.status)
         assertEquals(
             "DIM ONLY — needs su or the helper daemon to inject KEYCODE_SLEEP",
-            unprivileged.note,
+            unprivileged.note(englishCatalogue),
         )
     }
 
     @Test fun screenBrightnessCallsOutReducedHardwareOnlyControl() {
         val direct = DiagReader.screenBrightnessCapability(canWrite = true, su = false, daemon = false, pkg = "test.pkg")
-        assertEquals("Screen brightness", direct.name)
+        assertEquals("Screen brightness", direct.name(englishCatalogue))
         assertEquals("ok", direct.status)
-        assertEquals("WRITE_SETTINGS granted", direct.note)
+        assertEquals("WRITE_SETTINGS granted", direct.note(englishCatalogue))
 
         val helper = DiagReader.screenBrightnessCapability(canWrite = false, su = false, daemon = true, pkg = "test.pkg")
         assertEquals("degraded", helper.status)
-        assertTrue(helper.note.contains("helper daemon"))
-        assertFalse(helper.note.contains("adb shell"))
+        assertTrue(helper.note(englishCatalogue).contains("helper daemon"))
+        assertFalse(helper.note(englishCatalogue).contains("adb shell"))
 
         val root = DiagReader.screenBrightnessCapability(canWrite = false, su = true, daemon = false, pkg = "test.pkg")
         assertEquals("degraded", root.status)
-        assertTrue(root.note.contains("via su"))
+        assertTrue(root.note(englishCatalogue).contains("via su"))
 
         val unavailable = DiagReader.screenBrightnessCapability(canWrite = false, su = false, daemon = false, pkg = "test.pkg")
         assertEquals("none", unavailable.status)
-        assertTrue(unavailable.note.contains("adb shell appops set test.pkg WRITE_SETTINGS allow"))
+        assertTrue(unavailable.note(englishCatalogue).contains("adb shell appops set test.pkg WRITE_SETTINGS allow"))
     }
 
     @Test fun rootedOrHelperBackedPanelsExplainConfiguredShizukuIsRedundant() {
@@ -250,13 +250,13 @@ class DiagCapabilityPolicyTest {
                 ShizukuState.READY,
                 ShizukuManagerIdentity.Status.TRUSTED,
                 preferredPrivilegeReady = true,
-            ).contains("adds no capability while root or the helper daemon provides the preferred route"),
+            ).render(englishCatalogue).contains("adds no capability while root or the helper daemon provides the preferred route"),
         )
         val unhealthy = DiagReader.shizukuCapabilityNote(
             ShizukuState.READY,
             ShizukuManagerIdentity.Status.UNTRUSTED,
             preferredPrivilegeReady = true,
-        )
+        ).render(englishCatalogue)
         assertTrue(unhealthy.contains("adds no capability"))
         assertTrue(unhealthy.contains("signer is not trusted"))
         assertFalse(unhealthy.contains("ready as shell UID"))
@@ -280,11 +280,11 @@ class DiagCapabilityPolicyTest {
         )
 
         assertEquals("ok", trusted.status)
-        assertTrue(trusted.note.contains("adds no capability"))
+        assertTrue(trusted.note(englishCatalogue).contains("adds no capability"))
         assertEquals("none", untrusted.status)
-        assertTrue(untrusted.note.contains("signer is not trusted"))
+        assertTrue(untrusted.note(englishCatalogue).contains("signer is not trusted"))
         assertEquals("none", stopped.status)
-        assertTrue(stopped.note.contains("service is stopped"))
+        assertTrue(stopped.note(englishCatalogue).contains("service is stopped"))
     }
 
     @Test fun genuinelyUnrootedPanelsShowShizukuOnlyWhenConfiguredOrInstalled() {
@@ -312,11 +312,11 @@ class DiagCapabilityPolicyTest {
         val disabled = DiagReader.shizukuCapabilityNote(
             ShizukuState.DISABLED,
             ShizukuManagerIdentity.Status.TRUSTED,
-        )
+        ).render(englishCatalogue)
         val stopped = DiagReader.shizukuCapabilityNote(
             ShizukuState.STOPPED,
             ShizukuManagerIdentity.Status.TRUSTED,
-        )
+        ).render(englishCatalogue)
 
         assertTrue(disabled.contains("Configure → toolbar overflow → Enhanced access → Enable"))
         assertFalse(disabled.contains("service is stopped"))

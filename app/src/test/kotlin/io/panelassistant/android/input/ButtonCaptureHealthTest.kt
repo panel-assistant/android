@@ -1,5 +1,6 @@
 package io.panelassistant.android.input
 
+import io.panelassistant.android.http.englishCatalogue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,18 +16,18 @@ class ButtonCaptureHealthTest {
         listOf(EvdevStreamSession.Mode.VERIFIED, EvdevStreamSession.Mode.RECONFIGURABLE).forEach { mode ->
             val result = ButtonCaptureHealth.evaluate(true, 1, snapshot(EvdevButtonClient.State.ACTIVE, mode), "pkg")
             assertEquals("ok", result.status)
-            assertTrue(result.note.contains("verified helper stream"))
+            assertTrue(result.note.render(englishCatalogue).contains("verified helper stream"))
         }
     }
 
     @Test fun legacyOrRetryingHelperCannotClaimProfiledButtonsAreVerified() {
         val legacy = ButtonCaptureHealth.evaluate(false, 1, snapshot(EvdevButtonClient.State.ACTIVE, EvdevStreamSession.Mode.LEGACY), "pkg")
         assertEquals("degraded", legacy.status)
-        assertTrue(legacy.note.contains("legacy helper"))
+        assertTrue(legacy.note.render(englishCatalogue).contains("legacy helper"))
 
         val retrying = ButtonCaptureHealth.evaluate(true, 1, snapshot(EvdevButtonClient.State.RETRYING, error = "helper rejected WATCH"), "pkg")
         assertEquals("degraded", retrying.status)
-        assertTrue(retrying.note.contains("helper rejected WATCH"))
+        assertTrue(retrying.note.render(englishCatalogue).contains("helper rejected WATCH"))
     }
 
     @Test fun accessibilityOnlyProfilesRetainTheirExistingTruth() {

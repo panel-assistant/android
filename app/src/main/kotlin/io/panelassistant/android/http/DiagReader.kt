@@ -10,6 +10,8 @@ import io.panelassistant.android.control.TameController
 import io.panelassistant.android.control.PrivilegedRouteObservation
 import io.panelassistant.android.control.ZigbeeHealthSnapshot
 import io.panelassistant.android.device.DeviceProfile
+import io.panelassistant.android.i18n.CatalogueText
+import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.device.LedMechanism
 import io.panelassistant.android.device.ScreenOff
 import io.panelassistant.android.hardware.NativeLed
@@ -52,8 +54,17 @@ object DiagReader {
     private const val DUMP_TIMEOUT_MS = 15_000L
     private val execLaunchGate = BoundedLaunchGate()
 
-    /** status: "ok" | "degraded" | "none" */
-    internal data class Cap(val name: String, val status: String, val note: String)
+    /**
+     * One diagnostics row. [id] names `dashboard.capability.<id>`; [status] is "ok" | "degraded" | "none".
+     * Text comes only from the catalogue: the dashboard renders it in the page language, `/status` and
+     * the report in English.
+     */
+    internal data class Cap(val id: String, val status: String, val text: CatalogueText) {
+        fun name(strings: AppStrings): String = strings.get("dashboard.capability.$id")
+        fun note(strings: AppStrings): String = text.render(strings)
+    }
+
+    private fun note(id: String, vararg values: Pair<String, Any>) = CatalogueText("dashboard.capability.note.$id", *values)
 
     /** Typed probe result shared by service facts and diagnostic presentation. */
     internal data class CapabilityObservation(
@@ -104,35 +115,45 @@ object DiagReader {
         val usesDaemon = profile.usesDaemon
         val rows = listOfNotNull(
             rootSuCapability(su, daemon),
-            if (usesDaemon) Cap("Helper daemon", if (daemon) "ok" else "none",
-                if (daemon) daemonRequirement(profile, running = true)
-                else daemonRequirement(profile, running = false))
-            else null,
+            if (usesDaemon) helperDaemonCapability(profile, daemon) else null,
             if (showShizukuCapability(ShizukuConsent.enabled(ctx), manager)) {
                 shizukuCapability(shizukuSnapshot, manager, preferredPrivilegeReady = rootish)
             } else null,
-            Cap("Verified app update / screenshot / display", if (rootish || shizuku) "ok" else "none",
-                when {
-                    rootish -> "available through root or the helper daemon"
-                    shizuku -> "available through locally approved Shizuku access; app updates remain signer-verified"
-                    else -> "needs supported privileged panel access"
-                }),
+            verifiedOperationsCapability(rootish, shizuku),
             screenBrightnessCapability(canWrite, su, daemon, pkg),
             screenOnOffCapability(profile.screenOff, su, daemon),
-            if (showLed) Cap("RGB LED", if (rkLed || daemonLed) "ok" else "none",
-                when {
-                    rkLed -> "Rockchip /dev/ledjni (app-direct, no root)"
-                    ledProbe == "ledjni" -> "Rockchip /dev/ledjni ioctl via the helper daemon (root)"
-                    ledProbe == "sysfs" || daemonLed -> "sysfs LED via the helper daemon"
-                    else -> "no reachable LED node; needs the root helper daemon (install needs su once)"
-                })
-            else null,
-            buttonHealth?.let { Cap("Hardware buttons", it.status, it.note) },
-            Cap("Reboot / reload / launcher", if (rootish) "ok" else "none",
-                if (rootish) "available" else "needs su or the helper daemon"),
+            if (showLed) rgbLedCapability(rkLed, ledProbe, daemonLed) else null,
+            buttonHealth?.let(::hardwareButtonsCapability),
+            systemActionsCapability(rootish),
         )
         return CapabilityObservation(rows = rows, rgbLedReady = rkLed || daemonLed)
     }
+
+    internal fun helperDaemonCapability(profile: DeviceProfile, daemon: Boolean): Cap =
+        Cap("helper_daemon", if (daemon) "ok" else "none", daemonRequirement(profile, running = daemon))
+
+    internal fun verifiedOperationsCapability(rootish: Boolean, shizuku: Boolean): Cap =
+        Cap("verified_operations", if (rootish || shizuku) "ok" else "none",
+            when {
+                rootish -> note("root_or_helper")
+                shizuku -> note("shizuku_verified")
+                else -> note("needs_privileged_access")
+            })
+
+    internal fun rgbLedCapability(rkLed: Boolean, ledProbe: String?, daemonLed: Boolean): Cap =
+        Cap("rgb_led", if (rkLed || daemonLed) "ok" else "none",
+            when {
+                rkLed -> note("rockchip_led_direct")
+                ledProbe == "ledjni" -> note("rockchip_led_helper")
+                ledProbe == "sysfs" || daemonLed -> note("sysfs_led_helper")
+                else -> note("led_unreachable")
+            })
+
+    internal fun hardwareButtonsCapability(health: ButtonCaptureHealth.Result): Cap =
+        Cap("hardware_buttons", health.status, health.note)
+
+    internal fun systemActionsCapability(rootish: Boolean): Cap =
+        Cap("system_actions", if (rootish) "ok" else "none", note(if (rootish) "available" else "needs_su_or_helper"))
 
     /**
      * Exact profiles use [LedMechanism.NONE] as an authoritative declaration that no supported RGB LED
@@ -155,29 +176,31 @@ object DiagReader {
      * below remain the authority for whether each action is actually available.
      */
     internal fun rootSuCapability(su: Boolean, daemon: Boolean): Cap = Cap(
-        name = "Root (su)",
+        id = "root_su",
         status = when {
             su -> "ok"
             daemon -> "degraded"
             else -> "none"
         },
-        note = when {
-            su -> "available directly to ha-paneld"
-            daemon -> "not available directly to ha-paneld — privileged actions are routed through the helper daemon"
-            else -> "not available directly to ha-paneld — see the individual capability rows below"
-        },
+        text = note(
+            when {
+                su -> "su_direct"
+                daemon -> "helper_routed"
+                else -> "su_unavailable"
+            },
+        ),
     )
 
     /** The hardware route can adjust the backlight without WRITE_SETTINGS, but cannot update Android's
      * logical brightness value. Present that as reduced, rather than unavailable, when it is usable. */
     internal fun screenBrightnessCapability(canWrite: Boolean, su: Boolean, daemon: Boolean, pkg: String): Cap = when {
-        canWrite -> Cap("Screen brightness", "ok", "WRITE_SETTINGS granted")
-        daemon -> Cap("Screen brightness", "degraded", "backlight control via helper daemon; Android setting is unchanged")
-        su -> Cap("Screen brightness", "degraded", "backlight control via su; Android setting is unchanged")
+        canWrite -> Cap("screen_brightness", "ok", note("write_settings_granted"))
+        daemon -> Cap("screen_brightness", "degraded", note("brightness_helper"))
+        su -> Cap("screen_brightness", "degraded", note("brightness_su"))
         else -> Cap(
-            "Screen brightness",
+            "screen_brightness",
             "none",
-            "needs WRITE_SETTINGS: adb shell appops set $pkg WRITE_SETTINGS allow",
+            note("needs_write_settings", "command" to "adb shell appops set $pkg WRITE_SETTINGS allow"),
         )
     }
 
@@ -193,26 +216,17 @@ object DiagReader {
      * genuinely different. That difference is the part worth stating on a panel's own diagnostics.
      */
     internal fun screenOnOffCapability(route: ScreenOff, su: Boolean, daemon: Boolean): Cap {
-        val dimOnly = { why: String -> Cap("Screen on/off", "degraded", "DIM ONLY — $why") }
+        val dimOnly = { why: String -> Cap("screen_power", "degraded", note("dim_only", "reason" to note(why))) }
+        val blPower = { viaSu: Boolean -> Cap("screen_power", "ok", note(if (viaSu) "backlight_off_su" else "backlight_off_helper")) }
         return when (route) {
             ScreenOff.KEYEVENT ->
-                if (daemon || su) Cap("Screen on/off", "ok",
-                    "Android sleep via KEYCODE_SLEEP; Home Assistant always wakes it, a local touch only where this panel's touchscreen is a platform wake source")
-                else dimOnly("needs su or the helper daemon to inject KEYCODE_SLEEP")
+                if (daemon || su) Cap("screen_power", "ok", note("android_sleep"))
+                else dimOnly("dim_keycode_sleep")
             // Not a privilege problem, so do not offer su or the helper as the remedy: this panel's
             // profile selects brightness zero, and only a different profile route changes it.
-            ScreenOff.BRIGHTNESS_ZERO ->
-                dimOnly("this panel's profile selects the brightness-zero route, which never powers the backlight down")
-            ScreenOff.SU_BLPOWER -> when {
-                su -> Cap("Screen on/off", "ok", "true backlight-off via su bl_power")
-                daemon -> Cap("Screen on/off", "ok", "true backlight-off via the helper daemon")
-                else -> dimOnly("the backlight stays powered; needs su or the helper daemon for a real off")
-            }
-            ScreenOff.DAEMON_BLPOWER -> when {
-                daemon -> Cap("Screen on/off", "ok", "true backlight-off via the helper daemon")
-                su -> Cap("Screen on/off", "ok", "true backlight-off via su bl_power")
-                else -> dimOnly("the backlight stays powered; needs su or the helper daemon for a real off")
-            }
+            ScreenOff.BRIGHTNESS_ZERO -> dimOnly("dim_brightness_zero")
+            ScreenOff.SU_BLPOWER -> if (su || daemon) blPower(su) else dimOnly("dim_backlight_powered")
+            ScreenOff.DAEMON_BLPOWER -> if (su || daemon) blPower(!daemon) else dimOnly("dim_backlight_powered")
         }
     }
 
@@ -226,50 +240,43 @@ object DiagReader {
         manager: ShizukuManagerIdentity.Status,
         preferredPrivilegeReady: Boolean = false,
     ): Cap = Cap(
-        name = "Shizuku enhanced access",
+        id = "shizuku",
         status = if (snapshot.ready && manager == ShizukuManagerIdentity.Status.TRUSTED) "ok" else "none",
-        note = shizukuCapabilityNote(snapshot.state, manager, preferredPrivilegeReady),
+        text = shizukuCapabilityNote(snapshot.state, manager, preferredPrivilegeReady),
     )
 
     internal fun shizukuCapabilityNote(
         state: ShizukuState,
         manager: ShizukuManagerIdentity.Status,
         preferredPrivilegeReady: Boolean = false,
-    ): String {
-        val stateNote = when {
-            manager == ShizukuManagerIdentity.Status.UNTRUSTED ->
-                "blocked: installed manager signer is not trusted"
-            manager == ShizukuManagerIdentity.Status.MISSING ->
-                "manager missing; re-run provisioning with --shizuku"
-            state == ShizukuState.READY -> "ready as shell UID; local typed operations only"
-            state == ShizukuState.DISABLED ->
-                "disabled in ha-paneld; on the panel open Configure → toolbar overflow → Enhanced access → Enable"
-            state == ShizukuState.STOPPED ->
-                "enabled in ha-paneld, but the Shizuku service is stopped; open Shizuku and start its service"
-            state == ShizukuState.PERMISSION_REQUIRED ->
-                "service running; request and approve ha-paneld access locally"
-            state == ShizukuState.MANUAL_GRANT_REQUIRED ->
-                "access denied; grant ha-paneld under Shizuku → Authorized applications"
-            state == ShizukuState.BINDING -> "connecting to the locally approved Shizuku service"
-            state == ShizukuState.INCOMPATIBLE -> "blocked: unexpected Shizuku service identity or protocol"
-            else -> "Shizuku could not be connected; retry from the on-panel Enhanced access dialog"
-        }
-        return if (preferredPrivilegeReady) {
-            "adds no capability while root or the helper daemon provides the preferred route; $stateNote"
-        } else {
-            stateNote
-        }
+    ): CatalogueText {
+        val stateNote = note(
+            when {
+                manager == ShizukuManagerIdentity.Status.UNTRUSTED -> "shizuku_untrusted"
+                manager == ShizukuManagerIdentity.Status.MISSING -> "shizuku_missing"
+                state == ShizukuState.READY -> "shizuku_ready"
+                state == ShizukuState.DISABLED -> "shizuku_disabled"
+                state == ShizukuState.STOPPED -> "shizuku_stopped"
+                state == ShizukuState.PERMISSION_REQUIRED -> "shizuku_permission"
+                state == ShizukuState.MANUAL_GRANT_REQUIRED -> "shizuku_grant"
+                state == ShizukuState.BINDING -> "shizuku_connecting"
+                state == ShizukuState.INCOMPATIBLE -> "shizuku_incompatible"
+                else -> "shizuku_failed"
+            },
+        )
+        return if (preferredPrivilegeReady) note("preferred_route_prefix").then(stateNote) else stateNote
     }
 
-    private fun daemonRequirement(profile: DeviceProfile, running: Boolean): String {
-        val state = if (running) "running" else "NEEDED but not running"
-        return when {
-            !profile.appCanSu -> "$state — the privileged control path on this sandbox-walled panel; without it, root-only controls remain unavailable"
-            profile.evdevButtons.isNotEmpty() -> "$state — required for ${profile.evdevButtons.size} profiled physical button(s), even though ordinary privileged actions can use su"
-            profile.hasButtonBacklight -> "$state — required for the profiled button backlight"
-            else -> "$state — required for this profile's daemon-backed hardware"
-        }
-    }
+    private fun daemonRequirement(profile: DeviceProfile, running: Boolean): CatalogueText = note(
+        "daemon_state",
+        "state" to note(if (running) "daemon_running" else "daemon_needed"),
+        "detail" to when {
+            !profile.appCanSu -> note("daemon_sandbox_path")
+            profile.evdevButtons.isNotEmpty() -> note("daemon_buttons", "count" to profile.evdevButtons.size)
+            profile.hasButtonBacklight -> note("daemon_button_backlight")
+            else -> note("daemon_hardware")
+        },
+    )
 
     /**
      * Terse, version-stamped copy-paste report for GitHub issues. The `[panel]` block reuses the EXACT
@@ -285,6 +292,7 @@ object DiagReader {
         zigbee: ZigbeeHealthSnapshot? = null,
         privilege: PrivilegedRouteObservation,
         capabilityRows: List<Cap>,
+        english: AppStrings,
         displaySizing: DisplaySizingEvidence? = null,
         storage: StorageHealthSnapshot = StorageHealthSnapshot.UNCHECKED,
         powerSafety: io.panelassistant.android.control.PowerSafetyAssessment? = null,
@@ -383,7 +391,7 @@ object DiagReader {
         if (tameCandidates.isNotEmpty()) {
             appendLine(vendorTameSummary(TameController(ctx).profileReport(tameCandidates)))
         }
-        appendLine("[capabilities] " + capabilityRows.joinToString(" | ") { "${it.name}=${it.status}" })
+        appendLine("[capabilities] " + capabilityRows.joinToString(" | ") { "${it.name(english)}=${it.status}" })
         val updates = UpdateChecker.current(ctx)   // revalidated: no stale entry for an uninstalled Companion
         if (updates.isNotEmpty()) {
             appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.displayedCurrentVersion} → ${it.latestVersion}" })

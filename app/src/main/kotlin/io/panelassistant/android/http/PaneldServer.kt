@@ -11,6 +11,7 @@ import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.backup.PanelBackup
 import io.panelassistant.android.config.SettingValue
 import io.panelassistant.android.config.SettingsRegistry
+import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.i18n.CatalogueLoader
 import io.panelassistant.android.i18n.Strings as AppStrings
 import io.panelassistant.android.camera.AbsentCameraSurface
@@ -675,6 +676,7 @@ class PaneldServer internal constructor(
                 val proof = system.homeUiProof(config.dashboardPackage, KioskAdminUi.isVisible())
                 homeUiProofJson(proof.state, proof.reason, proof.evidence)
             }) else null,
+            english = catalogueLoader.strings(AppLocale.ENGLISH),
         )
     }
 
@@ -696,6 +698,7 @@ class PaneldServer internal constructor(
             managementDiagnosticReport(
                 appContext, profile, management, radioStatus(), storageHealth(), powerSafety(),
                 rendererAdmission(appContext, config, autoBrightnessHttpApi), camera.presentation(), termux,
+                catalogueLoader.strings(AppLocale.ENGLISH),
             )
         },
         scope = scope,

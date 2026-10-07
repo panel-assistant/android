@@ -1,10 +1,14 @@
 package io.panelassistant.android.input
 
 import io.panelassistant.android.AppIdentity
+import io.panelassistant.android.i18n.CatalogueText
 
 /** Pure diagnostic projection for the independent Accessibility and helper-evdev capture sources. */
 internal object ButtonCaptureHealth {
-    data class Result(val status: String, val note: String)
+    data class Result(val status: String, val note: CatalogueText)
+
+    private fun note(id: String, vararg values: Pair<String, Any>) =
+        CatalogueText("dashboard.capability.note.$id", *values)
 
     fun evaluate(
         accessibility: Boolean,
@@ -23,15 +27,18 @@ internal object ButtonCaptureHealth {
             evdev.lastError != null -> "helper stream ${evdev.state.name.lowercase()}: ${evdev.lastError}"
             else -> "helper stream ${evdev.state.name.lowercase()}"
         }
+        val count = "count" to evdevButtonCount
         return when {
-            evdevButtonCount > 0 && verified && accessibility -> Result("ok", "accessibility key capture plus $evdevButtonCount profiled physical button(s) on a verified helper stream")
-            evdevButtonCount > 0 && verified -> Result("ok", "$evdevButtonCount profiled physical button(s) on a verified helper stream")
-            evdevButtonCount > 0 && streamActive && accessibility -> Result("degraded", "accessibility key capture plus $evdevButtonCount profiled physical button(s) on an unverified stream ($detail)")
-            evdevButtonCount > 0 && streamActive -> Result("degraded", "$evdevButtonCount profiled physical button(s) are streaming but unverified ($detail)")
-            evdevButtonCount > 0 && accessibility -> Result("degraded", "accessibility key capture works; $evdevButtonCount profiled physical button(s) are not verified ($detail)")
-            evdevButtonCount > 0 -> Result("none", "$evdevButtonCount profiled physical button(s) are not verified ($detail)")
-            accessibility -> Result("ok", "accessibility key capture enabled")
-            else -> Result("none", "enable (no root): adb shell settings put secure enabled_accessibility_services ${AppIdentity.component(packageName, ".input.PanelAccessibilityService")} && adb shell settings put secure accessibility_enabled 1")
+            evdevButtonCount > 0 && verified && accessibility -> Result("ok", note("buttons_accessibility_verified", count))
+            evdevButtonCount > 0 && verified -> Result("ok", note("buttons_verified", count))
+            evdevButtonCount > 0 && streamActive && accessibility ->
+                Result("degraded", note("buttons_accessibility_unverified_stream", count, "detail" to detail))
+            evdevButtonCount > 0 && streamActive -> Result("degraded", note("buttons_unverified_stream", count, "detail" to detail))
+            evdevButtonCount > 0 && accessibility ->
+                Result("degraded", note("buttons_accessibility_not_verified", count, "detail" to detail))
+            evdevButtonCount > 0 -> Result("none", note("buttons_not_verified", count, "detail" to detail))
+            accessibility -> Result("ok", note("buttons_accessibility"))
+            else -> Result("none", note("buttons_enable_no_root", "command" to "adb shell settings put secure enabled_accessibility_services ${AppIdentity.component(packageName, ".input.PanelAccessibilityService")} && adb shell settings put secure accessibility_enabled 1"))
         }
     }
 }
