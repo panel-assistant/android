@@ -393,7 +393,9 @@ export function verdict(result, english, view, locale, scale = 1) {
       add('d card growth', { key, text: `${base.height}px → ${card.height}px (+${Math.round((card.height / base.height - 1) * 100)}%; ${locale} scale ${scale}, limit +${Math.round((expected - 1) * 100)}%)` }, !panel && blocking);
     }
   }
-  if (result.maxCls != null && result.cls > result.maxCls) errors.push(`(e layout shift) page [CLS ${result.cls.toFixed(4)} > ${result.maxCls}]`);
+  // Measured on direct views only, as the per-page gates this replaced did: an embedded view's shift also
+  // carries the host frame's own load, which is not the page's.
+  if (result.maxCls != null && !view.host && result.cls > result.maxCls) errors.push(`(e layout shift) page [CLS ${result.cls.toFixed(4)} > ${result.maxCls}]`);
   // A fetch the previous navigation left in flight is cancelled, not a page failure.
   for (const message of result.errors) if (!CANCELLED_FETCH.test(message)) errors.push(`(script) ${message}`);
   if (result.lang !== locale) errors.push(`(frame) document language ${result.lang} is not ${locale}`);
