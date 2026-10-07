@@ -100,10 +100,14 @@ class VoiceAssistantCoordinatorTest {
     private val runners = CopyOnWriteArrayList<ScriptedRunner>()
     private val played = CopyOnWriteArrayList<String>()
     private val pausedWhilePlaying = CopyOnWriteArrayList<Boolean>()
-    private val playback = AssistPlayback { url ->
-        played += url
-        mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
-        state.set(VoiceState.RESPONDING)
+    private val playback = object : AssistPlayback {
+        override suspend fun play(url: String) {
+            played += url
+            mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
+            state.set(VoiceState.RESPONDING)
+        }
+
+        override suspend fun playStream(eventAtNs: Long) = play("stream@$eventAtNs")
     }
 
     /** Each cue's wake word, with the phase the panel was in when it was cued. */
@@ -852,6 +856,21 @@ class VoiceAssistantCoordinatorTest {
         assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
         assertFalse(mic.leases[0].paused)
         assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `a streamed announcement plays the stream alone with the listener paused, reports it played, then listens`() {
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true, done = { done.complete(Unit) }, streamAtNs = 42L))
+        val runner = awaitRunner(0)
+        assertTrue(done.isCompleted)
+        assertEquals("the stream carries chime and speech; neither URL is fetched", listOf("stream@42"), played)
+        assertEquals("the panel must not hear itself", listOf(true), pausedWhilePlaying)
+        assertEquals(VoiceTurnRequest(null), runner.requests.single())
+        runner.release.complete(AssistOutcome())
+        awaitState(VoiceState.IDLE)
     }
 
     @Test

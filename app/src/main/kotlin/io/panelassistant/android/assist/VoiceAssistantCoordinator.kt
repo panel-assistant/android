@@ -129,6 +129,11 @@ internal data class VoiceAnnouncement(
     val preannounceUrl: String?,
     /** Listen for an answer afterwards, as for `start_conversation`. */
     val listenAfter: Boolean,
+    /**
+     * When the event arrived if Panel Assistant streams the announcement, chime and speech together;
+     * null plays [preannounceUrl] and [url] as before.
+     */
+    val streamAtNs: Long? = null,
     /** Called once the announcement has played, or could not be. */
     val done: () -> Unit,
 )
@@ -419,8 +424,13 @@ class VoiceAssistantCoordinator internal constructor(
                     if (announcement != null) {
                         state.set(VoiceState.RESPONDING)
                         val played = runCatching {
-                            announcement.preannounceUrl?.let { playback.play(it) }
-                            playback.play(announcement.url)
+                            val streamAt = announcement.streamAtNs
+                            if (streamAt != null) {
+                                playback.playStream(streamAt)
+                            } else {
+                                announcement.preannounceUrl?.let { playback.play(it) }
+                                playback.play(announcement.url)
+                            }
                         }
                         announcement.done()
                         played.exceptionOrNull()?.let { if (it is CancellationException) throw it }

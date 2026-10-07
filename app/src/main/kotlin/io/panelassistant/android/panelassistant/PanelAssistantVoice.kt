@@ -54,6 +54,11 @@ internal data class PanelAssistantAnnouncement(
     val url: String,
     val preannounceUrl: String?,
     val listenAfter: Boolean,
+    /**
+     * When the event arrived (`System.nanoTime()` base) if Panel Assistant streams the audio (`stream:
+     * true`); null for the URL path. A streamed announcement plays the voice stream, not [url].
+     */
+    val streamAtNs: Long? = null,
 )
 
 /** What Home Assistant says during one conversation turn. */
@@ -61,7 +66,8 @@ internal sealed interface VoiceTurnEvent {
     /** Stop streaming: speech-to-text has heard the end of the command. */
     data object ListenEnd : VoiceTurnEvent
 
-    data class Play(val url: String, val continueConversation: Boolean) : VoiceTurnEvent
+    /** [streamAtNs] as on [PanelAssistantAnnouncement]: non-null when the reply arrives on the voice stream. */
+    data class Play(val url: String, val continueConversation: Boolean, val streamAtNs: Long? = null) : VoiceTurnEvent
 
     data class Failed(val code: String) : VoiceTurnEvent
 
@@ -85,6 +91,7 @@ internal class PanelAssistantVoice(
     private val log: (String) -> Unit = {},
     /** Home Assistant's colour for each wake word's pipeline, as opaque ARGB; the same on every panel. */
     private val onColors: (Map<String, Int>) -> Unit = {},
+    private val nanoTime: () -> Long = System::nanoTime,
 ) {
     /** Signalled whenever a request is waiting for the session loop. */
     val wake = Channel<Unit>(Channel.CONFLATED)
@@ -270,8 +277,12 @@ internal class PanelAssistantVoice(
             url = resolve(url),
             preannounceUrl = (event.opt("preannounce_url") as? String)?.takeIf { it.isNotBlank() }?.let(::resolve),
             listenAfter = event.opt("listen_after") == true,
+            streamAtNs = streamAt(event),
         )
     }
+
+    /** The arrival time of an event Panel Assistant streams (`stream: true`), or null for the URL path. */
+    private fun streamAt(event: JSONObject): Long? = if (event.opt("stream") == true) nanoTime() else null
 
     private fun colors(map: JSONObject?): Map<String, Int> {
         map ?: return emptyMap()
@@ -287,7 +298,7 @@ internal class PanelAssistantVoice(
     private fun turnEvent(event: JSONObject?): VoiceTurnEvent? = when (event?.optString("kind")) {
         "listen_end" -> VoiceTurnEvent.ListenEnd
         "play" -> (event.opt("url") as? String)?.takeIf { it.isNotBlank() }?.let { url ->
-            VoiceTurnEvent.Play(resolve(url), event.opt("continue_conversation") == true)
+            VoiceTurnEvent.Play(resolve(url), event.opt("continue_conversation") == true, streamAt(event))
         }
         "error" -> VoiceTurnEvent.Failed((event.opt("code") as? String).orEmpty().ifEmpty { "error" })
         "end" -> VoiceTurnEvent.End

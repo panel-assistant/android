@@ -1,0 +1,115 @@
+package io.panelassistant.android.media
+
+import io.panelassistant.android.AudioPlayer
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+
+/**
+ * A streamed announcement as the announcement lane runs it: the production run factory and the real
+ * stream claims, with the test standing in for the voice player (it says when streams start and end).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class StreamedSpeechPlaybackTest {
+    @get:Rule val temp = TemporaryFolder()
+
+    private var nowNs = 100 * SECOND
+
+    private fun TestScope.lane(): Pair<AudioPlaybackCoordinator, VoiceStreamClaims> {
+        val claims = VoiceStreamClaims(nanoTime = { nowNs })
+        val coordinator = AudioPlaybackCoordinator(
+            AudioPlayer.factory(temp.newFolder(), claims),
+            StandardTestDispatcher(testScheduler),
+        )
+        return coordinator to claims
+    }
+
+    @Test fun aStreamThatStartedJustBeforeTheEventIsClaimedAndTheRunCompletesWhenItHasPlayedOut() = runTest {
+        val (coordinator, claims) = lane()
+        val stream = claims.started()
+        nowNs += 2 * SECOND
+        val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.State.ACTIVE, coordinator.snapshot().state)
+        claims.ended(stream)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, generation), coordinator.snapshot())
+        assertFalse(claims.dropped(stream))
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun anOlderStreamIsNotTheEventsAndTheRunWaitsForTheNextOne() = runTest {
+        val (coordinator, claims) = lane()
+        val old = claims.started()
+        nowNs += 2 * SECOND + 1
+        coordinator.submitStreamForGeneration(nowNs)
+        runCurrent()
+        claims.ended(old)
+        runCurrent()
+        assertEquals("an older stream ending does not finish this announcement", AudioPlaybackCoordinator.State.ACTIVE, coordinator.snapshot().state)
+        val next = claims.started()
+        runCurrent()
+        claims.ended(next)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.State.IDLE, coordinator.snapshot().state)
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun cancellingTheAnnouncementDropsItsStream() = runTest {
+        val (coordinator, claims) = lane()
+        val generation = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
+        runCurrent()
+        val stream = claims.started()
+        runCurrent()
+        assertFalse(claims.dropped(stream))
+        assertTrue(coordinator.cancelGeneration(generation))
+        runCurrent()
+        assertTrue("the player discards the rest of a cancelled announcement", claims.dropped(stream))
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun aNewerAnnouncementPreemptsTheStreamAndClaimsTheNextOne() = runTest {
+        val (coordinator, claims) = lane()
+        coordinator.submitStreamForGeneration(nowNs)
+        runCurrent()
+        val first = claims.started()
+        runCurrent()
+        nowNs += 3 * SECOND
+        val newer = requireNotNull(coordinator.submitStreamForGeneration(nowNs))
+        runCurrent()
+        assertTrue(claims.dropped(first))
+        val second = claims.started()
+        runCurrent()
+        assertFalse(claims.dropped(second))
+        claims.ended(first)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.State.ACTIVE, coordinator.snapshot().state)
+        claims.ended(second)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.Snapshot(AudioPlaybackCoordinator.State.IDLE, newer), coordinator.snapshot())
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    @Test fun aStreamThatNeverStartsFailsTheAnnouncement() = runTest {
+        val (coordinator, _) = lane()
+        coordinator.submitStreamForGeneration(nowNs)
+        runCurrent()
+        advanceTimeBy(10_001L)
+        runCurrent()
+        assertEquals(AudioPlaybackCoordinator.State.FAILED, coordinator.snapshot().state)
+        assertTrue(coordinator.close(1_000L))
+    }
+
+    private companion object {
+        const val SECOND = 1_000_000_000L
+    }
+}

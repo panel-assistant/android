@@ -20,13 +20,14 @@ class PanelMediaPlayerTest {
     private class Harness(duration: Int = 120_000) {
         val streams = mutableListOf<FakeStream>()
         val announced = mutableListOf<String>()
+        val streamed = mutableListOf<Boolean>()
         var cancelled = 0
         var muted = false
         var changes = 0
         val player = PanelMediaPlayer(
             streams = { url, prepared, ended -> FakeStream(url, prepared, ended).also { it.durationMs = duration; streams += it } },
             post = { it() },
-            announce = { url -> announced += url; true },
+            announce = { url, stream -> announced += url; streamed += stream; true },
             cancelAnnouncement = { cancelled++ },
             muted = { muted },
             setMuted = { muted = it },
@@ -144,6 +145,21 @@ class PanelMediaPlayerTest {
         assertTrue(h.changes > before)
         h.player.command(PanelMediaCommand.Mute(false))
         assertFalse(h.muted)
+    }
+
+    @Test fun aStreamedAnnouncementParsesOnlyWithAnnounceAndReachesTheLaneAsStreamed() {
+        fun parse(json: String) = PanelMediaCommand.parse(JSONObject(json))
+        val streamed = parse("""{"action":"play","url":"$url","announce":true,"stream":true}""")
+        assertEquals(PanelMediaCommand.Play(url, announce = true, stream = true), streamed)
+        assertEquals(PanelMediaCommand.Play(url, true, false), parse("""{"action":"play","url":"$url","announce":true,"stream":false}"""))
+        assertEquals("stream without announce is plain media", PanelMediaCommand.Play(url, false, false), parse("""{"action":"play","url":"$url","stream":true}"""))
+        assertNull(parse("""{"action":"play","url":"$url","announce":true,"stream":"yes"}"""))
+
+        val h = Harness()
+        assertTrue(h.player.command(streamed!!))
+        assertTrue(h.player.command(PanelMediaCommand.Play(url, announce = true)))
+        assertEquals(listOf(true, false), h.streamed)
+        assertTrue("a streamed announcement opens no media stream", h.streams.isEmpty())
     }
 
     @Test fun commandsParseExactlyTheSection18Shapes() {

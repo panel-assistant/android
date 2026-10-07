@@ -46,6 +46,18 @@ internal interface PanelAssistantTransportConnection {
     suspend fun sendBinary(bytes: ByteArray): Unit = throw UnsupportedOperationException("binary frames")
 }
 
+/** The panel's synchronised voice player, which Panel Assistant streams to over Sendspin. */
+internal interface PanelAssistantVoiceStreamPeer {
+    /** The panel's Sendspin client id (its persisted public key), or null when the player cannot run here. */
+    fun clientId(): String?
+
+    /** Connect to the granted stream at [url] for the session that granted it. */
+    fun open(url: String, grant: PanelAssistantVoiceStreamGrant)
+
+    /** The session that opened the stream ended. */
+    fun close()
+}
+
 internal fun interface PanelAssistantTransportConnector {
     /** Opens and authenticates; throws [HaAuthenticationException] when Home Assistant rejects the token. */
     suspend fun connect(baseUrl: String, accessToken: String): PanelAssistantTransportConnection
@@ -194,6 +206,8 @@ internal class PanelAssistantTransportOwner(
     private val embedKeys: io.panelassistant.android.http.EmbedProofKeyring? = null,
     /** The Assist satellite; null, or one reporting no configuration, offers no `voice`. */
     private val voice: PanelAssistantVoice? = null,
+    /** The synchronised voice player; null, or one with no client id, offers no `voice_stream`. */
+    private val voiceStream: PanelAssistantVoiceStreamPeer? = null,
     /** Fresh interface addresses for each hello; independent of demand identity. */
     private val addresses: () -> List<String> = { emptyList() },
     private val onConnection: (io.panelassistant.android.sensors.HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
@@ -352,6 +366,10 @@ internal class PanelAssistantTransportOwner(
                         val opened = connector.connect(session.baseUrl, token)
                         connection = opened
                         publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.HANDSHAKING, attempt))
+                        // The stream has no TLS transport yet: only a plain http session offers it.
+                        val streamClientId = voiceStream
+                            ?.takeIf { session.baseUrl.trim().startsWith("http://", ignoreCase = true) }
+                            ?.clientId()
                         val offered = PanelAssistantTransportProtocol.CAPABILITIES.filter { capability ->
                             when (capability) {
                                 PanelAssistantTransportProtocol.CAPABILITY_STATE -> shadow != null
@@ -361,12 +379,13 @@ internal class PanelAssistantTransportOwner(
                                 PanelAssistantTransportProtocol.CAPABILITY_EMBED_PROOF -> embedKeys != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE -> voice?.offered() == true
                                 PanelAssistantTransportProtocol.CAPABILITY_MEDIA -> shadow != null
+                                PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM -> streamClientId != null
                                 else -> commands != null
                             }
                         }
                         val offer = shadow?.offer()
                         val described = offer?.descriptors.orEmpty()
-                        when (val outcome = handshake(opened, demand.identity, offered, described, offer?.unsupported.orEmpty())) {
+                        when (val outcome = handshake(opened, demand.identity, offered, described, offer?.unsupported.orEmpty(), streamClientId)) {
                             is PanelAssistantHelloOutcome.Accepted -> {
                                 shadow?.granted(outcome.session.capabilities)
                                 if (generation.get() != run || !onConnection(session, outcome.session)) {
@@ -417,7 +436,13 @@ internal class PanelAssistantTransportOwner(
                                 val speaking = voice?.takeIf {
                                     PanelAssistantTransportProtocol.CAPABILITY_VOICE in outcome.session.capabilities
                                 }
+                                val streamGrant = outcome.session.voiceStream
+                                val streamUrl = streamGrant?.url(session.baseUrl)
+                                val streaming = voiceStream?.takeIf { streamUrl != null }
                                 val reason = try {
+                                    if (streaming != null && streamGrant != null && streamUrl != null) {
+                                        streaming.open(streamUrl, streamGrant)
+                                    }
                                     if (reporting != null && !observeForHello()) {
                                         throw PanelAssistantProtocolException("panel state owner changed during hello")
                                     }
@@ -427,6 +452,7 @@ internal class PanelAssistantTransportOwner(
                                 } finally {
                                     publish(run, PanelAssistantTransportStatus(PanelAssistantTransportPhase.WAITING, attempt))
                                     speaking?.close()
+                                    streaming?.close()
                                     // The key belongs to this session: once it ends no proof verifies.
                                     if (embed != null) embedKeys?.clear(embed.keyId)
                                     commanding?.close()
@@ -538,6 +564,7 @@ internal class PanelAssistantTransportOwner(
         offered: List<String>,
         described: List<PanelAssistantChannelDescriptor>,
         unsupported: List<String>,
+        voiceStreamClientId: String?,
     ): PanelAssistantHelloOutcome {
         val currentAddresses = try {
             addresses()
@@ -547,7 +574,7 @@ internal class PanelAssistantTransportOwner(
             emptyList()
         }
         connection.send(PanelAssistantTransportProtocol.hello(
-            HELLO_ID, identity, offered, described, unsupported, currentAddresses,
+            HELLO_ID, identity, offered, described, unsupported, currentAddresses, voiceStreamClientId,
         ))
         val deadline = monotonicMillis() + helloTimeoutMs
         while (true) {
