@@ -71,8 +71,7 @@ internal class SatelliteTurnRunner(
                             listenDeadline = null
                             continueConversation = event.continueConversation
                             try {
-                                val stream = event.stream
-                                if (stream != null) playback.playStream(stream, listOf(event.url)) else playback.play(event.url)
+                                playback.play(event.url)
                             } catch (failed: AssistPlaybackException) {
                                 error = AssistError(failed.code, failed.message.orEmpty())
                             }

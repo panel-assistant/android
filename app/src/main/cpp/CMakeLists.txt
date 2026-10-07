@@ -13,6 +13,3 @@ target_link_libraries(hapaneld_led ${log-lib})
 # built here. Its vendored TFLite Micro sources took minutes to compile per ABI and rarely change, so the
 # stripped library is committed under app/src/main/jniLibs/ and rebuilt with
 # tools/wakeword/build-prebuilt.sh, which records and verifies it against these sources.
-
-# libhapaneld_sendspin.so, the Sendspin synchronised-audio player; see sendspin/CMakeLists.txt.
-add_subdirectory(sendspin)

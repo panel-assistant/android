@@ -23,10 +23,6 @@ internal interface AudioPlaybackRun {
 internal fun interface AudioPlaybackRunFactory {
     fun create(url: String): AudioPlaybackRun
     fun createSpeech(url: String): AudioPlaybackRun = create(url)
-
-    /** Speech Panel Assistant streams, the stream [cue] names ([VoiceStreamClaims]). */
-    fun createStream(cue: StreamCue, fallbackUrls: List<String> = emptyList()): AudioPlaybackRun =
-        throw UnsupportedOperationException("this panel has no voice stream")
 }
 
 /** Owns one latest-wins announcement lane for the service lifetime. */
@@ -56,13 +52,7 @@ internal class AudioPlaybackCoordinator(
         }
     }
 
-    private data class Request(
-        val generation: Long,
-        val url: String,
-        val speech: Boolean,
-        val stream: StreamCue? = null,
-        val fallbackUrls: List<String> = emptyList(),
-    )
+    private data class Request(val generation: Long, val url: String, val speech: Boolean)
     private class Active(val generation: Long, val run: AudioPlaybackRun, val job: Job) {
         private val cancelled = AtomicBoolean(false)
         fun cancel() {
@@ -99,20 +89,9 @@ internal class AudioPlaybackCoordinator(
      * later announcement's generation and leave the caller watching work that is not its own.
      */
     @Synchronized
-    fun submitForGeneration(url: String, speech: Boolean = false): Long? = admit(url, speech, null)
-
-    /**
-     * As [submitForGeneration], for speech Panel Assistant streams: the run plays the voice stream [cue]
-     * names and completes when that stream has played out. It takes
-     * the lane like any announcement, so a newer request replaces it and cancelling it drops its audio.
-     */
-    @Synchronized
-    fun submitStreamForGeneration(cue: StreamCue, fallbackUrls: List<String> = emptyList()): Long? =
-        admit("", true, cue, fallbackUrls)
-
-    private fun admit(url: String, speech: Boolean, stream: StreamCue?, fallbackUrls: List<String> = emptyList()): Long? {
+    fun submitForGeneration(url: String, speech: Boolean = false): Long? {
         if (closed) return null
-        val request = Request(++generation, url, speech, stream, fallbackUrls)
+        val request = Request(++generation, url, speech)
         snapshot = Snapshot(State.QUEUED, request.generation)
         if (requests.trySend(request).isSuccess) return request.generation
         closed = true
@@ -186,11 +165,7 @@ internal class AudioPlaybackCoordinator(
                 if (!isPending(request.generation)) continue
 
                 val run = try {
-                    when {
-                        request.stream != null -> factory.createStream(request.stream, request.fallbackUrls)
-                        request.speech -> factory.createSpeech(request.url)
-                        else -> factory.create(request.url)
-                    }
+                    if (request.speech) factory.createSpeech(request.url) else factory.create(request.url)
                 } catch (error: Throwable) {
                     fail(request.generation, error)
                     continue

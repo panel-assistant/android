@@ -1232,64 +1232,6 @@ class PanelAssistantTransportOwnerTest {
         }
     }
 
-    private class FakeVoiceStream(private val id: String? = "C".repeat(43)) : PanelAssistantVoiceStreamPeer {
-        val events = mutableListOf<String>()
-        override fun clientId(): String? = id
-        override fun open(url: String, grant: PanelAssistantVoiceStreamGrant) {
-            events += "open $url ${grant.serverId}"
-        }
-        override fun close() {
-            events += "close"
-        }
-    }
-
-    @Test fun voiceStreamIsOfferedOnHttpAndHttpsSessionsWithAClientId() = runTest {
-        for ((case, expected) in listOf(
-            Pair("http://ha.local:8123", FakeVoiceStream()) to true,
-            Pair("https://ha.example", FakeVoiceStream()) to true,
-            Pair("http://ha.local:8123", FakeVoiceStream(id = null)) to false,
-            Pair("http://ha.local:8123", null) to false,
-        )) {
-            val (base, stream) = case
-            val connection = FakeConnection(Ha.accepting())
-            val harness = harness(connection, voiceStream = stream)
-            harness.session = { HaApiSession(base, "token", owner = harness.credential) }
-            harness.owner.replaceDemand(DEMAND)
-            runCurrent()
-            val hello = JSONObject(connection.sent.first())
-            val offered = hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) }
-            assertEquals("$base offers voice_stream", expected, "voice_stream" in offered)
-            assertEquals("$base sends the client id", expected, hello.optJSONObject("voice_stream")?.getString("client_id") == "C".repeat(43))
-            harness.owner.close()
-        }
-    }
-
-    @Test fun aGrantedVoiceStreamConnectsForItsSessionAndDisconnectsWhenItCloses() = runTest {
-        val server = "S".repeat(43)
-        val grant = JSONObject().put("path", "/api/panel_assistant/sendspin").put("server_id", server)
-            .put("psk", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { 7 }))
-        val stream = FakeVoiceStream()
-        val first = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream"), voiceStream = grant))
-        val harness = harness(first, voiceStream = stream)
-        harness.session = { HaApiSession("http://ha.local:8123/", "token", owner = harness.credential) }
-        harness.owner.replaceDemand(DEMAND)
-        runCurrent()
-        assertEquals(listOf("open ws://ha.local:8123/api/panel_assistant/sendspin $server"), stream.events)
-        first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
-        runCurrent()
-        assertEquals("close", stream.events.last())
-        harness.owner.close()
-        runCurrent()
-
-        val secure = FakeVoiceStream()
-        val tls = harness(FakeConnection(Ha.accepting(capabilities = listOf("voice_stream"), voiceStream = grant)), voiceStream = secure)
-        tls.session = { HaApiSession("https://hass.example.net", "token", owner = tls.credential) }
-        tls.owner.replaceDemand(DEMAND)
-        runCurrent()
-        assertEquals(listOf("open wss://hass.example.net/api/panel_assistant/sendspin $server"), secure.events)
-        tls.owner.close()
-    }
-
     @Test fun aGrantedEmbedKeyIsHeldForItsSessionOnlyAndNeverLogged() = runTest {
         val keys = io.panelassistant.android.http.EmbedProofKeyring()
         val logs = mutableListOf<String>()
@@ -1520,7 +1462,6 @@ class PanelAssistantTransportOwnerTest {
         persisted: Persisted? = null,
         log: (String) -> Unit = {},
         embedKeys: io.panelassistant.android.http.EmbedProofKeyring? = null,
-        voiceStream: PanelAssistantVoiceStreamPeer? = null,
         clock: (() -> Long)? = null,
         addresses: () -> List<String> = { emptyList() },
         onConnection: (HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
@@ -1544,7 +1485,6 @@ class PanelAssistantTransportOwnerTest {
             observeForHello = observeForHello,
             commands = commands,
             embedKeys = embedKeys,
-            voiceStream = voiceStream,
             addresses = addresses,
             onConnection = onConnection,
             checkPreferred = checkPreferred,
@@ -1629,7 +1569,6 @@ class PanelAssistantTransportOwnerTest {
             commandResultError: String? = null,
             mqttDiscovery: String? = null,
             embed: JSONObject? = null,
-            voiceStream: JSONObject? = null,
             lifecycle: JSONObject? = null,
             updatePolicy: PanelAssistantUpdatePolicy? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
@@ -1652,7 +1591,6 @@ class PanelAssistantTransportOwnerTest {
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (mqttDiscovery != null) put("mqtt_discovery", mqttDiscovery) }
                                 .apply { if (embed != null) put("embed", embed) }
-                                .apply { if (voiceStream != null) put("voice_stream", voiceStream) }
                                 .apply { if (lifecycle != null) put("lifecycle", lifecycle) }
                                 .apply {
                                     if (updatePolicy != null) put("update_policy", JSONObject()

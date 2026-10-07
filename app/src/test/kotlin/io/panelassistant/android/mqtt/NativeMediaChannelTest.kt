@@ -26,7 +26,7 @@ internal class NativeMediaChannelTest : MqttWireRig() {
     private fun player() = PanelMediaPlayer(
         streams = { url, prepared, _ -> Recorded(url, prepared).also { opened += it } },
         post = { it() },
-        announce = { url, _ -> announced += url; true },
+        announce = { announced += it; true },
         cancelAnnouncement = {},
         muted = { muted },
         setMuted = { muted = it },

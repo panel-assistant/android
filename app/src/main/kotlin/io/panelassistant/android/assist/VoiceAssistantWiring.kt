@@ -54,15 +54,7 @@ internal class AnnouncementLanePlayback(
         // The generation comes back from the submission itself. Reading the snapshot afterwards can
         // return a later announcement's generation, which would leave this run watching, and
         // reporting on, playback that is not its own.
-        watch(audio.submitForGeneration(url, speech = true))
-    }
-
-    override suspend fun playStream(cue: io.panelassistant.android.media.StreamCue, fallbackUrls: List<String>) {
-        watch(audio.submitStreamForGeneration(cue, fallbackUrls))
-    }
-
-    private suspend fun watch(submitted: Long?) {
-        val generation = submitted
+        val generation = audio.submitForGeneration(url, speech = true)
             ?: throw AssistPlaybackException(
                 AssistPipelineClient.CODE_PLAYBACK_FAILED,
                 "The announcement coordinator is no longer accepting playback",

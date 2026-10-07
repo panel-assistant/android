@@ -1007,8 +1007,6 @@ class PaneldService : Service() {
     private val companionHomeReturnGeneration = java.util.concurrent.atomic.AtomicLong()
     private lateinit var volume: VolumeController
     private lateinit var audio: AudioPlaybackCoordinator
-    /** Panel Assistant's synchronised voice stream, offered whenever the library loads. */
-    private val voiceStream by lazy { io.panelassistant.android.media.VoiceStreamPlayer.forService(this, BuildConfig.VERSION_NAME) }
     private lateinit var media: io.panelassistant.android.media.PanelMediaPlayer
     private lateinit var voice: io.panelassistant.android.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.panelassistant.android.assist.ConfiguredMicrophoneSource
@@ -1382,8 +1380,7 @@ class PaneldService : Service() {
                 if (::voice.isInitialized) {
                     voice.announce(
                         io.panelassistant.android.assist.VoiceAnnouncement(
-                            announcement.url, announcement.preannounceUrl, announcement.listenAfter,
-                            stream = announcement.stream, done = done,
+                            announcement.url, announcement.preannounceUrl, announcement.listenAfter, done,
                         ),
                     )
                 } else {
@@ -1432,7 +1429,6 @@ class PaneldService : Service() {
             },
             embedKeys = io.panelassistant.android.http.PanelAssistantEmbedKeys.instance,
             voice = panelAssistantVoice,
-            voiceStream = voiceStream,
             onTransportFailure = { route -> HaConnectionRoutes.failed(config, route) },
             onConnection = { session, accepted ->
                 val route = session.route
@@ -1565,9 +1561,7 @@ class PaneldService : Service() {
         media = io.panelassistant.android.media.PanelMediaPlayer(
             streams = { url, onPrepared, onEnded -> AndroidMediaStream(url, onPrepared, onEnded) },
             post = { block -> mainHandler.post(block) },
-            announce = { url, stream ->
-                if (stream != null && ::voice.isInitialized) voice.announceStreamedMedia(url, stream) else audio.submitForGeneration(url, speech = true) != null
-            },
+            announce = { url -> audio.submitForGeneration(url, speech = true) != null },
             cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
             muted = volume::isMuted,
             setMuted = volume::setMuted,
@@ -1575,7 +1569,7 @@ class PaneldService : Service() {
         )
         media.setChangeListener { runCatching { runtime.current().mqtt.mediaChanged() } }
         audio = AudioPlaybackCoordinator(
-            AudioPlayer.factory(cacheDir, voiceStream.claims),
+            AudioPlayer.factory(cacheDir),
             onFailure = { error -> Log.w(TAG, "audio playback failed: ${error.javaClass.simpleName}") },
             onBusyChanged = { busy -> media.hold(io.panelassistant.android.media.PanelMediaPlayer.Hold.ANNOUNCEMENT, busy) },
         )

@@ -125,7 +125,7 @@
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "947a8b7c4ba40381bc59ddcc5b0404d325f7c44beaef95678952b9ae5c152e7d",
+        "contract_digest": "b848474dcbf17c64985da09623f3ab40259ef14e736df60077d44be8fe47aa32",
         "capabilities": [
           "state",
           "commands",
@@ -133,8 +133,7 @@
           "mqtt_withdraw",
           "embed_proof",
           "voice",
-          "media",
-          "voice_stream"
+          "media"
         ],
         "channels": [
           {
@@ -419,7 +418,7 @@
       "entity_category": "diagnostic",
       "enabled_default": false,
       "device_class": "temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "state_class": "measurement",
       "force_update": true,
       "options": null,
@@ -807,7 +806,7 @@
       "entity_category": null,
       "enabled_default": true,
       "device_class": "temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "state_class": "measurement",
       "force_update": true,
       "options": null,
@@ -885,7 +884,7 @@
       "entity_category": null,
       "enabled_default": true,
       "device_class": "temperature",
-      "unit": "°C",
+      "unit": "\u00b0C",
       "state_class": "measurement",
       "force_update": true,
       "options": null,

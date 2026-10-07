@@ -115,37 +115,12 @@ class PanelAssistantTransportContractFixtureTest {
                 } else if (case.getJSONObject("result").has("embed")) {
                     assertNull("$name must ignore an ungranted embed proof", accepted.session.embed)
                 }
-                if (PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM in accepted.session.capabilities) {
-                    val stream = accepted.session.voiceStream
-                    assertNotNull("$name must carry its granted voice stream", stream)
-                    assertEquals("/api/panel_assistant/sendspin", stream!!.path)
-                    assertArrayEquals(ByteArray(32) { it.toByte() }, stream.psk())
-                } else if (case.getJSONObject("result").has("voice_stream")) {
-                    assertNull("$name must ignore an ungranted voice stream", accepted.session.voiceStream)
-                }
             } else {
                 assertTrue(
                     "$name must be rejected by the parser",
                     parsed.isFailure || parsed.getOrNull() !is PanelAssistantHelloOutcome.Accepted,
                 )
             }
-        }
-    }
-
-    @Test
-    fun `a streamed event claims exactly the stream its vector names`() {
-        val vectors = JSONObject(resource(FIXTURE)).getJSONArray("streamed").objects()
-        assertTrue("the shared vectors carry streamed cases", vectors.isNotEmpty())
-        vectors.forEach { case ->
-            val payload = case.getJSONObject("payload")
-            val claimed = if (payload.optString("kind").isEmpty()) {
-                (io.panelassistant.android.media.PanelMediaCommand.parse(payload) as? io.panelassistant.android.media.PanelMediaCommand.Play)
-                    ?.takeIf { it.stream }?.streamStartUs
-            } else {
-                if (payload.opt("stream") == true) io.panelassistant.android.media.streamStartUs(payload) else null
-            }
-            val expected = (case.opt("claims") as? Number)?.toLong() // null: the event claims no stream
-            assertEquals(case.getString("name"), expected, claimed)
         }
     }
 
