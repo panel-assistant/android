@@ -115,6 +115,14 @@ class PanelAssistantTransportContractFixtureTest {
                 } else if (case.getJSONObject("result").has("embed")) {
                     assertNull("$name must ignore an ungranted embed proof", accepted.session.embed)
                 }
+                if (PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM in accepted.session.capabilities) {
+                    val stream = accepted.session.voiceStream
+                    assertNotNull("$name must carry its granted voice stream", stream)
+                    assertEquals("/api/panel_assistant/sendspin", stream!!.path)
+                    assertArrayEquals(ByteArray(32) { it.toByte() }, stream.psk())
+                } else if (case.getJSONObject("result").has("voice_stream")) {
+                    assertNull("$name must ignore an ungranted voice stream", accepted.session.voiceStream)
+                }
             } else {
                 assertTrue(
                     "$name must be rejected by the parser",
