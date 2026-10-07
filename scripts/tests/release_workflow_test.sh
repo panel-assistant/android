@@ -674,7 +674,7 @@ E: manifest (line=2)
 E: foreign-root (line=20)
   E: application (line=21)
     E: meta-data (line=22)
-      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"
+      A: android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY"
       A: android:value(0x01010024)="hapaneld-db:v1:ha-paneld.db:11:14"
 FOREIGN_XMLTREE
       exit 0
@@ -683,11 +683,17 @@ FOREIGN_XMLTREE
 E: manifest (line=2)
   E: application (line=8)
     E: meta-data (line=10)
-      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY" (Raw: "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY")
+      A: android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY" (Raw: "io.panelassistant.android.DATABASE_COMPATIBILITY")
       A: android:value(0x01010024)="hapaneld-db:v1:ha-paneld.db:11:14" (Raw: "hapaneld-db:v1:ha-paneld.db:11:14")
     E: meta-data (line=12)
-      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL")
+      A: android:name(0x01010003)="io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL")
       A: android:value(0x01010024)="hapaneld-native:v1:3:3" (Raw: "hapaneld-native:v1:3:3")
+    E: meta-data (line=14)
+      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY" (Raw: "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY")
+      A: android:value(0x01010024)="hapaneld-db:v1:ha-paneld.db:1:2" (Raw: "hapaneld-db:v1:ha-paneld.db:1:2")
+    E: meta-data (line=16)
+      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL")
+      A: android:value(0x01010024)="hapaneld-native:v1:1:1" (Raw: "hapaneld-native:v1:1:1")
     E: activity (line=20)
 XMLTREE
     ;;
@@ -744,7 +750,7 @@ if (
    [ ! -e "$descriptor_case/forbidden-write/escape" ] && \
    [ "$(jq 'keys | length' "$descriptor_case/dist/$descriptor_name")" -eq 13 ] && \
    jq -e --arg apk_name "$apk_name" '
-     .schema == "io.github.maxlyth.hapaneld.install.v1" and
+     .schema == "io.panelassistant.android.install.v1" and
      .releaseTag == "v1.2.3-rc1" and
      .versionName == "1.2.3-rc1" and
      .versionCode == 701 and
@@ -767,7 +773,7 @@ if jq -e --arg name "$bridge_apk_name" \
     (keys | length) == 13 and .apkName == $name and .apkSha256 == $hash and .apkSize == $size and
     .packageId == "io.github.maxlyth.hapaneld" and .versionCode == 702 and
     .launchComponent == "io.github.maxlyth.hapaneld/io.panelassistant.android.MainActivity" and
-    .schema == "io.github.maxlyth.hapaneld.install.v1" and
+    .schema == "io.panelassistant.android.install.v1" and
     .signerCertificateSha256 == "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"' \
     "$descriptor_case/dist/$bridge_descriptor_name" >/dev/null; then
   pass "credential-free generation binds the bridge's own APK bytes, package and versionCode"
@@ -777,7 +783,7 @@ fi
 
 if jq -e --arg successor "$(sha256sum "$descriptor_case/dist/$apk_name" | cut -d' ' -f1)" \
     --arg bridge "$(sha256sum "$descriptor_case/dist/$bridge_apk_name" | cut -d' ' -f1)" '
-    keys == ["artifacts","schema"] and .schema == "io.github.maxlyth.hapaneld.protocol.v1" and
+    keys == ["artifacts","schema"] and .schema == "io.panelassistant.android.protocol.v1" and
     (.artifacts | map(.apkSha256)) == ([$bridge,$successor] | sort) and
     all(.artifacts[]; .protocolMin == 3 and .protocolMax == 3)' \
     "$descriptor_case/dist/$protocol_name" >/dev/null; then
@@ -1226,19 +1232,19 @@ else
   fail_test "the descriptor pins the successor and both APK assets carry .apk.bin"
 fi
 
-# Shipped 0.4.1 verifiers compare these byte for byte. A migration that moves any of them silently
-# breaks every integration and panel already in the field, so they are asserted as literals.
-if [ "$(grep -Fc 'io.github.maxlyth.hapaneld.install.v1' "$WORKFLOW")" -ge 1 ] && \
-   ! grep -Fq 'io.panelassistant.android.install.v1' "$WORKFLOW" && \
-   grep -Fq "'io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY'" <<<"$proof_step" && \
-   ! grep -Fq 'io.panelassistant.android.DATABASE_COMPATIBILITY' "$WORKFLOW" && \
+# From 0.9.11 the schemas and meta-data keys carry the new id. Panel Assistant 0.8.0 and older compare
+# the schemas byte for byte and skip such a release, so the old spellings must not survive anywhere in
+# the workflow: a release that published one of them would reach installers that cannot drive it.
+if [ "$(grep -Fc 'io.panelassistant.android.install.v1' "$WORKFLOW")" -ge 1 ] && \
+   ! grep -Eq 'io[.]github[.]maxlyth[.]hapaneld[.](install|protocol|buildfeed|DATABASE_COMPATIBILITY|PANEL_ASSISTANT_PROTOCOL)' "$WORKFLOW" && \
+   grep -Fq "'io.panelassistant.android.DATABASE_COMPATIBILITY'" <<<"$proof_step" && \
    grep -Fq 'hapaneld-db:v1:ha-paneld\.db' <<<"$proof_step" && \
-   grep -Fq '.schema == "io.github.maxlyth.hapaneld.install.v1"' <<<"$final_step" && \
+   grep -Fq '.schema == "io.panelassistant.android.install.v1"' <<<"$final_step" && \
    grep -Fq 'verify_final_descriptor "$successor_apk_name" "$descriptor_name" io.panelassistant.android' <<<"$final_step" && \
    grep -Fq '.launchComponent == ($package_id+"/io.panelassistant.android.MainActivity")' <<<"$final_step"; then
-  pass "frozen schema and database contracts survive the identity move while the descriptor id moves"
+  pass "schemas and metadata keys carry the new id while the bridge keeps its own package id"
 else
-  fail_test "frozen schema and database contracts survive the identity move while the descriptor id moves"
+  fail_test "schemas and metadata keys carry the new id while the bridge keeps its own package id"
 fi
 
 # Behavioral: the final step refuses a pair that is not one bridge and one successor. This is the

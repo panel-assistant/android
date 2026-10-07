@@ -10,7 +10,7 @@ package io.panelassistant.android.util
  */
 internal object DatabaseCompatibilityApkContract {
     // DB_COMPAT_MUTATION_ANCHOR: CANDIDATE_METADATA
-    const val METADATA_NAME = "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"
+    const val METADATA_NAME = "io.panelassistant.android.DATABASE_COMPATIBILITY"
     private const val FORMAT_NAME = "hapaneld-db"
     private const val FORMAT_VERSION = "v1"
     private const val FIELD_COUNT = 5

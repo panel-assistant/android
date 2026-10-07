@@ -68,6 +68,14 @@
         <!-- Signed candidate database boundary. Installers must read this from the exact APK they
              are about to apply; app version names and release tags are not compatibility evidence. -->
         <meta-data
+            android:name="io.panelassistant.android.DATABASE_COMPATIBILITY"
+            android:value="${databaseCompatibility}" />
+        <meta-data
+            android:name="io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL"
+            android:value="${panelAssistantProtocol}" />
+        <!-- The same two values under their pre-0.9.11 names, read by the installer of the build this
+             one replaces (0.9.10 and earlier look only for these). Remove in 1.0. -->
+        <meta-data
             android:name="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"
             android:value="${databaseCompatibility}" />
         <meta-data
@@ -206,9 +214,9 @@
             android:exported="true"
             android:permission="android.permission.DUMP">
             <intent-filter>
-                <action android:name="io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE" />
-                <action android:name="io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE" />
-                <action android:name="io.github.maxlyth.hapaneld.action.RENEW_UPGRADE" />
+                <action android:name="io.panelassistant.android.action.PREPARE_UPGRADE" />
+                <action android:name="io.panelassistant.android.action.RELEASE_UPGRADE" />
+                <action android:name="io.panelassistant.android.action.RENEW_UPGRADE" />
             </intent-filter>
         </receiver>
 

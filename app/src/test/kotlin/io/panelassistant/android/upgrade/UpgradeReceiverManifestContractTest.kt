@@ -22,5 +22,8 @@ class UpgradeReceiverManifestContractTest {
         val actions = receiver.getElementsByTagName("action")
         val names = (0 until actions.length).map { (actions.item(it) as Element).getAttributeNS(android, "name") }
         assertTrue("renewal must reach the receiver: $names", names.any { it.endsWith(".action.RENEW_UPGRADE") })
+        // The manifest and the receiver's dispatch name the same three actions, under the app's own id.
+        assertEquals(listOf(PREPARE_UPGRADE_ACTION, RELEASE_UPGRADE_ACTION, RENEW_UPGRADE_ACTION), names)
+        assertTrue(names.all { it.startsWith("io.panelassistant.android.action.") })
     }
 }

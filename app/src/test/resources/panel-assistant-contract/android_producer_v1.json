@@ -100,7 +100,7 @@
       "minSdk": 26,
       "packageId": "io.panelassistant.android",
       "releaseTag": "v1.2.3-rc1",
-      "schema": "io.github.maxlyth.hapaneld.install.v1",
+      "schema": "io.panelassistant.android.install.v1",
       "signerCertificateSha256": "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339",
       "supportedAbis": [
         "arm64-v8a",

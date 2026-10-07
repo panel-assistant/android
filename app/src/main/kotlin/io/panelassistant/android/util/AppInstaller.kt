@@ -43,7 +43,7 @@ object AppInstaller {
     @Volatile internal var livePanelUpdatePolicy: (() -> PanelAssistantUpdatePolicy?)? = null
     internal fun panelUpdatePolicy(): PanelAssistantUpdatePolicy? =
         runCatching { livePanelUpdatePolicy?.invoke() }.getOrNull()
-    internal const val PROTOCOL_METADATA_NAME = "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL"
+    internal const val PROTOCOL_METADATA_NAME = "io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL"
     internal enum class InstallRoute { SU, DAEMON, SHIZUKU, NONE }
 
     // Pinned signers (public certificate fingerprints — NOT secrets).

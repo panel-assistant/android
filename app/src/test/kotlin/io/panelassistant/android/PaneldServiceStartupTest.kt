@@ -152,7 +152,7 @@ class PaneldServiceStartupTest {
 
     @Test fun ordinaryServiceStartsNeverRequestInstalledSuccessorHandoff() {
         for (bridge in listOf(false, true)) {
-            for (action in listOf(null, "android.intent.action.MAIN", "io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE")) {
+            for (action in listOf(null, "android.intent.action.MAIN", "io.panelassistant.android.action.PREPARE_UPGRADE")) {
                 assertFalse(installedHandoffWakeRequested(bridge, action))
             }
         }

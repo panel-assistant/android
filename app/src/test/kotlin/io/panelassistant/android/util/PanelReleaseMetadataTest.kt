@@ -18,13 +18,13 @@ class PanelReleaseMetadataTest {
     private val filename = if (AppIdentity.IS_BRIDGE) "ha-paneld-$tag-manual-setup-required.apk"
         else "panel-assistant-$tag-manual-setup-required.apk"
     private fun descriptor() = JSONObject()
-        .put("schema", "io.github.maxlyth.hapaneld.install.v1")
+        .put("schema", "io.panelassistant.android.install.v1")
         .put("apkName", filename).put("apkSha256", hash).put("releaseTag", tag)
         .put("versionName", version).put("versionCode", BuildConfig.VERSION_CODE + 1)
         .put("packageId", AppIdentity.OWN).put("signerCertificateSha256", AppInstaller.HA_PANELD.certSha256)
         .put("apkSize", 100).put("databaseCompatibility", JSONObject()).put("launchComponent", "component")
         .put("minSdk", 26).put("supportedAbis", JSONArray().put("arm64-v8a"))
-    private fun protocols() = JSONObject().put("schema", "io.github.maxlyth.hapaneld.protocol.v1")
+    private fun protocols() = JSONObject().put("schema", "io.panelassistant.android.protocol.v1")
         .put("artifacts", JSONArray().put(JSONObject().put("apkSha256", hash)
             .put("protocolMin", 1).put("protocolMax", 3)))
     private fun proof(descriptor: JSONObject = descriptor(), protocols: JSONObject = protocols(),
@@ -104,7 +104,7 @@ class PanelReleaseMetadataTest {
                 .put("databaseCompatibility", "hapaneld-db:v1:ha-paneld.db:1:3")
                 .put("launchComponent", "$packageId/io.panelassistant.android.MainActivity")
                 .put("minSdk", 26).put("packageId", packageId).put("releaseTag", tag)
-                .put("schema", "io.github.maxlyth.hapaneld.install.v1")
+                .put("schema", "io.panelassistant.android.install.v1")
                 .put("signerCertificateSha256", AppInstaller.HA_PANELD.certSha256)
                 .put("supportedAbis", JSONArray().put("arm64-v8a").put("armeabi-v7a"))
                 .put("versionCode", code).put("versionName", version).toString().toByteArray()
@@ -120,7 +120,7 @@ class PanelReleaseMetadataTest {
             documents["$release-protocol.json"] = ("{\"artifacts\":[" +
                 listOf(bridgeHash, successorHash).joinToString(",") { sha ->
                     "{\"apkSha256\":\"$sha\",\"protocolMax\":${range.last},\"protocolMin\":${range.first}}"
-                } + "],\"schema\":\"io.github.maxlyth.hapaneld.protocol.v1\"}\n").toByteArray()
+                } + "],\"schema\":\"io.panelassistant.android.protocol.v1\"}\n").toByteArray()
         }
 
         fun read(candidate: ReleaseCatalog.Version = choice): PanelReleaseMetadata.Candidate? =

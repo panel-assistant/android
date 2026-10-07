@@ -41,7 +41,7 @@ XMLTREE = """\
 E: manifest (line=2)
   E: application (line=8)
     E: meta-data (line=10)
-      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY" (Raw: "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY")
+      A: android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY" (Raw: "io.panelassistant.android.DATABASE_COMPATIBILITY")
       A: android:value(0x01010024)="hapaneld-db:v1:ha-paneld.db:11:14" (Raw: "hapaneld-db:v1:ha-paneld.db:11:14")
     E: activity (line=20)
 """
@@ -51,7 +51,7 @@ SIGNER = (
 )
 PROTOCOL_NODE = """\
     E: meta-data (line=12)
-      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL")
+      A: android:name(0x01010003)="io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL")
       A: android:value(0x01010024)="hapaneld-native:v1:3:3" (Raw: "hapaneld-native:v1:3:3")
 """
 PROTOCOL_XMLTREE = XMLTREE.replace("    E: activity", PROTOCOL_NODE + "    E: activity")
@@ -103,7 +103,7 @@ class InstallDescriptorTest(unittest.TestCase):
             "minSdk": 26,
             "packageId": "io.panelassistant.android",
             "releaseTag": TAG,
-            "schema": "io.github.maxlyth.hapaneld.install.v1",
+            "schema": "io.panelassistant.android.install.v1",
             "signerCertificateSha256": (
                 "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
             ),
@@ -238,7 +238,7 @@ class InstallDescriptorTest(unittest.TestCase):
     def test_database_metadata_rejects_duplicate_attributes_and_nested_application(self):
         duplicate_name = XMLTREE.replace(
             "      A: android:value",
-            "      A: android:name(0x01010003)=\"io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY\"\n"
+            "      A: android:name(0x01010003)=\"io.panelassistant.android.DATABASE_COMPATIBILITY\"\n"
             "      A: android:value",
         )
         duplicate_value = XMLTREE.replace(
@@ -258,7 +258,7 @@ E: manifest (line=2)
 E: foreign-root (line=20)
   E: application (line=21)
     E: meta-data (line=22)
-      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"
+      A: android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY"
       A: android:value(0x01010024)="hapaneld-db:v1:ha-paneld.db:11:14"
 """
         for xmltree in (
@@ -271,6 +271,26 @@ E: foreign-root (line=20)
         ):
             with self.subTest(xmltree=xmltree), self.assertRaises(descriptor.DescriptorError):
                 descriptor.parse_database_compatibility(xmltree)
+
+    def test_contracts_are_read_only_under_the_new_metadata_names(self):
+        # A 0.9.11 APK also carries both values under the pre-0.9.11 names for the installer it
+        # replaces. The release reads only the new names, so a build that lacks them cannot publish.
+        legacy_only = PROTOCOL_XMLTREE.replace("io.panelassistant.android.", "io.github.maxlyth.hapaneld.")
+        with self.assertRaises(descriptor.DescriptorError):
+            descriptor.parse_database_compatibility(legacy_only)
+        with self.assertRaises(descriptor.DescriptorError):
+            descriptor.parse_protocol_range(legacy_only)
+        legacy_nodes = """\
+    E: meta-data (line=14)
+      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY" (Raw: "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY")
+      A: android:value(0x01010024)="hapaneld-db:v1:ha-paneld.db:1:2" (Raw: "hapaneld-db:v1:ha-paneld.db:1:2")
+    E: meta-data (line=16)
+      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL" (Raw: "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL")
+      A: android:value(0x01010024)="hapaneld-native:v1:1:1" (Raw: "hapaneld-native:v1:1:1")
+"""
+        both = PROTOCOL_XMLTREE.replace("    E: activity", legacy_nodes + "    E: activity")
+        self.assertEqual("hapaneld-db:v1:ha-paneld.db:11:14", descriptor.parse_database_compatibility(both))
+        self.assertEqual((3, 3), descriptor.parse_protocol_range(both))
 
     def test_numeric_fields_enforce_consumer_upper_bounds(self):
         upper_badging = BADGING.replace("versionCode='701'", "versionCode='2147483647'").replace(
@@ -426,7 +446,7 @@ E: foreign-root (line=20)
             {"apkSha256": hashlib.sha256(bridge.read_bytes()).hexdigest(), "protocolMin": 1, "protocolMax": 3},
             {"apkSha256": hashlib.sha256(self.apk.read_bytes()).hexdigest(), "protocolMin": 3, "protocolMax": 3},
         ], key=lambda record: record["apkSha256"])
-        self.assertEqual({"schema": "io.github.maxlyth.hapaneld.protocol.v1", "artifacts": expected}, actual)
+        self.assertEqual({"schema": "io.panelassistant.android.protocol.v1", "artifacts": expected}, actual)
 
     def test_protocol_companion_refuses_missing_malformed_and_unscoped_metadata(self):
         values = ("", "hapaneld-native:v2:3:3", "hapaneld-native:v1:0:3", "hapaneld-native:v1:4:3",
@@ -438,7 +458,7 @@ E: foreign-root (line=20)
             XMLTREE.replace("    E: activity", "    E: activity\n" + "\n".join("  " + line for line in PROTOCOL_NODE.splitlines())),
             PROTOCOL_XMLTREE.replace("    E: meta-data (line=12)", "    E: activity\n      E: application\n        E: meta-data (line=12)"),
             PROTOCOL_XMLTREE.replace('      A: android:value(0x01010024)="hapaneld-native',
-                '      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL"\n      A: android:value(0x01010024)="hapaneld-native'),
+                '      A: android:name(0x01010003)="io.panelassistant.android.PANEL_ASSISTANT_PROTOCOL"\n      A: android:value(0x01010024)="hapaneld-native'),
             PROTOCOL_XMLTREE.replace("    E: activity", '      A: android:value(0x01010024)="hapaneld-native:v1:3:3"\n    E: activity'),
         ))
         for xmltree in invalid:
@@ -478,7 +498,7 @@ E: foreign-root (line=20)
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(13, len(json.loads(output.read_bytes())))
-        expected = {"schema": "io.github.maxlyth.hapaneld.protocol.v1", "artifacts": sorted([
+        expected = {"schema": "io.panelassistant.android.protocol.v1", "artifacts": sorted([
             {"apkSha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "protocolMin": 3, "protocolMax": 3}
             for apk in (self.apk, bridge)
         ], key=lambda record: record["apkSha256"])}

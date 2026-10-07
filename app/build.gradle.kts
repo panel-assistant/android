@@ -322,7 +322,7 @@ dependencies {
 tasks.named<CyclonedxDirectTask>("cyclonedxDirectBom") {
     includeConfigs.set(listOf("releaseRuntimeClasspath"))
     projectType.set(Component.Type.APPLICATION)
-    componentGroup.set("io.github.maxlyth")
+    componentGroup.set("io.panelassistant")
     componentName.set("ha-paneld")
     componentVersion.set(android.defaultConfig.versionName ?: "unspecified")
     // GitHub's SBOM attestation parser requires a CycloneDX serialNumber.

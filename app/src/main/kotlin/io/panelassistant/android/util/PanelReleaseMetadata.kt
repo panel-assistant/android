@@ -52,7 +52,7 @@ internal object PanelReleaseMetadata {
         if (descriptor.keys().asSequence().toSet() != setOf("apkName", "apkSha256", "apkSize",
                 "databaseCompatibility", "launchComponent", "minSdk", "packageId", "releaseTag", "schema",
                 "signerCertificateSha256", "supportedAbis", "versionCode", "versionName")) return null
-        if (descriptor.optString("schema") != "io.github.maxlyth.hapaneld.install.v1" ||
+        if (descriptor.optString("schema") != "io.panelassistant.android.install.v1" ||
             descriptor.optString("apkName") != filename || descriptor.optString("apkSha256") != hash ||
             descriptor.optString("releaseTag") != tag || descriptor.optString("versionName") != version ||
             descriptor.optString("packageId") != AppIdentity.OWN ||
@@ -65,7 +65,7 @@ internal object PanelReleaseMetadata {
         if (code <= 0L) return null
         val protocol = JSONObject(protocolBytes.toString(Charsets.UTF_8))
         if (protocol.keys().asSequence().toSet() != setOf("schema", "artifacts") ||
-            protocol.optString("schema") != "io.github.maxlyth.hapaneld.protocol.v1") return null
+            protocol.optString("schema") != "io.panelassistant.android.protocol.v1") return null
         val artifacts = protocol.optJSONArray("artifacts") ?: return null
         if (artifacts.length() !in 1..500) return null
         val records = linkedMapOf<String, IntRange>()
@@ -80,7 +80,7 @@ internal object PanelReleaseMetadata {
         }
         val canonical = "{\"artifacts\":[" + records.toSortedMap().entries.joinToString(",") { (sha, range) ->
             "{\"apkSha256\":\"$sha\",\"protocolMax\":${range.last},\"protocolMin\":${range.first}}"
-        } + "],\"schema\":\"io.github.maxlyth.hapaneld.protocol.v1\"}\n"
+        } + "],\"schema\":\"io.panelassistant.android.protocol.v1\"}\n"
         if (!protocolBytes.contentEquals(canonical.toByteArray(Charsets.US_ASCII))) return null
         Candidate(records[hash] ?: return null, code)
     }.getOrNull()

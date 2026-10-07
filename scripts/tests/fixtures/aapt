@@ -36,17 +36,17 @@ case "$*" in
     if [ "$database_contract" != missing ]; then
       printf '%sE: meta-data (line=10)\n' "$metadata_indent"
       if [ "$aapt2_mode" = 1 ]; then
-        printf '%s  A: http://schemas.android.com/apk/res/android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY" (Raw: "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY")\n' "$metadata_indent"
+        printf '%s  A: http://schemas.android.com/apk/res/android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY" (Raw: "io.panelassistant.android.DATABASE_COMPATIBILITY")\n' "$metadata_indent"
         printf '%s  A: http://schemas.android.com/apk/res/android:value(0x01010024)="%s" (Raw: "%s")\n' \
           "$metadata_indent" "$database_contract" "$database_contract"
       else
-        printf '%s  A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY" (Raw: "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY")\n' "$metadata_indent"
+        printf '%s  A: android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY" (Raw: "io.panelassistant.android.DATABASE_COMPATIBILITY")\n' "$metadata_indent"
         printf '%s  A: android:value(0x01010024)="%s" (Raw: "%s")\n' \
           "$metadata_indent" "$database_contract" "$database_contract"
       fi
       if [ "${MOCK_DB_CANDIDATE_DUPLICATE:-0}" = 1 ]; then
         printf '    E: meta-data (line=11)\n'
-        printf '      A: android:name(0x01010003)="io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY"\n'
+        printf '      A: android:name(0x01010003)="io.panelassistant.android.DATABASE_COMPATIBILITY"\n'
         printf '      A: android:value(0x01010024)="%s"\n' "$database_contract"
       fi
     fi

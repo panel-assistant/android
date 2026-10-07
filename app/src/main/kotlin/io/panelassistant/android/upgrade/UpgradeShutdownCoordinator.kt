@@ -9,9 +9,9 @@ import io.panelassistant.android.persistence.StateQuiescence
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-internal const val PREPARE_UPGRADE_ACTION = "io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE"
-internal const val RELEASE_UPGRADE_ACTION = "io.github.maxlyth.hapaneld.action.RELEASE_UPGRADE"
-internal const val RENEW_UPGRADE_ACTION = "io.github.maxlyth.hapaneld.action.RENEW_UPGRADE"
+internal const val PREPARE_UPGRADE_ACTION = "io.panelassistant.android.action.PREPARE_UPGRADE"
+internal const val RELEASE_UPGRADE_ACTION = "io.panelassistant.android.action.RELEASE_UPGRADE"
+internal const val RENEW_UPGRADE_ACTION = "io.panelassistant.android.action.RENEW_UPGRADE"
 internal const val UPGRADE_NONCE_EXTRA = "nonce"
 
 private const val UPGRADE_HOLD_TIMEOUT_MS = 180_000L

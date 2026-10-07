@@ -8,6 +8,8 @@ import io.panelassistant.android.util.DatabaseCompatibilityApkContract.Parsed
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.w3c.dom.Element
+import javax.xml.parsers.DocumentBuilderFactory
 
 class DatabaseCompatibilityApkContractTest {
     @Test fun generatedApkContractMatchesTheSchemaAuthority() {
@@ -41,6 +43,27 @@ class DatabaseCompatibilityApkContractTest {
 
         assertTrue(merged.contains("android:name=\"${DatabaseCompatibilityApkContract.METADATA_NAME}\""))
         assertTrue(merged.contains("android:value=\"$expected\""))
+    }
+
+    @Test fun mergedManifestAlsoCarriesBothContractsUnderTheNamesThePreviousInstallerReads() {
+        // Source-text reason: the merged manifest is the APK metadata. A 0.9.10 panel installs this build
+        // with its own installer, which reads only the pre-0.9.11 names; without them it refuses the update.
+        val merged = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder()
+            .parse(TestSources.appFile("build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml"))
+        val android = "http://schemas.android.com/apk/res/android"
+        val nodes = merged.getElementsByTagName("meta-data")
+        val values = (0 until nodes.length).map { nodes.item(it) as Element }
+            .filter { (it.parentNode as Element).tagName == "application" }
+            .groupBy({ it.getAttributeNS(android, "name") }, { it.getAttributeNS(android, "value") })
+        for ((current, previous) in listOf(
+            DatabaseCompatibilityApkContract.METADATA_NAME to "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY",
+            AppInstaller.PROTOCOL_METADATA_NAME to "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL",
+        )) {
+            assertEquals("$current must appear once: $values", 1, values[current]?.size)
+            assertEquals("$previous must carry the same value as $current", values[current], values[previous])
+        }
+        assertTrue(DatabaseCompatibilityApkContract.parse(values.getValue(DatabaseCompatibilityApkContract.METADATA_NAME).single()) is Parsed.Valid)
+        assertTrue(AppInstaller.parseNativeProtocolMetadata(values.getValue(AppInstaller.PROTOCOL_METADATA_NAME).single()) != null)
     }
 
     @Test fun parsesTheFiniteSignedContract() {

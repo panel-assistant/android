@@ -903,8 +903,8 @@ case "${1:-}" in
         exit $? ;;
     esac
   case "$command_text" in
-      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.panelassistant.android/io.panelassistant.android.UpgradeControlReceiver --es nonce "* | \
-      "am broadcast --user 0 -a io.github.maxlyth.hapaneld.action.PREPARE_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
+      "am broadcast --user 0 -a io.panelassistant.android.action.PREPARE_UPGRADE -n io.panelassistant.android/io.panelassistant.android.UpgradeControlReceiver --es nonce "* | \
+      "am broadcast --user 0 -a io.panelassistant.android.action.PREPARE_UPGRADE -n io.github.maxlyth.hapaneld/.UpgradeControlReceiver --es nonce "*)
         nonce="${command_text##*--es nonce }"
         case "${MOCK_UPGRADE_PREPARE:-unsupported}" in
           ready|size_mismatch|digest_mismatch|invalid_sqlite|schema_mismatch|rows_mismatch)

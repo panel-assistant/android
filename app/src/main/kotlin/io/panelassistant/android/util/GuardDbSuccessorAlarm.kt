@@ -10,7 +10,7 @@ import io.panelassistant.android.PaneldService
 
 /** Same-boot OS authority for retrying the writer-free Guard maintenance successor. */
 internal object GuardDbSuccessorAlarm {
-    internal const val ACTION = "io.github.maxlyth.hapaneld.action.GUARD_DB_SUCCESSOR_RETRY"
+    internal const val ACTION = "io.panelassistant.android.action.GUARD_DB_SUCCESSOR_RETRY"
     internal const val REQUEST_CODE = 0x48414752
     internal const val DELAY_MS = 1_000L
 

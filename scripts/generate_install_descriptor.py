@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import NoReturn
 
 # The integration's descriptor names the successor; bridge updates use their own descriptor.
-# The schema, protocol schema and meta-data keys keep the legacy id: shipped verifiers that predate
-# the move compare them byte for byte.
-SCHEMA = "io.github.maxlyth.hapaneld.install.v1"
+# From 0.9.11 the schemas and meta-data keys carry the new id. Panel Assistant 0.8.0 and older compare
+# the schemas byte for byte, so they skip this release and keep offering the last one they can verify.
+SCHEMA = "io.panelassistant.android.install.v1"
 PACKAGE_ID = "io.panelassistant.android"
 LEGACY_PACKAGE_ID = "io.github.maxlyth.hapaneld"
 # The Kotlin package. Every manifest class lives here whichever applicationId the build carries, so a
@@ -30,9 +30,9 @@ MAX_ANDROID_VERSION_CODE = 2**31 - 1
 SIGNER_CERTIFICATE_SHA256 = (
     "ac6193307fb0b70113aae205d7549406f96e063bc5491b67b1d5694a34b0e339"
 )
-DATABASE_METADATA_KEY = f"{LEGACY_PACKAGE_ID}.DATABASE_COMPATIBILITY"
-PROTOCOL_METADATA_KEY = f"{LEGACY_PACKAGE_ID}.PANEL_ASSISTANT_PROTOCOL"
-PROTOCOL_SCHEMA = "io.github.maxlyth.hapaneld.protocol.v1"
+DATABASE_METADATA_KEY = f"{PACKAGE_ID}.DATABASE_COMPATIBILITY"
+PROTOCOL_METADATA_KEY = f"{PACKAGE_ID}.PANEL_ASSISTANT_PROTOCOL"
+PROTOCOL_SCHEMA = "io.panelassistant.android.protocol.v1"
 SUPPORTED_ABIS = ("arm64-v8a", "armeabi-v7a")
 LAUNCH_ACTIVITY = f"{CODE_PACKAGE}.MainActivity"
 RELEASE_TAG_PATTERN = re.compile(

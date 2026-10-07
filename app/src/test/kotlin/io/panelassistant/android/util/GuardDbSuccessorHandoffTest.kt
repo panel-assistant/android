@@ -8,7 +8,7 @@ import org.junit.Test
 
 class GuardDbSuccessorHandoffTest {
     @Test fun `successor alarm identity is fixed`() {
-        assertEquals("io.github.maxlyth.hapaneld.action.GUARD_DB_SUCCESSOR_RETRY", GuardDbSuccessorAlarm.ACTION)
+        assertEquals("io.panelassistant.android.action.GUARD_DB_SUCCESSOR_RETRY", GuardDbSuccessorAlarm.ACTION)
         assertEquals(0x48414752, GuardDbSuccessorAlarm.REQUEST_CODE)
         assertEquals(1_000L, GuardDbSuccessorAlarm.DELAY_MS)
     }

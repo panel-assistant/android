@@ -722,7 +722,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         internal const val EXTRA_EXPLICIT_ADMIN_ENTRY =
-            "io.github.maxlyth.hapaneld.extra.EXPLICIT_ADMIN_ENTRY"
+            "io.panelassistant.android.extra.EXPLICIT_ADMIN_ENTRY"
         private const val STATE_INTRO_PRESENTED = "launch_intro_presented"
         private const val STATE_INTRO_EXPLICIT = "launch_intro_explicit"
         private const val STATE_INTRO_PENDING_VERSION = "launch_intro_pending_version"
