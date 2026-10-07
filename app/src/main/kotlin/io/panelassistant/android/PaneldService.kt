@@ -1408,6 +1408,11 @@ class PaneldService : Service() {
                 observed.value.mqtt.observeForNativeHello { runtime.isCurrent(observed) }
             },
             commands = panelAssistantCommands,
+            management = object : io.panelassistant.android.panelassistant.PanelAssistantManagement {
+                override suspend fun snapshot(updateOwner: Boolean) = server.managementSnapshot(updateOwner)
+
+                override suspend fun applySettings(settings: Map<String, String>) = server.applyManagedSettings(settings)
+            },
             onAuthority = config::setPanelAssistantAuthority,
             onConnected = config::markPanelAssistantConnected,
             onLifecycleNotice = { notice -> haLifecycle.onNativeNotice(notice) },

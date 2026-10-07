@@ -336,6 +336,7 @@ internal class PanelAssistantCommandProcessor(
     }
 
     companion object {
+        const val CODE_UNKNOWN_COMMAND = "unknown_command"
         const val CODE_UNKNOWN_CHANNEL = "unknown_channel"
         const val CODE_INVALID_VALUE = "invalid_value"
         const val CODE_NOT_COMMANDABLE = "not_commandable"

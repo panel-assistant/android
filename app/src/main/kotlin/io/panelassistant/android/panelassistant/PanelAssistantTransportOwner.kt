@@ -176,6 +176,8 @@ internal class PanelAssistantTransportOwner(
     private val observeForHello: suspend () -> Boolean,
     /** Null offers neither commands nor approval. */
     private val commands: PanelAssistantCommandSink? = null,
+    /** Null offers no `management`, so Panel Assistant reads and writes this panel over HTTP. */
+    private val management: PanelAssistantManagement? = null,
     private val approvalTtlMs: Long = io.panelassistant.android.security.ApprovalBroker.DEFAULT_TTL_MS,
     private val onAuthority: (String) -> Unit = {},
     /** Positive handshake evidence; a local MQTT fallback is not an accepted session. */
@@ -361,6 +363,7 @@ internal class PanelAssistantTransportOwner(
                                 PanelAssistantTransportProtocol.CAPABILITY_EMBED_PROOF -> embedKeys != null
                                 PanelAssistantTransportProtocol.CAPABILITY_VOICE -> voice?.offered() == true
                                 PanelAssistantTransportProtocol.CAPABILITY_MEDIA -> shadow != null
+                                PanelAssistantTransportProtocol.CAPABILITY_MANAGEMENT -> management != null
                                 else -> commands != null
                             }
                         }
@@ -578,6 +581,9 @@ internal class PanelAssistantTransportOwner(
         speaking: PanelAssistantVoice?,
     ): String = coroutineScope {
         val frames = Channel<String>(Channel.UNLIMITED)
+        val managing = management?.takeIf {
+            PanelAssistantTransportProtocol.CAPABILITY_MANAGEMENT in session.capabilities
+        }?.let { PanelAssistantManagementRequests(this, it, session, monotonicMillis) }
         val reader = launch {
             try {
                 while (true) connection.receive(pingIntervalMs)?.let { frames.send(it) }
@@ -589,8 +595,9 @@ internal class PanelAssistantTransportOwner(
             }
         }
         try {
-            sessionLoop(run, connection, session, reporting, commanding, frames, withdrawAfterSync, speaking)
+            sessionLoop(run, connection, session, reporting, commanding, managing, frames, withdrawAfterSync, speaking)
         } finally {
+            managing?.close()
             reader.cancel()
         }
     }
@@ -601,6 +608,7 @@ internal class PanelAssistantTransportOwner(
         session: PanelAssistantSession,
         reporting: PanelAssistantShadowReporter?,
         commanding: PanelAssistantCommandProcessor?,
+        managing: PanelAssistantManagementRequests?,
         frames: Channel<String>,
         withdrawAfterSync: Boolean,
         speaking: PanelAssistantVoice?,
@@ -646,6 +654,12 @@ internal class PanelAssistantTransportOwner(
                     continue
                 }
             }
+            val managed = managing?.next(nextMessageId)
+            if (managed != null) {
+                connection.send(managed)
+                answering += nextMessageId++
+                continue
+            }
             val spoken = speaking?.next(nextMessageId)
             if (spoken != null) {
                 connection.send(spoken)
@@ -667,6 +681,7 @@ internal class PanelAssistantTransportOwner(
                 frames.onReceive { it }
                 reporting?.wake?.onReceive { null }
                 commanding?.wake?.onReceive { null }
+                managing?.wake?.onReceive { null }
                 restartWake.onReceive { null }
                 speaking?.wake?.onReceive { null }
                 onTimeout((due - now).coerceAtLeast(0L)) { null }
@@ -679,6 +694,8 @@ internal class PanelAssistantTransportOwner(
                 is PanelAssistantSessionEvent.Closed -> return event.reason
                 is PanelAssistantSessionEvent.Command ->
                     commanding?.onCommand(event) ?: log("native transport ignored a command: commands not offered")
+                is PanelAssistantSessionEvent.Manage ->
+                    managing?.onRequest(event) ?: log("native transport ignored a management request: not granted")
                 PanelAssistantSessionEvent.MalformedCommand -> log("native transport ignored a command without an id")
                 is PanelAssistantSessionEvent.Ignored -> log("native transport ignored event kind ${event.kind}")
                 null -> Unit

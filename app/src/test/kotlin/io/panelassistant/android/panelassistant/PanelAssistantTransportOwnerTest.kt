@@ -1022,6 +1022,71 @@ class PanelAssistantTransportOwnerTest {
         harness.owner.close()
     }
 
+    @Test fun aSessionThatGrantsManagementAnswersHealthAndStatusUnderAnyAuthority() = runTest {
+        val management = FakeManagement()
+        // Management is not entity authority: an mqtt-authority session with no commands still answers it.
+        val connection = FakeConnection(Ha.accepting(authority = "mqtt", capabilities = listOf("management")))
+        val harness = harness(connection, management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        val offered = JSONObject(connection.sent.first()).getJSONArray("capabilities")
+        assertTrue((0 until offered.length()).map(offered::getString).contains("management"))
+
+        connection.inbound.trySend(Ha.manage("m1", "snapshot"))
+        runCurrent()
+        val answer = JSONObject(connection.sent.last())
+        assertEquals(listOf("panel_assistant/command_result", "opaque-session", "m1", "applied"), listOf("type", "session", "command_id", "outcome").map(answer::getString))
+        assertEquals("ha-paneld 0.9.11 panel=alpha build=1 cfg=1a2b3c4d\n", answer.getJSONObject("result").getString("health"))
+        assertEquals("""{"warnings":[],"capabilities":[]}""", answer.getJSONObject("result").getString("status"))
+        assertEquals(listOf(true), management.snapshots)
+
+        // A repeat is answered from the record, result included, and not read again.
+        connection.inbound.trySend(Ha.manage("m1", "snapshot"))
+        runCurrent()
+        assertEquals(answer.getJSONObject("result").toString(), JSONObject(connection.sent.last()).getJSONObject("result").toString())
+        assertEquals(1, management.snapshots.size)
+        harness.owner.close()
+    }
+
+    @Test fun managementWritesSettingsAndRefusesReplaysAndUnknownRequests() = runTest {
+        val management = FakeManagement()
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("management")))
+        val harness = harness(connection, management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+
+        connection.inbound.trySend(Ha.manage("w1", "settings", settings = JSONObject().put("voice_wake_words", "[\"hey_jarvis\"]")))
+        runCurrent()
+        assertEquals(listOf(mapOf("voice_wake_words" to "[\"hey_jarvis\"]")), management.written)
+        assertEquals("applied", JSONObject(connection.sent.last()).getString("outcome"))
+
+        val sent = connection.sent.size
+        connection.inbound.trySend(Ha.manage("w2", "settings", session = "previous-session", settings = JSONObject().put("voice_wake_words", "[]")))
+        runCurrent()
+        assertEquals(1, management.written.size)
+
+        connection.inbound.trySend(Ha.manage("u1", "reboot"))
+        runCurrent()
+        val refused = JSONObject(connection.sent.last())
+        assertEquals(listOf("u1", "refused", "unknown_command"), listOf("command_id", "outcome", "code").map(refused::getString))
+        // The replay was never answered: the only new answer is the refusal (plus its result frame).
+        assertEquals(sent + 1, connection.sent.size)
+        harness.owner.close()
+    }
+
+    @Test fun aSessionThatDoesNotGrantManagementNeverRunsIt() = runTest {
+        val management = FakeManagement()
+        val connection = FakeConnection(Ha.accepting(capabilities = emptyList()))
+        val harness = harness(connection, management = management)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        connection.inbound.trySend(Ha.manage("m1", "snapshot"))
+        runCurrent()
+        assertTrue(management.snapshots.isEmpty())
+        assertEquals(listOf("panel_assistant/hello"), connection.sent.map(::kind))
+        harness.owner.close()
+    }
+
     @Test fun aShadowSessionRefusesCommandsWithoutRunningThem() = runTest {
         val shadow = Shadow(listOf("relay1"))
         val sink = ImmediateSink()
@@ -1408,6 +1473,21 @@ class PanelAssistantTransportOwnerTest {
     // ---- harness ---------------------------------------------------------------------------------
 
     /** Runs every command at once with [result]; approvals stay pending. */
+    private class FakeManagement : PanelAssistantManagement {
+        val snapshots = mutableListOf<Boolean>()
+        val written = mutableListOf<Map<String, String>>()
+
+        override suspend fun snapshot(updateOwner: Boolean): PanelAssistantManagementSnapshot {
+            snapshots += updateOwner
+            return PanelAssistantManagementSnapshot("ha-paneld 0.9.11 panel=alpha build=1 cfg=1a2b3c4d\n", """{"warnings":[],"capabilities":[]}""")
+        }
+
+        override suspend fun applySettings(settings: Map<String, String>): String? {
+            written += settings
+            return null
+        }
+    }
+
     private class ImmediateSink(private val result: PanelAssistantCommandResult = PanelAssistantCommandResult.Applied) :
         PanelAssistantCommandSink {
         val ran = mutableListOf<Pair<String, String>>()
@@ -1451,6 +1531,7 @@ class PanelAssistantTransportOwnerTest {
         shadow: PanelAssistantShadowReporter? = null,
         observeForHello: suspend () -> Boolean = { true },
         commands: PanelAssistantCommandSink? = null,
+        management: PanelAssistantManagement? = null,
         onAuthority: (String) -> Unit = {},
         onConnected: () -> Unit = {},
         onLifecycleNotice: (io.panelassistant.android.sensors.HaLifecycleNotice) -> Unit = {},
@@ -1484,6 +1565,7 @@ class PanelAssistantTransportOwnerTest {
             shadow = shadow,
             observeForHello = observeForHello,
             commands = commands,
+            management = management,
             embedKeys = embedKeys,
             addresses = addresses,
             onConnection = onConnection,
@@ -1653,6 +1735,18 @@ class PanelAssistantTransportOwnerTest {
                     .put("channel", channel).put("value", value ?: JSONObject.NULL).put("deadline_ms", 10_000),
             )
             .toString()
+
+        fun manage(commandId: String, op: String, session: String = "opaque-session", settings: JSONObject? = null): String =
+            JSONObject()
+                .put("id", 1)
+                .put("type", "event")
+                .put(
+                    "event",
+                    JSONObject().put("kind", "manage").put("command_id", commandId).put("session", session)
+                        .put("op", op).put("update_owner", true).put("deadline_ms", 10_000)
+                        .apply { if (settings != null) put("settings", settings) },
+                )
+                .toString()
 
         fun sessionClosed(reason: String): String = JSONObject()
             .put("id", 1)

@@ -72,6 +72,8 @@ import io.ktor.server.routing.route
 import io.ktor.server.routing.Route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.SecureRandom
 
@@ -776,6 +778,29 @@ class PaneldServer internal constructor(
     ) {
         post("/config") { directConfigPost().handle(call, capabilityProvider) }
     }
+
+    /** What Panel Assistant reads over its session: the same health line and status body HTTP serves. */
+    internal suspend fun managementSnapshot(updateOwner: Boolean) = withContext(Dispatchers.IO) {
+        if (updateOwner) onPanelAssistantUpdateOwner()
+        io.panelassistant.android.panelassistant.PanelAssistantManagementSnapshot(
+            healthLine(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantRestartHealth() },
+            statusJson(storageHealth()),
+        )
+    }
+
+    /** Settings Panel Assistant writes over its session, through the Configure page's own validation. */
+    internal suspend fun applyManagedSettings(settings: Map<String, String>): String? =
+        io.panelassistant.android.panelassistant.PanelAssistantManagedSettings.apply(
+            settings,
+            validate = { values ->
+                val raw = io.ktor.http.Parameters.build { values.forEach { (key, value) -> append(key, value) } }
+                when (val result = normalizeConfigPostParameters(raw, liveCapabilities(managementObservations.snapStaleOk().caps))) {
+                    is ConfigPostParameters.Ok -> result.values.names().associateWith { result.values[it].orEmpty() }
+                    is ConfigPostParameters.Bad -> null
+                }
+            },
+            commit = { accepted -> acceptedConfigTransaction().applyAccepted(accepted) == ApplyAcceptedResult.Applied },
+        )
 
     private fun directConfigPost() = acceptedConfigTransaction().directPost(
         directConfigMutationLock = directConfigMutationLock,
