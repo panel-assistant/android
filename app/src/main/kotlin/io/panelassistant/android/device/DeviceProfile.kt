@@ -5,7 +5,6 @@ import io.panelassistant.android.device.profile.ProfileProximityCalibration
 import io.panelassistant.android.device.profile.ProfileLink
 import io.panelassistant.android.device.profile.ProfiledDisplayGeometry
 import io.panelassistant.android.device.profile.ProfileSoc
-import io.panelassistant.android.device.profile.ShizukuRecommendation
 
 /**
  * Runtime view of one validated declarative device profile. Everything device/platform-specific that
@@ -50,9 +49,6 @@ interface DeviceProfile {
 
     /** Desired provisioning state normalized from the active profile document. */
     val provisioning: ProvisioningIntent get() = ProvisioningIntent.EMPTY
-
-    /** Author recommendation only; never a claim about live Shizuku installation or readiness. */
-    val shizukuRecommendation: ShizukuRecommendation get() = provisioning.shizuku
 
     /** Whether full profile behavior relies on `helper/hapaneld-helper`. Every sandbox-walled panel needs
      *  it for privileged controls, but app-su panels can need it too: WF1589T's evdev power button is the
@@ -187,8 +183,7 @@ interface DeviceProfile {
     val lightTech: String? get() = null
 
     /** True on panels using an exact supported CHT8305-compatible room-climate input layout. The app
-     *  cannot read `/dev/input`; an established helper is preferred, with a fixed Shizuku shell-UID reader
-     *  where the vendor makes those exact nodes shell-readable. Gates the opt-in Room sensors and offset. */
+     *  cannot read `/dev/input`, so the reading comes through the helper. Gates the opt-in Room sensors and offset. */
     val hasCht8305: Boolean get() = false
 
     /** Board carries a VI530x time-of-flight sensor reachable through the helper daemon. */
@@ -250,7 +245,6 @@ interface DeviceProfile {
 
 /** Provisioning policy normalized from the profile schema for runtime consumers. */
 data class ProvisioningIntent(
-    val shizuku: ShizukuRecommendation = ShizukuRecommendation.NONE,
     val webViewArtifactId: String? = null,
     val companionMaxVersion: String? = null,
     val density: Int? = null,

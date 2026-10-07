@@ -295,21 +295,6 @@ class BundledProfileParityTest {
         assertTrue(bundled.filterNot { it === fallback }.all { it.document.match.any.isNotEmpty() })
     }
 
-    @Test fun bundledCatalogDeclaresShizukuOnlyForAnExactAlternateDriver() {
-        val declared = bundled.filter {
-            it.document.provisioning.access.shizuku != ShizukuRecommendation.NONE
-        }
-        assertEquals(setOf("zx-smt156"), declared.map { it.document.id }.toSet())
-        declared.forEach { source ->
-            assertTrue(
-                "${source.document.id} declares Shizuku without an exact alternate driver",
-                source.document.requires.drivers.any {
-                    ProfileMetadata.helperAuthorityDemand[it] == ProfileHelperAuthorityDemand.SHIZUKU_ALTERNATE
-                },
-            )
-        }
-    }
-
     @Test fun bundledSocFactsDistinguishCoreClassesWithoutRuntimeGuessing() {
         fun soc(id: String) = requireNotNull(bundledById.getValue(id).document.soc)
 

@@ -8,7 +8,6 @@
     <string name="retry">Retry</string>
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
-    <string name="close">Close</string>
     <string name="approve">Approve</string>
     <string name="deny">Deny</string>
     <string name="configure">Configure</string>
@@ -22,7 +21,6 @@
 
     <string name="settings">Settings</string>
     <string name="back_to_dashboard">Back to dashboard</string>
-    <string name="enhanced_access">Enhanced access</string>
     <string name="security_mode">Security mode</string>
     <string name="security_mode_hardened_summary">Hardened mode is on. High-impact requests from the network need approval on this panel. Pending: %1$d.</string>
     <string name="security_mode_relaxed_summary">Relaxed mode is on. Trusted-LAN features work without on-panel approval. Hardened mode is optional.</string>
@@ -220,23 +218,6 @@
     <string name="pending_physical_approval">Pending physical approval</string>
     <string name="approval_exact_detail">Review the action and the exact request evidence before approving it.\n\nRequest details (English):\n%1$s\n\nExact request from %2$s. Approval is one-shot and expires.</string>
 
-    <string name="shizuku_enable">Enable</string>
-    <string name="shizuku_request_permission">Request permission</string>
-    <string name="shizuku_open">Open Shizuku</string>
-    <string name="disable">Disable</string>
-    <string name="shizuku_title">Enhanced access (Shizuku)</string>
-    <string name="shizuku_scope">It does not allow arbitrary APK uploads, WebView replacement, a general shell, root app data, reboot, logs, or vendor-app controls.\n\nOnce enabled, the supported operations can be invoked through ha-paneld’s existing trusted-LAN controls on this panel.</string>
-    <string name="shizuku_grant_scope">This grants only signer-verified ha-paneld and minimal Companion updates, screenshots, key/tap input, density, and text-size operations. %1$s</string>
-    <string name="shizuku_not_installed">Shizuku is not installed. Use the ha-paneld provisioning script once over ADB, then approve access here on the panel.</string>
-    <string name="shizuku_untrusted">A package named Shizuku is installed, but its signing certificate is not trusted. ha-paneld will not connect to it.</string>
-    <string name="shizuku_disabled">Enhanced access is disabled in ha-paneld. Choose Enable here on this panel to begin local approval.</string>
-    <string name="shizuku_stopped">Enhanced access is enabled in ha-paneld, but the Shizuku service is stopped. Open Shizuku, start its service, then return here.</string>
-    <string name="shizuku_permission_needed">Shizuku is running and ready to show its local permission prompt. Request permission to continue.</string>
-    <string name="shizuku_permission_denied">Shizuku access was denied, so another permission prompt cannot be shown. Open Shizuku, choose Authorized applications, select ha-paneld, and grant access manually. Then return here.</string>
-    <string name="shizuku_connecting">Connecting to Shizuku…</string>
-    <string name="shizuku_ready">Enhanced access is ready.</string>
-    <string name="shizuku_incompatible">The Shizuku service returned an unexpected identity or protocol version. Access is blocked.</string>
-    <string name="shizuku_error">Shizuku could not be connected. Close this dialog and try again.</string>
 
     <string name="camera_channel">Camera</string>
     <string name="camera_in_use">Camera in use</string>

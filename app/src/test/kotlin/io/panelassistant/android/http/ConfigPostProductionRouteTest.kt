@@ -21,8 +21,6 @@ import io.panelassistant.android.platform.ActivityRef
 import io.panelassistant.android.platform.SystemEnv
 import io.panelassistant.android.mqtt.StateConverger
 import io.panelassistant.android.sensors.SensorReporter
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuState
 import io.panelassistant.android.security.LocalApprovalBroker
 import io.panelassistant.android.util.Cached
 import io.panelassistant.android.util.InstallProgress
@@ -780,7 +778,6 @@ class ConfigPostProductionRouteTest {
         val privilege = PrivilegedRouteObservation(
             directSuReady = true,
             helperRootReady = false,
-            shizuku = ShizukuBridge.Snapshot(ShizukuState.DISABLED, ready = false),
         )
         val snap = ManagementSnapshot(
             emptyMap(), emptyMap(), Capabilities(), emptyList(), privilege,

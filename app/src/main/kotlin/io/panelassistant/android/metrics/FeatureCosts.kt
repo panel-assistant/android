@@ -38,6 +38,8 @@ enum class FeatureCostOperation(
     PROFILE_YAML_PARSE("profiles.yaml_parse"),
     PROFILE_VALIDATE("profiles.validate"),
     PROFILE_STARTUP_RESOLVE("profiles.startup_resolve"),
+    // Retired with the Shizuku route. Keep the shipped IDs in the fixed vocabulary so projections
+    // remain comparable; nothing records them any more.
     SHIZUKU_BIND("shizuku.bind"),
     SHIZUKU_CALL("shizuku.call"),
     SHIZUKU_SCREENSHOT("shizuku.screenshot"),

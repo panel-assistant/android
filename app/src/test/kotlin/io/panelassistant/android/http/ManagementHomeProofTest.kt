@@ -6,8 +6,6 @@ import io.panelassistant.android.RendererMode
 import io.panelassistant.android.camera.CameraPresentation
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.control.*
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuState
 import io.panelassistant.android.storage.StorageHealthSnapshot
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -26,7 +24,7 @@ class ManagementHomeProofTest {
             val events = mutableListOf<String>()
             val snapshot = ManagementSnapshot(
                 emptyMap(), emptyMap(), Capabilities(), emptyList(),
-                PrivilegedRouteObservation(false, false, ShizukuBridge.Snapshot(ShizukuState.DISABLED, false)),
+                PrivilegedRouteObservation(false, false),
                 null, null, 1f, false,
             )
             val power = PowerSafetyAdvisory(

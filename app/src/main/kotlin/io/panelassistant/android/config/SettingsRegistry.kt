@@ -719,7 +719,7 @@ object SettingsRegistry {
         ),
         // Last in the group on purpose where display sizing exists: the display-density control is the
         // preferred way to size a dashboard, so this app-level zoom sits below the connection settings
-        // users should actually set. Without root or Shizuku there is no density control, and zoom is
+        // users should actually set. Without root or the helper there is no density control, and zoom is
         // the only sizing lever, so it is promoted into that place with help that says so.
         SettingSpec(
             key = "dashboard_zoom", type = SettingType.INT, group = "Dashboard",
@@ -1119,7 +1119,7 @@ object SettingsRegistry {
         // ---- Room climate (exact authenticated input layouts only) ----------------------------------
         // Real environmental sensors (NOT entity_category=diagnostic), reported by default like the
         // other readings in the Sensors card.
-        // Read through the helper or a fixed Shizuku operation; only offered where the layout is proven.
+        // Read through the helper; only offered where the layout is proven.
         SettingSpec(
             key = "room_temp", type = SettingType.FLOAT, group = "Sensors",
             tier = Tier.ADVANCED, summary = "Room temperature from the climate sensor.",

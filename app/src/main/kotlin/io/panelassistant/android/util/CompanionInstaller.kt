@@ -167,7 +167,7 @@ object CompanionInstaller {
             "version" to version,
         )
         Log.i(TAG, "install Companion tag $tag")
-        when (val outcome = AppInstaller.install(context, url, AppInstaller.COMPANION_MINIMAL, allowShizuku = true)) {
+        when (val outcome = AppInstaller.install(context, url, AppInstaller.COMPANION_MINIMAL)) {
             is InstallOutcome.Failure -> return@withContext InstallOperationResult(
                 outcome.message,
                 outcome.presentation,
@@ -248,7 +248,7 @@ object CompanionInstaller {
             )
         }
 
-        when (val outcome = AppInstaller.install(context, target.apkUrl, AppInstaller.COMPANION_MINIMAL, allowShizuku = true)) {
+        when (val outcome = AppInstaller.install(context, target.apkUrl, AppInstaller.COMPANION_MINIMAL)) {
             is InstallOutcome.Failure -> return@withContext InstallOperationResult(
                 outcome.message,
                 outcome.presentation,

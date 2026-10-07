@@ -28,7 +28,6 @@ import io.panelassistant.android.device.profile.ProfileStatus
 import io.panelassistant.android.device.profile.ProfileSummary
 import io.panelassistant.android.device.profile.ProfileSoc
 import io.panelassistant.android.device.profile.ProfileCpuCoreCluster
-import io.panelassistant.android.device.profile.ShizukuRecommendation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -116,7 +115,6 @@ class ProfileRoutesTest {
         assertEquals(3L, body.getLong("catalog_revision"))
         assertEquals(2, body.getJSONArray("profiles").length())
         val local = body.getJSONArray("profiles").getJSONObject(1)
-        assertEquals("recommended", local.getString("shizuku_recommendation"))
         assertTrue(local.getBoolean("compatible"))
         assertEquals(0, local.getJSONArray("issues").length())
         val bundled = body.getJSONArray("profiles").getJSONObject(0)
@@ -594,7 +592,6 @@ class ProfileRoutesTest {
             matchesThisDevice = true,
             active = active,
             selected = selected,
-            shizukuRecommendation = if (origin == ProfileOrigin.IMPORTED) ShizukuRecommendation.RECOMMENDED else ShizukuRecommendation.NONE,
             risks = if (origin == ProfileOrigin.IMPORTED) setOf(ProfileRisk.ROOT_PATHS) else emptySet(),
             contentVersion = "0.1.0",
             soc = ProfileSoc("Test SoC", 2020, listOf(ProfileCpuCoreCluster("Arm Cortex-A55", 4)))

@@ -8,7 +8,6 @@ import android.content.IntentFilter
 import android.os.Build
 import io.panelassistant.android.storage.ProcessStartWallClock
 import androidx.appcompat.app.AppCompatDelegate
-import io.panelassistant.android.shizuku.ShizukuBridge
 import io.panelassistant.android.control.RemoteDebugSecurityTransitionGate
 import io.panelassistant.android.util.GuardDbProcessAdmission
 import io.panelassistant.android.util.GuardDbSentinelLoad
@@ -76,11 +75,6 @@ class HaPaneldApp : Application() {
         // `ui_language` is already applied above from the XML mirror, and `dark_mode` is read from that
         // same mirror. PaneldService.onCreate re-asserts both from the authoritative database, after it
         // has promoted — see reconcileNativePresentationAfterPromotion there.
-        //
-        // Registers only the official Binder lifecycle listeners: no consent read, no bind, no
-        // permission request. Shizuku's own consent lives in ha-paneld.db, so deriving the bridge's
-        // state is deferred to ShizukuBridge.activateAfterPromotion, called from the same place.
-        ShizukuBridge.initialize(this)
         if (Build.VERSION.SDK_INT < 29) {
             AppCompatDelegate.setDefaultNightMode(
                 if (darkModeBeforeDatabase(this)) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO,

@@ -52,11 +52,6 @@ export function profilesBody(s) {
       <div class="profile-inspector-body">
         <section><h3>${t('profiles.section.catalog_runtime')}</h3><div id="profile-catalog-issues" class="profile-issues"></div></section>
         <section><h3>${t('profiles.section.validation')}</h3><div id="profile-issues" class="profile-issues"></div></section>
-        <div class="profile-guidance" id="profile-shizuku-guidance">
-          <p><b>${t('profiles.shizuku.title')}</b></p>
-          <p>${t('profiles.shizuku.body')}</p>
-          <p><a href="https://example.invalid/docs/shizuku" target="_blank" rel="noopener">${t('profiles.shizuku.guide')}</a></p>
-        </div>
         <section><h3>${t('profiles.section.compared_active')}</h3><div id="profile-diff" class="profile-diff"></div></section>
         <section><h3>${t('profiles.section.observed')}</h3><p class="profile-report-note">${t('profiles.observed.note')}</p><div id="profile-report" class="profile-report"></div></section>
         <div class="profile-draft" id="profile-generic-draft">
@@ -88,7 +83,7 @@ export function profileData() {
     content_version: '2026.9.4', author: 'ha-paneld maintainers', origin: 'imported', maturity: 'verified',
     trusted_provenance: true, compatible: true, matches_this_device: true,
     active: false, selected: false, last_known_good: false,
-    shizuku_recommendation: 'recommended', risks: ['root_paths', 'package_management', 'future_long_risk_token'],
+    risks: ['root_paths', 'package_management', 'future_long_risk_token'],
     links: [
       { label: 'Device profile documentation with a long label', url: 'https://example.invalid/profiles/device-profile-documentation' },
       { label: 'Hardware evidence', url: 'https://example.invalid/evidence/hardware' },

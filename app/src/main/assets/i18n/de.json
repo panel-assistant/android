@@ -3043,11 +3043,6 @@
       "sourceHash": "5356e1ca4a3a487fb59a9181ed108a1077e53887e3a521aec59c47c3f89da8ef",
       "state": "machine-cross-checked"
     },
-    "dashboard.capability.note.preferred_route_prefix": {
-      "text": "bringt keine zusätzliche Funktion, solange Root oder der Hilfs-Daemon den bevorzugten Pfad bereitstellt; ",
-      "sourceHash": "f1ab2487d4655ed06023393219c15889849d1dfc235f4db57b572cc909a58828",
-      "state": "machine-cross-checked"
-    },
     "dashboard.capability.note.rockchip_led_direct": {
       "text": "Rockchip /dev/ledjni (direkt per App, kein Root)",
       "sourceHash": "f5876fe3b48b4aeb1411b01ffc22454d72a3ab77bac26c52751b595f6c5a2dc8",
@@ -3061,61 +3056,6 @@
     "dashboard.capability.note.root_or_helper": {
       "text": "über Root oder den Hilfs-Daemon verfügbar",
       "sourceHash": "165f7476c83ccff55a53fe81df2bb7213eb58cc7dc042802bf754fc9a75d8acc",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_connecting": {
-      "text": "Verbindung zum lokal genehmigten Shizuku-Dienst wird hergestellt",
-      "sourceHash": "20ee03c32f465fae6c1c11e967e0e84adcc9bbb3020f72c9aeacaa08c27fe72a",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_disabled": {
-      "text": "in ha-paneld deaktiviert; auf dem Panel Konfiguration → Dreipunktmenü → Erweiterter Zugriff → Aktivieren öffnen",
-      "sourceHash": "3bee0070aeb6277cf63a471498b0fd5694cf27f969e666b702644b440086e92a",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_failed": {
-      "text": "Verbindung mit Shizuku fehlgeschlagen; im Paneldialog „Erweiterter Zugriff“ erneut versuchen",
-      "sourceHash": "c55ae7ee37cbc132cc37edd487b0d96b87317868a2912f108147ee9867c445d5",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_grant": {
-      "text": "Zugriff verweigert; ha-paneld unter Shizuku → Autorisierte Apps freigeben",
-      "sourceHash": "7788db822a8fbe15837d8cc318945e47ee7ce3725c6b3282cba6c5c5273042c4",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_incompatible": {
-      "text": "blockiert: unerwartete Identität oder unerwartetes Protokoll des Shizuku-Dienstes",
-      "sourceHash": "86b1e0cf086b8ad212410b559f017fea9d4662bb263a68413efa934c1cfe7d80",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_missing": {
-      "text": "Manager fehlt; Bereitstellung mit --shizuku erneut ausführen",
-      "sourceHash": "fb760f6c866b73fcb6e8c782783813d5011fea64d563d767ad9b1643f635a78c",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_permission": {
-      "text": "Dienst läuft; Zugriff für ha-paneld lokal anfordern und genehmigen",
-      "sourceHash": "d83310993a1a94b12cdec092d96a629a92285d910255d1c61f308a201c624a2a",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_ready": {
-      "text": "bereit mit shell UID; nur fest vorgegebene lokale Aktionen",
-      "sourceHash": "ecdf8f84be742bd0ba8d4633061b3d355cefae6b946bc0eb030889ebe0344b14",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_stopped": {
-      "text": "in ha-paneld aktiviert, aber der Shizuku-Dienst ist beendet; Shizuku öffnen und den Dienst starten",
-      "sourceHash": "081425f46f4ebb0257a08721060226f25d4e9ce1221ba37ca6e85847ef5c5079",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_untrusted": {
-      "text": "blockiert: Signatur des installierten Managers ist nicht vertrauenswürdig",
-      "sourceHash": "ca917912583f3b7942d9ba51510733d455007c04e339fe3101687c9dc83d73d4",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.note.shizuku_verified": {
-      "text": "über lokal genehmigten Shizuku-Zugriff verfügbar; App-Updates bleiben signaturgeprüft",
-      "sourceHash": "3b125c2e143d0b144888f9d28ef510a0d7a05f77298ea490b8736c7087961ecf",
       "state": "machine-cross-checked"
     },
     "dashboard.capability.note.su_direct": {
@@ -3156,11 +3096,6 @@
     "dashboard.capability.screen_power": {
       "text": "Bildschirm ein/aus",
       "sourceHash": "0d4d080bcd55f5ee63c4d2574a7c7e2a743c63673b4d440bbee7984f28e40c4a",
-      "state": "machine-cross-checked"
-    },
-    "dashboard.capability.shizuku": {
-      "text": "Erweiterter Shizuku-Zugriff",
-      "sourceHash": "195c2335bc7909021beca0b17dd90d7d6690c4d9b1bc28d3b41825d6712a83f5",
       "state": "machine-cross-checked"
     },
     "dashboard.capability.system_actions": {
@@ -9753,11 +9688,6 @@
       "sourceHash": "752e7c9a135d7bda6a4bfc06731d3c40ac02d235ecc292c564571ef5a0641272",
       "state": "machine-cross-checked"
     },
-    "profiles.schema.description.shizuku_recommendation": {
-      "text": "Nur Empfehlung des Autors, niemals Live-Bereitschaft oder Zustimmung.",
-      "sourceHash": "d9923d81100c264134d703555a7a7ea41e81f3f01f348ff52207de7d24032aed",
-      "state": "machine-cross-checked"
-    },
     "profiles.schema.description.su_form": {
       "text": "Unterstützte su-Aufrufkonvention.",
       "sourceHash": "c59b1eee40a674144215cd402e07eb6b989182bdd2458cbedace47fc5f6eb763",
@@ -9801,26 +9731,6 @@
     "profiles.severity.warning": {
       "text": "Warnung",
       "sourceHash": "4bd9354bb652233497a0f42647464b81b83a83654fcf1511263a5d0120d74c91",
-      "state": "machine-cross-checked"
-    },
-    "profiles.shizuku.body": {
-      "text": "Dieses Profil deklariert einen bestimmten Fallback auf Shell-Ebene. Es installiert, aktiviert oder genehmigt den separaten Zugriffsdienst nicht.",
-      "sourceHash": "f5e6ae0bc6233a2dcdd90801ec4aab0bbced0cfdf2e56ba262e4c44f337aedd4",
-      "state": "machine-cross-checked"
-    },
-    "profiles.shizuku.guide": {
-      "text": "Erweiterte Einrichtungsanleitung lesen",
-      "sourceHash": "55878109cd662d28cb779e3ec2164d283a24a39bbba6e5ae24a765bc1bec0960",
-      "state": "machine-cross-checked"
-    },
-    "profiles.shizuku.recommended": {
-      "text": "Shizuku: empfohlen",
-      "sourceHash": "d37bff97e12b6ca397f2487ebb1378cf4261cbbeee760e6370ebbf7fa6db8866",
-      "state": "machine-cross-checked"
-    },
-    "profiles.shizuku.title": {
-      "text": "Anforderung für Sonderzugriff",
-      "sourceHash": "d8501ad35856c2d0c2429b3a7de56a36dad32278d82e53208d2fab136abbc8f3",
       "state": "machine-cross-checked"
     },
     "profiles.state.active": {

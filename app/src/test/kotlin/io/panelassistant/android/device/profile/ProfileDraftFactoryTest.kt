@@ -22,7 +22,6 @@ class ProfileDraftFactoryTest {
 
         assertTrue(ProfileValidator.validate(parsed, "1.0.0", bundled = false).isEmpty())
         assertEquals(ProfileMaturity.DRAFT, parsed.metadata.maturity)
-        assertEquals(ShizukuRecommendation.NONE, parsed.provisioning.access.shizuku)
         assertFalse(draft.rawYaml.contains("shizuku", ignoreCase = true))
         assertEquals("none", parsed.hardware.led.mechanism)
         assertFalse(parsed.platform.appCanSu)

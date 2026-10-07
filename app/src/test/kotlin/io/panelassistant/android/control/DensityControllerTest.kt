@@ -1,31 +1,12 @@
 package io.panelassistant.android.control
 
-import io.panelassistant.android.platform.ShellPrivilege
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /** Density/font-scale parsing and live helper↔su routing, with no device or privileged process. */
 class DensityControllerTest {
-    private class Shell : ShellPrivilege {
-        val calls = mutableListOf<String>()
-        override fun available() = true
-        override fun uid() = 2000
-        override fun screenshot(): ByteArray? = null
-        override fun inputKey(keyCode: Int) = false
-        override fun tap(x: Int, y: Int) = false
-        override fun density(): String { calls += "density"; return "Physical density: 320\nOverride density: 240" }
-        override fun setDensity(dpi: Int): Boolean { calls += "set-density:$dpi"; return true }
-        override fun resetDensity() = false
-        override fun fontScale(): String? = null
-        override fun setFontScale(scale: Float) = false
-        override fun resetFontScale() = false
-        override fun installApk(apk: File, allowDowngrade: Boolean, timeoutMs: Long): String? = null
-    }
     private data class Harness(
         val density: DensityController,
         val root: FakeRootShell,
@@ -46,15 +27,7 @@ class DensityControllerTest {
     private fun privilege(
         directSuReady: Boolean = false,
         helperRootReady: Boolean = false,
-        shizukuReady: Boolean = false,
-    ) = PrivilegedRouteObservation(
-        directSuReady = directSuReady,
-        helperRootReady = helperRootReady,
-        shizuku = ShizukuBridge.Snapshot(
-            state = if (shizukuReady) ShizukuState.READY else ShizukuState.STOPPED,
-            ready = shizukuReady,
-        ),
-    )
+    ) = PrivilegedRouteObservation(directSuReady = directSuReady, helperRootReady = helperRootReady)
 
     @Test fun sizingObservationReadsDensityAndFontScaleExactlyOnce() {
         val h = controller(
@@ -275,41 +248,5 @@ class DensityControllerTest {
         assertFalse(DensityController.allApplied(null, null))
         assertFalse(DensityController.allApplied(true, false))
         assertFalse(DensityController.allApplied(false, true))
-    }
-
-    @Test fun displayFallsThroughRootAndHelperToShizukuLast() {
-        val shell = Shell()
-        val root = FakeRootShell(outputs = mapOf("wm density" to "bad"), runResult = false)
-        val daemon = FakeDaemon(replies = mapOf("DENSITY" to "ERR", "DENSITY 240" to "ERR"))
-        val density = DensityController(canSu = true, root = root, daemon = daemon, shell = shell)
-
-        assertEquals(240, density.observeSizing().current)
-        assertTrue(density.set(240))
-        assertEquals(listOf("density", "set-density:240"), shell.calls)
-    }
-
-    @Test fun readyShizukuPrecedesSpeculativeSuOnSandboxedProfile() {
-        val shell = Shell()
-        val root = FakeRootShell(outputs = mapOf("wm density" to "Physical density: 480"), runResult = true)
-        val daemon = FakeDaemon(replies = mapOf("DENSITY" to "ERR", "DENSITY 240" to "ERR"))
-        val density = DensityController(canSu = false, root = root, daemon = daemon, shell = shell)
-
-        assertEquals(240, density.observeSizing().current)
-        assertTrue(density.set(240))
-        assertTrue(root.outputRan.none { it.startsWith("wm density") })
-        assertTrue(root.ran.isEmpty())
-        assertEquals(listOf("density", "set-density:240"), shell.calls)
-    }
-
-    @Test fun capturedShizukuRouteSuppressesUnreadySuAndHelperReads() {
-        val shell = Shell()
-        val root = FakeRootShell(outputs = mapOf("wm density" to "Physical density: 480"))
-        val daemon = FakeDaemon(replies = mapOf("DENSITY" to "PHYS=320 OVER=-"))
-        val density = DensityController(canSu = true, root = root, daemon = daemon, shell = shell)
-
-        assertEquals(240, density.observeSizing(privilege(shizukuReady = true)).current)
-        assertTrue(root.outputRan.isEmpty())
-        assertTrue(daemon.sent.isEmpty())
-        assertEquals(listOf("density"), shell.calls)
     }
 }

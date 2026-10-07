@@ -53,7 +53,7 @@ internal class DashboardPageHandler(
             "contexttbl",
             "captbl",
         ).joinToString(",") { id -> "\"$id\":${jsonStr(rows.render(id, s, h, strings))}" }
-        return """{"banners":${jsonStr(advisories.render(s, h, strings))},"shot":${s.privilege.typedShellControlReady},"shotCached":${jsonStr(screenshots.placeholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(rows.controls(s, strings))},"cards":{$cards}}"""
+        return """{"banners":${jsonStr(advisories.render(s, h, strings))},"shot":${s.privilege.rootControlReady},"shotCached":${jsonStr(screenshots.placeholderUrl() ?: "")},"versionCode":${BuildConfig.VERSION_CODE},"package":${jsonStr(BuildConfig.APPLICATION_ID)},"controls":${jsonStr(rows.controls(s, strings))},"cards":{$cards}}"""
     }
 
     fun html(strings: AppStrings, embed: EmbedMode? = null): String {
@@ -69,7 +69,7 @@ internal class DashboardPageHandler(
         // probes finish. It must not request a new capture until hydration confirms a privileged route.
         val cachedShot = screenshots.placeholderUrl()
         val shotCard = dashboardScreenshotCard(
-            s == null, s?.privilege?.typedShellControlReady == true,
+            s == null, s?.privilege?.rootControlReady == true,
             cachedShot, ::screenAspectRatio, strings,
         )
         val cameraCard = dashboardCameraCard(camera.presentation().state != CameraState.ABSENT, strings)

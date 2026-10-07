@@ -39,7 +39,6 @@ internal object ProvisioningTextRenderer {
 
     private fun ProvisioningPlanItem.title(): String = when (id) {
         "access.helper" -> "Root helper"
-        "access.shizuku" -> "Shizuku"
         "software.webview" -> "System WebView"
         else -> "Provisioning item"
     }
@@ -53,16 +52,6 @@ internal object ProvisioningTextRenderer {
         "helper_identity_unavailable" -> "A helper responds, but its compatibility cannot be verified."
         "helper_observation_not_ready", "helper_probe_failed", "helper_probe_unsupported" ->
             "The helper state could not be determined."
-        "shizuku_ready" -> "Shizuku is ready."
-        "shizuku_consent_disabled" ->
-            "On the panel, open Configure → toolbar overflow → Enhanced access, then choose Enable."
-        "shizuku_permission_required" -> "Approve ha-paneld access in the Shizuku manager on this panel."
-        "shizuku_service_not_running" ->
-            "Enhanced access is enabled; start the Shizuku service on this panel, then return to Enhanced access."
-        "profile_recommended" -> "This profile recommends Shizuku; install and approve it locally if those capabilities are wanted."
-        "profile_optional" -> "Shizuku is optional for this profile and requires local approval."
-        "shizuku_observation_not_ready", "shizuku_probe_failed", "shizuku_probe_unsupported",
-        "shizuku_identity_unavailable" -> "The Shizuku state could not be determined."
         "webview_recommendation_satisfied" -> "The active engine satisfies this profile's recommendation."
         "webview_outdated" -> "The active engine is older than this profile's release-owned recommendation."
         "webview_missing" -> "No active engine was detected; a release-owned recommendation is available."

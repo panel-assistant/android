@@ -1,7 +1,5 @@
 package io.panelassistant.android.provisioning
 
-import io.panelassistant.android.device.profile.ShizukuRecommendation
-
 /** Pure, Android-free translation from validated intent plus typed observations to a read-only plan. */
 internal object ProvisioningPlanner {
     fun plan(
@@ -14,14 +12,6 @@ internal object ProvisioningPlanner {
 
         val items = buildList {
             profile.helperImportance?.let { add(helperItem(it, observations.helper)) }
-            // Profile-declared appCanSu only orders runtime attempts; it does not prove that this
-            // installation currently has root. A compatible helper is observed privileged readiness.
-            val preferredPrivilegeReady =
-                (observations.helper as? ProvisioningObservation.Known)?.value ==
-                ProvisioningHelperState.COMPATIBLE
-            if (!preferredPrivilegeReady && profile.shizuku != ShizukuRecommendation.NONE) {
-                add(shizukuItem(profile.shizuku, observations.shizuku))
-            }
             profile.webView?.let { add(webViewItem(it, observations.webView)) }
         }
         return ProvisioningPlan(
@@ -68,50 +58,6 @@ internal object ProvisioningPlanner {
             status = result.status,
             executor = ProvisioningExecutor.HOST,
             desiredState = "compatible",
-            observedState = result.observed,
-            reasonCode = result.reason,
-        )
-    }
-
-    private fun shizukuItem(
-        recommendation: ShizukuRecommendation,
-        observation: ProvisioningObservation<ProvisioningShizukuState>,
-    ): ProvisioningPlanItem {
-        val importance = when (recommendation) {
-            ShizukuRecommendation.RECOMMENDED -> ProvisioningImportance.RECOMMENDED
-            ShizukuRecommendation.OPTIONAL -> ProvisioningImportance.OPTIONAL
-            ShizukuRecommendation.NONE -> error("NONE is filtered before planning")
-        }
-        val result = when (observation) {
-            is ProvisioningObservation.Known -> when (observation.value) {
-                ProvisioningShizukuState.READY ->
-                    Result(ProvisioningItemStatus.SATISFIED, "ready", "shizuku_ready")
-                ProvisioningShizukuState.CONSENT_DISABLED ->
-                    Result(ProvisioningItemStatus.MANUAL, "disabled", "shizuku_consent_disabled")
-                ProvisioningShizukuState.PERMISSION_REQUIRED ->
-                    Result(ProvisioningItemStatus.MANUAL, "permission_required", "shizuku_permission_required")
-                ProvisioningShizukuState.SERVICE_NOT_RUNNING ->
-                    Result(ProvisioningItemStatus.MANUAL, "service_not_running", "shizuku_service_not_running")
-                ProvisioningShizukuState.MANAGER_MISSING ->
-                    Result(
-                        ProvisioningItemStatus.MANUAL,
-                        "manager_missing",
-                        if (importance == ProvisioningImportance.RECOMMENDED) {
-                            "profile_recommended"
-                        } else {
-                            "profile_optional"
-                        },
-                    )
-            }
-            is ProvisioningObservation.Unknown ->
-                Result(ProvisioningItemStatus.BLOCKED, "unknown", observation.reason.shizukuReason())
-        }
-        return ProvisioningPlanItem(
-            id = "access.shizuku",
-            importance = importance,
-            status = result.status,
-            executor = ProvisioningExecutor.LOCAL_USER,
-            desiredState = "ready",
             observedState = result.observed,
             reasonCode = result.reason,
         )
@@ -171,13 +117,6 @@ internal object ProvisioningPlanner {
         ProvisioningUnknownReason.NOT_READY -> "helper_observation_not_ready"
         ProvisioningUnknownReason.PROBE_FAILED -> "helper_probe_failed"
         ProvisioningUnknownReason.UNSUPPORTED -> "helper_probe_unsupported"
-    }
-
-    private fun ProvisioningUnknownReason.shizukuReason(): String = when (this) {
-        ProvisioningUnknownReason.NOT_READY -> "shizuku_observation_not_ready"
-        ProvisioningUnknownReason.PROBE_FAILED -> "shizuku_probe_failed"
-        ProvisioningUnknownReason.UNSUPPORTED -> "shizuku_probe_unsupported"
-        ProvisioningUnknownReason.IDENTITY_UNAVAILABLE -> "shizuku_identity_unavailable"
     }
 
     private fun ProvisioningUnknownReason.webViewReason(): String = when (this) {

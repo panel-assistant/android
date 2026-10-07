@@ -3,7 +3,6 @@ package io.panelassistant.android.metrics
 import io.panelassistant.android.control.Su
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.RootShell
-import io.panelassistant.android.shizuku.ShizukuBridge
 import io.panelassistant.android.util.HelperClient
 import io.panelassistant.android.util.localIpv4
 import java.io.File
@@ -41,14 +40,10 @@ interface MetricSource {
     fun cpuGovernor(allowRootFallback: Boolean = true): String?
     fun cpuAvailableGovernors(allowRootFallback: Boolean = true): String?
 
-    // Raw room-climate readers (`T=<centi> H=<centi>`), one per authority. The reader ([PanelMetrics])
-    // owns the helper→Shizuku source selection + the single parse, exactly like every other metric —
-    // the source just exposes each raw read and never parses or decides which one wins.
+    // Raw room-climate reader (`T=<centi> H=<centi>`). The reader ([PanelMetrics]) owns the parse, exactly
+    // like every other metric — the source just exposes the raw read.
     /** Raw room-climate reply from the authenticated helper daemon (`CHT8305`), or null when unreachable. */
     fun roomClimateDaemon(): String?
-
-    /** Raw room-climate reply from the fixed Shizuku shell-UID input reader, or null when unavailable. */
-    fun roomClimateShell(): String?
 }
 
 /**
@@ -61,7 +56,6 @@ interface MetricSource {
 class OsMetricSource(
     private val daemon: Daemon = HelperClient,
     private val root: RootShell = Su,
-    private val shellRoomClimate: () -> String? = ShizukuBridge::roomClimate,
 ) : MetricSource {
 
     override fun perfDump(): String? = daemon.sendBytes("PERFDUMP")?.toString(Charsets.UTF_8)
@@ -107,11 +101,8 @@ class OsMetricSource(
     /** cpu0 available governors (raw, space-separated). Same direct→su read path as [cpuGovernor]. */
     override fun cpuAvailableGovernors(allowRootFallback: Boolean): String? = directThenSu(AVAIL, allowRootFallback)
 
-    /** Raw `CHT8305` daemon reply — the established helper authority. Parsing + fallback live in the reader. */
+    /** Raw `CHT8305` daemon reply — the established helper authority. Parsing lives in the reader. */
     override fun roomClimateDaemon(): String? = daemon.send("CHT8305")
-
-    /** Raw Shizuku shell-UID room-climate reply — the locally approved fallback authority. */
-    override fun roomClimateShell(): String? = shellRoomClimate()
 
     /** Direct file read, falling back to `su cat` when the app can't read the node directly. */
     private fun directThenSu(path: String, allowRootFallback: Boolean = true): String? =

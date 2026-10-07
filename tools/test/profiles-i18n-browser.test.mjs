@@ -44,7 +44,7 @@ function profile(overrides = {}) {
     ref: { id: 'sample', revision: 'abcdef0123456789' },
     display_name: '样例 <profile>&"', origin: 'bundled', maturity: 'verified', trusted_provenance: true,
     compatible: true, matches_this_device: true, active: true, selected: true, last_known_good: true,
-    shizuku_recommendation: 'recommended', risks: ['root_paths', 'future_risk'], links: [], issues: [],
+    risks: ['root_paths', 'future_risk'], links: [], issues: [],
     ...overrides,
   };
 }
@@ -52,7 +52,7 @@ function profile(overrides = {}) {
 function html(translations, withHelper = true, editorProbe = false, locale = 'zh-Hans', realEditor = false) {
   const helper = withHelper ? `<script>window.__calls=[];const __c=${JSON.stringify(translations)};window.HaI18n={locale:${JSON.stringify(locale)},has:(key)=>Object.prototype.hasOwnProperty.call(__c,key),t:(key,fallback,values)=>{window.__calls.push(key);const c=__c;if(c.__throw===key)throw new Error('missing review projection');const value=Object.prototype.hasOwnProperty.call(c,key)?c[key]:fallback;return String(value==null?'':value).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(p,n)=>values&&Object.prototype.hasOwnProperty.call(values,n)?String(values[n]):p);}};</script>` : '';
   const editor = editorProbe ? `<script>window.__editorValue='';window.ProfileCodeEditor={create:()=>({getValue:()=>window.__editorValue,setValue:(value)=>{window.__editorValue=value;},setReadOnly:()=>{},setSchema:(fields)=>{window.__schema=fields;},setDiagnostics:()=>{},focus:()=>{}})};</script>` : '';
-  const ids = ['profile-select','profile-use-draft','profile-status','profile-shizuku-guidance','profile-new','profile-edit','profile-fork','profile-import','profile-export','profile-validate','profile-compare','savebtn','profile-activate','profile-auto','profile-rollback','profile-delete','profile-draft','profile-modal-cancel','profile-modal-confirm'];
+  const ids = ['profile-select','profile-use-draft','profile-status','profile-new','profile-edit','profile-fork','profile-import','profile-export','profile-validate','profile-compare','savebtn','profile-activate','profile-auto','profile-rollback','profile-delete','profile-draft','profile-modal-cancel','profile-modal-confirm'];
   const controls = ids.map((id) => id === 'profile-select' ? `<select id="${id}"></select>` : id === 'profile-import' ? `<input id="${id}" type="file">` : `<button id="${id}">${id}</button>`).join('');
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"></head><body><div class="wrap"><div class="profile-toolbar">${controls}</div><div class="profile-workspace"><section id="profile-editor"><div class="profile-editor-head"></div></section><section class="profile-inspector"><div class="profile-inspector-head"></div><div class="profile-inspector-body"><div id="profile-editor-meta"></div><div id="profile-badges"></div><div id="profile-links"></div><div id="profile-catalog-issues"></div><div id="profile-issues"></div><div id="profile-diff"></div><div id="profile-report"></div></div></section></div></div><div id="profile-modal" hidden><h2 id="profile-modal-title"></h2><pre id="profile-modal-detail"></pre></div>${helper}${editor}${realEditor ? '<script src="/codemirror.js"></script>' : ''}<script src="/profiles.js"></script></body></html>`;
 }
@@ -196,7 +196,7 @@ browserTest('Profiles localizes catalogue, badges, issues and reports while pres
     'profiles.catalog.option.bundled_active': '{name} · 内置 · {revision} · 已启用',
     'profiles.origin.bundled': '内置', 'profiles.maturity.verified_trusted': '✓ 已验证',
     'profiles.state.active': injection, 'profiles.state.last_known_good': '上次正常',
-    'profiles.shizuku.recommended': 'Shizuku：建议', 'profiles.risk.root_paths': 'root 路径',
+    'profiles.risk.root_paths': 'root 路径',
     'profiles.report.match_model': '匹配字段：型号', 'profiles.report.status.unknown': '未知',
     'profiles.catalog.issue_default': '目录问题', 'profiles.issue.unknown-value': '未知值：{value}',
     'profiles.status.viewing_revision': '查看不可变版本 {revision}。',
@@ -211,7 +211,7 @@ browserTest('Profiles localizes catalogue, badges, issues and reports while pres
     ] },
   });
   assert.equal(await page.locator('#profile-select option').textContent(), '样例 <profile>&" · 内置 · abcdef0123 · 已启用');
-  assert.deepEqual(await page.locator('#profile-badges .profile-badge').allTextContents(), ['内置', '✓ 已验证', injection, '上次正常', 'Shizuku：建议', 'root 路径', 'future_risk']);
+  assert.deepEqual(await page.locator('#profile-badges .profile-badge').allTextContents(), ['内置', '✓ 已验证', injection, '上次正常', 'root 路径', 'future_risk']);
   assert.equal(await page.locator('#profile-badges img').count(), 0);
   assert.equal(await page.evaluate(() => window.__injected), undefined);
   assert.deepEqual(await page.locator('#profile-report .profile-diff-path').allTextContents(), ['匹配字段：型号', 'evidence.future_name']);
@@ -291,7 +291,7 @@ browserTest('Profiles selects every full option template and maps imported origi
       variants.push(profile({
         ref: { id, revision: `0123456789-${id}` }, display_name: id, origin,
         compatible: state !== 'incompatible', active: state === 'active', selected: state === 'selected',
-        last_known_good: false, maturity: '', shizuku_recommendation: 'none', risks: [],
+        last_known_good: false, maturity: '', risks: [],
       }));
     }
   }
@@ -331,7 +331,6 @@ browserTest('Profiles schema localization map is the exact closed 13-field proje
     'hardware.led.transfer': 'profiles.schema.description.led_transfer',
     'hardware.screen_off': 'profiles.schema.description.screen_off',
     'identity.model_label_strategy': 'profiles.schema.description.model_label_strategy',
-    'provisioning.access.shizuku': 'profiles.schema.description.shizuku_recommendation',
     'provisioning.software.webview.artifact': 'profiles.schema.description.webview_artifact',
     'provisioning.packages[].desired_state': 'profiles.schema.description.package_desired_state',
     'provisioning.packages[].importance': 'profiles.schema.description.package_importance',

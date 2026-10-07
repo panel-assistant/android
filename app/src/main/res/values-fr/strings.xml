@@ -6,7 +6,6 @@
     <string name="retry">Réessayer</string>
     <string name="ok">OK</string>
     <string name="cancel">Annuler</string>
-    <string name="close">Fermer</string>
     <string name="approve">Approuver</string>
     <string name="deny">Refuser</string>
     <string name="configure">Configurer</string>
@@ -20,7 +19,6 @@
 
     <string name="settings">Paramètres</string>
     <string name="back_to_dashboard">Retour au tableau de bord</string>
-    <string name="enhanced_access">Accès étendu</string>
     <string name="security_mode">Mode de sécurité</string>
     <string name="security_mode_hardened_summary">Le mode renforcé est activé. Les requêtes réseau à fort impact doivent être approuvées sur ce panneau. En attente : %1$d.</string>
     <string name="security_mode_relaxed_summary">Le mode assoupli est activé. Les fonctions du réseau local de confiance sont disponibles sans approbation sur le panneau. Le mode renforcé est facultatif.</string>
@@ -218,23 +216,6 @@
     <string name="pending_physical_approval">Approbation physique en attente</string>
     <string name="approval_exact_detail">Vérifiez l’action et les détails exacts de la requête avant de l’approuver.\n\nDétails de la requête (en anglais) :\n%1$s\n\nRequête précise de %2$s. L’approbation est à usage unique et expire.</string>
 
-    <string name="shizuku_enable">Activer</string>
-    <string name="shizuku_request_permission">Demander l’autorisation</string>
-    <string name="shizuku_open">Ouvrir Shizuku</string>
-    <string name="disable">Désactiver</string>
-    <string name="shizuku_title">Accès étendu (Shizuku)</string>
-    <string name="shizuku_scope">Il ne permet pas le téléversement d’APK arbitraires, le remplacement de WebView, l’accès général à un interpréteur de commandes, l’accès racine aux données des applications, le redémarrage, l’accès aux journaux ni le contrôle des applications du fabricant.\n\nUne fois l’accès activé, les opérations prises en charge peuvent être appelées par les commandes existantes du réseau local de confiance de ha-paneld sur ce panneau.</string>
-    <string name="shizuku_grant_scope">Cette autorisation permet uniquement les mises à jour de ha-paneld avec signataire vérifié et les mises à jour minimales de Companion, les captures d’écran, la saisie de touches et d’appuis, ainsi que les opérations de densité et de taille du texte. %1$s</string>
-    <string name="shizuku_not_installed">Shizuku n’est pas installé. Exécutez une fois le script de provisionnement de ha-paneld via ADB, puis approuvez l’accès ici, sur le panneau.</string>
-    <string name="shizuku_untrusted">Un paquet nommé Shizuku est installé, mais son certificat de signature n’est pas approuvé. ha-paneld ne s’y connectera pas.</string>
-    <string name="shizuku_disabled">L’accès étendu est désactivé dans ha-paneld. Choisissez Activer ici, sur ce panneau, pour commencer l’approbation locale.</string>
-    <string name="shizuku_stopped">L’accès étendu est activé dans ha-paneld, mais le service Shizuku est arrêté. Ouvrez Shizuku, démarrez son service, puis revenez ici.</string>
-    <string name="shizuku_permission_needed">Shizuku fonctionne et est prêt à afficher sa demande d’autorisation locale. Demandez l’autorisation pour continuer.</string>
-    <string name="shizuku_permission_denied">L’accès à Shizuku a été refusé ; aucune autre demande d’autorisation ne peut donc être affichée. Ouvrez Shizuku, choisissez Applications autorisées, sélectionnez ha-paneld et accordez l’accès manuellement. Revenez ensuite ici.</string>
-    <string name="shizuku_connecting">Connexion à Shizuku…</string>
-    <string name="shizuku_ready">L’accès étendu est prêt.</string>
-    <string name="shizuku_incompatible">Le service Shizuku a renvoyé une identité ou une version de protocole inattendue. L’accès est bloqué.</string>
-    <string name="shizuku_error">Impossible de se connecter à Shizuku. Fermez cette boîte de dialogue et réessayez.</string>
 
     <string name="camera_channel">Caméra</string>
     <string name="camera_in_use">Caméra en cours d’utilisation</string>

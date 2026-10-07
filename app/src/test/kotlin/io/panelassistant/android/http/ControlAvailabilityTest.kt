@@ -5,10 +5,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ControlAvailabilityTest {
-    @Test fun shizukuAloneEnablesBackAndRecents() {
+    @Test fun accessibilityEnablesBackAndRecents() {
         val result = ControlAvailability.navigation(
-            accessibilityReady = false,
-            shizukuReady = true,
+            accessibilityReady = true,
             hasRecents = true,
         )
 
@@ -17,35 +16,21 @@ class ControlAvailabilityTest {
         assertTrue(result.rootlessNote.contains("Back, Recents still work"))
     }
 
-    @Test fun accessibilityAloneStillEnablesBackAndRecents() {
-        val result = ControlAvailability.navigation(
-            accessibilityReady = true,
-            shizukuReady = false,
-            hasRecents = true,
-        )
-
-        assertTrue(result.backEnabled)
-        assertTrue(result.recentsEnabled)
-    }
-
     @Test fun missingInputRouteDisablesNavigationWithoutPromotingAnOptionalProvider() {
         val result = ControlAvailability.navigation(
             accessibilityReady = false,
-            shizukuReady = false,
             hasRecents = true,
         )
 
         assertFalse(result.backEnabled)
         assertFalse(result.recentsEnabled)
         assertTrue(result.recentsRequirement.contains("Accessibility"))
-        assertFalse(result.recentsRequirement.contains("Shizuku"))
         assertTrue(result.rootlessNote.contains("Back and Recents need Accessibility or privileged input access"))
     }
 
     @Test fun firmwareWithoutOverviewKeepsRecentsDisabledWhenInputIsReady() {
         val result = ControlAvailability.navigation(
-            accessibilityReady = false,
-            shizukuReady = true,
+            accessibilityReady = true,
             hasRecents = false,
         )
 
@@ -59,7 +44,6 @@ class ControlAvailabilityTest {
     @Test fun missingInputOnFirmwareWithoutOverviewUsesSingularBackGuidance() {
         val result = ControlAvailability.navigation(
             accessibilityReady = false,
-            shizukuReady = false,
             hasRecents = false,
         )
 

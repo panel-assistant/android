@@ -20,9 +20,6 @@ import io.panelassistant.android.control.CdpRelay
 import io.panelassistant.android.control.HardenedNetworkAdbAdmission
 import io.panelassistant.android.control.RemoteDebugSecurityTransitionGate
 import io.panelassistant.android.control.VerifiedRelayTransition
-import io.panelassistant.android.shizuku.ShizukuConsent
-import io.panelassistant.android.shizuku.ShizukuManagerIdentity
-import io.panelassistant.android.shizuku.ShizukuSetupDialog
 import io.panelassistant.android.security.LocalApprovalBroker
 import io.panelassistant.android.util.LocalAdminEndpoint
 import io.panelassistant.android.util.LocalAdminReadiness
@@ -122,7 +119,6 @@ class ConfigActivity : AppCompatActivity() {
         }
         // A top bar with a back arrow → return to the dashboard (finish this activity). Without it there
         // is no obvious way off the config page on a kiosk panel with no visible system nav.
-        lateinit var enhancedAccessItem: android.view.MenuItem
         lateinit var securityModeItem: android.view.MenuItem
         val bar = Toolbar(this).apply {
             title = getString(applicationInfo.labelRes).ifBlank { "ha-paneld" }
@@ -132,14 +128,6 @@ class ConfigActivity : AppCompatActivity() {
             )
             navigationContentDescription = getString(R.string.back_to_dashboard)
             setNavigationOnClickListener { finish() }
-            enhancedAccessItem = menu.add(R.string.enhanced_access).apply {
-                isVisible = false
-                setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_NEVER)
-                setOnMenuItemClickListener {
-                    ShizukuSetupDialog.show(this@ConfigActivity)
-                    true
-                }
-            }
             securityModeItem = menu.add(R.string.security_mode).apply {
                 isEnabled = false
                 setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_NEVER)
@@ -165,17 +153,9 @@ class ConfigActivity : AppCompatActivity() {
         // ConfigActivity can be entered from the launcher or dashboard during process recovery. Ensure the
         // service is requested, then wait for its actual liveness endpoint instead of racing WebView load.
         activityScope.launch {
-            val (port, enhancedAccessVisible) = readActivityStateOffMain {
-                val port = Config(applicationContext).httpPort
-                val visible = ShizukuSetupDialog.entryVisible(
-                    consented = ShizukuConsent.enabled(applicationContext),
-                    managerStatus = ShizukuManagerIdentity.status(applicationContext),
-                )
-                port to visible
-            }
+            val port = readActivityStateOffMain { Config(applicationContext).httpPort }
             if (!isActive) return@launch
             securityModeItem.isEnabled = true
-            enhancedAccessItem.isVisible = enhancedAccessVisible
             pageUrl = LocalAdminEndpoint.loopbackUrl(port, "$path${sep}theme=${if (dark) "dark" else "light"}")
             healthUrl = LocalAdminEndpoint.loopbackUrl(port, "/health")
             PaneldService.start(this@ConfigActivity, fromVisibleActivity = true)

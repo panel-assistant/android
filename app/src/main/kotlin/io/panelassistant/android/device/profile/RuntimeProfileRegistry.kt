@@ -1260,7 +1260,6 @@ class RuntimeProfileRegistry internal constructor(
         matchesThisDevice = entry.document?.matches(facts) == true,
         active = active,
         selected = selected,
-        shizukuRecommendation = entry.document?.provisioning?.access?.shizuku ?: ShizukuRecommendation.NONE,
         risks = entry.document?.let { document ->
             ProfileValidator.risks(document, entry.origin == ProfileOrigin.IMPORTED && entries.values.any { it.origin == ProfileOrigin.BUNDLED && it.ref.id == entry.ref.id })
         }.orEmpty(),
@@ -1504,7 +1503,6 @@ class RuntimeProfileRegistry internal constructor(
         matchesThisDevice = true,
         active = active,
         selected = true,
-        shizukuRecommendation = ShizukuRecommendation.NONE,
         risks = emptySet(),
         contentVersion = EMERGENCY_PROFILE_VERSION,
         maturity = ProfileMaturity.DRAFT,

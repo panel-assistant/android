@@ -306,15 +306,10 @@ sealed interface ProfileDensity {
 }
 
 data class ProfileProvisioning(
-    val access: ProfileProvisioningAccess = ProfileProvisioningAccess(),
     val software: ProfileProvisioningSoftware = ProfileProvisioningSoftware(),
     val display: ProfileProvisioningDisplay = ProfileProvisioningDisplay(),
     val packages: List<ProfilePackageIntent> = emptyList(),
     val recipes: List<ProfileRecipeSelection> = emptyList(),
-)
-
-data class ProfileProvisioningAccess(
-    val shizuku: ShizukuRecommendation = ShizukuRecommendation.NONE,
 )
 
 data class ProfileProvisioningSoftware(

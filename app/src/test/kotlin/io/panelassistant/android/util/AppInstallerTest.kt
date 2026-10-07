@@ -281,7 +281,6 @@ class AppInstallerTest {
             expectedSha256 = AppInstaller.sha256(apk),
             version = "candidate",
             boundary = boundary,
-            allowShizuku = true,
         )
 
         assertTrue(prepared.bytesUnchanged())
@@ -448,26 +447,11 @@ AppInstaller.download("https://cdn.example/app.apk", destination, 1024L, abort) 
         }
     }
 
-    @Test fun shizukuRequiresExplicitCuratedInstallOptIn() {
-        assertEquals(
-            AppInstaller.InstallRoute.NONE,
-            AppInstaller.selectInstallRoute(false, false, true, allowShizuku = false),
-        )
-        assertEquals(
-            AppInstaller.InstallRoute.SHIZUKU,
-            AppInstaller.selectInstallRoute(false, false, true, allowShizuku = true),
-        )
-    }
-
     @Test fun installRouteIsSelectedOnceInEstablishedPrecedenceOrder() {
-        assertEquals(
-            AppInstaller.InstallRoute.SU,
-            AppInstaller.selectInstallRoute(true, true, true, allowShizuku = true),
-        )
-        assertEquals(
-            AppInstaller.InstallRoute.DAEMON,
-            AppInstaller.selectInstallRoute(false, true, true, allowShizuku = true),
-        )
+        assertEquals(AppInstaller.InstallRoute.SU, AppInstaller.selectInstallRoute(hasSu = true, hasDaemon = true))
+        assertEquals(AppInstaller.InstallRoute.SU, AppInstaller.selectInstallRoute(hasSu = true, hasDaemon = false))
+        assertEquals(AppInstaller.InstallRoute.DAEMON, AppInstaller.selectInstallRoute(hasSu = false, hasDaemon = true))
+        assertEquals(AppInstaller.InstallRoute.NONE, AppInstaller.selectInstallRoute(hasSu = false, hasDaemon = false))
     }
 
     @Test fun packageManagerRejectionIsDurableWhileOtherOutputStaysRetryable() {
@@ -479,8 +463,8 @@ AppInstaller.download("https://cdn.example/app.apk", destination, 1024L, abort) 
             AppInstaller.installFailure("Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]"),
         )
         assertEquals(
-            InstallOutcome.Retryable("install failed: Shizuku installer unavailable"),
-            AppInstaller.installFailure("Shizuku installer unavailable"),
+            InstallOutcome.Retryable("install failed: helper installer unavailable"),
+            AppInstaller.installFailure("helper installer unavailable"),
         )
         assertEquals(
             InstallOutcome.Retryable("install failed: "),

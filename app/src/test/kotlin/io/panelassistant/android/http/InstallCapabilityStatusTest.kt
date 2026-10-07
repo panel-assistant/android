@@ -1,8 +1,6 @@
 package io.panelassistant.android.http
 
 import io.panelassistant.android.control.PrivilegedRouteObservation
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuState
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -11,21 +9,13 @@ import org.junit.Test
 class InstallCapabilityStatusTest {
     @Test fun statusContractOffersAnInstallRouteOnlyWhenThePanelCanUseOne() {
         val routes = listOf(
-            Triple(false, false, false) to "none",
-            Triple(true, false, false) to "api",
-            Triple(false, true, false) to "api",
-            Triple(false, false, true) to "api",
+            (false to false) to "none",
+            (true to false) to "api",
+            (false to true) to "api",
         )
         routes.forEach { (route, expected) ->
-            val (su, helper, shizuku) = route
-            val privilege = PrivilegedRouteObservation(
-                directSuReady = su,
-                helperRootReady = helper,
-                shizuku = ShizukuBridge.Snapshot(
-                    if (shizuku) ShizukuState.READY else ShizukuState.STOPPED,
-                    ready = shizuku,
-                ),
-            )
+            val (su, helper) = route
+            val privilege = PrivilegedRouteObservation(directSuReady = su, helperRootReady = helper)
             assertEquals(expected, JSONObject("{${installCapabilityStatusJson(privilege)}}").getString("install_capability"))
         }
     }

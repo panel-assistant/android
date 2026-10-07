@@ -251,8 +251,6 @@ import io.panelassistant.android.platform.PanelPermissionRepair
 import io.panelassistant.android.util.periodic
 import io.panelassistant.android.util.SystemProps
 import io.panelassistant.android.dashboard.shouldReloadBuiltinAfterEntityFilterChange
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuConsent
 import java.io.File
 import java.net.SocketTimeoutException
 import java.net.Inet4Address
@@ -1172,7 +1170,6 @@ class PaneldService : Service() {
                     }
                 },
             )
-            ShizukuConsent.enabled(this@PaneldService)
             // These controllers are constructed on main below, but each opens its namespace in
             // its constructor. Warm the same AppState cache while still on the service IO lane.
             AppState.preferences(this@PaneldService, "controller-state", "ha-paneld-controller-state")
@@ -1220,10 +1217,6 @@ class PaneldService : Service() {
     ) {
         migrationNotice = MigrationNotice(this, config)
         reconcileNativePresentationAfterPromotion()
-        // Same reason, same window: Application.onCreate only registered the Shizuku Binder listeners,
-        // because reading its consent opens the database. Derive the bridge's real state here, after
-        // the promote, exactly as the locale/night-mode correction above is.
-        ShizukuBridge.activateAfterPromotion()
         updateForegroundStatus(nativeString(R.string.starting))
         // Resolve one immutable profile revision before constructing any hardware owner. Activations are
         // restart-bound, so every controller below observes this exact object for the service lifetime.
@@ -3068,11 +3061,9 @@ class PaneldService : Service() {
         val privilege = observeTypedShellCapability(
             directSuProbe = Su::available,
             helperRootProbe = HelperClient::available,
-            shizukuSnapshot = ShizukuBridge::snapshot,
         )
         return capabilitiesSnapshot(
             directSuReady = privilege.directSuReady,
-            shizukuReady = privilege.shizuku.ready,
             typedShellControlReady = privilege.typedShellControlReady,
             controllers = null,
         )
@@ -3083,14 +3074,12 @@ class PaneldService : Service() {
         controllers: ManagementControllerObservation,
     ): Capabilities = capabilitiesSnapshot(
         directSuReady = privilege.directSuReady,
-        shizukuReady = privilege.shizuku.ready,
-        typedShellControlReady = privilege.typedShellControlReady,
+        typedShellControlReady = privilege.rootControlReady,
         controllers = controllers,
     )
 
     private fun capabilitiesSnapshot(
         directSuReady: Boolean,
-        shizukuReady: Boolean,
         typedShellControlReady: Boolean,
         controllers: ManagementControllerObservation?,
     ): Capabilities {
@@ -3135,7 +3124,6 @@ class PaneldService : Service() {
                 relays = controllers?.relayCount ?: relay.count(),
                 buttonLeds = controllers?.buttonLedCount ?: relay.ledCount(),
                 hasSystemDarkMode = Build.VERSION.SDK_INT >= 29,   // Android 10+ has the system dark/light setting
-                shizukuReady = shizukuReady,
                 canInstallVerifiedApps = typedShellControlReady,
                 canCaptureAndInput = typedShellControlReady,
                 canSetDisplay = typedShellControlReady,

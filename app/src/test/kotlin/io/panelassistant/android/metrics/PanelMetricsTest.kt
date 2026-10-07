@@ -29,12 +29,10 @@ class PanelMetricsTest {
         var selinux: String? = null
         var dump: String? = null
         var roomDaemon: String? = null      // raw CHT8305 helper reply
-        var roomShell: String? = null       // raw Shizuku shell-UID reply
 
         var statCalls = 0
         var dumpCalls = 0
         var roomDaemonCalls = 0
-        var roomShellCalls = 0
 
         override fun perfDump(): String? { dumpCalls++; return dump }
         override fun statText(): String? { statCalls++; return stat }
@@ -49,7 +47,6 @@ class PanelMetricsTest {
         override fun cpuGovernor(allowRootFallback: Boolean): String? = null
         override fun cpuAvailableGovernors(allowRootFallback: Boolean): String? = null
         override fun roomClimateDaemon(): String? { roomDaemonCalls++; return roomDaemon }
-        override fun roomClimateShell(): String? { roomShellCalls++; return roomShell }
     }
 
     private var now = 0L
@@ -83,7 +80,7 @@ class PanelMetricsTest {
     }
 
     @Test fun roomClimateIsNullWhenTheDaemonHasNoChip() {
-        val src = FakeSource().apply { roomDaemon = null; roomShell = null }  // no authority reads → null
+        val src = FakeSource().apply { roomDaemon = null }  // no authority reads → null
         assertNull(reader(src).roomClimate(now))
     }
 
@@ -99,44 +96,9 @@ class PanelMetricsTest {
         assertEquals("a recovered helper reads again", 28.20, r.roomClimate(now)!!.tempC, 0.0001)
     }
 
-    // --- the helper→Shizuku ladder, re-homed from OsMetricSourceTest onto the Resolvable that now owns it --
-
-    @Test fun roomClimateEstablishedHelperWinsWithoutConsultingShizuku() {
-        val src = FakeSource().apply { roomDaemon = "T=2384 H=5895"; roomShell = "T=9999 H=9999" }
-        val v = reader(src).roomClimate(now)!!
-        assertEquals(23.84, v.tempC, 0.0001)
-        assertEquals(58.95, v.humidityPct, 0.0001)
-        assertEquals("Shizuku is not consulted while the helper reads", 0, src.roomShellCalls)
-    }
-
-    @Test fun roomClimateUnavailableHelperFallsBackToShizuku() {
-        val src = FakeSource().apply { roomDaemon = "ERR"; roomShell = "T=2384 H=5895" }
-        val v = reader(src).roomClimate(now)!!
-        assertEquals(23.84, v.tempC, 0.0001)
-        assertEquals("the helper is tried first before the Shizuku fallback", 1, src.roomDaemonCalls)
-
-        // The helper is retried once on the next fresh read, but the failed helper is not probed twice.
-        now += 1
-        reader(src).roomClimate(now)
-        assertEquals("one helper probe per priority-ordered read", 2, src.roomDaemonCalls)
-    }
-
-    @Test fun roomClimateHelperRecoveryRetakesPriority() {
-        val src = FakeSource().apply { roomDaemon = "ERR"; roomShell = "T=2384 H=5895" }
-        val r = reader(src)
-        assertEquals(23.84, r.roomClimate(now)!!.tempC, 0.0001)
-        src.roomDaemon = "T=2820 H=3400"
-        now += 1
-        val recovered = r.roomClimate(now)!!
-        assertEquals("a recovered helper regains priority over Shizuku", 28.20, recovered.tempC, 0.0001)
-        assertEquals(2, src.roomDaemonCalls)
-        assertEquals("Shizuku is not consulted after helper recovery", 1, src.roomShellCalls)
-    }
-
-    @Test fun roomClimateMalformedHelperReplyDoesNotMaskAValidShizukuReading() {
-        val src = FakeSource().apply { roomDaemon = "T=oops H=5895"; roomShell = "T=2384 H=5895" }
-        val v = reader(src).roomClimate(now)!!
-        assertEquals(23.84, v.tempC, 0.0001)
+    @Test fun roomClimateMalformedHelperReplyIsUnavailable() {
+        val src = FakeSource().apply { roomDaemon = "T=oops H=5895" }
+        assertNull(reader(src).roomClimate(now))
     }
 
     @Test fun resolvesDirectOnceAndDoesNotReprobeOnSuccessfulReads() {

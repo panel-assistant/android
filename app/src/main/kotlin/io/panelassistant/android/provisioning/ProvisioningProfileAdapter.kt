@@ -9,7 +9,6 @@ import io.panelassistant.android.device.profile.ProfileArtifacts
 import io.panelassistant.android.device.profile.ProfileHelperAuthorityDemand
 import io.panelassistant.android.device.profile.ProfileMetadata
 import io.panelassistant.android.device.profile.ResolvedProfile
-import io.panelassistant.android.device.profile.ShizukuRecommendation
 
 /**
  * The single adaptation boundary from the active normalized runtime profile into planner intent.
@@ -32,7 +31,6 @@ internal fun ResolvedProfile.toProvisioningProfile(): ProvisioningProfile {
         // root. Privilege guidance is suppressed only after the planner sees a compatible root helper.
         directRootExpected = false,
         helperImportance = profile.provisioningHelperImportance(),
-        shizuku = profile.provisioning.shizuku,
         webView = target,
     )
 }
@@ -58,8 +56,6 @@ internal fun DeviceProfile.requiresProvisioningHelper(): Boolean =
         when (ProfileMetadata.helperAuthorityDemand.getValue(driver)) {
             ProfileHelperAuthorityDemand.NONE -> false
             ProfileHelperAuthorityDemand.SANDBOX_FALLBACK -> !appCanSu
-            ProfileHelperAuthorityDemand.SHIZUKU_ALTERNATE ->
-                provisioning.shizuku == ShizukuRecommendation.NONE
             ProfileHelperAuthorityDemand.REQUIRED -> true
         }
     }

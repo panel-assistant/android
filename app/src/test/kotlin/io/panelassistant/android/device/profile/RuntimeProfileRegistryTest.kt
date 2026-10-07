@@ -1205,7 +1205,6 @@ class RuntimeProfileRegistryTest {
         assertTrue(resolved.summary.matchesThisDevice)
         assertTrue(resolved.summary.active)
         assertTrue(resolved.summary.selected)
-        assertEquals(ShizukuRecommendation.NONE, resolved.summary.shizukuRecommendation)
         assertTrue(resolved.summary.risks.isEmpty())
         assertEquals("capability-empty-emergency-v1", resolved.summary.contentVersion)
         assertEquals(ProfileMaturity.DRAFT, resolved.summary.maturity)

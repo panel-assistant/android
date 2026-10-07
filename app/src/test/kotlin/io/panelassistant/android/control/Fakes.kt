@@ -121,7 +121,6 @@ class FakeMetricSource(
         return availableGovernors
     }
     override fun roomClimateDaemon(): String? = null
-    override fun roomClimateShell(): String? = null
 }
 
 /** Fake [Daemon]. [replies] maps an exact command line to its reply; sends are recorded in [sent]. */

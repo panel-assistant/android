@@ -89,7 +89,6 @@ data class Capabilities(
     val hasSystemDarkMode: Boolean = false,
     // Runtime-only privilege routes. These describe what the panel can do now; they are never config
     // switches and therefore cannot be imported or changed through MQTT/HTTP.
-    val shizukuReady: Boolean = false,
     val canCaptureAndInput: Boolean = false,
     val canSetDisplay: Boolean = false,
 )

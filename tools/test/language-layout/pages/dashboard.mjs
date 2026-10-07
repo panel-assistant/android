@@ -163,7 +163,6 @@ function capRows(s) {
   return [
     cap('dashboard.capability.root_su', '#d9a528', note('helper_routed')),
     cap('dashboard.capability.helper_daemon', '#48c774', note('daemon_state', { state: note('daemon_running'), detail: note('daemon_sandbox_path') })),
-    cap('dashboard.capability.shizuku', '#888', `${note('preferred_route_prefix')} ${note('shizuku_disabled')}`),
     cap('dashboard.capability.verified_operations', '#48c774', note('root_or_helper')),
     cap('dashboard.capability.screen_brightness', '#48c774', note('brightness_helper')),
     cap('dashboard.capability.screen_power', '#d9a528', note('dim_only', { reason: note('dim_backlight_powered') })),

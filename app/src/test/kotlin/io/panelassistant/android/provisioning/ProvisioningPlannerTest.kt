@@ -3,10 +3,8 @@ package io.panelassistant.android.provisioning
 import io.panelassistant.android.device.profile.ProfileActivationPhase
 import io.panelassistant.android.device.profile.ProfileOrigin
 import io.panelassistant.android.device.profile.ProfileRef
-import io.panelassistant.android.device.profile.ShizukuRecommendation
 import io.panelassistant.android.metrics.FeatureCostOperation
 import io.panelassistant.android.metrics.FeatureCostRegistry
-import io.panelassistant.android.shizuku.ShizukuState
 import io.panelassistant.android.util.HelperIdentity
 import io.panelassistant.android.util.HelperIdentityIssue
 import io.panelassistant.android.util.HelperIdentityStatus
@@ -33,24 +31,22 @@ class ProvisioningPlannerTest {
     }
 
     @Test
-    fun missingHelperAndOptionalShizukuRemainIndependentFromSatisfiedWebView() {
+    fun missingHelperRemainsIndependentFromSatisfiedWebView() {
         val profile = profile(
             helperImportance = ProvisioningImportance.REQUIRED,
-            shizuku = ShizukuRecommendation.OPTIONAL,
             webView = ProvisioningWebViewTarget("lineageos-150-arm64", "150.0.1"),
         )
         val plan = plan(
             profile,
             ProvisioningObservationSnapshot(
                 helper = known(ProvisioningHelperState.MISSING),
-                shizuku = known(ProvisioningShizukuState.MANAGER_MISSING),
                 webView = known(ProvisioningWebViewState.Active("150.0.2")),
             ),
         )
 
         assertEquals(ProvisioningPlanState.ATTENTION, plan.state)
         assertEquals(
-            listOf("access.helper", "access.shizuku", "software.webview"),
+            listOf("access.helper", "software.webview"),
             plan.items.map { it.id },
         )
         assertItem(
@@ -59,13 +55,6 @@ class ProvisioningPlannerTest {
             ProvisioningItemStatus.MANUAL,
             "missing",
             "daemon_driver_without_helper",
-        )
-        assertItem(
-            plan,
-            "access.shizuku",
-            ProvisioningItemStatus.MANUAL,
-            "manager_missing",
-            "profile_optional",
         )
         assertItem(
             plan,
@@ -102,71 +91,10 @@ class ProvisioningPlannerTest {
     }
 
     @Test
-    fun compatibleHelperSuppressesRedundantShizukuGuidance() {
+    fun compatibleHelperSatisfiesARequiredHelper() {
         val plan = plan(
             profile(
                 helperImportance = ProvisioningImportance.REQUIRED,
-                shizuku = ShizukuRecommendation.OPTIONAL,
-            ),
-            observations().copy(helper = known(ProvisioningHelperState.COMPATIBLE)),
-        )
-
-        assertEquals(listOf("access.helper"), plan.items.map { it.id })
-        assertItem(
-            plan,
-            "access.helper",
-            ProvisioningItemStatus.SATISFIED,
-            "compatible",
-            "helper_compatible",
-        )
-    }
-
-    @Test
-    fun profileDeclaredRootDoesNotSuppressOptionalShizukuWithoutObservedPrivilege() {
-        val plan = plan(
-            profile(
-                directRootExpected = true,
-                shizuku = ShizukuRecommendation.RECOMMENDED,
-            ),
-        )
-
-        assertEquals(listOf("access.shizuku"), plan.items.map { it.id })
-        assertItem(
-            plan,
-            "access.shizuku",
-            ProvisioningItemStatus.MANUAL,
-            "manager_missing",
-            "profile_recommended",
-        )
-    }
-
-    @Test
-    fun disabledEnhancedAccessHasItsOwnObservedStateAndOnPanelEnableGuidance() {
-        val plan = plan(
-            profile(shizuku = ShizukuRecommendation.RECOMMENDED),
-            observations().copy(shizuku = known(ProvisioningShizukuState.CONSENT_DISABLED)),
-        )
-
-        assertItem(
-            plan,
-            "access.shizuku",
-            ProvisioningItemStatus.MANUAL,
-            "disabled",
-            "shizuku_consent_disabled",
-        )
-        assertTrue(
-            ProvisioningTextRenderer.render(plan)
-                .contains("Configure → toolbar overflow → Enhanced access"),
-        )
-    }
-
-    @Test
-    fun rootedTpa10PostureSuppressesShizukuAfterItsHelperIsObservedCompatible() {
-        val plan = plan(
-            profile(
-                directRootExpected = false,
-                helperImportance = ProvisioningImportance.REQUIRED,
-                shizuku = ShizukuRecommendation.OPTIONAL,
             ),
             observations().copy(helper = known(ProvisioningHelperState.COMPATIBLE)),
         )
@@ -186,18 +114,15 @@ class ProvisioningPlannerTest {
         val plan = plan(
             profile(
                 helperImportance = ProvisioningImportance.REQUIRED,
-                shizuku = ShizukuRecommendation.RECOMMENDED,
                 webView = ProvisioningWebViewTarget("lineageos-138-armv7", "138.0.7204.63"),
             ),
             ProvisioningObservationSnapshot(
                 helper = unknown(ProvisioningUnknownReason.PROBE_FAILED),
-                shizuku = known(ProvisioningShizukuState.READY),
                 webView = unknown(ProvisioningUnknownReason.PROBE_FAILED),
             ),
         )
 
         assertItem(plan, "access.helper", ProvisioningItemStatus.BLOCKED, "unknown", "helper_probe_failed")
-        assertItem(plan, "access.shizuku", ProvisioningItemStatus.SATISFIED, "ready", "shizuku_ready")
         assertItem(plan, "software.webview", ProvisioningItemStatus.BLOCKED, "unknown", "webview_probe_failed")
     }
 
@@ -400,7 +325,6 @@ class ProvisioningPlannerTest {
     fun androidCollectorContainsProbeFailuresAndPreservesLegacyHelperUncertainty() = runTest {
         val collector = AndroidProvisioningObservationCollector(
             helperIdentity = { HelperIdentityStatus.ReachableUnverified },
-            shizukuState = { ShizukuState.MANUAL_GRANT_REQUIRED },
             webViewEngineMajor = { throw IllegalStateException("provider unavailable") },
         )
 
@@ -409,10 +333,6 @@ class ProvisioningPlannerTest {
         assertEquals(
             ProvisioningObservation.Known(ProvisioningHelperState.REACHABLE_UNVERIFIED),
             snapshot.helper,
-        )
-        assertEquals(
-            ProvisioningObservation.Known(ProvisioningShizukuState.PERMISSION_REQUIRED),
-            snapshot.shizuku,
         )
         assertEquals(
             ProvisioningObservation.Unknown(ProvisioningUnknownReason.PROBE_FAILED),
@@ -425,7 +345,6 @@ class ProvisioningPlannerTest {
         suspend fun helper(status: HelperIdentityStatus) =
             AndroidProvisioningObservationCollector(
                 helperIdentity = { status },
-                shizukuState = { ShizukuState.MANAGER_MISSING },
                 webViewEngineMajor = { null },
             ).collect().helper
 
@@ -443,60 +362,6 @@ class ProvisioningPlannerTest {
                 ),
             ),
         )
-    }
-
-    @Test
-    fun androidCollectorPreservesDisabledEnhancedAccess() = runTest {
-        val snapshot = AndroidProvisioningObservationCollector(
-            helperIdentity = { HelperIdentityStatus.Missing },
-            shizukuState = { ShizukuState.DISABLED },
-            webViewEngineMajor = { null },
-        ).collect()
-
-        assertEquals(
-            ProvisioningObservation.Known(ProvisioningShizukuState.CONSENT_DISABLED),
-            snapshot.shizuku,
-        )
-    }
-
-    @Test
-    fun androidCollectorDoesNotCallAnInProgressBindingStopped() = runTest {
-        val snapshot = AndroidProvisioningObservationCollector(
-            helperIdentity = { HelperIdentityStatus.Missing },
-            shizukuState = { ShizukuState.BINDING },
-            webViewEngineMajor = { null },
-        ).collect()
-
-        assertEquals(
-            ProvisioningObservation.Unknown(ProvisioningUnknownReason.NOT_READY),
-            snapshot.shizuku,
-        )
-    }
-
-    @Test
-    fun stoppedShizukuServiceKeepsItsDistinctObservationAndRecoveryGuidance() = runTest {
-        val snapshot = AndroidProvisioningObservationCollector(
-            helperIdentity = { HelperIdentityStatus.Missing },
-            shizukuState = { ShizukuState.STOPPED },
-            webViewEngineMajor = { null },
-        ).collect()
-        assertEquals(
-            ProvisioningObservation.Known(ProvisioningShizukuState.SERVICE_NOT_RUNNING),
-            snapshot.shizuku,
-        )
-
-        val plan = plan(
-            profile(shizuku = ShizukuRecommendation.RECOMMENDED),
-            observations().copy(shizuku = snapshot.shizuku),
-        )
-        assertItem(
-            plan,
-            "access.shizuku",
-            ProvisioningItemStatus.MANUAL,
-            "service_not_running",
-            "shizuku_service_not_running",
-        )
-        assertTrue(ProvisioningTextRenderer.render(plan).contains("Enhanced access is enabled"))
     }
 
     private fun plan(
@@ -541,7 +406,6 @@ class ProvisioningPlannerTest {
             displayName: String = "Test panel",
             directRootExpected: Boolean = false,
             helperImportance: ProvisioningImportance? = null,
-            shizuku: ShizukuRecommendation = ShizukuRecommendation.NONE,
             webView: ProvisioningWebViewTarget? = null,
         ) = ProvisioningProfile(
             ref = REF,
@@ -550,13 +414,11 @@ class ProvisioningPlannerTest {
             contentVersion = "2.0.0",
             directRootExpected = directRootExpected,
             helperImportance = helperImportance,
-            shizuku = shizuku,
             webView = webView,
         )
 
         fun observations() = ProvisioningObservationSnapshot(
             helper = known(ProvisioningHelperState.MISSING),
-            shizuku = known(ProvisioningShizukuState.MANAGER_MISSING),
             webView = known(ProvisioningWebViewState.Missing),
         )
 

@@ -6,7 +6,6 @@
     <string name="retry">Riprova</string>
     <string name="ok">OK</string>
     <string name="cancel">Annulla</string>
-    <string name="close">Chiudi</string>
     <string name="approve">Approva</string>
     <string name="deny">Nega</string>
     <string name="configure">Configura</string>
@@ -20,7 +19,6 @@
 
     <string name="settings">Impostazioni</string>
     <string name="back_to_dashboard">Torna alla dashboard</string>
-    <string name="enhanced_access">Accesso avanzato</string>
     <string name="security_mode">Modalità di sicurezza</string>
     <string name="security_mode_hardened_summary">La modalità protetta è attiva. Le richieste ad alto impatto provenienti dalla rete richiedono l’approvazione su questo pannello. In attesa: %1$d.</string>
     <string name="security_mode_relaxed_summary">La modalità permissiva è attiva. Le funzioni della LAN attendibile operano senza approvazione sul pannello. La modalità protetta è facoltativa.</string>
@@ -218,23 +216,6 @@
     <string name="pending_physical_approval">Approvazione fisica in attesa</string>
     <string name="approval_exact_detail">Controlla l’azione e i dettagli esatti della richiesta prima di approvarla.\n\nDettagli della richiesta (in inglese):\n%1$s\n\nRichiesta esatta da %2$s. L’approvazione è monouso e scade.</string>
 
-    <string name="shizuku_enable">Attiva</string>
-    <string name="shizuku_request_permission">Richiedi autorizzazione</string>
-    <string name="shizuku_open">Apri Shizuku</string>
-    <string name="disable">Disattiva</string>
-    <string name="shizuku_title">Accesso avanzato (Shizuku)</string>
-    <string name="shizuku_scope">Non consente caricamenti APK arbitrari, la sostituzione di WebView, una shell generica, l’accesso root ai dati delle app, il riavvio, log o controlli sulle app del produttore.\n\nUna volta attivato l’accesso avanzato, le operazioni supportate possono essere richiamate tramite i controlli LAN attendibili esistenti di ha-paneld su questo pannello.</string>
-    <string name="shizuku_grant_scope">Consente solo aggiornamenti di ha-paneld con firma verificata e aggiornamenti minimi di Companion, acquisizioni dello schermo, input di tasti e tocchi, operazioni su densità e dimensioni del testo. %1$s</string>
-    <string name="shizuku_not_installed">Shizuku non è installato. Esegui una volta lo script di provisioning di ha-paneld tramite ADB, quindi approva qui l’accesso sul pannello.</string>
-    <string name="shizuku_untrusted">È installato un pacchetto denominato Shizuku, ma il relativo certificato di firma non è attendibile. ha-paneld non si connetterà.</string>
-    <string name="shizuku_disabled">L’accesso avanzato è disattivato in ha-paneld. Scegli Attiva qui sul pannello per iniziare l’approvazione locale.</string>
-    <string name="shizuku_stopped">L’accesso avanzato è attivato in ha-paneld, ma il servizio Shizuku è arrestato. Apri Shizuku, avvia il servizio, quindi torna qui.</string>
-    <string name="shizuku_permission_needed">Shizuku è in esecuzione ed è pronto a mostrare la richiesta di autorizzazione locale. Richiedi l’autorizzazione per continuare.</string>
-    <string name="shizuku_permission_denied">L’accesso a Shizuku è stato negato, quindi non è possibile mostrare un’altra richiesta di autorizzazione. Apri Shizuku, scegli Applicazioni autorizzate, seleziona ha-paneld e concedi l’accesso manualmente. Quindi torna qui.</string>
-    <string name="shizuku_connecting">Connessione a Shizuku…</string>
-    <string name="shizuku_ready">L’accesso avanzato è pronto.</string>
-    <string name="shizuku_incompatible">Il servizio Shizuku ha restituito un’identità o una versione del protocollo inattesa. L’accesso è bloccato.</string>
-    <string name="shizuku_error">Impossibile connettersi a Shizuku. Chiudi questa finestra e riprova.</string>
 
     <string name="camera_channel">Fotocamera</string>
     <string name="camera_in_use">Fotocamera in uso</string>

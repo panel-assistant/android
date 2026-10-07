@@ -37,7 +37,5 @@ internal fun testProfileDocument(
     input = ProfileInput(),
     cpu = ProfileCpu(),
     display = ProfileDisplay(),
-    provisioning = ProfileProvisioning(
-        access = ProfileProvisioningAccess(shizuku = ShizukuRecommendation.OPTIONAL),
-    ),
+    provisioning = ProfileProvisioning(),
 )

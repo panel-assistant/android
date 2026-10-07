@@ -138,9 +138,6 @@ internal class PaneldServerHttpFixture(
         val privilege = io.panelassistant.android.control.PrivilegedRouteObservation(
             directSuReady = true,
             helperRootReady = false,
-            shizuku = io.panelassistant.android.shizuku.ShizukuBridge.Snapshot(
-                io.panelassistant.android.shizuku.ShizukuState.DISABLED, ready = false,
-            ),
         )
         observations.snapCache.set(ManagementSnapshot(
             emptyMap(), emptyMap(), io.panelassistant.android.config.Capabilities(),
@@ -213,9 +210,6 @@ internal class PaneldServerHttpFixture(
         values["model"] = "Contract model"
         val privilege = io.panelassistant.android.control.PrivilegedRouteObservation(
             false, false,
-            io.panelassistant.android.shizuku.ShizukuBridge.Snapshot(
-                io.panelassistant.android.shizuku.ShizukuState.DISABLED, ready = false,
-            ),
         )
         val observations = ManagementObservations(
             context, io.panelassistant.android.control.DensityController(canSu = false),
@@ -345,9 +339,6 @@ internal class PaneldServerHttpFixture(
         val privilege = io.panelassistant.android.control.PrivilegedRouteObservation(
             directSuReady = root,
             helperRootReady = false,
-            shizuku = io.panelassistant.android.shizuku.ShizukuBridge.Snapshot(
-                io.panelassistant.android.shizuku.ShizukuState.DISABLED, ready = false,
-            ),
         )
         observations.snapCache.set(ManagementSnapshot(
             mapOf("MQTT" to "connecting", "Device" to "Warm <panel>", "Device ID" to "secret-value"), emptyMap(),

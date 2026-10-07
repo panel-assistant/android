@@ -24,14 +24,6 @@ internal enum class ProvisioningHelperState {
     REACHABLE_UNVERIFIED,
 }
 
-internal enum class ProvisioningShizukuState {
-    READY,
-    CONSENT_DISABLED,
-    PERMISSION_REQUIRED,
-    SERVICE_NOT_RUNNING,
-    MANAGER_MISSING,
-}
-
 internal sealed interface ProvisioningWebViewState {
     data class Active(val version: String) : ProvisioningWebViewState
     data object Missing : ProvisioningWebViewState
@@ -39,7 +31,6 @@ internal sealed interface ProvisioningWebViewState {
 
 internal data class ProvisioningObservationSnapshot(
     val helper: ProvisioningObservation<ProvisioningHelperState>,
-    val shizuku: ProvisioningObservation<ProvisioningShizukuState>,
     val webView: ProvisioningObservation<ProvisioningWebViewState>,
 )
 

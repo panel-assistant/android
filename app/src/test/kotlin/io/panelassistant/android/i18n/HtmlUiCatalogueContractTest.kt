@@ -62,8 +62,8 @@ class HtmlUiCatalogueContractTest {
             catalogue.getJSONObject(key).getString("surface") in promotedSurfaces
         }
 
-        assertTrue("the source catalogue must not shrink", source.strings.size >= 2541)
-        assertTrue("the declared promoted HTML UI preview scope must not shrink silently", expected.size >= 2072)
+        assertTrue("the source catalogue must not shrink", source.strings.size >= 2523)
+        assertTrue("the declared promoted HTML UI preview scope must not shrink silently", expected.size >= 2054)
         releaseTargetLocales.forEach { locale ->
             val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), source)
             assertEquals(
@@ -105,7 +105,6 @@ class HtmlUiCatalogueContractTest {
                 "dashboard.banner.setup_needs.suffix",
                 "dashboard.camera.configure_link",
                 "dashboard.camera.delivery.short_help",
-                "dashboard.capability.note.shizuku_disabled",
                 "dashboard.link.edit_configure",
             ),
             "shell.nav.install" to setOf(

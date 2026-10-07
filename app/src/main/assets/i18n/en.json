@@ -8561,18 +8561,6 @@
       "softMaxChars": 44,
       "hardMaxChars": 62
     },
-    "dashboard.capability.note.preferred_route_prefix": {
-      "text": "adds no capability while root or the helper daemon provides the preferred route; ",
-      "sourceHash": "f1ab2487d4655ed06023393219c15889849d1dfc235f4db57b572cc909a58828",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 114,
-      "hardMaxChars": 162
-    },
     "dashboard.capability.note.rockchip_led_direct": {
       "text": "Rockchip /dev/ledjni (app-direct, no root)",
       "sourceHash": "f5876fe3b48b4aeb1411b01ffc22454d72a3ab77bac26c52751b595f6c5a2dc8",
@@ -8612,260 +8600,6 @@
       "frozen": [],
       "softMaxChars": 61,
       "hardMaxChars": 86
-    },
-    "dashboard.capability.note.shizuku_connecting": {
-      "text": "connecting to the locally approved Shizuku service",
-      "sourceHash": "20ee03c32f465fae6c1c11e967e0e84adcc9bbb3020f72c9aeacaa08c27fe72a",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku"
-      ],
-      "softMaxChars": 70,
-      "hardMaxChars": 100
-    },
-    "dashboard.capability.note.shizuku_disabled": {
-      "text": "disabled in ha-paneld; on the panel open Configure → toolbar overflow → Enhanced access → Enable",
-      "sourceHash": "3bee0070aeb6277cf63a471498b0fd5694cf27f969e666b702644b440086e92a",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 135,
-      "hardMaxChars": 192
-    },
-    "dashboard.capability.note.shizuku_failed": {
-      "text": "Shizuku could not be connected; retry from the on-panel Enhanced access dialog",
-      "sourceHash": "c55ae7ee37cbc132cc37edd487b0d96b87317868a2912f108147ee9867c445d5",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku"
-      ],
-      "softMaxChars": 110,
-      "hardMaxChars": 156
-    },
-    "dashboard.capability.note.shizuku_grant": {
-      "text": "access denied; grant ha-paneld under Shizuku → Authorized applications",
-      "sourceHash": "7788db822a8fbe15837d8cc318945e47ee7ce3725c6b3282cba6c5c5273042c4",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku",
-        "ha-paneld"
-      ],
-      "softMaxChars": 98,
-      "hardMaxChars": 140
-    },
-    "dashboard.capability.note.shizuku_incompatible": {
-      "text": "blocked: unexpected Shizuku service identity or protocol",
-      "sourceHash": "86b1e0cf086b8ad212410b559f017fea9d4662bb263a68413efa934c1cfe7d80",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku"
-      ],
-      "softMaxChars": 79,
-      "hardMaxChars": 112
-    },
-    "dashboard.capability.note.shizuku_missing": {
-      "text": "manager missing; re-run provisioning with --shizuku",
-      "sourceHash": "fb760f6c866b73fcb6e8c782783813d5011fea64d563d767ad9b1643f635a78c",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "--shizuku"
-      ],
-      "softMaxChars": 72,
-      "hardMaxChars": 102
-    },
-    "dashboard.capability.note.shizuku_permission": {
-      "text": "service running; request and approve ha-paneld access locally",
-      "sourceHash": "d83310993a1a94b12cdec092d96a629a92285d910255d1c61f308a201c624a2a",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld"
-      ],
-      "softMaxChars": 86,
-      "hardMaxChars": 122
-    },
-    "dashboard.capability.note.shizuku_ready": {
-      "text": "ready as shell UID; local typed operations only",
-      "sourceHash": "ecdf8f84be742bd0ba8d4633061b3d355cefae6b946bc0eb030889ebe0344b14",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_stopped",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "shell UID"
-      ],
-      "softMaxChars": 66,
-      "hardMaxChars": 94
-    },
-    "dashboard.capability.note.shizuku_stopped": {
-      "text": "enabled in ha-paneld, but the Shizuku service is stopped; open Shizuku and start its service",
-      "sourceHash": "081425f46f4ebb0257a08721060226f25d4e9ce1221ba37ca6e85847ef5c5079",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_untrusted"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku",
-        "ha-paneld"
-      ],
-      "softMaxChars": 129,
-      "hardMaxChars": 184
-    },
-    "dashboard.capability.note.shizuku_untrusted": {
-      "text": "blocked: installed manager signer is not trusted",
-      "sourceHash": "ca917912583f3b7942d9ba51510733d455007c04e339fe3101687c9dc83d73d4",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value or structured family; preserve privilege, hardware, command and placeholder terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [
-        "dashboard.capability.note.shizuku_connecting",
-        "dashboard.capability.note.shizuku_disabled",
-        "dashboard.capability.note.shizuku_failed",
-        "dashboard.capability.note.shizuku_grant",
-        "dashboard.capability.note.shizuku_incompatible",
-        "dashboard.capability.note.shizuku_missing",
-        "dashboard.capability.note.shizuku_permission",
-        "dashboard.capability.note.shizuku_ready",
-        "dashboard.capability.note.shizuku_stopped"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 68,
-      "hardMaxChars": 96
-    },
-    "dashboard.capability.note.shizuku_verified": {
-      "text": "available through locally approved Shizuku access; app updates remain signer-verified",
-      "sourceHash": "3b125c2e143d0b144888f9d28ef510a0d7a05f77298ea490b8736c7087961ecf",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability detail matched from a closed backend value; preserve privilege and hardware terminology and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku"
-      ],
-      "softMaxChars": 119,
-      "hardMaxChars": 170
     },
     "dashboard.capability.note.su_direct": {
       "text": "available directly to ha-paneld",
@@ -8975,20 +8709,6 @@
       "frozen": [],
       "softMaxChars": 19,
       "hardMaxChars": 26
-    },
-    "dashboard.capability.shizuku": {
-      "text": "Shizuku enhanced access",
-      "sourceHash": "195c2335bc7909021beca0b17dd90d7d6690c4d9b1bc28d3b41825d6712a83f5",
-      "surface": "dashboard",
-      "context": "Runtime diagnostics capability row label matched from a closed backend value; keep it compact and render as text, not HTML.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku"
-      ],
-      "softMaxChars": 33,
-      "hardMaxChars": 46
     },
     "dashboard.capability.system_actions": {
       "text": "Reboot / reload / launcher",
@@ -29067,7 +28787,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29094,7 +28813,6 @@
         "profiles.schema.description.led_mechanism",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29122,7 +28840,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29147,7 +28864,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29172,7 +28888,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29197,7 +28912,6 @@
         "profiles.schema.description.led_mechanism",
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29223,7 +28937,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_importance",
         "profiles.schema.description.recipe_id"
@@ -29248,7 +28961,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.recipe_id"
@@ -29273,7 +28985,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance"
@@ -29296,32 +29007,6 @@
         "profiles.schema.description.su_form",
         "profiles.schema.description.led_mechanism",
         "profiles.schema.description.led_transfer",
-        "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
-        "profiles.schema.description.webview_artifact",
-        "profiles.schema.description.package_desired_state",
-        "profiles.schema.description.package_importance",
-        "profiles.schema.description.recipe_id"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 120,
-      "hardMaxChars": 240
-    },
-    "profiles.schema.description.shizuku_recommendation": {
-      "text": "Author recommendation only, never live readiness or consent.",
-      "sourceHash": "d9923d81100c264134d703555a7a7ea41e81f3f01f348ff52207de7d24032aed",
-      "surface": "profiles",
-      "context": "CodeMirror YAML enum-completion explanatory prose for provisioning.access.shizuku; preserve Shizuku and the safety distinction among recommendation, readiness and consent.",
-      "risk": "consequential",
-      "siblings": [
-        "profiles.schema.description.metadata_maturity",
-        "profiles.schema.description.match_field",
-        "profiles.schema.description.match_operator",
-        "profiles.schema.description.su_form",
-        "profiles.schema.description.led_mechanism",
-        "profiles.schema.description.led_transfer",
-        "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
@@ -29347,7 +29032,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.webview_artifact",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
@@ -29375,7 +29059,6 @@
         "profiles.schema.description.led_transfer",
         "profiles.schema.description.screen_off",
         "profiles.schema.description.model_label_strategy",
-        "profiles.schema.description.shizuku_recommendation",
         "profiles.schema.description.package_desired_state",
         "profiles.schema.description.package_importance",
         "profiles.schema.description.recipe_id"
@@ -29493,72 +29176,6 @@
       "frozen": [],
       "softMaxChars": 24,
       "hardMaxChars": 44
-    },
-    "profiles.shizuku.body": {
-      "text": "This profile declares a specific shell-level fallback. It does not install, enable, or approve the separate access service.",
-      "sourceHash": "f5e6ae0bc6233a2dcdd90801ec4aab0bbced0cfdf2e56ba262e4c44f337aedd4",
-      "surface": "profiles",
-      "context": "exceptional-access explanation",
-      "risk": "ordinary",
-      "siblings": [
-        "profiles.shizuku.title",
-        "profiles.shizuku.guide",
-        "profiles.shizuku.recommended"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 180,
-      "hardMaxChars": 360
-    },
-    "profiles.shizuku.guide": {
-      "text": "Read the advanced setup guide",
-      "sourceHash": "55878109cd662d28cb779e3ec2164d283a24a39bbba6e5ae24a765bc1bec0960",
-      "surface": "profiles",
-      "context": "external documentation link",
-      "risk": "ordinary",
-      "siblings": [
-        "profiles.shizuku.title",
-        "profiles.shizuku.body",
-        "profiles.shizuku.recommended"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 80,
-      "hardMaxChars": 150
-    },
-    "profiles.shizuku.recommended": {
-      "text": "Shizuku: recommended",
-      "sourceHash": "d37bff97e12b6ca397f2487ebb1378cf4261cbbeee760e6370ebbf7fa6db8866",
-      "surface": "profiles",
-      "context": "recommendation badge",
-      "risk": "ordinary",
-      "siblings": [
-        "profiles.shizuku.title",
-        "profiles.shizuku.body",
-        "profiles.shizuku.guide"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Shizuku"
-      ],
-      "softMaxChars": 80,
-      "hardMaxChars": 150
-    },
-    "profiles.shizuku.title": {
-      "text": "Exceptional access requirement",
-      "sourceHash": "d8501ad35856c2d0c2429b3a7de56a36dad32278d82e53208d2fab136abbc8f3",
-      "surface": "profiles",
-      "context": "exceptional-access heading",
-      "risk": "ordinary",
-      "siblings": [
-        "profiles.shizuku.body",
-        "profiles.shizuku.guide",
-        "profiles.shizuku.recommended"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 80,
-      "hardMaxChars": 150
     },
     "profiles.state.active": {
       "text": "Active",

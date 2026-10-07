@@ -47,6 +47,8 @@ object StateBackupPolicy {
         "auto-sleep-learning" to Disposition.DEVICE_LOCAL,
         "profile-calibration" to Disposition.DEVICE_LOCAL,
         "performance-binding" to Disposition.DEVICE_LOCAL,
+        // Retired with the Shizuku route, but an old-id app's move receipt still carries these rows and
+        // Panel Assistant counts them back; drop it with the old-name glue in 1.0.
         "shizuku-consent" to Disposition.DEVICE_LOCAL,
         "power-safety-acknowledgement" to Disposition.DEVICE_LOCAL,
         // Rolling Wi-Fi outage counts describe this panel's mounting position and network

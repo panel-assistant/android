@@ -5,9 +5,6 @@ import io.panelassistant.android.input.PanelAccessibilityService
 import io.panelassistant.android.platform.AccessibilityActions
 import io.panelassistant.android.platform.Daemon
 import io.panelassistant.android.platform.RootShell
-import io.panelassistant.android.platform.ShellPrivilege
-import io.panelassistant.android.shizuku.ShizukuBridge
-import io.panelassistant.android.shizuku.ShizukuPolicy
 import io.panelassistant.android.util.HelperClient
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
@@ -26,7 +23,6 @@ internal class InteractiveController(
     private val root: RootShell = Su,
     private val daemon: Daemon = HelperClient,
     private val accessibility: AccessibilityActions = PanelAccessibilityService,
-    private val shell: ShellPrivilege = ShizukuBridge,
 ) {
     private val screenshotLock = ReentrantLock(true)
 
@@ -41,22 +37,14 @@ internal class InteractiveController(
     fun screenshotWithRoute(waitForInFlightMs: Long = 0L): RoutedValue<ByteArray>? {
         return withScreenshotLock(waitForInFlightMs) {
             val su = ValueAttempt(PrivilegeRoute.SU) {
-                root.runBytesBounded("screencap -p", ShizukuPolicy.MAX_SCREENSHOT_BYTES.toLong())
+                root.runBytesBounded("screencap -p", MAX_SCREENSHOT_BYTES)
                     ?.takeUnless { it.isEmpty() }
             }
             val helper = ValueAttempt(PrivilegeRoute.DAEMON) {
-                daemon.sendBytesBounded("SCREENCAP", ShizukuPolicy.MAX_SCREENSHOT_BYTES.toLong())
+                daemon.sendBytesBounded("SCREENCAP", MAX_SCREENSHOT_BYTES)
                     ?.takeUnless { it.isEmpty() }
             }
-            val shizuku = ValueAttempt(PrivilegeRoute.SHIZUKU) {
-                shell.screenshot()?.takeUnless { it.isEmpty() }
-            }
-            val attempts = when {
-                canSu -> arrayOf(su, helper, shizuku)
-                shell.available() -> arrayOf(helper, shizuku, su)
-                else -> arrayOf(helper, su, shizuku)
-            }
-            ShortOperationRouter.value(*attempts)
+            if (canSu) ShortOperationRouter.value(su, helper) else ShortOperationRouter.value(helper, su)
         }
     }
 
@@ -66,12 +54,12 @@ internal class InteractiveController(
         withScreenshotLock(waitForInFlightMs) {
             val attempt = if (canSu) {
                 ValueAttempt(PrivilegeRoute.SU) {
-                    root.runBytesBounded("screencap -p", ShizukuPolicy.MAX_SCREENSHOT_BYTES.toLong())
+                    root.runBytesBounded("screencap -p", MAX_SCREENSHOT_BYTES)
                         ?.takeUnless { it.isEmpty() }
                 }
             } else {
                 ValueAttempt(PrivilegeRoute.DAEMON) {
-                    daemon.sendBytesBounded("SCREENCAP", ShizukuPolicy.MAX_SCREENSHOT_BYTES.toLong())
+                    daemon.sendBytesBounded("SCREENCAP", MAX_SCREENSHOT_BYTES)
                         ?.takeUnless { it.isEmpty() }
                 }
             }
@@ -95,13 +83,11 @@ internal class InteractiveController(
 
     fun back(): Boolean = navigate(
         rootCommand = "input keyevent ${KeyEvent.KEYCODE_BACK}",
-        keyCode = KeyEvent.KEYCODE_BACK,
         accessibilityAction = accessibility::back,
     )
 
     fun recents(): Boolean = navigate(
         rootCommand = "input keyevent ${KeyEvent.KEYCODE_APP_SWITCH}",
-        keyCode = KeyEvent.KEYCODE_APP_SWITCH,
         accessibilityAction = accessibility::recents,
     )
 
@@ -114,7 +100,6 @@ internal class InteractiveController(
         return routeInput(
             su = { root.run("input tap $xi $yi") },
             accessibility = { accessibility.tap(xi, yi) },
-            shizuku = { shell.tap(xi, yi) },
         )
     }
 
@@ -124,12 +109,10 @@ internal class InteractiveController(
         if (!validCoordinates(x, y)) return null
         val xi = x.toInt()
         val yi = y.toInt()
-        val attempt = when {
-            canSu -> EffectAttempt(PrivilegeRoute.SU) {
-                root.runSingleAttempt("input tap $xi $yi")
-            }
-            shell.available() -> EffectAttempt(PrivilegeRoute.SHIZUKU) { shell.tap(xi, yi) }
-            else -> EffectAttempt(PrivilegeRoute.ACCESSIBILITY) { accessibility.tap(xi, yi) }
+        val attempt = if (canSu) {
+            EffectAttempt(PrivilegeRoute.SU) { root.runSingleAttempt("input tap $xi $yi") }
+        } else {
+            EffectAttempt(PrivilegeRoute.ACCESSIBILITY) { accessibility.tap(xi, yi) }
         }
         return ShortOperationRouter.effect(attempt)
     }
@@ -137,26 +120,23 @@ internal class InteractiveController(
     private fun validCoordinates(x: Float, y: Float): Boolean =
         x.isFinite() && y.isFinite() && x >= 0f && y >= 0f && x <= Int.MAX_VALUE && y <= Int.MAX_VALUE
 
-    private fun navigate(rootCommand: String, keyCode: Int, accessibilityAction: () -> Boolean): Boolean =
+    private fun navigate(rootCommand: String, accessibilityAction: () -> Boolean): Boolean =
         routeInput(
             su = { root.run(rootCommand) },
             accessibility = accessibilityAction,
-            shizuku = { shell.inputKey(keyCode) },
         ) != null
 
     private fun routeInput(
         su: () -> Boolean,
         accessibility: () -> Boolean,
-        shizuku: () -> Boolean,
     ): PrivilegeRoute? {
         val suAttempt = EffectAttempt(PrivilegeRoute.SU, su)
         val accessibilityAttempt = EffectAttempt(PrivilegeRoute.ACCESSIBILITY, accessibility)
-        val shizukuAttempt = EffectAttempt(PrivilegeRoute.SHIZUKU, shizuku)
-        val attempts = when {
-            canSu -> arrayOf(suAttempt, accessibilityAttempt, shizukuAttempt)
-            shell.available() -> arrayOf(accessibilityAttempt, shizukuAttempt, suAttempt)
-            else -> arrayOf(accessibilityAttempt, suAttempt, shizukuAttempt)
-        }
-        return ShortOperationRouter.effect(*attempts)
+        return if (canSu) ShortOperationRouter.effect(suAttempt, accessibilityAttempt)
+        else ShortOperationRouter.effect(accessibilityAttempt, suAttempt)
+    }
+
+    private companion object {
+        const val MAX_SCREENSHOT_BYTES = 32L * 1024 * 1024
     }
 }
