@@ -208,18 +208,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- The shell user holds DUMP; ordinary apps cannot arm or release the upgrade barrier. -->
-        <receiver
-            android:name="io.panelassistant.android.UpgradeControlReceiver"
-            android:exported="true"
-            android:permission="android.permission.DUMP">
-            <intent-filter>
-                <action android:name="io.panelassistant.android.action.PREPARE_UPGRADE" />
-                <action android:name="io.panelassistant.android.action.RELEASE_UPGRADE" />
-                <action android:name="io.panelassistant.android.action.RENEW_UPGRADE" />
-            </intent-filter>
-        </receiver>
-
         <!-- Receives the one-time release token from the other identity of this app during the
              application-id migration. Only a sender holding the signature permission is delivered. -->
         <receiver

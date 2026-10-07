@@ -1,5 +1,6 @@
 package io.panelassistant.android.config
 
+import io.panelassistant.android.assist.wakeword.WakeWordCatalog
 import io.panelassistant.android.audio.MicrophoneGain
 import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.util.AndroidInput
@@ -120,6 +121,7 @@ object SettingsRegistry {
         "${HA_EXPOSE_PREFIX}voice_enabled",
         "${HA_EXPOSE_PREFIX}voice_state",
         "webview_auto_last_version",
+        "dashboard_overscroll",
     ) + setOf(
         "self_update",
         "update_channel",
@@ -148,8 +150,6 @@ object SettingsRegistry {
     private const val MAX_PANEL_ID_INPUT_CHARS = 255
     private val HA_ILLUMINANCE_ENTITY = Regex("^sensor\\.[a-z0-9_]+$")
 
-    /** A wake-word id as `voice_wake_words` and `voice_pipelines` name it: a bundled or imported model. */
-    private val VOICE_WAKE_WORD_ID = Regex("^[a-z][a-z0-9_]{0,63}$")
     private const val MAX_VOICE_WAKE_WORDS = 32
 
     /** `voice_wake_words`: a JSON array of wake-word ids with no duplicate. Which ids exist depends on the
@@ -168,7 +168,7 @@ object SettingsRegistry {
         for (index in 0 until array.length()) {
             val entry = array.opt(index) as? String
                 ?: return Validation.Bad("voice_wake_words: every entry must be a string")
-            if (!VOICE_WAKE_WORD_ID.matches(entry)) {
+            if (!WakeWordCatalog.ID.matches(entry)) {
                 return Validation.Bad("voice_wake_words: \"$entry\" is not a wake-word id")
             }
             if (entry in ids) return Validation.Bad("voice_wake_words: duplicate wake word \"$entry\"")
@@ -188,7 +188,7 @@ object SettingsRegistry {
         }
         val normalized = JSONObject()
         for (key in obj.keys().asSequence().sorted()) {
-            if (!VOICE_WAKE_WORD_ID.matches(key)) {
+            if (!WakeWordCatalog.ID.matches(key)) {
                 return Validation.Bad("voice_pipelines: \"$key\" is not a wake-word id")
             }
             val value = obj.opt(key) as? String
@@ -643,14 +643,6 @@ object SettingsRegistry {
             tier = Tier.ADVANCED, summary = "Ask Home Assistant to hide its own navigation.",
             label = "Hide Home Assistant navigation (native)", default = "true", scope = Scope.PORTABLE,
             help = "Built-in renderer only. After Home Assistant 2026.4.2+ connects, asks its native frontend to hide its navigation.\n\nOn by default; an unsupported or failed request leaves the dashboard unchanged. It does not lock Android or inject CSS into the dashboard.",
-        ),
-        SettingSpec(
-            key = "dashboard_overscroll", type = SettingType.BOOL, group = "Dashboard",
-            tier = Tier.ADVANCED,
-            label = "Dashboard overscroll effect", default = "false", scope = Scope.PORTABLE, hidden = true,
-            help = "Built-in renderer: allow Android's overscroll stretch/glow when a drag runs past " +
-                "the top or bottom of the dashboard. Off by default (a wall panel rarely scrolls, and " +
-                "the bounce looks out of place). API-only — set true to restore the native effect.",
         ),
         SettingSpec(
             key = "dashboard_idle_return_min", type = SettingType.INT, group = "Dashboard",

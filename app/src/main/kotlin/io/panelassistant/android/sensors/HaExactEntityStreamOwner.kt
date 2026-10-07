@@ -41,7 +41,6 @@ import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
-internal enum class HaExactEntityConsumer { AMBIENT_LUX }
 
 internal enum class HaExactEntityStreamPhase {
     DISABLED,
@@ -56,7 +55,7 @@ internal enum class HaExactEntityStreamPhase {
 }
 
 internal data class HaExactEntityStreamStatus(
-    val consumer: HaExactEntityConsumer = HaExactEntityConsumer.AMBIENT_LUX,
+
     val entityId: String? = null,
     val phase: HaExactEntityStreamPhase = HaExactEntityStreamPhase.DISABLED,
     val detail: String = "",
@@ -425,9 +424,6 @@ internal class HaExactEntityStreamOwner(
         safeCallback { next.onSocketState(if (active) HaSocketState.CONNECTING else HaSocketState.STOPPED) }
     }
 
-    fun unbindNetworkPath() {
-        synchronized(lock) { networkPathObserver = null }
-    }
 
     /**
      * Bind the layer-3 echo probe. Optional by construction: a panel whose platform refuses an ICMP
@@ -443,9 +439,6 @@ internal class HaExactEntityStreamOwner(
         safeCallback { next.onSocketState(if (active) HaSocketState.CONNECTING else HaSocketState.STOPPED) }
     }
 
-    fun unbindPathProbe() {
-        synchronized(lock) { pathProbe = null }
-    }
 
     /** A changed Home Assistant credential owner retires the socket selected under the old link. */
     fun replaceHaLink(next: HaAuthOwner, routeEpoch: Long = 0L) {

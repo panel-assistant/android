@@ -11,7 +11,6 @@ class RendererConfigEffectsTest {
             credentialChanged = true,
             zoomChanged = true,
             fullscreenChanged = true,
-            overscrollChanged = true,
             darkMode = true,
         )
 
@@ -26,7 +25,6 @@ class RendererConfigEffectsTest {
             credentialChanged = false,
             zoomChanged = true,
             fullscreenChanged = true,
-            overscrollChanged = false,
             darkMode = null,
         )
 
@@ -40,7 +38,6 @@ class RendererConfigEffectsTest {
             credentialChanged = false,
             zoomChanged = false,
             fullscreenChanged = true,
-            overscrollChanged = false,
             darkMode = null,
         )
 

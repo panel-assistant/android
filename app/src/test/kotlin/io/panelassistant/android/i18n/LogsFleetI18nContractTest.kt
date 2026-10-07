@@ -46,14 +46,6 @@ class LogsFleetI18nContractTest {
             "logs.state.webview_paused",
             "logs.title",
         ),
-        "fleet" to setOf(
-            "fleet.note.direct",
-            "fleet.note.discovery_prefix",
-            "fleet.note.discovery_suffix",
-            "fleet.note.roster",
-            "fleet.state.coming_soon",
-            "fleet.title",
-        ),
     )
 
     @Test fun `Logs and Fleet catalogue contract matches the literal consumer keys`() {
@@ -99,7 +91,7 @@ class LogsFleetI18nContractTest {
         val target = TargetCatalogue.parse(targetJson.toString(), sourceCatalogue)
         val strings = Strings(source = sourceCatalogue, target = target)
 
-        listOf("logs", "fleet").forEach { surface ->
+        listOf("logs").forEach { surface ->
             assertEquals(
                 "shared hidden fallback must be represented for /$surface",
                 listOf("de", "en"),

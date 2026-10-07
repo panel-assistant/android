@@ -28,7 +28,6 @@ import io.panelassistant.android.util.BoundedStreams
 import io.panelassistant.android.util.MonotonicDeadline
 import io.panelassistant.android.util.SystemProps
 import io.panelassistant.android.util.UpdateChecker
-import io.panelassistant.android.util.WebViewInstaller
 import io.panelassistant.android.util.runBoundedLaunch
 import java.io.File
 import java.util.Locale
@@ -323,7 +322,6 @@ object DiagReader {
         // radios. Its values are all classified or categorical — no URL, host, credential or raw
         // exception text — so this line is as pasteable as the rest of the dump.
         renderer?.let { appendLine(it.diagnosticLine()) }
-        webViewRollbackLine(ctx)?.let { appendLine(it) }
         // The measured path to Home Assistant comes next: it is the first thing to rule in or out
         // when the renderer line says "rendered" and the report still complains of a slow dashboard.
         // Classified state and terse aggregates only; the presentation never carries a host.
@@ -386,21 +384,10 @@ object DiagReader {
         appendLine("[capabilities] " + capabilityRows.joinToString(" | ") { "${it.name}=${it.status}" })
         val updates = UpdateChecker.current(ctx)   // revalidated: no stale entry for an uninstalled Companion
         if (updates.isNotEmpty()) {
-            appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.displayedCurrentVersion} → ${it.latestVersion}" })
+            appendLine("[updates] " + updates.joinToString(" | ") { "${it.label}: ${it.currentVersion} → ${it.latestVersion}" })
         }
         }
     }
-
-    /** The saved reason is internal text, but the dump is commonly pasted into public reports. */
-    internal fun webViewRollbackLine(ctx: Context): String? = WebViewInstaller.rollbackDiagnostic(ctx)
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-        ?.let { saved ->
-            // Keep the report one line and refuse path, URL, or control-character details.
-            val safe = saved.takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9 .,_():;\\-]{0,159}")) }
-                ?: "details omitted"
-            "[webview-rollback] reason=$safe"
-        }
 
     internal fun displaySizingLine(evidence: DisplaySizingEvidence, profile: DeviceProfile): String {
         fun dpi(value: Int?) = value?.toString() ?: "?"

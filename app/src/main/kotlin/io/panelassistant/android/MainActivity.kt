@@ -387,7 +387,7 @@ class MainActivity : AppCompatActivity() {
         restoredRemainingMs: Long? = null,
         restoredDelayMs: Long? = null,
     ): PreparedVisibleAutoReturn? {
-        if (!config.autoReturnDashboard || dashboardIntent() == null) return null
+        if (dashboardIntent() == null) return null
         val updated = runCatching { packageManager.getPackageInfo(packageName, 0).lastUpdateTime }.getOrDefault(0L)
         if (restoredRemainingMs == null &&
             !ignoreUpdateAge &&

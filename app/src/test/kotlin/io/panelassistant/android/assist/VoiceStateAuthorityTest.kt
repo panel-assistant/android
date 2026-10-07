@@ -1,8 +1,6 @@
 package io.panelassistant.android.assist
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceStateAuthorityTest {
@@ -33,16 +31,5 @@ class VoiceStateAuthorityTest {
         val authority = VoiceStateAuthority()
         authority.set(VoiceState.ERROR)
         assertEquals(VoiceState.ERROR, authority.current())
-    }
-
-    @Test fun `AssistPipelineDirectory NOT_WIRED reports not configured`() {
-        val result = kotlinx.coroutines.runBlocking { AssistPipelineDirectory.NOT_WIRED.list() }
-        assertTrue(result is AssistPipelineDirectory.Result.NotConfigured)
-    }
-
-    @Test fun `VoiceTestTrigger NOT_WIRED reports unavailable`() {
-        val result = VoiceTestTrigger.NOT_WIRED.trigger()
-        assertTrue(result is VoiceTestTrigger.Result.Unavailable)
-        assertFalse((result as VoiceTestTrigger.Result.Unavailable).reason.isBlank())
     }
 }

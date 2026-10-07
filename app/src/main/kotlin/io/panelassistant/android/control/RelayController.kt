@@ -208,8 +208,6 @@ class RelayController(profile: DeviceProfile, private val root: RootShell = Su) 
         }
     }
 
-    /** Current state of button LED [i], retaining the legacy false fallback for existing callers. */
-    fun ledGet(i: Int): Boolean = ledRead(i) == true
 
     /** Physical button-LED state, preserving unreadable as null rather than inventing OFF. */
     @Synchronized

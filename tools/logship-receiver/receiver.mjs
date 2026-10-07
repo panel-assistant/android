@@ -15,7 +15,7 @@
 //   node receiver.mjs --self-test              # prove the receiver works before blaming the panel
 //
 // Point a panel at it with:
-//   curl -fsS -X POST http://<panel>:8888/config \
+//   curl -fsS -X POST http://<panel>:8888/api/v1/config \
 //     --data-urlencode log_ship_enabled=true \
 //     --data-urlencode log_ship_host=<this-host> \
 //     --data-urlencode log_ship_port=5514 \

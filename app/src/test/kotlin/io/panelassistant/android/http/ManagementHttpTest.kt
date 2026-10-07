@@ -14,6 +14,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ManagementHttpTest {
+    @Test fun statusTellsPanelAssistantThePanelOffersNoUpdateOfItsOwn() {
+        PaneldServerHttpFixture().use { fixture ->
+            fixture.useManagementStatus { error("Passive status read must not refresh storage") }
+            testApplication {
+                application { fixture.mount(this) }
+                val status = client.get("/api/v1/status")
+                assertEquals(HttpStatusCode.OK, status.status)
+                val update = org.json.JSONObject(status.bodyAsText()).getJSONObject("panel_assistant_update")
+                assertEquals("{\"state\":\"none\"}", update.toString())
+            }
+        }
+    }
+
     @Test fun statusReportsFreshPermissionReadbackWhileFeaturesRemainDisabled() {
         var sdk = 32
         var microphone = false

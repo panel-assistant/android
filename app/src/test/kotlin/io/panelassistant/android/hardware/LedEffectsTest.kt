@@ -72,8 +72,8 @@ class LedEffectsTest {
         // compare the hardware level, not the raw 0..255 value: cos(π/2) vs cos(3π/2) differ by 1 ULP, a
         // ±1 wobble at the half-brightness crossing that vanishes once quantised to 16 levels.)
         for (p in 0..LedEffects.PULSE_STEPS) {
-            val up = LedTransfer.Rk3576FourBit.red(brightnessOf(LedEffects.frame(Effect.PULSE, p, 0, 0, 255, 255)))
-            val down = LedTransfer.Rk3576FourBit.red(brightnessOf(LedEffects.frame(Effect.PULSE, LedEffects.PULSE_STEPS - p, 0, 0, 255, 255)))
+            val up = LedTransfer.Rk3576FourBit.toHardware(brightnessOf(LedEffects.frame(Effect.PULSE, p, 0, 0, 255, 255)))
+            val down = LedTransfer.Rk3576FourBit.toHardware(brightnessOf(LedEffects.frame(Effect.PULSE, LedEffects.PULSE_STEPS - p, 0, 0, 255, 255)))
             assertEquals("pulse asymmetric at phase $p", up, down)
         }
     }
@@ -82,7 +82,7 @@ class LedEffectsTest {
         // At 25 Hz the cosine ramp walks the 4-bit LED one level at a time — no lurching over the up-ramp.
         var prev = -1
         for (s in 0..(LedEffects.PULSE_STEPS / 2)) {
-            val v = LedTransfer.Rk3576FourBit.red(brightnessOf(LedEffects.frame(Effect.PULSE, s, 0, 0, 255, 255)))
+            val v = LedTransfer.Rk3576FourBit.toHardware(brightnessOf(LedEffects.frame(Effect.PULSE, s, 0, 0, 255, 255)))
             if (prev >= 0) assertTrue("4-bit level jumped >1 at step $s ($prev→$v)", v - prev <= 1)
             prev = v
         }

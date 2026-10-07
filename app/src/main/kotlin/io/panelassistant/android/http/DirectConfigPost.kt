@@ -286,7 +286,6 @@ internal class DirectConfigPost(
         var relaunchForHa = false
         var relaunchForDash = false
         var relaunchForFullscreen = false
-        var relaunchForOverscroll = false
         var relaunchForNativeKiosk = false
         var reloadForZoom = false
         var entityLearningChanged: Boolean? = null
@@ -390,13 +389,6 @@ internal class DirectConfigPost(
                     postedNativeKiosk?.let { config.setDashboardNativeKiosk(it) }
                     relaunchForNativeKiosk = postedNativeKiosk != null &&
                         postedNativeKiosk != prevNativeKiosk && !dashChanged
-                    // Overscroll stretch/glow (hidden, API-only). Same live-apply as fullscreen: a foreground
-                    // relaunch re-runs onResume → applyOverscroll. Detected from the POSTED value (read-back
-                    // inside applyBatch is pre-commit).
-                    val prevOverscroll = config.dashboardOverscroll
-                    val postedOverscroll = p["dashboard_overscroll"]?.let { it.trim().equals("true", ignoreCase = true) || it.trim() == "1" }
-                    postedOverscroll?.let { config.setDashboardOverscroll(it) }
-                    relaunchForOverscroll = postedOverscroll != null && postedOverscroll != prevOverscroll && !dashChanged
                     val prevEntityLearning = config.dashboardEntityLearningEnabled
                     val postedEntityLearning = p["dashboard_entity_learning"]?.let {
                         it.trim().equals("true", ignoreCase = true) || it.trim() == "1"
@@ -495,7 +487,6 @@ internal class DirectConfigPost(
                                 credentialChanged = relaunchForHa,
                                 zoomChanged = reloadForZoom,
                                 fullscreenChanged = relaunchForFullscreen,
-                                overscrollChanged = relaunchForOverscroll,
                                 nativeKioskChanged = relaunchForNativeKiosk,
                                 homeChanged = homeDashboardChangedEarly,
                                 darkMode = applyDark,

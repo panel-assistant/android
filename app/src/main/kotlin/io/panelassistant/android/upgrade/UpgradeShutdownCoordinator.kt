@@ -9,30 +9,7 @@ import io.panelassistant.android.persistence.StateQuiescence
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-internal const val PREPARE_UPGRADE_ACTION = "io.panelassistant.android.action.PREPARE_UPGRADE"
-internal const val RELEASE_UPGRADE_ACTION = "io.panelassistant.android.action.RELEASE_UPGRADE"
-internal const val RENEW_UPGRADE_ACTION = "io.panelassistant.android.action.RENEW_UPGRADE"
-internal const val UPGRADE_NONCE_EXTRA = "nonce"
-
 private const val UPGRADE_HOLD_TIMEOUT_MS = 180_000L
-private val UPGRADE_NONCE = Regex("[0-9a-f]{32}")
-
-internal fun canonicalUpgradeNonce(value: String?): String? =
-    value?.takeIf { UPGRADE_NONCE.matches(it) }
-
-internal fun formatUpgradeReady(
-    nonce: String,
-    pid: Int,
-    versionCode: Int,
-    proof: CleanDatabaseProof,
-): String = "HAPANELD_UPGRADE_READY_V1:$nonce:$pid:$versionCode:${proof.databaseBytes}:" +
-    "${proof.sha256}:${proof.userVersion}:${proof.appStateRows}"
-
-internal fun formatUpgradeReleased(nonce: String): String =
-    "HAPANELD_UPGRADE_RELEASED_V1:$nonce"
-
-internal fun formatUpgradeRenewed(nonce: String): String =
-    "HAPANELD_UPGRADE_RENEWED_V1:$nonce"
 
 internal interface UpgradeRequestCompletion {
     fun ready(nonce: String, proof: CleanDatabaseProof)
@@ -81,13 +58,6 @@ internal fun releaseUpgradeHold(
     return failures
 }
 
-internal data class UpgradeReleaseOutcome(
-    val accepted: Boolean,
-    val failures: List<Throwable> = emptyList(),
-) {
-    val succeeded: Boolean get() = accepted && failures.isEmpty()
-}
-
 /** One process-local upgrade request. Service shutdown remains the sole quiescence implementation. */
 internal class UpgradeRequestGate {
     private data class Active(
@@ -106,16 +76,6 @@ internal class UpgradeRequestGate {
     fun arm(nonce: String, completion: UpgradeRequestCompletion, expiresAtMillis: Long? = null): Boolean {
         if (active != null) return false
         active = Active(nonce, completion, expiresAtMillis = expiresAtMillis)
-        return true
-    }
-
-    /** Renewal retains the original freeze; it can never revive an expired or unbounded request. */
-    @Synchronized
-    fun renew(nonce: String, nowMillis: Long, timeoutMillis: Long): Boolean {
-        val request = active ?: return false
-        val deadline = request.expiresAtMillis ?: return false
-        if (request.nonce != nonce || !request.ready || nowMillis >= deadline) return false
-        request.expiresAtMillis = nowMillis + timeoutMillis
         return true
     }
 
@@ -204,37 +164,6 @@ internal class UpgradeRequestGate {
         return cancelled.second
     }
 
-    @Synchronized
-    fun release(nonce: String): UpgradeCancellation {
-        // RELEASE is deliberately stateless when no request survives (for example, package manager
-        // killed the READY process). A different live nonce remains a conflict and cannot be released.
-        val request = active ?: return UpgradeCancellation(matched = true)
-        if (request.nonce != nonce) return UpgradeCancellation(matched = false)
-        active = null
-        if (!request.ready) request.completion.failed("released_before_ready")
-        return UpgradeCancellation(
-            matched = true,
-            freeze = request.freeze,
-            releaseSuccessor = request.releaseSuccessor,
-        )
-    }
-}
-
-internal fun executeUpgradeRelease(
-    gate: UpgradeRequestGate,
-    nonce: String,
-    restartService: () -> Unit,
-): UpgradeReleaseOutcome {
-    val released = gate.release(nonce)
-    if (!released.matched) return UpgradeReleaseOutcome(accepted = false)
-    return UpgradeReleaseOutcome(
-        accepted = true,
-        failures = releaseUpgradeHold(
-            freeze = released.freeze,
-            releaseSuccessor = released.releaseSuccessor,
-            restartService = restartService,
-        ),
-    )
 }
 
 internal object UpgradeShutdownCoordinator {
@@ -245,12 +174,6 @@ internal object UpgradeShutdownCoordinator {
 
     fun arm(context: Context, nonce: String, completion: UpgradeRequestCompletion): Boolean {
         if (!gate.arm(nonce, completion, SystemClock.elapsedRealtime() + UPGRADE_HOLD_TIMEOUT_MS)) return false
-        scheduleWatchdog(context, nonce)
-        return true
-    }
-
-    fun renew(context: Context, nonce: String): Boolean {
-        if (!gate.renew(nonce, SystemClock.elapsedRealtime(), UPGRADE_HOLD_TIMEOUT_MS)) return false
         scheduleWatchdog(context, nonce)
         return true
     }
@@ -312,14 +235,6 @@ internal object UpgradeShutdownCoordinator {
             PaneldService.start(context.applicationContext)
         }))
         return true
-    }
-
-    fun releaseAndResume(context: Context, nonce: String): Boolean {
-        val outcome = executeUpgradeRelease(gate, nonce) {
-            PaneldService.start(context.applicationContext)
-        }
-        logReleaseFailures(outcome.failures)
-        return outcome.succeeded
     }
 
     private fun logReleaseFailures(failures: List<Throwable>) {

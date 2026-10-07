@@ -63,7 +63,7 @@ internal object RendererResolver {
      * structurally valid explicit package pass through unchanged (downstream special-cases built-in); an
      * invalid non-blank value resolves to none (`""`); blank Auto selects the built-in renderer sentinel.
      */
-    fun resolveControlPackage(configuredPackage: String, isInstalled: (String) -> Boolean): String {
+    fun resolveControlPackage(configuredPackage: String): String {
         if (configuredPackage.isNotBlank()) {
             return configuredPackage.takeIf(AndroidInput::isDashboardTarget).orEmpty()
         }
@@ -109,8 +109,8 @@ internal object RendererResolver {
      * none (`""`) → `null`, any other resolved package → [RendererTarget.Foreign]. The service resolves
      * this once, off the sampling path, and hands the immutable value to diagnostics.
      */
-    fun resolveControlTarget(configuredPackage: String, isInstalled: (String) -> Boolean): RendererTarget? =
-        when (val ctrl = resolveControlPackage(configuredPackage, isInstalled)) {
+    fun resolveControlTarget(configuredPackage: String): RendererTarget? =
+        when (val ctrl = resolveControlPackage(configuredPackage)) {
             BUILTIN -> RendererTarget.Builtin
             "" -> null
             else -> RendererTarget.Foreign(ctrl)

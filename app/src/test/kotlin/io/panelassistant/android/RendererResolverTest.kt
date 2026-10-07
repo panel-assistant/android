@@ -45,26 +45,19 @@ class RendererResolverTest {
     // --- control resolution (what SystemController acts on) -----------------------------------------
 
     @Test fun `control passes the builtin sentinel through unchanged`() {
-        assertEquals("builtin", RendererResolver.resolveControlPackage("builtin") { false })
+        assertEquals("builtin", RendererResolver.resolveControlPackage("builtin"))
     }
 
     @Test fun `control retains a valid explicit foreign package even when uninstalled`() {
-        assertEquals("com.example.renderer", RendererResolver.resolveControlPackage("com.example.renderer") { false })
+        assertEquals("com.example.renderer", RendererResolver.resolveControlPackage("com.example.renderer"))
     }
 
     @Test fun `control rejects a structurally invalid non-blank selection`() {
-        assertEquals("", RendererResolver.resolveControlPackage("not a package!") { true })
+        assertEquals("", RendererResolver.resolveControlPackage("not a package!"))
     }
 
-    @Test fun `control auto selects builtin even when a Companion is installed`() {
-        val probed = mutableListOf<String>()
-        val resolved = RendererResolver.resolveControlPackage("") { probed += it; it == FULL }
-        assertEquals("builtin", resolved)
-        assertTrue(probed.isEmpty())
-    }
-
-    @Test fun `control auto resolves to builtin without probing packages`() {
-        assertEquals("builtin", RendererResolver.resolveControlPackage("") { false })
+    @Test fun `control auto resolves to builtin`() {
+        assertEquals("builtin", RendererResolver.resolveControlPackage(""))
     }
 
     // --- reported resolution (what an API client reads instead of re-deriving the rule) -------------
@@ -82,17 +75,17 @@ class RendererResolverTest {
 
     @Test fun `reported resolution of an automatic selection is the built-in renderer`() {
         // The whole point of the projection: blank in, built-in out, with no client-side interpretation.
-        assertEquals("builtin", RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage("") { false }))
+        assertEquals("builtin", RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage("")))
     }
 
     @Test fun `reported resolution passes a foreign package through`() {
-        assertEquals(MINIMAL, RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage(MINIMAL) { true }))
+        assertEquals(MINIMAL, RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage(MINIMAL)))
     }
 
     @Test fun `reported resolution of a structurally invalid selection names no renderer`() {
         // Distinct from a foreign renderer on purpose: "running something else" and "cannot resolve what
         // it runs" need different answers from the caller, so they must not share a representation.
-        assertEquals("", RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage("not a package!") { true }))
+        assertEquals("", RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage("not a package!")))
     }
 
     @Test fun `reported resolution of the invalid-dashboard sentinel names no renderer`() {
@@ -105,7 +98,7 @@ class RendererResolverTest {
         // The own-package alias counts as a built-in SELECTION, but control resolution keeps it as the
         // package it is, and every other consumer of the resolved value treats it that way. The report
         // says what the panel resolved, so a client and the panel can never disagree about the renderer.
-        assertEquals(OWN, RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage(OWN) { true }))
+        assertEquals(OWN, RendererResolver.reportedRenderer(RendererResolver.resolveControlPackage(OWN)))
     }
 
     // --- launchable resolution (what Main/Admin can open now) ---------------------------------------
@@ -146,22 +139,17 @@ class RendererResolverTest {
     // --- perf attribution (derived from the resolved control package) -------------------------------
 
     @Test fun `attribution maps the builtin sentinel to the own package`() {
-        val target = RendererResolver.resolveControlTarget("builtin") { false }
+        val target = RendererResolver.resolveControlTarget("builtin")
         assertEquals(OWN, RendererResolver.attributionOf(target, OWN))
     }
 
     @Test fun `attribution passes an explicit foreign package through`() {
-        val target = RendererResolver.resolveControlTarget("com.example.renderer") { false }
+        val target = RendererResolver.resolveControlTarget("com.example.renderer")
         assertEquals("com.example.renderer", RendererResolver.attributionOf(target, OWN))
     }
 
     @Test fun `attribution of automatic selection is the built-in renderer`() {
-        val target = RendererResolver.resolveControlTarget("") { it == MINIMAL }
-        assertEquals(OWN, RendererResolver.attributionOf(target, OWN))
-    }
-
-    @Test fun `attribution of auto builtin fallback maps to the own package`() {
-        val target = RendererResolver.resolveControlTarget("") { false }
+        val target = RendererResolver.resolveControlTarget("")
         assertEquals(OWN, RendererResolver.attributionOf(target, OWN))
     }
 }

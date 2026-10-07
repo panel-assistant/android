@@ -25,7 +25,7 @@ node receiver.mjs --udp 5514 --tcp 5514 --http 5515
 Then point the panel at the machine you just started it on. Either set **Sink host**, **Sink port** and **Protocol** on the panel's Configure tab at `http://<panel>:8888`, or from a shell:
 
 ```sh
-curl -fsS -X POST "http://<panel>:8888/config" \
+curl -fsS -X POST "http://<panel>:8888/api/v1/config" \
   --data-urlencode log_ship_enabled=true \
   --data-urlencode log_ship_host=<your-machine> \
   --data-urlencode log_ship_port=5514 \

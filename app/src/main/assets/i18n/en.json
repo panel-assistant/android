@@ -17756,106 +17756,6 @@
       "surface": "entities",
       "text": "Suggested dashboard entities"
     },
-    "fleet.note.direct": {
-      "text": "For now, open another panel directly at",
-      "sourceHash": "e1c2a22afad5337db44569d030a1c44a11da9827b984f1860ccf0c9a933810f3",
-      "surface": "fleet",
-      "context": "Introductory copy immediately before the opaque direct-panel URL.",
-      "risk": "ordinary",
-      "siblings": [
-        "fleet.note.discovery_prefix",
-        "fleet.note.discovery_suffix",
-        "fleet.note.roster"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 56,
-      "hardMaxChars": 80
-    },
-    "fleet.note.discovery_prefix": {
-      "text": "Every ha-paneld already advertises itself over mDNS",
-      "sourceHash": "837241e255815b61c78cddfcfec2a745b5ef37494f8ada692cf1c438e23f5034",
-      "surface": "fleet",
-      "context": "Fleet discovery sentence before the separately rendered, opaque mDNS service type.",
-      "risk": "ordinary",
-      "siblings": [
-        "fleet.note.direct",
-        "fleet.note.discovery_suffix",
-        "fleet.note.roster"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "ha-paneld",
-        "mDNS"
-      ],
-      "softMaxChars": 72,
-      "hardMaxChars": 104
-    },
-    "fleet.note.discovery_suffix": {
-      "text": "and publishes MQTT availability, so the discovery hooks are in place.",
-      "sourceHash": "f5ec3d4269c475a35daaf7465d8677889d6fbb542a95d3c9699523ec6ed75cf0",
-      "surface": "fleet",
-      "context": "Fleet discovery sentence after the separately rendered, opaque mDNS service type.",
-      "risk": "ordinary",
-      "siblings": [
-        "fleet.note.direct",
-        "fleet.note.discovery_prefix",
-        "fleet.note.roster"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "MQTT"
-      ],
-      "softMaxChars": 96,
-      "hardMaxChars": 140
-    },
-    "fleet.note.roster": {
-      "text": "A multi-panel roster — name · IP · health, with a link to each panel's UI — will live here.",
-      "sourceHash": "9058c25917877ba67309d5c1fda25eb950e7871e7aab0994abd7690db1ba9eb9",
-      "surface": "fleet",
-      "context": "Fleet placeholder description of the planned roster content.",
-      "risk": "ordinary",
-      "siblings": [
-        "fleet.note.direct",
-        "fleet.note.discovery_prefix",
-        "fleet.note.discovery_suffix"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "IP",
-        "UI"
-      ],
-      "softMaxChars": 124,
-      "hardMaxChars": 168
-    },
-    "fleet.state.coming_soon": {
-      "text": "coming soon",
-      "sourceHash": "62bfdf0b726cbcc51d7ad57cfd2f03c007306a8a74d477500f92863236d79c13",
-      "surface": "fleet",
-      "context": "Small availability state beside this page's overview heading.",
-      "risk": "ordinary",
-      "siblings": [
-        "fleet.title"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 18,
-      "hardMaxChars": 32
-    },
-    "fleet.title": {
-      "text": "Fleet overview",
-      "sourceHash": "90a0e533f9a804dc15a95e46a99ad3e186250b1066fdbf749e1c7dfd048f72d7",
-      "surface": "fleet",
-      "context": "Fleet page card heading.",
-      "risk": "ordinary",
-      "siblings": [
-        "fleet.state.coming_soon"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 22,
-      "hardMaxChars": 40
-    },
     "install.apk.choose": {
       "text": "Choose APK…",
       "sourceHash": "93bc2050724e81c543daf449e7bac462859143e1c137bbc254b2660661e4d9dc",
@@ -32149,38 +32049,6 @@
       "softMaxChars": 70,
       "hardMaxChars": 90
     },
-    "settings.dashboard_overscroll.help": {
-      "text": "Built-in renderer: allow Android's overscroll stretch/glow when a drag runs past the top or bottom of the dashboard. Off by default (a wall panel rarely scrolls, and the bounce looks out of place). API-only — set true to restore the native effect.",
-      "sourceHash": "d0a5d6b615a514178fc680fc0b8ac051a07ef92da8c0fe490d8236d75d2b792c",
-      "surface": "settings",
-      "context": "Configure > Dashboard > Dashboard overscroll effect: supporting help for the dashboard_overscroll setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.dashboard_overscroll.label"
-      ],
-      "placeholders": [],
-      "frozen": [
-        "Android",
-        "API",
-        "true"
-      ],
-      "softMaxChars": 334,
-      "hardMaxChars": 445
-    },
-    "settings.dashboard_overscroll.label": {
-      "text": "Dashboard overscroll effect",
-      "sourceHash": "6bb0a7d9220faa711c6dea3a7ce31f2007a53547d329f6951a5d0589873ac865",
-      "surface": "settings",
-      "context": "Configure > Dashboard: label for the dashboard_overscroll setting.",
-      "risk": "ordinary",
-      "siblings": [
-        "settings.dashboard_overscroll.help"
-      ],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 37,
-      "hardMaxChars": 49
-    },
     "settings.dashboard_package.label": {
       "text": "Dashboard app",
       "sourceHash": "e70b7822979e8c3a5f86cd4250e7fd878f8c78e14b5d46cf1ce959e1dd8d6f75",
@@ -38228,18 +38096,6 @@
       "frozen": [],
       "softMaxChars": 16,
       "hardMaxChars": 32
-    },
-    "shell.nav.fleet": {
-      "text": "Fleet",
-      "sourceHash": "2bb4f92ced331c66b26c0388e4cf20e4ee5965cf24f3283f1c3633befbf0c4a1",
-      "surface": "shell",
-      "context": "Shared shell navigation label opening Fleet.",
-      "risk": "ordinary",
-      "siblings": [],
-      "placeholders": [],
-      "frozen": [],
-      "softMaxChars": 9,
-      "hardMaxChars": 13
     },
     "shell.nav.install": {
       "text": "Install",

@@ -3,6 +3,7 @@ package io.panelassistant.android.assist
 import io.panelassistant.android.Config
 import io.panelassistant.android.dashboard.EntityFilterProtocol
 import io.panelassistant.android.mqtt.MqttAddressFamilyPolicy
+import io.panelassistant.android.panelassistant.PanelAssistantVoice
 import io.panelassistant.android.sensors.DashboardHaApiSessionProvider
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
@@ -128,7 +129,7 @@ internal class AssistPipelineClient(
                     } ?: Synthesis.Failed(AssistError(CODE_TIMEOUT, "Home Assistant did not synthesise the text in time"))
                     when (synthesis) {
                         is Synthesis.Failed -> AssistOutcome(error = synthesis.error)
-                        is Synthesis.Url -> play(AssistPipelineJson.resolveMediaUrl(connection.baseUrl, synthesis.url), playback)
+                        is Synthesis.Url -> play(PanelAssistantVoice.resolveUrl(connection.baseUrl, synthesis.url), playback)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -143,15 +144,7 @@ internal class AssistPipelineClient(
 
     private suspend fun synthesize(socket: AssistSocket, pipelineId: String, text: String): Synthesis {
         socket.sendText(
-            AssistPipelineJson.runMessage(
-                RUN_REQUEST_ID,
-                AssistRunRequest(
-                    pipelineId = pipelineId,
-                    inputText = text,
-                    startStage = AssistRunRequest.STAGE_TTS,
-                    endStage = AssistRunRequest.STAGE_TTS,
-                ),
-            ),
+            AssistPipelineJson.runMessage(RUN_REQUEST_ID, pipelineId, text),
         )
         while (true) {
             val raw = socket.receiveText()

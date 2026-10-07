@@ -210,14 +210,10 @@ class PaneldServer internal constructor(
     // and answers `absent` truthfully; the service wires the real session owner once profile.hasCamera.
     private val camera: CameraSurface = AbsentCameraSurface,
     private val permissionStatus: () -> Map<PanelPermissionRepair.Grant, PanelPermissionRepair.State>,
-    // Home Assistant Assist pipeline catalogue for the Configure voice_pipelines picker. Defaults to a
-    // stub reporting not-configured; the voice-coordinator lane injects the real HA-backed directory.
-    private val assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory =
-        io.panelassistant.android.assist.AssistPipelineDirectory.NOT_WIRED,
-    // One-shot voice-assistant test trigger for POST /api/v1/voice/test. Defaults to a stub reporting
-    // unavailable; the voice-coordinator lane injects the real pipeline-runtime trigger.
-    private val voiceTest: io.panelassistant.android.assist.VoiceTestTrigger =
-        io.panelassistant.android.assist.VoiceTestTrigger.NOT_WIRED,
+    // Home Assistant Assist pipeline catalogue for the Configure voice_pipelines picker.
+    private val assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory,
+    // One-shot voice-assistant test trigger for POST /api/v1/voice/test.
+    private val voiceTest: io.panelassistant.android.assist.VoiceTestTrigger,
     // The microphone and its capture check as the voice coordinator holds them; null reports the
     // capability alone, with no check run.
     private val voiceMicrophone: () -> io.panelassistant.android.audio.MicrophoneStatus? = { null },
@@ -420,19 +416,18 @@ class PaneldServer internal constructor(
                 setupPageRoute(::requestStrings, { pages }, ::buildToken)
                 profilesPageRoute(::requestStrings, { pages })
                 installPageRoute(::requestStrings, { pages }) { strings -> installPageHandler().body(strings) }
-                fleetPageRoute(::requestStrings, { pages }) { config.httpPort }
                 logsPageRoute(::requestStrings, { pages }) { config.httpPort }
                 entitiesPageRoute(::requestStrings, { pages }) { config.dashboardEntityLearningEnabled && effectiveDashboardIsBuiltin() }
                 // Self-contained REST API explorer (no Swagger-UI CDN bundle) + the OpenAPI spec it
                 // renders — the spec also imports into Swagger/Postman for fleet tooling.
                 apiPageRoute(::requestStrings, asset) { config.friendlyName }
                 healthRoute(config, appContext.packageName, ::buildToken, ::renderConfigConcurrencyHash) { panelAssistantRestartHealth() }
-                // Pre-0.8.5 flat machine endpoints → 308 to their /api/v1 homes.
-                legacyRedirects()
+                // The pre-0.8.5 flat /diag → 308 to /api/v1/diag; the other flat paths are retired.
+                legacyDiagRedirect()
 
                 // ---- /api/v1 — the canonical machine API (0.8.5 conformity pass). Every machine
-                // endpoint lives here; the pre-0.8.5 flat paths 308 to their v1 homes (method + body
-                // preserved), except /health and /play which stay REAL at the root too — they're the
+                // endpoint lives here (the pre-0.8.5 flat /diag 308s to its v1 home), except /health and
+                // /play which stay REAL at the root too — they're the
                 // external "contract" endpoints called by plain curl (no -L) from HA automations and
                 // monitors. Human pages + static assets stay top-level. ----
                 route("/api/v1") {
@@ -539,10 +534,7 @@ class PaneldServer internal constructor(
                         onUpdateOwner = onPanelAssistantUpdateOwner,
                         admitActiveRead = ::admitActiveRead,
                         refreshUpdates = {
-                            UpdateChecker.check(
-                                appContext, "stable",
-                                "stable", profile.companionMaxVersion,
-                            )
+                            UpdateChecker.check(appContext, "stable", profile.companionMaxVersion)
                         },
                         refreshStorage = refreshStorageHealth,
                         cachedStorage = storageHealth,

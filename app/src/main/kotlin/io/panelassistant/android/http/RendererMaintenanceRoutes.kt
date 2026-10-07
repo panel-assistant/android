@@ -71,7 +71,7 @@ internal fun Route.rendererMaintenanceRoutes(
                         destroy()
                     }
                 }
-                if (config.dashboardPackage == "builtin" && !isStopping()) {
+                if (config.dashboardPackage == SystemController.BUILTIN_DASHBOARD && !isStopping()) {
                     // Privileged-first relaunch (BAL rules block a plain startActivity
                     // from a service context) — off the main thread, it may shell out.
                     scope.launch {

@@ -820,7 +820,6 @@ class DashboardActivity : AppCompatActivity() {
             cameraPromptDelivery.onResumed()
             NativeLocale.apply(config.uiLanguage)
             applyFullscreen()
-            applyOverscroll()
             applyZoom()
         }
         applyRendererScreenPolicy()
@@ -1766,8 +1765,6 @@ class DashboardActivity : AppCompatActivity() {
         if (event == ExternalBusProtocol.ConnectionEvent.CONNECTED) {
             frontendConnected = true
             BuiltinDashboard.recordConnected(SystemClock.elapsedRealtime()) // TTI: load-start → interactive
-            // Launch is over: the lifecycle socket may now be demanded without competing with startup.
-            BuiltinDashboard.onRendererSettled(activityOwner)
             // First-ever proven render: from here on, an unfinished setup journey is a REPAIR of a panel
             // that once worked, and the wizard words it that way instead of reading like a factory reset.
             if (::activityConfig.isInitialized && !activityConfig.setupEverCompleted) {
@@ -2341,7 +2338,6 @@ class DashboardActivity : AppCompatActivity() {
         io.panelassistant.android.assist.VoiceOverlays.show(this)
         if (::activityConfig.isInitialized) applyRendererScreenPolicy()
         applyFullscreen()
-        applyOverscroll()
         applyZoom()
         // Reconcile the outage card with the canonical clock on wake: `postDelayed` runs on uptime,
         // which pauses through deep sleep while the canonical window does not, so a recovery notice
@@ -2384,14 +2380,6 @@ class DashboardActivity : AppCompatActivity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-    }
-
-    /** Android's overscroll stretch (12+) / edge-glow (older) when a drag runs past the top or bottom
-     *  of the page. Off by default on a wall panel; the hidden `dashboard_overscroll` API setting turns
-     *  it back on. Re-read + applied on resume so a live config change lands on the foreground relaunch. */
-    private fun applyOverscroll() {
-        web?.overScrollMode =
-            if (Config(this).dashboardOverscroll) View.OVER_SCROLL_ALWAYS else View.OVER_SCROLL_NEVER
     }
 
     /** Page zoom (%). Re-read + applied on resume so a live `dashboard_zoom` change lands; the POST
@@ -3631,8 +3619,8 @@ class DashboardActivity : AppCompatActivity() {
                 )
             }
         }.onFailure { Log.w(TAG, "Home Assistant notice coordination unavailable", it) }
-        // Overscroll stretch/glow off by default (see applyOverscroll) — set before first layout.
-        overScrollMode = if (config.dashboardOverscroll) View.OVER_SCROLL_ALWAYS else View.OVER_SCROLL_NEVER
+        // No overscroll stretch/glow: a wall panel rarely scrolls, and the bounce looks out of place.
+        overScrollMode = View.OVER_SCROLL_NEVER
         // Page zoom to match the HA Companion's default sizing (it scales by device density); pinch
         // stays off (no builtInZoomControls) — the zoom is a deliberate per-panel value (see applyZoom).
         setInitialScale((resources.displayMetrics.density * config.dashboardZoom).toInt())
@@ -3820,7 +3808,7 @@ class DashboardActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
-                shownPage.onLoadStarted(url)
+
                 Log.d(TAG, "page load started (ha=${dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))})")
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
                 if (!dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))) {

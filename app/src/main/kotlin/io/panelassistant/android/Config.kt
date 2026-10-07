@@ -1345,9 +1345,6 @@ class Config private constructor(
     // user does not remain away from the dashboard. Persisted, off by default, with recovery routes and a
     // startup escape window before enforcement is reasserted (see KioskController and PaneldService).
     val kioskLock: Boolean get() = boolPref("kiosk_lock")
-    fun setKioskLock(on: Boolean) {
-        edit { putBoolean("kiosk_lock", on) }
-    }
     fun commitKioskLock(on: Boolean): Boolean = synchronized(CONFIG_LOCK) {
         durableCommit { putBoolean("kiosk_lock", on) }
     }
@@ -1355,9 +1352,8 @@ class Config private constructor(
     // Voice assistant: on-panel wake-word listener + Home Assistant Assist pipeline routing. Off by
     // default (no microphone-capable panel exists yet); the actual pipeline runtime is a separate lane.
     // A durable commit (not the fire-and-forget async `edit`) — the bridge's handleVoiceEnabled must be
-    // able to tell a genuine persistence failure apart from success, the same reason kiosk_lock has both
-    // setKioskLock and commitKioskLock, so an ON acknowledgement is never reported before it durably
-    // held.
+    // able to tell a genuine persistence failure apart from success, the same reason kiosk_lock is written
+    // through commitKioskLock, so an ON acknowledgement is never reported before it durably held.
     val voiceEnabled: Boolean get() = boolPref("voice_enabled")
     fun commitVoiceEnabled(on: Boolean): Boolean = synchronized(CONFIG_LOCK) {
         durableCommit { putBoolean("voice_enabled", on) }
@@ -1587,11 +1583,6 @@ class Config private constructor(
     fun setDashboardAmbientDark(dark: Boolean) {
         prefs.edit().putBoolean("dashboard_theme_ambient_dark", dark).apply()
     }
-
-    /** Built-in renderer: allow Android's overscroll stretch/glow past the top or bottom of the page.
-     *  Off by default (a wall panel rarely scrolls; the bounce looks out of place). API-only setting. */
-    val dashboardOverscroll: Boolean get() = boolPref("dashboard_overscroll")
-    fun setDashboardOverscroll(on: Boolean) { edit { putBoolean("dashboard_overscroll", on) } }
 
     /** Built-in renderer: dashboard page zoom %. 100 matches the HA Companion's default sizing (which
      *  scales the page by device density), so a switched-over panel keeps its layout. */
@@ -1824,10 +1815,6 @@ class Config private constructor(
         get() = boolPref("dashboard_entity_auto_static")
     val dashboardEntityAutoRuntime: Boolean
         get() = boolPref("dashboard_entity_auto_runtime")
-    fun commitDashboardEntityLearningEnabled(enabled: Boolean): Boolean = applyBatch {
-        setDashboardEntityLearningEnabled(enabled)
-        if (!enabled) setDashboardEntityLearningApplied(false)
-    }
 
     /**
      * v220 initially resolved a blank/default dashboard as ordinary Lovelace. That could publish an
@@ -1933,17 +1920,9 @@ class Config private constructor(
     val dashboardEntityLearningApplied: Boolean
         get() = entityStateOwnedByCurrent("dashboard_entity_applied_instance") &&
             boolPref("dashboard_entity_learning_applied")
-    fun setDashboardEntityLearningApplied(applied: Boolean) {
-        edit {
-            putBoolean("dashboard_entity_learning_applied", applied)
-            putString("dashboard_entity_applied_instance", dashboardEntityTargetKey)
-        }
-    }
+
     internal val dashboardEntityInitialActivationPending: Boolean
         get() = prefs.getBoolean(DASHBOARD_ENTITY_INITIAL_ACTIVATION_PENDING_KEY, false)
-    fun commitDashboardEntityLearningApplied(applied: Boolean): Boolean = applyBatch {
-        setDashboardEntityLearningApplied(applied)
-    }
 
     /** Backup-safe expert overrides; the derived catalog and metrics remain rebuildable SQLite state. */
     val dashboardEntityOverrides: Map<String, String>
@@ -2164,16 +2143,6 @@ class Config private constructor(
         val res = resources
         val id = res?.getIdentifier("config_showNavigationBar", "bool", "android") ?: 0
         return id.takeIf { it != 0 }?.let { runCatching { res?.getBoolean(it) }.getOrNull() }
-    }
-    fun setNavbarMode(mode: String) {
-        edit { putString("navbar_mode", mode) }
-    }
-
-    // After an app update the launcher shows the App UI; when the configured renderer is ready, bounce
-    // back to the dashboard so it does not linger. MQTT is optional. Default on.
-    val autoReturnDashboard: Boolean get() = prefs.getBoolean("auto_return_dashboard", true)
-    fun setAutoReturnDashboard(on: Boolean) {
-        edit { putBoolean("auto_return_dashboard", on) }
     }
 
     // Silence the firmware startup chime by zeroing the ring/notification volume via Settings.System.

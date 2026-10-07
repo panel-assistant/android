@@ -47,8 +47,6 @@ internal class PageShell(
             tab("profiles", "profiles", strings.get("shell.nav.profile")) +
             tab("entities", "entities", strings.get("shell.nav.entities")) +
             tab("install", "install", strings.get("shell.nav.install")) +
-            // Keep the dormant /fleet route available to old bookmarks without presenting the
-            // placeholder as a near-term product commitment.
             tab("logs", "logs", strings.get("shell.nav.logs")) +
             (if ("api" in hiddenTabs) "" else """<a href="${setupHref("api", strings, preserveExplicitEnglish)}">API</a>""") +
             "</div>"

@@ -57,12 +57,6 @@ class VoiceRoutesTest {
         assertEquals(null, voicePipelinesRefusal(hasMicrophone = true))
     }
 
-    @Test fun `the stub directory used before the coordinator lane is wired reports not configured`() {
-        val (status, _) = voicePipelinesResponse(
-            kotlinx.coroutines.runBlocking { AssistPipelineDirectory.NOT_WIRED.list() },
-        )
-        assertEquals(HttpStatusCode.ServiceUnavailable, status)
-    }
 
     @Test fun `test trigger is refused with no microphone capability before touching the trigger`() {
         assertEquals(
@@ -103,10 +97,6 @@ class VoiceRoutesTest {
         assertTrue(body.contains("already in progress"))
     }
 
-    @Test fun `the stub trigger used before the coordinator lane is wired reports 503`() {
-        val (status, _) = voiceTestTriggerResponse(VoiceTestTrigger.NOT_WIRED.trigger())
-        assertEquals(HttpStatusCode.ServiceUnavailable, status)
-    }
 
     @Test fun `voice_wake_words and voice_pipelines round-trip through config POST admission`() {
         val result = normalizeConfigPostParameters(

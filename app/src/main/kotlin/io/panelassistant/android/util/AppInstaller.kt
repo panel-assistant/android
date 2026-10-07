@@ -82,6 +82,14 @@ object AppInstaller {
     }.getOrNull()
     val COMPANION_MINIMAL = Pin("io.homeassistant.companion.android.minimal", "11194ba809b42ddf0e1a7dec6842a59c7ff1119c5482e95febffd5c6014daa5a")
 
+    /** Android System WebView, which the uninstall route refuses and the removable-app list leaves out. */
+    const val WEBVIEW_PKG = "com.android.webview"
+
+    /** Files a build before 0.9.11 kept to roll back an in-app WebView update; nothing reads them now. */
+    internal fun deleteRetiredWebViewRollback(filesDir: File) = listOf(
+        "webview-previous.apk", "webview-previous.json", "webview-rollback-attempted.json", "webview-rollback-diagnostic.txt",
+    ).forEach { File(filesDir, it).delete() }
+
     private const val TAG = "ha-paneld/install"
     private const val MAX_APK_DOWNLOAD_BYTES = 512L * 1024L * 1024L
     private const val SELF_REPLACE_STATE_FLUSH_MS = 10_000L
@@ -550,19 +558,6 @@ object AppInstaller {
         guardDbInstallBlocked("apk")
     }
 
-    /** Restore an APK saved before a WebView swap through the same package, signer, hash and privileged
-     *  install admission as a downloaded pin. Consumes [apk] only after the pin is verified. */
-    suspend fun restorePinnedWebView(
-        context: Context, apk: File, signerSha256: String, apkSha256: String,
-        beforeInstall: (() -> Boolean)? = null,
-    ): InstallOutcome = withContext(Dispatchers.IO) {
-        val pin = Pin(WebViewInstaller.WEBVIEW_PKG, signerSha256, apkSha256)
-        if (!GuardDbProcessAdmission.ordinaryMutationsAllowed()) return@withContext guardDbInstallBlocked("webview")
-        val why = verifyApk(context, apk.absolutePath, pin)
-        if (why != null) return@withContext rejected("refused ($why)", "webview")
-        installLocalApkAdmitted(context, apk, allowShizuku = false, component = "webview", beforeInstall = beforeInstall)
-    }
-
     private suspend fun installLocalApkAdmitted(
         context: Context,
         apk: File,
@@ -710,7 +705,6 @@ object AppInstaller {
     private fun componentForPin(pin: Pin): String = when (pin.pkg) {
         LEGACY.pkg, SUCCESSOR.pkg -> "paneld"
         COMPANION_MINIMAL.pkg -> "companion"
-        WebViewInstaller.WEBVIEW_PKG -> "webview"
         else -> "apk"
     }
 
