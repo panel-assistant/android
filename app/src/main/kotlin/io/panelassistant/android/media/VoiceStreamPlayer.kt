@@ -79,8 +79,10 @@ internal class VoiceStreamPlayer(
     @Synchronized
     override fun clientId(): String? {
         if (identityResolved) return identity
-        identityResolved = true
-        if (!SendspinNative.available) return null
+        if (!SendspinNative.available) {
+            identityResolved = true
+            return null
+        }
         // start() provisions the keypair on first run; client_id() is readable only on the loop thread.
         identity = runCatching {
             loop.submit<String?> {
@@ -94,6 +96,8 @@ internal class VoiceStreamPlayer(
                 }
             }.get()
         }.onFailure { Log.w(TAG, "voice stream identity unavailable: ${it.javaClass.simpleName}") }.getOrNull()
+        // A failed start is retried at the next hello rather than withholding the stream until a restart.
+        identityResolved = identity != null
         return identity
     }
 
