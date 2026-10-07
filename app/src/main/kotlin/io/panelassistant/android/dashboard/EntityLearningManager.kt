@@ -1555,7 +1555,7 @@ class EntityLearningManager(
         // them orphaned catalogue rows and later revived them — including runtime observations and
         // ignored-issue decisions, which a rescan cannot exactly recreate because they record what the
         // panel saw and what a person decided, not what the document says.
-        if (!EntityLearningProtocol.usesFrontendDefaultPanel(configured)) return dashboardEntityScopePath(configured)
+        if (!io.panelassistant.android.util.DashboardPath.followsAccountDefault(configured)) return dashboardEntityScopePath(configured)
         return config.dashboardEntityDashboardPath.takeIf { it.isNotBlank() } ?: "/"
     }
 
@@ -3427,7 +3427,7 @@ internal fun entityQueryIncludeIds(
  * scan is the thing that promises to notice that move, so under `Auto` it must ask for a live answer.
  */
 internal fun homeDashboardResolutionMustBeLive(configuredHomeDashboard: String): Boolean =
-    EntityLearningProtocol.usesFrontendDefaultPanel(configuredHomeDashboard)
+    io.panelassistant.android.util.DashboardPath.followsAccountDefault(configuredHomeDashboard)
 
 /**
  * Whether a resolved-scope rebind may still be written durably.

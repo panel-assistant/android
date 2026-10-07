@@ -1345,25 +1345,7 @@ internal class KtorHaExactEntityStreamTransport(
         rest.state(baseUrl, accessToken, entityId)
 
     private suspend fun authenticate(socket: DefaultClientWebSocketSession, accessToken: String) {
-        withTimeout(AUTH_TIMEOUT_MS) {
-            val required = readJson(socket)
-            if (required.optString("type") != "auth_required") {
-                throw HaProtocolException("Home Assistant did not request WebSocket authentication")
-            }
-            socket.send(Frame.Text(JSONObject().put("type", "auth").put("access_token", accessToken).toString()))
-            when (readJson(socket).optString("type")) {
-                "auth_ok" -> Unit
-                "auth_invalid" -> throw HaAuthenticationException("Home Assistant rejected the access token")
-                else -> throw HaProtocolException("Unexpected Home Assistant authentication response")
-            }
-        }
-    }
-
-    private suspend fun readJson(socket: DefaultClientWebSocketSession): JSONObject {
-        while (true) {
-            val frame = socket.incoming.receive()
-            if (frame is Frame.Text) return JSONObject(frame.readText())
-        }
+        withTimeout(AUTH_TIMEOUT_MS) { HaWebSocketClients.authenticate(socket, accessToken) }
     }
 
     private class KtorExactEntityConnection(

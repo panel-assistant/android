@@ -9,11 +9,17 @@ import io.ktor.websocket.CloseReason
 import io.ktor.websocket.DefaultWebSocketSession
 import io.ktor.websocket.Frame
 import io.ktor.websocket.FrameTooBigException
+import io.ktor.websocket.WebSocketSession
 import io.ktor.websocket.close
+import io.ktor.websocket.readText
+import io.ktor.websocket.send
+import io.panelassistant.android.sensors.HaAuthenticationException
+import io.panelassistant.android.sensors.HaProtocolException
 import io.ktor.util.AttributeKey
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.produce
 import okhttp3.Dns
+import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -231,6 +237,32 @@ internal object HaWebSocketClients {
             session.call,
             InboundBoundedWebSocketSession(session, maxInboundFrameBytes),
         )
+    }
+
+    /**
+     * Home Assistant's WebSocket login: `auth_required`, then `auth`, then `auth_ok`. A refused
+     * token is [HaAuthenticationException]; any other reply is [HaProtocolException]. Callers own the
+     * deadline, because they classify a timeout differently, and a malformed frame escapes as
+     * [org.json.JSONException] for the same reason.
+     */
+    suspend fun authenticate(session: WebSocketSession, accessToken: String) {
+        if (readJson(session).optString("type") != "auth_required") {
+            throw HaProtocolException("Home Assistant did not request WebSocket authentication")
+        }
+        session.send(JSONObject().put("type", "auth").put("access_token", accessToken).toString())
+        when (readJson(session).optString("type")) {
+            "auth_ok" -> Unit
+            "auth_invalid" -> throw HaAuthenticationException("Home Assistant rejected the access token")
+            else -> throw HaProtocolException("Unexpected Home Assistant authentication response")
+        }
+    }
+
+    /** The next text frame as JSON; other frame types are skipped. */
+    suspend fun readJson(session: WebSocketSession): JSONObject {
+        while (true) {
+            val frame = session.incoming.receive()
+            if (frame is Frame.Text) return JSONObject(frame.readText())
+        }
     }
 }
 

@@ -12,13 +12,20 @@ class HaAmbientHistoryProtocolTest {
         val start = Instant.parse("2026-07-12T10:00:00Z").toEpochMilli()
         val end = Instant.parse("2026-07-19T10:00:00Z").toEpochMilli()
 
-        val path = haHistoryPath(ENTITY, start, end)
+        val path = haHistoryPath(listOf(ENTITY), start, end)
 
         assertTrue(path.startsWith("/api/history/period/2026-07-12T10:00:00Z?"))
         assertTrue("filter_entity_id=sensor.room_illuminance" in path)
         assertTrue("end_time=2026-07-19T10%3A00%3A00Z" in path)
         assertTrue("minimal_response" in path && "no_attributes" in path)
         assertTrue("significant_changes_only=0" in path)
+    }
+
+    @Test fun `several entities are one sorted, comma-joined filter`() {
+        val path = haHistoryPath(setOf("sensor.b", "binary_sensor.a"), 0L, 1_000L)
+
+        assertTrue(path.startsWith("/api/history/period/1970-01-01T00:00:00Z?end_time=1970-01-01T00%3A00%3A01Z&"))
+        assertTrue("filter_entity_id=binary_sensor.a%2Csensor.b&" in path)
     }
 
     @Test fun `minimal history is projected as a time weighted step function`() {

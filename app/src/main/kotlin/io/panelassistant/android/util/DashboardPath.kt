@@ -28,6 +28,15 @@ object DashboardPath {
         raw.trim().substringBefore('?').substringBefore('#').trim('/').isBlank()
 
     /**
+     * The first path segment of [raw] (`/alpha/view?k#m` → `alpha`), or null when there is none.
+     * Not validating: it answers "which dashboard does this name" for values already admitted.
+     */
+    fun firstSegment(raw: String?): String? = raw?.trim()
+        ?.substringBefore('?')?.substringBefore('#')
+        ?.trim('/')?.substringBefore('/')
+        ?.takeIf { it.isNotBlank() }
+
+    /**
      * The canonical form of [raw], or null when it could never address a dashboard on the panel's own
      * Home Assistant. [preserveRoute] keeps an explicit view, query and fragment (`/alpha/view?k=1#m`);
      * false reduces the value to its dashboard root, which is how list membership is tested.

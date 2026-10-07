@@ -2,7 +2,6 @@ package io.panelassistant.android.panelassistant
 
 import io.panelassistant.android.dashboard.EntityFilterProtocol
 import io.panelassistant.android.mqtt.MqttAddressFamilyPolicy
-import io.panelassistant.android.sensors.HaAuthenticationException
 import io.panelassistant.android.sensors.HaProtocolException
 import io.panelassistant.android.util.HaWebSocketClients
 import io.ktor.client.HttpClient
@@ -14,7 +13,6 @@ import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONException
-import org.json.JSONObject
 import java.io.IOException
 
 /**
@@ -53,30 +51,13 @@ internal class KtorPanelAssistantTransportConnector(
 
     private suspend fun authenticate(socket: DefaultClientWebSocketSession, accessToken: String) {
         val completed = withTimeoutOrNull(AUTH_TIMEOUT_MS) {
-            if (readJson(socket).optString("type") != "auth_required") {
-                throw HaProtocolException("Home Assistant did not request WebSocket authentication")
-            }
-            socket.send(Frame.Text(JSONObject().put("type", "auth").put("access_token", accessToken).toString()))
-            when (readJson(socket).optString("type")) {
-                "auth_ok" -> Unit
-                "auth_invalid" -> throw HaAuthenticationException("Home Assistant rejected the access token")
-                else -> throw HaProtocolException("Unexpected Home Assistant authentication response")
+            try {
+                HaWebSocketClients.authenticate(socket, accessToken)
+            } catch (malformed: JSONException) {
+                throw HaProtocolException("Home Assistant sent a malformed authentication frame")
             }
         }
         if (completed == null) throw HaProtocolException("Home Assistant WebSocket authentication timed out")
-    }
-
-    private suspend fun readJson(socket: DefaultClientWebSocketSession): JSONObject {
-        while (true) {
-            val frame = socket.incoming.receive()
-            if (frame is Frame.Text) {
-                return try {
-                    JSONObject(frame.readText())
-                } catch (malformed: JSONException) {
-                    throw HaProtocolException("Home Assistant sent a malformed authentication frame")
-                }
-            }
-        }
     }
 
     private class KtorConnection(

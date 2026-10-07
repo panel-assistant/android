@@ -7,7 +7,6 @@ import io.panelassistant.android.sensors.DashboardHaApiSessionProvider
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.panelassistant.android.sensors.HaAuthenticationException
-import io.panelassistant.android.sensors.HaProtocolException
 import io.panelassistant.android.util.HaTransportFault
 import io.panelassistant.android.util.HaWebSocketClients
 import io.ktor.client.HttpClient
@@ -24,7 +23,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import org.json.JSONObject
 
 /** The panel's end of one authenticated Assist WebSocket, with the handshake already done. */
 internal interface AssistSocket {
@@ -374,24 +372,7 @@ internal class KtorAssistTransport(
     }
 
     private suspend fun authenticate(socket: DefaultClientWebSocketSession, accessToken: String) {
-        withTimeout(connectTimeoutMs) {
-            if (readJson(socket).optString("type") != "auth_required") {
-                throw HaProtocolException("Home Assistant did not request WebSocket authentication")
-            }
-            socket.send(Frame.Text(JSONObject().put("type", "auth").put("access_token", accessToken).toString()))
-            when (readJson(socket).optString("type")) {
-                "auth_ok" -> Unit
-                "auth_invalid" -> throw HaAuthenticationException("Home Assistant rejected the access token")
-                else -> throw HaProtocolException("Unexpected Home Assistant authentication response")
-            }
-        }
-    }
-
-    private suspend fun readJson(socket: DefaultClientWebSocketSession): JSONObject {
-        while (true) {
-            val frame = socket.incoming.receive()
-            if (frame is Frame.Text) return JSONObject(frame.readText())
-        }
+        withTimeout(connectTimeoutMs) { HaWebSocketClients.authenticate(socket, accessToken) }
     }
 
     private class KtorAssistSocket(

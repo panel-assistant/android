@@ -2019,7 +2019,7 @@ class DashboardActivity : AppCompatActivity() {
         val foreign = if (frontendConnected) {
             HomeDashboardLaunchCache.sameDashboardRoute(observed, claimed).not()
         } else {
-            HomeDashboardLaunchCache.dashboardRootOf(observed) != HomeDashboardLaunchCache.dashboardRootOf(claimed)
+            io.panelassistant.android.util.DashboardPath.let { it.firstSegment(observed) != it.firstSegment(claimed) }
         }
         if (foreign) appNavigatedDashboardRoute = observed
         return foreign

@@ -5,6 +5,7 @@ import io.panelassistant.android.mqtt.MqttAddressFamilyPolicy
 import io.panelassistant.android.sensors.HaApiSession
 import io.panelassistant.android.sensors.HaApiSessionProvider
 import io.panelassistant.android.sensors.HaAuthenticationException
+import io.panelassistant.android.sensors.HaProtocolException
 import io.ktor.websocket.FrameTooBigException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -103,6 +104,27 @@ class KtorPanelAssistantTransportConnectorTest {
         }
     }
 
+    @Test fun `a malformed authentication reply is a protocol failure, not a parse error`() {
+        val server = FakePanelAssistantServer(malformedAuthReply = true).apply { start() }
+        try {
+            runBlocking {
+                val failure = try {
+                    KtorPanelAssistantTransportConnector { MqttAddressFamilyPolicy.AUTOMATIC }
+                        .connect(server.baseUrl, "token")
+                    null
+                } catch (thrown: Exception) {
+                    thrown
+                }
+                assertEquals(
+                    "Home Assistant sent a malformed authentication frame",
+                    (failure as? HaProtocolException)?.message ?: "got $failure",
+                )
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
     @Test fun `a receive timeout returns null, a later frame still arrives and an oversized frame fails the connection`() {
         val server = FakePanelAssistantServer().apply { start() }
         try {
@@ -141,7 +163,10 @@ class KtorPanelAssistantTransportConnectorTest {
     }
 
     /** Minimal RFC 6455 responder speaking Home Assistant's auth phase and `panel_assistant/hello`. */
-    private class FakePanelAssistantServer(private val rejectToken: Boolean = false) {
+    private class FakePanelAssistantServer(
+        private val rejectToken: Boolean = false,
+        private val malformedAuthReply: Boolean = false,
+    ) {
         val hellos = CopyOnWriteArrayList<JSONObject>()
         val tokens = CopyOnWriteArrayList<String>()
         /** The next this many connections are closed with a close frame immediately after auth_ok. */
@@ -199,6 +224,7 @@ class KtorPanelAssistantTransportConnectorTest {
                         when (json.optString("type")) {
                             "auth" -> {
                                 tokens += json.getString("access_token")
+                                if (malformedAuthReply) { send("{not json"); continue }
                                 send(JSONObject().put("type", if (rejectToken) "auth_invalid" else "auth_ok").toString())
                                 if (!rejectToken && closeAfterAuth.getAndUpdate { if (it > 0) it - 1 else 0 } > 0) {
                                     synchronized(output) { writeFrame(output, 0x8, byteArrayOf(0x03, 0xE8.toByte())) }

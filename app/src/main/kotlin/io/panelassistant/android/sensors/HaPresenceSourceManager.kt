@@ -3,10 +3,8 @@ package io.panelassistant.android.sensors
 import android.util.Log
 import io.panelassistant.android.Config
 import io.panelassistant.android.dashboard.EntityFilterProtocol
-import io.panelassistant.android.util.BoundedStreams
 import io.panelassistant.android.mqtt.MqttAddressFamilyPolicy
 import io.panelassistant.android.util.HaWebSocketClients
-import io.panelassistant.android.util.closeBody
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -25,10 +23,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.time.Instant
 import java.security.MessageDigest
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
@@ -907,15 +901,12 @@ internal class KtorHaPresenceTransport(
         startEpochMs: Long,
         endEpochMs: Long,
     ): JSONArray {
-        val entities = URLEncoder.encode(entityIds.sorted().joinToString(","), Charsets.UTF_8.name())
-        val end = URLEncoder.encode(Instant.ofEpochMilli(endEpochMs).toString(), Charsets.UTF_8.name())
-        val path = "/api/history/period/${Instant.ofEpochMilli(startEpochMs)}?end_time=$end&filter_entity_id=$entities" +
-            "&minimal_response&no_attributes&significant_changes_only=0"
-        return JSONArray(checkNotNull(restGet(baseUrl, accessToken, path, MAX_HISTORY_BYTES, HISTORY_TIMEOUT_MS)))
+        val path = haHistoryPath(entityIds, startEpochMs, endEpochMs)
+        return JSONArray(checkNotNull(haRestGet(baseUrl, accessToken, path, MAX_HISTORY_BYTES, HTTP_TIMEOUT_MS, HISTORY_TIMEOUT_MS)))
     }
 
     private suspend fun states(baseUrl: String, accessToken: String): JSONArray =
-        JSONArray(checkNotNull(restGet(baseUrl, accessToken, "/api/states", MAX_STATES_BYTES)))
+        JSONArray(checkNotNull(haRestGet(baseUrl, accessToken, "/api/states", MAX_STATES_BYTES, HTTP_TIMEOUT_MS, HTTP_TIMEOUT_MS)))
 
     private suspend fun withCommandSocket(
         baseUrl: String,
@@ -958,53 +949,7 @@ internal class KtorHaPresenceTransport(
     }
 
     private suspend fun authenticate(socket: DefaultClientWebSocketSession, accessToken: String) {
-        withTimeout(AUTH_TIMEOUT_MS) {
-            val required = readJson(socket)
-            if (required.optString("type") != "auth_required") {
-                throw HaProtocolException("Home Assistant did not request WebSocket authentication")
-            }
-            socket.send(Frame.Text(JSONObject().put("type", "auth").put("access_token", accessToken).toString()))
-            when (readJson(socket).optString("type")) {
-                "auth_ok" -> Unit
-                "auth_invalid" -> throw HaAuthenticationException("Home Assistant rejected the access token")
-                else -> throw HaProtocolException("Unexpected Home Assistant authentication response")
-            }
-        }
-    }
-
-    private suspend fun readJson(socket: DefaultClientWebSocketSession): JSONObject {
-        while (true) {
-            val frame = socket.incoming.receive()
-            if (frame is Frame.Text) return JSONObject(frame.readText())
-        }
-    }
-
-    private suspend fun restGet(
-        baseUrl: String,
-        accessToken: String,
-        path: String,
-        maxBytes: Long,
-        readTimeoutMs: Int = HTTP_TIMEOUT_MS,
-    ): String? = withContext(Dispatchers.IO) {
-        val connection = (URL(baseUrl.trim().trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = HTTP_TIMEOUT_MS
-            this.readTimeout = readTimeoutMs
-            setRequestProperty("Authorization", "Bearer $accessToken")
-            setRequestProperty("Accept", "application/json")
-        }
-        try {
-            val code = connection.responseCode
-            if (code !in 200..299) connection.closeBody()
-            when (code) {
-                HttpURLConnection.HTTP_UNAUTHORIZED, HttpURLConnection.HTTP_FORBIDDEN ->
-                    throw HaAuthenticationException("Home Assistant rejected the REST access token")
-                !in 200..299 -> throw HaProtocolException("Home Assistant REST request failed (HTTP $code)")
-                else -> connection.inputStream.use { String(BoundedStreams.readBytes(it, maxBytes), Charsets.UTF_8) }
-            }
-        } finally {
-            connection.disconnect()
-        }
+        withTimeout(AUTH_TIMEOUT_MS) { HaWebSocketClients.authenticate(socket, accessToken) }
     }
 
     private companion object {

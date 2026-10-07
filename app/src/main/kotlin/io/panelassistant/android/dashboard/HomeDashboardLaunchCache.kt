@@ -1,6 +1,7 @@
 package io.panelassistant.android.dashboard
 
 import io.panelassistant.android.HaAuthOwner
+import io.panelassistant.android.util.DashboardPath
 
 /**
  * Pure policy for the persisted last-successfully-resolved home-dashboard path — the launch
@@ -58,13 +59,6 @@ internal object HomeDashboardLaunchCache {
 
     enum class RefreshOutcome { CONFIRMED, CORRECTED, NO_LEGAL_DASHBOARDS }
 
-    /** First path segment of a dashboard route, or null when there is none. One shared rule for
-     *  "which dashboard is this", used by convergence and by foreign-navigation detection. */
-    fun dashboardRootOf(path: String?): String? = path?.trim()
-        ?.substringBefore('?')?.substringBefore('#')
-        ?.trim('/')?.substringBefore('/')
-        ?.takeIf { it.isNotBlank() }
-
     /** True when both routes name the same dashboard, ignoring the view within it. */
     fun sameDashboardRoute(observed: String?, claimed: String?): Boolean =
         observed?.trim()?.substringBefore('?')?.substringBefore('#')?.trimEnd('/') ==
@@ -77,8 +71,8 @@ internal object HomeDashboardLaunchCache {
      * or blank location proves nothing and reads as not converged.
      */
     fun correctionConverged(currentPath: String?, correctedPath: String): Boolean {
-        val current = dashboardRootOf(currentPath) ?: return false
-        return current == dashboardRootOf(correctedPath)
+        val current = DashboardPath.firstSegment(currentPath) ?: return false
+        return current == DashboardPath.firstSegment(correctedPath)
     }
 
     /** What a completed live resolution means for a provisionally shown cached path. */

@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.panelassistant.android.util.DashboardPath
 
 class EntityLearningProtocolTest {
     @Test fun manualActivationCannotBypassPendingDefaultResolverReplacement() {
@@ -480,12 +481,17 @@ class EntityLearningProtocolTest {
     @Test fun dashboardUrlPathDistinguishesExplicitDefaultLovelace() {
         assertEquals("sample-panel", EntityLearningProtocol.dashboardUrlPath("/sample-panel/dash"))
         assertEquals("", EntityLearningProtocol.dashboardUrlPath("/lovelace/0"))
-        assertFalse(EntityLearningProtocol.usesFrontendDefaultPanel("/lovelace/0"))
+        assertFalse(DashboardPath.followsAccountDefault("/lovelace/0"))
+        // Values outside the validated shape keep the result they always had: first segment, unvalidated.
+        val pinned = listOf(
+            "" to "", "/" to "", " /a/view?x#y " to "a", "//x" to "x", "%2e%2e/v" to "%2e%2e", "http://.." to "http:",
+        )
+        for ((route, urlPath) in pinned) assertEquals(route, urlPath, EntityLearningProtocol.dashboardUrlPath(route))
     }
 
     @Test fun blankOrRootDashboardRequiresAuthenticatedResolution() {
         for (configured in listOf("", "   ", "/", " /?kiosk ", "/#view")) {
-            assertTrue(EntityLearningProtocol.usesFrontendDefaultPanel(configured))
+            assertTrue(DashboardPath.followsAccountDefault(configured))
         }
     }
 

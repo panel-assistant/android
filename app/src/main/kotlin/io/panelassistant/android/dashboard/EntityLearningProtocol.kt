@@ -246,24 +246,11 @@ object EntityLearningProtocol {
     internal const val MAX_DYNAMIC_EXPRESSION_LENGTH = 2048
 
     /**
-     * A blank/root renderer route means "use this HA user's default dashboard". Explicit routes,
-     * including `/lovelace`, stay authoritative and must not be replaced by frontend user data.
-     */
-    fun usesFrontendDefaultPanel(homeDashboard: String): Boolean = homeDashboard.trim()
-        .substringBefore('?')
-        .substringBefore('#')
-        .trim('/')
-        .isBlank()
-
-    /**
      * Return the Lovelace WebSocket dashboard URL path for an already list-validated renderer route.
      * Empty selects ordinary Lovelace; non-Lovelace dashboards name their URL-path segment.
      */
-    fun dashboardUrlPath(homeDashboard: String): String {
-        val first = homeDashboard.trim().substringBefore('?').substringBefore('#')
-            .trim('/').substringBefore('/')
-        return first.takeUnless { it.isBlank() || it == "lovelace" }.orEmpty()
-    }
+    fun dashboardUrlPath(homeDashboard: String): String =
+        DashboardPath.firstSegment(homeDashboard)?.takeUnless { it == "lovelace" }.orEmpty()
 
     /**
      * Preserve Home Assistant's dashboard ordering while reducing its WebSocket response to safe local paths.
@@ -358,7 +345,7 @@ object EntityLearningProtocol {
             return candidate.takeIf { dashboardRoot(it) in legal }
         }
 
-        if (!usesFrontendDefaultPanel(homeDashboard)) {
+        if (!DashboardPath.followsAccountDefault(homeDashboard)) {
             admitted(homeDashboard, preserveRoute = true)?.let {
                 return HomeDashboardResolution(it, HomeDashboardSource.EXPLICIT)
             }
