@@ -142,12 +142,6 @@ object CompanionInstaller {
 
     /** Install a specific Companion release by its [tag]. The exact-version picker obeys the same device
      *  cap as automatic and newest-version installs; the cap is a safety boundary, not a preference. */
-    suspend fun installVersion(
-        context: Context,
-        tag: String,
-        maxVersion: String?,
-    ): String = installVersionResult(context, tag, maxVersion).message
-
     internal suspend fun installVersionResult(
         context: Context,
         tag: String,
@@ -210,13 +204,6 @@ object CompanionInstaller {
 
     /** Install the minimal Companion if missing or update it when newer. An already-installed build above
      *  the device cap is downgraded only through explicit [force]; [force] never bypasses [maxVersion]. */
-    suspend fun installOrUpdate(
-        context: Context,
-        force: Boolean = false,
-        channel: String = "stable",
-        maxVersion: String?,
-    ): String = installOrUpdateResult(context, force, channel, maxVersion).message
-
     internal suspend fun installOrUpdateResult(
         context: Context,
         force: Boolean = false,

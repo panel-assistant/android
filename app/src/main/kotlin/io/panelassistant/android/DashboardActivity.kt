@@ -3820,7 +3820,7 @@ class DashboardActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 if (!rendererCurrent(generation, view)) return
-                shownPage.onLoadStarted(url)
+
                 Log.d(TAG, "page load started (ha=${dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))})")
                 val expected = expectedPageStartUrl.also { expectedPageStartUrl = null }
                 if (!dashboardNavigationAllowed(config.haEffectiveUrl, url, allowHttpsUpgrade = !HaConnectionRoutes.hasLearned(config))) {

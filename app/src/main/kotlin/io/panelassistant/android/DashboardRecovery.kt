@@ -205,7 +205,7 @@ internal fun dashboardNavigationAllowed(configuredUrl: String, candidateUrl: Str
 
 /**
  * The dashboard page that is actually on screen, for [retryNeedsFreshLoad]. Only a page Android reports as
- * drawn (`onPageCommitVisible`) counts: a load that has merely started ([onLoadStarted]) can hang and leave
+ * drawn (`onPageCommitVisible`) counts: a load that has merely started can hang and leave
  * the previous page drawn, and a retry that believed it would `reload()` the reconnecting page forever.
  * [forget] is called whenever what is drawn is about to stop being a Home Assistant page (the reconnecting
  * page, a torn-down or replaced renderer).
@@ -214,9 +214,6 @@ internal class ShownPageTracker {
     var shown: String? = null
         private set
 
-    /** Deliberately records nothing: starting is not showing. Kept as the named seam the trace and tests use. */
-    @Suppress("UNUSED_PARAMETER")
-    fun onLoadStarted(url: String) = Unit
 
     fun onCommitVisible(url: String) { shown = url }
 

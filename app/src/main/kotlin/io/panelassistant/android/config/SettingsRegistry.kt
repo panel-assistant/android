@@ -1,5 +1,6 @@
 package io.panelassistant.android.config
 
+import io.panelassistant.android.assist.wakeword.WakeWordCatalog
 import io.panelassistant.android.audio.MicrophoneGain
 import io.panelassistant.android.i18n.AppLocale
 import io.panelassistant.android.util.AndroidInput
@@ -148,8 +149,6 @@ object SettingsRegistry {
     private const val MAX_PANEL_ID_INPUT_CHARS = 255
     private val HA_ILLUMINANCE_ENTITY = Regex("^sensor\\.[a-z0-9_]+$")
 
-    /** A wake-word id as `voice_wake_words` and `voice_pipelines` name it: a bundled or imported model. */
-    private val VOICE_WAKE_WORD_ID = Regex("^[a-z][a-z0-9_]{0,63}$")
     private const val MAX_VOICE_WAKE_WORDS = 32
 
     /** `voice_wake_words`: a JSON array of wake-word ids with no duplicate. Which ids exist depends on the
@@ -168,7 +167,7 @@ object SettingsRegistry {
         for (index in 0 until array.length()) {
             val entry = array.opt(index) as? String
                 ?: return Validation.Bad("voice_wake_words: every entry must be a string")
-            if (!VOICE_WAKE_WORD_ID.matches(entry)) {
+            if (!WakeWordCatalog.ID.matches(entry)) {
                 return Validation.Bad("voice_wake_words: \"$entry\" is not a wake-word id")
             }
             if (entry in ids) return Validation.Bad("voice_wake_words: duplicate wake word \"$entry\"")
@@ -188,7 +187,7 @@ object SettingsRegistry {
         }
         val normalized = JSONObject()
         for (key in obj.keys().asSequence().sorted()) {
-            if (!VOICE_WAKE_WORD_ID.matches(key)) {
+            if (!WakeWordCatalog.ID.matches(key)) {
                 return Validation.Bad("voice_pipelines: \"$key\" is not a wake-word id")
             }
             val value = obj.opt(key) as? String

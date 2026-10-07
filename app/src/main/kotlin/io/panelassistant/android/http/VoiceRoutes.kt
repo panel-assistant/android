@@ -25,11 +25,8 @@ internal fun Route.voiceRoutes(
     wakeWords: io.panelassistant.android.assist.wakeword.WakeWordCatalog?,
     onWakeWordsChanged: () -> Unit,
 ) {
-    // Home Assistant Assist pipelines for the Configure voice_pipelines picker. Delegates to
-    // an injectable directory (the voice-coordinator lane's real HA-backed implementation;
-    // the stub default reports 503 not-configured) rather than talking to Home Assistant here.
-    // The response is decided by the pure voicePipelinesResponse() so it is unit-testable
-    // without a routed request.
+    // Home Assistant Assist pipelines for the Configure voice_pipelines picker, through the
+    // injected directory rather than talking to Home Assistant here.
     get("/voice/pipelines") {
         val refusal = voicePipelinesRefusal(hasMicrophone = hasMicrophone())
         if (refusal != null) {

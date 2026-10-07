@@ -210,14 +210,10 @@ class PaneldServer internal constructor(
     // and answers `absent` truthfully; the service wires the real session owner once profile.hasCamera.
     private val camera: CameraSurface = AbsentCameraSurface,
     private val permissionStatus: () -> Map<PanelPermissionRepair.Grant, PanelPermissionRepair.State>,
-    // Home Assistant Assist pipeline catalogue for the Configure voice_pipelines picker. Defaults to a
-    // stub reporting not-configured; the voice-coordinator lane injects the real HA-backed directory.
-    private val assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory =
-        io.panelassistant.android.assist.AssistPipelineDirectory.NOT_WIRED,
-    // One-shot voice-assistant test trigger for POST /api/v1/voice/test. Defaults to a stub reporting
-    // unavailable; the voice-coordinator lane injects the real pipeline-runtime trigger.
-    private val voiceTest: io.panelassistant.android.assist.VoiceTestTrigger =
-        io.panelassistant.android.assist.VoiceTestTrigger.NOT_WIRED,
+    // Home Assistant Assist pipeline catalogue for the Configure voice_pipelines picker.
+    private val assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory,
+    // One-shot voice-assistant test trigger for POST /api/v1/voice/test.
+    private val voiceTest: io.panelassistant.android.assist.VoiceTestTrigger,
     // The microphone and its capture check as the voice coordinator holds them; null reports the
     // capability alone, with no check run.
     private val voiceMicrophone: () -> io.panelassistant.android.audio.MicrophoneStatus? = { null },

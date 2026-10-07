@@ -206,7 +206,8 @@ class WakeWordCatalog(
         private const val JSON = ".json"
         private const val MAX_MANIFEST_BYTES = 16 * 1024
         private const val MAX_MODEL_BYTES = 2 * 1024 * 1024
-        private val ID = Regex("^[a-z][a-z0-9_]{0,63}$")
+        /** A wake-word id: a bundled model's or an imported one's directory name. */
+        internal val ID = Regex("^[a-z][a-z0-9_]{0,63}$")
 
         /** The id an imported wake word gets from its name, or null when nothing usable remains. */
         fun idFor(name: String): String? {

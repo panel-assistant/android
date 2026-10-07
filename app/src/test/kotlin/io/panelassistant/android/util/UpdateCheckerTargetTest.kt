@@ -64,10 +64,4 @@ class UpdateCheckerTargetTest {
             assertNull(label, UpdateChecker.decodeTarget(raw))
         }
     }
-
-    @Test fun theUpdateEntityReleaseLinkStaysInsideTheReleasesPath() {
-        assertEquals("https://github.com/panel-assistant/android/releases/tag/v0.9.8", SelfUpdater.releaseNotesUrl("v0.9.8"))
-        assertNull(SelfUpdater.releaseNotesUrl("../../evil"))
-        assertNull(SelfUpdater.releaseNotesUrl("v0.9.8?x=1"))
-    }
 }

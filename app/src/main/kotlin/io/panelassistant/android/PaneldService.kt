@@ -3527,9 +3527,7 @@ class PaneldService : Service() {
      *  foreign dashboard package, or none), resolved here off the sampling path and handed to PerfReader
      *  as an immutable value so PerfReader never touches PackageManager on the hot path. */
     private fun rendererTargetSnapshot(): RendererTarget? =
-        RendererResolver.resolveControlTarget(config.dashboardPackage) {
-            runCatching { packageManager.getPackageInfo(it, 0) }.isSuccess
-        }
+        RendererResolver.resolveControlTarget(config.dashboardPackage)
 
     /** Advertise the button-event entity only if our a11y service is actually enabled. */
     private fun accessibilityEnabled(): Boolean {

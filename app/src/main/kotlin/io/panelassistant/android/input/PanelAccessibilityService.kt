@@ -93,7 +93,7 @@ class PanelAccessibilityService : AccessibilityService() {
 
         override fun back(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_BACK) ?: false
         override fun recents(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_RECENTS) ?: false
-        fun navHome(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
+
 
         /**
          * Dispatch a short accessibility gesture and wait for its completion when called off-main, as

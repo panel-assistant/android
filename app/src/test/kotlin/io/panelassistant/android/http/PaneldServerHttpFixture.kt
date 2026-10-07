@@ -107,8 +107,8 @@ internal class PaneldServerHttpFixture(
         field("identityMigration", identityMigration)
         wakeWords?.let { field("wakeWords", it) }
         field("onWakeWordsChanged", {})
-        field("assistPipelines", io.panelassistant.android.assist.AssistPipelineDirectory.NOT_WIRED)
-        field("voiceTest", io.panelassistant.android.assist.VoiceTestTrigger.NOT_WIRED)
+        field("assistPipelines", NO_PIPELINES)
+        field("voiceTest", NO_VOICE_TEST)
         field("playAudio", { _: String -> error("Unexpected playback") })
         field("onInstallComponent", installComponent)
         field("panelAssistantTransportFacts", {
@@ -161,10 +161,8 @@ internal class PaneldServerHttpFixture(
     fun useVoice(
         hasMicrophone: Boolean,
         enabled: Boolean = false,
-        assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory =
-            io.panelassistant.android.assist.AssistPipelineDirectory.NOT_WIRED,
-        voiceTest: io.panelassistant.android.assist.VoiceTestTrigger =
-            io.panelassistant.android.assist.VoiceTestTrigger.NOT_WIRED,
+        assistPipelines: io.panelassistant.android.assist.AssistPipelineDirectory = NO_PIPELINES,
+        voiceTest: io.panelassistant.android.assist.VoiceTestTrigger = NO_VOICE_TEST,
     ) {
         server.field("assistPipelines", assistPipelines)
         server.field("voiceTest", voiceTest)
@@ -459,6 +457,13 @@ internal class PaneldServerHttpFixture(
     }
 
     private companion object {
+        val NO_PIPELINES = object : io.panelassistant.android.assist.AssistPipelineDirectory {
+            override suspend fun list() =
+                io.panelassistant.android.assist.AssistPipelineDirectory.Result.NotConfigured("no Home Assistant link in this fixture")
+        }
+        val NO_VOICE_TEST = io.panelassistant.android.assist.VoiceTestTrigger {
+            io.panelassistant.android.assist.VoiceTestTrigger.Result.Unavailable("no voice runtime in this fixture")
+        }
         val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").run {
             isAccessible = true
             get(null) as Unsafe

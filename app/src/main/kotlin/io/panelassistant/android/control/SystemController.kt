@@ -147,7 +147,7 @@ class SystemController(
      * invalid rather than being mistaken for Auto and crossing a privileged launch boundary. */
     fun resolveDashboard(pkg: String): String = when {
         pkg.isNotBlank() && !AndroidInput.isDashboardTarget(pkg) -> INVALID_DASHBOARD
-        else -> RendererResolver.resolveControlPackage(pkg, env::isInstalled)
+        else -> RendererResolver.resolveControlPackage(pkg)
     }
 
     /** Force-stop the dashboard and relaunch it. [reason], when given, is announced on the panel first
