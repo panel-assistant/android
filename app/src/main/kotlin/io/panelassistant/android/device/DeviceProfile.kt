@@ -277,7 +277,17 @@ enum class ProvisioningImportance { RECOMMENDED, OPTIONAL }
 
 /** `su` invocation form: toolbox `su -c '<cmd>'` (Sonoff PX30) vs Android `su 0 sh -c '<cmd>'` (Tuya
  *  userdebug); NONE = su is not reachable from the app sandbox (use the helper daemon instead). */
-enum class SuForm { TOOLBOX, ANDROID, NONE }
+enum class SuForm(val yamlName: String) {
+    NONE("none"),
+    ANDROID("android"),
+    TOOLBOX("toolbox"),
+    ;
+
+    companion object {
+        /** The one list of accepted `platform.su_form` names; null for anything else. */
+        fun ofYaml(name: String): SuForm? = entries.firstOrNull { it.yamlName == name }
+    }
+}
 
 /**
  * A known-good System WebView build for a panel (see [DeviceProfile.recommendedWebView]). The package
@@ -326,7 +336,18 @@ enum class LedMechanism(val yamlName: String) {
  * itself noninteractive. That is a different state with different consequences, spelled out on
  * [io.panelassistant.android.control.ScreenController].
  */
-enum class ScreenOff { SU_BLPOWER, DAEMON_BLPOWER, KEYEVENT, BRIGHTNESS_ZERO }
+enum class ScreenOff(val yamlName: String) {
+    BRIGHTNESS_ZERO("brightness-zero"),
+    SU_BLPOWER("su-blpower"),
+    DAEMON_BLPOWER("daemon-blpower"),
+    KEYEVENT("keyevent"),
+    ;
+
+    companion object {
+        /** The one list of accepted `hardware.screen_off` names; null for anything else. */
+        fun ofYaml(name: String): ScreenOff? = entries.firstOrNull { it.yamlName == name }
+    }
+}
 
 /**
  * A hardware button instrumented through the root helper daemon's evdev reader (for keys Android

@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.panelassistant.android.device.profile.ProfilePresentation
 import org.json.JSONArray
 
 /**
@@ -32,7 +33,8 @@ class ProfilesI18nContractTest {
     @Test fun `English Profiles records are exactly the server and browser consumer union`() {
         val source = SourceCatalogue.parse(sourceFile.readText())
         val records = source.strings.keys.filterTo(sortedSetOf()) { it.startsWith("profiles.") }
-        val consumers = quotedProfileKeys(serverSource) + quotedProfileKeys(profilesScript.readText())
+        val consumers = quotedProfileKeys(serverSource) + quotedProfileKeys(profilesScript.readText()) +
+            records.filter { presentationCode(it) in ProfilePresentation.SUPPORTED_CODES }
 
         assertFalse("Profiles must retain a finite non-empty catalogue surface", consumers.isEmpty())
         assertEquals(
@@ -42,35 +44,22 @@ class ProfilesI18nContractTest {
         )
     }
 
-    @Test fun `closed presentation maps have exact namespaces and parameter metadata`() {
+    @Test fun `each presentation code names one record whose placeholders are its parameters`() {
         val source = SourceCatalogue.parse(sourceFile.readText())
-        val script = profilesScript.readText()
-        val bindings = presentationBindings(objectLiteral(script, "PRESENTATIONS"))
-        val issue = bindings.filterValues { it.startsWith("profiles.issue.") }
-        val result = bindings.filterValues { it.startsWith("profiles.result.") }
-        val parameters = presentationParameters(objectLiteral(script, "PRESENTATION_PARAMS"))
-        val expectedParameterizedCodes = bindings.mapNotNullTo(sortedSetOf()) { (code, key) ->
-            code.takeIf { checkNotNull(source.strings[key]).placeholders.isNotEmpty() }
-        }
-
-        assertTrue("Profiles must expose backend issue presentation codes", issue.isNotEmpty())
-        assertTrue("Profiles must expose backend result presentation codes", result.isNotEmpty())
-        assertEquals("the closed Profiles issue presentation vocabulary changed", 124, issue.size)
-        assertEquals("the closed Profiles result presentation vocabulary changed", 47, result.size)
-        assertEquals("the closed Profiles parameterized vocabulary changed", 34, parameters.size)
-        assertTrue("one presentation code must not be assigned to issue and result namespaces", issue.keys.intersect(result.keys).isEmpty())
-        assertTrue("issue codes must map only to profiles.issue records", issue.values.all { it.startsWith("profiles.issue.") })
-        assertTrue("result codes must map only to profiles.result records", result.values.all { it.startsWith("profiles.result.") })
-        assertEquals(
-            "parameter metadata must name every and only parameterized presentation code",
-            expectedParameterizedCodes,
-            parameters.keys,
-        )
-
-        bindings.forEach { (code, key) ->
-            val record = checkNotNull(source.strings[key]) { "$code maps to missing English record $key" }
-            val expected = record.placeholders.map { it.removePrefix("{").removeSuffix("}") }.sorted()
-            assertEquals("$code parameter contract drifted from $key placeholders", expected, parameters[code].orEmpty().sorted())
+        // Backup restore presentation belongs to the integration API, and the passive-draft TODO note is
+        // profile-authored YAML guidance; neither is browser prose, so neither has a Profiles record.
+        val notBrowserProse = { code: String -> code.startsWith("backup-") ||
+            code == "profile-catalog-restore-unavailable" || code == "draft-todos-recorded-as-limitations" }
+        ProfilePresentation.SUPPORTED_CODES.forEach { code ->
+            val records = listOf("profiles.issue.$code", "profiles.result.$code").mapNotNull { source.strings[it] }
+            assertEquals("$code must name ${if (notBrowserProse(code)) "no" else "one"} record", if (notBrowserProse(code)) 0 else 1, records.size)
+            records.forEach { record ->
+                assertEquals(
+                    "$code placeholders drifted from its parameter contract",
+                    ProfilePresentation.expectedParams(code),
+                    record.placeholders.mapTo(sortedSetOf()) { it.removePrefix("{").removeSuffix("}") },
+                )
+            }
         }
     }
 
@@ -135,42 +124,10 @@ class ProfilesI18nContractTest {
     }
 
     private fun quotedProfileKeys(source: String): Set<String> =
-        Regex("[\\\"'](profiles\\.[a-z0-9._-]+)[\\\"']")
+        Regex("[\\\"'](profiles\\.[a-z0-9._-]*[a-z0-9_-])[\\\"']")
             .findAll(source)
             .mapTo(sortedSetOf()) { it.groupValues[1] }
 
-    private fun presentationBindings(body: String): Map<String, String> =
-        Regex("[\\\"']([a-z0-9-]+)[\\\"']\\s*:\\s*[\\\"'](profiles\\.(?:issue|result)\\.[a-z0-9._-]+)[\\\"']")
-            .findAll(body)
-            .map { it.groupValues[1] to it.groupValues[2] }
-            .toList()
-            .also { pairs ->
-                assertEquals("presentation codes must be unique", pairs.size, pairs.map { it.first }.toSet().size)
-                assertEquals("presentation catalogue keys must be unique", pairs.size, pairs.map { it.second }.toSet().size)
-            }
-            .toMap()
-
-    private fun presentationParameters(body: String): Map<String, List<String>> {
-        val pairs = Regex("""["']([a-z0-9-]+)["']\s*:\s*Object\.freeze\(\[([^\]]*)\]\)""")
-            .findAll(body)
-            .map { match ->
-                match.groupValues[1] to Regex("[\\\"']([a-z][a-z0-9_]*)[\\\"']")
-                    .findAll(match.groupValues[2])
-                    .map { it.groupValues[1] }
-                    .toList()
-            }
-            .toList()
-        assertEquals("presentation parameter codes must be unique", pairs.size, pairs.map { it.first }.toSet().size)
-        pairs.forEach { (code, names) ->
-            assertEquals("$code presentation parameter names must be unique", names.size, names.toSet().size)
-        }
-        return pairs.toMap()
-    }
-
-    private fun objectLiteral(source: String, name: String): String {
-        val marker = "var $name = Object.freeze({"
-        val start = source.indexOf(marker).also { require(it >= 0) { "missing $name" } } + marker.length
-        val end = source.indexOf("\n  });", start).also { require(it >= 0) { "unterminated $name" } }
-        return source.substring(start, end)
-    }
+    private fun presentationCode(key: String): String? =
+        key.removePrefix("profiles.issue.").removePrefix("profiles.result.").takeIf { it != key }
 }

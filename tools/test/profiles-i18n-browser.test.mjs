@@ -8,7 +8,6 @@ import { chromium } from 'playwright-core';
 
 const asset = fileURLToPath(new URL('../../app/src/main/assets/profiles.js', import.meta.url));
 const editorBundle = fileURLToPath(new URL('../../app/src/main/assets/vendor/profile-editor/codemirror.js', import.meta.url));
-const contracts = fileURLToPath(new URL('../../app/src/main/kotlin/io/panelassistant/android/device/profile/ProfileContracts.kt', import.meta.url));
 const englishCatalogue = fileURLToPath(new URL('../../app/src/main/assets/i18n/en.json', import.meta.url));
 const chrome = process.env.CHROME || '/usr/bin/chromium';
 const browserTest = existsSync(chrome) ? test : test.skip;
@@ -36,19 +35,6 @@ function objectFreezeBody(source, name) {
   assert.fail(`${name} declaration is unterminated`);
 }
 
-function stringMap(source, name) {
-  return new Map([...objectFreezeBody(source, name).matchAll(/"([a-z0-9-]+)"\s*:\s*"([a-z0-9._-]+)"/g)]
-    .map((match) => [match[1], match[2]]));
-}
-
-function paramMap(source) {
-  const mapped = new Map();
-  for (const match of objectFreezeBody(source, 'PRESENTATION_PARAMS').matchAll(/"([a-z0-9-]+)"\s*:\s*Object\.freeze\(\[([^\]]*)\]\)/g)) {
-    mapped.set(match[1], [...match[2].matchAll(/"([a-z0-9_]+)"/g)].map((item) => item[1]).sort());
-  }
-  return mapped;
-}
-
 function json(body, status = 200) {
   return { status, type: 'application/json', body: JSON.stringify(body) };
 }
@@ -64,7 +50,7 @@ function profile(overrides = {}) {
 }
 
 function html(translations, withHelper = true, editorProbe = false, locale = 'zh-Hans', realEditor = false) {
-  const helper = withHelper ? `<script>window.__calls=[];window.HaI18n={locale:${JSON.stringify(locale)},t:(key,fallback,values)=>{window.__calls.push(key);const c=${JSON.stringify(translations)};if(c.__throw===key)throw new Error('missing review projection');const value=Object.prototype.hasOwnProperty.call(c,key)?c[key]:fallback;return String(value==null?'':value).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(p,n)=>values&&Object.prototype.hasOwnProperty.call(values,n)?String(values[n]):p);}};</script>` : '';
+  const helper = withHelper ? `<script>window.__calls=[];const __c=${JSON.stringify(translations)};window.HaI18n={locale:${JSON.stringify(locale)},has:(key)=>Object.prototype.hasOwnProperty.call(__c,key),t:(key,fallback,values)=>{window.__calls.push(key);const c=__c;if(c.__throw===key)throw new Error('missing review projection');const value=Object.prototype.hasOwnProperty.call(c,key)?c[key]:fallback;return String(value==null?'':value).replace(/\\{([A-Za-z][A-Za-z0-9_]*)\\}/g,(p,n)=>values&&Object.prototype.hasOwnProperty.call(values,n)?String(values[n]):p);}};</script>` : '';
   const editor = editorProbe ? `<script>window.__editorValue='';window.ProfileCodeEditor={create:()=>({getValue:()=>window.__editorValue,setValue:(value)=>{window.__editorValue=value;},setReadOnly:()=>{},setSchema:(fields)=>{window.__schema=fields;},setDiagnostics:()=>{},focus:()=>{}})};</script>` : '';
   const ids = ['profile-select','profile-use-draft','profile-status','profile-shizuku-guidance','profile-new','profile-edit','profile-fork','profile-import','profile-export','profile-validate','profile-compare','savebtn','profile-activate','profile-auto','profile-rollback','profile-delete','profile-draft','profile-modal-cancel','profile-modal-confirm'];
   const controls = ids.map((id) => id === 'profile-select' ? `<select id="${id}"></select>` : id === 'profile-import' ? `<input id="${id}" type="file">` : `<button id="${id}">${id}</button>`).join('');
@@ -173,63 +159,28 @@ browserTest('The real bundled editor renders localized search and go-to-line chr
   }
 });
 
-test('Profiles presentation vocabulary, parameter shapes and English catalogue stay exactly aligned', async () => {
-  const [source, kotlin, catalogueDocument] = await Promise.all([
-    readFile(asset, 'utf8'),
-    readFile(contracts, 'utf8'),
-    readFile(englishCatalogue, 'utf8').then(JSON.parse),
-  ]);
-  const presentations = stringMap(source, 'PRESENTATIONS');
-  const browserParams = paramMap(source);
-  const supportedMatch = kotlin.match(/val SUPPORTED_CODES: Set<String> = setOf\(([\s\S]*?)\n\s*\)\n\s*private val PARAMS_BY_CODE/);
-  assert.ok(supportedMatch, 'backend supported-code vocabulary is readable');
-  const backendSupported = [...supportedMatch[1].matchAll(/"([a-z0-9-]+)"/g)].map((match) => match[1]).sort();
-  // Backup restore presentation belongs to the integration/backup API. The passive-draft TODO
-  // message is profile-authored guidance rendered inside raw YAML, never browser UI prose.
-  const excluded = backendSupported.filter((code) => code.startsWith('backup-') ||
-    code === 'profile-catalog-restore-unavailable' || code === 'draft-todos-recorded-as-limitations');
-  const supported = backendSupported.filter((code) => !excluded.includes(code));
-  const backendParamSection = kotlin.match(/private val PARAMS_BY_CODE:[\s\S]*?= mapOf\(([\s\S]*?)\n\s*\)\n\s*}/);
-  assert.ok(backendParamSection, 'backend parameter vocabulary is readable');
-  const backendParams = new Map();
-  for (const match of backendParamSection[1].matchAll(/"([a-z0-9-]+)"\s+to\s+setOf\(([^)]*)\)/g)) {
-    backendParams.set(match[1], [...match[2].matchAll(/"([a-z0-9_]+)"/g)].map((item) => item[1]).sort());
-  }
-  const browserCodes = [...presentations.keys()].sort();
-  assert.deepEqual(browserCodes, supported, 'the browser consumes every and only backend-owned presentation code');
-  const strings = catalogueDocument.strings;
-  for (const code of supported) {
-    const browserKey = presentations.get(code);
-    assert.ok(strings[browserKey], `${code} maps to an English catalogue record`);
-    const catalogueParams = strings[browserKey].placeholders.map((placeholder) => placeholder.slice(1, -1)).sort();
-    assert.deepEqual(browserParams.get(code) || [], backendParams.get(code) || [], `${code} has the backend parameter shape`);
-    assert.deepEqual(catalogueParams, backendParams.get(code) || [], `${code} has the catalogue parameter shape`);
-  }
-  assert.deepEqual([...browserParams.keys()].sort(), [...backendParams.keys()].filter((code) => supported.includes(code)).sort(),
-    'parameterized HTML-visible code sets are exact');
-  assert.ok(excluded.length > 0 && excluded.every((code) => !presentations.has(code)),
-    'non-ProfileRoutes backup vocabulary remains outside the browser bundle');
-  const presentationCatalogueKeys = Object.keys(strings).filter((key) =>
-    key.startsWith('profiles.result.') || (key.startsWith('profiles.issue.') && !['profiles.issue.line', 'profiles.issue.line_column'].includes(key))
-  ).sort();
-  assert.deepEqual([...presentations.values()].sort(), presentationCatalogueKeys,
-    'the catalogue has no orphaned or missing presentation records');
-});
-
-browserTest('Profiles renders every backend-owned browser presentation through its exact closed contract', async (t) => {
-  const source = await readFile(asset, 'utf8');
-  const presentations = stringMap(source, 'PRESENTATIONS');
-  const paramsByCode = paramMap(source);
+browserTest('Profiles renders every presentation record from its code, and keeps the compatibility text otherwise', async (t) => {
+  const strings = JSON.parse(await readFile(englishCatalogue, 'utf8')).strings;
   const translations = {};
   const issues = [];
   const expected = [];
-  for (const [code, key] of presentations) {
-    const names = paramsByCode.get(code) || [];
+  for (const [key, record] of Object.entries(strings)) {
+    const code = key.match(/^profiles\.(?:issue|result)\.([a-z0-9-]+)$/)?.[1];
+    if (!code || key === 'profiles.issue.line' || key === 'profiles.issue.line_column') continue;
+    const names = record.placeholders.map((placeholder) => placeholder.slice(1, -1));
     const params = Object.fromEntries(names.map((name) => [name, `<${name}>&`]));
     translations[key] = `localized:${code}${names.map((name) => `|{${name}}`).join('')}`;
     issues.push({ severity: 'warning', message: `compatibility:${code}`, presentation_code: code, presentation_params: params });
     expected.push(`localized:${code}${names.map((name) => `|<${name}>&`).join('')}`);
   }
+  const fallbacks = [
+    { message: 'compatibility:unknown', presentation_code: 'no-such-code', presentation_params: {} },
+    { message: 'compatibility:missing-param', presentation_code: 'unknown-value', presentation_params: {} },
+    { message: 'compatibility:number-param', presentation_code: 'unknown-value', presentation_params: { value: 7 } },
+    { message: 'compatibility:no-params', presentation_code: 'invalid-json' },
+  ];
+  issues.push(...fallbacks.map((issue) => ({ severity: 'warning', ...issue })));
+  expected.push(...fallbacks.map((issue) => issue.message));
   const { page } = await rig(t, { translations, status: { issues } });
   assert.deepEqual(
     await page.locator('#profile-catalog-issues .profile-issue span:nth-child(2)').allTextContents(),

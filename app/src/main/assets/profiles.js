@@ -40,6 +40,10 @@
     }
     return english;
   }
+  function hasText(key) {
+    try { return !!(window.HaI18n && typeof window.HaI18n.has === "function" && window.HaI18n.has(key)); }
+    catch (_) { return false; }
+  }
   function locale() {
     return window.HaI18n && typeof window.HaI18n.locale === "string"
       ? window.HaI18n.locale : (document.documentElement.lang || "en");
@@ -97,236 +101,32 @@
     };
     return closedText(risk, labels);
   }
+  // Backend presentation codes name their own record: profiles.issue.<code> or profiles.result.<code>.
+  // A code with neither, or parameters that are not exactly the record's placeholders, keeps the exact
+  // compatibility message.
   function presentedText(owner, compatibility) {
     var fallback = string(compatibility);
     if (!owner || typeof owner !== "object" || Array.isArray(owner)) return fallback;
-    if (typeof owner.presentation_code !== "string") return fallback;
     var code = owner.presentation_code;
     var params = owner.presentation_params;
-    if (!own.call(PRESENTATIONS, code) || !params || typeof params !== "object" || Array.isArray(params)) return fallback;
-    var expected = own.call(PRESENTATION_PARAMS, code) ? PRESENTATION_PARAMS[code] : [];
-    var names = Object.keys(params);
-    if (names.length !== expected.length || expected.some(function (name) {
-      var value = params[name];
-      return !own.call(params, name) || typeof value !== "string" || value.length > 512;
+    if (typeof code !== "string" || !/^[a-z0-9-]+$/.test(code)) return fallback;
+    if (!params || typeof params !== "object" || Array.isArray(params) || Object.keys(params).some(function (name) {
+      return typeof params[name] !== "string" || params[name].length > 512;
     })) return fallback;
-    return t(PRESENTATIONS[code], fallback, params);
+    var key = ["profiles.issue." + code, "profiles.result." + code].filter(hasText)[0];
+    if (!key) return fallback;
+    var names = (t(key, "").match(/\{[A-Za-z][A-Za-z0-9_]*\}/g) || []).map(function (placeholder) {
+      return placeholder.slice(1, -1);
+    }).filter(function (name, index, all) { return all.indexOf(name) === index; });
+    if (names.length !== Object.keys(params).length || names.some(function (name) { return !own.call(params, name); })) {
+      return fallback;
+    }
+    return t(key, fallback, params);
   }
   function presentedError(error, compatibility) {
     return presentedText(error && error.body, compatibility == null ? error && error.message : compatibility);
   }
 
-  // Populated only with backend-owned stable semantic codes. Unknown or malformed metadata always
-  // returns the exact compatibility message rather than constructing a translation key from input.
-  var PRESENTATIONS = Object.freeze({
-    "preview-token-required": "profiles.result.preview-token-required",
-    "explicit-confirmation-required": "profiles.result.explicit-confirmation-required",
-    "expected-catalog-revision-required": "profiles.result.expected-catalog-revision-required",
-    "invalid-profile-ref": "profiles.result.invalid-profile-ref",
-    "invalid-delete-request": "profiles.result.invalid-delete-request",
-    "profile-ref-both-forms-supplied": "profiles.result.profile-ref-both-forms-supplied",
-    "yaml-content-type-required": "profiles.result.yaml-content-type-required",
-    "json-content-type-required": "profiles.result.json-content-type-required",
-    "profile-yaml-too-large": "profiles.result.profile-yaml-too-large",
-    "profile-action-too-large": "profiles.result.profile-action-too-large",
-    "profile-body-timeout": "profiles.result.profile-body-timeout",
-    "invalid-utf8": "profiles.result.invalid-utf8",
-    "invalid-json": "profiles.result.invalid-json",
-    "destructive-operation-in-progress": "profiles.result.destructive-operation-in-progress",
-    "profile-restart-unavailable": "profiles.result.profile-restart-unavailable",
-    "profile-activation-abort-persist-failed": "profiles.result.profile-activation-abort-persist-failed",
-    "profile-imported": "profiles.result.profile-imported",
-    "profile-selection-unchanged": "profiles.result.profile-selection-unchanged",
-    "profile-selection-staged": "profiles.result.profile-selection-staged",
-    "profile-revision-deleted": "profiles.result.profile-revision-deleted",
-    "activation-pending": "profiles.result.activation-pending",
-    "activation-applying-selected": "profiles.result.activation-applying-selected",
-    "activation-applying-auto-update": "profiles.result.activation-applying-auto-update",
-    "activation-applying-bundled-revision": "profiles.result.activation-applying-bundled-revision",
-    "preview-token-invalid": "profiles.result.preview-token-invalid",
-    "imported-catalog-revision-limit": "profiles.result.imported-catalog-revision-limit",
-    "imported-profile-revision-limit": "profiles.result.imported-profile-revision-limit",
-    "imported-catalog-byte-limit": "profiles.result.imported-catalog-byte-limit",
-    "catalog-reservation-failed": "profiles.result.catalog-reservation-failed",
-    "profile-store-failed": "profiles.result.profile-store-failed",
-    "profile-revision-not-found": "profiles.result.profile-revision-not-found",
-    "profile-incompatible": "profiles.result.profile-incompatible",
-    "activation-in-progress": "profiles.result.activation-in-progress",
-    "selection-persist-failed": "profiles.result.selection-persist-failed",
-    "rollback-unavailable": "profiles.result.rollback-unavailable",
-    "bundled-profile-delete-forbidden": "profiles.result.bundled-profile-delete-forbidden",
-    "referenced-profile-delete-forbidden": "profiles.result.referenced-profile-delete-forbidden",
-    "profile-delete-failed": "profiles.result.profile-delete-failed",
-    "catalog-stale": "profiles.result.catalog-stale",
-    "expected-mapping": "profiles.issue.expected-mapping",
-    "expected-list": "profiles.issue.expected-list",
-    "expected-string": "profiles.issue.expected-string",
-    "expected-boolean": "profiles.issue.expected-boolean",
-    "expected-integer": "profiles.issue.expected-integer",
-    "expected-finite-number": "profiles.issue.expected-finite-number",
-    "expected-integer-or-strategy": "profiles.issue.expected-integer-or-strategy",
-    "expected-32-bit-integer-or-strategy": "profiles.issue.expected-32-bit-integer-or-strategy",
-    "required-mapping": "profiles.issue.required-mapping",
-    "required-list": "profiles.issue.required-list",
-    "required-string": "profiles.issue.required-string",
-    "required-boolean": "profiles.issue.required-boolean",
-    "required-integer": "profiles.issue.required-integer",
-    "unknown-field": "profiles.issue.unknown-field",
-    "unknown-value": "profiles.issue.unknown-value",
-    "unsupported-yaml-type": "profiles.issue.unsupported-yaml-type",
-    "bounded-text": "profiles.issue.bounded-text",
-    "bounded-text-basic": "profiles.issue.bounded-text-basic",
-    "duplicate-profile-link-url": "profiles.issue.duplicate-profile-link-url",
-    "duplicate-profile-link-label": "profiles.issue.duplicate-profile-link-label",
-    "duplicate-cpu-architecture": "profiles.issue.duplicate-cpu-architecture",
-    "unknown-core-driver": "profiles.issue.unknown-core-driver",
-    "unknown-su-form": "profiles.issue.unknown-su-form",
-    "unknown-led-mechanism": "profiles.issue.unknown-led-mechanism",
-    "unknown-core-transfer": "profiles.issue.unknown-core-transfer",
-    "unknown-screen-off-route": "profiles.issue.unknown-screen-off-route",
-    "core-version-required": "profiles.issue.core-version-required",
-    "unsupported-schema": "profiles.issue.unsupported-schema",
-    "invalid-https-url": "profiles.issue.invalid-https-url",
-    "unsupported-privileged-path": "profiles.issue.unsupported-privileged-path",
-    "profile-template-unavailable": "profiles.result.profile-template-unavailable",
-    "passive-device-draft-unavailable": "profiles.result.passive-device-draft-unavailable",
-    "passive-report-unavailable": "profiles.result.passive-report-unavailable",
-    "profile-administration-unavailable": "profiles.result.profile-administration-unavailable",
-    "profile-source-byte-limit": "profiles.issue.profile-source-byte-limit",
-    "profile-source-empty": "profiles.issue.profile-source-empty",
-    "yaml-single-document-required": "profiles.issue.yaml-single-document-required",
-    "yaml-nesting-too-deep": "profiles.issue.yaml-nesting-too-deep",
-    "yaml-nesting-depth-limit": "profiles.issue.yaml-nesting-depth-limit",
-    "yaml-string-length-limit": "profiles.issue.yaml-string-length-limit",
-    "yaml-map-entry-limit": "profiles.issue.yaml-map-entry-limit",
-    "yaml-mapping-key-string-required": "profiles.issue.yaml-mapping-key-string-required",
-    "yaml-list-entry-limit": "profiles.issue.yaml-list-entry-limit",
-    "yaml-parser-event-limit": "profiles.issue.yaml-parser-event-limit",
-    "profile-id-invalid": "profiles.issue.profile-id-invalid",
-    "semantic-version-required": "profiles.issue.semantic-version-required",
-    "profile-link-count-limit": "profiles.issue.profile-link-count-limit",
-    "unicode-format-controls-forbidden": "profiles.issue.unicode-format-controls-forbidden",
-    "introduced-year-range": "profiles.issue.introduced-year-range",
-    "cpu-cluster-count-limit": "profiles.issue.cpu-cluster-count-limit",
-    "cpu-core-count-range": "profiles.issue.cpu-core-count-range",
-    "cpu-total-count-limit": "profiles.issue.cpu-total-count-limit",
-    "license-expression-invalid": "profiles.issue.license-expression-invalid",
-    "tested-firmware-bounds": "profiles.issue.tested-firmware-bounds",
-    "limitations-bounds": "profiles.issue.limitations-bounds",
-    "match-priority-range": "profiles.issue.match-priority-range",
-    "generic-fallback-only": "profiles.issue.generic-fallback-only",
-    "match-group-required": "profiles.issue.match-group-required",
-    "match-group-count-limit": "profiles.issue.match-group-count-limit",
-    "match-predicate-required": "profiles.issue.match-predicate-required",
-    "match-predicate-count-limit": "profiles.issue.match-predicate-count-limit",
-    "match-values-count-range": "profiles.issue.match-values-count-range",
-    "match-value-invalid": "profiles.issue.match-value-invalid",
-    "dotted-release-version-required": "profiles.issue.dotted-release-version-required",
-    "app-su-needs-su-form": "profiles.issue.app-su-needs-su-form",
-    "su-blpower-needs-app-su": "profiles.issue.su-blpower-needs-app-su",
-    "daemon-blpower-sandbox-only": "profiles.issue.daemon-blpower-sandbox-only",
-    "daemon-led-sandbox-only": "profiles.issue.daemon-led-sandbox-only",
-    "relay-fallback-count-limit": "profiles.issue.relay-fallback-count-limit",
-    "relay-paths-unique": "profiles.issue.relay-paths-unique",
-    "gpio-block-base-range": "profiles.issue.gpio-block-base-range",
-    "gpio-range": "profiles.issue.gpio-range",
-    "room-temperature-offset-range": "profiles.issue.room-temperature-offset-range",
-    "unknown-core-strategy": "profiles.issue.unknown-core-strategy",
-    "unknown-core-strategy-value": "profiles.issue.unknown-core-strategy-value",
-    "density-range": "profiles.issue.density-range",
-    "font-scale-range": "profiles.issue.font-scale-range",
-    "physical-ppi-range": "profiles.issue.physical-ppi-range",
-    "display-geometry-invalid": "profiles.issue.display-geometry-invalid",
-    "touch-click-gain-range": "profiles.issue.touch-click-gain-range",
-    "evdev-mapping-count-limit": "profiles.issue.evdev-mapping-count-limit",
-    "evdev-device-node-invalid": "profiles.issue.evdev-device-node-invalid",
-    "linux-input-code-range": "profiles.issue.linux-input-code-range",
-    "keycode-format-invalid": "profiles.issue.keycode-format-invalid",
-    "duplicate-evdev-mapping": "profiles.issue.duplicate-evdev-mapping",
-    "unknown-ha-cpu-tier": "profiles.issue.unknown-ha-cpu-tier",
-    "linux-governor-name-invalid": "profiles.issue.linux-governor-name-invalid",
-    "unknown-webview-artifact": "profiles.issue.unknown-webview-artifact",
-    "package-count-limit": "profiles.issue.package-count-limit",
-    "android-package-name-invalid": "profiles.issue.android-package-name-invalid",
-    "duplicate-package-desired-state": "profiles.issue.duplicate-package-desired-state",
-    "package-tag-bounds": "profiles.issue.package-tag-bounds",
-    "package-note-length-limit": "profiles.issue.package-note-length-limit",
-    "recipe-count-limit": "profiles.issue.recipe-count-limit",
-    "duplicate-recipe-selection": "profiles.issue.duplicate-recipe-selection",
-    "unknown-core-recipe": "profiles.issue.unknown-core-recipe",
-    "capability-driver-required": "profiles.issue.capability-driver-required",
-    "unused-driver-declared": "profiles.issue.unused-driver-declared",
-    "activation-applying-persist-failed": "profiles.issue.activation-applying-persist-failed",
-    "activation-rolled-back-unhealthy-auto": "profiles.result.activation-rolled-back-unhealthy-auto",
-    "activation-rolled-back-unhealthy-pinned": "profiles.result.activation-rolled-back-unhealthy-pinned",
-    "activation-unhealthy-rollback-complete": "profiles.issue.activation-unhealthy-rollback-complete",
-    "activation-unhealthy-rollback-persist-failed": "profiles.issue.activation-unhealthy-rollback-persist-failed",
-    "activation-auto-update-stage-failed": "profiles.issue.activation-auto-update-stage-failed",
-    "activation-rolled-back-unresolved": "profiles.result.activation-rolled-back-unresolved",
-    "activation-unresolved-selection-restored": "profiles.issue.activation-unresolved-selection-restored",
-    "activation-unresolved-rollback-persist-failed": "profiles.issue.activation-unresolved-rollback-persist-failed",
-    "activation-rolled-back-incompatible": "profiles.result.activation-rolled-back-incompatible",
-    "activation-incompatible-selection-restored": "profiles.issue.activation-incompatible-selection-restored",
-    "activation-incompatible-recovery-persist-failed": "profiles.issue.activation-incompatible-recovery-persist-failed",
-    "pinned-successor-held": "profiles.issue.pinned-successor-held",
-    "pinned-revision-retired": "profiles.issue.pinned-revision-retired",
-    "repin-persist-failed-auto": "profiles.issue.repin-persist-failed-auto",
-    "repin-persist-failed-pinned": "profiles.issue.repin-persist-failed-pinned",
-    "catalog-fallback-invalid-emergency-used": "profiles.issue.catalog-fallback-invalid-emergency-used",
-    "required-profile-read-failed": "profiles.issue.required-profile-read-failed",
-    "imported-path-noncanonical": "profiles.issue.imported-path-noncanonical",
-    "imported-file-size-limit": "profiles.issue.imported-file-size-limit",
-    "imported-catalog-count-quota": "profiles.issue.imported-catalog-count-quota",
-    "imported-profile-count-quota": "profiles.issue.imported-profile-count-quota",
-    "imported-catalog-byte-quota": "profiles.issue.imported-catalog-byte-quota",
-    "imported-profile-read-failed": "profiles.issue.imported-profile-read-failed",
-    "activation-device-mismatch": "profiles.issue.activation-device-mismatch",
-    "activation-touchscreen-grab-forbidden": "profiles.issue.activation-touchscreen-grab-forbidden",
-    "imported-filename-hash-mismatch": "profiles.issue.imported-filename-hash-mismatch",
-    "imported-document-id-mismatch": "profiles.issue.imported-document-id-mismatch",
-    "duplicate-revision-ignored": "profiles.issue.duplicate-revision-ignored",
-    "pinned-revision-missing": "profiles.issue.pinned-revision-missing",
-    "pinned-revision-incompatible": "profiles.issue.pinned-revision-incompatible",
-    "bundled-generic-fallback-missing": "profiles.issue.bundled-generic-fallback-missing",
-    "ambiguous-automatic-match": "profiles.issue.ambiguous-automatic-match",
-    "emergency-profile-in-use": "profiles.issue.emergency-profile-in-use",
-  });
-  var PRESENTATION_PARAMS = Object.freeze({
-    "profile-imported": Object.freeze(["display_name","version"]),
-    "imported-catalog-revision-limit": Object.freeze(["max"]),
-    "imported-profile-revision-limit": Object.freeze(["id","max"]),
-    "imported-catalog-byte-limit": Object.freeze(["max"]),
-    "unknown-value": Object.freeze(["value"]),
-    "unsupported-yaml-type": Object.freeze(["type"]),
-    "bounded-text": Object.freeze(["min","max"]),
-    "bounded-text-basic": Object.freeze(["min","max"]),
-    "unknown-core-driver": Object.freeze(["value"]),
-    "unknown-su-form": Object.freeze(["value"]),
-    "unknown-led-mechanism": Object.freeze(["value"]),
-    "unknown-core-transfer": Object.freeze(["value"]),
-    "unknown-screen-off-route": Object.freeze(["value"]),
-    "core-version-required": Object.freeze(["required","current"]),
-    "unsupported-schema": Object.freeze(["actual","expected"]),
-    "unsupported-privileged-path": Object.freeze(["allowed"]),
-    "profile-source-byte-limit": Object.freeze(["max"]),
-    "yaml-nesting-depth-limit": Object.freeze(["max"]),
-    "yaml-string-length-limit": Object.freeze(["max"]),
-    "yaml-map-entry-limit": Object.freeze(["max"]),
-    "yaml-list-entry-limit": Object.freeze(["max"]),
-    "unknown-core-strategy-value": Object.freeze(["value"]),
-    "unknown-webview-artifact": Object.freeze(["value"]),
-    "unknown-core-recipe": Object.freeze(["value"]),
-    "capability-driver-required": Object.freeze(["value"]),
-    "unused-driver-declared": Object.freeze(["value"]),
-    "activation-rolled-back-unhealthy-pinned": Object.freeze(["id","revision"]),
-    "activation-incompatible-selection-restored": Object.freeze(["id","revision"]),
-    "activation-incompatible-recovery-persist-failed": Object.freeze(["id","revision"]),
-    "pinned-successor-held": Object.freeze(["id","retired_revision","current_revision"]),
-    "pinned-revision-retired": Object.freeze(["id","retired_revision","current_revision"]),
-    "repin-persist-failed-pinned": Object.freeze(["id","revision"]),
-    "imported-document-id-mismatch": Object.freeze(["document_id","storage_id"]),
-    "ambiguous-automatic-match": Object.freeze(["priority","ids"]),
-  });
   var SCHEMA_DESCRIPTION_KEYS = Object.freeze({
     "metadata.maturity": "profiles.schema.description.metadata_maturity",
     "match.any[].all[].field": "profiles.schema.description.match_field",

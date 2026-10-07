@@ -1,5 +1,7 @@
 package io.panelassistant.android.device.profile
 
+import io.panelassistant.android.device.ScreenOff
+
 /** Builds an inert, schema-valid starting point from passive/cached evidence only. */
 object ProfileDraftFactory {
     fun create(
@@ -63,7 +65,7 @@ object ProfileDraftFactory {
             ),
             hardware = ProfileHardware(
                 led = ProfileLed("none", "identity"),
-                screenOff = "brightness-zero",
+                screenOff = ScreenOff.BRIGHTNESS_ZERO.yamlName,
             ),
             sensors = ProfileSensors(
                 proximityTechnology = proximity,

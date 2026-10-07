@@ -93,6 +93,7 @@
   root.HaI18n = Object.freeze({
     locale: typeof payload.locale === "string" ? payload.locale : "en",
     t: t,
+    has: function (key) { return translatedText(String(key)) != null; },
     text: text,
     pageFailure: pageFailure
   });

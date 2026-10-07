@@ -2,6 +2,8 @@ package io.panelassistant.android.device.profile
 
 import io.panelassistant.android.device.LedMechanism
 import io.panelassistant.android.hardware.LedTransfer
+import io.panelassistant.android.device.SuForm
+import io.panelassistant.android.device.ScreenOff
 
 /** Core-owned vocabulary available to untrusted profile files. */
 object ProfileMetadata {
@@ -92,7 +94,7 @@ object ProfileMetadata {
             field("match.any[].all[].field", "enum", true, "Immutable build fact.", ProfileFact.entries.map { it.yamlName }),
             field("match.any[].all[].op", "enum", true, "Bounded string comparison.", ProfileMatchOp.entries.map { it.yamlName }),
             field("match.any[].all[].values", "string[]", true, "Lowercase comparison values."),
-            field("platform.su_form", "enum", true, "Supported su calling convention.", listOf("none", "android", "toolbox")),
+            field("platform.su_form", "enum", true, "Supported su calling convention.", SuForm.entries.map { it.yamlName }),
             field("platform.app_can_su", "boolean", true, "Whether an ordinary app can attempt su."),
             field("platform.has_recents", "boolean", false, "Whether Android Recents is functional."),
             field("platform.has_native_navbar", "boolean", false, "Usable Android navigation bar: true or false overrides probing; omit to probe firmware visibility."),
@@ -111,7 +113,7 @@ object ProfileMetadata {
             field("hardware.button_backlight.gamma", "number", false, "Power-law exponent for transfer gamma, 0.2 through 5.0."),
             field("hardware.button_backlight.points", "integer[][]", false, "Control points for transfer points: [request, hardware] pairs from [0, 0] to [255, 255]."),
             field("hardware.button_backlight.floor", "integer", false, "Hardware level, 0 through 127, that the lowest non-zero level lands on; not with points."),
-            field("hardware.screen_off", "enum", true, "Preferred screen-off route.", listOf("brightness-zero", "su-blpower", "daemon-blpower", "keyevent")),
+            field("hardware.screen_off", "enum", true, "Preferred screen-off route.", ScreenOff.entries.map { it.yamlName }),
             field("hardware.has_button_backlight", "boolean", false, "Helper-backed button backlight capability."),
             field("hardware.camera", "boolean", false, "Board carries a usable camera."),
             field("hardware.microphone", "boolean", false, "Board carries a usable microphone; independent of hardware.camera."),

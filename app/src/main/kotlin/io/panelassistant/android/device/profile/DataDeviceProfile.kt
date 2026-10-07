@@ -28,11 +28,7 @@ class DataDeviceProfile internal constructor(
         document.metadata.source?.let { add(ProfileLink("Panel details", it)) }
         addAll(document.metadata.links)
     }.distinctBy { it.url }
-    override val suForm = when (document.platform.suForm) {
-        "toolbox" -> SuForm.TOOLBOX
-        "android" -> SuForm.ANDROID
-        else -> SuForm.NONE
-    }
+    override val suForm = SuForm.ofYaml(document.platform.suForm) ?: SuForm.NONE
     override val appCanSu = document.platform.appCanSu
     override val hasRecents = document.platform.hasRecents
     override val declarationsFromCatalog = true
@@ -52,12 +48,7 @@ class DataDeviceProfile internal constructor(
     override val backlightRoute: BacklightRoute =
         if (document.hardware.backlight?.route == "setting") BacklightRoute.SETTING else BacklightRoute.NODE
     override val buttonBacklightTransfer: TransferCurve = validCurve(document.hardware.buttonBacklight)
-    override val screenOff = when (document.hardware.screenOff) {
-        "su-blpower" -> ScreenOff.SU_BLPOWER
-        "daemon-blpower" -> ScreenOff.DAEMON_BLPOWER
-        "keyevent" -> ScreenOff.KEYEVENT
-        else -> ScreenOff.BRIGHTNESS_ZERO
-    }
+    override val screenOff = ScreenOff.ofYaml(document.hardware.screenOff) ?: ScreenOff.BRIGHTNESS_ZERO
     override val hasButtonBacklight = document.hardware.hasButtonBacklight
     override val cameraDeclared = document.hardware.cameraDeclared
     override val microphoneDeclared = document.hardware.microphoneDeclared

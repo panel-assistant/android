@@ -1,6 +1,7 @@
 package io.panelassistant.android.device.profile
 
 import io.panelassistant.android.device.ScreenOff
+import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.provisioning.requiresProvisioningHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -270,6 +271,30 @@ class ProfileYamlSecurityTest {
             bundled = false,
         )
         assertTrue(issues.any { it.path == "hardware.screen_off" })
+    }
+
+    /** The su form, screen-off route and LED mechanism names are one vocabulary across the schema
+     *  descriptor, the validator and the runtime adapter. */
+    @Test fun `profile enum names are accepted, mapped and refused the same way everywhere`() {
+        val base = testProfileDocument()
+        fun codes(document: ProfileDocument) = ProfileValidator.validate(document, "1.0.0", bundled = false)
+            .mapNotNull { it.presentation?.code }.toSet()
+        fun withSu(form: String, appCanSu: Boolean) = base.copy(platform = ProfilePlatform(form, appCanSu = appCanSu))
+        fun runtime(document: ProfileDocument) = DataDeviceProfile(document, "1.0.0", "test", trustedBundledContent = false)
+
+        assertEquals(listOf("none", "android", "toolbox"), ProfileMetadata.schema.fields.single { it.path == "platform.su_form" }.enumValues)
+        assertEquals(
+            listOf("brightness-zero", "su-blpower", "daemon-blpower", "keyevent"),
+            ProfileMetadata.schema.fields.single { it.path == "hardware.screen_off" }.enumValues,
+        )
+        assertEquals(SuForm.TOOLBOX, runtime(withSu("toolbox", true)).suForm)
+        assertEquals(SuForm.ANDROID, runtime(withSu("android", true)).suForm)
+        assertEquals(SuForm.NONE, runtime(withSu("none", false)).suForm)
+        assertTrue("unknown-su-form" in codes(withSu("busybox", true)))
+        assertTrue("app-su-needs-su-form" in codes(withSu("none", true)))
+        assertTrue("su-blpower-needs-app-su" in codes(base.copy(platform = ProfilePlatform("none", appCanSu = false), hardware = base.hardware.copy(screenOff = "su-blpower"))))
+        assertTrue("daemon-blpower-sandbox-only" in codes(withSu("android", true).let { it.copy(hardware = it.hardware.copy(screenOff = "daemon-blpower")) }))
+        assertTrue("daemon-led-sandbox-only" in codes(withSu("android", true).let { it.copy(hardware = it.hardware.copy(led = it.hardware.led.copy(mechanism = "sysfs-daemon"))) }))
     }
 
     @Test fun `duplicate keys are rejected`() {

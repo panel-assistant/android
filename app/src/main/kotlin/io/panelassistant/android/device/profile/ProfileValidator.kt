@@ -1,6 +1,8 @@
 package io.panelassistant.android.device.profile
 
 import io.panelassistant.android.device.LedMechanism
+import io.panelassistant.android.device.ScreenOff
+import io.panelassistant.android.device.SuForm
 import io.panelassistant.android.hardware.LedTransfer
 import io.panelassistant.android.hardware.TransferCurve
 import java.net.URI
@@ -145,8 +147,8 @@ internal object ProfileValidator {
         document.requires.drivers.forEach {
             if (it !in knownDrivers) reject("requires.drivers", "Unknown core driver '$it'.", "unknown-core-driver", mapOf("value" to it))
         }
-        if (document.platform.suForm !in setOf("none", "android", "toolbox")) reject("platform.su_form", "Unknown su form '${document.platform.suForm}'.", "unknown-su-form", mapOf("value" to document.platform.suForm))
-        if (document.platform.suForm == "none" && document.platform.appCanSu) reject("platform.app_can_su", "Cannot be true when su_form is none.", "app-su-needs-su-form")
+        if (SuForm.ofYaml(document.platform.suForm) == null) reject("platform.su_form", "Unknown su form '${document.platform.suForm}'.", "unknown-su-form", mapOf("value" to document.platform.suForm))
+        if (document.platform.suForm == SuForm.NONE.yamlName && document.platform.appCanSu) reject("platform.app_can_su", "Cannot be true when su_form is none.", "app-su-needs-su-form")
         val vendorHome = document.platform.launcher.vendorHomePackages
         if (vendorHome.size > 8) reject("platform.launcher.vendor_home_packages", "At most 8 vendor home packages are allowed.", "vendor-home-package-count-limit")
         vendorHome.forEachIndexed { index, pkg ->
@@ -186,10 +188,11 @@ internal object ProfileValidator {
             }
         }
         if (document.hardware.led.transfer !in LedTransfer.NAMES) reject("hardware.led.transfer", "Unknown core transfer '${document.hardware.led.transfer}'.", "unknown-core-transfer", mapOf("value" to document.hardware.led.transfer))
-        if (document.hardware.screenOff !in setOf("brightness-zero", "su-blpower", "daemon-blpower", "keyevent")) reject("hardware.screen_off", "Unknown screen-off route '${document.hardware.screenOff}'.", "unknown-screen-off-route", mapOf("value" to document.hardware.screenOff))
-        if (document.hardware.screenOff == "su-blpower" && !document.platform.appCanSu) reject("hardware.screen_off", "su-blpower requires app_can_su: true.", "su-blpower-needs-app-su")
-        if (document.hardware.screenOff == "daemon-blpower" && document.platform.appCanSu) reject("hardware.screen_off", "daemon-blpower is reserved for sandbox-walled profiles.", "daemon-blpower-sandbox-only")
-        if (document.hardware.led.mechanism in setOf("rk3576-ioctl-daemon", "sysfs-daemon") && document.platform.appCanSu) reject("hardware.led.mechanism", "Daemon-only LED routes are reserved for sandbox-walled profiles.", "daemon-led-sandbox-only")
+        val screenOff = ScreenOff.ofYaml(document.hardware.screenOff)
+        if (screenOff == null) reject("hardware.screen_off", "Unknown screen-off route '${document.hardware.screenOff}'.", "unknown-screen-off-route", mapOf("value" to document.hardware.screenOff))
+        if (screenOff == ScreenOff.SU_BLPOWER && !document.platform.appCanSu) reject("hardware.screen_off", "su-blpower requires app_can_su: true.", "su-blpower-needs-app-su")
+        if (screenOff == ScreenOff.DAEMON_BLPOWER && document.platform.appCanSu) reject("hardware.screen_off", "daemon-blpower is reserved for sandbox-walled profiles.", "daemon-blpower-sandbox-only")
+        if (LedMechanism.ofYaml(document.hardware.led.mechanism) in setOf(LedMechanism.RK3576_IOCTL_DAEMON, LedMechanism.SYSFS_DAEMON) && document.platform.appCanSu) reject("hardware.led.mechanism", "Daemon-only LED routes are reserved for sandbox-walled profiles.", "daemon-led-sandbox-only")
         validateAllowedPath(
             document.hardware.zigbeeGatewayDir,
             "hardware.zigbee_gateway_dir",
