@@ -373,6 +373,12 @@ class VoiceAssistantCoordinator internal constructor(
      * Assistant has already ended that pipeline. The wake-word listener is paused for the playback, so the
      * panel never wakes itself; with [VoiceAnnouncement.listenAfter] a turn follows, as after a wake word.
      */
+    /** A media player announcement Panel Assistant streams: played like a satellite announcement, wake word paused. */
+    internal fun announceStreamedMedia(url: String): Boolean {
+        announce(VoiceAnnouncement(url, null, listenAfter = false, done = {}, streamAtNs = System.nanoTime()))
+        return true
+    }
+
     internal fun announce(announcement: VoiceAnnouncement) {
         if (closed.get()) return announcement.done()
         scope.launch {

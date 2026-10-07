@@ -1007,19 +1007,8 @@ class PaneldService : Service() {
     private val companionHomeReturnGeneration = java.util.concurrent.atomic.AtomicLong()
     private lateinit var volume: VolumeController
     private lateinit var audio: AudioPlaybackCoordinator
-    /** Panel Assistant's synchronised voice stream: offered on a plain-http session when the library loads. */
-    private val voiceStream by lazy {
-        io.panelassistant.android.media.VoiceStreamPlayer(
-            stateDir = java.io.File(filesDir, "sendspin"),
-            name = { android.os.Build.MODEL.orEmpty().ifBlank { "Panel" } },
-            softwareVersion = BuildConfig.VERSION_NAME,
-            outputRate = {
-                io.panelassistant.android.media.VoiceStreamPlayer.nativeOutputRate(
-                    getSystemService(android.media.AudioManager::class.java),
-                )
-            },
-        )
-    }
+    /** Panel Assistant's synchronised voice stream, offered whenever the library loads. */
+    private val voiceStream by lazy { io.panelassistant.android.media.VoiceStreamPlayer.forService(this, BuildConfig.VERSION_NAME) }
     private lateinit var media: io.panelassistant.android.media.PanelMediaPlayer
     private lateinit var voice: io.panelassistant.android.assist.VoiceAssistantCoordinator
     private lateinit var sharedMicrophone: io.panelassistant.android.assist.ConfiguredMicrophoneSource
@@ -1577,17 +1566,7 @@ class PaneldService : Service() {
             streams = { url, onPrepared, onEnded -> AndroidMediaStream(url, onPrepared, onEnded) },
             post = { block -> mainHandler.post(block) },
             announce = { url, stream ->
-                if (stream && ::voice.isInitialized) {
-                    // A streamed announcement pauses the wake word as a satellite announcement does.
-                    voice.announce(
-                        io.panelassistant.android.assist.VoiceAnnouncement(
-                            url, null, listenAfter = false, done = {}, streamAtNs = System.nanoTime(),
-                        ),
-                    )
-                    true
-                } else {
-                    audio.submitForGeneration(url, speech = true) != null
-                }
+                if (stream && ::voice.isInitialized) voice.announceStreamedMedia(url) else audio.submitForGeneration(url, speech = true) != null
             },
             cancelAnnouncement = { audio.snapshot().let { audio.cancelGeneration(it.generation) } },
             muted = volume::isMuted,

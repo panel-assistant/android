@@ -333,5 +333,13 @@ internal class VoiceStreamPlayer(
             audio?.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()?.takeIf { it in 8_000..192_000 }
                 ?: AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC).takeIf { it in 8_000..192_000 }
                 ?: 48_000
+
+        /** The service's player: state beside the app's files, named for the device, at its native rate. */
+        fun forService(context: android.content.Context, softwareVersion: String) = VoiceStreamPlayer(
+            stateDir = File(context.filesDir, "sendspin"),
+            name = { android.os.Build.MODEL.orEmpty().ifBlank { "Panel" } },
+            softwareVersion = softwareVersion,
+            outputRate = { nativeOutputRate(context.getSystemService(AudioManager::class.java)) },
+        )
     }
 }
