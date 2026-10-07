@@ -1,5 +1,5 @@
 {
-  "sourceRevision": "8db98b2e4da94a499eefa856cb13916529997999",
+  "sourceRevision": "4ae1d0360b16b279dcb9082bb0b373b0fde94d9d",
   "releaseTagVerdicts": [
     {
       "tag": "v0.9.7",
@@ -125,7 +125,7 @@
           "version": "0.9.8-rc2",
           "version_code": 801
         },
-        "contract_digest": "947a8b7c4ba40381bc59ddcc5b0404d325f7c44beaef95678952b9ae5c152e7d",
+        "contract_digest": "4679658244ba064b7117a8156e51808f33ece93113e850f93779ee7bc80ffeb6",
         "capabilities": [
           "state",
           "commands",
@@ -134,7 +134,7 @@
           "embed_proof",
           "voice",
           "media",
-          "voice_stream"
+          "voice_stream_session"
         ],
         "channels": [
           {
