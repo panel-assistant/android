@@ -117,6 +117,35 @@ class HaPresenceSourceManagerTest {
         owner.close()
     }
 
+    @Test fun `a panel whose hello named its entry finds its Panel Assistant device when the probe proves nothing`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        // The probe proves nothing here, so only the entry id from the hello can name the device.
+        val discovery = FakePresenceTransport().apply {
+            panelAssistantOnly = true
+            probeProvesNothing = true
+        }
+        val aggregates = mutableListOf<HaPresenceAggregate>()
+        val (manager, owner) = manager(
+            dispatcher, discovery, FakeExactTransport(FakeExactConnection()), aggregates,
+            panelAssistantEntryId = PA_ENTRY,
+        )
+
+        manager.configure(request(discoveryId = DID))
+        runCurrent()
+
+        assertEquals(
+            "last=${aggregates.lastOrNull()?.phase}/${aggregates.lastOrNull()?.detail}",
+            "Room",
+            aggregates.lastOrNull { it.phase == HaPresencePhase.LIVE }?.areaName,
+        )
+        assertEquals(
+            HaPanelAreaPrerequisitePhase.ASSIGNED,
+            manager.prerequisite("device-uid", "panel", discoveryId = DID).phase,
+        )
+        manager.close()
+        owner.close()
+    }
+
     @Test fun `a Panel Assistant device is not this panel without its discovery id`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val discovery = FakePresenceTransport().apply { panelAssistantOnly = true }
@@ -911,12 +940,13 @@ class HaPresenceSourceManagerTest {
         exactTransport: FakeExactTransport,
         aggregates: MutableList<HaPresenceAggregate>,
         exclusions: HaPresenceExclusions? = null,
+        panelAssistantEntryId: String? = null,
     ): Pair<HaPresenceSourceManager, HaExactEntityStreamOwner> {
         val sessionProvider = auth()
         val owner = exactOwner(dispatcher, exactTransport, sessionProvider)
         return HaPresenceSourceManager(
             this, sessionProvider, transport, owner, aggregates::add, dispatcher, ::epochMillis,
-            exclusions ?: FakeExclusions(),
+            exclusions ?: FakeExclusions(), { panelAssistantEntryId },
         ) to owner
     }
 
@@ -1004,6 +1034,7 @@ class HaPresenceSourceManagerTest {
         var areaName = "Room"
         var registryFailure = false
         var panelAssistantOnly = false
+        var probeProvesNothing = false
         var registryAuthFailures = 0
         var includePanelActivity = false
         var includeSupportingActivity = false
@@ -1101,7 +1132,7 @@ class HaPresenceSourceManagerTest {
         else device("panel-device", "ha-paneld-uid-device-uid")
 
         /** Core's `get_entries` answer for the panel's native proximity entity. */
-        private fun panelAssistantProbe(): JSONObject? = if (!panelAssistantOnly) null else JSONObject()
+        private fun panelAssistantProbe(): JSONObject? = if (!panelAssistantOnly || probeProvesNothing) null else JSONObject()
             .put("result", JSONObject().put(SELF, JSONObject()
                 .put("platform", "panel_assistant")
                 .put("unique_id", "${DID}_proximity")

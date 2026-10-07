@@ -96,8 +96,20 @@ internal object HaConnectionRoutes {
         return proves(route.url, known.instanceId) && isCurrent(config, route)
     }
 
-    /** Only a successful, still-owned authenticated hello may teach routes. */
-    fun learn(config: Config, route: HaConnectionRoute, advertisement: HaConnectionAdvertisement): Boolean =
+    /**
+     * The Panel Assistant config entry the last accepted hello named for this account, or null when the
+     * integration did not send one. It names this panel's Home Assistant device directly.
+     */
+    fun panelAssistantEntryId(config: Config): String? =
+        record(config, config.haAuthSnapshot().stableOwner())?.optString("entry_id")?.takeIf(String::isNotEmpty)
+
+    /** Only a successful, still-owned authenticated hello may teach routes, and the entry it names. */
+    fun learn(
+        config: Config,
+        route: HaConnectionRoute,
+        advertisement: HaConnectionAdvertisement,
+        entryId: String? = null,
+    ): Boolean =
         config.synchronizedTransaction {
             if (!isCurrent(config, route)) return@synchronizedTransaction false
             val previous = record(config, route.owner)
@@ -109,6 +121,7 @@ internal object HaConnectionRoutes {
                 .put("selected", route.url)
                 .put("connection", JSONObject().put("instance_id", advertisement.instanceId)
                     .put("user_id", advertisement.userId).put("urls", JSONArray((listOf(route.url).filter { it != route.owner.url } + advertisement.urls).distinct().take(4))))
+                .apply { entryId?.let { put("entry_id", it) } }
             // First binding retires any pre-learning renderer whose origin policy still allowed an
             // HTTP-to-HTTPS upgrade. Thereafter only the proved effective origin inherits credentials.
             if (value.toString() == previous?.toString()) true

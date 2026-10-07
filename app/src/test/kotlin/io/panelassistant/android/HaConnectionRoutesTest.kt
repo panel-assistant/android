@@ -79,6 +79,20 @@ class HaConnectionRoutesTest {
         assertEquals(listOf("/api/panel_assistant/instance"), endpoint.requests.map { it.path })
     }
 
+    @Test fun helloEntryIsKeptForThisAccountOnlyWhileHellosNameIt() {
+        val (config, _) = config(server().url)
+        assertNull(HaConnectionRoutes.panelAssistantEntryId(config))
+        assertTrue(HaConnectionRoutes.learn(config, HaConnectionRoutes.current(config), advertisement(), "01J00000000000000000000CCC"))
+        assertEquals("01J00000000000000000000CCC", HaConnectionRoutes.panelAssistantEntryId(config))
+        // A hello without the field, from an older Panel Assistant, puts the panel back on the probe.
+        assertTrue(learn(config))
+        assertNull(HaConnectionRoutes.panelAssistantEntryId(config))
+        assertTrue(HaConnectionRoutes.learn(config, HaConnectionRoutes.current(config), advertisement(), "01J00000000000000000000CCC"))
+        val spec = requireNotNull(io.panelassistant.android.config.SettingsRegistry.spec("ha_refresh_token"))
+        assertTrue(config.commitRaw(spec, "replacement"))
+        assertNull("another account never inherits the entry", HaConnectionRoutes.panelAssistantEntryId(config))
+    }
+
     @Test fun rawAccountReplacementForgetsRoutesEvenWhenOriginalValueReturns() {
         val endpoint = server()
         val (config, _) = config(endpoint.url)

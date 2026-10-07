@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.DiscoveryResult
 import io.panelassistant.android.GuidedSetupPresence
 import io.panelassistant.android.control.SystemController
@@ -201,7 +202,7 @@ class SetupRoutesHttpTest {
     private fun withSetup(mqtt: String = "", block: (PaneldServerHttpFixture) -> Unit) {
         PaneldServerHttpFixture().use { fixture ->
             fixture.config.setDashboardPackage("com.example.dashboard")
-            fixture.config.setFriendlyName("Contract panel")
+            fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
             val system = SystemController(object : SystemEnv {
                 override val ownPackage = "io.github.maxlyth.hapaneld"
                 override fun isInstalled(pkg: String) = pkg == "com.example.dashboard"

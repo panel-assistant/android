@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.LiveSettingRequestOutcome
 import io.panelassistant.android.control.SystemController
 import io.panelassistant.android.panelassistant.PanelAssistantManagedSettings
@@ -30,7 +31,7 @@ class ManagedSettingsCommitBoundaryTest {
     private suspend fun check(sessionEndsWhileQueued: Boolean) = kotlinx.coroutines.coroutineScope {
         PaneldServerHttpFixture().use { fixture ->
             val config = fixture.config
-            config.setFriendlyName("Managed settings panel")
+            config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Managed settings panel")
             val before = config.voiceWakeWords
             val renderer = RendererPreparationCoordinator(
                 builtinPackage = "builtin",

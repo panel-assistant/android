@@ -10,11 +10,13 @@ import org.json.JSONObject
  *
  * A panel can be registered by two integrations. The MQTT bridge registers identifiers the panel
  * publishes itself. Panel Assistant registers one config-entry-scoped identifier,
- * `(panel_assistant, <entry_id>)`, whose value the panel is never told: the `hello` reply omits it and
- * Core's config-entry listing omits the entry's `unique_id`. What the panel does know is its discovery
- * id, which is that entry's `unique_id` and the prefix of every native entity Panel Assistant creates
- * for it (`<did>_<suffix>`). So the entry is proven through those entities' full registry rows, read
- * with [PROBE_COMMAND], and the device is then matched by its identifier.
+ * `(panel_assistant, <entry_id>)`. Panel Assistant 0.9.0 and later name the entry in the `hello` reply,
+ * and the panel keeps it with the connection it learned ([io.panelassistant.android.HaConnectionRoutes]).
+ * An older Panel Assistant does not, and Core's config-entry listing omits the entry's `unique_id`; then
+ * the panel proves the entry through its discovery id, which is that entry's `unique_id` and the prefix
+ * of every native entity Panel Assistant creates for it (`<did>_<suffix>`), by reading those entities'
+ * full registry rows with [PROBE_COMMAND]. The probe goes once every supported Panel Assistant sends the
+ * entry id.
  *
  * Identity tiers, strongest first; the first tier that matches anything decides:
  * 1. MQTT `ha-paneld-uid-<deviceUid>`, minted at random per installation and never shared.
@@ -100,10 +102,16 @@ internal object HaPanelDeviceMatcher {
         }
 
     /**
-     * The Panel Assistant entries proven to be this panel: entries owning a `panel_assistant` entity whose
-     * `unique_id` is `<discoveryId>_<suffix>`. Empty when the panel has no discovery id or nothing matched.
+     * The Panel Assistant entries that are this panel: the entry the `hello` reply named when there is one
+     * ([helloEntryId]); otherwise entries owning a `panel_assistant` entity whose `unique_id` is
+     * `<discoveryId>_<suffix>`. Empty when neither identifies an entry.
      */
-    fun panelAssistantEntryIds(probeResponse: JSONObject?, discoveryId: String?): Set<String> {
+    fun panelAssistantEntryIds(
+        probeResponse: JSONObject?,
+        discoveryId: String?,
+        helloEntryId: String? = null,
+    ): Set<String> {
+        helloEntryId?.let { return setOf(it) }
         val did = discoveryId?.trim()?.takeIf(String::isNotEmpty) ?: return emptySet()
         val rows = probeResponse?.optJSONObject("result") ?: return emptySet()
         val entries = linkedSetOf<String>()

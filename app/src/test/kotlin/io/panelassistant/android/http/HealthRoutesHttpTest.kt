@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.Config
 import io.ktor.client.request.get
@@ -68,7 +69,7 @@ class HealthRoutesHttpTest {
     }
 
     private fun initializeHealth(fixture: PaneldServerHttpFixture) {
-        fixture.config.setFriendlyName("Contract panel")
+        fixture.config.setRaw(requireNotNull(SettingsRegistry.spec("friendly_name")), "Contract panel")
         // Fill the existing fixture's runtime collaborators, not an alternate route or admission path.
         PaneldServer::class.java.getDeclaredField("configLiveValues").apply {
             isAccessible = true

@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.config.SettingsRegistry
 import android.app.Activity
 import android.content.res.Configuration
 import android.content.res.Resources
@@ -102,13 +103,13 @@ class StatusSurfaceInstrumentedTest {
         try {
             val expectedRetry = mapOf("cs" to "Opakovat pokus", "pt-BR" to "Tentar novamente", "en" to "Retry")
             for (locale in requestedExpansionLocales() + "en") {
-                Config(context).setUiLanguage(locale)
+                Config(context).setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), locale)
                 assertEquals("the persisted selection survives a new Config reader", locale, Config(context).uiLanguage)
                 instrumentation.runOnMainSync { NativeLocale.apply(Config(context).uiLanguage) }
                 assertEquals("native resource selection follows the persisted selection", expectedRetry.getValue(locale), context.nativeString(R.string.retry))
             }
         } finally {
-            Config(context).setUiLanguage(original)
+            Config(context).setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), original)
             instrumentation.runOnMainSync { NativeLocale.apply(original) }
             assertEquals("the saved selection is restored", original, Config(context).uiLanguage)
         }
@@ -120,7 +121,7 @@ class StatusSurfaceInstrumentedTest {
         val context = instrumentation.targetContext
         val original = Config(context).uiLanguage
         try {
-            Config(context).setUiLanguage("cs")
+            Config(context).setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), "cs")
             instrumentation.runOnMainSync { NativeLocale.apply("cs") }
             onFrame(locale = "cs") { activity, _ ->
                 assertEquals(
@@ -140,7 +141,7 @@ class StatusSurfaceInstrumentedTest {
                 )
             }
         } finally {
-            Config(context).setUiLanguage(original)
+            Config(context).setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), original)
             instrumentation.runOnMainSync { NativeLocale.apply(original) }
         }
     }
@@ -638,7 +639,7 @@ class StatusSurfaceInstrumentedTest {
             for (scale in listOf(1.0f, LARGE_FONT_SCALE)) {
                 shell("settings put system font_scale $scale")
                 for (locale in requestedExpansionLocales()) {
-                    config.setUiLanguage(locale)
+                    config.setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), locale)
                     val phases = listOf(
                         Triple("intro", "", R.string.proximity_wizard_intro),
                         Triple("waves", "WAVE", R.string.proximity_wizard_wave_twice),
@@ -695,7 +696,7 @@ class StatusSurfaceInstrumentedTest {
             }
         } finally {
             ProximityWizardHost.detach(owner)
-            config.setUiLanguage(originalLanguage)
+            config.setRaw(requireNotNull(SettingsRegistry.spec("ui_language")), originalLanguage)
             instrumentation.runOnMainSync { NativeLocale.apply(originalLanguage) }
             shell("settings put system font_scale $originalFont")
             assertEquals("the emulator's saved language was restored", originalLanguage, config.uiLanguage)

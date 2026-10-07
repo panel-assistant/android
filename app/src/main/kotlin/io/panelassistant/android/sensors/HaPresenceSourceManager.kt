@@ -2,6 +2,7 @@ package io.panelassistant.android.sensors
 
 import android.util.Log
 import io.panelassistant.android.Config
+import io.panelassistant.android.HaConnectionRoutes
 import io.panelassistant.android.dashboard.EntityFilterProtocol
 import io.panelassistant.android.mqtt.MqttAddressFamilyPolicy
 import io.panelassistant.android.util.HaWebSocketClients
@@ -224,6 +225,8 @@ internal class HaPresenceSourceManager(
         override fun excluded(areaId: String) = emptySet<String>()
         override fun setIncluded(expectedScope: String, areaId: String, entityId: String, included: Boolean) = false
     },
+    /** The Panel Assistant entry the last `hello` named ([HaConnectionRoutes.panelAssistantEntryId]). */
+    private val panelAssistantEntryId: () -> String? = { null },
 ) : AutoCloseable {
     private class DiscoveryFailure(
         val code: String,
@@ -247,6 +250,7 @@ internal class HaPresenceSourceManager(
         streamOwner,
         offerAggregate,
         exclusions = ConfigHaPresenceExclusions(config),
+        panelAssistantEntryId = { HaConnectionRoutes.panelAssistantEntryId(config) },
     )
 
     private val generation = AtomicLong()
@@ -314,7 +318,7 @@ internal class HaPresenceSourceManager(
                 snapshot.areas,
                 deviceUid,
                 panelId,
-                HaPanelDeviceMatcher.panelAssistantEntryIds(snapshot.panelAssistantProbe, discoveryId),
+                HaPanelDeviceMatcher.panelAssistantEntryIds(snapshot.panelAssistantProbe, discoveryId, panelAssistantEntryId()),
                 preferredAreaName,
             )
             HaPanelAreaPrerequisite(
@@ -565,7 +569,7 @@ internal class HaPresenceSourceManager(
             throw DiscoveryFailure("registry_transport", error)
         }
         val panelAssistantEntryIds =
-            HaPanelDeviceMatcher.panelAssistantEntryIds(snapshot.panelAssistantProbe, requested.discoveryId)
+            HaPanelDeviceMatcher.panelAssistantEntryIds(snapshot.panelAssistantProbe, requested.discoveryId, panelAssistantEntryId())
         // Preserve the independently resolvable panel Area in a projection failure. This keeps the
         // status coherent with the prerequisite endpoint and lets clients distinguish a terminal
         // failure from a stale result for a previously selected Area.

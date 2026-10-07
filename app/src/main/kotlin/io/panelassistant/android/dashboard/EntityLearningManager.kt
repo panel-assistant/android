@@ -1766,7 +1766,7 @@ class EntityLearningManager(
         deviceRegistry: JSONObject,
     ): Set<String> = io.panelassistant.android.sensors.HaPanelDeviceMatcher.panelAssistantEntryIds(
         io.panelassistant.android.sensors.HaPanelDeviceMatcher.readProbe(request, deviceRegistry),
-        io.panelassistant.android.panelAssistantDiscoveryId(config.deviceUid),
+        io.panelassistant.android.panelAssistantDiscoveryId(config.deviceUid), HaConnectionRoutes.panelAssistantEntryId(config),
     )
 
     /** Non-secret digest identifying the HA endpoint and credential generation used by area operations. */
