@@ -64,7 +64,7 @@ internal object PanelAssistantCommandTranslation {
         PanelAssistantValueKind.TEXT -> (value as? String)
             ?.takeIf { it.length <= MAX_TEXT_CHARS && !CONTROL.containsMatchIn(it) }
         PanelAssistantValueKind.LIGHT -> light(descriptor, value)
-        PanelAssistantValueKind.UPDATE -> null
+        PanelAssistantValueKind.UPDATE, PanelAssistantValueKind.IMAGE, PanelAssistantValueKind.EVENT -> null
         PanelAssistantValueKind.MEDIA -> media(value, baseUrl)
         PanelAssistantValueKind.BUTTON -> if (value == null || value == JSONObject.NULL) "PRESS" else null
     }

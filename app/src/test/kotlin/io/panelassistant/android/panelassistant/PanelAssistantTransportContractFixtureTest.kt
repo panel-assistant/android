@@ -52,12 +52,13 @@ class PanelAssistantTransportContractFixtureTest {
                 ),
             ),
             JSONObject(PanelAssistantTransportProtocol.restartNotice(4, "fixture-session", "app", "settings", 30_000)),
+            JSONObject(PanelAssistantTransportProtocol.reportEvent(5, "fixture-session", "button", 1, "keycode_home")),
         )
         val expected = fixture.getJSONArray("transportMessages").objects()
-        assertEquals(expected.map { it.getString("name") }, listOf("hello", "report_state", "command_result", "restart_notice"))
+        assertEquals(expected.map { it.getString("name") }, listOf("hello", "report_state", "command_result", "restart_notice", "report_event"))
         if (recordingProducer()) {
             recordProducer("transportMessages", JSONArray().apply {
-                listOf("hello", "report_state", "command_result", "restart_notice").zip(messages).forEach { (name, message) ->
+                listOf("hello", "report_state", "command_result", "restart_notice", "report_event").zip(messages).forEach { (name, message) ->
                     put(JSONObject().put("name", name).put("message", message))
                 }
             })
@@ -70,7 +71,7 @@ class PanelAssistantTransportContractFixtureTest {
     fun `every channel descriptor this build describes matches the exported producer fixture`() {
         val fixture = JSONObject(resource(PRODUCER_FIXTURE))
         val wires = (PanelAssistantChannelCatalogTest.convergerChannels()
-            .mapNotNull(PanelAssistantChannelCatalog::wireChannel) + listOf("reload", "reboot")).distinct().sorted()
+            .mapNotNull(PanelAssistantChannelCatalog::wireChannel) + listOf("reload", "reboot", "button")).distinct().sorted()
         val described = wires.map { wire ->
             val descriptor = PanelAssistantChannelCatalog.describe(wire)
             assertNotNull("$wire must remain describable", descriptor)

@@ -957,7 +957,12 @@ class PaneldService : Service() {
     private val wakeWordCatalog by lazy { io.panelassistant.android.assist.wakeword.WakeWordCatalog(this) }
     // Outlives bridge generations: each new bridge binds its converger here, and the transport owner
     // reports what it records only on a session Panel Assistant accepts in shadow mode.
-    private val panelAssistantShadow = PanelAssistantShadowReporter()
+    // The button event's types include the active profile's, as its MQTT discovery does.
+    private val panelAssistantShadow = PanelAssistantShadowReporter(describe = { wire ->
+        if (wire == "button" && ::profile.isInitialized) {
+            io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog.buttonDescriptor(profile.evdevButtons.mapTo(linkedSetOf()) { it.eventType })
+        } else io.panelassistant.android.panelassistant.PanelAssistantChannelCatalog.describe(wire)
+    })
 
     // Native transport commands reach the current bridge generation's ordered command authority and the
     // same approval broker as every other remote command.
@@ -2084,7 +2089,10 @@ class PaneldService : Service() {
             onAutoSleepConfigChanged = {
                 acceptCommittedAutoSleepSetting(liveSettingAuthority) { refreshAutoSleepPresence() }
             },
-        ).also { bridge -> bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape)) }
+        ).also { bridge ->
+            bridge.addStateSink(panelAssistantShadow.bindShape(bridge::nativeChannelShape))
+            bridge.addEventSink(panelAssistantShadow::event)
+        }
     }
 
     private fun buildMdns(identity: NetworkRuntimeIdentity): MdnsAdvertiser = MdnsAdvertiser(

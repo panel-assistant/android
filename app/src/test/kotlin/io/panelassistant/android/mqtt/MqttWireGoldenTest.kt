@@ -251,7 +251,7 @@ internal abstract class MqttWireRig {
             )
             else -> listOf(org.json.JSONObject().put("on", true).put("brightness", 128) to """{"state":"ON","brightness":128}""")
         }
-        PanelAssistantValueKind.UPDATE -> emptyList()
+        PanelAssistantValueKind.UPDATE, PanelAssistantValueKind.IMAGE, PanelAssistantValueKind.EVENT -> emptyList()
         // Native only: no MQTT payload exists to compare (NativeMediaChannelTest covers it).
         PanelAssistantValueKind.MEDIA -> emptyList()
         PanelAssistantValueKind.BUTTON -> listOf(org.json.JSONObject.NULL to "PRESS")
@@ -362,6 +362,9 @@ internal abstract class MqttWireRig {
             muted = { false },
             setMuted = {},
         ),
+        autoSleepActivity: () -> io.panelassistant.android.AutoSleepActivitySnapshot = { io.panelassistant.android.AutoSleepActivitySnapshot() },
+        cameraSnapshotUrl: () -> String? = { null },
+        helperSend: ((String) -> String?)? = null,
         configure: (Config) -> Unit = {},
     ): Rig {
         val tmp = Files.createTempDirectory("mqtt-wire-golden").toFile()
@@ -485,6 +488,9 @@ internal abstract class MqttWireRig {
             runtimeMqttPassword = "panel-password",
             runtimeMqttAddressFamily = "Automatic",
             transport = transport,
+            autoSleepActivity = autoSleepActivity,
+            cameraSnapshotUrl = cameraSnapshotUrl,
+            helperSend = helperSend ?: io.panelassistant.android.util.HelperClient::send,
         )
         return Rig(tmp, config, transport, sysfs, bridge, storage, storageReads, updateSources, autoSleepConfigChanges, companionUpdateRequests, selfUpdateRequests)
     }
@@ -1415,7 +1421,7 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             val native = io.panelassistant.android.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val offer = native.offer()
-            val absent = listOf("camera_enabled", "humidity", "led", "proximity", "proximity_level", "temperature", "update_companion")
+            val absent = listOf("camera_enabled", "camera_snapshot", "humidity", "led", "proximity", "proximity_level", "temperature", "update_companion")
             assertEquals((absent + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), offer.unsupported)
             val described = offer.descriptors.map { it.channel }
             absent.forEach { assertFalse("$it must not be described", it in described) }
@@ -1476,13 +1482,13 @@ internal class MqttNativeAuthorityTest : MqttWireRig() {
             val native = io.panelassistant.android.panelassistant.PanelAssistantShadowReporter(log = {})
             rig.bridge.addStateSink(native.bindShape(rig.bridge::nativeChannelShape))
             val before = native.offer()
-            assertEquals((listOf("camera_enabled", "proximity", "proximity_level") + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), before.unsupported)
+            assertEquals((listOf("camera_enabled", "camera_snapshot", "proximity", "proximity_level") + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), before.unsupported)
             native.open(before.descriptors)
             assertFalse(native.descriptorsChanged())
             learned.set(true)
             assertTrue("gaining the reading ends the session so it is described again", native.descriptorsChanged())
             val after = native.offer()
-            assertEquals((listOf("camera_enabled") + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), after.unsupported)
+            assertEquals((listOf("camera_enabled", "camera_snapshot") + PanelAssistantChannelCatalog.RETIRED_CHANNELS).sorted(), after.unsupported)
             assertTrue(after.descriptors.map { it.channel }.containsAll(listOf("proximity", "proximity_level")))
         } finally {
             rig.close()

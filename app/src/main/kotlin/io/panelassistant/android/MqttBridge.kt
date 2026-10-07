@@ -1258,6 +1258,8 @@ internal class MqttBridge(
     // Event types declared by the active runtime profile. Discovery must advertise every value this
     // bridge can publish, not only the historical built-in key list.
     private val profileButtonEventTypes: Set<String> = emptySet(),
+    // The root helper's command line, for the button backlight.
+    private val helperSend: (String) -> String? = HelperClient::send,
     // Immutable connection/advertisement identity for this concrete bridge generation. Config remains
     // live for settings that can be re-projected without replacing the broker connection.
     private val runtimePanelId: String = config.panelId,
@@ -1583,6 +1585,7 @@ internal class MqttBridge(
     // whose construction registers channels.
     private val mqttStateRoutes = java.util.concurrent.ConcurrentHashMap<String, MqttStateRoute>()
     @Volatile private var nativeStateSink: io.panelassistant.android.mqtt.StateSink? = null
+    @Volatile private var nativeEventSink: ((channel: String, event: String) -> Unit)? = null
     // A connected broker can block inside send(). Keep every pump-originated MQTT publication off
     // the shared observation pump; the bounded queue also covers non-converger state topics.
     private val statePublicationWorker = java.util.concurrent.ThreadPoolExecutor(
@@ -1713,6 +1716,23 @@ internal class MqttBridge(
         channel("prevent_idle_dim", statePreventIdleDim) { known(if (config.preventIdleDim) "ON" else "OFF") }
         channel("auto_brightness", stateAutoBright) { known(if (config.autoBrightness) "ON" else "OFF") }
         channel("camera_enabled", stateCameraEnabled) { known(if (config.cameraEnabled) "ON" else "OFF") }
+        // Native only: MQTT carries the snapshot URL and its availability on their own topics.
+        channel("camera_snapshot", topic = null) {
+            cameraSnapshotUrl()?.takeIf { config.cameraEnabled && it.isNotBlank() }?.let(known)
+                ?: io.panelassistant.android.mqtt.StateConverger.Observation.Unavailable
+        }
+        // Native only: MQTT publishes its state, attributes and availability itself.
+        channel("auto_sleep_activity", topic = null) {
+            if (!config.haExposed("auto_sleep_activity", true)) return@channel unknown
+            val snapshot = autoSleepActivity()
+            if (!config.autoSleep || !snapshot.policyHealthy) io.panelassistant.android.mqtt.StateConverger.Observation.Unavailable
+            else known(if (snapshot.holdingAwake) "ON" else "OFF")
+        }
+        // Folded into auto_sleep_activity: the same attributes its MQTT entity carries.
+        channel("auto_sleep_activity_attributes", topic = null) {
+            if (!config.haExposed("auto_sleep_activity", true)) return@channel unknown
+            known(autoSleepMqttProjection(autoSleepActivity()).attributes)
+        }
         channel("navbar", stateNavbar) { known(config.navbarMode) }
 
         channel("illuminance", stateIlluminance, retain = false) {
@@ -1789,6 +1809,9 @@ internal class MqttBridge(
     /** Bind the native reporter directly to observations, independently of MQTT delivery capacity. */
     internal fun addStateSink(sink: io.panelassistant.android.mqtt.StateSink) { nativeStateSink = sink }
 
+    /** Hand transient events (button presses) to the native transport; it never blocks the caller. */
+    internal fun addEventSink(sink: (channel: String, event: String) -> Unit) { nativeEventSink = sink }
+
     /** The converger's registered channels, which grow as hardware capabilities are confirmed. */
     internal fun stateChannelKeys(): Set<String> = stateConverger.keys()
 
@@ -1801,8 +1824,10 @@ internal class MqttBridge(
         val keys = stateConverger.keys().filterNot { it in PROVEN_ONLY_CHANNELS && hardwareAvailability(it, learned) == null }
         val (unsupported, served) = keys.partition { hardwareAvailability(it, learned) == false }
         val actions = listOf("reload" to system.canReloadDashboard(config.dashboardPackage), "reboot" to system.canReboot())
+        // The button event entity exists whenever a button source does, as its MQTT discovery does.
+        val events = listOf(BUTTON_EVENT_CHANNEL).filter { buttonsEnabled || hasEvdevButtons }
         return io.panelassistant.android.panelassistant.PanelAssistantChannelShape(
-            served + actions.filter { it.second }.map { it.first },
+            served + actions.filter { it.second }.map { it.first } + events,
             unsupported + actions.filterNot { it.second }.map { it.first } + PanelAssistantChannelCatalog.RETIRED_CHANNELS,
         )
     }
@@ -1818,7 +1843,7 @@ internal class MqttBridge(
         "temperature" -> hasTemperature
         "humidity" -> hasHumidity
         MEDIA_CHANNEL -> media != null
-        "camera_enabled" -> hasCamera()
+        "camera_enabled", "camera_snapshot" -> hasCamera()
         "proximity", "proximity_level" -> learnedProximity
         "illuminance" -> lightChannel()
         // LedFactory returns the no-op controller only for a profile declaring no LED. A declared LED stays
@@ -1870,10 +1895,14 @@ internal class MqttBridge(
             fun known(payload: String) = io.panelassistant.android.mqtt.StateConverger.Observation.Known(payload)
             fun register(
                 key: String,
-                topic: String,
+                topic: String?,
                 observe: () -> io.panelassistant.android.mqtt.StateConverger.Observation,
             ) {
-                if (key !in registered) {
+                // A null topic is a native-only channel, as in createStateConverger.
+                if (key in registered) return
+                if (topic == null) {
+                    converger.register(io.panelassistant.android.mqtt.StateConverger.Channel(key, observe = observe, nativeOnly = true))
+                } else {
                     registerStateChannel(
                         converger,
                         MqttStateChannel(
@@ -1892,6 +1921,14 @@ internal class MqttBridge(
                 if (!capabilityShape.current().live.zigbee) known("unknown")
                 else if (config.zigbeeRouterConfigured && !config.zigbeeRouterEnabled) known("OFF")
                 else known(if (zigbee.running()) "ON" else "OFF")
+            }
+            // Native only: publishZigbeeHealth sends MQTT its state and attributes directly.
+            if (observation.possible.zigbee) register("zigbee_gateway_health", topic = null) {
+                if (!capabilityShape.current().live.zigbee) io.panelassistant.android.mqtt.StateConverger.Observation.Unavailable
+                else known(zigbeeHealth().state.wireValue)
+            }
+            if (observation.possible.zigbee) register("zigbee_gateway_health_attributes", topic = null) {
+                known(zigbeeHealth().mqttAttributes())
             }
             if (observation.possible.cpu) register("cpu_governor", stateCpuGov) {
                 if (!capabilityShape.current().live.cpu) known("unknown")
@@ -1931,6 +1968,13 @@ internal class MqttBridge(
         // Confirm startup LED state through existing actuation, including panels without a broker.
         runCatching { reapplyStoredLed() }
             .onFailure { Log.w(TAG, "startup LED restoration failed", it) }
+        // The button backlight too: a native-only panel never reaches the MQTT connect announcement.
+        runCatching { restoreButtonBacklight() }
+            .onFailure { Log.w(TAG, "startup button backlight restoration failed", it) }
+        // Button presses reach the native transport with or without a broker.
+        if (buttonSubscription == null) {
+            buttonSubscription = ButtonBus.subscribe { event -> publishButton(event) }
+        }
         // Linearize the explicit fresh-client boundary before clearing bridge state. A delayed event from
         // the prior client must not overwrite this attempt while it is waiting for its first CONNACK.
         connectionEventDispatcher.supersede()
@@ -2042,9 +2086,6 @@ internal class MqttBridge(
             // The client lifecycle — build, connect, the connected/disconnected listeners, and the
             // superseded-client generation guard — lives in the transport (see HiveMqTransport). This
             // bridge only supplies the connection config + callbacks and keeps the HA semantics.
-            if (buttonSubscription == null) {
-                buttonSubscription = ButtonBus.subscribe { event -> publishButton(event) }
-            }
             // There is no heartbeat authority until this attempt reaches onConnected. HiveMQ can also
             // reconnect this client internally, so successful connection callbacks own generation changes.
             transport.connect(
@@ -2629,8 +2670,13 @@ internal class MqttBridge(
         // sensible local path instead of "unknown" before anything has been navigated.
         // LED: re-apply the last colour to the hardware (reset on reboot) and publish it.
         reapplyStoredLed()
+        restoreButtonBacklight()
+    }
+
+    /** Re-apply the stored button backlight level, which the hardware loses on reboot. */
+    private fun restoreButtonBacklight() {
         if (hasButtonBacklight) {
-            config.lastButtonBacklight.takeIf { it >= 0 }?.let { HelperClient.send(buttonBacklightCommand(it, buttonBacklightTransfer)) }
+            config.lastButtonBacklight.takeIf { it >= 0 }?.let { helperSend(buttonBacklightCommand(it, buttonBacklightTransfer)) }
         }
     }
 
@@ -3228,6 +3274,7 @@ internal class MqttBridge(
      *  is said on the availability topic instead of by clearing the URL. Nothing here is periodic; the
      *  camera opens when a person looks at the card, never because the panel published. */
     private fun publishCameraSnapshot(refreshUrl: Boolean) {
+        stateConverger.reconcile("camera_snapshot", force = true)
         cameraSnapshotPublications(
             panel = panel,
             announced = cameraSnapshotAnnounced,
@@ -3291,7 +3338,7 @@ internal class MqttBridge(
         val json = JSONObject(payload)
         val on = json.optString("state", "ON").equals("ON", ignoreCase = true)
         val level = if (!on) 0 else if (json.has("brightness")) json.getInt("brightness") else 255
-        if (HelperClient.send(buttonBacklightCommand(level, buttonBacklightTransfer)) == "OK") {
+        if (helperSend(buttonBacklightCommand(level, buttonBacklightTransfer)) == "OK") {
             config.lastButtonBacklight = level
             stateConverger.reconcile("buttons", force = true)
         }
@@ -3325,6 +3372,9 @@ internal class MqttBridge(
 
     fun publishZigbeeHealth(snapshot: ZigbeeHealthSnapshot? = null) {
         lifecycle.runIfOpen(Unit) {
+            // The attributes first, so the native report carries them with the state.
+            stateConverger.reconcile("zigbee_gateway_health_attributes", force = true)
+            stateConverger.reconcile("zigbee_gateway_health", force = true)
             if (state != "connected") return@runIfOpen
             val current = snapshot ?: zigbeeHealth()
             publish(stateZigbeeHealth, current.state.wireValue, retain = true)
@@ -3572,7 +3622,10 @@ internal class MqttBridge(
     }
 
     private fun publishButton(event: String) {
-        lifecycle.runIfOpen(Unit) { publish(eventButton, """{"event_type":"$event"}""") }
+        lifecycle.runIfOpen(Unit) {
+            runCatching { nativeEventSink?.invoke(BUTTON_EVENT_CHANNEL, event) }
+            publish(eventButton, """{"event_type":"$event"}""")
+        }
     }
 
     // Sensor readings are NOT retained: a fresh sample arrives shortly, so retaining only adds broker
@@ -3691,6 +3744,9 @@ internal class MqttBridge(
         autoSleepMqttPublications(panel, exposed, snapshot).forEach { publication ->
             publish(publication.topic, publication.payload, retain = publication.retain)
         }
+        // The attributes first, so the native report carries them with the state.
+        stateConverger.reconcile("auto_sleep_activity_attributes", force = true)
+        stateConverger.reconcile("auto_sleep_activity", force = true)
     }
 
     /**
@@ -4655,6 +4711,8 @@ internal class MqttBridge(
         private val ANNOUNCEMENT_BOUNDARY_CONSUMED_HERE = AtomicReference<String?>(null)
         private const val MAX_COMMAND_PAYLOAD_BYTES = 64 * 1024
         private const val MEDIA_CHANNEL = "media"
+        /** The hardware button event channel: no state, only `report_event`. */
+        private const val BUTTON_EVENT_CHANNEL = "button"
         /** Described only once proven: a never-reported light sensor creates no entity (maintainer, 2026-10-06). */
         private val PROVEN_ONLY_CHANNELS = setOf("illuminance")
         private const val MAX_DYNAMIC_COMMAND_INDEX = 64

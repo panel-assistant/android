@@ -180,9 +180,20 @@
         "id": 4,
         "type": "panel_assistant/restart_notice"
       }
+    },
+    {
+      "name": "report_event",
+      "message": {
+        "event_id": 1,
+        "event_type": "keycode_home",
+        "session": "fixture-session",
+        "channel": "button",
+        "id": 5,
+        "type": "panel_assistant/report_event"
+      }
     }
   ],
-  "sourceRevision": "37da9c62def198ce5a46864ade317fb2afdc676f",
+  "sourceRevision": "88b99a5eed540107c2e82142b04056c9491130cf",
   "channelDescriptors": [
     {
       "entity_category": "config",
@@ -216,6 +227,55 @@
       "translation_key": "auto_sleep",
       "step": null,
       "enabled_default": false,
+      "state_class": null,
+      "family": null,
+      "force_update": false
+    },
+    {
+      "entity_category": null,
+      "unique_suffix": "auto_sleep_activity",
+      "max": null,
+      "channel": "auto_sleep_activity",
+      "index": null,
+      "platform": "binary_sensor",
+      "unit": null,
+      "min": null,
+      "options": null,
+      "device_class": null,
+      "translation_key": "auto_sleep_activity",
+      "step": null,
+      "enabled_default": false,
+      "state_class": null,
+      "family": null,
+      "force_update": false
+    },
+    {
+      "entity_category": null,
+      "unique_suffix": "button",
+      "max": null,
+      "channel": "button",
+      "index": null,
+      "platform": "event",
+      "unit": null,
+      "min": null,
+      "options": [
+        "keycode_back",
+        "keycode_dpad_center",
+        "keycode_f",
+        "keycode_f1",
+        "keycode_f2",
+        "keycode_f3",
+        "keycode_f4",
+        "keycode_home",
+        "keycode_mute",
+        "keycode_power",
+        "keycode_volume_down",
+        "keycode_volume_up"
+      ],
+      "device_class": null,
+      "translation_key": "button",
+      "step": null,
+      "enabled_default": true,
       "state_class": null,
       "family": null,
       "force_update": false
@@ -286,6 +346,24 @@
       "options": null,
       "device_class": null,
       "translation_key": "camera",
+      "step": null,
+      "enabled_default": true,
+      "state_class": null,
+      "family": null,
+      "force_update": false
+    },
+    {
+      "entity_category": null,
+      "unique_suffix": "camera_snapshot",
+      "max": null,
+      "channel": "camera_snapshot",
+      "index": null,
+      "platform": "image",
+      "unit": null,
+      "min": null,
+      "options": null,
+      "device_class": null,
+      "translation_key": "camera_snapshot",
       "step": null,
       "enabled_default": true,
       "state_class": null,
@@ -974,6 +1052,34 @@
       "translation_key": "watchdog",
       "step": null,
       "enabled_default": false,
+      "state_class": null,
+      "family": null,
+      "force_update": false
+    },
+    {
+      "entity_category": "diagnostic",
+      "unique_suffix": "zigbee_gateway_health",
+      "max": null,
+      "channel": "zigbee_gateway_health",
+      "index": null,
+      "platform": "sensor",
+      "unit": null,
+      "min": null,
+      "options": [
+        "off",
+        "starting",
+        "healthy",
+        "degraded_unjoined",
+        "degraded_high_cpu",
+        "runaway",
+        "contained",
+        "containment_failed",
+        "unknown"
+      ],
+      "device_class": null,
+      "translation_key": "zigbee_gateway_health",
+      "step": null,
+      "enabled_default": true,
       "state_class": null,
       "family": null,
       "force_update": false

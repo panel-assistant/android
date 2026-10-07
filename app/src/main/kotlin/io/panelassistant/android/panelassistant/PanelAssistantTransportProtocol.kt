@@ -145,6 +145,7 @@ internal object PanelAssistantTransportProtocol {
     const val COMMAND_REPORT_STATE = "panel_assistant/report_state"
     const val COMMAND_COMMAND_RESULT = "panel_assistant/command_result"
     const val COMMAND_RESTART_NOTICE = "panel_assistant/restart_notice"
+    const val COMMAND_REPORT_EVENT = "panel_assistant/report_event"
 
     const val AUTHORITY_MQTT = "mqtt"
     const val AUTHORITY_SHADOW = "shadow"
@@ -311,6 +312,11 @@ internal object PanelAssistantTransportProtocol {
         .put("sync", sync)
         .put("observations", observations)
         .toString()
+
+    /** One transient event; Home Assistant counts each [eventId] once per session, so ids only grow. */
+    fun reportEvent(id: Long, session: String, channel: String, eventId: Long, eventType: String): String =
+        JSONObject().put("id", id).put("type", COMMAND_REPORT_EVENT).put("session", session)
+            .put("channel", channel).put("event_id", eventId).put("event_type", eventType).toString()
 
     fun restartNotice(id: Long, session: String, scope: String, reason: String, expectedBackMs: Long): String =
         JSONObject().put("id", id).put("type", COMMAND_RESTART_NOTICE).put("session", session)
