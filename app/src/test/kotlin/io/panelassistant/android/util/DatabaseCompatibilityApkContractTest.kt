@@ -59,6 +59,7 @@ class DatabaseCompatibilityApkContractTest {
             DatabaseCompatibilityApkContract.METADATA_NAME to "io.github.maxlyth.hapaneld.DATABASE_COMPATIBILITY",
             AppInstaller.PROTOCOL_METADATA_NAME to "io.github.maxlyth.hapaneld.PANEL_ASSISTANT_PROTOCOL",
         )) {
+            assertTrue("this build's installer reads its own names: $current", current.startsWith("io.panelassistant.android."))
             assertEquals("$current must appear once: $values", 1, values[current]?.size)
             assertEquals("$previous must carry the same value as $current", values[current], values[previous])
         }
