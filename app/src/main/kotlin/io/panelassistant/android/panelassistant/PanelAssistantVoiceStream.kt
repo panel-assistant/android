@@ -53,6 +53,8 @@ internal class PanelAssistantVoiceStream(
             stopped = null
         }
         player.open(grant) { frame, text ->
+            // One Sendspin message is at most one Noise frame; Panel Assistant refuses anything larger.
+            if (frame.size > MAX_FRAME_BYTES) return@open log("voice stream dropped an oversized frame (${frame.size} bytes)")
             enqueue(JSONObject().put("type", COMMAND_FRAME).put("frame", Base64.getEncoder().encodeToString(frame)).put("text", text))
         }
     }
@@ -77,7 +79,7 @@ internal class PanelAssistantVoiceStream(
                         val bytes = (event.opt("frame") as? String)?.let { runCatching { Base64.getDecoder().decode(it) }.getOrNull() }
                         val text = event.opt("text") as? Boolean
                         val streamId = event.opt("stream_id").takeUnless { it == JSONObject.NULL }
-                        if (bytes == null || text == null || (streamId != null && streamIdOf(streamId) == null)) {
+                        if (bytes == null || text == null || !event.has("stream_id") || (streamId != null && streamIdOf(streamId) == null)) {
                             log("voice stream ignored a malformed frame")
                             return true
                         }
@@ -126,7 +128,7 @@ internal class PanelAssistantVoiceStream(
 
     override suspend fun play(streamId: String): VoiceStreamEnd {
         val end = synchronized(lock) {
-            if (token == null) return VoiceStreamEnd(OUTCOME_FAILED, listenAfter = false)
+            if (token == null || streamIdOf(streamId) == null) return VoiceStreamEnd(OUTCOME_FAILED, listenAfter = false)
             ends.getOrPut(streamId) { CompletableDeferred() }.also { trim() }
         }
         playing(streamId)
@@ -192,5 +194,8 @@ internal class PanelAssistantVoiceStream(
         const val OUTCOME_FAILED = "failed"
         private val OUTCOMES = setOf("played", "preempted", OUTCOME_FAILED)
         private const val MAX_RECENT = 16
+
+        /** The largest Noise transport message (65 535 bytes), so the largest Sendspin message. */
+        private const val MAX_FRAME_BYTES = 65_535
     }
 }
