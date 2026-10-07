@@ -1040,9 +1040,11 @@ class PanelAssistantTransportOwnerTest {
         assertEquals("""{"warnings":[],"capabilities":[]}""", answer.getJSONObject("result").getString("status"))
         assertEquals(listOf(true), management.snapshots)
 
-        // A repeat is answered from the record, result included, and not read again.
+        // A repeat is answered again from the record, result included, and not read again.
+        val before = connection.sent.size
         connection.inbound.trySend(Ha.manage("m1", "snapshot"))
         runCurrent()
+        assertEquals(before + 1, connection.sent.size)
         assertEquals(answer.getJSONObject("result").toString(), JSONObject(connection.sent.last()).getJSONObject("result").toString())
         assertEquals(1, management.snapshots.size)
         harness.owner.close()
