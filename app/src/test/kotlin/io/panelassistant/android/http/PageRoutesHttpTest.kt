@@ -194,7 +194,6 @@ class PageRoutesHttpTest {
                     "profiles" to "id=\"profile-editor\"",
                     "entities" to "entities.disabled.title",
                     "logs" to "id=\"lg-out\"",
-                    "fleet" to "http://&lt;its-ip&gt;:",
                 )) {
                     val response = client.get("/$path?lang=zh-Hans") {
                         header(HttpHeaders.Cookie, "wiz_escape=1")

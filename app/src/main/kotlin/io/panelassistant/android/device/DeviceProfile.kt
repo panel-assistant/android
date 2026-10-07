@@ -237,7 +237,7 @@ interface DeviceProfile {
      *  dashboard. These panels have no Play Store, so ha-paneld sideloads a known-good `com.android.webview`
      *  from the `webview-mirror` release (pinned signer). null = no known-good build for this panel (leave
      *  the WebView alone). Pick the newest the panel's Android version supports (NSPanel Pro's 8.1 caps at
-     *  138). See [WebViewInstaller] and docs/hardware/README.md. */
+     *  138). See docs/hardware/README.md. */
     val recommendedWebView: WebViewSpec? get() = provisioning.webViewArtifactId?.let(ProfileArtifacts.webViews::get)
 
     /** The newest HA Companion version known-good on this platform, or null = no cap. The Companion

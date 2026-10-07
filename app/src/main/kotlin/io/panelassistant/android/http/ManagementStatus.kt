@@ -128,7 +128,9 @@ internal fun managementStatusJson(
         "\"capabilities\":[$caps],${installCapabilityStatusJson(management.privilege)}," +
         storageProof +
         homeProofJson +
-        "\"panel_assistant_update\":${UpdateChecker.panelAssistantUpdateJson(currentUpdates)}," +
+        // The panel never offers its own update: Panel Assistant owns that. Older Panel Assistant
+        // releases still parse this object, so it stays, always `none`.
+        "\"panel_assistant_update\":{\"state\":\"none\"}," +
         // Additive, presentation-only, and read from state the panel already holds.
         "\"panel_assistant_device\":${
             PanelAssistantDevice.json(
@@ -170,7 +172,7 @@ private fun statusWarning(f: HealthAudit.Finding): String = when (f.kind) {
     HealthAudit.Kind.NO_RENDERER ->
         "ℹ <b>MQTT is configured. Next: choose a dashboard renderer.</b> Select ha-paneld's built-in renderer, install the Home Assistant Companion app, or configure another dashboard package."
     HealthAudit.Kind.UPDATE -> f.update!!.let { u ->
-        "⬆ <b>${esc(u.label)}</b> ${esc(u.latestVersion)} is available (installed ${esc(u.displayedCurrentVersion)}) — " +
+        "⬆ <b>${esc(u.label)}</b> ${esc(u.latestVersion)} is available (installed ${esc(u.currentVersion)}) — " +
             "<a href=\"${esc(u.releaseUrl)}\" target=\"_blank\" rel=\"noopener\">download</a>"
     }
     HealthAudit.Kind.SCHEMA_ROLLED_BACK ->

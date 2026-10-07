@@ -1,6 +1,5 @@
 package io.panelassistant.android.http
 
-import io.panelassistant.android.BuildConfig
 import io.panelassistant.android.MdnsHealth
 import io.panelassistant.android.MdnsLivenessPolicy
 import io.panelassistant.android.MdnsLivenessSnapshot
@@ -29,16 +28,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstallHealthPresentationTest {
-    @Test fun currentAppVersionIncludesItsBuildWhileCompanionKeepsItsOwnVersion() {
-        for (component in listOf("paneld", "companion")) {
-            val update = UpdateChecker.UpdateInfo("a translated name", "0.9.9", "1.0.0", "https://example.test/release", component)
-            val finding = HealthAudit.evaluate(false, "", true, true, listOf(update)).single()
-            assertEquals(
-                if (component == "paneld") "0.9.9 (${BuildConfig.VERSION_CODE})" else "0.9.9",
-                HealthAudit.presentation(finding, updateComponent = component)?.params?.get("current"),
-            )
-            assertEquals("0.9.9", update.currentVersion)
-        }
+    @Test fun companionUpdateFindingReportsTheInstalledVersion() {
+        val update = UpdateChecker.UpdateInfo("a translated name", "0.9.9", "1.0.0", "https://example.test/release", "companion")
+        val finding = HealthAudit.evaluate(false, "", true, true, listOf(update)).single()
+        assertEquals("0.9.9", HealthAudit.presentation(finding, updateComponent = "companion")?.params?.get("current"))
     }
 
     @Test fun healthAuditUsesStructuredInputsWithoutParsingLegacyDetail() {

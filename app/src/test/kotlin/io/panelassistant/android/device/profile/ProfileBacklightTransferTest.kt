@@ -143,16 +143,16 @@ class ProfileBacklightTransferTest {
 
     @Test fun theLedTakesTheSameCurveDeclaration() {
         val perceptual = profile(roundTrips(withLed { it.copy(transfer = "perceptual") })).ledTransfer
-        assertEquals(56, perceptual.red(128))
-        assertEquals(0, perceptual.green(0))
-        assertEquals(255, perceptual.blue(255))
+        assertEquals(56, perceptual.toHardware(128))
+        assertEquals(0, perceptual.toHardware(0))
+        assertEquals(255, perceptual.toHardware(255))
 
         val gamma = profile(roundTrips(withLed { it.copy(transfer = "gamma", gamma = 2.0, floor = 3) })).ledTransfer
-        assertEquals(TransferCurve.Gamma(2.0, 3 / 255.0).toHardware(128), gamma.red(128))
-        assertEquals(3, gamma.green(1))
+        assertEquals(TransferCurve.Gamma(2.0, 3 / 255.0).toHardware(128), gamma.toHardware(128))
+        assertEquals(3, gamma.toHardware(1))
 
         val points = profile(roundTrips(withLed { it.copy(transfer = "points", points = listOf(0 to 0, 128 to 32, 255 to 255)) })).ledTransfer
-        assertEquals(32, points.blue(128))
+        assertEquals(32, points.toHardware(128))
 
         assertSame(LedTransfer.Rk3576FourBit, profile(roundTrips(withLed { it.copy(transfer = "rk3576-four-bit") })).ledTransfer)
         assertSame(LedTransfer.Identity, profile(roundTrips(withLed { it.copy(transfer = "identity") })).ledTransfer)

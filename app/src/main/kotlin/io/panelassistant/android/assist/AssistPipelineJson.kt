@@ -29,6 +29,7 @@ internal sealed interface AssistMessage {
 internal object AssistPipelineJson {
     const val LIST_TYPE = "assist_pipeline/pipeline/list"
     const val RUN_TYPE = "assist_pipeline/run"
+    private const val STAGE_TTS = "tts"
 
     /** Lists the pipelines the panel's non-admin token may run. */
     fun listMessage(id: Int): String = JSONObject()
@@ -36,26 +37,17 @@ internal object AssistPipelineJson {
         .put("type", LIST_TYPE)
         .toString()
 
-    fun runMessage(id: Int, request: AssistRunRequest): String {
+    /** A text-to-speech-only run: [pipelineId] speaks [text]. */
+    fun runMessage(id: Int, pipelineId: String, text: String): String {
         val input = JSONObject()
-        if (AssistRunRequest.stageNeedsAudio(request.startStage)) input.put("sample_rate", request.sampleRate)
-        if (
-            request.startStage == AssistRunRequest.STAGE_INTENT ||
-            request.startStage == AssistRunRequest.STAGE_TTS
-        ) {
-            request.inputText?.takeIf { it.isNotBlank() }?.let { input.put("text", it) }
-        }
-        request.wakeWordPhrase?.takeIf { it.isNotBlank() }?.let { input.put("wake_word_phrase", it) }
+        text.takeIf { it.isNotBlank() }?.let { input.put("text", it) }
         val message = JSONObject()
             .put("id", id)
             .put("type", RUN_TYPE)
-            .put("start_stage", request.startStage)
-            .put("end_stage", request.endStage)
+            .put("start_stage", STAGE_TTS)
+            .put("end_stage", STAGE_TTS)
             .put("input", input)
-        request.pipelineId?.takeIf { it.isNotBlank() }?.let { message.put("pipeline", it) }
-        request.conversationId?.takeIf { it.isNotBlank() }?.let { message.put("conversation_id", it) }
-        request.deviceId?.takeIf { it.isNotBlank() }?.let { message.put("device_id", it) }
-        request.timeoutSeconds?.let { message.put("timeout", it) }
+        pipelineId.takeIf { it.isNotBlank() }?.let { message.put("pipeline", it) }
         return message.toString()
     }
 
@@ -68,9 +60,7 @@ internal object AssistPipelineJson {
             pipelines += AssistPipeline(
                 id = id,
                 name = entry.stringOrNull("name") ?: id,
-                language = entry.stringOrNull("language"),
                 ttsLanguage = entry.stringOrNull("tts_language"),
-                ttsVoice = entry.stringOrNull("tts_voice"),
             )
         }
         return AssistPipelineCatalog(pipelines, result.stringOrNull("preferred_pipeline"))
@@ -101,24 +91,6 @@ internal object AssistPipelineJson {
         val name = event.stringOrNull("type") ?: return AssistEvent.Other("")
         val data = event.optJSONObject("data") ?: JSONObject()
         return when (name) {
-            "run-start" -> {
-                val runner = data.optJSONObject("runner_data")
-                val tts = data.optJSONObject("tts_output")
-                AssistEvent.RunStart(
-                    handlerId = runner?.intOrNull("stt_binary_handler_id"),
-                    ttsUrl = tts?.stringOrNull("url"),
-                    streamResponse = tts?.optBoolean("stream_response") ?: false,
-                    timeoutSeconds = runner?.intOrNull("timeout"),
-                )
-            }
-            "stt-start" -> AssistEvent.SttStart
-            "stt-vad-start" -> AssistEvent.SttVadStart
-            "stt-vad-end" -> AssistEvent.SttVadEnd
-            "stt-end" -> AssistEvent.SttEnd(data.optJSONObject("stt_output")?.stringOrNull("text"))
-            "intent-start" -> AssistEvent.IntentStart
-            "intent-progress" -> AssistEvent.IntentProgress
-            "intent-end" -> parseIntentEnd(data)
-            "tts-start" -> AssistEvent.TtsStart
             "tts-end" -> AssistEvent.TtsEnd(data.optJSONObject("tts_output")?.stringOrNull("url"))
             "run-end" -> AssistEvent.RunEnd
             "error" -> AssistEvent.Failure(
@@ -129,34 +101,6 @@ internal object AssistPipelineJson {
         }
     }
 
-    private fun parseIntentEnd(data: JSONObject): AssistEvent.IntentEnd {
-        val intent = data.optJSONObject("intent_output")
-        val speech = intent
-            ?.optJSONObject("response")
-            ?.optJSONObject("speech")
-            ?.optJSONObject("plain")
-            ?.stringOrNull("speech")
-        // Core has carried the conversation identity inside intent_output and beside it in different
-        // versions; a run that reads only one of the two silently loses every follow-up exchange.
-        val conversationId = intent?.stringOrNull("conversation_id") ?: data.stringOrNull("conversation_id")
-        val continueConversation = (intent?.optBoolean("continue_conversation") ?: false) ||
-            data.optBoolean("continue_conversation")
-        return AssistEvent.IntentEnd(speech, conversationId, continueConversation)
-    }
-
-    /**
-     * Home Assistant returns reply media as a site-relative path. Resolving it against the session's
-     * own base url keeps playback on the endpoint the panel is authenticated against.
-     */
-    fun resolveMediaUrl(baseUrl: String, url: String): String {
-        if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) return url
-        val base = baseUrl.trim().trimEnd('/')
-        return if (url.startsWith("/")) base + url else "$base/$url"
-    }
-
     private fun JSONObject.stringOrNull(key: String): String? =
         if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() }
-
-    private fun JSONObject.intOrNull(key: String): Int? =
-        if (!has(key) || isNull(key)) null else optInt(key)
 }

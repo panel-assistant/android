@@ -165,25 +165,6 @@ internal fun Route.installPageRoute(
     }
 }
 
-internal fun Route.fleetPageRoute(
-    requestStrings: (ApplicationCall) -> AppStrings,
-    pages: () -> PageShell,
-    httpPort: () -> Int,
-) {
-    get("/fleet") {
-        val strings = requestStrings(call)
-        call.response.headers.append(HttpHeaders.Vary, HttpHeaders.AcceptLanguage)
-        call.response.headers.append(
-            HttpHeaders.ContentLanguage,
-            strings.languages(setOf("shell.", "configure.hardened.", "fleet.")).joinToString(", "),
-        )
-        call.respondText(
-            pages().page("fleet", strings.get("shell.nav.fleet"), fleetBody(strings, httpPort()), strings, call.embedMode()),
-            ContentType.Text.Html,
-        )
-    }
-}
-
 internal fun Route.logsPageRoute(
     requestStrings: (ApplicationCall) -> AppStrings,
     pages: () -> PageShell,

@@ -8,7 +8,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.panelassistant.android.persistence.AppState
 import io.panelassistant.android.util.InstallProgress
 import io.panelassistant.android.util.UpdateChecker
-import io.panelassistant.android.util.WebViewInstaller
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -21,7 +20,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,7 +33,6 @@ class ScheduledInstallInstrumentedTest {
         val original = (LEGACY_VALUES.keys + "http_port").associateWith { preferences.all[it] }
         val port = 18888
         assertFalse("requires a cold service process", health(port).contains(" pkg=${context.packageName}"))
-        assertNull("pending authorized WebView recovery requires a separate test", WebViewInstaller.pendingRollback(context))
         assertFalse("another operation owns the install lane", InstallProgress.running)
         val network = CatalogueOnlyNetwork()
         URL.setURLStreamHandlerFactory(network::handler)

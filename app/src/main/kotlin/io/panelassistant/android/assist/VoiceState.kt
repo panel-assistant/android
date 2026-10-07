@@ -13,8 +13,7 @@ enum class VoiceState {
 /**
  * Single authoritative "what is the voice assistant doing right now" flag.
  *
- * Owned here so the settings/HA surface can exist before the voice-pipeline lane is wired up: that lane
- * drives it via [set] once it exists. Default [VoiceState.OFF] — a panel with voice_enabled off, or
+ * The voice coordinator drives it via [set]. Default [VoiceState.OFF] — a panel with voice_enabled off, or
  * before any pipeline has run, reports OFF rather than an invented state. [setChangeListener] follows the
  * same pattern as `SensorReporter.setLearnedProximityListener`: the listener is expected to resolve the
  * CURRENT bridge generation (e.g. `runtime.observe()?.value?.mqtt`) rather than close over one, so a

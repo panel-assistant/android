@@ -172,6 +172,38 @@ class PanelAssistantVoiceTest {
         )
     }
 
+    @Test fun `a streamed announcement and a streamed reply carry the stream they name, and the URL path carries none`() = runTest {
+        val rig = rig()
+        fun announce(id: String, stream: Any?, streamId: Any? = null) = rig.connection.inbound.trySend(
+            JSONObject().put("id", 1).put("type", "event").put(
+                "event",
+                JSONObject().put("kind", "voice_announce").put("announce_id", id).put("url", "/api/tts_proxy/b.mp3")
+                    .put("listen_after", false).apply {
+                        if (stream != null) put("stream", stream)
+                        if (streamId != null) put("stream_id", streamId)
+                    },
+            ).toString(),
+        )
+        announce("streamed", true, "s1")
+        announce("plain", null)
+        announce("not_boolean", "yes", "s1")
+        announce("no_id", true)
+        announce("id_not_text", true, 7)
+        announce("id_malformed", true, "a b")
+        runCurrent()
+        assertEquals(listOf("s1", null, null, null, null, null), rig.announcements.map { it.stream })
+
+        val turn = rig.voice.begin(null, continued = false)!!
+        runCurrent()
+        val run = rig.connection.sentOfType(PanelAssistantVoice.COMMAND_VOICE_RUN).single()
+        rig.connection.reply(run, JSONObject().put("handler_id", 3))
+        rig.connection.event(run, JSONObject().put("kind", "play").put("url", "/r.mp3").put("stream", true).put("stream_id", "s2"))
+        rig.connection.event(run, JSONObject().put("kind", "play").put("url", "/s.mp3"))
+        runCurrent()
+        assertEquals(VoiceTurnEvent.Play("https://ha.example/r.mp3", false, "s2"), turn.events.receive())
+        assertEquals(VoiceTurnEvent.Play("https://ha.example/s.mp3", false, null), turn.events.receive())
+    }
+
     @Test fun `Home Assistant's pipeline colours reach the panel, and a malformed one is dropped`() = runTest {
         val rig = rig()
         rig.connection.inbound.trySend(
@@ -231,7 +263,9 @@ class PanelAssistantVoiceTest {
         val connection = ScriptedHa(grantVoice = configuration != null)
         val announcements = mutableListOf<PanelAssistantAnnouncement>()
         val colors = mutableListOf<Map<String, Int>>()
-        val voice = PanelAssistantVoice(backgroundScope, { configuration }, { announcements += it }, onColors = { colors += it })
+        val voice = PanelAssistantVoice(
+            backgroundScope, { configuration }, { announcements += it }, onColors = { colors += it },
+        )
         val owner = PanelAssistantTransportOwner(
             scope = backgroundScope,
             auth = HaApiSessionProvider { HaApiSession("https://ha.example", "token", owner = OWNER) },

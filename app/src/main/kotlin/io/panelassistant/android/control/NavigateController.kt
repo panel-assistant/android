@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import io.panelassistant.android.util.CompanionInstaller
 
 /**
  * URL navigate — push a URL for the panel to display. ha-paneld cannot reach into the HA Companion
@@ -42,7 +43,7 @@ class NavigateController(private val context: Context) {
 
     companion object {
         private const val TAG = "ha-paneld/navigate"
-        private const val DEFAULT_COMPANION = "io.homeassistant.companion.android.minimal"
+        private const val DEFAULT_COMPANION = CompanionInstaller.MINIMAL_PKG
 
         internal fun homeUrl(path: String): String = "homeassistant://navigate$path"
     }

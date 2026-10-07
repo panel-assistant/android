@@ -54,6 +54,25 @@ class LedControllerTest {
         assertFalse(led.off())
     }
 
+    @Test fun everyProfileTransferWritesTheSameBytesOnEachChannel() {
+        val gamma = TransferCurve.Gamma(2.2)
+        val points = TransferCurve.Points(listOf(0 to 0, 128 to 32, 255 to 255))
+        val expected = mapOf<LedTransfer, (Int) -> Int>(
+            LedTransfer.Identity to { it },
+            LedTransfer.Rk3576FourBit to { it * 15 / 255 },
+            LedTransfer.curved(gamma) to { gamma.toHardware(it) },
+            LedTransfer.curved(points) to { points.toHardware(it) },
+        )
+        for ((transfer, bytes) in expected) {
+            val driver = FakeNativeDriver()
+            val led = Rk3576LedController(transfer, driver)
+            for (v in 0..255) {
+                assertTrue(led.setRgb(v, 255 - v, v))
+                assertEquals("$transfer at $v", Triple(bytes(v), bytes(255 - v), bytes(v)), driver.lastRgb)
+            }
+        }
+    }
+
     private class FakeNativeDriver : LedNativeDriver {
         var lastRgb: Triple<Int, Int, Int>? = null
         var rgbResult = 0

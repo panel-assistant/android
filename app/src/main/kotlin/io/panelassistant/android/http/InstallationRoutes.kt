@@ -110,7 +110,7 @@ internal fun Route.installationRoutes(
             """{"ok":false,"error":"no-root"}""", ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
         val parameters = receiveBoundedFormParameters(call) ?: return@post
         val pkg = parameters["pkg"]?.trim().orEmpty()
-        val protected = pkg == appContext.packageName || pkg == io.panelassistant.android.util.WebViewInstaller.WEBVIEW_PKG
+        val protected = pkg == appContext.packageName || pkg == io.panelassistant.android.util.AppInstaller.WEBVIEW_PKG
         if (pkg.isEmpty() || protected || !AndroidInput.isPackage(pkg) ||
             pkg !in removablePackages(appContext, config).mapTo(hashSetOf()) { it.first })
             return@post call.respondText("""{"ok":false,"error":"bad-package"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
@@ -175,7 +175,7 @@ private fun removablePackages(appContext: Context, config: Config): List<Pair<St
     }.getOrNull()
     val excluded = setOfNotNull(
         appContext.packageName,
-        io.panelassistant.android.util.WebViewInstaller.WEBVIEW_PKG,
+        io.panelassistant.android.util.AppInstaller.WEBVIEW_PKG,
         config.dashboardPackage.takeIf { it.isNotBlank() && it != SystemController.BUILTIN_DASHBOARD },
         config.launcherPackage.takeIf(String::isNotBlank),
         homePackage,

@@ -337,11 +337,6 @@ internal class AutoBrightnessController(
     }
 
     internal fun historyRows(): List<AmbientHistoryMinute> = history.history()
-    @Synchronized internal fun chartPoints(
-        sensitivity: Int = config.autoBrightnessResponsePercent,
-        minimumPercent: Int = config.autoBrightnessMinimumPercent,
-        maximumPercent: Int = config.autoBrightnessMaximumPercent,
-    ): List<AdaptiveChartPoint> = chartSnapshot(sensitivity, minimumPercent, maximumPercent).points
 
     @Synchronized internal fun chartSnapshot(
         sensitivity: Int = config.autoBrightnessResponsePercent,
@@ -370,7 +365,6 @@ internal class AutoBrightnessController(
             ),
         )
     }
-    internal fun solarLocation(): SolarLocation? = location
     internal fun timeZone(): TimeZone = zone
 
     private fun tickSafely() {

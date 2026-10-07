@@ -44,8 +44,6 @@ object SelfUpdater {
     fun successorAssetUrl(version: String): String? =
         ReleaseCatalog.apkUrl(REPO, "v${version.removePrefix("v")}", ::isSuccessorAsset)
 
-    /** The release-notes page for an exact [tag]; the tag grammar keeps the value inside the URL path. */
-    fun releaseNotesUrl(tag: String): String? = if (ReleaseCatalog.validTag(tag)) "$RELEASES_URL/tag/$tag" else null
 
     /** Up to [limit] recent versions on [channel] for the Install-tab picker (version + release-notes URL). */
     fun versions(channel: String, limit: Int = 10): List<ReleaseCatalog.Version> {
@@ -116,8 +114,6 @@ object SelfUpdater {
 
     /** Install a specific ha-paneld release by its [tag]. The tag is validated and resolved back through
      *  the fixed repository before the package/signer-pinned installer sees its asset. */
-    suspend fun installVersion(context: Context, tag: String): String = installVersionResult(context, tag).message
-
     internal suspend fun installVersionResult(context: Context, tag: String): InstallOperationResult =
         withContext(Dispatchers.IO) {
             val version = tag.removePrefix("v")

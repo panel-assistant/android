@@ -36,6 +36,8 @@ internal data class PanelAssistantSession(
     val connection: io.panelassistant.android.HaConnectionAdvertisement? = null,
     val lifecycle: HaLifecycleNotice? = null,
     val updatePolicy: PanelAssistantUpdatePolicy? = null,
+    /** Panel Assistant's voice stream pairing, present exactly when the session granted `voice_stream_session`. */
+    val voiceStream: PanelAssistantVoiceStreamGrant? = null,
 ) {
     /** The session token is a bearer for this session's requests, and the embed key a secret; keep both out of logs. */
     override fun toString(): String =
@@ -50,6 +52,19 @@ internal class PanelAssistantEmbedGrant(val keyId: String, key: ByteArray) {
     fun key(): ByteArray = key.copyOf()
 
     override fun toString(): String = "PanelAssistantEmbedGrant(keyId=$keyId)"
+}
+
+/**
+ * Panel Assistant's voice stream for this panel (`hello` result field `voice_stream_session`): the Sendspin
+ * server's public key the panel must find over the session, and the long-term pairing key the two share.
+ * The key is a secret: never logged.
+ */
+internal class PanelAssistantVoiceStreamGrant(val serverId: String, psk: ByteArray) {
+    private val psk = psk.copyOf()
+
+    fun psk(): ByteArray = psk.copyOf()
+
+    override fun toString(): String = "PanelAssistantVoiceStreamGrant(serverId=$serverId)"
 }
 
 internal sealed interface PanelAssistantHelloOutcome {
@@ -75,6 +90,20 @@ internal sealed interface PanelAssistantSessionEvent {
         val session: String?,
         val channel: String?,
         val value: Any?,
+        val deadlineMs: Long?,
+    ) : PanelAssistantSessionEvent
+
+    /**
+     * A management request ([op] `snapshot` or `settings`) on a session that granted `management`. Its
+     * [session], [commandId] and [deadlineMs] mean what a command's do; [settings] is null when absent or
+     * malformed.
+     */
+    data class Manage(
+        val commandId: String,
+        val session: String?,
+        val op: String,
+        val updateOwner: Boolean,
+        val settings: Map<String, String>?,
         val deadlineMs: Long?,
     ) : PanelAssistantSessionEvent
 
@@ -149,6 +178,21 @@ internal object PanelAssistantTransportProtocol {
      */
     const val CAPABILITY_MEDIA = "media"
 
+    /**
+     * The panel plays voice from Panel Assistant's Sendspin stream, in step with the other panels, carried
+     * inside this session. Offered with the panel's client id in the hello's `voice_stream_session` object;
+     * granting it makes the reply's `voice_stream_session` grant required.
+     */
+    const val CAPABILITY_VOICE_STREAM_SESSION = "voice_stream_session"
+
+    /**
+     * Panel Assistant reads this panel's health and status, and writes its settings, on the session
+     * ([PanelAssistantManagement]) rather than by opening a connection back to it.
+     */
+    const val CAPABILITY_MANAGEMENT = "management"
+    const val MANAGE_SNAPSHOT = "snapshot"
+    const val MANAGE_SETTINGS = "settings"
+
     /** Channels described only once the session grants the capability that names them. */
     val GATED_CHANNELS: Map<String, String> = mapOf(CAPABILITY_MEDIA to "media")
 
@@ -197,6 +241,8 @@ internal object PanelAssistantTransportProtocol {
             CAPABILITY_EMBED_PROOF,
             CAPABILITY_VOICE,
             CAPABILITY_MEDIA,
+            CAPABILITY_VOICE_STREAM_SESSION,
+            CAPABILITY_MANAGEMENT,
         )
 
     /**
@@ -205,7 +251,7 @@ internal object PanelAssistantTransportProtocol {
      * text, so a change to the handshake vocabulary changes the digest the integration records.
      */
     internal const val CANONICAL_CONTRACT: String =
-        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media"]}"""
+        """{"protocol":{"min":3,"max":3},"commands":["panel_assistant/hello","panel_assistant/report_state","panel_assistant/command_result","panel_assistant/restart_notice","panel_assistant/voice_configuration","panel_assistant/voice_run","panel_assistant/voice_played","panel_assistant/voice_stream_frame","panel_assistant/voice_stream_stop"],"capabilities":["state","commands","approval","mqtt_withdraw","embed_proof","voice","media","voice_stream_session","management"]}"""
 
     val CONTRACT_DIGEST: String = MessageDigest.getInstance("SHA-256")
         .digest(CANONICAL_CONTRACT.toByteArray(Charsets.UTF_8))
@@ -226,6 +272,8 @@ internal object PanelAssistantTransportProtocol {
         channels: List<PanelAssistantChannelDescriptor> = emptyList(),
         unsupported: List<String> = emptyList(),
         addresses: List<String> = emptyList(),
+        /** The panel's Sendspin client id, sent exactly when [capabilities] offers `voice_stream_session`. */
+        voiceStreamClientId: String? = null,
     ): String = JSONObject()
         .put("id", id)
         .put("type", COMMAND_HELLO)
@@ -242,6 +290,11 @@ internal object PanelAssistantTransportProtocol {
         // An explicit statement that these channels cannot be served here, so the integration removes their
         // entities; a channel merely absent from both lists changes nothing. Omitted when empty.
         .apply { if (unsupported.isNotEmpty()) put("unsupported", JSONArray(unsupported)) }
+        .apply {
+            if (voiceStreamClientId != null && CAPABILITY_VOICE_STREAM_SESSION in capabilities) {
+                put("voice_stream_session", JSONObject().put("client_id", voiceStreamClientId))
+            }
+        }
         .toString()
 
     fun reportState(id: Long, session: String, sync: String, observations: JSONArray): String = JSONObject()
@@ -280,8 +333,15 @@ internal object PanelAssistantTransportProtocol {
         return PanelAssistantReportResult.Acknowledged(id, rejected)
     }
 
-    /** The one final (or `pending_approval` interim) answer to a delivered command. */
-    fun commandResult(id: Long, session: String, commandId: String, outcome: String, code: String?): String =
+    /** The one final (or `pending_approval` interim) answer to a delivered command or management request. */
+    fun commandResult(
+        id: Long,
+        session: String,
+        commandId: String,
+        outcome: String,
+        code: String?,
+        result: JSONObject? = null,
+    ): String =
         JSONObject()
             .put("id", id)
             .put("type", COMMAND_COMMAND_RESULT)
@@ -289,6 +349,7 @@ internal object PanelAssistantTransportProtocol {
             .put("command_id", commandId)
             .put("outcome", outcome)
             .apply { if (code != null) put("code", code) }
+            .apply { if (result != null) put("result", result) }
             .toString()
 
     fun ping(id: Long): String = JSONObject().put("id", id).put("type", "ping").toString()
@@ -372,11 +433,18 @@ internal object PanelAssistantTransportProtocol {
         } else {
             null
         }
+        val voiceStream = if (CAPABILITY_VOICE_STREAM_SESSION in capabilities) {
+            voiceStreamGrant(result.optJSONObject("voice_stream_session"))
+                ?: throw PanelAssistantProtocolException("hello result grants voice_stream_session without a usable grant")
+        } else {
+            null
+        }
         return PanelAssistantHelloOutcome.Accepted(
             PanelAssistantSession(protocol, token, authority, capabilities, integrationVersion, mqttDiscovery, embed,
                 io.panelassistant.android.HaConnectionAdvertisement.parse(result.optJSONObject("connection")),
                 lifecycleNotice(result.optJSONObject("lifecycle")),
-                updatePolicy(result, protocol)),
+                updatePolicy(result, protocol),
+                voiceStream),
         )
     }
 
@@ -407,12 +475,22 @@ internal object PanelAssistantTransportProtocol {
         return PanelAssistantEmbedGrant(keyId, bytes)
     }
 
+    private fun voiceStreamGrant(grant: JSONObject?): PanelAssistantVoiceStreamGrant? {
+        val serverId = (grant?.opt("server_id") as? String)?.takeIf(EMBED_KEY::matches) ?: return null
+        val psk = (grant.opt("psk") as? String)?.takeIf(EMBED_KEY::matches) ?: return null
+        // Forty-three base64url characters are exactly 32 bytes, as a Sendspin key and PSK are.
+        val bytes = runCatching { java.util.Base64.getUrlDecoder().decode(psk) }.getOrNull() ?: return null
+        if (runCatching { java.util.Base64.getUrlDecoder().decode(serverId) }.isFailure) return null
+        return PanelAssistantVoiceStreamGrant(serverId, bytes)
+    }
+
     /** Interpret an event on the `hello` subscription [helloId]; null for any other frame. */
     fun sessionEvent(frame: JSONObject, helloId: Long): PanelAssistantSessionEvent? {
         if (frame.optString("type") != "event" || messageId(frame) != helloId) return null
         val event = frame.optJSONObject("event") ?: return PanelAssistantSessionEvent.Ignored("")
         val kind = (event.opt("kind") as? String)?.takeIf(CODE::matches).orEmpty()
         if (kind == "command") return command(event)
+        if (kind == "manage") return manage(event)
         if (kind == "lifecycle") return lifecycleNotice(event)?.let { PanelAssistantSessionEvent.Lifecycle(it) }
             ?: PanelAssistantSessionEvent.Ignored(kind)
         if (kind != "session_closed") return PanelAssistantSessionEvent.Ignored(kind)
@@ -450,21 +528,38 @@ internal object PanelAssistantTransportProtocol {
         return HaLifecycleNotice(phase, reason, elapsed, expected)
     }
 
+    private fun deadline(event: JSONObject): Long? = when (val raw = event.opt("deadline_ms")) {
+        null -> DEFAULT_DEADLINE_MS
+        is Int -> raw.toLong().takeIf { it in 1..MAX_DEADLINE_MS }
+        is Long -> raw.takeIf { it in 1..MAX_DEADLINE_MS }
+        else -> null
+    }
+
     private fun command(event: JSONObject): PanelAssistantSessionEvent {
         val commandId = (event.opt("command_id") as? String)?.takeIf(COMMAND_ID::matches)
             ?: return PanelAssistantSessionEvent.MalformedCommand
-        val deadline = when (val raw = event.opt("deadline_ms")) {
-            null -> DEFAULT_DEADLINE_MS
-            is Int -> raw.toLong().takeIf { it in 1..MAX_DEADLINE_MS }
-            is Long -> raw.takeIf { it in 1..MAX_DEADLINE_MS }
-            else -> null
-        }
         return PanelAssistantSessionEvent.Command(
             commandId = commandId,
             session = event.opt("session") as? String,
             channel = (event.opt("channel") as? String)?.takeIf(CODE::matches),
             value = if (event.has("value")) event.opt("value") else null,
-            deadlineMs = deadline,
+            deadlineMs = deadline(event),
+        )
+    }
+
+    private fun manage(event: JSONObject): PanelAssistantSessionEvent {
+        val commandId = (event.opt("command_id") as? String)?.takeIf(COMMAND_ID::matches)
+            ?: return PanelAssistantSessionEvent.MalformedCommand
+        val settings = event.optJSONObject("settings")?.let { json ->
+            json.keys().asSequence().associateWith { key -> json.opt(key) as? String ?: return@let null }
+        }
+        return PanelAssistantSessionEvent.Manage(
+            commandId = commandId,
+            session = event.opt("session") as? String,
+            op = (event.opt("op") as? String)?.takeIf(CODE::matches).orEmpty(),
+            updateOwner = event.opt("update_owner") == true,
+            settings = settings,
+            deadlineMs = deadline(event),
         )
     }
 }

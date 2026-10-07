@@ -21,9 +21,19 @@ internal fun Route.healthRoute(
     panelAssistantRestartHealth: () -> String,
 ) {
     get("/health") {
-        call.respondText("ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n")
+        call.respondText(healthLine(config, packageName, buildToken, renderConfigConcurrencyHash, panelAssistantRestartHealth))
     }
 }
+
+/** The one health line, served at `/health` and read by Panel Assistant over its session. */
+internal fun healthLine(
+    config: Config,
+    packageName: String,
+    buildToken: () -> String,
+    renderConfigConcurrencyHash: () -> String,
+    panelAssistantRestartHealth: () -> String,
+): String =
+    "ha-paneld ${Config.VERSION} panel=${config.panelId} build=${buildToken()} cfg=${renderConfigConcurrencyHash()}${panelAssistantDiscoveryHealthToken(config.deviceUid, config.androidId)}${packageHealthToken(packageName)}${versionCodeHealthToken(BuildConfig.VERSION_CODE)}${haLifecycleHealthToken()}${haNetworkHealthToken()}${panelAssistantRestartHealth()} pa_notice=${if (config.migrationNoticeVisible()) 1 else 0}\n"
 
 internal fun Route.migrationNoticeRoute(config: Config) {
     post("/migration-notice/dismiss") {

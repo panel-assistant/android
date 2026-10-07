@@ -129,6 +129,11 @@ internal data class VoiceAnnouncement(
     val preannounceUrl: String?,
     /** Listen for an answer afterwards, as for `start_conversation`. */
     val listenAfter: Boolean,
+    /**
+     * The stream id if Panel Assistant streams the announcement, chime and speech together; null plays
+     * [preannounceUrl] and [url] as before.
+     */
+    val stream: String? = null,
     /** Called once the announcement has played, or could not be. */
     val done: () -> Unit,
 )
@@ -363,6 +368,12 @@ class VoiceAssistantCoordinator internal constructor(
     private fun beginRun(activation: WakeWordActivation?, current: VoiceSettings): RunAdmission =
         beginRun(activation, current, null)
 
+    /** A media player announcement Panel Assistant streams: played like a satellite announcement, wake word paused. */
+    internal fun announceStreamedMedia(url: String, stream: String): Boolean {
+        announce(VoiceAnnouncement(url, null, listenAfter = false, done = {}, stream = stream))
+        return true
+    }
+
     /**
      * Play what Home Assistant asked the panel to say, replacing whatever it was saying or hearing: Home
      * Assistant has already ended that pipeline. The wake-word listener is paused for the playback, so the
@@ -400,7 +411,7 @@ class VoiceAssistantCoordinator internal constructor(
         // still plays where the microphone has not proven itself.
         val usable = microphoneStatus().usable
         if (announcement == null && !usable) return RunAdmission.NOT_ELIGIBLE
-        val listens = announcement == null || (announcement.listenAfter && usable)
+        var listens = announcement == null || (announcement.listenAfter && usable)
         val mic = obtainSource()
         if (listens && mic == null) return RunAdmission.NOT_ELIGIBLE
         synchronized(lock) {
@@ -419,8 +430,14 @@ class VoiceAssistantCoordinator internal constructor(
                     if (announcement != null) {
                         state.set(VoiceState.RESPONDING)
                         val played = runCatching {
-                            announcement.preannounceUrl?.let { playback.play(it) }
-                            playback.play(announcement.url)
+                            val stream = announcement.stream
+                            if (stream != null) {
+                                // Panel Assistant's end decides whether to listen, within what the event allowed.
+                                if (!playback.playStream(stream)) listens = false
+                            } else {
+                                announcement.preannounceUrl?.let { playback.play(it) }
+                                playback.play(announcement.url)
+                            }
                         }
                         announcement.done()
                         played.exceptionOrNull()?.let { if (it is CancellationException) throw it }

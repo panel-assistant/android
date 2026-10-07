@@ -33,7 +33,7 @@ class SocketLedController(
     override fun colorCapable(): Boolean = true
 
     override fun setRgb(r: Int, g: Int, b: Int): Boolean {
-        val ok = daemon.send("RGB ${clamp(transfer.red(r))} ${clamp(transfer.green(g))} ${clamp(transfer.blue(b))}") == "OK"
+        val ok = daemon.send("RGB ${clamp(transfer.toHardware(r))} ${clamp(transfer.toHardware(g))} ${clamp(transfer.toHardware(b))}") == "OK"
         if (!ok) Log.w(TAG, "setRgb failed")
         return ok
     }

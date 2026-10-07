@@ -1,5 +1,7 @@
 package io.panelassistant.android.util
 
+import io.panelassistant.android.RendererResolver
+
 /** Narrow Android package/component grammar safe for direct interpolation into privileged commands. */
 object AndroidInput {
     private val PACKAGE = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
@@ -14,5 +16,5 @@ object AndroidInput {
 
     /** Stored dashboard target: blank means auto-detect and `builtin` selects ha-paneld's renderer. */
     fun isDashboardTarget(value: String): Boolean =
-        value.isEmpty() || value == "builtin" || isPackage(value)
+        value.isEmpty() || value == RendererResolver.BUILTIN || isPackage(value)
 }

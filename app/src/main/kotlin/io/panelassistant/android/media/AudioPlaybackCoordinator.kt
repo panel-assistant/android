@@ -23,6 +23,13 @@ internal interface AudioPlaybackRun {
 internal fun interface AudioPlaybackRunFactory {
     fun create(url: String): AudioPlaybackRun
     fun createSpeech(url: String): AudioPlaybackRun = create(url)
+
+    /** Speech Panel Assistant streams as [streamId]: held until that stream's end. */
+    fun createStream(streamId: String): AudioPlaybackRun =
+        throw UnsupportedOperationException("this panel has no voice stream")
+
+    /** How stream [streamId] ended, once it has. */
+    fun streamEnded(streamId: String): VoiceStreamEnd? = null
 }
 
 /** Owns one latest-wins announcement lane for the service lifetime. */
@@ -52,7 +59,12 @@ internal class AudioPlaybackCoordinator(
         }
     }
 
-    private data class Request(val generation: Long, val url: String, val speech: Boolean)
+    private data class Request(
+        val generation: Long,
+        val url: String,
+        val speech: Boolean,
+        val stream: String? = null,
+    )
     private class Active(val generation: Long, val run: AudioPlaybackRun, val job: Job) {
         private val cancelled = AtomicBoolean(false)
         fun cancel() {
@@ -89,9 +101,22 @@ internal class AudioPlaybackCoordinator(
      * later announcement's generation and leave the caller watching work that is not its own.
      */
     @Synchronized
-    fun submitForGeneration(url: String, speech: Boolean = false): Long? {
+    fun submitForGeneration(url: String, speech: Boolean = false): Long? = admit(url, speech, null)
+
+    /**
+     * As [submitForGeneration], for speech Panel Assistant streams as [streamId]: the run holds the lane, and
+     * so the panel's media, until Panel Assistant ends that stream. A newer request replaces it, and
+     * cancelling it stops the stream on this panel.
+     */
+    @Synchronized
+    fun submitStreamForGeneration(streamId: String): Long? = admit("", true, streamId)
+
+    /** How stream [streamId] ended, once it has. */
+    fun streamEnded(streamId: String): VoiceStreamEnd? = factory.streamEnded(streamId)
+
+    private fun admit(url: String, speech: Boolean, stream: String?): Long? {
         if (closed) return null
-        val request = Request(++generation, url, speech)
+        val request = Request(++generation, url, speech, stream)
         snapshot = Snapshot(State.QUEUED, request.generation)
         if (requests.trySend(request).isSuccess) return request.generation
         closed = true
@@ -165,7 +190,11 @@ internal class AudioPlaybackCoordinator(
                 if (!isPending(request.generation)) continue
 
                 val run = try {
-                    if (request.speech) factory.createSpeech(request.url) else factory.create(request.url)
+                    when {
+                        request.stream != null -> factory.createStream(request.stream)
+                        request.speech -> factory.createSpeech(request.url)
+                        else -> factory.create(request.url)
+                    }
                 } catch (error: Throwable) {
                     fail(request.generation, error)
                     continue

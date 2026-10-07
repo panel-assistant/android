@@ -182,35 +182,6 @@ class WakeRippleView @JvmOverloads constructor(
         }
     }
 
-    fun startRippleAt(x: Float, y: Float) {
-        runWhenSized {
-            origin.set(x, y)
-            maxRadius = maxOf(width, height) * 0.8f
-
-            animator?.cancel()
-            timeAnimator?.cancel()
-
-            animator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = RIPPLE_DURATION
-                interpolator = DecelerateInterpolator(2f)
-                addUpdateListener { animation ->
-                    progress = animation.animatedValue as Float
-                    invalidate()
-                }
-                start()
-            }
-
-            timeAnimator = ValueAnimator.ofFloat(0f, RIPPLE_DURATION.toFloat()).apply {
-                duration = RIPPLE_DURATION
-                repeatCount = 0
-                addUpdateListener { animation ->
-                    time = animation.animatedValue as Float
-                }
-                start()
-            }
-        }
-    }
-
     private val currentRadius: Float
         get() {
             val eased = 1 - (1 - progress).let { it * it * it }

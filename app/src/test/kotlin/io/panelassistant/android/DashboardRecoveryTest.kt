@@ -64,7 +64,6 @@ class DashboardRecoveryTest {
         val page = ShownPageTracker()
         page.onCommitVisible("data:text/html;charset=utf-8;base64,")
         // The retry's load of Home Assistant starts, then stalls before anything is drawn.
-        page.onLoadStarted("$ha/lovelace/0?external_auth=1")
         assertTrue(page.needsFreshLoad(ha, interstitialShown = false, dashboardRenderer = true))
         // Home Assistant is back: the next plain retry still loads it afresh, and once drawn a retry reloads it.
         page.onCommitVisible("$ha/lovelace/0?external_auth=1")

@@ -1,7 +1,5 @@
 package io.panelassistant.android.util
 
-import android.content.ContextWrapper
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,13 +17,17 @@ class WebViewRollbackInstallTest {
         assertFalse(AppInstaller.mayCommitPinnedInstall { error("renderer selection unavailable") })
     }
 
-    @Test fun restoreRefusesChangedApkBytesBeforeAnyPackageOrInstallAdmission() = runBlocking {
-        val apk = files.newFile("previous.apk").apply { writeText("changed bytes") }
-        val ctx = ContextWrapper(null)
+    @Test fun aRetiredWebViewRollbackLeavesNothingBehindAndASecondSweepIsHarmless() {
+        val dir = files.newFolder()
+        val retired = listOf(
+            "webview-previous.apk", "webview-previous.json", "webview-rollback-attempted.json", "webview-rollback-diagnostic.txt",
+        ).map { java.io.File(dir, it).apply { writeText("left by an older build") } }
+        val unrelated = java.io.File(dir, "config-revisions").apply { writeText("kept") }
 
-        val result = AppInstaller.restorePinnedWebView(ctx, apk, "b".repeat(64), "a".repeat(64))
-        assertTrue(result is InstallOutcome.Rejected)
-        assertEquals("refused (APK checksum mismatch)", (result as InstallOutcome.Rejected).message)
-        assertTrue(apk.exists())
+        AppInstaller.deleteRetiredWebViewRollback(dir)
+        AppInstaller.deleteRetiredWebViewRollback(dir)
+
+        assertEquals(emptyList<java.io.File>(), retired.filter { it.exists() })
+        assertTrue(unrelated.exists())
     }
 }

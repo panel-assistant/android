@@ -21,7 +21,7 @@ class Rk3576LedController(
     override fun colorCapable(): Boolean = true
 
     override fun setRgb(r: Int, g: Int, b: Int): Boolean {
-        val rc = driver.setRgb(transfer.red(r), transfer.green(g), transfer.blue(b))
+        val rc = driver.setRgb(transfer.toHardware(r), transfer.toHardware(g), transfer.toHardware(b))
         if (rc != 0) Log.w(TAG, "setRgb failed rc=$rc") else Log.d(TAG, "rgb -> ($r,$g,$b)")
         return rc == 0
     }

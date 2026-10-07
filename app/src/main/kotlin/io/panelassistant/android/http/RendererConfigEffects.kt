@@ -36,7 +36,6 @@ internal data class RendererConfigEffects(
                 credentialChanged = credentialsChanged(previous, accepted),
                 zoomChanged = changed("dashboard_zoom"),
                 fullscreenChanged = changed("dashboard_fullscreen"),
-                overscrollChanged = changed("dashboard_overscroll"),
                 nativeKioskChanged = changed("dashboard_native_kiosk"),
                 homeChanged = changed("home_dashboard"),
                 darkMode = accepted["dark_mode"]?.toBooleanStrictOrNull()
@@ -53,7 +52,6 @@ internal data class RendererConfigEffects(
             credentialChanged: Boolean,
             zoomChanged: Boolean,
             fullscreenChanged: Boolean,
-            overscrollChanged: Boolean,
             nativeKioskChanged: Boolean = false,
             // A new home path only took effect on the next incidental reload, so editing it in the UI
             // appeared to do nothing. A change reloads the built-in renderer onto the new home now.
@@ -66,7 +64,7 @@ internal data class RendererConfigEffects(
             val reload = !dashboardChanged &&
                 (credentialChanged || zoomChanged || homeChanged || darkMode != null || themePolicyChanged)
             val relaunch = !dashboardChanged && !reload &&
-                (fullscreenChanged || overscrollChanged || nativeKioskChanged)
+                (fullscreenChanged || nativeKioskChanged)
             return RendererConfigEffects(dashboardChanged, reload, relaunch, darkMode)
         }
     }

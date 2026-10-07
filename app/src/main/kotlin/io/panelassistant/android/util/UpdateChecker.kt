@@ -1,9 +1,6 @@
 package io.panelassistant.android.util
 
 import android.content.Context
-import android.os.SystemClock
-import io.panelassistant.android.appVersion
-import io.panelassistant.android.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -11,8 +8,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
- * Checks GitHub releases for available updates to ha-paneld and the installed HA Companion app. Catalog
- * state is cached, but every entry remains tied to the channel and device safety policy used to resolve it.
+ * Checks GitHub releases for available updates to the installed HA Companion app. Panel Assistant owns
+ * offers for the panel app itself. Catalog state is cached, but every entry remains tied to the channel
+ * and device safety policy used to resolve it.
  */
 object UpdateChecker {
 
@@ -28,9 +26,6 @@ object UpdateChecker {
         /** Authoritative source-release classification; never infer stability from version text alone. */
         val prerelease: Boolean = false,
     ) {
-        val displayedCurrentVersion: String
-            get() = if (component == "paneld") appVersion(currentVersion) else currentVersion
-
         constructor(
             label: String,
             currentVersion: String,
@@ -41,8 +36,6 @@ object UpdateChecker {
 
     internal data class CompanionPolicy(val channel: String, val maxVersion: String?)
 
-    internal data class RequestedPolicies(val paneldChannel: String, val companion: CompanionPolicy)
-
     internal sealed interface Resolution {
         data class Resolved(val update: UpdateInfo?) : Resolution
         data object Failed : Resolution
@@ -50,12 +43,8 @@ object UpdateChecker {
 
     internal data class CacheReconciliation(
         val available: List<UpdateInfo>,
-        val paneldCacheChannel: String?,
         val companionCachePolicy: CompanionPolicy?,
-        val complete: Boolean,
     )
-
-    private data class CacheKey(val paneldChannel: String, val companionChannel: String, val companionCap: String?)
 
     /**
      * The newest catalog release for one component, kept whether or not it is newer than what is
@@ -79,45 +68,18 @@ object UpdateChecker {
 
     /** Called after every completed [check]; the service republishes the update entities from it. */
     @Volatile var onChecked: (() -> Unit)? = null
-    @Volatile private var lastCheckElapsedMs = -1L
-    @Volatile private var cacheKey: CacheKey? = null
-    @Volatile private var paneldCacheChannel: String? = null
     @Volatile private var companionCachePolicy: CompanionPolicy? = null
     private val checkMutex = Mutex()
 
-    /** True when a monotonic cache stamp is absent, rolled back, expired, or belongs to another policy. */
-    internal fun shouldCheck(nowMs: Long, lastMs: Long, staleMs: Long, samePolicy: Boolean): Boolean =
-        !samePolicy || lastMs < 0L || nowMs < lastMs || nowMs - lastMs > staleMs
-
-    /** Check only when the cache is stale or was resolved for different channels/cap. */
-    suspend fun checkIfStale(
-        context: Context,
-        channel: String = "stable",
-        staleMs: Long = 3_600_000L,
-        companionChannel: String = "stable",
-        companionMaxVersion: String?,
-    ) {
-        val key = CacheKey(channel, companionChannel, companionMaxVersion)
-        if (shouldCheck(SystemClock.elapsedRealtime(), lastCheckElapsedMs, staleMs, cacheKey == key)) {
-            check(context, channel, companionChannel, companionMaxVersion)
-        }
-    }
-
-    /** Resolve both components under one serialized cache transaction. A failed component lookup keeps its
-     *  last-known result and leaves the cache stale so a later stale check can retry; a successful lookup
-     *  authoritatively adds or removes that component's update. */
+    /** Resolve the Companion under one serialized cache transaction. A failed lookup keeps its last-known
+     *  result; a successful lookup authoritatively adds or removes the update. */
     suspend fun check(
         context: Context,
-        channel: String = "stable",
         companionChannel: String = "stable",
         companionMaxVersion: String?,
     ) = withContext(Dispatchers.IO) {
         checkMutex.withLock {
             val previous = available
-            val current = BuildConfig.VERSION_NAME
-            // Panel Assistant owns panel-app offers; this local catalogue retains Companion only.
-            val paneldResolution = Resolution.Resolved(null)
-
             val companion = installedCompanion(context)
             // Resolved even when no Companion is installed: absent is an installable state for the
             // update entity. The banner's `available` projection below still ignores an absent app.
@@ -138,17 +100,14 @@ object UpdateChecker {
                 }
             }
 
-            val requestedPolicies = RequestedPolicies(channel, CompanionPolicy(companionChannel, companionMaxVersion))
+            val requested = CompanionPolicy(companionChannel, companionMaxVersion)
             val reconciled = reconcileCache(
                 previous = previous,
-                requested = requestedPolicies,
-                paneldCachedChannel = paneldCacheChannel,
+                requested = requested,
                 companionCachedPolicy = companionCachePolicy,
-                paneldResolution = paneldResolution,
                 companionResolution = companionResolution,
             )
             available = reconciled.available
-            paneldCacheChannel = reconciled.paneldCacheChannel
             companionCachePolicy = reconciled.companionCachePolicy
             // A failed lookup keeps the previous target; readers only accept one resolved under their
             // exact policy, so a target from another channel or cap can never be reused.
@@ -163,20 +122,10 @@ object UpdateChecker {
                     newestVersion = it.newestVersion,
                 )
             }
-            if (reconciled.complete && companionResolved != null) {
-                cacheKey = CacheKey(channel, companionChannel, companionMaxVersion)
-                lastCheckElapsedMs = SystemClock.elapsedRealtime()
-            } else {
-                cacheKey = null
-                lastCheckElapsedMs = -1L
-            }
         }
         onChecked?.let { runCatching { it() } }
         Unit
     }
-
-    /** Panel Assistant owns panel-app offers, including after a process restart. */
-    internal fun paneldTarget(channel: String): ResolvedTarget? = null
 
     /** The Companion target resolved under exactly [channel] and [cap], or null. Never triggers a lookup. */
     internal fun companionTarget(channel: String, cap: String?): ResolvedTarget? =
@@ -186,15 +135,13 @@ object UpdateChecker {
     internal fun samePolicy(target: ResolvedTarget?, channel: String, cap: String?): ResolvedTarget? =
         target?.takeIf { it.channel == channel && it.cap == cap }
 
-    /**
-     * Restore the Companion target from an earlier process. Historical panel-app targets are ignored:
-     * remembered catalogue data has no authority over the live Panel Assistant's update policy.
-     */
-    internal fun restoreTargets(paneld: String, companion: String) {
+    /** Restore the Companion target from an earlier process. */
+    internal fun restoreTargets(companion: String) {
         if (resolvedCompanion == null) resolvedCompanion = decodeTarget(companion)
     }
 
-    /** The current targets encoded for [restoreTargets]; blank when a component has none. */
+    /** The current targets encoded for [restoreTargets], in the stored pair whose retired panel-app half
+     *  stays blank; blank when the Companion has none. */
     internal fun persistableTargets(): Pair<String, String> =
         "" to (resolvedCompanion?.let(::encodeTarget) ?: "")
 
@@ -242,30 +189,22 @@ object UpdateChecker {
             is ComponentUpdater.Outcome.Update -> Resolution.Resolved(update(target))
         }
 
-    /** Pure cache transaction: failures preserve only an entry resolved for the exact requested policy, while a successful null result authoritatively clears that component. A transaction is fresh only when both lookups resolved. */
+    /** Pure cache transaction: a failure preserves only an entry resolved for the exact requested policy,
+     *  while a successful null result authoritatively clears it. */
     internal fun reconcileCache(
         previous: List<UpdateInfo>,
-        requested: RequestedPolicies,
-        paneldCachedChannel: String?,
+        requested: CompanionPolicy,
         companionCachedPolicy: CompanionPolicy?,
-        paneldResolution: Resolution,
         companionResolution: Resolution,
     ): CacheReconciliation {
-        val previousPaneld = previous.firstOrNull { it.label == PANELD_LABEL }
-        val previousCompanion = previous.firstOrNull { it.label == COMPANION_LABEL }
-        val paneld = when (paneldResolution) {
-            is Resolution.Resolved -> paneldResolution.update
-            Resolution.Failed -> previousPaneld.takeIf { paneldCachedChannel == requested.paneldChannel }
-        }
         val companion = when (companionResolution) {
             is Resolution.Resolved -> companionResolution.update
-            Resolution.Failed -> previousCompanion.takeIf { companionCachedPolicy == requested.companion }
+            Resolution.Failed -> previous.firstOrNull { it.label == COMPANION_LABEL }
+                .takeIf { companionCachedPolicy == requested }
         }
         return CacheReconciliation(
-            available = listOfNotNull(paneld, companion),
-            paneldCacheChannel = if (paneldResolution is Resolution.Resolved) requested.paneldChannel else paneldCachedChannel,
-            companionCachePolicy = if (companionResolution is Resolution.Resolved) requested.companion else companionCachedPolicy,
-            complete = paneldResolution is Resolution.Resolved && companionResolution is Resolution.Resolved,
+            available = listOfNotNull(companion),
+            companionCachePolicy = if (companionResolution is Resolution.Resolved) requested else companionCachedPolicy,
         )
     }
 
@@ -278,43 +217,6 @@ object UpdateChecker {
         val companion = installedCompanion(context)
         return filterCurrent(filterIgnored(available, ignored), companion?.second)
     }
-
-    /** The only cached ha-paneld release observation Panel Assistant may surface.
-     *
-     * This is deliberately a projection of [current], not a release resolver: it never calls
-     * [check], [checkIfStale], GitHub, or the installer. A cache entry is usable only when it is the
-     * ha-paneld component, a strictly newer stable target, and carries the exact tag that resolved it.
-     * Anything incomplete, malformed, pre-release, ambiguous, or otherwise outside the bounded grammar
-     * is represented as absence instead of being guessed or exposed.
-     */
-    internal data class PanelAssistantUpdate(
-        val currentVersion: String,
-        val targetVersion: String,
-        val tag: String,
-    )
-
-    internal fun panelAssistantUpdate(current: List<UpdateInfo>): PanelAssistantUpdate? {
-        val update = current.singleOrNull { it.component == "paneld" } ?: return null
-        val currentVersion = update.currentVersion
-        val targetVersion = update.latestVersion
-        val tag = update.tag ?: return null
-        if (update.prerelease ||
-            !PANEL_ASSISTANT_CURRENT_VERSION.matches(currentVersion) ||
-            !PANEL_ASSISTANT_STABLE_VERSION.matches(targetVersion) ||
-            !ReleaseCatalog.validTag(tag) ||
-            tag.removePrefix("v") != targetVersion ||
-            !isNewer(targetVersion, currentVersion)
-        ) return null
-        return PanelAssistantUpdate(currentVersion, targetVersion, tag)
-    }
-
-    /** Bounded JSON for the additive `panel_assistant_update` status object. `none` means no safe
-     * cached stable target is available; it does not claim that a release lookup was performed. */
-    internal fun panelAssistantUpdateJson(current: List<UpdateInfo>): String =
-        panelAssistantUpdate(current)?.let { update ->
-            "{\"state\":\"available\",\"current_version\":${JSONObject.quote(update.currentVersion)}," +
-                "\"target_version\":${JSONObject.quote(update.targetVersion)},\"tag\":${JSONObject.quote(update.tag)}}"
-        } ?: "{\"state\":\"none\"}"
 
     private fun installedCompanion(context: Context): Pair<String, String>? = COMPANION_PKGS.firstNotNullOfOrNull { pkg ->
         runCatching {
@@ -393,14 +295,5 @@ object UpdateChecker {
 
     internal fun isNewer(candidate: String, current: String): Boolean = compareVersions(candidate, current)?.let { it > 0 } == true
 
-    private const val PANELD_LABEL = "ha-paneld"
     private const val COMPANION_LABEL = "HA Companion"
-    private const val PANEL_ASSISTANT_VERSION_PART = "(?:0|[1-9][0-9]{0,7})"
-    private val PANEL_ASSISTANT_STABLE_VERSION = Regex(
-        "^$PANEL_ASSISTANT_VERSION_PART\\.$PANEL_ASSISTANT_VERSION_PART\\.$PANEL_ASSISTANT_VERSION_PART$",
-    )
-    private val PANEL_ASSISTANT_CURRENT_VERSION = Regex(
-        "^$PANEL_ASSISTANT_VERSION_PART\\.$PANEL_ASSISTANT_VERSION_PART\\.$PANEL_ASSISTANT_VERSION_PART" +
-            "(?:-(?:alpha|beta|rc)$PANEL_ASSISTANT_VERSION_PART)?$",
-    )
 }

@@ -22,14 +22,6 @@ class UpdateVersionTest {
         assertFalse(UpdateChecker.isNewer("release-next", "0.9.2"))
     }
 
-    @Test fun staleDecisionUsesMonotonicRollbackAndPolicyIdentity() {
-        assertTrue(UpdateChecker.shouldCheck(10, -1, 100, samePolicy = true))
-        assertFalse(UpdateChecker.shouldCheck(100, 50, 100, samePolicy = true))
-        assertTrue(UpdateChecker.shouldCheck(20, 50, 100, samePolicy = true))
-        assertTrue(UpdateChecker.shouldCheck(100, 50, 100, samePolicy = false))
-        assertTrue(UpdateChecker.shouldCheck(151, 50, 100, samePolicy = true))
-    }
-
     @Test fun currentInstallStateDropsOrRefreshesCachedCompanionUpdate() {
         val cached = UpdateChecker.UpdateInfo("HA Companion", "2026.5.4-minimal", "2026.6.5", "u")
         assertTrue(UpdateChecker.filterCurrent(listOf(cached), null).isEmpty())

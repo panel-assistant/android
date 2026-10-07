@@ -337,7 +337,7 @@ class HaAmbientLuxSubscriber internal constructor(
     }
 
     private fun acceptStreamStatus(next: HaExactEntityStreamStatus) {
-        if (next.consumer != HaExactEntityConsumer.AMBIENT_LUX) return
+
         val phase = when (next.phase) {
             HaExactEntityStreamPhase.DISABLED -> HaAmbientSourcePhase.DISABLED
             HaExactEntityStreamPhase.AUTHENTICATING -> HaAmbientSourcePhase.AUTHENTICATING

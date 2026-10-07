@@ -475,11 +475,27 @@ class ProfileYamlSecurityTest {
         assertTrue(dataProfile(withoutShizuku).requiresProvisioningHelper())
     }
 
-    @Test fun `project rc suffixes compare numerically and precede stable`() {
-        assertTrue(ProfileValidator.compareVersions("0.9.3-rc10", "0.9.3-rc2") > 0)
-        assertEquals(0, ProfileValidator.compareVersions("0.9.3-rc2", "0.9.3-rc2"))
-        assertTrue(ProfileValidator.compareVersions("0.9.3-rc2", "0.9.3") < 0)
-        assertTrue(ProfileValidator.compareVersions("0.9.3", "0.9.3-rc10") > 0)
+    @Test fun `the core version gate admits a core at or above the profile minimum`() {
+        fun admits(core: String, minimum: String) = ProfileValidator.validate(
+            testProfileDocument().let { it.copy(requires = it.requires.copy(minCoreVersion = minimum)) },
+            core,
+            bundled = false,
+        ).none { it.path == "requires.min_core_version" }
+
+        assertTrue(admits("0.9.3-rc10", "0.9.3-rc2"))
+        assertFalse(admits("0.9.3-rc9", "0.9.3-rc10"))
+        assertTrue(admits("0.9.3-rc2", "0.9.3-rc2"))
+        assertFalse(admits("0.9.3-rc2", "0.9.3"))
+        assertTrue(admits("0.9.3", "0.9.3-rc10"))
+        assertTrue(admits("0.9.10", "0.9.9"))
+        assertFalse(admits("0.9.9", "0.9.10"))
+        assertTrue(admits("0.9.3", "0.9"))
+        assertFalse(admits("0.9", "0.9.3"))
+        assertTrue(admits("1.0.0-beta2", "1.0.0-alpha3"))
+        assertFalse(admits("1.0.0-beta2", "1.0.0-rc1"))
+        assertFalse(admits("0.9.3-rc2", "0.9.3-rc2.1"))
+        assertTrue(admits("0.9.3-rc2.1", "0.9.3-rc2"))
+        assertFalse(admits("1.0.0-beta.2", "1.0.0-beta.10"))
     }
 
     private fun assertRejected(raw: String) {
