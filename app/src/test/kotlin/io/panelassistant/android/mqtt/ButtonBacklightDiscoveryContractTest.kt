@@ -1,7 +1,7 @@
 package io.panelassistant.android.mqtt
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.config.SettingsRegistry
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,10 +9,7 @@ import org.junit.Test
 
 class ButtonBacklightDiscoveryContractTest {
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
-    private val mqtt = listOf(
-        File("src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-        File("app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-    ).first(File::isFile).readText()
+    private val mqtt = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
     private val discovery = mqtt.substring(
         mqtt.indexOf("private fun publishDiscovery("),
         mqtt.indexOf("private fun publishConfig("),

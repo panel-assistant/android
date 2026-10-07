@@ -1,5 +1,6 @@
 package io.panelassistant.android.device.profile
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.BuildConfig
 import java.io.File
 
@@ -25,11 +26,7 @@ internal object BundledProfileFixtures {
 
     // Source-text reason: loads the shipped device profiles as input data.
     val assetsDirectory: File by lazy {
-        requiredDirectory(
-            "src/main/assets/device-profiles",
-            "app/src/main/assets/device-profiles",
-            "../app/src/main/assets/device-profiles",
-        )
+        TestSources.appDir("src/main/assets/device-profiles")
     }
 
     val unofficialDirectory: File? by lazy {
@@ -41,11 +38,7 @@ internal object BundledProfileFixtures {
 
     // Source-text reason: other test files still resolve paths from here; drop once they no longer do.
     val mainKotlinDirectory: File by lazy {
-        requiredDirectory(
-            "src/main/kotlin",
-            "app/src/main/kotlin",
-            "../app/src/main/kotlin",
-        )
+        TestSources.appDir("src/main/kotlin")
     }
 
     val bundled: List<Loaded> by lazy { load(assetsDirectory, bundled = true) }

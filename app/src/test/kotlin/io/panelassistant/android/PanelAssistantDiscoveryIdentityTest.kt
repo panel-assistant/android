@@ -1,8 +1,6 @@
 package io.panelassistant.android
 
 import io.panelassistant.android.http.panelAssistantDiscoveryHealthToken
-import io.panelassistant.android.testsupport.TestSources
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -35,19 +33,5 @@ class PanelAssistantDiscoveryIdentityTest {
 
         assertEquals(" did=$token identity=install", healthToken)
         assertFalse(healthToken.contains(androidId))
-    }
-
-    @Test fun healthOpenApiContractDocumentsTheIdentityGrammarAndOmissionRule() {
-        // Source-text reason: the shipped OpenAPI document is the public API contract.
-        val description = JSONObject(TestSources.asset("openapi.json").readText())
-            .getJSONObject("paths")
-            .getJSONObject("/api/v1/health")
-            .getJSONObject("get")
-            .getJSONObject("responses")
-            .getJSONObject("200")
-            .getString("description")
-
-        assertTrue(description.contains("did=<64 lower-case hexadecimal characters>"))
-        assertTrue(description.contains("omitted when that identity is unavailable"))
     }
 }

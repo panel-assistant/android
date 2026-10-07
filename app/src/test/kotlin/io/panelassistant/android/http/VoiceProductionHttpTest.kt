@@ -33,7 +33,7 @@ class VoiceProductionHttpTest {
     private var changed = 0
     private var engineAccepts = true
     private var pipelines: AssistPipelineDirectory.Result = AssistPipelineDirectory.Result.Available(
-        listOf(AssistPipelineDirectory.Pipeline("home", "Home")), "home",
+        listOf(AssistPipelineDirectory.Pipeline("home", "Home"), AssistPipelineDirectory.Pipeline("kitchen", "Kitchen")), "home",
     )
     private var triggerResult: VoiceTestTrigger.Result = VoiceTestTrigger.Result.Accepted
 
@@ -88,7 +88,7 @@ class VoiceProductionHttpTest {
         mount()
         val available = client.get("/api/v1/voice/pipelines")
         assertEquals(HttpStatusCode.OK, available.status)
-        assertEquals("""{"pipelines":[{"id":"home","name":"Home"}],"preferred":"home"}""", available.bodyAsText())
+        assertEquals("""{"pipelines":[{"id":"home","name":"Home"},{"id":"kitchen","name":"Kitchen"}],"preferred":"home"}""", available.bodyAsText())
         microphone = false
         val refused = client.get("/api/v1/voice/pipelines")
         assertEquals(HttpStatusCode.ServiceUnavailable, refused.status)

@@ -1,5 +1,6 @@
 package io.panelassistant.android.mqtt
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.MqttCommandDispatcher
 import io.panelassistant.android.mqttStatePayload
 import io.panelassistant.android.metrics.FeatureCostOperation
@@ -127,10 +128,7 @@ class CommandReadbackGateTest {
      * pin the process-global in-flight count. Cancellation belongs to reconcile's own lifecycle gate.
      */
     @Test fun theBridgeWiresTheGateToAnUndroppableScheduler() {
-        val source = sequenceOf(
-            java.io.File("src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-            java.io.File("app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-        ).first(java.io.File::isFile).readText()
+        val source = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
         val wiring = source.substringAfter("relayReadbackGate = ").substringBefore("\n    )")
         assertTrue("gate must schedule on the raw convergence pump", wiring.contains("StateConverger.dispatch"))
         assertFalse("gate must not schedule through the task-dropping bridge wrapper", wiring.contains("dispatchStateWork"))

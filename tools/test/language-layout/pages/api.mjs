@@ -40,6 +40,8 @@ export function openEndpoints(targets) {
 export default {
   name: 'api',
   path: '/api',
+  maxCls: 0.10,
+  views: [{ name: 'api-320', tier: 'supported', width: 320, height: 568 }],
   html(context) { return apiFrame(context); },
   api(url) {
     if (url.pathname === '/api/v1/openapi.json') return { __raw: true, type: 'application/json; charset=utf-8', body: readFileSync(API_SPEC) };

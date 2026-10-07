@@ -1,10 +1,10 @@
 package io.panelassistant.android.dashboard
 
+import io.panelassistant.android.testsupport.Node
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class EntityFilterProtocolTest {
@@ -107,9 +107,7 @@ class EntityFilterProtocolTest {
     }
 
     @Test fun trafficObserverCountsOnlyFixedCardinalityStateTrafficWithFilterEnabled() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val filterScript = EntityFilterProtocol.documentStartScript("https://ha.example", ids)
         val trafficScript = EntityFilterProtocol.trafficObserverDocumentStartScript("https://ha.example")
         val harness = """
@@ -149,16 +147,12 @@ class EntityFilterProtocolTest {
             if(values[7]<=0||values[8]<=0)throw Error('missing main-thread occupancy');
             if(payload.includes('light.')||payload.includes('sensor.'))throw Error('content leaked into payload');
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun trafficObserverWorksWithoutFilterOrLearningWrappers() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val script = EntityFilterProtocol.trafficObserverDocumentStartScript("https://ha.example")
         val harness = """
             global.window=globalThis;global.location={href:'https://ha.example/dashboard'};
@@ -180,16 +174,12 @@ class EntityFilterProtocolTest {
             const values=payload.split(',').map(Number);
             if(values[1]!==1||values[3]!==2)throw Error('filter-off arm was not observed: '+payload);
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun trafficObserverAggregatesEventTimingAndLongAnimationFramesWithoutContent() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val script = EntityFilterProtocol.trafficObserverDocumentStartScript("https://ha.example")
         val harness = """
             global.window=globalThis;global.location={href:'https://ha.example/dashboard'};
@@ -211,10 +201,8 @@ class EntityFilterProtocolTest {
             if(v[23]!==1||v[24]!==70000||v[25]!==120000||v[26]!==40000||v[27]!==80000)throw Error('LoAF aggregate wrong');
             if(payload.includes('must-not-leak')||payload.includes('private'))throw Error('browser content leaked');
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun trafficBatchParserIsStrictBoundedAndLabelFree() {
@@ -245,9 +233,7 @@ class EntityFilterProtocolTest {
     }
 
     @Test fun documentScriptExecutesAndFiltersOnlyThePrimarySocket() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val script = EntityFilterProtocol.documentStartScript("https://ha.example", ids)
         val harness = """
             global.window=globalThis;
@@ -276,10 +262,8 @@ class EntityFilterProtocolTest {
             if(camera.sent[0]!==unfiltered)throw Error('camera command changed');
             if(modified!==1)throw Error('wrong modification count: '+modified);
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun filterHashIsOrderIndependentAndChangesWithMembership() {

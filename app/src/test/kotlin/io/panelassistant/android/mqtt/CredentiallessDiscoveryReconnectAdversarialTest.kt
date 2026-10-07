@@ -1,5 +1,6 @@
 package io.panelassistant.android.mqtt
 
+import io.panelassistant.android.testsupport.TestSources
 import io.moquette.broker.Server
 import java.io.File
 import java.net.ServerSocket
@@ -76,10 +77,7 @@ class CredentiallessDiscoveryReconnectAdversarialTest {
         )
     }
 
-    private fun productionSource(relative: String): File = listOf(
-        File("src/main/kotlin/$relative"),
-        File("app/src/main/kotlin/$relative"),
-    ).firstOrNull(File::isFile) ?: error("cannot locate production source $relative")
+    private fun productionSource(relative: String): File = TestSources.appFile("src/main/kotlin/$relative")
 
     private class EmbeddedBroker(private val port: Int) : AutoCloseable {
         val server = Server().withConfig()

@@ -1,6 +1,6 @@
 package io.panelassistant.android
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import java.lang.reflect.Modifier
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -119,8 +119,5 @@ class ServiceProcessBoundaryContractTest {
         assertFalse(hive.contains("@Volatile private var connectionLease"))
     }
 
-    private fun source(relative: String): String = locate("src/main/kotlin/io/panelassistant/android/$relative").readText()
-
-    private fun locate(relative: String): File = listOf(File(relative), File("app/$relative"), File("../app/$relative"))
-        .firstOrNull(File::isFile) ?: error("missing test input $relative")
+    private fun source(relative: String): String = TestSources.kotlin(relative).readText()
 }

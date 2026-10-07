@@ -1,5 +1,7 @@
 package io.panelassistant.android.assets
 
+import io.panelassistant.android.testsupport.TestSources
+import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -21,29 +23,16 @@ import java.io.File
 class AssetSyntaxTest {
 
     // Source-text reason: syntax-checks and executes every shipped web asset; no JS code text is asserted.
-    private val assetsDir: File? =
-        listOf("src/main/assets", "app/src/main/assets", "../app/src/main/assets")
-            .map { File(it) }
-            .firstOrNull { it.isDirectory }
-
-    private fun nodeAvailable(): Boolean =
-        runCatching { run(listOf("node", "--version")).first == 0 }.getOrDefault(false)
-
-    /** Run a command, returning (exitCode, combined stdout+stderr). */
-    private fun run(cmd: List<String>): Pair<Int, String> {
-        val p = ProcessBuilder(cmd).redirectErrorStream(true).start()
-        val out = p.inputStream.bufferedReader().readText()
-        return p.waitFor() to out
-    }
+    private val assetsDir: File? = TestSources.assetDir()
 
     @Test fun everyJsAssetParses() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val js = dir!!.walkTopDown().filter { it.isFile && it.name.endsWith(".js") }.sortedBy { it.path }.toList()
         assertTrue("no .js assets found under ${dir.path}", js.isNotEmpty())
         for (f in js) {
-            val (code, out) = run(listOf("node", "--check", f.absolutePath))
+            val (code, out) = Node.run("--check", f.absolutePath)
             assertEquals("${f.name} is not valid JavaScript:\n$out", 0, code)
         }
     }
@@ -51,11 +40,11 @@ class AssetSyntaxTest {
     @Test fun everyJsonAssetParses() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val json = dir!!.walkTopDown().filter { it.isFile && it.name.endsWith(".json") }.sortedBy { it.path }.toList()
         for (f in json) {
-            val (code, out) = run(
-                listOf("node", "-e", "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))", f.absolutePath),
+            val (code, out) = Node.run(
+                "-e", "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))", f.absolutePath,
             )
             assertEquals("${f.name} is not valid JSON:\n$out", 0, code)
         }
@@ -64,7 +53,7 @@ class AssetSyntaxTest {
     @Test fun configureLanguageSignalsUseOneBoundedBrowserOverrideContract() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             const data={};
@@ -105,14 +94,14 @@ class AssetSyntaxTest {
             if(!usesHaLanguage('zh-Hant')||!usesHaLanguage('zz-ZZ'))process.exit(11);
             if(!usesHaLanguage('pt')||!usesHaLanguage('pt-PT'))process.exit(12);
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure-state.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "configure-state.js").absolutePath)
         assertEquals("Configure language signal contract failed:\n$out", 0, code)
     }
 
     @Test fun configureAutoSleepHistoryWaitsForReadinessWithoutUserRetry() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             global.window=global;
@@ -223,14 +212,14 @@ class AssetSyntaxTest {
               if(lines[0].textContent!=='This panel’s proximity sensor'||announcement.textContent.includes('Home Assistant Area:'))process.exit(24);
             })().catch(error=>{console.error(error);process.exit(21)});
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure-auto-sleep.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "configure-auto-sleep.js").absolutePath)
         assertEquals("Configure auto-sleep readiness lifecycle failed:\n$out", 0, code)
     }
 
     @Test fun installLinksRequireGithubHttps() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             const attrs={notes:'https://github.com/example/project/releases/tag/v1',apk:'https://github.com/example/project/releases/download/v1/app.apk',installable:'1',action:'Downgrade'};
@@ -252,14 +241,14 @@ class AssetSyntaxTest {
               attrs.notes=bad;attrs.apk=bad;notes.href='stale';download.href='stale';check(false);
             }
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "install.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "install.js").absolutePath)
         assertEquals("Install links accepted a non-GitHub HTTPS target:\n$out", 0, code)
     }
 
     @Test fun installPickerPrefersNewestInstallableVersion() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             const fallback=process.argv[2]==='fallback';
@@ -282,7 +271,7 @@ class AssetSyntaxTest {
             setImmediate(()=>setImmediate(()=>{const expected=fallback?2:1;if(vsel.selectedIndex!==expected)process.exit(2);if(button.textContent!==(fallback?'Install':'Upgrade'))process.exit(3)}));
         """.trimIndent()
         for (mode in listOf("recommended", "fallback")) {
-            val (code, out) = run(listOf("node", "-e", script, File(dir, "install.js").absolutePath, mode))
+            val (code, out) = Node.run("-e", script, File(dir, "install.js").absolutePath, mode)
             assertEquals("Install picker did not select the expected version ($mode):\n$out", 0, code)
         }
     }
@@ -290,7 +279,7 @@ class AssetSyntaxTest {
     @Test fun performanceCardDistinguishesUnavailableBuiltinObserverFromCompanionProxy() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm'),source=fs.readFileSync(process.argv[1],'utf8');
             const start=source.indexOf('function rendererMeasurement('),end=source.indexOf('async function perf(){');
@@ -307,14 +296,14 @@ class AssetSyntaxTest {
             const unavailable=rendererMeasurement('foreign_proxy',{status:'no-renderer'});
             if(!unavailable.rows.some(row=>row.val==='External renderer proxy needs root/helper access'))process.exit(9);
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "info.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "info.js").absolutePath)
         assertEquals("renderer measurement presentation contract failed:\n$out", 0, code)
     }
 
     @Test fun dashboardIssuesAreRenderedEscapedWithReversibleSafetyControls() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             const ignoredMode=process.argv[2]==='ignored';
@@ -328,7 +317,7 @@ class AssetSyntaxTest {
             setImmediate(()=>{const row=ids['entity-issues-list'].child,html=row.innerHTML,dynamic=ids['entity-dynamic-list'].child.innerHTML;if(!ids['entity-status'].innerHTML.includes('2 dynamic expressions not statically resolvable'))process.exit(7);if(html.includes(issue)||!html.includes('&lt;img src=x onerror=alert(1)&gt;'))process.exit(2);if(ignoredMode){if(ids['entity-issues-summary'].textContent.includes('requires review')||!ids['entity-issues-summary'].textContent.includes('previously allowed'))process.exit(3);if(row.className!=='entity-issue allowed'||!row.child||row.child.textContent!=='Re-enable safety check')process.exit(4)}else{if(!ids['entity-issues-summary'].textContent.includes('1 check requires review'))process.exit(3);if(row.className!=='entity-issue blocking'||!html.includes('Automatic updates paused')||!row.child||row.child.textContent!=='Ignore potential entities and continue')process.exit(4)}if(dynamic.includes(issue)||!dynamic.includes('&lt;img src=x onerror=alert(1)&gt;'))process.exit(5);if(ids['entity-dynamic'].hidden)process.exit(6)});
         """.trimIndent()
         for (mode in listOf("blocking", "ignored")) {
-            val (code, out) = run(listOf("node", "-e", script, File(dir, "entities.js").absolutePath, mode))
+            val (code, out) = Node.run("-e", script, File(dir, "entities.js").absolutePath, mode)
             assertEquals("dashboard issue presentation contract failed ($mode):\n$out", 0, code)
         }
     }
@@ -336,7 +325,7 @@ class AssetSyntaxTest {
     @Test fun mixedLimitedSupportAndBlockerRowsKeepDistinctLabelsAndControls() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             function el(){return {dataset:{},className:'',textContent:'',innerHTML:'',checked:false,disabled:false,value:'',children:[],classList:{toggle(){},remove(){}},addEventListener(){},querySelector(){return el()},querySelectorAll(){return []},appendChild(v){this.child=v;this.children.push(v)}}}
@@ -350,7 +339,7 @@ class AssetSyntaxTest {
             vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
             setImmediate(()=>{const rows=ids['entity-issues-list'].children,summary=ids['entity-issues-summary'].textContent;if(rows.length!==3||!summary.includes('1 check requires review'))process.exit(2);const overflowRow=rows[0],gapRow=rows[1],limited=rows[2];if(overflowRow.className!=='entity-issue blocking'||!overflowRow.innerHTML.includes('Automatic updates paused')||overflowRow.child)process.exit(5);if(gapRow.className!=='entity-issue advisory'||!gapRow.innerHTML.includes('Limited coverage')||gapRow.innerHTML.includes('Candidate set')||gapRow.child)process.exit(3);if(limited.className!=='entity-issue advisory'||!limited.innerHTML.includes('Limited coverage')||!limited.innerHTML.includes('Button Card has limited entity discovery support')||limited.innerHTML.includes('Candidate set')||limited.child)process.exit(4)});
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "entities.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "entities.js").absolutePath)
         assertEquals("mixed dashboard issue presentation contract failed:\n$out", 0, code)
     }
 
@@ -364,7 +353,7 @@ class AssetSyntaxTest {
     @Test fun configureSaveDoesNotReloadTheShellForEntityFiltering() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             const initiallyEnabled=process.argv[2]==='true';
@@ -425,8 +414,8 @@ class AssetSyntaxTest {
             }));
         """.trimIndent()
         for (initial in listOf(false, true)) {
-            val (code, out) = run(
-                listOf("node", "-e", script, File(dir, "configure.js").absolutePath, initial.toString()),
+            val (code, out) = Node.run(
+                "-e", script, File(dir, "configure.js").absolutePath, initial.toString(),
             )
             assertEquals("Configure entity-filter ${if (initial) "disable" else "enable"} save reloaded the shell:\n$out", 0, code)
         }
@@ -435,7 +424,7 @@ class AssetSyntaxTest {
     @Test fun configureSavePreservesNewerEditsAndWatchBaselineWithoutShellReload() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             let postResolve,posted='',reloads=0,navEnabled=false,navNode;
@@ -489,14 +478,14 @@ class AssetSyntaxTest {
               })));
             }));
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "configure.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "configure.js").absolutePath)
         assertEquals("Configure in-flight edit preservation failed:\n$out", 0, code)
     }
 
     @Test fun installOwnedFormsConsumeStructuredOutcomesAndReturnToTheirCards() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             const mode=process.argv[2];let submitHandler;
@@ -523,7 +512,7 @@ class AssetSyntaxTest {
             }));
         """.trimIndent()
         for (mode in listOf("failure", "success")) {
-            val (code, out) = run(listOf("node", "-e", script, File(dir, "install.js").absolutePath, mode))
+            val (code, out) = Node.run("-e", script, File(dir, "install.js").absolutePath, mode)
             assertEquals("Install-owned form outcome failed ($mode):\n$out", 0, code)
         }
     }
@@ -531,7 +520,7 @@ class AssetSyntaxTest {
     @Test fun secretConfigExportHandlesApprovalInPageBeforeDownloading() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');const mode=process.argv[2];let clicks=0;
             function element(tag){return {style:{},dataset:{selfName:'test-panel'},textContent:'',disabled:false,children:[],
@@ -554,7 +543,7 @@ class AssetSyntaxTest {
             }));
         """.trimIndent()
         for (mode in listOf("approval", "success")) {
-            val (code, out) = run(listOf("node", "-e", script, File(dir, "install.js").absolutePath, mode))
+            val (code, out) = Node.run("-e", script, File(dir, "install.js").absolutePath, mode)
             assertEquals("Secret config export flow failed ($mode):\n$out", 0, code)
         }
     }
@@ -562,7 +551,7 @@ class AssetSyntaxTest {
     @Test fun wrongDeviceProfileCannotEnterActivationFlow() {
         val dir = assetsDir
         assumeTrue("assets dir not found (skipping)", dir != null)
-        assumeTrue("node not available (skipping)", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm'),source=fs.readFileSync(process.argv[1],'utf8');
             const summary={ref:{id:'wrong.device',revision:'a'.repeat(64)},matches_this_device:false,compatible:true,active:false,origin:'imported'};
@@ -581,7 +570,7 @@ class AssetSyntaxTest {
             activate(summary.ref,'activate');
             if(posts!==0||!status.includes('does not match this device'))process.exit(4);
         """.trimIndent()
-        val (code, out) = run(listOf("node", "-e", script, File(dir, "profiles.js").absolutePath))
+        val (code, out) = Node.run("-e", script, File(dir, "profiles.js").absolutePath)
         assertEquals("Wrong-device profile reached activation flow:\n$out", 0, code)
     }
 }

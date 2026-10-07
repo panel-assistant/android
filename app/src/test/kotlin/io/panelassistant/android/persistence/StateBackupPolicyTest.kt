@@ -1,6 +1,6 @@
 package io.panelassistant.android.persistence
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,7 +62,7 @@ class StateBackupPolicyTest {
     // Source-text reason: a whole-tree scan, not a pin on one file: a namespace opened anywhere without a
     // backup disposition would be silently withheld from restore, which loses user data.
     @Test fun everyNamespaceTheAppPersistsIsClassified() {
-        val sources = listOf(File("src/main/kotlin"), File("app/src/main/kotlin")).first(File::isDirectory)
+        val sources = TestSources.appDir("src/main/kotlin")
         // Namespaces are opened through AppState.preferences in two shapes — positional and with the
         // argument named — and missing either shape would make this test quietly weaker than it looks.
         val positional = Regex("""AppState\.preferences\(\s*[^,()]+,\s*"([a-z0-9-]+)"""", RegexOption.DOT_MATCHES_ALL)

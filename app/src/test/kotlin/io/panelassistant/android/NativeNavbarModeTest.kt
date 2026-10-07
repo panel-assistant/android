@@ -1,9 +1,9 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.config.Capabilities
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.control.NavbarController
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -16,9 +16,6 @@ import org.junit.Test
  */
 class NativeNavbarModeTest {
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
-
-    private fun source(vararg candidates: String): String =
-        candidates.map(::File).first(File::isFile).readText()
 
     private val navbarSpec get() = SettingsRegistry.spec("navbar_mode")!!
 
@@ -130,10 +127,7 @@ class NativeNavbarModeTest {
     /** MQTT coerces rather than rejects, and "Native" is recognised once it joins MODES, so the guard
      *  has to be explicit or a stray command would take a panel's only navigation away. */
     @Test fun `the mqtt command path refuses native before actuating it`() {
-        val bridge = source(
-            "src/main/kotlin/io/panelassistant/android/MqttBridge.kt",
-            "app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt",
-        )
+        val bridge = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
         val handler = bridge.substring(
             bridge.indexOf("override fun handleNavbar(payload: String)"),
             bridge.indexOf("override fun handleHomeDashboard"),
@@ -147,17 +141,14 @@ class NativeNavbarModeTest {
 
     @Test fun `the public api documents native as profile gated wireFormat`() {
         // Source-text reason: the shipped OpenAPI document is the public API contract.
-        val openApi = source("src/main/assets/openapi.json", "app/src/main/assets/openapi.json")
+        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
         assertTrue(openApi.contains("\"enum\": [\"Off\", \"Always on\", \"Swipe reveal\", \"Native\"]"))
     }
 
     /** The five navigation buttons removed in 1657dee8 stay removed; a mode that defers to the system
      *  bar must not become a reason to publish remote navigation actions again. */
     @Test fun `no home assistant navigation entity is reintroduced`() {
-        val bridge = source(
-            "src/main/kotlin/io/panelassistant/android/MqttBridge.kt",
-            "app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt",
-        )
+        val bridge = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
         listOf("cmdAdminLauncher", "cmdBack", "cmdHome", "cmdLauncher", "cmdRecents").forEach {
             assertFalse("$it must not return as an MQTT action", bridge.contains("private val $it ="))
         }

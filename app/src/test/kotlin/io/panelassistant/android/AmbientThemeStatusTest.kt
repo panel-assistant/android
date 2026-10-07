@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.control.AmbientThemeReason
 import io.panelassistant.android.util.DashboardTheme
 import org.json.JSONObject
@@ -111,8 +112,7 @@ class AmbientThemeStatusTest {
     }
 
     @Test fun everyStatusFieldIsDeclaredRequiredInTheOpenApi() {
-        val openApi = listOf("src/main/assets/openapi.json", "app/src/main/assets/openapi.json")
-            .map { java.io.File(it) }.first { it.isFile }.readText()
+        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
         val keys = json(present(DashboardTheme.DARK, AmbientThemeReason.ROOM_DARK)).keys().asSequence().toList()
         val required = Regex("\"required\": \\[(\"mode\", \"state\"[^\\]]*)]").find(openApi)!!.groupValues[1]
         keys.forEach { assertTrue("$it must be required in openapi.json", required.contains("\"$it\"")) }

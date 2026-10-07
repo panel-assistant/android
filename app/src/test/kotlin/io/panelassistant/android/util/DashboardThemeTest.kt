@@ -1,10 +1,10 @@
 package io.panelassistant.android.util
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.config.SettingType
 import io.panelassistant.android.config.SettingValue
 import io.panelassistant.android.config.SettingsRegistry
 import io.panelassistant.android.config.Validation
-import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -93,9 +93,7 @@ class DashboardThemeTest {
         // OpenAPI is hand-maintained here, so nothing but a test keeps it from drifting away from the
         // registry. Follows the navbar_mode precedent, which pins its enum the same way.
         // Source-text reason: the shipped OpenAPI schema is the public API wire format.
-        val openApi = listOf("src/main/assets/openapi.json", "app/src/main/assets/openapi.json")
-            .map { File(it) }
-            .firstOrNull { it.isFile }
+        val openApi = TestSources.appFileOrNull("src/main/assets/openapi.json")
             ?.readText()
         assertTrue(openApi != null, "openapi.json not found")
         assertTrue(

@@ -1,16 +1,16 @@
 package io.panelassistant.android.assets
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
+import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class ProfileLinksDomContractTest {
     @Test
     fun profileLinksRenderOnlyCompatibleBoundedSafeHttpsDestinations() {
-        assumeTrue("Node.js is required for the executable profiles.js DOM contract", nodeAvailable())
+        Node.assumeAvailable()
         // Source-text reason: executes the shipped profiles.js; asserts DOM behaviour.
-        val asset = File("src/main/assets/profiles.js").absolutePath
+        val asset = TestSources.asset("profiles.js").absolutePath
         val script = """
             const fs = require("fs");
             const source = fs.readFileSync(process.argv[1], "utf8");
@@ -77,17 +77,8 @@ class ProfileLinksDomContractTest {
             reject({compatible: true, links: [{label: "Hidden\u200djoiner", url: "https://example.com/"}]}, "format-control label");
         """.trimIndent()
 
-        val process = ProcessBuilder("node", "-e", script, asset)
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
+        val (code, output) = Node.run("-e", script, asset)
 
-        assertEquals(output, 0, process.waitFor())
+        assertEquals(output, 0, code)
     }
-
-    private fun nodeAvailable(): Boolean = runCatching {
-        val process = ProcessBuilder("node", "--version").redirectErrorStream(true).start()
-        process.inputStream.close()
-        process.waitFor() == 0
-    }.getOrDefault(false)
 }

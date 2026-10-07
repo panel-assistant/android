@@ -1,10 +1,10 @@
 package io.panelassistant.android.dashboard
 
+import io.panelassistant.android.testsupport.Node
 import io.panelassistant.android.ExternalAuthProtocol
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -30,14 +30,6 @@ import org.junit.Test
  */
 class DashboardThemePolicyScriptTest {
 
-    private fun nodeAvailable(): Boolean =
-        runCatching { run(listOf("node", "--version")).first == 0 }.getOrDefault(false)
-
-    private fun run(cmd: List<String>): Pair<Int, String> {
-        val p = ProcessBuilder(cmd).redirectErrorStream(true).start()
-        val out = p.inputStream.bufferedReader().readText()
-        return p.waitFor() to out
-    }
 
     /**
      * Run [scripts] in order against a store seeded with [initial] (null = the key is absent), then
@@ -89,7 +81,7 @@ class DashboardThemePolicyScriptTest {
             console.log(JSON.stringify(out));
             """.trimIndent(),
         )
-        val (code, out) = run(listOf("node", harness.absolutePath))
+        val (code, out) = Node.run(harness.absolutePath)
         assertEquals("script run failed:\n$out", 0, code)
         return out.trim()
     }
@@ -102,7 +94,7 @@ class DashboardThemePolicyScriptTest {
     private fun seed(dark: Boolean) = ExternalAuthProtocol.selectedThemeJs(dark, onlyIfAbsent = true)
     private fun toggle(dark: Boolean) = ExternalAuthProtocol.selectedThemeJs(dark, onlyIfAbsent = false)
 
-    private fun assumeNode() = assumeTrue("node not available (skipping)", nodeAvailable())
+    private fun assumeNode() = Node.assumeAvailable()
 
     // --- forcing --------------------------------------------------------------------------------
 

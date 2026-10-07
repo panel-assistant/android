@@ -131,20 +131,4 @@ class CameraSurfaceContractTest {
         assertEquals(8000, kbps.getInt("maximum"))
         assertEquals(2000, kbps.getInt("default"))
     }
-
-    @Test fun openApiDescribesCameraStreamSettingsAsDefaultsNotCeilings() {
-        val schemas = openApi.getJSONObject("components").getJSONObject("schemas")
-        val healthProperties = schemas.getJSONObject("CameraHealth").getJSONObject("properties")
-        val bitrateDescription = healthProperties.getJSONObject("encode_kbps").getString("description")
-        assertTrue(bitrateDescription.contains("override the configured camera_kbps default upward or downward"))
-        assertFalse(bitrateDescription.contains("never above"))
-
-        val snapshotParameters = openApi.getJSONObject("paths")
-            .getJSONObject("/api/v1/camera/snapshot.jpg")
-            .getJSONObject("get")
-            .getJSONArray("parameters")
-        val resolutionDescription = snapshotParameters.getJSONObject(0).getString("description")
-        assertTrue(resolutionDescription.contains("overrides the configured camera_resolution default upward or downward"))
-        assertFalse(resolutionDescription.contains("ceiling"))
-    }
 }

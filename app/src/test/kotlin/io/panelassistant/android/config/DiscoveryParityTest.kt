@@ -1,5 +1,6 @@
 package io.panelassistant.android.config
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.control.CpuController
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,10 +20,7 @@ class DiscoveryParityTest {
             SettingsRegistry.spec("silence_boot_chime")?.default,
         )
         // Source-text reason: the published OpenAPI default is the settings wire contract.
-        val openApi = sequenceOf(
-            java.io.File("src/main/assets/openapi.json"),
-            java.io.File("app/src/main/assets/openapi.json"),
-        ).first { it.isFile }.readText()
+        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
         assertTrue(openApi.contains(
             "\"silence_boot_chime\": { \"type\": \"boolean\", \"default\": true",
         ))

@@ -1,6 +1,6 @@
 package io.panelassistant.android.http
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,10 +22,6 @@ class ZigbeeHealthSurfaceContractTest {
     }
 
     private fun source(relative: String): String {
-        val working = File(requireNotNull(System.getProperty("user.dir")))
-        return listOf(
-            File(working, "app/src/main/kotlin/io/panelassistant/android/$relative"),
-            File(working, "src/main/kotlin/io/panelassistant/android/$relative"),
-        ).first(File::isFile).readText()
+        return TestSources.appFile("src/main/kotlin/io/panelassistant/android/$relative").readText()
     }
 }

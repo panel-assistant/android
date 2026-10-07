@@ -1,6 +1,6 @@
 package io.panelassistant.android.assets
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.json.JSONObject
@@ -9,10 +9,7 @@ import org.junit.Test
 /** The guided-setup wizard's user-visible copy, checked against the shipped English catalogue. */
 class SetupWizardAssetTest {
     // Source-text reason: loads the shipped English translation catalogue as input data.
-    private val english = JSONObject(listOf(
-        File("src/main/assets/i18n/en.json"),
-        File("app/src/main/assets/i18n/en.json"),
-    ).first { it.isFile }.readText()).getJSONObject("strings")
+    private val english = JSONObject(TestSources.appFile("src/main/assets/i18n/en.json").readText()).getJSONObject("strings")
 
     private fun english(key: String): String = english.getJSONObject(key).getString("text")
 

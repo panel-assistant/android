@@ -3,7 +3,6 @@ package io.panelassistant.android.i18n
 import io.panelassistant.android.http.HaOAuthCallbackCopy
 import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Contracts the small HTML callback surface reached from localized Setup and Configure OAuth. */
@@ -36,25 +35,6 @@ class OAuthCallbackI18nContractTest {
             .mapValues { it.value.text }
 
         assertEquals(authoritative, fallback)
-    }
-
-    @Test fun `OAuth callback catalogue is current and promoted in every release locale`() {
-        val keys = source.strings.keys.filter { it.startsWith("oauth.callback.") }
-        AppLocale.RELEASE_LOCALES.filterNot { it == AppLocale.ENGLISH }.forEach { locale ->
-            val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), source)
-            keys.forEach { key ->
-                val english = checkNotNull(source.strings[key])
-                val translated = checkNotNull(target.strings[key]) { "$locale is missing $key" }
-                assertEquals("$locale has stale source text for $key", english.sourceHash, translated.sourceHash)
-                assertTrue(
-                    "$locale must ship localized callback copy for $key",
-                    translated.state == TranslationState.MACHINE_CROSS_CHECKED ||
-                        translated.state == TranslationState.COMMUNITY_CORRECTED ||
-                        (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT),
-                )
-            }
-        }
     }
 
 }

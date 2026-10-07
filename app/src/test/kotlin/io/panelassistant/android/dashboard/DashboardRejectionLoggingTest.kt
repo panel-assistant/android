@@ -1,5 +1,6 @@
 package io.panelassistant.android.dashboard
 
+import io.panelassistant.android.testsupport.Node
 import java.io.File
 import io.panelassistant.android.logship.CdpConsoleMapper
 import io.panelassistant.android.logship.LogCapture
@@ -47,9 +48,8 @@ class DashboardRejectionLoggingTest {
                 reject('one listener');assert.equal(records.length,0);
                 process.stdout.write(JSON.stringify({method:'Runtime.consoleAPICalled',params:{type:'error',timestamp:1,args:[{type:'string',value:longRecord+'\n'+reject({access_token:'sensitive-token-value',message:'request rejected'})}]}}));
             """.trimIndent())
-            val process = ProcessBuilder("node", harness.absolutePath).redirectErrorStream(true).start()
-            val output = process.inputStream.bufferedReader().readText()
-            assertEquals(output, 0, process.waitFor())
+            val (code, output) = Node.run(harness.absolutePath)
+            assertEquals(output, 0, code)
             val event = requireNotNull(CdpConsoleMapper.map(output))
             val captured = CdpConsoleMapper.format(event.level, event.text, event.timestampMs)
             assertTrue(captured.contains("E webview/console: Unhandled promise rejection: Error: long reason"))

@@ -97,22 +97,12 @@ class ProfilesI18nContractTest {
             assertEquals("$locale Profiles key set must be exact", profiles.keys, target.strings.keys.filterTo(sortedSetOf()) { it.startsWith("profiles.") })
             profiles.forEach { (key, english) ->
                 val translated = checkNotNull(target.strings[key]) { "$locale is missing $key" }
-                assertEquals("$locale has stale source text for $key", english.sourceHash, translated.sourceHash)
                 val fallback = locale to key
                 if (translated.state == TranslationState.ENGLISH_FALLBACK) {
                     if (!EarlyAccessReviewHold.holds(locale, key, translated)) observedFallbacks += fallback
                     assertEquals("$locale English fallback must equal the authoritative source for $key", english.text, translated.text)
                 }
-                assertTrue(
-                    "$locale $key must be reviewed or named as an exact approved English fallback",
-                    translated.state == TranslationState.MACHINE_CROSS_CHECKED ||
-                        translated.state == TranslationState.COMMUNITY_CORRECTED ||
-                        (translated.state == TranslationState.ENGLISH_FALLBACK &&
-                            fallback in APPROVED_PROFILES_ENGLISH_FALLBACKS) ||
-                        (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT) ||
-                        EarlyAccessReviewHold.holds(locale, key, translated),
-                )
+                assertTrue("$locale $key is not release-ready", releaseReady(locale, key, translated))
             }
         }
 

@@ -1,10 +1,9 @@
 package io.panelassistant.android.dashboard
 
+import io.panelassistant.android.testsupport.Node
 import java.io.File
-import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HaLifecycleToastTest {
@@ -14,8 +13,7 @@ class HaLifecycleToastTest {
         val emitted = File("build/tmp/lifecycle-toast-proof.js")
         emitted.parentFile.mkdirs()
         emitted.writeText(InjectionScript.lifecycleNoticeJs(false))
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write("""
+        val (code, output) = Node.run(stdin = """
             const assert=require('node:assert/strict');
             const listeners=[];
             const visible=new Map();
@@ -46,9 +44,7 @@ class HaLifecycleToastTest {
             show('connection-lost',0);
             window.haPaneldLifecycleNotice(false);show('server-startup');assert.ok(visible.has('server-startup'));
             window.top={};eval($script);assert.equal(listeners.length,1);
-        """.trimIndent()) }
-        assertTrue("toast event proof timed out", process.waitFor(45, TimeUnit.SECONDS))
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.exitValue())
+        """.trimIndent(), timeoutSeconds = 45)
+        assertEquals(output, 0, code)
     }
 }

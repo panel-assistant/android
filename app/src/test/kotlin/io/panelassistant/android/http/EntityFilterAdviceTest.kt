@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.device.profile.ProfileCpuCoreCluster
 import io.panelassistant.android.device.profile.ProfileSoc
 import io.panelassistant.android.http.EntityFilterAdvice.Confidence
@@ -26,8 +27,7 @@ class EntityFilterAdviceTest {
         // would silently fall back to platform guessing. Read from the shipped YAML so adding a profile with
         // a core we do not recognise fails here rather than degrading quietly in front of a user.
         // Source-text reason: loads the shipped device profiles as input data.
-        val dir = listOf(File("src/main/assets/device-profiles"), File("app/src/main/assets/device-profiles"))
-            .first { it.isDirectory }
+        val dir = TestSources.appDir("src/main/assets/device-profiles")
         val declaring = dir.listFiles { f: File -> f.extension == "yaml" }.orEmpty()
             .map { it.name to it.readText() }
             .filter { (_, text) -> text.contains("\nsoc:") }

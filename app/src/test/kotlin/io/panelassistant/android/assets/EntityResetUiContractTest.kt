@@ -1,6 +1,7 @@
 package io.panelassistant.android.assets
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
+import io.panelassistant.android.testsupport.Node
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,10 +11,7 @@ import org.junit.Test
 class EntityResetUiContractTest {
     @Test fun `openapi reset schema contract keeps clear filter optional and off`() {
         // Source-text reason: openapi.json is the published API schema contract.
-        val openApi = listOf(
-            File("src/main/assets/openapi.json"),
-            File("app/src/main/assets/openapi.json"),
-        ).first(File::isFile).readText()
+        val openApi = TestSources.appFile("src/main/assets/openapi.json").readText()
         val schema = JSONObject(openApi).getJSONObject("paths")
             .getJSONObject("/api/v1/dashboard/entities/reset")
             .getJSONObject("post")
@@ -29,22 +27,12 @@ class EntityResetUiContractTest {
     }
 
     @Test fun `deferred mutation request excludes every competing action`() {
-        val working = File(requireNotNull(System.getProperty("user.dir")))
-        val fixture = listOf(
-            File(working, "app/src/test/js/entity-mutation-gate-test.mjs"),
-            File(working, "src/test/js/entity-mutation-gate-test.mjs"),
-        ).first(File::isFile)
+        val fixture = TestSources.appFile("src/test/js/entity-mutation-gate-test.mjs")
         // Source-text reason: executes the shipped entities.js in a node behaviour fixture.
-        val asset = listOf(
-            File(working, "app/src/main/assets/entities.js"),
-            File(working, "src/main/assets/entities.js"),
-        ).first(File::isFile)
-        val process = ProcessBuilder("node", fixture.absolutePath, asset.absolutePath)
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
+        val asset = TestSources.appFile("src/main/assets/entities.js")
+        val (code, output) = Node.run(fixture.absolutePath, asset.absolutePath)
 
-        assertEquals(output, 0, process.waitFor())
+        assertEquals(output, 0, code)
         assertTrue(output, output.contains("entity mutation gate deferred-fetch cases passed"))
     }
 }

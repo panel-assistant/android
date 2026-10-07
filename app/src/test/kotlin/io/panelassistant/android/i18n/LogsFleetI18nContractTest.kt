@@ -70,27 +70,6 @@ class LogsFleetI18nContractTest {
         }
     }
 
-    @Test fun `Logs and Fleet catalogue slices are current and promoted in every release locale`() {
-        val allExpected = expectedKeys.values.flatten().toSet()
-
-        releaseTargetLocales.forEach { locale ->
-            val target = TargetCatalogue.parse(File(assets, "i18n/$locale.json").readText(), sourceCatalogue)
-            allExpected.forEach { key ->
-                val english = checkNotNull(sourceCatalogue.strings[key]) { "English catalogue is missing $key" }
-                val translated = checkNotNull(target.strings[key]) { "$locale is missing $key" }
-                assertEquals("$locale has stale source text for $key", english.sourceHash, translated.sourceHash)
-                assertTrue(
-                    "$locale must promote $key beyond draft before release",
-                    translated.state == TranslationState.MACHINE_CROSS_CHECKED ||
-                        translated.state == TranslationState.COMMUNITY_CORRECTED ||
-                        (locale in AppLocale.EARLY_ACCESS_LOCALES &&
-                            translated.state == TranslationState.MACHINE_DRAFT) ||
-                        EarlyAccessReviewHold.holds(locale, key, translated),
-                )
-            }
-        }
-    }
-
     @Test fun `Logs and Fleet language accounting exposes shared per-key English fallback`() {
         val targetJson = JSONObject(File(assets, "i18n/de.json").readText())
         targetJson.getJSONObject("strings")

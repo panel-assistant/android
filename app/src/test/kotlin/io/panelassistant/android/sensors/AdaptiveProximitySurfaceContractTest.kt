@@ -1,7 +1,7 @@
 package io.panelassistant.android.sensors
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.config.SettingsRegistry
-import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,8 +47,5 @@ class AdaptiveProximitySurfaceContractTest {
         assertTrue(mqtt.contains("admitted and ProximityReportGate.LEVEL != 0"))
     }
 
-    private fun source(relative: String): String = locate("src/main/kotlin/io/panelassistant/android/$relative").readText()
-
-    private fun locate(relative: String): File = listOf(File(relative), File("app/$relative"), File("../app/$relative"))
-        .firstOrNull(File::isFile) ?: error("missing test input $relative")
+    private fun source(relative: String): String = TestSources.kotlin(relative).readText()
 }

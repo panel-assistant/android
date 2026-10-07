@@ -1,7 +1,7 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.util.DashboardTheme
-import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -103,10 +103,6 @@ class AmbientThemeWiringContractTest {
     }
 
     private fun source(relative: String): String {
-        val working = File(requireNotNull(System.getProperty("user.dir")))
-        return listOf(
-            File(working, "app/src/main/kotlin/io/panelassistant/android/$relative"),
-            File(working, "src/main/kotlin/io/panelassistant/android/$relative"),
-        ).first(File::isFile).readText()
+        return TestSources.appFile("src/main/kotlin/io/panelassistant/android/$relative").readText()
     }
 }

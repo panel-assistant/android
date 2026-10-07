@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.device.profile.BundledProfileFixtures
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -7,7 +8,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class DisplayGeometryReportTest {
     private val nspanel get() = BundledProfileFixtures.bundledById.getValue("nspanel-pro").profile("NSPanel86P_1.1.7")
@@ -90,7 +90,7 @@ class DisplayGeometryReportTest {
 
     @Test fun reportMatchesTheOpenApiSchema() {
         // Source-text reason: the shipped OpenAPI schema is the public API wire format.
-        val root = listOf(File("src/main/assets/openapi.json"), File("app/src/main/assets/openapi.json")).first { it.isFile }
+        val root = TestSources.appFile("src/main/assets/openapi.json")
         val schema = JSONObject(root.readText()).getJSONObject("components").getJSONObject("schemas").getJSONObject("DisplayGeometry")
         val path = JSONObject(root.readText()).getJSONObject("paths").getJSONObject("/api/v1/display").getJSONObject("get")
         assertEquals(

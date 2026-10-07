@@ -1,12 +1,12 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.storage.StorageAutoVacuumMode
 import io.panelassistant.android.storage.StorageDatabaseFailureKind
 import io.panelassistant.android.storage.StorageHealthObservation
 import io.panelassistant.android.storage.StorageHealthSeverity
 import io.panelassistant.android.storage.StorageHealthSnapshot
 import io.panelassistant.android.storage.StorageQuickCheck
-import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -259,10 +259,6 @@ class StorageHealthRuntimeSurfaceTest {
 
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private fun source(name: String): String {
-        val working = File(requireNotNull(System.getProperty("user.dir")))
-        return listOf(
-            File(working, "app/src/main/kotlin/io/panelassistant/android/$name"),
-            File(working, "src/main/kotlin/io/panelassistant/android/$name"),
-        ).first(File::isFile).readText()
+        return TestSources.appFile("src/main/kotlin/io/panelassistant/android/$name").readText()
     }
 }

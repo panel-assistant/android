@@ -1,23 +1,16 @@
 package io.panelassistant.android.assets
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
+import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class CardSizeMemoryAssetTest {
     // Source-text reason: executes the shipped card-size-memory.js in node as the unit under test.
-    private val assetsDir: File by lazy {
-        listOf(File("src/main/assets"), File("app/src/main/assets"), File("../app/src/main/assets"))
-            .first(File::isDirectory)
-    }
-
-    private fun nodeAvailable(): Boolean = runCatching {
-        ProcessBuilder("node", "--version").start().waitFor() == 0
-    }.getOrDefault(false)
+    private val asset = TestSources.asset("card-size-memory.js").absolutePath
 
     @Test fun boundedMatchingSnapshotRestoresThenSettlesWithoutStoringContent() {
-        assumeTrue("node not available", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');
             let timers=[],frames=[],nextTimer=0;
@@ -65,15 +58,12 @@ class CardSizeMemoryAssetTest {
             if(parsed.cards['bad-height']!==100)process.exit(9);
             if(alignmentCalls!==1)process.exit(10);
         """.trimIndent()
-        val process = ProcessBuilder(
-            "node", "-e", script, File(assetsDir, "card-size-memory.js").absolutePath,
-        ).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals("card-size memory behavior failed:\n$output", 0, process.waitFor())
+        val (code, output) = Node.run("-e", script, asset)
+        assertEquals("card-size memory behavior failed:\n$output", 0, code)
     }
 
     @Test fun emptyDynamicRootRestoresReplacementCardsOnlyUntilSettled() {
-        assumeTrue("node not available", nodeAvailable())
+        Node.assumeAvailable()
         val script = """
             const fs=require('fs'),vm=require('vm');let timers=[],frames=[];
             function card(height){return {baseHeight:height,style:{minHeight:'',display:''},attrs:{'data-layout-key':'configure-display'},
@@ -95,9 +85,7 @@ class CardSizeMemoryAssetTest {
             if(replacement.style.minHeight!==''||frames.length!==1)process.exit(5);frames.shift()();
             const after=card(160);root.children=[after];if(CardSizeMemory.restore('cfg-groups')||after.style.minHeight)process.exit(6);
         """.trimIndent()
-        val process = ProcessBuilder("node", "-e", script, File(assetsDir, "card-size-memory.js").absolutePath)
-            .redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals("dynamic card-size restore failed:\n$output", 0, process.waitFor())
+        val (code, output) = Node.run("-e", script, asset)
+        assertEquals("dynamic card-size restore failed:\n$output", 0, code)
     }
 }

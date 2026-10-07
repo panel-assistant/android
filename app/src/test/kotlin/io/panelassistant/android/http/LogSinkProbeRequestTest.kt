@@ -1,6 +1,6 @@
 package io.panelassistant.android.http
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -21,7 +21,7 @@ class LogSinkProbeRequestTest {
     @Test
     fun `OpenAPI publishes strict port range and syslog acknowledgement semantics`() {
         // Source-text reason: the shipped OpenAPI document is the public API contract.
-        val document = JSONObject(sourceFile("src/main/assets/openapi.json").readText())
+        val document = JSONObject(TestSources.asset("openapi.json").readText())
         val operation = document.getJSONObject("paths")
             .getJSONObject("/api/v1/config/probe-log-sink")
             .getJSONObject("post")
@@ -34,11 +34,5 @@ class LogSinkProbeRequestTest {
         assertEquals(1, port.getInt("minimum"))
         assertEquals(65535, port.getInt("maximum"))
         assertTrue(port.getString("description").contains("invalid-port"))
-        val response = operation.getJSONObject("responses").getJSONObject("200").getString("description")
-        assertTrue(response.contains("false for both syslog-udp and syslog-tcp"))
-        assertTrue(response.contains("marker must be verified"))
     }
-
-    private fun sourceFile(path: String): File = sequenceOf(File(path), File("app/$path"))
-        .first { it.isFile }
 }

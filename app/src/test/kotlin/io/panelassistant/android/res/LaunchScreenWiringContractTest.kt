@@ -1,6 +1,6 @@
 package io.panelassistant.android.res
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,10 +8,7 @@ import org.junit.Test
 class LaunchScreenWiringContractTest {
     private fun englishString(name: String): String {
         // Source-text reason: reads the shipped English string catalogue, a user-visible copy contract.
-        val xml = listOf(
-            File("src/main/res/values/strings.xml"),
-            File("app/src/main/res/values/strings.xml"),
-        ).first { it.isFile }.readText()
+        val xml = TestSources.appFile("src/main/res/values/strings.xml").readText()
         return Regex("""<string name="${Regex.escape(name)}"[^>]*>(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
             .find(xml)?.groupValues?.get(1)
             ?: error("missing English string resource: $name")

@@ -1,6 +1,6 @@
 package io.panelassistant.android.device
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,14 +8,10 @@ import org.junit.Test
 /** Retained vendor adoption profiles must preserve safe home hand-back behavior. */
 class VendorStripProfileContainmentTest {
 
-    private fun repoRoot(): File {
-        val working = File(requireNotNull(System.getProperty("user.dir")))
-        return listOf(working.parentFile, working).first { File(it, "scripts/provision.sh").isFile }
-    }
 
     // Source-text reason: loads the shipped TPA10 profile as input data.
     private fun profilePackages(): List<String> {
-        val profile = File(repoRoot(), "app/src/main/assets/device-profiles/tpa10.yaml").readText()
+        val profile = TestSources.asset("device-profiles/tpa10.yaml").readText()
         return Regex("""^\s*-\s*package:\s*(\S+)""", RegexOption.MULTILINE)
             .findAll(profile)
             .map { it.groupValues[1] }
@@ -35,7 +31,7 @@ class VendorStripProfileContainmentTest {
         // Adoption authority is not a recommendation to disable. The launcher and system UI are listed so a
         // provisioner-tamed panel can be REPAIRED; a `recommended` importance would offer to disable the
         // panel's own home screen from the vendor-packages picker.
-        val profile = File(repoRoot(), "app/src/main/assets/device-profiles/tpa10.yaml").readText()
+        val profile = TestSources.asset("device-profiles/tpa10.yaml").readText()
         val importances = Regex("""^\s*importance:\s*(\S+)""", RegexOption.MULTILINE)
             .findAll(profile).map { it.groupValues[1] }.toList()
         assertTrue("the profile must declare importances", importances.isNotEmpty())

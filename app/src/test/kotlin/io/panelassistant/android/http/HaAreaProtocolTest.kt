@@ -1,8 +1,8 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.http.HaAreaProtocol.ReconcileAction
 import io.panelassistant.android.dashboard.EntityLearningManager
-import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -178,10 +178,7 @@ class HaAreaProtocolTest {
     @Test fun discoveryOnlySuggestsAnAreaWhenOneIsRequested() {
         // suggested_area applies at first registration only and must never appear as an empty string —
         // HA would create an unnamed area. Pinned at source because the device block is assembled by hand.
-        val bridge = listOf(
-            File("src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-            File("app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-        ).first { it.isFile }.readText()
+        val bridge = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
         assertTrue(bridge.contains("config.haArea.takeIf(String::isNotBlank)"))
         assertTrue(bridge.contains("\"suggested_area\":\""))
     }

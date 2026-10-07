@@ -1,8 +1,8 @@
 package io.panelassistant.android.dashboard
 
+import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class EntityLearningProtocolWebSocketTest {
@@ -27,9 +27,7 @@ class EntityLearningProtocolWebSocketTest {
     }
 
     @Test fun reverseProxySocketProducesLearningMetrics() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val script = EntityLearningProtocol.documentStartScript("https://ha.example/ha")
         val harness = """
             global.window=globalThis;
@@ -56,16 +54,12 @@ class EntityLearningProtocolWebSocketTest {
             if(metricBatches.length!==1)throw Error('wrong metric batch count: '+metricBatches.length);
             if(metricBatches[0]['sensor.temperature'][0]!==1)throw Error('update was not counted');
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun observerBoundsUniqueIdFloodBeforeSerializingBridgePayloads() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val script = EntityLearningProtocol.documentStartScript("https://ha.example")
         val harness = """
             global.window=globalThis;
@@ -108,16 +102,12 @@ class EntityLearningProtocolWebSocketTest {
             if(observer.dropped!==33)throw Error('wrong dropped count: '+observer.dropped);
             if(observer.coalesced!==1)throw Error('wrong coalesced count: '+observer.coalesced);
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun oversizedTargetFramesBypassObserverParsingWithoutAffectingDelivery() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val script = EntityLearningProtocol.documentStartScript("https://ha.example")
         val harness = """
             global.window=globalThis;
@@ -154,9 +144,7 @@ class EntityLearningProtocolWebSocketTest {
             if(observer.frame_chars!==oversized.length)throw Error('frame chars were not counted');
             if(observer.dropped!==2)throw Error('oversized work was not reported');
         """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 }

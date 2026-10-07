@@ -1,6 +1,6 @@
 package io.panelassistant.android.assets
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,8 +9,7 @@ import org.json.JSONObject
 class DashboardProductPositioningTest {
     // Source-text reason: loads the shipped English i18n catalogue as input data.
     private val english = JSONObject(
-        listOf(File("src/main/assets/i18n/en.json"), File("app/src/main/assets/i18n/en.json"))
-            .first { it.isFile }.readText(),
+        TestSources.appFile("src/main/assets/i18n/en.json").readText(),
     ).getJSONObject("strings")
     private fun english(key: String): String = english.getJSONObject(key).getString("text")
 

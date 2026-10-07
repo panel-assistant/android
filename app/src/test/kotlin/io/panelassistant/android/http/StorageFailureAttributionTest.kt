@@ -1,16 +1,15 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.storage.StorageAutoVacuumMode
 import io.panelassistant.android.storage.StorageDatabaseFailureKind
 import io.panelassistant.android.storage.StorageHealthSeverity
 import io.panelassistant.android.storage.StorageHealthSnapshot
 import io.panelassistant.android.storage.StorageQuickCheck
-import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -143,10 +142,7 @@ class StorageFailureAttributionTest {
         // operation was being captured. A green suite proves nothing here unless something compares
         // the two, so this does.
         // Source-text reason: the shipped OpenAPI schema is the public API wire format.
-        val assets = listOf("src/main/assets", "app/src/main/assets", "../app/src/main/assets")
-            .map { File(it) }.firstOrNull { it.isDirectory }
-        assumeTrue("assets dir not found (skipping)", assets != null)
-        val schema = JSONObject(File(assets, "openapi.json").readText())
+        val schema = JSONObject(TestSources.asset("openapi.json").readText())
             .getJSONObject("components").getJSONObject("schemas").getJSONObject("StorageHealth")
         val documented = schema.getJSONObject("properties").keys().asSequence().toSet()
 

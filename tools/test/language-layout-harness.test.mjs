@@ -3,11 +3,12 @@
 // on the panel's own screen overflow, overlap and wrapping must only be reported.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BROWSERS, THEMES, VIEWS, launch, loadCatalogues, measureCell, runPage, startLayoutServer, verdict } from './language-layout/harness.mjs';
+import { BROWSERS, THEMES, VIEWS, launch, loadCatalogues, measureCell, runPage, selection, startLayoutServer, verdict } from './language-layout/harness.mjs';
 import { PAGES } from './language-layout/pages/index.mjs';
 
 const { catalogues, locales, scales } = await loadCatalogues();
 const configure = PAGES.find((page) => page.name === 'configure');
+const profiles = PAGES.find((page) => page.name === 'profiles');
 const server = await startLayoutServer(PAGES, catalogues, locales);
 const origin = `http://127.0.0.1:${server.address().port}`;
 test.after(() => new Promise((done) => server.close(done)));
@@ -57,11 +58,28 @@ for (const browserName of BROWSERS) {
           assert.ok(!errors.some((line) => /\((b|d) /.test(line)), `${view.name}: panel sizes must not block on overflow or wrapping\n${errors.join('\n')}`);
         }
       }
+      // Profiles must run the production CodeMirror editor, never the plain-textarea fallback.
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await context.newPage();
+      await page.route('**/profile-editor/codemirror.js', (route) => route.abort());
+      await assert.rejects(measureCell(page, origin, profiles, VIEWS.find((item) => item.name === 'direct-desktop'), 'dark', 'en'), /fell back from CodeMirror/);
+      await context.close();
     } finally {
       await browser.close();
     }
   });
 }
+
+test('a page declaring maxCls blocks on a larger load shift; breakpoint views are selected', () => {
+  const view = VIEWS.find((item) => item.name === 'direct-desktop');
+  const base = { cut: [], overflow: [], overlaps: [], offscreen: [], wraps: [], cards: {}, errors: [], lang: 'en' };
+  const shifted = (result) => verdict({ ...base, ...result }, null, view, 'en').errors.filter((line) => line.includes('(e layout shift)'));
+  assert.equal(shifted({ cls: 0.5, maxCls: 0.10 }).length, 1);
+  assert.deepEqual(shifted({ cls: 0.05, maxCls: 0.10 }), []);
+  assert.deepEqual(shifted({ cls: 0.5 }), []);
+  const views = selection(PAGES, locales).views;
+  for (const name of ['profiles-519', 'profiles-520', 'profiles-856', 'profiles-857', 'profiles-1049', 'profiles-1050', 'api-320']) assert.ok(views.includes(name), name);
+});
 
 test('the CI matrix shards exactly the gate pages and browsers', async () => {
   const { readFile } = await import('node:fs/promises');

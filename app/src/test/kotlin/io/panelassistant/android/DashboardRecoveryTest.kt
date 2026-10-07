@@ -1,5 +1,6 @@
 package io.panelassistant.android
 
+import io.panelassistant.android.testsupport.Node
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
@@ -7,7 +8,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import io.panelassistant.android.util.ProfileRestartCoordinator
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class DashboardRecoveryTest {
@@ -231,9 +231,7 @@ class DashboardRecoveryTest {
     }
 
     @Test fun `exact wake media scripts classify and sample nested dashboard video`() {
-        val node = runCatching { ProcessBuilder("node", "--version").start().let { it.waitFor() == 0 } }
-            .getOrDefault(false)
-        assumeTrue("node unavailable", node)
+        Node.assumeAvailable()
         val arm = WakeMediaRecoveryScript.arm(7)
         val inspect = WakeMediaRecoveryScript.inspect(7)
         val harness =
@@ -346,10 +344,8 @@ class DashboardRecoveryTest {
             expect(inspect(),-1,'empty sample is inconclusive');
             if(window.__haPanelWakeMedia!==undefined)throw Error('inspect retained sampled nodes');
             """.trimIndent()
-        val process = ProcessBuilder("node").redirectErrorStream(true).start()
-        process.outputStream.bufferedWriter().use { it.write(harness) }
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val (code, output) = Node.run(stdin = harness)
+        assertEquals(output, 0, code)
     }
 
     @Test fun `dashboard navigation stays on the configured authority`() {

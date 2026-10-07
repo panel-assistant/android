@@ -1,5 +1,7 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.TestSources
+import io.panelassistant.android.testsupport.Node
 import io.panelassistant.android.BuildConfig
 import java.io.File
 import org.json.JSONObject
@@ -11,36 +13,17 @@ import org.junit.Test
 
 class HardenedApprovalAssetContractTest {
     // Source-text reason: loads the shipped openapi.json contract and runs shipped scripts in node.
-    private val assetsDir: File by lazy {
-        listOf(File("src/main/assets"), File("app/src/main/assets"), File("../app/src/main/assets"))
-            .first(File::isDirectory)
-    }
+    private val assetsDir: File by lazy { TestSources.assetDir() }
 
     private fun asset(name: String): String = File(assetsDir, name).readText()
 
-    private fun nodeAvailable(): Boolean = runCatching {
-        ProcessBuilder("node", "--version").start().waitFor() == 0
-    }.getOrDefault(false)
+    private fun nodeAvailable(): Boolean = Node.available
 
-    private fun runNode(script: String, vararg args: String): Pair<Int, String> {
-        val process = ProcessBuilder(listOf("node", "-e", script) + args)
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
-        return process.waitFor() to output
-    }
+    private fun runNode(script: String, vararg args: String) = Node.run("-e", script, *args)
 
     @Test fun openApiHardenedHttpOutcomeContract() {
         val document = JSONObject(asset("openapi.json"))
         assertEquals(BuildConfig.VERSION_NAME, document.getJSONObject("info").getString("version"))
-        val guidance = document.getJSONObject("components").getJSONObject("responses")
-            .getJSONObject("ApprovalRequired").getString("description").lowercase()
-        assertTrue(guidance.contains("physically at the panel"))
-        assertTrue(guidance.contains("panel's screen"))
-        assertTrue(guidance.contains("cannot be approved remotely"))
-        assertTrue(guidance.contains("retry the identical request from the same peer"))
-        assertTrue(guidance.contains("one-use"))
-
         val paths = document.getJSONObject("paths")
         val protected = listOf(
             "POST /play",
@@ -86,11 +69,6 @@ class HardenedApprovalAssetContractTest {
         val input = paths.getJSONObject("/api/v1/input").getJSONObject("post").getJSONObject("responses")
         assertTrue(input.getJSONObject("403").getString("description").contains("remote-input-disabled"))
         assertFalse(input.getJSONObject("202").getString("description").contains("approval-required"))
-
-        val configConflict = paths.getJSONObject("/api/v1/config").getJSONObject("post")
-            .getJSONObject("responses").getJSONObject("409").getString("description")
-        assertTrue(configConflict.contains("network ADB cannot be enabled"))
-        assertTrue(configConflict.contains("saved separately"))
 
         val inspectResponses = paths.getJSONObject("/api/v1/inspect/start").getJSONObject("post")
             .getJSONObject("responses")

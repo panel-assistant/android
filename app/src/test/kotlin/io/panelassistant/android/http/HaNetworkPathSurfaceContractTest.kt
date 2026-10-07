@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.Node
 import io.panelassistant.android.sensors.HaNetworkPathPresentation
 import io.panelassistant.android.sensors.HaNetworkPathSeverity
 import io.panelassistant.android.testsupport.TestSources
@@ -39,21 +40,11 @@ class HaNetworkPathSurfaceContractTest {
 
     /** The script's behaviour, driven through the real asset by node: hide, warn, escalate, retract. */
     @Test fun theBannerAndRowBehaveAsSpecifiedForEveryToken() {
-        val working = java.io.File(requireNotNull(System.getProperty("user.dir")))
-        val fixture = listOf(
-            java.io.File(working, "app/src/test/js/ha-network-banner-test.mjs"),
-            java.io.File(working, "src/test/js/ha-network-banner-test.mjs"),
-        ).first(java.io.File::isFile)
+        val fixture = TestSources.appFile("src/test/js/ha-network-banner-test.mjs")
         // Source-text reason: executes the shipped buildwatch.js in a node behaviour fixture.
-        val asset = listOf(
-            java.io.File(working, "app/src/main/assets/buildwatch.js"),
-            java.io.File(working, "src/main/assets/buildwatch.js"),
-        ).first(java.io.File::isFile)
-        val process = ProcessBuilder("node", fixture.absolutePath, asset.absolutePath)
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals(output, 0, process.waitFor())
+        val asset = TestSources.appFile("src/main/assets/buildwatch.js")
+        val (code, output) = Node.run(fixture.absolutePath, asset.absolutePath)
+        assertEquals(output, 0, code)
         assertTrue(output, output.contains("ha network banner cases passed"))
     }
 

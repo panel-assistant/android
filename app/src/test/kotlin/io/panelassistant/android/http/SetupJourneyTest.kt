@@ -1,5 +1,6 @@
 package io.panelassistant.android.http
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.DiscoveryOutcome
 import io.panelassistant.android.DiscoveryReason
 import io.panelassistant.android.DiscoveryResult
@@ -9,7 +10,6 @@ import io.panelassistant.android.http.SetupJourney.RenderProof
 import io.panelassistant.android.http.SetupJourney.RendererChoice
 import io.panelassistant.android.http.SetupJourney.Stage
 import io.panelassistant.android.http.SetupJourney.Status
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -69,10 +69,7 @@ class SetupJourneyTest {
         // The canonical vocabulary is documented on MqttBridge.state. If a state is added there and not
         // here it silently becomes UNKNOWN, which reads as "still connecting" forever and suppresses all
         // guidance — a failure mode with no visible symptom other than a user waiting indefinitely.
-        val bridge = listOf(
-            File("src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-            File("app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-        ).first { it.isFile }.readText()
+        val bridge = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
         val documented = Regex("""\*\s+\*\s+(connected \| .*?)\.""", RegexOption.DOT_MATCHES_ALL)
             .find(bridge)?.groupValues?.get(1)
             ?: bridge.substringAfter("connected | ").substringBefore(".").let { "connected | $it" }

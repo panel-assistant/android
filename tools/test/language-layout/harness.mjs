@@ -273,7 +273,7 @@ export function selection(pages, locales) {
   return {
     pages: pick('LAYOUT_PAGES', pages.map((page) => page.name)),
     browsers: pick('LAYOUT_BROWSERS', BROWSERS),
-    views: pick('LAYOUT_VIEWS', VIEWS.map((view) => view.name)),
+    views: pick('LAYOUT_VIEWS', [...VIEWS, ...pages.flatMap((page) => page.views || [])].map((view) => view.name)),
     themes: pick('LAYOUT_THEMES', THEMES),
     // English is the comparison baseline, so it is always measured.
     locales: selectedLocales.includes('en') ? selectedLocales : ['en', ...selectedLocales],
@@ -310,6 +310,15 @@ async function settle(frame) {
   });
 }
 
+/** Init script: sums unprompted layout shifts in every frame (WebKit has no layout-shift entries, so it reads 0). */
+export function LAYOUT_SHIFTS() {
+  window.__layoutShifts = [];
+  try {
+    new PerformanceObserver((list) => list.getEntries().forEach((entry) => { if (!entry.hadRecentInput) window.__layoutShifts.push(entry.value); }))
+      .observe({ type: 'layout-shift', buffered: true });
+  } catch (_) { /* engine without layout-shift entries */ }
+}
+
 /** Load one cell and return its measurement plus any page errors. */
 export async function measureCell(page, origin, pageDef, view, theme, locale, mutate = null) {
   const errors = [];
@@ -329,6 +338,8 @@ export async function measureCell(page, origin, pageDef, view, theme, locale, mu
       frame = page.mainFrame();
     }
     await pageDef.ready(frame, { locale, theme, view });
+    // Load shift, read before the exercise: a page declaring maxCls blocks above it (verdict, family e).
+    const cls = await frame.evaluate(() => (window.__layoutShifts || []).reduce((sum, value) => sum + value, 0));
     if (pageDef.exercise) await pageDef.exercise(frame, { locale, theme, view });
     // Narrow card walls skip rendering off-screen cards (content-visibility:auto). Measure every card as
     // it renders once scrolled into view, identically for English and the locale.
@@ -339,7 +350,7 @@ export async function measureCell(page, origin, pageDef, view, theme, locale, mu
     const result = await frame.evaluate(mutate
       ? `(() => { (${mutate.toString()})(); return (${measureLayout.toString()})(); })()`
       : measureLayout);
-    return { ...result, errors };
+    return { ...result, cls, maxCls: pageDef.maxCls, errors };
   } finally {
     page.off('pageerror', onError);
   }
@@ -382,6 +393,7 @@ export function verdict(result, english, view, locale, scale = 1) {
       add('d card growth', { key, text: `${base.height}px → ${card.height}px (+${Math.round((card.height / base.height - 1) * 100)}%; ${locale} scale ${scale}, limit +${Math.round((expected - 1) * 100)}%)` }, !panel && blocking);
     }
   }
+  if (result.maxCls != null && result.cls > result.maxCls) errors.push(`(e layout shift) page [CLS ${result.cls.toFixed(4)} > ${result.maxCls}]`);
   // A fetch the previous navigation left in flight is cancelled, not a page failure.
   for (const message of result.errors) if (!CANCELLED_FETCH.test(message)) errors.push(`(script) ${message}`);
   if (result.lang !== locale) errors.push(`(frame) document language ${result.lang} is not ${locale}`);
@@ -394,11 +406,12 @@ export async function runPage({ pageDef, browserName, origin, sel, scales = {}, 
   const browser = await launch(browserName);
   const failures = []; const reports = []; let cells = 0; const matchedKnown = new Set();
   try {
-    for (const viewName of sel.views) {
-      const view = VIEWS.find((item) => item.name === viewName);
+    // A page's own breakpoint-edge views join the shared ones.
+    for (const view of [...VIEWS, ...(pageDef.views || [])].filter((item) => sel.views.includes(item.name))) {
       const context = await browser.newContext({ viewport: { width: view.width, height: view.height }, deviceScaleFactor: 1 });
       // Card-size memory and similar per-origin state must not carry one locale's geometry into the next.
       await context.addInitScript(() => { try { localStorage.clear(); sessionStorage.clear(); } catch (_) { /* storage may be unavailable */ } });
+      await context.addInitScript(LAYOUT_SHIFTS);
       const page = await context.newPage();
       page.setDefaultTimeout(15_000);
       try {

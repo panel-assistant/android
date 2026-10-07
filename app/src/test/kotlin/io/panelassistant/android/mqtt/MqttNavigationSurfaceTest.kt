@@ -1,6 +1,6 @@
 package io.panelassistant.android.mqtt
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,11 +8,7 @@ import org.junit.Test
 class MqttNavigationSurfaceTest {
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     @Test fun `navigation actions remain tombstoned but are not MQTT controls`() {
-        val source = listOf(
-            File("src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-            File("app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-            File("../app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-        ).first(File::isFile).readText()
+        val source = TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
 
         listOf("cmdAdminLauncher", "cmdBack", "cmdHome", "cmdLauncher", "cmdRecents").forEach {
             assertFalse("$it must not remain an MQTT action", source.contains("private val $it ="))

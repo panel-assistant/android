@@ -1,6 +1,6 @@
 package io.panelassistant.android.http
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,18 +8,12 @@ import org.junit.Test
 class HardenedControlContractTest {
     // Source-text reason: pins MqttBridge.kt, deleted with the MQTT removal.
     private val mqtt by lazy {
-        listOf(
-            File("src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-            File("app/src/main/kotlin/io/panelassistant/android/MqttBridge.kt"),
-        ).first { it.isFile }.readText()
+        TestSources.appFile("src/main/kotlin/io/panelassistant/android/MqttBridge.kt").readText()
     }
 
     // Source-text reason: user-visible English labels for the security modes and remote-ADB refusals.
     private val englishStrings by lazy {
-        listOf(
-            File("src/main/res/values/strings.xml"),
-            File("app/src/main/res/values/strings.xml"),
-        ).first { it.isFile }.readText()
+        TestSources.appFile("src/main/res/values/strings.xml").readText()
     }
 
     private fun englishString(name: String): String {

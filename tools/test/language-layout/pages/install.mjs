@@ -1,7 +1,6 @@
 // Install: mirror of PaneldServer.installBody() inside page() on a panel with root and the privileged
 // installer ready, an old WebView the profile can heal, a Companion whose internal URL needs repair and a
-// power-safety advisory offering repair — so every card and every top-of-tab warning renders. The API
-// payload and the dynamic-state exercise are shared with install-localization-layout-gate.test.mjs.
+// power-safety advisory offering repair — so every card and every top-of-tab warning renders.
 import { tabbedPage } from '../harness.mjs';
 
 const GH_ICON = 'M12 2a10 10 0 0 0-3 19.5v-3.4c-2.8.6-3.4-1.2-3.4-1.2-.4-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 3 .8.1-.6.3-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8A10 10 0 0 0 12 2z';
@@ -285,6 +284,8 @@ function backupCard(s, b) {
 export default {
   name: 'install',
   path: '/install',
+  maxCls: 0.10,
+  views: [{ name: 'install-857', tier: 'supported', width: 857, height: 800 }],
   html(context) {
     const { s, locale } = context;
     const b = builders(s, locale);

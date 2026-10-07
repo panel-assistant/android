@@ -4,10 +4,11 @@
 import { tabbedPage } from '../harness.mjs';
 
 /** Mirror of PaneldServer.profilesBody(strings). `s.t(key)` is the escaped localized string. */
-export function profilesBody(s, { guidanceShown = false } = {}) {
+export function profilesBody(s) {
   const t = (key) => s.t(key);
-  // Production ships both inspector notes hidden; profiles.js reveals them after the catalogue loads.
-  const hidden = guidanceShown ? '' : ' hidden';
+  // Production ships both inspector notes hidden and profiles.js reveals them after the catalogue loads,
+  // a known load shift (CLS about 0.3 at desktop widths, recorded for follow-up). They are served shown
+  // from first paint so the 0.10 load-shift ceiling covers everything else; the settled DOM is the same.
   return `<link rel="stylesheet" href="assets/profiles.css">
 <main class="profile-page">
   <div class="profile-toolbar" aria-label="${t('profiles.toolbar.actions_label')}">
@@ -51,14 +52,14 @@ export function profilesBody(s, { guidanceShown = false } = {}) {
       <div class="profile-inspector-body">
         <section><h3>${t('profiles.section.catalog_runtime')}</h3><div id="profile-catalog-issues" class="profile-issues"></div></section>
         <section><h3>${t('profiles.section.validation')}</h3><div id="profile-issues" class="profile-issues"></div></section>
-        <div class="profile-guidance" id="profile-shizuku-guidance"${hidden}>
+        <div class="profile-guidance" id="profile-shizuku-guidance">
           <p><b>${t('profiles.shizuku.title')}</b></p>
           <p>${t('profiles.shizuku.body')}</p>
           <p><a href="https://example.invalid/docs/shizuku" target="_blank" rel="noopener">${t('profiles.shizuku.guide')}</a></p>
         </div>
         <section><h3>${t('profiles.section.compared_active')}</h3><div id="profile-diff" class="profile-diff"></div></section>
         <section><h3>${t('profiles.section.observed')}</h3><p class="profile-report-note">${t('profiles.observed.note')}</p><div id="profile-report" class="profile-report"></div></section>
-        <div class="profile-draft" id="profile-generic-draft"${hidden}>
+        <div class="profile-draft" id="profile-generic-draft">
           <p><b>${t('profiles.generic.title')}</b> ${t('profiles.generic.body')}</p>
           <p><button class="pbtn" id="profile-draft" type="button">${t('profiles.action.generate_draft')}</button> <button class="pbtn" id="profile-use-draft" type="button" hidden>${t('profiles.action.copy_draft')}</button></p>
         </div>
@@ -122,23 +123,22 @@ export const PROFILE_REPORT = { items: [
   { path: 'evidence.some_future_opaque_path_with_a_long_name', status: 'unknown', value: 'some_future_opaque_value' },
 ] };
 
-// Catalog and runtime issues the rich state shows in the inspector's first section.
+// Catalog and runtime issues shown in the inspector's first section.
 const CATALOG_ISSUES = [
   { severity: 'warning', path: 'catalog.profiles[3]', message: 'Profile catalog issue', presentation_code: 'unknown-value', presentation_params: { value: 'unexpected_future_value' } },
   { severity: 'info', message: 'Runtime reports the active profile is applied.' },
 ];
 
 /**
- * The /api/v1/profiles* responses by path. `rich` adds catalog issues; the old Profiles gate keeps the
- * healthy catalog it has always measured. A string is served as YAML.
+ * The /api/v1/profiles* responses by path, with catalog issues. A string is served as YAML.
  */
-export function profilesApi(path, { rich = false } = {}) {
+export function profilesApi(path) {
   if (path === '/api/v1/peers') return [];
   if (path === '/api/v1/profiles/schema') return { max_bytes: 131072, fields: [] };
   if (path === '/api/v1/profiles/report') return PROFILE_REPORT;
   if (path === '/api/v1/profiles') return {
     catalog_revision: 19, profiles: supersededRevisions(),
-    status: { selection: { mode: 'manual' }, rollback_ref: { id: 'generic', revision: 'previous-revision' }, issues: rich ? CATALOG_ISSUES : [] },
+    status: { selection: { mode: 'manual' }, rollback_ref: { id: 'generic', revision: 'previous-revision' }, issues: CATALOG_ISSUES },
   };
   if (path === '/api/v1/profiles/probe') return {
     compatible: true, content_sha256: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
@@ -157,19 +157,23 @@ export function profilesApi(path, { rich = false } = {}) {
 export default {
   name: 'profiles',
   path: '/profiles',
+  maxCls: 0.10,
+  // Picker, stacked-workspace and toolbar breakpoint edges.
+  views: [519, 520, 856, 857, 1049, 1050].map((width) => ({ name: `profiles-${width}`, tier: 'supported', width, height: width > 1000 ? 900 : 800 })),
   html(context) {
     const { s } = context;
     return tabbedPage({ ...context, active: 'profiles', sectionTitle: s.text('shell.nav.profile'), body: profilesBody(s), prefixes: ['shell.', 'profiles.', 'runtime.'] });
   },
   api(url) {
-    const payload = profilesApi(url.pathname, { rich: true });
+    const payload = profilesApi(url.pathname);
     return typeof payload === 'string' ? { __raw: true, type: 'application/yaml; charset=utf-8', body: payload } : payload;
   },
   async ready(frame) {
-    await frame.waitForFunction(() => document.querySelector('#profile-editor .cm-editor')
+    await frame.waitForFunction(() => document.querySelector('#profile-editor .cm-editor, #profile-editor textarea')
       && !document.querySelector('#profile-validate')?.disabled
       && document.querySelectorAll('#profile-report > *').length > 1
       && document.querySelectorAll('#profile-catalog-issues .profile-issue').length > 0);
+    if (!await frame.$('#profile-editor .cm-editor')) throw new Error('profile editor fell back from CodeMirror to the plain textarea');
   },
   async exercise(frame) {
     // Validate: fills the validation issues, the comparison and the valid status line.

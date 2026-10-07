@@ -1,26 +1,14 @@
 package io.panelassistant.android.i18n
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ApiExplorerI18nContractTest {
-    private fun source(vararg candidates: String): String = candidates.map(::File).first(File::isFile).readText()
-
     // Source-text reason: the API catalogue keys consumed by the shipped api.js are a translation catalogue contract.
-    private val script = source("src/main/assets/api.js", "app/src/main/assets/api.js")
+    private val script = TestSources.asset("api.js").readText()
     // Source-text reason: loads the shipped English catalogue as input data.
-    private val english = SourceCatalogue.parse(
-        source("src/main/assets/i18n/en.json", "app/src/main/assets/i18n/en.json"),
-    )
-
-    @Test fun `external API browser asset parses as JavaScript`() {
-        // Source-text reason: syntax check of a shipped asset.
-        val file = listOf(File("src/main/assets/api.js"), File("app/src/main/assets/api.js")).first(File::isFile)
-        val process = ProcessBuilder("node", "--check", file.absolutePath).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        assertEquals("api.js is not valid JavaScript:\n$output", 0, process.waitFor())
-    }
+    private val english = SourceCatalogue.parse(TestSources.asset("i18n/en.json").readText())
 
     @Test fun `English API catalogue is the exact frozen browser consumer set`() {
         val records = english.strings.keys.filterTo(sortedSetOf()) { it.startsWith("api.") }

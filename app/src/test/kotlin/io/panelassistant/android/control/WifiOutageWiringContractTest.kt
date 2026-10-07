@@ -1,5 +1,6 @@
 package io.panelassistant.android.control
 
+import io.panelassistant.android.testsupport.TestSources
 import io.panelassistant.android.config.SettingsRegistry
 import java.io.File
 import org.junit.Assert.assertFalse
@@ -69,10 +70,7 @@ class WifiOutageWiringContractTest {
         val working = File(requireNotNull(System.getProperty("user.dir")))
         // Source-text reason: the shipped backup-rules XML is the Android backup contract, read as data.
         for ((rules, sections) in listOf("backup_rules.xml" to 1, "data_extraction_rules.xml" to 2)) {
-            val text = listOf(
-                File(working, "app/src/main/res/xml/$rules"),
-                File(working, "src/main/res/xml/$rules"),
-            ).first(File::isFile).readText()
+            val text = TestSources.appFile("src/main/res/xml/$rules").readText()
             val occurrences = Regex(Regex.escape("""path="ha-paneld-wifi-stability.xml"""")).findAll(text).count()
             assertTrue(
                 "$rules must exclude the wifi-stability legacy mirror in every section",
@@ -81,18 +79,7 @@ class WifiOutageWiringContractTest {
         }
     }
 
-    private fun source(relative: String): String {
-        val working = File(requireNotNull(System.getProperty("user.dir")))
-        val candidates = if (relative.contains('/')) {
-            listOf(relative)
-        } else {
-            listOf(relative, "control/$relative")
-        }.flatMap {
-            listOf(
-                File(working, "app/src/main/kotlin/io/panelassistant/android/$it"),
-                File(working, "src/main/kotlin/io/panelassistant/android/$it"),
-            )
-        }
-        return candidates.first(File::isFile).readText()
-    }
+    private fun source(relative: String): String =
+        (TestSources.appFileOrNull("src/main/kotlin/io/panelassistant/android/$relative")
+            ?: TestSources.kotlin("control/$relative")).readText()
 }

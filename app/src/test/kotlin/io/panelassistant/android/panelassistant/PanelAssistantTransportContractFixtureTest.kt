@@ -1,6 +1,6 @@
 package io.panelassistant.android.panelassistant
 
-import java.io.File
+import io.panelassistant.android.testsupport.TestSources
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
@@ -128,10 +128,7 @@ class PanelAssistantTransportContractFixtureTest {
 
     /** Record actual producer values; the owner stamps a real code commit before submission. */
     private fun recordProducer(field: String, value: JSONArray) {
-        val target = listOf(
-            File("src/test/resources/panel-assistant-contract/android_producer_v1.json"),
-            File("app/src/test/resources/panel-assistant-contract/android_producer_v1.json"),
-        ).first { it.isFile }
+        val target = TestSources.appFile("src/test/resources/panel-assistant-contract/android_producer_v1.json")
         val fixture = JSONObject(target.readText())
         val revision = System.getenv("HAPANELD_ANDROID_PRODUCER_REVISION") ?: "pending"
         require(revision == "pending" || revision.matches(Regex("^[0-9a-f]{40}$")))
