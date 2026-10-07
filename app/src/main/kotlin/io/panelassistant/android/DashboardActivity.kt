@@ -1766,8 +1766,6 @@ class DashboardActivity : AppCompatActivity() {
         if (event == ExternalBusProtocol.ConnectionEvent.CONNECTED) {
             frontendConnected = true
             BuiltinDashboard.recordConnected(SystemClock.elapsedRealtime()) // TTI: load-start → interactive
-            // Launch is over: the lifecycle socket may now be demanded without competing with startup.
-            BuiltinDashboard.onRendererSettled(activityOwner)
             // First-ever proven render: from here on, an unfinished setup journey is a REPAIR of a panel
             // that once worked, and the wizard words it that way instead of reading like a factory reset.
             if (::activityConfig.isInitialized && !activityConfig.setupEverCompleted) {

@@ -238,7 +238,6 @@ import io.panelassistant.android.util.validGuardDbAppFile
 import io.panelassistant.android.util.HelperInstallReconciler
 import io.panelassistant.android.util.HelperInstallTransaction
 import io.panelassistant.android.util.SelfUpdater
-import io.panelassistant.android.util.WebViewInstaller
 import io.panelassistant.android.mqtt.ConnectionSupervisor
 import io.panelassistant.android.mqtt.HeartbeatAdmission
 import io.panelassistant.android.mqtt.isAuthRecoveryState
@@ -986,9 +985,6 @@ class PaneldService : Service() {
     private lateinit var haNetworkPath: HaNetworkPathMonitor
     private lateinit var haPathProbe: PathProbeMonitor
     private val haSocketClock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
-    private val rendererSettledForSwap: () -> Unit = {
-        scope.launch { acceptHealthyWebViewSwap() }
-    }
     private lateinit var haSiteMetadata: HaSiteMetadataClient
     private var brightnessObserver: ContentObserver? = null
     private var haCandidateIdentity = ""
@@ -3230,176 +3226,6 @@ class PaneldService : Service() {
         return completeOperation(progress, logLabel, operation, after)
     }
 
-    /** A new process and dashboard generation must earn the connection handshake before the saved
-     *  provider can be discarded. The old process never arms this receipt, so its late handshake cannot
-     *  certify the new provider. */
-    private suspend fun acceptHealthyWebViewSwap() {
-        val pending = WebViewInstaller.pendingRollback(this) ?: return
-        if (WebViewInstaller.postSwapDecision(
-                pending = pending, rendererConnected = BuiltinDashboard.rendererSettled,
-                rendererForeground = BuiltinDashboard.foreground, nowWallMs = System.currentTimeMillis(),
-                alreadyRolledBack = WebViewInstaller.alreadyRolledBackPin(this, pending.pinVersion),
-            ) ==
-            WebViewInstaller.SwapHealthDecision.KEEP && WebViewInstaller.acceptRollbackProbe(this) != null
-        ) {
-            Log.i(TAG, "WebView ${pending.pinVersion} passed the built-in dashboard handshake")
-        }
-    }
-
-    /** Rehydrate the one pending swap after the process boundary; use the same operation lane and
-     *  signer/checksum-pinned installer for restoration. No poller is added to the steady state. */
-    private suspend fun guardWebViewSwap() {
-        val interrupted = WebViewInstaller.attemptedRollback(this)
-        if (interrupted != null && WebViewInstaller.pendingRollback(this) == null) {
-            if (WebViewInstaller.installedApkMatches(this, interrupted.previousSha256)) {
-                if (WebViewInstaller.madeInThisProcess(interrupted)) {
-                    WebViewInstaller.recordRollbackDiagnostic(
-                        this, "WebView ${interrupted.pinVersion} restored; binding previous provider",
-                    )
-                    requestSafeProcessBoundary("binding restored WebView after service restart", "update")
-                } else {
-                    WebViewInstaller.recordRollbackDiagnostic(this, "WebView ${interrupted.pinVersion} failed; previous provider restored")
-                    WebViewInstaller.discardPreviousApk(this)
-                }
-            } else {
-                WebViewInstaller.recordRollbackDiagnostic(
-                    this, "WebView ${interrupted.pinVersion} rollback not confirmed; previous APK retained; no second attempt",
-                )
-                // A lost privileged-install reply can precede a delayed commit. Keep the only recovery
-                // APK and observe readback until the provider changes; never launch a second install.
-                while (!teardownBoundary.isStopping &&
-                    !WebViewInstaller.installedApkMatches(this, interrupted.previousSha256)
-                ) kotlinx.coroutines.delay(30_000)
-                if (!teardownBoundary.isStopping) requestSafeProcessBoundary("binding restored WebView after uncertain reply", "update")
-            }
-            return
-        }
-        val receipt = WebViewInstaller.pendingRollback(this) ?: return
-        // A service may restart without ending its process. Its already-settled Activity still uses the
-        // old provider, so only a different process may arm or certify the post-install handshake.
-        if (WebViewInstaller.madeInThisProcess(receipt)) return
-        if (WebViewInstaller.discardUnsubmittedRollback(this)) return
-        if (!WebViewInstaller.installedApkMatches(this, receipt.targetSha256)) {
-            // The submitted install may finish after its reply is lost. No finite wait can prove it
-            // cannot still commit, so retain the backup and watch only this exceptional receipt.
-            WebViewInstaller.recordRollbackDiagnostic(this, "WebView ${receipt.pinVersion} install unconfirmed; previous APK retained")
-            while (!teardownBoundary.isStopping && WebViewInstaller.pendingRollback(this) != null) {
-                kotlinx.coroutines.delay(30_000)
-                if (WebViewInstaller.installedApkMatches(this, receipt.targetSha256)) {
-                    requestSafeProcessBoundary("binding WebView after uncertain install", "update")
-                    return
-                }
-            }
-            return
-        }
-        val pending = WebViewInstaller.armRollback(this, System.currentTimeMillis())
-        if (pending == null) {
-            restoreWebView("WebView health deadline could not be saved")
-            return
-        }
-        if (!system.isBuiltinDashboardTarget(config.dashboardPackage)) {
-            restoreWebView("dashboard changed before WebView ${pending.pinVersion} could be verified")
-            return
-        }
-        if (BuiltinDashboard.rendererSettled && BuiltinDashboard.foreground) acceptHealthyWebViewSwap()
-        // Bound this process's wait even if wall time moves backward after the receipt was written.
-        val remaining = (pending.deadlineWallMs - System.currentTimeMillis())
-            .coerceIn(0L, WebViewInstaller.SWAP_HEALTH_DEADLINE_MS)
-        if (remaining > 0L) kotlinx.coroutines.delay(remaining)
-        val current = WebViewInstaller.pendingRollback(this) ?: return
-        if (WebViewInstaller.postSwapDecision(
-                pending = current, rendererConnected = BuiltinDashboard.rendererSettled,
-                rendererForeground = BuiltinDashboard.foreground,
-                nowWallMs = maxOf(System.currentTimeMillis(), current.deadlineWallMs),
-                alreadyRolledBack = WebViewInstaller.alreadyRolledBackPin(this, current.pinVersion),
-            ) !=
-            WebViewInstaller.SwapHealthDecision.RESTORE_PREVIOUS
-        ) return
-        val reason = "built-in dashboard did not connect within ${WebViewInstaller.SWAP_HEALTH_DEADLINE_MS / 1_000}s after WebView ${pending.pinVersion}"
-        restoreWebView(reason)
-    }
-
-    /** Claim once per pin before the one privileged install. A failure leaves the saved APK intact. */
-    private suspend fun restoreWebView(reason: String) {
-        while (!teardownBoundary.isStopping && WebViewInstaller.pendingRollback(this) != null) {
-            var bindProvider = false
-            var refusedBackup = false
-            val status = runOperation(
-                component = "System WebView rollback",
-                owner = "webview",
-                logLabel = "WebView rollback",
-                operation = {
-                    if (!GuardDbProcessAdmission.ordinaryMutationsAllowed() ||
-                        (!Su.available() && !HelperClient.available())
-                    ) {
-                        WebViewInstaller.recordRollbackDiagnostic(
-                            this@PaneldService, "$reason; restore waiting for installer admission",
-                        )
-                        return@runOperation InstallOperationResult("WebView rollback: waiting for installer admission")
-                    }
-                    val staged = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                        WebViewInstaller.stageRestoreApk(this@PaneldService)
-                    }
-                    if (staged == null) {
-                        WebViewInstaller.recordRollbackDiagnostic(
-                            this@PaneldService, "$reason; recovery APK could not be staged; original retained",
-                        )
-                        return@runOperation InstallOperationResult("WebView rollback: recovery APK could not be staged")
-                    }
-                    val receipt = WebViewInstaller.pendingRollback(this@PaneldService)
-                    if (receipt == null) {
-                        staged.delete()
-                        return@runOperation InstallOperationResult("WebView rollback already claimed")
-                    }
-                    var claimed = false
-                    val outcome = try {
-                        AppInstaller.restorePinnedWebView(
-                            this@PaneldService, staged, receipt.previousSigner, receipt.previousSha256,
-                            beforeInstall = {
-                                claimed = WebViewInstaller.claimRollback(this@PaneldService) != null
-                                if (claimed) {
-                                    WebViewInstaller.recordRollbackDiagnostic(
-                                        this@PaneldService, "$reason; restoring previous provider",
-                                    )
-                                }
-                                claimed
-                            },
-                        )
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        bindProvider = claimed // A thrown reply is not proof a submitted install did not commit.
-                        val detail = "restore failed (${error.javaClass.simpleName})"
-                        WebViewInstaller.recordRollbackDiagnostic(this@PaneldService, "$reason; $detail")
-                        return@runOperation InstallOperationResult("WebView rollback: $detail")
-                    } finally {
-                        staged.delete()
-                    }
-                    if (!claimed) {
-                        refusedBackup = outcome is InstallOutcome.Rejected
-                        val detail = "restore deferred (${outcome.javaClass.simpleName}); previous APK retained"
-                        WebViewInstaller.recordRollbackDiagnostic(this@PaneldService, "$reason; $detail")
-                        return@runOperation InstallOperationResult("WebView rollback: $detail")
-                    }
-                    val readback = WebViewInstaller.installedApkMatches(this@PaneldService, receipt.previousSha256)
-                    bindProvider = readback || outcome == InstallOutcome.Succeeded ||
-                        (outcome is InstallOutcome.Retryable && outcome.mayHaveCommitted)
-                    if (readback) WebViewInstaller.discardPreviousApk(this@PaneldService)
-                    val detail = when {
-                        readback -> "previous provider restored"
-                        outcome == InstallOutcome.Succeeded -> "restore installed; provider readback unconfirmed"
-                        else -> "restore not confirmed (${outcome.javaClass.simpleName})"
-                    }
-                    WebViewInstaller.recordRollbackDiagnostic(this@PaneldService, "$reason; $detail")
-                    InstallOperationResult("WebView rollback: $detail")
-                },
-                after = { if (bindProvider) requestSafeProcessBoundary("binding restored WebView provider", "update") },
-            )
-            if (refusedBackup || WebViewInstaller.pendingRollback(this) == null) return
-            kotlinx.coroutines.delay(if (status == null) 1_000 else 30_000)
-        }
-    }
-
     /** Companion internal_url repair (Install-tab button): copy each server's external_url into a blank
      *  internal_url so HA 2026.7 stops rejecting the dashboard with "Missing 'Host' header". Off-thread
      *  (su force-stops + relaunches the Companion). */
@@ -3589,9 +3415,7 @@ class PaneldService : Service() {
             haExactEntityStream.bindPathProbe(haPathProbe)
             HaLifecycleRuntime.install(haLifecycle)
             BuiltinDashboard.onHaLifecycleChanged()
-            // Registration can call back immediately when the renderer has already settled.
-            BuiltinDashboard.setRendererSettledListener(rendererSettledForSwap)
-            scope.launch { guardWebViewSwap() }
+            scope.launch { AppInstaller.deleteRetiredWebViewRollback(filesDir) }
             io.panelassistant.android.camera.CameraPermissionPrompt.install(
                 object : io.panelassistant.android.camera.CameraPermissionPrompt.Store {
                     override var declined: Boolean
@@ -3609,10 +3433,7 @@ class PaneldService : Service() {
             autoBright.activate()
             // A verdict reached while the dashboard was paused is applied when it returns to the front.
             BuiltinDashboard.setForegroundGainedListener {
-                scope.launch(Dispatchers.Default) {
-                    acceptHealthyWebViewSwap()
-                    reconcileAmbientTheme()
-                }
+                scope.launch(Dispatchers.Default) { reconcileAmbientTheme() }
             }
             brightness.applyPreventIdleDim(config.preventIdleDim, config)
             EntityLearningRuntime.attach(entityLearning)
@@ -4893,7 +4714,6 @@ class PaneldService : Service() {
                 // The echo probe is cleared under the same identity gate, and silently: it drives no
                 // prominent surface, so nothing needs re-poking when it goes.
                 if (::haPathProbe.isInitialized) PathProbeRuntime.uninstall(haPathProbe)
-                BuiltinDashboard.clearRendererSettledListener(rendererSettledForSwap)
             }
             closeOwner("sensors") { sensorPersistenceClosed.set(sensors.stop()) }
             BuiltinDashboard.setForegroundGainedListener(null)
