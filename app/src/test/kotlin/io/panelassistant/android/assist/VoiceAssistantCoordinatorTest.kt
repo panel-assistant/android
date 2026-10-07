@@ -100,10 +100,20 @@ class VoiceAssistantCoordinatorTest {
     private val runners = CopyOnWriteArrayList<ScriptedRunner>()
     private val played = CopyOnWriteArrayList<String>()
     private val pausedWhilePlaying = CopyOnWriteArrayList<Boolean>()
-    private val playback = AssistPlayback { url ->
-        played += url
-        mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
-        state.set(VoiceState.RESPONDING)
+
+    /** The `listen_after` of each streamed announcement's `voice_stream_end`. */
+    @Volatile private var streamListenAfter = true
+    private val playback = object : AssistPlayback {
+        override suspend fun play(url: String) {
+            played += url
+            mic.leases.firstOrNull()?.let { pausedWhilePlaying += it.paused }
+            state.set(VoiceState.RESPONDING)
+        }
+
+        override suspend fun playStream(streamId: String): Boolean {
+            play("stream@$streamId")
+            return streamListenAfter
+        }
     }
 
     /** Each cue's wake word, with the phase the panel was in when it was cued. */
@@ -852,6 +862,34 @@ class VoiceAssistantCoordinatorTest {
         assertEquals("the panel must not hear itself", listOf(true, true), pausedWhilePlaying)
         assertFalse(mic.leases[0].paused)
         assertTrue("an announcement alone asks nothing of Home Assistant", runners.isEmpty())
+    }
+
+    @Test
+    fun `a streamed announcement plays the stream alone with the listener paused, reports it played, then listens`() {
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", "chime.mp3", listenAfter = true, done = { done.complete(Unit) }, stream = "s42"))
+        val runner = awaitRunner(0)
+        assertTrue(done.isCompleted)
+        assertEquals("the stream carries chime and speech; neither URL is fetched", listOf("stream@s42"), played)
+        assertEquals("the panel must not hear itself", listOf(true), pausedWhilePlaying)
+        assertEquals(VoiceTurnRequest(null), runner.requests.single())
+        runner.release.complete(AssistOutcome())
+        awaitState(VoiceState.IDLE)
+    }
+
+    @Test
+    fun `a streamed announcement whose end says not to listen leaves the panel idle`() {
+        streamListenAfter = false
+        val c = coordinator()
+        c.start()
+        val done = CompletableDeferred<Unit>()
+        c.announce(VoiceAnnouncement("question.mp3", null, listenAfter = true, done = { done.complete(Unit) }, stream = "s9"))
+        runBlocking { withTimeout(5_000L) { done.await() } }
+        awaitState(VoiceState.IDLE)
+        assertEquals(listOf("stream@s9"), played)
+        assertTrue("Panel Assistant's end withdrew the listen", runners.isEmpty())
     }
 
     @Test

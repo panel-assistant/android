@@ -5,7 +5,8 @@ import java.net.URI
 
 /** One `media` channel command (protocol section 18). */
 internal sealed interface PanelMediaCommand {
-    data class Play(val url: String, val announce: Boolean) : PanelMediaCommand
+    /** [stream]: the stream id of an announcement Panel Assistant plays on the voice stream rather than at [url]. */
+    data class Play(val url: String, val announce: Boolean, val stream: String? = null) : PanelMediaCommand
     data object Pause : PanelMediaCommand
     data object Resume : PanelMediaCommand
     data object Stop : PanelMediaCommand
@@ -26,7 +27,8 @@ internal sealed interface PanelMediaCommand {
                         is Boolean -> raw
                         else -> return null
                     }
-                    Play(url, announce)
+                    if (json.opt("stream").let { it != null && it !is Boolean }) return null
+                    Play(url, announce, if (announce) streamedId(json) else null)
                 }
                 "pause" -> Pause
                 "resume" -> Resume
@@ -73,7 +75,8 @@ internal fun interface MediaStreamFactory {
 internal class PanelMediaPlayer(
     private val streams: MediaStreamFactory,
     private val post: (() -> Unit) -> Unit,
-    private val announce: (String) -> Boolean,
+    /** Play an announcement: the URL, or the stream id if Panel Assistant streams it instead. */
+    private val announce: (url: String, stream: String?) -> Boolean,
     private val cancelAnnouncement: () -> Unit,
     private val muted: () -> Boolean,
     private val setMuted: (Boolean) -> Unit,
@@ -113,7 +116,11 @@ internal class PanelMediaPlayer(
     /** Run [command]. False only when an announcement could not be admitted. */
     fun command(command: PanelMediaCommand): Boolean {
         when (command) {
-            is PanelMediaCommand.Play -> if (command.announce) return announce(command.url) else owner { play(command.url) }
+            is PanelMediaCommand.Play -> if (command.announce) {
+                return announce(command.url, command.stream)
+            } else {
+                owner { play(command.url) }
+            }
             PanelMediaCommand.Pause -> owner { pause() }
             PanelMediaCommand.Resume -> owner { resume() }
             PanelMediaCommand.Stop -> {

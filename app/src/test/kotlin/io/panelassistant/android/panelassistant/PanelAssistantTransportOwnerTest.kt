@@ -13,6 +13,7 @@ import io.panelassistant.android.sensors.HaLifecycleReason
 import io.panelassistant.android.sensors.HaLifecycleState
 import io.panelassistant.android.util.ServiceRestartBarrier
 import io.panelassistant.android.util.ServiceRuntimeOwner
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -1232,6 +1233,163 @@ class PanelAssistantTransportOwnerTest {
         }
     }
 
+    /** The panel's Sendspin player: what the session hands it, and a way to send as the library would. */
+    private class FakePlayer(private val id: String? = "C".repeat(43)) : PanelAssistantVoiceStreamPeer {
+        val events = mutableListOf<String>()
+        val received = mutableListOf<Pair<Boolean, String>>()
+        var send: ((ByteArray, Boolean) -> Unit)? = null
+        override fun clientId(): String? = id
+        override fun open(grant: PanelAssistantVoiceStreamGrant, send: (frame: ByteArray, text: Boolean) -> Unit) {
+            events += "open ${grant.serverId}"
+            this.send = send
+        }
+        override fun receive(frame: ByteArray, text: Boolean) {
+            received += text to String(frame, Charsets.UTF_8)
+        }
+        override fun mute() {
+            events += "mute"
+        }
+        override fun unmute() {
+            events += "unmute"
+        }
+        override fun close() {
+            events += "close"
+        }
+    }
+
+    private val streamServer = "S".repeat(43)
+    private val streamGrant = JSONObject().put("server_id", streamServer)
+        .put("psk", java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { 7 }))
+
+    private fun streamEvent(event: JSONObject) = JSONObject().put("id", 1).put("type", "event").put("event", event).toString()
+
+    private fun sendspin(frame: String, text: Boolean, streamId: String?) = streamEvent(
+        JSONObject().put("kind", "sendspin").put("frame", java.util.Base64.getEncoder().encodeToString(frame.toByteArray()))
+            .put("text", text).put("stream_id", streamId ?: JSONObject.NULL),
+    )
+
+    private fun streamEnd(streamId: String, outcome: String, listenAfter: Boolean) = streamEvent(
+        JSONObject().put("kind", "voice_stream_end").put("stream_id", streamId).put("outcome", outcome).put("listen_after", listenAfter),
+    )
+
+    @Test fun voiceStreamSessionIsOfferedWithAClientIdOnEverySessionScheme() = runTest {
+        for ((case, expected) in listOf(
+            Pair("http://ha.local:8123", FakePlayer()) to true,
+            Pair("https://ha.example", FakePlayer()) to true,
+            Pair("http://ha.local:8123", FakePlayer(id = null)) to false,
+            Pair("http://ha.local:8123", null) to false,
+        )) {
+            val (base, player) = case
+            val connection = FakeConnection(Ha.accepting())
+            val harness = harness(connection, voiceStream = player?.let { PanelAssistantVoiceStream(it) })
+            harness.session = { HaApiSession(base, "token", owner = harness.credential) }
+            harness.owner.replaceDemand(DEMAND)
+            runCurrent()
+            val hello = JSONObject(connection.sent.first())
+            val offered = hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) }
+            assertEquals("$base offers voice_stream_session", expected, "voice_stream_session" in offered)
+            assertFalse("the separate endpoint is never offered", "voice_stream" in offered)
+            assertEquals("$base sends the client id", expected, hello.optJSONObject("voice_stream_session")?.getString("client_id") == "C".repeat(43))
+            harness.owner.close()
+        }
+    }
+
+    @Test fun aGrantedSessionConnectsThePlayerAndAnUngrantedOneDoesNot() = runTest {
+        val player = FakePlayer()
+        val first = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
+        val harness = harness(first, voiceStream = PanelAssistantVoiceStream(player))
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertEquals(listOf("open $streamServer"), player.events)
+        first.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
+        runCurrent()
+        assertEquals("close", player.events.last())
+        harness.owner.close()
+        runCurrent()
+
+        val refused = FakePlayer()
+        val ungranted = harness(FakeConnection(Ha.accepting(voiceStream = streamGrant)), voiceStream = PanelAssistantVoiceStream(refused))
+        ungranted.owner.replaceDemand(DEMAND)
+        runCurrent()
+        assertTrue("an ungranted session never connects the player", refused.events.none { it.startsWith("open") })
+        ungranted.owner.close()
+    }
+
+    @Test fun theSessionCarriesThePlayersFramesBothWaysInOrder() = runTest {
+        val player = FakePlayer()
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
+        val harness = harness(connection, voiceStream = PanelAssistantVoiceStream(player))
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+
+        val inbound = (1..20).map { n -> (n % 3 != 0) to "server-$n" }
+        inbound.forEachIndexed { n, (text, frame) -> connection.inbound.trySend(sendspin(frame, text, if (n < 10) null else "s1")) }
+        runCurrent()
+        assertEquals("every frame reaches the player once, in session order", inbound, player.received)
+
+        val send = player.send!!
+        send("hello".toByteArray(), true)
+        send(byteArrayOf(0, 1, 2, -1), false)
+        runCurrent()
+        val frames = connection.sent.map(::JSONObject).filter { it.getString("type") == "panel_assistant/voice_stream_frame" }
+        assertEquals(listOf("aGVsbG8=", "AAEC/w=="), frames.map { it.getString("frame") })
+        assertEquals(listOf(true, false), frames.map { it.getBoolean("text") })
+        assertTrue("each carries the session", frames.all { it.getString("session") == "opaque-session" })
+        assertEquals("each is its own request", frames.size, frames.map { it.getLong("id") }.toSet().size)
+        harness.owner.close()
+    }
+
+    @Test fun aStreamedRunHoldsUntilItsEndAndALocalStopMutesTellsPanelAssistantAndTheNextStreamUnmutes() = runTest {
+        val player = FakePlayer()
+        val stream = PanelAssistantVoiceStream(player)
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
+        val harness = harness(connection, voiceStream = stream)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+
+        val first = async { stream.play("s1") }
+        runCurrent()
+        connection.inbound.trySend(streamEnd("other", "played", listenAfter = true))
+        runCurrent()
+        assertFalse("another stream's end releases nothing", first.isCompleted)
+        connection.inbound.trySend(streamEnd("s1", "played", listenAfter = true))
+        runCurrent()
+        assertEquals(io.panelassistant.android.media.VoiceStreamEnd("played", listenAfter = true), first.await())
+        assertEquals(true, stream.ended("s1")?.listenAfter)
+
+        val second = async { stream.play("s2") }
+        runCurrent()
+        second.cancel()
+        runCurrent()
+        val stop = connection.sent.map(::JSONObject).single { it.getString("type") == "panel_assistant/voice_stream_stop" }
+        assertEquals("s2", stop.getString("stream_id"))
+        assertEquals("opaque-session", stop.getString("session"))
+        assertEquals("mute", player.events.last())
+
+        connection.inbound.trySend(sendspin("late", text = false, streamId = "s2"))
+        runCurrent()
+        assertEquals("the stopped stream's own frames keep it muted", "mute", player.events.last())
+        connection.inbound.trySend(sendspin("next", text = true, streamId = "s3"))
+        runCurrent()
+        assertEquals("the next stream id unmutes", "unmute", player.events.last())
+        harness.owner.close()
+    }
+
+    @Test fun aHeldStreamIsReleasedWhenItsSessionEnds() = runTest {
+        val player = FakePlayer()
+        val stream = PanelAssistantVoiceStream(player)
+        val connection = FakeConnection(Ha.accepting(capabilities = listOf("voice_stream_session"), voiceStream = streamGrant))
+        val harness = harness(connection, voiceStream = stream)
+        harness.owner.replaceDemand(DEMAND)
+        runCurrent()
+        val held = async { stream.play("s1") }
+        runCurrent()
+        connection.inbound.trySend(Ha.sessionClosed("entry_unloaded"))
+        runCurrent()
+        assertEquals(io.panelassistant.android.media.VoiceStreamEnd("failed", listenAfter = false), held.await())
+        harness.owner.close()
+    }
+
     @Test fun aGrantedEmbedKeyIsHeldForItsSessionOnlyAndNeverLogged() = runTest {
         val keys = io.panelassistant.android.http.EmbedProofKeyring()
         val logs = mutableListOf<String>()
@@ -1462,6 +1620,7 @@ class PanelAssistantTransportOwnerTest {
         persisted: Persisted? = null,
         log: (String) -> Unit = {},
         embedKeys: io.panelassistant.android.http.EmbedProofKeyring? = null,
+        voiceStream: PanelAssistantVoiceStream? = null,
         clock: (() -> Long)? = null,
         addresses: () -> List<String> = { emptyList() },
         onConnection: (HaApiSession, PanelAssistantSession) -> Boolean = { _, _ -> true },
@@ -1485,6 +1644,7 @@ class PanelAssistantTransportOwnerTest {
             observeForHello = observeForHello,
             commands = commands,
             embedKeys = embedKeys,
+            voiceStream = voiceStream,
             addresses = addresses,
             onConnection = onConnection,
             checkPreferred = checkPreferred,
@@ -1569,6 +1729,7 @@ class PanelAssistantTransportOwnerTest {
             commandResultError: String? = null,
             mqttDiscovery: String? = null,
             embed: JSONObject? = null,
+            voiceStream: JSONObject? = null,
             lifecycle: JSONObject? = null,
             updatePolicy: PanelAssistantUpdatePolicy? = null,
             /** Leave the `full_end` request unanswered; the test injects [reportAcknowledged] itself. */
@@ -1591,6 +1752,7 @@ class PanelAssistantTransportOwnerTest {
                                 .put("channels", JSONObject().put("accepted", 0).put("unknown", JSONArray()))
                                 .apply { if (mqttDiscovery != null) put("mqtt_discovery", mqttDiscovery) }
                                 .apply { if (embed != null) put("embed", embed) }
+                                .apply { if (voiceStream != null) put("voice_stream_session", voiceStream) }
                                 .apply { if (lifecycle != null) put("lifecycle", lifecycle) }
                                 .apply {
                                     if (updatePolicy != null) put("update_policy", JSONObject()

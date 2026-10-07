@@ -63,6 +63,12 @@ internal fun interface AssistTransport {
  */
 internal fun interface AssistPlayback {
     suspend fun play(url: String)
+
+    /**
+     * Hold for the stream [streamId] Panel Assistant plays until it ends; returns its end's `listen_after`.
+     */
+    suspend fun playStream(streamId: String): Boolean =
+        throw AssistPlaybackException(AssistPipelineClient.CODE_PLAYBACK_FAILED, "This panel has no voice stream")
 }
 
 /**

@@ -6,6 +6,7 @@ import io.panelassistant.android.audio.MicrophonePresence
 import io.panelassistant.android.audio.MicrophoneStatus
 import io.panelassistant.android.audio.PcmConsumer
 import io.panelassistant.android.audio.PcmFrame
+import io.panelassistant.android.media.streamedId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +55,11 @@ internal data class PanelAssistantAnnouncement(
     val url: String,
     val preannounceUrl: String?,
     val listenAfter: Boolean,
+    /**
+     * The stream Panel Assistant plays it on (`stream: true` with `stream_id`); null for the URL path. A
+     * streamed announcement plays the voice stream, not [url].
+     */
+    val stream: String? = null,
 )
 
 /** What Home Assistant says during one conversation turn. */
@@ -61,7 +67,8 @@ internal sealed interface VoiceTurnEvent {
     /** Stop streaming: speech-to-text has heard the end of the command. */
     data object ListenEnd : VoiceTurnEvent
 
-    data class Play(val url: String, val continueConversation: Boolean) : VoiceTurnEvent
+    /** [stream] as on [PanelAssistantAnnouncement]: non-null when the reply arrives on the voice stream. */
+    data class Play(val url: String, val continueConversation: Boolean, val stream: String? = null) : VoiceTurnEvent
 
     data class Failed(val code: String) : VoiceTurnEvent
 
@@ -270,6 +277,7 @@ internal class PanelAssistantVoice(
             url = resolve(url),
             preannounceUrl = (event.opt("preannounce_url") as? String)?.takeIf { it.isNotBlank() }?.let(::resolve),
             listenAfter = event.opt("listen_after") == true,
+            stream = streamedId(event),
         )
     }
 
@@ -287,7 +295,7 @@ internal class PanelAssistantVoice(
     private fun turnEvent(event: JSONObject?): VoiceTurnEvent? = when (event?.optString("kind")) {
         "listen_end" -> VoiceTurnEvent.ListenEnd
         "play" -> (event.opt("url") as? String)?.takeIf { it.isNotBlank() }?.let { url ->
-            VoiceTurnEvent.Play(resolve(url), event.opt("continue_conversation") == true)
+            VoiceTurnEvent.Play(resolve(url), event.opt("continue_conversation") == true, streamedId(event))
         }
         "error" -> VoiceTurnEvent.Failed((event.opt("code") as? String).orEmpty().ifEmpty { "error" })
         "end" -> VoiceTurnEvent.End

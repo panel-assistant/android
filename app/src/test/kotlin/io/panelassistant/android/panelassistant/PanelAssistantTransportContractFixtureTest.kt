@@ -3,8 +3,10 @@ package io.panelassistant.android.panelassistant
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -115,6 +117,14 @@ class PanelAssistantTransportContractFixtureTest {
                 } else if (case.getJSONObject("result").has("embed")) {
                     assertNull("$name must ignore an ungranted embed proof", accepted.session.embed)
                 }
+                if (PanelAssistantTransportProtocol.CAPABILITY_VOICE_STREAM_SESSION in accepted.session.capabilities) {
+                    val stream = accepted.session.voiceStream
+                    assertNotNull("$name must carry its granted voice stream", stream)
+                    assertEquals("CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg", stream!!.serverId)
+                    assertArrayEquals(ByteArray(32) { it.toByte() }, stream.psk())
+                } else if (case.getJSONObject("result").has("voice_stream_session")) {
+                    assertNull("$name must ignore an ungranted voice stream", accepted.session.voiceStream)
+                }
             } else {
                 assertTrue(
                     "$name must be rejected by the parser",
@@ -123,6 +133,85 @@ class PanelAssistantTransportContractFixtureTest {
             }
         }
     }
+
+    /** A player that records what the session hands it, and lets the test send as the library would. */
+    private class VectorPlayer : PanelAssistantVoiceStreamPeer {
+        val received = mutableListOf<ByteArray>()
+        var send: ((ByteArray, Boolean) -> Unit)? = null
+        override fun clientId() = null
+        override fun open(grant: PanelAssistantVoiceStreamGrant, send: (ByteArray, Boolean) -> Unit) { this.send = send }
+        override fun receive(frame: ByteArray, text: Boolean) { received += frame }
+        override fun mute() = Unit
+        override fun unmute() = Unit
+        override fun close() = Unit
+    }
+
+    @Test
+    fun `every voice stream vector is taken by the panel exactly when it is valid`() {
+        val vectors = JSONObject(resource(FIXTURE)).getJSONArray("voiceStream").objects()
+        assertTrue("the shared vectors carry voice stream cases", vectors.isNotEmpty())
+        vectors.forEach { case ->
+            val name = case.getString("name")
+            val payload = case.getJSONObject("payload")
+            val valid = case.getBoolean("valid")
+            when (payload.optString("kind")) {
+                PanelAssistantVoiceStream.EVENT_SENDSPIN, PanelAssistantVoiceStream.EVENT_STREAM_END -> {
+                    val player = VectorPlayer()
+                    val stream = PanelAssistantVoiceStream(player)
+                    val frame = JSONObject().put("id", HELLO_ID).put("type", "event").put("event", payload)
+                    assertTrue(name, stream.onFrame(frame, HELLO_ID))
+                    val taken = player.received.isNotEmpty() || stream.ended(payload.optString("stream_id")) != null
+                    assertEquals(name, valid, taken)
+                }
+                else -> {
+                    // A play: a valid streamed one plays exactly its stream_id; a valid plain one, or any invalid one, streams nothing.
+                    val plays = if (payload.has("action")) {
+                        (io.panelassistant.android.media.PanelMediaCommand.parse(payload) as? io.panelassistant.android.media.PanelMediaCommand.Play)?.stream
+                    } else {
+                        io.panelassistant.android.media.streamedId(payload)
+                    }
+                    assertEquals(name, if (valid && payload.opt("stream") == true) payload.getString("stream_id") else null, plays)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the panel sends exactly the valid voice stream commands and never an invalid one`() {
+        val vectors = JSONObject(resource(FIXTURE)).getJSONArray("messages").objects().filter {
+            it.getJSONObject("message").getString("type") in setOf(PanelAssistantVoiceStream.COMMAND_FRAME, PanelAssistantVoiceStream.COMMAND_STOP)
+        }
+        assertTrue("the shared vectors carry voice stream commands", vectors.size >= 2)
+        vectors.forEach { case ->
+            val name = case.getString("name")
+            val message = case.getJSONObject("message")
+            val player = VectorPlayer()
+            val stream = PanelAssistantVoiceStream(player)
+            stream.open(message.getString("session"), PanelAssistantVoiceStreamGrant("S".repeat(43), ByteArray(32)))
+            if (message.getString("type") == PanelAssistantVoiceStream.COMMAND_FRAME) {
+                // The panel can only produce frames it holds as bytes with a type: give it those the vector names.
+                val bytes = (message.opt("frame") as? String)?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
+                val text = message.opt("text") as? Boolean
+                if (bytes == null || text == null) return@forEach assertFalse("$name is valid but not producible", case.getBoolean("valid"))
+                player.send!!(bytes, text)
+            } else {
+                val streamId = message.opt("stream_id") as? String
+                    ?: return@forEach assertFalse("$name is valid but not producible", case.getBoolean("valid"))
+                kotlinx.coroutines.runBlocking {
+                    val held = launch(kotlinx.coroutines.Dispatchers.Unconfined) { stream.play(streamId) }
+                    held.cancel()
+                }
+            }
+            val sent = stream.next(7L)?.let(::JSONObject)?.apply { remove("id") }
+            if (case.getBoolean("valid")) {
+                assertEquals(name, canonical(message), sent?.let(::canonical))
+            } else {
+                assertNull("$name must never be sent", sent)
+            }
+        }
+    }
+
+    private fun canonical(json: JSONObject): Map<String, String> = json.keys().asSequence().sorted().associateWith { json.get(it).toString() }
 
     private fun recordingProducer(): Boolean = System.getenv("HAPANELD_RECORD_ANDROID_PRODUCER") == "1"
 

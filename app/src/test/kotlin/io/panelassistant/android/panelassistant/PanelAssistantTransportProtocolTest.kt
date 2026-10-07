@@ -60,7 +60,7 @@ class PanelAssistantTransportProtocolTest {
         assertEquals(4, hello.getJSONObject("protocol").getInt("min"))
         assertEquals(4, hello.getJSONObject("protocol").getInt("max"))
         assertTrue(Regex("^[0-9a-f]{64}$").matches(hello.getString("contract_digest")))
-        assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "embed_proof", "voice", "media"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
+        assertEquals(listOf("state", "commands", "approval", "mqtt_withdraw", "embed_proof", "voice", "media", "voice_stream_session"), hello.getJSONArray("capabilities").let { (0 until it.length()).map(it::getString) })
         val relay = hello.getJSONArray("channels").getJSONObject(0)
         assertEquals(listOf("relay3", "switch", "relay", "relay3", "relay", "3"), listOf("channel", "platform", "translation_key", "unique_suffix", "family", "index").map { relay.get(it).toString() })
     }
@@ -77,7 +77,7 @@ class PanelAssistantTransportProtocolTest {
         // Pinned as a literal: a digest derived from JSON serialisation could differ between the
         // device's org.json and the JVM's, and the integration records whatever the panel sends.
         assertEquals(
-            "b848474dcbf17c64985da09623f3ab40259ef14e736df60077d44be8fe47aa32",
+            "4679658244ba064b7117a8156e51808f33ece93113e850f93779ee7bc80ffeb6",
             PanelAssistantTransportProtocol.CONTRACT_DIGEST,
         )
     }
@@ -207,6 +207,54 @@ class PanelAssistantTransportProtocolTest {
             } catch (expected: PanelAssistantProtocolException) {
             }
         }
+    }
+
+    @Test fun `hello carries the voice stream client id only when it offers voice_stream_session`() {
+        val id = "A".repeat(43)
+        val offering = JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, listOf("voice_stream_session"), voiceStreamClientId = id))
+        assertEquals(id, offering.getJSONObject("voice_stream_session").getString("client_id"))
+        assertFalse(offering.has("voice_stream"))
+        assertFalse(JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, listOf("voice"), voiceStreamClientId = id)).has("voice_stream_session"))
+        assertFalse(JSONObject(PanelAssistantTransportProtocol.hello(1L, IDENTITY, listOf("voice_stream_session"))).has("voice_stream_session"))
+    }
+
+    @Test fun `granting voice_stream_session makes a usable pairing grant required`() {
+        val key = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { it.toByte() })
+        val server = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { (it + 1).toByte() })
+        fun grant(serverId: Any?, psk: Any?) = JSONObject().put("server_id", serverId).put("psk", psk)
+        val granted = session(
+            accepted().granting("voice_stream_session").apply {
+                getJSONObject("result").put("voice_stream_session", grant(server, key))
+            },
+        ).voiceStream!!
+        assertEquals(server, granted.serverId)
+        assertTrue(granted.psk().contentEquals(ByteArray(32) { it.toByte() }))
+        assertFalse(granted.toString().contains(key))
+
+        val short = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(31))
+        listOf<JSONObject?>(
+            null,
+            grant(short, key),
+            grant(server, short),
+            grant(server, "$key="),
+            grant(server, key.replace('A', '+')),
+            grant(null, key),
+            grant(server, null),
+        ).forEachIndexed { index, value ->
+            val frame = accepted().granting("voice_stream_session").apply { if (value != null) getJSONObject("result").put("voice_stream_session", value) }
+            try {
+                PanelAssistantTransportProtocol.helloOutcome(frame, 1L)
+                fail("granted case $index was accepted without a usable voice stream grant")
+            } catch (expected: PanelAssistantProtocolException) {
+            }
+        }
+        val ungranted = accepted().apply { getJSONObject("result").put("voice_stream_session", grant(server, key)) }
+        assertNull(session(ungranted).voiceStream)
+        val oldName = accepted().granting("voice_stream").apply { getJSONObject("result").put("voice_stream", grant(server, key)) }
+        assertTrue(
+            "the separate-endpoint capability is no longer offered, so a grant of it is refused",
+            runCatching { session(oldName) }.exceptionOrNull() is PanelAssistantProtocolException,
+        )
     }
 
     @Test fun `without the embed_proof grant the key is ignored`() {
