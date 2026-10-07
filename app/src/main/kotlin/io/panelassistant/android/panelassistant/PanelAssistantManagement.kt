@@ -18,6 +18,17 @@ internal interface PanelAssistantManagement {
 
     /** Apply [settings] through the panel's own settings store; null when applied, else an outcome code. */
     suspend fun applySettings(settings: Map<String, String>): String?
+
+    companion object {
+        fun of(
+            read: suspend (Boolean) -> PanelAssistantManagementSnapshot,
+            write: suspend (Map<String, String>) -> String?,
+        ): PanelAssistantManagement = object : PanelAssistantManagement {
+            override suspend fun snapshot(updateOwner: Boolean) = read(updateOwner)
+
+            override suspend fun applySettings(settings: Map<String, String>) = write(settings)
+        }
+    }
 }
 
 /**
