@@ -1434,7 +1434,7 @@ class PaneldService : Service() {
             onConnection = { session, accepted ->
                 val route = session.route
                 route != null && HaConnectionRoutes.isCurrent(config, route) &&
-                    (accepted.connection?.let { HaConnectionRoutes.learn(config, route, it) } ?: true)
+                    (accepted.connection?.let { HaConnectionRoutes.learn(config, route, it, accepted.entryId) } ?: true)
             },
             checkPreferred = {
                 val route = HaConnectionRoutes.preferredCandidate(config)

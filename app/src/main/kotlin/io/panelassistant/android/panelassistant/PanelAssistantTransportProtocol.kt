@@ -38,6 +38,12 @@ internal data class PanelAssistantSession(
     val updatePolicy: PanelAssistantUpdatePolicy? = null,
     /** Panel Assistant's voice stream pairing, present exactly when the session granted `voice_stream_session`. */
     val voiceStream: PanelAssistantVoiceStreamGrant? = null,
+    /**
+     * The Panel Assistant config entry this panel belongs to, which names its device
+     * `(panel_assistant, <entry_id>)`. Optional: an integration older than 0.9.0 omits it, and a malformed
+     * value is treated as absent, so the panel falls back to proving the entry through the entity registry.
+     */
+    val entryId: String? = null,
 ) {
     /** The session token is a bearer for this session's requests, and the embed key a secret; keep both out of logs. */
     override fun toString(): String =
@@ -260,6 +266,7 @@ internal object PanelAssistantTransportProtocol {
     private val CODE = Regex("^[a-z][a-z0-9_]{0,63}$")
     private val COMMAND_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
     private val VERSION = Regex("^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$")
+    private val ENTRY_ID = Regex("^[0-9A-Za-z_-]{1,64}$")
     private val EMBED_KEY_ID = Regex("^[0-9a-f]{16}$")
     private val EMBED_KEY = Regex("^[A-Za-z0-9_-]{43}$")
     private const val MAX_SESSION_TOKEN_CHARS = 64
@@ -444,7 +451,8 @@ internal object PanelAssistantTransportProtocol {
                 io.panelassistant.android.HaConnectionAdvertisement.parse(result.optJSONObject("connection")),
                 lifecycleNotice(result.optJSONObject("lifecycle")),
                 updatePolicy(result, protocol),
-                voiceStream),
+                voiceStream,
+                (result.opt("entry_id") as? String)?.takeIf(ENTRY_ID::matches)),
         )
     }
 

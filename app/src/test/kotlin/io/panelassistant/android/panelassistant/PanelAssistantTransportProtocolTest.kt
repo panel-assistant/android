@@ -159,6 +159,18 @@ class PanelAssistantTransportProtocolTest {
         }
     }
 
+    @Test fun `hello names the Panel Assistant entry when the integration sends it`() {
+        // Panel Assistant 0.8.0 and older send no entry id; the panel then proves its entry by probing.
+        assertNull(session(accepted()).entryId)
+        val frame = accepted().apply { getJSONObject("result").put("entry_id", "01J00000000000000000000CCC") }
+        assertEquals("01J00000000000000000000CCC", session(frame).entryId)
+        // The field is informational: a malformed value is ignored, never a reason to refuse the session.
+        for (bad in listOf<Any>(JSONObject.NULL, 7, "", "has space", "x".repeat(65))) {
+            frame.getJSONObject("result").put("entry_id", bad)
+            assertNull("malformed entry id admitted: $bad", session(frame).entryId)
+        }
+    }
+
     @Test fun `a Panel Assistant that speaks only protocol 3 or older gets no session`() {
         // Panel Assistant 0.7.0 and older know only the old class names; protocol 4 keeps them away.
         for (old in 1..3) {
